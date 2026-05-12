@@ -4,6 +4,7 @@
  */
 
 import { JEPA_TRACE_CONTRACT_VERSION } from '../shared/decision-trace-jepa.types';
+import { isCriticalDecisionActionValue } from '../shared/decision-log-metadata-prd.types';
 
 const PERSONAS = new Set(['ABU', 'DR_DRE', 'NEPTUNE', 'EXPECTED_UTILITY', 'USER_ACTION']);
 const SOURCES = new Set(['PHYSICAL', 'HUMAN', 'PHILOSOPHY', 'HEURISTIC', 'UTILITY', 'USER']);
@@ -104,6 +105,16 @@ export function analyzeDecisionLogTraceability(logs: unknown): DecisionLogTracea
     }
     if (entry.evidenceRefs !== undefined && !Array.isArray(entry.evidenceRefs)) {
       errors.push(`entry ${p}.evidenceRefs must be an array when present`);
+    }
+    // PRD §13.B：关键决策（REJECT / ADJUST / REPLACE / MODIFY）须带非空 reasonCodes
+    if (
+      typeof entry.action === 'string' &&
+      isCriticalDecisionActionValue(entry.action) &&
+      (!Array.isArray(entry.reasonCodes) || entry.reasonCodes.length === 0)
+    ) {
+      errors.push(
+        `entry ${p}: critical action ${entry.action} requires non-empty reasonCodes (PRD Decision OS §13.B)`,
+      );
     }
     if (entry.jepaTrace !== undefined) {
       if (!isRecord(entry.jepaTrace)) {

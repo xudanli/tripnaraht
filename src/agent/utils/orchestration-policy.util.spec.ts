@@ -177,6 +177,13 @@ describe('routePolicy - 决策真值表测试', () => {
         expectsToolCalls: testCase.signals.expectsToolCalls ?? false,
         legacyWellSupported: testCase.signals.legacyWellSupported ?? true,
         latencyBudgetMs: testCase.signals.latencyBudgetMs ?? 60000,
+        intent_mode_requested: testCase.signals.intent_mode_requested ?? 'AUTO',
+        intent_mode_resolved:
+          testCase.signals.intent_mode_resolved ?? (testCase.signals.taskType === 'TRIP_PLANNING'
+            ? 'TRIP_PLANNING'
+            : testCase.signals.taskType === 'DATA_LOOKUP'
+              ? 'DATA_LOOKUP'
+              : 'GENERIC_QA'),
       };
 
       const decision = routePolicy(testCase.env, testCase.options, fullSignals);

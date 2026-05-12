@@ -178,9 +178,16 @@ export class PostgreSQLMcpMonitoringService {
         if (!dailyStats && this.redisService) {
           const key = `${this.metricsKeyPrefix}daily:${dateStr}`;
           const cached = await this.redisService.get<any>(key);
-          if (cached) {
-            dailyStats = cached;
-            this.dailyStats.set(dateStr, dailyStats);
+          if (cached && typeof cached === 'object') {
+            const merged = {
+              totalQueries: 0,
+              successQueries: 0,
+              failedQueries: 0,
+              executionTimes: [] as number[],
+              ...(cached as Record<string, unknown>),
+            };
+            dailyStats = merged;
+            this.dailyStats.set(dateStr, merged);
           }
         }
 

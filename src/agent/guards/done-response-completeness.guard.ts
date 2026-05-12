@@ -17,6 +17,7 @@ export type DoneCompletenessContext = {
  * - 辅（过渡）：`decision_log` 含 `step === 'VERIFY'`，仅当未设 `DECISION_DONE_VERIFY_STEPS_ONLY=1`；命中辅口径会 warn
  * - `DECISION_DONE_VERIFY_STEPS_ONLY=1`：DONE 判定只认 `stepsExecuted`（准备收紧主干 / 弃用 log 回退）
  * - `observability.system_mode === 'SYSTEM1'`：不要求 kernel VERIFY（快路径）
+ * - `observability.lightweight_knowledge_qa === true`：轻量问答（SYSTEM2 路由 + 单次 LLM），也不要求 Kernel VERIFY
  */
 export function assertDoneResponseCompleteness(
   response: RouteAndRunResponseDto,
@@ -44,7 +45,10 @@ export function assertDoneResponseCompleteness(
   const hasVerifyInLog = logs.some((e) => e.step === 'VERIFY');
   const stepsOnlyVerify = process.env.DECISION_DONE_VERIFY_STEPS_ONLY === '1';
   const systemMode = (response.observability as { system_mode?: string } | undefined)?.system_mode;
-  const skipKernelVerify = systemMode === 'SYSTEM1';
+  const lightweightQa =
+    (response.observability as { lightweight_knowledge_qa?: boolean } | undefined)
+      ?.lightweight_knowledge_qa === true;
+  const skipKernelVerify = systemMode === 'SYSTEM1' || lightweightQa;
 
   if (!skipKernelVerify) {
     if (hasVerifyInSteps) {

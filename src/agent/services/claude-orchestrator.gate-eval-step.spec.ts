@@ -13,6 +13,8 @@ import { FailureRiskPredictionService } from '../../skills/world/services/failur
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 import { AgentContext } from '../interfaces/claude-orchestration.interface';
 import { OrchestratorState, TripPlanRequest } from '../interfaces/trip-plan.interface';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
 
 describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => {
   const baseTrip: TripPlanRequest = {
@@ -65,6 +67,14 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
         useValue: {
           getDefaultProvider: jest.fn().mockReturnValue(LlmProvider.ANTHROPIC),
           callLlmWithSchema: jest.fn(),
+        },
+      },
+      { provide: PrismaService, useValue: {} },
+      {
+        provide: RagRealityPolicyGateService,
+        useValue: {
+          resolve: jest.fn().mockReturnValue({ scope: 'full', policy: {} }),
+          mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
         },
       },
       { provide: ReadinessService, useValue: readinessMock },

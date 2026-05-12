@@ -7,7 +7,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  */
 export class ActionQueryNextStopDto {
   @ApiProperty({ enum: ['QUERY_NEXT_STOP'], example: 'QUERY_NEXT_STOP' })
-  type: 'QUERY_NEXT_STOP';
+  type!: 'QUERY_NEXT_STOP';
 }
 
 /**
@@ -15,7 +15,7 @@ export class ActionQueryNextStopDto {
  */
 export class ActionMovePoiToMorningDto {
   @ApiProperty({ enum: ['MOVE_POI_TO_MORNING'], example: 'MOVE_POI_TO_MORNING' })
-  type: 'MOVE_POI_TO_MORNING';
+  type!: 'MOVE_POI_TO_MORNING';
 
   @ApiPropertyOptional({ example: '6211', description: 'POI ID（Place ID，数字字符串）' })
   poiId?: string;
@@ -39,10 +39,10 @@ export class ActionMovePoiToMorningDto {
  */
 export class ActionAddPoiToScheduleDto {
   @ApiProperty({ enum: ['ADD_POI_TO_SCHEDULE'], example: 'ADD_POI_TO_SCHEDULE' })
-  type: 'ADD_POI_TO_SCHEDULE';
+  type!: 'ADD_POI_TO_SCHEDULE';
 
   @ApiProperty({ example: '6211' })
-  poiId: string;
+  poiId!: string;
 
   @ApiPropertyOptional({ enum: ['AM', 'PM'], example: 'AM' })
   preferredRange?: 'AM' | 'PM';
@@ -56,7 +56,7 @@ export class ActionAddPoiToScheduleDto {
  */
 export class ApplyActionRequestDto {
   @ApiProperty({ type: Object, description: '当前行程计划（DayScheduleResult）' })
-  schedule: any;
+  schedule!: any;
 
   @ApiProperty({
     description: '要执行的动作',
@@ -66,5 +66,5 @@ export class ApplyActionRequestDto {
       { $ref: '#/components/schemas/ActionAddPoiToScheduleDto' },
     ],
   })
-  action: ActionQueryNextStopDto | ActionMovePoiToMorningDto | ActionAddPoiToScheduleDto;
+  action!: ActionQueryNextStopDto | ActionMovePoiToMorningDto | ActionAddPoiToScheduleDto;
 }

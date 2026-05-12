@@ -1,22 +1,33 @@
 // src/skills/dem/dem-get-profile.skill.ts
 /**
- * skill.dem.getProfile
- * 
- * 输入：{ polyline, samples }
- * 输出：{ elevationProfile, cumulativeAscent, maxSlope, fatigueIndex }
- * 供：Abu / Dr.Dre 以及 Explanation 使用
+ * skill.dem.get_profile（Registry 规范名）
+ *
+ * Agentic 路径：编排 / RESEARCH 可能传 `destination` / `origin`；工作台与 geo 技能传 `polyline`。
+ * Internal Path（PlanningWorkbench / WorldBuild 等）仍直接调 DEMEffortMetadataService，不经本 Skill。
+ *
+ * 输入归一化见 `dem-get-profile-input.adapter.ts`。
  */
 
 import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { DEMElevationService } from '../../trips/dem/services/dem-elevation.service';
 import { DEMEffortMetadataService, RoutePoint } from '../../trips/dem/services/dem-effort-metadata.service';
+import {
+  normalizeDemGetProfileInput,
+  inferDemElevationDataQuality,
+  type DemGetProfileLooseInput,
+  type DemElevationDataQuality,
+} from './dem-get-profile-input.adapter';
 
 export interface DemGetProfileInput extends SkillInput {
-  /** 路线点数组（polyline） */
-  polyline: Array<{ lat: number; lng: number }>;
+  /** 路线点（≥2 点）；与 destination / origin 二选一或组合，由适配层收敛 */
+  polyline?: Array<{ lat: number; lng: number }>;
   /** 采样间隔（米），默认 100 */
   samples?: number;
+  /** RESEARCH 链路：目的地（坐标对象或含 "lat,lng" 的字符串） */
+  destination?: string | { lat: number; lng: number };
+  /** 可选起点，与 destination 均为坐标时可连成 2 点剖面 */
+  origin?: string | { lat: number; lng: number };
 }
 
 export interface DemGetProfileOutput extends SkillOutput {
@@ -35,6 +46,11 @@ export interface DemGetProfileOutput extends SkillOutput {
   maxSlope: number;
   /** 疲劳指数（归一化，0-100） */
   fatigueIndex: number;
+  /**
+   * 海拔/坡度数据可信度启发式（非物理真值）：`low` 时下游不应把「零爬升」当正常冰岛山路结论。
+   * @see inferDemElevationDataQuality
+   */
+  data_quality: DemElevationDataQuality;
 }
 
 @Injectable()
@@ -42,13 +58,14 @@ export class DemGetProfileSkill implements Skill<DemGetProfileInput, DemGetProfi
   private readonly logger = new Logger(DemGetProfileSkill.name);
 
   metadata = {
-    name: 'dem.getProfile',
-    description: '基于 DEM 数据生成路线海拔剖面，计算累计爬升、最大坡度和疲劳指数',
+    name: 'dem.get_profile',
+    description:
+      '基于 DEM 生成路线海拔剖面、累计爬升、最大坡度、疲劳指数。参数：polyline（≥2 点）或带经纬度的 destination / origin+destination。',
     version: '1.0.0',
     category: 'dem' as const,
     toolGroup: 'DOMAIN' as const,
     inputSchema: {
-      required: ['polyline'],
+      required: [],
     },
   };
 
@@ -57,17 +74,14 @@ export class DemGetProfileSkill implements Skill<DemGetProfileInput, DemGetProfi
     private readonly demEffortMetadataService: DEMEffortMetadataService,
   ) {}
 
-  async execute(input: DemGetProfileInput): Promise<DemGetProfileOutput> {
-    this.logger.debug(`执行 dem.getProfile: ${input.polyline.length} 个点`);
+  async execute(input: DemGetProfileInput | DemGetProfileLooseInput): Promise<DemGetProfileOutput> {
+    const { polyline, samples } = normalizeDemGetProfileInput(input as DemGetProfileLooseInput);
+    this.logger.debug(`执行 dem.get_profile: ${polyline.length} 个点`);
 
-    if (!input.polyline || input.polyline.length < 2) {
-      throw new Error('polyline 至少需要 2 个点');
-    }
-
-    const samplingInterval = input.samples || 100;
+    const samplingInterval = samples ?? 100;
 
     // 转换为 RoutePoint 格式
-    const routePoints: RoutePoint[] = input.polyline.map((p, index) => ({
+    const routePoints: RoutePoint[] = polyline.map((p, index) => ({
       lat: p.lat,
       lng: p.lng,
       sequence: index,
@@ -121,11 +135,20 @@ export class DemGetProfileSkill implements Skill<DemGetProfileInput, DemGetProfi
     const totalAscent = effortMetadata.totalAscent || 0;
     const fatigueIndex = Math.min(100, (totalAscent / 1000) * 10 + (totalDistance / 1000) * 2);
 
+    const data_quality = inferDemElevationDataQuality({
+      usedEffortService: canUseEffort,
+      elevationProfile: elevationProfile.map((p) => ({ elevation: p.elevation, slope: p.slope })),
+      totalDistanceM: totalDistance,
+      totalAscentM: totalAscent,
+      maxSlopePct: maxSlope,
+    });
+
     return {
       elevationProfile,
       cumulativeAscent: totalAscent,
       maxSlope,
       fatigueIndex,
+      data_quality,
     };
   }
 }

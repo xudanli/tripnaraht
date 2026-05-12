@@ -489,6 +489,7 @@ export class PlanningAssistantService {
             startDate,
             endDate,
           },
+          tripId: state.confirmedTripId,
         });
 
         if (coreResult.success && coreResult.data) {

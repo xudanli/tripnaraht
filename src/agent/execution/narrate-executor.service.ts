@@ -78,6 +78,13 @@ export class NarrateExecutorService implements INarrateExecutor {
         stateForNarrate,
       )) as NarrationLike;
 
+      narration = this.mergeTransportResearchGuidanceIntoNarration(narration, state);
+
+      if (state.metadata && typeof state.metadata === 'object') {
+        const m = state.metadata as Record<string, unknown>;
+        delete m.is_followup_transport_repair;
+      }
+
       // Physical Narration (Level 2): inject rendered safety/compliance hints from rule engine if available.
       // This keeps the "Vault/Brain" decoupled: rule engine emits narrator_hint_rendered, narrator only surfaces it.
       if (this.constraintsEngine) {
@@ -95,7 +102,11 @@ export class NarrateExecutorService implements INarrateExecutor {
                 ? 'high'
                 : 'medium';
 
-          const buf = Number(process.env.DECISION_REPAIR_TWILIGHT_BUFFER_MIN ?? '');
+          const overrideBuf = Number((dso.environmentState as any)?.twilightBufferMin);
+          const buf =
+            Number.isFinite(overrideBuf) && overrideBuf > 0
+              ? overrideBuf
+              : Number(process.env.DECISION_REPAIR_TWILIGHT_BUFFER_MIN ?? '');
           const twilightBufferMin = Number.isFinite(buf) && buf > 0 ? Math.round(buf) : undefined;
 
           const windSpeedMs =
@@ -268,5 +279,31 @@ export class NarrateExecutorService implements INarrateExecutor {
         },
       };
     }
+  }
+
+  /** 将 RESEARCH 产出的交通降级指引 / 区域一致性提示并入叙事 tips（不修改行程硬字段） */
+  private mergeTransportResearchGuidanceIntoNarration(
+    narration: NarrationLike,
+    state: OrchestratorState,
+  ): NarrationLike {
+    const rd = (state as any)?.research_data as Record<string, any> | undefined;
+    if (!rd) return narration;
+    const te = rd.transport_evidence;
+    const hy = rd.transport_endpoint_hydration;
+    const prevTips = narration.tips ?? [];
+    const tips = [...prevTips];
+    const g = typeof te?.user_guidance === 'string' ? te.user_guidance.trim() : '';
+    if (g && !tips.some((t) => t.includes(g.slice(0, 36)))) {
+      tips.unshift(`[行程路线] ${g}`);
+    }
+    if (hy?.geo_context_hint === 'possible_region_mismatch') {
+      const line =
+        '系统检测到推断的出发点与目的地所在区域可能不一致；若为境外行程，请核对出发地。';
+      if (!tips.some((t) => t.includes('所在区域可能不一致'))) {
+        tips.unshift(`[区域一致性] ${line}`);
+      }
+    }
+    if (tips.length === prevTips.length) return narration;
+    return { ...narration, tips };
   }
 }

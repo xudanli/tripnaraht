@@ -1,9 +1,9 @@
 // src/skills/world/weather-alert.skill.spec.ts
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { Logger } from '@nestjs/common';
 import { WeatherAlertSkill } from './weather-alert.skill';
 import { IcelandWeatherRealtimeService } from './services/iceland-weather-realtime.service';
+import { VedurCapAlertsService } from './services/vedur-cap-alerts.service';
 
 describe('WeatherAlertSkill', () => {
   let skill: WeatherAlertSkill;
@@ -13,11 +13,19 @@ describe('WeatherAlertSkill', () => {
     getNearestWeatherStation: jest.fn(),
   };
 
-  const mockLogger = {
-    log: jest.fn(),
-    debug: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
+  const mockVedurCap = {
+    fetchActiveCapAlerts: jest.fn().mockResolvedValue({
+      ok: false,
+      items: [],
+      fetchedAt: new Date(),
+      sourcePath: '',
+    }),
+    fetchCapAlertsNear: jest.fn().mockResolvedValue({
+      ok: false,
+      items: [],
+      fetchedAt: new Date(),
+      sourcePath: '',
+    }),
   };
 
   beforeEach(async () => {
@@ -29,8 +37,8 @@ describe('WeatherAlertSkill', () => {
           useValue: mockWeatherService,
         },
         {
-          provide: Logger,
-          useValue: mockLogger,
+          provide: VedurCapAlertsService,
+          useValue: mockVedurCap,
         },
       ],
     }).compile();
@@ -38,6 +46,18 @@ describe('WeatherAlertSkill', () => {
     skill = module.get<WeatherAlertSkill>(WeatherAlertSkill);
 
     jest.clearAllMocks();
+    mockVedurCap.fetchActiveCapAlerts.mockResolvedValue({
+      ok: false,
+      items: [],
+      fetchedAt: new Date(),
+      sourcePath: '',
+    });
+    mockVedurCap.fetchCapAlertsNear.mockResolvedValue({
+      ok: false,
+      items: [],
+      fetchedAt: new Date(),
+      sourcePath: '',
+    });
   });
 
   describe('execute - Low Risk Scenario', () => {
@@ -76,7 +96,6 @@ describe('WeatherAlertSkill', () => {
       expect(result.locationWeather).toHaveLength(2);
       expect(result.locationWeather[0].risk).toBe('safe');
       expect(result.adjustments).toHaveLength(0);
-      expect(mockLogger.log).toHaveBeenCalledWith('[WeatherAlertSkill] 天气检查完成: safe, 建议: ALLOW');
     });
   });
 
@@ -259,6 +278,93 @@ describe('WeatherAlertSkill', () => {
     });
   });
 
+  describe('execute - Vedur CAP merge', () => {
+    it('merges active CAP headlines into warnings and exposes vedurCap', async () => {
+      mockVedurCap.fetchActiveCapAlerts.mockResolvedValue({
+        ok: true,
+        items: [{ identifier: 'x1', headline: 'Orange wind warning — South', severity: 'orange' }],
+        fetchedAt: new Date('2026-07-15T08:00:00Z'),
+        sourcePath: '/v1/meteoalarm/active',
+      });
+
+      mockWeatherService.getWeatherByLocation.mockResolvedValue({
+        regionKey: 'reykjavik',
+        regionName: 'Reykjavík',
+        forecastTime: new Date('2026-07-15'),
+        validFrom: new Date('2026-07-15'),
+        validUntil: new Date('2026-07-16'),
+        location: { lat: 64.1466, lng: -21.9426 },
+        temperature: 12.0,
+        windSpeed: 5.0,
+        visibility: 20000,
+        conditions: 'Partly cloudy',
+        weatherCode: '2',
+        warnings: [],
+        hazards: [],
+        dataSource: 'open-meteo',
+        confidence: 0.85,
+      });
+
+      const input = {
+        locations: [{ lat: 64.1466, lng: -21.9426, name: 'Reykjavík', type: 'start' as const }],
+        dateRange: { start: new Date('2026-07-15'), end: new Date('2026-07-16') },
+        riskTolerance: 'medium' as const,
+      };
+
+      const result = await skill.execute(input);
+
+      expect(result.vedurCap?.ok).toBe(true);
+      expect(result.vedurCap?.items.length).toBe(1);
+      expect(result.evidenceRefs.some((r) => r.type === 'vedur_cap_alerts')).toBe(true);
+      expect(result.locationWeather[0].warnings.some((w) => w.includes('Veðurstofa'))).toBe(true);
+    });
+
+    it('prefers geographic CAP near point over national list', async () => {
+      mockVedurCap.fetchActiveCapAlerts.mockResolvedValue({
+        ok: true,
+        items: [{ identifier: 'nat', headline: 'National flood notice', severity: 'yellow' }],
+        fetchedAt: new Date('2026-07-15T08:00:00Z'),
+        sourcePath: '/v1/meteoalarm/active',
+      });
+      mockVedurCap.fetchCapAlertsNear.mockResolvedValue({
+        ok: true,
+        items: [{ identifier: 'near', headline: 'Local wind alert near point', severity: 'orange' }],
+        fetchedAt: new Date('2026-07-15T08:05:00Z'),
+        sourcePath: '/v1/lat/64.1466/long/-21.9426/srid/4326/distance/75000',
+      });
+
+      mockWeatherService.getWeatherByLocation.mockResolvedValue({
+        regionKey: 'reykjavik',
+        regionName: 'Reykjavík',
+        forecastTime: new Date('2026-07-15'),
+        validFrom: new Date('2026-07-15'),
+        validUntil: new Date('2026-07-16'),
+        location: { lat: 64.1466, lng: -21.9426 },
+        temperature: 12.0,
+        windSpeed: 5.0,
+        visibility: 20000,
+        conditions: 'Partly cloudy',
+        weatherCode: '2',
+        warnings: [],
+        hazards: [],
+        dataSource: 'open-meteo',
+        confidence: 0.85,
+      });
+
+      const input = {
+        locations: [{ lat: 64.1466, lng: -21.9426, name: 'Reykjavík', type: 'start' as const }],
+        dateRange: { start: new Date('2026-07-15'), end: new Date('2026-07-16') },
+        riskTolerance: 'medium' as const,
+      };
+
+      const result = await skill.execute(input);
+
+      expect(result.locationWeather[0].warnings.some((w) => w.includes('Local wind alert near point'))).toBe(true);
+      expect(result.locationWeather[0].warnings.some((w) => w.includes('National flood notice'))).toBe(false);
+      expect(mockVedurCap.fetchCapAlertsNear).toHaveBeenCalledWith(64.1466, -21.9426);
+    });
+  });
+
   describe('execute - Error Handling', () => {
     it('should handle weather service errors gracefully', async () => {
       // Arrange
@@ -277,7 +383,6 @@ describe('WeatherAlertSkill', () => {
 
       // Act & Assert
       await expect(skill.execute(input)).rejects.toThrow();
-      expect(mockLogger.error).toHaveBeenCalled();
     });
   });
 });

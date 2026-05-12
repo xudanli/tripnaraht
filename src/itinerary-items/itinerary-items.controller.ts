@@ -143,6 +143,11 @@ export class ItineraryItemsController {
               code: 'REQUIRES_CONFIRMATION',
               message: '检测到时间安排可能存在问题，请确认是否继续添加？',
               requiresConfirmation: true, // 前端可据此显示确认按钮
+              // 兼容前端 API Client：部分调用方从 error.details 提取 warnings/travelInfo
+              details: {
+                warnings: unresolvedWarnings,
+                travelInfo: validation.travelInfo,
+              },
             },
             warnings: unresolvedWarnings,
             travelInfo: validation.travelInfo,
@@ -463,6 +468,12 @@ export class ItineraryItemsController {
                   : `修改时间将影响后续 ${validation.cascadeImpact!.affectedCount} 个行程项。确认继续？`
                 : '存在时间冲突，请确认是否继续',
               requiresConfirmation: true, // 前端可据此显示确认按钮
+              // 兼容前端 API Client：部分调用方从 error.details 提取 warnings/cascadeImpact/travelInfo
+              details: {
+                warnings: unresolvedWarnings,
+                cascadeImpact: hasCascadeImpact ? validation.cascadeImpact : undefined,
+                travelInfo: validation.travelInfo,
+              },
             },
             warnings: unresolvedWarnings,
             cascadeImpact: hasCascadeImpact ? validation.cascadeImpact : undefined,

@@ -37,11 +37,20 @@ import { EvidenceCompletenessChecker, EvidenceCompletenessResult } from './servi
 import { EvidenceTriggerService, EvidenceTriggerResult } from './services/evidence-trigger.service';
 import { EvidencePriorityFilter, EvidenceGroupBy, EvidenceSortBy } from './dto/evidence.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
+import {
+  CONSULTATION_DAY_SKELETON_FOOTER_ZH,
+  CONSULTATION_NAMED_DRAFT_APPENDIX_FOOTER_ZH,
+  CONSULTATION_TRIP_METADATA_ONLY_FOOTER_ZH,
+  buildBriefItineraryLinesFromTripDays,
+  formatConsultationTripDaySkeletonLines,
+  formatTripPromptSummaryForConsultation,
+} from './utils/trip-prompt-summary.util';
 import { BookingComIntegrationService } from '../mcp/booking-com-integration.service';
 import { RouteDirectionsService } from '../route-directions/route-directions.service';
 import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { DecisionState } from '../decision/kernel/decision-state.types';
+import { reasonCodesDisplayZh } from '../agent/utils/decision-log-user-facing.zh.util';
 
 @Injectable()
 export class TripsService {
@@ -648,6 +657,77 @@ export class TripsService {
     // 数据增强 (Data Enrichment)
     // 计算统计信息、进度状态等
     return await this.enrichTripData(trip, userId);
+  }
+
+  /**
+   * 轻量行程摘要（不经 enrichTripData），供咨询类 prompt 注入。
+   * 默认附带各日类型骨架；`include_named_draft_appendix` 为 true 时再附加按日 Place/备注速览（如西峡湾接驳、行前装备/徒步、租车/自驾咨询需结合行程项与 POI）。
+   */
+  async getTripPromptSummaryForConsultation(
+    id: string,
+    _userId?: string,
+    opts?: { include_day_skeleton?: boolean; include_named_draft_appendix?: boolean },
+  ): Promise<string | null> {
+    if (!id || typeof id !== 'string' || !id.trim()) {
+      return null;
+    }
+    const trimmed = id.trim();
+    const includeDaySkeleton = opts?.include_day_skeleton !== false;
+    const includeNamedDraft = opts?.include_named_draft_appendix === true;
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: trimmed },
+      select: {
+        name: true,
+        destination: true,
+        startDate: true,
+        endDate: true,
+        status: true,
+        ...(includeDaySkeleton
+          ? {
+              TripDay: {
+                orderBy: { date: 'asc' as const },
+                select: {
+                  date: true,
+                  ItineraryItem: {
+                    orderBy: { order: 'asc' as const },
+                    select: {
+                      type: true,
+                      note: true,
+                      Place: { select: { nameCN: true, nameEN: true } },
+                    },
+                  },
+                },
+              },
+            }
+          : {}),
+      },
+    });
+    if (!trip) {
+      return null;
+    }
+
+    const { TripDay: tripDays, ...tripMeta } = trip as typeof trip & {
+      TripDay?: Array<{
+        date: Date;
+        ItineraryItem: Array<{
+          type: string;
+          note: string | null;
+          Place: { nameCN: string | null; nameEN: string | null } | null;
+        }>;
+      }>;
+    };
+    const base = formatTripPromptSummaryForConsultation(trimmed, tripMeta);
+    if (!includeDaySkeleton) {
+      return `${base}${CONSULTATION_TRIP_METADATA_ONLY_FOOTER_ZH}`;
+    }
+    const skeleton = formatConsultationTripDaySkeletonLines(tripDays ?? []);
+    let body = `${base}\n\n【按日骨架（仅日程项类型与数量，不含景点库名称/坐标）】\n${skeleton}${CONSULTATION_DAY_SKELETON_FOOTER_ZH}`;
+    if (includeNamedDraft) {
+      const brief = buildBriefItineraryLinesFromTripDays(tripDays ?? []).join('\n');
+      body += `\n\n【草案地点速览（Place 登记名或备注；供你对照用户所述路段）】\n${brief}${CONSULTATION_NAMED_DRAFT_APPENDIX_FOOTER_ZH}`;
+    }
+    return body;
   }
 
   /**
@@ -1672,12 +1752,14 @@ export class TripsService {
       ABU: 'Abu',
       DR_DRE: 'Dr.Dre',
       NEPTUNE: 'Neptune',
+      USER_ACTION: '系统',
     };
 
     const personaTitles: Record<string, string> = {
       ABU: '安全守护者 Abu（北极熊 🐻‍❄️）',
       DR_DRE: '节奏设计师 Dr.Dre（牧羊犬 🐕）',
       NEPTUNE: '空间魔法师 Neptune（海獭 🦦）',
+      USER_ACTION: '系统处理记录（非行程优化建议）',
     };
 
     // 根据决策日志生成提醒（过滤掉"无风险"的条目）
@@ -1686,15 +1768,20 @@ export class TripsService {
       if (this.isNoRiskEntry(log)) {
         continue;
       }
+      // 编排审计类步骤：不应出现在「优化建议」里当作用户可采纳项
+      if (this.shouldOmitPersonaAlertForEndUser(log)) {
+        continue;
+      }
 
       const severity = log.action === 'REJECT' ? AlertSeverity.WARNING :
                        log.action === 'ADJUST' ? AlertSeverity.INFO :
                        AlertSeverity.SUCCESS;
 
-      // 生成提醒消息（基于explanation和reasonCodes）
+      // 生成提醒消息：explanation 已为用户向；reasonCodes 仅映射为中文说明，原始码留在 metadata
       let message = log.explanation;
-      if (log.reasonCodes && log.reasonCodes.length > 0) {
-        message += `\n相关原因：${log.reasonCodes.join('、')}`;
+      const reasonLine = reasonCodesDisplayZh(log.reasonCodes);
+      if (reasonLine) {
+        message += `\n${reasonLine}`;
       }
 
       alerts.push({
@@ -1751,7 +1838,21 @@ export class TripsService {
       }
     }
 
-    return alerts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const deduped = this.dedupePersonaAlertsByContent(alerts);
+    return deduped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  /** 同一行程多次编排会产生相同文案的多条日志，仅保留一条避免列表刷屏 */
+  private dedupePersonaAlertsByContent(alerts: PersonaAlertDto[]): PersonaAlertDto[] {
+    const seen = new Set<string>();
+    const out: PersonaAlertDto[] = [];
+    for (const a of alerts) {
+      const key = `${a.persona}::${a.message}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(a);
+    }
+    return out;
   }
 
   /**
@@ -2495,6 +2596,45 @@ export class TripsService {
 
     // 如果解释中包含"无风险"关键词，则认为是无风险条目
     return noRiskKeywords.some(keyword => explanation.includes(keyword));
+  }
+
+  /**
+   * 幻觉检测、反馈回传等为编排/模型管线日志，不是「安全/节奏/修复」维度的可执行建议。
+   */
+  /**
+   * 过滤不应出现在「优化建议」中的编排日志：
+   * - 幻觉/反馈/NARRATE 等审计码
+   * - OPTIMIZE（CGUS/Monte Carlo 内部效用与置信区间）
+   * - POI_SELECTION（候选点筛选统计，多次运行还会重复）
+   */
+  private shouldOmitPersonaAlertForEndUser(log: {
+    reasonCodes?: string[];
+    metadata?: Record<string, unknown>;
+  }): boolean {
+    const codes = log.reasonCodes || [];
+    const omitCodes = new Set([
+      'HALLUCINATION_DETECTION',
+      'FEEDBACK',
+      'FEEDBACK_RECEIVED',
+      'FEEDBACK_PERSIST',
+      'NARRATE',
+    ]);
+    if (codes.some((c) => omitCodes.has(String(c).trim()))) {
+      return true;
+    }
+
+    const internalPipelineSteps = new Set(['OPTIMIZE', 'POI_SELECTION']);
+    if (codes.some((c) => internalPipelineSteps.has(String(c).trim()))) {
+      return true;
+    }
+
+    const rr = log.metadata?.route_and_run as { step?: string } | undefined;
+    const step = typeof rr?.step === 'string' ? rr.step.trim() : '';
+    if (step && internalPipelineSteps.has(step)) {
+      return true;
+    }
+
+    return false;
   }
 
   /**

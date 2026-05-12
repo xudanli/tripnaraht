@@ -24,6 +24,7 @@ import { DEMEffortMetadataService } from '../../trips/dem/services/dem-effort-me
 import { CacheService } from '../../common/cache/cache.service';
 import { CountryConfigService } from './services/country-config.service';
 import * as crypto from 'crypto';
+import { EvidenceCacheService } from './services/evidence-cache.service';
 
 /**
  * 错误严重级别
@@ -84,6 +85,8 @@ export interface WorldBuildContextInput extends SkillInput {
     forbidden_modes?: string[];
     preferred_modes?: string[];
     max_wind_speed_tolerance_mps?: number;
+    /** Warm-start: transit segment pairing key (stationA -> stationB) */
+    pt_station_pair?: { station_a: string; station_b: string };
     reason_code?: string;
   };
 }
@@ -132,6 +135,7 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
     @Optional() private readonly demEffortMetadataService?: DEMEffortMetadataService,
     @Optional() private readonly cacheService?: CacheService,
     @Optional() private readonly countryConfigService?: CountryConfigService,
+    @Optional() private readonly evidenceCache?: EvidenceCacheService,
   ) {
     if (this.cacheService) {
       this.logger.log('✅ 世界模型缓存已启用');
@@ -488,6 +492,250 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
         countryCode,
         month: season,
       };
+
+      /**
+       * RouteDirection Admin metadata injection (segment_facts_v1).
+       *
+       * Goal: make "line facts" (F-road / surface / seasonal closures / access constraints) first-class Layer-1 inputs
+       * without requiring a dedicated GIS segment table.
+       *
+       * Shape: routeDirection.metadata.segment_facts_v1: Array<{
+       *   roadId: string;
+       *   requires4x4?: boolean;
+       *   requiresPermit?: boolean;
+       *   surfaceType?: string;
+       *   seasonalClosures?: Array<{ startMonth: number; endMonth: number; reason?: string }>;
+       *   hazards?: string[];
+       *   confidence?: number;
+       *   updatedAt?: string;
+       *   source?: string;
+       * }>
+       *
+       * Mapping: PhysicalRealityModel.roadStates[] (RoadState.metadata carries the extra fields).
+       */
+      if (routeDirection) {
+        try {
+          const md = (routeDirection as any)?.metadata;
+          const facts = md && typeof md === 'object' ? (md as any).segment_facts_v1 : null;
+
+          const inSeasonalClosure = (
+            closures: unknown,
+            month: number,
+          ): { closed: boolean; reason?: string } => {
+            if (!Array.isArray(closures) || !Number.isFinite(month) || month < 1 || month > 12) {
+              return { closed: false };
+            }
+            for (const c of closures as any[]) {
+              const start = Number(c?.startMonth);
+              const end = Number(c?.endMonth);
+              if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || start > 12 || end < 1 || end > 12) {
+                continue;
+              }
+              // inclusive month window; supports wrap-around (e.g., Nov(11) -> Mar(3))
+              const within = start <= end ? month >= start && month <= end : month >= start || month <= end;
+              if (within) return { closed: true, reason: typeof c?.reason === 'string' ? c.reason : undefined };
+            }
+            return { closed: false };
+          };
+
+          if (Array.isArray(facts)) {
+            for (const fact of facts as any[]) {
+              const roadId = String(fact?.roadId ?? '').trim();
+              if (!roadId) continue;
+
+              const requires4x4 = typeof fact?.requires4x4 === 'boolean' ? fact.requires4x4 : undefined;
+              const requiresPermit = typeof fact?.requiresPermit === 'boolean' ? fact.requiresPermit : undefined;
+              const surfaceType = typeof fact?.surfaceType === 'string' ? fact.surfaceType : undefined;
+              const hazards = Array.isArray(fact?.hazards) ? fact.hazards : undefined;
+              const confidence = typeof fact?.confidence === 'number' && Number.isFinite(fact.confidence) ? fact.confidence : undefined;
+              const updatedAt = typeof fact?.updatedAt === 'string' ? fact.updatedAt : undefined;
+              const source = typeof fact?.source === 'string' ? fact.source : 'RouteDirection_Admin_Metadata';
+              const direction =
+                fact?.direction === 'ONE_WAY' || fact?.direction === 'BIDIRECTIONAL' ? fact.direction : undefined;
+              const connectivity =
+                fact?.connectivity && typeof fact.connectivity === 'object' && !Array.isArray(fact.connectivity)
+                  ? {
+                      isConnected: Boolean((fact.connectivity as any).isConnected),
+                      ...(typeof (fact.connectivity as any).reason === 'string'
+                        ? { reason: String((fact.connectivity as any).reason) }
+                        : {}),
+                    }
+                  : undefined;
+              const baseDurationMin =
+                typeof fact?.baseDurationMin === 'number' && Number.isFinite(fact.baseDurationMin)
+                  ? fact.baseDurationMin
+                  : undefined;
+              const estimatedSpeedFactor =
+                typeof fact?.estimatedSpeedFactor === 'number' && Number.isFinite(fact.estimatedSpeedFactor)
+                  ? fact.estimatedSpeedFactor
+                  : undefined;
+              const segmentType = typeof fact?.segmentType === 'string' ? fact.segmentType : undefined;
+              const fromPoiId = typeof fact?.fromPoiId === 'string' ? fact.fromPoiId : undefined;
+              const toPoiId = typeof fact?.toPoiId === 'string' ? fact.toPoiId : undefined;
+
+              const seasonal = inSeasonalClosure(fact?.seasonalClosures, season);
+              const status: 'OPEN' | 'CLOSED' | 'SEASONAL' | 'RESTRICTED' =
+                seasonal.closed ? 'SEASONAL' : requires4x4 || requiresPermit ? 'RESTRICTED' : 'OPEN';
+
+              physical.roadStates.push({
+                roadId,
+                status,
+                segmentId: `route_${(routeDirection as any).uuid || (routeDirection as any).id}_${roadId}`,
+                ...(requires4x4 !== undefined ? { requires4x4 } : {}),
+                ...(requiresPermit !== undefined ? { requiresPermit } : {}),
+                metadata: {
+                  surfaceType,
+                  segmentType,
+                  fromPoiId,
+                  toPoiId,
+                  direction,
+                  connectivity,
+                  baseDurationMin,
+                  estimatedSpeedFactor,
+                  hazards,
+                  confidence,
+                  source,
+                  updatedAt,
+                  seasonalClosures: Array.isArray(fact?.seasonalClosures) ? fact.seasonalClosures : undefined,
+                  ...(seasonal.closed ? { seasonalClosureReason: seasonal.reason } : {}),
+                },
+              });
+            }
+          }
+        } catch (e: any) {
+          this.logger.warn(`RouteDirection segment_facts_v1 injection failed: ${e?.message ?? String(e)}`);
+        }
+      }
+
+      /**
+       * RouteDirection Admin metadata injection (environment_overrides_v1).
+       *
+       * Purpose: allow admin UI to override environment snapshots (Weather/Solar) deterministically for a corridor/route direction,
+       * so constraints + decision logs can remain auditable even when upstream integrations are flaky.
+       *
+       * Storage: routeDirection.metadata.environment_overrides_v1 (free-form JSON, versioned by key).
+       *
+       * Mapping: attach as prefetched_evidence entries. Downstream fact derivation can consume/normalize later.
+       */
+      if (routeDirection) {
+        try {
+          const md = (routeDirection as any)?.metadata;
+          const env = md && typeof md === 'object' ? (md as any).environment_overrides_v1 : null;
+          if (env && typeof env === 'object' && !Array.isArray(env)) {
+            const nowIso = new Date().toISOString();
+            const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 60m default TTL
+            const source = (env as any)?.source ? String((env as any).source) : 'RouteDirection_Admin_Metadata';
+            physical.prefetched_evidence = [
+              ...(physical.prefetched_evidence ?? []),
+              {
+                kind: 'environment_overrides_v1',
+                source,
+                at: (env as any)?.at ? String((env as any).at) : nowIso,
+                expires_at: (env as any)?.expires_at ? String((env as any).expires_at) : expiresAt,
+                overrides: env,
+              },
+            ];
+          }
+        } catch (e: any) {
+          this.logger.warn(`RouteDirection environment_overrides_v1 injection failed: ${e?.message ?? String(e)}`);
+        }
+      }
+
+      // 4.4 Warm-start evidence injection (Option B): attach prefetched evidence from cache.
+      if (this.evidenceCache) {
+        try {
+          // best-effort geo seed: first trip point or country geocoding.
+          let lat: number | null = null;
+          let lng: number | null = null;
+          if (trip?.TripDay?.[0]?.ItineraryItem?.length) {
+            const firstWithPlace = trip.TripDay[0].ItineraryItem.find((x: any) => x?.Place?.location != null || x?.Place?.metadata != null);
+            const placeMeta = firstWithPlace?.Place?.metadata as any;
+            const coords = placeMeta?.coordinates;
+            if (coords && typeof coords === 'object' && coords.lat != null && coords.lng != null) {
+              lat = Number(coords.lat);
+              lng = Number(coords.lng);
+            }
+          }
+          if ((lat == null || lng == null) && this.countryConfigService) {
+            const loc = await this.countryConfigService.getGeocodingCoordinates(countryCode).catch(() => null);
+            if (loc) {
+              lat = Number((loc as any).lat);
+              lng = Number((loc as any).lng);
+            }
+          }
+          if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+            const constraints_hash = this.evidenceCache.hashEmergencyConstraints(input.emergency_constraints ?? null);
+            const geo_hash = this.evidenceCache.geoHash(lat, lng, 2);
+            // Weather bucket (60m)
+            {
+              const time_bucket = this.evidenceCache.timeBucketIso(Date.now(), 60);
+              const rec = await this.evidenceCache.get({
+                rule_id: 'drive_safety_v1',
+                geo_hash,
+                time_bucket,
+                constraints_hash,
+              });
+              if (rec?.evidence) {
+                const ev = {
+                  ...(rec.evidence as any),
+                  cached_at: rec.cached_at,
+                  expires_at: rec.expires_at,
+                  constraints_hash: rec.constraints_hash,
+                  is_warm_hit: true,
+                };
+                physical.prefetched_evidence = [...(physical.prefetched_evidence ?? []), ev];
+              }
+            }
+            // Drive quote bucket (60m)
+            {
+              const time_bucket = this.evidenceCache.timeBucketIso(Date.now(), 60);
+              const rec = await this.evidenceCache.get({
+                rule_id: 'drive_quote_v1',
+                geo_hash,
+                time_bucket,
+                constraints_hash,
+              });
+              if (rec?.evidence) {
+                const ev = {
+                  ...(rec.evidence as any),
+                  cached_at: rec.cached_at,
+                  expires_at: rec.expires_at,
+                  constraints_hash: rec.constraints_hash,
+                  is_warm_hit: true,
+                };
+                physical.prefetched_evidence = [...(physical.prefetched_evidence ?? []), ev];
+              }
+            }
+            // PT bucket (5m)
+            {
+              const time_bucket = this.evidenceCache.timeBucketIso(Date.now(), 5);
+              const pair = (input.emergency_constraints as any)?.pt_station_pair;
+              const pt_geo_hash =
+                pair && pair.station_a && pair.station_b
+                  ? this.evidenceCache.transitPairHash(String(pair.station_a), String(pair.station_b))
+                  : geo_hash;
+              const rec = await this.evidenceCache.get({
+                rule_id: 'public_transport_v1',
+                geo_hash: pt_geo_hash,
+                time_bucket,
+                constraints_hash,
+              });
+              if (rec?.evidence) {
+                const ev = {
+                  ...(rec.evidence as any),
+                  cached_at: rec.cached_at,
+                  expires_at: rec.expires_at,
+                  constraints_hash: rec.constraints_hash,
+                  is_warm_hit: true,
+                };
+                physical.prefetched_evidence = [...(physical.prefetched_evidence ?? []), ev];
+              }
+            }
+          }
+        } catch (e: any) {
+          this.logger.warn(`Warm evidence injection failed: ${e?.message ?? String(e)}`);
+        }
+      }
 
       // 4.3 验证PhysicalRealityModel
       const physicalValidation = validatePhysicalRealityModel(physical);

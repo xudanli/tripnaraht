@@ -441,10 +441,10 @@ export class DecisionExplainerService {
 
     for (const violation of constraints.violations) {
       explanations.push(this.explainConstraint(
-        violation.constraint,
+        violation.constraint ?? 'constraint',
         violation.severity === 'HARD' ? 'hard' : 'soft',
         violation.degree === 0,
-        violation.degree,
+        violation.degree ?? 0,
       ));
     }
 

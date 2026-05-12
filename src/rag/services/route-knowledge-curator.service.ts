@@ -11,7 +11,15 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RagService } from './rag.service';
+import type { DecisionContextV0 } from '../../trips/reality-kernel/decision-context.types';
+import { resolveRagSoftWorldPolicy } from '../reality-policy/rag-soft-world-policy';
+import {
+  ChunkRetrievalService,
+  type ChunkRetrievalParams,
+  type ChunkRetrievalResult,
+} from './chunk-retrieval.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../reality-policy/rag-soft-world-policy';
 import { LlmExtractionService } from './llm-extraction.service';
 
 /**
@@ -44,8 +52,9 @@ export class RouteKnowledgeCurator {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ragService: RagService,
+    private readonly chunkRetrieval: ChunkRetrievalService,
     private readonly llmExtraction: LlmExtractionService,
+    private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
   ) {}
 
   /**
@@ -53,7 +62,8 @@ export class RouteKnowledgeCurator {
    */
   async enrichRouteNarrative(
     routeDirectionId: string,
-    countryCode?: string
+    countryCode?: string,
+    decisionContext?: DecisionContextV0,
   ): Promise<RoutePhilosophyNarrative> {
     this.logger.debug(`生成路线叙事: routeDirectionId=${routeDirectionId}`);
 
@@ -85,14 +95,32 @@ export class RouteKnowledgeCurator {
 
       const targetCountryCode = countryCode || routeDirection.countryCode;
 
-      // 2. RAG 检索相关游记、攻略
+      const { scope } = resolveRagSoftWorldPolicy(decisionContext);
+      if (scope === 'blocked') {
+        const basic = this.generateBasicNarrative(routeDirectionId, routeDirection);
+        return {
+          ...basic,
+          philosophyExplanation: `[现实策略限制：暂不检索攻略叙事] ${basic.philosophyExplanation}`,
+        };
+      }
+      const ragScope: RagSoftWorldScope = scope;
+      const ragCollection = ragScope === 'restricted' ? 'legal_rules' : 'travel_guides';
+
+      // 2. Chunk 检索游记、攻略
       const query = `${routeDirection.nameCN || routeDirection.nameEN} ${targetCountryCode} travel guide experience`;
-      const snippets = await this.ragService.retrieve({
+      let p: ChunkRetrievalParams = {
         query,
-        collection: 'travel_guides',
-        countryCode: targetCountryCode,
+        category: ragCollection,
         limit: 20,
-      });
+        useHybridSearch: true,
+        credibilityMin: 0.35,
+      };
+      p = this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, ragScope);
+      const rows = await this.chunkRetrieval.retrieve(p);
+      const snippets = rows.map((r: ChunkRetrievalResult) => ({
+        content: r.content,
+        score: r.similarity ?? r.hybridScore,
+      }));
 
       if (snippets.length === 0) {
         this.logger.warn(`未找到相关游记: routeDirectionId=${routeDirectionId}`);
@@ -183,19 +211,43 @@ Return as JSON object.`;
       name?: string;
       description?: string;
       countryCode?: string;
-    }
+    },
+    decisionContext?: DecisionContextV0,
   ): Promise<SegmentNarrative> {
     this.logger.debug(`生成路线段叙事: segmentId=${segmentId}, dayIndex=${dayIndex}`);
 
     try {
-      // 1. RAG 检索相关游记片段
+      const { scope } = resolveRagSoftWorldPolicy(decisionContext);
+      if (scope === 'blocked') {
+        return {
+          segmentId,
+          dayIndex,
+          storyText:
+            segmentInfo.description ||
+            `现实策略限制：暂不检索攻略叙事。当日占位描述（第 ${dayIndex} 天）。`,
+          practicalTips: [],
+          localInsights: [],
+          evidenceSnippets: [],
+        };
+      }
+      const ragScope: RagSoftWorldScope = scope;
+      const ragCollection = ragScope === 'restricted' ? 'legal_rules' : 'travel_guides';
+
+      // 1. Chunk 检索游记片段
       const query = `${segmentInfo.name || segmentId} ${segmentInfo.countryCode || ''} day ${dayIndex} experience tips`;
-      const snippets = await this.ragService.retrieve({
+      let p: ChunkRetrievalParams = {
         query,
-        collection: 'travel_guides',
-        countryCode: segmentInfo.countryCode,
+        category: ragCollection,
         limit: 10,
-      });
+        useHybridSearch: true,
+        credibilityMin: 0.35,
+      };
+      p = this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, ragScope);
+      const rows = await this.chunkRetrieval.retrieve(p);
+      const snippets = rows.map((r: ChunkRetrievalResult) => ({
+        content: r.content,
+        score: r.similarity ?? r.hybridScore,
+      }));
 
       if (snippets.length === 0) {
         return {

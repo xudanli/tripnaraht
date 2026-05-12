@@ -8,7 +8,13 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { ChunkRetrievalService } from '../../../rag/services/chunk-retrieval.service';
+import {
+  ChunkRetrievalService,
+  type ChunkRetrievalParams,
+} from '../../../rag/services/chunk-retrieval.service';
+import { RagRealityPolicyGateService } from '../../../rag/services/rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../../../rag/reality-policy/rag-soft-world-policy';
+import { getBoundDecisionContext } from '../../reality-kernel/reality-context.storage';
 import { PhysicalRealityQualityMonitorService } from './physical-reality-quality-monitor.service';
 
 export interface RoadStateInfo {
@@ -95,8 +101,9 @@ export class PhysicalRealityRetrievalService {
   private readonly logger = new Logger(PhysicalRealityRetrievalService.name);
 
   constructor(
-    @Optional() private readonly chunkRetrievalService?: ChunkRetrievalService,
-    @Optional() private readonly qualityMonitor?: PhysicalRealityQualityMonitorService
+    private readonly chunkRetrievalService: ChunkRetrievalService,
+    private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
+    @Optional() private readonly qualityMonitor?: PhysicalRealityQualityMonitorService,
   ) {}
 
   /**
@@ -117,14 +124,18 @@ export class PhysicalRealityRetrievalService {
       limit?: number;
     }
   ): Promise<PhysicalRealityData> {
-    if (!this.chunkRetrievalService) {
-      this.logger.warn('ChunkRetrievalService not available, returning empty data');
+    const decisionContext = getBoundDecisionContext();
+    const { scope } = this.ragRealityPolicyGate.resolve(decisionContext);
+    const ragScope: RagSoftWorldScope = scope;
+    if (ragScope === 'blocked') {
       return {
         roadStates: [],
         ferryStates: [],
         weatherWindows: [],
       };
     }
+    const mergeRagParams = (p: ChunkRetrievalParams): ChunkRetrievalParams =>
+      this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, ragScope);
 
     const limit = options?.limit || 20;
     const month = options?.month;
@@ -134,9 +145,9 @@ export class PhysicalRealityRetrievalService {
 
     // 并行检索三类数据
     const [roadResults, ferryResults, weatherResults] = await Promise.all([
-      this.retrieveRoadStates(region, queries.roadQuery, limit),
-      this.retrieveFerryStates(region, queries.ferryQuery, limit),
-      this.retrieveWeatherWindows(region, queries.weatherQuery, limit),
+      this.retrieveRoadStates(region, queries.roadQuery, limit, mergeRagParams),
+      this.retrieveFerryStates(region, queries.ferryQuery, limit, mergeRagParams),
+      this.retrieveWeatherWindows(region, queries.weatherQuery, limit, mergeRagParams),
     ]);
 
     return {
@@ -188,21 +199,20 @@ export class PhysicalRealityRetrievalService {
   private async retrieveRoadStates(
     region: string,
     query: string,
-    limit: number
+    limit: number,
+    mergeRagParams: (p: ChunkRetrievalParams) => ChunkRetrievalParams,
   ): Promise<RoadStateInfo[]> {
-    if (!this.chunkRetrievalService) {
-      return [];
-    }
-
     const startTime = Date.now();
     try {
-      const results = await this.chunkRetrievalService.retrieve({
-        query,
-        limit,
-        type: 'road_status',
-        useHybridSearch: true,
-        useReranking: false,
-      });
+      const results = await this.chunkRetrievalService.retrieve(
+        mergeRagParams({
+          query,
+          limit,
+          type: 'road_status',
+          useHybridSearch: true,
+          useReranking: false,
+        }),
+      );
 
       const latency = Date.now() - startTime;
       this.qualityMonitor?.recordRetrieval(latency, true);
@@ -224,21 +234,20 @@ export class PhysicalRealityRetrievalService {
   private async retrieveFerryStates(
     region: string,
     query: string,
-    limit: number
+    limit: number,
+    mergeRagParams: (p: ChunkRetrievalParams) => ChunkRetrievalParams,
   ): Promise<FerryStateInfo[]> {
-    if (!this.chunkRetrievalService) {
-      return [];
-    }
-
     const startTime = Date.now();
     try {
-      const results = await this.chunkRetrievalService.retrieve({
-        query,
-        limit,
-        type: 'ferry_schedules',
-        useHybridSearch: true,
-        useReranking: false,
-      });
+      const results = await this.chunkRetrievalService.retrieve(
+        mergeRagParams({
+          query,
+          limit,
+          type: 'ferry_schedules',
+          useHybridSearch: true,
+          useReranking: false,
+        }),
+      );
 
       const latency = Date.now() - startTime;
       this.qualityMonitor?.recordRetrieval(latency, true);
@@ -260,21 +269,20 @@ export class PhysicalRealityRetrievalService {
   private async retrieveWeatherWindows(
     region: string,
     query: string,
-    limit: number
+    limit: number,
+    mergeRagParams: (p: ChunkRetrievalParams) => ChunkRetrievalParams,
   ): Promise<WeatherWindowInfo[]> {
-    if (!this.chunkRetrievalService) {
-      return [];
-    }
-
     const startTime = Date.now();
     try {
-      const results = await this.chunkRetrievalService.retrieve({
-        query,
-        limit,
-        type: 'weather_windows',
-        useHybridSearch: true,
-        useReranking: false,
-      });
+      const results = await this.chunkRetrievalService.retrieve(
+        mergeRagParams({
+          query,
+          limit,
+          type: 'weather_windows',
+          useHybridSearch: true,
+          useReranking: false,
+        }),
+      );
 
       const latency = Date.now() - startTime;
       this.qualityMonitor?.recordRetrieval(latency, true);

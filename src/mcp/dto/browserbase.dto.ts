@@ -35,11 +35,11 @@ export class CreateSessionDto {
 export class NavigateDto {
   @ApiProperty({ description: '会话 ID', example: 'session-123' })
   @IsString()
-  sessionId: string;
+  sessionId!: string;
 
   @ApiProperty({ description: '目标 URL', example: 'https://example.com' })
   @IsString()
-  url: string;
+  url!: string;
 
   @ApiPropertyOptional({ 
     description: '等待条件', 
@@ -54,7 +54,7 @@ export class NavigateDto {
 export class ScreenshotDto {
   @ApiProperty({ description: '会话 ID', example: 'session-123' })
   @IsString()
-  sessionId: string;
+  sessionId!: string;
 
   @ApiPropertyOptional({ description: '是否全页截图', example: false })
   @IsOptional()
@@ -70,11 +70,11 @@ export class ScreenshotDto {
 export class ClickDto {
   @ApiProperty({ description: '会话 ID', example: 'session-123' })
   @IsString()
-  sessionId: string;
+  sessionId!: string;
 
   @ApiProperty({ description: 'CSS 选择器', example: 'button#submit' })
   @IsString()
-  selector: string;
+  selector!: string;
 
   @ApiPropertyOptional({ description: '是否等待导航', example: false })
   @IsOptional()
@@ -85,9 +85,9 @@ export class ClickDto {
 export class EvaluateDto {
   @ApiProperty({ description: '会话 ID', example: 'session-123' })
   @IsString()
-  sessionId: string;
+  sessionId!: string;
 
   @ApiProperty({ description: 'JavaScript 代码', example: 'document.title' })
   @IsString()
-  script: string;
+  script!: string;
 }

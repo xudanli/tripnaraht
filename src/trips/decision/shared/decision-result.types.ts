@@ -7,6 +7,7 @@
 
 import { RoutePlanDraft } from './world-model.types';
 import type { JepaDecisionTraceV1 } from './decision-trace-jepa.types';
+import type { DecisionLogMetadataPrd } from './decision-log-metadata-prd.types';
 
 /**
  * 决策动作
@@ -39,6 +40,9 @@ export type DecisionSource = "PHYSICAL" | "HUMAN" | "PHILOSOPHY" | "HEURISTIC" |
  * 决策阶段
  * 
  * 用于追踪决策发生在流水线的哪一步，便于 E2E 回放、A/B 测试、错误聚类
+ *
+ * **DB：** `decision_logs.decision_stage` 的 PostgreSQL CHECK 须与本枚举一致
+ * （见 `prisma/migrations/*decision_logs_stage*`）。
  */
 export type DecisionStage =
   | 'ROUTE_PICK'        // 路线方向选择
@@ -69,8 +73,10 @@ export interface DecisionLogEntry {
    * Optional structured metadata for replay / audit.
    * Stored in DB `decision_log.metadata` (JSON). When both entry.metadata and saveLogEntries(options.metadata) exist,
    * they are merged (entry overrides options).
+   *
+   * PRD 扩展字段见 {@link DecisionLogMetadataPrd}（`risk_tier`、`responsibility_mode`、`arbitration` 等）。
    */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> & Partial<DecisionLogMetadataPrd>;
   /**
    * Optional JEPA / decision-trace payload (OKR 2). Never encodes Gate verdict;
    * use `action` / upstream gate fields for allow/block semantics.

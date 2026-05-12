@@ -52,6 +52,12 @@ export interface HybridSearchResult {
   distance?: number;
 }
 
+/** `hybridSearch` 可选行为（默认与历史一致：向量 + 关键词混合） */
+export interface HybridSearchOptions {
+  /** 为 true 时不生成 query embedding、不跑向量段，仅关键词 SQL（与「无 embedding」降级一致） */
+  keywordOnly?: boolean;
+}
+
 /**
  * 向量搜索服务
  * 
@@ -151,6 +157,7 @@ export class VectorSearchService {
    * @param category 类别过滤（可选）
    * @param limit 返回数量限制（默认 20）
    * @param countryCode 国家代码过滤（可选，如 IS、JP、CN）
+   * @param options 可选：`keywordOnly` 时跳过向量，仅用关键词检索（召回更偏字面，适合向量不准时）
    * @returns 搜索结果列表
    */
   async hybridSearch(
@@ -160,7 +167,8 @@ export class VectorSearchService {
     radius?: number,
     category?: string,
     limit: number = 20,
-    countryCode?: string
+    countryCode?: string,
+    options?: HybridSearchOptions,
   ): Promise<HybridSearchResult[]> {
     this.logger.debug(`混合搜索: ${query}, limit: ${limit}`);
     const effectiveCountryCode = countryCode || this.inferCountryCodeFromQuery(query);
@@ -168,11 +176,66 @@ export class VectorSearchService {
     // 诊断信息：打印查询参数
     const { city, keywords } = this.extractKeywords(query);
     const cities = this.extractCities(query);
-    
+    const keywordOnly = options?.keywordOnly === true;
+
+    if (keywordOnly) {
+      this.logger.debug('[hybridSearch] keyword_only：跳过向量，仅关键词');
+      if (cities.length >= 2) {
+        return this.hybridSearchMultiCity(
+          query,
+          cities,
+          keywords,
+          lat,
+          lng,
+          radius,
+          category,
+          limit,
+          effectiveCountryCode,
+          true,
+        );
+      }
+      const effectiveCity = city;
+      const keywordResults = await this.keywordSearch(
+        query,
+        lat,
+        lng,
+        radius,
+        category,
+        effectiveCity,
+        limit,
+        effectiveCountryCode,
+      );
+      return keywordResults.map((r) => ({
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        lat: r.lat,
+        lng: r.lng,
+        vectorScore: 0,
+        keywordScore: r.keywordScore,
+        finalScore: r.keywordScore,
+        matchReasons: ['关键词匹配（keyword_only）'],
+        distance: r.distance,
+      }));
+    }
+
     // 如果检测到多个城市，按实体拆分搜索
     if (cities.length >= 2) {
       this.logger.debug(`[hybridSearch] 检测到多城市查询: [${cities.join(', ')}]，按实体拆分搜索`);
-      return this.hybridSearchMultiCity(query, cities, keywords, lat, lng, radius, category, limit);
+      return this.hybridSearchMultiCity(
+        query,
+        cities,
+        keywords,
+        lat,
+        lng,
+        radius,
+        category,
+        limit,
+        effectiveCountryCode,
+        false,
+      );
     }
     
     // 单城市查询：使用原有逻辑
@@ -936,7 +999,9 @@ export class VectorSearchService {
     lng?: number,
     radius?: number,
     category?: string,
-    limit: number = 20
+    limit: number = 20,
+    countryCode?: string,
+    keywordOnly?: boolean,
   ): Promise<HybridSearchResult[]> {
     this.logger.debug(`[hybridSearchMultiCity] 开始多城市拆分搜索: cities=[${cities.join(', ')}], keywords=[${keywords.join(', ')}]`);
     
@@ -995,7 +1060,9 @@ export class VectorSearchService {
         lng,
         radius,
         category,
-        Math.ceil(limit / entities.length) // 每个实体分配一部分 limit
+        Math.ceil(limit / entities.length), // 每个实体分配一部分 limit
+        countryCode,
+        keywordOnly === true,
       );
       
       return results;
@@ -1062,8 +1129,37 @@ export class VectorSearchService {
     lng?: number,
     radius?: number,
     category?: string,
-    limit: number = 20
+    limit: number = 20,
+    countryCode?: string,
+    keywordOnly?: boolean,
   ): Promise<HybridSearchResult[]> {
+    if (keywordOnly === true) {
+      const keywordResults = await this.keywordSearch(
+        query,
+        lat,
+        lng,
+        radius,
+        category,
+        cityHint,
+        limit,
+        countryCode,
+      );
+      return keywordResults.map((r) => ({
+        id: r.id,
+        nameCN: r.nameCN,
+        nameEN: r.nameEN,
+        address: r.address,
+        category: r.category,
+        lat: r.lat,
+        lng: r.lng,
+        vectorScore: 0,
+        keywordScore: r.keywordScore,
+        finalScore: r.keywordScore,
+        matchReasons: ['关键词匹配（keyword_only）'],
+        distance: r.distance,
+      }));
+    }
+
     // 检查数据库中是否有 embedding 数据
     const placesWithEmbedding = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*) as count FROM "Place" WHERE embedding IS NOT NULL
@@ -1072,7 +1168,7 @@ export class VectorSearchService {
     
     if (embeddingCount === 0) {
       // 无 embedding 数据，使用关键词搜索
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit, countryCode);
       return keywordResults.map(r => ({
         id: r.id,
         nameCN: r.nameCN,
@@ -1093,7 +1189,7 @@ export class VectorSearchService {
     if (!this.embeddingService) {
       this.logger.warn('EmbeddingService 不可用，降级到纯关键词搜索');
       // 降级到关键词搜索
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit, countryCode);
       return keywordResults.map(r => ({
         id: r.id,
         nameCN: r.nameCN,
@@ -1125,7 +1221,7 @@ export class VectorSearchService {
         ? '检测到零向量（embedding 失败）'
         : `维度不匹配（查询=${queryEmbedding.length}维，数据库=${await this.detectDbEmbeddingDimension()}维）`;
       // 零向量或维度不匹配，降级到关键词搜索
-      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit);
+      const keywordResults = await this.keywordSearch(query, lat, lng, radius, category, cityHint, limit, countryCode);
       return keywordResults.map(r => ({
         id: r.id,
         nameCN: r.nameCN,
@@ -1160,7 +1256,8 @@ export class VectorSearchService {
       radius,
       category,
       cityHint, // 使用 cityHint 而不是 null
-      limit * 2
+      limit * 2,
+      countryCode,
     );
 
     // 合并结果

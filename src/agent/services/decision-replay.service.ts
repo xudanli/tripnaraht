@@ -36,6 +36,62 @@ export interface DecisionTimeline {
   total_duration_ms: number;
 }
 
+/** Session row for `GET /v1/decision-replay/sessions` (backed by `trip_runs`). */
+export interface DecisionReplaySessionListItem {
+  session_id: string;
+  id: string;
+  trip_id?: string | null;
+  trip_run_id: string;
+  created_at: string;
+  status?: string;
+  /** Trip.name，缺省由 destination 或行程 ID 缩写兜底 */
+  trip_display_name?: string | null;
+  /** Trip.destination（副标题/第二行） */
+  trip_destination?: string | null;
+  /** TripRun.user_query 截断，便于列表展示 */
+  user_query_preview?: string | null;
+  /** TripRun.planning_phase */
+  planning_phase?: string | null;
+  /** TripRun.completed_at（ISO） */
+  completed_at?: string | null;
+  /** 状态中文标签；未知枚举时回传原始 status */
+  status_label_zh?: string;
+  /** 推荐单行摘要：时间 · 状态 · 查询预览（可直接作列表主文案） */
+  list_summary?: string;
+}
+
+function truncateSessionPreview(s: string, max = 96): string {
+  const t = s.replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
+function formatCreatedAtSummary(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso.slice(0, 16);
+    return `${d.toISOString().slice(0, 16).replace('T', ' ')}Z`;
+  } catch {
+    return iso.slice(0, 16);
+  }
+}
+
+export function tripRunStatusLabelZh(status: string | undefined | null): string | undefined {
+  if (status == null || status === '') return undefined;
+  const map: Record<string, string> = {
+    IN_PROGRESS: '进行中',
+    COMPLETED: '已完成',
+    FAILED: '失败',
+    CANCELLED: '已取消',
+    SUCCESS: '成功',
+    TIMEOUT: '超时',
+    ABORTED: '已中止',
+    PENDING: '待处理',
+  };
+  return map[status] ?? status;
+}
+
 /**
  * RiskTrajectory
  *
@@ -204,6 +260,74 @@ export class DecisionReplayService {
    */
   getTimeline(tripRunId: string): DecisionTimeline | undefined {
     return this.timelinesCache.get(tripRunId);
+  }
+
+  /**
+   * 列出当前用户的 TripRun 会话（决策回放抽屉），可按行程筛选。
+   */
+  async listSessionsForUser(userId: string, tripId?: string): Promise<DecisionReplaySessionListItem[]> {
+    if (!this.prisma || !userId?.trim()) {
+      return [];
+    }
+    const tid = tripId?.trim();
+    const rows = await this.prisma.tripRun.findMany({
+      where: {
+        userId: userId.trim(),
+        ...(tid ? { tripId: tid } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        tripId: true,
+        createdAt: true,
+        status: true,
+        userQuery: true,
+        planningPhase: true,
+        completedAt: true,
+      },
+    });
+
+    const tripIds = [...new Set(rows.map((r) => r.tripId).filter(Boolean))] as string[];
+    const tripsById = new Map<string, { name: string | null; destination: string }>();
+    if (tripIds.length > 0) {
+      const trips = await this.prisma.trip.findMany({
+        where: { id: { in: tripIds } },
+        select: { id: true, name: true, destination: true },
+      });
+      for (const t of trips) {
+        tripsById.set(t.id, { name: t.name, destination: t.destination });
+      }
+    }
+
+    return rows.map((r) => {
+      const created_at = r.createdAt.toISOString();
+      const tripId = r.tripId ?? null;
+      const trip = tripId ? tripsById.get(tripId) : undefined;
+      const trip_display_name =
+        trip?.name?.trim() ||
+        trip?.destination?.trim() ||
+        (tripId ? `行程 ${tripId.slice(0, 8)}…` : null);
+      const preview = truncateSessionPreview(r.userQuery ?? '');
+      const statusZh = tripRunStatusLabelZh(r.status);
+      const list_summary = `${formatCreatedAtSummary(created_at)} · ${statusZh ?? r.status ?? '未知'} · ${preview || '（无查询摘要）'}`;
+
+      return {
+        session_id: r.id,
+        id: r.id,
+        trip_id: tripId,
+        trip_run_id: r.id,
+        created_at,
+        status: r.status,
+        trip_display_name,
+        trip_destination: trip?.destination ?? null,
+        user_query_preview: preview || null,
+        planning_phase: r.planningPhase ?? null,
+        completed_at: r.completedAt ? r.completedAt.toISOString() : null,
+        status_label_zh: statusZh,
+        list_summary,
+      };
+    });
   }
 
   /**

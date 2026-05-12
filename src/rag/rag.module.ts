@@ -63,12 +63,16 @@ import { LlmModule } from '../llm/llm.module';
 import { RagController } from './rag.controller';
 // RagMetricsController 已删除 - metrics 端点合并到 RagController
 import { RagMetricsService } from './services/rag-metrics.service';
+import { RagRealityPolicyGateService } from './services/rag-reality-policy-gate.service';
 import { SkillsModule } from '../skills/skills.module';
 import { KPUModule } from '../kpu/kpu.module';
+import { AuthModule } from '../auth/auth.module';
+import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
 
 @Module({
   imports: [
     PrismaModule,
+    AuthModule,
     forwardRef(() => PlacesModule), // 使用forwardRef避免循环依赖
     ConfigModule,
     ScheduleModule, // 提供定时任务支持
@@ -104,6 +108,8 @@ import { KPUModule } from '../kpu/kpu.module';
     RetryHelperService, // 错误重试服务（Phase 5.2）- 指数退避
     ParallelExecutorService, // 并行执行服务（Phase 5.2）- 并发控制
     RagMetricsService, // Prometheus监控指标服务（Phase 5.5）
+    RagRealityPolicyGateService,
+    AdminStrictAuthGuard,
   ],
   exports: [
     RagService,
@@ -129,6 +135,7 @@ import { KPUModule } from '../kpu/kpu.module';
     RetryHelperService, // 导出重试服务
     ParallelExecutorService, // 导出并行执行服务
     RagMetricsService, // 导出监控指标服务
+    RagRealityPolicyGateService,
   ],
 })
 export class RagModule {}

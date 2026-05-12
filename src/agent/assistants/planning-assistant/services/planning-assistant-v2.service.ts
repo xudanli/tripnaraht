@@ -63,6 +63,12 @@ import { ItemType } from '../../../../itinerary-items/dto/create-itinerary-item.
 import { DateTime } from 'luxon';
 import { AgentService } from '../../../services/agent.service';
 import { TripSuggestionsService } from '../../../../trips/services/trip-suggestions.service';
+import {
+  parseExplicitStayWindowFromUserMessage,
+  parseExplicitHotelNightScopeIndices,
+  countStayNightsBetweenInclusive,
+  addDaysYmd,
+} from '../../../utils/hotel-mcp-route-run.mapper';
 
 @Injectable()
 export class PlanningAssistantV2Service {
@@ -607,6 +613,10 @@ export class PlanningAssistantV2Service {
               if (state.phase === 'CLARIFYING_HOTEL_DATES' && state.pendingHotelSearch && this.mcpToolDispatcher) {
                 const refDate = state.pendingHotelSearch.extractedParams?.checkIn;
                 let dates = this.extractDatesFromMessage(dto.message, refDate);
+                if (!dates.checkIn || !dates.checkOut) {
+                  const nlOnly = parseExplicitStayWindowFromUserMessage(dto.message, {});
+                  if (nlOnly?.checkIn && nlOnly?.checkOut) dates = nlOnly;
+                }
                 // 若用户未提供新日期，但回复了确认且待定搜索中有建议日期，使用建议日期
                 if (!dates.checkIn || !dates.checkOut) {
                   const suggested = state.pendingHotelSearch.extractedParams?.checkIn && state.pendingHotelSearch.extractedParams?.checkOut;
@@ -2262,6 +2272,7 @@ export class PlanningAssistantV2Service {
         destination: dto.destination!,
         preferences: mergedPreferences as Record<string, unknown>,
         constraints: dto.constraints as Record<string, unknown> | undefined,
+        tripId: dto.tripId,
       });
 
       if (!coreResult.success || !coreResult.data) {
@@ -4887,7 +4898,7 @@ export class PlanningAssistantV2Service {
 
   /**
    * 从参数和行程上下文获取酒店入住/退房日期
-   * 优先级：extractedParams > trip.startDate/endDate
+   * 优先级：extractedParams > 消息内日历日期 > 话术限定「第 N 晚/第 N 天住」推导间夜 > extractDatesFromMessage > trip 整段
    */
   private async getHotelDatesFromContext(
     params: Record<string, any>,
@@ -4901,6 +4912,8 @@ export class PlanningAssistantV2Service {
         checkOut: typeof checkOut === 'string' ? checkOut.split('T')[0] : String(checkOut).split('T')[0],
       };
     }
+    let tripStart: string | undefined;
+    let tripEnd: string | undefined;
     if (dto.context?.tripId && this.prisma) {
       try {
         const trip = await this.prisma.trip.findUnique({
@@ -4908,15 +4921,57 @@ export class PlanningAssistantV2Service {
           select: { startDate: true, endDate: true },
         });
         if (trip?.startDate && trip?.endDate) {
-          const start = new Date(trip.startDate).toISOString().split('T')[0];
-          const end = new Date(trip.endDate).toISOString().split('T')[0];
-          this.logger.debug(`从行程获取日期: checkIn=${start}, checkOut=${end}`);
-          return { checkIn: start, checkOut: end };
+          tripStart = new Date(trip.startDate).toISOString().split('T')[0];
+          tripEnd = new Date(trip.endDate).toISOString().split('T')[0];
         }
       } catch (e: any) {
         this.logger.debug(`获取行程日期失败: ${e?.message}`);
       }
     }
+
+    const msg = dto.message ?? '';
+    const fromNl = parseExplicitStayWindowFromUserMessage(msg, {
+      tripStartYmd: tripStart,
+      tripEndYmd: tripEnd,
+    });
+    if (fromNl?.checkIn && fromNl?.checkOut) {
+      this.logger.debug(`从用户消息解析入住窗口: checkIn=${fromNl.checkIn}, checkOut=${fromNl.checkOut}`);
+      return { checkIn: fromNl.checkIn, checkOut: fromNl.checkOut };
+    }
+
+    /** 「第1天住哪」「第2晚酒店」等：无具体数字日期时仍应从行程锚点推导该间夜的 checkIn/checkOut，避免澄清卡默认整段行程 */
+    if (tripStart && tripEnd) {
+      const totalNights = countStayNightsBetweenInclusive(tripStart, tripEnd);
+      const scope = parseExplicitHotelNightScopeIndices(msg, totalNights);
+      if (scope && scope.length > 0) {
+        const sorted = [...scope].sort((a, b) => a - b);
+        const contiguous = sorted[sorted.length - 1] - sorted[0] === sorted.length - 1;
+        if (sorted.length === 1 || contiguous) {
+          const minN = sorted[0];
+          const maxN = sorted[sorted.length - 1];
+          const ci = addDaysYmd(tripStart, minN);
+          const co = addDaysYmd(tripStart, maxN + 1);
+          if (co > ci) {
+            this.logger.debug(
+              `从话术限定间夜推导入住窗口: nights=${sorted.map((i) => i + 1).join(',')} -> ${ci} ~ ${co}`,
+            );
+            return { checkIn: ci, checkOut: co };
+          }
+        }
+      }
+    }
+
+    const refForExtract = tripStart || tripEnd;
+    const fromLegacy = this.extractDatesFromMessage(msg, refForExtract);
+    if (fromLegacy.checkIn && fromLegacy.checkOut) {
+      return { checkIn: fromLegacy.checkIn, checkOut: fromLegacy.checkOut };
+    }
+
+    if (tripStart && tripEnd) {
+      this.logger.debug(`从行程获取日期: checkIn=${tripStart}, checkOut=${tripEnd}`);
+      return { checkIn: tripStart, checkOut: tripEnd };
+    }
+
     return {};
   }
 

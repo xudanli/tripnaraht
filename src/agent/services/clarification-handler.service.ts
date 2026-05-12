@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { ClarificationAnswer } from '../interfaces/clarification.interface';
 import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
+import { tryParseLatLngPairFromString } from '../../skills/transport/transport-search.skill';
 
 export type AppliedRelaxation =
   | { id: 'upgrade_vehicle_to_4wd' }
@@ -28,6 +29,8 @@ export class ClarificationHandlerService {
     earlyWarningProceedAtOwnRisk?: boolean;
     /** Whether any non-relaxation patch was applied (e.g. date). */
     didPatch?: boolean;
+    /** 用户已回答 clarify_transport_endpoints_v1，可触发交通增量 RESEARCH */
+    transportClarificationApplied?: boolean;
   } {
     const applied: AppliedRelaxation[] = [];
     if (!answers || answers.length === 0) return { tripPlanRequest: base, applied };
@@ -64,6 +67,31 @@ export class ClarificationHandlerService {
         // This helps POI selection converge when the initial destination is a raw coordinate string.
         next.destination = v;
         didPatch = true;
+      }
+    }
+
+    let transportClarificationApplied = false;
+    const transportEpAnswer = answers.find((a) => a.questionId === 'clarify_transport_endpoints_v1');
+    if (transportEpAnswer) {
+      const raw = String(transportEpAnswer.value ?? '').trim();
+      if (raw) {
+        const coords = tryParseLatLngPairFromString(raw);
+        if (coords) {
+          next.origin = coords;
+          transportClarificationApplied = true;
+          didPatch = true;
+        } else {
+          const parts = raw.split(/[，,|]/).map((s) => s.trim()).filter(Boolean);
+          if (parts.length >= 2) {
+            next.origin = parts[0];
+            next.destination = parts[1];
+            transportClarificationApplied = true;
+          } else {
+            next.origin = raw;
+            transportClarificationApplied = true;
+          }
+          didPatch = true;
+        }
       }
     }
 
@@ -146,6 +174,7 @@ export class ClarificationHandlerService {
       fingerprint,
       earlyWarningProceedAtOwnRisk: earlyProceedOnly ? true : undefined,
       didPatch: didPatch ? true : undefined,
+      transportClarificationApplied: transportClarificationApplied ? true : undefined,
     };
   }
 

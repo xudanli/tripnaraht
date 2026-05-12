@@ -8,6 +8,7 @@
 
 // 导入用户画像数据（其余目的地通过文件末尾 re-export 暴露）
 import { GREENLAND_USER_PERSONAS } from './greenland-personas.config';
+import type { OntologyConstraints } from '../ontology-constraints.types';
 
 /**
  * 目的地澄清配置
@@ -30,6 +31,13 @@ export interface DestinationClarificationConfig {
   
   /** 字段提取规则（用于 LLM Prompt） */
   fieldExtractionRules?: FieldExtractionRule[];
+
+  /**
+   * 🆕 本体/物理边界约束（v2 增量引入）
+   * - 该字段用于 solver feasibility 与骨架求解；
+   * - LLM 侧通常仅注入其“可读摘要”以触发 needsClarification。
+   */
+  constraints?: OntologyConstraints;
   
   /** 元数据 */
   metadata?: {
@@ -72,7 +80,8 @@ export interface DestinationClarificationConfig {
       not_recommended?: string[];
       preparation_needs?: string[];
       expected_experiences?: Record<string, any>;
-      typical_itinerary?: Record<string, string>;
+      /** 各 persona 的日程键值可能只覆盖部分天，故值允许缺省 */
+      typical_itinerary?: Record<string, string | undefined>;
       success_factors?: string[];
       [key: string]: any;
     }>;

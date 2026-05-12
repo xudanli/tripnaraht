@@ -1,5 +1,11 @@
-import { itineraryToRoutePlanDraft, isWestfjordsCorridorHeuristic } from './dso-to-trips-converter';
+import {
+  decisionStateToTripWorldState,
+  itineraryToRoutePlanDraft,
+  isWestfjordsCorridorHeuristic,
+  resolveKernelTripIdHint,
+} from './dso-to-trips-converter';
 import type { Itinerary } from '../../agent/interfaces/trip-plan.interface';
+import type { DecisionState } from './decision-state.types';
 
 describe('itineraryToRoutePlanDraft', () => {
   it('fills endLocation from next POI and sets auto_filled_for_audit', () => {
@@ -166,5 +172,76 @@ describe('itineraryToRoutePlanDraft', () => {
     const draft = itineraryToRoutePlanDraft(itinerary, 't-wf', 'rd-wf');
     const m0 = draft.segments[0].metadata as Record<string, unknown>;
     expect(m0.terrain_audit_trigger).toBe('westfjords_corridor_heuristic');
+  });
+});
+
+describe('decisionStateToTripWorldState', () => {
+  it('maps travelOntologyState.tripId to context.tripId', () => {
+    const state: DecisionState = {
+      userIntent: {},
+      tripState: {},
+      environmentState: {},
+      systemState: { requestId: 'req-1' },
+      travelOntologyState: { tripId: 'trip-from-dso' },
+    };
+    const world = decisionStateToTripWorldState(state);
+    expect(world.context.tripId).toBe('trip-from-dso');
+  });
+
+  it('uses prismaTripId option when ontology absent', () => {
+    const state: DecisionState = {
+      userIntent: {},
+      tripState: {},
+      environmentState: {},
+      systemState: { requestId: 'req-2' },
+    };
+    const world = decisionStateToTripWorldState(state, { prismaTripId: 'trip-opt' });
+    expect(world.context.tripId).toBe('trip-opt');
+  });
+
+  it('resolveKernelTripIdHint + options maps systemState.requestId to context.tripId', () => {
+    const state: DecisionState = {
+      userIntent: {},
+      tripState: {},
+      environmentState: {},
+      systemState: { requestId: 'trip-from-request' },
+    };
+    const world = decisionStateToTripWorldState(state, {
+      prismaTripId: resolveKernelTripIdHint(state),
+    });
+    expect(world.context.tripId).toBe('trip-from-request');
+  });
+});
+
+describe('resolveKernelTripIdHint', () => {
+  it('prefers travelOntologyState.tripId over systemState.requestId', () => {
+    const state: DecisionState = {
+      userIntent: {},
+      tripState: {},
+      environmentState: {},
+      systemState: { requestId: 'req-kernel' },
+      travelOntologyState: { tripId: 'ontology-wins' },
+    };
+    expect(resolveKernelTripIdHint(state)).toBe('ontology-wins');
+  });
+
+  it('falls back to requestId when not unknown', () => {
+    const state: DecisionState = {
+      userIntent: {},
+      tripState: {},
+      environmentState: {},
+      systemState: { requestId: 'cmjwbcd1234567890abcd' },
+    };
+    expect(resolveKernelTripIdHint(state)).toBe('cmjwbcd1234567890abcd');
+  });
+
+  it('returns undefined for unknown placeholder', () => {
+    const state: DecisionState = {
+      userIntent: {},
+      tripState: {},
+      environmentState: {},
+      systemState: { requestId: 'unknown' },
+    };
+    expect(resolveKernelTripIdHint(state)).toBeUndefined();
   });
 });

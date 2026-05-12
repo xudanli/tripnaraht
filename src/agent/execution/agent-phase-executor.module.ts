@@ -15,9 +15,11 @@ import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DomainAgentsModule } from '../services/domain-agents/domain-agents.module';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { WorldFactsModule } from '../../world-facts/world-facts.module';
 import { WorldModelCollectorService } from './shared/world-model-collector.service';
 import { PredictionCollectorService } from './shared/prediction-collector.service';
 import { TripContextExtractorService } from './shared/trip-context-extractor.service';
+import { ContextHydrationService } from './shared/context-hydration.service';
 import { ResearchExecutorService } from './research-executor.service';
 import { GateEvalExecutorService } from './gate-eval-executor.service';
 import { HardTruthRuleResolverService } from '../services/hard-truth-rule-resolver.service';
@@ -41,6 +43,7 @@ import { TrainingModule } from '../training/training.module';
   imports: [
     DomainAgentsModule,
     PrismaModule,
+    WorldFactsModule,
     ConfigModule,
     forwardRef(() => SkillsModule), // SkillsRegistryService for transport/poi/dem/geo skills
     forwardRef(() => ReadinessModule), // ReadinessService, UserDecisionService for GATE_EVAL
@@ -54,6 +57,7 @@ import { TrainingModule } from '../training/training.module';
     WorldModelCollectorService,
     PredictionCollectorService,
     TripContextExtractorService,
+    ContextHydrationService,
     ResearchExecutorService,
     HardTruthRuleResolverService,
     GateEvalExecutorService,
@@ -70,6 +74,7 @@ import { TrainingModule } from '../training/training.module';
     WorldModelCollectorService,
     PredictionCollectorService,
     TripContextExtractorService,
+    ContextHydrationService,
     ResearchExecutorService,
     HardTruthRuleResolverService,
     GateEvalExecutorService,

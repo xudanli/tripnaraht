@@ -2,6 +2,9 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ChunkRetrievalService, ChunkRetrievalParams, ChunkRetrievalResult } from './chunk-retrieval.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../reality-policy/rag-soft-world-policy';
+import { getBoundDecisionContext } from '../../trips/reality-kernel/reality-context.storage';
 import { PrismaService } from '../../prisma/prisma.service';
 import { McpToolsService } from './mcp-tools.service';
 
@@ -78,6 +81,7 @@ export class RagFallbackService {
     private readonly chunkRetrievalService: ChunkRetrievalService,
     private readonly prisma: PrismaService,
     private readonly mcpTools: McpToolsService,
+    private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
   ) {}
 
   /**
@@ -100,15 +104,39 @@ export class RagFallbackService {
       `[Fallback] 开始查询: "${query.substring(0, 50)}...", category=${context.category}`
     );
 
+    const decisionContext = getBoundDecisionContext();
+    const { scope } = this.ragRealityPolicyGate.resolve(decisionContext);
+    const ragScope: RagSoftWorldScope = scope;
+    if (ragScope === 'blocked') {
+      return {
+        results: [],
+        method: 'GRACEFUL_FAILURE',
+        confidence: 0,
+        fallback: {
+          message: 'RAG 访问已按 Reality Policy 阻止',
+          officialLinks: [],
+          recordedInGapLog: false,
+        },
+        metadata: {
+          attemptedMethods: ['RAG_REALITY_POLICY_BLOCKED'],
+          latency: Date.now() - startTime,
+        },
+      };
+    }
+    const mergeRag = (p: ChunkRetrievalParams): ChunkRetrievalParams =>
+      this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, ragScope);
+
     try {
       // Level 1: Vector RAG (高精度)
       attemptedMethods.push('VECTOR_RAG');
-      const vectorResult = await this.chunkRetrievalService.retrieve({
-        ...params,
-        query,
-        useHybridSearch: false,
-        limit: params.limit || 10,
-      });
+      const vectorResult = await this.chunkRetrievalService.retrieve(
+        mergeRag({
+          ...params,
+          query,
+          useHybridSearch: false,
+          limit: params.limit || 10,
+        }),
+      );
 
       const maxSimilarity = vectorResult[0]?.similarity || 0;
 
@@ -129,14 +157,16 @@ export class RagFallbackService {
 
       // Level 2: Hybrid RAG (中等精度)
       attemptedMethods.push('HYBRID_RAG');
-      const hybridResult = await this.chunkRetrievalService.retrieve({
-        ...params,
-        query,
-        useHybridSearch: true,
-        denseWeight: 0.6,
-        sparseWeight: 0.4,
-        limit: (params.limit || 10) * 2, // 获取更多候选
-      });
+      const hybridResult = await this.chunkRetrievalService.retrieve(
+        mergeRag({
+          ...params,
+          query,
+          useHybridSearch: true,
+          denseWeight: 0.6,
+          sparseWeight: 0.4,
+          limit: (params.limit || 10) * 2, // 获取更多候选
+        }),
+      );
 
       const maxHybridScore = hybridResult[0]?.hybridScore || hybridResult[0]?.similarity || 0;
 

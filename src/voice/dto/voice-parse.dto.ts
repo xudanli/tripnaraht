@@ -7,19 +7,19 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  */
 export class StopDto {
   @ApiProperty({ example: 'POI' })
-  kind: string;
+  kind!: string;
 
   @ApiProperty({ example: '6211' })
-  id: string;
+  id!: string;
 
   @ApiPropertyOptional({ example: '东京塔' })
   name?: string;
 
   @ApiProperty({ example: 540 })
-  startMin: number;
+  startMin!: number;
 
   @ApiProperty({ example: 660 })
-  endMin: number;
+  endMin!: number;
 
   @ApiPropertyOptional({ example: 35.6762 })
   lat?: number;
@@ -33,7 +33,7 @@ export class StopDto {
  */
 export class DayScheduleResultDto {
   @ApiProperty({ type: [StopDto] })
-  stops: StopDto[];
+  stops!: StopDto[];
 
   @ApiPropertyOptional({ type: Object })
   metrics?: Record<string, any>;
@@ -44,8 +44,8 @@ export class DayScheduleResultDto {
  */
 export class VoiceParseRequestDto {
   @ApiProperty({ example: '今天下一站是什么？' })
-  transcript: string;
+  transcript!: string;
 
   @ApiProperty({ type: DayScheduleResultDto })
-  schedule: DayScheduleResultDto;
+  schedule!: DayScheduleResultDto;
 }

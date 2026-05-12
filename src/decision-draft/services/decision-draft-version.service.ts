@@ -53,8 +53,13 @@ export class DecisionDraftVersionService {
       throw new Error('Step Draft 不存在，无法保存版本');
     }
 
+    const workflowKey = decisionDraft.workflow_id ?? decisionDraft.plan_id;
+    if (!workflowKey) {
+      throw new Error('workflow_id / plan_id 缺失，无法保存版本');
+    }
+
     const stepDraftVersion = await this.versionService.saveVersion(
-      decisionDraft.workflow_id,
+      workflowKey,
       decisionDraft.step_draft,
       {
         creator: options.creator,
@@ -64,7 +69,7 @@ export class DecisionDraftVersionService {
 
     // 2. 构建 Decision Draft Version
     const planVersion = decisionDraft.plan_version || parseInt(decisionDraft.version || '1', 10);
-    const planId = decisionDraft.plan_id || decisionDraft.workflow_id;
+    const planId = decisionDraft.plan_id || decisionDraft.workflow_id || workflowKey;
     const versionString = planVersion.toString();
     
     const decisionDraftVersion: DecisionDraftVersion = {

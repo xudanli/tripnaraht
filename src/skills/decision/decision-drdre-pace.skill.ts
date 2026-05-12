@@ -49,10 +49,24 @@ export class DecisionDrdrePaceSkill implements Skill<DecisionDrdrePaceInput, Dec
   ) {}
 
   async execute(input: DecisionDrdrePaceInput): Promise<DecisionDrdrePaceOutput> {
-    this.logger.debug(`执行 decision.drdrePace: ${input.draftPlan.tripId || 'unknown'}`);
+    const world = input?.world;
+    const draftPlan = input?.draftPlan;
+    if (!world || !draftPlan) {
+      this.logger.warn(
+        `decision.drdrePace: 缺少 world 或 draftPlan（world=${!!world}, draftPlan=${!!draftPlan}）；常见于上游 web.browse 等步骤失败导致上下文未注入`,
+      );
+      return {
+        adjustedPlan: null,
+        changes: [],
+        reasonSummary:
+          '节奏评估跳过：未收到草案计划或世界模型（上游步骤失败或未传入 trip 上下文）。',
+      };
+    }
+
+    this.logger.debug(`执行 decision.drdrePace: ${draftPlan.tripId || 'unknown'}`);
 
     // 调用 Dr.Dre Strategy
-    const result: DecisionResult = await this.drDreStrategy.evaluate(input.world, input.draftPlan);
+    const result: DecisionResult = await this.drDreStrategy.evaluate(world, draftPlan);
 
     // 提取变更信息
     const changes: Array<{

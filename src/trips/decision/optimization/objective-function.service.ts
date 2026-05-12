@@ -143,7 +143,10 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
     if (world == null) {
       throw new Error('[ObjectiveFunction] evaluate 缺少 world');
     }
-    this.logger.debug(`[ObjectiveFunction] 评估计划: ${plan.tripId}`);
+    // CGUS / Monte Carlo 会高频调用 evaluate；默认不打 DEBUG，避免刷屏。需要时设 DECISION_OS_VERBOSE_OPTIMIZATION=1
+    if (['1', 'true', 'yes'].includes(String(process.env.DECISION_OS_VERBOSE_OPTIMIZATION ?? '').toLowerCase())) {
+      this.logger.debug(`[ObjectiveFunction] 评估计划: ${plan.tripId}`);
+    }
 
     // 1. 计算各维度分数（NaN 视为 0，避免总效用为 NaN）
     const safe = (n: number) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0);

@@ -10,7 +10,10 @@
  * - routeDirection: 路线哲学（不可背叛的规则）
  */
 
-import { PhysicalRealityModel } from '../models/physical-reality.model';
+import {
+  PhysicalRealityModel,
+  type WeatherObservationEvidence,
+} from '../models/physical-reality.model';
 import { HumanCapabilityModel } from '../models/human-capability.model';
 import { RouteDirectionData } from '../../../route-directions/interfaces/route-direction.interface';
 import { RoutePhilosophy } from '../models/route-philosophy.model';
@@ -43,15 +46,12 @@ export interface DemDecisionEvidence {
 }
 
 /**
- * 天气证据
+ * 天气证据（与 PhysicalRealityModel.weatherEvidence 一致）
+ *
+ * @deprecated 直接使用 WeatherObservationEvidence
  */
-export interface WeatherEvidence {
-  segmentId: string;
-  windSpeedMs: number;
-  visibilityM: number;
-  precipitationMm: number;
-  violation: 'HARD' | 'SOFT' | 'NONE';
-}
+export type WeatherEvidence = WeatherObservationEvidence;
+export type { WeatherObservationEvidence };
 
 /**
  * 合规证据
@@ -104,6 +104,11 @@ export interface WorldModelContext {
 
   /** 合规证据（可选，用于 Abu 检查） */
   complianceEvidence?: ComplianceEvidence[];
+
+  /**
+   * 决策唯一执行语义视图（引擎写入）。Neptune 天气类 issue 优先读此层，而非直接解析 physical.weatherEvidence。
+   */
+  executionSemanticView?: import('../execution/unified-execution-semantic-view').UnifiedExecutionSemanticView;
 }
 
 /**

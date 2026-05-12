@@ -4,16 +4,20 @@ import type { DecisionState } from './decision-state.types';
 import type { CGUSCandidate, CGUSSearchResult } from '../../trips/decision/optimization/cgus-search.service';
 import { CGUSSearchService } from '../../trips/decision/optimization/cgus-search.service';
 import { ChunkRetrievalService } from '../../rag/services/chunk-retrieval.service';
+import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
 import { DecisionOSConfigService } from '../../trips/decision/optimization/config';
 
 describe('OptimizationEngineAdapterService', () => {
   const prevKernelCgusRag = process.env.KERNEL_CGUS_RAG_EVIDENCE;
   const prevCgusContrast = process.env.CGUS_INJECT_CONTRAST_CANDIDATES;
+  const prevRagPolicyEnforce = process.env.RAG_REALITY_POLICY_ENFORCE;
   afterEach(() => {
     if (prevKernelCgusRag === undefined) delete process.env.KERNEL_CGUS_RAG_EVIDENCE;
     else process.env.KERNEL_CGUS_RAG_EVIDENCE = prevKernelCgusRag;
     if (prevCgusContrast === undefined) delete process.env.CGUS_INJECT_CONTRAST_CANDIDATES;
     else process.env.CGUS_INJECT_CONTRAST_CANDIDATES = prevCgusContrast;
+    if (prevRagPolicyEnforce === undefined) delete process.env.RAG_REALITY_POLICY_ENFORCE;
+    else process.env.RAG_REALITY_POLICY_ENFORCE = prevRagPolicyEnforce;
   });
 
   const mkDso = (overrides?: Partial<DecisionState>): DecisionState =>
@@ -56,6 +60,7 @@ describe('OptimizationEngineAdapterService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OptimizationEngineAdapterService,
+        RagRealityPolicyGateService,
         { provide: CGUSSearchService, useValue: cgusSearchMock },
       ],
     }).compile();
@@ -100,6 +105,7 @@ describe('OptimizationEngineAdapterService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OptimizationEngineAdapterService,
+        RagRealityPolicyGateService,
         { provide: CGUSSearchService, useValue: cgusSearchMock },
       ],
     }).compile();
@@ -143,6 +149,7 @@ describe('OptimizationEngineAdapterService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OptimizationEngineAdapterService,
+        RagRealityPolicyGateService,
         { provide: CGUSSearchService, useValue: cgusSearchMock },
       ],
     }).compile();
@@ -195,6 +202,7 @@ describe('OptimizationEngineAdapterService', () => {
   });
 
   it('when KERNEL_CGUS_RAG_EVIDENCE enabled (no DecisionOSConfigService), passes retrievalCategoryEvidence into CGUS.search', async () => {
+    process.env.RAG_REALITY_POLICY_ENFORCE = '0';
     process.env.KERNEL_CGUS_RAG_EVIDENCE = 'true';
     const now = new Date();
     const retrieve = jest.fn().mockResolvedValue([
@@ -226,6 +234,7 @@ describe('OptimizationEngineAdapterService', () => {
     const module = await Test.createTestingModule({
       providers: [
         OptimizationEngineAdapterService,
+        RagRealityPolicyGateService,
         { provide: CGUSSearchService, useValue: cgusSearchMock },
         { provide: ChunkRetrievalService, useValue: chunkRetrievalMock },
       ],
@@ -243,6 +252,7 @@ describe('OptimizationEngineAdapterService', () => {
   });
 
   it('when ragEvidence.enabled=true in DecisionOSConfigService, passes retrievalCategoryEvidence into CGUS.search', async () => {
+    process.env.RAG_REALITY_POLICY_ENFORCE = '0';
     delete process.env.KERNEL_CGUS_RAG_EVIDENCE;
     const now = new Date();
     const retrieve = jest.fn().mockResolvedValue([
@@ -274,6 +284,7 @@ describe('OptimizationEngineAdapterService', () => {
     const module = await Test.createTestingModule({
       providers: [
         OptimizationEngineAdapterService,
+        RagRealityPolicyGateService,
         { provide: CGUSSearchService, useValue: cgusSearchMock },
         { provide: ChunkRetrievalService, useValue: chunkRetrievalMock },
         {
@@ -336,6 +347,7 @@ describe('OptimizationEngineAdapterService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OptimizationEngineAdapterService,
+        RagRealityPolicyGateService,
         { provide: CGUSSearchService, useValue: cgusSearchMock },
         // prevent optional injections from causing missing-provider failures in some envs
         { provide: ChunkRetrievalService, useValue: { retrieve: jest.fn().mockResolvedValue([]) } },

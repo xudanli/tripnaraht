@@ -10,7 +10,15 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RagService } from './rag.service';
+import type { DecisionContextV0 } from '../../trips/reality-kernel/decision-context.types';
+import { resolveRagSoftWorldPolicy } from '../reality-policy/rag-soft-world-policy';
+import {
+  ChunkRetrievalService,
+  type ChunkRetrievalParams,
+  type ChunkRetrievalResult,
+} from './chunk-retrieval.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../reality-policy/rag-soft-world-policy';
 import { LlmExtractionService } from './llm-extraction.service';
 
 /**
@@ -32,8 +40,9 @@ export class LocalInsightService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ragService: RagService,
+    private readonly chunkRetrieval: ChunkRetrievalService,
     private readonly llmExtraction: LlmExtractionService,
+    private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
   ) {}
 
   /**
@@ -42,11 +51,19 @@ export class LocalInsightService {
   async getLocalInsight(
     countryCode: string,
     tags: string[],
-    region?: string
+    region?: string,
+    decisionContext?: DecisionContextV0,
   ): Promise<LocalInsight[]> {
     this.logger.debug(`获取当地洞察: countryCode=${countryCode}, tags=${tags.join(',')}, region=${region}`);
 
     try {
+      const { scope } = resolveRagSoftWorldPolicy(decisionContext);
+      if (scope === 'blocked') {
+        return [];
+      }
+      const ragScope: RagSoftWorldScope = scope;
+      const ragCollection = ragScope === 'restricted' ? 'legal_rules' : 'local_insights';
+
       // 1. 先查数据库（缓存）
       // @ts-ignore - Prisma client will be generated after migration
       const cached = await this.prisma.localInsight.findMany({
@@ -72,14 +89,24 @@ export class LocalInsightService {
         return recentCached.map(this.mapToLocalInsight);
       }
 
-      // 2. RAG 检索
+      // 2. Chunk 检索 + Reality merge
       const query = `${countryCode} ${region || ''} ${tags.join(' ')} local tips insights`;
-      const snippets = await this.ragService.retrieve({
+      let p: ChunkRetrievalParams = {
         query,
-        collection: 'local_insights',
-        countryCode,
-        tags,
+        category: ragCollection,
         limit: 15,
+        useHybridSearch: true,
+        credibilityMin: 0.35,
+      };
+      p = this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, ragScope);
+      const rows = await this.chunkRetrieval.retrieve(p);
+      const snippets = rows.map((r: ChunkRetrievalResult) => {
+        const meta = r.metadata && typeof r.metadata === 'object' ? (r.metadata as { sourceUrl?: string }) : undefined;
+        return {
+          content: r.content,
+          score: r.similarity ?? r.hybridScore,
+          source: r.sourceFile || meta?.sourceUrl || null,
+        };
       });
 
       if (snippets.length === 0) {
@@ -186,7 +213,8 @@ Return as JSON array.`;
   async refreshLocalInsight(
     countryCode: string,
     tags: string[],
-    region?: string
+    region?: string,
+    decisionContext?: DecisionContextV0,
   ): Promise<LocalInsight[]> {
     // 删除旧的洞察
     // @ts-ignore - Prisma client will be generated after migration
@@ -199,7 +227,7 @@ Return as JSON array.`;
     });
 
     // 重新生成
-    return this.getLocalInsight(countryCode, tags, region);
+    return this.getLocalInsight(countryCode, tags, region, decisionContext);
   }
 
   /**

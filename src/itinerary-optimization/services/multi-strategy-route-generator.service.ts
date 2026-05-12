@@ -191,7 +191,11 @@ export class MultiStrategyRouteGeneratorService {
 
     // 4. 收集成功的结果
     results.forEach((result, _index) => {
-      if (result.status === 'fulfilled' && result.value.success) {
+      if (
+        result.status === 'fulfilled' &&
+        result.value.success &&
+        result.value.candidate !== undefined
+      ) {
         candidates.push(result.value.candidate);
       }
     });

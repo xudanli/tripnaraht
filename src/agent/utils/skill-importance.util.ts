@@ -1,5 +1,7 @@
 // src/agent/utils/skill-importance.util.ts
 
+import { TRANSPORT_SEARCH_UNRESOLVED_COORDS_MARKER } from '../../skills/transport/transport-search.skill';
+
 /**
  * Skills 重要性级别
  * 
@@ -15,6 +17,14 @@ export type SkillImportance = 'CRITICAL' | 'IMPORTANT' | 'OPTIONAL';
  * 
  * 定义每个 Skill 的重要性级别，用于降级策略决策
  */
+/** 与 SkillsRegistryService.SKILL_NAME_LEGACY_ALIASES 对齐：失败策略按规范名查表 */
+function normalizeImportanceSkillName(skillName: string): string {
+  if (skillName === 'dem.get.profile' || skillName === 'dem.getProfile') {
+    return 'dem.get_profile';
+  }
+  return skillName;
+}
+
 const SKILL_IMPORTANCE_MAP: Record<string, SkillImportance> = {
   // === CRITICAL: 关键 Skills（失败时必须拒绝或降级）===
   'transport.search': 'CRITICAL', // 交通数据是行程规划的核心
@@ -24,10 +34,12 @@ const SKILL_IMPORTANCE_MAP: Record<string, SkillImportance> = {
   'poi.search': 'IMPORTANT', // POI 数据重要，但可以降级
   'opening_hours.get': 'IMPORTANT', // 开放时间重要，但可以降级
   'itinerary.verify': 'IMPORTANT', // 验证重要，但可以降级
+  'itinerary.smart_update': 'IMPORTANT', // 闭环改行程：失败应显式暴露给编排器
+  'safetravel.get_advisories': 'IMPORTANT', // 冰岛旅行安全 RSS：Gate / 高地巡检
   'gatekeeper.evaluate': 'IMPORTANT', // Gate 评估重要，但可以降级
   
   // === OPTIONAL: 可选 Skills（失败时静默忽略）===
-  'dem.get.profile': 'OPTIONAL', // DEM 数据可选，用于增强功能
+  'dem.get_profile': 'OPTIONAL', // DEM：Agentic 路径可选；Internal Path 不经 Registry
   'geo.check.hazard.zones': 'OPTIONAL', // 风险检查可选
   'repair.apply': 'OPTIONAL', // 修复可选，可以手动处理
 };
@@ -39,7 +51,7 @@ const SKILL_IMPORTANCE_MAP: Record<string, SkillImportance> = {
  * @returns 重要性级别（默认 OPTIONAL）
  */
 export function getSkillImportance(skillName: string): SkillImportance {
-  return SKILL_IMPORTANCE_MAP[skillName] || 'OPTIONAL';
+  return SKILL_IMPORTANCE_MAP[normalizeImportanceSkillName(skillName)] || 'OPTIONAL';
 }
 
 /**
@@ -111,17 +123,23 @@ export function getSkillFailureStrategy(
                                error?.message?.includes('not injected') ||
                                error?.message?.includes('未配置') ||
                                error?.message?.includes('not configured');
+
+  const isTransportUnresolvedCoords =
+    skillName === 'transport.search' &&
+    Boolean(error?.message?.includes(TRANSPORT_SEARCH_UNRESOLVED_COORDS_MARKER));
   
   switch (importance) {
     case 'CRITICAL':
       // 依赖缺失时可以降级，执行失败时拒绝
-      if (isDependencyMissing) {
+      if (isDependencyMissing || isTransportUnresolvedCoords) {
         return {
           shouldReject: false,
           shouldDegrade: true,
           shouldMarkMissing: true,
           shouldIgnore: false,
-          errorMessage: `Critical skill '${skillName}' dependency missing: ${error?.message || 'Unknown error'}`,
+          errorMessage: isTransportUnresolvedCoords
+            ? `Critical skill '${skillName}' could not resolve endpoints: ${error?.message || 'Unknown error'}`
+            : `Critical skill '${skillName}' dependency missing: ${error?.message || 'Unknown error'}`,
         };
       }
       return {

@@ -94,6 +94,8 @@ const ICELAND_REGIONS = {
   egilsstadir: { lat: 65.2637, lng: -14.3944, name: 'Egilsstaðir' },
   vik: { lat: 63.4186, lng: -19.0059, name: 'Vík í Mýrdal' },
   isafjordur: { lat: 66.0749, lng: -23.1339, name: 'Ísafjörður' },
+  patreksfjordur: { lat: 65.5953, lng: -23.9789, name: 'Patreksfjörður' },
+  holmavik: { lat: 65.7065, lng: -21.6876, name: 'Hólmavík' },
   highlands_center: { lat: 64.7500, lng: -18.0000, name: 'Highlands Center' }, // F-roads 中心区域
 } as const;
 
@@ -133,6 +135,12 @@ export class IcelandWeatherRealtimeService {
   private readonly logger = new Logger('IcelandWeatherRealtimeService');
   private readonly OPEN_METEO_API = 'https://api.open-meteo.com/v1/forecast';
   private readonly CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 小时
+  /** 进程内短缓存：同一 regionKey 在 itinerary 多轮编排中避免连打 wind+classifier 重复命中 Open-Meteo */
+  private readonly L1_MEMORY_TTL_MS =
+    Number(process.env.ICELAND_WEATHER_L1_CACHE_MS || '') > 0
+      ? Number(process.env.ICELAND_WEATHER_L1_CACHE_MS)
+      : 15 * 60 * 1000;
+  private readonly l1ForecastByRegion = new Map<string, { expiresAt: number; forecast: WeatherForecast }>();
   private readonly REQUEST_TIMEOUT_MS = 10000; // 10 秒超时
   private readonly REQUEST_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 500;
   private readonly httpClient: AxiosInstance;
@@ -153,10 +161,17 @@ export class IcelandWeatherRealtimeService {
   async getWeatherByLocation(lat: number, lng: number): Promise<WeatherForecast | null> {
     const regionKey = this.getRegionKey(lat, lng);
 
+    const l1 = this.l1ForecastByRegion.get(regionKey);
+    if (l1 && Date.now() < l1.expiresAt) {
+      this.logger.debug(`[L1 Memory Hit] ${regionKey}`);
+      return l1.forecast;
+    }
+
     // 1. 查询数据库缓存（6 小时内）
     const cached = await this.getFromDatabase(regionKey);
     if (cached) {
       this.logger.debug(`[DB Cache Hit] ${regionKey}`);
+      this.setL1Forecast(regionKey, cached);
       return cached;
     }
 
@@ -195,11 +210,19 @@ export class IcelandWeatherRealtimeService {
         `[API Success] ${regionKey}: ${forecast.temperature}°C, wind ${forecast.windSpeed}m/s`
       );
 
+      this.setL1Forecast(regionKey, forecast);
       return forecast;
     } catch (error) {
       this.logger.error(`获取天气失败:`, error instanceof Error ? error.message : error);
       return null;
     }
+  }
+
+  private setL1Forecast(regionKey: string, forecast: WeatherForecast): void {
+    this.l1ForecastByRegion.set(regionKey, {
+      expiresAt: Date.now() + this.L1_MEMORY_TTL_MS,
+      forecast,
+    });
   }
 
   /**

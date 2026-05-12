@@ -246,7 +246,8 @@ export class ContextRegressionTestsSkill implements Skill<ContextRegressionTests
 
     // 4. 找出变化的块（需要从 ContextPackage 中获取详细信息）
     // 这里简化实现，实际应该比较完整的块信息
-    const changedBlocks: ContextRegressionTestsOutput['comparison']['changedBlocks'] = [];
+    type ComparisonBlock = NonNullable<ContextRegressionTestsOutput['comparison']>['changedBlocks'][number];
+    const changedBlocks: ComparisonBlock[] = [];
 
     // 5. 检测回归
     const regressions: string[] = [];

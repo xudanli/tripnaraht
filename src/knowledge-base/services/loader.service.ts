@@ -66,9 +66,11 @@ export class LoaderService {
 
   /**
    * 保存文件到数据库
+   * @param categoryOverride 管理端上传时可指定类别（如 travel_guides），不传则按文件名推断
    */
-  async saveFile(fileData: KBFileData): Promise<string> {
-    const category = this.detectCategory(fileData.filename);
+  async saveFile(fileData: KBFileData, categoryOverride?: string): Promise<string> {
+    const category =
+      categoryOverride?.trim() || this.detectCategory(fileData.filename);
 
     const file = await this.prisma.knowledgeFile.upsert({
       where: { filename: fileData.filename },

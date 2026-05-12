@@ -212,10 +212,11 @@ export class RouterService {
       };
     }
 
-    // 单纯事实查询 → System1_RAG
+    // 单纯事实查询 → System1_RAG（行前装备/季节类不走 POI 关键词搜索，交给上层 DATA_LOOKUP / LLM）
     if (
       /是什么|在哪里|营业时间|开放时间|多少钱|价格|推荐.*餐厅|推荐.*景点|推荐.*拉面|推荐.*美食/i.test(input) &&
-      !/规划|几天|如果|要是/i.test(input)
+      !/规划|几天|如果|要是/i.test(input) &&
+      !/(?:冰爪|crampon|装备|需要带|要带|穿什么|打包|签证)/i.test(input)
     ) {
       return {
         route: RouteType.SYSTEM1_RAG,

@@ -22,6 +22,8 @@ export interface ContextPackageOverrides {
   tokenBudget?: number;
   /** 目的地国家代码（tripId 不可用时用于构建国家包块，如 from-natural-language 流程） */
   destinationCountryCode?: string;
+  /** 编排超时 abort：避免 Tool RAG 在 deadline 后继续跑 */
+  abortSignal?: AbortSignal;
 }
 
 @Injectable()
@@ -79,6 +81,7 @@ export class ContextEngineAdapterService {
         includePrivate: false,
         destinationCountryCode,
         requiredTopics: requiredTopicsOverride,
+        abortSignal: overrides.abortSignal,
       });
       this.logger.debug(`[ContextAdapter] Built: blocks=${package_.blocks?.length ?? 0}, tokens=${package_.totalTokens ?? 0}`);
       return package_;

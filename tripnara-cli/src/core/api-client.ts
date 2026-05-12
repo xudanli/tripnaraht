@@ -6,6 +6,71 @@ export interface OrchestrationErrorEntry {
   message?: string;
 }
 
+/** Parsed from `result.payload.timeline` or `payload.orchestrationResult.itinerary.days` for CLI / tooling. */
+export interface ItineraryItemRow {
+  id?: string;
+  type?: string;
+  start_window?: string;
+  end_window?: string;
+  name?: string;
+  address?: string;
+  place_id?: string;
+}
+
+export interface ItineraryDayRow {
+  date?: string;
+  /** 1-based index in the returned days array */
+  day_index: number;
+  items: ItineraryItemRow[];
+}
+
+function parseItineraryItem(it: unknown): ItineraryItemRow {
+  const ir = asRecord(it);
+  if (!ir) return {};
+  const loc = asRecord(ir.location_ref);
+  return {
+    id: typeof ir.id === "string" ? ir.id : undefined,
+    type: typeof ir.type === "string" ? ir.type : undefined,
+    start_window: typeof ir.start_window === "string" ? ir.start_window : undefined,
+    end_window: typeof ir.end_window === "string" ? ir.end_window : undefined,
+    name:
+      typeof loc?.name === "string"
+        ? loc.name
+        : typeof ir.title === "string"
+          ? ir.title
+          : undefined,
+    address: typeof loc?.address === "string" ? loc.address : undefined,
+    place_id:
+      loc && "place_id" in loc && loc.place_id != null
+        ? String((loc as Record<string, unknown>).place_id)
+        : undefined,
+  };
+}
+
+/**
+ * Prefer `payload.timeline` (System 2 timeline mirror); if empty, fall back to
+ * `orchestrationResult.itinerary.days` (same items the debug UI often JSON-stringifies).
+ */
+export function extractItineraryDaysFromRoutePayload(
+  payloadObj: Record<string, unknown> | undefined,
+): ItineraryDayRow[] {
+  if (!payloadObj) return [];
+  const timeline = Array.isArray(payloadObj.timeline) ? (payloadObj.timeline as unknown[]) : [];
+  const orch = asRecord(payloadObj.orchestrationResult);
+  const itin = orch ? asRecord(orch.itinerary) : undefined;
+  const orchDays =
+    itin && Array.isArray(itin.days) ? (itin.days as unknown[]) : ([] as unknown[]);
+  const daysSource = timeline.length > 0 ? timeline : orchDays;
+  if (!Array.isArray(daysSource) || daysSource.length === 0) return [];
+  return daysSource.map((day, idx) => {
+    const dr = asRecord(day);
+    const date = typeof dr?.date === "string" ? dr.date : undefined;
+    const itemsRaw = Array.isArray(dr?.items) ? dr.items : [];
+    const items = itemsRaw.map(parseItineraryItem);
+    return { date, day_index: idx + 1, items };
+  });
+}
+
 export interface RouteAndRunApiResult {
   verdict?: string;
   /** `result.status` from envelope (OK | FAILED | NEED_MORE_INFO | …) */
@@ -82,6 +147,8 @@ export interface RouteAndRunApiResult {
     options?: Array<string | { value: string; label: string }>;
     required?: boolean;
   }>;
+  /** Human-readable rows for itinerary UI (timeline or orchestration itinerary.days). */
+  itinerary_days?: ItineraryDayRow[];
   poi_trace?: {
     policy?: "strict" | "fallback" | "explore";
     sourceHint?: string;
@@ -297,6 +364,8 @@ export async function callRouteAndRun(
     ? (payloadObj.clarificationQuestions as Array<Record<string, unknown>>)
     : [];
 
+  const itinerary_days = extractItineraryDaysFromRoutePayload(payloadObj);
+
   return {
     verdict,
     result_status: resultStatus,
@@ -469,6 +538,7 @@ export async function callRouteAndRun(
             required: typeof q.required === "boolean" ? q.required : undefined,
           }))
         : undefined,
+    itinerary_days: itinerary_days.length > 0 ? itinerary_days : undefined,
     poi_trace: poiTrace
       ? {
           policy:

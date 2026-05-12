@@ -1,5 +1,6 @@
 import type { HardRuleFact } from './hard-rule-snapshot.types';
 import { DRIVE_SAFETY_V1, RAIL_SAFETY_V1, driveSafetyWindThresholdMps, railSafetyWindThresholdMps } from '../../ontology/environment/weather.schema';
+import { calculateEnvironmentHash, getWeatherForTime } from '../../ontology/environment/environment-domain.util';
 
 /**
  * Best-effort derive HardRuleFact[] from metadata shape.
@@ -20,6 +21,287 @@ export function deriveFactsFromMetadata(params: {
 
   const facts: HardRuleFact[] = [];
   const evType = String((evidence as any)?.type ?? '');
+
+  /**
+   * Pattern: admin-injected environment overrides (RouteDirection.metadata.environment_overrides_v1).
+   *
+   * Evidence shape (as attached to PhysicalRealityModel.prefetched_evidence):
+   * {
+   *   kind: 'environment_overrides_v1',
+   *   source, at, expires_at,
+   *   overrides: {
+   *     weather?: { wind_mps?, visibility_m?, snow_depth_cm?, threshold_wind_mps?, visibility_threshold_m? ... }
+   *     solar?: { twilightBufferMin?, ... }
+   *   }
+   * }
+   *
+   * We convert it into canonical facts by synthesizing weather_physics / visibility facts.
+   */
+  const evKind = String((evidence as any)?.kind ?? '');
+  if (evKind === 'environment_overrides_v1' && (evidence as any)?.overrides && typeof (evidence as any).overrides === 'object') {
+    const o = (evidence as any).overrides as any;
+    const w = o?.weather;
+    let envHash: string | undefined = undefined;
+    if (w && typeof w === 'object') {
+      let wind = w.wind_mps ?? w.windSpeedMps ?? w.wind_speed_mps;
+      const threshold = w.threshold_wind_mps ?? w.wind_threshold_mps ?? w.threshold_mps;
+      const confidenceScoreRaw = w.confidenceScore ?? w.confidence_score ?? w.confidence;
+      let confidenceScore = typeof confidenceScoreRaw === 'number' && Number.isFinite(confidenceScoreRaw) ? confidenceScoreRaw : undefined;
+
+      let visibility = w.visibility_m ?? w.visibility_meters ?? w.visibilityMeters;
+      const vthr = w.visibility_threshold_m ?? w.visibility_threshold_meters ?? w.visibilityThresholdMeters;
+
+      let precipitationMm =
+        w.precipitation_mm ?? w.precipitationMm ?? w.precipitation_mm_per_hour ?? w.precipitationMmPerHour ?? w.precipitation;
+      const precipThrMm = w.precipitation_threshold_mm ?? w.precipitationThresholdMm ?? w.precipitation_threshold;
+
+      let snowDepthCm = w.snow_depth_cm ?? w.snowDepthCm ?? w.snow_depth_cm_value ?? w.snowDepth;
+      const snowDepthThrCm = w.threshold_snow_depth_cm ?? w.snow_depth_threshold_cm ?? w.snowDepthThresholdCm;
+
+      // event time:
+      // - Admin override uses evidence.at (recommended)
+      // - fallback to params.timestampIso (legacy)
+      const atIso = (evidence as any)?.at ?? params.timestampIso;
+      const effectiveTimestampIso =
+        typeof atIso === 'string' && atIso.trim() ? String(atIso).trim() : params.timestampIso;
+
+      // Optional: forecastSeries time-window matching (spec-aligned).
+      // When present, we pick the forecast whose timeWindow contains effectiveTimestampIso.
+      // Then we use its wind/visibility/precip/snow values for HardRuleFact derivation + environment_hash.
+      const forecastSeriesRaw =
+        w.forecastSeries ?? w.forecast_series ?? w.forecastSeriesList ?? w.forecast_series_list;
+      if (Array.isArray(forecastSeriesRaw) && effectiveTimestampIso && typeof effectiveTimestampIso === 'string') {
+        const normalizeForecast = (rf: any): any => {
+          const start = rf?.start ?? rf?.timeWindow?.start ?? rf?.time_window?.start ?? rf?.window_start;
+          const end = rf?.end ?? rf?.timeWindow?.end ?? rf?.time_window?.end ?? rf?.window_end;
+
+          const windSpeedKphRaw =
+            rf?.windSpeedKph ??
+            rf?.wind_speed_kph ??
+            (typeof rf?.wind_mps === 'number' ? Number(rf.wind_mps) * 3.6 : undefined) ??
+            (typeof rf?.windSpeedMps === 'number' ? Number(rf.windSpeedMps) * 3.6 : undefined) ??
+            rf?.wind_speed_kph_value;
+
+          const visibilityMetersRaw = rf?.visibilityMeters ?? rf?.visibility_m ?? rf?.visibility_meters;
+          const precipitationMmRaw = rf?.precipitationMm ?? rf?.precipitation_mm ?? rf?.precipitation;
+          const snowDepthCmRaw = rf?.snowDepthCm ?? rf?.snow_depth_cm ?? rf?.snow_depth_cm_value ?? rf?.snowDepth;
+          const confidenceScoreRaw2 = rf?.confidenceScore ?? rf?.confidence_score ?? rf?.confidence;
+
+          return {
+            locationId: String(rf?.locationId ?? rf?.location_id ?? ''),
+            timeWindow: { start: String(start ?? ''), end: String(end ?? '') },
+            windSpeedKph: typeof windSpeedKphRaw === 'number' && Number.isFinite(windSpeedKphRaw) ? windSpeedKphRaw : NaN,
+            visibilityMeters:
+              typeof visibilityMetersRaw === 'number' && Number.isFinite(visibilityMetersRaw) ? visibilityMetersRaw : NaN,
+            precipitationMm:
+              typeof precipitationMmRaw === 'number' && Number.isFinite(precipitationMmRaw) ? precipitationMmRaw : NaN,
+            snowDepthCm:
+              typeof snowDepthCmRaw === 'number' && Number.isFinite(snowDepthCmRaw) ? snowDepthCmRaw : NaN,
+            temperatureC: typeof rf?.temperatureC === 'number' && Number.isFinite(rf.temperatureC) ? rf.temperatureC : NaN,
+            condition: String(rf?.condition ?? 'CLEAR'),
+            confidenceScore:
+              typeof confidenceScoreRaw2 === 'number' && Number.isFinite(confidenceScoreRaw2) ? confidenceScoreRaw2 : undefined,
+            source: typeof rf?.source === 'string' ? rf.source : undefined,
+            updatedAt:
+              typeof rf?.updatedAt === 'string'
+                ? rf.updatedAt
+                : typeof rf?.updated_at === 'string'
+                  ? rf.updated_at
+                  : undefined,
+          };
+        };
+
+        const normalizedSeries = forecastSeriesRaw
+          .map((x: any) => normalizeForecast(x))
+          .filter((f: any) => f?.timeWindow?.start && f?.timeWindow?.end);
+
+        const selected = getWeatherForTime({
+          weatherForecasts: normalizedSeries as any[],
+          timeISO: effectiveTimestampIso,
+        });
+
+        if (selected) {
+          if (typeof selected.windSpeedKph === 'number' && Number.isFinite(selected.windSpeedKph)) {
+            wind = (selected.windSpeedKph as number) / 3.6; // store in m/s
+          }
+          if (typeof selected.visibilityMeters === 'number' && Number.isFinite(selected.visibilityMeters)) {
+            visibility = selected.visibilityMeters;
+          }
+          if (typeof (selected as any).precipitationMm === 'number' && Number.isFinite((selected as any).precipitationMm)) {
+            precipitationMm = (selected as any).precipitationMm;
+          }
+          if (typeof (selected as any).snowDepthCm === 'number' && Number.isFinite((selected as any).snowDepthCm)) {
+            snowDepthCm = (selected as any).snowDepthCm;
+          }
+          if (typeof selected.confidenceScore === 'number' && Number.isFinite(selected.confidenceScore)) {
+            confidenceScore = selected.confidenceScore;
+          }
+        }
+      }
+
+      // Compute a stable hash for signature lock / drift audit.
+      // Spec: environmentHash = hash(windSpeed, visibility, snowDepth, sunset).
+      // Sunset best-effort:
+      // - Prefer direct scalar: solar.sunset_time_iso / solar.sunsetISO / ...
+      // - Else try daylightByDate[YYYY-MM-DD].(civil_dusk|sunset)
+      // - Else try sunsetByDate[YYYY-MM-DD] as "HH:mm" and lift to ISO with "Z".
+      const s = o?.solar;
+      const directSunsetISO =
+        s?.sunset_time_iso ??
+        s?.sunsetISO ??
+        s?.sunset_iso ??
+        s?.sunsetTimeIso ??
+        s?.sunset_time ??
+        undefined;
+      const dateKey =
+        typeof effectiveTimestampIso === 'string' && effectiveTimestampIso.trim()
+          ? String(effectiveTimestampIso).slice(0, 10)
+          : undefined;
+
+      const liftHHmmToIso = (hhmm: unknown): string | null => {
+        if (typeof hhmm !== 'string') return null;
+        const t = String(hhmm).trim();
+        if (!dateKey) return null;
+        // Accept only HH:mm (not full ISO) here.
+        const m = t.match(/^(\d{1,2}):(\d{2})$/);
+        if (!m) return null;
+        const hh = String(Number(m[1])).padStart(2, '0');
+        const mm = m[2];
+        return `${dateKey}T${hh}:${mm}:00.000Z`;
+      };
+
+      let sunsetISO: string | undefined = typeof directSunsetISO === 'string' && directSunsetISO.trim() ? directSunsetISO.trim() : undefined;
+      if (!sunsetISO && dateKey && s && typeof s === 'object' && !Array.isArray(s)) {
+        const daylightByDate =
+          (s as any).daylightByDate ?? (s as any).daylight_by_date ?? (s as any).daylightsByDate;
+        if (daylightByDate && typeof daylightByDate === 'object' && !Array.isArray(daylightByDate)) {
+          const v = (daylightByDate as any)[dateKey];
+          const cand = v?.civil_dusk ?? v?.civilDusk ?? v?.sunset ?? v?.Sunset;
+          if (typeof cand === 'string' && cand.trim()) sunsetISO = cand.trim();
+        }
+
+        if (!sunsetISO) {
+          const sunsetByDate = (s as any).sunsetByDate ?? (s as any).sunset_by_date;
+          const civilDuskByDate = (s as any).civilDuskByDate ?? (s as any).civil_dusk_by_date;
+          const chosen = sunsetByDate?.[dateKey] ?? civilDuskByDate?.[dateKey];
+          const lifted = liftHHmmToIso(chosen);
+          if (lifted) sunsetISO = lifted;
+        }
+      }
+
+      envHash = calculateEnvironmentHash({
+        windSpeedKph: typeof wind === 'number' && Number.isFinite(wind) ? wind * 3.6 : null,
+        visibilityMeters: typeof visibility === 'number' && Number.isFinite(visibility) ? visibility : null,
+        snowDepthCm: typeof snowDepthCm === 'number' && Number.isFinite(snowDepthCm) ? snowDepthCm : null,
+        sunsetISO: typeof sunsetISO === 'string' ? sunsetISO : null,
+      });
+
+      if (typeof wind === 'number' && Number.isFinite(wind)) {
+        const synthesized = {
+          type: 'weather_physics',
+          wind_speed_mps: wind,
+          ...(typeof threshold === 'number' && Number.isFinite(threshold) ? { threshold_mps: threshold } : {}),
+          environment_hash: envHash,
+          ...(typeof confidenceScore === 'number' ? { confidenceScore } : {}),
+          source: (evidence as any)?.source ?? 'RouteDirection_Admin_Metadata',
+          snapshotId: (evidence as any)?.at ?? params.timestampIso,
+        };
+        facts.push(
+          ...deriveFactsFromMetadata({
+            metadata: { rule_id: DRIVE_SAFETY_V1.rule_id, details: { evidence: synthesized } } as any,
+            reasonCodes: [DRIVE_SAFETY_V1.rule_id],
+            timestampIso: effectiveTimestampIso,
+          }),
+        );
+      }
+
+      if (typeof visibility === 'number' && Number.isFinite(visibility) && typeof vthr === 'number' && Number.isFinite(vthr)) {
+        facts.push({
+          rule_id: 'visibility_v1',
+          actual_value: visibility,
+          threshold: vthr,
+          unit: 'm',
+          is_violated: visibility < vthr,
+          severity: 'HARD',
+          evidence: { ...(evidence as any), derived_from: 'environment_overrides_v1', environment_hash: envHash, ...(typeof confidenceScore === 'number' ? { confidenceScore } : {}) },
+          ...(effectiveTimestampIso ? { at: effectiveTimestampIso } : {}),
+        });
+      }
+
+      // Precipitation limit (spec-aligned, confidence gated).
+      if (
+        typeof precipitationMm === 'number' &&
+        Number.isFinite(precipitationMm) &&
+        typeof precipThrMm === 'number' &&
+        Number.isFinite(precipThrMm)
+      ) {
+        const valueExceeds = precipitationMm > precipThrMm;
+        const conf = typeof confidenceScore === 'number' ? confidenceScore : null;
+        // <0.6 conservative: never violate
+        // If confidence is missing, treat as conservative (no hard violation).
+        const shouldEvaluateHard = conf == null ? false : conf >= 0.6;
+        const isViolated = valueExceeds && shouldEvaluateHard;
+        const severity = conf == null ? 'SOFT' : conf >= 0.85 ? 'HARD' : conf >= 0.6 ? 'SOFT' : 'SOFT';
+        facts.push({
+          rule_id: 'precipitation_limit_v1',
+          actual_value: precipitationMm,
+          threshold: precipThrMm,
+          unit: 'mm',
+          is_violated: isViolated,
+          severity,
+          evidence: { ...(evidence as any), derived_from: 'environment_overrides_v1', environment_hash: envHash, ...(typeof confidenceScore === 'number' ? { confidenceScore } : {}) },
+          ...(effectiveTimestampIso ? { at: effectiveTimestampIso } : {}),
+        });
+      }
+
+      // Snow depth limit (spec-aligned, confidence gated).
+      if (
+        typeof snowDepthCm === 'number' &&
+        Number.isFinite(snowDepthCm) &&
+        typeof snowDepthThrCm === 'number' &&
+        Number.isFinite(snowDepthThrCm)
+      ) {
+        const valueExceeds = snowDepthCm > snowDepthThrCm;
+        const conf = typeof confidenceScore === 'number' ? confidenceScore : null;
+        const shouldEvaluateHard = conf == null ? false : conf >= 0.6; // <0.6 conservative: never violate
+        const isViolated = valueExceeds && shouldEvaluateHard;
+        const severity = conf == null ? 'SOFT' : conf >= 0.85 ? 'HARD' : conf >= 0.6 ? 'SOFT' : 'SOFT';
+        facts.push({
+          rule_id: 'snow_depth_limit_v1',
+          actual_value: snowDepthCm,
+          threshold: snowDepthThrCm,
+          unit: 'cm',
+          is_violated: isViolated,
+          severity,
+          evidence: { ...(evidence as any), derived_from: 'environment_overrides_v1', environment_hash: envHash, ...(typeof confidenceScore === 'number' ? { confidenceScore } : {}) },
+          ...(effectiveTimestampIso ? { at: effectiveTimestampIso } : {}),
+        });
+      }
+    }
+
+    const s = o?.solar;
+    if (s && typeof s === 'object') {
+      const twilightBufferMin = s.twilightBufferMin ?? s.twilight_buffer_min ?? s.twilightBuffer;
+      if (typeof twilightBufferMin === 'number' && Number.isFinite(twilightBufferMin)) {
+        facts.push({
+          rule_id: 'solar_physics_v1',
+          actual_value: twilightBufferMin,
+          threshold: null,
+          unit: 'min',
+          is_violated: false,
+          severity: 'HARD',
+          evidence: {
+            ...(evidence as any),
+            derived_from: 'environment_overrides_v1',
+            ...(typeof envHash === 'string' ? { environment_hash: envHash } : {}),
+          },
+          ...(params.timestampIso ? { at: params.timestampIso } : {}),
+        });
+      }
+    }
+
+    return facts;
+  }
 
   // Pattern: wind threshold/value in m/s (matches ConstraintsEngine + Neptune weather evidence)
   const threshold_mps = (evidence as any)?.threshold_mps;
@@ -87,7 +369,11 @@ export function deriveFactsFromMetadata(params: {
         typeof (evidence as any)?.threshold_mps === 'number'
           ? (evidence as any)?.threshold_mps
           : driveSafetyWindThresholdMps((evidence as any)?.vehicle_type ?? (evidence as any)?.vehicleType);
-      const isViolated = Boolean((evidence as any)?.is_violated) === true || wind > thr;
+      const confidenceScoreRaw = (evidence as any)?.confidenceScore ?? (evidence as any)?.confidence_score ?? (evidence as any)?.confidence;
+      const confidenceScore = typeof confidenceScoreRaw === 'number' && Number.isFinite(confidenceScoreRaw) ? confidenceScoreRaw : undefined;
+      // Spec-aligned: low confidence should be conservative (no hard block).
+      const confOk = typeof confidenceScore === 'number' ? confidenceScore >= 0.8 : true;
+      const isViolated = Boolean((evidence as any)?.is_violated) === true || (confOk && wind > thr);
       facts.push({
         rule_id: DRIVE_SAFETY_V1.rule_id,
         actual_value: wind,

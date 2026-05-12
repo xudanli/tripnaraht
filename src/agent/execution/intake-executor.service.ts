@@ -89,7 +89,6 @@ export class IntakeExecutorService implements IIntakeExecutor {
       gaps = identifyGapsFromRequest(tripPlanRequest);
     }
 
-    const hardGaps = gaps.filter((g) => g.severity === 'HARD');
     // Intake compile: L4 schema/type + L3 lower-bound checks.
     // If compile fails, surface deterministic diagnostics as HARD gaps to block downstream phases.
     const compiled = this.intakeCompiler.compile({
@@ -106,7 +105,9 @@ export class IntakeExecutorService implements IIntakeExecutor {
     }
 
     const hardGaps2 = gaps.filter((g) => g.severity === 'HARD');
-    const clarificationQuestions = generateClarificationQuestions(hardGaps2, tripPlanRequest);
+    const clarificationQuestions = generateClarificationQuestions(hardGaps2, tripPlanRequest, {
+      locale: ctx.locale,
+    });
 
     return {
       tripPlanRequest: ctx.tripPlanRequest ?? {},

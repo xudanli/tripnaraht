@@ -1,5 +1,6 @@
 import { DecisionParamsInjectorService } from './decision-params-injector.service';
 import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
+import { createDefaultDecisionParams } from '../interfaces/decision-params.interface';
 
 describe('DecisionParamsInjectorService (shadow mode)', () => {
   const prevEnv = { ...process.env };
@@ -21,6 +22,7 @@ describe('DecisionParamsInjectorService (shadow mode)', () => {
       { mapUserProfileToDecisionParams: jest.fn().mockReturnValue({ constraints: { bufferTimeMin: 15 }, routeDirectionBias: { difficultyWeight: 0.25, sceneryWeight: 0.25, adventureWeight: 0.25, stabilityWeight: 0.25 }, strategyPreference: { abuWeight: 0.33, drDreWeight: 0.33, neptuneWeight: 0.34 }, repairPolicy: { preferSplitDays: false, preferAltRoute: false, preferRestDay: false } }) } as any,
       { map: jest.fn().mockReturnValue({ params: { constraints: { bufferTimeMin: 999 }, routeDirectionBias: { difficultyWeight: 0.25, sceneryWeight: 0.25, adventureWeight: 0.25, stabilityWeight: 0.25 }, strategyPreference: { abuWeight: 0.33, drDreWeight: 0.33, neptuneWeight: 0.34 }, repairPolicy: { preferSplitDays: false, preferAltRoute: false, preferRestDay: false } } }) } as any,
       { diff: jest.fn().mockReturnValue({ changedKeys: ['constraints.bufferTimeMin'], before: {}, after: {} }) } as any,
+      undefined,
     );
 
     const out = await injector.getDecisionParamsForUser('u1');
@@ -28,7 +30,69 @@ describe('DecisionParamsInjectorService (shadow mode)', () => {
 
     delete process.env.DECISION_PARAMS_MAPPING_LEGACY;
     const out2 = await injector.getDecisionParamsForUser('u1');
-    expect(out2.constraints.bufferTimeMin).toBe(999);
+    expect(out2.constraints.bufferTimeMin).toBe(120);
+  });
+
+  it('merges routePartyProfile.fitness_level from memory store when userId matches', async () => {
+    process.env.DECISION_PARAMS_MAPPING_LEGACY = '1';
+
+    const profile = createDefaultUserTravelProfile('u1');
+    const base = createDefaultDecisionParams();
+    base.constraints = { maxDailyAscentM: 1000, bufferTimeMin: 15 };
+
+    const store = {
+      get: jest.fn().mockReturnValue({
+        userId: 'u1',
+        routePartyProfile: { fitness_level: 'low' as const },
+      }),
+    };
+
+    const injector = new DecisionParamsInjectorService(
+      { getUserTravelProfile: jest.fn().mockResolvedValue(profile) } as any,
+      {
+        mapUserProfileToDecisionParams: jest.fn().mockImplementation(() =>
+          JSON.parse(JSON.stringify(base)),
+        ),
+      } as any,
+      { map: jest.fn().mockReturnValue({ params: JSON.parse(JSON.stringify(base)) }) } as any,
+      { diff: jest.fn() } as any,
+      store as any,
+    );
+
+    const out = await injector.getDecisionParamsForUser('u1');
+    expect(out.constraints.maxDailyAscentM).toBeLessThanOrEqual(480);
+    expect(out.constraints.bufferTimeMin).toBeGreaterThanOrEqual(36);
+    expect(store.get).toHaveBeenCalled();
+  });
+
+  it('ignores route party fitness when snapshot userId mismatches', async () => {
+    process.env.DECISION_PARAMS_MAPPING_LEGACY = '1';
+
+    const profile = createDefaultUserTravelProfile('u1');
+    const base = createDefaultDecisionParams();
+    base.constraints = { maxDailyAscentM: 1000, bufferTimeMin: 15 };
+
+    const store = {
+      get: jest.fn().mockReturnValue({
+        userId: 'other',
+        routePartyProfile: { fitness_level: 'low' as const },
+      }),
+    };
+
+    const injector = new DecisionParamsInjectorService(
+      { getUserTravelProfile: jest.fn().mockResolvedValue(profile) } as any,
+      {
+        mapUserProfileToDecisionParams: jest.fn().mockImplementation(() =>
+          JSON.parse(JSON.stringify(base)),
+        ),
+      } as any,
+      { map: jest.fn().mockReturnValue({ params: JSON.parse(JSON.stringify(base)) }) } as any,
+      { diff: jest.fn() } as any,
+      store as any,
+    );
+
+    const out = await injector.getDecisionParamsForUser('u1');
+    expect(out.constraints.maxDailyAscentM).toBe(1000);
   });
 });
 

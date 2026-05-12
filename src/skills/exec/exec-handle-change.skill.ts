@@ -11,7 +11,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { ChangeHandlingResult, ChangeType } from './shared/execution-state.types';
 import { LlmService } from '../../llm/services/llm.service';
-import { LlmProvider } from '../../llm/dto/llm-request.dto';
 
 export interface ExecHandleChangeInput extends SkillInput {
   /** Trip ID */
@@ -76,7 +75,7 @@ export class ExecHandleChangeSkill implements Skill<ExecHandleChangeInput, ExecH
 ${userPrompt}`;
       
       const resultStr = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        this.llmService.getDefaultProvider(),
         fullPrompt,
         {
           type: 'object',

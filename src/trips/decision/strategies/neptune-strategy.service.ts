@@ -9,6 +9,10 @@
  * ❌ 不得忽略硬约束
  * ❌ 不得改变 RouteDirection 哲学
  * 
+ * 走廊迁移（P2-B）：经济学批准的 `ProposedCorridorMigration` 由决策管线物化到
+ * `TripWorldState.signals.proposedCorridorMigrations` + `simulationPreview`；
+ * Neptune 此处不负责自动 commit / mutate TripPlan —— 仅空间 REPLACE 与哲学守卫。
+ *
  * Neptune 只能做三件事：
  * 1. 换入口 / 换节点 / 换局部走廊（REPLACE）
  * 2. 保持 RouteDirection 不变
@@ -49,6 +53,7 @@ import {
 import { RoutePhilosophy } from '../models/route-philosophy.model';
 import { ExaIntegrationService } from '../../../mcp/exa-integration.service';
 import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
+import { evaluateConstraintFeasibility } from '../../../world/world-constraint-feasibility.policy';
 import { BookingComIntegrationService } from '../../../mcp/booking-com-integration.service';
 
 @Injectable()
@@ -95,7 +100,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
             persona: 'NEPTUNE',
             action: 'ALLOW',
             explanation: '未发现空间层面的阻断或封闭问题',
-            reasonCodes: [],
+            reasonCodes: ['SPATIAL_NO_BLOCKERS'],
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'PHYSICAL',
@@ -137,6 +142,29 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
     let hasReplacement = false;
 
     for (const issue of spatialIssues) {
+      // 执行质量降级：记录语义，但不触发走廊替换（避免把 degraded 误当作封路）
+      if (issue.metadata?.skipSpatialRepair === true) {
+        const reasonCodes =
+          issue.metadata?.source === 'DAYLIGHT_FEASIBILITY'
+            ? ['DAYLIGHT_FEASIBILITY', 'TEMPORAL_HINT']
+            : [
+                'EXECUTION_QUALITY',
+                issue.metadata?.executionState ?? 'DEGRADED',
+              ];
+        logs.push({
+          persona: 'NEPTUNE',
+          action: 'ALLOW',
+          explanation: issue.reason,
+          reasonCodes,
+          evidenceRefs: [issue.issueId],
+          timestamp: new Date().toISOString(),
+          decisionSource: 'PHYSICAL',
+          decisionStage: 'SPATIAL_REPAIR',
+          metadata: issue.metadata,
+        });
+        continue;
+      }
+
       const operation = await this.handleIssue(
         issue,
         world,
@@ -366,10 +394,37 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
   ): Promise<SpatialIssue[]> {
     const issues: SpatialIssue[] = [];
 
+    const execView = world.executionSemanticView;
+
+    /** SSOT 快照优先：与 legacy physical.roadStates 二选一式闸门，避免双重 HARD */
+    let skipLegacyPhysicalRoadClosure = false;
+    const ssotSnap = execView?.world?.constraints;
+    if (ssotSnap && plan.segments.length > 0) {
+      const feas = evaluateConstraintFeasibility({ snapshot: ssotSnap });
+      if (feas.verdict === 'BLOCK') {
+        skipLegacyPhysicalRoadClosure = true;
+        const segment = plan.segments[0];
+        issues.push({
+          issueId: `world_ssot_road_hard_${segment.segmentId}_${Date.now()}`,
+          type: 'SEGMENT_BLOCKED',
+          segmentId: segment.segmentId,
+          severity: 'HARD',
+          reason:
+            '路网在世界 SSOT 中不可行（evaluateConstraintFeasibility / CLOSED）',
+          metadata: {
+            issue: 'WORLD_SSOT_ROAD_INFEASIBLE',
+            source: 'WORLD_CONSTRAINT_FEASIBILITY',
+            feasibilityCodes: feas.codes,
+            feasibilityReasons: feas.reasons,
+          },
+        });
+      }
+    }
+
     // 0. Emergency hard-forbidden segments (physical.roadStates overlay)
     // If a segment is marked CLOSED (especially from EMERGENCY_CONSTRAINT), Neptune must treat it as HARD blocked.
     const roadStates = Array.isArray(world?.physical?.roadStates) ? world.physical.roadStates : [];
-    if (roadStates.length > 0) {
+    if (!skipLegacyPhysicalRoadClosure && roadStates.length > 0) {
       for (const segment of plan.segments) {
         const rs = roadStates.find((r: any) => String(r?.segmentId ?? '') === String(segment.segmentId));
         if (!rs) continue;
@@ -390,10 +445,378 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
       }
     }
 
-    // 1. 检测天气硬违规导致的路段阻塞
-    // 注意：天气证据现在应该从 PhysicalRealityModel.climateSeasonality 获取
-    // 这里暂时跳过，因为 PhysicalRealityModel 中没有直接的 weatherEvidence
-    // TODO: 从 PhysicalRealityModel.climateSeasonality 中提取天气信息
+    // 0b. Road → Trip propagation runtime（lineage.roadConstraintRuntimeTrace）
+    const rcTrace = execView?.authority?.lineage?.roadConstraintRuntimeTrace;
+    if (rcTrace && plan.segments.length > 0) {
+      const segment = plan.segments[0];
+      const hard =
+        rcTrace.requiresReplan ||
+        rcTrace.roadImpactSeverity === 'HIGH' ||
+        rcTrace.tripImpactSeverity === 'HIGH';
+      if (hard) {
+        issues.push({
+          issueId: `road_constraint_hard_${segment.segmentId}_${Date.now()}`,
+          type: 'SEGMENT_BLOCKED',
+          segmentId: segment.segmentId,
+          severity: 'HARD',
+          reason:
+            '路网硬约束：可达性失效或必须重规划（ROAD_CONSTRAINT_CHANGE / TripImpact）',
+          metadata: {
+            issue: 'HARD_ROAD_BLOCK',
+            action: 'REPLAN_REQUIRED',
+            roadConstraintRuntimeTrace: rcTrace,
+          },
+        });
+      } else {
+        issues.push({
+          issueId: `road_constraint_soft_${segment.segmentId}_${Date.now()}`,
+          type: 'POI_UNAVAILABLE',
+          severity: 'SOFT',
+          reason:
+            '路网降级：部分行程槽位/POI 受影响（建议调整而非强制走廊替换）',
+          metadata: {
+            issue: 'SOFT_ROAD_DEGRADATION',
+            action: 'SUGGEST_ADJUSTMENT',
+            roadConstraintRuntimeTrace: rcTrace,
+          },
+        });
+      }
+    }
+
+    // 0e. Partial replan runtime（PARTIAL_REPLAN_EXECUTED）：局部世界已重算 → Neptune 校验收口为 ACCEPTED（不再重复 0c/0d「待修复」噪声）
+    const lineage = execView?.authority?.lineage;
+    const partialReplanTrace = lineage?.partialReplanTrace;
+    const partialReplanExecuted =
+      lineage?.lastSemanticDeltaKind === 'PARTIAL_REPLAN_EXECUTED';
+    const streamingReplanExecuted =
+      lineage?.lastSemanticDeltaKind === 'STREAMING_REPLAN';
+    if (
+      (partialReplanExecuted || streamingReplanExecuted || partialReplanTrace) &&
+      plan.segments.length > 0
+    ) {
+      const segment = plan.segments[0];
+      issues.push({
+        issueId: `partial_replan_verified_${segment.segmentId}_${Date.now()}`,
+        type: 'POI_UNAVAILABLE',
+        segmentId: segment.segmentId,
+        severity: 'SOFT',
+        reason:
+          '局部重规划已执行（Partial Replan Runtime）；约束融合闭包已由运行时局部重算收敛',
+        metadata: {
+          issue: 'REPLAN_SUCCESS',
+          action: 'ACCEPTED',
+          confidence: 1,
+          partialReplanTrace,
+        },
+      });
+    } else {
+      // 0c. Multi-constraint fusion（SLOT_BLOCKED / lineage.slotConstraintFusionTrace）
+      const slotFusion = execView?.authority?.lineage?.slotConstraintFusionTrace;
+      if (slotFusion?.blockedSlots?.length && plan.segments.length > 0) {
+        const segment = plan.segments[0];
+        if (slotFusion.hasMultiDomainHardConflict) {
+          issues.push({
+            issueId: `multi_constraint_fusion_${segment.segmentId}_${Date.now()}`,
+            type: 'SEGMENT_BLOCKED',
+            segmentId: segment.segmentId,
+            severity: 'HARD',
+            reason:
+              '多约束联合阻断（同槽 ROAD + WEATHER，Constraint Fusion）',
+            metadata: {
+              issue: 'MULTI_CONSTRAINT_BLOCK',
+              action: 'REPLAN_REQUIRED',
+              slotConstraintFusionTrace: slotFusion,
+            },
+          });
+        } else {
+          issues.push({
+            issueId: `single_constraint_fusion_${segment.segmentId}_${Date.now()}`,
+            type: 'POI_UNAVAILABLE',
+            severity: 'SOFT',
+            reason:
+              '槽位级约束阻断（单域或融合 SOFT_REPAIR 候选）',
+            metadata: {
+              issue: 'SINGLE_CONSTRAINT_BLOCK',
+              action: 'SOFT_REPAIR',
+              slotConstraintFusionTrace: slotFusion,
+            },
+          });
+        }
+      }
+
+      // 0d. Slot repair engine（SLOT_REPAIR_SUGGESTED / lineage.slotRepairTrace）
+      const repairTrace = execView?.authority?.lineage?.slotRepairTrace;
+      if (repairTrace?.repairs?.length && plan.segments.length > 0) {
+        const segment = plan.segments[0];
+        const primary = repairTrace.repairs[0]!;
+        if (primary.action === 'REMOVE') {
+          issues.push({
+            issueId: `slot_repair_remove_${segment.segmentId}_${Date.now()}`,
+            type: 'SEGMENT_BLOCKED',
+            segmentId: segment.segmentId,
+            severity: 'HARD',
+            reason: '槽位修复引擎建议移除活动（硬阻断 / 需重规划）',
+            metadata: {
+              issue: 'HARD_BLOCK',
+              action: 'REPLAN_REQUIRED',
+              slotRepairTrace: repairTrace,
+            },
+          });
+        } else if (primary.action === 'REPLACE_POI') {
+          issues.push({
+            issueId: `slot_repair_replace_${segment.segmentId}_${Date.now()}`,
+            type: 'POI_UNAVAILABLE',
+            severity: 'SOFT',
+            reason: '槽位修复：建议替换 POI（AUTO_REPAIR_ALLOWED）',
+            metadata: {
+              issue: 'SOFT_BLOCK',
+              action: 'AUTO_REPAIR_ALLOWED',
+              slotRepairTrace: repairTrace,
+            },
+          });
+        }
+      }
+    }
+
+    // 0f. Continuous execution runtime — 约束流驱动的演化视图（REAL_TIME_DISRUPTION vs MINOR_DRIFT）
+    const streamRt = execView?.runtime;
+    if (streamRt?.source === 'STREAM' && plan.segments.length > 0) {
+      const segment = plan.segments[0];
+      if (streamRt.lastStreamSeverity === 'HIGH') {
+        issues.push({
+          issueId: `stream_realtime_disruption_${segment.segmentId}_${Date.now()}`,
+          type: 'SEGMENT_BLOCKED',
+          segmentId: segment.segmentId,
+          severity: 'HARD',
+          reason:
+            '实时约束流：高严重度扰动（REAL_TIME_DISRUPTION / IMMEDIATE_REPLAN）',
+          metadata: {
+            issue: 'REAL_TIME_DISRUPTION',
+            action: 'IMMEDIATE_REPLAN',
+            runtime: streamRt,
+          },
+        });
+      } else {
+        issues.push({
+          issueId: `stream_minor_drift_${segment.segmentId}_${Date.now()}`,
+          type: 'POI_UNAVAILABLE',
+          segmentId: segment.segmentId,
+          severity: 'SOFT',
+          reason:
+            '实时约束流：低～中严重度漂移（MINOR_DRIFT / CONTINUE_MONITORING）',
+          metadata: {
+            issue: 'MINOR_DRIFT',
+            action: 'CONTINUE_MONITORING',
+            runtime: streamRt,
+          },
+        });
+      }
+    }
+
+    // 0g. Self-healing runtime — 世界是否已收敛（WORLD_STABLE vs 继续自愈）
+    const healingRt = execView?.healing;
+    if (healingRt && plan.segments.length > 0) {
+      const segment = plan.segments[0];
+      if (healingRt.status === 'STABLE') {
+        issues.push({
+          issueId: `world_stable_${segment.segmentId}_${Date.now()}`,
+          type: 'POI_UNAVAILABLE',
+          segmentId: segment.segmentId,
+          severity: 'SOFT',
+          reason:
+            '自愈闭环：约束世界已收敛至稳定解（WORLD_STABLE / NO_REPLAN）',
+          metadata: {
+            issue: 'WORLD_STABLE',
+            action: 'NO_REPLAN',
+            healing: healingRt,
+          },
+        });
+      } else if (healingRt.status === 'UNSTABLE') {
+        issues.push({
+          issueId: `world_unstable_${segment.segmentId}_${Date.now()}`,
+          type: 'POI_UNAVAILABLE',
+          segmentId: segment.segmentId,
+          severity: 'SOFT',
+          reason:
+            '自愈闭环：世界仍未收敛，需继续迭代（WORLD_UNSTABLE / CONTINUE_HEALING）',
+          metadata: {
+            issue: 'WORLD_UNSTABLE',
+            action: 'CONTINUE_HEALING',
+            healing: healingRt,
+          },
+        });
+      }
+    }
+
+    // 0h. Causal explanation — 可审计决策链（EXPLAINABLE_DECISION）
+    const causalExpl = execView?.explanation;
+    if (causalExpl && plan.segments.length > 0) {
+      const segment = plan.segments[0];
+      issues.push({
+        issueId: `explainable_decision_${segment.segmentId}_${Date.now()}`,
+        type: 'POI_UNAVAILABLE',
+        segmentId: segment.segmentId,
+        severity: 'SOFT',
+        reason: causalExpl.summary,
+        metadata: {
+          issue: 'EXPLAINABLE_DECISION',
+          action: 'RETURN_CAUSAL_CHAIN',
+          explanation: causalExpl,
+        },
+      });
+    }
+
+    // 0i. Counterfactual — 假设世界更优路径（COUNTERFACTUAL_BETTER_PATH）
+    const cf = execView?.counterfactual;
+    if (
+      cf?.bestAlternative === 'Switch to alternative plan' &&
+      plan.segments.length > 0
+    ) {
+      const segment = plan.segments[0];
+      issues.push({
+        issueId: `counterfactual_better_${segment.segmentId}_${Date.now()}`,
+        type: 'POI_UNAVAILABLE',
+        segmentId: segment.segmentId,
+        severity: 'SOFT',
+        reason:
+          '反事实模拟：存在更优分支（COUNTERFACTUAL_BETTER_PATH / SUGGEST_REPLAN）',
+        metadata: {
+          issue: 'COUNTERFACTUAL_BETTER_PATH',
+          action: 'SUGGEST_REPLAN',
+          confidence: 0.9,
+          counterfactual: cf,
+        },
+      });
+    }
+
+    // 0j. Intent–Reality — 高严重度意图冲突（INTENT_CONSTRAINT_MISMATCH）
+    const intentRec = execView?.intentReconciliation;
+    if (
+      intentRec?.conflicts.some((c) => c.severity === 'HIGH') &&
+      plan.segments.length > 0
+    ) {
+      const segment = plan.segments[0];
+      const high = intentRec.conflicts.filter((c) => c.severity === 'HIGH');
+      issues.push({
+        issueId: `intent_reality_mismatch_${segment.segmentId}_${Date.now()}`,
+        type: 'SEGMENT_BLOCKED',
+        segmentId: segment.segmentId,
+        severity: 'HARD',
+        reason:
+          '意图与现实约束严重不匹配（INTENT_CONSTRAINT_MISMATCH / SUGGEST_RESTRUCTURE）',
+        metadata: {
+          issue: 'INTENT_CONSTRAINT_MISMATCH',
+          action: 'SUGGEST_RESTRUCTURE',
+          conflicts: high,
+          tradeoffs: intentRec.tradeoffs,
+          priorities: intentRec.priorities,
+          explanation: execView?.explanation,
+        },
+      });
+    }
+
+    // 0k. Narrative itinerary — 体验叙事就绪（NARRATIVE_ITINERARY_READY）
+    const narrative = execView?.narrative;
+    if (narrative && plan.segments.length > 0) {
+      const segment = plan.segments[0];
+      issues.push({
+        issueId: `narrative_ready_${segment.segmentId}_${Date.now()}`,
+        type: 'POI_UNAVAILABLE',
+        segmentId: segment.segmentId,
+        severity: 'SOFT',
+        reason: narrative.summary,
+        metadata: {
+          issue: 'NARRATIVE_ITINERARY_READY',
+          action: 'RETURN_STORY_MODE',
+          payload: narrative,
+        },
+      });
+    }
+
+    // 1. 实况天气：仅 UnifiedExecutionSemanticView（TripDecisionEngine 物化；physical.weatherEvidence 不再作为决策输入）
+    if (execView?.byDate && Object.keys(execView.byDate).length > 0) {
+      const dates = Object.keys(execView.byDate).sort();
+      const hardDate = dates.find(
+        d => execView.byDate[d]?.neptuneWeatherTier === 'HARD',
+      );
+      const softDate = dates.find(
+        d => execView.byDate[d]?.neptuneWeatherTier === 'SOFT',
+      );
+
+      if (hardDate && plan.segments.length > 0) {
+        const wx = execView.byDate[hardDate]!.weather;
+        for (const segment of plan.segments) {
+          issues.push({
+            issueId: `weather_evidence_${segment.segmentId}_${Date.now()}`,
+            type: 'SEGMENT_BLOCKED',
+            segmentId: segment.segmentId,
+            severity: 'HARD',
+            reason:
+              wx.explanation ||
+              '天气不满足安全阈值（UNIFIED_EXECUTION_SEMANTIC_VIEW HARD）',
+            metadata: {
+              source: 'UNIFIED_EXECUTION_SEMANTIC_VIEW',
+              evidence_date: hardDate,
+              executionState: wx.executionState,
+              violation: wx.violation,
+              hazards: wx.hazards,
+              executionQuality: wx.executionQuality,
+              windSpeedMs: wx.windSpeedMs,
+              visibilityKm: wx.visibilityKm,
+            },
+          });
+          break;
+        }
+      } else if (softDate && plan.segments.length > 0) {
+        const wx = execView.byDate[softDate]!.weather;
+        const segment = plan.segments[0];
+        issues.push({
+          issueId: `weather_quality_${softDate}_${segment.segmentId}_${Date.now()}`,
+          type: 'SEGMENT_BLOCKED',
+          segmentId: segment.segmentId,
+          severity: 'SOFT',
+          reason:
+            wx.explanation ||
+            `天气执行质量: ${wx.executionState ?? 'DEGRADED'}（非封路，需降速/预留时间）`,
+          metadata: {
+            skipSpatialRepair: true,
+            executionState: wx.executionState,
+            hazards: wx.hazards,
+            executionQuality: wx.executionQuality,
+            source: 'UNIFIED_EXECUTION_SEMANTIC_VIEW',
+            evidence_date: softDate,
+          },
+        });
+      }
+    }
+
+    // 1a. 民用晨光/暮光（时间域 SOFT：跳过走廊替换，记录 temporal micro-repair 语义）
+    const daylightSig = world.physical.daylightFeasibilitySignal;
+    if (
+      daylightSig &&
+      daylightSig.violationCount > 0 &&
+      plan.segments.length > 0
+    ) {
+      const segment = plan.segments[0];
+      issues.push({
+        issueId: `daylight_feasibility_${segment.segmentId}_${Date.now()}`,
+        type: 'SEGMENT_BLOCKED',
+        segmentId: segment.segmentId,
+        severity: 'SOFT',
+        reason: `民用晨光/暮光：${daylightSig.violationCount} 个敏感槽位超出光照提示窗（宜改时刻/压缩停留，非走廊几何替换）`,
+        metadata: {
+          skipSpatialRepair: true,
+          source: 'DAYLIGHT_FEASIBILITY',
+          slotsEndingAfterCivilDusk: daylightSig.slotsEndingAfterCivilDusk,
+          slotsStartingBeforeCivilDawn:
+            daylightSig.slotsStartingBeforeCivilDawn,
+          latitudeDeg: daylightSig.latitudeDeg,
+          longitudeDeg: daylightSig.longitudeDeg,
+        },
+      });
+    }
+
+    // 1b. 气候季节性（典型月气候，与实况证据互补）
     if (world.physical.climateSeasonality) {
       const climate = world.physical.climateSeasonality;
       // 检查天气条件是否导致路段阻塞

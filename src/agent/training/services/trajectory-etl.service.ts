@@ -109,7 +109,7 @@ export class TrajectoryETLService {
         const rlTrajectory = await this.transformToRLFormat(trajectory);
         
         // 进行数据质量检查
-        const qualityResult = await this.qualityChecker.validateTrajectory(rlTrajectory);
+        const qualityResult = await this.qualityChecker!.validateTrajectory(rlTrajectory);
         
         if (qualityResult.isValid) {
           rlTrajectories.push(rlTrajectory);
@@ -371,7 +371,7 @@ export class TrajectoryETLService {
     }
 
     // 2. 数据集质量检查
-    const qualityResult = await this.qualityChecker.validateDataset(trajectories);
+    const qualityResult = await this.qualityChecker!.validateDataset(trajectories);
     this.logger.log(
       `[TrajectoryETL] 数据集质量检查: score=${qualityResult.score.toFixed(2)}, valid=${qualityResult.stats.valid_trajectories}/${qualityResult.stats.total_trajectories}`,
     );
@@ -381,7 +381,7 @@ export class TrajectoryETLService {
     if (anonymizePII) {
       this.logger.log(`[TrajectoryETL] 开始PII脱敏: count=${trajectories.length}`);
       finalTrajectories = await Promise.all(
-        trajectories.map((t) => this.piiAnonymizer.anonymizeTrajectory(t, piiConfig)),
+        trajectories.map((t) => this.piiAnonymizer!.anonymizeTrajectory(t, piiConfig)),
       );
       this.logger.log(`[TrajectoryETL] PII脱敏完成`);
     }
@@ -405,7 +405,7 @@ export class TrajectoryETLService {
     let version: string | undefined;
     if (createVersion) {
       try {
-        const datasetVersion = await this.versionManager.createDatasetVersion(
+        const datasetVersion = await this.versionManager!.createDatasetVersion(
           result,
           qualityResult,
           {

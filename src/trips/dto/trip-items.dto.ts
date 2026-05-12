@@ -6,7 +6,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  */
 export class BatchUpdateItemDto {
   @ApiProperty({ description: '行程项 ID' })
-  itemId: string;
+  itemId!: string;
 
   @ApiPropertyOptional({ description: '开始时间（ISO 8601）' })
   startTime?: string;
@@ -26,7 +26,7 @@ export class BatchUpdateItemDto {
  */
 export class BatchUpdateItemsRequestDto {
   @ApiProperty({ description: '更新列表', type: [BatchUpdateItemDto] })
-  updates: BatchUpdateItemDto[];
+  updates!: BatchUpdateItemDto[];
 }
 
 /**
@@ -34,13 +34,13 @@ export class BatchUpdateItemsRequestDto {
  */
 export class BatchUpdateItemsResponseDto {
   @ApiProperty({ description: '是否成功' })
-  success: boolean;
+  success!: boolean;
 
   @ApiProperty({ description: '更新的项数量' })
-  updatedCount: number;
+  updatedCount!: number;
 
   @ApiProperty({ description: '失败的项数量' })
-  failedCount: number;
+  failedCount!: number;
 
   @ApiPropertyOptional({ description: '错误信息' })
   errors?: Array<{

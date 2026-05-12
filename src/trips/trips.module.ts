@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TripsService } from './trips.service';
 import { TripsController } from './trips.controller';
+import { WorldKernelController } from './world-kernel.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FlightPriceService } from './services/flight-price.service';
 import { FlightPriceDetailService } from './services/flight-price-detail.service';
@@ -38,6 +39,7 @@ import { EvidenceFetchTaskService } from './services/evidence-fetch-task.service
 import { NLConversationContextService } from './services/nl-conversation-context.service';
 import { LlmModule } from '../llm/llm.module';
 import { DecisionModule } from './decision/decision.module';
+import { SharedMemoryModule } from '../agent/memory/shared-memory.module';
 import { ItineraryItemsModule } from '../itinerary-items/itinerary-items.module';
 import { AuthModule } from '../auth/auth.module';
 import { RedisModule } from '../redis/redis.module';
@@ -52,10 +54,24 @@ import { TransportModule } from '../transport/transport.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
 import { DsoFeedbackPersistenceModule } from './decision/dso-feedback-persistence.module';
 import { PlanningPolicyModule } from '../planning-policy/planning-policy.module';
+import { SolverService } from './solver/solver.service';
+import { TripDraftOrchestratorService } from './draft-synthesis/runtime/trip-draft-orchestrator.service';
+import { DraftRuntimeCore } from './draft-synthesis/runtime/draft-runtime-core.service';
+import { UserIntentStateService } from './services/user-intent-state.service';
+import { GlobalPolicyWeightsService } from './services/global-policy-weights.service';
+import { WorldSimulationService } from './services/world-simulation.service';
+import { WorldOrchestratorService } from './services/world-orchestrator.service';
+import { WorldBusService } from './services/world-bus.service';
+import { WorldBusEventLogService } from './services/world-bus-event-log.service';
+import { WorldKernelService } from './services/world-kernel.service';
+import { RealWorldExecutionService } from './services/real-world-execution.service';
+import { RealityGovernanceService } from './services/reality-governance.service';
+import { CityDigitalTwinService } from './services/city-digital-twin.service';
+import { StubRealityApiService } from './services/stub-reality-api.service';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule, PlanningPolicyModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
-  controllers: [TripsController],
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule, PlanningPolicyModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
     FlightPriceService, 
@@ -75,7 +91,20 @@ import { PlanningPolicyModule } from '../planning-policy/planning-policy.module'
     TravelSimulationService, // Travel World Model Phase 5: 体验预测
     RouteOptimizationEngine,
     CandidateRetrievalEngine,
-    TripDraftService, 
+    TripDraftService,
+    TripDraftOrchestratorService,
+    DraftRuntimeCore,
+    UserIntentStateService,
+    GlobalPolicyWeightsService,
+    WorldSimulationService,
+    WorldOrchestratorService,
+    WorldBusEventLogService,
+    WorldBusService,
+    WorldKernelService,
+    RealWorldExecutionService,
+    RealityGovernanceService,
+    CityDigitalTwinService,
+    StubRealityApiService,
     TripMetricsService, 
     TripConflictsService, 
     TripIntentService, 
@@ -92,8 +121,11 @@ import { PlanningPolicyModule } from '../planning-policy/planning-policy.module'
     EvidenceTriggerService,
     EvidenceFetchTaskService,
     NLConversationContextService,
+    SolverService,
   ],
   exports: [
+    WorldKernelService,
+    WorldBusService,
     TripsService, 
     FlightPriceService, 
     FlightPriceDetailService, 

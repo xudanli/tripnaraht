@@ -54,6 +54,11 @@ export class UpdatePlaceDto {
   @IsObject()
   metadata?: any;
 
+  @ApiPropertyOptional({ description: '本体规则（JSONB，POI准入/装备/限制等）', type: Object })
+  @IsOptional()
+  @IsObject()
+  ontologyRules?: any;
+
   @ApiPropertyOptional({ description: '体力消耗元数据（JSONB）', type: Object })
   @IsOptional()
   @IsObject()

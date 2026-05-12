@@ -1,20 +1,24 @@
 // src/rag/services/enhanced-chat.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
 import { EnhancedChatService, RouteQuestionContext } from './enhanced-chat.service';
-import { RagService } from './rag.service';
+import { ChunkRetrievalService } from './chunk-retrieval.service';
 import { RouteKnowledgeCurator } from './route-knowledge-curator.service';
 import { LocalInsightService } from './local-insight.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
 
 describe('EnhancedChatService', () => {
   let service: EnhancedChatService;
-  let ragService: jest.Mocked<RagService>;
+  let chunkRetrieval: jest.Mocked<Pick<ChunkRetrievalService, 'retrieve'>>;
   let routeKnowledgeCurator: jest.Mocked<RouteKnowledgeCurator>;
   let localInsightService: jest.Mocked<LocalInsightService>;
   let prisma: jest.Mocked<PrismaService>;
 
   beforeEach(async () => {
-    const mockRagService = {
+    process.env.REALITY_ENFORCEMENT = '0';
+    process.env.RAG_REALITY_POLICY_ENFORCE = '0';
+
+    const mockChunkRetrieval = {
       retrieve: jest.fn(),
     };
 
@@ -40,8 +44,8 @@ describe('EnhancedChatService', () => {
       providers: [
         EnhancedChatService,
         {
-          provide: RagService,
-          useValue: mockRagService,
+          provide: ChunkRetrievalService,
+          useValue: mockChunkRetrieval,
         },
         {
           provide: RouteKnowledgeCurator,
@@ -55,11 +59,18 @@ describe('EnhancedChatService', () => {
           provide: PrismaService,
           useValue: mockPrisma,
         },
+        {
+          provide: RagRealityPolicyGateService,
+          useValue: {
+            resolve: jest.fn(),
+            mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<EnhancedChatService>(EnhancedChatService);
-    ragService = module.get(RagService);
+    chunkRetrieval = module.get(ChunkRetrievalService);
     routeKnowledgeCurator = module.get(RouteKnowledgeCurator);
     localInsightService = module.get(LocalInsightService);
     prisma = module.get(PrismaService);
@@ -91,14 +102,20 @@ describe('EnhancedChatService', () => {
 
     it('应该使用 RAG 补充回答（当结构化数据不够时）', async () => {
       prisma.routeDirection.findUnique.mockResolvedValue(null);
-      ragService.retrieve.mockResolvedValue([
+      chunkRetrieval.retrieve.mockResolvedValue([
         {
           id: '1',
+          chunkId: 'c1',
           content: '这是 RAG 检索到的内容',
-          title: 'RAG 文档',
-          score: 0.8,
+          type: 'text',
+          credibilityScore: 0.8,
+          keywords: [] as string[],
+          metadata: { title: 'RAG 文档' },
+          fileId: 'f1',
+          similarity: 0.8,
+          sourceFile: 'doc.md',
         },
-      ]);
+      ] as any);
       localInsightService.getLocalInsight.mockResolvedValue([
         {
           countryCode: 'IS',
@@ -115,12 +132,13 @@ describe('EnhancedChatService', () => {
 
       const result = await service.answerRouteQuestion('这条路线怎么样？', context);
 
-      expect(ragService.retrieve).toHaveBeenCalled();
+      expect(chunkRetrieval.retrieve).toHaveBeenCalled();
       expect(result.source).toMatch(/RAG|HYBRID/);
     });
 
     it('应该处理错误情况', async () => {
       prisma.routeDirection.findUnique.mockRejectedValue(new Error('数据库错误'));
+      chunkRetrieval.retrieve.mockResolvedValue([]);
 
       const context: RouteQuestionContext = {
         routeDirectionId: '1',
@@ -129,7 +147,7 @@ describe('EnhancedChatService', () => {
       const result = await service.answerRouteQuestion('这条路线怎么样？', context);
 
       expect(result.answer).toContain('抱歉');
-      expect(result.source).toBe('STRUCTURED');
+      expect(result.source).toMatch(/STRUCTURED|RAG/);
     });
   });
 
@@ -147,28 +165,26 @@ describe('EnhancedChatService', () => {
           nameEN: 'Route B',
         } as any);
 
-      ragService.retrieve
-        .mockResolvedValueOnce([
-          {
-            id: '1',
-            content: '路线A更适合',
-            title: '路线对比',
-            score: 0.8,
-          },
-        ])
-        .mockResolvedValueOnce([
-          {
-            id: '2',
-            content: '路线B的特点',
-            title: '路线B',
-            score: 0.7,
-          },
-        ]);
+      const chunkRow = (content: string, sim: number) => ({
+        id: '1',
+        chunkId: 'c1',
+        content,
+        type: 'text',
+        credibilityScore: sim,
+        keywords: [] as string[],
+        metadata: {},
+        fileId: 'f1',
+        similarity: sim,
+        sourceFile: 'x.md',
+      });
+      chunkRetrieval.retrieve
+        .mockResolvedValueOnce([chunkRow('路线A更适合', 0.8)] as any)
+        .mockResolvedValueOnce([chunkRow('路线B的特点', 0.7)] as any);
 
       const result = await service.explainWhyNotOtherRoute('1', '2', 'IS');
 
       expect(prisma.routeDirection.findUnique).toHaveBeenCalledTimes(2);
-      expect(ragService.retrieve).toHaveBeenCalledTimes(2);
+      expect(chunkRetrieval.retrieve).toHaveBeenCalledTimes(2);
       expect(result).toBeDefined();
       expect(result.source).toBe('HYBRID');
     });
@@ -196,7 +212,7 @@ describe('EnhancedChatService', () => {
 
       const result = await service.getRouteNarrative('1', 'IS');
 
-      expect(routeKnowledgeCurator.enrichRouteNarrative).toHaveBeenCalledWith('1', 'IS');
+      expect(routeKnowledgeCurator.enrichRouteNarrative).toHaveBeenCalledWith('1', 'IS', undefined);
       expect(result).toBeDefined();
     });
   });

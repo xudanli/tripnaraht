@@ -255,8 +255,13 @@ export class ContextController {
         dto.scratchpad,
         dto.decisionLogDelta,
         dto.artifactsRefs,
-        dto.tripId || dto.phase
-          ? { tripId: dto.tripId, phase: dto.phase as import('./interfaces/trip-task-memory.interface').TripTaskPhase | undefined }
+        dto.tripId || dto.phase || dto.requestId || dto.planVersion !== undefined
+          ? {
+              tripId: dto.tripId,
+              phase: dto.phase as import('./interfaces/trip-task-memory.interface').TripTaskPhase | undefined,
+              requestId: dto.requestId,
+              planVersion: dto.planVersion,
+            }
           : undefined,
       );
 

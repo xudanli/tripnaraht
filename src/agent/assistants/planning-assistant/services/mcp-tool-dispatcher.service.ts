@@ -10,6 +10,8 @@
  */
 
 import { Injectable, Logger, Optional, OnModuleInit } from '@nestjs/common';
+import { classifyOrchestratorFailure } from '../../../utils/orchestrator-failure-taxonomy.util';
+import { McpToolExecutionError } from '../errors/mcp-tool-execution.error';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { AirbnbService } from '../../../../mcp/airbnb.service';
 import { WeatherDirectService } from '../../../../mcp/weather-direct.service';
@@ -17,6 +19,7 @@ import { ExaService } from '../../../../mcp/exa.service';
 import { GoogleCalendarService } from '../../../../mcp/google-calendar.service';
 import { GoogleMapsDirectService } from '../../../../mcp/google-maps-direct.service';
 import { HotelDirectService } from '../../../../mcp/hotel-direct.service';
+import { BookingComService } from '../../../../mcp/booking-com.service';
 import { AdvancedGeocodingService, LocationContext } from './advanced-geocoding.service';
 
 @Injectable()
@@ -211,10 +214,13 @@ export class McpToolDispatcherService implements OnModuleInit {
     @Optional() private readonly googleCalendarService?: GoogleCalendarService,
     @Optional() private readonly googleMapsDirectService?: GoogleMapsDirectService,
     @Optional() private readonly hotelDirectService?: HotelDirectService,
+    @Optional() private readonly bookingComService?: BookingComService,
     @Optional() private readonly advancedGeocodingService?: AdvancedGeocodingService,
   ) {
     this.logger.log('🚀 MCP Tool Dispatcher Service 初始化');
-    this.logger.log(`服务注入状态: Airbnb=${!!airbnbService}, Weather=${!!weatherDirectService}, Exa=${!!exaService}, GoogleCalendar=${!!googleCalendarService}, GoogleMaps=${!!googleMapsDirectService}, Hotel=${!!hotelDirectService}, AdvancedGeocoding=${!!advancedGeocodingService}`);
+    this.logger.log(
+      `服务注入状态: Airbnb=${!!airbnbService}, Weather=${!!weatherDirectService}, Exa=${!!exaService}, GoogleCalendar=${!!googleCalendarService}, GoogleMaps=${!!googleMapsDirectService}, Hotel=${!!hotelDirectService}, BookingCom=${!!bookingComService}, AdvancedGeocoding=${!!advancedGeocodingService}`,
+    );
     if (!airbnbService) {
       this.logger.warn('⚠️ AirbnbService 未注入！');
     }
@@ -232,6 +238,9 @@ export class McpToolDispatcherService implements OnModuleInit {
     }
     if (!hotelDirectService) {
       this.logger.warn('⚠️ HotelDirectService 未注入！');
+    }
+    if (!bookingComService) {
+      this.logger.warn('⚠️ BookingComService 未注入！');
     }
     if (!advancedGeocodingService) {
       this.logger.warn('⚠️ AdvancedGeocodingService 未注入！');
@@ -284,8 +293,13 @@ export class McpToolDispatcherService implements OnModuleInit {
             return await this.executeGoogleCalendarTool(actualToolName.startsWith('google-calendar.') ? actualToolName : `google-calendar.${actualToolName}`, params);
           case 'hotel':
             return await this.executeHotelTool(actualToolName.startsWith('hotel.') ? actualToolName : `hotel.${actualToolName}`, params);
+          case 'car_rental':
+            return await this.executeBookingComTool(
+              actualToolName.startsWith('car_rental.') ? actualToolName : `car_rental.${actualToolName}`,
+              params,
+            );
           default:
-            throw new Error(`未知的服务: ${serviceName}`);
+            this.throwTaggedMcpFailure(serviceName, actualToolName, new Error(`未知的服务: ${serviceName}`));
         }
       } catch (error: any) {
         lastError = error;
@@ -293,7 +307,7 @@ export class McpToolDispatcherService implements OnModuleInit {
         // 如果是最后一次尝试，或者错误不可重试，直接抛出
         if (attempt === retries || !this.isRetryableError(error)) {
           this.logger.error(`工具调用失败: ${serviceName}.${toolName}, error=${error.message}`, error.stack);
-          throw error;
+          this.throwTaggedMcpFailure(serviceName, actualToolName, error);
         }
         
         // 等待后重试
@@ -303,7 +317,30 @@ export class McpToolDispatcherService implements OnModuleInit {
       }
     }
 
-    throw lastError;
+    this.throwTaggedMcpFailure(serviceName, actualToolName, lastError);
+  }
+
+  /**
+   * MCP 出口统一打上 I5 指纹（JSON-RPC / HTTP 语义见 classifyOrchestratorFailure）。
+   */
+  private throwTaggedMcpFailure(serviceName: string, actualToolName: string, error: unknown): never {
+    const meta = classifyOrchestratorFailure(error, {
+      tool_id: `mcp.${serviceName}.${actualToolName}`,
+      mcp_service: serviceName,
+      mcp_tool: actualToolName,
+    });
+    const msg =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error).slice(0, 500);
+    throw new McpToolExecutionError(msg, {
+      cause: error,
+      orchestratorRobustness: meta,
+      mcpService: serviceName,
+      mcpTool: actualToolName,
+    });
   }
 
   /**
@@ -827,6 +864,81 @@ export class McpToolDispatcherService implements OnModuleInit {
 
       default:
         throw new Error(`未知的 Hotel 工具: ${toolName}`);
+    }
+  }
+
+  /** Booking.com 地点项 → 坐标（上游字段名不统一） */
+  private extractBookingCarLocationCoords(item: Record<string, unknown> | null | undefined): { lat: number; lng: number } | null {
+    if (!item || typeof item !== 'object') return null;
+    const coords = item.coordinates as Record<string, unknown> | undefined;
+    const latRaw =
+      typeof item.latitude === 'number'
+        ? item.latitude
+        : coords && typeof coords.latitude === 'number'
+          ? coords.latitude
+          : undefined;
+    const lngRaw =
+      typeof item.longitude === 'number'
+        ? item.longitude
+        : coords && typeof coords.longitude === 'number'
+          ? coords.longitude
+          : undefined;
+    if (typeof latRaw === 'number' && typeof lngRaw === 'number' && Number.isFinite(latRaw) && Number.isFinite(lngRaw)) {
+      return { lat: latRaw, lng: lngRaw };
+    }
+    return null;
+  }
+
+  /**
+   * Booking.com 租车：先 searchDestination 取坐标再 searchCarRentals。
+   * 工具名：`car_rental.search`（复合）、`car_rental.searchLocation`。
+   */
+  private async executeBookingComTool(toolName: string, params: Record<string, any>): Promise<any> {
+    if (!this.bookingComService?.isAvailable()) {
+      throw new Error('Booking.com 租车不可用：请配置 RAPIDAPI_BOOKING_COM_API_KEY');
+    }
+
+    const stripPrefix = (t: string) => (t.startsWith('car_rental.') ? t.slice('car_rental.'.length) : t);
+
+    switch (stripPrefix(toolName)) {
+      case 'search':
+      case 'searchCarRentals': {
+        const pickupQuery = String(params.pickupQuery ?? params.pick_up_query ?? 'Reykjavik').trim();
+        const dropQuery = String(params.dropQuery ?? params.drop_off_query ?? pickupQuery).trim();
+        const pickLoc = await this.bookingComService.searchCarLocation({ query: pickupQuery });
+        const dropLoc =
+          dropQuery === pickupQuery
+            ? pickLoc
+            : await this.bookingComService.searchCarLocation({ query: dropQuery });
+        const rawPick = Array.isArray(pickLoc.data) && pickLoc.data[0] ? (pickLoc.data[0] as Record<string, unknown>) : null;
+        const rawDrop = Array.isArray(dropLoc.data) && dropLoc.data[0] ? (dropLoc.data[0] as Record<string, unknown>) : null;
+        const p0 = this.extractBookingCarLocationCoords(rawPick);
+        const d0 = this.extractBookingCarLocationCoords(rawDrop);
+        if (!p0 || !d0) {
+          throw new Error('未解析到租车取/还点坐标，请调整 pickupQuery / 城市名');
+        }
+        return await this.bookingComService.searchCarRentals({
+          pick_up_latitude: p0.lat,
+          pick_up_longitude: p0.lng,
+          drop_off_latitude: d0.lat,
+          drop_off_longitude: d0.lng,
+          pick_up_time: String(params.pick_up_time || '10:00'),
+          drop_off_time: String(params.drop_off_time || '10:00'),
+          driver_age: typeof params.driver_age === 'number' ? params.driver_age : 30,
+          currency_code: params.currency_code || 'USD',
+          location: params.location || 'US',
+          pick_up_date: params.pick_up_date,
+          drop_off_date: params.drop_off_date,
+        });
+      }
+      case 'searchLocation':
+      case 'searchCarLocation':
+        return await this.bookingComService.searchCarLocation({
+          query: String(params.query ?? params.pickupQuery ?? '').trim(),
+        });
+
+      default:
+        throw new Error(`未知的 Booking.com 租车工具: ${toolName}`);
     }
   }
 

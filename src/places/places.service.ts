@@ -873,6 +873,7 @@ export class PlacesService {
       description: (place as any).description,
       location: coords ? { lat: coords.lat, lng: coords.lng } : null,
       metadata,
+      ontologyRules: (place as any).ontologyRules ?? null,
       physicalMetadata,
       city: city ? {
         id: city.id,
@@ -934,6 +935,7 @@ export class PlacesService {
         googlePlaceId: place.googlePlaceId,
         location: coords ? { lat: coords.lat, lng: coords.lng } : null,
         metadata,
+        ontologyRules: (place as any).ontologyRules ?? null,
         physicalMetadata,
         city: city ? {
           id: city.id,
@@ -1293,7 +1295,10 @@ export class PlacesService {
     if (dto.nameEN !== undefined) updateData.nameEN = dto.nameEN;
     if (dto.category !== undefined) updateData.category = dto.category;
     if (dto.address !== undefined) updateData.address = dto.address;
-    if (dto.cityId !== undefined) updateData.cityId = dto.cityId;
+    if (dto.cityId !== undefined) {
+      // Use relation connect instead of scalar cityId to avoid Prisma schema/client mismatches
+      updateData.City = { connect: { id: dto.cityId } };
+    }
     
     // 检查 googlePlaceId 唯一性约束
     if (dto.googlePlaceId !== undefined) {
@@ -1327,6 +1332,7 @@ export class PlacesService {
     if (dto.rating !== undefined) updateData.rating = dto.rating;
     if (dto.description !== undefined) updateData.description = dto.description;
     if (dto.metadata !== undefined) updateData.metadata = dto.metadata;
+    if (dto.ontologyRules !== undefined) updateData.ontologyRules = dto.ontologyRules;
     if (dto.physicalMetadata !== undefined) updateData.physicalMetadata = dto.physicalMetadata;
 
     // 如果更新了名称或元数据，可能需要更新embedding

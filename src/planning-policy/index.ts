@@ -73,6 +73,49 @@ export {
   mergeResearchPoiLists,
   type CandidateRetrievalQueryPlan,
 } from './utils/build-candidate-retrieval-query-plan.util';
+export type { RetrievalCauseEvent, RetrievalCauseEventType } from './types/retrieval-cause-event.types';
+export type {
+  RetrievalDecisionTrace,
+  RetrievalGapStats,
+  RetrievalKind,
+} from './types/retrieval-decision-trace.types';
+export type { ItineraryGap, ItineraryGapType } from './types/itinerary-gap.types';
+export type { GapBehaviorObservation } from './types/gap-behavior-observation.types';
+export { buildGapBehaviorObservation } from './utils/build-gap-behavior-observation.util';
+export {
+  detectItineraryGapsV1,
+  gapRetrievalIntentQuerySuffix,
+  getPrimarySemanticGap,
+  retrievalReasonFromSemanticGaps,
+} from './utils/detect-itinerary-gaps.util';
+export type {
+  GapBehaviorDriftReport,
+  GapBehaviorEpisodeRecord,
+  GapCohortSummary,
+  GapDriftFlag,
+} from './analytics/gap-behavior-drift.types';
+export { buildGapBehaviorDriftReport } from './analytics/gap-behavior-drift.util';
+export type {
+  GapStabilityMapReport,
+  GapStabilityMapRow,
+  GapTimeSlotStructureLabel,
+} from './analytics/gap-stability-map.types';
+export { buildGapStabilityMap } from './analytics/gap-stability-map.util';
+export type {
+  GapSelectionBiasRow,
+  GapSelectionBiasSnapshotReport,
+} from './analytics/gap-selection-bias-snapshot.types';
+export { buildGapSelectionBiasSnapshot } from './analytics/gap-selection-bias-snapshot.util';
+export {
+  gapBehaviorObservationLoosePayloadToEpisodeRecord,
+  gapBehaviorObservationToEpisodeRecord,
+} from './analytics/gap-behavior-observation-to-episode.util';
+export {
+  annotateRetrievalTraceAfterPoiSelection,
+  buildFailedRetrievalTrace,
+  buildPlanningRetrievalDecisionTrace,
+  buildReplacementRetrievalDecisionTrace,
+} from './utils/build-retrieval-decision-trace.util';
 export {
   goldenCircleEntityStrongMatch,
   keywordMatchResearchPoiToSlug,

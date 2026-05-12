@@ -18,6 +18,11 @@ export const CONSTRAINT_IDS = {
   ENVIRONMENT_WIND_SPEED_LIMIT: 'environment.wind_speed_limit',
   ENVIRONMENT_VISIBILITY_SUNSET_BUFFER: 'environment.visibility_sunset_buffer',
   ENVIRONMENT_EXTREME_WEATHER_CLOSURE: 'environment.extreme_weather_closure',
+
+  /** insurance.* — 租车财务/条款缺口（verify 建议性；非阻断） */
+  INSURANCE_RENTAL_GRAVEL_PROTECTION: 'insurance.rental.gravel_protection',
+  INSURANCE_RENTAL_SAND_ASH_PROTECTION: 'insurance.rental.sand_ash_protection',
+  INSURANCE_RENTAL_EXCESS_TIER: 'insurance.rental.excess_tier',
 } as const;
 
 export type ConstraintId = (typeof CONSTRAINT_IDS)[keyof typeof CONSTRAINT_IDS];

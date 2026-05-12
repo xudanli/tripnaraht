@@ -46,7 +46,7 @@ describe('CGUS penalty consistency (validation-only)', () => {
 
     // Deterministic path: utility uses unified formula (constraint penalty + riskPenalty)
     const deterministic = await service.search([candidate], worldContext, { useMonteCarlo: false });
-    const detUtility = deterministic.rankedCandidates[0].utility;
+    const _detUtility = deterministic.rankedCandidates[0].utility;
 
     // Monte Carlo path: expectedUtility uses rawMC - appliedSoftPenaltyDelta
     const mc = await service.search([candidate], worldContext, { useMonteCarlo: true, sampleSize: 50 });

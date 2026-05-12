@@ -101,16 +101,16 @@ export class SearchNearbyPoiQueryDto {
 
 export class NearbyPoiResultDto {
   @ApiProperty({ description: '地点ID' })
-  id: number;
+  id!: number;
 
   @ApiProperty({ description: '中文名称' })
-  nameCN: string;
+  nameCN!: string;
 
   @ApiProperty({ description: '英文名称', required: false })
   nameEN?: string;
 
   @ApiProperty({ description: '类别', enum: PlaceCategory })
-  category: PlaceCategory;
+  category!: PlaceCategory;
 
   @ApiProperty({ description: '地址', required: false })
   address?: string;
@@ -119,13 +119,13 @@ export class NearbyPoiResultDto {
   rating?: number;
 
   @ApiProperty({ description: '纬度' })
-  lat: number;
+  lat!: number;
 
   @ApiProperty({ description: '经度' })
-  lng: number;
+  lng!: number;
 
   @ApiProperty({ description: '距离（米）' })
-  distanceMeters: number;
+  distanceMeters!: number;
 
   @ApiProperty({ description: '营业时间信息', required: false })
   openingHours?: {

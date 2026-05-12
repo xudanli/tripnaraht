@@ -8,7 +8,11 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { UnifiedWorldModel } from '../interfaces/unified-world-model.interface';
+import {
+  UnifiedWorldModel,
+  type BudgetStrategyProposal,
+  type ExperienceStrategyProposal,
+} from '../interfaces/unified-world-model.interface';
 import { WorldModelEventsService } from './world-model-events.service';
 
 /**
@@ -44,7 +48,11 @@ export interface AgentWorldModelContribution {
  */
 export interface AgentConflict {
   id: string;
-  conflictType: 'DATA_CONFLICT' | 'ASSESSMENT_CONFLICT' | 'PREDICTION_CONFLICT';
+  conflictType:
+    | 'DATA_CONFLICT'
+    | 'ASSESSMENT_CONFLICT'
+    | 'PREDICTION_CONFLICT'
+    | 'STRATEGY_CONFLICT';
   agents: string[];
   conflictingData: {
     agentId: string;
@@ -210,9 +218,81 @@ export class MultiAgentCollaborationService {
       if (predictionConflicts.length > 0) {
         conflicts.push(...predictionConflicts);
       }
+
+      const strategyConflict = this.detectStrategyConflict(
+        newContribution,
+        existingContribution,
+      );
+      if (strategyConflict) {
+        conflicts.push(strategyConflict);
+      }
     }
 
     return conflicts;
+  }
+
+  /**
+   * 体验策略（高阶体验提案） vs 预算策略（软顶 / 超支）张力检测 — 「极光玻璃屋 vs 超支」切口
+   */
+  private detectStrategyConflict(
+    contribution1: AgentWorldModelContribution,
+    contribution2: AgentWorldModelContribution,
+  ): AgentConflict | null {
+    const exp = this.pickExperienceProposal(contribution1, contribution2);
+    const bud = this.pickBudgetProposal(contribution1, contribution2);
+    if (!exp || !bud) {
+      return null;
+    }
+
+    const premiumExperience =
+      exp.tier === 'ULTRA' || exp.tier === 'PREMIUM';
+    const budgetStress =
+      bud.overrunVsCeiling ||
+      (bud.softCeiling != null &&
+        bud.softCeiling > 0 &&
+        bud.expectedSpend > bud.softCeiling * 1.05);
+
+    if (premiumExperience && budgetStress) {
+      return {
+        id: `strategy_conflict_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        conflictType: 'STRATEGY_CONFLICT',
+        agents: [exp.agentId, bud.agentId],
+        conflictingData: [
+          {
+            agentId: exp.agentId,
+            data: { kind: 'EXPERIENCE_PROPOSAL', proposal: exp },
+            confidence: exp.confidence,
+          },
+          {
+            agentId: bud.agentId,
+            data: { kind: 'BUDGET_PROPOSAL', proposal: bud },
+            confidence: bud.confidence,
+          },
+        ],
+      };
+    }
+
+    return null;
+  }
+
+  private pickExperienceProposal(
+    a: AgentWorldModelContribution,
+    b: AgentWorldModelContribution,
+  ): ExperienceStrategyProposal | undefined {
+    return (
+      a.contribution.strategyLayer?.experienceProposal ||
+      b.contribution.strategyLayer?.experienceProposal
+    );
+  }
+
+  private pickBudgetProposal(
+    a: AgentWorldModelContribution,
+    b: AgentWorldModelContribution,
+  ): BudgetStrategyProposal | undefined {
+    return (
+      a.contribution.strategyLayer?.budgetProposal ||
+      b.contribution.strategyLayer?.budgetProposal
+    );
   }
 
   /**
@@ -456,6 +536,20 @@ export class MultiAgentCollaborationService {
           );
         }
       }
+
+      // 合并策略层（体验 / 预算分端写入，由不同 Agent 贡献）
+      if (contribution.contribution.strategyLayer) {
+        if (!consensus.strategyLayer) {
+          consensus.strategyLayer = {};
+        }
+        const sl = contribution.contribution.strategyLayer;
+        if (sl.experienceProposal) {
+          consensus.strategyLayer.experienceProposal = sl.experienceProposal;
+        }
+        if (sl.budgetProposal) {
+          consensus.strategyLayer.budgetProposal = sl.budgetProposal;
+        }
+      }
     }
 
     // 应用冲突解决
@@ -466,7 +560,126 @@ export class MultiAgentCollaborationService {
       }
     }
 
+    consensus.strategyLayer = {
+      ...consensus.strategyLayer,
+      consensusSummary: this.buildStrategyConsensusSummary(state, consensus),
+    };
+
     state.consensus = consensus;
+  }
+
+  /**
+   * 策略层中文摘要：显式标出未解决 STRATEGY_CONFLICT，供 UI / route_and_run 消费
+   */
+  private buildStrategyConsensusSummary(
+    state: AgentCollaborationState,
+    consensus: Partial<UnifiedWorldModel>,
+  ): string {
+    const openStrategy = state.conflicts.filter(
+      (c) => c.conflictType === 'STRATEGY_CONFLICT' && !c.resolution,
+    );
+    const exp = consensus.strategyLayer?.experienceProposal;
+    const bud = consensus.strategyLayer?.budgetProposal;
+    const weightTiltLine = (): string | null => {
+      if (!exp || !bud) {
+        return null;
+      }
+      const wExp = exp.reasoningWeight ?? 0;
+      const wBud = bud.reasoningWeight ?? 0;
+      if (wExp > wBud * 1.05) {
+        return `【加权倾向】reasoningWeight 对比略偏向体验侧（Exp ${wExp.toFixed(2)} vs Budget ${wBud.toFixed(2)}）；可与 DNA 享乐轴一致。`;
+      }
+      if (wBud > wExp * 1.05) {
+        return `【加权倾向】reasoningWeight 对比略偏向预算侧（Budget ${wBud.toFixed(2)} vs Exp ${wExp.toFixed(2)}）；可与 DNA 节俭轴一致。`;
+      }
+      return `【加权倾向】体验与预算 reasoningWeight 接近（Exp ${wExp.toFixed(2)} / Budget ${wBud.toFixed(2)}），建议结合决策模板显式取舍。`;
+    };
+    if (openStrategy.length > 0) {
+      return [
+        '【策略层·待仲裁】高阶体验诉求与预算软顶存在冲突，需用户或规划器在体验溢价与预算之间做显式取舍。',
+        exp
+          ? `体验侧：${exp.tier}（置信度 ${(exp.confidence * 100).toFixed(0)}%）`
+          : null,
+        bud
+          ? `预算侧：预期 ${bud.currency} ${bud.expectedSpend}，软顶 ${bud.softCeiling ?? '—'}，超支标记=${bud.overrunVsCeiling}`
+          : null,
+        weightTiltLine(),
+      ]
+        .filter(Boolean)
+        .join(' ');
+    }
+    if (exp || bud) {
+      return '【策略层】体验与预算提案已对齐记录；当前无未解决的策略冲突。';
+    }
+    return '【策略层】暂无体验/预算策略提案。';
+  }
+
+  /**
+   * 外部可读快照（UnifiedWorldModelService / PlanningWorkbench）
+   */
+  getCollaborationBridgeView(tripId: string): {
+    contributions: Array<{
+      agentId: string;
+      agentType: AgentType;
+      confidence: number;
+      timestamp: Date;
+    }>;
+    conflicts: Array<{
+      id: string;
+      conflictType: AgentConflict['conflictType'];
+      agents: string[];
+      resolution?: ConflictResolution;
+    }>;
+    consensusSummary: string | null;
+    consensusConfidence: number;
+    openConflictCount: number;
+    strategyLayer?: UnifiedWorldModel['strategyLayer'];
+  } {
+    const state = this.collaborationStates.get(tripId);
+    if (!state) {
+      return {
+        contributions: [],
+        conflicts: [],
+        consensusSummary: null,
+        consensusConfidence: 0,
+        openConflictCount: 0,
+      };
+    }
+
+    const open = state.conflicts.filter((c) => !c.resolution);
+    const contributions = Array.from(state.contributions.values()).map((c) => ({
+      agentId: c.agentId,
+      agentType: c.agentType,
+      confidence: c.confidence,
+      timestamp: c.timestamp,
+    }));
+
+    const unresolvedStrategy = open.filter(
+      (c) => c.conflictType === 'STRATEGY_CONFLICT',
+    ).length;
+
+    let consensusConfidence = 0.75;
+    if (open.length > 0) {
+      consensusConfidence = Math.max(
+        0.35,
+        0.85 - open.length * 0.08 - unresolvedStrategy * 0.05,
+      );
+    }
+
+    return {
+      contributions,
+      conflicts: state.conflicts.map((c) => ({
+        id: c.id,
+        conflictType: c.conflictType,
+        agents: c.agents,
+        resolution: c.resolution,
+      })),
+      consensusSummary:
+        state.consensus.strategyLayer?.consensusSummary ?? null,
+      consensusConfidence,
+      openConflictCount: open.length,
+      strategyLayer: state.consensus.strategyLayer,
+    };
   }
 
   /**
@@ -605,7 +818,8 @@ export class MultiAgentCollaborationService {
         if (!consensus.realtimeState) {
           consensus.realtimeState = {} as any;
         }
-        consensus.realtimeState.roadStatusUpdates = highestConfidence.data.roadStatusUpdates;
+        const rt = consensus.realtimeState!;
+        rt.roadStatusUpdates = highestConfidence.data.roadStatusUpdates;
       }
     } else if (conflict.conflictType === 'ASSESSMENT_CONFLICT') {
       // 应用自适应参数
@@ -725,7 +939,8 @@ export class MultiAgentCollaborationService {
           if (!consensus.realtimeState) {
             consensus.realtimeState = {} as any;
           }
-          consensus.realtimeState.roadStatusUpdates =
+          const rt = consensus.realtimeState!;
+          rt.roadStatusUpdates =
             conflict.resolution.resolvedData.roadStatusUpdates;
         }
       } else if (conflict.conflictType === 'ASSESSMENT_CONFLICT') {

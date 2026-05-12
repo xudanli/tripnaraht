@@ -27,12 +27,18 @@ import {
 } from '../../trips/decision/optimization/cgus-search.service';
 import type { RetrievalCategoryEvidence } from '../../trips/decision/optimization/retrieval-category-constraint-boost';
 import { DecisionOSConfigService } from '../../trips/decision/optimization/config';
-import { ChunkRetrievalService } from '../../rag/services/chunk-retrieval.service';
+import {
+  ChunkRetrievalService,
+  type ChunkRetrievalParams,
+} from '../../rag/services/chunk-retrieval.service';
+import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../../rag/reality-policy/rag-soft-world-policy';
+import { getBoundDecisionContext } from '../../trips/reality-kernel/reality-context.storage';
 import { RetrievalEvidenceMapper } from '../../rag/mappers/retrieval-evidence.mapper';
 import { isKernelCgusRagEvidenceEnabledFromEnv } from './kernel-cgus-rag.constants';
 import { StateConsistencyGuardService } from '../../trips/dem/services/state-consistency-guard.service';
 import { PlanFeaturesService } from '../../trips/decision/optimization/plan-features/plan-features.service';
-import { decisionStateToTripWorldState } from './dso-to-trips-converter';
+import { decisionStateToTripWorldState, resolveKernelTripIdHint } from './dso-to-trips-converter';
 import { convertRoutePlanDraftToTripPlan } from '../../trips/decision/tot/plan-converter';
 
 @Injectable()
@@ -40,6 +46,7 @@ export class OptimizationEngineAdapterService {
   private readonly logger = new Logger(OptimizationEngineAdapterService.name);
 
   constructor(
+    private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
     @Optional() private readonly expectedUtility?: ExpectedUtilityService,
     @Optional() private readonly probabilisticWorldModel?: ProbabilisticWorldModelService,
     @Optional() private readonly unifiedFormula?: UnifiedDecisionFormulaService,
@@ -306,13 +313,23 @@ export class OptimizationEngineAdapterService {
     if (!this.chunkRetrieval) {
       return undefined;
     }
+    const decisionContext = getBoundDecisionContext();
+    const { scope } = this.ragRealityPolicyGate.resolve(decisionContext);
+    const ragScope: RagSoftWorldScope = scope;
+    if (ragScope === 'blocked') {
+      return undefined;
+    }
+    const mergeRagParams = (p: ChunkRetrievalParams): ChunkRetrievalParams =>
+      this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, ragScope);
     const minQueryLength = Math.max(0, ragCfg?.minQueryLength ?? 1);
     const q = OptimizationEngineAdapterService.buildKernelRagQuery(state, { minQueryLength });
     if (!q) {
       return undefined;
     }
     try {
-      const chunks = await this.chunkRetrieval.retrieve({ query: q, limit: 8 });
+      const chunks = await this.chunkRetrieval.retrieve(
+        mergeRagParams({ query: q, limit: 8 }),
+      );
       const confidenceThreshold = ragCfg?.confidenceThreshold ?? 0.25;
       const evidence = RetrievalEvidenceMapper.toEvidence(chunks, { scoreThreshold: confidenceThreshold });
       if (evidence.length > 0) {
@@ -493,13 +510,6 @@ export class OptimizationEngineAdapterService {
           })
         : candidates;
 
-    const candidateSummary = candidates.map((c) => ({
-      id: c.id,
-      feasible: c.feasible,
-      hardViolations: (c.constraintViolations ?? []).filter((v) => v.severity === 'HARD').length,
-      softViolations: (c.constraintViolations ?? []).filter((v) => v.severity === 'SOFT').length,
-      totalViolationDegree: (c.constraintViolations ?? []).reduce((s, v) => s + (v.degree ?? 0), 0),
-    }));
     const summaryToLog = (process.env.CGUS_INJECT_CONTRAST_CANDIDATES === '1'
       ? patchedCandidates
       : candidates
@@ -604,7 +614,9 @@ export class OptimizationEngineAdapterService {
           }
         : undefined;
 
-    const tripWorldState = decisionStateToTripWorldState(state);
+    const tripWorldState = decisionStateToTripWorldState(state, {
+      prismaTripId: resolveKernelTripIdHint(state),
+    });
     const tripPlanToItinerary = (tp: { days?: any[] } | undefined): Itinerary | undefined => {
       if (!tp?.days || !Array.isArray(tp.days)) return undefined;
       return {

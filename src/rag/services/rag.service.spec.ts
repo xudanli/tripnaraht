@@ -3,12 +3,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { RagService } from './rag.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmbeddingService } from '../../places/services/embedding.service';
+import { IndexingService } from '../../knowledge-base/services/indexing.service';
 import { RagRetrievalParams, DocumentIndexItem } from '../interfaces/rag.interface';
 
 describe('RagService', () => {
   let service: RagService;
   let prisma: jest.Mocked<PrismaService>;
   let embeddingService: jest.Mocked<EmbeddingService>;
+  let indexingService: jest.Mocked<Pick<IndexingService, 'replaceChunksForFile'>>;
 
   const mockEmbedding = new Array(1536).fill(0.1);
 
@@ -17,12 +19,21 @@ describe('RagService', () => {
       $queryRaw: jest.fn(),
       $queryRawUnsafe: jest.fn(),
       $executeRaw: jest.fn(),
-      // documentIndex已删除，不再mock
+      knowledgeFile: {
+        findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+      },
     };
 
     const mockEmbeddingService = {
       generateEmbedding: jest.fn().mockResolvedValue(mockEmbedding),
       getEmbeddingDimension: jest.fn().mockReturnValue(1536),
+    };
+
+    const mockIndexing = {
+      replaceChunksForFile: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -36,12 +47,17 @@ describe('RagService', () => {
           provide: EmbeddingService,
           useValue: mockEmbeddingService,
         },
+        {
+          provide: IndexingService,
+          useValue: mockIndexing,
+        },
       ],
     }).compile();
 
     service = module.get<RagService>(RagService);
     prisma = module.get(PrismaService);
     embeddingService = module.get(EmbeddingService);
+    indexingService = module.get(IndexingService);
   });
 
   it('应该被定义', () => {
@@ -193,17 +209,71 @@ describe('RagService', () => {
   });
 
   describe('deleteDocument', () => {
-    it('应该抛出错误（document_index表已删除）', async () => {
-      await expect(service.deleteDocument('doc-id')).rejects.toThrow('document_index表已删除');
+    it('记录不存在时抛错', async () => {
+      prisma.knowledgeFile.findUnique.mockResolvedValueOnce(null);
+      await expect(service.deleteDocument('missing')).rejects.toThrow('文档不存在');
+      expect(prisma.knowledgeFile.delete).not.toHaveBeenCalled();
+    });
+
+    it('存在时删除 knowledge_files 行', async () => {
+      prisma.knowledgeFile.findUnique.mockResolvedValueOnce({ id: 'doc-id' });
+      prisma.knowledgeFile.delete.mockResolvedValueOnce({} as never);
+
+      await service.deleteDocument('doc-id');
+
+      expect(prisma.knowledgeFile.delete).toHaveBeenCalledWith({
+        where: { id: 'doc-id' },
+      });
     });
   });
 
   describe('updateDocument', () => {
-    it('应该抛出错误（document_index表已删除）', async () => {
-      await expect(service.updateDocument('doc-id', {
-        title: '新标题',
-        tags: ['new-tag'],
-      })).rejects.toThrow('document_index表已删除');
+    const baseFile = {
+      id: 'doc-id',
+      filename: 'old.json',
+      filepath: 'old.json',
+      category: 'travel_guides',
+      version: '1.0',
+      language: 'zh-CN',
+      credibilityScore: 0.8,
+      dataSources: [] as string[],
+      countryCode: null as string | null,
+      source: null as string | null,
+      adminMetadata: null,
+      lastUpdated: new Date('2026-01-01T00:00:00.000Z'),
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    it('记录不存在时抛错', async () => {
+      prisma.knowledgeFile.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        service.updateDocument('missing', { title: 'x' }),
+      ).rejects.toThrow('文档不存在');
+    });
+
+    it('仅更新元数据时不调用 replaceChunksForFile', async () => {
+      prisma.knowledgeFile.findUnique.mockResolvedValue({ ...baseFile });
+      prisma.knowledgeFile.findFirst.mockResolvedValue(null);
+      prisma.knowledgeFile.update.mockResolvedValue({
+        ...baseFile,
+        dataSources: ['new-tag'],
+      });
+
+      await service.updateDocument('doc-id', { tags: ['new-tag'] });
+
+      expect(indexingService.replaceChunksForFile).not.toHaveBeenCalled();
+      expect(prisma.knowledgeFile.update).toHaveBeenCalled();
+    });
+
+    it('包含 content 时重建 chunks', async () => {
+      prisma.knowledgeFile.findUnique.mockResolvedValue({ ...baseFile });
+      prisma.knowledgeFile.findFirst.mockResolvedValue(null);
+      prisma.knowledgeFile.update.mockResolvedValue({ ...baseFile });
+
+      await service.updateDocument('doc-id', { content: '{"k":1}' });
+
+      expect(indexingService.replaceChunksForFile).toHaveBeenCalled();
     });
   });
 });

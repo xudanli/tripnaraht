@@ -55,6 +55,7 @@ export class RouteDirectionCacheService {
       userIntent.pace || 'any',
       userIntent.riskTolerance || 'any',
       userIntent.durationDays?.toString() || 'any',
+      userIntent.tripId || 'no-trip',
     ];
     
     // 生成哈希（缩短键长度）

@@ -186,11 +186,9 @@ export class SkillInputSchemaGeneratorService {
 
     // 提取 @format
     const formatMatch = jsdoc.match(/@format\s+(\w+)/);
-    if (formatMatch) {
-      const format = formatMatch[1] as ParameterTypeCheck['format'];
-      if (['email', 'url', 'date', 'date-time', 'uuid'].includes(format)) {
-        rules.format = format;
-      }
+    const formatToken = formatMatch?.[1];
+    if (formatToken && ['email', 'url', 'date', 'date-time', 'uuid'].includes(formatToken)) {
+      rules.format = formatToken as ParameterTypeCheck['format'];
     }
 
     // 提取 @enum

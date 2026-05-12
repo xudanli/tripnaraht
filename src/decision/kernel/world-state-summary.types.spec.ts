@@ -2,7 +2,7 @@
  * WorldStateSummary 单元测试（Scheme C）
  */
 
-import { buildWorldStateSummaryFromDso } from './world-state-summary.types';
+import { buildWorldStateSummaryFromDso, mergeReplanLineageFromHarness } from './world-state-summary.types';
 
 describe('buildWorldStateSummaryFromDso', () => {
   it('空 state 应返回空对象', () => {
@@ -83,5 +83,45 @@ describe('buildWorldStateSummaryFromDso', () => {
     expect(result.physical?.hazardZones?.[0]).toEqual({ type: 'ICE', level: 'MEDIUM' });
     expect(result.human?.riskTolerance).toBe('LOW');
     expect(result.route?.routeDirectionId).toBe('rd-1');
+  });
+
+  it('merges replan lineage from harnessRuntime (main path)', () => {
+    const result = buildWorldStateSummaryFromDso({
+      environmentState: { countryCode: 'IS' },
+      harnessRuntime: {
+        replan_previous_plan_version: 2,
+        replan_previous_world_snapshot_hash: '  sha256:abc  ',
+      },
+    });
+    expect(result.replanLineage?.previous_plan_version).toBe(2);
+    expect(result.replanLineage?.previous_world_snapshot_hash).toBe('sha256:abc');
+  });
+
+  it('merges replan onto worldModelContext path', () => {
+    const result = buildWorldStateSummaryFromDso(
+      {
+        environmentState: { countryCode: 'XX' },
+        harnessRuntime: { replan_previous_plan_version: 1 },
+      },
+      {},
+      {
+        physical: { countryCode: 'NO', month: 8 },
+      },
+    );
+    expect(result.physical?.countryCode).toBe('NO');
+    expect(result.replanLineage?.previous_plan_version).toBe(1);
+  });
+
+  it('mergeReplanLineageFromHarness is no-op when empty', () => {
+    expect(mergeReplanLineageFromHarness({ physical: { countryCode: 'IS' } }, undefined)).toEqual({
+      physical: { countryCode: 'IS' },
+    });
+  });
+
+  it('returns only replanLineage when DSO has no physical/human/route', () => {
+    const result = buildWorldStateSummaryFromDso({
+      harnessRuntime: { replan_previous_plan_version: 7 },
+    });
+    expect(result).toEqual({ replanLineage: { previous_plan_version: 7 } });
   });
 });

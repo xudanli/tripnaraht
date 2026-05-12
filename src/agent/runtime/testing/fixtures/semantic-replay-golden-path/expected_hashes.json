@@ -1,0 +1,14 @@
+{
+  "fixtures_revision": "2026-05-11a",
+  "execution_timeline_schema_abi": 4,
+  "notes": "SHA256 of JSON.stringify(sortKeysDeep(payload))) — 与 executionTimelineInputHash 一致；变更 payload 形状须 bump revision 并更新此文件",
+  "hashes": {
+    "chain_enter_input": "53da439da042be7eed3de06560b2188c362c08f9d8a08f5e21ba15fe39a18706",
+    "chain_span_input": "0c8daf48bc05dcaa26a42741e5647c5f3419ef9fee36ec43f9e5b6d8d116bc2c",
+    "route_selector_input": "f8d8790c315a122c7fe4d7e08d3ce05e51f7e7e51b249813d62704ec5294ea40",
+    "route_selector_success_output": "8a594c7ae395606c8b7e515ab9d76572a9c484d69ebd4bc29493fb5b60e06cfc",
+    "chain_success_output": "22d633700b9341dd97c32627ab858191c1162e6a62066b935bb88c206c5d7e2f",
+    "chain_error_output": "ce993fcfb65b67759d9ee838284ca489ddd4c507e5a73479a0f0aa96d66cffca",
+    "route_selector_error_output": "f27b0fb7307e5e03eff9c199c3b7ae8f9da4008b2478e619c82f304fc1493d3f"
+  }
+}

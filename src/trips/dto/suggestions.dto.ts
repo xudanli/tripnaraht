@@ -8,6 +8,8 @@ export enum SuggestionPersona {
   ABU = 'abu',
   DR_DRE = 'drdre',
   NEPTUNE = 'neptune',
+  /** 编排系统记录（与 PersonaType.USER_ACTION 对齐） */
+  SYSTEM = 'system',
 }
 
 /**

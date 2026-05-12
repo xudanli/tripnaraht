@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { AgentService } from './services/agent.service';
 import { HotspotRegistryService } from '../skills/world/services/hotspot-registry.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from './dto/route-and-run.dto';
+import { ReplayFromTraceRequestDto } from './dto/replay-from-trace.dto';
 import { buildTravelOntologyStateFromOrchestrator } from '../decision/kernel/travel-ontology.mapper';
 import { Public } from '../auth/decorators/public.decorator';
 import { ConfirmNegotiationResponseDto, NegotiationResolutionDto } from './dto/confirm-negotiation.dto';
@@ -15,6 +16,7 @@ import {
   ConflictStrategyOptionsResponseDto,
 } from './dto/conflict-strategy-options.dto';
 import { ActionExecutionService } from './services/action-execution.service';
+import { PhysicalActionPlanEnricherService } from '../domain/spatial/physical-action-plan-enricher.service';
 
 /**
  * Agent Controller
@@ -42,6 +44,7 @@ export class AgentController {
     private readonly agentService: AgentService,
     @Optional() private readonly hotspotRegistry?: HotspotRegistryService,
     @Optional() private readonly actionExecution?: ActionExecutionService,
+    @Optional() private readonly physicalActionPlanEnricher?: PhysicalActionPlanEnricherService,
   ) {}
 
   /**
@@ -55,6 +58,15 @@ export class AgentController {
     const tripId = request.trip_id?.trim();
     const payload = response.result?.payload as Record<string, unknown> | undefined;
     if (!tripId || !payload) return;
+
+    if (this.physicalActionPlanEnricher) {
+      try {
+        await this.physicalActionPlanEnricher.enrichRouteAndRunPayload(payload);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`[route_and_run] PhysicalActionPlanEnricher failed (non-blocking): ${msg}`);
+      }
+    }
 
     const orch = payload.orchestrationResult as { itinerary?: { action_plan?: unknown[] } } | undefined;
     const actionPlan = orch?.itinerary?.action_plan;
@@ -338,6 +350,31 @@ export class AgentController {
       }
     }
 
+    return response;
+  }
+
+  @Public()
+  @Post('replay_from_trace')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '从 §16 执行轨迹重放（产品接口）',
+    description:
+      '仅通过 `route_and_run` 主链重入：装载 Redis 冻结记忆、合并 replay profile，不暴露 ReplayExecutionKernel 为 HTTP 路径。自动启用 `orchestration_replay_strict_seal`（禁止编排 mode fallback、禁止 routeContext enricher、`execution_model_allow_upgrade=false`）。可选 `expected_change_impact_descriptor_v1`：注入 CID 并比对响应 trace（语义回归）。',
+  })
+  @ApiBody({ type: ReplayFromTraceRequestDto })
+  @ApiResponse({ status: 200, type: RouteAndRunResponseDto })
+  @ApiResponse({ status: 400, description: 'trace_id 与 trace 不一致或参数无效' })
+  @ApiResponse({ status: 404, description: '无对应记忆快照' })
+  @ApiResponse({ status: 503, description: '快照持久化未配置' })
+  async replayFromTrace(@Body() body: ReplayFromTraceRequestDto): Promise<RouteAndRunResponseDto> {
+    const response = await this.agentService.replayFromTrace(body);
+    const syntheticRequest: RouteAndRunRequestDto = {
+      request_id: response.request_id,
+      user_id: body.user_id ?? 'anonymous',
+      trip_id: body.trip_id,
+      message: body.message ?? '(replay_from_trace)',
+    };
+    await this.maybeAttachActionExecutionPreview(syntheticRequest, response);
     return response;
   }
 

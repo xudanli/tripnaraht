@@ -1,25 +1,56 @@
 // src/trips/decision/services/weather-decision-evidence.service.ts
 /**
+ * @legacy-frozen — 新增分支决策请走 overlay；本服务保留证据管道与 observability。
+ *
  * 天气决策证据服务
- * 
+ *
  * 强制规则：
  * ❌ 没有 WeatherEvidence 的 segment 不允许 finalize
  * ❌ 风速 > 15 m/s → 禁止侧风路段
  * ❌ 能去 ≠ 应该去
+ *
+ * P0：观测数据仅来自 DataSourceRouter → ExtendedWeatherData（已移除 mock）。
+ * P1：阈值比较收敛到 hazard/derive-travel-hazards（TravelHazard + ExecutionState）。
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { assertRealityWorldReadAllowed } from '../../reality-kernel/reality-policy-engine';
+import {
+  RealityExecutionBlockedError,
+  requiresPlanningHeuristicWorldModelOnly,
+} from '../../reality-kernel/reality-execution-gate';
+import { RealityBypassBlockedError } from '../../reality-kernel/reality-read-audit';
+import { getBoundDecisionContext } from '../../reality-kernel/reality-context.storage';
+import { DataSourceRouterService } from '../../../data-contracts/services/data-source-router.service';
+import { ExtendedWeatherData, WeatherQuery } from '../../../data-contracts/interfaces/weather.interface';
 import {
   WeatherDecisionEvidence,
   WeatherEvidencePipelineResult,
   WeatherDecisionRules,
-  WeatherViolationType,
+  WeatherEvidenceLocationContext,
 } from '../interfaces/weather-decision-evidence.interface';
 import { TripPlan, PlanDay } from '../plan-model';
+import {
+  deriveTravelHazards,
+  type HazardDerivationResult,
+  type NormalizedObservationInput,
+} from '../hazard/derive-travel-hazards';
+/** 各适配器能见度单位不一致，此处统一为 km 后再做规则比较 */
+interface NormalizedWeatherInput {
+  windSpeed: number;
+  windGust?: number;
+  windDirection: number;
+  precipitationMm: number;
+  visibilityKm?: number;
+  temperatureDrop: number;
+  source: string;
+}
 
 @Injectable()
 export class WeatherDecisionEvidenceService {
   private readonly logger = new Logger(WeatherDecisionEvidenceService.name);
+
+  constructor(private readonly dataSourceRouter: DataSourceRouterService) {}
 
   /**
    * 生成天气决策证据管道
@@ -27,12 +58,12 @@ export class WeatherDecisionEvidenceService {
   async generateEvidencePipeline(
     plan: TripPlan,
     rules?: WeatherDecisionRules,
+    context?: WeatherEvidenceLocationContext,
   ): Promise<WeatherEvidencePipelineResult> {
     const segmentEvidences: WeatherDecisionEvidence[] = [];
 
-    // 为每个计划日生成天气证据
     for (const day of plan.days) {
-      const evidence = await this.generateDayEvidence(day, rules);
+      const evidence = await this.generateDayEvidence(day, rules, context);
       segmentEvidences.push(evidence);
     }
 
@@ -54,163 +85,238 @@ export class WeatherDecisionEvidenceService {
     };
   }
 
-  /**
-   * 生成单日天气证据
-   */
   private async generateDayEvidence(
     day: PlanDay,
     rules?: WeatherDecisionRules,
+    context?: WeatherEvidenceLocationContext,
   ): Promise<WeatherDecisionEvidence> {
-    // TODO: 集成真实天气 API（OpenWeather, Iceland Vedur.is 等）
-    // 这里使用模拟数据
-    const mockWeather = this.getMockWeather(day.date);
+    const point = this.resolveRepresentativePoint(day, context);
+    if (!point) {
+      return this.buildMissingLocationEvidence(day);
+    }
 
-    const evidence: WeatherDecisionEvidence = {
-      segmentId: `day_${day.day}_${day.date}`,
-      date: day.date,
-      windSpeed: mockWeather.windSpeed,
-      windDirection: mockWeather.windDirection,
-      precipitation: mockWeather.precipitation,
-      visibility: mockWeather.visibility,
-      temperatureDrop: mockWeather.temperatureDrop,
-      crosswindRisk: this.calculateCrosswindRisk(
-        mockWeather.windSpeed,
-        mockWeather.windDirection,
-      ),
-      violation: this.checkViolations(mockWeather, rules),
-      explanation: this.generateExplanation(mockWeather, rules),
-      suggestedAction: this.suggestAction(mockWeather, rules),
-      metadata: {
-        weatherWindowAvailable: mockWeather.windSpeed < (rules?.maxWindSpeed || 15),
-        forecastReliability: 'MEDIUM',
-        historicalRiskLevel: 'MEDIUM',
-      },
-    };
+    try {
+      if (requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext())) {
+        return this.buildExecutionGateDegradedWeatherEvidence(day, point);
+      }
+      const query: WeatherQuery = {
+        lat: point.lat,
+        lng: point.lng,
+        date: day.date,
+        includeWindDetails: true,
+      };
+      assertRealityWorldReadAllowed(
+        this.logger,
+        'WeatherDecisionEvidenceService.generateDayEvidence',
+        'live weather read',
+      );
+      const raw = await this.dataSourceRouter.getWeather(query);
+      const weather = raw as ExtendedWeatherData;
+      const normalized = this.normalizeWeather(weather);
 
-    return evidence;
+      const obs: NormalizedObservationInput = {
+        windSpeedMs: normalized.windSpeed,
+        windGustMs: normalized.windGust,
+        windDirectionDeg: normalized.windDirection,
+        precipitationMm: normalized.precipitationMm,
+        visibilityKm: normalized.visibilityKm,
+      };
+
+      const derived = deriveTravelHazards(obs, rules, context?.vehicleProfile);
+
+      const effectiveWindMs = Math.max(
+        normalized.windSpeed,
+        normalized.windGust ?? 0,
+      );
+
+      const explanation =
+        derived.explanationParts.length > 0
+          ? derived.explanationParts.join('；')
+          : '天气条件在安全范围内';
+
+      return {
+        segmentId: `day_${day.day}_${day.date}`,
+        date: day.date,
+        windSpeed: normalized.windSpeed,
+        windDirection: normalized.windDirection,
+        precipitation: normalized.precipitationMm,
+        visibility: normalized.visibilityKm,
+        temperatureDrop: normalized.temperatureDrop,
+        crosswindRisk: derived.crosswindRisk,
+        hazards: derived.hazards,
+        executionState: derived.executionState,
+        executionQuality: derived.executionQuality,
+        violation: derived.violation,
+        explanation,
+        suggestedAction: this.suggestActionFromDerivation(derived),
+        metadata: {
+          weatherWindowAvailable: effectiveWindMs < (rules?.maxWindSpeed ?? 15),
+          forecastReliability: 'MEDIUM',
+          historicalRiskLevel: 'MEDIUM',
+          weatherSource: normalized.source,
+          resolvedLat: point.lat,
+          resolvedLng: point.lng,
+          windGustMs: normalized.windGust,
+          vehicleClass: context?.vehicleProfile?.vehicleClass,
+        },
+      };
+    } catch (err: any) {
+      if (
+        err instanceof RealityBypassBlockedError ||
+        err instanceof RealityExecutionBlockedError
+      ) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`天气证据获取失败 day=${day.date}: ${msg}`);
+      return {
+        segmentId: `day_${day.day}_${day.date}`,
+        date: day.date,
+        windSpeed: 0,
+        windDirection: 0,
+        precipitation: 0,
+        visibility: undefined,
+        temperatureDrop: 0,
+        crosswindRisk: 'NONE',
+        executionState: 'BLOCKED',
+        violation: 'HARD',
+        explanation: `无法获取真实天气数据：${msg}`,
+        suggestedAction: 'DELAY',
+        metadata: {
+          weatherWindowAvailable: false,
+          forecastReliability: 'LOW',
+          historicalRiskLevel: 'MEDIUM',
+          fetchError: msg,
+          resolvedLat: point.lat,
+          resolvedLng: point.lng,
+        },
+      };
+    }
   }
 
-  /**
-   * 检查违规
-   */
-  private checkViolations(
-    weather: any,
-    rules?: WeatherDecisionRules,
-  ): WeatherViolationType {
-    const maxWindSpeed = rules?.maxWindSpeed || 15; // 默认 15 m/s
-    const maxCrosswindSpeed = rules?.maxCrosswindSpeed || 12; // 默认 12 m/s
-    const maxPrecipitation = rules?.maxPrecipitation || 50; // 默认 50 mm/day
-    const minVisibility = rules?.minVisibility || 1; // 默认 1 km
-
-    // 硬违规检查
-    if (weather.windSpeed > maxWindSpeed) {
-      return 'HARD';
-    }
-
-    const crosswindRisk = this.calculateCrosswindRisk(
-      weather.windSpeed,
-      weather.windDirection,
-    );
-    if (crosswindRisk === 'HIGH' && weather.windSpeed > maxCrosswindSpeed) {
-      return 'HARD';
-    }
-
-    if (weather.precipitation > maxPrecipitation) {
-      return 'HARD';
-    }
-
-    if (weather.visibility < minVisibility) {
-      return 'HARD';
-    }
-
-    // 软违规检查
-    if (weather.windSpeed > maxWindSpeed * 0.8) {
-      return 'SOFT';
-    }
-
-    if (weather.precipitation > maxPrecipitation * 0.7) {
-      return 'SOFT';
-    }
-
-    return 'NONE';
-  }
-
-  /**
-   * 计算侧风风险
-   */
-  private calculateCrosswindRisk(
-    windSpeed: number,
-    windDirection: number,
-  ): 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' {
-    // 简化计算：假设道路方向为 0 度
-    const crosswindComponent = Math.abs(
-      windSpeed * Math.sin((windDirection * Math.PI) / 180),
-    );
-
-    if (crosswindComponent > 12) {
-      return 'HIGH';
-    }
-    if (crosswindComponent > 8) {
-      return 'MEDIUM';
-    }
-    if (crosswindComponent > 4) {
-      return 'LOW';
-    }
-    return 'NONE';
-  }
-
-  /**
-   * 生成解释
-   */
-  private generateExplanation(weather: any, rules?: WeatherDecisionRules): string {
-    const parts: string[] = [];
-
-    if (weather.windSpeed > (rules?.maxWindSpeed || 15)) {
-      parts.push(`风速 ${weather.windSpeed.toFixed(1)} m/s 超过安全阈值`);
-    }
-
-    const crosswindRisk = this.calculateCrosswindRisk(
-      weather.windSpeed,
-      weather.windDirection,
-    );
-    if (crosswindRisk === 'HIGH') {
-      parts.push('侧风风险高，不适合驾驶');
-    }
-
-    if (weather.precipitation > (rules?.maxPrecipitation || 50)) {
-      parts.push(`降水量 ${weather.precipitation.toFixed(1)} mm 超过安全阈值`);
-    }
-
-    if (weather.visibility < (rules?.minVisibility || 1)) {
-      parts.push(`能见度 ${weather.visibility.toFixed(1)} km 低于安全阈值`);
-    }
-
-    return parts.length > 0
-      ? parts.join('；')
-      : '天气条件在安全范围内';
-  }
-
-  /**
-   * 建议行动
-   */
-  private suggestAction(
-    weather: any,
-    rules?: WeatherDecisionRules,
-  ): 'DELAY' | 'REROUTE' | 'CANCEL' | 'PROCEED' {
-    const violation = this.checkViolations(weather, rules);
-
-    if (violation === 'HARD') {
+  private suggestActionFromDerivation(d: HazardDerivationResult): 'DELAY' | 'REROUTE' | 'CANCEL' | 'PROCEED' {
+    if (d.executionState === 'BLOCKED' || d.violation === 'HARD') {
       return 'CANCEL';
     }
-    if (violation === 'SOFT') {
+    if (d.executionState === 'DEGRADED' || d.executionState === 'HIGH_RISK' || d.violation === 'SOFT') {
       return 'DELAY';
     }
     return 'PROCEED';
   }
 
+  /** ExecutionGate — PLANNING_HEURISTIC_ONLY: no live weather API; conservative synthetic segment. */
+  private buildExecutionGateDegradedWeatherEvidence(
+    day: PlanDay,
+    point: { lat: number; lng: number },
+  ): WeatherDecisionEvidence {
+    return {
+      segmentId: `day_${day.day}_${day.date}`,
+      date: day.date,
+      windSpeed: 0,
+      windDirection: 0,
+      precipitation: 0,
+      visibility: undefined,
+      temperatureDrop: 0,
+      crosswindRisk: 'NONE',
+      executionState: 'DEGRADED',
+      violation: 'SOFT',
+      hazards: [],
+      explanation:
+        'Execution Gate: degraded planning tick — live weather fetch skipped (PLANNING_HEURISTIC_ONLY).',
+      suggestedAction: 'DELAY',
+      metadata: {
+        weatherWindowAvailable: false,
+        forecastReliability: 'LOW',
+        historicalRiskLevel: 'HIGH',
+        weatherSource: 'execution_gate_heuristic_only',
+        resolvedLat: point.lat,
+        resolvedLng: point.lng,
+      },
+    };
+  }
+
+  private buildMissingLocationEvidence(day: PlanDay): WeatherDecisionEvidence {
+    return {
+      segmentId: `day_${day.day}_${day.date}`,
+      date: day.date,
+      windSpeed: 0,
+      windDirection: 0,
+      precipitation: 0,
+      visibility: undefined,
+      temperatureDrop: 0,
+      crosswindRisk: 'NONE',
+      executionState: 'BLOCKED',
+      violation: 'HARD',
+      explanation:
+        '无法解析当日代表性坐标，且未提供 fallbackLat/fallbackLng，不能绑定真实天气观测。',
+      suggestedAction: 'CANCEL',
+      metadata: {
+        weatherWindowAvailable: false,
+        forecastReliability: 'LOW',
+        fetchError: 'MISSING_LOCATION_ANCHOR',
+      },
+    };
+  }
+
   /**
-   * 生成可解释的失败原因
+   * 从当日 slot 取坐标均值；若无则使用 context fallback。
    */
+  private resolveRepresentativePoint(
+    day: PlanDay,
+    context?: WeatherEvidenceLocationContext,
+  ): { lat: number; lng: number } | null {
+    const coords = day.timeSlots
+      .map(s => s.coordinates)
+      .filter((c): c is { lat: number; lng: number } =>
+        !!c && typeof c.lat === 'number' && typeof c.lng === 'number' && !Number.isNaN(c.lat + c.lng),
+      );
+    if (coords.length > 0) {
+      const lat = coords.reduce((a, c) => a + c.lat, 0) / coords.length;
+      const lng = coords.reduce((a, c) => a + c.lng, 0) / coords.length;
+      return { lat, lng };
+    }
+    if (
+      context?.fallbackLat !== undefined &&
+      context?.fallbackLng !== undefined &&
+      !Number.isNaN(context.fallbackLat + context.fallbackLng)
+    ) {
+      return { lat: context.fallbackLat, lng: context.fallbackLng };
+    }
+    return null;
+  }
+
+  private normalizeWeather(weather: ExtendedWeatherData): NormalizedWeatherInput {
+    const precipRaw = weather.metadata?.precipitation;
+    const precipitationMm = typeof precipRaw === 'number' && !Number.isNaN(precipRaw) ? precipRaw : 0;
+
+    return {
+      windSpeed: weather.windSpeed ?? 0,
+      windGust: weather.windGust,
+      windDirection: weather.windDirection ?? 0,
+      precipitationMm,
+      visibilityKm: this.visibilityToKm(weather.visibility, weather.source),
+      temperatureDrop: 0,
+      source: weather.source,
+    };
+  }
+
+  /**
+   * apis.is（冰岛）能见度为米；DefaultWeatherAdapter 将 OpenWeather 转为 km 存入 visibility。
+   */
+  private visibilityToKm(visibility: number | undefined, source: string): number | undefined {
+    if (visibility === undefined || Number.isNaN(visibility)) {
+      return undefined;
+    }
+    const s = source.toLowerCase();
+    if (s.includes('apis.is') || s.includes('iceland')) {
+      return visibility / 1000;
+    }
+    if (s.includes('openweather')) {
+      return visibility;
+    }
+    return visibility > 200 ? visibility / 1000 : visibility;
+  }
+
   private generateExplainableFailure(
     evidences: WeatherDecisionEvidence[],
     hasHardViolation: boolean,
@@ -220,23 +326,31 @@ export class WeatherDecisionEvidenceService {
       return undefined;
     }
 
-    const hardViolations = evidences.filter(e => e.violation === 'HARD');
-    const affectedDays = hardViolations.map(e => e.segmentId);
+    const parseDayOrdinal = (segmentId: string): number => {
+      const m = /^day_(\d+)_/.exec(segmentId);
+      return m ? parseInt(m[1], 10) : 0;
+    };
 
     if (hasHardViolation) {
+      const affectedDays = evidences
+        .filter(e => e.violation === 'HARD')
+        .map(e => parseDayOrdinal(e.segmentId))
+        .filter(d => d > 0);
       return {
         reason: '天气条件不符合安全要求',
-        affectedDays: affectedDays.map((_, i) => i + 1),
+        affectedDays,
         userImpact: '计划无法执行，需要调整日期或路线',
       };
     }
 
     if (hasSoftViolation) {
+      const affectedDays = evidences
+        .filter(e => e.violation === 'SOFT')
+        .map(e => parseDayOrdinal(e.segmentId))
+        .filter(d => d > 0);
       return {
         reason: '天气条件存在风险',
-        affectedDays: evidences
-          .filter(e => e.violation === 'SOFT')
-          .map((_, i) => i + 1),
+        affectedDays,
         userImpact: '建议延迟或调整计划',
       };
     }
@@ -267,19 +381,4 @@ export class WeatherDecisionEvidenceService {
 
     return { valid: true };
   }
-
-  /**
-   * 获取模拟天气数据（TODO: 替换为真实天气 API）
-   */
-  private getMockWeather(_date: string): any {
-    // 模拟天气数据
-    return {
-      windSpeed: 8 + Math.random() * 10, // 8-18 m/s
-      windDirection: Math.random() * 360, // 0-360 度
-      precipitation: Math.random() * 30, // 0-30 mm
-      visibility: 5 + Math.random() * 10, // 5-15 km
-      temperatureDrop: Math.random() * 5, // 0-5 °C
-    };
-  }
 }
-

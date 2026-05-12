@@ -35,7 +35,7 @@ export interface ExchangeRateResponse {
 @Injectable()
 export class CurrencyDirectService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CurrencyDirectService.name);
-  private axiosInstance: AxiosInstance;
+  private axiosInstance!: AxiosInstance;
   private apiKey: string | null = null;
   private isAvailable: boolean = false;
   private readonly baseUrl = 'https://api.exchangerate-api.com/v4';

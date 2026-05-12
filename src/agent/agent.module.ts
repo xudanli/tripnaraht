@@ -3,6 +3,13 @@ import { Module, Optional, forwardRef } from '@nestjs/common';
 import { AgentController } from './agent.controller';
 import { ActionsController } from './actions.controller';
 import { AgentService } from './services/agent.service';
+import { ExecutionGatewayService } from './services/execution-gateway.service';
+import { EcpsRuntimeBiasService } from './services/ecps-runtime-bias.service';
+import { ExecutionPolicyVersionRegistryService } from './services/execution-policy-version-registry.service';
+import { PolicyAgentPopulationService } from './services/policy-agent-population.service';
+import { CognitiveAssetRegistryService } from './services/cognitive-asset-registry.service';
+import { CognitiveMarketService } from './services/cognitive-market.service';
+import { ExecutionEngineRouterService } from './services/execution-engine-router.service';
 import { RouterService } from './services/router.service';
 import { AgentStateService } from './services/agent-state.service';
 import { ActionRegistryService } from './services/action-registry.service';
@@ -28,7 +35,7 @@ import { PlanningPolicyModule } from '../planning-policy/planning-policy.module'
 import { RailPassModule } from '../railpass/railpass.module';
 import { ReadinessModule } from '../trips/readiness/readiness.module';
 import { DecisionModule } from '../trips/decision/decision.module';
-import { MemoryModule } from './memory/memory.module';
+import { SharedMemoryModule } from './memory/shared-memory.module';
 import { RagModule } from '../rag/rag.module';
 import { PlacesService } from '../places/places.service';
 import { TripsService } from '../trips/trips.service';
@@ -103,6 +110,7 @@ import { PreferenceEvolutionService } from './services/preference-evolution.serv
 import { AgentEntryResponseFactoryService } from './services/agent-entry-response-factory.service';
 import { PlanningRequestClassifierService } from './services/planning-request-classifier.service';
 import { DecisionReplayService } from './services/decision-replay.service';
+import { UserStandingPreferenceService } from './services/user-standing-preference.service';
 import { RouteAndRunContextEnricherService } from './services/route-and-run-context-enricher.service';
 import { SkillsModule } from '../skills/skills.module';
 // 子 Agent 服务（Claude 编排）
@@ -122,10 +130,14 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { TrainingModule } from './training/training.module';
 import { DomainAgentsModule } from './services/domain-agents/domain-agents.module';
 import { StrategyConflictOptionsService } from './services/strategy-conflict-options.service';
+import { RuntimeReplayPersistenceService } from './services/runtime-replay-persistence.service';
 import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
 import { ChainOfWorkModule } from '../chain-of-work/chain-of-work.module';
 import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
+import { AmadeusDirectModule } from '../mcp/amadeus-direct.module';
+import { FlightMcpModule } from '../mcp/flight-mcp.module';
 import { RedisModule } from '../redis/redis.module';
+import { RoadIsModule } from '../infrastructure/external/road-is/road-is.module';
 import { DecisionContractCapturerService } from './services/decision-contract-capturer.service';
 import { AgentActionReconcilerService } from './services/agent-action-reconciler.service';
 import { SagaReconciliationCron } from './crons/saga-reconciliation.cron';
@@ -133,6 +145,9 @@ import { SideEffectCleanupAdapterRegistry } from './services/side-effect-cleanup
 import { ActionGraphSagaCompilerService } from './services/action-graph-saga-compiler.service';
 import { PhysicalValidatorService } from '../domain/ontology/validator/physical-validator.service';
 import { SelfHealingService } from '../domain/ontology/healer/self-healing.service';
+import { SpatialModule } from '../domain/spatial/spatial.module';
+import { AuthModule } from '../auth/auth.module';
+import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
 
 /**
  * Agent Module
@@ -151,7 +166,7 @@ import { SelfHealingService } from '../domain/ontology/healer/self-healing.servi
     RailPassModule,
     ReadinessModule,
     DecisionModule,
-    MemoryModule,
+    SharedMemoryModule,
     forwardRef(() => RagModule), // RAG 模块（用于增强对话），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
     forwardRef(() => SkillsModule), // Skills 模块（用于 Claude 编排），使用 forwardRef 避免循环依赖（SkillsModule -> PlacesModule -> RagModule -> SkillsModule -> AgentModule）
@@ -160,12 +175,17 @@ import { SelfHealingService } from '../domain/ontology/healer/self-healing.servi
     RouteDirectionsModule, // 路线方向模块（用于信息卡片）
     DataModelingModule, // 数据建模模块（用于不确定性建模）
     PrismaModule, // Prisma 模块（用于数据库访问）
+    SpatialModule, // POI→SpatialDomainSegment 投影，供 route_and_run Action PREVIEW 物理门
     DomainAgentsModule, // Geo/Weather/Cost/Experience 域 Agent（PlanningWorkbench getWorldModelData）
     TrainingModule, // Iterative Deployment 训练模块
     forwardRef(() => DecisionDraftModule), // 使用 forwardRef 避免循环依赖
     forwardRef(() => ChainOfWorkModule), // Phase B+：ExecutionIntegrationService（编排恢复闭环）
     PostgreSQLMcpModule, // PostgreSQL MCP 模块（用于 Admin 批量操作）
+    AmadeusDirectModule, // Amadeus REST（轻量 path：航班库存 sensor）
+    FlightMcpModule, // Flight MCP（Smithery/Kiwi，与 Amadeus 二选一或回退）
     RedisModule, // research prior 快照（可选 Redis；MCP 模式下为内存 cache）
+    forwardRef(() => AuthModule), // AdminStrictAuthGuard（replay 锚点 admin API）
+    RoadIsModule, // ontology 区域 → Road.is / segment 缓存路况（轻量问答硬锚点附录）
   ],
   controllers: [
     AgentController,
@@ -177,6 +197,13 @@ import { SelfHealingService } from '../domain/ontology/healer/self-healing.servi
     DecisionReplayController,
   ],
   providers: [
+    ExecutionGatewayService,
+    EcpsRuntimeBiasService,
+    ExecutionPolicyVersionRegistryService,
+    PolicyAgentPopulationService,
+    CognitiveAssetRegistryService,
+    CognitiveMarketService,
+    ExecutionEngineRouterService,
     AgentService,
     RouterService,
     AgentStateService,
@@ -190,6 +217,8 @@ import { SelfHealingService } from '../domain/ontology/healer/self-healing.servi
     EventTelemetryService,
     ActionCacheService,
     RequestDeduplicationService,
+    RuntimeReplayPersistenceService,
+    AdminStrictAuthGuard,
     ActionDependencyAnalyzerService,
     LlmPlanService,
     WebBrowseExecutorService,
@@ -249,6 +278,7 @@ import { SelfHealingService } from '../domain/ontology/healer/self-healing.servi
     AgentEntryResponseFactoryService,
     PlanningRequestClassifierService,
     DecisionReplayService,
+    UserStandingPreferenceService,
     RouteAndRunContextEnricherService,
     StrategyConflictOptionsService,
     ClarificationHandlerService,

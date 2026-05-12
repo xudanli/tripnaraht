@@ -69,9 +69,9 @@ function mergeTag(meta: NonNullable<ItineraryItem['metadata']>, tag: ItineraryRi
 
 function bumpRiskLevel(
   meta: NonNullable<ItineraryItem['metadata']>,
-  severity: 'ERROR' | 'WARNING',
+  severity: 'ERROR' | 'WARNING' | 'CRITICAL',
 ): void {
-  const candidate: 'MEDIUM' | 'HIGH' = severity === 'ERROR' ? 'HIGH' : 'MEDIUM';
+  const candidate: 'MEDIUM' | 'HIGH' = severity === 'WARNING' ? 'MEDIUM' : 'HIGH';
   const cur = meta.risk_level ?? 'LOW';
   if (RISK_LEVEL_ORDER[candidate] > RISK_LEVEL_ORDER[cur]) {
     meta.risk_level = candidate;
@@ -85,22 +85,24 @@ function ensureItemMetadata(item: ItineraryItem): NonNullable<ItineraryItem['met
   return item.metadata;
 }
 
+/** 与 itinerary.verify issues 最小子集对齐（含 INFO；多余字段忽略） */
+export type VerifyIssueLike = {
+  type: VerifyIssueType;
+  severity: 'CRITICAL' | 'ERROR' | 'WARNING' | 'INFO';
+  item_id?: string;
+};
+
 /**
  * 按 `item_id` 将验证问题映射为风险标签与严重度摘要（原地修改 itinerary）。
  */
-export function applyRiskTagsFromVerifyIssues(
-  itinerary: Itinerary,
-  issues: Array<{
-    type: VerifyIssueType;
-    severity: 'ERROR' | 'WARNING';
-    item_id?: string;
-  }>,
-): void {
-  const byItem = new Map<string, Array<{ type: VerifyIssueType; severity: 'ERROR' | 'WARNING' }>>();
+export function applyRiskTagsFromVerifyIssues(itinerary: Itinerary, issues: readonly VerifyIssueLike[]): void {
+  const byItem = new Map<string, Array<{ type: VerifyIssueType; severity: 'ERROR' | 'WARNING' | 'CRITICAL' }>>();
   for (const i of issues) {
+    if (i.severity === 'INFO') continue;
     if (!i.item_id) continue;
+    const sev = i.severity;
     const list = byItem.get(i.item_id) ?? [];
-    list.push({ type: i.type, severity: i.severity });
+    list.push({ type: i.type, severity: sev });
     byItem.set(i.item_id, list);
   }
   for (const day of itinerary.days) {

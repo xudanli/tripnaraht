@@ -214,11 +214,39 @@ function userIntentToContext(intent: UserIntent): TripContextState {
   };
 }
 
+/** Optional overrides for {@link decisionStateToTripWorldState}. */
+export type DecisionStateToTripWorldStateOptions = {
+  /** Prisma `Trip.id` when known outside `travelOntologyState`. */
+  prismaTripId?: string;
+};
+
+/**
+ * Best-effort trip key for ECO / persistence: explicit ontology first, then kernel `systemState.requestId`
+ * when it is not the `'unknown'` placeholder (orchestrators often align it with Prisma `Trip.id`).
+ */
+export function resolveKernelTripIdHint(state: DecisionState): string | undefined {
+  if (state.travelOntologyState?.tripId) {
+    return state.travelOntologyState.tripId;
+  }
+  const rid = state.systemState?.requestId;
+  if (typeof rid === 'string' && rid.length > 0 && rid !== 'unknown') {
+    return rid;
+  }
+  return undefined;
+}
+
 /**
  * DecisionState → TripWorldState 最小转换
  */
-export function decisionStateToTripWorldState(state: DecisionState): TripWorldState {
+export function decisionStateToTripWorldState(
+  state: DecisionState,
+  options?: DecisionStateToTripWorldStateOptions,
+): TripWorldState {
   const context = userIntentToContext(state.userIntent ?? {});
+  const boundTrip = options?.prismaTripId ?? state.travelOntologyState?.tripId;
+  if (boundTrip) {
+    context.tripId = boundTrip;
+  }
 
   const signals: ExternalSignalsState = {
     lastUpdatedAt: new Date().toISOString(),

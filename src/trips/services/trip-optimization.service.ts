@@ -230,6 +230,11 @@ export class TripOptimizationService {
         }
       }
 
+      if (!tripDay) {
+        this.logger.warn(`无法解析行程日 date=${date}，跳过`);
+        continue;
+      }
+
       // 获取现有行程项
       const existingItems = tripDay.ItineraryItem || [];
       
@@ -407,6 +412,13 @@ export class TripOptimizationService {
             // 默认：开始时间 + 2小时
             endTime = DateTime.fromISO(startTime).plus({ hours: 2 }).toISO() || undefined;
           }
+
+          const finalEndTime =
+            endTime ?? DateTime.fromISO(startTime).plus({ hours: 2 }).toISO();
+          if (!finalEndTime) {
+            this.logger.warn(`无法解析结束时间 placeId=${placeId}，跳过`);
+            continue;
+          }
           
           // 提取 type
           if (node.type) {
@@ -430,7 +442,7 @@ export class TripOptimizationService {
               placeId,
               type: type as any,
               startTime,
-              endTime,
+              endTime: finalEndTime,
               note,
               travelFromPreviousDuration: node.travelFromPreviousDuration,
               travelFromPreviousDistance: node.travelFromPreviousDistance,

@@ -30,7 +30,13 @@ import {
 } from '../types/ai-enhanced.types';
 import { TripContext } from '../types/trip-context.types';
 import { ReadinessCacheService } from './readiness-cache.service';
-import { ChunkRetrievalService } from '../../../rag/services/chunk-retrieval.service';
+import {
+  ChunkRetrievalService,
+  type ChunkRetrievalParams,
+} from '../../../rag/services/chunk-retrieval.service';
+import { RagRealityPolicyGateService } from '../../../rag/services/rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../../../rag/reality-policy/rag-soft-world-policy';
+import { getBoundDecisionContext } from '../../reality-kernel/reality-context.storage';
 
 @Injectable()
 export class ReadinessAIService {
@@ -43,6 +49,7 @@ export class ReadinessAIService {
     @Optional() private readonly cacheService?: ReadinessCacheService,
     @Optional() private readonly redisService?: RedisService,
     @Optional() private readonly chunkRetrievalService?: ChunkRetrievalService,
+    @Optional() private readonly ragRealityPolicyGate?: RagRealityPolicyGateService,
   ) {
     if (!llmService) {
       this.logger.warn('LlmService not available, AI enhancement will be disabled');
@@ -53,6 +60,25 @@ export class ReadinessAIService {
     if (!chunkRetrievalService) {
       this.logger.warn('ChunkRetrievalService not available, channel retrieval will be disabled');
     }
+  }
+
+  /** Reality Policy：BLOCK 时跳过 RAG；DEGRADE 时收窄 chunkCategory。 */
+  private resolveRagMerge(): {
+    merge: (p: ChunkRetrievalParams) => ChunkRetrievalParams;
+    blocked: boolean;
+  } {
+    if (!this.ragRealityPolicyGate) {
+      return { merge: (p) => p, blocked: false };
+    }
+    const { scope } = this.ragRealityPolicyGate.resolve(getBoundDecisionContext());
+    if (scope === 'blocked') {
+      return { merge: (p) => p, blocked: true };
+    }
+    const ragScope: RagSoftWorldScope = scope;
+    return {
+      merge: (p) => this.ragRealityPolicyGate!.mergeChunkRetrievalParams(p, ragScope),
+      blocked: false,
+    };
   }
 
   /**
@@ -183,6 +209,11 @@ export class ReadinessAIService {
       return [];
     }
 
+    const { merge: mergeRagParams, blocked } = this.resolveRagMerge();
+    if (blocked) {
+      return [];
+    }
+
     const channels: ChannelEnhancement[] = [];
 
     // 为每个检查项检索办理渠道
@@ -200,13 +231,15 @@ export class ReadinessAIService {
           const query = `${item.message} ${finding.destinationId} ${userProfile.nationality || ''} 办理渠道 申请方式`;
           
           // RAG 检索
-          const ragResults = await this.chunkRetrievalService.retrieve({
-            query,
-            limit: 5,
-            chunkCategory: 'RULES', // 规则类查询
-            useHybridSearch: true,
-            useReranking: false,
-          });
+          const ragResults = await this.chunkRetrievalService.retrieve(
+            mergeRagParams({
+              query,
+              limit: 5,
+              chunkCategory: 'RULES', // 规则类查询
+              useHybridSearch: true,
+              useReranking: false,
+            }),
+          );
 
           if (ragResults.length > 0) {
             // 提取渠道信息
@@ -669,6 +702,11 @@ ${JSON.stringify(allItems, null, 2)}
       return [];
     }
 
+    const { merge: mergeRagParams, blocked } = this.resolveRagMerge();
+    if (blocked) {
+      return [];
+    }
+
     const contacts: EmergencyContactEnhancement[] = [];
 
     // 为每个高风险项检索紧急联系方式
@@ -680,13 +718,15 @@ ${JSON.stringify(allItems, null, 2)}
         const query = `${risk.type} ${tripContext.itinerary.countries?.join(' ') || ''} 紧急联系方式 救援电话 报警电话`;
 
         // RAG 检索
-        const ragResults = await this.chunkRetrievalService.retrieve({
-          query,
-          limit: 5,
-          chunkCategory: 'RULES',
-          useHybridSearch: true,
-          useReranking: false,
-        });
+        const ragResults = await this.chunkRetrievalService.retrieve(
+          mergeRagParams({
+            query,
+            limit: 5,
+            chunkCategory: 'RULES',
+            useHybridSearch: true,
+            useReranking: false,
+          }),
+        );
 
         if (ragResults.length > 0 && ragResults[0].similarity >= 0.6) {
           // 提取联系方式

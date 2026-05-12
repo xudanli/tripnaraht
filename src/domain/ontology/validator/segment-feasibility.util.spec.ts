@@ -46,6 +46,40 @@ describe('computeSegmentFeasibilityViolations / Iceland F-Road policy', () => {
     expect(violations).not.toContain('SEGMENT_SEASONALLY_CLOSED');
   });
 
+  it('live SLIPPERY maps to RESTRICTED_4WD and blocks non-4x4', () => {
+    const { violations } = computeSegmentFeasibilityViolations({
+      segment: {
+        ...baseSegment,
+        latest_status: {
+          condition: 'SLIPPERY',
+          condition_text: 'Icy surface',
+          provider: 'road.is',
+        },
+      },
+      toPoi: null,
+      enterAt: new Date('2026-07-15T10:00:00.000Z'),
+      vehicleType: 'SEDAN',
+    });
+    expect(violations).toContain('SEGMENT_ROAD_CLOSED');
+  });
+
+  it('live SLIPPERY does not block FOUR_BY_FOUR', () => {
+    const { violations } = computeSegmentFeasibilityViolations({
+      segment: {
+        ...baseSegment,
+        latest_status: {
+          condition: 'SLIPPERY',
+          condition_text: 'Icy surface',
+          provider: 'road.is',
+        },
+      },
+      toPoi: null,
+      enterAt: new Date('2026-07-15T10:00:00.000Z'),
+      vehicleType: 'FOUR_BY_FOUR',
+    });
+    expect(violations).not.toContain('SEGMENT_ROAD_CLOSED');
+  });
+
   it('live Road.is snapshot CLOSED blocks even when seasonal calendar would allow July travel', () => {
     const { violations, facts } = computeSegmentFeasibilityViolations({
       segment: {

@@ -198,8 +198,8 @@ export class ItineraryValidationService {
       tripDayId: targetTripDayId ?? existingItem.tripDayId,
       placeId: dto.placeId ?? existingItem.placeId ?? undefined,
       type: (dto.type ?? existingItem.type) as any,
-      startTime: dto.startTime ?? existingItem.startTime.toISOString(),
-      endTime: dto.endTime ?? existingItem.endTime.toISOString(),
+      startTime: dto.startTime ?? existingItem.startTime?.toISOString() ?? '',
+      endTime: dto.endTime ?? existingItem.endTime?.toISOString() ?? '',
     };
 
     // 执行基本校验（排除当前项）
@@ -299,8 +299,8 @@ export class ItineraryValidationService {
           tripDayDate: day.date,
           newItem: {
             placeId: item.placeId ?? undefined,
-            startTime: item.startTime,
-            endTime: item.endTime,
+            startTime: item.startTime ?? day.date,
+            endTime: item.endTime ?? day.date,
             type: item.type,
           },
           newItemPlace: item.Place ? {

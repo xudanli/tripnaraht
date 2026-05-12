@@ -6,13 +6,26 @@
  * 将现有的服务适配到决策引擎的 SenseTools 接口
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { SmartRoutesService } from '../../../transport/services/smart-routes.service';
 import { TravelLeg, GeoPoint } from '../world-model';
+import {
+  estimateTravelTimeHeuristicV0,
+  wrapRoutingProviderMinutes,
+} from '../travel-time-ontology/travel-time-estimate-v0';
+import { assertRealityWorldReadAllowed } from '../../reality-kernel/reality-policy-engine';
+import {
+  RealityExecutionBlockedError,
+  requiresPlanningHeuristicWorldModelOnly,
+} from '../../reality-kernel/reality-execution-gate';
+import { RealityBypassBlockedError } from '../../reality-kernel/reality-read-audit';
+import { getBoundDecisionContext } from '../../reality-kernel/reality-context.storage';
 import { SenseTools } from '../trip-decision-engine.service';
 
 @Injectable()
 export class SenseToolsAdapter implements SenseTools {
+  private readonly logger = new Logger(SenseToolsAdapter.name);
+
   constructor(private readonly smartRoutesService: SmartRoutesService) {}
 
   /**
@@ -29,6 +42,14 @@ export class SenseToolsAdapter implements SenseTools {
    * 获取两点之间的旅行时间
    */
   async getTravelLeg(from: GeoPoint, to: GeoPoint): Promise<TravelLeg> {
+    if (requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext())) {
+      return this.fallbackEstimate(from, to);
+    }
+    assertRealityWorldReadAllowed(
+      this.logger,
+      'SenseToolsAdapter.getTravelLeg',
+      'routing provider read — bind DecisionContext on planning tick when REALITY_READ_BOUNDARY',
+    );
     try {
       // 使用智能路由服务获取路线
       const options = await this.smartRoutesService.getRoutes(
@@ -41,23 +62,34 @@ export class SenseToolsAdapter implements SenseTools {
 
       if (options.length > 0) {
         const bestOption = options[0];
+        const distanceKm = bestOption.walkDistance
+          ? bestOption.walkDistance / 1000
+          : undefined;
+        const mode = this.mapTransportMode(bestOption.mode);
+        const durationMin = bestOption.durationMinutes;
         return {
-          mode: this.mapTransportMode(bestOption.mode),
+          mode,
           from,
           to,
-          durationMin: bestOption.durationMinutes,
-          distanceKm: bestOption.walkDistance
-            ? bestOption.walkDistance / 1000
-            : undefined,
+          durationMin,
+          distanceKm,
           reliability: 0.9, // 基于 API 返回的可靠性
           source: 'smart_routes',
+          timeEstimate: wrapRoutingProviderMinutes({
+            durationMinutes: durationMin,
+            distanceKm,
+            sourceLabel: 'smart_routes',
+            degradedWorldModel: true,
+          }),
         };
       }
 
       // 降级：使用距离估算
       return this.fallbackEstimate(from, to);
     } catch (error) {
-      // 降级：使用距离估算
+      if (error instanceof RealityExecutionBlockedError || error instanceof RealityBypassBlockedError) {
+        throw error;
+      }
       return this.fallbackEstimate(from, to);
     }
   }
@@ -86,19 +118,22 @@ export class SenseToolsAdapter implements SenseTools {
    * 降级估算（基于距离）
    */
   private fallbackEstimate(from: GeoPoint, to: GeoPoint): TravelLeg {
-    // 简单的 Haversine 距离计算
     const distanceKm = this.calculateDistance(from, to);
-    // 假设平均速度 50 km/h
-    const durationMin = Math.round((distanceKm / 50) * 60);
+    const timeEstimate = estimateTravelTimeHeuristicV0({
+      distanceKm,
+      mode: 'drive',
+    });
+    const durationMin = Math.max(timeEstimate.pointEstimateMinutes, 5);
 
     return {
       mode: 'drive',
       from,
       to,
-      durationMin: Math.max(durationMin, 5), // 至少 5 分钟
+      durationMin,
       distanceKm,
       reliability: 0.5, // 降级估算的可靠性较低
       source: 'heuristic',
+      timeEstimate,
     };
   }
 

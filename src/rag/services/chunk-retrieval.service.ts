@@ -18,6 +18,72 @@ function parseChunkUpdatedAt(v: Date | string | null | undefined): Date | undefi
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
+/** pg / Prisma 原始查询可能返回 number、string、Decimal；parseFloat 直接转会得到 NaN */
+function parsePgNumeric(v: unknown): number {
+  if (v == null) return NaN;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+  if (typeof v === 'bigint') return Number(v);
+  if (typeof v === 'object' && v !== null && 'toNumber' in v && typeof (v as { toNumber: () => number }).toNumber === 'function') {
+    try {
+      const n = (v as { toNumber: () => number }).toNumber();
+      return Number.isFinite(n) ? n : NaN;
+    } catch {
+      return NaN;
+    }
+  }
+  // Prisma.Decimal / decimal.js：toJSON() 常为 string；toString() 常为数字字面量
+  if (typeof v === 'object' && v !== null) {
+    const jsonish = (v as { toJSON?: () => unknown }).toJSON;
+    if (typeof jsonish === 'function') {
+      try {
+        const j = jsonish.call(v);
+        if (typeof j === 'number' && Number.isFinite(j)) return j;
+        if (typeof j === 'string') {
+          const n = parseFloat(j.replace(/,/g, ''));
+          if (Number.isFinite(n)) return n;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      const ts = (v as { toString?: () => string }).toString?.();
+      if (ts && ts !== '[object Object]' && /^-?\d/.test(ts.trim())) {
+        const n = parseFloat(ts.replace(/,/g, ''));
+        if (Number.isFinite(n)) return n;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const n = parseFloat(String(v));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** pg 驱动 / Prisma 原始行里相似度列名可能不一致，做一次归一 */
+function pickDenseSimilarityRaw(row: Record<string, unknown>): unknown {
+  const direct =
+    row.similarity ??
+    row.Similarity ??
+    (row as { similarity_score?: unknown }).similarity_score;
+  if (direct != null) return direct;
+  for (const [k, v] of Object.entries(row)) {
+    if (k.toLowerCase() === 'similarity' && v != null) return v;
+  }
+  return undefined;
+}
+
+function pickCredibilityRaw(row: Record<string, unknown>): unknown {
+  const direct =
+    row.credibility_score ??
+    (row as { credibilityScore?: unknown }).credibilityScore;
+  if (direct != null) return direct;
+  for (const [k, v] of Object.entries(row)) {
+    if (k.toLowerCase() === 'credibility_score' && v != null) return v;
+  }
+  return undefined;
+}
+
 export interface ChunkRetrievalResult {
   id: string;
   chunkId: string;
@@ -64,6 +130,11 @@ export interface ChunkRetrievalParams {
   maxQueryVariants?: number; // 最大查询变体数量 (默认 3)
   // Query Intent 参数
   useIntentClassification?: boolean; // 是否使用意图分类自动过滤 (默认 false)
+  /**
+   * Hybrid 内层 dense 检索：不在 formatResults 里按向量相似度二次过滤（SQL 已按 credibility 过滤）。
+   * 避免余弦略低于 0.01 或驱动返回非标类型导致 Dense=0、RRF 无 dense 分支。
+   */
+  relaxDenseSimilarityFilter?: boolean;
 }
 
 @Injectable()
@@ -464,7 +535,7 @@ export class ChunkRetrievalService {
         c.file_id,
         c.category,
         c.updated_at AS chunk_updated_at,
-        1 - (c.embedding <=> $1::vector) as similarity
+        COALESCE((1 - (c.embedding <=> $1::vector))::double precision, 0) AS similarity
       ${fromClause}
       ${whereClause}
       ORDER BY c.embedding <=> $1::vector
@@ -485,7 +556,7 @@ export class ChunkRetrievalService {
       similarity: number;
     }>>(querySql, ...paramsList);
 
-    return this.formatResults(results, credibilityMin);
+    return this.formatResults(results, credibilityMin, params.relaxDenseSimilarityFilter === true);
   }
 
   /**
@@ -507,7 +578,7 @@ export class ChunkRetrievalService {
 
     // 并行执行 Dense 和 Sparse 检索
     const [denseResults, sparseResults] = await Promise.all([
-      this.denseRetrieve({ ...params, useHybridSearch: false }),
+      this.denseRetrieve({ ...params, useHybridSearch: false, relaxDenseSimilarityFilter: true }),
       this.sparseRetrieve({ ...params }),
     ]);
 
@@ -524,7 +595,9 @@ export class ChunkRetrievalService {
     // credibilityMin 已在 SQL 查询中用于过滤 credibility_score
     // Hybrid Search使用更宽松的阈值，只过滤掉明显无意义的结果
     const filteredResults = mergedResults.filter((r) => {
-      const score = r.hybridScore || r.similarity || 0;
+      const sim = parsePgNumeric(r.similarity);
+      const hybrid = typeof r.hybridScore === 'number' && Number.isFinite(r.hybridScore) ? r.hybridScore : 0;
+      const score = hybrid || (Number.isFinite(sim) ? sim : 0) || r.sparseScore || r.denseScore || 0;
       const credibility = r.credibilityScore || 0;
       // Hybrid Search: 只要分数>0且credibility满足要求即可
       return score > 0 && credibility >= (params.credibilityMin || 0);
@@ -667,22 +740,26 @@ export class ChunkRetrievalService {
       fileMap.set(f.id, f.filename);
     });
 
-    // 格式化结果，使用keyword_score作为similarity
-    return results.map((r) => ({
-      id: r.id,
-      chunkId: r.chunk_id,
-      content: r.content,
-      type: r.type,
-      credibilityScore: parseFloat(String(r.credibility_score)),
-      keywords: r.keywords || [],
-      metadata: r.metadata as Record<string, any> | undefined,
-      fileId: r.file_id,
-      category: r.category,
-      chunkUpdatedAt: parseChunkUpdatedAt(r.chunk_updated_at),
-      similarity: Math.min(parseFloat(String(r.keyword_score)) / 100, 1), // 归一化到0-1
-      sparseScore: Math.min(parseFloat(String(r.keyword_score)) / 100, 1),
-      sourceFile: fileMap.get(r.file_id),
-    }));
+    // 格式化结果，使用 keyword_score 作为 similarity（须 parsePgNumeric：避免 Decimal → NaN）
+    return results.map((r) => {
+      const ks = parsePgNumeric(r.keyword_score);
+      const norm = Number.isFinite(ks) ? Math.min(ks / 100, 1) : 0;
+      return {
+        id: r.id,
+        chunkId: r.chunk_id,
+        content: r.content,
+        type: r.type,
+        credibilityScore: parsePgNumeric(r.credibility_score) || 0,
+        keywords: r.keywords || [],
+        metadata: r.metadata as Record<string, any> | undefined,
+        fileId: r.file_id,
+        category: r.category,
+        chunkUpdatedAt: parseChunkUpdatedAt(r.chunk_updated_at),
+        similarity: norm,
+        sparseScore: norm,
+        sourceFile: fileMap.get(r.file_id),
+      };
+    });
   }
 
   /**
@@ -733,7 +810,21 @@ export class ChunkRetrievalService {
     // 按混合分数排序
     const merged = Array.from(resultMap.values())
       .sort((a, b) => (b.hybridScore || 0) - (a.hybridScore || 0))
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((r) => {
+        let sim = parsePgNumeric(r.similarity);
+        if (!Number.isFinite(sim) || sim <= 0) {
+          const h = r.hybridScore ?? 0;
+          const fallback = r.sparseScore ?? r.denseScore ?? 0;
+          sim =
+            Number.isFinite(h) && h > 0
+              ? Math.min(1, h * 18)
+              : Number.isFinite(fallback) && fallback > 0
+                ? fallback
+                : 0;
+        }
+        return { ...r, similarity: sim };
+      });
 
     return merged;
   }
@@ -886,7 +977,8 @@ export class ChunkRetrievalService {
       chunk_updated_at?: Date | string | null;
       similarity: number;
     }>,
-    credibilityMin: number
+    credibilityMin: number,
+    relaxSimilarityFilter = false,
   ): Promise<ChunkRetrievalResult[]> {
     // 获取文件信息
     const fileIds = [...new Set(results.map((r) => r.file_id))];
@@ -908,30 +1000,45 @@ export class ChunkRetrievalService {
     // 对于中文查询，向量相似度可能较低，需要大幅降低阈值
     // 使用动态阈值：如果credibilityMin很低（如0.0），则几乎不过滤similarity
     // 对于诊断模式（credibilityMin=0.0），完全移除similarity阈值，只依赖排序
-    const similarityThreshold = credibilityMin <= 0.0 ? 0 : 0.01; // 诊断模式：完全不过滤similarity
+    // Hybrid 内层 dense：不在此处按向量分过滤，交给 RRF；单独 dense 路径仍用阈值压制噪声
+    const similarityThreshold =
+      relaxSimilarityFilter || credibilityMin <= 0.0 ? 0 : 0.01;
     const formattedResults = results
       .filter((r) => {
-        const similarity = parseFloat(String(r.similarity));
-        const credibility = parseFloat(String(r.credibility_score));
+        const row = r as Record<string, unknown>;
+        const similarity = parsePgNumeric(pickDenseSimilarityRaw(row));
+        let credibility = parsePgNumeric(pickCredibilityRaw(row));
+        // Hybrid 内层 dense：SQL 已保证 c.credibility_score >= credibilityMin，JS 解析失败时不应丢行
+        if (!Number.isFinite(credibility) && relaxSimilarityFilter) {
+          credibility = credibilityMin;
+        }
         // 对于相似度，使用动态阈值（诊断模式时完全不过滤）
         // 对于credibility，使用传入的阈值
-        const similarityPass = similarityThreshold === 0 ? true : similarity >= similarityThreshold;
-        return similarityPass && credibility >= credibilityMin;
+        const similarityPass =
+          similarityThreshold === 0 ? true : Number.isFinite(similarity) && similarity >= similarityThreshold;
+        return similarityPass && Number.isFinite(credibility) && credibility >= credibilityMin;
       })
-      .map((r) => ({
+      .map((r) => {
+        const row = r as Record<string, unknown>;
+        let credOut = parsePgNumeric(pickCredibilityRaw(row));
+        if (!Number.isFinite(credOut) && relaxSimilarityFilter) {
+          credOut = credibilityMin;
+        }
+        return {
         id: r.id,
         chunkId: r.chunk_id,
         content: r.content,
         type: r.type,
-        credibilityScore: parseFloat(String(r.credibility_score)),
+        credibilityScore: Number.isFinite(credOut) ? credOut : 0,
         keywords: r.keywords || [],
         metadata: r.metadata as Record<string, any> | undefined,
         fileId: r.file_id,
         category: r.category ?? undefined,
         chunkUpdatedAt: parseChunkUpdatedAt(r.chunk_updated_at),
-        similarity: parseFloat(String(r.similarity)),
+        similarity: parsePgNumeric(pickDenseSimilarityRaw(row)) || 0,
         sourceFile: fileMap.get(r.file_id),
-      }));
+      };
+      });
 
     // 详细日志：记录过滤前后的结果数
     const beforeFilter = results.length;
@@ -943,11 +1050,14 @@ export class ChunkRetrievalService {
     
     // 如果过滤后结果为空但原始结果不为空，记录警告
     if (beforeFilter > 0 && afterFilter === 0) {
-      const maxSim = Math.max(...results.map(r => parseFloat(String(r.similarity))));
-      const minSim = Math.min(...results.map(r => parseFloat(String(r.similarity))));
+      const sims = results
+        .map((r) => parsePgNumeric(pickDenseSimilarityRaw(r as Record<string, unknown>)))
+        .filter((n) => Number.isFinite(n));
+      const maxSim = sims.length ? Math.max(...sims) : NaN;
+      const minSim = sims.length ? Math.min(...sims) : NaN;
       this.logger.warn(
-        `⚠️ 所有结果被过滤: 最高相似度=${maxSim.toFixed(4)}, ` +
-        `最低相似度=${minSim.toFixed(4)}, 阈值=${similarityThreshold}`
+        `⚠️ 所有结果被过滤: 最高相似度=${Number.isFinite(maxSim) ? maxSim.toFixed(4) : 'NaN'}, ` +
+          `最低相似度=${Number.isFinite(minSim) ? minSim.toFixed(4) : 'NaN'}, 阈值=${similarityThreshold}`,
       );
     }
 

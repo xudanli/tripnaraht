@@ -19,12 +19,17 @@ TripNARA 采用 **Skills / MCP / Agent** 三层架构：
 
 ### 1. 决策核心相关 Skills
 
-#### `skill.dem.getProfile`
-- **输入**: `{ polyline, samples }`
-- **输出**: `{ elevationProfile, cumulativeAscent, maxSlope, fatigueIndex }`
-- **用途**: 供 Abu / Dr.Dre 以及 Explanation 使用
+#### `skill.dem.get_profile`（Registry 规范名）
 
-#### `skill.decision.abuCheck`
+| | |
+|---|--|
+| **Registry** | `dem.get_profile`（`SkillsRegistryService` / 编排 / RESEARCH） |
+| **MCP 工具名** | `tripnara.dem.getProfile`（JSON-RPC `params.name`） |
+| **输入** | `polyline`（≥2 点）或 `destination` / `origin`+`destination`（坐标对象或 `"lat,lng"` 字符串）；可选 `samples`（米）。由 `dem-get-profile-input.adapter` 做协议归一。 |
+| **输出** | `elevationProfile`, `cumulativeAscent`, `maxSlope`, `fatigueIndex`, **`data_quality`**（`high` \| `low` \| `unknown`，标记栅格缺口/可疑全零海拔，供 telemetry 与 verify） |
+| **用途** | Agentic 路径：Abu / Dr.Dre / Explanation；**Internal Path**（工作台、WorldBuild）仍直连 `DEMEffortMetadataService`，不经本 Skill。 |
+
+遗留别名 `dem.getProfile`、`dem.get.profile` 仍可通过 `getSkill` 解析到同一实现。
 - **输入**: `{ world: PhysicalRealityModel, candidatePlan }`
 - **输出**: `{ allowed: boolean, violations: DemDecisionEvidence[], decisionLog }`
 - **用途**: 基于物理现实和合规的安全检查，不考虑体验偏好
@@ -89,8 +94,8 @@ npm run mcp:skills
 }
 ```
 
-然后就可以在客户端中调用：
-- `tripnara.dem.getProfile`
+然后就可以在客户端中调用（**MCP 名**；应用内规范名见上表）：
+- `tripnara.dem.getProfile` → 对应 **`dem.get_profile`**
 - `tripnara.decision.abuCheck`
 - `tripnara.decision.drdrePace`
 - `tripnara.decision.neptuneRepair`
@@ -131,7 +136,7 @@ const rd = await tripnara.routeDirection.pickForIntent({
 // 2. 生成草案计划
 const draftPlan = generateDraftPlan(rd);
 
-// 3. DEM 检查
+// 3. DEM（Registry: dem.get_profile；MCP: tripnara.dem.getProfile）
 const demProfile = await tripnara.dem.getProfile({
   polyline: draftPlan.polyline,
 });

@@ -236,6 +236,10 @@ export interface WriteBackRequest {
   };
   decisionLogDelta?: any[];
   artifactsRefs?: Record<string, string>;
+  tripId?: string;
+  phase?: string;
+  requestId?: string;
+  planVersion?: number;
 }
 
 /**

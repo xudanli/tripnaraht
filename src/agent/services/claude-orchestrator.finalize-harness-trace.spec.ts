@@ -3,6 +3,8 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
 import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
@@ -55,6 +57,17 @@ describe('ClaudeOrchestratorService — finalize harness trace on build* returns
         useValue: {
           getAllSkills: jest.fn().mockReturnValue([]),
           getSkill: jest.fn().mockReturnValue(null),
+        },
+      },
+      {
+        provide: PrismaService,
+        useValue: {},
+      },
+      {
+        provide: RagRealityPolicyGateService,
+        useValue: {
+          resolve: jest.fn().mockReturnValue({ scope: 'full', policy: {} }),
+          mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
         },
       },
     ];

@@ -13,6 +13,9 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChunkRetrievalService, ChunkRetrievalParams } from '../../rag/services/chunk-retrieval.service';
+import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../../rag/reality-policy/rag-soft-world-policy';
+import { getBoundDecisionContext } from '../../trips/reality-kernel/reality-context.storage';
 import { KnowledgeValidationService } from './knowledge-validation.service';
 import { ValidationScoringService } from './validation-scoring.service';
 import { LlmService } from '../../llm/services/llm.service';
@@ -35,6 +38,7 @@ export class IntegratedRAGKPUService {
     private readonly scoringService: ValidationScoringService,
     @Optional() private readonly llmService?: LlmService,
     @Optional() private readonly monitoringService?: KPUMonitoringService,
+    @Optional() private readonly ragRealityPolicyGate?: RagRealityPolicyGateService,
   ) {}
 
   /**
@@ -53,6 +57,28 @@ export class IntegratedRAGKPUService {
     };
   }> {
     const startTime = Date.now();
+
+    const isRagScope = (s: unknown): s is RagSoftWorldScope =>
+      s === 'full' || s === 'restricted' || s === 'blocked';
+    let ragScope: RagSoftWorldScope = 'full';
+    if (isRagScope(params.context?.rag_scope)) {
+      ragScope = params.context.rag_scope;
+    } else if (this.ragRealityPolicyGate) {
+      ragScope = this.ragRealityPolicyGate.resolve(getBoundDecisionContext()).scope;
+    }
+    if (ragScope === 'blocked') {
+      const latency = Date.now() - startTime;
+      return {
+        results: [],
+        metadata: {
+          totalCandidates: 0,
+          validatedCount: 0,
+          filteredCount: 0,
+          avgValidationScore: 0,
+          latency,
+        },
+      };
+    }
     
     // 记录检索开始
     if (this.monitoringService) {
@@ -61,7 +87,7 @@ export class IntegratedRAGKPUService {
     
     // 1. 扩大候选池检索（获取更多候选）
     const candidateMultiplier = params.enableSnippetValidation ? 2 : 1;
-    const retrievalParams: ChunkRetrievalParams = {
+    let retrievalParams: ChunkRetrievalParams = {
       query: params.query,
       limit: (params.limit || 10) * candidateMultiplier,
       credibilityMin: params.credibilityMin,
@@ -78,6 +104,9 @@ export class IntegratedRAGKPUService {
       maxQueryVariants: params.maxQueryVariants,
       useIntentClassification: params.useIntentClassification,
     };
+    if (this.ragRealityPolicyGate) {
+      retrievalParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(retrievalParams, ragScope);
+    }
 
     const candidates = await this.chunkRetrievalService.retrieve(retrievalParams);
 

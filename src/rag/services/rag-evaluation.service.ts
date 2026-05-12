@@ -1,9 +1,12 @@
 // src/rag/services/rag-evaluation.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
-import { RagService } from './rag.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RagRetrievalParams } from '../interfaces/rag.interface';
 import { ChunkRetrievalService, ChunkRetrievalParams } from './chunk-retrieval.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../reality-policy/rag-soft-world-policy';
+import type { DecisionContextV0 } from '../../trips/reality-kernel/decision-context.types';
+import { getBoundDecisionContext } from '../../trips/reality-kernel/reality-context.storage';
 
 /**
  * RAGEvaluationService
@@ -20,17 +23,38 @@ export class RAGEvaluationService {
   private readonly logger = new Logger(RAGEvaluationService.name);
 
   constructor(
-    private readonly ragService: RagService,
     private readonly chunkRetrievalService: ChunkRetrievalService,
+    @Optional() private readonly ragRealityPolicyGate?: RagRealityPolicyGateService,
   ) {}
+
+  /** Reality Policy BLOCK：无可检索命中时的指标（仍为合法响应） */
+  private emptyMetrics(): {
+    recallAtK: Record<number, number>;
+    mrr: number;
+    ndcg: Record<number, number>;
+    retrievedIds: string[];
+    scores: number[];
+  } {
+    return {
+      recallAtK: { 1: 0, 5: 0, 10: 0 },
+      mrr: 0,
+      ndcg: { 1: 0, 5: 0, 10: 0 },
+      retrievedIds: [],
+      scores: [],
+    };
+  }
 
   /**
    * 评估检索质量
+   *
+   * 使用 Chunk 表检索；`params.collection` 映射为 `ChunkRetrievalParams.category`。
+   * `decisionContext` 省略时尝试 TLS `getBoundDecisionContext()`，用于 merge DEGRADE 语料。
    */
   async evaluateRetrieval(
     query: string,
     params: RagRetrievalParams,
-    groundTruthDocumentIds: string[], // 正确答案文档 ID 列表
+    groundTruthDocumentIds: string[], // 正确答案 chunk/document ID（建议与 chunks.id 对齐）
+    decisionContext?: DecisionContextV0,
   ): Promise<{
     recallAtK: Record<number, number>; // Recall@1, Recall@5, Recall@10
     mrr: number; // Mean Reciprocal Rank
@@ -42,10 +66,30 @@ export class RAGEvaluationService {
       `[RAGEvaluation] 评估检索质量: query="${query.substring(0, 50)}...", groundTruthCount=${groundTruthDocumentIds.length}`,
     );
 
-    // 执行检索
-    const results = await this.ragService.retrieve(params);
+    const dc = decisionContext ?? getBoundDecisionContext();
+    let ragScope: RagSoftWorldScope = 'full';
+    if (this.ragRealityPolicyGate) {
+      const { scope } = this.ragRealityPolicyGate.resolve(dc);
+      ragScope = scope;
+      if (ragScope === 'blocked') {
+        return this.emptyMetrics();
+      }
+    }
+
+    let chunkParams: ChunkRetrievalParams = {
+      query: params.query ?? query,
+      limit: params.limit ?? 10,
+      category: params.collection,
+      useHybridSearch: true,
+      credibilityMin: params.minScore ?? 0.5,
+    };
+    if (this.ragRealityPolicyGate) {
+      chunkParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(chunkParams, ragScope);
+    }
+
+    const results = await this.chunkRetrievalService.retrieve(chunkParams);
     const retrievedIds = results.map((r) => r.id);
-    const scores = results.map((r) => r.score);
+    const scores = results.map((r) => r.rerankScore ?? r.hybridScore ?? r.similarity ?? 0);
 
     // 计算 Recall@K
     const recallAtK = this.calculateRecallAtK(retrievedIds, groundTruthDocumentIds, [1, 5, 10]);
@@ -77,6 +121,7 @@ export class RAGEvaluationService {
     query: string,
     params: ChunkRetrievalParams,
     groundTruthChunkIds: string[],
+    decisionContext?: DecisionContextV0,
   ): Promise<{
     recallAtK: Record<number, number>;
     mrr: number;
@@ -88,7 +133,22 @@ export class RAGEvaluationService {
       `[RAGEvaluation] 评估 Chunk 检索质量: query="${query.substring(0, 50)}...", groundTruthCount=${groundTruthChunkIds.length}`,
     );
 
-    const results = await this.chunkRetrievalService.retrieve(params);
+    const dc = decisionContext ?? getBoundDecisionContext();
+    let ragScope: RagSoftWorldScope = 'full';
+    if (this.ragRealityPolicyGate) {
+      const { scope } = this.ragRealityPolicyGate.resolve(dc);
+      ragScope = scope;
+      if (ragScope === 'blocked') {
+        return this.emptyMetrics();
+      }
+    }
+
+    let merged = params;
+    if (this.ragRealityPolicyGate) {
+      merged = this.ragRealityPolicyGate.mergeChunkRetrievalParams({ ...params, query: params.query ?? query }, ragScope);
+    }
+
+    const results = await this.chunkRetrievalService.retrieve(merged);
     const retrievedIds = results.map((r) => r.id);
     const scores = results.map((r) => r.rerankScore ?? r.hybridScore ?? r.similarity ?? 0);
 
@@ -108,6 +168,7 @@ export class RAGEvaluationService {
       params: ChunkRetrievalParams;
       groundTruthChunkIds: string[];
     }>,
+    decisionContext?: DecisionContextV0,
   ): Promise<{
     averageRecallAtK: Record<number, number>;
     averageMRR: number;
@@ -136,6 +197,7 @@ export class RAGEvaluationService {
         testCase.query,
         testCase.params,
         testCase.groundTruthChunkIds,
+        decisionContext,
       );
 
       for (const k of [1, 5, 10]) {
@@ -174,6 +236,7 @@ export class RAGEvaluationService {
       params: RagRetrievalParams;
       groundTruthDocumentIds: string[];
     }>,
+    decisionContext?: DecisionContextV0,
   ): Promise<{
     averageRecallAtK: Record<number, number>;
     averageMRR: number;
@@ -202,6 +265,7 @@ export class RAGEvaluationService {
         testCase.query,
         testCase.params,
         testCase.groundTruthDocumentIds,
+        decisionContext,
       );
 
       // 收集指标

@@ -15,11 +15,13 @@ import { System1ExecutorService } from './system1-executor.service';
 import { OrchestratorService } from './orchestrator.service';
 import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
+import { ExecutionGatewayService } from './execution-gateway.service';
 import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import type { OrchestrationResult } from '../interfaces/claude-orchestration.interface';
 import type { OrchestratorState } from '../interfaces/trip-plan.interface';
 import { summarizeP1RouteAndRunValidation } from '../contracts/p1-route-and-run-validators';
 import { alternativesReadabilityIssues } from '../../trips/decision/contracts/alternatives-min-contract';
+import { ROUTE_AND_RUN_MEMORY_TEST_PROVIDERS } from '../memory/testing/route-and-run-memory.providers';
 
 describe('AgentService.routeAndRun — AO P0 (CLAUDE_SM assembly)', () => {
   let agentService: AgentService;
@@ -101,6 +103,8 @@ describe('AgentService.routeAndRun — AO P0 (CLAUDE_SM assembly)', () => {
     module = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true })],
       providers: [
+        ...ROUTE_AND_RUN_MEMORY_TEST_PROVIDERS,
+        ExecutionGatewayService,
         AgentService,
         { provide: RouterService, useValue: mockRouterService },
         { provide: AgentStateService, useValue: mockAgentStateService },

@@ -1,0 +1,52 @@
+name: Trip Draft Replay Audit
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/trips/services/trip-draft.service.ts"
+      - "src/trips/services/constraint.engine.ts"
+      - "src/trips/services/route-optimization.engine.ts"
+      - "src/trips/services/pacing.engine.ts"
+      - "src/trips/services/fatigue-prediction.engine.ts"
+      - "src/trips/dto/trip-draft.dto.ts"
+      - "scripts/replay-trip-draft-suite.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/trip-draft-replay-audit.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "src/trips/services/trip-draft.service.ts"
+      - "src/trips/services/constraint.engine.ts"
+      - "src/trips/services/route-optimization.engine.ts"
+      - "src/trips/services/pacing.engine.ts"
+      - "src/trips/services/fatigue-prediction.engine.ts"
+      - "src/trips/dto/trip-draft.dto.ts"
+      - "scripts/replay-trip-draft-suite.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/trip-draft-replay-audit.yml"
+
+jobs:
+  trip-draft-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Trip Draft Decision OS Replay Suite
+        run: npm run test:trip-draft:replay
+

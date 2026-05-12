@@ -10,6 +10,7 @@ import { CGUSSearchService } from '../optimization/cgus-search.service';
 import { OptimizationEngineAdapterService } from '../../../decision/kernel/optimization-engine-adapter.service';
 import { ObjectiveFunctionService } from '../optimization/objective-function.service';
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
+import { RagRealityPolicyGateService } from '../../../rag/services/rag-reality-policy-gate.service';
 
 /**
  * Minimal module for CGUS replay / regression runs.
@@ -43,6 +44,8 @@ import { FatigueCalculatorService } from '../services/fatigue-calculator.service
     // CGUS scoring/search
     UnifiedDecisionFormulaService,
     CGUSSearchService,
+
+    RagRealityPolicyGateService,
 
     // Adapter entrypoint used by scripts
     OptimizationEngineAdapterService,

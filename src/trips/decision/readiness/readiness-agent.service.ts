@@ -6,6 +6,7 @@
  * 
  * 设计原则：
  * - 基于第一性原理：PhysicalRealityModel + HumanCapabilityModel + RouteDirection
+ * - 实况出行天气：`signals.executionSemanticView`（与 Checker / Neptune 同源），不解析 physical.weatherEvidence
  * - 自动生成检查项，不依赖 LLM（确定性）
  * - 提供可解释的原因信号链
  */
@@ -20,6 +21,7 @@ import {
 } from './types/readiness-checklist.types';
 import { PhysicalRealityModel } from '../models/physical-reality.model';
 import { HumanCapabilityModel } from '../models/human-capability.model';
+import type { UnifiedExecutionSemanticView } from '../execution/unified-execution-semantic-view';
 
 @Injectable()
 export class ReadinessAgentService {
@@ -33,6 +35,11 @@ export class ReadinessAgentService {
 
     // 1. 从 PhysicalRealityModel 生成检查项
     items.push(...this.deriveFromPhysicalReality(world.physical, world.human));
+
+    // 1b. Layer A：实况执行语义（与 Checker / Neptune 同源，不读 physical.weatherEvidence）
+    items.push(
+      ...this.deriveFromExecutionSemanticView(world.executionSemanticView, plan),
+    );
 
     // 2. 从 HumanCapabilityModel 生成检查项
     items.push(...this.deriveFromHumanCapability(world.human));
@@ -213,6 +220,81 @@ export class ReadinessAgentService {
             });
           }
         }
+      }
+    }
+
+    return items;
+  }
+
+  /**
+   * 与 `signals.executionSemanticView` 对齐的出行准备项（唯一实况解释层）
+   */
+  private deriveFromExecutionSemanticView(
+    view: UnifiedExecutionSemanticView | undefined,
+    plan: TripPlan,
+  ): TravelReadinessChecklistItem[] {
+    const items: TravelReadinessChecklistItem[] = [];
+    if (!view?.byDate) {
+      return items;
+    }
+
+    for (const day of plan.days) {
+      const row = view.byDate[day.date];
+      if (!row) {
+        continue;
+      }
+
+      const hard =
+        row.neptuneWeatherTier === 'HARD' ||
+        row.weather.violation === 'HARD' ||
+        row.weather.executionState === 'BLOCKED';
+
+      if (hard) {
+        items.push({
+          id: `exec-semantic-weather-hard-${day.date}`,
+          type: 'HEALTH',
+          severity: 'MUST',
+          title: '实况天气安全风险（阻断级）',
+          description:
+            row.weather.explanation ??
+            '当日实况不满足安全阈值；请调整行程或装备后再出行。',
+          reasonSignals: [
+            'layer_a_execution_semantic',
+            'weather_hard',
+            day.date,
+            row.weather.executionState ?? 'unknown',
+          ],
+          metadata: {
+            source: 'UnifiedExecutionSemanticView',
+            evidence_date: day.date,
+          },
+        });
+        continue;
+      }
+
+      if (
+        row.neptuneWeatherTier === 'SOFT' ||
+        row.outdoorWeatherStress.adverse
+      ) {
+        items.push({
+          id: `exec-semantic-weather-soft-${day.date}`,
+          type: 'GEAR',
+          severity: 'SHOULD',
+          title: '天气条件降级（预留时间与防护）',
+          description:
+            row.weather.explanation ??
+            '当日天气执行语义提示降级：预留缓冲并检查防风/防滑装备。',
+          reasonSignals: [
+            'layer_a_execution_semantic',
+            'weather_soft',
+            day.date,
+            ...row.outdoorWeatherStress.reasons,
+          ],
+          metadata: {
+            source: 'UnifiedExecutionSemanticView',
+            evidence_date: day.date,
+          },
+        });
       }
     }
 

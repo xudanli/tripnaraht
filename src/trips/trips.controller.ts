@@ -11,8 +11,9 @@ import { TripBudgetService } from './services/trip-budget.service';
 import { TripAdjustmentService, TripModificationRequest } from './services/trip-adjustment.service';
 import { LlmService } from '../llm/services/llm.service';
 import { LlmResponseTransformerService } from '../llm/services/llm-response-transformer.service';
-import { CreateTripDto, MobilityTag } from './dto/create-trip.dto';
+import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
 import { CreateTripFromNaturalLanguageDto } from './dto/create-trip-from-nl.dto';
+import { nlDiscussionDraftGuidance } from './constants/nl-discussion-draft-guidance';
 import { SelectGateAlternativeDto } from './dto/select-gate-alternative.dto';
 import { UpdateConversationContextDto } from './dto/nl-conversation-context.dto';
 import { SaveScheduleDto } from './dto/schedule.dto';
@@ -20,8 +21,19 @@ import { CreateTripShareDto } from './dto/trip-share.dto';
 import { AddCollaboratorDto } from './dto/trip-collaborator.dto';
 import { DeleteTripDto } from './dto/delete-trip.dto';
 import { UpdateTaskStatusDto } from './dto/tasks.dto';
-import { CreateTripDraftDto, SaveTripDraftDto, ReplaceItineraryItemDto, RegenerateTripDto } from './dto/trip-draft.dto';
+import {
+  CreateTripDraftDto,
+  SaveTripDraftDto,
+  ReplaceItineraryItemDto,
+  RegenerateTripDto,
+} from './dto/trip-draft.dto';
+import { UnifiedBootstrapTripDto } from './dto/unified-bootstrap-trip.dto';
+import { EnrichTripDto } from './dto/enrich-trip.dto';
+import { buildTripDraftContract } from './draft-synthesis/contract';
 import { TripDraftService } from './services/trip-draft.service';
+import { WorldBusService } from './services/world-bus.service';
+import { buildTripCreatedEvent } from './draft-synthesis/autonomous-world';
+import { UserIntentStateService } from './services/user-intent-state.service';
 import {
   GetEvidenceQueryDto,
   UpdateEvidenceRequestDto,
@@ -64,6 +76,7 @@ import { DecisionDraftGeneratorService } from '../decision-draft/services/decisi
 import { DecisionDraftStorageService } from '../decision-draft/storage/decision-draft-storage.service';
 import { TripPlanRequest } from '../agent/interfaces/trip-plan.interface';
 import { DestinationClarificationConfigService } from './nl-clarification/services/destination-clarification-config.service';
+import { compileRoundClarification } from './nl-clarification/clarification-dsl-compiler';
 import { GatePrecheckService } from './nl-clarification/services/gate-precheck.service';
 import { AiDecisionLogicService } from './nl-clarification/services/ai-decision-logic.service';
 import { NLConversationContextService } from './services/nl-conversation-context.service';
@@ -71,6 +84,8 @@ import { FeedbackEngineAdapterService } from '../decision/kernel/feedback-engine
 import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
 import { ConfigService } from '@nestjs/config';
+import { SolverService } from './solver/solver.service';
+import type { OntologyConstraints } from './nl-clarification/ontology-constraints.types';
 
 @ApiTags('trips')
 @Public() // 临时开放测试，生产环境应移除
@@ -197,6 +212,7 @@ export class TripsController {
     private readonly tripBudgetService: TripBudgetService,
     private readonly tripAdjustmentService: TripAdjustmentService,
     private readonly tripDraftService: TripDraftService,
+    private readonly userIntentStateService: UserIntentStateService,
     private readonly llmService: LlmService,
     private readonly llmResponseTransformer: LlmResponseTransformerService,
     private readonly tripMetricsService: TripMetricsService,
@@ -220,7 +236,56 @@ export class TripsController {
     @Optional() private readonly feedbackEngineAdapter?: FeedbackEngineAdapterService,
     @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private readonly dsoFeedbackPersistence?: IDsoFeedbackPersistence,
     @Optional() private readonly configService?: ConfigService,
+    @Optional() private readonly solverService?: SolverService,
+    @Optional() private readonly worldBus?: WorldBusService,
   ) {}
+
+  private emitTripCreatedWorldBus(
+    trip: { id: string; destination?: string | null },
+    userId?: string,
+  ): void {
+    if (!this.worldBus) return;
+    try {
+      const cityKey = String(trip.destination ?? '').toUpperCase().trim();
+      if (!cityKey) return;
+      this.worldBus.emit(
+        buildTripCreatedEvent({
+          tripId: trip.id,
+          cityKey,
+          userId,
+        }),
+      );
+    } catch (e: any) {
+      this.logger.warn(`WorldBus TRIP_CREATED emit failed: ${e?.message}`);
+    }
+  }
+
+  private buildOntologyConstraintsSummary(constraints: OntologyConstraints | undefined | null): string {
+    if (!constraints || typeof constraints !== 'object') return '';
+    // v0: keep it compact and human-readable; avoid dumping huge JSON into prompt.
+    const lines: string[] = [];
+    const budgetFloor = (constraints as any).budgetFloor;
+    if (typeof budgetFloor === 'number') lines.push(`- Budget floor (per day): >= ${budgetFloor}`);
+    const timeDensity = (constraints as any).timeDensity;
+    if (timeDensity && typeof timeDensity === 'object') {
+      const min = typeof (timeDensity as any).min === 'number' ? (timeDensity as any).min : undefined;
+      const max = typeof (timeDensity as any).max === 'number' ? (timeDensity as any).max : undefined;
+      if (min !== undefined || max !== undefined) {
+        lines.push(`- Time density (POIs/day): ${min ?? '?'}–${max ?? '?'}`);
+      }
+    }
+    const transportationLogic = (constraints as any).transportationLogic;
+    if (Array.isArray(transportationLogic) && transportationLogic.length) {
+      lines.push(`- Transportation logic: ${transportationLogic.slice(0, 5).join('; ')}${transportationLogic.length > 5 ? '...' : ''}`);
+    }
+    const seasonality = (constraints as any).seasonality;
+    if (Array.isArray(seasonality) && seasonality.length) {
+      const ex = seasonality.slice(0, 3).map((s: any) => `m${s?.month}:${Array.isArray(s?.blockedRegions) ? s.blockedRegions.join('/') : ''}`);
+      lines.push(`- Seasonality blocks: ${ex.join('; ')}${seasonality.length > 3 ? '...' : ''}`);
+    }
+    if (lines.length === 0) return '';
+    return `\n\n【Destination physical boundaries (constraints)】\n${lines.join('\n')}\n\nIf the user request violates these boundaries, set needsClarification=true and ask targeted questions.\n`;
+  }
 
   @Post()
   @ApiOperation({ 
@@ -270,9 +335,11 @@ export class TripsController {
       // 检查是否是草案保存请求（包含 draft 字段）
       if ('draft' in body) {
         const trip = await this.tripsService.createFromDraft(body as SaveTripDraftDto, userId);
+        this.emitTripCreatedWorldBus(trip, userId);
         return successResponse(trip);
       } else {
         const trip = await this.tripsService.create(body as CreateTripDto, userId);
+        this.emitTripCreatedWorldBus(trip, userId);
         return successResponse(trip);
       }
     } catch (error: any) {
@@ -280,6 +347,145 @@ export class TripsController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
       }
       throw error;
+    }
+  }
+
+  /**
+   * 统一 Bootstrap：Trip + 同步 Draft Runtime（落 itinerary）。
+   * 与 POST /trips（纯创建）及 NL 创建互补。
+   */
+  @Post('bootstrap')
+  @ApiOperation({
+    summary: 'Bootstrap：创建 Trip 并同步生成草案',
+    description:
+      '参数化创建行程并立即跑统一 Draft Runtime（runDraftPipeline），写入行程项。非 NL；需登录。',
+  })
+  @ApiBody({ type: UnifiedBootstrapTripDto })
+  @ApiResponse({ status: 200, description: '创建成功', type: ApiSuccessResponseDto })
+  async bootstrapUnified(
+    @Body() body: UnifiedBootstrapTripDto,
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request,
+  ) {
+    try {
+      let userId = user?.userId;
+      if (!userId && req?.headers?.authorization) {
+        const authHeader = req.headers.authorization;
+        if (authHeader?.startsWith('Bearer ')) {
+          try {
+            const payload = await this.jwtService.verifyAsync(authHeader.substring(7));
+            userId = payload.sub;
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+      }
+
+      const travelers =
+        body.travelers?.length && body.travelers.length > 0
+          ? body.travelers
+          : [{ type: 'ADULT' as const, mobilityTag: MobilityTag.CITY_POTATO }];
+
+      const createTripDto: CreateTripDto = {
+        destination: body.destination.toUpperCase().trim(),
+        startDate: body.startDate,
+        endDate: body.endDate,
+        totalBudget: body.totalBudget,
+        travelers: travelers as any,
+        currency: body.currency || 'CNY',
+        pace: TripPace.STANDARD,
+      };
+
+      const trip = await this.tripsService.create(createTripDto, userId);
+      this.emitTripCreatedWorldBus(trip, userId);
+
+      try {
+        await this.tripBudgetService.setBudgetConstraint(trip.id, {
+          total: body.totalBudget,
+          currency: body.currency || 'CNY',
+        });
+      } catch (e: any) {
+        this.logger.warn(`bootstrap setBudgetConstraint: ${e?.message}`);
+      }
+
+      const start = DateTime.fromISO(body.startDate);
+      const end = DateTime.fromISO(body.endDate);
+      const durationDays = Math.floor(end.diff(start, 'days').days) + 1;
+      const rt = body.draftRuntimeMode ?? 'HYBRID';
+
+      const seedFromTripId = (id: string): number => {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < id.length; i++) {
+          h ^= id.charCodeAt(i);
+          h = Math.imul(h, 0x01000193);
+        }
+        return h >>> 0;
+      };
+
+      const draftDto: CreateTripDraftDto = {
+        destination: body.destination.toUpperCase().trim(),
+        days: durationDays,
+        startDate: body.startDate,
+        endDate: body.endDate,
+        draftRuntimeMode: rt,
+        useAlgorithmicDraft: rt === 'ALGO',
+        userInput: body.userInput,
+      };
+      (draftDto as any).seed = seedFromTripId(trip.id);
+
+      const contract = buildTripDraftContract({
+        dto: draftDto,
+        tripId: trip.id,
+        mode: 'BOOTSTRAP',
+        userIntent: this.userIntentStateService.getOrCreate(userId),
+      });
+
+      const pipeline = await this.tripDraftService.runDraftPipeline(contract);
+      const itemsCount = await this.tripDraftService.createItineraryItemsFromDraft(trip.id, pipeline.response);
+
+      return successResponse({
+        tripId: trip.id,
+        status: 'CREATED' as const,
+        draft: pipeline.tripDraftState,
+        simulation: pipeline.simulation,
+        decisionTrace: pipeline.decisionTrace,
+        itemsCount,
+        draftId: pipeline.draftId,
+      });
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      this.logger.error(`bootstrapUnified failed: ${error?.message}`, error?.stack);
+      return errorResponse(ErrorCode.BUSINESS_ERROR, error?.message || 'bootstrap 失败');
+    }
+  }
+
+  @Post(':tripId/enrich')
+  @ApiOperation({
+    summary: 'Enrich：对已有 Trip 做增量增强（占位 API）',
+    description: '后续可接局部仿真、个性化、weather/pricing 等插件；当前仅校验 Trip 存在并回执。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiBody({ type: EnrichTripDto })
+  async enrichTrip(@Param('tripId') tripId: string, @Body() body: EnrichTripDto) {
+    try {
+      const trip = await this.prisma.trip.findUnique({ where: { id: tripId }, select: { id: true } });
+      if (!trip) {
+        return errorResponse(ErrorCode.NOT_FOUND, '行程不存在');
+      }
+      return successResponse({
+        tripId,
+        accepted: true,
+        hintsReceived: body.hints?.length ?? 0,
+        message:
+          'Enrich hook registered — attach partial engines (simulation, personalization) without full regeneration.',
+      });
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error?.message || 'enrich 失败');
     }
   }
 
@@ -486,6 +692,7 @@ export class TripsController {
         contextBlocks: contextBlocks.length > 0 ? contextBlocks : undefined,
         destinationCode: detectedCountryCode,
         destinationConfig: destinationConfig,
+        dslClarificationContext: this.pickLatestDslLlmPromptContextFromMessages(existingContext?.messages),
       });
 
       // 8. 如果需要澄清，返回旅行规划师风格的对话
@@ -1115,6 +1322,314 @@ export class TripsController {
     }
   }
 
+  @Post('from-natural-language/v2')
+  @ApiOperation({
+    summary: '自然语言创建行程（v2: Ontology + Solver）',
+    description:
+      'v2：在自然语言解析阶段注入目的地物理边界约束，并引入 Solver feasibility 预检；不可行时直接 needsClarification。创建成功后返回 **可执行讨论稿** 定位（`discussionDraft`），完整门控与证据由同 trip 后续规划链路接续。',
+  })
+  @ApiBody({ type: CreateTripFromNaturalLanguageDto })
+  @ApiResponse({
+    status: 200,
+    description: '成功创建行程或需要澄清（统一响应格式，含 feasibility 字段）',
+    type: ApiSuccessResponseDto,
+  })
+  async createFromNaturalLanguageV2(
+    @Body() dto: CreateTripFromNaturalLanguageDto,
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request,
+  ) {
+    try {
+      // Align userId handling with v1
+      let userId = user?.userId;
+      if (!userId) {
+        const testUserId = (req?.headers?.['x-test-user-id'] as string)?.trim();
+        if (testUserId) {
+          userId = testUserId;
+          this.logger.warn(`[测试模式] [v2] 使用 X-Test-User-Id: ${userId}`);
+        } else if (process.env.NODE_ENV === 'development' || process.env.ALLOW_TEST_MODE === 'true') {
+          userId = dto.sessionId ? `temp_${dto.sessionId.split('_').pop()}` : `temp_${Date.now()}`;
+          this.logger.warn(`[测试模式] [v2] 使用临时 userId: ${userId}`);
+        } else {
+          return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+        }
+      }
+
+      // Session lifecycle: reuse v1 semantics
+      let shouldClearOldSessions = false;
+      if (dto.isNewConversation) {
+        shouldClearOldSessions = true;
+      } else if (!dto.sessionId) {
+        shouldClearOldSessions = true;
+      } else {
+        const sessionExists = await this.nlConversationContextService.sessionExists(dto.sessionId, userId);
+        if (!sessionExists) shouldClearOldSessions = true;
+      }
+      if (shouldClearOldSessions) {
+        try {
+          await this.nlConversationContextService.deleteAllUserSessions(userId);
+        } catch {}
+        dto.sessionId = undefined;
+      }
+
+      const sessionId = await this.nlConversationContextService.getOrCreateSession(dto.sessionId, userId);
+      const existingContext = await this.nlConversationContextService.getContext(sessionId, userId);
+      const conversationHistory =
+        existingContext && existingContext.messages && existingContext.messages.length > 0 ? existingContext.messages : [];
+      await this.nlConversationContextService.addMessage(sessionId, userId, 'user', dto.text);
+
+      const confirmedSnapshot = (existingContext as any)?.currentIntentSnapshot?.confirmedParams as Record<string, any> | undefined;
+
+      // Build prompt with history
+      let promptText = dto.text;
+      if (conversationHistory.length > 0) {
+        const userMessages = conversationHistory.filter((msg) => msg.role === 'user' || msg.role === 'assistant');
+        if (userMessages.length > 0) {
+          const historyContext = userMessages
+            .slice(-6)
+            .map((msg) => `${msg.role === 'user' ? '用户' : '助手'}: ${msg.content}`)
+            .join('\n');
+          promptText = `历史对话上下文：\n${historyContext}\n\n当前用户输入：${dto.text}`;
+        }
+      }
+
+      // Destination detection + context blocks + destination config
+      let contextBlocks: ContextBlock[] = [];
+      let detectedCountryCode: string | undefined;
+      // 优先使用“已确认快照”的目的地（防跑偏）
+      if (confirmedSnapshot?.destination) {
+        detectedCountryCode = this.extractCountryCode(confirmedSnapshot.destination);
+      }
+      if (!detectedCountryCode && existingContext?.partialParams?.destination) {
+        detectedCountryCode = this.extractCountryCode(existingContext.partialParams.destination);
+      }
+      if (!detectedCountryCode) {
+        detectedCountryCode = this.extractCountryCodeFromText(dto.text);
+      }
+
+      // v2 强制：目的地不明确时先澄清（destinationConfig 作为解析输入）
+      if (!detectedCountryCode) {
+        const assistantReply = '为了确保行程可行性，请先确认目的地（国家/地区）。例如：日本（JP）、冰岛（IS）。';
+        await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', assistantReply, {
+          needsClarification: true,
+          showConfirmCard: false,
+        });
+        return successResponse({
+          sessionId,
+          needsClarification: true,
+          plannerReply: assistantReply,
+          clarificationQuestions: [
+            {
+              id: `need_destination_${Date.now()}`,
+              question: '你这次想去哪里？（国家/地区或城市名）',
+              type: 'text',
+              required: true,
+              metadata: { fieldName: 'destination' },
+            },
+          ],
+          partialParams: this.normalizePartialParams({ ...(existingContext?.partialParams || {}) }),
+          destination: null,
+          feasibility: { isPossible: false, conflictReason: { code: 'DESTINATION_REQUIRED', message: '目的地不明确，无法注入本体约束进行解析。' } },
+        });
+      }
+
+      const [contextResult, configResult] = await Promise.allSettled([
+        detectedCountryCode && this.contextEngineerService && process.env.SKIP_CONTEXT_FOR_NL_PARSE !== 'true'
+          ? this.contextEngineerService.build(
+              {
+                phase: 'planning',
+                agent: 'nl-parser-v2',
+                userQuery: promptText,
+                destinationCountryCode: detectedCountryCode,
+                requiredTopics: ['VISA', 'ROAD_RULES', 'SAFETY', 'WEATHER_WINDOWS'],
+                userId,
+                includeToolSelection: false,
+              },
+              true,
+            )
+          : Promise.resolve(null),
+        detectedCountryCode && this.destinationClarificationConfigService
+          ? this.destinationClarificationConfigService.getConfig(detectedCountryCode)
+          : Promise.resolve(null),
+      ]);
+      if (contextResult.status === 'fulfilled' && contextResult.value?.blocks?.length) {
+        contextBlocks = contextResult.value.blocks.filter((b: any) => b.visibility === 'public');
+      }
+      const destinationConfig = configResult.status === 'fulfilled' ? configResult.value : null;
+
+      // If destination-specific flow is enabled, delegate to existing handler (v2 parity not guaranteed)
+      if (destinationConfig && destinationConfig.enabled && detectedCountryCode) {
+        return await this.handleDestinationSpecificClarification(
+          dto,
+          userId,
+          sessionId,
+          existingContext,
+          destinationConfig,
+          detectedCountryCode,
+          contextBlocks,
+          promptText,
+        );
+      }
+
+      // Short paths (reuse)
+      const trimmedText = dto.text.trim();
+      const pp = existingContext?.partialParams || {};
+      const shortPathResult = await this.tryShortPaths({
+        dto,
+        userId,
+        sessionId,
+        existingContext,
+        trimmedText,
+        pp,
+        detectedCountryCode,
+        destinationConfig,
+      });
+      if (shortPathResult.handled) return shortPathResult.result;
+
+      // Inject ontology constraints summary into prompt (LLM guardrails)
+      const constraintsSummary = this.buildOntologyConstraintsSummary((destinationConfig as any)?.constraints);
+      const snapshotBlock =
+        confirmedSnapshot && Object.keys(confirmedSnapshot).length > 0
+          ? `\n\n【Confirmed facts (intent snapshot)】\n${JSON.stringify(confirmedSnapshot, null, 2)}\n\nDo NOT lose or override these confirmed facts unless the user explicitly changes them.\n`
+          : '';
+      const guardedPrompt = `${promptText}${snapshotBlock}${constraintsSummary}`;
+
+      const parseResult = await this.llmService.naturalLanguageToTripParams({
+        text: guardedPrompt,
+        provider: dto.llmProvider,
+        contextBlocks: contextBlocks.length > 0 ? contextBlocks : undefined,
+        destinationCode: detectedCountryCode,
+        destinationConfig: destinationConfig,
+        dslClarificationContext: this.pickLatestDslLlmPromptContextFromMessages(existingContext?.messages),
+      });
+
+      // Solver pre-check (minimal)
+      const feasibility =
+        this.solverService && detectedCountryCode
+          ? await this.solverService.checkFeasibility(parseResult.params || {}, {
+              destinationCode: detectedCountryCode,
+              constraints: (destinationConfig as any)?.constraints,
+            })
+          : { isPossible: true };
+
+      // Force clarification when solver says impossible
+      if (feasibility && feasibility.isPossible === false) {
+        const mergedParams = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
+        await this.nlConversationContextService.updateContext(sessionId, userId, {
+          conversationContext: parseResult.conversationContext,
+          partialParams: mergedParams,
+        });
+        const assistantReply =
+          feasibility.conflictReason?.message ||
+          '当前输入与目的地物理边界/交通耗时存在冲突，需要您调整天数/目的地或偏好。';
+        await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', assistantReply, {
+          needsClarification: true,
+          feasibility,
+          parsedParams: parseResult.params,
+          showConfirmCard: false,
+        });
+        return successResponse({
+          sessionId,
+          needsClarification: true,
+          plannerReply: assistantReply,
+          clarificationQuestions:
+            feasibility.suggestedClarifications?.map((q, i) => ({
+              id: `solver_q_${i}_${Date.now()}`,
+              question: q.question,
+              type: q.options && q.options.length > 0 ? 'single_choice' : 'text',
+              options: q.options,
+              required: false,
+              metadata: { fieldName: q.field },
+            })) ?? [],
+          partialParams: this.normalizePartialParams(mergedParams),
+          destination: detectedCountryCode,
+          feasibility,
+        });
+      }
+
+      // LLM clarification path (minimal v2 response; keep it lightweight)
+      if (parseResult.needsClarification) {
+        const mergedParams = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
+        await this.nlConversationContextService.updateContext(sessionId, userId, {
+          conversationContext: parseResult.conversationContext,
+          partialParams: mergedParams,
+        });
+        const assistantReply =
+          parseResult.plannerReply ||
+          (Array.isArray(parseResult.clarificationQuestions) ? parseResult.clarificationQuestions.join('\n') : '需要更多信息');
+        await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', assistantReply, {
+          needsClarification: true,
+          feasibility,
+          parsedParams: parseResult.params,
+          showConfirmCard: false,
+        });
+        return successResponse({
+          sessionId,
+          needsClarification: true,
+          plannerReply: assistantReply,
+          clarificationQuestions:
+            (parseResult.clarificationQuestions || []).map((q: any, i: number) => ({
+              id: `llm_q_${i}_${Date.now()}`,
+              question: String(q),
+              type: 'text',
+              required: false,
+            })) ?? [],
+          partialParams: this.normalizePartialParams(mergedParams),
+          destination: detectedCountryCode,
+          feasibility,
+        });
+      }
+
+      // Create trip when required fields are present; otherwise clarify missing fields
+      const params = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
+      const missing: string[] = [];
+      if (!params.destination && !detectedCountryCode) missing.push('destination');
+      if (!params.startDate) missing.push('startDate');
+      if (!params.endDate) missing.push('endDate');
+      if (!params.totalBudget) missing.push('totalBudget');
+
+      if (missing.length > 0) {
+        const assistantReply = `我还需要补充信息才能创建行程：${missing.join('、')}。`;
+        await this.nlConversationContextService.updateContext(sessionId, userId, {
+          conversationContext: parseResult.conversationContext,
+          partialParams: params,
+        });
+        await this.nlConversationContextService.addMessage(sessionId, userId, 'assistant', assistantReply, {
+          needsClarification: true,
+          feasibility,
+          parsedParams: parseResult.params,
+          showConfirmCard: false,
+        });
+        return successResponse({
+          sessionId,
+          needsClarification: true,
+          plannerReply: assistantReply,
+          clarificationQuestions: missing.map((f, i) => ({
+            id: `missing_${f}_${i}_${Date.now()}`,
+            question: `请提供 ${f}（用于创建行程）`,
+            type: 'text',
+            required: true,
+            metadata: { fieldName: f },
+          })),
+          partialParams: this.normalizePartialParams(params),
+          destination: detectedCountryCode,
+          feasibility,
+        });
+      }
+
+      const destCode = detectedCountryCode || this.extractCountryCode(params.destination);
+      const result = await this.createTripFromParams(params, userId, sessionId, destCode ?? undefined);
+      // attach v2 engine tag if possible
+      if (result && typeof result === 'object' && (result as any).success === true) {
+        (result as any).data = { ...(result as any).data, feasibility, generationEngine: 'SOLVER' };
+      }
+      return result;
+    } catch (error: any) {
+      this.logger.error(`[v2] 自然语言创建行程失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, `自然语言创建行程失败: ${error.message}`);
+    }
+  }
+
   /**
    * 🆕 确认创建行程
    */
@@ -1202,6 +1717,25 @@ export class TripsController {
       // 4. 检测目的地代码（使用 extractCountryCode 支持中文/城市名）
       const detectedCountryCode = this.extractCountryCode(params.destination) || params.destination?.toUpperCase().trim() || null;
       
+      // 🆕 写入 intent snapshot：一旦用户确认创建，即锚定这些已确认事实
+      await this.nlConversationContextService.updateContext(sessionId, userId, {
+        currentIntentSnapshot: {
+          confirmedParams: {
+            destination: params.destination,
+            destinationCode: detectedCountryCode,
+            startDate: params.startDate,
+            endDate: params.endDate,
+            totalBudget: params.totalBudget,
+            currency: params.currency,
+            hasChildren: params.hasChildren,
+            hasElderly: params.hasElderly,
+            preferences: params.preferences,
+            pace: params.pace,
+          },
+          lastConfirmedAt: new Date().toISOString(),
+        },
+      });
+
       // 5. 调用 createTripFromParams 创建行程
       const result = await this.createTripFromParams(
         params,
@@ -1396,6 +1930,7 @@ export class TripsController {
         contextBlocks: contextBlocks.length > 0 ? contextBlocks : undefined,
         destinationCode,
         destinationConfig: config,
+        dslClarificationContext: this.pickLatestDslLlmPromptContextFromMessages(existingContext?.messages),
       });
       
       // 3. 合并参数（🆕 仅用 parseResult 中非空值覆盖，保留 PUT 更新的 totalBudget 等）
@@ -1551,6 +2086,21 @@ export class TripsController {
               phaseIndicator: buildPhaseIndicator(1),
             }
           );
+          // 🆕 关键修复：阶段 1 “推断未确认” 仍需持久化已解析到的基础参数
+          // 否则下一轮用户只输入「confirm」类短句时，无法从上下文恢复 destination/startDate/endDate，导致重复追问目的地。
+          await this.nlConversationContextService.updateContext(sessionId, userId, {
+            partialParams: mergedParams,
+            currentIntentSnapshot: {
+              confirmedParams: {
+                // 仅锚定“用户已明确给出/高度确定”的事实（目的地/日期等），避免把推断字段误当已确认
+                destination: mergedParams.destination ?? config?.destinationName ?? destinationCode,
+                destinationCode,
+                startDate: mergedParams.startDate,
+                endDate: mergedParams.endDate,
+              },
+              lastConfirmedAt: new Date().toISOString(),
+            },
+          });
           const lastMsg = savedCtx?.messages?.filter((m: any) => m.role === 'assistant').pop();
           return successResponse({
             sessionId,
@@ -1833,6 +2383,7 @@ export class TripsController {
           needsClarification: true,
           plannerResponseBlocks: structuredResponse.plannerResponseBlocks,
           clarificationQuestions: structuredResponse.clarificationQuestions,
+          suggestedQuestions: structuredResponse.suggestedQuestions,
           parsedParams: mergedParams,
           showConfirmCard: false,
           questionAnswers: {},
@@ -1841,6 +2392,9 @@ export class TripsController {
           thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, destNameForThinking, qCountForThinking, 'clarify'),
           progressSteps: this.buildPhaseProgressSteps(roundInfo.round.roundId, ROUND_TO_PHASE, destNameForThinking, qCountForThinking),
           phaseIndicator: buildPhaseIndicator(ROUND_TO_PHASE[roundInfo.round.roundId] ?? 2),
+          ...(structuredResponse.dslLlmPromptContext
+            ? { dslLlmPromptContext: structuredResponse.dslLlmPromptContext }
+            : {}),
         }
       );
       
@@ -1850,7 +2404,11 @@ export class TripsController {
       // 8. 更新部分参数
       await this.nlConversationContextService.updateContext(sessionId, userId, {
         conversationContext: parseResult.conversationContext,
-        partialParams: mergedParams,
+        partialParams: this.normalizePartialParams({
+          ...mergedParams,
+          suggestedQuestions: structuredResponse.suggestedQuestions,
+          reply: structuredResponse.plannerReply,
+        }),
       });
       
       // 🆕 获取目的地中文名称（用于前端显示）
@@ -1914,7 +2472,12 @@ export class TripsController {
         plannerResponseBlocks: structuredResponse.plannerResponseBlocks,
         clarificationQuestions,
         plannerReply: structuredResponse.plannerReply,
-        partialParams: this.normalizePartialParams(mergedParams),
+        suggestedQuestions: structuredResponse.suggestedQuestions,
+        partialParams: this.normalizePartialParams({
+          ...mergedParams,
+          suggestedQuestions: structuredResponse.suggestedQuestions,
+          reply: structuredResponse.plannerReply,
+        }),
         destination: destinationCode,
         destinationName,
         personaInfo: structuredResponse.personaInfo,
@@ -1956,6 +2519,19 @@ export class TripsController {
         if (missingCriticalFields.length > 0) {
           // Critical 字段缺失，阻止创建
           const missingFieldNames = missingCriticalFields.map(f => f.fieldName);
+          const criticalFieldNameZhMap: Record<string, string> = {
+            travelSeason: '旅行季节',
+            riskTolerance: '风险偏好',
+            hasInsurance: '保险情况',
+            understandsWeather: '天气风险认知',
+            emergencyPrepared: '应急准备',
+            currency: '货币',
+          };
+          const missingFieldDisplayNames = missingCriticalFields.map((f) => {
+            // 优先：配置里该字段对应的问题本身通常就是中文（如“你希望用什么货币来规划预算？”）
+            // 这里用于“关键问题清单”展示时更短更清晰，因此用中文字段名映射兜底。
+            return criticalFieldNameZhMap[f.fieldName] || f.fieldName;
+          });
           const questions = await this.destinationClarificationConfigService.getQuestionsForFields(
             destinationCode,
             missingFieldNames
@@ -1991,7 +2567,7 @@ export class TripsController {
               {
                 type: 'highlight',
                 highlightType: 'warning',
-                highlightText: `为了您的安全，请先回答以下 ${missingCriticalFields.length} 个关键问题：${missingCriticalFields.map(f => f.fieldName).join('、')}`,
+                highlightText: `为了您的安全，请先回答以下 ${missingCriticalFields.length} 个关键问题：${missingFieldDisplayNames.join('、')}`,
               },
               {
                 type: 'paragraph',
@@ -2082,6 +2658,7 @@ export class TripsController {
 
     // 创建行程（TripsService.create 会写入初始 DSO 到 Trip.metadata）
     const trip = await this.tripsService.create(createTripDto, userId);
+    this.emitTripCreatedWorldBus(trip, userId);
 
     // 设置预算约束
     try {
@@ -2101,21 +2678,26 @@ export class TripsController {
       sessionId,
       userId,
       'assistant',
-      `行程已创建成功！目的地：${params.destination}，日期：${startDate} 至 ${endDate}，预算：${params.totalBudget} ${currencyLabel}`,
+      `行程已创建成功！目的地：${params.destination}，日期：${startDate} 至 ${endDate}，预算：${params.totalBudget} ${currencyLabel}\n\n${nlDiscussionDraftGuidance.shortHint}`,
       {
         tripId: trip.id,
         success: true,
         parsedParams: params,
         showConfirmCard: false, // 行程已创建，不需要确认卡片
         thinkingProcess: {
-          summary: '思考了一会儿',
-          content: `用户希望创建前往 ${params.destination} 的行程。我已解析目的地、日期、预算和出行人数，校验通过后创建了行程。`,
+          summary: '正在准备可讨论草案',
+          content: `用户希望创建前往 ${params.destination} 的行程。我已解析目的地、日期、预算和出行人数并创建行程；随后会生成一版可讨论的行程草案，可在同一条行程里继续调整。`,
         },
         progressSteps: [
           { id: 'parse', label: '已解析自然语言需求', detail: `目的地：${params.destination}，${startDate} 至 ${endDate}`, status: 'completed' },
           { id: 'create', label: '已创建行程', detail: `行程 ID: ${trip.id}`, status: 'completed' },
-          { id: 'items', label: '正在生成行程规划点', detail: '后台运行中，请稍后刷新查看', status: 'running' },
+          { id: 'items', label: nlDiscussionDraftGuidance.progressItemsLabel, detail: nlDiscussionDraftGuidance.progressItemsDetail, status: 'running' },
         ],
+        discussionDraft: {
+          intent: nlDiscussionDraftGuidance.intent,
+          headline: nlDiscussionDraftGuidance.headline,
+          body: nlDiscussionDraftGuidance.body,
+        },
       }
     );
     
@@ -2140,6 +2722,7 @@ export class TripsController {
       style: params.preferences?.style || 'balanced',
       intensity: params.preferences?.intensity || 'balanced',
       useAlgorithmicDraft,
+      draftRuntimeMode: useAlgorithmicDraft ? 'ALGO' : 'HYBRID',
       cities: params.cities,
       mustHavePois: params.mustHavePois,
       dayAllocation: params.dayAllocation,
@@ -2173,6 +2756,25 @@ export class TripsController {
         this.logger.debug(`首次酒店推荐失败（可能因为还没有景点数据）: ${error.message}`);
       });
     }
+
+    // 🆕 写入 intent snapshot：创建成功后将本次创建参数固化为已确认事实
+    await this.nlConversationContextService.updateContext(sessionId, userId, {
+      currentIntentSnapshot: {
+        confirmedParams: {
+          destination: params.destination,
+          destinationCode: destinationCode || this.extractCountryCode(params.destination),
+          startDate,
+          endDate,
+          totalBudget: params.totalBudget,
+          currency,
+          hasChildren: params.hasChildren,
+          hasElderly: params.hasElderly,
+          preferences: params.preferences,
+          pace: params.pace,
+        },
+        lastConfirmedAt: new Date().toISOString(),
+      },
+    });
     
     return successResponse({
       sessionId,
@@ -2181,16 +2783,22 @@ export class TripsController {
       destination: destinationCode || params.destination,
       destinationName: tripDestinationName,
       generatingItems: true, // 标记正在生成规划点
-      message: '行程已创建，正在后台生成行程规划点，请稍后刷新查看',
+      message: nlDiscussionDraftGuidance.headline,
+      discussionDraft: {
+        intent: nlDiscussionDraftGuidance.intent,
+        headline: nlDiscussionDraftGuidance.headline,
+        body: nlDiscussionDraftGuidance.body,
+        shortHint: nlDiscussionDraftGuidance.shortHint,
+      },
       // 🆕 思考过程和进展（前端可折叠展示）
       thinkingProcess: {
-        summary: '思考了一会儿',
-        content: `用户希望创建前往 ${params.destination} 的行程。我已解析目的地、日期、预算和出行人数，校验通过后创建了行程。`,
+        summary: '正在准备可讨论草案',
+        content: `用户希望创建前往 ${params.destination} 的行程。我已解析目的地、日期、预算和出行人数并创建行程；随后会生成一版可讨论的行程草案，可在同一条行程里继续调整。`,
       },
       progressSteps: [
         { id: 'parse', label: '已解析自然语言需求', detail: `目的地：${params.destination}，${startDate} 至 ${endDate}`, status: 'completed' },
         { id: 'create', label: '已创建行程', detail: `行程 ID: ${trip.id}`, status: 'completed' },
-        { id: 'items', label: '正在生成行程规划点', detail: '后台运行中，请稍后刷新查看', status: 'running' },
+        { id: 'items', label: nlDiscussionDraftGuidance.progressItemsLabel, detail: nlDiscussionDraftGuidance.progressItemsDetail, status: 'running' },
       ],
     });
   }
@@ -2847,6 +3455,34 @@ export class TripsController {
     pref_accommodation: { hotel: '酒店', bnb: '民宿/公寓', camping: '露营/房车', mix: '混合（根据路线灵活选择）' },
     pref_dining: { local: '多体验当地特色餐厅', flexible: '随性探索或自己烹饪', budget: '经济实惠为主', fine: '精选品质餐厅' },
     pref_pace: { relaxed: '宽松悠闲', moderate: '适中', intensive: '紧凑充实' },
+    // 常见全局枚举（即使前端直接提交英文 value，也能展示中文）
+    riskTolerance: { low: '低', medium: '中', high: '高' },
+    travelGroup: {
+      solo: '独自旅行',
+      couple: '情侣/两人同行',
+      friends: '朋友结伴',
+      family: '家庭出行',
+      business: '商务出行',
+    },
+    activityPreferences: {
+      aurora_hunting: '极光追踪',
+      glacier_hiking: '冰川徒步',
+      scenic_photography: '风景摄影',
+      nature_exploration: '自然探索',
+      hot_springs: '温泉体验',
+      adventure_activities: '冒险活动',
+      city_walk: '城市漫步',
+    },
+    // 部分目的地配置使用 activityTypes 字段名
+    activityTypes: {
+      aurora_hunting: '极光追踪',
+      glacier_hiking: '冰川徒步',
+      scenic_photography: '风景摄影',
+      nature_exploration: '自然探索',
+      hot_springs: '温泉体验',
+      adventure_activities: '冒险活动',
+      city_walk: '城市漫步',
+    },
   };
 
   /** 获取目的地中文名称（优先使用 config，否则查表） */
@@ -3240,10 +3876,18 @@ export class TripsController {
       const qid = q?.id;
       if (!qid) continue;
       const opts = Array.isArray(q.options) ? q.options : [];
+      // 1) 标准：按 questionId 映射（前端若用 questionId 作为 key）
       if (opts.length && qid in questionAnswers) {
         const ans = questionAnswers[qid];
         const label = getLabel(opts, ans);
         if (label) out[qid] = { value: Array.isArray(ans) ? (ans as string[]) : String(ans), label };
+      }
+      // 2) 兼容：按 fieldName 映射（前端常用 fieldName 作为 key，例如 travelSeason/riskTolerance）
+      const fieldName = q?.metadata?.fieldName;
+      if (opts.length && fieldName && fieldName in questionAnswers && !(fieldName in out)) {
+        const ans = questionAnswers[fieldName];
+        const label = getLabel(opts, ans);
+        if (label) out[fieldName] = { value: Array.isArray(ans) ? (ans as string[]) : String(ans), label };
       }
       for (const inp of (q.conditionalInputs as any[]) || []) {
         const pk = inp?.paramKey;
@@ -3270,6 +3914,23 @@ export class TripsController {
   }
 
   /**
+   * 从会话中取最近一次助手下发的 Clarification DSL 编译上下文，供下一轮 {@link LlmService.naturalLanguageToTripParams} 注入。
+   * 自尾向前扫描，命中第一条含 metadata.dslLlmPromptContext 的 assistant 消息。
+   */
+  private pickLatestDslLlmPromptContextFromMessages(
+    messages?: Array<{ role?: string; metadata?: { dslLlmPromptContext?: string } }>,
+  ): string | undefined {
+    if (!messages?.length) return undefined;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== 'assistant') continue;
+      const raw = m.metadata?.dslLlmPromptContext;
+      if (typeof raw === 'string' && raw.trim().length > 0) return raw.trim();
+    }
+    return undefined;
+  }
+
+  /**
    * 🆕 为特化轮次生成结构化澄清响应（增强版：包含 AI 决策逻辑）
    */
   private async generateStructuredClarificationResponseForRound(
@@ -3283,6 +3944,10 @@ export class TripsController {
     plannerResponseBlocks: any[];
     clarificationQuestions: any[];
     plannerReply: string;
+    /** 与 DSL 卡片同源的快充 pill 文案（唯一权威） */
+    suggestedQuestions: string[];
+    /** Compiler v0：供后续注入 NL / LLM 上下文的片段（当前仅 debug 日志） */
+    dslLlmPromptContext?: string;
     personaInfo?: any;
     recommendedRoutes?: any[];
   }> {
@@ -3327,17 +3992,6 @@ export class TripsController {
         type: 'question_card',
         questionId: question.id,
       });
-    }
-    
-    // 🆕 生成增强的文本回复（包含画像信息）
-    let textReply = fallbackText || `让我来帮您完善${round.name}的信息。`;
-    
-    if (personaInfo) {
-      textReply = `根据您的回答，我们识别您可能是：**${personaInfo.personaName}**。${textReply}`;
-    }
-    
-    if (safetyCheckResult?.shouldWarn && !safetyCheckResult.shouldBlock) {
-      textReply = `${safetyCheckResult.warningMessage}\n\n${textReply}`;
     }
     
     // 🆕 修复：生成结构化的 clarificationQuestions 数组
@@ -3429,7 +4083,31 @@ export class TripsController {
     if (structuredQuestions.length > 0) {
       this.logger.debug(`问题列表: ${structuredQuestions.map(q => q.id).join(', ')}`);
     }
-    
+
+    // Clarification DSL Compiler v0：叙述与 pill 均来自 compileRoundClarification，不用 LLM 问题清单
+    let dslLlmPromptContext: string | undefined;
+    let suggestedQuestions: string[] = [];
+    let textReply =
+      structuredQuestions.length > 0
+        ? ''
+        : fallbackText || `让我来帮您完善${round.name || '行程'}的信息。`;
+
+    if (structuredQuestions.length > 0) {
+      const compiled = compileRoundClarification(round, structuredQuestions);
+      textReply = compiled.transitionText;
+      suggestedQuestions = compiled.suggestedPills;
+      dslLlmPromptContext = compiled.llmPromptContext;
+      this.logger.debug(`DSL Compiler LLM context:\n${compiled.llmPromptContext}`);
+    }
+
+    if (personaInfo) {
+      textReply = `根据您的回答，我们识别您可能是：**${personaInfo.personaName}**。${textReply}`;
+    }
+
+    if (safetyCheckResult?.shouldWarn && !safetyCheckResult.shouldBlock) {
+      textReply = `${safetyCheckResult.warningMessage}\n\n${textReply}`;
+    }
+
     // 🆕 获取推荐路线（如果已识别画像）
     let recommendedRoutes: any[] = [];
     if (personaInfo && this.aiDecisionLogicService) {
@@ -3455,6 +4133,8 @@ export class TripsController {
       plannerResponseBlocks: blocks,
       clarificationQuestions: structuredQuestions,
       plannerReply: textReply,
+      suggestedQuestions,
+      dslLlmPromptContext,
       personaInfo,
       recommendedRoutes,
     };
@@ -3687,6 +4367,12 @@ export class TripsController {
       const qaFinal = message.metadata?.questionAnswers || {};
       const questions = (message.metadata?.clarificationQuestions as any[]) || [];
       const questionAnswerLabels = this.buildQuestionAnswerLabels(qaFinal, questions);
+      if (Object.keys(questionAnswerLabels).length > 0) {
+        // 持久化：便于会话恢复/确认卡片等场景直接用“用户所见 label”回显
+        await this.nlConversationContextService.updateMessageMetadata(sessionId, userId, message.id, {
+          questionAnswerLabels,
+        });
+      }
       
       // 🆕 点击「补充偏好信息」时，同时返回 plannerResponseBlocks 供前端渲染（与 POST 响应结构一致）
       const responsePayload: Record<string, any> = {
@@ -5763,7 +6449,6 @@ export class TripsController {
     
     不支持自动解决的冲突类型（需人工处理）：
     - FATIGUE_EXCEEDED: 体力超标
-    - LUNCH_MISSING / DINNER_MISSING: 缺少用餐（需手动选择餐厅）
     - ACCESSIBILITY_MISMATCH: 无障碍设施不匹配`,
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
@@ -6421,12 +7106,65 @@ export class TripsController {
           this.logger.warn(`构建 Context Package 失败（继续无上下文编排）: ${err?.message}`);
         }
       }
+
+      // v2 (optional): solver skeleton pre-pass → inject as CONSTRAINTS block for orchestrator
+      const useSolverDraftEngine =
+        (this.configService?.get<string>('USE_SOLVER_DRAFT_ENGINE_FOR_NL_V2') || process.env.USE_SOLVER_DRAFT_ENGINE_FOR_NL_V2) === 'true';
+      if (useSolverDraftEngine && this.solverService) {
+        try {
+          await this.updateGenerationProgress(tripId, {
+            status: 'generating',
+            stage: 'solving_skeleton',
+            message: '正在进行物理可行骨架求解...',
+          });
+          const destCode = String(draftDto.destination ?? '').toUpperCase().trim();
+          const destCfg = this.destinationClarificationConfigService
+            ? await this.destinationClarificationConfigService.getConfig(destCode)
+            : null;
+          const skeleton = await this.solverService.solveSkeleton({
+            destinationCode: destCode,
+            days: draftDto.days,
+            constraints: (destCfg as any)?.constraints,
+            params: draftDto as any,
+          });
+          const nowIso = new Date().toISOString();
+          contextBlocks = [
+            ...contextBlocks,
+            {
+              key: `solver_skeleton_v0:${tripId}`,
+              type: 'CONSTRAINTS',
+              text: `Solver skeleton (v0) computed for ${destCode}, days=${draftDto.days}. Use it as hard feasibility scaffold; do not violate physical boundaries.`,
+              data: { skeleton },
+              priority: 95,
+              visibility: 'public',
+              provenance: { source: 'computed', identifier: 'SolverService.solveSkeleton', version: '0', timestamp: nowIso },
+              dataSource: 'COMPUTED',
+              lastVerifiedAt: nowIso,
+            } as ContextBlock,
+          ];
+          this.logger.debug(`为行程 ${tripId} 注入 Solver skeleton block`);
+        } catch (err: any) {
+          this.logger.warn(`Solver skeleton 求解失败（继续走现有 draft 引擎）: ${err?.message}`);
+        }
+      }
       
       // 生成草案（包含 LLM 编排，可选注入上下文）
+      // 🆕 deterministic seed：从 tripId 派生，确保可回放
+      const seedFromTripId = (id: string): number => {
+        // FNV-1a 32-bit
+        let h = 0x811c9dc5;
+        for (let i = 0; i < id.length; i++) {
+          h ^= id.charCodeAt(i);
+          h = Math.imul(h, 0x01000193);
+        }
+        return h >>> 0;
+      };
+      (draftDto as any).seed = seedFromTripId(tripId);
       const draft = await this.tripDraftService.generateDraft(
         draftDto,
         (progress) => this.updateGenerationProgress(tripId, progress),
-        contextBlocks.length > 0 ? contextBlocks : undefined
+        contextBlocks.length > 0 ? contextBlocks : undefined,
+        { tripId, mode: 'BOOTSTRAP' },
       );
       
       // 更新进度：LLM 编排完成，开始保存
@@ -6659,6 +7397,73 @@ export class TripsController {
   ) {
     try {
       await this.tripSuggestionsService.dismissSuggestion(id, suggestionId);
+      return successResponse(null);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/suggestions/:suggestionId/seen')
+  @ApiOperation({
+    summary: '标记建议已读',
+    description: '将建议状态从 new 标记为 seen（不覆盖已应用/已忽略）。用于 AssistantCenter 初次展示后消除“new”角标。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'suggestionId', description: '建议 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '成功标记已读（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async markSuggestionSeen(
+    @Param('id') id: string,
+    @Param('suggestionId') suggestionId: string,
+  ) {
+    try {
+      await this.tripSuggestionsService.markSuggestionSeen(id, suggestionId);
+      return successResponse(null);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post(':id/suggestions/seen')
+  @ApiOperation({
+    summary: '批量标记建议已读',
+    description: '批量将建议状态从 new 标记为 seen（不覆盖已应用/已忽略）。推荐用于 AssistantCenter 首次渲染后一次性上报。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        suggestionIds: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['suggestionIds'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功批量标记已读（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async markSuggestionsSeenBulk(
+    @Param('id') id: string,
+    @Body() body: { suggestionIds: string[] },
+  ) {
+    try {
+      await this.tripSuggestionsService.markSuggestionsSeen(id, body?.suggestionIds || []);
       return successResponse(null);
     } catch (error: any) {
       if (error instanceof NotFoundException) {

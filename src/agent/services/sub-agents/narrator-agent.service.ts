@@ -2,7 +2,14 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { NarratorAgent } from '../../interfaces/sub-agent.interface';
-import { Itinerary, GateResult, DecisionLogEntry, OrchestratorState } from '../../interfaces/trip-plan.interface';
+import {
+  Itinerary,
+  ItineraryItem,
+  ItineraryItemType,
+  GateResult,
+  DecisionLogEntry,
+  OrchestratorState,
+} from '../../interfaces/trip-plan.interface';
 import { NarratorAgentService as LangGraphNarratorAgentService } from '../../../trips/decision/orchestration/narrator-agent.service';
 import { DecisionExplainForHumanSkill } from '../../../skills/decision/decision-explain-for-human.skill';
 import { LlmService } from '../../../llm/services/llm.service';
@@ -116,7 +123,7 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
 
     try {
       // 1. 生成总览
-      const user_friendly_summary = this.generateSummary(itinerary, gateResult);
+      const user_friendly_summary = this.generateSummary(itinerary, gateResult, _context);
 
       // 2. 生成逐日叙述
       const day_by_day_narrative = itinerary.days.map((day, index) => ({
@@ -309,7 +316,7 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
   /**
    * 生成总览（优化版：使用用户语言）
    */
-  private generateSummary(itinerary: Itinerary, gateResult: GateResult): string {
+  private generateSummary(itinerary: Itinerary, gateResult: GateResult, context?: OrchestratorState): string {
     const parts: string[] = [];
 
     // 使用用户友好的语言
@@ -331,7 +338,62 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
       parts.push(`包含${totalItems}个精选地点`);
     }
 
-    return parts.join('，') + '。';
+    let summary = parts.join('，') + '。';
+
+    const isFollowupRepair = !!(
+      (context?.metadata as Record<string, unknown> | undefined)?.is_followup_transport_repair
+    );
+    if (isFollowupRepair) {
+      const locale = String((context?.metadata as Record<string, unknown> | undefined)?.clarification_locale ?? '')
+        .toLowerCase()
+        .trim();
+      const isEn = locale.startsWith('en');
+      const lead = isEn
+        ? "Great news—based on the departure details you shared, I've filled in the transfer connections. Here's your full itinerary at a glance: "
+        : '太好了！根据您提供的出发地，我已经补全了接驳方案；以下是为您整理的完整行程概览：';
+      summary = `${lead}${summary}`;
+    }
+
+    const te = context?.research_data?.transport_evidence as
+      | { degraded?: boolean; missing?: boolean }
+      | undefined;
+    if (te?.degraded || te?.missing) {
+      const locale = String((context?.metadata as Record<string, unknown> | undefined)?.clarification_locale ?? '')
+        .toLowerCase()
+        .trim();
+      const isEn = locale.startsWith('en');
+      const bridge = isEn
+        ? ' Because your departure point was a bit unclear, I focused on a local itinerary first—once you confirm your departure city, I will add detailed transfer options right away.'
+        : ' 由于您的出发地信息有些模糊，我先为您规划了当地的游玩路线；等您确认出发城市后，我会立刻为您补全详细的接驳方案。';
+      summary = `${summary}${bridge}`;
+    }
+
+    return summary;
+  }
+
+  /**
+   * 单日条目可读标签：优先地点名，其次 notes，再按类型给默认说法。
+   * 用于避免「第 N 天只有 1 个活动」但其实是 REST/DRIVE/无名 POI 的情况。
+   */
+  private itemPrimaryLabel(item: ItineraryItem): string | null {
+    const name = item.location_ref?.name?.trim();
+    if (name) {
+      return name;
+    }
+    const notes = item.notes?.trim();
+    if (notes) {
+      return notes.length > 72 ? `${notes.slice(0, 69)}…` : notes;
+    }
+    const typeHints: Partial<Record<ItineraryItemType, string>> = {
+      REST: '休息 / 自由活动',
+      DRIVE: '驾车路段',
+      WALK: '步行路段',
+      TRANSIT: '公共交通',
+      ACCOMMODATION: '住宿',
+      MEAL: '用餐',
+      POI: '游览活动',
+    };
+    return typeHints[item.type] ?? null;
   }
 
   /**
@@ -350,12 +412,12 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
 
     const parts: string[] = [];
     
-    // 描述主要景点
+    // 描述主要景点（无名 POI 也会通过 itemPrimaryLabel 落到可读文案）
     if (poiItems.length > 0) {
       const poiNames = poiItems
         .slice(0, 3)
-        .map(item => item.location_ref.name)
-        .filter(Boolean);
+        .map(item => this.itemPrimaryLabel(item))
+        .filter((x): x is string => !!x);
       if (poiNames.length > 0) {
         parts.push(`将游览${poiNames.join('、')}${poiItems.length > 3 ? '等' : ''}`);
       }
@@ -371,9 +433,21 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
       parts.push(`安排了${mealItems.length}次用餐`);
     }
 
-    return parts.length > 0 
-      ? `第 ${dayNumber} 天：${parts.join('，')}。`
-      : `第 ${dayNumber} 天行程，包含 ${itemCount} 个活动。`;
+    if (parts.length > 0) {
+      return `第 ${dayNumber} 天：${parts.join('，')}。`;
+    }
+
+    // 仍未写出具体情况时：按全部条目的地点名 / notes / 类型兜底，避免「包含 1 个活动」泛句
+    const labels = day.items
+      .map((item) => this.itemPrimaryLabel(item))
+      .filter((x): x is string => !!x);
+    const uniq = [...new Set(labels)].slice(0, 5);
+    if (uniq.length > 0) {
+      const tail = itemCount > uniq.length ? '等' : '';
+      return `第 ${dayNumber} 天：${uniq.join('、')}${tail}。`;
+    }
+
+    return `第 ${dayNumber} 天行程，包含 ${itemCount} 个活动。`;
   }
 
   /**

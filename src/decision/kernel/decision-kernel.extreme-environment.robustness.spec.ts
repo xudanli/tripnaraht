@@ -113,6 +113,7 @@ describe('DecisionKernelService extreme environment robustness', () => {
     const verifyResult = await kernel.executeVerify(state, ctx);
     state = verifyResult.newState;
     expect(verifyResult.issues.some((i) => i.code === 'SUNSET_BREACH')).toBe(true);
+    expect(state.verification?.assertions_triggered?.some((f) => f.rule_id === 'solar_safety_v1' && f.is_violated)).toBe(true);
 
     const repairResult = await kernel.executeRepair(state, ctx);
     state = repairResult.newState;

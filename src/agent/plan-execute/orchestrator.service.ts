@@ -730,7 +730,7 @@ export class DAGOrchestratorService {
       return this.llmService.getDefaultProvider();
     }
     
-    // 降级：如果没有 LlmService，使用 OpenAI
-    return LlmProvider.OPENAI;
+    // 降级：如果没有 LlmService，避免隐式使用 OpenAI（默认走 DeepSeek）
+    return LlmProvider.DEEPSEEK;
   }
 }

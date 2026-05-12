@@ -88,6 +88,9 @@ export class ConstraintChecker {
       // 5. 天气可行性校验
       violations.push(...this.checkWeatherFeasibility(state, day));
 
+      // 5b. 日照信号（民用晨光/暮光，来自决策引擎 signals）
+      violations.push(...this.checkDaylightSignalFeasibility(state, day));
+
       // 8. max_daily_drive 校验（自驾场景）
       violations.push(...this.checkMaxDailyDrive(state, day));
     }
@@ -644,11 +647,15 @@ export class ConstraintChecker {
     const candidates = state.candidatesByDate[day.date] || [];
     const candidateMap = new Map(candidates.map(c => [c.id, c]));
 
-    const weather = state.signals.weatherByDate?.[day.date];
     const alerts = state.signals.alerts || [];
-
     const criticalAlerts = alerts.filter(a => a.severity === 'critical');
-    const hasBadWeather = criticalAlerts.length > 0 || weather?.condition === 'rain' || weather?.condition === 'storm';
+
+    const dayView = state.signals.executionSemanticView?.byDate[day.date];
+    if (!dayView) {
+      return violations;
+    }
+    const stress = dayView.outdoorWeatherStress;
+    const hasBadWeather = stress.adverse;
 
     for (const slot of day.timeSlots) {
       if (!slot.poiId) continue;
@@ -670,8 +677,13 @@ export class ConstraintChecker {
           activityId: candidate.id,
           message: `户外活动 "${slot.title}" 受天气影响，可能不可行`,
           details: {
-            weatherCondition: weather?.condition,
-            alerts: criticalAlerts.map(a => a.message),
+            weatherCondition: dayView.weather.condition,
+            weatherExecutionStress: stress.reasons,
+            executionState: dayView.weather.executionState,
+            violation: dayView.weather.violation,
+            hazardKinds: dayView.weather.hazardKinds,
+            relatedSystemCriticalAlerts: criticalAlerts.map(a => a.message),
+            semanticsSource: 'executionSemanticView',
             weatherSensitivity: candidate.weatherSensitivity,
           },
           suggestions: [
@@ -679,6 +691,62 @@ export class ConstraintChecker {
             '调整到天气较好的时段',
             '准备备选方案',
           ],
+        });
+      }
+    }
+
+    return violations;
+  }
+
+  /**
+   * 5b. 民用晨光/暮光可行性（读 signals.daylightFeasibility，与引擎 annotate 同源）
+   */
+  private checkDaylightSignalFeasibility(
+    state: TripWorldState,
+    day: PlanDay,
+  ): CheckerViolation[] {
+    const violations: CheckerViolation[] = [];
+    const df = state.signals.daylightFeasibility;
+    if (!df || df.violationCount <= 0) {
+      return violations;
+    }
+
+    const afterDusk = new Set(df.slotsEndingAfterCivilDusk);
+    const beforeDawn = new Set(df.slotsStartingBeforeCivilDawn);
+
+    for (const slot of day.timeSlots) {
+      if (afterDusk.has(slot.id)) {
+        violations.push({
+          code: 'DAYLIGHT_AFTER_CIVIL_DUSK',
+          severity: 'warning',
+          date: day.date,
+          slotId: slot.id,
+          message: `「${slot.title}」结束晚于民用暮光（户外/行车日照风险）`,
+          details: {
+            latitudeDeg: df.latitudeDeg,
+            longitudeDeg: df.longitudeDeg,
+            kind: 'after_civil_dusk',
+          },
+          suggestions: [
+            '提前结束或改至日落前',
+            '避开高地 F-road / 冰川路段夜间行车',
+            '压缩当日后续停留',
+          ],
+        });
+      }
+      if (beforeDawn.has(slot.id)) {
+        violations.push({
+          code: 'DAYLIGHT_BEFORE_CIVIL_DAWN',
+          severity: 'warning',
+          date: day.date,
+          slotId: slot.id,
+          message: `「${slot.title}」开始早于民用晨光（晨光前户外/行车风险）`,
+          details: {
+            latitudeDeg: df.latitudeDeg,
+            longitudeDeg: df.longitudeDeg,
+            kind: 'before_civil_dawn',
+          },
+          suggestions: ['推迟出发至晨光后', '若非必要勿晨间赶路'],
         });
       }
     }

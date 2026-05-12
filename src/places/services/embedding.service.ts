@@ -121,6 +121,85 @@ export class EmbeddingService {
   }
 
   /**
+   * 按输入顺序返回多条文本的 embedding：先查缓存，未命中则尽量走 Python 批量 /embeddings，减少 N 次 HTTP 往返（如 tools.select）。
+   */
+  async embedTextsOrdered(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+    const out: number[][] = new Array(texts.length);
+    const needIdx: number[] = [];
+    for (let i = 0; i < texts.length; i++) {
+      const text = texts[i];
+      if (!text || !text.trim()) {
+        throw new Error('文本不能为空');
+      }
+      if (this.embeddingCacheService) {
+        const hit = await this.embeddingCacheService.get(text);
+        if (hit) {
+          out[i] = hit;
+          continue;
+        }
+      }
+      needIdx.push(i);
+    }
+    if (needIdx.length === 0) {
+      return out;
+    }
+
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const i of needIdx) {
+      const t = texts[i].trim();
+      const k = t.toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        unique.push(texts[i]);
+      }
+    }
+
+    const byNorm = new Map<string, number[]>();
+    const CHUNK = 48;
+    for (let c = 0; c < unique.length; c += CHUNK) {
+      const chunk = unique.slice(c, c + CHUNK);
+      if (this.provider === 'python' && this.pythonAIService?.isAvailable()) {
+        try {
+          const er = await this.pythonAIService.generateEmbeddings(chunk);
+          for (let j = 0; j < chunk.length; j++) {
+            let dense = er[j]?.dense;
+            if (!dense?.length || dense.every((v) => v === 0)) {
+              dense = await this.generateEmbedding(chunk[j]);
+            } else if (this.embeddingCacheService) {
+              await this.embeddingCacheService.set(chunk[j], dense).catch(() => undefined);
+            }
+            byNorm.set(chunk[j].trim().toLowerCase(), dense);
+          }
+        } catch (e: any) {
+          this.logger.warn(`批量 embedding 失败，回退逐条: ${e?.message ?? e}`);
+          for (const t of chunk) {
+            const dense = await this.generateEmbedding(t);
+            byNorm.set(t.trim().toLowerCase(), dense);
+          }
+        }
+      } else {
+        for (const t of chunk) {
+          const dense = await this.generateEmbedding(t);
+          byNorm.set(t.trim().toLowerCase(), dense);
+        }
+      }
+    }
+
+    for (const i of needIdx) {
+      const k = texts[i].trim().toLowerCase();
+      const emb = byNorm.get(k);
+      if (!emb) {
+        out[i] = await this.generateEmbedding(texts[i]);
+      } else {
+        out[i] = emb;
+      }
+    }
+    return out;
+  }
+
+  /**
    * 获取当前使用的提供商
    * 不使用 OpenAI 向量，仅返回配置的 provider
    */

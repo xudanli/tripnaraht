@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ExperienceAgent, EvidenceRef, DataQuality } from '../../interfaces/sub-agent.interface';
 import { Itinerary, ItineraryDay, ItineraryItem } from '../../interfaces/trip-plan.interface';
+import type { PlanContext } from '../../../skills/plan/shared/plan-state.types';
+import type { WorldModelStrategyLayer } from '../../../skills/world/interfaces/unified-world-model.interface';
 
 @Injectable()
 export class ExperienceAgentService implements ExperienceAgent {
@@ -143,6 +145,74 @@ export class ExperienceAgentService implements ExperienceAgent {
     const score = Math.round(100 - phys * 0.3 - ment * 0.2 - stress * 0.3 + recov * 0.2);
     evidence.push({ evidence_id: 'exec_' + Date.now(), source: 'ExperienceAgent.assessHumanExecutability', timestamp: new Date().toISOString(), data: { days, score } });
     return { executability_score: Math.max(0, Math.min(100, score)), breakdown: { physical_demand: Math.round(phys), mental_demand: Math.round(ment), time_stress: Math.round(stress), recovery_adequacy: Math.round(recov) }, challenge_points: challenges, human_tips: tips, evidence, data_quality: this.createDataQuality({ sourceType: 'ESTIMATED', confidence: 0.65, coverage: 1.0 }) };
+  }
+
+  /**
+   * 从规划上下文推导体验策略层（极光玻璃屋 / 高端体验等），供协作服务与预算侧对齐或触发冲突
+   */
+  buildExperienceStrategyLayer(
+    context: PlanContext,
+    opts?: { reasoningWeightBoost?: number },
+  ): WorldModelStrategyLayer {
+    const mustBlob = [...(context.mustDo || []), ...(context.mustAvoid || [])]
+      .join(' ')
+      .toLowerCase();
+    const destBlob = [
+      context.destination?.country,
+      context.destination?.city,
+      context.destination?.region,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    const auroraHints =
+      mustBlob.includes('aurora') ||
+      mustBlob.includes('极光') ||
+      mustBlob.includes('glass igloo') ||
+      mustBlob.includes('玻璃屋') ||
+      mustBlob.includes('glass cabin');
+    const nordicLux =
+      destBlob.includes('iceland') ||
+      destBlob.includes('冰岛') ||
+      destBlob.includes('finland') ||
+      destBlob.includes('芬兰') ||
+      destBlob.includes('norway') ||
+      destBlob.includes('挪威');
+    const luxStay = context.constraints?.accommodation?.level === 'luxury';
+
+    let tier: 'STANDARD' | 'PREMIUM' | 'ULTRA' = 'STANDARD';
+    const anchorLabels: string[] = [];
+    if (auroraHints) {
+      anchorLabels.push('aurora_glass_igloo');
+      tier = 'ULTRA';
+    } else if (nordicLux && luxStay) {
+      anchorLabels.push('nordic_luxury');
+      tier = 'ULTRA';
+    } else if (luxStay) {
+      anchorLabels.push('luxury_stay');
+      tier = 'PREMIUM';
+    }
+
+    const baseWeight = 0.72;
+    const boost = opts?.reasoningWeightBoost ?? 0;
+    const reasoningWeight = Math.min(0.95, baseWeight + boost);
+
+    return {
+      experienceProposal: {
+        agentId: 'domain:experience',
+        tier,
+        reasoningWeight,
+        confidence: 0.68,
+        narrative:
+          tier === 'ULTRA'
+            ? '上下文指向高阶自然体验/野奢住宿（如极光玻璃屋类供给），需与预算软顶显式权衡。'
+            : tier === 'PREMIUM'
+              ? '中高端体验诉求；关注预算区间内的溢价取舍。'
+              : '标准体验节奏；默认不与预算产生策略冲突。',
+        anchorLabels: anchorLabels.length ? anchorLabels : undefined,
+      },
+    };
   }
 
   private categorizeExp(name: string, itemType: string): 'SCENIC' | 'CULTURAL' | 'ADVENTURE' | 'RELAXATION' {

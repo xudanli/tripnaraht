@@ -140,6 +140,17 @@ export class UnifiedWorldModelService {
       unifiedWorldModel.multiAgentCollaboration = multiAgentCollaboration;
       unifiedWorldModel.versionInfo = versionInfo;
 
+      // Layer 2：若 PlanningWorkbench 等已写入协作状态，透出策略层共识摘要
+      if (request.tripId && this.multiAgentCollaborationService) {
+        const bridge =
+          this.multiAgentCollaborationService.getCollaborationBridgeView(
+            request.tripId,
+          );
+        if (bridge.strategyLayer) {
+          unifiedWorldModel.strategyLayer = bridge.strategyLayer;
+        }
+      }
+
       // Code Review P2-3修复：发布世界模型构建完成事件
       const buildTimeMs = Date.now() - buildStartTime;
       if (this.worldModelEventsService) {
@@ -226,12 +237,13 @@ export class UnifiedWorldModelService {
     try {
       // 1. 获取天气预警（优先使用Skill）
       if (request.countryCode) {
+        const countryCode = request.countryCode;
         // 获取地理编码坐标（Code Review P0修复）
         let location: { lat: number; lng: number } | null = null;
         if (!request.poiId && this.countryConfigService) {
           try {
             location = await this.countryConfigService.getGeocodingCoordinates(
-              request.countryCode,
+              countryCode,
             );
           } catch (error: any) {
             this.logger.warn(
@@ -245,7 +257,7 @@ export class UnifiedWorldModelService {
           condition: !!this.worldRealtimeWeatherSkill,
           primary: async () => {
             const skillResult = await this.worldRealtimeWeatherSkill!.execute({
-              region: request.countryCode,
+              region: countryCode,
               dateRange: request.dateRange,
               location: request.poiId ? undefined : location || undefined,
             });
@@ -257,7 +269,7 @@ export class UnifiedWorldModelService {
           fallback: this.realtimeWeatherService
             ? async () => {
                 return await this.realtimeWeatherService!.getWeatherAlerts(
-                  request.countryCode,
+                  countryCode,
                 );
               }
             : undefined,
@@ -322,13 +334,13 @@ export class UnifiedWorldModelService {
           }
         }
 
-        // 优先使用world.weatherPrediction Skill
-        if (this.worldWeatherPredictionSkill) {
+        // 优先使用world.weatherPrediction Skill（需坐标；Skill 输入要求必填 location）
+        if (this.worldWeatherPredictionSkill && location) {
           try {
             const skillResult = await this.worldWeatherPredictionSkill.execute({
               region: request.countryCode,
               dateRange: { start: startDate, end: endDate },
-              location: location || undefined,
+              location,
             });
             weatherPredictions.push(...skillResult.predictions);
             this.logger.debug(
@@ -372,8 +384,8 @@ export class UnifiedWorldModelService {
           }
         }
 
-        // 优先使用world.failureRiskPrediction Skill
-        if (this.worldFailureRiskPredictionSkill) {
+        // 优先使用world.failureRiskPrediction Skill（需坐标）
+        if (this.worldFailureRiskPredictionSkill && location) {
           try {
             const skillResult = await this.worldFailureRiskPredictionSkill.execute({
               routeDirectionId: request.routeDirectionId,
@@ -384,7 +396,7 @@ export class UnifiedWorldModelService {
               },
               dateRange: { start: startDate, end: endDate },
               region: request.countryCode,
-              location: location || undefined,
+              location,
             });
             failureRiskPrediction = skillResult.prediction;
             this.logger.debug(
@@ -735,14 +747,32 @@ export class UnifiedWorldModelService {
     }
 
     try {
-      // 获取协作的世界模型（当前实现返回空，因为需要智能体注册贡献）
       await this.multiAgentCollaborationService.getCollaborativeWorldModel(tripId);
+      const view =
+        this.multiAgentCollaborationService.getCollaborationBridgeView(tripId);
 
-      // 返回协作状态（简化实现）
       return {
-        contributions: [],
-        conflicts: [],
-        consensusConfidence: 0.8,
+        contributions: view.contributions.map((c) => ({
+          agentId: c.agentId,
+          agentType: c.agentType,
+          confidence: c.confidence,
+          timestamp: c.timestamp,
+        })),
+        conflicts: view.conflicts.map((c) => ({
+          id: c.id,
+          conflictType: c.conflictType,
+          agents: c.agents,
+          resolution: c.resolution
+            ? {
+                resolutionType: c.resolution.resolutionType,
+                confidence: c.resolution.confidence,
+                explanation: c.resolution.explanation,
+              }
+            : undefined,
+        })),
+        consensusConfidence: view.consensusConfidence,
+        consensusSummary: view.consensusSummary ?? undefined,
+        openConflictCount: view.openConflictCount,
       };
     } catch (error: any) {
       this.logger.warn(

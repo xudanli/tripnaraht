@@ -98,6 +98,8 @@ export interface ClarificationQuestion {
   validation?: ClarificationValidation;
   /** 🆕 HCI优化：条件输入字段（当用户选择特定选项时显示后续输入字段） */
   conditionalInputs?: ConditionalInputField[];
+  /** 编排器内部任务标记、A/B、溯源等（前端可忽略） */
+  metadata?: Record<string, unknown>;
 }
 
 /**

@@ -577,6 +577,10 @@ export interface HarnessRuntimeState {
   /** Durable 恢复：准入通过的 Harness 步骤 */
   resume_admission_step?: HarnessStepName | string;
   resume_admission_passed?: boolean;
+  /** PRD I3：客户端声明的上一版 plan_version（replan 继承审计） */
+  replan_previous_plan_version?: number;
+  /** PRD I3：上一版世界快照哈希 */
+  replan_previous_world_snapshot_hash?: string;
 }
 
 /** Phase 1.5：区域解析溯源（可观测 / 排障） */
@@ -878,6 +882,8 @@ export interface VerificationReport {
   counts: { fatal: number; conflict: number; advisory: number };
   /** 最近一次 VERIFY 时间 */
   verifiedAt: string;
+  /** VERIFY 阶段沉淀的硬规则快照（用于 QA Fact vs Explanation） */
+  assertions_triggered?: import('../../trips/decision/shared/hard-rule-snapshot.types').HardRuleFact[];
   /** REPAIR 极限/编排升级信号（与 issues 并列，便于 NARRATE 精准引用） */
   escalationPlan?: RepairEscalationPlan;
 }

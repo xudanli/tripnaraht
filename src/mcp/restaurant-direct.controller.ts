@@ -41,8 +41,8 @@ export class RestaurantDirectController {
     try {
       const result = await this.restaurantService.searchRestaurants(body);
       return {
-        success: true,
         ...result,
+        success: true,
       };
     } catch (error: any) {
       throw new HttpException(

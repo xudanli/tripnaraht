@@ -26,9 +26,6 @@ import { ImpactMetricsDto } from '../dto/suggestions.dto';
 @Injectable()
 export class TripSuggestionsService {
   private readonly logger = new Logger(TripSuggestionsService.name);
-  
-  // 内存中的建议状态（实际应该使用数据库或Redis）
-  private suggestionStatuses = new Map<string, SuggestionStatus>();
 
   constructor(
     private prisma: PrismaService,
@@ -98,13 +95,15 @@ export class TripSuggestionsService {
     // 3. 从决策日志生成建议（如果需要）
     // TODO: 可以从 DecisionLog 中提取更多建议
 
-    // 应用状态过滤
+    // 回填持久化状态，并应用状态过滤
+    const statusMap = await this.getStatusMap(tripId, suggestions.map((s) => s.id));
+    for (const s of suggestions) {
+      s.status = statusMap.get(s.id) || SuggestionStatus.NEW;
+    }
+
     let filteredSuggestions = suggestions;
     if (filters?.status) {
-      filteredSuggestions = suggestions.filter(s => {
-        const status = this.suggestionStatuses.get(s.id) || SuggestionStatus.NEW;
-        return status === filters.status;
-      });
+      filteredSuggestions = suggestions.filter((s) => s.status === filters.status);
     }
 
     // 排序：按严重级别和创建时间
@@ -175,7 +174,7 @@ export class TripSuggestionsService {
 
     for (const suggestion of allSuggestions.items) {
       // 只统计 new 或 seen 状态的建议
-      const status = this.suggestionStatuses.get(suggestion.id) || SuggestionStatus.NEW;
+      const status = suggestion.status || SuggestionStatus.NEW;
       if (status === SuggestionStatus.APPLIED || status === SuggestionStatus.DISMISSED) {
         continue;
       }
@@ -281,8 +280,7 @@ export class TripSuggestionsService {
     });
 
     const highPrioritySuggestions = allSuggestions.items.filter(s => {
-      const status = this.suggestionStatuses.get(s.id) || SuggestionStatus.NEW;
-      return status === SuggestionStatus.NEW && s.severity === SuggestionSeverity.BLOCKER;
+      return s.status === SuggestionStatus.NEW && s.severity === SuggestionSeverity.BLOCKER;
     });
 
     if (highPrioritySuggestions.length === 0) {
@@ -563,8 +561,8 @@ export class TripSuggestionsService {
                 await this.itineraryItemsService.update(
                   secondItem.id,
                   {
-                    startTime: newStartTime.toISO(),
-                    endTime: newEndTime.toISO(),
+                    startTime: newStartTime.toISO() || undefined,
+                    endTime: newEndTime.toISO() || undefined,
                     cascadeMode: 'auto', // 自动调整后续行程项
                   }
                 );
@@ -625,8 +623,8 @@ export class TripSuggestionsService {
               const newEndTime = newStartTime.plus({ minutes: originalDuration });
 
               await this.itineraryItemsService.update(secondItem.id, {
-                startTime: newStartTime.toISO(),
-                endTime: newEndTime.toISO(),
+                startTime: newStartTime.toISO() || undefined,
+                endTime: newEndTime.toISO() || undefined,
                 cascadeMode: 'auto',
               });
 
@@ -684,7 +682,7 @@ export class TripSuggestionsService {
     }
 
     // 更新建议状态
-    this.suggestionStatuses.set(suggestionId, SuggestionStatus.APPLIED);
+    await this.setSuggestionStatus(tripId, suggestionId, SuggestionStatus.APPLIED);
 
     // 触发其他建议重新计算（简化处理）
     // TODO: 实际应该重新计算相关建议
@@ -776,7 +774,131 @@ export class TripSuggestionsService {
     }
 
     // 更新状态
-    this.suggestionStatuses.set(suggestionId, SuggestionStatus.DISMISSED);
+    await this.setSuggestionStatus(tripId, suggestionId, SuggestionStatus.DISMISSED);
+  }
+
+  /**
+   * 标记建议已读（NEW -> SEEN；不覆盖已应用/已忽略）
+   */
+  async markSuggestionSeen(tripId: string, suggestionId: string): Promise<void> {
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const existing = await (this.prisma as any).tripSuggestionState.findUnique({
+      where: { tripId_suggestionId: { tripId, suggestionId } },
+    });
+
+    if (!existing) {
+      await (this.prisma as any).tripSuggestionState.create({
+        data: {
+          tripId,
+          suggestionId,
+          status: SuggestionStatus.SEEN,
+          firstSeenAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    if (existing.status === SuggestionStatus.NEW) {
+      await (this.prisma as any).tripSuggestionState.update({
+        where: { tripId_suggestionId: { tripId, suggestionId } },
+        data: {
+          status: SuggestionStatus.SEEN,
+          firstSeenAt: existing.firstSeenAt ?? new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * 批量标记建议已读（用于列表首次展示后的批量消除角标）
+   */
+  async markSuggestionsSeen(tripId: string, suggestionIds: string[]): Promise<void> {
+    const ids = Array.from(new Set(suggestionIds)).filter(Boolean);
+    if (ids.length === 0) return;
+
+    // 验证行程存在
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const now = new Date();
+    const existingRows: Array<{ suggestionId: string; status: string; firstSeenAt: Date | null }> =
+      await (this.prisma as any).tripSuggestionState.findMany({
+        where: { tripId, suggestionId: { in: ids } },
+        select: { suggestionId: true, status: true, firstSeenAt: true },
+      });
+    const existing = new Map(existingRows.map((r) => [r.suggestionId, r]));
+
+    const toCreate: string[] = [];
+    const toUpdate: string[] = [];
+    for (const id of ids) {
+      const row = existing.get(id);
+      if (!row) {
+        toCreate.push(id);
+        continue;
+      }
+      if (row.status === SuggestionStatus.NEW) {
+        toUpdate.push(id);
+      }
+    }
+
+    if (toCreate.length) {
+      await (this.prisma as any).tripSuggestionState.createMany({
+        data: toCreate.map((suggestionId) => ({
+          tripId,
+          suggestionId,
+          status: SuggestionStatus.SEEN,
+          firstSeenAt: now,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    if (toUpdate.length) {
+      // Prisma updateMany 同一 data，满足：NEW -> SEEN（firstSeenAt 仅在为空时设置无法表达）
+      await (this.prisma as any).tripSuggestionState.updateMany({
+        where: { tripId, suggestionId: { in: toUpdate }, status: SuggestionStatus.NEW },
+        data: { status: SuggestionStatus.SEEN, firstSeenAt: now },
+      });
+    }
+  }
+
+  private async getStatusMap(tripId: string, suggestionIds: string[]): Promise<Map<string, SuggestionStatus>> {
+    const uniqueIds = Array.from(new Set(suggestionIds)).filter(Boolean);
+    if (uniqueIds.length === 0) return new Map();
+
+    const rows: Array<{ suggestionId: string; status: string }> = await (this.prisma as any).tripSuggestionState.findMany({
+      where: { tripId, suggestionId: { in: uniqueIds } },
+      select: { suggestionId: true, status: true },
+    });
+    return new Map(rows.map((r: { suggestionId: string; status: string }) => [r.suggestionId, r.status as SuggestionStatus]));
+  }
+
+  private async setSuggestionStatus(tripId: string, suggestionId: string, status: SuggestionStatus): Promise<void> {
+    const now = new Date();
+    await (this.prisma as any).tripSuggestionState.upsert({
+      where: { tripId_suggestionId: { tripId, suggestionId } },
+      create: {
+        tripId,
+        suggestionId,
+        status,
+        ...(status === SuggestionStatus.SEEN ? { firstSeenAt: now } : {}),
+        ...(status === SuggestionStatus.APPLIED ? { appliedAt: now } : {}),
+        ...(status === SuggestionStatus.DISMISSED ? { dismissedAt: now } : {}),
+      },
+      update: {
+        status,
+        ...(status === SuggestionStatus.SEEN ? { firstSeenAt: { set: now } } : {}),
+        ...(status === SuggestionStatus.APPLIED ? { appliedAt: { set: now } } : {}),
+        ...(status === SuggestionStatus.DISMISSED ? { dismissedAt: { set: now } } : {}),
+      },
+    });
   }
 
   /**
@@ -792,6 +914,7 @@ export class TripSuggestionsService {
       [PersonaType.ABU]: SuggestionPersona.ABU,
       [PersonaType.DR_DRE]: SuggestionPersona.DR_DRE,
       [PersonaType.NEPTUNE]: SuggestionPersona.NEPTUNE,
+      [PersonaType.USER_ACTION]: SuggestionPersona.SYSTEM,
     };
 
     // 映射严重级别
@@ -896,7 +1019,7 @@ export class TripSuggestionsService {
       scope,
       scopeId,
       severity: severityMap[alert.severity] || SuggestionSeverity.INFO,
-      status: this.suggestionStatuses.get(alert.id) || SuggestionStatus.NEW,
+      status: SuggestionStatus.NEW,
       title: alert.title,
       summary: alert.message.split('\n')[0] || alert.message,
       description: alert.message,
@@ -949,7 +1072,7 @@ export class TripSuggestionsService {
         scope: SuggestionScope.DAY,
         scopeId: day?.id,
         severity: severityMap[conflict.severity] || SuggestionSeverity.INFO,
-        status: this.suggestionStatuses.get(`conflict-${conflict.id}-${dayDate}`) || SuggestionStatus.NEW,
+        status: SuggestionStatus.NEW,
         title: conflict.title,
         summary: conflict.description,
         description: conflict.description,

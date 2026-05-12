@@ -152,11 +152,17 @@ export class RouteOptimizationEngine {
       fromPlaceId?: number,
     ): Promise<CandidatePlace | null> => {
       let filtered = pool.filter((c) => !avoidIds.has(c.id));
-      // 多样性约束：景点/购物类跨天去重，已用 2 次则排除
-      const isAttractionPool = !category || category !== 'RESTAURANT';
-      if (isAttractionPool) {
-        filtered = filtered.filter((c) => (usedPlaceIds.get(c.id) ?? 0) < 2);
-      }
+      // 🆕 多样性约束（Decision OS）：F&B（餐饮/咖啡）全程最多 1 次；其它默认 2 次
+      const isFoodAndBeverage = (c: CandidatePlace): boolean => {
+        if (c.category === 'RESTAURANT') return true;
+        const ct = String((c as any).canonicalType ?? '').toUpperCase();
+        if (ct.includes('CAFE') || ct.includes('COFFEE') || ct.includes('BAR')) return true;
+        const tags = Array.isArray((c as any).tags) ? ((c as any).tags as string[]) : [];
+        const t = tags.join(' ').toLowerCase();
+        return t.includes('cafe') || t.includes('coffee') || t.includes('咖啡') || t.includes('bar');
+      };
+      const repetitionLimitFor = (c: CandidatePlace): number => (isFoodAndBeverage(c) ? 1 : 2);
+      filtered = filtered.filter((c) => (usedPlaceIds.get(c.id) ?? 0) < repetitionLimitFor(c));
       if (category) {
         filtered = filtered.filter((c) => c.category === category);
       }

@@ -10,6 +10,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
+import { buildSparseCatalogRestDayPoiSearchHints } from '../../utils/research-poi-retrieval-geography-hint.util';
 import type {
   TripPlanRequest,
   Itinerary,
@@ -17,6 +18,8 @@ import type {
   ItineraryItem,
   GateResult,
 } from '../../interfaces/trip-plan.interface';
+import type { SparsePoiDayAllocation } from '../utils/sparse-poi-day-allocation.util';
+import { injectCorridorDriveLegsIntoDays } from '../../../skills/itinerary/itinerary-segment-tagger.util';
 
 /** 单日行程摘要（用于下一日的 Context 注入） */
 export interface DaySummary {
@@ -38,6 +41,10 @@ export interface IncrementalItineraryInput {
   environment_state?: IncrementalItineraryEnvironmentState;
   /** 最小天数才启用分段生成，默认 3 */
   minDaysToTrigger?: number;
+  /**
+   * POI 数少于天数且单日单槽时：block=按天块状铺开；round_robin=按日轮替（用餐/节奏类规划更自然）
+   */
+  sparsePoiDayAllocation?: SparsePoiDayAllocation;
 }
 
 @Injectable()
@@ -68,7 +75,14 @@ export class IncrementalItineraryGeneratorService {
     daySummaries: DaySummary[];
     mode: 'incremental' | 'full';
   }> {
-    const { request, research_data, gate_result: _gate_result, environment_state, minDaysToTrigger = 3 } = input;
+    const {
+      request,
+      research_data,
+      gate_result: _gate_result,
+      environment_state,
+      minDaysToTrigger = 3,
+      sparsePoiDayAllocation = 'block',
+    } = input;
     const requestId = (request as any).request_id ?? 'unknown';
 
     const { days, startDate, pois } = this.extractParams(request, research_data);
@@ -76,10 +90,19 @@ export class IncrementalItineraryGeneratorService {
     // 天数不足则使用全量模式（单次生成）
     const useIncremental = days >= minDaysToTrigger;
     if (!useIncremental) {
-      const itineraryDays = this.generateAllDaysAtOnce(request, days, startDate, pois, environment_state);
+      const itineraryDays = this.generateAllDaysAtOnce(
+        request,
+        days,
+        startDate,
+        pois,
+        environment_state,
+        research_data,
+        sparsePoiDayAllocation,
+      );
+      const taggedDays = injectCorridorDriveLegsIntoDays(itineraryDays, requestId);
       return {
-        itinerary: { request_id: requestId, days: itineraryDays },
-        daySummaries: this.compressPreviousDays(itineraryDays),
+        itinerary: { request_id: requestId, days: taggedDays },
+        daySummaries: this.compressPreviousDays(taggedDays),
         mode: 'full',
       };
     }
@@ -89,7 +112,10 @@ export class IncrementalItineraryGeneratorService {
     );
 
     const itineraryDays: ItineraryDay[] = [];
-    const itemsPerDay = Math.ceil(pois.length / days);
+    const itemsPerDay =
+      pois.length === 0 ? 0 : Math.max(1, Math.ceil(pois.length / days));
+
+    let prevDayLeadPoiKey: string | null = null;
 
     for (let dayIndex = 0; dayIndex < days; dayIndex++) {
       const previousSummaries = this.compressPreviousDays(itineraryDays);
@@ -103,9 +129,20 @@ export class IncrementalItineraryGeneratorService {
         itemsPerDay,
         previousSummaries,
         environment_state,
+        prevDayLeadPoiKey,
+        research_data,
+        sparsePoiDayAllocation,
       });
 
       itineraryDays.push(dayContent);
+
+      const firstPoi = dayContent.items.find((it) => it.type === 'POI');
+      prevDayLeadPoiKey =
+        firstPoi?.location_ref?.place_id != null
+          ? String(firstPoi.location_ref.place_id)
+          : firstPoi?.location_ref?.name != null
+            ? String(firstPoi.location_ref.name)
+            : null;
 
       this.logger.debug(
         `[分段规划 POC] Day ${dayIndex + 1}/${days} 完成, items=${dayContent.items.length}, ` +
@@ -113,9 +150,10 @@ export class IncrementalItineraryGeneratorService {
       );
     }
 
+    const taggedDays = injectCorridorDriveLegsIntoDays(itineraryDays, requestId);
     return {
-      itinerary: { request_id: requestId, days: itineraryDays },
-      daySummaries: this.compressPreviousDays(itineraryDays),
+      itinerary: { request_id: requestId, days: taggedDays },
+      daySummaries: this.compressPreviousDays(taggedDays),
       mode: 'incremental',
     };
   }
@@ -158,9 +196,13 @@ export class IncrementalItineraryGeneratorService {
     startDate: DateTime,
     pois: any[],
     environment_state?: IncrementalItineraryEnvironmentState,
+    research_data?: Record<string, any>,
+    sparsePoiDayAllocation: SparsePoiDayAllocation = 'block',
   ): ItineraryDay[] {
-    const itemsPerDay = Math.ceil(pois.length / days);
+    const itemsPerDay =
+      pois.length === 0 ? 0 : Math.max(1, Math.ceil(pois.length / days));
     const result: ItineraryDay[] = [];
+    let prevDayLeadPoiKey: string | null = null;
 
     for (let dayIndex = 0; dayIndex < days; dayIndex++) {
       const dayContent = this.generateSingleDay({
@@ -172,8 +214,18 @@ export class IncrementalItineraryGeneratorService {
         itemsPerDay,
         previousSummaries: [],
         environment_state,
+        prevDayLeadPoiKey,
+        research_data,
+        sparsePoiDayAllocation,
       });
       result.push(dayContent);
+      const firstPoi = dayContent.items.find((it) => it.type === 'POI');
+      prevDayLeadPoiKey =
+        firstPoi?.location_ref?.place_id != null
+          ? String(firstPoi.location_ref.place_id)
+          : firstPoi?.location_ref?.name != null
+            ? String(firstPoi.location_ref.name)
+            : null;
     }
     return result;
   }
@@ -187,8 +239,24 @@ export class IncrementalItineraryGeneratorService {
     itemsPerDay: number;
     previousSummaries: DaySummary[];
     environment_state?: IncrementalItineraryEnvironmentState;
+    /** 上一日首个 POI 的稳定键（place_id 优先），用于单日单槽时的连续同点说明 */
+    prevDayLeadPoiKey?: string | null;
+    /** 研究侧数据：按日槽位、POI 自带时间窗、opening_hours_evidence 等 */
+    research_data?: Record<string, any>;
+    sparsePoiDayAllocation?: SparsePoiDayAllocation;
   }): ItineraryDay {
-    const { request, dayIndex, days: _days, startDate, pois, itemsPerDay, environment_state } = params;
+    const {
+      request,
+      dayIndex,
+      days,
+      startDate,
+      pois,
+      itemsPerDay,
+      environment_state,
+      prevDayLeadPoiKey,
+      research_data,
+      sparsePoiDayAllocation = 'block',
+    } = params;
     const requestId = (request as any).request_id ?? 'unknown';
     const currentDate = startDate.plus({ days: dayIndex });
 
@@ -213,24 +281,77 @@ export class IncrementalItineraryGeneratorService {
         });
       }
     }
-    const startPoiIndex = dayIndex * itemsPerDay;
-    const endPoiIndex = Math.min(startPoiIndex + itemsPerDay, pois.length);
-    const dayPois = pois.slice(startPoiIndex, endPoiIndex);
+    /** 全局槽位：超过 pois.length 后循环复用，避免「前几天有地名、后面全是待安排」 */
+    const startSlot = dayIndex * itemsPerDay;
+    const openingHoursByPoi = IncrementalItineraryGeneratorService.buildOpeningHoursByPoiId(research_data);
+    const scheduledForDay = IncrementalItineraryGeneratorService.tryScheduledPoisForDay(
+      research_data,
+      dayIndex,
+      days,
+      pois,
+    );
+    const hasResearchScheduleForThisDay =
+      Array.isArray(scheduledForDay) && scheduledForDay.some((s) => s != null);
+    /**
+     * 研究侧只命中 1 个 POI 且多日单日单槽时，块状公式 `floor(dayIndex * 1 / days)` 恒为 0，
+     * 会把同一景点机械复制到每一天（与用户「走廊/改线」预期完全无关）。
+     * 无按日排期时：仅在首日保留该参考点，其余日留白为「待安排」并提示补检索。
+     */
+    const skipHeuristicSingleCatalogRepeat =
+      pois.length === 1 &&
+      itemsPerDay === 1 &&
+      days > 1 &&
+      dayIndex > 0 &&
+      !hasResearchScheduleForThisDay;
 
-    for (let i = 0; i < dayPois.length; i++) {
-      const poi = dayPois[i];
-      const poiId = poi.poi_id ?? poi.id ?? `poi_${startPoiIndex + i}`;
+    if (!skipHeuristicSingleCatalogRepeat) {
+      for (let i = 0; i < itemsPerDay; i++) {
+      if (pois.length === 0) {
+        break;
+      }
+      const globalSlot = startSlot + i;
+      const scheduledPoi = scheduledForDay?.[i];
+      /**
+       * 单日单槽且 POI 少于行程天数：默认按天块状铺开（避免 strict 模 2 交替 A/B/A/B…）；
+       * 用餐/节奏类规划用 round_robin，使少量参考点在多日里交替出现。
+       */
+      const useRoundRobinSparse =
+        sparsePoiDayAllocation === 'round_robin' &&
+        itemsPerDay === 1 &&
+        pois.length > 0 &&
+        pois.length < days;
+      const heuristicPoiIndex = useRoundRobinSparse
+        ? dayIndex % pois.length
+        : itemsPerDay === 1
+          ? Math.min(pois.length - 1, Math.floor((dayIndex * pois.length) / Math.max(days, 1)))
+          : globalSlot % pois.length;
+      const resolved = IncrementalItineraryGeneratorService.resolvePoiForSlot({
+        scheduledPoi,
+        scheduledList: scheduledForDay,
+        pois,
+        heuristicPoiIndex,
+        globalSlot,
+      });
+      const poi = resolved.poi;
+      const poiIndex = resolved.poiIndex;
+      const slotFromResearch = resolved.fromResearchSchedule;
+      const poiStableKey = String(poi.poi_id ?? poi.id ?? poiIndex);
+      const isRepeatFill =
+        itemsPerDay > 1
+          ? globalSlot >= pois.length
+          : prevDayLeadPoiKey != null && poiStableKey === prevDayLeadPoiKey;
+      const poiId = poi.poi_id ?? poi.id ?? `poi_${poiIndex}`;
       const poiName = poi.name ?? poi.nameCN ?? poi.nameEN ?? '未知地点';
       const poiCoords =
         poi.coordinates ??
         (poi.lat && poi.lng ? { lat: poi.lat, lng: poi.lng } : undefined);
 
-      // 🆕 限制在 08:00-22:00 内，避免半夜安排行程
-      const rawStartHour = 9 + i * 2;
-      const startHour = Math.min(Math.max(rawStartHour, 8), 20);
-      const endHour = Math.min(startHour + 2, 22);
-      const startTime = `${startHour.toString().padStart(2, '0')}:00`;
-      const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+      const { startTime, endTime, timeSource } = IncrementalItineraryGeneratorService.resolveVisitWindow(
+        poi,
+        i,
+        poiId,
+        openingHoursByPoi,
+      );
 
       dayItems.push({
         id: `${requestId}_day${dayIndex + 1}_item${i + 1}`,
@@ -243,29 +364,267 @@ export class IncrementalItineraryGeneratorService {
           coordinates: poiCoords,
           address: poi.address,
         },
+        ...(isRepeatFill
+          ? {
+              notes:
+                '研究资料中的参考点复用；请按当日开放时间与路况灵活调整，可替换为同区域其它景点。',
+            }
+          : {}),
         evidence_refs: poi.evidence_id ? [poi.evidence_id] : [],
         verified: false,
         verification_status: 'UNVERIFIED',
-        metadata: { duration_minutes: 120 },
+        metadata: {
+          duration_minutes: 120,
+          slot_source: slotFromResearch ? 'research_schedule' : 'heuristic',
+          time_source: timeSource,
+        },
       });
+    }
     }
 
     if (dayItems.length === 0) {
+      const destStr = typeof request.destination === 'string' ? request.destination.trim() : 'destination';
+      const userPlanningNl = [
+        typeof (request as { intake_user_message?: string }).intake_user_message === 'string'
+          ? String((request as { intake_user_message?: string }).intake_user_message).trim()
+          : '',
+        typeof request.message === 'string' ? request.message.trim() : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      const suggestedQueries = skipHeuristicSingleCatalogRepeat
+        ? buildSparseCatalogRestDayPoiSearchHints({
+            tripDestination: destStr,
+            userMessage: userPlanningNl,
+            dayNumber1Based: dayIndex + 1,
+            totalDays: days,
+          })
+        : [];
       dayItems.push({
         id: `${requestId}_day${dayIndex + 1}_placeholder`,
         type: 'REST',
         start_window: '09:00',
         end_window: '18:00',
         location_ref: { name: '待安排' },
+        ...(skipHeuristicSingleCatalogRepeat
+          ? {
+              notes:
+                '研究阶段仅命中少量参考点，本日未自动落景点；请按行程意图（如进出点、少回头路）在工作台补充或重试检索。' +
+                (suggestedQueries.length
+                  ? ` 建议检索（可粘贴到 POI 搜索）：${suggestedQueries.slice(0, 3).join('；')}`
+                  : ''),
+            }
+          : {}),
         evidence_refs: [],
         verified: false,
         verification_status: 'ASSUMPTION',
+        ...(skipHeuristicSingleCatalogRepeat
+          ? {
+              metadata: {
+                placeholder_reason: 'single_poi_catalog_multi_day',
+                ...(suggestedQueries.length ? { suggested_poi_search_queries: suggestedQueries } : {}),
+              },
+            }
+          : {}),
       });
     }
 
     return {
       date: currentDate.toISODate() ?? currentDate.toFormat('yyyy-MM-dd'),
       items: dayItems,
+    };
+  }
+
+  /** 从 research_data.opening_hours_evidence 建立 poi_id → 当日建议窗（粗解析） */
+  private static buildOpeningHoursByPoiId(research_data?: Record<string, any>): Map<string, { open: string; close: string }> {
+    const map = new Map<string, { open: string; close: string }>();
+    if (!research_data) return map;
+    const raw = research_data.opening_hours_evidence;
+    const rows: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.opening_hours) ? raw.opening_hours : [];
+    for (const r of rows) {
+      if (!r || r.missing) continue;
+      const id = String(r.poi_id ?? r.place_id ?? '').trim();
+      if (!id) continue;
+      let open = typeof r.open_time === 'string' ? r.open_time.trim() : '';
+      let close = typeof r.close_time === 'string' ? r.close_time.trim() : '';
+      if ((!open || !close) && typeof r.opening_hours === 'string') {
+        const pair = IncrementalItineraryGeneratorService.parseHhmmRangeFromString(r.opening_hours);
+        if (pair) {
+          open = pair[0];
+          close = pair[1];
+        }
+      }
+      const no = IncrementalItineraryGeneratorService.tryNormalizePair(open, close);
+      if (no) map.set(id, { open: no[0], close: no[1] });
+    }
+    return map;
+  }
+
+  private static parseHhmmRangeFromString(s: string): [string, string] | null {
+    const m = s.match(/(\d{1,2}:\d{2})\s*[-–~至到]\s*(\d{1,2}:\d{2})/);
+    if (!m) return null;
+    return IncrementalItineraryGeneratorService.tryNormalizePair(m[1]!, m[2]!);
+  }
+
+  private static tryNormalizePair(open: string, close: string): [string, string] | null {
+    const a = IncrementalItineraryGeneratorService.normalizeHhMm(open);
+    const b = IncrementalItineraryGeneratorService.normalizeHhMm(close);
+    if (/^\d{2}:\d{2}$/.test(a) && /^\d{2}:\d{2}$/.test(b)) return [a, b];
+    return null;
+  }
+
+  private static normalizeHhMm(s: string): string {
+    const m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return s;
+    return `${m[1]!.padStart(2, '0')}:${m[2]}`;
+  }
+
+  private static clipVisitEnd(open: string, close: string): string {
+    const parse = (t: string) => {
+      const [h, mi] = t.split(':').map((x) => Number(x));
+      return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(mi) ? mi : 0);
+    };
+    let startM = parse(open);
+    let endM = parse(close);
+    if (!Number.isFinite(startM)) startM = 9 * 60;
+    if (!Number.isFinite(endM)) endM = startM + 120;
+    if (endM <= startM) endM = startM + 120;
+    if (endM - startM > 180) endM = startM + 120;
+    endM = Math.min(endM, 22 * 60);
+    const h = Math.floor(endM / 60);
+    const mi = endM % 60;
+    return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+  }
+
+  private static tryHhmmFromPoi(poi: any): [string, string] | null {
+    const tw = poi?.time_window ?? poi?.visit_window;
+    if (tw && typeof tw === 'object') {
+      const a = tw.start ?? tw.start_time ?? tw.begin;
+      const b = tw.end ?? tw.end_time;
+      if (typeof a === 'string' && typeof b === 'string') {
+        const p = IncrementalItineraryGeneratorService.tryNormalizePair(a.trim(), b.trim());
+        if (p) return p;
+      }
+    }
+    if (typeof poi?.start_window === 'string' && typeof poi?.end_window === 'string') {
+      return IncrementalItineraryGeneratorService.tryNormalizePair(poi.start_window.trim(), poi.end_window.trim());
+    }
+    if (typeof poi?.visit_start === 'string' && typeof poi?.visit_end === 'string') {
+      return IncrementalItineraryGeneratorService.tryNormalizePair(poi.visit_start.trim(), poi.visit_end.trim());
+    }
+    return null;
+  }
+
+  private static resolveVisitWindow(
+    poi: any,
+    slotIndex: number,
+    poiId: string,
+    openingHoursByPoi: Map<string, { open: string; close: string }>,
+  ): { startTime: string; endTime: string; timeSource: 'poi_evidence' | 'opening_hours_evidence' | 'heuristic' } {
+    const fromPoi = IncrementalItineraryGeneratorService.tryHhmmFromPoi(poi);
+    if (fromPoi) {
+      return { startTime: fromPoi[0], endTime: IncrementalItineraryGeneratorService.clipVisitEnd(fromPoi[0], fromPoi[1]), timeSource: 'poi_evidence' };
+    }
+    const oh = openingHoursByPoi.get(String(poiId));
+    if (oh?.open && oh?.close) {
+      return {
+        startTime: oh.open,
+        endTime: IncrementalItineraryGeneratorService.clipVisitEnd(oh.open, oh.close),
+        timeSource: 'opening_hours_evidence',
+      };
+    }
+    const rawStartHour = 9 + slotIndex * 2;
+    const startHour = Math.min(Math.max(rawStartHour, 8), 20);
+    const endHour = Math.min(startHour + 2, 22);
+    return {
+      startTime: `${String(startHour).padStart(2, '0')}:00`,
+      endTime: `${String(endHour).padStart(2, '0')}:00`,
+      timeSource: 'heuristic',
+    };
+  }
+
+  private static normalizePoiDayNumber(p: any): number | undefined {
+    const d = p?.day ?? p?.day_number ?? p?.itinerary_day ?? p?.assigned_day;
+    if (d == null) return undefined;
+    const n = Number(d);
+    return Number.isFinite(n) ? n : undefined;
+  }
+
+  /**
+   * 优先使用研究侧「按日槽位」：slots_by_day / daily_pois / POI 上 day 字段（均为 1-based day 常见）。
+   */
+  private static tryScheduledPoisForDay(
+    research_data: Record<string, any> | undefined,
+    dayIndex: number,
+    days: number,
+    pois: any[],
+  ): any[] | null {
+    void days;
+    if (!research_data) return null;
+    const raw = research_data.poi_evidence;
+    const ev = Array.isArray(raw) ? null : raw;
+    if (!ev || typeof ev !== 'object') return null;
+
+    const d1 = dayIndex + 1;
+    const slots = ev.slots_by_day ?? ev.slotsByDay ?? ev.day_slots;
+    if (Array.isArray(slots) && dayIndex < slots.length) {
+      const row = slots[dayIndex];
+      const arr = Array.isArray(row) ? row : row != null ? [row] : [];
+      if (arr.length > 0) return arr;
+    }
+
+    const daily = ev.daily_pois ?? ev.day_pois ?? ev.days;
+    if (Array.isArray(daily)) {
+      const hit = daily.find((x: any) => {
+        const day = Number(x?.day ?? x?.day_number ?? x?.itinerary_day ?? x?.assigned_day);
+        return Number.isFinite(day) && day === d1;
+      });
+      const arr = hit?.pois ?? hit?.items;
+      if (Array.isArray(arr) && arr.length > 0) return arr;
+    }
+
+    const tagged = pois
+      .filter((p) => IncrementalItineraryGeneratorService.normalizePoiDayNumber(p) === d1)
+      .sort(
+        (a, b) =>
+          Number(a?.order ?? a?.slot_order ?? a?.rank ?? 0) - Number(b?.order ?? b?.slot_order ?? b?.rank ?? 0),
+      );
+    if (tagged.length > 0) return tagged;
+
+    return null;
+  }
+
+  private static mergeScheduledRefIntoPoisCatalog(ref: any, pois: any[]): { poi: any; poiIndex: number } {
+    if (typeof ref === 'string' || typeof ref === 'number') {
+      const id = String(ref);
+      const idx = pois.findIndex((p) => String(p.poi_id ?? p.id ?? p.place_id) === id);
+      return idx >= 0 ? { poi: pois[idx], poiIndex: idx } : { poi: { poi_id: id, id, name: id }, poiIndex: -1 };
+    }
+    if (ref && typeof ref === 'object') {
+      const id = String(ref.poi_id ?? ref.id ?? ref.place_id ?? '').trim();
+      const idx = id ? pois.findIndex((p) => String(p.poi_id ?? p.id ?? p.place_id) === id) : -1;
+      if (idx >= 0) return { poi: { ...pois[idx], ...ref }, poiIndex: idx };
+      return { poi: ref, poiIndex: -1 };
+    }
+    return { poi: pois[0], poiIndex: 0 };
+  }
+
+  private static resolvePoiForSlot(args: {
+    scheduledPoi: any | undefined;
+    scheduledList: any[] | null;
+    pois: any[];
+    heuristicPoiIndex: number;
+    globalSlot: number;
+  }): { poi: any; poiIndex: number; fromResearchSchedule: boolean } {
+    const { scheduledPoi, scheduledList, pois, heuristicPoiIndex } = args;
+    if (scheduledList && scheduledPoi != null) {
+      const { poi, poiIndex } = IncrementalItineraryGeneratorService.mergeScheduledRefIntoPoisCatalog(scheduledPoi, pois);
+      return { poi, poiIndex: poiIndex >= 0 ? poiIndex : heuristicPoiIndex, fromResearchSchedule: true };
+    }
+    return {
+      poi: pois[heuristicPoiIndex],
+      poiIndex: heuristicPoiIndex,
+      fromResearchSchedule: false,
     };
   }
 }

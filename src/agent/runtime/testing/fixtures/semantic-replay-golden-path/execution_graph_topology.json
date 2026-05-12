@@ -1,0 +1,28 @@
+{
+  "fixtures_revision": "2026-05-11b",
+  "execution_timeline_schema_abi": 4,
+  "description": "语义角色 + 期望父子边；operation 仅作匹配指纹，CI 漂移用 diffSemanticGoldPathTopology 解释，不断言 spanId。",
+  "semantic_roles": {
+    "anchor": {
+      "description": "point causal anchor (chain.enter)",
+      "match_any": [
+        {
+          "operation": "route_and_run:chain.enter",
+          "parent_span_must_be_null": true
+        }
+      ]
+    },
+    "chain": {
+      "description": "route_and_run chain interval",
+      "match_any": [{ "operation": "route_and_run.chain", "event_type": "span" }]
+    },
+    "selector": {
+      "description": "route direction selection interval",
+      "match_any": [{ "operation": "pickRouteDirections", "event_type": "span" }]
+    }
+  },
+  "expected_parent_edges": [
+    { "child_role": "chain", "parent_role": "anchor" },
+    { "child_role": "selector", "parent_role": "chain" }
+  ]
+}

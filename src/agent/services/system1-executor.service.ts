@@ -2,6 +2,9 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RouteType } from '../interfaces/router.interface';
 import { AgentState } from '../interfaces/agent-state.interface';
+import { LlmService } from '../../llm/services/llm.service';
+import { LlmProvider } from '../../llm/dto/llm-request.dto';
+import { OrchestrationStep, SubAgentType } from '../interfaces/trip-plan.interface';
 import { PlacesService } from '../../places/places.service';
 import { TripsService } from '../../trips/trips.service';
 import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
@@ -26,6 +29,8 @@ export class System1ExecutorService {
     private itineraryItemsService: ItineraryItemsService,
     @Optional() private enhancedChat?: EnhancedChatService,
     @Optional() private infoCardService?: System1InfoCardService,
+    /** 地点搜索无命中时，行前类问题走单次 LLM 常识兜底（与 QA_LIGHT 对齐） */
+    @Optional() private readonly llmService?: LlmService,
   ) {}
 
   /**
@@ -453,8 +458,25 @@ export class System1ExecutorService {
 
       // 2. 使用 PlacesService 的搜索功能（关键词搜索）
       const results = await this.placesService.search(input, undefined, undefined, undefined, undefined, 10);
-      
+
       if (results.length === 0) {
+        if (this.isGeneralTravelEnquiry(input)) {
+          const llmText = await this.fallbackLlmTravelQa(input, state);
+          if (llmText) {
+            this.logger.log(`[System1] POI 搜索无结果，已使用 LLM 常识兜底: queryLen=${input.length}`);
+            return {
+              success: true,
+              result: {
+                type: 'rag',
+                query: input,
+                results: [],
+                source: 'llm_fallback',
+                reason: 'places_empty_general_enquiry',
+              },
+              answerText: llmText,
+            };
+          }
+        }
         return {
           success: true,
           result: {
@@ -499,6 +521,95 @@ export class System1ExecutorService {
         result: null,
         answerText: '查询知识库时出错',
       };
+    }
+  }
+
+  /**
+   * 是否像「行前咨询 / 装备 / 季节 / 如何准备」而非纯地点名词检索。
+   * 纯短地点名（如单查「浅草寺」）不视为 general，保留原「未找到地点」体验。
+   */
+  private isGeneralTravelEnquiry(input: string): boolean {
+    const t = input.trim();
+    if (t.length < 2) return false;
+    const low = t.toLowerCase();
+
+    const placeOnlyCandidate = t.length <= 10 && !/[?？吗呢么如何怎么要不要需不需要]/.test(t) && !/\d/.test(t);
+    if (placeOnlyCandidate) {
+      const hasTravelVerb =
+        /(?:装备|冰爪|穿衣|签证|天气|预算|攻略|建议|注意|安全|自驾|徒步|高原)/.test(t) ||
+        /(?:crampon|pack|bring|wear|visa|weather|budget)/i.test(low);
+      if (!hasTravelVerb) return false;
+    }
+
+    const signalsZh = [
+      '吗',
+      '呢',
+      '么',
+      '如何',
+      '怎么',
+      '要不要',
+      '需不需要',
+      '要不要',
+      '建议',
+      '注意',
+      '装备',
+      '带什么',
+      '穿什么',
+      '冰爪',
+      '徒步',
+      '自驾',
+      '路况',
+      '季节',
+      '月初',
+      '月中',
+      '预算',
+      '攻略',
+      '签证',
+      '天气',
+      '安全',
+    ];
+    const signalsEn = [
+      'should i',
+      'do i need',
+      'how to',
+      'what to',
+      'crampon',
+      'crampons',
+      'pack',
+      'bring',
+      'wear',
+    ];
+    if (signalsEn.some((k) => low.includes(k))) return true;
+    if (signalsZh.some((k) => t.includes(k))) return true;
+    return false;
+  }
+
+  /**
+   * 地点与路线 RAG 均未命中时，用单次 LLM 回答常识类行前问题（非 POI 数据编造）。
+   */
+  private async fallbackLlmTravelQa(input: string, state: AgentState): Promise<string | null> {
+    if (!this.llmService) {
+      this.logger.debug('[System1] LlmService 未注入，跳过 LLM 兜底');
+      return null;
+    }
+    try {
+      const provider: LlmProvider = this.llmService.getDefaultProvider();
+      const prompt = [
+        '你是专业旅行顾问。用户问题不是查询具体景点 POI，而是行前咨询（装备、季节、注意事项、是否携带某物等）。',
+        '用清晰中文直接回答；需要分情况时说明条件；不要编造用户未提供的具体行程或预订信息。',
+        '',
+        `用户问题：${input}`,
+      ].join('\n');
+      const text = await this.llmService.callLlmWithSchema(provider, prompt, undefined, {
+        request_id: state.request_id,
+        state_machine_step: 'INTAKE' as OrchestrationStep,
+        sub_agent: 'Orchestrator' as SubAgentType,
+      });
+      const out = text?.trim();
+      return out || null;
+    } catch (e: any) {
+      this.logger.warn(`[System1] LLM 兜底失败: ${e?.message ?? e}`);
+      return null;
     }
   }
 

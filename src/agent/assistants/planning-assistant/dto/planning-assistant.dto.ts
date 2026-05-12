@@ -292,7 +292,7 @@ export class SessionStateResponseDto {
   phase!: string;
 
   @ApiProperty({ description: '用户偏好' })
-  preferences: any;
+  preferences!: any;
 
   @ApiPropertyOptional({ description: '目的地推荐', type: [DestinationRecommendationDto] })
   recommendations?: DestinationRecommendationDto[];

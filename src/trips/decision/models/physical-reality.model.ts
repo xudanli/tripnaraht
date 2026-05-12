@@ -53,6 +53,27 @@ export interface FerryState {
 }
 
 /**
+ * 实况天气决策证据（WeatherDecisionEvidenceService → 物理层 SSOT）
+ *
+ * 与 `weather-decision-evidence.interface` 对齐，供策略层消费。
+ */
+export interface WeatherObservationEvidence {
+  segmentId: string;
+  /** ISO 日期（计划日） */
+  date?: string;
+  windSpeedMs: number;
+  windGustMs?: number;
+  windDirectionDeg?: number;
+  /** 能见度（米）；缺失表示数据源未提供 */
+  visibilityM?: number;
+  precipitationMm: number;
+  violation: 'HARD' | 'SOFT' | 'NONE';
+  crosswindRisk?: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
+  explanation?: string;
+  metadata?: Record<string, any>;
+}
+
+/**
  * 气候季节性
  */
 export interface ClimateSeasonality {
@@ -92,6 +113,19 @@ export interface PhysicalRealityModel {
   /** 渡轮状态 */
   ferryStates: FerryState[];
 
+  /**
+   * 实况天气决策证据（按 plan 日维度；与 DEM 路段证据互补）
+   */
+  /**
+   * 原始观测条带（可审计、可持久化）。**执行语义**以引擎 `executionSemanticView` 为准，决策模块勿单独解释此数组。
+   */
+  weatherEvidence?: WeatherObservationEvidence[];
+
+  /**
+   * 民用晨光/暮光可行性摘要（与 `ExternalSignalsState.daylightFeasibility` 同源，供 Neptune 时间域 SOFT）
+   */
+  daylightFeasibilitySignal?: import('../temporal/temporal-propagation.types').DaylightFeasibilitySignalSummary;
+
   /** 气候季节性（月份→可达性评分） */
   climateSeasonality?: ClimateSeasonality;
 
@@ -109,6 +143,13 @@ export interface PhysicalRealityModel {
     hard_deadlines?: Record<string, string>;
     reason_code?: string;
   };
+
+  /**
+   * Warm-start evidence injected from Prefetcher/EvidenceCache.
+   * These are raw evidence objects (e.g. weather_physics / road_state / public_transit) with cached_at/expires_at
+   * so downstream fact derivation can remain deterministic and auditable.
+   */
+  prefetched_evidence?: Array<Record<string, any>>;
 }
 
 /**

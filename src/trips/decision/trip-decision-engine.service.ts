@@ -8,12 +8,50 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { PrometheusMetricsService } from '../../monitoring/prometheus-metrics.service';
+import { OperationalPolicyService } from './operational-policy/operational-policy.service';
+import { evaluateGeneratePlanGovernance } from './operational-policy/operational-policy-evaluator';
+import { OpsRealityAuditService } from './services/ops-reality-audit.service';
 import { ModuleRef } from '@nestjs/core';
-import { TripWorldState, TravelLeg, GeoPoint, ActivityCandidate } from './world-model';
+import {
+  TripWorldState,
+  TravelLeg,
+  GeoPoint,
+  ActivityCandidate,
+  ISODate,
+  type WeatherExecutionSignal,
+} from './world-model';
 import { TripPlan, PlanDay, PlanSlot } from './plan-model';
 import { abuSelectCoreActivities } from './strategies/abu';
 import { drdreBuildDaySchedule } from './strategies/drdre';
-import { neptuneRepairPlan } from './strategies/neptune';
+import { neptuneRepairPlan, type NeptuneRepairResult } from './strategies/neptune';
+import {
+  runExecutionCognitiveOrchestration,
+  commitEcoWorldModelUpdate,
+  shouldRunEcoPipeline,
+  evaluateEcoNeptuneClosure,
+  mergeEcoClosureIntoDigest,
+  isNeptuneRetryAllowed,
+} from '../execution-cognitive-orchestrator';
+import {
+  applyMinimalNeptunePatches,
+  planMinimalNeptunePatches,
+  resolveCorrectionStrategy,
+} from '../execution-convergence-optimizer';
+import type { NeptunePatch } from '../execution-convergence-optimizer/neptune-patch.types';
+import {
+  evaluateSinglePassConvergence,
+  evaluateTwoPassConvergence,
+  buildExecutionStateSnapshot,
+  evaluateFixedPoint,
+  shouldContinueIteration,
+  buildConvergenceProofSketch,
+} from '../execution-convergence-formalization';
+import {
+  buildFormalIterationSnapshot,
+  evaluateContraction,
+  evaluateOscillationBound,
+} from '../execution-formal-proof';
 import { DecisionRunLog, DecisionTrigger } from './decision-log';
 import { SenseToolsAdapter } from './adapters/sense-tools.adapter';
 import { ReadinessService } from '../readiness/services/readiness.service';
@@ -24,8 +62,9 @@ import { RouteDirectionObservabilityService } from '../../route-directions/servi
 import { CompliancePluginService } from '../../route-directions/plugins/compliance-plugin.service';
 import { TransportPluginService } from '../../route-directions/plugins/transport-plugin.service';
 import { getPolicyProfile } from './config/objective-config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DecisionParamsInjectorService } from '../../agent/memory/services/decision-params-injector.service';
-import { MemoryService } from '../../agent/memory/services/memory.service';
+import { AGENT_MEMORY_DECISION_COMPLETED } from '../../agent/memory/events/agent-memory.events';
 import { ConstraintDSLCompiler } from './constraints/constraint-dsl-compiler.service';
 import { ConstraintDSL } from './constraints/constraint-dsl.types';
 import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
@@ -43,11 +82,145 @@ import { DemEvidencePipelineResult, DemDecisionEvidence } from './interfaces/dem
 import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
 import { PlanConverterService } from './services/plan-converter.service';
 import { WorldModelContext } from './shared/world-model.types';
+import { WeatherObservationEvidence } from './models/physical-reality.model';
+import { WeatherDecisionEvidenceService } from './services/weather-decision-evidence.service';
+import type {
+  WeatherEvidenceLocationContext,
+  WeatherEvidencePipelineResult,
+  WeatherDecisionEvidence,
+} from './interfaces/weather-decision-evidence.interface';
+import type { VehicleProfile, VehicleClass, ExecutionState } from './hazard/travel-hazard.types';
+import type { TimeDrift } from './temporal/time-drift.types';
+import { projectRouteExecutionHazards } from '../routing/execution/project-route-execution-hazards';
+import { buildExecutionEnrichedTravelLeg } from '../routing/execution/build-execution-enriched-travel-leg';
+import { routeExecutionToTemporalDrifts } from '../routing/execution/route-execution-temporal-bridge';
+import { buildExecutionOverlay } from '../execution-overlay/build-execution-overlay';
+import { augmentOverlayFramesWithPedestrianGaps } from '../execution-overlay/augment-overlay-pedestrian-gaps';
+import { applyPhysicsAuthorityToOverlayFrames } from '../execution-overlay/apply-physics-authority-to-overlay';
+import { mergeRepairHintsIntoFrames } from '../execution-overlay/merge-repair-hints-into-frames';
+import { stampOverlayAnnotationsFromSignals } from '../execution-overlay/stamp-overlay-annotations';
+import { assertOverlayOnly, planHasInboundTravelLeg } from '../execution-overlay/overlay-decision-policy';
+import { assertOnlyDAGIsDecisionSource, buildExecutionTruthDAG } from '../execution-truth-dag';
+import {
+  buildExecutionStabilityBaseline,
+  runExecutionStabilityCycle,
+  STABILITY_GLOBAL_THRESHOLD,
+  closureToLyapunovCarrier,
+  evaluateLyapunov,
+  evaluateStochasticLyapunov,
+} from '../execution-stability';
+import {
+  buildDisturbanceModel,
+  buildExecutionUncertainty,
+  estimateResidualVariance,
+  evaluateBayesianCausalUpdate,
+  evaluateProbabilisticFixedPointSketch,
+  evaluateProbabilisticStability,
+} from '../execution-probabilistic-dynamics';
+import { buildP7EcoClosureAugmentation } from '../meta-dynamics';
+import { buildP8EcoClosureAugmentation } from '../recursive-semantics';
+import { buildP9EcoClosureAugmentation } from '../epistemic-boundary';
+import { buildP10EcoClosureAugmentation } from '../computational-ontology';
+import {
+  applyEcoIdentityDriftAlert,
+  commitEcoIdentityLedger,
+  finalizeEcoClosureDigestSlice,
+  gateEcoClosureSecondPass,
+  isEcoClosureEnforcementDisabled,
+  isEcoLedgerDbPersistenceSkipped,
+  resolveCorrectionStrategyWithLedger,
+  hydrateEcoLedgerIntoTripWorldState,
+  applyEcoLedgerTripContext,
+  applyPressureRegulation,
+  applyControlPhaseEngineTick,
+} from '../execution-closure-persistence';
+
+/** P-ECO-Closure-6 — probabilistic certificates (audit). */
+const P6_LYAPUNOV_ENERGY_EPSILON = 0.18;
+const P6_CERTAINTY_TAU = 0.95;
+import { compileDAGToIR } from '../execution-ir/compile-dag-to-ir';
+import { assertIRCreatedOnlyByCompiler } from '../execution-ir/ir-creation-guard';
+import { applyWeatherDriveDelayAndEmitDrifts } from './temporal/apply-weather-drive-delay';
+import { propagateSequenceDriftsToDownstreamSlots } from './temporal/propagate-sequence-drifts';
+import { buildCrossDayHandoffEdges } from './temporal/build-cross-day-edges';
+import { emitCrossDayHandoffDrifts } from './temporal/emit-cross-day-handoff-drifts';
+import { propagateCrossDayDriftsToNextDaySlots } from './temporal/propagate-cross-day-drifts';
+import { summarizeTemporalPropagationForSignals } from './temporal/summarize-temporal-for-signals';
+import { applyAccumulatedGlobalSlackToPlanDays } from './temporal/apply-accumulated-global-slack-to-plan';
+import { applyOperationalDayWindowFeasibility } from './temporal/apply-operational-day-window-feasibility';
+import { applyDaylightFeasibilityHints } from './temporal/apply-daylight-feasibility-hints';
+import { approximateCivilTwilightLocal } from './temporal/approximate-civil-twilight';
+import { buildEffectiveDrivableWindowForDay } from './temporal/build-effective-drivable-window';
+import { buildLegTemporalSafetyAssessments } from './temporal/build-leg-temporal-safety-assessments';
+import { buildTemporalExecutionWindowsBySlot } from './temporal/build-temporal-execution-windows';
+import { buildGoldenHourOpportunitySignal } from './signals/build-golden-hour-opportunity';
+import { buildOvernightRestructuringPressures } from './restructuring/build-overnight-restructuring-pressure';
+import { deriveOvernightFromOverlay } from './restructuring/derive-overnight-from-overlay';
+import type { OperationalDayWindowSignalSummary } from './temporal/temporal-propagation.types';
+import type { EffectiveDrivableWindow } from './temporal/effective-drivable-window.types';
+import type { GoldenHourOpportunitySignal } from './signals/golden-hour-opportunity.types';
+import { buildUnifiedConstraintGraph } from './constraint-graph/build-unified-constraint-graph';
+import { reduceSemanticRuntimeView } from './execution/semantic-runtime-reducer';
+import type { WorldConstraintStoreSnapshot } from '../../world/world-snapshot';
+import { evaluateMinimalRepairs } from './repair/repair-evaluator';
+import type { AuroraNightObservationSignal } from './signals/aurora-night-signals.types';
+import {
+  buildAuroraNightObservationSignal,
+  buildNightObservationFeasibilitySummary,
+} from './signals/build-night-observation-feasibility';
+import { buildAuroraOpportunityByDate } from './signals/build-aurora-opportunity';
+import {
+  evaluateOpportunityMigrationsForPlan,
+} from './opportunity/opportunity-migration-evaluator';
+import { migrationStanceFromAuroraIntentWeight } from './opportunity/opportunity-threshold.policy';
+import { materializeProposedCorridorMigrations } from './migration/materialize-corridor-migration-proposal';
+import { enrichProposalsWithSimulation } from './migration/simulate-corridor-migration';
+import { IcelandAuroraAdapter } from '../../data-contracts/adapters/iceland-aurora.adapter';
+import {
+  DEFAULT_VEHICLE_FUEL_PROFILE,
+  extractFuelPoiIndexFromCandidates,
+  summarizeFuelReachabilityForPlan,
+} from '../fuel';
+import {
+  assertOverlayFieldConsistency,
+  buildLegDateIndexFromPlan,
+  buildPhysicsFieldIndex,
+  buildUnifiedPhysicsField,
+} from '../physics';
 import { DecisionLogEntry } from './shared/decision-result.types';
 import { mapUserPersonaToDecisionParams, extractPersonaKeywordsFromPreferences } from './config/user-persona-mapping.config';
 import { createHumanCapabilityModelFromProfile } from './models/human-capability.model';
 import { ReadinessAgentService } from './readiness/readiness-agent.service';
 import { TravelReadinessResult } from './readiness/types/readiness-checklist.types';
+import { EcoIdentityLedgerPersistenceService } from './services/eco-identity-ledger-persistence.service';
+import { enrichTripWorldStateInventoryPlaceholders } from './inventory-ontology/inventory-candidate-enrichment';
+import { buildShadowRealitySnapshotV0 } from '../reality-kernel/build-shadow-reality-snapshot-v0';
+import {
+  buildDecisionContextV0,
+  computePlanningHorizonFromTripContext,
+} from '../reality-kernel/build-decision-context-v0';
+import type { DecisionContextV0 } from '../reality-kernel/decision-context.types';
+import {
+  isRealityEnforcementEnabled,
+  isRealityReadBoundaryEnabled,
+} from '../reality-kernel/reality-enforcement.env';
+import { getBoundDecisionContext, runWithDecisionContextAsync } from '../reality-kernel/reality-context.storage';
+import {
+  appendRealityExecutionTrace,
+  evaluatePlanningTick,
+} from '../reality-kernel/reality-policy-engine';
+import {
+  bindExecutionDecisionToContext,
+  enforceExecutionDecision,
+  ExecutionGate,
+} from '../reality-kernel/reality-execution-gate';
+import {
+  appendDecisionCausality,
+  attachOutcomeToCausalityRecord,
+  buildBlockedAtGateCausalityRecord,
+  buildDecisionCausalityId,
+  finalizeDecisionCausalityRecord,
+} from '../reality-kernel/decision-causality';
 
 export interface SenseTools {
   // keep it small: you can adapt to your existing services
@@ -64,10 +237,14 @@ export class TripDecisionEngineService {
 
   private readinessService?: ReadinessService;
   private readinessAgent?: ReadinessAgentService;
+  /** Lazily resolved — optional Prisma-backed ECO identity ledger. */
+  private ecoLedgerPersistenceService: EcoIdentityLedgerPersistenceService | null | undefined;
 
   constructor(
     private readonly tools: SenseToolsAdapter,
     private readonly moduleRef: ModuleRef,
+    private readonly decisionParamsInjector: DecisionParamsInjectorService,
+    private readonly eventEmitter: EventEmitter2,
     // private readonly poiFeaturesAdapter?: PoiFeaturesAdapterService,
     @Optional() private readonly routeDirectionSelector?: RouteDirectionSelectorService,
     @Optional() private readonly routeDirectionPoiGenerator?: RouteDirectionPoiGeneratorService,
@@ -78,8 +255,6 @@ export class TripDecisionEngineService {
     @Optional() private readonly demRouteSegmentationService?: DEMRouteSegmentationService,
     @Optional() private readonly demRiskScoringService?: DEMRiskScoringService,
     @Optional() private readonly demEvidenceChainService?: DEMEvidenceChainService,
-    @Optional() private readonly decisionParamsInjector?: DecisionParamsInjectorService,
-    @Optional() private readonly memoryService?: MemoryService,
     @Optional() private readonly dryRunPlanner?: DryRunPlannerService,
     @Optional() private readonly demEvidencePipeline?: DemDecisionEvidencePipelineService,
     @Optional() private readonly demEvidenceEnforcer?: DemEvidenceEnforcerService,
@@ -90,6 +265,10 @@ export class TripDecisionEngineService {
     @Optional() private readonly conflictResolver?: ConstraintConflictResolver,
     @Optional() private readonly constraintEngine?: ConstraintEngineService,
     @Optional() private readonly multiPlanGenerator?: MultiPlanGenerator,
+    @Optional() private readonly weatherDecisionEvidence?: WeatherDecisionEvidenceService,
+    @Optional() private readonly promMetrics?: PrometheusMetricsService,
+    @Optional() private readonly opsRealityAudit?: OpsRealityAuditService,
+    @Optional() private readonly operationalPolicy?: OperationalPolicyService,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
     // ReadinessService 和 ReadinessAgentService 在需要时通过 ModuleRef 获取
@@ -99,6 +278,394 @@ export class TripDecisionEngineService {
    * 懒加载获取 ReadinessService
    * 避免在构造函数中注入，防止循环依赖死锁
    */
+  private getEcoLedgerPersistence(): EcoIdentityLedgerPersistenceService | null {
+    if (this.ecoLedgerPersistenceService === undefined) {
+      try {
+        this.ecoLedgerPersistenceService =
+          this.moduleRef.get(EcoIdentityLedgerPersistenceService, { strict: false }) ?? null;
+      } catch {
+        this.ecoLedgerPersistenceService = null;
+      }
+    }
+    return this.ecoLedgerPersistenceService;
+  }
+
+  /** Cold resume: load prior ledger from Trip.metadata before any path reads `signals.ecoIdentityLedger` / ECO gate uses prior ledger. */
+  private async hydrateEcoIdentityLedgerFromStorage(state: TripWorldState): Promise<void> {
+    const svc = this.getEcoLedgerPersistence();
+    if (!svc) return;
+    try {
+      await hydrateEcoLedgerIntoTripWorldState(state, id => svc.loadLedgerBundle(id));
+    } catch (e) {
+      this.logger.warn(`hydrateEcoIdentityLedgerFromStorage failed: ${String(e)}`);
+    }
+  }
+
+  private async persistEcoIdentityLedgerToStorage(state: TripWorldState): Promise<void> {
+    if (isEcoLedgerDbPersistenceSkipped()) return;
+    const tripId = state.signals.ecoLedgerTripId;
+    if (!tripId) return;
+    const ledger = state.signals.ecoIdentityLedger;
+    if (!ledger) return;
+    if (state.policies?.ecoClosure?.persistEcoIdentityLedger === false) return;
+    const svc = this.getEcoLedgerPersistence();
+    if (!svc) return;
+    try {
+      const expected = state.signals.ecoLedgerMetadataRevision;
+      const result = await svc.saveLedger(
+        tripId,
+        ledger,
+        expected !== undefined ? { expectedRevision: expected } : {},
+      );
+      if (result.ok && result.newRevision !== undefined) {
+        state.signals.ecoLedgerMetadataRevision = result.newRevision;
+        return;
+      }
+      if (result.conflict) {
+        const bundle = await svc.loadLedgerBundle(tripId);
+        state.signals.ecoLedgerMetadataRevision = bundle.revision;
+        const retry = await svc.saveLedger(tripId, ledger, {
+          expectedRevision: bundle.revision,
+        });
+        if (retry.ok && retry.newRevision !== undefined) {
+          state.signals.ecoLedgerMetadataRevision = retry.newRevision;
+          this.logger.debug(
+            `persistEcoIdentityLedgerToStorage: persisted after revision refresh for trip ${tripId}`,
+          );
+          return;
+        }
+        if (retry.conflict) {
+          this.logger.warn(
+            `persistEcoIdentityLedgerToStorage: ledger persist lost race after retry for trip ${tripId}`,
+          );
+          return;
+        }
+        this.logger.warn(
+          `persistEcoIdentityLedgerToStorage: unexpected outcome after revision retry for trip ${tripId}`,
+        );
+        return;
+      }
+      if (!result.ok) {
+        this.logger.warn(
+          `persistEcoIdentityLedgerToStorage: save skipped or failed for trip ${tripId}`,
+        );
+      }
+    } catch (e) {
+      this.logger.warn(`persistEcoIdentityLedgerToStorage failed: ${String(e)}`);
+    }
+  }
+
+  /**
+   * Shared by {@link repairPlan} and {@link generatePlan}: stability tick → Neptune VM → optional ECO closure → persist ledger.
+   */
+  private async runNeptuneStabilityAndEcoClosure(
+    state: TripWorldState,
+    plan: TripPlan,
+  ): Promise<NeptuneRepairResult> {
+    const stabilityCycle = runExecutionStabilityCycle({
+      detection: {
+        dag: state.signals.executionTruthDAG,
+        ir: state.signals.executionIR,
+        baseline: state.signals.executionStabilityBaseline,
+      },
+      fixHandlers: {
+        recompileIR: () => {
+          const dag = state.signals.executionTruthDAG;
+          if (dag?.nodes?.length) {
+            state.signals.executionIR = compileDAGToIR(dag);
+          }
+        },
+      },
+    });
+    if (stabilityCycle.score.global < STABILITY_GLOBAL_THRESHOLD) {
+      this.logger.debug(
+        `P14 stability: global=${stabilityCycle.score.global.toFixed(3)} fixesApplied=${stabilityCycle.fixesApplied} drifts=${stabilityCycle.signals.map(s => s.type).join(',')}`,
+      );
+    }
+
+    let repaired = neptuneRepairPlan({
+      state,
+      plan,
+      executionIR: state.signals.executionIR!,
+    });
+
+    const ecoPipelineRan = shouldRunEcoPipeline(state);
+    if (ecoPipelineRan) {
+      const ecoIdentityPriorLedger = state.signals.ecoIdentityLedger;
+      const ecoEnforcementDisabled = isEcoClosureEnforcementDisabled(state.policies?.ecoClosure);
+      let eco = runExecutionCognitiveOrchestration(state, repaired);
+      repaired = eco.neptuneResult;
+      let closureEval = evaluateEcoNeptuneClosure(state, eco);
+      applyPressureRegulation(state, { stabilityScore: closureEval.stabilityScore });
+      applyControlPhaseEngineTick(state, closureEval, {
+        stabilityScore: closureEval.stabilityScore,
+      });
+      const neptuneAfterEcoPass1 = repaired;
+      const convergenceOpts = state.policies?.ecoClosure?.convergenceSemantics;
+      const fpPass1 = evaluateFixedPoint(null, neptuneAfterEcoPass1, closureEval, convergenceOpts);
+      const formalSnapPass1 = buildFormalIterationSnapshot(state, 0);
+      const useFpGate =
+        state.policies?.ecoClosure?.useFixedPointIterationGate === true ||
+        (typeof process !== 'undefined' && process.env?.TRIP_ECO_FP_GATE === '1');
+      const requestRetry = useFpGate
+        ? shouldContinueIteration(fpPass1)
+        : closureEval.shouldRerunNeptune;
+      const maxExtra =
+        typeof state.policies?.ecoClosure?.maxExtraNeptunePasses === 'number'
+          ? state.policies.ecoClosure.maxExtraNeptunePasses
+          : 1;
+      const regCtrl = state.signals.pressureRegulation?.control;
+      const throttle = regCtrl?.ecoThrottle ?? 1;
+      let effectiveMaxExtra = Math.max(0, Math.floor(maxExtra * throttle));
+      if (regCtrl?.neptuneRetryPolicy === 'block') {
+        effectiveMaxExtra = 0;
+      } else if (typeof regCtrl?.closureRetryLimit === 'number') {
+        effectiveMaxExtra = Math.min(effectiveMaxExtra, regCtrl.closureRetryLimit);
+      }
+      const baseAllowRetry =
+        requestRetry &&
+        isNeptuneRetryAllowed(state) &&
+        effectiveMaxExtra > 0;
+      const allowRetry = ecoEnforcementDisabled
+        ? baseAllowRetry
+        : gateEcoClosureSecondPass({
+            priorLedger: ecoIdentityPriorLedger,
+            baseAllowRetry,
+          });
+
+      if (allowRetry) {
+        this.promMetrics?.recordOpsNeptuneEcoSecondPass();
+        const snapshotPass1 = buildExecutionStateSnapshot(1, neptuneAfterEcoPass1, closureEval);
+        const beforeRetry = closureEval;
+        const correctionStrategy = ecoEnforcementDisabled
+          ? resolveCorrectionStrategy(state)
+          : resolveCorrectionStrategyWithLedger(state, ecoIdentityPriorLedger);
+        let appliedMinimalPatches: NeptunePatch[] | undefined;
+
+        if (correctionStrategy === 'minimal_patch_then_neptune') {
+          const planned = planMinimalNeptunePatches(state, closureEval, eco);
+          const patchOutcome = applyMinimalNeptunePatches(state, planned);
+          appliedMinimalPatches = patchOutcome.applied;
+        }
+
+        repaired = neptuneRepairPlan({
+          state,
+          plan,
+          executionIR: state.signals.executionIR!,
+        });
+        eco = runExecutionCognitiveOrchestration(state, repaired);
+        repaired = eco.neptuneResult;
+        closureEval = evaluateEcoNeptuneClosure(state, eco);
+        const convergence = evaluateTwoPassConvergence(
+          neptuneAfterEcoPass1,
+          repaired,
+          beforeRetry,
+          closureEval,
+          convergenceOpts,
+        );
+        const fixedPoint = evaluateFixedPoint(snapshotPass1, repaired, closureEval, convergenceOpts);
+        const patchMag =
+          correctionStrategy === 'minimal_patch_then_neptune'
+            ? Math.min(1, (appliedMinimalPatches?.length ?? 0) / 4)
+            : 0;
+        const lyapunov = evaluateLyapunov(
+          closureToLyapunovCarrier(beforeRetry, 0),
+          closureToLyapunovCarrier(closureEval, patchMag),
+        );
+        const formalSnapPass2 = buildFormalIterationSnapshot(state, patchMag);
+        const contractionProof = evaluateContraction(formalSnapPass1, formalSnapPass2);
+        const oscillationBound = evaluateOscillationBound({
+          contractionRate: fixedPoint.contractionRate,
+          k: contractionProof.lipschitzConstant,
+          patchDecreasing: contractionProof.monotonicPatchSequence,
+        });
+        const executionUncertainty = buildExecutionUncertainty(state);
+        const disturbanceModel = buildDisturbanceModel(state);
+        const stochasticLyapunov = evaluateStochasticLyapunov(
+          closureToLyapunovCarrier(beforeRetry, 0),
+          closureToLyapunovCarrier(closureEval, patchMag),
+          disturbanceModel,
+        );
+        const bayesianCausal = evaluateBayesianCausalUpdate(state.signals.reflectiveCausalModel);
+        const probabilisticStability = evaluateProbabilisticStability({
+          meanEnergy: stochasticLyapunov.expectedNextEnergy,
+          energyVariance: stochasticLyapunov.energyVarianceNext,
+          epsilon: P6_LYAPUNOV_ENERGY_EPSILON,
+          tau: P6_CERTAINTY_TAU,
+        });
+        const epsilonResidual =
+          convergenceOpts?.epsilonResidual ??
+          convergence.epsilonResidual ??
+          0.06;
+        const probabilisticFixedPoint = evaluateProbabilisticFixedPointSketch({
+          residualDelta: fixedPoint.residualDelta,
+          epsilonResidual,
+          residualVariance: estimateResidualVariance(executionUncertainty, disturbanceModel),
+          tau: P6_CERTAINTY_TAU,
+        });
+        const p7Aug = buildP7EcoClosureAugmentation({
+          state,
+          lyapunov,
+          probabilisticStability,
+          convergenceOpts,
+          iterationKind: 'two_pass',
+        });
+        const p8Aug = buildP8EcoClosureAugmentation({
+          state,
+          p7: p7Aug,
+          executionUncertainty,
+          probabilisticStability,
+          bayesianObservationLikelihood: bayesianCausal.observationLikelihood,
+        });
+        const p9Aug = buildP9EcoClosureAugmentation({
+          executionUncertainty,
+          contractionProof,
+          recursiveReasoning: p8Aug.recursiveReasoning,
+          selfModel: p8Aug.selfModel,
+          bayesianCausal,
+          probabilisticTailMass: probabilisticStability?.probabilityBelowEpsilon ?? 0,
+        });
+        const p10Aug = buildP10EcoClosureAugmentation({
+          state,
+          p7: p7Aug,
+          p8: p8Aug,
+          p9: p9Aug,
+          contractionProof,
+        });
+        eco.digest = mergeEcoClosureIntoDigest(
+          eco.digest,
+          finalizeEcoClosureDigestSlice(
+            {
+              neptunePasses: 2,
+              beforeRetry,
+              final: closureEval,
+              correctionPath: correctionStrategy,
+              ...(correctionStrategy === 'minimal_patch_then_neptune'
+                ? { appliedMinimalPatches }
+                : {}),
+              convergence,
+              fixedPoint,
+              convergenceProof: buildConvergenceProofSketch(
+                [beforeRetry, closureEval],
+                [fpPass1.residualDelta, fixedPoint.residualDelta],
+                maxExtra + 1,
+              ),
+              lyapunov,
+              contractionProof,
+              oscillationBound,
+              executionUncertainty,
+              disturbanceModel,
+              stochasticLyapunov,
+              bayesianCausal,
+              probabilisticStability,
+              probabilisticFixedPoint,
+              ...p7Aug,
+              ...p8Aug,
+              ...p9Aug,
+              ...p10Aug,
+            },
+            ecoIdentityPriorLedger,
+          ),
+        );
+      } else {
+        const lyapunov = evaluateLyapunov(null, closureToLyapunovCarrier(closureEval, 0));
+        const contractionProof = evaluateContraction(null, formalSnapPass1);
+        const oscillationBound = evaluateOscillationBound({
+          contractionRate: fpPass1.contractionRate,
+          k: contractionProof.lipschitzConstant,
+          patchDecreasing: true,
+        });
+        const singlePassConvergence = evaluateSinglePassConvergence(closureEval, convergenceOpts);
+        const executionUncertainty = buildExecutionUncertainty(state);
+        const disturbanceModel = buildDisturbanceModel(state);
+        const stochasticLyapunov = evaluateStochasticLyapunov(
+          null,
+          closureToLyapunovCarrier(closureEval, 0),
+          disturbanceModel,
+        );
+        const bayesianCausal = evaluateBayesianCausalUpdate(state.signals.reflectiveCausalModel);
+        const probabilisticStability = evaluateProbabilisticStability({
+          meanEnergy: stochasticLyapunov.expectedNextEnergy,
+          energyVariance: stochasticLyapunov.energyVarianceNext,
+          epsilon: P6_LYAPUNOV_ENERGY_EPSILON,
+          tau: P6_CERTAINTY_TAU,
+        });
+        const epsilonResidual =
+          convergenceOpts?.epsilonResidual ??
+          singlePassConvergence.epsilonResidual ??
+          0.06;
+        const probabilisticFixedPoint = evaluateProbabilisticFixedPointSketch({
+          residualDelta: fpPass1.residualDelta,
+          epsilonResidual,
+          residualVariance: estimateResidualVariance(executionUncertainty, disturbanceModel),
+          tau: P6_CERTAINTY_TAU,
+        });
+        const p7Aug = buildP7EcoClosureAugmentation({
+          state,
+          lyapunov,
+          probabilisticStability,
+          convergenceOpts,
+          iterationKind: 'single_pass',
+        });
+        const p8Aug = buildP8EcoClosureAugmentation({
+          state,
+          p7: p7Aug,
+          executionUncertainty,
+          probabilisticStability,
+          bayesianObservationLikelihood: bayesianCausal.observationLikelihood,
+        });
+        const p9Aug = buildP9EcoClosureAugmentation({
+          executionUncertainty,
+          contractionProof,
+          recursiveReasoning: p8Aug.recursiveReasoning,
+          selfModel: p8Aug.selfModel,
+          bayesianCausal,
+          probabilisticTailMass: probabilisticStability?.probabilityBelowEpsilon ?? 0,
+        });
+        const p10Aug = buildP10EcoClosureAugmentation({
+          state,
+          p7: p7Aug,
+          p8: p8Aug,
+          p9: p9Aug,
+          contractionProof,
+        });
+        eco.digest = mergeEcoClosureIntoDigest(
+          eco.digest,
+          finalizeEcoClosureDigestSlice(
+            {
+              neptunePasses: 1,
+              final: closureEval,
+              convergence: singlePassConvergence,
+              fixedPoint: fpPass1,
+              convergenceProof: buildConvergenceProofSketch([closureEval], [fpPass1.residualDelta], 1),
+              lyapunov,
+              contractionProof,
+              oscillationBound,
+              executionUncertainty,
+              disturbanceModel,
+              stochasticLyapunov,
+              bayesianCausal,
+              probabilisticStability,
+              probabilisticFixedPoint,
+              ...p7Aug,
+              ...p8Aug,
+              ...p9Aug,
+              ...p10Aug,
+            },
+            ecoIdentityPriorLedger,
+          ),
+        );
+      }
+
+      commitEcoWorldModelUpdate(state, eco);
+      applyEcoIdentityDriftAlert(state, eco.digest.ecoClosure);
+      commitEcoIdentityLedger(state, eco.digest.ecoClosure, state.policies?.ecoClosure);
+      await this.persistEcoIdentityLedgerToStorage(state);
+    }
+
+    return repaired;
+  }
+
   private getReadinessService(): ReadinessService | null {
     if (!this.readinessService) {
       try {
@@ -133,10 +700,20 @@ export class TripDecisionEngineService {
   async generatePlan(
     state: TripWorldState,
     requestId?: string
-  ): Promise<{ plan: TripPlan; log: DecisionRunLog; readiness?: TravelReadinessResult }> {
+  ): Promise<{
+    plan: TripPlan;
+    log: DecisionRunLog;
+    readiness?: TravelReadinessResult;
+    /** Phase 3：启用 `REALITY_ENFORCEMENT=1` 时返回 Snapshot-bound 上下文 */
+    decisionContext?: DecisionContextV0;
+  }> {
     if (!state || !state.context) {
       throw new Error('Invalid state: state and state.context are required');
     }
+
+    applyEcoLedgerTripContext(state);
+
+    await this.hydrateEcoIdentityLedgerFromStorage(state);
 
     // 创建观测 trace
     const traceRequestId = requestId || `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -151,7 +728,209 @@ export class TripDecisionEngineService {
       this.observabilityService.recordPoiPoolSize(traceRequestId, initialPoolSize, 'initial');
     }
 
+    /** Phase 3：同一 planning tick 内传播 bound DecisionContext（早期快照 + ALS） */
+    const bindRealityAls =
+      isRealityEnforcementEnabled() || isRealityReadBoundaryEnabled();
+    if (bindRealityAls) {
+      const earlySnap = buildShadowRealitySnapshotV0(state, { traceRequestId });
+      const horizon = computePlanningHorizonFromTripContext(state.context);
+      const earlyCtx = buildDecisionContextV0(earlySnap, horizon);
+      this.logger.debug(
+        `[RealityKernel][als_bind] snapshot_id=${earlyCtx.snapshot_id} validity=${earlyCtx.reality.validity.status}`,
+      );
+      return await runWithDecisionContextAsync(earlyCtx, () =>
+        this.executeGeneratePlanTick(state, requestId, traceRequestId),
+      );
+    }
+
+    return await this.executeGeneratePlanTick(state, requestId, traceRequestId);
+  }
+
+  /**
+   * Reality Execution Gate — {@link ExecutionGate.resolve} is the only authority for ALLOW / DEGRADE / BLOCK.
+   * Appends one causal row on BLOCK; otherwise leaves `_decisionCausalityDraft` for flush at plan return.
+   */
+  private applyRealityPlanningExecutionGate(
+    state: TripWorldState,
+    executionKind: 'planning_tick' | 'repair',
+    traceRequestId: string,
+  ): void {
+    const causalityId = buildDecisionCausalityId();
+    const startedAt = new Date().toISOString();
+    const tickKind = executionKind === 'planning_tick' ? 'generate_plan' : 'repair_plan';
+
+    const boundForValidity = getBoundDecisionContext();
+    const planningPolicy = evaluatePlanningTick(boundForValidity);
+    const execDecision = ExecutionGate.resolve({
+      executionType: executionKind,
+      decisionContext: boundForValidity,
+      policyResult: planningPolicy,
+    });
+    if (boundForValidity) {
+      state.signals.realityExecutionContract = {
+        verdict: planningPolicy.verdict,
+        snapshot_id: boundForValidity.snapshot_id,
+        policy_codes: planningPolicy.codes,
+        reasons: planningPolicy.reasons,
+        evaluated_at: new Date().toISOString(),
+        execution: planningPolicy.execution,
+      };
+    }
+    appendRealityExecutionTrace(state, {
+      kind: 'planning_policy',
+      verdict: planningPolicy.verdict,
+      snapshot_id: boundForValidity?.snapshot_id,
+      codes: planningPolicy.codes,
+      detail: JSON.stringify({
+        policy: planningPolicy.verdict,
+        gate: execDecision,
+        causality_id: causalityId,
+      }),
+    });
+    if (execDecision.type === 'BLOCK') {
+      this.logger.warn(
+        `[RealityKernel][ExecutionGate] BLOCK snapshot_id=${boundForValidity?.snapshot_id} gate=${execDecision.reason}`,
+      );
+      const blockedRec = buildBlockedAtGateCausalityRecord({
+        causality_id: causalityId,
+        started_at: startedAt,
+        tick_kind: tickKind,
+        trace_request_id: traceRequestId,
+        reality: {
+          snapshot_id: boundForValidity?.snapshot_id,
+          validity_status: boundForValidity?.reality.validity.status,
+          region: boundForValidity?.reality.domain.region,
+        },
+        policy_engine: {
+          verdict: planningPolicy.verdict,
+          codes: planningPolicy.codes,
+          reasons: planningPolicy.reasons,
+        },
+        execution_gate: execDecision,
+      });
+      appendDecisionCausality(state, blockedRec);
+      state.signals.lastDecisionCausalityId = blockedRec.causality_id;
+    }
+    enforceExecutionDecision(execDecision, { snapshotId: boundForValidity?.snapshot_id });
+    bindExecutionDecisionToContext(boundForValidity, execDecision);
+    if (boundForValidity) {
+      state.signals.realityExecutionMode =
+        execDecision.type === 'DEGRADE' ? 'DEGRADED' : 'NORMAL';
+      state.signals.realityDegradeStrategy =
+        execDecision.type === 'DEGRADE' ? execDecision.strategy : undefined;
+    }
+    if (execDecision.type !== 'BLOCK') {
+      state.signals._decisionCausalityDraft = {
+        causality_id: causalityId,
+        started_at: startedAt,
+        tick_kind: tickKind,
+        trace_request_id: traceRequestId,
+        reality: {
+          snapshot_id: boundForValidity?.snapshot_id,
+          validity_status: boundForValidity?.reality.validity.status,
+          region: boundForValidity?.reality.domain.region,
+        },
+        policy_engine: {
+          verdict: planningPolicy.verdict,
+          codes: planningPolicy.codes,
+          reasons: planningPolicy.reasons,
+        },
+        execution_gate: execDecision,
+      };
+    }
+    if (
+      execDecision.type === 'DEGRADE' &&
+      boundForValidity?.reality.validity.status === 'STALE'
+    ) {
+      const sid = boundForValidity.snapshot_id;
+      const notes = boundForValidity.reality.validity.invalidation_reasons;
+      this.logger.warn(
+        `[RealityKernel][ExecutionGate] DEGRADED runtime snapshot_id=${sid}` +
+          (notes?.length ? ` notes=${JSON.stringify(notes)}` : ''),
+      );
+      if (!state.signals.alerts) state.signals.alerts = [];
+      state.signals.alerts.push({
+        code: 'REALITY_SNAPSHOT_STALE',
+        severity: 'warn',
+        message: `Execution Gate: snapshot STALE (${sid}); strategy=${execDecision.type === 'DEGRADE' ? execDecision.strategy : 'unknown'}`,
+      });
+    }
+  }
+
+  /** Append Policy→Gate→Plan causal record and clear draft (single exit helper). */
+  private flushDecisionCausalityChain(
+    state: TripWorldState,
+    outcome: {
+      phase: 'completed' | 'constraint_rejected';
+      log: DecisionRunLog;
+      plan: TripPlan | null;
+    },
+  ): void {
+    const draft = state.signals._decisionCausalityDraft;
+    if (!draft) return;
+    const finalized = finalizeDecisionCausalityRecord(draft, outcome);
+    appendDecisionCausality(state, finalized);
+    state.signals.lastDecisionCausalityId = finalized.causality_id;
+    delete state.signals._decisionCausalityDraft;
+  }
+
+  /**
+   * P-OPS-2 + Phase-1 causality：persist prediction row then attach `ops_reality_snapshot_id` onto the
+   * finalized chain row (same tick as `lastDecisionCausalityId`).
+   */
+  private async maybeRecordOpsAuditAndAttachCausality(
+    state: TripWorldState,
+    params: {
+      traceRequestId: string;
+      log: DecisionRunLog;
+      finalPlan: TripPlan;
+      weatherPipeline: WeatherEvidencePipelineResult | undefined;
+    },
+  ): Promise<void> {
+    if (!this.opsRealityAudit) return;
+    try {
+      const snapshotId = await this.opsRealityAudit.recordPrediction({
+        tripId: state.context.tripId,
+        requestId: params.traceRequestId,
+        decisionRunId: params.log.runId,
+        frames: state.signals.executionOverlayFrames,
+        weatherPipeline: params.weatherPipeline,
+        plan: params.finalPlan,
+      });
+      const cid = state.signals.lastDecisionCausalityId?.trim();
+      if (snapshotId && cid) {
+        const ok = attachOutcomeToCausalityRecord(state, cid, {
+          ops_reality_snapshot_id: snapshotId,
+        });
+        if (!ok) {
+          this.logger.debug(
+            `[P-OPS-2] causality attach skipped (no chain row for ${cid}); snapshot_id=${snapshotId}`,
+          );
+        }
+      }
+    } catch (e) {
+      this.logger.warn(
+        `[P-OPS-2] recordPrediction / causality attach failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  /**
+   * Planning tick body —可选由 `generatePlan` 在 ALS-bound DecisionContext 下调用。
+   */
+  private async executeGeneratePlanTick(
+    state: TripWorldState,
+    requestId: string | undefined,
+    traceRequestId: string,
+  ): Promise<{
+    plan: TripPlan;
+    log: DecisionRunLog;
+    readiness?: TravelReadinessResult;
+    decisionContext?: DecisionContextV0;
+  }> {
     const planGenerateStartTime = Date.now();
+
+    this.applyRealityPlanningExecutionGate(state, 'planning_tick', traceRequestId);
 
     // 可选：运行准备度检查（使用 Pack + 能力包 + 地理特征增强）
     const readinessService = this.getReadinessService();
@@ -225,7 +1004,7 @@ export class TripDecisionEngineService {
     // Step 0: 读取用户画像并注入决策参数（如果可用）
     const userId = (state.context as any).userId;
     let decisionParams = null;
-    if (userId && this.decisionParamsInjector) {
+    if (userId) {
       try {
         decisionParams = await this.decisionParamsInjector.getDecisionParamsForUser(userId);
         // 注入约束到 world model
@@ -248,6 +1027,7 @@ export class TripDecisionEngineService {
           riskTolerance: state.context.preferences.riskTolerance,
           durationDays: state.context.durationDays,
           userId: userId, // 传递 userId 以便 RouteDirectionSelectorService 使用
+          tripId: state.context.tripId,
         };
 
         const recommendations = await this.routeDirectionSelector.pickRouteDirections(
@@ -392,7 +1172,8 @@ export class TripDecisionEngineService {
 
             // 将路线方向的 POI 添加到候选池
             this.mergeCandidatePois(state, routePois);
-            
+            enrichTripWorldStateInventoryPlaceholders(state);
+
             if (this.observabilityService) {
               const afterMergeSize = Object.values(state.candidatesByDate).reduce(
                 (sum, candidates) => sum + candidates.length,
@@ -807,6 +1588,311 @@ export class TripDecisionEngineService {
       }
     }
 
+    /** 实况观测镜像（可选持久化）；决策/准备度天气语义以 signals.executionSemanticView 为准 */
+    let weatherEvidenceForWorld: WeatherObservationEvidence[] | undefined;
+    let weatherPipelineSnapshot: WeatherEvidencePipelineResult | undefined;
+    if (this.weatherDecisionEvidence) {
+      try {
+        const weatherCtx = this.buildWeatherEvidenceContext(state, plan);
+        const weatherPipeline = await this.weatherDecisionEvidence.generateEvidencePipeline(
+          plan,
+          undefined,
+          weatherCtx,
+        );
+        weatherPipelineSnapshot = weatherPipeline;
+        weatherEvidenceForWorld = weatherPipeline.segmentEvidences.map(e => ({
+          segmentId: e.segmentId,
+          date: e.date,
+          windSpeedMs: e.windSpeed,
+          windGustMs: e.metadata?.windGustMs,
+          windDirectionDeg: e.windDirection,
+          visibilityM:
+            e.visibility !== undefined ? Math.round(e.visibility * 1000) : undefined,
+          precipitationMm: e.precipitation,
+          violation: e.violation,
+          crosswindRisk: e.crosswindRisk,
+          explanation: e.explanation,
+          metadata: {
+            ...e.metadata,
+            suggestedAction: e.suggestedAction,
+            hazards: e.hazards,
+            executionState: e.executionState,
+            executionQuality: e.executionQuality,
+            weatherPipelineSummary: {
+              canProceed: weatherPipeline.canProceed,
+              hasHardViolation: weatherPipeline.hasHardViolation,
+              hasSoftViolation: weatherPipeline.hasSoftViolation,
+            },
+          },
+        }));
+        if (weatherPipeline.hasHardViolation) {
+          this.promMetrics?.recordOpsWeatherEvidenceHard(weatherPipeline.explainableFailure?.reason);
+          this.logger.warn(
+            `天气证据 HARD: ${weatherPipeline.explainableFailure?.reason ?? 'weather risk'}`,
+          );
+        }
+      } catch (err: unknown) {
+        this.promMetrics?.recordOpsWeatherEvidencePipelineException();
+        this.logger.warn(
+          `天气证据管道异常: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    this.applyOperationalGovernanceAfterWeather(state, weatherPipelineSnapshot);
+
+    /** P4-A++：走廊物理投影 overlay（不替换 TravelLeg）；drift 并入同一 temporal 流水线 */
+    this.attachRouteExecutionOverlaysToPlan(plan, state);
+    const routePhysicsDrifts = this.collectRoutePhysicsDriftsFromPlan(plan);
+
+    // P2：executionQuality → plan.metrics；逐日 overlay → PlanDay；摘要 → signals（时空传播上游）
+    if (weatherPipelineSnapshot?.segmentEvidences?.length) {
+      const wxMetrics = this.aggregateWeatherExecutionMetrics(
+        weatherPipelineSnapshot.segmentEvidences,
+      );
+      plan.metrics = { ...plan.metrics, ...wxMetrics };
+      const baseTravel = plan.metrics?.estTravelMinutes;
+      if (
+        typeof baseTravel === 'number' &&
+        baseTravel > 0 &&
+        (wxMetrics.weatherDelayFactorMax ?? 1) > 1
+      ) {
+        plan.metrics!.estTravelMinutesWeatherAdjusted = Math.round(
+          baseTravel * (wxMetrics.weatherDelayFactorMax ?? 1),
+        );
+      }
+      this.applyWeatherExecutionToPlanDays(plan, weatherPipelineSnapshot.segmentEvidences);
+      const temporalOutcome = applyWeatherDriveDelayAndEmitDrifts(plan);
+      plan.temporal = {
+        timeDrifts: [...temporalOutcome.drifts, ...routePhysicsDrifts],
+        constraintEdges: temporalOutcome.constraintEdges,
+        emittedAt: new Date().toISOString(),
+      };
+      const sequencePropagation = propagateSequenceDriftsToDownstreamSlots(plan);
+      plan.temporal.downstreamShiftedSlotIds = sequencePropagation.shiftedSlotIds;
+
+      const crossDayDrifts = emitCrossDayHandoffDrifts(plan);
+      plan.temporal.timeDrifts = [...plan.temporal.timeDrifts, ...crossDayDrifts];
+      plan.temporal.constraintEdges = [
+        ...plan.temporal.constraintEdges,
+        ...buildCrossDayHandoffEdges(plan),
+      ];
+      const crossDayPropagation = propagateCrossDayDriftsToNextDaySlots(plan);
+      plan.temporal.crossDayShiftedSlotIds = crossDayPropagation.shiftedSlotIds;
+
+      applyAccumulatedGlobalSlackToPlanDays(plan);
+      const operationalDayWindow = applyOperationalDayWindowFeasibility(plan, {
+        dayStart: state.policies?.dayStart,
+        dayEnd: state.policies?.dayEnd,
+      });
+      const daylightAnchor = this.resolveDaylightAnchorFromWeatherEvidences(
+        weatherPipelineSnapshot.segmentEvidences,
+      );
+      const daylightUtcOffset =
+        typeof state.policies?.daylightUtcOffsetMinutes === 'number'
+          ? state.policies.daylightUtcOffsetMinutes
+          : 0;
+      const daylightFeasibility = daylightAnchor
+        ? applyDaylightFeasibilityHints(plan, {
+            latitudeDeg: daylightAnchor.lat,
+            longitudeDeg: daylightAnchor.lng,
+            utcOffsetMinutes: daylightUtcOffset,
+          })
+        : undefined;
+      this.applyTemporalPhysicsSignals(
+        state,
+        plan,
+        daylightAnchor,
+        daylightUtcOffset,
+      );
+      plan.temporal.unifiedConstraintGraph = buildUnifiedConstraintGraph(plan, {
+        hotelCheckinLatest: state.policies?.microRepair?.hotelCheckinLatest,
+      });
+      await this.hydrateAuroraNightSignals(
+        state,
+        plan,
+        weatherPipelineSnapshot.segmentEvidences,
+      );
+      this.mergeWeatherDecisionEvidenceIntoSignals(
+        state,
+        weatherPipelineSnapshot.segmentEvidences,
+        plan,
+      );
+
+      this.hydrateFuelReachability(state, plan);
+
+      const overlayFramesPass1 = augmentOverlayFramesWithPedestrianGaps(
+        plan,
+        buildExecutionOverlay({
+          plan,
+          weatherByDate: state.signals.weatherByDate,
+          timeDrifts: plan.temporal?.timeDrifts,
+          crossDayShiftedSlotIds: plan.temporal?.crossDayShiftedSlotIds,
+          legTemporalSafetyAssessments: state.signals.legTemporalSafetyAssessments,
+          fuelReachabilityByLegId: state.signals.fuelReachabilityByLegId,
+          worldConstraintSnapshot: this.worldConstraintSnapshotFromSignals(state),
+        }),
+        { persistSyntheticTravelLegsOnPlan: true },
+      );
+
+      this.attachRouteExecutionOverlaysToPlan(plan, state);
+
+      assertOverlayOnly(plan, overlayFramesPass1, state.policies, 'TripDecisionEngine.weatherFusion');
+
+      let physicsIndexForRepair:
+        | import('../physics/unified-physics-field-index.types').PhysicsFieldIndex
+        | undefined;
+      let framesForRepairPipeline = overlayFramesPass1;
+
+      if (overlayFramesPass1.length > 0) {
+        const legDatesPre = buildLegDateIndexFromPlan(plan);
+        const physicsRowsPrePass = buildUnifiedPhysicsField({
+          executionOverlayFrames: overlayFramesPass1,
+          legDateByLegId: legDatesPre,
+        });
+        physicsIndexForRepair = buildPhysicsFieldIndex(physicsRowsPrePass);
+        framesForRepairPipeline = applyPhysicsAuthorityToOverlayFrames(
+          overlayFramesPass1,
+          physicsIndexForRepair,
+        );
+      }
+
+      if (framesForRepairPipeline.length > 0) {
+        state.signals.overnightRestructuringPressures = deriveOvernightFromOverlay(
+          plan,
+          framesForRepairPipeline,
+        );
+      } else {
+        this.applyOvernightRestructuringPressureSignals(state, plan, operationalDayWindow);
+      }
+
+      const dagForRepairEvaluator =
+        framesForRepairPipeline.length > 0
+          ? buildExecutionTruthDAG({ plan, overlayFrames: framesForRepairPipeline })
+          : undefined;
+
+      const executionIRPass1 = dagForRepairEvaluator
+        ? compileDAGToIR(dagForRepairEvaluator)
+        : undefined;
+
+      /** P8-3：IR 为唯一执行真相时，禁止 repair 层消费 daylight / night 信号并行路径。 */
+      const useIrExecutionTruth = Boolean(executionIRPass1 && dagForRepairEvaluator);
+
+      const repairEvaluation = evaluateMinimalRepairs({
+        plan,
+        timeDrifts: plan.temporal.timeDrifts,
+        unifiedConstraintGraph: plan.temporal.unifiedConstraintGraph,
+        daylightFeasibility: useIrExecutionTruth ? undefined : daylightFeasibility,
+        nightObservationFeasibility: useIrExecutionTruth
+          ? undefined
+          : state.signals.nightObservationFeasibility,
+        opportunityMigrationEvaluations: state.signals.opportunityMigrationEvaluations,
+        overnightRestructuringPressures: state.signals.overnightRestructuringPressures,
+        legTemporalSafetyAssessments: state.signals.legTemporalSafetyAssessments,
+        policies: state.policies,
+        executionOverlayFrames: framesForRepairPipeline,
+        executionTruthDAG: dagForRepairEvaluator,
+        executionIR: executionIRPass1,
+        fuelReachabilityByLegId: state.signals.fuelReachabilityByLegId,
+        physicsFieldIndex: physicsIndexForRepair,
+      });
+
+      state.signals.executionOverlayFrames = stampOverlayAnnotationsFromSignals(
+        plan,
+        state,
+        mergeRepairHintsIntoFrames(framesForRepairPipeline, repairEvaluation.repairs),
+      );
+
+      const stampedFrames = state.signals.executionOverlayFrames ?? [];
+      if (stampedFrames.length === 0) {
+        delete state.signals.unifiedPhysicsFieldByLegId;
+        delete state.signals.physicsFieldIndex;
+      } else {
+        const legDates = buildLegDateIndexFromPlan(plan);
+        const physicsRows = buildUnifiedPhysicsField({
+          executionOverlayFrames: stampedFrames,
+          legDateByLegId: legDates,
+        });
+        const physicsIndex = buildPhysicsFieldIndex(physicsRows);
+        state.signals.physicsFieldIndex = physicsIndex;
+        state.signals.unifiedPhysicsFieldByLegId = physicsIndex.byLegId;
+        state.signals.executionOverlayFrames = applyPhysicsAuthorityToOverlayFrames(
+          stampedFrames,
+          physicsIndex,
+        );
+        if (
+          typeof process !== 'undefined' &&
+          process.env?.TRIP_PHYSICS_OVERLAY_CONSISTENCY === '1'
+        ) {
+          assertOverlayFieldConsistency(
+            state.signals.executionOverlayFrames,
+            physicsRows,
+            'TripDecisionEngine.weatherFusion.physicsConsistency',
+          );
+        }
+      }
+
+      state.signals.executionTruthDAG = buildExecutionTruthDAG({
+        plan,
+        overlayFrames: state.signals.executionOverlayFrames,
+        temporalWindowsBySlot: state.signals.temporalExecutionWindowsBySlotId,
+        repairs: repairEvaluation.repairs,
+      });
+      if (planHasInboundTravelLeg(plan)) {
+        assertOnlyDAGIsDecisionSource(
+          state.signals.executionTruthDAG,
+          state.policies,
+          'TripDecisionEngine.weatherFusion',
+        );
+      }
+      state.signals.executionIR = compileDAGToIR(state.signals.executionTruthDAG);
+      assertIRCreatedOnlyByCompiler(state.signals.executionIR, 'TripDecisionEngine.weatherFusion');
+      state.signals.operationalDayWindow = operationalDayWindow;
+      if (daylightFeasibility) {
+        state.signals.daylightFeasibility = daylightFeasibility;
+      } else {
+        delete state.signals.daylightFeasibility;
+      }
+      if (
+        repairEvaluation.repairs.length > 0 ||
+        (repairEvaluation.overnightRestructuringProposals?.length ?? 0) > 0
+      ) {
+        state.signals.repairEvaluation = repairEvaluation;
+      } else {
+        delete state.signals.repairEvaluation;
+      }
+    } else {
+      delete state.signals.executionOverlayFrames;
+      delete state.signals.executionTruthDAG;
+      delete state.signals.executionIR;
+      delete state.signals.overnightRestructuringPressures;
+    }
+
+    /** Layer A：事件归约（全量重建 + lineage；增量事件后续在同 reducer 扩展） */
+    state.signals.executionSemanticView = reduceSemanticRuntimeView(
+      state.signals.executionSemanticView,
+      [
+        {
+          kind: 'ENGINE_FULL_REBUILD',
+          id: `engine_pass_${plan.temporal?.emittedAt ?? Date.now()}`,
+          at: new Date().toISOString(),
+          payload: {
+            weatherByDate: state.signals.weatherByDate ?? {},
+            auroraOpportunityByDate: state.signals.auroraOpportunityByDate ?? {},
+            temporalPropagationSummary: state.signals.temporalPropagation,
+            alerts: state.signals.alerts,
+            planDates: plan.days.map(d => d.date),
+            /** 因果链：保留上一轮世界 SSOT 挂载，避免全量重建丢 world */
+            ...(state.signals.executionSemanticView?.world !== undefined
+              ? { worldOverlay: state.signals.executionSemanticView.world }
+              : {}),
+          },
+        },
+      ],
+    );
+
+    this.mergeWorldOverlayIntoExecutionOverlayIfPresent(plan, state);
+
     // PART 3: 集成三人格策略（Abu → Dr.Dre → Neptune）
     let strategyLogs: DecisionLogEntry[] = [];
     let finalPlan = plan;
@@ -850,8 +1936,6 @@ export class TripDecisionEngineService {
           }
         }
 
-        // TODO: 从 WeatherDecisionEvidenceService 获取天气证据并并入 worldContext
-
         // 转换合规证据
         const complianceEvidence: any[] = [];
         if (selectedRouteDirection.constraints?.hard) {
@@ -870,6 +1954,8 @@ export class TripDecisionEngineService {
           roadStates: [], // TODO: 从实际数据获取
           hazardZones: [], // TODO: 从实际数据获取
           ferryStates: [], // TODO: 从实际数据获取
+          weatherEvidence: weatherEvidenceForWorld,
+          daylightFeasibilitySignal: state.signals.daylightFeasibility,
           countryCode,
           month,
         };
@@ -896,10 +1982,11 @@ export class TripDecisionEngineService {
           human,
           routeDirection,
           complianceEvidence: complianceEvidence.length > 0 ? complianceEvidence : undefined,
+          executionSemanticView: state.signals.executionSemanticView,
         };
 
         // 3. 转换为 RoutePlanDraft
-        const tripId = (state.context as any).tripId || `trip_${Date.now()}`;
+        const tripId = state.context.tripId || `trip_${Date.now()}`;
         const routeDirectionId = selectedRouteDirection.routeDirection.uuid || 
           String(selectedRouteDirection.routeDirection.id);
         const routePlanDraft = this.planConverter.convertTripPlanToRoutePlanDraft(
@@ -944,6 +2031,9 @@ export class TripDecisionEngineService {
                 }
               : undefined,
             strategyLogs: strategyLogs,
+            ...(state.signals.opsOperationalGovernance
+              ? { opsOperationalGovernance: state.signals.opsOperationalGovernance }
+              : {}),
           };
 
           return {
@@ -1070,6 +2160,9 @@ export class TripDecisionEngineService {
       // RouteDirection 解释
       routeDirectionExplanation: routeDirectionExplanation,
       ...(cgusDsoSnapshot ? { cgusDsoSnapshot, cgusDsoSnapshotNote } : {}),
+      ...(state.signals.opsOperationalGovernance
+        ? { opsOperationalGovernance: state.signals.opsOperationalGovernance }
+        : {}),
     };
 
     // Winner-Protected MC Rerank / CGUS replay tooling requires a minimal planDraft snapshot.
@@ -1114,23 +2207,23 @@ export class TripDecisionEngineService {
       }
     }
 
-    // 保存路线决策记忆（L2）
-    if (selectedRouteDirection && userId && this.memoryService) {
+    // L2：经 MemoryWritePipeline 统一落库（emit → @OnEvent）
+    if (selectedRouteDirection && userId) {
       try {
         const countryCode = this.extractCountryCode(state.context.destination);
         const month = this.extractMonth(state.context.startDate);
-        
-        // 获取被淘汰的路线（从之前的 recommendations 中提取）
+
         const rejectedIds: number[] = [];
         if (selectedRouteDirection && (state as any).routeDirectionRecommendations) {
           const recommendations = (state as any).routeDirectionRecommendations as any[];
           rejectedIds.push(...recommendations.slice(1, 4).map(r => r.routeDirection.id));
         }
 
-        await this.memoryService.saveRouteDirectionDecision({
+        this.eventEmitter.emit(AGENT_MEMORY_DECISION_COMPLETED, {
+          kind: 'route_direction' as const,
           id: `decision_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           userId,
-          tripId: (state.context as any).tripId,
+          tripId: state.context.tripId,
           countryCode,
           month,
           selectedRouteDirectionId: selectedRouteDirection.routeDirection.id,
@@ -1152,9 +2245,9 @@ export class TripDecisionEngineService {
           },
           createdAt: new Date(),
         });
-        this.logger.debug(`Saved route direction decision memory for user ${userId}`);
+        this.logger.debug(`Emitted L2 route_direction decision memory event for user ${userId}`);
       } catch (error) {
-        this.logger.warn(`Failed to save decision memory: ${error}`);
+        this.logger.warn(`Failed to emit decision memory event: ${error}`);
       }
     }
 
@@ -1224,6 +2317,8 @@ export class TripDecisionEngineService {
           roadStates: [], // TODO: 从实际数据获取
           hazardZones: [], // TODO: 从实际数据获取
           ferryStates: [], // TODO: 从实际数据获取
+          weatherEvidence: weatherEvidenceForWorld,
+          daylightFeasibilitySignal: state.signals.daylightFeasibility,
           countryCode,
           month,
         };
@@ -1247,6 +2342,7 @@ export class TripDecisionEngineService {
           physical,
           human,
           routeDirection,
+          executionSemanticView: state.signals.executionSemanticView,
         };
 
         readiness = readinessAgent.run(worldContextForReadiness, finalPlan);
@@ -1301,7 +2397,12 @@ export class TripDecisionEngineService {
           log.explanation =
             feasibilityResult.infeasibilityExplanation?.summary ||
             '方案违反硬约束，已被淘汰';
-          return { plan: null as any, log, readiness };
+          this.flushDecisionCausalityChain(state, {
+            phase: 'constraint_rejected',
+            log,
+            plan: null,
+          });
+          return { plan: null as any, log, readiness, decisionContext: undefined };
         }
       } catch (error) {
         this.logger.warn(`约束引擎检查失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -1309,7 +2410,129 @@ export class TripDecisionEngineService {
       }
     }
 
-    return { plan: finalPlan, log, readiness };
+    try {
+      if (shouldRunEcoPipeline(state)) {
+        const hadWeatherFusionFrames = (state.signals.executionOverlayFrames?.length ?? 0) > 0;
+        if (!hadWeatherFusionFrames) {
+          this.ensureExecutionTruthOverlayForEco(state, finalPlan);
+        }
+        if ((state.signals.executionOverlayFrames?.length ?? 0) > 0) {
+          if (hadWeatherFusionFrames) {
+            const frames = state.signals.executionOverlayFrames ?? [];
+            const repairs = state.signals.repairEvaluation?.repairs;
+            state.signals.executionTruthDAG = buildExecutionTruthDAG({
+              plan: finalPlan,
+              overlayFrames: frames,
+              temporalWindowsBySlot: state.signals.temporalExecutionWindowsBySlotId,
+              repairs,
+            });
+            if (planHasInboundTravelLeg(finalPlan)) {
+              assertOnlyDAGIsDecisionSource(
+                state.signals.executionTruthDAG,
+                state.policies,
+                'TripDecisionEngine.generatePlan.ecoClosure',
+              );
+            }
+            state.signals.executionIR = compileDAGToIR(state.signals.executionTruthDAG);
+            assertIRCreatedOnlyByCompiler(
+              state.signals.executionIR,
+              'TripDecisionEngine.generatePlan.ecoClosure',
+            );
+          }
+          const dag = state.signals.executionTruthDAG;
+          const ir = state.signals.executionIR;
+          if (
+            dag &&
+            dag.nodes.length > 0 &&
+            ir &&
+            ir.steps.length > 0
+          ) {
+            const ecoRepair = await this.runNeptuneStabilityAndEcoClosure(state, finalPlan);
+            finalPlan = ecoRepair.plan;
+            state.signals.executionStabilityBaseline = buildExecutionStabilityBaseline({
+              dag,
+              ir,
+              neptuneTriggerCount: ecoRepair.triggers.length,
+            });
+            if (state.signals.ecoOrchestrationDigest) {
+              log.ecoOrchestration = state.signals.ecoOrchestrationDigest;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`generatePlan ECO closure skipped: ${String(e)}`);
+    }
+
+    /** Reality Kernel：单次构建快照；shadow 旁路 + optional Phase 3 enforcement 绑定 */
+    let decisionContext: DecisionContextV0 | undefined;
+    const rsShadow = String(process.env.REALITY_SNAPSHOT_SHADOW ?? '').trim().toLowerCase();
+    const shadowOn = rsShadow === '1' || rsShadow === 'true' || rsShadow === 'yes';
+    const enforcementOn = isRealityEnforcementEnabled();
+
+    if (shadowOn || enforcementOn) {
+      try {
+        const snap = buildShadowRealitySnapshotV0(state, {
+          decisionRunId: log.runId,
+          traceRequestId,
+          plan: finalPlan,
+        });
+        const horizon = computePlanningHorizonFromTripContext(state.context);
+
+        if (shadowOn) {
+          log.realityKernelShadow = {
+            snapshot_id: snap.snapshot_id,
+            schema: snap.schema,
+            degraded: snap.consistency.degraded,
+            max_staleness_sec: snap.consistency.max_staleness_sec,
+            valid_at: snap.valid_at,
+            generated_at: snap.generated_at,
+          };
+          this.logger.debug(
+            `[RealityKernel][shadow] snapshot_id=${snap.snapshot_id} degraded=${snap.consistency.degraded} staleness_sec=${snap.consistency.max_staleness_sec}`,
+          );
+          const logJson = String(process.env.REALITY_SNAPSHOT_SHADOW_LOG_JSON ?? '')
+            .trim()
+            .toLowerCase();
+          if (logJson === '1' || logJson === 'true') {
+            this.logger.debug(`[RealityKernel][shadow_json] ${JSON.stringify(snap)}`);
+          }
+        }
+
+        if (enforcementOn) {
+          decisionContext = buildDecisionContextV0(snap, horizon);
+          log.snapshotBoundDecision = {
+            schema: decisionContext.schema,
+            snapshot_id: snap.snapshot_id,
+            planning_horizon: horizon,
+            enforcement: 'bound_v0',
+            consistency_degraded: snap.consistency.degraded,
+          };
+          this.logger.debug(
+            `[RealityKernel][bound] snapshot_id=${snap.snapshot_id} horizon=${horizon.start_at.slice(0, 10)}..${horizon.end_at.slice(0, 10)}`,
+          );
+        }
+      } catch (e) {
+        this.logger.warn(
+          `[RealityKernel] snapshot build failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    this.flushDecisionCausalityChain(state, {
+      phase: 'completed',
+      log,
+      plan: finalPlan,
+    });
+
+    await this.maybeRecordOpsAuditAndAttachCausality(state, {
+      traceRequestId,
+      log,
+      finalPlan,
+      weatherPipeline: weatherPipelineSnapshot,
+    });
+
+    return { plan: finalPlan, log, readiness, decisionContext };
   }
 
   /**
@@ -1372,24 +2595,39 @@ export class TripDecisionEngineService {
       throw new Error('Invalid plan: plan is required');
     }
 
-    const now = new Date().toISOString();
+    applyEcoLedgerTripContext(state);
 
-    // P1.1.3: 计算风险权重（用于Neptune修复）
-    const riskWeights = new Map<string, number>();
-    if (this.demRiskScoringService) {
-      // 为所有候选活动计算风险权重
-      for (const date of Object.keys(state.candidatesByDate)) {
-        const candidates = state.candidatesByDate[date] || [];
-        for (const activity of candidates) {
-          try {
-            const riskWeight = await this.demRiskScoringService.getRiskWeightForNeptune(activity);
-            riskWeights.set(activity.id, riskWeight);
-          } catch (error) {
-            this.logger.warn(`计算活动 ${activity.id} 风险权重失败: ${error}`);
-          }
-        }
-      }
+    await this.hydrateEcoIdentityLedgerFromStorage(state);
+
+    const traceRequestId = `repair_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const bindRealityAls =
+      isRealityEnforcementEnabled() || isRealityReadBoundaryEnabled();
+    if (bindRealityAls) {
+      const earlySnap = buildShadowRealitySnapshotV0(state, { traceRequestId });
+      const horizon = computePlanningHorizonFromTripContext(state.context);
+      const earlyCtx = buildDecisionContextV0(earlySnap, horizon);
+      this.logger.debug(
+        `[RealityKernel][als_bind_repair] snapshot_id=${earlyCtx.snapshot_id} validity=${earlyCtx.reality.validity.status}`,
+      );
+      return await runWithDecisionContextAsync(earlyCtx, () =>
+        this.executeRepairPlanTick(state, plan, trigger, traceRequestId),
+      );
     }
+
+    return await this.executeRepairPlanTick(state, plan, trigger, traceRequestId);
+  }
+
+  /** Repair body — runs under ALS when enforcement/boundary flags are on. */
+  private async executeRepairPlanTick(
+    state: TripWorldState,
+    plan: TripPlan,
+    trigger: DecisionTrigger,
+    traceRequestId: string,
+  ): Promise<{ plan: TripPlan; log: DecisionRunLog }> {
+    this.applyRealityPlanningExecutionGate(state, 'repair', traceRequestId);
+
+    const now = new Date().toISOString();
 
     // PART 2: 生成 DEM evidence（用于强制规则检查）
     let demEvidenceResult: DemEvidencePipelineResult | undefined;
@@ -1442,7 +2680,7 @@ export class TripDecisionEngineService {
       // 回退到旧的 pipeline service
       try {
         const userId = (state.context as any).userId;
-        const decisionParams = userId && this.decisionParamsInjector
+        const decisionParams = userId
           ? await this.decisionParamsInjector.getDecisionParamsForUser(userId)
           : null;
         
@@ -1480,7 +2718,20 @@ export class TripDecisionEngineService {
       }
     }
 
-    const repaired = neptuneRepairPlan(state, plan, riskWeights);
+    if (!state.signals.executionTruthDAG?.nodes?.length) {
+      throw new Error('NO_EXECUTION_TRUTH_SOURCE');
+    }
+    if (!state.signals.executionIR?.steps?.length) {
+      throw new Error('[NEPTUNE] IR required');
+    }
+
+    const repaired = await this.runNeptuneStabilityAndEcoClosure(state, plan);
+
+    state.signals.executionStabilityBaseline = buildExecutionStabilityBaseline({
+      dag: state.signals.executionTruthDAG,
+      ir: state.signals.executionIR,
+      neptuneTriggerCount: repaired.triggers.length,
+    });
 
     const log: DecisionRunLog = {
       runId: `run_${Date.now()}`,
@@ -1513,6 +2764,9 @@ export class TripDecisionEngineService {
         editDistanceScore: repaired.changedSlotIds.length, // MVP
       },
       explanation: repaired.explanation,
+      ...(shouldRunEcoPipeline(state) && state.signals.ecoOrchestrationDigest
+        ? { ecoOrchestration: state.signals.ecoOrchestrationDigest }
+        : {}),
       // PART 2: DEM Decision Evidence
       demEvidence: demEvidenceResult ? {
         segmentEvidences: demEvidenceResult.segmentEvidences.map(e => ({
@@ -1531,9 +2785,706 @@ export class TripDecisionEngineService {
         } : undefined,
         canProceed: demEvidenceResult.canProceed,
       } : undefined,
+      ...(state.signals.opsOperationalGovernance
+        ? { opsOperationalGovernance: state.signals.opsOperationalGovernance }
+        : {}),
     };
 
+    this.flushDecisionCausalityChain(state, {
+      phase: 'completed',
+      log,
+      plan: repaired.plan,
+    });
+
     return { plan: repaired.plan, log };
+  }
+
+  /**
+   * P-OPS-3 — versioned operational policy on weather pipeline aggregate (audit + optional HARD block alert).
+   */
+  private applyOperationalGovernanceAfterWeather(
+    state: TripWorldState,
+    weatherPipeline: WeatherEvidencePipelineResult | undefined,
+  ): void {
+    if (!this.operationalPolicy) return;
+    const policy = this.operationalPolicy.getEffectivePolicy();
+    const snapshot = evaluateGeneratePlanGovernance({ policy, weatherPipeline });
+    state.signals.opsOperationalGovernance = snapshot;
+    const w = snapshot.weather;
+    if (w) {
+      this.promMetrics?.recordOpsOperationalGovernanceResolution(w.branch, w.action);
+    }
+    if (
+      policy.weather.enforceHardBlock === true &&
+      w?.action === 'BLOCK_FINALIZE' &&
+      weatherPipeline?.hasHardViolation
+    ) {
+      const msg =
+        w.detail?.trim() ||
+        weatherPipeline.explainableFailure?.reason?.trim() ||
+        'Weather HARD: operational policy requires block.';
+      if (!state.signals.alerts) state.signals.alerts = [];
+      state.signals.alerts.push({
+        code: 'OPS_WEATHER_POLICY_HARD_BLOCK',
+        severity: 'critical',
+        message: msg,
+      });
+    }
+  }
+
+  /**
+   * 构建天气管道上下文：空间锚点 + 车型（ policies / vehicleClass ）
+   */
+  private buildWeatherEvidenceContext(
+    state: TripWorldState,
+    plan: TripPlan,
+  ): WeatherEvidenceLocationContext | undefined {
+    const fb = this.resolveWeatherEvidenceFallback(state, plan);
+    const vp = this.resolveVehicleProfile(state);
+    if (!fb && !vp) {
+      return undefined;
+    }
+    return {
+      ...(fb ?? {}),
+      ...(vp ? { vehicleProfile: vp } : {}),
+    };
+  }
+
+  /**
+   * 从 world.policies 解析车型（支持 vehicleProfile 或兼容字符串 vehicleClass）
+   */
+  private resolveVehicleProfile(state: TripWorldState): VehicleProfile | undefined {
+    const pol = state.policies as
+      | {
+          vehicleProfile?: VehicleProfile;
+          vehicleClass?: string;
+        }
+      | undefined;
+    if (pol?.vehicleProfile?.vehicleClass) {
+      return pol.vehicleProfile;
+    }
+    const raw = pol?.vehicleClass;
+    if (!raw || typeof raw !== 'string') {
+      return undefined;
+    }
+    const u = raw.toUpperCase().replace(/[\s-]/g, '_');
+    const map: Record<string, VehicleClass> = {
+      SEDAN: 'SEDAN',
+      SUV: 'SUV_4WD',
+      SUV_4WD: 'SUV_4WD',
+      '4WD': 'SUV_4WD',
+      FWD: 'SEDAN',
+      CAMPERVAN: 'CAMPERVAN',
+      CAMPER: 'CAMPERVAN',
+      CAMPER_VAN: 'CAMPERVAN',
+      RV: 'CAMPERVAN',
+      MOTORHOME: 'CAMPERVAN',
+      EV_CAMPERVAN: 'EV_CAMPERVAN',
+      EV: 'EV_CAMPERVAN',
+    };
+    const vc = map[u];
+    return vc ? { vehicleClass: vc } : undefined;
+  }
+
+  /**
+   * 无天气融合路径时，用走廊物理 + `buildExecutionOverlay` 物化 overlay / DAG / IR，供首轮 `generatePlan` 走 ECO 闭环。
+   * 若已有 `executionOverlayFrames` 则不应调用（由调用方保证）。
+   */
+  private ensureExecutionTruthOverlayForEco(state: TripWorldState, plan: TripPlan): boolean {
+    if ((state.signals.executionOverlayFrames?.length ?? 0) > 0) {
+      return true;
+    }
+
+    this.attachRouteExecutionOverlaysToPlan(plan, state);
+
+    if (!plan.temporal) {
+      plan.temporal = {
+        timeDrifts: [],
+        constraintEdges: [],
+        emittedAt: new Date().toISOString(),
+      };
+    }
+    const routeDrifts = this.collectRoutePhysicsDriftsFromPlan(plan);
+    plan.temporal.timeDrifts = [...(plan.temporal.timeDrifts ?? []), ...routeDrifts];
+    plan.temporal.unifiedConstraintGraph = buildUnifiedConstraintGraph(plan, {
+      hotelCheckinLatest: state.policies?.microRepair?.hotelCheckinLatest,
+    });
+
+    this.hydrateFuelReachability(state, plan);
+
+    const overlayFramesPass1 = augmentOverlayFramesWithPedestrianGaps(
+      plan,
+      buildExecutionOverlay({
+        plan,
+        weatherByDate: state.signals.weatherByDate,
+        timeDrifts: plan.temporal.timeDrifts,
+        crossDayShiftedSlotIds: plan.temporal.crossDayShiftedSlotIds,
+        legTemporalSafetyAssessments: state.signals.legTemporalSafetyAssessments,
+        fuelReachabilityByLegId: state.signals.fuelReachabilityByLegId,
+        worldConstraintSnapshot: this.worldConstraintSnapshotFromSignals(state),
+      }),
+      { persistSyntheticTravelLegsOnPlan: true },
+    );
+
+    this.attachRouteExecutionOverlaysToPlan(plan, state);
+
+    assertOverlayOnly(plan, overlayFramesPass1, state.policies, 'TripDecisionEngine.ecoFallbackOverlay');
+
+    let physicsIndexForRepair:
+      | import('../physics/unified-physics-field-index.types').PhysicsFieldIndex
+      | undefined;
+    let framesForRepairPipeline = overlayFramesPass1;
+
+    if (overlayFramesPass1.length > 0) {
+      const legDatesPre = buildLegDateIndexFromPlan(plan);
+      const physicsRowsPrePass = buildUnifiedPhysicsField({
+        executionOverlayFrames: overlayFramesPass1,
+        legDateByLegId: legDatesPre,
+      });
+      physicsIndexForRepair = buildPhysicsFieldIndex(physicsRowsPrePass);
+      framesForRepairPipeline = applyPhysicsAuthorityToOverlayFrames(
+        overlayFramesPass1,
+        physicsIndexForRepair,
+      );
+    }
+
+    if (framesForRepairPipeline.length > 0) {
+      state.signals.overnightRestructuringPressures = deriveOvernightFromOverlay(
+        plan,
+        framesForRepairPipeline,
+      );
+    }
+
+    const dagForRepairEvaluator =
+      framesForRepairPipeline.length > 0
+        ? buildExecutionTruthDAG({ plan, overlayFrames: framesForRepairPipeline })
+        : undefined;
+    const executionIRPass1 = dagForRepairEvaluator
+      ? compileDAGToIR(dagForRepairEvaluator)
+      : undefined;
+    const useIrExecutionTruth = Boolean(executionIRPass1 && dagForRepairEvaluator);
+
+    const repairEvaluation = evaluateMinimalRepairs({
+      plan,
+      timeDrifts: plan.temporal.timeDrifts,
+      unifiedConstraintGraph: plan.temporal.unifiedConstraintGraph,
+      daylightFeasibility: useIrExecutionTruth ? undefined : state.signals.daylightFeasibility,
+      nightObservationFeasibility: useIrExecutionTruth
+        ? undefined
+        : state.signals.nightObservationFeasibility,
+      opportunityMigrationEvaluations: state.signals.opportunityMigrationEvaluations,
+      overnightRestructuringPressures: state.signals.overnightRestructuringPressures,
+      legTemporalSafetyAssessments: state.signals.legTemporalSafetyAssessments,
+      policies: state.policies,
+      executionOverlayFrames: framesForRepairPipeline,
+      executionTruthDAG: dagForRepairEvaluator,
+      executionIR: executionIRPass1,
+      fuelReachabilityByLegId: state.signals.fuelReachabilityByLegId,
+      physicsFieldIndex: physicsIndexForRepair,
+    });
+
+    state.signals.executionOverlayFrames = stampOverlayAnnotationsFromSignals(
+      plan,
+      state,
+      mergeRepairHintsIntoFrames(framesForRepairPipeline, repairEvaluation.repairs),
+    );
+
+    const stampedFrames = state.signals.executionOverlayFrames ?? [];
+    if (stampedFrames.length === 0) {
+      delete state.signals.unifiedPhysicsFieldByLegId;
+      delete state.signals.physicsFieldIndex;
+    } else {
+      const legDates = buildLegDateIndexFromPlan(plan);
+      const physicsRows = buildUnifiedPhysicsField({
+        executionOverlayFrames: stampedFrames,
+        legDateByLegId: legDates,
+      });
+      const physicsIndex = buildPhysicsFieldIndex(physicsRows);
+      state.signals.physicsFieldIndex = physicsIndex;
+      state.signals.unifiedPhysicsFieldByLegId = physicsIndex.byLegId;
+      state.signals.executionOverlayFrames = applyPhysicsAuthorityToOverlayFrames(
+        stampedFrames,
+        physicsIndex,
+      );
+    }
+
+    state.signals.executionTruthDAG = buildExecutionTruthDAG({
+      plan,
+      overlayFrames: state.signals.executionOverlayFrames ?? [],
+      temporalWindowsBySlot: state.signals.temporalExecutionWindowsBySlotId,
+      repairs: repairEvaluation.repairs,
+    });
+    if (planHasInboundTravelLeg(plan)) {
+      assertOnlyDAGIsDecisionSource(
+        state.signals.executionTruthDAG,
+        state.policies,
+        'TripDecisionEngine.ecoFallbackOverlay',
+      );
+    }
+    state.signals.executionIR = compileDAGToIR(state.signals.executionTruthDAG);
+    assertIRCreatedOnlyByCompiler(state.signals.executionIR, 'TripDecisionEngine.ecoFallbackOverlay');
+
+    if (
+      repairEvaluation.repairs.length > 0 ||
+      (repairEvaluation.overnightRestructuringProposals?.length ?? 0) > 0
+    ) {
+      state.signals.repairEvaluation = repairEvaluation;
+    } else {
+      delete state.signals.repairEvaluation;
+    }
+
+    return (state.signals.executionOverlayFrames?.length ?? 0) > 0;
+  }
+
+  /**
+   * 将走廊物理引擎投影挂到 slot（runtime overlay）；`travelLegFromPrev` 保持规划器基准不变。
+   */
+  private attachRouteExecutionOverlaysToPlan(plan: TripPlan, state: TripWorldState): void {
+    const vp = this.resolveVehicleProfile(state) ?? { vehicleClass: 'SEDAN' as VehicleClass };
+    for (const day of plan.days) {
+      for (const slot of day.timeSlots) {
+        const leg = slot.travelLegFromPrev;
+        if (!leg) {
+          delete slot.routeExecutionOverlay;
+          continue;
+        }
+        const geometry =
+          leg.from && leg.to
+            ? { coordinates: [leg.from, leg.to] as Array<{ lat: number; lng: number }> }
+            : {};
+        const proj = projectRouteExecutionHazards({
+          legId: slot.id,
+          geometry,
+          elevationProfile: { samples: [] },
+          weatherGrid: { samples: [] },
+          roadCondition: { fRoad: false },
+          vehicleProfile: vp,
+          timeWindow: {
+            startIso: `${day.date}T06:00:00.000Z`,
+            endIso: `${day.date}T22:00:00.000Z`,
+          },
+          baselineDurationMin: leg.durationMin,
+        });
+        slot.routeExecutionOverlay = buildExecutionEnrichedTravelLeg(leg, proj);
+      }
+    }
+  }
+
+  private collectRoutePhysicsDriftsFromPlan(plan: TripPlan): TimeDrift[] {
+    const out: TimeDrift[] = [];
+    for (const day of plan.days) {
+      for (const slot of day.timeSlots) {
+        const overlay = slot.routeExecutionOverlay;
+        if (!overlay) {
+          continue;
+        }
+        out.push(
+          ...routeExecutionToTemporalDrifts({
+            date: day.date,
+            sourceSlotId: slot.id,
+            enriched: overlay,
+          }),
+        );
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Temporal Physics：leg 级安全抵达、effective 驾驶窗、slot 执行窗、golden hour 机会域（与 daylight 摘要同源锚点）。
+   */
+  private applyTemporalPhysicsSignals(
+    state: TripWorldState,
+    plan: TripPlan,
+    daylightAnchor: { lat: number; lng: number } | null,
+    utcOffsetMinutes: number,
+  ): void {
+    if (!daylightAnchor) {
+      delete state.signals.legTemporalSafetyAssessments;
+      delete state.signals.effectiveDrivableWindowByDate;
+      delete state.signals.temporalExecutionWindowsBySlotId;
+      delete state.signals.goldenHourOpportunityByDate;
+      return;
+    }
+    const { lat, lng } = daylightAnchor;
+    const effectiveByDate: Partial<Record<ISODate, EffectiveDrivableWindow>> = {};
+    const goldenByDate: Partial<Record<ISODate, GoldenHourOpportunitySignal>> = {};
+
+    for (const day of plan.days) {
+      const civil = approximateCivilTwilightLocal(
+        day.date,
+        lat,
+        lng,
+        utcOffsetMinutes,
+      );
+      if (civil && !civil.ambiguous) {
+        const eff = buildEffectiveDrivableWindowForDay(day.date, civil, day);
+        if (eff) {
+          effectiveByDate[day.date] = eff;
+        }
+      }
+      const gh = buildGoldenHourOpportunitySignal(
+        day.date,
+        lat,
+        lng,
+        utcOffsetMinutes,
+      );
+      if (gh) {
+        goldenByDate[day.date] = gh;
+      }
+    }
+
+    state.signals.legTemporalSafetyAssessments = buildLegTemporalSafetyAssessments(plan, {
+      latitudeDeg: lat,
+      longitudeDeg: lng,
+      utcOffsetMinutes,
+    });
+    state.signals.effectiveDrivableWindowByDate =
+      Object.keys(effectiveByDate).length > 0 ? effectiveByDate : undefined;
+    state.signals.temporalExecutionWindowsBySlotId = buildTemporalExecutionWindowsBySlot(
+      plan,
+      effectiveByDate,
+    );
+    state.signals.goldenHourOpportunityByDate =
+      Object.keys(goldenByDate).length > 0 ? goldenByDate : undefined;
+  }
+
+  /**
+   * Legacy：无 corridor overlay 帧时，由 raw temporal + leg 评估 + 营运窗 合成压力。
+   * 有 `ExecutionOverlayFrame` 时由 {@link deriveOvernightFromOverlay} 替代（P5-2-A）。
+   */
+  private applyOvernightRestructuringPressureSignals(
+    state: TripWorldState,
+    plan: TripPlan,
+    operationalDayWindow: OperationalDayWindowSignalSummary | undefined,
+  ): void {
+    const pressures = buildOvernightRestructuringPressures({
+      plan,
+      legTemporalSafetyAssessments: state.signals.legTemporalSafetyAssessments,
+      timeDrifts: plan.temporal?.timeDrifts ?? [],
+      operationalDayWindow,
+      effectiveDrivableWindowByDate: state.signals.effectiveDrivableWindowByDate,
+    });
+    state.signals.overnightRestructuringPressures = pressures;
+  }
+
+  private isLikelyIcelandDestination(destination: string): boolean {
+    const d = destination.toLowerCase();
+    return (
+      d.includes('iceland') ||
+      d.includes('冰岛') ||
+      d.includes('reykjavik') ||
+      d.includes('reykjavík') ||
+      d.includes('ísland')
+    );
+  }
+
+  /**
+   * 极光解析锚点：酒店 > 当日天气证据坐标 > 当日首个候选 POI。
+   */
+  private resolveAuroraAnchorForDate(
+    state: TripWorldState,
+    date: ISODate,
+    evidences: WeatherDecisionEvidence[],
+  ): GeoPoint | undefined {
+    const hotel = state.context.anchors?.hotelLocationsByDate?.[date];
+    if (hotel) {
+      return hotel;
+    }
+    const ev = evidences.find(e => e.date === date);
+    const lat = ev?.metadata?.resolvedLat;
+    const lng = ev?.metadata?.resolvedLng;
+    if (
+      typeof lat === 'number' &&
+      typeof lng === 'number' &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lng)
+    ) {
+      return { lat, lng };
+    }
+    const first = state.candidatesByDate[date]?.find(c => c.location?.point)?.location?.point;
+    return first;
+  }
+
+  /** P-FUEL-1：自驾走廊续航 vs 下一补给点 → signals.fuelReachabilityByLegId（纯几何桩；OSM arc 距离可由上游 enrichment）。 */
+  private hydrateFuelReachability(state: TripWorldState, plan: TripPlan): void {
+    const vehicle = state.policies?.vehicleFuelProfile ?? DEFAULT_VEHICLE_FUEL_PROFILE;
+    const pois = extractFuelPoiIndexFromCandidates(state.candidatesByDate);
+    const map = summarizeFuelReachabilityForPlan(plan, pois, vehicle);
+    if (Object.keys(map).length > 0) {
+      state.signals.fuelReachabilityByLegId = map;
+    } else {
+      delete state.signals.fuelReachabilityByLegId;
+    }
+  }
+
+  /**
+   * 写入 auroraByDate + nightObservationFeasibility（冰岛行程拉取 IcelandAuroraAdapter；亦可由调用方事先填入 signals）。
+   */
+  private async hydrateAuroraNightSignals(
+    state: TripWorldState,
+    plan: TripPlan,
+    evidences: WeatherDecisionEvidence[],
+  ): Promise<void> {
+    const prev = state.signals.auroraByDate ?? {};
+    const merged: Partial<Record<ISODate, AuroraNightObservationSignal>> = { ...prev };
+
+    if (this.isLikelyIcelandDestination(state.context.destination)) {
+      let adapter: IcelandAuroraAdapter | undefined;
+      try {
+        adapter = this.moduleRef.get(IcelandAuroraAdapter, { strict: false });
+      } catch {
+        adapter = undefined;
+      }
+
+      if (adapter) {
+        const ts = new Date().toISOString();
+        for (const day of plan.days) {
+          const anchor = this.resolveAuroraAnchorForDate(state, day.date, evidences);
+          if (!anchor) {
+            continue;
+          }
+          try {
+            const kp = await adapter.getAuroraKPIndex();
+            const cloud = await adapter.getCloudCover(anchor.lat, anchor.lng);
+            const visibility = await adapter.calculateAuroraVisibility(
+              anchor.lat,
+              anchor.lng,
+              kp,
+              cloud,
+            );
+            merged[day.date] = buildAuroraNightObservationSignal({
+              kpIndex: kp,
+              cloudCoveragePct: cloud,
+              visibility,
+              resolvedLat: anchor.lat,
+              resolvedLng: anchor.lng,
+              source: 'iceland_aurora_adapter',
+              updatedAt: ts,
+            });
+          } catch (e: unknown) {
+            this.logger.debug(
+              `极光信号 ${day.date} 跳过: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+        }
+      }
+    }
+
+    if (Object.keys(merged).length > 0) {
+      state.signals.auroraByDate = merged;
+      state.signals.nightObservationFeasibility = buildNightObservationFeasibilitySummary(
+        plan,
+        merged,
+      );
+      state.signals.auroraOpportunityByDate = buildAuroraOpportunityByDate(merged);
+      state.signals.opportunityMigrationEvaluations = evaluateOpportunityMigrationsForPlan(
+        plan,
+        state.signals.auroraOpportunityByDate,
+        {
+          stance: migrationStanceFromAuroraIntentWeight(
+            state.context.preferences.intents?.aurora,
+          ),
+        },
+      );
+      const rawProposals = materializeProposedCorridorMigrations(
+        state.signals.opportunityMigrationEvaluations,
+      );
+      if (rawProposals.length > 0) {
+        state.signals.proposedCorridorMigrations = enrichProposalsWithSimulation(
+          rawProposals,
+          plan,
+        );
+      } else {
+        delete state.signals.proposedCorridorMigrations;
+      }
+    } else {
+      delete state.signals.auroraByDate;
+      delete state.signals.nightObservationFeasibility;
+      delete state.signals.auroraOpportunityByDate;
+      delete state.signals.opportunityMigrationEvaluations;
+      delete state.signals.proposedCorridorMigrations;
+    }
+  }
+
+  /**
+   * 天气证据中的 resolvedLat/Lng → 民用晨光/暮光锚点（缺失则跳过日照提示）
+   */
+  private resolveDaylightAnchorFromWeatherEvidences(
+    evidences: WeatherDecisionEvidence[],
+  ): { lat: number; lng: number } | null {
+    for (const e of evidences) {
+      const lat = e.metadata?.resolvedLat;
+      const lng = e.metadata?.resolvedLng;
+      if (
+        typeof lat === 'number' &&
+        typeof lng === 'number' &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng)
+      ) {
+        return { lat, lng };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 将逐日天气证据挂到 PlanDay（供 daylight / 分段 ETA 读取）
+   */
+  private applyWeatherExecutionToPlanDays(
+    plan: TripPlan,
+    evidences: WeatherDecisionEvidence[],
+  ): void {
+    const byDate = new Map(evidences.map(e => [e.date, e]));
+    for (const day of plan.days) {
+      const ev = byDate.get(day.date);
+      if (!ev) continue;
+      day.weatherExecution = {
+        executionState: ev.executionState,
+        executionQuality: ev.executionQuality
+          ? {
+              safeScore: ev.executionQuality.safeScore,
+              delayFactor: ev.executionQuality.delayFactor,
+              visibilityPenalty: ev.executionQuality.visibilityPenalty,
+              fatigueCost: ev.executionQuality.fatigueCost,
+              riskBudget: ev.executionQuality.riskBudget,
+            }
+          : undefined,
+        violation: ev.violation,
+        hazardKinds: ev.hazards?.map(h => h.kind),
+        crosswindRisk: ev.crosswindRisk,
+        suggestedAction: ev.suggestedAction,
+        explanation: ev.explanation,
+      };
+    }
+  }
+
+  /**
+   * 合并到 ExternalSignalsState.weatherByDate（Agent / 约束层统一读）
+   */
+  private mergeWeatherDecisionEvidenceIntoSignals(
+    state: TripWorldState,
+    evidences: WeatherDecisionEvidence[],
+    plan: TripPlan,
+  ): void {
+    const prev = state.signals.weatherByDate ?? {};
+    const next: Partial<Record<ISODate, WeatherExecutionSignal>> = { ...prev };
+    const ts = new Date().toISOString();
+    for (const e of evidences) {
+      const overlay = plan.days.find(d => d.date === e.date)?.weatherExecution;
+      next[e.date] = {
+        executionState: e.executionState,
+        executionQuality: e.executionQuality,
+        violation: e.violation,
+        hazardKinds: e.hazards?.map(h => h.kind) ?? [],
+        hazards: e.hazards,
+        windSpeedMs: e.windSpeed,
+        windDirectionDeg: e.windDirection,
+        visibilityKm: e.visibility,
+        precipitationMm: e.precipitation,
+        crosswindRisk: e.crosswindRisk,
+        suggestedAction: e.suggestedAction,
+        explanation: e.explanation,
+        weatherSource: e.metadata?.weatherSource,
+        resolvedLat: e.metadata?.resolvedLat,
+        resolvedLng: e.metadata?.resolvedLng,
+        recommendedExtraDriveMinutes: overlay?.recommendedExtraDriveMinutes,
+        accumulatedGlobalSlackMinutes: overlay?.accumulatedGlobalSlackMinutes,
+        updatedAt: ts,
+        source: 'weather_decision_evidence',
+      };
+    }
+    state.signals.weatherByDate = next;
+    state.signals.temporalPropagation =
+      summarizeTemporalPropagationForSignals(plan.temporal);
+    state.signals.lastUpdatedAt = ts;
+  }
+
+  /**
+   * 多日 executionQuality → 单一计划层指标（最差日主导）
+   */
+  private aggregateWeatherExecutionMetrics(evidences: WeatherDecisionEvidence[]): {
+    weatherDelayFactorMax: number;
+    weatherRiskBudgetMin: number;
+    weatherSafeScoreMin: number;
+    weatherWorstExecutionState?: ExecutionState;
+  } {
+    const stateRank: ExecutionState[] = [
+      'EXECUTABLE',
+      'DEGRADED',
+      'HIGH_RISK',
+      'BLOCKED',
+    ];
+    let maxDelay = 1;
+    let minRisk = 1;
+    let minSafe = 1;
+    let worst: ExecutionState | undefined;
+
+    for (const e of evidences) {
+      const q = e.executionQuality;
+      if (q) {
+        maxDelay = Math.max(maxDelay, q.delayFactor);
+        minRisk = Math.min(minRisk, q.riskBudget);
+        minSafe = Math.min(minSafe, q.safeScore);
+      }
+      if (e.executionState) {
+        if (
+          !worst ||
+          stateRank.indexOf(e.executionState) > stateRank.indexOf(worst)
+        ) {
+          worst = e.executionState;
+        }
+      }
+    }
+
+    return {
+      weatherDelayFactorMax: Math.round(maxDelay * 1000) / 1000,
+      weatherRiskBudgetMin: Math.round(minRisk * 1000) / 1000,
+      weatherSafeScoreMin: Math.round(minSafe * 1000) / 1000,
+      weatherWorstExecutionState: worst,
+    };
+  }
+
+  /**
+   * 天气查询锚点：优先入住锚点 → 计划内坐标 → 目的地默认 centroid（最小集）
+   */
+  private resolveWeatherEvidenceFallback(
+    state: TripWorldState,
+    plan: TripPlan,
+  ): WeatherEvidenceLocationContext | undefined {
+    const anchor = state.context.anchors?.hotelLocationsByDate?.[state.context.startDate];
+    if (
+      anchor &&
+      typeof anchor.lat === 'number' &&
+      typeof anchor.lng === 'number' &&
+      !Number.isNaN(anchor.lat + anchor.lng)
+    ) {
+      return { fallbackLat: anchor.lat, fallbackLng: anchor.lng };
+    }
+    for (const day of plan.days) {
+      for (const slot of day.timeSlots) {
+        const c = slot.coordinates;
+        if (
+          c &&
+          typeof c.lat === 'number' &&
+          typeof c.lng === 'number' &&
+          !Number.isNaN(c.lat + c.lng)
+        ) {
+          return { fallbackLat: c.lat, fallbackLng: c.lng };
+        }
+      }
+    }
+    const cc = this.extractCountryCode(state.context.destination);
+    if (cc === 'IS') {
+      return { fallbackLat: 64.1466, fallbackLng: -21.9426 };
+    }
+    if (cc === 'NZ') {
+      return { fallbackLat: -41.2865, fallbackLng: 174.7762 };
+    }
+    if (cc === 'NO') {
+      return { fallbackLat: 59.9139, fallbackLng: 10.7522 };
+    }
+    return undefined;
   }
 
   /**
@@ -1971,6 +3922,178 @@ export class TripDecisionEngineService {
       // 如果有保留标签且没有排除标签，则保留
       return hasKeepTag && !hasExcludeTag;
     });
+  }
+
+  /** Layer A world SSOT → `buildExecutionOverlay` 走廊可行性（与语义视图同一约束快照）。 */
+  private worldConstraintSnapshotFromSignals(
+    state: TripWorldState,
+  ): WorldConstraintStoreSnapshot | undefined {
+    return state.signals.executionSemanticView?.world?.constraints;
+  }
+
+  /**
+   * `ENGINE_FULL_REBUILD` 归约后若已有 world.constraints，使 overlay / physics / DAG / IR 与该快照一致。
+   * 无帧时走 ECO 物化路径（由 `ensureExecutionTruthOverlayForEco` 消费同一 snapshot）。
+   */
+  private mergeWorldOverlayIntoExecutionOverlayIfPresent(
+    plan: TripPlan,
+    state: TripWorldState,
+  ): void {
+    const worldSnapshot = this.worldConstraintSnapshotFromSignals(state);
+    if (!worldSnapshot) {
+      return;
+    }
+
+    if (!plan.temporal) {
+      return;
+    }
+
+    const hadFrames = (state.signals.executionOverlayFrames?.length ?? 0) > 0;
+    if (!hadFrames) {
+      void this.ensureExecutionTruthOverlayForEco(state, plan);
+      return;
+    }
+
+    this.hydrateFuelReachability(state, plan);
+
+    const overlayFramesPass1 = augmentOverlayFramesWithPedestrianGaps(
+      plan,
+      buildExecutionOverlay({
+        plan,
+        weatherByDate: state.signals.weatherByDate,
+        timeDrifts: plan.temporal.timeDrifts,
+        crossDayShiftedSlotIds: plan.temporal.crossDayShiftedSlotIds,
+        legTemporalSafetyAssessments: state.signals.legTemporalSafetyAssessments,
+        fuelReachabilityByLegId: state.signals.fuelReachabilityByLegId,
+        worldConstraintSnapshot: worldSnapshot,
+      }),
+      { persistSyntheticTravelLegsOnPlan: true },
+    );
+
+    this.attachRouteExecutionOverlaysToPlan(plan, state);
+
+    assertOverlayOnly(plan, overlayFramesPass1, state.policies, 'TripDecisionEngine.worldOverlayMerge');
+
+    let physicsIndexForRepair:
+      | import('../physics/unified-physics-field-index.types').PhysicsFieldIndex
+      | undefined;
+    let framesForRepairPipeline = overlayFramesPass1;
+
+    if (overlayFramesPass1.length > 0) {
+      const legDatesPre = buildLegDateIndexFromPlan(plan);
+      const physicsRowsPrePass = buildUnifiedPhysicsField({
+        executionOverlayFrames: overlayFramesPass1,
+        legDateByLegId: legDatesPre,
+      });
+      physicsIndexForRepair = buildPhysicsFieldIndex(physicsRowsPrePass);
+      framesForRepairPipeline = applyPhysicsAuthorityToOverlayFrames(
+        overlayFramesPass1,
+        physicsIndexForRepair,
+      );
+    }
+
+    const operationalDayWindow = state.signals.operationalDayWindow;
+
+    if (framesForRepairPipeline.length > 0) {
+      state.signals.overnightRestructuringPressures = deriveOvernightFromOverlay(
+        plan,
+        framesForRepairPipeline,
+      );
+    } else {
+      this.applyOvernightRestructuringPressureSignals(state, plan, operationalDayWindow);
+    }
+
+    const dagForRepairEvaluator =
+      framesForRepairPipeline.length > 0
+        ? buildExecutionTruthDAG({ plan, overlayFrames: framesForRepairPipeline })
+        : undefined;
+
+    const executionIRPass1 = dagForRepairEvaluator
+      ? compileDAGToIR(dagForRepairEvaluator)
+      : undefined;
+
+    const useIrExecutionTruth = Boolean(executionIRPass1 && dagForRepairEvaluator);
+
+    const daylightFeasibility = state.signals.daylightFeasibility;
+
+    const repairEvaluation = evaluateMinimalRepairs({
+      plan,
+      timeDrifts: plan.temporal.timeDrifts,
+      unifiedConstraintGraph: plan.temporal.unifiedConstraintGraph,
+      daylightFeasibility: useIrExecutionTruth ? undefined : daylightFeasibility,
+      nightObservationFeasibility: useIrExecutionTruth
+        ? undefined
+        : state.signals.nightObservationFeasibility,
+      opportunityMigrationEvaluations: state.signals.opportunityMigrationEvaluations,
+      overnightRestructuringPressures: state.signals.overnightRestructuringPressures,
+      legTemporalSafetyAssessments: state.signals.legTemporalSafetyAssessments,
+      policies: state.policies,
+      executionOverlayFrames: framesForRepairPipeline,
+      executionTruthDAG: dagForRepairEvaluator,
+      executionIR: executionIRPass1,
+      fuelReachabilityByLegId: state.signals.fuelReachabilityByLegId,
+      physicsFieldIndex: physicsIndexForRepair,
+    });
+
+    state.signals.executionOverlayFrames = stampOverlayAnnotationsFromSignals(
+      plan,
+      state,
+      mergeRepairHintsIntoFrames(framesForRepairPipeline, repairEvaluation.repairs),
+    );
+
+    const stampedFrames = state.signals.executionOverlayFrames ?? [];
+    if (stampedFrames.length === 0) {
+      delete state.signals.unifiedPhysicsFieldByLegId;
+      delete state.signals.physicsFieldIndex;
+    } else {
+      const legDates = buildLegDateIndexFromPlan(plan);
+      const physicsRows = buildUnifiedPhysicsField({
+        executionOverlayFrames: stampedFrames,
+        legDateByLegId: legDates,
+      });
+      const physicsIndex = buildPhysicsFieldIndex(physicsRows);
+      state.signals.physicsFieldIndex = physicsIndex;
+      state.signals.unifiedPhysicsFieldByLegId = physicsIndex.byLegId;
+      state.signals.executionOverlayFrames = applyPhysicsAuthorityToOverlayFrames(
+        stampedFrames,
+        physicsIndex,
+      );
+      if (
+        typeof process !== 'undefined' &&
+        process.env?.TRIP_PHYSICS_OVERLAY_CONSISTENCY === '1'
+      ) {
+        assertOverlayFieldConsistency(
+          state.signals.executionOverlayFrames,
+          physicsRows,
+          'TripDecisionEngine.worldOverlayMerge.physicsConsistency',
+        );
+      }
+    }
+
+    state.signals.executionTruthDAG = buildExecutionTruthDAG({
+      plan,
+      overlayFrames: state.signals.executionOverlayFrames,
+      temporalWindowsBySlot: state.signals.temporalExecutionWindowsBySlotId,
+      repairs: repairEvaluation.repairs,
+    });
+    if (planHasInboundTravelLeg(plan)) {
+      assertOnlyDAGIsDecisionSource(
+        state.signals.executionTruthDAG,
+        state.policies,
+        'TripDecisionEngine.worldOverlayMerge',
+      );
+    }
+    state.signals.executionIR = compileDAGToIR(state.signals.executionTruthDAG);
+    assertIRCreatedOnlyByCompiler(state.signals.executionIR, 'TripDecisionEngine.worldOverlayMerge');
+
+    if (
+      repairEvaluation.repairs.length > 0 ||
+      (repairEvaluation.overnightRestructuringProposals?.length ?? 0) > 0
+    ) {
+      state.signals.repairEvaluation = repairEvaluation;
+    } else {
+      delete state.signals.repairEvaluation;
+    }
   }
 
   /**

@@ -7,6 +7,8 @@ import { HarnessDiagnosticsAdminController } from './controllers/harness-diagnos
 import { DoneVerifyDiagnosticsAdminController } from './controllers/done-verify-diagnostics-admin.controller';
 import { AgentOpsAdminController } from './controllers/agent-ops-admin.controller';
 import { AdminAuthController } from './controllers/admin-auth.controller';
+import { PhysicalDomainAdminController } from './controllers/physical-domain-admin.controller';
+import { SpatialDomainAdminController } from './controllers/spatial-domain-admin.controller';
 import { DataQualityModule } from '../data-quality/data-quality.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TripsModule } from '../trips/trips.module';
@@ -37,6 +39,8 @@ import { AdminStrictAuthGuard } from './guards/admin-strict-auth.guard';
     DoneVerifyDiagnosticsAdminController,
     AgentOpsAdminController,
     AdminAuthController,
+    PhysicalDomainAdminController,
+    SpatialDomainAdminController,
   ],
   providers: [
     AdminActivityLogService,

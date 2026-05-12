@@ -69,4 +69,25 @@ describe('ClarificationHandlerService', () => {
     expect(r.earlyWarningProceedAtOwnRisk).toBeUndefined();
     expect(r.applied.map((a) => a.id)).toEqual(['upgrade_vehicle_to_4wd']);
   });
+
+  it('clarify_transport_endpoints_v1: comma splits origin and destination', () => {
+    const trip = { ...baseTrip(), origin: '起点', destination: '冰岛' } as TripPlanRequest;
+    const r = svc.applyRelaxationsFromAnswers(trip, [
+      { questionId: 'clarify_transport_endpoints_v1', value: '北京，雷克雅未克' },
+    ]);
+    expect(r.transportClarificationApplied).toBe(true);
+    expect(r.didPatch).toBe(true);
+    expect(r.tripPlanRequest.origin).toBe('北京');
+    expect(r.tripPlanRequest.destination).toBe('雷克雅未克');
+  });
+
+  it('clarify_transport_endpoints_v1: single string updates origin only', () => {
+    const trip = { ...baseTrip(), origin: '起点', destination: 'Akureyri' } as TripPlanRequest;
+    const r = svc.applyRelaxationsFromAnswers(trip, [
+      { questionId: 'clarify_transport_endpoints_v1', value: '  Reykjavik  ' },
+    ]);
+    expect(r.transportClarificationApplied).toBe(true);
+    expect(r.tripPlanRequest.origin).toBe('Reykjavik');
+    expect(r.tripPlanRequest.destination).toBe('Akureyri');
+  });
 });

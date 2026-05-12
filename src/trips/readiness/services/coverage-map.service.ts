@@ -28,6 +28,12 @@ import {
   RepairOptionsResponse,
 } from '../types/coverage-map.types';
 import { ReadinessService } from './readiness.service';
+import {
+  ReadinessCheckResult,
+  ReadinessFinding,
+  ReadinessFindingItem,
+  ReadinessTripFindingScope,
+} from '../types/readiness-findings.types';
 
 interface PlaceWithCoordinates {
   id: number;
@@ -514,7 +520,7 @@ export class CoverageMapService {
           relatedId: poi.id, 
           coordinates: poi.coordinates,
           severity: poi.coverageStatus === 'uncovered' ? 'high' : 'medium',
-          message: `${poi.name}缺少证据覆盖`, 
+          message: `第${poi.day}天 · ${poi.name}：缺少证据覆盖`,
           missingEvidence: poi.missingEvidence,
           evidenceStatus,
           affectedDays: [poi.day],
@@ -537,13 +543,15 @@ export class CoverageMapService {
           
           // 为每个危险类型创建一个 gap（用于后续去重）
           for (const hazard of segment.hazards) {
+            const distanceKm = Math.round(segment.distance);
+            const contextualMessage = `第${segment.day}天 · ${fromPoi.name} → ${toPoi.name}（约 ${distanceKm} km）· ${hazard.message}`;
             gaps.push({
               id: `gap-${gapIndex}-${hazard.type}`, 
               type: 'segment', 
               relatedId: segment.id, 
               coordinates: midpoint,
               severity: segment.coverageStatus === 'blocked' ? 'high' : hazard.severity,
-              message: hazard.message,
+              message: contextualMessage,
               hazards: [hazard.type],
               hazardType: hazard.type, // 用于去重
               affectedDays: [segment.day],
@@ -790,6 +798,157 @@ export class CoverageMapService {
   }
 
   /**
+   * 将覆盖地图中 **high severity** 缺口转为与 `/score` extractFindings 一致的阻塞项，合并进树形
+   * `findings[].blockers`，避免仅靠扁平 `/score` 才能看到「应阻塞」项。
+   *
+   * 缺口项 id 使用 `coverage-gap:${gap.id}`，与 {@link extractFindings} 中对应条目一致。
+   */
+  async mergeHighSeverityCoverageGapBlockersIntoTripReadiness(
+    tripId: string,
+    destinationId: string,
+    result: ReadinessCheckResult,
+  ): Promise<ReadinessCheckResult> {
+    let coverageData: CoverageMapData;
+    try {
+      coverageData = await this.getCoverageMap(tripId);
+    } catch (e) {
+      this.logger.warn(
+        `mergeHighSeverityCoverageGapBlockersIntoTripReadiness: getCoverageMap failed: ${(e as Error).message}`,
+      );
+      return result;
+    }
+
+    const gapBlockers = this.highSeverityGapsToBlockerItems(coverageData);
+    if (gapBlockers.length === 0) {
+      return result;
+    }
+
+    const existingIds = new Set<string>();
+    for (const f of result.findings) {
+      for (const item of [...f.blockers, ...f.must, ...f.should, ...f.optional]) {
+        existingIds.add(item.id);
+      }
+    }
+
+    const toAdd = gapBlockers.filter((b) => !existingIds.has(b.id));
+    if (toAdd.length === 0) {
+      return result;
+    }
+
+    let findings: ReadinessFinding[];
+    if (result.findings.length === 0) {
+      findings = [
+        {
+          destinationId,
+          packId: 'internal.coverage-map',
+          packVersion: '1',
+          blockers: toAdd,
+          must: [],
+          should: [],
+          optional: [],
+          risks: [],
+        },
+      ];
+    } else {
+      const matchIdx = result.findings.findIndex((f) => f.destinationId === destinationId);
+      const idx = matchIdx >= 0 ? matchIdx : 0;
+      findings = result.findings.map((f, i) =>
+        i === idx ? { ...f, blockers: [...f.blockers, ...toAdd] } : f,
+      );
+    }
+
+    const summary = {
+      ...result.summary,
+      totalBlockers: findings.reduce((sum, f) => sum + f.blockers.length, 0),
+      totalMust: findings.reduce((sum, f) => sum + f.must.length, 0),
+      totalShould: findings.reduce((sum, f) => sum + f.should.length, 0),
+      totalOptional: findings.reduce((sum, f) => sum + f.optional.length, 0),
+      totalRisks: findings.reduce((sum, f) => sum + (f.risks?.length ?? 0), 0),
+    };
+
+    return {
+      ...result,
+      findings,
+      summary,
+    };
+  }
+
+  /**
+   * 覆盖缺口 → ReadinessFindingItem（仅 high severity，与 score 扁平列表中 type=blocker 的缺口一致）
+   */
+  private highSeverityGapsToBlockerItems(coverageData: CoverageMapData): ReadinessFindingItem[] {
+    const items: ReadinessFindingItem[] = [];
+    for (const gap of coverageData.gaps) {
+      if (gap.severity !== 'high') {
+        continue;
+      }
+      items.push(this.coverageGapToBlockerItem(gap, coverageData));
+    }
+    return items;
+  }
+
+  /**
+   * 将覆盖缺口解析为行程定位（用于 API tripScope / 前端跳转）
+   */
+  private gapToTripScope(
+    gap: CoverageGap,
+    coverageData: CoverageMapData,
+  ): ReadinessTripFindingScope | undefined {
+    const pois = coverageData.pois;
+    if (gap.type === 'segment') {
+      const fromId = gap.affectedPois?.[0];
+      const toId = gap.affectedPois?.[1];
+      const fromPoi = fromId ? pois.find((p) => p.id === fromId) : undefined;
+      const toPoi = toId ? pois.find((p) => p.id === toId) : undefined;
+      const segment = coverageData.segments.find((s) => s.id === gap.relatedId);
+      if (fromPoi && toPoi) {
+        return {
+          kind: 'segment',
+          day: gap.affectedDays?.[0] ?? segment?.day,
+          segmentId: gap.relatedId,
+          fromPoi: { id: fromPoi.id, name: fromPoi.name },
+          toPoi: { id: toPoi.id, name: toPoi.name },
+          distanceKm: segment?.distance,
+        };
+      }
+    }
+    if (gap.type === 'poi') {
+      const poi = pois.find((p) => p.id === gap.relatedId);
+      if (poi) {
+        return {
+          kind: 'poi',
+          day: gap.affectedDays?.[0] ?? poi.day,
+          fromPoi: { id: poi.id, name: poi.name },
+        };
+      }
+    }
+    return undefined;
+  }
+
+  private coverageGapToBlockerItem(gap: CoverageGap, coverageData: CoverageMapData): ReadinessFindingItem {
+    const category = gap.type === 'poi' ? 'activities_bookings' : 'logistics';
+    const tripScope = this.gapToTripScope(gap, coverageData);
+    return {
+      id: `coverage-gap:${gap.id}`,
+      category,
+      severity: 'high',
+      level: 'blocker',
+      message: gap.message,
+      tasks: gap.missingEvidence?.length
+        ? [{ title: `补充证据: ${gap.missingEvidence.join(', ')}` }]
+        : undefined,
+      evidence: [
+        {
+          sourceId: 'coverage-map',
+          sectionId: gap.type === 'segment' ? gap.relatedId : undefined,
+          quote: gap.message,
+        },
+      ],
+      tripScope,
+    };
+  }
+
+  /**
    * 计算分数详情
    */
   private calculateScoreBreakdown(
@@ -985,23 +1144,26 @@ export class CoverageMapService {
     const findings: ReadinessScoreFinding[] = [];
     let findingIndex = 0;
 
-    // 从覆盖缺口提取
+    // 从覆盖缺口提取（id 与 mergeHighSeverityCoverageGapBlockersIntoTripReadiness / 树形 blockers 对齐）
     for (const gap of coverageData.gaps) {
       findingIndex++;
       // 🆕 统一类型命名：high severity → blocker, medium/low → must
       const findingType = gap.severity === 'high' ? 'blocker' : 'must';
       findings.push({
-        id: `finding-${findingIndex}`,
+        id: `coverage-gap:${gap.id}`,
         type: findingType,
         category: gap.type === 'poi' ? 'evidence' : 'transport',
         message: gap.message,
         severity: gap.severity,
-        affectedDays: gap.type === 'poi' 
-          ? [coverageData.pois.find(p => p.id === gap.relatedId)?.day || 1]
-          : undefined,
+        affectedDays: gap.affectedDays?.length
+          ? gap.affectedDays
+          : gap.type === 'poi'
+            ? [coverageData.pois.find((p) => p.id === gap.relatedId)?.day || 1]
+            : undefined,
         actionRequired: gap.missingEvidence 
           ? `补充: ${gap.missingEvidence.join(', ')}` 
           : undefined,
+        tripScope: this.gapToTripScope(gap, coverageData),
       });
     }
 

@@ -109,7 +109,8 @@ export class NegotiateContextLoaderService {
     for (const day of trip.TripDay ?? []) {
       for (const item of day.ItineraryItem ?? []) {
         const p = item?.Place;
-        const pid = p?.id;
+        if (!p) continue;
+        const pid = p.id;
         if (typeof pid !== 'number' || !Number.isFinite(pid)) continue;
         const meta = ((p.metadata as Record<string, unknown> | null | undefined) ?? {}) as Record<string, unknown>;
         const c = meta.coordinates as { lat?: unknown; lng?: unknown } | undefined;
@@ -175,8 +176,9 @@ export class NegotiateContextLoaderService {
     days: TripDayWithItems[],
   ): RoutePlanDraft {
     const segments: RouteSegment[] = days.map((day, index) => {
-      const { distanceKm, ascentM } = this.computeSegmentMetrics(day.ItineraryItem);
-      const activityNames = this.extractActivityNames(day.ItineraryItem);
+      const items = (day.ItineraryItem ?? []).filter((it): it is NonNullable<typeof it> => it != null);
+      const { distanceKm, ascentM } = this.computeSegmentMetrics(items);
+      const activityNames = this.extractActivityNames(items);
       return {
         segmentId: day.id,
         dayIndex: index + 1,

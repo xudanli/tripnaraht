@@ -125,10 +125,11 @@ export class HitlResolveApprovalTaskSkill
 
       // 2. 检查当前状态
       if (approval.status !== 'PENDING') {
-        const statusText = {
+        const statusText: Record<string, string> = {
           APPROVED: '已批准',
           REJECTED: '已拒绝',
           EXPIRED: '已过期',
+          CANCELLED: '已取消',
         };
         throw new Error(`审批任务 ${input.taskId} 已处理：${statusText[approval.status] || approval.status}`);
       }

@@ -15,6 +15,8 @@ import { ConstraintChecker } from './constraints/constraint-checker';
 import { ConstraintEngineService } from './constraints/constraint-engine.service';
 import { ConstraintDSLCompiler } from './constraints/constraint-dsl-compiler.service';
 import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
+import { RoadConstraintPropagationService } from './constraints/road-constraint-propagation.service';
+import { IcelandRoadModule } from '../../iceland-road/iceland-road.module';
 import { MultiPlanGenerator } from './services/multi-plan-generator.service';
 import { FeedbackCollectorService } from './feedback/feedback-collector.service';
 import { QualityAssessorService } from './feedback/quality-assessor.service';
@@ -57,6 +59,7 @@ import { SpatialIssueDetectorService } from './services/spatial-issue-detector.s
 import { FatigueCalculatorService } from './services/fatigue-calculator.service';
 import { DrivingSafetyConcernService } from './services/driving-safety-concern.service';
 import { TdfpmCalculatorService } from './services/tdfpm-calculator.service';
+import { WeatherDecisionEvidenceService } from './services/weather-decision-evidence.service';
 import {
   DailyUtilityCalculatorService,
   UserProfileWeightsService,
@@ -69,6 +72,8 @@ import { NeptuneStrategy } from './strategies/neptune-strategy.service';
 import { DecisionStatsService } from './services/decision-stats.service';
 import { HeuristicDietService } from './services/heuristic-diet.service';
 import { DecisionLogStorageService } from './services/decision-log-storage.service';
+import { OpsRealityAuditService } from './services/ops-reality-audit.service';
+import { OperationalPolicyService } from './operational-policy/operational-policy.service';
 import { DecisionLoggingService } from './services/decision-logging.service';
 import { ReadinessAgentService } from './readiness/readiness-agent.service';
 import { ApprovalService } from './services/approval.service';
@@ -83,6 +88,7 @@ import { CalibrationSchedulerService } from './services/calibration-scheduler.se
 import { WearableIntegrationService } from './services/wearable-integration.service';
 import { FitnessAnalyticsController } from './controllers/fitness-analytics.controller';
 import { DecisionStateManagerService } from './services/decision-state-manager.service';
+import { EcoIdentityLedgerPersistenceService } from './services/eco-identity-ledger-persistence.service';
 import { DsoLatestStateFromTripProvider } from './services/dso-latest-state-from-trip.provider';
 import { DSO_LATEST_STATE_PROVIDER } from '../../decision/kernel/dso-latest-state-provider.interface';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -101,6 +107,8 @@ import { OptimizationModule } from './optimization/optimization.module';
 import { FlywheelModule } from './flywheel/flywheel.module';
 import { DecisionFlywheelController } from './flywheel/decision-flywheel.controller';
 import { InterventionEngine } from '../../decision/actuator/intervention-engine';
+import { SharedMemoryModule } from '../../agent/memory/shared-memory.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 // 动态加载 DataQualityModule / DataModelingModule，避免 watch 模式下 resolve 失败导致启动崩溃
 let DataQualityModule: any;
@@ -126,7 +134,8 @@ try {
     // forwardRef(() => ReadinessModule), // 暂时禁用，使用懒加载获取 ReadinessService（打破循环依赖）
     // _placesModuleOrLite, // 暂时禁用，检查依赖错误和依赖链
     ...(enableRouteDirectionsModule ? [forwardRef(() => RouteDirectionsModule)] : []),
-    // MemoryModule, // 暂时禁用，测试是否导致阻塞
+    SharedMemoryModule,
+    EventEmitterModule,
     // LlmModule, // 暂时禁用，测试是否导致阻塞
     ...(enableContextEngineModule ? [ContextEngineModule] : []),
     ...(enableSkillsModule ? [forwardRef(() => SkillsModule)] : []),
@@ -136,6 +145,7 @@ try {
     BookingComModule, // Booking.com 集成模块（租车搜索）
     OptimizationModule, // Phase 1/2/3: 优化模块（目标函数、概率模型、多智能体协商）
     FlywheelModule, // Phase 2: 数据飞轮
+    IcelandRoadModule, // 冰岛路网约束图 MVP → ROAD_CONSTRAINT_UPDATE / semantic delta
   ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [
     DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）
@@ -148,6 +158,7 @@ try {
   ],
   providers: [
     InterventionEngine,
+    EcoIdentityLedgerPersistenceService,
     TripDecisionEngineService,
     SenseToolsAdapter,
     // 二分法：暂时禁用最后2个服务，测试是否导致阻塞
@@ -164,6 +175,7 @@ try {
     ConstraintEngineService, // Phase 0：isFeasible 统一入口
     ConstraintDSLCompiler, // 新增：约束DSL编译器
     ConstraintConflictResolver, // 新增：约束冲突解析器
+    RoadConstraintPropagationService, // 路网约束图传播 → SEMANTIC_DELTA
     MultiPlanGenerator, // 新增：多方案生成器
     FeedbackCollectorService, // P2：反馈收集服务
     QualityAssessorService, // P2：质量评估服务
@@ -184,7 +196,7 @@ try {
     // DemDecisionEvidencePipelineService, // 暂时禁用：TripNaraCoreToolService 需要它
     // DemEvidenceEnforcerService,
     // DemDecisionEvidenceService,
-    // WeatherDecisionEvidenceService,
+    WeatherDecisionEvidenceService,
     // PersonaExplanationService,
     StrategyOrchestratorService, // 恢复：DecisionRunThreeGuardiansSkill 需要它（所有依赖都已提供，应该不会导致阻塞）
     SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
@@ -201,6 +213,8 @@ try {
     HeuristicDietService, // 恢复：DecisionStatsController 需要
     // TripFeedbackService,
     DecisionLogStorageService, // 必需：TripsService 需要它
+    OpsRealityAuditService, // P-OPS-2：reality audit snapshots（需 OPS_REALITY_AUDIT=1 + DB migration）
+    OperationalPolicyService, // P-OPS-3：versioned operational policy（OPS_OPERATIONAL_POLICY_JSON）
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
     DecisionStateManagerService, // 决策状态管理服务
     { provide: DSO_LATEST_STATE_PROVIDER, useClass: DsoLatestStateFromTripProvider },
@@ -231,6 +245,7 @@ try {
     WearableIntegrationService,
   ],
   exports: [
+    EcoIdentityLedgerPersistenceService,
     TripDecisionEngineService,
     DSO_LATEST_STATE_PROVIDER,
     // 二分法：暂时禁用最后2个服务，测试是否导致阻塞
@@ -251,6 +266,7 @@ try {
     PlanModificationLogService, // Phase 3：用户修改行为日志
     ConstraintDSLCompiler, // 新增：约束DSL编译器
     ConstraintConflictResolver, // 新增：约束冲突解析器
+    RoadConstraintPropagationService,
     MultiPlanGenerator, // 新增：多方案生成器
     FeedbackCollectorService, // P2：反馈收集服务
     QualityAssessorService, // P2：质量评估服务
@@ -271,7 +287,7 @@ try {
     // DemDecisionEvidencePipelineService, // 暂时禁用：TripNaraCoreToolService 需要它
     // DemEvidenceEnforcerService,
     // DemDecisionEvidenceService,
-    // WeatherDecisionEvidenceService,
+    WeatherDecisionEvidenceService,
     // PersonaExplanationService,
     StrategyOrchestratorService, // 恢复：让 SkillsModule 可以注入（DecisionRunThreeGuardiansSkill 需要它）
     SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）

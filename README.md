@@ -79,6 +79,16 @@ npm run build
 npm run start
 ```
 
+## 构建与 CI（类型检查说明）
+
+当前主干合并与回归验证以 **定向 CI** 为主：Multi-Agent 策略桥等核心链路由 GitHub Actions **`.github/workflows/world-model-bridge.yml`** 与脚本 **`npm run test:world-model-bridge`** 保护（变更触及 `src/skills/world/**`、`src/agent/services/**` 等路径时触发）。
+
+**Full-repo `tsc`**（`npm run typecheck:src` / `tsconfig.build.json`）仍存在历史模块的存量报错；清理后可恢复「全仓库类型检查即绿」。在此之前：
+
+> **Current build health for the Decision Bridge path is validated via targeted CI (`world-model-bridge` workflow). Full-repo `tsc` is pending legacy debt clearing.**
+
+详见 [`docs/agent/MULTI_AGENT_COLLABORATION_BRIDGE.md`](./docs/agent/MULTI_AGENT_COLLABORATION_BRIDGE.md)。
+
 ## API 文档
 
 启动服务后，访问 `http://localhost:3000/api-docs` 查看完整的 Swagger API 文档。

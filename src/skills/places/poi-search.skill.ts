@@ -16,6 +16,11 @@ export interface PoiSearchInput extends SkillInput {
   limit?: number;
   lat?: number;
   lng?: number;
+  /**
+   * 为 true 时仅关键词 SQL 召回，不生成 embedding / 不跑向量段。
+   * 亦可设环境变量 `POI_SEARCH_KEYWORD_ONLY=1`（或 `true`）全局默认开启。
+   */
+  keyword_only?: boolean;
 }
 
 export interface PoiSearchOutput extends SkillOutput {
@@ -61,7 +66,12 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
   }
 
   async execute(input: PoiSearchInput): Promise<PoiSearchOutput> {
-    this.logger.debug(`执行 poi.search: query=${input.query}, limit=${input.limit || 10}`);
+    const keywordOnly =
+      input.keyword_only === true ||
+      /^(1|true|yes)$/i.test(String(process.env.POI_SEARCH_KEYWORD_ONLY ?? '').trim());
+    this.logger.debug(
+      `执行 poi.search: query=${input.query}, limit=${input.limit || 10}, keyword_only=${keywordOnly}`,
+    );
 
     try {
       const limit = input.limit || 10;
@@ -85,6 +95,7 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
             input.lat,
             input.lng,
             limit,
+            keywordOnly ? { keywordOnly: true } : undefined,
           );
 
           pois = resolutionResult.results

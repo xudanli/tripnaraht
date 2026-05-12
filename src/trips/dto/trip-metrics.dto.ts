@@ -7,28 +7,28 @@ import { TravelMode } from './trip-intent.dto';
  */
 export class TravelTimeByModeDto {
   @ApiProperty({ description: '步行时间（分钟）' })
-  walking: number;
+  walking!: number;
 
   @ApiProperty({ description: '自驾时间（分钟）' })
-  driving: number;
+  driving!: number;
 
   @ApiProperty({ description: '公共交通时间（分钟）' })
-  transit: number;
+  transit!: number;
 
   @ApiProperty({ description: '火车/高铁时间（分钟）' })
-  train: number;
+  train!: number;
 
   @ApiProperty({ description: '飞机时间（分钟）' })
-  flight: number;
+  flight!: number;
 
   @ApiProperty({ description: '轮渡时间（分钟）' })
-  ferry: number;
+  ferry!: number;
 
   @ApiProperty({ description: '骑行时间（分钟）' })
-  bicycle: number;
+  bicycle!: number;
 
   @ApiProperty({ description: '出租车时间（分钟）' })
-  taxi: number;
+  taxi!: number;
 }
 
 /**
@@ -36,10 +36,10 @@ export class TravelTimeByModeDto {
  */
 export class DayMetricsResponseDto {
   @ApiProperty({ description: '日期（YYYY-MM-DD）', example: '2025-01-01' })
-  date: string;
+  date!: string;
 
   @ApiProperty({ description: '指标数据' })
-  metrics: {
+  metrics!: {
     walk: number;        // 总步行距离（公里）
     drive: number;       // 总车程（分钟）- 兼容旧字段
     buffer: number;      // 总缓冲时间（分钟）
@@ -52,7 +52,7 @@ export class DayMetricsResponseDto {
   };
 
   @ApiProperty({ description: '冲突列表' })
-  conflicts: Array<{
+  conflicts!: Array<{
     type: 'TIME_CONFLICT' | 'LUNCH_WINDOW' | 'LUNCH_MISSING' | 'DINNER_MISSING' | 'FATIGUE_EXCEEDED' | 'BUFFER_INSUFFICIENT' | 'TRANSPORT_INSUFFICIENT' | 'DUPLICATE_ITEM';
     severity: 'HIGH' | 'MEDIUM' | 'LOW';
     title: string;
@@ -66,25 +66,25 @@ export class DayMetricsResponseDto {
  */
 export class TripMetricsSummaryDto {
   @ApiProperty({ description: '总步行距离（公里）' })
-  totalWalk: number;
+  totalWalk!: number;
 
   @ApiProperty({ description: '总车程（分钟）' })
-  totalDrive: number;
+  totalDrive!: number;
 
   @ApiProperty({ description: '总缓冲时间（分钟）' })
-  totalBuffer: number;
+  totalBuffer!: number;
 
   @ApiProperty({ description: '总疲劳指数' })
-  totalFatigue: number;
+  totalFatigue!: number;
 
   @ApiProperty({ description: '总花费' })
-  totalCost: number;
+  totalCost!: number;
 
   @ApiProperty({ description: '平均每日步行距离（公里）' })
-  averageWalkPerDay: number;
+  averageWalkPerDay!: number;
 
   @ApiProperty({ description: '平均每日车程（分钟）' })
-  averageDrivePerDay: number;
+  averageDrivePerDay!: number;
 }
 
 /**
@@ -92,13 +92,13 @@ export class TripMetricsSummaryDto {
  */
 export class TripMetricsResponseDto {
   @ApiProperty({ description: '行程 ID' })
-  tripId: string;
+  tripId!: string;
 
   @ApiProperty({ description: '每日指标列表', type: [DayMetricsResponseDto] })
-  days: DayMetricsResponseDto[];
+  days!: DayMetricsResponseDto[];
 
   @ApiProperty({ description: '摘要信息', type: TripMetricsSummaryDto })
-  summary: TripMetricsSummaryDto;
+  summary!: TripMetricsSummaryDto;
 }
 
 // TravelMode 从 trip-intent.dto.ts 重新导出，供其他模块使用

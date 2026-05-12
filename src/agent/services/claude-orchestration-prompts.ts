@@ -155,9 +155,16 @@ export const SKILLS_SELECTION_PROMPT = `
 [核心原则]
 
 1. **Gate 优先**：对于规划请求，必须包含 plan.gate.runThreeGuardians 或 plan.gate.precheck Skill（在 itinerary.generate 之前）
-2. **证据优先**：优先选择能提供硬证据的 Skills（transport.search, poi.search, opening_hours.get, dem.metrics, risk.check）
-3. **验证优先**：生成行程后必须包含 itinerary.verify Skill
-4. **修复能力**：如果 Gate 结果为 ADJUST_REQUIRED，必须包含 repair.apply 和 alternatives.generate Skills
+2. **证据优先**：优先选择能提供硬证据的 Skills（transport.search, poi.search, opening_hours.get, dem.get_profile, risk.check）
+3. **校验与修复闭环（默认）**：在 itinerary.generate 之后，**优先只选 itinerary.smart_update**（内部串联 verify → 推导 adjustments → repair.apply，单一 telemetry 闭环）。**不要**在同一计划中同时选择 itinerary.smart_update 与 itinerary.verify 或 repair.apply（避免重复与状态分叉）。
+4. **修复与替代**：若 Gate 为 ADJUST_REQUIRED 或用户表达「改行程/换一天/调整时间」等修改意图，用 **itinerary.smart_update** 覆盖校验+修复；仅在极少数需**单独**应用预计算 adjustments、且不做 verify 时，才可只选 repair.apply（非默认）。
+
+**[行程校验/修复：紧急规约]**
+
+- **触发条件**（满足任一即适用本规约）：(1) 用户消息含**变更意图**（改行程、改时间、换 POI、调整顺序、压缩某天等）；(2) Gate 为 **ADJUST_REQUIRED**；(3) 在 **itinerary.generate** 之后需要对日程做**可行性校验并可能自动修复**。
+- **强制**：上述情形下**必须**只选 **itinerary.smart_update** 完成「校验 → 处方 → 应用」闭环（与 **user_change_intent** 等入参由编排层注入对齐）。
+- **严禁**：在同一计划中并列 **itinerary.verify** + **repair.apply**（或与 **itinerary.smart_update** 混用）；除非产品明确要求「**仅诊断、不修复**」才可单独 **itinerary.verify**。
+- **说明**：编排器仍可能对误选做归一化，但模型侧应遵守本规约以减少无效 token 与状态分叉。
 
 [可用 Skills]
 
@@ -177,6 +184,9 @@ export const SKILLS_SELECTION_PROMPT = `
 - plan.gate.precheck: 预检查（快速可行性检查）
 - plan.gate.proposeSafeAlternatives: 提出安全替代方案
 
+**冰岛官方旅行安全（RESEARCH / Gate 证据，与 Vedur 天气互补）**：
+- safetravel.get_advisories: SafeTravel.is 官方 RSS（旅行安全警报、火山/路况摘要、高地相关通告）。当目的地或上下文为**冰岛**，或用户意图含**高地 / F-road / 内陆越野 / 冰岛自驾风险**时，应在 **GATE_EVAL 之前或与 RESEARCH 并行**调用；输出含 \`gate_recommendation\`（CRITICAL→BLOCK 等），可与 \`world.buildContext\`、地形/路况类 Skills 并列，**不替代**点位级天气/封路 API 证据。
+
 **决策类 Skills**：
 - decision.abuCheck: 安全检查（物理现实、合规）
 - decision.drdrePace: 节奏调整（人体能力模型）
@@ -185,18 +195,20 @@ export const SKILLS_SELECTION_PROMPT = `
 
 **数据收集类 Skills（Research 阶段）**：
 - transport.search: 交通可达性 + 班次证据
+  - **硬性前置**：仅在已具备具体经纬度（lat,lng）或可解析为坐标的**具体地名/POI**时规划调用；若用户仅给出「起点/终点/出发地」等指代词且上下文中尚未解析出坐标，必须先通过 **entity / POI 检索**或**向用户澄清**，**禁止**把指代词直接作为 origin/destination 传给 transport.search（将触发执行层降级并浪费 Token）。
 - poi.search / poi.get: POI 搜索和详情
 - opening_hours.get: 开放时间查询
-- dem.metrics: DEM 地形分析
+- dem.get_profile: DEM 地形分析（海拔剖面、累计爬升、最大坡度、疲劳指数）。参数：\`polyline\`（≥2 点）或带经纬度的 \`destination\` / \`origin\`+\`destination\`；可选 \`samples\`（米，默认 100）。**Internal Path**（工作台、WorldBuild）仍直接调 \`DEMEffortMetadataService\`，不经本 Skill。
 - risk.check: 风险检查
 
-**行程生成类 Skills（Plan 阶段）**：
+**行程生成与变更类 Skills（Plan / 修改 阶段）**：
 - itinerary.generate: 生成结构化行程草案
-- itinerary.verify: 验证开放时间冲突/换乘 buffer/可达性/疲劳阈值
+- itinerary.smart_update: **默认推荐**——生成或变更后的校验 + 自动修复闭环（内含 verify / repair；带分阶段 telemetry）
+- itinerary.verify: 仅当你**明确**不要自动修复、只要诊断报告时使用（与 smart_update 二选一，勿并列）
+- repair.apply: 仅当你已有完整 adjustments、且**跳过** verify 时使用（与 smart_update 二选一，勿并列）
 
-**修复类 Skills（Repair 阶段）**：
-- repair.apply: 应用修复方案
-- alternatives.generate: 生成替代方案
+**替代方案数据（与 smart_update / repair.apply 自动接线）**：
+- 任一步骤若返回 **顶层**或 **\`alternatives\` 子对象**中的 \`alternative_pois\` / \`alternative_routes\`（与 repair.apply 入参 \`alternatives\` 同构），编排器会在执行 **itinerary.smart_update** 或 **repair.apply** 时自动合并进 \`alternatives\`（按 \`poi_id\` / \`route_id\` 去重；步骤 input 中显式给出的项优先覆盖同 id）。文档/口语中的「alternatives.generate」即指此类输出，无需单独注册同名 Skill。
 
 **分析类 Skills**：
 - analysis.pestAnalysis: PEST 模型分析
@@ -205,7 +217,6 @@ export const SKILLS_SELECTION_PROMPT = `
 - analysis.regulatoryFramework: 监管框架研究
 
 **地理类 Skills**：
-- dem.getProfile: DEM 地形分析
 - geo.findNearbyPOI: 附近 POI 查找
 - geo.checkHazardZones: 危险区域检查
 
@@ -259,19 +270,27 @@ export const EXECUTION_PLANNING_PROMPT = `
 [强制顺序]
 
 1. **INTAKE**：解析请求 & 缺口识别（Planner Agent）
-2. **RESEARCH**：调用 skills 获取硬数据（transport.search, poi.search, opening_hours.get, dem.metrics, risk.check）
+2. **RESEARCH**：调用 skills 获取硬数据（transport.search, poi.search, opening_hours.get, dem.get_profile, risk.check）；**若行程或意图涉及冰岛、高地/F-road/冰岛自驾安全**，在此阶段纳入 **safetravel.get_advisories**（官方 RSS 旅行警报，与天气 API 互补）
 3. **GATE_EVAL**：执行 Should-Exist Gate 决策（Gatekeeper Agent，**必须在 PLAN_GEN 之前**）
 4. **PLAN_GEN**：生成结构化行程草案（Planner Agent，仅在 Gate 结果为 ALLOW 或 ADJUST_REQUIRED 时执行）
-5. **VERIFY**：验证开放时间冲突/换乘 buffer/可达性/疲劳阈值（itinerary.verify）
-6. **REPAIR**：替换POI/改路线/加buffer/换交通/降级（仅在需要时执行，LocalInsight Agent + repair.apply）
-7. **NARRATE**：产出用户可读解释（Narrator Agent，**不得改硬字段**）
+5. **VERIFY+REPAIR（默认合并）**：在 itinerary.generate 之后编排 **单一步骤 itinerary.smart_update**（覆盖原「先 itinerary.verify 再 repair.apply」的两步链路；同一 execute 内闭环、telemetry 一致）
+6. **NARRATE**：产出用户可读解释（Narrator Agent，**不得改硬字段**）
+
+（Legacy，非默认：仅当产品明确要求「只诊断不修复」时，才用单独 itinerary.verify；仅当上游已产出 adjustments、且跳过 verify 时，才单独 repair.apply。）
+
+若需替代 POI/路线数据：在 **itinerary.smart_update** 之前安排任一步骤输出同构 \`alternative_pois\` / \`alternative_routes\`（或包在 \`alternatives\` 下）；编排器会自动并入 smart_update。
 
 [核心原则]
 
 1. **Gate 在 Plan 之前**：plan.gate.runThreeGuardians 或 plan.gate.precheck 必须在 itinerary.generate 之前执行
 2. **证据收集优先**：RESEARCH 阶段的 Skills 应该并行执行（无依赖关系）
-3. **验证必须执行**：PLAN_GEN 之后必须执行 VERIFY
-4. **修复可选**：仅在 Gate 结果为 ADJUST_REQUIRED 或 VERIFY 发现问题时执行 REPAIR
+3. **PLAN_GEN 之后优先单步闭环**：编排 **itinerary.smart_update** 一步即可，**不要**再串联 itinerary.verify 与 repair.apply（编排器会归一化，但重复步骤浪费 token）
+4. **修复可选语义**：smart_update 内部已包含「有冲突才修复」；对外仍可将该步标为可选降级（onError: continue）
+
+**[行程校验/修复：紧急规约]（与 Skills 选择一致）**
+
+- 存在**用户变更意图**、或 Gate **ADJUST_REQUIRED**、或 PLAN_GEN 后需**校验并可能修复**时：执行计划里**只编排** **itinerary.smart_update** 一步承接原 VERIFY+REPAIR；**禁止**将 **itinerary.verify** 与 **repair.apply** 拆成两步串联（亦禁止与 smart_update 同列）。
+- 例外：仅「只诊断不修复」时可单独 **itinerary.verify**。
 
 [编排原则]
 

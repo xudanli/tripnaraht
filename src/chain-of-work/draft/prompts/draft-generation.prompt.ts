@@ -44,7 +44,7 @@ export function buildDraftGenerationPrompt(
    - 负责 Agent: 无（直接调用 Skills）
    - 输出: 交通数据、POI数据、开放时间、DEM数据、风险数据
    - 必须执行: 是
-   - 需要调用 Skills: transport.search, poi.search, opening_hours.get, dem.getProfile, risk.check 等
+   - 需要调用 Skills: transport.search, poi.search, opening_hours.get, dem.get_profile, risk.check 等
 
 3. **GATE_EVAL** - 执行 Should-Exist Gate 决策（**必须在 PLAN_GEN 之前**）
    - 负责 Agent: GatekeeperAgent (Abu)
@@ -124,7 +124,7 @@ ${JSON.stringify(request, null, 2)}
       "title": "收集硬数据",
       "description": "调用 Skills 获取冰岛交通数据、POI数据、开放时间、DEM地形数据",
       "priority": 9,
-      "skills": ["transport.search", "poi.search", "opening_hours.get", "dem.getProfile"]
+      "skills": ["transport.search", "poi.search", "opening_hours.get", "dem.get_profile"]
     },
     {
       "id": "step-gate-eval",
@@ -212,7 +212,7 @@ ${JSON.stringify(request, null, 2)}
       "title": "收集硬数据",
       "description": "调用 Skills 获取徒步路线数据、DEM地形数据、天气数据、风险数据",
       "priority": 9,
-      "skills": ["dem.getProfile", "poi.search", "risk.check"]
+      "skills": ["dem.get_profile", "poi.search", "risk.check"]
     },
     {
       "id": "step-gate-eval",
@@ -310,7 +310,7 @@ ${JSON.stringify(request, null, 2)}
 
 - 根据用户需求的具体情况，调整步骤描述和 Skills 选择
 - 对于复杂行程（如徒步、高风险地区），GATE_EVAL 步骤的描述应该更详细
-- RESEARCH 步骤的 Skills 选择应该基于用户需求（自驾需要 transport.search，徒步需要 dem.getProfile）
+- RESEARCH 步骤的 Skills 选择应该基于用户需求（自驾需要 transport.search，徒步需要 dem.get_profile）
 - 确保步骤描述符合 TripNARA 的决策优先、可执行优先原则
 - COMPLIANCE 负责风险分类、合规检查和免责留痕
 - FEEDBACK 收集用户反馈用于 RLHF 学习

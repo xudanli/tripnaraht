@@ -2,12 +2,14 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   UnauthorizedException,
   ForbiddenException,
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
 import { timingSafeEqual } from 'node:crypto';
 import { resolvePlatformRoles, hasAdminPlatformAccess } from '../../auth/platform-roles';
 import type { TripNaraAccessTokenPayload } from '../../auth/interfaces/google-token-payload.interface';
@@ -16,14 +18,58 @@ import { PrismaService } from '../../prisma/prisma.service';
 function extractBearer(req: { headers?: Record<string, string | string[] | undefined> }): string | undefined {
   const raw = req.headers?.authorization;
   const line = Array.isArray(raw) ? raw[0] : raw;
-  const [type, token] = (line ?? '').split(' ') ?? [];
-  return type === 'Bearer' && token ? token : undefined;
+  if (!line || typeof line !== 'string') {
+    return undefined;
+  }
+  const m = line.match(/^Bearer\s+(.+)$/i);
+  const token = m?.[1]?.trim();
+  return token || undefined;
 }
 
 function headerAdminGodKey(req: { headers?: Record<string, string | string[] | undefined> }): string | undefined {
   const raw = req.headers?.['x-admin-god-key'];
   const v = Array.isArray(raw) ? raw[0] : raw;
   return typeof v === 'string' && v.trim() ? v : undefined;
+}
+
+/** Bearer / X-Access-Token / 整段放在 Authorization 的裸 JWT（常见前端误配） */
+function extractAccessToken(req: {
+  headers?: Record<string, string | string[] | undefined>;
+}): string | undefined {
+  const bearer = extractBearer(req);
+  if (bearer) {
+    let t = bearer.trim();
+    if (
+      (t.startsWith('"') && t.endsWith('"')) ||
+      (t.startsWith("'") && t.endsWith("'"))
+    ) {
+      t = t.slice(1, -1);
+    }
+    return t;
+  }
+  const xa =
+    req.headers?.['x-access-token'] ??
+    req.headers?.['x-auth-access-token'];
+  const xv = Array.isArray(xa) ? xa[0] : xa;
+  if (typeof xv === 'string' && xv.trim()) {
+    const t = xv.trim();
+    if (
+      (t.startsWith('"') && t.endsWith('"')) ||
+      (t.startsWith("'") && t.endsWith("'"))
+    ) {
+      return t.slice(1, -1);
+    }
+    return t;
+  }
+  const raw = req.headers?.authorization;
+  const line = Array.isArray(raw) ? raw[0] : raw;
+  if (line && typeof line === 'string') {
+    const s = line.trim();
+    if (/^eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/.test(s)) {
+      return s;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -33,6 +79,8 @@ function headerAdminGodKey(req: { headers?: Record<string, string | string[] | u
  */
 @Injectable()
 export class AdminStrictAuthGuard implements CanActivate {
+  private readonly logger = new Logger(AdminStrictAuthGuard.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
@@ -58,9 +106,11 @@ export class AdminStrictAuthGuard implements CanActivate {
       }
     }
 
-    const token = extractBearer(req);
+    const token = extractAccessToken(req);
     if (!token) {
-      throw new UnauthorizedException('Missing Bearer token or x-admin-god-key');
+      throw new UnauthorizedException(
+        'Missing access token (Authorization: Bearer <jwt>, X-Access-Token, or raw JWT in Authorization)',
+      );
     }
 
     if (god) {
@@ -78,9 +128,20 @@ export class AdminStrictAuthGuard implements CanActivate {
 
     let payload: TripNaraAccessTokenPayload;
     try {
-      const secret = this.config?.get<string>('JWT_SECRET') || 'your-secret-key-change-in-production';
-      payload = this.jwtService.verify<TripNaraAccessTokenPayload>(token, { secret });
-    } catch {
+      // 必须使用 JwtModule 注册时的 secret（与 TokenService 签发一致）。
+      payload = this.jwtService.verify<TripNaraAccessTokenPayload>(token);
+    } catch (e: unknown) {
+      if (process.env.NODE_ENV !== 'production' && e instanceof Error) {
+        this.logger.warn(`JWT verify failed: ${e.name}: ${e.message}`);
+      }
+      if (e instanceof TokenExpiredError) {
+        throw new UnauthorizedException('Access token expired');
+      }
+      if (e instanceof JsonWebTokenError) {
+        throw new UnauthorizedException(
+          'Invalid access token (use TripNARA accessToken from login response, not Google id_token / refresh_token)',
+        );
+      }
       throw new UnauthorizedException('Invalid or expired token');
     }
     if (!payload?.sub) {

@@ -31,6 +31,8 @@ export interface E2ECaseInput {
   season: number; // 月份（1-12）
   countryCode: string;
   userQuery: string;
+  /** 可选：Prisma `Trip.id`，回放时写入 `TripWorldState` 以对齐 ECO 账本 / `ecoLedgerTripId`。 */
+  tripId?: string;
 }
 
 /**

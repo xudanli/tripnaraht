@@ -76,7 +76,11 @@ export class SkillInputValidatorService {
     }
 
     // 2. 降级到配置规则（向后兼容）
-    const configRule = SKILL_VALIDATION_RULES[skillName];
+    const demRuleFallback =
+      skillName === 'dem.get.profile' || skillName === 'dem.getProfile'
+        ? SKILL_VALIDATION_RULES['dem.get_profile']
+        : undefined;
+    const configRule = SKILL_VALIDATION_RULES[skillName] ?? demRuleFallback;
     if (configRule) {
       return this.validateWithRule(
         skillName,

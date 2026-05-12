@@ -1,0 +1,21 @@
+{
+  "countryCode": "IS",
+  "version": "2026.05.v0",
+  "segments": [
+    {
+      "roadId": "F208",
+      "connectsPOIs": ["poi:landmannalaugar"],
+      "dependentPOIs": ["poi:landmannalaugar", "poi:landmannalaugar-huts"]
+    },
+    {
+      "roadId": "F26",
+      "connectsPOIs": ["route:sprengisandur-highland"],
+      "dependentPOIs": ["poi:nyidalur", "poi:vediver"]
+    },
+    {
+      "roadId": "F35",
+      "connectsPOIs": ["route:kjolur-highland"],
+      "dependentPOIs": ["poi:kerlingarfjoll", "poi:hveravellir"]
+    }
+  ]
+}

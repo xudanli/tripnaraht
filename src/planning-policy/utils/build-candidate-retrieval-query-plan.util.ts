@@ -39,6 +39,22 @@ export function buildCandidateRetrievalQueryPlan(
     }
   }
 
+  const combinedLower = base.toLowerCase();
+  const westfjordsIntent =
+    /西峡湾|西部峡湾|韦斯特峡湾/i.test(userMessage) ||
+    /\bwestfjords\b|\bísafjörður\b|\bisafjordur\b|\bvestfirðir\b/i.test(combinedLower);
+  if (westfjordsIntent) {
+    regionTags.push('westfjords');
+    boostedTerms.push(
+      'Westfjords Iceland',
+      'Ísafjörður',
+      'Isafjordur',
+      'Dynjandi',
+      'Látrabjarg',
+      'domestic flight Iceland',
+    );
+  }
+
   const seen = new Set<string>();
   const unique = boostedTerms
     .map((t) => t.trim())

@@ -42,6 +42,72 @@ describe('AuditReportGenerator — Simulated_to_Real_Join', () => {
     },
   };
 
+  const simFatigueOverload: SimulatedRepairTrace = {
+    tacticId: 'IntakePredictiveSimulator',
+    targetEntity: { type: 'DAY', id: 'INTAKE' },
+    applied: false,
+    reason: 'FATIGUE_OVERLOAD' as any,
+    metrics: {
+      fatigue_score01: 0.9,
+      fatigue_weight: 0,
+      base_limit: 8,
+      effective_limit: 8,
+      actual_cost: 12,
+      unit: 'h',
+      utility_delta: -25,
+    },
+    estimated_utility_delta: -25,
+    simulation: { kind: 'HISTORICAL_BOUNDARY', boundary_id: 'fatigue_overload_intent' },
+  };
+
+  const realFatigueOverload = {
+    tacticId: 'FatigueOverloadProjection',
+    targetEntity: { type: 'DAY', id: 'INTAKE' },
+    applied: false,
+    reason: 'FATIGUE_OVERLOAD' as const,
+    metrics: {
+      fatigue_weight: 0,
+      base_limit: 8,
+      effective_limit: 8,
+      actual_cost: 12,
+      unit: 'h',
+      utility_delta: -25,
+    },
+  };
+
+  const simEtaInfeasible: SimulatedRepairTrace = {
+    tacticId: 'IntakePredictiveSimulator',
+    targetEntity: { type: 'DAY', id: 'INTAKE' },
+    applied: false,
+    reason: 'ETA_INFEASIBLE' as any,
+    metrics: {
+      fatigue_score01: 0,
+      fatigue_weight: 1,
+      base_limit: 0,
+      effective_limit: 0,
+      actual_cost: 1,
+      unit: 'bool',
+      utility_delta: -20,
+    } as any,
+    estimated_utility_delta: -20,
+    simulation: { kind: 'HISTORICAL_BOUNDARY', boundary_id: 'eta_infeasible_intent' },
+  };
+
+  const realEtaInfeasible = {
+    tacticId: 'EtaInfeasibleProjection',
+    targetEntity: { type: 'DAY', id: 'INTAKE' },
+    applied: false,
+    reason: 'ETA_INFEASIBLE' as const,
+    metrics: {
+      fatigue_weight: 1,
+      base_limit: 0,
+      effective_limit: 0,
+      actual_cost: 1,
+      unit: 'bool',
+      utility_delta: -20,
+    } as any,
+  };
+
   it('predictive_to_real_conflict_ratio=1 且 utility_prediction_error=0（reason 与 utility 对齐）', () => {
     const decisionState: Partial<DecisionState> = {
       requestId: rid,
@@ -195,5 +261,119 @@ describe('AuditReportGenerator — Simulated_to_Real_Join', () => {
     const report = AuditReportGenerator.generate(decisionState as DecisionState, state as OrchestratorState);
     expect(report.predictive_feedback_then_repair?.intent_revision_flag).toBe(true);
     expect(report.session_consistency_score).toBe(45);
+  });
+
+  it('无先知卡时仍输出核心审计字段（hard contract）', () => {
+    const decisionState: Partial<DecisionState> = {
+      requestId: rid,
+      verification: {
+        issues: [],
+      } as any,
+      systemState: {
+        requestId: rid,
+        repairTraces: [],
+        repairTraceHistory: [],
+      },
+    };
+    const state: Partial<OrchestratorState> = {
+      request_id: rid,
+      decision_log: [],
+      metadata: {
+        started_at: '2026-04-23T00:00:00.000Z',
+        last_updated_at: '2026-04-23T12:00:00.000Z',
+      } as any,
+    };
+
+    const report = AuditReportGenerator.generate(decisionState as DecisionState, state as OrchestratorState);
+    expect(report.predictive_feedback_then_repair).toBeDefined();
+    expect(report.predictive_feedback_then_repair.drift_vector.delta_reason).toBe('unknown');
+    expect(report.predictive_feedback_then_repair.drift_vector.delta_utility).toBe(0);
+    expect(typeof report.session_consistency_score).toBe('number');
+    expect(report.session_consistency_score).toBe(0);
+    expect(report.dominant_cid).toBe('unknown.unattributed');
+  });
+
+  it('axiom: FATIGUE_OVERLOAD — sim=real, dominant_cid=human.fatigue_capacity, score>=95', () => {
+    const decisionState: Partial<DecisionState> = {
+      requestId: rid,
+      verification: {
+        issues: [
+          {
+            class: 'CONFLICT',
+            message:
+              `[L3-PROOF|human.fatigue_capacity|DAY:INTAKE|cmp:LEQ|actual:12|limit:8|unit:h|slack:-4|evidence:MODEL:intent_fatigue] fatigue overload`,
+          } as any,
+        ],
+      } as any,
+      systemState: {
+        requestId: rid,
+        repairTraces: [realFatigueOverload as any],
+        repairTraceHistory: [],
+      },
+    };
+
+    const state: Partial<OrchestratorState> = {
+      request_id: rid,
+      decision_log: [],
+      metadata: {
+        started_at: '2026-04-23T00:00:00.000Z',
+        last_updated_at: '2026-04-23T12:00:00.000Z',
+        early_warning: {
+          predictive_failure_report: {
+            card_type: 'PREDICTIVE_FAILURE_REPORT',
+            correlationId: 'corr-intake-fatigue',
+            audit_text: 'test',
+            simulated_repair_traces: [simFatigueOverload],
+          },
+        },
+      },
+    };
+
+    const report = AuditReportGenerator.generate(decisionState as DecisionState, state as OrchestratorState);
+    expect(report.predictive_feedback_then_repair?.drift_vector?.delta_reason).toBe('aligned');
+    expect(report.session_consistency_score).toBeGreaterThanOrEqual(95);
+    expect((report as any).dominant_cid).toBe('human.fatigue_capacity');
+  });
+
+  it('axiom: ETA_INFEASIBLE — sim=real, dominant_cid=time.eta_feasibility, score>=95', () => {
+    const decisionState: Partial<DecisionState> = {
+      requestId: rid,
+      verification: {
+        issues: [
+          {
+            class: 'CONFLICT',
+            message:
+              `[L3-PROOF|time.eta_feasibility|DAY:INTAKE|cmp:LEQ|actual:1|limit:0|unit:bool|slack:-1|evidence:MODEL:intent_eta] eta infeasible`,
+          } as any,
+        ],
+      } as any,
+      systemState: {
+        requestId: rid,
+        repairTraces: [realEtaInfeasible as any],
+        repairTraceHistory: [],
+      },
+    };
+
+    const state: Partial<OrchestratorState> = {
+      request_id: rid,
+      decision_log: [],
+      metadata: {
+        started_at: '2026-04-23T00:00:00.000Z',
+        last_updated_at: '2026-04-23T12:00:00.000Z',
+        early_warning: {
+          predictive_failure_report: {
+            card_type: 'PREDICTIVE_FAILURE_REPORT',
+            correlationId: 'corr-intake-eta',
+            audit_text: 'test',
+            simulated_repair_traces: [simEtaInfeasible],
+          },
+        },
+      },
+    };
+
+    const report = AuditReportGenerator.generate(decisionState as DecisionState, state as OrchestratorState);
+    expect(report.predictive_feedback_then_repair?.drift_vector?.delta_reason).toBe('aligned');
+    expect(report.session_consistency_score).toBeGreaterThanOrEqual(95);
+    expect((report as any).dominant_cid).toBe('time.eta_feasibility');
   });
 });

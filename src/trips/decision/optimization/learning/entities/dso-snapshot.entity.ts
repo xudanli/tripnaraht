@@ -19,26 +19,26 @@ import {
 @Index(['createdAt'])
 export class DSOSnapshotEntity {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ name: 'request_id', type: 'varchar', length: 255 })
-  requestId: string;
+  requestId!: string;
 
   @Column({ type: 'int' })
-  version: number;
+  version!: number;
 
   @Column({ type: 'varchar', length: 50 })
-  phase: string;
+  phase!: string;
 
   @Column({ name: 'dso_data', type: 'jsonb' })
-  dsoData: Record<string, unknown>;
+  dsoData!: Record<string, unknown>;
 
   @Column({ name: 'confidence', type: 'float', nullable: true })
-  confidence: number | null;
+  confidence!: number | null;
 
   @Column({ name: 'lyapunov_value', type: 'float', nullable: true })
-  lyapunovValue: number | null;
+  lyapunovValue!: number | null;
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  createdAt!: Date;
 }

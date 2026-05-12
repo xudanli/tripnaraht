@@ -72,7 +72,7 @@ export const TRIPNARA_ASSISTANT_PROMPT: McpPrompt = {
 - **validate**: 验证 Pack 的完整性和正确性
 - **suggestImprovements**: 提供 Pack 改进建议
 
-### 7. DEM 分析 (dem.getProfile)
+### 7. DEM 分析 (dem.get_profile，对外 MCP 工具名可能仍为 tripnara.dem.getProfile)
 - 基于数字高程模型生成路线海拔剖面
 - 计算累计爬升、最大坡度和疲劳指数
 

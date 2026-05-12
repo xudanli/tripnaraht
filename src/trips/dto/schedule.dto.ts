@@ -7,13 +7,13 @@ import { DayScheduleResult } from '../../planning-policy/interfaces/scheduler.in
  */
 export class ScheduleResponseDto {
   @ApiProperty({ description: '日期（YYYY-MM-DD）', example: '2024-05-01' })
-  date: string;
+  date!: string;
 
   @ApiProperty({ description: '行程计划（DayScheduleResult）' })
-  schedule: DayScheduleResult | null;
+  schedule!: DayScheduleResult | null;
 
   @ApiProperty({ description: '是否已保存到数据库', example: true })
-  persisted: boolean;
+  persisted!: boolean;
 }
 
 /**
@@ -21,5 +21,5 @@ export class ScheduleResponseDto {
  */
 export class SaveScheduleDto {
   @ApiProperty({ description: '行程计划（DayScheduleResult）' })
-  schedule: DayScheduleResult;
+  schedule!: DayScheduleResult;
 }

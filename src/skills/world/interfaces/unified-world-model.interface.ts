@@ -217,6 +217,53 @@ export interface MultimodalPerceptionData {
 }
 
 /**
+ * Layer 1（事实锚点）：Geo / Weather 等硬约束在策略合并时优先于体验/预算提案
+ */
+export interface WorldModelFactLayerAnchor {
+  geoPinned?: boolean;
+  weatherPinned?: boolean;
+  /** ISO 时间：锚定时刻（便于审计） */
+  pinnedAt?: string;
+}
+
+/**
+ * 体验侧策略提案（多智能体策略层，可与预算侧冲突）
+ */
+export interface ExperienceStrategyProposal {
+  agentId: string;
+  tier: 'STANDARD' | 'PREMIUM' | 'ULTRA';
+  /** 0–1，与 Decision DNA / 慢思考权重联动时可覆盖 */
+  reasoningWeight: number;
+  confidence: number;
+  narrative?: string;
+  /** 如：极光玻璃屋、高端野奢等 */
+  anchorLabels?: string[];
+}
+
+/**
+ * 预算侧策略提案
+ */
+export interface BudgetStrategyProposal {
+  agentId: string;
+  expectedSpend: number;
+  softCeiling?: number;
+  currency: string;
+  overrunVsCeiling: boolean;
+  reasoningWeight: number;
+  confidence: number;
+}
+
+/**
+ * Layer 2（策略层）：体验 vs 预算等可仲裁提案 + 协作摘要
+ */
+export interface WorldModelStrategyLayer {
+  experienceProposal?: ExperienceStrategyProposal;
+  budgetProposal?: BudgetStrategyProposal;
+  /** 由 MultiAgentCollaborationService 聚合冲突后写入，供 UI / Narrator */
+  consensusSummary?: string;
+}
+
+/**
  * 统一的世界模型（整合所有护城河扩展）
  */
 export interface UnifiedWorldModel extends WorldModelContext {
@@ -234,6 +281,12 @@ export interface UnifiedWorldModel extends WorldModelContext {
 
   /** 多模态感知数据（护城河扩展） */
   multimodalPerception?: MultimodalPerceptionData;
+
+  /** Layer 1：事实锚（地理/气象硬约束底座） */
+  factLayerAnchor?: WorldModelFactLayerAnchor;
+
+  /** Layer 2：策略层（体验/预算提案与共识摘要） */
+  strategyLayer?: WorldModelStrategyLayer;
 
   /** 协作数据（护城河扩展） */
   collaborativeData?: {
@@ -296,6 +349,10 @@ export interface UnifiedWorldModel extends WorldModelContext {
       };
     }>;
     consensusConfidence: number;
+    /** 面向 UI 的一句话共识 / 待仲裁摘要 */
+    consensusSummary?: string;
+    /** 未解决冲突数量（含 STRATEGY_CONFLICT） */
+    openConflictCount?: number;
   };
 
   /** 版本管理数据（护城河扩展） */

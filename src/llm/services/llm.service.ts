@@ -15,12 +15,28 @@ import { CircuitBreaker } from '../utils/circuit-breaker';
 import { extractTokenUsage } from '../utils/token-extractor.util';
 import type { OrchestrationStep, SubAgentType } from '../../agent/interfaces/trip-plan.interface';
 import { TokenStatsService } from '../../agent/services/token-stats.service';
+import type {
+  ChatCompletionMessage,
+  ChatCompletionsWithToolsResult,
+  ChatCompletionsToolCallParsed,
+  OpenAiFunctionToolDefinition,
+  ToolChoice,
+} from '../interfaces/chat-completion-tools.interface';
 
 /** P0: Skills 内 LLM 打点上下文 */
 export interface LlmTokenContext {
   request_id: string;
   state_machine_step: OrchestrationStep;
   sub_agent: SubAgentType;
+  /**
+   * 覆盖 DeepSeek 单次 chat HTTP 超时（毫秒），用于轻量咨询等长流式回答。
+   * 见 `LIGHTWEIGHT_LLM_HTTP_TIMEOUT_MS` / `DEEPSEEK_CHAT_TIMEOUT_MS`。
+   */
+  http_timeout_ms?: number;
+  /**
+   * 当上游因网络类错误降级为占位正文前调用（仅 `callLlm` 内网络回退路径）。
+   */
+  on_llm_network_fallback?: (info: { provider: LlmProvider; error_message: string }) => void;
 }
 
 /**
@@ -203,7 +219,8 @@ export class LlmService {
       dto.text,
       dto.contextBlocks,
       dto.destinationCode,
-      dto.destinationConfig
+      dto.destinationConfig,
+      dto.dslClarificationContext
     );
 
     try {
@@ -253,7 +270,8 @@ export class LlmService {
           clarification = await this.generatePlannerStyleClarification(
             dto.text,
             parsed,
-            parsed.inferredFields
+            parsed.inferredFields,
+            dto.dslClarificationContext
           );
         }
 
@@ -385,6 +403,94 @@ export class LlmService {
   }
 
   /**
+   * OpenAI 兼容 chat/completions，支持原生 tools + tool_calls（Agent Loop）。
+   * 支持：OPENAI、DEEPSEEK、VLLM。其余 provider 暂不支持 function calling。
+   */
+  async callChatWithTools(
+    provider: LlmProvider,
+    messages: ChatCompletionMessage[],
+    tools: OpenAiFunctionToolDefinition[],
+    options?: {
+      tool_choice?: ToolChoice;
+      temperature?: number;
+      max_tokens?: number;
+      tokenContext?: LlmTokenContext;
+    },
+  ): Promise<ChatCompletionsWithToolsResult> {
+    if (this.useMock) {
+      throw new Error('callChatWithTools: mock LLM mode does not support tool calling');
+    }
+    if (this.circuitBreaker.isOpen()) {
+      throw new Error('callChatWithTools: circuit breaker open');
+    }
+
+    const startTime = Date.now();
+    let rawResponse: unknown;
+
+    try {
+      switch (provider) {
+        case LlmProvider.OPENAI:
+          rawResponse = await this.postOpenAICompatibleChatCompletions('openai', messages, tools, options);
+          break;
+        case LlmProvider.DEEPSEEK:
+          rawResponse = await this.postOpenAICompatibleChatCompletions('deepseek', messages, tools, options);
+          break;
+        case LlmProvider.VLLM:
+          rawResponse = await this.postOpenAICompatibleChatCompletions('vllm', messages, tools, options);
+          break;
+        default:
+          throw new Error(
+            `callChatWithTools: provider ${provider} is not supported for tool calling; use openai, deepseek, or vllm`,
+          );
+      }
+
+      const parsed = this.parseChatCompletionsToolResponse(rawResponse);
+      const durationMs = Date.now() - startTime;
+
+      if (options?.tokenContext && this.tokenStatsService) {
+        const promptStr = JSON.stringify(messages);
+        let usage = extractTokenUsage(provider, (rawResponse as any) || {}, promptStr);
+        if (!(rawResponse as any)?.usage) {
+          usage = {
+            prompt_tokens: Math.ceil(promptStr.length / 4),
+            completion_tokens: Math.ceil((parsed.message.content || '').length / 4),
+            total_tokens: 0,
+          };
+          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+        }
+        this.recordTokenUsage({
+          ...options.tokenContext,
+          provider,
+          prompt: promptStr,
+          response: JSON.stringify(parsed.message),
+          usage,
+          durationMs,
+          success: true,
+        });
+      }
+
+      this.circuitBreaker.recordSuccess();
+      return parsed;
+    } catch (error: any) {
+      const durationMs = Date.now() - startTime;
+      if (options?.tokenContext && this.tokenStatsService) {
+        this.recordTokenUsage({
+          ...options.tokenContext,
+          provider,
+          prompt: JSON.stringify(messages),
+          response: '',
+          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          durationMs,
+          success: false,
+          error: error?.message,
+        });
+      }
+      this.circuitBreaker.recordFailure();
+      throw error;
+    }
+  }
+
+  /**
    * 调用 LLM API（内部方法）
    * P0: 支持 tokenContext 时记录 Token 到 TokenStatsService
    */
@@ -398,14 +504,14 @@ export class LlmService {
     // 如果启用 Mock 模式，返回模拟响应
     if (this.useMock) {
       this.logger.warn('Using mock LLM response');
-      return this.getMockResponse(prompt, schema);
+      return this.getMockResponse(prompt, schema, 'env_mock');
     }
 
     // 检查熔断器状态
     if (this.circuitBreaker.isOpen()) {
       const state = this.circuitBreaker.getState();
       this.logger.warn(`Circuit breaker is ${state}, falling back to mock mode`);
-      return this.getMockResponse(prompt, schema);
+      return this.getMockResponse(prompt, schema, 'circuit_breaker');
     }
 
     try {
@@ -418,7 +524,7 @@ export class LlmService {
           result = await this.callGeminiWithUsage(prompt, schema);
           break;
         case LlmProvider.DEEPSEEK:
-          result = await this.callDeepSeekWithUsage(prompt, schema);
+          result = await this.callDeepSeekWithUsage(prompt, schema, tokenContext);
           break;
         case LlmProvider.ANTHROPIC:
           result = await this.callAnthropicWithUsage(prompt, schema);
@@ -466,24 +572,40 @@ export class LlmService {
         });
       }
       // 如果网络请求失败，自动回退到 Mock 模式
-      const isNetworkError = 
-        error.message?.includes('no response received') || 
-        error.message?.includes('network') || 
+      const status = error.response?.status;
+      const isNetworkError =
+        error.message?.includes('no response received') ||
+        error.message?.includes('network') ||
         error.message?.includes('aborted') ||
         error.message?.includes('timeout') ||
-        error.message?.includes('503') || // 503 错误也应该触发降级
-        error.response?.status === 503 || // 检查 HTTP 状态码
+        error.message?.includes('503') ||
+        error.message?.includes('502') ||
+        error.message?.includes('504') ||
+        error.message?.includes('socket hang up') ||
+        status === 429 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504 ||
         error.code === 'ECONNREFUSED' ||
         error.code === 'ECONNRESET' ||
         error.code === 'ETIMEDOUT' ||
+        error.code === 'ESOCKETTIMEDOUT' ||
         error.code === 'ECONNABORTED';
-      
+
       if (isNetworkError) {
-        const errorDetails = error.response?.status 
+        const errorDetails = error.response?.status
           ? `HTTP ${error.response.status}: ${error.response?.data?.error?.message || error.message}`
           : error.message;
         this.logger.warn(`LLM API call failed (${errorDetails}), falling back to mock mode`);
-        return this.getMockResponse(prompt, schema);
+        try {
+          tokenContext?.on_llm_network_fallback?.({
+            provider,
+            error_message: String(errorDetails),
+          });
+        } catch {
+          // 回调内勿影响降级主路径
+        }
+        return this.getMockResponse(prompt, schema, 'network_fallback');
       }
       throw error;
     }
@@ -497,7 +619,12 @@ export class LlmService {
    * - naturalLanguageToTripParams: 返回 trip 参数（destination, startDate 等）
    * - 其他: 返回符合 schema 的默认结构
    */
-  private getMockResponse(prompt: string, schema?: any): string {
+  /** 无上游模型时的占位原因（与「从未配置模型」区分，避免误导用户） */
+  private getMockResponse(
+    prompt: string,
+    schema?: any,
+    mockCause: 'env_mock' | 'circuit_breaker' | 'network_fallback' = 'env_mock',
+  ): string {
     this.logger.debug(`Mock LLM response for prompt: ${prompt.substring(0, 100)}...`);
     
     // 判断调用场景：检查 schema 结构
@@ -618,7 +745,86 @@ export class LlmService {
       this.logger.debug(`Mock response: ${JSON.stringify(result)}`);
       return JSON.stringify(result);
     }
-    
+
+    // SafeTravel RSS refined v2（与 `SAFETRAVEL_RSS_LLM_JSON_SCHEMA.description` 同步）
+    if ((schema as { description?: string } | undefined)?.description === 'safetravel_rss_refined_v2') {
+      const m = prompt.match(/Rule-JSON:\s*(\{[\s\S]*?\})\s*(?:\n\r?|\r?\n|$)/);
+      if (m) {
+        try {
+          const echo = JSON.parse(m[1]) as Record<string, unknown>;
+          const pack = {
+            severity: typeof echo.severity === 'string' ? echo.severity : 'low',
+            title: String(echo.title ?? ''),
+            body: String(echo.body ?? ''),
+            published_at: echo.published_at ?? null,
+            valid_until: echo.valid_until ?? null,
+            coordinates: echo.coordinates ?? null,
+            affected_regions: Array.isArray(echo.affected_regions) ? echo.affected_regions : [],
+          };
+          this.logger.debug('Mock mode: echoing SafeTravel RSS Rule-JSON for LLM refine');
+          return JSON.stringify(pack);
+        } catch {
+          /* fall through */
+        }
+      }
+      return JSON.stringify({
+        severity: 'low',
+        title: '',
+        body: '',
+        published_at: null,
+        valid_until: null,
+        coordinates: null,
+        affected_regions: [],
+      });
+    }
+
+    // 无结构化 schema（常见于轻量咨询等「纯文本 + 可选系统块」调用）：不得返回 "{}" 字符串，否则前端会原样展示。
+    const noStructuredSchema =
+      schema === undefined ||
+      schema === null ||
+      (typeof schema === 'object' &&
+        !Array.isArray(schema) &&
+        schema !== null &&
+        Object.keys(schema as object).length === 0);
+
+    if (noStructuredSchema) {
+      const userQuestion =
+        (prompt.match(/用户问题[:：]\s*([\s\S]+)$/)?.[1] ?? '').trim() || '（未解析到用户问题）';
+      const q = userQuestion.slice(0, 240);
+      const isLightweightConsult =
+        prompt.includes('CONSULTATION_UI_JSON') ||
+        prompt.includes('<<<CONSULTATION_UI_JSON>>>') ||
+        prompt.includes('咨询/检索') ||
+        prompt.includes('轻量知识');
+
+      const tag =
+        mockCause === 'network_fallback'
+          ? '【模型请求失败】'
+          : mockCause === 'circuit_breaker'
+            ? '【服务降级】'
+            : '【Mock 模式】';
+
+      let body: string;
+      if (mockCause === 'network_fallback') {
+        body = isLightweightConsult
+          ? `${tag}访问大模型时出现超时、网络中断或上游服务暂时不可用（本轮已尝试真实请求）。以下为临时占位说明，**不是**基于模型的行程建议。\n\n关于「${q}」：请稍后重试；若多次失败，请检查到模型服务商的网络、代理、防火墙与 API 配额/账单。`
+          : `${tag}大模型请求失败，以下为临时占位说明。\n\n问题摘要：${q}\n\n请稍后重试或检查网络与上游服务状态。`;
+      } else if (mockCause === 'circuit_breaker') {
+        body = isLightweightConsult
+          ? `${tag}LLM 熔断器已打开，暂以占位说明代替真实模型输出。\n\n关于「${q}」：请稍后重试；若持续出现请联系运维检查上游模型可用性。`
+          : `${tag}LLM 熔断已触发，占位说明如下。\n\n问题摘要：${q}`;
+      } else {
+        body = isLightweightConsult
+          ? `${tag}当前启用了模拟模式（如环境变量 LLM_USE_MOCK=true）或未配置可用的模型密钥，以下为占位说明。\n\n关于「${q}」：关闭模拟并配置 ANTHROPIC_API_KEY / OPENAI_API_KEY 等后将生成正式建议。`
+          : `${tag}以下为占位说明。\n\n用户侧摘要问题：${q}\n\n配置真实模型后将返回完整结果。`;
+      }
+
+      this.logger.warn(
+        `Mock mode: no structured schema; cause=${mockCause}; returning narrative placeholder instead of "{}"`,
+      );
+      return body;
+    }
+
     // 其他场景：返回符合 schema 的默认结构
     this.logger.warn(`Mock mode: unknown schema, returning empty object`);
     return JSON.stringify({});
@@ -741,10 +947,10 @@ export class LlmService {
       const data = response.data as {
         choices?: Array<{ message?: { content?: string } }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-      };
-      const content = data.choices?.[0]?.message?.content || '';
+      } | null;
+      const content = data?.choices?.[0]?.message?.content || '';
       this.circuitBreaker.recordSuccess();
-      return { content, rawResponse: data };
+      return { content, rawResponse: data ?? undefined };
     } catch (error: any) {
       // 记录失败
       this.circuitBreaker.recordFailure();
@@ -783,6 +989,163 @@ export class LlmService {
       }
       throw new Error(`OpenAI API request failed: ${error.message}`);
     }
+  }
+
+  /**
+   * OpenAI / DeepSeek / vLLM 共用：chat/completions + tools
+   */
+  private async postOpenAICompatibleChatCompletions(
+    kind: 'openai' | 'deepseek' | 'vllm',
+    messages: ChatCompletionMessage[],
+    tools: OpenAiFunctionToolDefinition[],
+    options?: {
+      tool_choice?: ToolChoice;
+      temperature?: number;
+      max_tokens?: number;
+    },
+  ): Promise<unknown> {
+    const temperature = options?.temperature ?? 0.2;
+    const max_tokens = options?.max_tokens ?? 2048;
+    const tool_choice = options?.tool_choice ?? 'auto';
+
+    const body: Record<string, unknown> = {
+      messages,
+      tools,
+      tool_choice,
+      temperature,
+      max_tokens,
+    };
+
+    if (kind === 'openai') {
+      const apiKey = this.configService?.get<string>('OPENAI_API_KEY') || process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error('OPENAI_API_KEY not configured (checked ConfigService and process.env)');
+      }
+      const model =
+        this.configService?.get<string>('OPENAI_MODEL') || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      const response = await retryWithBackoff(
+        () =>
+          this.openaiHttp.post('/chat/completions', { ...body, model }, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          }),
+        {
+          maxRetries: 3,
+          initialDelayMs: 200,
+          maxDelayMs: 2000,
+          factor: 2,
+          jitter: true,
+        },
+      );
+      return response.data;
+    }
+
+    if (kind === 'deepseek') {
+      const apiKey = this.configService?.get<string>('DEEPSEEK_API_KEY') || process.env.DEEPSEEK_API_KEY;
+      if (!apiKey) {
+        throw new Error('DEEPSEEK_API_KEY not configured (checked ConfigService and process.env)');
+      }
+      const model =
+        this.configService?.get<string>('DEEPSEEK_MODEL') || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+      const promptLength = JSON.stringify(messages).length;
+      const timeout = promptLength > 50000 ? 180000 : promptLength > 20000 ? 120000 : 60000;
+      const response = await axios.post(
+        'https://api.deepseek.com/v1/chat/completions',
+        { ...body, model },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          timeout,
+          proxy: false,
+          httpsAgent: this.httpsAgent,
+        },
+      );
+      return response.data;
+    }
+
+    const vllmUrl = this.configService?.get<string>('VLLM_URL') || process.env.VLLM_URL || 'http://localhost:8080';
+    let model = this.configService?.get<string>('VLLM_MODEL') || process.env.VLLM_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
+    const loraAdapter = this.configService?.get<string>('VLLM_LORA_ADAPTER') || process.env.VLLM_LORA_ADAPTER;
+    if (loraAdapter) {
+      model = `${model}:${loraAdapter}`;
+    }
+    const apiUrl = `${vllmUrl.replace(/\/$/, '')}/v1/chat/completions`;
+    const promptLength = JSON.stringify(messages).length;
+    const timeout = promptLength > 50000 ? 180000 : promptLength > 20000 ? 120000 : 60000;
+    const response = await retryWithBackoff(
+      () =>
+        axios.post(apiUrl, { ...body, model }, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout,
+          proxy: false,
+          ...(vllmUrl.startsWith('https') && { httpsAgent: this.httpsAgent }),
+        }),
+      {
+        maxRetries: 2,
+        initialDelayMs: 500,
+        maxDelayMs: 3000,
+        retryCondition: (error: any) =>
+          ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(error?.code) ||
+          error?.response?.status === 503,
+      },
+    );
+    return response.data;
+  }
+
+  private parseChatCompletionsToolResponse(raw: unknown): ChatCompletionsWithToolsResult {
+    const data = raw as {
+      choices?: Array<{
+        finish_reason?: string;
+        message?: {
+          role?: string;
+          content?: string | null;
+          tool_calls?: Array<{
+            id?: string;
+            type?: string;
+            function?: { name?: string; arguments?: string };
+          }>;
+        };
+      }>;
+    };
+    const choice = data?.choices?.[0];
+    const msg = choice?.message;
+    if (!msg) {
+      throw new Error('Invalid chat completions response: missing choices[0].message');
+    }
+
+    let tool_calls: ChatCompletionsToolCallParsed[] | undefined;
+    if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      tool_calls = msg.tool_calls.map((tc) => {
+        const name = tc.function?.name || '';
+        let args: Record<string, unknown> = {};
+        try {
+          const rawArgs = tc.function?.arguments;
+          if (rawArgs && typeof rawArgs === 'string') {
+            args = JSON.parse(rawArgs) as Record<string, unknown>;
+          } else if (rawArgs && typeof rawArgs === 'object') {
+            args = rawArgs as Record<string, unknown>;
+          }
+        } catch {
+          args = { _parse_error: true, raw: tc.function?.arguments };
+        }
+        return {
+          id: tc.id || `call_${name}_${Math.random().toString(36).slice(2, 9)}`,
+          name,
+          args,
+        };
+      });
+    }
+
+    return {
+      message: {
+        role: 'assistant',
+        content: msg.content ?? null,
+        tool_calls,
+      },
+      finishReason: choice.finish_reason ?? null,
+      rawResponse: raw,
+    };
   }
 
   /**
@@ -836,10 +1199,26 @@ export class LlmService {
     }
   }
 
+  private resolveDeepSeekChatTimeoutMs(promptLength: number, tokenContext?: LlmTokenContext): number {
+    if (typeof tokenContext?.http_timeout_ms === 'number' && tokenContext.http_timeout_ms >= 5000) {
+      return Math.min(600_000, tokenContext.http_timeout_ms);
+    }
+    const envRaw = this.configService?.get<string>('DEEPSEEK_CHAT_TIMEOUT_MS') ?? process.env.DEEPSEEK_CHAT_TIMEOUT_MS;
+    const envMs = envRaw != null && String(envRaw).trim() !== '' ? parseInt(String(envRaw).trim(), 10) : NaN;
+    const smallTier = Number.isFinite(envMs) && envMs >= 30_000 ? envMs : 120_000;
+    if (promptLength > 50000) return 180_000;
+    if (promptLength > 20000) return 120_000;
+    return smallTier;
+  }
+
   /**
    * 调用 DeepSeek API（返回 content + rawResponse 用于 Token 打点）
    */
-  private async callDeepSeekWithUsage(prompt: string, schema?: any): Promise<{ content: string; rawResponse?: any }> {
+  private async callDeepSeekWithUsage(
+    prompt: string,
+    schema?: any,
+    tokenContext?: LlmTokenContext,
+  ): Promise<{ content: string; rawResponse?: any }> {
     const apiKey = this.configService?.get<string>('DEEPSEEK_API_KEY') || process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       throw new Error('DEEPSEEK_API_KEY not configured (checked ConfigService and process.env)');
@@ -857,10 +1236,8 @@ export class LlmService {
       body.messages[0].content += '\n\n请以 JSON 格式返回结果，符合以下 schema：\n' + JSON.stringify(schema, null, 2);
     }
 
-    // 根据请求大小动态调整超时时间
-    // 对于大型请求（如行程编排），使用更长的超时时间
     const promptLength = prompt.length;
-    const timeout = promptLength > 50000 ? 180000 : promptLength > 20000 ? 120000 : 60000; // 3分钟/2分钟/1分钟
+    const timeout = this.resolveDeepSeekChatTimeoutMs(promptLength, tokenContext);
 
     try {
       this.logger.debug(`调用 DeepSeek API (prompt长度: ${promptLength}, 超时: ${timeout}ms)`);
@@ -876,9 +1253,19 @@ export class LlmService {
 
       const data = response.data as {
         choices?: Array<{ message?: { content?: string } }>;
-      };
-      const content = data.choices?.[0]?.message?.content || '';
-      return { content, rawResponse: data };
+      } | null;
+      if (data == null) {
+        this.logger.warn(
+          `DeepSeek 响应 body 为空 (HTTP ${response.status})，请检查代理/网络或 API 状态`,
+        );
+      }
+      const content = data?.choices?.[0]?.message?.content || '';
+      if (!content.trim() && response.status >= 200 && response.status < 300) {
+        throw new Error(
+          `DeepSeek returned empty completion (HTTP ${response.status}). Body: ${JSON.stringify(data)?.slice(0, 800)}`,
+        );
+      }
+      return { content, rawResponse: data ?? undefined };
     } catch (error: any) {
       // 检查是否是超时或中止错误
       const isTimeoutOrAbort = 
@@ -1078,10 +1465,10 @@ ${JSON.stringify(schema, null, 2)}
       const data = response.data as {
         choices?: Array<{ message?: { content?: string } }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-      };
-      const content = data.choices?.[0]?.message?.content || '';
+      } | null;
+      const content = data?.choices?.[0]?.message?.content || '';
       this.circuitBreaker.recordSuccess();
-      return { content, rawResponse: data };
+      return { content, rawResponse: data ?? undefined };
     } catch (error: any) {
       this.circuitBreaker.recordFailure();
       if (error.response) {
@@ -1097,7 +1484,8 @@ ${JSON.stringify(schema, null, 2)}
     text: string,
     contextBlocks?: any[],
     destinationCode?: string,
-    destinationConfig?: any
+    destinationConfig?: any,
+    dslClarificationContext?: string
   ): string {
     // 获取当前日期用于日期推算
     const now = new Date();
@@ -1132,9 +1520,14 @@ ${contextInfo}
       specializedSection = this.buildDestinationSpecificPromptSection(destinationConfig, destinationCode);
     }
 
+    const dslSection =
+      dslClarificationContext && dslClarificationContext.trim().length > 0
+        ? `\n## 澄清 DSL 约束（系统权威，优先遵守）\n${dslClarificationContext.trim()}\n`
+        : '';
+
     return `你是一位经验丰富的旅行规划师，正在帮助用户规划旅行。用户说："${text}"
 
-当前日期：${currentDate}${contextSection}
+当前日期：${currentDate}${dslSection}${contextSection}
 
 ## 你的任务
 从用户的自然语言中理解他们的旅行需求，并提取关键信息。
@@ -1258,6 +1651,10 @@ ${contextInfo}
 **当 needsClarification 为 true 时，必须同时输出**：
 - reply: 规划师风格的自然语言回复（热情、专业，帮助用户完善计划）
 - suggestedQuestions: 1-5 个追问问题（字符串数组），按优先级排列，缺什么问什么
+
+**澄清文案约束（与目的地卡片澄清并发时尤其重要）**：
+- reply **禁止**使用「1. 2. 3.」等编号列表逐条追问；具体问题由系统澄清卡片/表单展示，你只需 1–4 句短过渡与鼓励即可。
+- suggestedQuestions 若无法与后续系统卡片对齐，可输出 **空数组 []**；**禁止**在 suggestedQuestions 里发明与系统阶段无关的新问题（如系统即将用卡片问季节/活动时，不要再列「出发城市/预算」若该轮并非收集这些字段）。
 ${specializedSection ? `\n\n## 目的地特化提取规则（${destinationConfig.destinationName}）\n\n${specializedSection}` : ''}`;
   }
 
@@ -1502,7 +1899,8 @@ ${JSON.stringify(error, null, 2)}
   private async generatePlannerStyleClarification(
     userInput: string,
     parsed: any,
-    inferredFields?: string[]
+    inferredFields?: string[],
+    dslClarificationContext?: string
   ): Promise<{
     reply: string;
     suggestedQuestions?: string[];
@@ -1510,7 +1908,11 @@ ${JSON.stringify(error, null, 2)}
     // 🆕 原始LLM输出（用于响应转换）
     llmRawOutput?: any;
   }> {
-    const prompt = this.buildPlannerClarificationPrompt(userInput, parsed, inferredFields);
+    const dslPrefix =
+      dslClarificationContext && dslClarificationContext.trim().length > 0
+        ? `## 澄清 DSL 约束（系统权威）\n${dslClarificationContext.trim()}\n\n`
+        : '';
+    const prompt = dslPrefix + this.buildPlannerClarificationPrompt(userInput, parsed, inferredFields);
     
     try {
       const response = await this.callLlm(this.defaultProvider, prompt, this.getPlannerClarificationSchema());

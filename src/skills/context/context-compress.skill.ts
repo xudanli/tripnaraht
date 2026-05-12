@@ -327,7 +327,7 @@ export class ContextCompressSkill implements Skill<ContextCompressInput, Context
     // 提取关键信息（简化实现）
     if (block.data) {
       const keys = Object.keys(block.data).slice(0, 3);
-      return keys.map((key) => `${key}: ${JSON.stringify(block.data[key]).substring(0, 30)}`).join(', ');
+      return keys.map((key) => `${key}: ${JSON.stringify(block.data?.[key]).substring(0, 30)}`).join(', ');
     }
     return block.text.split('\n').slice(0, 2).join('; ');
   }

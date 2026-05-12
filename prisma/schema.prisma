@@ -224,7 +224,7 @@ model Place {
   lastVerifiedAt                  DateTime?                 @map("last_verified_at") @db.Timestamptz(6)
   dataSource                      String?                   @map("data_source") @db.VarChar(50)
   dataFreshness                   String?                   @map("data_freshness") @db.VarChar(20)
-  districtId                     Int?
+  districtId                      Int?
   ItineraryItem                   ItineraryItem[]
   City                            City?                     @relation(fields: [cityId], references: [id])
   District                        District?                 @relation(fields: [districtId], references: [id], onDelete: SetNull)
@@ -243,19 +243,19 @@ model Place {
 
 /// Travel World Model Phase 2: Place 间显式边，支持 Micro Route 与路径优化
 model PlaceEdge {
-  id                 Int       @id @default(autoincrement())
-  fromPlaceId        Int
-  toPlaceId          Int
-  distanceM          Int?
-  walkTimeMin        Int?
-  transitTimeMin     Int?
-  experienceTransition String? @db.VarChar(64)
-  source             String?   @default("computed") @db.VarChar(32)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                   Int      @id @default(autoincrement())
+  fromPlaceId          Int
+  toPlaceId            Int
+  distanceM            Int?
+  walkTimeMin          Int?
+  transitTimeMin       Int?
+  experienceTransition String?  @db.VarChar(64)
+  source               String?  @default("computed") @db.VarChar(32)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  fromPlace          Place     @relation("PlaceEdgeFrom", fields: [fromPlaceId], references: [id], onDelete: Cascade)
-  toPlace            Place     @relation("PlaceEdgeTo", fields: [toPlaceId], references: [id], onDelete: Cascade)
+  fromPlace Place @relation("PlaceEdgeFrom", fields: [fromPlaceId], references: [id], onDelete: Cascade)
+  toPlace   Place @relation("PlaceEdgeTo", fields: [toPlaceId], references: [id], onDelete: Cascade)
 
   @@unique([fromPlaceId, toPlaceId])
   @@index([fromPlaceId])
@@ -264,21 +264,21 @@ model PlaceEdge {
 
 /// Travel World Model Phase 3: 城市区域模型，支持区域游览约束与 District 级体验描述
 model District {
-  id                  Int       @id @default(autoincrement())
-  cityId              Int
-  name                String
-  nameCN              String?
-  nameEN              String?
-  center              Unsupported("geography")?
-  radiusM             Int?
-  dominantExperience  String?   @db.VarChar(64)
-  vibe                Json?     // ["historic","walkable","modern",...]
-  metadata            Json?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                 Int                       @id @default(autoincrement())
+  cityId             Int
+  name               String
+  nameCN             String?
+  nameEN             String?
+  center             Unsupported("geography")?
+  radiusM            Int?
+  dominantExperience String?                   @db.VarChar(64)
+  vibe               Json? // ["historic","walkable","modern",...]
+  metadata           Json?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
 
-  city                City      @relation(fields: [cityId], references: [id], onDelete: Cascade)
-  Place               Place[]
+  city  City    @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  Place Place[]
 
   @@index([cityId])
 }
@@ -287,13 +287,13 @@ model District {
 model CrowdCurve {
   id         Int      @id @default(autoincrement())
   placeId    Int
-  hour       Int      // 0–23
-  crowdLevel Float    // 0–1，低到高
+  hour       Int // 0–23
+  crowdLevel Float // 0–1，低到高
   source     String?  @default("estimated") @db.VarChar(32) // google_popular_times | estimated | manual
-  dayOfWeek  Int?     // 0–6，可选
+  dayOfWeek  Int? // 0–6，可选
   createdAt  DateTime @default(now())
 
-  place      Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@unique([placeId, hour, dayOfWeek])
   @@index([placeId])
@@ -658,18 +658,18 @@ model Trip {
 
 /// 持久化建议状态（用于 AssistantCenter 建议列表/角标）
 model TripSuggestionState {
-  id           String   @id @default(uuid())
-  tripId       String   @map("trip_id")
-  suggestionId String   @map("suggestion_id")
+  id           String    @id @default(uuid())
+  tripId       String    @map("trip_id")
+  suggestionId String    @map("suggestion_id")
   /// new | seen | applied | dismissed（与 SuggestionStatus 对齐）
-  status       String   @default("new")
+  status       String    @default("new")
   firstSeenAt  DateTime? @map("first_seen_at")
   appliedAt    DateTime? @map("applied_at")
   dismissedAt  DateTime? @map("dismissed_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  Trip         Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  Trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@unique([tripId, suggestionId])
   @@index([tripId, status])
@@ -691,10 +691,10 @@ model ItineraryRevision {
   createdAt              DateTime @default(now()) @map("created_at")
 
   /// Structured audit delta (V_n → V_{n+1}); unset on BASELINE rows.
-  deltaCostUsd         Float?   @map("delta_cost_usd")
-  deltaTimeMinutes     Int?     @map("delta_time_minutes")
-  interruptedItems     Json?    @map("interrupted_items")
-  resolutionType       String?  @map("resolution_type")
+  deltaCostUsd     Float?  @map("delta_cost_usd")
+  deltaTimeMinutes Int?    @map("delta_time_minutes")
+  interruptedItems Json?   @map("interrupted_items")
+  resolutionType   String? @map("resolution_type")
 
   parent   ItineraryRevision?  @relation("ItineraryRevisionChain", fields: [parentRevisionId], references: [id], onDelete: SetNull)
   children ItineraryRevision[] @relation("ItineraryRevisionChain")
@@ -704,6 +704,25 @@ model ItineraryRevision {
   @@index([parentRevisionId])
   @@index([tripId, deltaTimeMinutes])
   @@map("itinerary_revisions")
+}
+
+/// Append-only：WDMA 决策条目的持久化归档（与内存 ring 双写）。trip_id 与 Trip.id 对齐（可为空：无 trip 上下文的请求）。
+model TripWorldDecisionMemory {
+  id           String   @id @default(uuid()) @db.Uuid
+  tripId       String?  @map("trip_id")
+  userId       String?  @map("user_id")
+  requestId    String   @map("request_id") @db.VarChar(256)
+  causalityId  String   @map("causality_id") @db.VarChar(128)
+  decisionType String   @map("decision_type") @db.VarChar(32)
+  outcome      String   @db.VarChar(16)
+  /// 完整 DecisionMemory JSON
+  payload      Json
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([requestId, causalityId])
+  @@index([tripId, createdAt])
+  @@index([requestId, createdAt])
+  @@map("trip_world_decision_memory")
 }
 
 model TripCollaborator {
@@ -779,31 +798,31 @@ model TripShare {
 
 /// 决策/优化模块：团队协同（多用户协商计划）
 model CollaborationTeam {
-  id                  String                     @id
-  name                String
-  type                String                     @db.VarChar(20)
-  decisionWeightMode  String                     @map("decision_weight_mode") @db.VarChar(20)
-  teamConstraints     Json                       @map("team_constraints")
-  createdAt           DateTime                   @default(now()) @map("created_at")
-  updatedAt           DateTime                   @updatedAt @map("updated_at")
-  members             CollaborationTeamMember[]
-  invites             CollaborationTeamInvite[]
+  id                 String                    @id
+  name               String
+  type               String                    @db.VarChar(20)
+  decisionWeightMode String                    @map("decision_weight_mode") @db.VarChar(20)
+  teamConstraints    Json                      @map("team_constraints")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  members            CollaborationTeamMember[]
+  invites            CollaborationTeamInvite[]
 
   @@index([type])
 }
 
 /// 决策/优化模块：团队邀请链接
 model CollaborationTeamInvite {
-  id           String    @id @default(uuid()) @db.Uuid
-  teamId       String    @map("team_id")
-  inviteToken  String    @unique @map("invite_token") @db.VarChar(64)
-  inviterUserId String   @map("inviter_user_id") @db.VarChar(255)
-  tripId       String?   @map("trip_id") @db.VarChar(255)
-  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
-  maxUses      Int       @default(0) @map("max_uses")
-  usesCount    Int       @default(0) @map("uses_count")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  team         CollaborationTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  id            String            @id @default(uuid()) @db.Uuid
+  teamId        String            @map("team_id")
+  inviteToken   String            @unique @map("invite_token") @db.VarChar(64)
+  inviterUserId String            @map("inviter_user_id") @db.VarChar(255)
+  tripId        String?           @map("trip_id") @db.VarChar(255)
+  expiresAt     DateTime          @map("expires_at") @db.Timestamptz(6)
+  maxUses       Int               @default(0) @map("max_uses")
+  usesCount     Int               @default(0) @map("uses_count")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  team          CollaborationTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId])
   @@index([inviteToken])
@@ -812,18 +831,18 @@ model CollaborationTeamInvite {
 
 /// 决策/优化模块：团队成员
 model CollaborationTeamMember {
-  id                  String             @id @default(uuid()) @db.Uuid
-  teamId              String             @map("team_id")
-  userId              String             @map("user_id") @db.VarChar(255)
-  displayName         String             @map("display_name") @db.VarChar(255)
-  role                String             @db.VarChar(20)
-  decisionWeight      Float              @map("decision_weight")
-  fitnessLevel        String             @map("fitness_level") @db.VarChar(20)
-  experienceLevel     String             @map("experience_level") @db.VarChar(20)
-  personalWeights     Json               @map("personal_weights")
-  specialConstraints  Json?              @map("special_constraints")
-  joinedAt            DateTime           @default(now()) @map("joined_at")
-  team                CollaborationTeam  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  id                 String            @id @default(uuid()) @db.Uuid
+  teamId             String            @map("team_id")
+  userId             String            @map("user_id") @db.VarChar(255)
+  displayName        String            @map("display_name") @db.VarChar(255)
+  role               String            @db.VarChar(20)
+  decisionWeight     Float             @map("decision_weight")
+  fitnessLevel       String            @map("fitness_level") @db.VarChar(20)
+  experienceLevel    String            @map("experience_level") @db.VarChar(20)
+  personalWeights    Json              @map("personal_weights")
+  specialConstraints Json?             @map("special_constraints")
+  joinedAt           DateTime          @default(now()) @map("joined_at")
+  team               CollaborationTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
   @@index([teamId])
@@ -1354,18 +1373,21 @@ model DecisionLog {
 }
 
 model DecisionOutcome {
-  id               String      @id @default(uuid()) @db.Uuid
-  decisionId       String      @map("decision_id") @db.Uuid
-  expectedOutcome  Json        @map("expected_outcome")
-  actualOutcome    Json        @map("actual_outcome")
-  deviation        Json
-  userSatisfaction Float?      @map("user_satisfaction")
-  userFeedback     String?     @map("user_feedback")
-  learningSignals  Json        @map("learning_signals")
-  createdAt        DateTime    @default(now()) @map("created_at")
-  DecisionLog      DecisionLog @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  id                  String      @id @default(uuid()) @db.Uuid
+  decisionId          String      @map("decision_id") @db.Uuid
+  expectedOutcome     Json        @map("expected_outcome")
+  actualOutcome       Json        @map("actual_outcome")
+  deviation           Json
+  userSatisfaction    Float?      @map("user_satisfaction")
+  userFeedback        String?     @map("user_feedback")
+  learningSignals     Json        @map("learning_signals")
+  /** Join key to `DecisionCausalityRecordV0.causality_id` (Policy→Plan→Execution spine) */
+  decisionCausalityId String?     @map("decision_causality_id") @db.VarChar(128)
+  createdAt           DateTime    @default(now()) @map("created_at")
+  DecisionLog         DecisionLog @relation(fields: [decisionId], references: [id], onDelete: Cascade)
 
   @@index([decisionId])
+  @@index([decisionCausalityId])
   @@map("decision_outcomes")
 }
 
@@ -1378,7 +1400,7 @@ model UserTravelProfile {
   preferredRouteTypes String[] @map("preferred_route_types")
   confidence          Float    @default(0.5)
   source              String   @default("inferred") @db.VarChar(20)
-  extendedProfile     Json?    @map("extended_profile")  // companions, deviceInfo, timeWindow, emotionalState
+  extendedProfile     Json?    @map("extended_profile") // companions, deviceInfo, timeWindow, emotionalState
   updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@index([userId])
@@ -1526,15 +1548,15 @@ model FlywheelConsensusLatch {
 
 /// Layer 4: 参数版本 - 学习结果版本化，支持回滚
 model FlywheelParameterSet {
-  id                  String   @id @default(uuid()) @db.Uuid
-  version             String   @db.VarChar(50)
-  scope               String   @db.VarChar(20)
-  scopeId             String?  @map("scope_id")
-  trainingDataRange   Json     @map("training_data_range")
-  metrics             Json?
-  weights             Json
-  isActive            Boolean  @default(false) @map("is_active")
-  createdAt           DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid()) @db.Uuid
+  version           String   @db.VarChar(50)
+  scope             String   @db.VarChar(20)
+  scopeId           String?  @map("scope_id")
+  trainingDataRange Json     @map("training_data_range")
+  metrics           Json?
+  weights           Json
+  isActive          Boolean  @default(false) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
 
   @@unique([version, scope, scopeId])
   @@index([scope, scopeId])
@@ -1544,13 +1566,13 @@ model FlywheelParameterSet {
 
 /// 用户与参数版本绑定（当前生效）
 model FlywheelUserParameterBinding {
-  id               String   @id @default(uuid()) @db.Uuid
-  userId           String   @map("user_id") @db.Uuid
-  parameterSetId   String   @map("parameter_set_id") @db.Uuid
-  parameterVersion String   @map("parameter_version") @db.VarChar(50)
-  effectiveFrom    DateTime @map("effective_from")
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  parameterSetId   String    @map("parameter_set_id") @db.Uuid
+  parameterVersion String    @map("parameter_version") @db.VarChar(50)
+  effectiveFrom    DateTime  @map("effective_from")
   effectiveTo      DateTime? @map("effective_to")
-  createdAt        DateTime @default(now()) @map("created_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   @@unique([userId])
   @@index([parameterSetId])
@@ -2886,15 +2908,15 @@ model RlhfFeedbackRecord {
 
 /// P0.2 优化：学习收敛追踪，记录 Regret 和学习进度
 model LearningConvergenceLog {
-  id             String   @id @default(uuid()) @db.Uuid
-  userId         String   @map("user_id") @db.VarChar(255)
-  round          Int
-  utility        Float
-  optimalUtility Float    @map("optimal_utility")
-  regret         Float
-  cumulativeRegret Float  @map("cumulative_regret")
-  theoreticalBound Float  @map("theoretical_bound")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @map("user_id") @db.VarChar(255)
+  round            Int
+  utility          Float
+  optimalUtility   Float    @map("optimal_utility")
+  regret           Float
+  cumulativeRegret Float    @map("cumulative_regret")
+  theoreticalBound Float    @map("theoretical_bound")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([userId])
   @@index([round])
@@ -2917,7 +2939,7 @@ model CbrCaseAggregate {
   avgWallHitLatencyMs    Float?   @map("avg_wall_hit_latency_ms")
   avgWallHitEventSpan    Float?   @map("avg_wall_hit_event_span")
   evidenceAnchors        Json?    @map("evidence_anchors")
-  precedentSummaryLatest String? @map("precedent_summary_latest") @db.Text
+  precedentSummaryLatest String?  @map("precedent_summary_latest") @db.Text
   lastCaseId             String?  @map("last_case_id") @db.VarChar(255)
   lastRequestId          String?  @map("last_request_id") @db.VarChar(255)
   createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -2930,16 +2952,16 @@ model CbrCaseAggregate {
 
 /// 博弈图 + 效率指标（供 SQL 热点分析、A/B 与周报）
 model DecisionIntelligenceLog {
-  id                           String   @id @default(uuid()) @db.Uuid
-  requestId                    String?  @map("request_id") @db.VarChar(255)
-  dominantCid                  String?  @map("dominant_cid") @db.VarChar(128)
-  graphJson                    Json     @map("graph_json")
-  efficiencyMetrics            Json     @map("efficiency_metrics")
-  persuasionLatencyEventSpan   Int?     @map("persuasion_latency_event_span")
-  oscillationEscalated         Boolean  @default(false) @map("oscillation_escalated")
-  hardTruthIsHard              Boolean  @default(false) @map("hard_truth_is_hard")
-  hasConversion                Boolean  @default(false) @map("has_conversion")
-  createdAt                    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                         String   @id @default(uuid()) @db.Uuid
+  requestId                  String?  @map("request_id") @db.VarChar(255)
+  dominantCid                String?  @map("dominant_cid") @db.VarChar(128)
+  graphJson                  Json     @map("graph_json")
+  efficiencyMetrics          Json     @map("efficiency_metrics")
+  persuasionLatencyEventSpan Int?     @map("persuasion_latency_event_span")
+  oscillationEscalated       Boolean  @default(false) @map("oscillation_escalated")
+  hardTruthIsHard            Boolean  @default(false) @map("hard_truth_is_hard")
+  hasConversion              Boolean  @default(false) @map("has_conversion")
+  createdAt                  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([dominantCid, createdAt])
   @@index([requestId])
@@ -2980,21 +3002,21 @@ model AgentFinancialHold {
 
 /// Commit saga ledger: action.execute vs side-effect apply (audit + recovery worker hooks)
 model AgentActionLog {
-  id               String   @id @default(uuid()) @db.Uuid
-  requestId        String   @map("request_id") @db.VarChar(255)
-  tripId           String   @map("trip_id") @db.VarChar(255)
-  actionId         String   @map("action_id") @db.VarChar(255)
-  actionName       String   @map("action_name") @db.VarChar(255)
+  id               String    @id @default(uuid()) @db.Uuid
+  requestId        String    @map("request_id") @db.VarChar(255)
+  tripId           String    @map("trip_id") @db.VarChar(255)
+  actionId         String    @map("action_id") @db.VarChar(255)
+  actionName       String    @map("action_name") @db.VarChar(255)
   /// INIT | COMMITTED | SIDE_EFFECT_DONE | FAILED
-  status           String   @db.VarChar(32)
-  idempotencyKey   String?  @map("idempotency_key") @db.VarChar(255)
+  status           String    @db.VarChar(32)
+  idempotencyKey   String?   @map("idempotency_key") @db.VarChar(255)
   payload          Json?
-  lastError        String?  @map("last_error") @db.Text
+  lastError        String?   @map("last_error") @db.Text
   committedAt      DateTime? @map("committed_at") @db.Timestamptz(6)
   sideEffectDoneAt DateTime? @map("side_effect_done_at") @db.Timestamptz(6)
   failedAt         DateTime? @map("failed_at") @db.Timestamptz(6)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([tripId, actionId, createdAt])
   @@index([status, updatedAt])
@@ -3058,14 +3080,14 @@ model PhysicalDomainBudget {
 
 /// Physical Domain admin: Inventory items.
 model PhysicalDomainInventoryItem {
-  id           String   @id @db.VarChar(191)
-  type         String   @db.VarChar(16)
-  price        Float
-  availability String   @default("AVAILABLE") @db.VarChar(16)
-  lockable     Boolean  @default(true)
+  id            String    @id @db.VarChar(191)
+  type          String    @db.VarChar(16)
+  price         Float
+  availability  String    @default("AVAILABLE") @db.VarChar(16)
+  lockable      Boolean   @default(true)
   holdExpiresAt DateTime? @map("hold_expires_at") @db.Timestamptz(6)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([type, availability])
   @@map("physical_domain_inventory_items")
@@ -3073,13 +3095,13 @@ model PhysicalDomainInventoryItem {
 
 /// Physical Domain admin: Policy Lab constraint configs.
 model PhysicalDomainConstraintConfig {
-  ruleId    String   @id @map("rule_id") @db.VarChar(191)
-  enabled   Boolean  @default(true)
-  threshold Float?
-  description String? @db.Text
-  params    Json?
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ruleId      String   @id @map("rule_id") @db.VarChar(191)
+  enabled     Boolean  @default(true)
+  threshold   Float?
+  description String?  @db.Text
+  params      Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([enabled, updatedAt])
   @@map("physical_domain_constraint_configs")
@@ -3135,4 +3157,135 @@ model SpatialDomainSegment {
   @@index([fromPoiId, toPoiId])
   @@index([segmentType, updatedAt])
   @@map("spatial_domain_segments")
+}
+
+/// P3 — Durable replay anchor for route-and-run cache verification (Φ digest + artifact refs).
+model AgentRuntimeReplayAnchor {
+  id                    String   @id @default(uuid()) @db.Uuid
+  snapshotId            String   @unique @map("snapshot_id") @db.VarChar(128)
+  queryId               String   @map("query_id") @db.VarChar(255)
+  admissionPath         String   @default("FRESH_FINALIZE") @map("admission_path") @db.VarChar(32)
+  dedupRequestHash      String?  @map("dedup_request_hash") @db.VarChar(64)
+  phiDigest             String   @map("phi_digest") @db.VarChar(128)
+  certificateDigest     String?  @map("certificate_digest") @db.VarChar(128)
+  artifactRefs          Json     @map("artifact_refs")
+  schemaVersion         String   @default("runtime/persistence/v1") @map("schema_version") @db.VarChar(64)
+  createdAtMs           BigInt   @map("created_at_ms")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  partialRecomputeScope Json?    @map("partial_recompute_scope")
+  artifactEvolution     Json?    @map("artifact_evolution")
+
+  @@index([queryId, createdAt])
+  @@index([dedupRequestHash])
+  @@map("agent_runtime_replay_anchors")
+}
+
+/// Append-only：世界总线事件（P2 可回放 / 审计；与内存 GlobalWorldState 并行）
+model WorldBusEventLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  kind       String   @db.VarChar(32)
+  subType    String   @db.VarChar(64)
+  eventAt    DateTime @map("event_at") @db.Timestamptz(6)
+  cityKey    String?  @db.VarChar(32)
+  placeId    Int?
+  payload    Json
+  /// 完整 WorldBusEvent 副本，便于逐字段回放
+  raw        Json
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@index([kind, recordedAt])
+  @@index([cityKey, recordedAt])
+  @@index([eventAt])
+  @@map("world_bus_event_logs")
+}
+
+/// Canonical World Fact（Phase 1 POC）：append-only 世界断言 + optional supersede 链（不做 Gate/Ontology 改动）。
+model WorldFact {
+  id               String      @id @default(cuid())
+  factKey          String
+  subjectType      String
+  subjectId        String
+  predicate        String
+  valueJson        Json
+  confidence       Float?
+  severity         String?
+  sourceType       String
+  sourceRef        String?
+  validFrom        DateTime?
+  validTo          DateTime?
+  observedAt       DateTime?
+  snapshotVersion  String?
+  supersedesFactId String?
+  supersedesFact   WorldFact?  @relation("WorldFactSupersedes", fields: [supersedesFactId], references: [id], onDelete: SetNull)
+  supersededBy     WorldFact[] @relation("WorldFactSupersedes")
+  createdAt        DateTime    @default(now())
+
+  @@index([factKey])
+  @@index([subjectType, subjectId])
+  @@index([predicate])
+  @@index([snapshotVersion])
+  @@map("world_facts")
+}
+
+/// Policy Lifecycle v1：路线规划策略包快照（与 registry JSON 对齐的可持久化实体）
+model RoutePlanningPolicyBundleVersion {
+  id         String   @id @default(uuid()) @db.Uuid
+  bundleKey  String   @map("bundle_key") @db.VarChar(128)
+  revision   String   @db.VarChar(256)
+  scope      String   @default("GLOBAL") @map("scope") @db.VarChar(32)
+  definition Json
+  status     String   @default("ACTIVE") @map("status") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  selectionLogs PolicySelectionLog[]
+
+  @@unique([bundleKey, revision])
+  @@index([bundleKey])
+  @@map("route_planning_policy_bundle_versions")
+}
+
+/// 策略选择运行时绑定：context 投影 + 选中 bundle / rule（回放与审计）
+model PolicySelectionLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  countryCode String  @map("country_code") @db.VarChar(8)
+  tripId      String? @map("trip_id") @db.VarChar(128)
+
+  contextSnapshot Json @map("context_snapshot")
+
+  selectedBundleId String  @map("selected_bundle_id") @db.VarChar(128)
+  routingRuleId    String? @map("routing_rule_id") @db.VarChar(128)
+  selectionReason  String  @map("selection_reason") @db.VarChar(64)
+
+  effectiveRevision String @map("effective_revision") @db.VarChar(256)
+
+  bundleVersionId String?                           @map("bundle_version_id") @db.Uuid
+  bundleVersion   RoutePlanningPolicyBundleVersion? @relation(fields: [bundleVersionId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([tripId])
+  @@index([countryCode, createdAt])
+  @@map("policy_selection_logs")
+}
+
+/// P-OPS-2：预测 overlay（决策时快照）vs 后续实况 outcome —— Reality Audit / Replay 底座（append-only prediction + optional outcome 回填）
+model OpsRealityAuditSnapshot {
+  id                   String    @id @default(uuid()) @db.Uuid
+  capturedAt           DateTime  @default(now()) @map("captured_at") @db.Timestamptz(6)
+  tripId               String?   @map("trip_id") @db.VarChar(128)
+  requestId            String?   @map("request_id") @db.VarChar(120)
+  decisionRunId        String?   @map("decision_run_id") @db.VarChar(80)
+  schemaVersion        String    @default("p-ops-2/v1") @map("schema_version") @db.VarChar(40)
+  predictionFingerprint String   @map("prediction_fingerprint") @db.VarChar(64)
+  prediction           Json
+  outcome              Json?     @map("outcome")
+  outcomeRecordedAt    DateTime? @map("outcome_recorded_at") @db.Timestamptz(6)
+  outcomeSource        String?   @map("outcome_source") @db.VarChar(40)
+
+  @@index([capturedAt(sort: Desc)])
+  @@index([tripId])
+  @@index([requestId])
+  @@index([decisionRunId])
+  @@map("ops_reality_audit_snapshots")
 }

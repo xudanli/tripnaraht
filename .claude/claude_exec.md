@@ -191,7 +191,7 @@ Claude 每次必须返回以下 JSON 结构，不得省略顶层字段，不得�
 - `transport.search`
 - `poi.search` / `poi.get`
 - `opening_hours.get`
-- `dem.metrics`
+- `dem.get_profile`
 - `fatigue.estimate`
 - `risk.check`
 - `gate.should_exist`

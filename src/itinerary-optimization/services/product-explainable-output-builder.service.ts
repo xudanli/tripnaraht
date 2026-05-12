@@ -221,7 +221,12 @@ export class ProductExplainableOutputBuilderService {
 
     // 2. 从 DEM 证据提取特征
     if (context.dem_evidence) {
-      context.dem_evidence.forEach(ev => {
+      context.dem_evidence.forEach((ev: {
+        cumulativeAscent?: number;
+        maxSlopePct?: number;
+        violation?: string;
+        explanation?: string;
+      }) => {
         if (ev.cumulativeAscent) {
           keyFeatures.push({
             name: '累计爬升',

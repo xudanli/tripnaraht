@@ -21,6 +21,10 @@ import { ReadinessService } from '../../trips/readiness/services/readiness.servi
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import type { TripPlanRequest, OrchestratorState } from '../interfaces/trip-plan.interface';
 import { HardTruthRuleResolverService } from '../services/hard-truth-rule-resolver.service';
+import { driveSafetyWindThresholdMps } from '../../trips/ontology/environment/weather.schema';
+import { evaluateConflictMatrix, type ConflictMatrixRule } from '../../trips/decision/shared/conflict-matrix.util';
+import { PrismaService } from '../../prisma/prisma.service';
+import { getWeatherForTime } from '../../trips/ontology/environment/environment-domain.util';
 
 @Injectable()
 export class GateEvalExecutorService implements IGateEvalExecutor {
@@ -32,6 +36,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     @Optional() private readonly userDecisionService?: UserDecisionService,
     @Optional() private readonly gatekeeperAgent?: ClaudeGatekeeperAgentService,
     @Optional() private readonly hardTruthRules?: HardTruthRuleResolverService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   async execute(
@@ -183,7 +188,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     }
 
     // 6. 最小硬规则（无 gatekeeperAgent 时仍可执行）：准入/空间类原子约束
-    const extraViolations = this.evaluateAdmissionAndSpatialAtoms(tripRequest, researchData, hardTruth);
+    const extraViolations = await this.evaluateAdmissionAndSpatialAtoms(tripRequest, researchData, hardTruth);
 
     // 降级：默认 ALLOW（若 extraViolations 存在则 ADJUST_REQUIRED/BLOCK）
     const gateResult: GateResultLike = {
@@ -211,11 +216,11 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     };
   }
 
-  private evaluateAdmissionAndSpatialAtoms(
+  private async evaluateAdmissionAndSpatialAtoms(
     tripRequest: PhaseExecutorContext['tripPlanRequest'] | undefined,
     researchData: Record<string, any>,
     hardTruth: { gateFroadBlock2wd: boolean },
-  ): GateResultLike['violations'] {
+  ): Promise<GateResultLike['violations']> {
     if (!tripRequest) return [];
     const out: GateResultLike['violations'] = [];
 
@@ -252,7 +257,263 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       });
     }
 
+    // --- Environment: wind hard gate (admin overrides / warm evidence) ---
+    // Prefer admin overrides: routeDirection.metadata.environment_overrides_v1 (injected into world.physical.prefetched_evidence).
+    // This ensures preview/commit signatures and gate decisions remain auditable.
+    try {
+      const prefetched: any[] =
+        (researchData?.world?.physical?.prefetched_evidence as any[]) ??
+        (researchData?.world_build_context?.world?.physical?.prefetched_evidence as any[]) ??
+        (researchData?.worldModel?.physical?.prefetched_evidence as any[]) ??
+        [];
+      const list = Array.isArray(prefetched) ? prefetched : [];
+      const envOverride = list.find((x) => x && typeof x === 'object' && (x as any).kind === 'environment_overrides_v1');
+      const w = envOverride?.overrides?.weather;
+      const wind =
+        typeof w?.wind_mps === 'number'
+          ? Number(w.wind_mps)
+          : typeof w?.windSpeedMps === 'number'
+            ? Number(w.windSpeedMps)
+            : typeof w?.wind_speed_mps === 'number'
+              ? Number(w.wind_speed_mps)
+              : null;
+      if (wind != null && Number.isFinite(wind)) {
+        const explicitThr =
+          typeof w?.threshold_wind_mps === 'number'
+            ? Number(w.threshold_wind_mps)
+            : typeof w?.wind_threshold_mps === 'number'
+              ? Number(w.wind_threshold_mps)
+              : null;
+        const thr = explicitThr != null && Number.isFinite(explicitThr) ? explicitThr : driveSafetyWindThresholdMps(vehicleType ?? '2WD');
+        if (wind > thr) {
+          out.push({
+            type: 'SAFETY',
+            severity: 'HARD',
+            detail: `Wind unsafe for driving (wind=${wind}m/s > threshold=${thr}m/s).`,
+          });
+        }
+      }
+    } catch {
+      // best-effort only
+    }
+
+    // --- Conflict Matrix (v1.1): multi-factor physical conflicts ---
+    try {
+      const prefetched: any[] =
+        (researchData?.world?.physical?.prefetched_evidence as any[]) ??
+        (researchData?.world_build_context?.world?.physical?.prefetched_evidence as any[]) ??
+        (researchData?.worldModel?.physical?.prefetched_evidence as any[]) ??
+        [];
+      const roadStates: any[] =
+        (researchData?.world?.physical?.roadStates as any[]) ??
+        (researchData?.world_build_context?.world?.physical?.roadStates as any[]) ??
+        (researchData?.worldModel?.physical?.roadStates as any[]) ??
+        [];
+      const envOverride = (Array.isArray(prefetched) ? prefetched : []).find(
+        (x) => x && typeof x === 'object' && (x as any).kind === 'environment_overrides_v1',
+      );
+      const weather = this.pickRelevantForecastWeather(envOverride?.overrides?.weather, tripRequest);
+      const visibilityMeters =
+        typeof weather?.visibility_m === 'number'
+          ? Number(weather.visibility_m)
+          : typeof weather?.visibilityMeters === 'number'
+            ? Number(weather.visibilityMeters)
+            : typeof weather?.visibility_meters === 'number'
+              ? Number(weather.visibility_meters)
+              : null;
+      const precipitationMm =
+        typeof weather?.precipitation_mm === 'number'
+          ? Number(weather.precipitation_mm)
+          : typeof weather?.precipitationMm === 'number'
+            ? Number(weather.precipitationMm)
+            : null;
+      const confidenceScore =
+        typeof weather?.confidenceScore === 'number'
+          ? Number(weather.confidenceScore)
+          : typeof weather?.confidence_score === 'number'
+            ? Number(weather.confidence_score)
+            : null;
+      const windKph =
+        typeof weather?.windSpeedKph === 'number'
+          ? Number(weather.windSpeedKph)
+          : typeof weather?.wind_speed_kph === 'number'
+            ? Number(weather.wind_speed_kph)
+            : typeof weather?.wind_mps === 'number'
+              ? Number(weather.wind_mps) * 3.6
+              : null;
+
+      const snowDepthCm =
+        typeof weather?.snowDepthCm === 'number'
+          ? Number(weather.snowDepthCm)
+          : typeof weather?.snow_depth_cm === 'number'
+            ? Number(weather.snow_depth_cm)
+            : typeof weather?.snow_depth_cm_value === 'number'
+              ? Number(weather.snow_depth_cm_value)
+              : null;
+
+      const hasFRoad = (Array.isArray(roadStates) ? roadStates : []).some((r) => {
+        const md = r?.metadata ?? {};
+        const t = String(md?.segmentType ?? '').toUpperCase();
+        const s = String(md?.surfaceType ?? '').toLowerCase();
+        return t === 'F_ROAD' || s === 'f-road';
+      });
+      const vehicleClass = is2wd ? 'SMALL_CAR' : 'SUV_4WD';
+      const facts: Record<string, unknown> = {
+        segment: { type: hasFRoad ? 'F_ROAD' : 'OTHER' },
+        weather: {
+          visibilityMeters,
+          precipitationMm,
+          confidenceScore,
+          windSpeedKph: windKph,
+          snowDepthCm,
+        },
+        vehicle: { type: vehicleClass },
+      };
+      const matrixRules = await this.loadConflictMatrixRules();
+      const hits = evaluateConflictMatrix({ rules: matrixRules, facts });
+      for (const hit of hits) {
+        const severity: 'HARD' | 'SOFT' = hit.effect === 'HARD_BLOCK' ? 'HARD' : 'SOFT';
+        out.push({
+          type: 'SAFETY',
+          severity,
+          detail: `ConflictMatrix hit: ${hit.ruleId} (${hit.effect})`,
+        });
+      }
+    } catch {
+      // best-effort only
+    }
+
     return out;
+  }
+
+  private async loadConflictMatrixRules(): Promise<ConflictMatrixRule[]> {
+    const fallback: ConflictMatrixRule[] = [
+      {
+        id: 'froad_low_visibility_hard_block_v1',
+        conditions: ['segment.type = F_ROAD', 'weather.visibilityMeters < 100'],
+        effect: 'HARD_BLOCK',
+        priority: 100,
+      },
+      {
+        id: 'froad_snow_depth_hard_block_v1',
+        conditions: ['segment.type = F_ROAD', 'weather.snowDepthCm > 10'],
+        effect: 'HARD_BLOCK',
+        priority: 92,
+      },
+      {
+        id: 'wind_small_car_hard_block_v1',
+        conditions: ['weather.windSpeedKph > 50', 'vehicle.type = SMALL_CAR'],
+        effect: 'HARD_BLOCK',
+        priority: 95,
+      },
+      {
+        id: 'heavy_rain_high_confidence_reroute_v1',
+        conditions: ['weather.precipitationMm > 10', 'weather.confidenceScore > 0.85'],
+        effect: 'RE_ROUTE',
+        priority: 80,
+      },
+    ];
+    if (!this.prisma) return fallback;
+    try {
+      const rows = await (this.prisma as any).physicalDomainConstraintConfig.findMany({
+        where: { enabled: true },
+        orderBy: [{ updatedAt: 'desc' }],
+        take: 200,
+      });
+      const out: ConflictMatrixRule[] = [];
+      for (const row of rows) {
+        const p = row.params as any;
+        if (!p || typeof p !== 'object') continue;
+        const kind = String(p.kind ?? p.type ?? '').toUpperCase();
+        if (kind !== 'CONFLICT_MATRIX') continue;
+        const effect = String(p.effect ?? '').toUpperCase();
+        if (!['HARD_BLOCK', 'WARNING', 'RE_ROUTE', 'SPEED_FACTOR_DOWN'].includes(effect)) continue;
+        const conditions = Array.isArray(p.conditions) ? p.conditions.map((x: any) => String(x)).filter(Boolean) : [];
+        if (conditions.length === 0) continue;
+        const priority = Number.isFinite(Number(p.priority)) ? Number(p.priority) : 0;
+        out.push({
+          id: row.ruleId,
+          conditions,
+          effect: effect as ConflictMatrixRule['effect'],
+          priority,
+        });
+      }
+      return out.length > 0 ? out : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private pickRelevantForecastWeather(
+    weatherRaw: any,
+    tripRequest: PhaseExecutorContext['tripPlanRequest'] | undefined,
+  ): any {
+    if (!weatherRaw || typeof weatherRaw !== 'object') return weatherRaw;
+    const series = Array.isArray(weatherRaw?.forecastSeries)
+      ? weatherRaw.forecastSeries
+      : Array.isArray(weatherRaw?.forecast_series)
+        ? weatherRaw.forecast_series
+        : [];
+    if (series.length === 0) return weatherRaw;
+    const timeISO =
+      (tripRequest as any)?.date_range?.start_date ??
+      (tripRequest as any)?.start_date ??
+      new Date().toISOString();
+
+    const normalizedSeries = series
+      .filter((x: any) => x && typeof x === 'object')
+      .map((x: any) => ({
+        locationId: String(x.locationId ?? x.location_id ?? ''),
+        timeWindow: {
+          start: String(x.start ?? x.timeWindow?.start ?? x.time_window?.start ?? ''),
+          end: String(x.end ?? x.timeWindow?.end ?? x.time_window?.end ?? ''),
+        },
+        windSpeedKph:
+          typeof x.windSpeedKph === 'number'
+            ? x.windSpeedKph
+            : typeof x.wind_speed_kph === 'number'
+              ? x.wind_speed_kph
+              : typeof x.wind_mps === 'number'
+                ? x.wind_mps * 3.6
+                : NaN,
+        visibilityMeters:
+          typeof x.visibilityMeters === 'number'
+            ? x.visibilityMeters
+            : typeof x.visibility_m === 'number'
+              ? x.visibility_m
+              : typeof x.visibility_meters === 'number'
+                ? x.visibility_meters
+                : NaN,
+        precipitationMm:
+          typeof x.precipitationMm === 'number'
+            ? x.precipitationMm
+            : typeof x.precipitation_mm === 'number'
+              ? x.precipitation_mm
+              : NaN,
+        snowDepthCm:
+          typeof x.snowDepthCm === 'number'
+            ? x.snowDepthCm
+            : typeof x.snow_depth_cm === 'number'
+              ? x.snow_depth_cm
+              : NaN,
+        temperatureC: typeof x.temperatureC === 'number' ? x.temperatureC : NaN,
+        condition: String(x.condition ?? 'CLEAR'),
+        confidenceScore:
+          typeof x.confidenceScore === 'number'
+            ? x.confidenceScore
+            : typeof x.confidence_score === 'number'
+              ? x.confidence_score
+              : 0,
+        source: String(x.source ?? ''),
+        updatedAt: String(x.updatedAt ?? x.updated_at ?? ''),
+      }))
+      .filter((x: any) => x.timeWindow.start && x.timeWindow.end);
+
+    const selected = getWeatherForTime({
+      weatherForecasts: normalizedSeries as any,
+      timeISO: String(timeISO),
+    }) as any;
+    return selected ?? weatherRaw;
   }
 
   /**

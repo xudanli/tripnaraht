@@ -13,10 +13,12 @@ import { APP_GUARD } from '@nestjs/core';
 import { PlanningAssistantService } from './services/planning-assistant.service';
 import { PlanningAssistantController } from './planning-assistant.controller';
 import { PlanningAssistantV2Controller } from './controllers/planning-assistant-v2.controller';
+import { McpAgentLoopController } from './controllers/mcp-agent-loop.controller';
 import { PlanningAssistantV2Service } from './services/planning-assistant-v2.service';
 import { SmartRouterService } from './services/smart-router.service';
 import { McpToolRegistryService } from './services/mcp-tool-registry.service';
 import { McpToolDispatcherService } from './services/mcp-tool-dispatcher.service';
+import { McpAgentExecutorService } from './services/mcp-agent-executor.service';
 import { LlmToolSelectorService } from './services/llm-tool-selector.service';
 import { AdvancedGeocodingService } from './services/advanced-geocoding.service';
 import { LlmModule } from '../../../llm/llm.module';
@@ -91,6 +93,7 @@ const throttlerConfig = disableThrottler
   controllers: [
     PlanningAssistantController, // V1 接口（保留，向后兼容）
     PlanningAssistantV2Controller, // V2 接口（新设计）
+    McpAgentLoopController, // 原生 Tool Calling + MCP 闭环（实验）
   ],
   providers: [
     PlanningAssistantService,
@@ -98,6 +101,7 @@ const throttlerConfig = disableThrottler
     SmartRouterService, // 智能路由服务
     McpToolRegistryService, // MCP 工具注册表
     McpToolDispatcherService, // MCP 工具分发器
+    McpAgentExecutorService, // Agent Loop + MCP（实验）
     LlmToolSelectorService, // LLM 工具选择器
     AdvancedGeocodingService, // 高级地理编码服务
     PlanningWorkbenchAgentService, // 保留用于 CoreGateway 内部路由
@@ -110,6 +114,10 @@ const throttlerConfig = disableThrottler
   exports: [
     PlanningAssistantService,
     PlanningAssistantV2Service, // 导出V2 Service
+    McpToolRegistryService,
+    /** route_and_run / ClaudeOrchestrator 轻量路径：只读 MCP 传感器 */
+    McpToolDispatcherService,
+    McpAgentExecutorService,
   ],
 })
 export class PlanningAssistantModule {}

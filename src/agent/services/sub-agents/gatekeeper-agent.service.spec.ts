@@ -6,9 +6,11 @@ import { ClaudeGatekeeperAgentService } from './gatekeeper-agent.service';
 import { FRoadCheckSkill } from '../../../skills/world/f-road-check.skill';
 import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
 import { AvalancheRiskAssessmentSkill } from '../../../skills/world/avalanche-risk-assessment.skill';
+import { SafetravelGetAdvisoriesSkill } from '../../../skills/world/safetravel-get-advisories.skill';
 import { PlanGateRunThreeGuardiansSkill } from '../../../skills/plan/gate/plan-gate-run-three-guardians.skill';
 import { PlanGatePrecheckSkill } from '../../../skills/plan/gate/plan-gate-precheck.skill';
 import { TripPlanRequest, OrchestratorState } from '../../interfaces/trip-plan.interface';
+import { AlertSeverity, AlertType } from '../../../iceland-info/dto/safetravel.dto';
 
 describe('ClaudeGatekeeperAgentService', () => {
   let service: ClaudeGatekeeperAgentService;
@@ -22,6 +24,10 @@ describe('ClaudeGatekeeperAgentService', () => {
   };
 
   const mockAvalancheRisk = {
+    execute: jest.fn(),
+  };
+
+  const mockSafetravelGetAdvisories = {
     execute: jest.fn(),
   };
 
@@ -57,6 +63,10 @@ describe('ClaudeGatekeeperAgentService', () => {
           useValue: mockAvalancheRisk,
         },
         {
+          provide: SafetravelGetAdvisoriesSkill,
+          useValue: mockSafetravelGetAdvisories,
+        },
+        {
           provide: Logger,
           useValue: mockLogger,
         },
@@ -69,6 +79,15 @@ describe('ClaudeGatekeeperAgentService', () => {
     (service as any).logger = mockLogger as any;
 
     jest.clearAllMocks();
+
+    mockSafetravelGetAdvisories.execute.mockResolvedValue({
+      alerts: [],
+      rss_refined: [],
+      lastUpdated: new Date().toISOString(),
+      source: 'safetravel.is/feed',
+      gate_recommendation: 'ALLOW',
+      summary: 'SafeTravel RSS：当前无条目（或已全部被关键词过滤）。',
+    });
   });
 
   describe('evaluateGate - Non-Iceland Trip', () => {
@@ -91,6 +110,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(result.gate_result).toBe('ALLOW');
       expect(mockFRoadCheck.execute).not.toHaveBeenCalled();
       expect(mockWeatherAlert.execute).not.toHaveBeenCalled();
+      expect(mockSafetravelGetAdvisories.execute).not.toHaveBeenCalled();
       expect(mockLogger.log).toHaveBeenCalledWith(expect.stringContaining('[GatekeeperAgent] Gate 评估完成: ALLOW'));
     });
   });
@@ -144,6 +164,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(result.confidence).toBe(0.9);
       expect(mockFRoadCheck.execute).toHaveBeenCalledTimes(1);
       expect(mockWeatherAlert.execute).not.toHaveBeenCalled(); // Blocked early
+      expect(mockSafetravelGetAdvisories.execute).not.toHaveBeenCalled();
     });
   });
 
@@ -207,7 +228,60 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(result.violations.some(v => v.detail.includes('Extreme wind'))).toBe(true);
       expect(result.required_adjustments.some(adj => adj.action === 'CHANGE_DATES')).toBe(true);
       expect(mockFRoadCheck.execute).toHaveBeenCalledTimes(1);
+      expect(mockSafetravelGetAdvisories.execute).toHaveBeenCalledTimes(1);
       expect(mockWeatherAlert.execute).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('evaluateGate - Iceland Trip SafeTravel RSS BLOCK', () => {
+    it('should return BLOCK when SafeTravel reports CRITICAL alerts', async () => {
+      const request: TripPlanRequest = {
+        request_id: 'test-st-001',
+        origin: { lat: 64.1466, lng: -21.9426 },
+        destination: { lat: 64.1355, lng: -21.8954 },
+        date_range: { start_date: '2026-07-15', end_date: '2026-07-16' } as any,
+      };
+      const researchData: any = {};
+      const context = { current_step: 'GATE_EVAL', request_id: request.request_id } as any as OrchestratorState;
+
+      mockFRoadCheck.execute.mockResolvedValue({
+        can_proceed: true,
+        roads_found: [],
+        blocked_roads: [],
+        gate_recommendation: 'ALLOW',
+      });
+
+      mockSafetravelGetAdvisories.execute.mockResolvedValue({
+        alerts: [
+          {
+            id: 'rss-1',
+            title: 'Volcanic hazard',
+            description: '<p>Do not enter area X</p>',
+            type: AlertType.GENERAL,
+            severity: AlertSeverity.CRITICAL,
+            effectiveTime: new Date().toISOString(),
+            regions: [],
+          },
+        ],
+        rss_refined: [
+          {
+            severity: AlertSeverity.CRITICAL,
+            title: 'Volcanic hazard',
+            body: 'Do not enter area X',
+          },
+        ],
+        lastUpdated: new Date().toISOString(),
+        source: 'safetravel.is/feed',
+        gate_recommendation: 'BLOCK',
+        summary: 'Critical',
+      });
+
+      const result = await service.evaluateGate(request, researchData, context);
+
+      expect(result.gate_result).toBe('BLOCK');
+      expect(result.violations.some((v) => v.detail.includes('SafeTravel'))).toBe(true);
+      expect(mockWeatherAlert.execute).not.toHaveBeenCalled();
+      expect(researchData.safetravel_gate_recommendation).toBe('BLOCK');
     });
   });
 
@@ -261,12 +335,13 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(result.required_adjustments).toHaveLength(0);
       expect(result.confidence).toBeGreaterThan(0.7);
       expect(mockFRoadCheck.execute).toHaveBeenCalledTimes(1);
+      expect(mockSafetravelGetAdvisories.execute).toHaveBeenCalledTimes(1);
       expect(mockWeatherAlert.execute).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('evaluateGate - Execution Order', () => {
-    it('should execute checks in correct order: Step 0 → 0.5 → 1 → 4', async () => {
+    it('should execute checks in correct order: Step 0 → 0.45 → 0.5 → …', async () => {
       // Arrange
       const request: TripPlanRequest = {
         request_id: 'test-005',
@@ -295,6 +370,18 @@ describe('ClaudeGatekeeperAgentService', () => {
         };
       });
 
+      mockSafetravelGetAdvisories.execute.mockImplementation(async () => {
+        executionOrder.push('Step 0.45: SafeTravel');
+        return {
+          alerts: [],
+          rss_refined: [],
+          lastUpdated: new Date().toISOString(),
+          source: 'safetravel.is/feed',
+          gate_recommendation: 'ALLOW',
+          summary: 'ok',
+        };
+      });
+
       mockWeatherAlert.execute.mockImplementation(async () => {
         executionOrder.push('Step 0.5: Weather');
         return {
@@ -310,7 +397,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       await service.evaluateGate(request, researchData, context);
 
       // Assert
-      expect(executionOrder).toEqual(['Step 0: F-Road', 'Step 0.5: Weather']);
+      expect(executionOrder).toEqual(['Step 0: F-Road', 'Step 0.45: SafeTravel', 'Step 0.5: Weather']);
     });
 
     it('should skip Step 0.5 if Step 0 blocks', async () => {
@@ -344,6 +431,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       // Assert
       expect(mockFRoadCheck.execute).toHaveBeenCalledTimes(1);
       expect(mockWeatherAlert.execute).not.toHaveBeenCalled(); // Skipped due to early block
+      expect(mockSafetravelGetAdvisories.execute).not.toHaveBeenCalled();
     });
   });
 
@@ -384,6 +472,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(mockLogger.warn).toHaveBeenCalledWith(
         expect.stringContaining('[GatekeeperAgent] 天气检查出错 (降级处理)')
       );
+      expect(mockSafetravelGetAdvisories.execute).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -579,6 +668,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       // Assert
       expect(result.gate_result).toBe('ALLOW');
       expect(mockFRoadCheck.execute).toHaveBeenCalledTimes(1);
+      expect(mockSafetravelGetAdvisories.execute).toHaveBeenCalledTimes(1);
       expect(mockWeatherAlert.execute).toHaveBeenCalledTimes(1);
       expect(mockAvalancheRisk.execute).toHaveBeenCalledTimes(1);
     });
@@ -651,6 +741,8 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(result.violations.length).toBeGreaterThan(0);
       expect(result.violations.some(v => v.type === 'SAFETY')).toBe(true);
       expect(result.violations.some(v => v.detail.includes('avalanche'))).toBe(true);
+      expect(mockSafetravelGetAdvisories.execute).toHaveBeenCalledTimes(1);
+      expect(mockWeatherAlert.execute).toHaveBeenCalledTimes(1);
       expect(mockAvalancheRisk.execute).toHaveBeenCalledTimes(1);
     });
 
@@ -721,6 +813,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(researchData['avalanche_gate_recommendation']).toBe('ADJUST_REQUIRED');
       expect(researchData['avalanche_warnings']).toBeDefined();
       expect(researchData['avalanche_adjustments']).toBeDefined();
+      expect(mockSafetravelGetAdvisories.execute).toHaveBeenCalledTimes(1);
     });
 
     it('should reduce confidence when avalanche returns NEED_USER_CONFIRM', async () => {
@@ -788,6 +881,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(result.gate_result).toBe('ALLOW');
       expect(result.confidence).toBeLessThan(0.8); // Confidence reduced
       expect(researchData['avalanche_gate_recommendation']).toBe('NEED_USER_CONFIRM');
+      expect(mockSafetravelGetAdvisories.execute).toHaveBeenCalledTimes(1);
     });
 
     it('should handle avalanche service failure gracefully', async () => {
@@ -832,6 +926,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(result.gate_result).toBe('ALLOW'); // Degraded - doesn't block
       expect(researchData['avalanche_check_failed']).toBe(true);
       expect(researchData['avalanche_check_error']).toBe('Avalanche database unavailable');
+      expect(mockSafetravelGetAdvisories.execute).toHaveBeenCalledTimes(1);
       // Note: logger is created internally (new Logger()), not injectable, so we can't assert on it
     });
 
@@ -861,6 +956,7 @@ describe('ClaudeGatekeeperAgentService', () => {
       expect(mockFRoadCheck.execute).not.toHaveBeenCalled();
       expect(mockWeatherAlert.execute).not.toHaveBeenCalled();
       expect(mockAvalancheRisk.execute).not.toHaveBeenCalled(); // Skipped
+      expect(mockSafetravelGetAdvisories.execute).not.toHaveBeenCalled();
     });
   });
 });

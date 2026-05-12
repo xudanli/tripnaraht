@@ -7,7 +7,11 @@ import { PlanFeaturesService } from '../../trips/decision/optimization/plan-feat
 import { NeighborhoodOperators } from '../../trips/decision/optimization/neighborhood/neighborhood-operators';
 import { RepairOperators } from '../../trips/decision/optimization/neighborhood/repair-operators';
 import { ExposureAnnotationService } from '../../trips/decision/optimization/plan-features/exposure-annotation.service';
-import { decisionStateToTripWorldState, itineraryToRoutePlanDraft } from './dso-to-trips-converter';
+import {
+  decisionStateToTripWorldState,
+  itineraryToRoutePlanDraft,
+  resolveKernelTripIdHint,
+} from './dso-to-trips-converter';
 import type { Itinerary } from '../../agent/interfaces/trip-plan.interface';
 import { convertRoutePlanDraftToTripPlan } from '../../trips/decision/tot/plan-converter';
 import { ConstraintEngineService } from '../../trips/decision/constraints/constraint-engine.service';
@@ -104,7 +108,9 @@ export class CandidateSearchPipeline {
       diversitySignature: this.planFeatures.extract(v.plan).diversitySignature,
     }));
 
-    const tripWorldState = decisionStateToTripWorldState(state);
+    const tripWorldState = decisionStateToTripWorldState(state, {
+      prismaTripId: resolveKernelTripIdHint(state),
+    });
     if (this.exposureAnnotation) {
       pool = pool.map((c) => ({
         ...c,

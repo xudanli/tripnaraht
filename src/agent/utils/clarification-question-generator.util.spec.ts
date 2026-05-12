@@ -1,6 +1,8 @@
 import {
   identifyGapsFromRequest,
+  isTransportGeographicPlaceholder,
   isUnresolvedDestinationPlaceholder,
+  generateClarificationQuestions,
 } from './clarification-question-generator.util';
 
 describe('isUnresolvedDestinationPlaceholder', () => {
@@ -20,6 +22,20 @@ describe('isUnresolvedDestinationPlaceholder', () => {
   });
 });
 
+describe('isTransportGeographicPlaceholder', () => {
+  it('treats common endpoint pronouns as placeholders', () => {
+    expect(isTransportGeographicPlaceholder('起点')).toBe(true);
+    expect(isTransportGeographicPlaceholder('终点')).toBe(true);
+    expect(isTransportGeographicPlaceholder('origin')).toBe(true);
+    expect(isTransportGeographicPlaceholder('Destination')).toBe(true);
+  });
+
+  it('does not treat concrete place names as placeholders', () => {
+    expect(isTransportGeographicPlaceholder('上海')).toBe(false);
+    expect(isTransportGeographicPlaceholder('起点站餐厅')).toBe(false);
+  });
+});
+
 describe('identifyGapsFromRequest', () => {
   it('does not flag MISSING_DESTINATION when destination is set', () => {
     const gaps = identifyGapsFromRequest({
@@ -29,5 +45,16 @@ describe('identifyGapsFromRequest', () => {
       party: { count: 1 },
     });
     expect(gaps.find((g) => g.type === 'MISSING_DESTINATION')).toBeUndefined();
+  });
+});
+
+describe('generateClarificationQuestions', () => {
+  it('uses EN copy when locale is en', () => {
+    const qs = generateClarificationQuestions(
+      [{ type: 'MISSING_DATES', severity: 'HARD', detail: 'x' }],
+      { request_id: 'r1', origin: 'a', destination: '冰岛' },
+      { locale: 'en-US' },
+    );
+    expect(qs[0]?.question).toMatch(/travel/i);
   });
 });

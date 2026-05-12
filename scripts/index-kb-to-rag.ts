@@ -12,7 +12,7 @@ dotenv.config();
 
 const prisma = new PrismaClient();
 const DOCS_ROOT = path.join(__dirname, '..', 'docs');
-const PYTHON_AI_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://120.26.179.64:8001';
+const PYTHON_AI_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://101.37.240.9:18001';
 
 const CATEGORY_MAP: Record<string, string> = {
   'routes': 'ROUTE_INFO', 'risks': 'RISK_INFO', 'pois': 'POI_INFO',

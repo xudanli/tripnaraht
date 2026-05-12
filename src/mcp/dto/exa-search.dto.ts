@@ -7,7 +7,7 @@ export class ExaWebSearchDto {
     example: 'latest AI developments',
   })
   @IsString()
-  query: string;
+  query!: string;
 
   @ApiPropertyOptional({
     description: '返回结果数量',
@@ -58,7 +58,7 @@ export class ExaCodeContextDto {
     example: 'React hooks useState example',
   })
   @IsString()
-  query: string;
+  query!: string;
 
   @ApiPropertyOptional({
     description: '返回结果数量',
@@ -87,7 +87,7 @@ export class ExaCompanyResearchDto {
     example: 'OpenAI',
   })
   @IsString()
-  companyName: string;
+  companyName!: string;
 
   @ApiPropertyOptional({
     description: '返回结果数量',
@@ -106,7 +106,7 @@ export class ExaCrawlUrlDto {
     example: 'https://example.com/article',
   })
   @IsString()
-  url: string;
+  url!: string;
 
   @ApiPropertyOptional({
     description: '是否返回文本内容',
@@ -139,7 +139,7 @@ export class ExaDeepResearcherStartDto {
     example: 'What are the latest developments in quantum computing?',
   })
   @IsString()
-  query: string;
+  query!: string;
 
   @ApiPropertyOptional({
     description: '报告类型',
@@ -166,5 +166,5 @@ export class ExaDeepResearcherCheckDto {
     example: 'task-123',
   })
   @IsString()
-  taskId: string;
+  taskId!: string;
 }

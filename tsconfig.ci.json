@@ -7,6 +7,7 @@
   "include": [
     "src/domain/ontology/validator/**/*.ts",
     "src/domain/ontology/healer/**/*.ts",
+    "src/domain/spatial/**/*.ts",
     "src/agent/services/action-execution.service.ts",
     "src/decision/kernel/travel-ontology-constraints.ts",
     "src/admin/controllers/spatial-domain-admin.controller.ts",

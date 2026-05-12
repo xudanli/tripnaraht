@@ -13,7 +13,7 @@ dotenv.config();
 
 const prisma = new PrismaClient();
 
-const baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://121.43.192.56:8001';
+const baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://101.37.240.9:18001';
 const httpClient = axios.create({
   baseURL: baseUrl,
   timeout: 30000,

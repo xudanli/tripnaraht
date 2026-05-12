@@ -11,6 +11,7 @@ import {
   IsIn,
   IsArray,
   Matches,
+  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiExtraModels, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -23,6 +24,24 @@ import type { TravelActionType } from '../constants/action-execution.constants';
 import { EvidenceLineageDto } from './evidence-lineage.dto';
 import type { IntentMode } from '../constants/intent-mode.constants';
 import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
+import type { RuntimeExecutionProfile } from '../contracts/runtime-execution-profile.types';
+import type { RuntimeExecutionAnomaly } from '../contracts/runtime-execution-profile.validation.types';
+import type { ReplayProvenance } from '../contracts/replay-provenance.types';
+import type { ReplayArtifactDescriptor } from '../contracts/replay-artifact-descriptor.types';
+import type { ExecutionTrace } from '../contracts/execution-trace.types';
+import type { ConsultationDashboardV1 } from '../types/consultation-dashboard.types';
+import type { RuntimeObservabilitySlice } from '../runtime/runtime-observability-slice.types';
+import {
+  RUNTIME_PERSISTENCE_SCHEMA,
+  type RuntimeReplayAdmissionPath,
+} from '../runtime/runtime-persistence.types';
+import type { InventorySnapshotsMetaPayload } from '../inventory/lightweight-live-inventory.registry';
+import type { NarrativeSafetyPayload } from '../inventory/narrative-safety-evaluator.util';
+import type { SafetySurfacePayload } from '../utils/safety-surface-payload.util';
+import type {
+  NarrativeIntegrityObservabilitySlice,
+  NarrativeIntegrityReport,
+} from '../inventory/narrative-integrity-validator.util';
 
 export type { IntentMode } from '../constants/intent-mode.constants';
 export { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
@@ -271,12 +290,96 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
+      'MAPE：固定使用指定 Policy Agent（`PolicyAgent.policyId`）；优先级高于 `execution_policy_version_id`。',
+    example: 'pa_lx123_abc',
+  })
+  @IsOptional()
+  @IsString()
+  policy_agent_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'PV-ER：固定使用指定策略版本（`ExecutionPolicyVersion.versionId`）；不设则由 Policy Selection Layer 自动选取。',
+    example: 'pv_lx123_abc',
+  })
+  @IsOptional()
+  @IsString()
+  execution_policy_version_id?: string;
+
+  @ApiPropertyOptional({
+    description:
       'v1.0 Durable：已有 `trip_runs.id`（UUID）时传入，用于加载 `metadata.dso_checkpoint`；与评测用 `meta.run_id` 不同。',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
   @IsOptional()
   @IsString()
   durable_trip_run_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '语义执行模型声明版本（`route_and_run` 入口路由；缺省跟随宿主）。与 `semantic-validation-contract.md` §14/§15 对齐。',
+    example: 'v1',
+  })
+  @IsOptional()
+  @IsString()
+  execution_model_version?: string;
+
+  @ApiPropertyOptional({
+    description: '是否允许受控升级路径（与 ledger import allowlist 语义组合；默认 false）。',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  execution_model_allow_upgrade?: boolean;
+
+  @ApiPropertyOptional({
+    description: '执行模型路由器可选 hint（观测/预留；不参与 v1 路由判定）。',
+    example: 'replay_session_a',
+  })
+  @IsOptional()
+  @IsString()
+  execution_model_runtime_hint?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '内部：从 P3 Redis 装载冻结 AgentMemoryContext（仅 replay_from_trace 等受控入口；须与 trace.snapshot_id 对齐）。',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsString()
+  orchestration_replay_anchor_snapshot_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '内部：replay 确定性封印（禁止编排 mode fallback、禁止 routeContext enricher、须配合 replay anchor；由 replay_from_trace 设置）。',
+    example: true,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  orchestration_replay_strict_seal?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      '可选：CID v1 载荷（`agent.execution_os.change_impact_descriptor@v1`）；若提供则写入 `observability.trace.change_impact_descriptor_v1` 并与请求对齐校验。router/fallback 仅作语义提示，不强制分支。',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  @IsObject()
+  change_impact_descriptor_v1?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Trace 契约兼容：`cid-aware`（默认）强制 `execution_semantic_fingerprint_v1` 与 CID trace 物化；`legacy` 允许旧 dedup 缓存形态并在 `observability.execution_trace_compatibility_v1` 记录 suppressed 项。仅工程收口，不改变执行核。',
+    enum: ['legacy', 'cid-aware'],
+    example: 'cid-aware',
+    default: 'cid-aware',
+  })
+  @IsOptional()
+  @IsIn(['legacy', 'cid-aware'])
+  trace_compatibility_mode?: 'legacy' | 'cid-aware';
 
   @ApiPropertyOptional({
     description:
@@ -319,8 +422,8 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
-      '只读实时工具开关（Phase1 传感器）：weather=天气；hotel=住宿检索；car_rental=Booking.com 租车（需 Trip 或 structured 起止日）。轻量路径 DATA_LOOKUP/GENERIC_QA/RAG_QA 下注入事实块；租车亦可在未列此项时由话术「租车/推荐租车」自动触发。',
-    example: ['weather', 'hotel', 'car_rental'],
+      '只读实时工具开关（Phase1 传感器）：weather=天气；flight=Amadeus 航班报价；hotel=住宿检索；car_rental=Booking.com 租车（需 Trip 或 structured 起止日）。轻量路径 DATA_LOOKUP/GENERIC_QA/RAG_QA 下注入事实块；航班亦可在开放程/实时组合话术下自动触发（需 AMADEUS 凭证）。',
+    example: ['weather', 'flight', 'hotel', 'car_rental'],
     type: [String],
   })
   @IsOptional()
@@ -336,6 +439,66 @@ export class AgentOptionsDto {
   @ValidateNested()
   @Type(() => IntentFlagsDto)
   intent_flags?: IntentFlagsDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Replay correctness：本轮 WorldFreshnessVector；dedup 命中时与缓存条目的 `replay_cache_provenance.freshness` 比对。',
+    example: { weatherVersion: 'wx-2026-05-07T12Z', mapVersion: 'm-42' },
+  })
+  @IsOptional()
+  @IsObject()
+  replay_current_freshness?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    description:
+      'Replay correctness：聚合 world/plan 版本（与缓存 `replay_cache_provenance.aggregateWorldStateVersion` 比对）。',
+  })
+  @IsOptional()
+  @IsString()
+  replay_current_world_state_version?: string;
+}
+
+/** 与 NL 并行提交：同行规模、体能档位、风险承受（写入 Memory snapshot + TripPlanRequest.party*） */
+export class RouteAndRunPartyProfileDto {
+  @ApiPropertyOptional({
+    description: '体能档位：影响 VERIFY/体验评估与行程强度假设（与 TripPlanRequest.party.fitness_level 对齐）',
+    enum: ['low', 'medium', 'high'],
+    example: 'medium',
+  })
+  @IsOptional()
+  @IsIn(['low', 'medium', 'high'])
+  fitness_level?: 'low' | 'medium' | 'high';
+
+  @ApiPropertyOptional({
+    description: '风险承受（大写枚举，与 TripPlanRequest.party_profile.risk_tolerance 对齐）',
+    enum: ['LOW', 'MEDIUM', 'HIGH'],
+  })
+  @IsOptional()
+  @IsIn(['LOW', 'MEDIUM', 'HIGH'])
+  risk_tolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
+
+  @ApiPropertyOptional({ description: '同行总人数（可选覆盖 NL 抽取的 party.count）', example: 4 })
+  @IsOptional()
+  @IsNumber()
+  party_total?: number;
+
+  @ApiPropertyOptional({ description: '是否有儿童同行' })
+  @IsOptional()
+  @IsBoolean()
+  has_children?: boolean;
+
+  @ApiPropertyOptional({ description: '是否有长者同行' })
+  @IsOptional()
+  @IsBoolean()
+  has_elderly?: boolean;
+
+  @ApiPropertyOptional({
+    description: '行动能力 / 体能补充说明（中文短句，写入 travelPreference.route_mobility_note_zh）',
+    example: '膝关节不好，避免长距离徒步',
+  })
+  @IsOptional()
+  @IsString()
+  mobility_note_zh?: string;
 }
 
 /** 与 NL message 并行：澄清/前端显式提交，避免仅靠关键词表丢失 Reykjavik 等城市 */
@@ -367,13 +530,23 @@ export class StructuredTravelInputDto {
   start_date?: string;
 
   @ApiPropertyOptional({
-    description: '可选结束日（与 start_date 组成 date_range 覆盖区间）',
+    description: '结构化结束日（与 start_date 组成 date_range 覆盖区间）',
     example: '2026-05-12',
   })
   @IsOptional()
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'end_date 须为 YYYY-MM-DD' })
   end_date?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '结构化同行/体能（与顶层 `party_profile` / `fitness_level` 语义一致；顶层字段优先覆盖本块同名字段）',
+    type: RouteAndRunPartyProfileDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RouteAndRunPartyProfileDto)
+  party_profile?: RouteAndRunPartyProfileDto;
 }
 
 /**
@@ -526,6 +699,26 @@ export class RouteAndRunRequestDto {
   @ValidateNested()
   @Type(() => StructuredTravelInputDto)
   structured_travel_input?: StructuredTravelInputDto;
+
+  @ApiPropertyOptional({
+    description:
+      '快捷体能档位（与 `party_profile.fitness_level` 等价；若同时提供，以本字段为准写入 `party_profile.fitness_level`）',
+    enum: ['low', 'medium', 'high'],
+    example: 'low',
+  })
+  @IsOptional()
+  @IsIn(['low', 'medium', 'high'])
+  fitness_level?: 'low' | 'medium' | 'high';
+
+  @ApiPropertyOptional({
+    description:
+      '同行与体能/风险结构化字段（写入本轮 Memory snapshot 与 TripPlanRequest.party*；可与 `structured_travel_input.party_profile` 并存，顶层优先）',
+    type: RouteAndRunPartyProfileDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RouteAndRunPartyProfileDto)
+  party_profile?: RouteAndRunPartyProfileDto;
 
   @ApiPropertyOptional({ 
     description: '对话上下文',
@@ -1169,6 +1362,7 @@ export class ReferenceSourceDto {
 }
 
 @ApiExtraModels(
+  RouteAndRunPartyProfileDto,
   DecisionMetadataDto,
   DecisionEvidenceCardDto,
   DecisionEvidenceCardFlagsDto,
@@ -1386,7 +1580,8 @@ export class RouteAndRunResponseDto {
       }>;
       /**
        * 行程中的 POI 经 Place 表补办后的卡片数据（与 `timeline` / `orchestrationResult.itinerary` 对齐）。
-       * 优先用 `location_ref.place_id`（数字字符串）命中库内地点；否则按 `location_ref.name` 精确匹配 nameCN/nameEN。
+       * 名称、坐标、ontology 等展示字段以 **`Place` 登记为准**；`location_ref.place_id` 支持数字 id / UUID / Google Place Id；
+       * 否则按 `location_ref.name` 精确匹配 nameCN/nameEN。
        */
       poi_cards?: Array<{
         place_id: number | null;
@@ -1408,7 +1603,16 @@ export class RouteAndRunResponseDto {
         lat: number | null;
         lng: number | null;
         tags: string[];
-        matched_from: 'place_id' | 'name_exact' | 'itinerary_only';
+        matched_from:
+          | 'place_id'
+          | 'place_uuid'
+          | 'place_google_id'
+          | 'name_exact'
+          | 'itinerary_only';
+        /** 与 `/places/:id` 一致：来自 `Place.ontologyRules` */
+        ontologyRules?: unknown | null;
+        /** true：已命中 Place 表（含 id/uuid/googlePlaceId/名称精确匹配） */
+        resolved_from_place_registry?: boolean;
       }>;
       /** 按天聚合的 POI 卡片（便于 UI：每日一块下方挂卡片） */
       poi_cards_by_day?: Array<{
@@ -1426,10 +1630,16 @@ export class RouteAndRunResponseDto {
       /** 多日行程「每晚上一间」采样策略说明（中文免责 + 采样晚序号） */
       hotel_search_meta?: {
         strategy?: 'single_stay' | 'per_night_sample';
+        /** 本次 MCP 检索入住窗（解析后的 checkIn→checkOut）间夜数；用户收窄日期检索时为该窗，非整段 Trip */
         total_nights?: number;
+        /** 可选：绑定行程时整段 Trip 间夜数；与卡片「第 M/N 晚」分母 N 对齐 */
+        itinerary_total_nights?: number;
+        /** 本次采样的晚序号（1-based，相对本次检索入住窗；与 `total_nights` 同一坐标系） */
         sampled_nights?: number[];
         disclaimer_zh?: string;
         ui_layout_hint_zh?: string;
+        /** 本次住宿 MCP 快照组装完成时间（ISO8601）；与 `inventory_snapshots_meta` 对齐 */
+        captured_at_iso?: string;
         /** 用户话术限定仅某一晚/部分晚检索时为 true */
         user_limited_night_intent?: boolean;
       };
@@ -1441,9 +1651,77 @@ export class RouteAndRunResponseDto {
         file_id: string;
         document_title: string;
         source_file?: string;
-        category: 'practical' | 'risks';
+        category: 'practical' | 'risks' | 'pois' | 'decision_support';
         credibility_score?: number;
       }>;
+      /**
+       * 知识库摘录条数（与 `data_lookup_rag_citations.length` 对齐）。
+       * 轻量路径 `lightweightKnowledgeQa` 时：`consultation_dashboard` 若有模型输出则下发；
+       * **兜底**（由 `suggested_operations`/RAG/MCP 拼装）仅在 `routingTaskType === TRIP_PLANNING` 或请求带 `trip_id` 时下发，纯 DATA_LOOKUP/RAG_QA 且无行程绑定时不下发兜底块。
+       */
+      kb_rag_citation_count?: number;
+      /**
+       * 轻量问答无 `orchestrationResult.state` 时仍下发的统一执行轨迹：决策日志、RAG 命中、`routing_task_type`、
+       * `steps_executed`，与 `explain.decision_log` 对账；供调试面板 / Decision Cockpit / Replay 展示。
+       *
+       * **依据说明（本体/路况）**：优先读 `decision_log[].ontology_evidence_display_zh`（与根级同名字段冗余）；
+       * `evidence_refs` 中的 `ontology_*` 机器串仅作技术核对，勿作为主文案。
+       */
+      unified_execution_trace?: {
+        lightweight_knowledge_qa?: boolean;
+        routing_task_type?: string;
+        intent_mode_resolved?: string;
+        decision_log?: DecisionLogEntry[];
+        steps_executed?: Array<Record<string, unknown>>;
+        kb_rag_hit?: boolean;
+        kb_rag_citation_count?: number;
+        live_sensor_audit?: Array<{ tool_id: string; ok: boolean; latency_ms: number; error?: string }>;
+      };
+      /**
+       * 轻量路径：Booking.com 租车 MCP 返回列表（与 `live_sensor_audit` 中 car_rental 成功项对应；用于前端卡片）。
+       */
+      car_rentals?: Array<Record<string, unknown>>;
+      /** 租车检索元信息：是否使用系统默认日期窗口（行程未带起止日时） */
+      car_rental_search_meta?: {
+        fallback_dates_used?: boolean;
+        pick_up_date?: string;
+        drop_off_date?: string;
+        pickup_query?: string;
+        captured_at_iso?: string;
+      };
+      /** 轻量路径：`iceland.rentalGuidance` 结构化输出（与 Booking MCP 双路合并） */
+      iceland_rental_guidance?: Record<string, unknown>;
+      /** 附在租车 MCP 结果下的中文脚注（保险/信任标签/官方风险源），前端可渲染在 `car_rentals` 卡片下方 */
+      car_rental_guidance_footnotes_zh?: string[];
+      /**
+       * 航班库存摘要（轻量路径 Amadeus / Flight MCP）。
+       * 每条 leg 建议包含：`provider`、`label_zh`、`departure_date`、`origin_iata`、`destination_iata`、
+       * `sample_lines`（文本）、**`sample_offers`**（结构化报价卡片：`rank`、`price_total`、`currency`、`duration`、`segments[]` 时刻/机场/航班号等）。
+       */
+      flight_inventory_snapshot?: {
+        legs?: Array<Record<string, unknown>>;
+        disclaimer_zh?: string;
+        captured_at_iso?: string;
+      };
+      /**
+       * 轻量路径本次请求实际产出的 live inventory 快照 freshness（注册表版本 + 各 sensor 的 captured / stale_after）。
+       * 仅包含本轮成功的传感器；与分项 `hotel_search_meta.captured_at_iso` 等可对账。
+       */
+      inventory_snapshots_meta?: InventorySnapshotsMetaPayload;
+      /**
+       * Narrative Gate：由 `inventory_snapshots_meta` 推导的叙事强度（safe / tentative / refresh_required）。
+       * 轻量咨询路径由编排器写入；供 UI / Replay / Audit 与 LLM 门控提示对齐。
+       */
+      narrative_safety?: NarrativeSafetyPayload;
+      /**
+       * Gen2 Runtime Integrity：确定性叙事校验与执行动作（pass / regenerated / downgraded），供 audit / replay / telemetry。
+       */
+      narrative_integrity_report?: NarrativeIntegrityReport;
+      /**
+       * 冰岛线「痛觉」结构化面板：SafeTravel 路段预警、`itinerary.verify` issues、`itinerary.smart_update` 摘要、
+       * 已打 `route_segment_ref` 的 DRIVE/TRANSIT legs。与 `answer_text` 解耦，供前端徽章 / 折叠证据链。
+       */
+      safety_surface?: SafetySurfacePayload;
       /**
        * 轻量咨询且携带 trip_id：结构化「一键操作」（前端渲染按钮）。
        * - `route_and_run_message`：点击后用 `payload.message` 作为用户话术再次 POST `/api/agent/route_and_run`。
@@ -1456,6 +1734,11 @@ export class RouteAndRunResponseDto {
         kind: 'route_and_run_message' | 'client_navigation';
         payload?: Record<string, unknown>;
       }>;
+      /**
+       * 咨询类可视化 Dashboard（与 `ui_surface === consultation` 联用）：Hero、评分条、摘要卡、风险、简版每日时间轴、预算、预订提醒、地图线索。
+       * 来源：轻量咨询 LLM 的 <<<CONSULTATION_UI_JSON>>>；若模型未输出，可能由后端根据 `suggested_operations`、`live_sensor_audit`、`data_lookup_rag_citations`、`hotel_search_meta` 拼装兜底（见 `dashboard_origin`）。
+       */
+      consultation_dashboard?: ConsultationDashboardV1;
       jepa?: JepaPayload;
       orchestrationResult?: {
         state?: OrchestratorState;
@@ -1612,6 +1895,17 @@ export class RouteAndRunResponseDto {
           minutes?: number[][];
         };
       };
+      /**
+       * DOS v1：语义缺口 → 当次 POI_SELECTION 行为观测（只读；与 `state.metadata.gap_behavior_observation` 对齐）。
+       */
+      gap_behavior_observation?: {
+        ts?: string;
+        primaryGap?: string;
+        allGapTypes?: string[];
+        selectedCount?: number;
+        indoorishSelectedCount?: number;
+        categoryHistogram?: Array<{ category: string; count: number }>;
+      };
       /** 结构化决策元数据（证据卡片等），与编排 state 对齐装配 */
       decision_metadata?: DecisionMetadataDto;
       /** 展示层：开箱即用的 UI 块（与 decision_metadata 并行，不参与 DPO 逻辑链） */
@@ -1767,6 +2061,17 @@ export class RouteAndRunResponseDto {
       budgetGateApplied?: boolean;
       outcome?: unknown;
     };
+    /**
+     * DOS v1：`gap_behavior_observation` 与 `result.payload` 对齐，便于网关/聚合层按 request 消费。
+     */
+    gap_behavior_observation?: {
+      ts?: string;
+      primaryGap?: string;
+      allGapTypes?: string[];
+      selectedCount?: number;
+      indoorishSelectedCount?: number;
+      categoryHistogram?: Array<{ category: string; count: number }>;
+    };
     /** v1.0 Durable：本次请求是否命中 TripRun 上已存的 DSO checkpoint */
     durable_checkpoint_loaded?: boolean;
     /** v1.0：断点关联的 `trip_runs.id`（新建或续跑） */
@@ -1795,9 +2100,108 @@ export class RouteAndRunResponseDto {
       elapsed_ms?: number;
       recorded_at?: string;
     }>;
+    /** Memory OS：route_and_run 前置装载契约（与 SharedMemoryModule / MemoryContextAssembler 对齐） */
+    memory_contract?: {
+      revision: string;
+      loaded: boolean;
+      layers: string[];
+      user_id_present: boolean;
+      snapshot_id?: string;
+      snapshot_version?: number;
+      loaded_at_iso?: string;
+    };
+    /** P1：执行链与 memory snapshot 绑定（planner / recovery / skill 应对齐同一锚点） */
+    execution_memory_binding?: {
+      snapshot_id: string;
+      snapshot_version: number;
+      request_id: string;
+    };
+    /** P6：黄金链路 timeline 摘要（仅存最近若干 span 元数据，不含 payload） */
+    execution_timeline_preview?: Array<{
+      phase: string;
+      eventType: string;
+      operation: string;
+      spanId: string;
+      nodeId: string;
+      status: string;
+    }>;
     /** 本轮请求内实际完成的退避尝试次数（成功路径为最后一次成功的 attempt；失败见 recovery_trace.length） */
     recovery_retry_attempts?: number;
     orchestration_mode_final?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';
+    /**
+     * `true`：本轮命中请求级去重回放（结果复用；与 `orchestration_mode_final === 'DEDUP'` 一致）。
+     * `false`：新鲜执行或门禁/失败短路（非 dedup 缓存答复）。
+     */
+    is_replayed?: boolean;
+    /**
+     * Phase 1「Execution Truth」：单次执行的运行时画像（与 legacy route / system_mode 分层）。
+     * DEDUP 时 runtime.reusePolicy=DEDUP_REPLAY、cognition.depth=NONE；不得与 cognition 混为一谈。
+     */
+    runtime_execution_profile?: RuntimeExecutionProfile;
+    /** Runtime semantic invariants：anomaly≠failure；含 severity/category/suggestedAction，供 Policy / 聚合层消费 */
+    runtime_execution_anomalies?: RuntimeExecutionAnomaly[];
+    /** Dedup 缓存写入时盖章：供命中重放时做 freshness / policy provenance 校验 */
+    replay_cache_provenance?: ReplayProvenance;
+    /** Response-centric → artifact-centric 过渡：本轮写入缓存的 replay 语义摘要（非 registry 全量） */
+    replay_artifact_descriptor?: ReplayArtifactDescriptor;
+    /** Success finalization：局部/全量重算语义（与 cache correctness 正交；与 InvalidationDecision 对齐） */
+    replay_invalidation_decision?: {
+      scope: 'FULL_RESPONSE' | 'PARTIAL_COGNITIVE_BRANCH' | 'NONE';
+      domains?: string[];
+      reasonCodes?: string[];
+    };
+    /** P0–P2：物化 runtime（dedup 网关可附 UnifiedRuntimeState + 调度计划；见 RUNTIME_MATERIALIZATION_OBS）；P3 锚点写入见 RUNTIME_REPLAY_PERSISTENCE */
+    runtime_materialization?: RuntimeObservabilitySlice;
+    /** P3：锚点行回显（与 DB `agent_runtime_replay_anchors` 对齐；INSERT 失败时会撤回） */
+    runtime_replay_persistence?: {
+      schema: typeof RUNTIME_PERSISTENCE_SCHEMA;
+      snapshot_id: string;
+      admission_path: RuntimeReplayAdmissionPath;
+      phi_digest: string;
+      dedup_request_hash: string;
+      certificate_digest?: string;
+      /** INSERT 成功后尽力回填（异步 persist 完成时响应可能已发出） */
+      anchor_row_id?: string;
+    };
+    /** ETK：可重建执行过程（ECPS + engine steps）；非日志，用于验证 / trace replay */
+    execution_trace?: ExecutionTrace;
+    /** Gen2.1：叙事完整性可观测切片（与 `result.payload.narrative_integrity_report` / `narrative_safety` 对账；tracing / replay / eval） */
+    narrative_integrity?: NarrativeIntegrityObservabilitySlice;
+    /** PV-ER：本请求实际选用的编译策略版本 id */
+    active_execution_policy_version_id?: string;
+    /** MAPE：本请求选用的 Policy Agent id（与 PV 回显可并存；常等于选用实体的主键） */
+    active_policy_agent_id?: string;
+    /** PV-ER / MAPE：选择层的标量得分（越高越优；便于对照实验） */
+    policy_selection_score?: number;
+    /** CEL：认知经济层摘要（资产引用 / broker 版本） */
+    cognitive_economy?: {
+      referenced_assets?: string[];
+      broker_revision?: string;
+    };
+    /** CTL：认知热力学快照（ΔE / W / S / loss — 归一化能量会计） */
+    cognitive_thermodynamics?: {
+      delta_e: number;
+      work: number;
+      entropy: number;
+      loss: number;
+      conservation_residual: number;
+    };
+    /** IGL：信息几何 — 流形上的轨迹能量 / ECPS 流对齐（可微分图表坐标） */
+    information_geometry?: {
+      schema_version: string;
+      path_energy: number;
+      trajectory_points: number;
+      flow_alignment: number | null;
+    };
+    /** VCPO：变分认知物理 — 离散作用量 𝒮≈ΣL、平均 Lagrangian、Euler–Lagrange 残差代理 */
+    variational_cognitive_physics?: {
+      schema_version: string;
+      lambda_entropy: number;
+      discrete_action: number;
+      mean_lagrangian_density: number;
+      euler_lagrange_residual_proxy: number;
+      segment_count: number;
+    };
     received_route_direction_id?: string;
     mode_final?: 'LEGACY' | 'CLAUDE_DYNAMIC' | 'CLAUDE_SM' | 'DEDUP';
     /** 推荐：RAG 引用列表（与 `rag_sources` / `sources` 三选一或并列回填同内容） */

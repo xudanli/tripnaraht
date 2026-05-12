@@ -53,32 +53,58 @@ export function assembleDecisionEvidenceCards(
   state: OrchestratorState | undefined | null,
 ): DecisionEvidenceCardPayload[] {
   const raw = state?.narration?.warnings;
-  if (!Array.isArray(raw)) return [];
-
   const out: DecisionEvidenceCardPayload[] = [];
-  for (const w of raw) {
-    if (!isNarrationEvidenceCard(w)) continue;
-    const fullEvidence = { ...(w.evidence ?? {}) } as Record<string, unknown>;
-    let data_anomaly = false;
-    if (String(fullEvidence.type ?? '') === 'weather_physics') {
-      const v = Number(fullEvidence.value_mps);
-      if (Number.isFinite(v) && v > WIND_SPEED_ANOMALY_MPS) {
-        data_anomaly = true;
+  if (Array.isArray(raw)) {
+    for (const w of raw) {
+      if (!isNarrationEvidenceCard(w)) continue;
+      const fullEvidence = { ...(w.evidence ?? {}) } as Record<string, unknown>;
+      let data_anomaly = false;
+      if (String(fullEvidence.type ?? '') === 'weather_physics') {
+        const v = Number(fullEvidence.value_mps);
+        if (Number.isFinite(v) && v > WIND_SPEED_ANOMALY_MPS) {
+          data_anomaly = true;
+        }
       }
+      const tier = w.persuasion_tier;
+      const evidence = filterEvidenceForPublicPayload(fullEvidence, tier);
+      out.push({
+        kind: 'iron_shield_evidence',
+        rule_id: w.rule_id,
+        rule_name: w.rule_name,
+        severity: w.severity,
+        message: w.message,
+        narrator_hint_rendered: w.narrator_hint_rendered,
+        ...(tier === 1 || tier === 2 || tier === 3 ? { persuasion_tier: tier } : {}),
+        evidence,
+        ...(data_anomaly ? { flags: { data_anomaly: true } } : {}),
+      });
     }
-    const tier = w.persuasion_tier;
-    const evidence = filterEvidenceForPublicPayload(fullEvidence, tier);
+  }
+
+  // Bridge VERIFY hard snapshots into user-readable evidence cards when narrator warnings are absent.
+  // This keeps QA/Front-end aligned with kernel hard facts (e.g. solar_safety_v1 from SUNSET_BREACH).
+  const verifyFacts = ((state as any)?.verification?.assertions_triggered ?? []) as any[];
+  for (const f of Array.isArray(verifyFacts) ? verifyFacts : []) {
+    if (!f || typeof f !== 'object') continue;
+    const ruleId = String((f as any).rule_id ?? '').trim();
+    if (!ruleId) continue;
+    if (out.some((x) => x.rule_id === ruleId)) continue;
+    const ev = ((f as any).evidence && typeof (f as any).evidence === 'object'
+      ? (f as any).evidence
+      : {}) as Record<string, unknown>;
+    const evType = String(ev.type ?? '');
+    if (ruleId !== 'solar_safety_v1' && evType !== 'solar_safety' && evType !== 'solar_physics') continue;
+    const msg = String((ev as any).message ?? 'Sunset visibility safety window violated');
     out.push({
       kind: 'iron_shield_evidence',
-      rule_id: w.rule_id,
-      rule_name: w.rule_name,
-      severity: w.severity,
-      message: w.message,
-      narrator_hint_rendered: w.narrator_hint_rendered,
-      ...(tier === 1 || tier === 2 || tier === 3 ? { persuasion_tier: tier } : {}),
-      evidence,
-      ...(data_anomaly ? { flags: { data_anomaly: true } } : {}),
+      rule_id: ruleId,
+      rule_name: typeof (f as any).rule_name === 'string' ? (f as any).rule_name : 'Solar safety constraint',
+      severity: (f as any).severity === 'SOFT' ? 'SOFT' : 'HARD',
+      message: msg,
+      evidence: filterEvidenceForPublicPayload(ev, 1),
+      persuasion_tier: 1,
     });
   }
+
   return out;
 }

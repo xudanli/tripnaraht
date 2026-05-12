@@ -55,7 +55,7 @@ export class ExpectedUtilityLogService {
           decisionSource: 'UTILITY',
           decisionStage: 'PLAN_SCORE',
           explanation: `totalExpectedUtility=${result.totalExpectedUtility.toFixed(4)}, penalties=${result.penalties.totalPenalty.toFixed(4)}`,
-          reasonCodes: [],
+          reasonCodes: ['EXPECTED_UTILITY_EVAL'],
           evidenceRefs: [],
           timestamp: new Date().toISOString(),
         },

@@ -1,0 +1,19 @@
+{
+  "region": "Iceland",
+  "version": "1.0.0",
+  "principles": {
+    "driving": {
+      "winter_f_road_prohibited": {
+        "id": "STRAT_ICE_001",
+        "description": "F-roads and interior highland corridors are seasonally closed or inappropriate for typical consumer travel in Icelandic winter months; treat as operational prohibition unless explicitly opened per official sources (e.g. road.is).",
+        "condition": "month IN [11,12,1,2,3,4]",
+        "severity": "CRITICAL"
+      },
+      "two_wheel_drive_f_road_prohibited": {
+        "id": "STRAT_ICE_002",
+        "description": "2WD vehicles are prohibited on F-roads and highland tracks regardless of season under typical rental and insurance terms in Iceland.",
+        "severity": "CRITICAL"
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ describe('e2e replay fixture mocks', () => {
       description: 'desc',
       input: { userProfile: {}, season: 7, countryCode: 'IS', userQuery: 'q' },
       expected: {
-        abuExpected: { action: 'ALLOW', reasonCodes: [] },
+        abuExpected: { action: 'ALLOW' },
         finalState: { allowed: true, planDays: 7 },
         traceSummary: {
           metaDecisionAudit: 'audit',

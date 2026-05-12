@@ -1,6 +1,8 @@
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { OrchestratorState } from '../interfaces/trip-plan.interface';
 import { itineraryToRoutePlanDraft } from '../../decision/kernel/dso-to-trips-converter';
+import { matchAxioms } from '../axioms/axiom-matchers';
+import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 
 export interface PhysicalConflictAuditReport {
   conflict_source: {
@@ -188,7 +190,7 @@ export interface PhysicalConflictAuditReport {
   /**
    * 跨时空因果链：先知指纹 → 意图是否修正 → 真实 REPAIR 指纹 + 逻辑/效用漂移（全链路漏斗）。
    */
-  predictive_feedback_then_repair?: {
+  predictive_feedback_then_repair: {
     /** INTAKE 先知 correlationId */
     prediction_id?: string;
     /** 后续 REPAIR 升级 / 效用补偿 correlationId */
@@ -196,16 +198,16 @@ export interface PhysicalConflictAuditReport {
     /** 在最后一次 PREDICTIVE_FAILURE_REPORT 日志之后出现 RELAXATION_APPLIED（放宽/改意图，v1 见生成器注释） */
     intent_revision_flag?: boolean;
     /** 轨迹漂移：delta_utility = Σ(real) − Σ(pred)；delta_reason 为 reason 集合对齐摘要 */
-    drift_vector?: { delta_utility: number; delta_reason: string };
+    drift_vector: { delta_utility: number; delta_reason: string };
   };
   /**
    * 会话一致性（0–100）：基于 `predictive_feedback_then_repair` 的漂移与先知命中率；
    * 满分当 `delta_reason === 'aligned'` 且 |delta_utility| 小于 5；扣分含 reason/utility/「放宽后仍撞墙」。
    * 看板提示：与 `cognitive_behavioral_summary.proceeded_at_own_risk[].dominant_cid` 聚合；若某 dominant_cid（如 terrain.f_road_compatibility）频繁伴随低分，下一步应收紧 ConstraintBoundaryLibrary 中该约束的边界定义或证据链。
    */
-  session_consistency_score?: number;
+  session_consistency_score: number;
   /** Best-effort "most binding" cid for this session (for metric labeling). */
-  dominant_cid?: string;
+  dominant_cid: string;
 }
 
 /** 先知仿真 vs 真实 REPAIR：`RepairReason` 字符串精确命中（可扩展 tactic/boundary 对齐）。 */
@@ -315,11 +317,15 @@ function computeDriftVector(simulatedTraces: unknown[], realTracesFlat: unknown[
 function computeSessionConsistencyScore(
   link: PhysicalConflictAuditReport['predictive_feedback_then_repair'] | undefined,
   predRealStats: { predictive_to_real_conflict_ratio?: number } | undefined,
-): number | undefined {
-  if (!link?.drift_vector) return undefined;
+): number {
+  if (!link?.drift_vector) return 0;
   const dv = link.drift_vector;
+  if (!dv?.delta_reason) return 0;
   let score = 100;
 
+  if (dv.delta_reason === 'unknown') {
+    score -= 60;
+  }
   if (dv.delta_reason !== 'aligned') {
     score -= 40;
   }
@@ -443,19 +449,30 @@ export class AuditReportGenerator {
         const hasTerrainFRoad = issues.some(
           (i) => parseL3ProofPrefix(String(i?.message ?? ''))?.cid === 'terrain.f_road_compatibility',
         );
-        if (hasTerrainFRoad) return [{ reason: 'TERRAIN_F_ROAD_UNFIT', metrics: { utility_delta: -10 } }];
+        if (hasTerrainFRoad)
+          return [
+            {
+              reason: AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.real_label as any,
+              metrics: { utility_delta: AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.utility_anchor.actual_penalty },
+            },
+          ];
       }
 
       // 2) Last-resort: semantic intent projection from TripPlanRequest (closes evidence-chain breaks in online paths)
       const msg = String((state as any)?.trip_plan_request?.message ?? '').trim();
-      const wantsFroad = /\bf-?road\b/i.test(msg) || /\bF\d{2,4}\b/i.test(msg) || /高地|内陆|山地|河渡|涉水/i.test(msg);
-      const is2wd = /2wd|两驱/i.test(msg);
+      const constraints = (state as any)?.trip_plan_request?.constraints as Record<string, any> | undefined;
+      const matchedTerrain = matchAxioms({ message: msg, constraints }).some((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
       const simTerrainHint =
         pfrCard &&
         Array.isArray((pfrCard as any).simulated_repair_traces) &&
         (pfrCard as any).simulated_repair_traces.some((t: any) => String(t?.simulation?.boundary_id ?? '').includes('terrain'));
-      if ((wantsFroad && is2wd) || simTerrainHint) {
-        return [{ reason: 'TERRAIN_F_ROAD_UNFIT', metrics: { utility_delta: -10 } }];
+      if (matchedTerrain || simTerrainHint) {
+        return [
+          {
+            reason: AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.real_label as any,
+            metrics: { utility_delta: AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.utility_anchor.actual_penalty },
+          },
+        ];
       }
 
       return realTracesFlatForPredBase;
@@ -479,7 +496,7 @@ export class AuditReportGenerator {
           })
         : undefined;
     const simTracesForLink = (pfrCard as any)?.simulated_repair_traces;
-    const predictiveFeedbackThenRepair = pfrCard
+    const predictiveFeedbackThenRepairBase = pfrCard
       ? {
           prediction_id: (pfrCard as any)?.correlationId as string | undefined,
           real_repair_id: escPlan?.correlationId,
@@ -489,6 +506,15 @@ export class AuditReportGenerator {
             : {}),
         }
       : undefined;
+    const predictiveFeedbackThenRepair: PhysicalConflictAuditReport['predictive_feedback_then_repair'] = {
+      prediction_id: predictiveFeedbackThenRepairBase?.prediction_id,
+      real_repair_id: predictiveFeedbackThenRepairBase?.real_repair_id,
+      intent_revision_flag: Boolean(predictiveFeedbackThenRepairBase?.intent_revision_flag),
+      drift_vector: predictiveFeedbackThenRepairBase?.drift_vector ?? {
+        delta_utility: 0,
+        delta_reason: 'unknown',
+      },
+    };
     const sessionConsistencyScore = computeSessionConsistencyScore(predictiveFeedbackThenRepair, predRealStats);
 
     const verificationIssuesForDominant = (() => {
@@ -496,42 +522,68 @@ export class AuditReportGenerator {
       const base = Array.isArray(direct) && direct.length > 0 ? direct : undefined;
 
       // B. 强制证据链注入（dominant_cid 夺回控制权）
-      // 当用户意图明确要求 F-road/高地且车辆为 2WD 时，即使验证链未落盘，也将一条 proof-carrying issue 注入候选池。
+      // 当用户意图命中公理（Axiom）但验证链未落盘时，将一条 proof-carrying issue 注入候选池。
       // 注意：这里只影响“审计归因”，不改变执行链路。
       try {
         const msg = String((state as any)?.trip_plan_request?.message ?? '').trim();
-        const wantsFroad =
-          /\bf-?road\b/i.test(msg) || /\bF\d{2,4}\b/i.test(msg) || /高地|内陆|山地|河渡|涉水/i.test(msg);
-        const is2wd = /2wd|两驱/i.test(msg);
+        const constraints = (state as any)?.trip_plan_request?.constraints as Record<string, any> | undefined;
+        const matches = matchAxioms({ message: msg, constraints });
+        const matchedTerrain = matches.some((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
+        const matchedFatigue = matches.some((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
+        const matchedEta = matches.some((m) => m.axiom_id === 'ETA_INFEASIBLE');
         const simTerrainHint =
           pfrCard &&
           Array.isArray((pfrCard as any).simulated_repair_traces) &&
           (pfrCard as any).simulated_repair_traces.some((t: any) =>
             String(t?.simulation?.boundary_id ?? '').includes('terrain'),
           );
-        if ((wantsFroad && is2wd) || simTerrainHint) {
-          const injected = {
+        const cur = base ?? (() => {
+          // Fallback: pull the last VERIFY issues snapshot from decision_log (Kernel-native VERIFY stores it in metadata.issues)
+          const log = state.decision_log ?? [];
+          for (let i = log.length - 1; i >= 0; i--) {
+            const e: any = log[i];
+            if (e?.step !== 'VERIFY') continue;
+            const issues = e?.metadata?.issues;
+            if (Array.isArray(issues) && issues.length > 0) return issues as any[];
+          }
+          return undefined;
+        })();
+        const existingCids = new Set(
+          Array.isArray(cur)
+            ? cur
+                .map((i: any) => parseL3ProofPrefix(String(i?.message ?? ''))?.cid)
+                .filter(Boolean)
+            : [],
+        );
+
+        const injected: any[] = [];
+        if ((matchedTerrain || simTerrainHint) && !existingCids.has(AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.cid)) {
+          injected.push({
             class: 'CONFLICT',
             message:
-              `[L3-PROOF|terrain.f_road_compatibility|DESTINATION:${state.request_id}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-1|evidence:MODEL:intent_froad] ` +
+              `[L3-PROOF|${AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.cid}|DESTINATION:${state.request_id}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-1|evidence:MODEL:intent_froad] ` +
               `意图要求 F-road/高地，但车辆为 2WD（通常要求 4WD）。`,
-          };
-          const cur = base ?? (() => {
-            // Fallback: pull the last VERIFY issues snapshot from decision_log (Kernel-native VERIFY stores it in metadata.issues)
-            const log = state.decision_log ?? [];
-            for (let i = log.length - 1; i >= 0; i--) {
-              const e: any = log[i];
-              if (e?.step !== 'VERIFY') continue;
-              const issues = e?.metadata?.issues;
-              if (Array.isArray(issues) && issues.length > 0) return issues as any[];
-            }
-            return undefined;
-          })();
-          const hasAlready = Array.isArray(cur)
-            ? cur.some((i: any) => parseL3ProofPrefix(String(i?.message ?? ''))?.cid === 'terrain.f_road_compatibility')
-            : false;
-          if (Array.isArray(cur)) return hasAlready ? cur : [injected, ...cur];
-          return [injected];
+          });
+        }
+        if (matchedFatigue && !existingCids.has(AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid)) {
+          injected.push({
+            class: 'CONFLICT',
+            message:
+              `[L3-PROOF|${AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid}|DAY:INTAKE|cmp:LEQ|actual:10|limit:8|unit:h|slack:-2|evidence:MODEL:intent_fatigue] ` +
+              `行程强度/驾驶时长超过疲劳承载上限。`,
+          });
+        }
+        if (matchedEta && !existingCids.has(AXIOM_REGISTRY.ETA_INFEASIBLE.cid)) {
+          injected.push({
+            class: 'CONFLICT',
+            message:
+              `[L3-PROOF|${AXIOM_REGISTRY.ETA_INFEASIBLE.cid}|DAY:INTAKE|cmp:LEQ|actual:1|limit:0|unit:bool|slack:-1|evidence:MODEL:intent_eta] ` +
+              `到达时间/时间窗约束不可满足（ETA infeasible）。`,
+          });
+        }
+        if (injected.length > 0) {
+          if (Array.isArray(cur)) return [...injected, ...cur];
+          return injected;
         }
       } catch {
         // best-effort only
@@ -552,19 +604,19 @@ export class AuditReportGenerator {
     const dominantCidForSession = (() => {
       const candidates: Array<{ cid: string; slack: number; isHard: boolean }> = [];
       const issues = verificationIssuesForDominant;
-      if (!Array.isArray(issues) || issues.length === 0) return undefined;
+      if (!Array.isArray(issues) || issues.length === 0) return 'unknown.unattributed';
       for (const issue of issues) {
         const parsed = parseL3ProofPrefix(String(issue?.message ?? ''));
         if (!parsed) continue;
         const isHard = String(issue?.class ?? '').toUpperCase() !== 'ADVISORY';
         candidates.push({ cid: parsed.cid, slack: parsed.slack, isHard });
       }
-      if (candidates.length === 0) return undefined;
+      if (candidates.length === 0) return 'unknown.unattributed';
       const withSlack = candidates.filter((c) => Number.isFinite(c.slack));
-      if (withSlack.length === 0) return undefined;
+      if (withSlack.length === 0) return 'unknown.unattributed';
       const hard = withSlack.filter((c) => c.isHard);
       const pool = hard.length > 0 ? hard : withSlack;
-      if (pool.length === 0) return undefined;
+      if (pool.length === 0) return 'unknown.unattributed';
       const domainPriority = (cid: string): number => {
         const s = String(cid ?? '');
         if (s.startsWith('terrain.')) return 0;
@@ -579,7 +631,7 @@ export class AuditReportGenerator {
         if (pa !== pb) return pa - pb;
         return a.slack - b.slack; // most negative first
       });
-      return pool[0]?.cid;
+      return pool[0]?.cid ?? 'unknown.unattributed';
     })();
     const earlyUserChoices = log.filter((e) => e?.metadata?.system_action === 'EARLY_WARNING_USER_CHOICE');
     const lastEarlyChoice = earlyUserChoices.length > 0 ? earlyUserChoices[earlyUserChoices.length - 1] : undefined;
@@ -804,7 +856,7 @@ export class AuditReportGenerator {
         }
 
         // Ensure terrain evidence is first in list when present (prevents UI/exports from being dominated by low-signal entity.*)
-        const idx = decision_evidence.findIndex((e) => e?.cid === 'terrain.f_road_compatibility');
+        const idx = decision_evidence.findIndex((e) => e?.cid === AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.cid);
         if (idx > 0) {
           const [x] = decision_evidence.splice(idx, 1);
           decision_evidence.unshift(x);
@@ -960,7 +1012,7 @@ export class AuditReportGenerator {
         ...(predRealStats ?? {}),
         ...(typeof utilityPredictionError === 'number' ? { utility_prediction_error: utilityPredictionError } : {}),
       },
-      ...(predictiveFeedbackThenRepair ? { predictive_feedback_then_repair: predictiveFeedbackThenRepair } : {}),
+      predictive_feedback_then_repair: predictiveFeedbackThenRepair,
       ...(escPlan?.correlationId || escPlan?.reason
         ? {
             repair_escalation_correlation: {
@@ -972,8 +1024,8 @@ export class AuditReportGenerator {
       ...(Array.isArray(resolutionLog) && resolutionLog.length > 0
         ? { user_repair_resolution_tail: resolutionLog.slice(-20) }
         : {}),
-      ...(typeof sessionConsistencyScore === 'number' ? { session_consistency_score: sessionConsistencyScore } : {}),
-      ...(dominantCidForSession ? { dominant_cid: dominantCidForSession } : {}),
+      session_consistency_score: sessionConsistencyScore,
+      dominant_cid: dominantCidForSession,
     };
   }
 }

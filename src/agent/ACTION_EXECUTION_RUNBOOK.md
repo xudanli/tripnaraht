@@ -7,6 +7,7 @@ This runbook describes the execution flow for `POST /agent/actions/*` APIs:
 - `POST /agent/actions/preview`
 - `POST /agent/actions/commit`
 - `POST /agent/actions/rollback`
+- `POST /agent/actions/graph/compile`
 
 These APIs are the Action-layer bridge for TripNARA decision-to-execution workflows.
 
@@ -45,6 +46,19 @@ These APIs are the Action-layer bridge for TripNARA decision-to-execution workfl
 - Accepts action ids and returns acknowledged rollback response.
 - Current implementation is a safe stub (no external side effects).
 
+### Graph Compile
+
+- Accepts an `ActionGraph` (`nodes + edges + contextSignature`).
+- Validates hard rules before execution:
+  - graph must be DAG (`GRAPH_CYCLE_ERROR`)
+  - irreversible actions must be terminal (`IRREVERSIBLE_NOT_TERMINAL`)
+  - financial/inventory actions require `idempotencyKey`
+  - commit-like actions require structured `contextSignature` (v1.2)
+  - high-risk reversible actions require compensation handler
+- Returns `SagaCompileResult`:
+  - `valid: true` with `plan` (`stages`, `rollbackPlan`, `requiredEvidence`)
+  - `valid: false` with `errors[]`
+
 ## Rejection Reason Codes
 
 - `HIGH_RISK_REQUIRES_CONFIRMATION_TOKEN`
@@ -81,6 +95,7 @@ Defined in:
 - Track `rejected_reason_codes` frequency
 - Track dedup hit ratio by `idempotency_key`
 - Track API-level action telemetry events (`action_api=preview|commit|rollback`)
+- Track graph compiler errors by code (`GRAPH_CYCLE_ERROR`, `IRREVERSIBLE_NOT_TERMINAL`, etc.)
 
 ## Safety Notes
 

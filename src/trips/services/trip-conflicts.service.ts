@@ -15,6 +15,13 @@ import {
 } from '../dto/trip-conflicts.dto';
 import { SmartRoutesService } from '../../transport/services/smart-routes.service';
 import { TravelTimeEstimatorService } from '../../transport/services/travel-time-estimator.service';
+import { assertRealityWorldReadAllowed } from '../reality-kernel/reality-policy-engine';
+import {
+  RealityExecutionBlockedError,
+  requiresPlanningHeuristicWorldModelOnly,
+} from '../reality-kernel/reality-execution-gate';
+import { RealityBypassBlockedError } from '../reality-kernel/reality-read-audit';
+import { getBoundDecisionContext } from '../reality-kernel/reality-context.storage';
 
 const DEFAULT_BUFFER_MINUTES = Number(process.env.TRIP_CONFLICT_BUFFER_MINUTES) || 15;
 
@@ -100,7 +107,8 @@ export class TripConflictsService {
     }
     const reportedCrossDay = new Set<string>();
     for (const [placeId, entries] of placeIdToItemsCrossDay) {
-      if (entries.length < 2) continue;
+      // 🆕 对齐排产策略：跨日重访 2 次（跨 2 天）允许，不作为冲突提示；>2 才提示
+      if (entries.length <= 2) continue;
       const uniqueDays = new Set(entries.map(e => e.dayDate));
       if (uniqueDays.size < 2) continue; // 同一天内已由 detectDayConflicts 处理
       const placeName = entries[0].item.Place?.nameCN || entries[0].item.Place?.nameEN || '未知';
@@ -125,7 +133,8 @@ export class TripConflictsService {
       });
     }
     for (const [placeName, entries] of placeNameToItemsCrossDay) {
-      if (entries.length < 2) continue;
+      // 🆕 对齐排产策略：跨日重访 2 次允许，>2 才提示
+      if (entries.length <= 2) continue;
       const uniquePlaceIds = new Set(entries.map(e => e.item.placeId));
       const uniqueDays = new Set(entries.map(e => e.dayDate));
       if (uniqueDays.size < 2) continue;
@@ -355,23 +364,38 @@ export class TripConflictsService {
           (next.travelMode && ['WALKING', 'DRIVING', 'TRANSIT'].includes(next.travelMode))
             ? next.travelMode
             : this.travelTimeEstimator.inferTravelMode(distanceKm);
-        try {
-          const routes = await this.smartRoutesService.getRoutes(
-            fromCoords.lat, fromCoords.lng,
-            toCoords.lat, toCoords.lng,
-            travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING'
-          );
-          if (routes.length > 0 && routes[0].durationMinutes) {
-            travelTimeMinutes = routes[0].durationMinutes;
-          }
-        } catch (e) {
-          this.logger.debug(`路线 API 调用失败，使用统一估算: ${(e as Error)?.message}`);
-        }
-        if (travelTimeMinutes == null) {
+        if (requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext())) {
           travelTimeMinutes = this.travelTimeEstimator.estimateDurationMinutes(
             distanceKm,
-            travelMode
+            travelMode,
           );
+        } else {
+          try {
+            assertRealityWorldReadAllowed(
+              this.logger,
+              'TripConflictsService.getRoutes',
+              'route provider read',
+            );
+            const routes = await this.smartRoutesService.getRoutes(
+              fromCoords.lat, fromCoords.lng,
+              toCoords.lat, toCoords.lng,
+              travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING'
+            );
+            if (routes.length > 0 && routes[0].durationMinutes) {
+              travelTimeMinutes = routes[0].durationMinutes;
+            }
+          } catch (e) {
+            if (e instanceof RealityBypassBlockedError || e instanceof RealityExecutionBlockedError) {
+              throw e;
+            }
+            this.logger.debug(`路线 API 调用失败，使用统一估算: ${(e as Error)?.message}`);
+          }
+          if (travelTimeMinutes == null) {
+            travelTimeMinutes = this.travelTimeEstimator.estimateDurationMinutes(
+              distanceKm,
+              travelMode,
+            );
+          }
         }
       }
       const requiredMinutes = travelTimeMinutes + DEFAULT_BUFFER_MINUTES;
@@ -422,46 +446,6 @@ export class TripConflictsService {
           },
         ],
       });
-    }
-
-    // 2.5 检测午餐/晚餐是否已安排（当日有活动时校验）
-    if (items.length > 0) {
-      if (!this.hasMealInWindow(items, day.date, 11, 14)) {
-        conflicts.push({
-          id: `lunch-missing-${date}`,
-          type: ConflictType.LUNCH_MISSING,
-          severity: ConflictSeverity.MEDIUM,
-          title: '未安排午餐',
-          description: `当日 11:00-14:00 内未安排午餐或用餐活动`,
-          affectedDays: [date],
-          affectedItemIds: [],
-          suggestions: [
-            {
-              action: '添加午餐',
-              description: '在 11:00-14:00 时段添加餐厅或用餐活动',
-              impact: '确保行程包含用餐时间',
-            },
-          ],
-        });
-      }
-      if (!this.hasMealInWindow(items, day.date, 17, 21)) {
-        conflicts.push({
-          id: `dinner-missing-${date}`,
-          type: ConflictType.DINNER_MISSING,
-          severity: ConflictSeverity.MEDIUM,
-          title: '未安排晚餐',
-          description: `当日 17:00-21:00 内未安排晚餐或用餐活动`,
-          affectedDays: [date],
-          affectedItemIds: [],
-          suggestions: [
-            {
-              action: '添加晚餐',
-              description: '在 17:00-21:00 时段添加餐厅或用餐活动',
-              impact: '确保行程包含用餐时间',
-            },
-          ],
-        });
-      }
     }
 
     // 3. 检测疲劳超标
@@ -568,28 +552,6 @@ export class TripConflictsService {
     }
 
     return conflicts;
-  }
-
-  /**
-   * 判断指定时段内是否有用餐活动（午餐/晚餐）
-   * @param startHour 开始小时（0-23）
-   * @param endHour 结束小时（0-23）
-   */
-  private hasMealInWindow(items: any[], date: Date, startHour: number, endHour: number): boolean {
-    const dayStart = DateTime.fromJSDate(date).startOf('day');
-    const windowStart = dayStart.set({ hour: startHour, minute: 0 });
-    const windowEnd = dayStart.set({ hour: endHour, minute: 0 });
-
-    for (const item of items) {
-      if (!item.startTime || !item.endTime) continue;
-      if (!this.isLunchOrMealActivity(item)) continue;
-
-      const start = DateTime.fromJSDate(item.startTime);
-      const end = DateTime.fromJSDate(item.endTime);
-      if (start >= windowEnd || end <= windowStart) continue;
-      return true; // 有重叠即视为已安排
-    }
-    return false;
   }
 
   /**

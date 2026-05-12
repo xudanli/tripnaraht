@@ -31,17 +31,17 @@ export class CreateEventDto {
 
   @ApiProperty({ description: '事件标题' })
   @IsString()
-  summary: string;
+  summary!: string;
 
   @ApiProperty({ description: '开始时间', type: DateTimeDto })
   @ValidateNested()
   @Type(() => DateTimeDto)
-  start: DateTimeDto;
+  start!: DateTimeDto;
 
   @ApiProperty({ description: '结束时间', type: DateTimeDto })
   @ValidateNested()
   @Type(() => DateTimeDto)
-  end: DateTimeDto;
+  end!: DateTimeDto;
 
   @ApiPropertyOptional({ description: '事件描述' })
   @IsOptional()
@@ -63,11 +63,11 @@ export class CreateEventDto {
 export class UpdateEventDto {
   @ApiProperty({ description: '日历 ID' })
   @IsString()
-  calendarId: string;
+  calendarId!: string;
 
   @ApiProperty({ description: '事件 ID' })
   @IsString()
-  eventId: string;
+  eventId!: string;
 
   @ApiPropertyOptional({ description: '事件标题' })
   @IsOptional()
@@ -100,11 +100,11 @@ export class UpdateEventDto {
 export class DeleteEventDto {
   @ApiProperty({ description: '日历 ID' })
   @IsString()
-  calendarId: string;
+  calendarId!: string;
 
   @ApiProperty({ description: '事件 ID' })
   @IsString()
-  eventId: string;
+  eventId!: string;
 }
 
 export class ListEventsDto {
@@ -159,11 +159,11 @@ export class FindFreeSlotsDto {
 
   @ApiProperty({ description: '开始时间（ISO 8601）' })
   @IsString()
-  timeMin: string;
+  timeMin!: string;
 
   @ApiProperty({ description: '结束时间（ISO 8601）' })
   @IsString()
-  timeMax: string;
+  timeMax!: string;
 
   @ApiPropertyOptional({ description: '持续时间（分钟）' })
   @IsOptional()
@@ -179,5 +179,5 @@ export class QuickAddDto {
 
   @ApiProperty({ description: '自然语言描述' })
   @IsString()
-  text: string;
+  text!: string;
 }

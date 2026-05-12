@@ -105,7 +105,7 @@ export class PostgreSQLMcpClient {
     }
 
     try {
-      const result = await this.client.callTool({
+      const result = await this.client!.callTool({
         name: 'query',
         arguments: {
           query: params.query,
@@ -149,7 +149,7 @@ export class PostgreSQLMcpClient {
     }
 
     try {
-      const result = await this.client.callTool({
+      const result = await this.client!.callTool({
         name: 'execute',
         arguments: {
           query: params.query,
@@ -191,7 +191,7 @@ export class PostgreSQLMcpClient {
     }
 
     try {
-      const tools = await this.client.listTools();
+      const tools = await this.client!.listTools();
       return tools.tools || [];
     } catch (error: any) {
       throw new Error(`Failed to list tools: ${error.message}`);

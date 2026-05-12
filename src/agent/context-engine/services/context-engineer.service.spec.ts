@@ -7,6 +7,7 @@ import { SKILLS_REGISTRY_TOKEN } from '../../../skills/services/skills-registry.
 import { RedisService } from '../../../redis/redis.service';
 import { ContextMetricsService } from './context-metrics.service';
 import { ContextPackageOptions } from '../types/context-package.types';
+import { MemoryService } from '../../memory/services/memory.service';
 
 describe('ContextEngineerService', () => {
   let service: ContextEngineerService;
@@ -64,6 +65,13 @@ describe('ContextEngineerService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        {
+          provide: MemoryService,
+          useValue: {
+            getUserTravelProfile: jest.fn().mockResolvedValue(null),
+            getUserRouteDirectionDecisions: jest.fn().mockResolvedValue([]),
+          },
+        },
         ContextEngineerService,
         {
           provide: 'PrismaService',
@@ -321,6 +329,13 @@ describe('ContextEngineerService', () => {
       // 不提供 SkillsRegistryService
       const moduleWithoutSkills: TestingModule = await Test.createTestingModule({
         providers: [
+          {
+            provide: MemoryService,
+            useValue: {
+              getUserTravelProfile: jest.fn().mockResolvedValue(null),
+              getUserRouteDirectionDecisions: jest.fn().mockResolvedValue([]),
+            },
+          },
           ContextEngineerService,
           {
             provide: 'PrismaService',

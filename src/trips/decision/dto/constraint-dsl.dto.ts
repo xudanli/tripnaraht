@@ -52,6 +52,11 @@ export class ConstraintDSLDto implements ConstraintDSL {
 }
 
 export class DetectConflictsRequestDto {
+  @ApiPropertyOptional({
+    description: 'Prisma Trip.id — 写入 state.signals/context 以供 ECO 账本对齐（可选）',
+  })
+  tripId?: string;
+
   @ApiProperty({ description: '约束DSL' })
   constraints!: ConstraintDSLDto;
 
@@ -68,4 +73,7 @@ export class GenerateMultiplePlansRequestDto {
 
   @ApiProperty({ description: '约束DSL' })
   constraints!: ConstraintDSLDto;
+
+  @ApiPropertyOptional({ description: 'Prisma Trip.id — 写入 context/signals 以供 ECO 身份账本 hydrate/persist' })
+  tripId?: string;
 }

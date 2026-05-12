@@ -583,7 +583,7 @@ export class AbuStrategy implements DecisionPersonaStrategy {
           persona: 'ABU',
           action: 'ALLOW',
           explanation: '未发现硬性风险问题（DEM、道路、危险区域、合规均通过），允许继续',
-          reasonCodes: [],
+          reasonCodes: ['ABU_GATE_PASS'],
           evidenceRefs: [],
           timestamp: new Date().toISOString(),
           decisionSource: 'PHYSICAL',

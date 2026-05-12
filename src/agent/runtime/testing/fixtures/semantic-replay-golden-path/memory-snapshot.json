@@ -1,0 +1,23 @@
+{
+  "fixtures_revision": "2026-05-11a",
+  "notes": "route_and_run 语义回放用最小只读 memory 形状；与 AgentMemoryContext 对齐",
+  "snapshot": {
+    "snapshotId": "snap-fixture-replay-1",
+    "snapshotVersion": 1,
+    "requestId": "req-replay-1",
+    "userId": "user-fixture-1",
+    "tripId": "trip-fixture-1",
+    "userProfile": null,
+    "travelPreference": null,
+    "routePartyProfile": null,
+    "recentDecisions": [],
+    "recentWorldDecisions": [],
+    "activeTripState": null,
+    "recoveryHistory": [],
+    "failurePatterns": [],
+    "loadedAt": "2026-05-11T00:00:00.000Z",
+    "observability": {
+      "layers": ["fixture"]
+    }
+  }
+}

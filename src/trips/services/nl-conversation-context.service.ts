@@ -21,6 +21,12 @@ export interface ConversationMessageMetadata {
   showConfirmCard?: boolean;
   /** 问题答案映射（用户回答澄清问题后更新） */
   questionAnswers?: Record<string, string | string[] | number | boolean | null>;
+  /**
+   * 🆕 用于展示的答案标签（优先与用户所见选项 label 一致）
+   * - key 与 questionAnswers 相同（questionId 或 questionId_paramKey）
+   * - value/label 由 controller 基于 options 做映射后写入
+   */
+  questionAnswerLabels?: Record<string, { value: string | string[]; label: string }>;
   /** 行程ID（当行程创建成功时） */
   tripId?: string;
   /** 是否成功（当行程创建成功时） */
@@ -31,6 +37,8 @@ export interface ConversationMessageMetadata {
   progressSteps?: Array<{ id?: string; label: string; detail?: string; status?: string }>;
   /** 阶段指示器（分层可见，会话恢复时从 metadata 读取） */
   phaseIndicator?: { phase: number; phaseName: string; progress: string; totalPhases?: number };
+  /** Clarification DSL Compiler：供下一轮 NL 解析注入 LLM 的约束片段 */
+  dslLlmPromptContext?: string;
   /** 其他元数据 */
   [key: string]: any;
 }
@@ -55,6 +63,16 @@ export interface NLConversationContext {
   messages: ConversationMessage[];
   conversationContext?: Record<string, any>;
   partialParams?: Record<string, any>;
+  /**
+   * 🆕 决策快照：已确认的意图参数锚点
+   * - 用于多轮对话中保持“已确认事实”不丢失（如目的地/日期/预算）
+   * - LLM parse 时应将其注入 prompt，禁止覆盖或遗忘
+   */
+  currentIntentSnapshot?: {
+    version: number;
+    confirmedParams: Record<string, any>;
+    lastConfirmedAt?: string;
+  };
   createdAt: string;
   updatedAt: string;
   expiresAt: string;
@@ -123,6 +141,11 @@ export class NLConversationContextService {
       sessionId: newSessionId,
       userId,
       messages: [],
+      currentIntentSnapshot: {
+        version: 1,
+        confirmedParams: {},
+        lastConfirmedAt: undefined,
+      },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + this.defaultTtl * 1000).toISOString(),
@@ -262,6 +285,11 @@ export class NLConversationContextService {
     updates: {
       conversationContext?: Record<string, any>;
       partialParams?: Record<string, any>;
+      currentIntentSnapshot?: {
+        confirmedParams?: Record<string, any>;
+        lastConfirmedAt?: string;
+        version?: number;
+      };
     }
   ): Promise<NLConversationContext> {
     const context = await this.getContext(sessionId, userId);
@@ -280,6 +308,21 @@ export class NLConversationContextService {
       context.partialParams = {
         ...context.partialParams,
         ...updates.partialParams,
+      };
+    }
+
+    if (updates.currentIntentSnapshot) {
+      const base = context.currentIntentSnapshot ?? { version: 1, confirmedParams: {}, lastConfirmedAt: undefined };
+      context.currentIntentSnapshot = {
+        version:
+          typeof updates.currentIntentSnapshot.version === 'number'
+            ? updates.currentIntentSnapshot.version
+            : base.version,
+        confirmedParams: {
+          ...(base.confirmedParams || {}),
+          ...(updates.currentIntentSnapshot.confirmedParams || {}),
+        },
+        lastConfirmedAt: updates.currentIntentSnapshot.lastConfirmedAt ?? base.lastConfirmedAt,
       };
     }
     

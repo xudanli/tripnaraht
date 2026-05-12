@@ -1,0 +1,65 @@
+### Decision flow — manual checks (REST Client / IntelliJ HTTP)
+### Set variables for your env
+@baseUrl = http://localhost:3000/api
+@token = REPLACE_WITH_JWT
+
+### -----------------------------------------------------------------------------
+### 1) route_and_run — baseline (needs trip_id for non-planning flows)
+POST {{baseUrl}}/agent/route_and_run
+Content-Type: application/json
+
+{
+  "request_id": "{{$uuid}}",
+  "user_id": "YOUR_USER_UUID",
+  "trip_id": "YOUR_TRIP_UUID",
+  "message": "简要总结今天行程的风险点"
+}
+
+### -----------------------------------------------------------------------------
+### 2) route_and_run — active_trip_summary (injects trip digest into recent_messages)
+POST {{baseUrl}}/agent/route_and_run
+Content-Type: application/json
+
+{
+  "request_id": "{{$uuid}}",
+  "user_id": "YOUR_USER_UUID",
+  "trip_id": "YOUR_TRIP_UUID",
+  "message": "根据当前行程给建议",
+  "conversation_context": {
+    "context_type": "active_trip_summary",
+    "recent_messages": []
+  }
+}
+
+### -----------------------------------------------------------------------------
+### 3) constraints meta (public)
+GET {{baseUrl}}/agent/route_and_run/constraints-meta
+
+### -----------------------------------------------------------------------------
+### 4) Decision replay — session list (JWT)
+# 200: { sessions, items } 数组相同。每项除 session_id / trip_run_id / created_at / status / trip_id 外含：
+# list_summary（推荐列表主文案）、trip_display_name、trip_destination、user_query_preview、
+# planning_phase、completed_at、status_label_zh
+GET {{baseUrl}}/v1/decision-replay/sessions
+Authorization: Bearer {{token}}
+
+### -----------------------------------------------------------------------------
+### 5) Decision replay — sessions filtered by trip
+GET {{baseUrl}}/v1/decision-replay/sessions?trip_id=YOUR_TRIP_UUID
+Authorization: Bearer {{token}}
+
+### -----------------------------------------------------------------------------
+### 6) Decision replay — timeline (tripRunId = trip_runs.id from list or DB)
+GET {{baseUrl}}/v1/decision-replay/timeline/TRIP_RUN_UUID
+Authorization: Bearer {{token}}
+
+### -----------------------------------------------------------------------------
+### 7) confirm_negotiation — expect 200 with valid payload from route_and_run negotiation
+# POST {{baseUrl}}/agent/confirm_negotiation
+# Content-Type: application/json
+#
+# { "session_id": "...", "alternative_id": "...", "expected_negotiation_hash": "..." }
+
+### -----------------------------------------------------------------------------
+### 8) itinerary revision timeline (public in dev — verify before prod)
+GET {{baseUrl}}/agent/trip/YOUR_TRIP_UUID/itinerary_revision_timeline

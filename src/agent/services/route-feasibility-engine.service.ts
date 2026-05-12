@@ -10,8 +10,8 @@ import type {
   FeasibilityResult,
 } from './route-feasibility.types';
 import type { ItineraryVerifyOutput } from '../../skills/itinerary/itinerary-verify.skill';
+import type { IcelandVehicleIntentHints } from '../../skills/itinerary/iceland-vehicle-terrain-arbitrator.util';
 import { ExtremeScenarioRuleEngineService } from './extreme-scenario-rule-engine.service';
-import { CONSTRAINT_IDS } from './constraint-registry';
 import {
   constraintIdFromItineraryVerifyType,
   constraintIdFromTerrainRiskFlagType,
@@ -33,10 +33,20 @@ export class RouteFeasibilityEngineService {
     const itinerary: Itinerary = input.itinerary;
 
     // 1) itinerary.verify (logistics/time/fatigue threshold heuristics)
-    const verifyOutput = await this.runItineraryVerify(itinerary, input.researchData);
+    const verifyOutput = await this.runItineraryVerify(
+      itinerary,
+      input.researchData,
+      input.user_query,
+      input.intent_hints,
+    );
     if (verifyOutput) {
       for (const i of verifyOutput.issues) {
-        const severity = i.severity === 'ERROR' ? 'BLOCK' : 'WARNING';
+        const severity =
+          i.severity === 'ERROR' || i.severity === 'CRITICAL'
+            ? 'BLOCK'
+            : i.severity === 'INFO'
+              ? 'INFO'
+              : 'WARNING';
         const violationAnchor = constraintIdFromItineraryVerifyType(i.type);
         const carried = (i as any)?.violation;
         findings.push({
@@ -182,6 +192,8 @@ export class RouteFeasibilityEngineService {
   private async runItineraryVerify(
     itinerary: Itinerary,
     researchData?: Record<string, unknown>,
+    userQuery?: string,
+    intentHints?: IcelandVehicleIntentHints,
   ): Promise<ItineraryVerifyOutput | null> {
     if (!this.skillsRegistry) return null;
     const skill = this.skillsRegistry.getSkill('itinerary.verify');
@@ -189,6 +201,8 @@ export class RouteFeasibilityEngineService {
     const out = (await skill.execute({
       itinerary: itinerary as any,
       research_data: researchData as any,
+      ...(userQuery ? { user_query: userQuery } : {}),
+      ...(intentHints ? { intent_hints: intentHints } : {}),
     })) as ItineraryVerifyOutput;
     return out ?? null;
   }

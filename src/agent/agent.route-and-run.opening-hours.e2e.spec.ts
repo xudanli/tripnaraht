@@ -29,6 +29,7 @@ import { VerifyExecutorService } from './execution/verify-executor.service';
 import { SkillsRegistryService } from '../skills/services/skills-registry.service';
 import { ItineraryVerifySkill } from '../skills/itinerary/itinerary-verify.skill';
 import { RouteFeasibilityEngineService } from './services/route-feasibility-engine.service';
+import { HotspotRegistryService } from '../skills/world/services/hotspot-registry.service';
 
 describe('POST /agent/route_and_run — opening hours hard rule (E2E)', () => {
   let app: INestApplication;
@@ -251,6 +252,16 @@ describe('POST /agent/route_and_run — opening hours hard rule (E2E)', () => {
         { provide: EventTelemetryService, useValue: mockEventTelemetry },
         { provide: RequestDeduplicationService, useValue: mockRequestDeduplication },
         { provide: ClaudeOrchestratorService, useValue: deterministicClaudeOrchestrator },
+        {
+          provide: HotspotRegistryService,
+          useValue: {
+            observeRequest: () => undefined,
+            listActivePairs: () => [],
+            decideBucketMinutes: () => 5,
+            markPolled: () => undefined,
+            recordSnapshot: () => undefined,
+          },
+        },
       ],
     }).compile();
 
@@ -261,8 +272,8 @@ describe('POST /agent/route_and_run — opening hours hard rule (E2E)', () => {
   afterAll(async () => {
     if (prevUseClaudeEnv === undefined) delete process.env.USE_CLAUDE_ORCHESTRATION;
     else process.env.USE_CLAUDE_ORCHESTRATION = prevUseClaudeEnv;
-    await app.close();
-    await moduleRef.close();
+    if (app) await app.close();
+    if (moduleRef) await moduleRef.close();
   });
 
   beforeEach(() => {

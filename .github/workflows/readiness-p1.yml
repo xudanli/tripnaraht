@@ -5,6 +5,10 @@ on:
   pull_request:
     paths:
       - "src/**"
+      - "scripts/ci/check-execution-os-stability-contract.ts"
+      - "scripts/ci/validate-change-impact-descriptor.ts"
+      - "change-impact-descriptor.v1.json"
+      - ".github/pull_request_template.md"
       - "scripts/readiness-p1.sh"
       - "scripts/release-gate-v2.sh"
       - "scripts/release-gate-v2-write.mjs"
@@ -16,12 +20,18 @@ on:
       - "package.json"
       - "package-lock.json"
       - "tsconfig.ci.json"
+      - "tsconfig.physics.json"
+      - "tsconfig.trips.json"
       - ".github/workflows/readiness-p1.yml"
   push:
     branches:
       - master
     paths:
       - "src/**"
+      - "scripts/ci/check-execution-os-stability-contract.ts"
+      - "scripts/ci/validate-change-impact-descriptor.ts"
+      - "change-impact-descriptor.v1.json"
+      - ".github/pull_request_template.md"
       - "scripts/readiness-p1.sh"
       - "scripts/release-gate-v2.sh"
       - "scripts/release-gate-v2-write.mjs"
@@ -33,6 +43,8 @@ on:
       - "package.json"
       - "package-lock.json"
       - "tsconfig.ci.json"
+      - "tsconfig.physics.json"
+      - "tsconfig.trips.json"
       - ".github/workflows/readiness-p1.yml"
 
 jobs:
@@ -43,6 +55,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -53,7 +67,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run readiness P1 (lint + check:physical + build + ROLL week1-3 + AO/TD tests)
+      - name: Run readiness P1 (lint + check:physical + typecheck:physics + typecheck:trips + build + ROLL week1-3 + AO/TD tests)
+        env:
+          CID_STRICT_DIFF: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+          CID_MERGE_BASE: ${{ github.event.pull_request.base.sha || '' }}
         run: npm run readiness:p1
 
       - name: Upload report artifact

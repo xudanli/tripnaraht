@@ -1,7 +1,7 @@
 // src/skills/hitl/entities/approval-request.entity.ts
 /**
  * Approval Request Entity
- * 
+ *
  * HITL 审批请求的持久化实体
  */
 

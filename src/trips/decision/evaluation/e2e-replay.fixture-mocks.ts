@@ -69,7 +69,8 @@ export function buildDecisionLogsForFixture(testCase: E2ECase): DecisionLogEntry
         abu.action === 'REJECT'
           ? 'DEM Evidence missing for segment (highlands)'
           : '通过安全检查',
-      reasonCodes: abu.reasonCodes ?? [],
+      reasonCodes:
+        abu.reasonCodes ?? (abu.action === 'ALLOW' ? ['ABU_GATE_PASS'] : []),
       evidenceRefs: ['fixture:abu-gate'],
       timestamp: ts,
       decisionSource: 'PHYSICAL',
@@ -87,7 +88,7 @@ export function buildDecisionLogsForFixture(testCase: E2ECase): DecisionLogEntry
       persona: 'EXPECTED_UTILITY',
       action: 'EVALUATE',
       explanation: 'fixture trace summary audit',
-      reasonCodes: [],
+      reasonCodes: ['EXPECTED_UTILITY_EVAL'],
       evidenceRefs: ['fixture:plan-score'],
       timestamp: ts,
       decisionSource: 'UTILITY',

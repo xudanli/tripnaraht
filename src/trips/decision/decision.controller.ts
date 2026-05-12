@@ -34,6 +34,7 @@ import {
 } from './dto/feedback.dto';
 import { mergeTriggeredAssertions, normalizeHardRuleSnapshot } from './shared/hard-rule-snapshot.types';
 import { assessDrift } from './shared/drift-assessment.util';
+import { applyPrismaTripIdToWorldState } from '../execution-closure-persistence/apply-prisma-trip-id-to-world-state';
 
 @ApiTags('decision')
 @Controller('decision')
@@ -819,10 +820,13 @@ export class DecisionController {
       // 场景：自然语言创建行程的澄清阶段尚无 plan/constraints，前端可能预请求冲突检测
       const constraints = body.constraints ?? {};
 
+      const state: TripWorldState = { ...(body.state ?? {}) } as TripWorldState;
+      applyPrismaTripIdToWorldState(state, body.tripId);
+
       const conflictResult = await this.conflictResolver.detectAndExplainConflicts(
         constraints as any,
         body.plan || null,
-        body.state || ({} as TripWorldState)
+        state
       );
 
       return successResponse({
@@ -852,6 +856,7 @@ export class DecisionController {
       type: 'object',
       required: ['state', 'plan'],
       properties: {
+        tripId: { type: 'string', description: 'Prisma Trip.id（可选，ECO 账本上下文）' },
         state: { type: 'object', description: '世界状态' },
         plan: { type: 'object', description: '行程计划' },
       },
@@ -863,7 +868,7 @@ export class DecisionController {
     type: ApiSuccessResponseDto,
   })
   async checkConstraintsWithExplanation(
-    @Body() body: { state: TripWorldState; plan: TripPlan }
+    @Body() body: { state: TripWorldState; plan: TripPlan; tripId?: string }
   ) {
     try {
       // Phase 0: 优先使用 ConstraintEngineService.isFeasible 统一入口
@@ -871,6 +876,7 @@ export class DecisionController {
         if (!body.state || !body.plan) {
           return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 plan 是必需的参数');
         }
+        applyPrismaTripIdToWorldState(body.state, body.tripId);
         const result = await this.constraintEngine.isFeasible(body.state, body.plan);
         return successResponse({
           feasible: result.feasible,
@@ -890,6 +896,7 @@ export class DecisionController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 plan 是必需的参数');
       }
 
+      applyPrismaTripIdToWorldState(body.state, body.tripId);
       const checkResult = await this.constraintChecker.checkPlan(body.state, body.plan);
 
       return successResponse({
@@ -917,13 +924,14 @@ export class DecisionController {
       type: 'object',
       required: ['state', 'plan'],
       properties: {
+        tripId: { type: 'string', description: 'Prisma Trip.id（可选，ECO 账本上下文）' },
         state: { type: 'object', description: 'TripWorldState' },
         plan: { type: 'object', description: 'TripPlan' },
       },
     },
   })
   @ApiResponse({ status: 200, description: '计算完成', type: ApiSuccessResponseDto })
-  async computeDailyUtility(@Body() body: { state: TripWorldState; plan: TripPlan }) {
+  async computeDailyUtility(@Body() body: { state: TripWorldState; plan: TripPlan; tripId?: string }) {
     try {
       if (!this.dailyUtilityCalculator) {
         return errorResponse(ErrorCode.INTERNAL_ERROR, 'DailyUtilityCalculator 不可用');
@@ -931,6 +939,7 @@ export class DecisionController {
       if (!body.state || !body.plan) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 plan 是必需的参数');
       }
+      applyPrismaTripIdToWorldState(body.state, body.tripId);
       const result = this.dailyUtilityCalculator.compute(body.plan, body.state);
       return successResponse(result);
     } catch (error: any) {
@@ -994,9 +1003,13 @@ export class DecisionController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 constraints 是必需的参数');
       }
 
-      const { variants, log } = await this.decisionEngine.generateMultiplePlans(
-        body.state as TripWorldState
-      );
+      const state = body.state as TripWorldState;
+      applyPrismaTripIdToWorldState(state, body.tripId);
+      if (!(state.policies as { constraintDSL?: unknown } | undefined)?.constraintDSL && body.constraints) {
+        state.policies = { ...(state.policies ?? {}), constraintDSL: body.constraints as any } as TripWorldState['policies'];
+      }
+
+      const { variants, log } = await this.decisionEngine.generateMultiplePlans(state);
 
       return successResponse({
         variants: variants.map(v => ({

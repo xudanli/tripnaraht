@@ -7,21 +7,21 @@ export class AmadeusSearchFlightOffersDto {
     example: 'SYD',
   })
   @IsString()
-  originLocationCode: string;
+  originLocationCode!: string;
 
   @ApiProperty({
     description: '目的地 IATA 代码（例如：BKK 表示曼谷）',
     example: 'BKK',
   })
   @IsString()
-  destinationLocationCode: string;
+  destinationLocationCode!: string;
 
   @ApiProperty({
     description: '出发日期（ISO 8601 格式：YYYY-MM-DD）',
     example: '2026-05-02',
   })
   @IsString()
-  departureDate: string;
+  departureDate!: string;
 
   @ApiProperty({
     description: '成人数（12岁以上，1-9）',
@@ -32,7 +32,7 @@ export class AmadeusSearchFlightOffersDto {
   @IsNumber()
   @Min(1)
   @Max(9)
-  adults: number;
+  adults!: number;
 
   @ApiPropertyOptional({
     description: '返程日期（ISO 8601 格式：YYYY-MM-DD，往返航班）',

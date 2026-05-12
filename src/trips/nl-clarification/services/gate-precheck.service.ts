@@ -157,14 +157,10 @@ export class GatePrecheckService {
         this.logger.debug(`Gate 触发条件检查跳过: 字段 ${field} 是推断值（未经用户确认），不触发预检查`);
         return false;
       }
-      
-      if (!fieldValue) {
+
+      // 不能用 !fieldValue：hasWinterDrivingExperience=false、数值 0 等合法取值会被误判为「缺失」
+      if (!this.isTriggerRequiredFieldPresent(fieldValue)) {
         this.logger.debug(`Gate 触发条件检查失败: 缺少必需字段 ${field}`);
-        return false;
-      }
-      // 如果是数组字段，检查是否为空数组
-      if (Array.isArray(fieldValue) && fieldValue.length === 0) {
-        this.logger.debug(`Gate 触发条件检查失败: 数组字段 ${field} 为空`);
         return false;
       }
     }
@@ -186,6 +182,16 @@ export class GatePrecheckService {
       }
     }
     
+    return true;
+  }
+
+  /** 触发条件里的「必填」是否已出现（允许 boolean false / number 0） */
+  private isTriggerRequiredFieldPresent(value: unknown): boolean {
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'boolean') return true;
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
     return true;
   }
 

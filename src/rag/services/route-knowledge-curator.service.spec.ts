@@ -2,23 +2,27 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RouteKnowledgeCurator, RoutePhilosophyNarrative, SegmentNarrative } from './route-knowledge-curator.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RagService } from './rag.service';
+import { ChunkRetrievalService } from './chunk-retrieval.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
 import { LlmExtractionService } from './llm-extraction.service';
 
 describe('RouteKnowledgeCurator', () => {
   let service: RouteKnowledgeCurator;
   let prisma: jest.Mocked<PrismaService>;
-  let ragService: jest.Mocked<RagService>;
+  let chunkRetrieval: jest.Mocked<Pick<ChunkRetrievalService, 'retrieve'>>;
   let llmExtraction: jest.Mocked<LlmExtractionService>;
 
   beforeEach(async () => {
+    process.env.REALITY_ENFORCEMENT = '0';
+    process.env.RAG_REALITY_POLICY_ENFORCE = '0';
+
     const mockPrisma = {
       routeDirection: {
         findUnique: jest.fn(),
       },
     };
 
-    const mockRagService = {
+    const mockChunkRetrieval = {
       retrieve: jest.fn(),
     };
 
@@ -34,8 +38,14 @@ describe('RouteKnowledgeCurator', () => {
           useValue: mockPrisma,
         },
         {
-          provide: RagService,
-          useValue: mockRagService,
+          provide: ChunkRetrievalService,
+          useValue: mockChunkRetrieval,
+        },
+        {
+          provide: RagRealityPolicyGateService,
+          useValue: {
+            mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
+          },
         },
         {
           provide: LlmExtractionService,
@@ -46,7 +56,7 @@ describe('RouteKnowledgeCurator', () => {
 
     service = module.get<RouteKnowledgeCurator>(RouteKnowledgeCurator);
     prisma = module.get(PrismaService);
-    ragService = module.get(RagService);
+    chunkRetrieval = module.get(ChunkRetrievalService);
     llmExtraction = module.get(LlmExtractionService);
   });
 
@@ -63,12 +73,18 @@ describe('RouteKnowledgeCurator', () => {
       countryCode: 'IS',
     };
 
-    const mockRagSnippets = [
+    const mockChunkRows = [
       {
         id: '1',
+        chunkId: 'c1',
         content: '这是一条非常经典的路线，适合有经验的旅行者',
-        title: 'Travel Guide',
-        score: 0.9,
+        type: 'text',
+        credibilityScore: 0.9,
+        keywords: [] as string[],
+        metadata: { title: 'Travel Guide' },
+        fileId: 'f1',
+        similarity: 0.9,
+        sourceFile: 'guide.md',
       },
     ];
 
@@ -83,7 +99,7 @@ describe('RouteKnowledgeCurator', () => {
     it('应该成功生成路线叙事', async () => {
       // @ts-ignore
       prisma.routeDirection.findUnique.mockResolvedValue(mockRouteDirection);
-      ragService.retrieve.mockResolvedValue(mockRagSnippets);
+      chunkRetrieval.retrieve.mockResolvedValue(mockChunkRows as any);
       llmExtraction.extractStructured.mockResolvedValue(mockNarrative);
 
       const result = await service.enrichRouteNarrative('1', 'IS');
@@ -91,7 +107,7 @@ describe('RouteKnowledgeCurator', () => {
       expect(prisma.routeDirection.findUnique).toHaveBeenCalledWith({
         where: { id: 1 },
       });
-      expect(ragService.retrieve).toHaveBeenCalled();
+      expect(chunkRetrieval.retrieve).toHaveBeenCalled();
       expect(llmExtraction.extractStructured).toHaveBeenCalled();
       expect(result.routeDirectionId).toBe('1');
       expect(result.philosophyExplanation).toBe(mockNarrative.philosophyExplanation);
@@ -109,7 +125,7 @@ describe('RouteKnowledgeCurator', () => {
     it('应该在未找到 RAG 内容时返回基础叙事', async () => {
       // @ts-ignore
       prisma.routeDirection.findUnique.mockResolvedValue(mockRouteDirection);
-      ragService.retrieve.mockResolvedValue([]);
+      chunkRetrieval.retrieve.mockResolvedValue([]);
 
       const result = await service.enrichRouteNarrative('1', 'IS');
 
@@ -123,25 +139,31 @@ describe('RouteKnowledgeCurator', () => {
         ...mockRouteDirection,
         countryCode: 'NO',
       });
-      ragService.retrieve.mockResolvedValue([]);
+      chunkRetrieval.retrieve.mockResolvedValue([]);
 
       await service.enrichRouteNarrative('1', 'IS');
 
-      expect(ragService.retrieve).toHaveBeenCalledWith(
+      expect(chunkRetrieval.retrieve).toHaveBeenCalledWith(
         expect.objectContaining({
-          countryCode: 'IS', // 使用传入的 countryCode，而不是路线中的
+          query: expect.stringContaining('IS'),
         })
       );
     });
   });
 
   describe('enrichSegmentNarrative', () => {
-    const mockRagSnippets = [
+    const mockChunkRowsSeg = [
       {
         id: '1',
+        chunkId: 'c1',
         content: '第一天的行程非常精彩',
-        title: 'Day 1 Guide',
-        score: 0.85,
+        type: 'text',
+        credibilityScore: 0.85,
+        keywords: [] as string[],
+        metadata: { title: 'Day 1 Guide' },
+        fileId: 'f1',
+        similarity: 0.85,
+        sourceFile: 'day1.md',
       },
     ];
 
@@ -153,7 +175,7 @@ describe('RouteKnowledgeCurator', () => {
     };
 
     it('应该成功生成路线段叙事', async () => {
-      ragService.retrieve.mockResolvedValue(mockRagSnippets);
+      chunkRetrieval.retrieve.mockResolvedValue(mockChunkRowsSeg as any);
       llmExtraction.extractStructured.mockResolvedValue(mockNarrative);
 
       const result = await service.enrichSegmentNarrative('segment-1', 1, {
@@ -162,7 +184,7 @@ describe('RouteKnowledgeCurator', () => {
         countryCode: 'IS',
       });
 
-      expect(ragService.retrieve).toHaveBeenCalled();
+      expect(chunkRetrieval.retrieve).toHaveBeenCalled();
       expect(llmExtraction.extractStructured).toHaveBeenCalled();
       expect(result.segmentId).toBe('segment-1');
       expect(result.dayIndex).toBe(1);
@@ -170,7 +192,7 @@ describe('RouteKnowledgeCurator', () => {
     });
 
     it('应该在未找到 RAG 内容时返回基础叙事', async () => {
-      ragService.retrieve.mockResolvedValue([]);
+      chunkRetrieval.retrieve.mockResolvedValue([]);
 
       const result = await service.enrichSegmentNarrative('segment-1', 1, {
         name: '第一天',
@@ -185,7 +207,7 @@ describe('RouteKnowledgeCurator', () => {
     });
 
     it('应该处理 LLM 生成失败', async () => {
-      ragService.retrieve.mockResolvedValue(mockRagSnippets);
+      chunkRetrieval.retrieve.mockResolvedValue(mockChunkRowsSeg as any);
       llmExtraction.extractStructured.mockRejectedValue(new Error('LLM 失败'));
 
       const result = await service.enrichSegmentNarrative('segment-1', 1, {
@@ -209,7 +231,7 @@ describe('RouteKnowledgeCurator', () => {
 
       // @ts-ignore
       prisma.routeDirection.findUnique.mockResolvedValue(mockRoute);
-      ragService.retrieve.mockResolvedValue([]);
+      chunkRetrieval.retrieve.mockResolvedValue([]);
 
       const result = await service.enrichMultipleRoutes(['1', '2'], 'IS');
 
@@ -228,7 +250,7 @@ describe('RouteKnowledgeCurator', () => {
       prisma.routeDirection.findUnique
         .mockResolvedValueOnce(mockRoute)
         .mockResolvedValueOnce(null); // 第二个路线不存在
-      ragService.retrieve.mockResolvedValue([]);
+      chunkRetrieval.retrieve.mockResolvedValue([]);
 
       const result = await service.enrichMultipleRoutes(['1', '999'], 'IS');
 

@@ -18,6 +18,8 @@ import {
   Optional,
   HttpCode,
   HttpStatus,
+  Param,
+  Headers,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { TripDecisionEngineService } from './trip-decision-engine.service';
@@ -28,6 +30,7 @@ import { MultiPlanGenerator } from './services/multi-plan-generator.service';
 import { WorldModelContext, RoutePlanDraft } from './shared/world-model.types';
 import { TripWorldState } from './world-model';
 import { TripPlan } from './plan-model';
+import { RealityExecutionBlockedError } from '../reality-kernel/reality-execution-gate';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
 import { Public } from '../../auth/decorators/public.decorator';
 import {
@@ -39,12 +42,38 @@ import {
   ExplainPlanRequestDto,
   AdjustPacingRequestDto,
   ReplaceNodesRequestDto,
+  RecordRealityOutcomeDto,
 } from './dto/decision-engine-api.dto';
+import { OpsRealityAuditService } from './services/ops-reality-audit.service';
+import { OperationalPolicyService } from './operational-policy/operational-policy.service';
+import {
+  mergeOutcomeTelemetryRefs,
+  type OpsRealityOutcomePayloadV1,
+} from './observability/ops-reality-audit-payload';
+import {
+  coerceFailureOntologyPayload,
+  mergeFailureOntologyIntoOutcome,
+} from './failure-ontology/failure-ontology-outcome';
+import { applyPrismaTripIdToWorldState } from '../execution-closure-persistence/apply-prisma-trip-id-to-world-state';
+import { DecisionLoggingService } from './services/decision-logging.service';
 
 @ApiTags('decision-engine')
 @Controller('decision-engine/v1')
 export class DecisionEngineController {
   private readonly logger = new Logger(DecisionEngineController.name);
+
+  private pickHeader(
+    headers: Record<string, string | string[] | undefined>,
+    name: string,
+  ): string | undefined {
+    const lower = name.toLowerCase();
+    const keys = Object.keys(headers);
+    const found = keys.find((k) => k.toLowerCase() === lower);
+    if (!found) return undefined;
+    const v = headers[found];
+    if (Array.isArray(v)) return v[0]?.trim();
+    return typeof v === 'string' ? v.trim() : undefined;
+  }
 
   constructor(
     private readonly decisionEngine: TripDecisionEngineService,
@@ -52,7 +81,16 @@ export class DecisionEngineController {
     @Optional() private readonly constraintEngine?: ConstraintEngineService,
     @Optional() private readonly explainabilityService?: ExplainabilityService,
     @Optional() private readonly multiPlanGenerator?: MultiPlanGenerator,
+    @Optional() private readonly opsRealityAudit?: OpsRealityAuditService,
+    @Optional() private readonly operationalPolicy?: OperationalPolicyService,
+    @Optional() private readonly decisionLogging?: DecisionLoggingService,
   ) {}
+
+  /** Echo `signals.lastDecisionCausalityId` for OPS / clients that POST outcome without full state. */
+  private echoLastDecisionCausalityId(state: TripWorldState): { lastDecisionCausalityId?: string } {
+    const id = state.signals?.lastDecisionCausalityId?.trim();
+    return id ? { lastDecisionCausalityId: id } : {};
+  }
 
   @Get('health')
   @Public()
@@ -70,8 +108,23 @@ export class DecisionEngineController {
         checkConstraints: !!this.constraintEngine,
         explainPlan: !!this.explainabilityService,
         generateMultiplePlans: !!this.multiPlanGenerator,
+        operationalPolicy: !!this.operationalPolicy,
       },
     });
+  }
+
+  @Get('operational-policy')
+  @Public()
+  @ApiOperation({
+    summary: '生效营运策略（P-OPS-3）',
+    description: '默认策略合并环境变量 OPS_OPERATIONAL_POLICY_JSON 后的版本化配置（warn/degrade/block/reroute 语义）。',
+  })
+  @ApiResponse({ status: 200, description: '策略 JSON' })
+  operationalPolicyEffective() {
+    if (!this.operationalPolicy) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, 'Operational policy service unavailable');
+    }
+    return successResponse(this.operationalPolicy.getEffectivePolicy());
   }
 
   @Post('generate-plan')
@@ -84,12 +137,18 @@ export class DecisionEngineController {
       if (!body.state?.context) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'state.context 是必需的');
       }
-      const { plan, log } = await this.decisionEngine.generatePlan(
-        body.state as TripWorldState,
-        body.requestId,
-      );
-      return successResponse({ plan, log });
+      const state = body.state as TripWorldState;
+      applyPrismaTripIdToWorldState(state, body.tripId);
+      const { plan, log } = await this.decisionEngine.generatePlan(state, body.requestId);
+      return successResponse({ plan, log, ...this.echoLastDecisionCausalityId(state) });
     } catch (error: any) {
+      if (error instanceof RealityExecutionBlockedError) {
+        this.logger.warn(`generatePlan execution gate: ${error.message}`);
+        return errorResponse(ErrorCode.BUSINESS_ERROR, error.message, {
+          snapshotId: error.snapshotId,
+          policy_codes: error.codes,
+        });
+      }
       this.logger.error(`generatePlan 失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
@@ -108,14 +167,19 @@ export class DecisionEngineController {
       if (!body.plan?.days) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'plan.days 是必需的');
       }
+      const state = body.state as TripWorldState;
+      applyPrismaTripIdToWorldState(state, body.tripId);
       const trigger = (body.trigger || 'signal_update') as any;
-      const { plan, log } = await this.decisionEngine.repairPlan(
-        body.state as TripWorldState,
-        body.plan as TripPlan,
-        trigger,
-      );
-      return successResponse({ plan, log });
+      const { plan, log } = await this.decisionEngine.repairPlan(state, body.plan as TripPlan, trigger);
+      return successResponse({ plan, log, ...this.echoLastDecisionCausalityId(state) });
     } catch (error: any) {
+      if (error instanceof RealityExecutionBlockedError) {
+        this.logger.warn(`repairPlan execution gate: ${error.message}`);
+        return errorResponse(ErrorCode.BUSINESS_ERROR, error.message, {
+          snapshotId: error.snapshotId,
+          policy_codes: error.codes,
+        });
+      }
       this.logger.error(`repairPlan 失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
@@ -181,10 +245,9 @@ export class DecisionEngineController {
           rawCheckResult: { violations: [], isValid: true, summary: { errorCount: 0, warningCount: 0, infoCount: 0 } },
         });
       }
-      const result = await this.constraintEngine.isFeasible(
-        body.state as TripWorldState,
-        body.plan as TripPlan,
-      );
+      const state = body.state as TripWorldState;
+      applyPrismaTripIdToWorldState(state, body.tripId);
+      const result = await this.constraintEngine.isFeasible(state, body.plan as TripPlan);
       return successResponse({
         feasible: result.feasible,
         violations: result.violations,
@@ -209,11 +272,13 @@ export class DecisionEngineController {
       if (!this.decisionEngine.generateMultiplePlans) {
         return errorResponse(ErrorCode.INTERNAL_ERROR, '多方案生成能力不可用');
       }
-      const { variants, log } = await this.decisionEngine.generateMultiplePlans(
-        body.state as TripWorldState,
-        body.requestId,
-      );
-      return successResponse({ variants, log });
+      const state = body.state as TripWorldState;
+      applyPrismaTripIdToWorldState(state, body.tripId);
+      if (!(state.policies as { constraintDSL?: unknown } | undefined)?.constraintDSL && body.constraints) {
+        state.policies = { ...(state.policies ?? {}), constraintDSL: body.constraints as any } as TripWorldState['policies'];
+      }
+      const { variants, log } = await this.decisionEngine.generateMultiplePlans(state, body.requestId);
+      return successResponse({ variants, log, ...this.echoLastDecisionCausalityId(state) });
     } catch (error: any) {
       this.logger.error(`generateMultiplePlans 失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
@@ -345,5 +410,120 @@ export class DecisionEngineController {
       this.logger.error(`replaceNodes 失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
+  }
+
+  @Post('ops-reality-audit/:snapshotId/outcome')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'P-OPS-2：回填实况 outcome（与预测快照 join）',
+    description:
+      '对 append-only 预测行首次写入 outcome（幂等：仅 outcome 为空时可更新）。需启用 OPS_REALITY_AUDIT=1。',
+  })
+  async recordRealityOutcome(
+    @Param('snapshotId') snapshotId: string,
+    @Body() body: RecordRealityOutcomeDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    if (!this.opsRealityAudit) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, 'OpsRealityAuditService 不可用');
+    }
+    const tripRun =
+      body.trip_run_id?.trim() ||
+      this.pickHeader(headers, 'x-trip-run-id');
+    const execTrace =
+      body.execution_trace_id?.trim() ||
+      this.pickHeader(headers, 'x-execution-trace-id') ||
+      this.pickHeader(headers, 'x-request-id');
+    const causalityRef = body.causality_id?.trim();
+    let mergedOutcome = mergeOutcomeTelemetryRefs(body.outcome as Record<string, unknown>, {
+      tripRunId: tripRun,
+      executionTraceId: execTrace,
+      causalityId: causalityRef,
+    }) as unknown as OpsRealityOutcomePayloadV1;
+
+    if (body.failure_ontology && typeof body.failure_ontology === 'object') {
+      const failureRecord = coerceFailureOntologyPayload(body.failure_ontology as Record<string, unknown>);
+      if (failureRecord) {
+        mergedOutcome = mergeFailureOntologyIntoOutcome(mergedOutcome, failureRecord);
+      }
+    }
+
+    const ok = await this.opsRealityAudit.recordOutcome(snapshotId, mergedOutcome, body.source);
+    if (!ok) {
+      return errorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        '未更新（快照不存在、已写过 outcome、或未启用 OPS_REALITY_AUDIT）',
+      );
+    }
+
+    const decisionLogId = body.decision_log_id?.trim();
+    let decisionOutcomeId: string | undefined;
+    let decisionOutcomePrismaError: string | undefined;
+    if (this.decisionLogging && decisionLogId) {
+      try {
+        const row = await this.decisionLogging.logOutcome(
+          decisionLogId,
+          {
+            expectedCharacteristics: {
+              ops_reality_audit_snapshot_id: snapshotId,
+              bridge: 'p-ops-2/outcome-to-decision_outcomes',
+            },
+          },
+          {
+            actualCharacteristics: {
+              outcome: mergedOutcome as Record<string, unknown>,
+            },
+          },
+          undefined,
+          undefined,
+          causalityRef ? { decisionCausalityId: causalityRef } : undefined,
+        );
+        decisionOutcomeId = row.id;
+      } catch (e) {
+        decisionOutcomePrismaError =
+          e instanceof Error ? e.message : String(e);
+        this.logger.warn(
+          `[P-OPS-2] decision_outcomes row skipped: ${decisionOutcomePrismaError}`,
+        );
+      }
+    }
+
+    return successResponse({
+      success: true,
+      snapshotId,
+      ...(decisionOutcomeId ? { decision_outcome_id: decisionOutcomeId } : {}),
+      ...(decisionOutcomePrismaError
+        ? { decision_outcome_prisma_error: decisionOutcomePrismaError }
+        : {}),
+    });
+  }
+
+  @Get('ops-reality-audit/by-trip/:tripId')
+  @Public()
+  @ApiOperation({
+    summary: 'P-OPS-2：按 trip 列出近期预测快照（含是否已填 outcome）',
+  })
+  async listRealityAuditByTrip(@Param('tripId') tripId: string) {
+    const snapshots = (await this.opsRealityAudit?.listRecentForTrip(tripId)) ?? [];
+    return successResponse({ tripId, snapshots });
+  }
+
+  @Get('ops-reality-audit/:snapshotId/replay-compare')
+  @Public()
+  @ApiOperation({
+    summary: 'P-OPS-2：离线 replay 比对（可比指纹）',
+    description:
+      '需 outcome.extensions.observation_export（p-ops-2-obs-export/v1）。比对 prediction 与观测导出在 legs+weather+planDigest 上的可比指纹（忽略 capturedAtIso）。',
+  })
+  async replayCompareSnapshot(@Param('snapshotId') snapshotId: string) {
+    if (!this.opsRealityAudit) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, 'OpsRealityAuditService 不可用');
+    }
+    const row = await this.opsRealityAudit.replayCompareSnapshot(snapshotId);
+    if (!row) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, '快照不存在或未启用 OPS_REALITY_AUDIT');
+    }
+    return successResponse(row);
   }
 }

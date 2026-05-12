@@ -36,6 +36,7 @@ import { DataModelingModule } from './data-modeling/data-modeling.module';
 import { DataArchitectureModule } from './data-architecture/data-architecture.module';
 import { ContentStrategyModule } from './content-strategy/content-strategy.module';
 import { ContextEngineModule } from './agent/context-engine/context-engine.module';
+import { SharedMemoryModule } from './agent/memory/shared-memory.module';
 import { ChainOfWorkModule } from './chain-of-work/chain-of-work.module';
 import { DecisionDraftModule } from './decision-draft/decision-draft.module';
 import { AdminModule } from './admin/admin.module';
@@ -77,6 +78,7 @@ import { RoadIsModule } from './infrastructure/external/road-is/road-is.module';
     }),
     ScheduleModule.forRoot(), // 提供定时任务支持（SchedulerRegistry）
     PrismaModule,
+    SharedMemoryModule,
     RoadIsModule, // Road.is provider + spatial segment latest_status sync (opt-in via ROAD_IS_SEGMENT_SYNC_ENABLED)
     AuthModule,
     RedisModule, // Redis 缓存模块

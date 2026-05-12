@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CostAgent, EvidenceRef, DataQuality } from '../../interfaces/sub-agent.interface';
 import { PrismaService } from '../../../prisma/prisma.service';
+import type { WorldModelStrategyLayer } from '../../../skills/world/interfaces/unified-world-model.interface';
 
 @Injectable()
 export class CostAgentService implements CostAgent {
@@ -281,6 +282,34 @@ export class CostAgentService implements CostAgent {
         confidence: 0.6,
         coverage: 1.0,
       }),
+    };
+  }
+
+  /**
+   * 构建策略层预算提案，供 MultiAgentCollaborationService 注册（与体验侧可触发 STRATEGY_CONFLICT）
+   */
+  buildBudgetStrategyLayer(
+    estimate: {
+      total_estimate: { expected: number; currency: string };
+      confidence: number;
+    },
+    params: { budgetCeiling?: number; currencyOverride?: string },
+  ): WorldModelStrategyLayer {
+    const currency = params.currencyOverride || estimate.total_estimate.currency;
+    const expected = estimate.total_estimate.expected;
+    const soft = params.budgetCeiling;
+    const overrunVsCeiling =
+      soft != null && soft > 0 && expected > soft;
+    return {
+      budgetProposal: {
+        agentId: 'domain:cost',
+        expectedSpend: expected,
+        softCeiling: soft,
+        currency,
+        overrunVsCeiling,
+        reasoningWeight: estimate.confidence,
+        confidence: estimate.confidence,
+      },
     };
   }
 

@@ -6,7 +6,7 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsBoolean, IsArray, IsObject, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsArray, IsObject, Min, Max, IsInt } from 'class-validator';
 import { ContextPackage, ContextBlock, ApiDocCategory } from '../types/context-package.types';
 import { StateProjection } from '../types/trip-state-projection.types';
 import { ContextMetricsSummary, ContextMetricsRecord } from '../services/context-metrics.service';
@@ -140,7 +140,7 @@ export class CompressContextResponseDto {
 export class ProjectStateDto {
   @ApiProperty({ description: 'Trip State 或 LangGraph State', type: Object })
   @IsObject()
-  state: any;
+  state!: any;
 
   @ApiPropertyOptional({ description: '是否包含完整状态（默认 false）', default: false })
   @IsOptional()
@@ -222,6 +222,17 @@ export class WriteBackDto {
   @IsOptional()
   @IsString()
   phase?: string;
+
+  @ApiPropertyOptional({ description: '请求 ID（写入 TripTaskMemory.history，可选）' })
+  @IsOptional()
+  @IsString()
+  requestId?: string;
+
+  @ApiPropertyOptional({ description: '计划版本（与 Orchestrator plan_version 对齐，可选）' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  planVersion?: number;
 }
 
 /**

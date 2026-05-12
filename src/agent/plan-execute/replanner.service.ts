@@ -134,7 +134,7 @@ Return ONLY a JSON array of PlanStep objects:
       };
 
       const response = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI, // 使用 OpenAI provider
+        this.llmService.getDefaultProvider(),
         fullPrompt,
         schema,
       );
@@ -242,8 +242,8 @@ Return ONLY a JSON array of PlanStep objects:
         required: ['plan'],
       };
 
-      // 使用指定的 provider 或系统默认的 provider
-      const llmProvider = provider || LlmProvider.OPENAI;
+      // 使用指定的 provider；否则使用系统默认 provider（由 LLM_DEFAULT_PROVIDER 决定）
+      const llmProvider = provider || this.llmService.getDefaultProvider();
 
       const response = await this.llmService.callLlmWithSchema(
         llmProvider,

@@ -1,22 +1,148 @@
 // src/iceland-info/services/safetravel.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpClientFactory } from '../../common/utils/http-client.factory';
 import { SafetravelQueryDto, SafetravelResponseDto, AlertType, AlertSeverity } from '../dto/safetravel.dto';
 import { AxiosInstance } from 'axios';
+import {
+  parseSafetravelRssItems,
+  rssRowsToSafetravelAlerts,
+} from '../utils/safetravel-rss-parse.util';
+import { refineSafetravelRssItems } from '../utils/safetravel-rss-refine.util';
+import {
+  SAFETRAVEL_RSS_LLM_JSON_SCHEMA,
+  buildSafetravelRssLlmUserPrompt,
+  isSafetravelRssLlmRefineEnabled,
+  mergeSafetravelRssRefinedWithLlm,
+  parseLlmRefinementJson,
+  resolveSafetravelRssLlmMode,
+  shouldRunSafetravelRssLlmRefine,
+} from '../utils/safetravel-rss-llm-merge.util';
+import { LlmService } from '../../llm/services/llm.service';
+import { LlmProvider } from '../../llm/dto/llm-request.dto';
+import type { SafetravelRSSRefined } from '../interfaces/safetravel-rss-refined.interface';
+import type { SafetravelRssItemRow } from '../utils/safetravel-rss-parse.util';
 
 @Injectable()
 export class SafetravelService {
   private readonly logger = new Logger(SafetravelService.name);
   private readonly httpClient: AxiosInstance;
   private readonly baseURL = 'https://safetravel.is';
+  private rssCache: { at: number; data: SafetravelResponseDto } | null = null;
+  private readonly RSS_CACHE_MS = 5 * 60 * 1000;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    @Optional() private readonly llmService?: LlmService,
+  ) {
     this.httpClient = HttpClientFactory.create({
       baseURL: this.baseURL,
       timeout: 10000,
     });
+  }
+
+  /**
+   * 从官方 RSS（https://safetravel.is/feed）拉取旅行安全条目，解析为结构化 alerts。
+   * 第二层：在 `SAFETRAVEL_RSS_LLM_REFINE` 非 off 且注入 `LlmService` 时，对命中启发式的条目调用 LLM 精炼并与规则层合并。
+   * 契约探测见 npm run diagnostic:safetravel
+   */
+  async fetchRssFeedAlerts(): Promise<SafetravelResponseDto> {
+    const now = Date.now();
+    if (this.rssCache && now - this.rssCache.at < this.RSS_CACHE_MS) {
+      return this.rssCache.data;
+    }
+    const res = await this.httpClient.get<string>('/feed', {
+      responseType: 'text',
+      headers: {
+        Accept: 'application/rss+xml, application/xml, text/xml, */*',
+      },
+      validateStatus: () => true,
+    });
+    if (res.status !== 200 || typeof res.data !== 'string') {
+      throw new Error(`SafeTravel RSS: HTTP ${res.status}`);
+    }
+    const rows = parseSafetravelRssItems(res.data);
+    const alerts = rssRowsToSafetravelAlerts(rows);
+    let rss_refined = refineSafetravelRssItems(rows);
+
+    const refineEnv =
+      this.configService.get<string>('SAFETRAVEL_RSS_LLM_REFINE') || process.env.SAFETRAVEL_RSS_LLM_REFINE;
+    if (this.llmService && isSafetravelRssLlmRefineEnabled(refineEnv)) {
+      const mode = resolveSafetravelRssLlmMode(refineEnv);
+      rss_refined = await this.applyLlmRefinementToRss(rows, rss_refined, mode);
+    } else if (isSafetravelRssLlmRefineEnabled(refineEnv) && !this.llmService) {
+      this.logger.debug('SAFETRAVEL_RSS_LLM_REFINE enabled but LlmService not injected — rules only');
+    }
+
+    const data: SafetravelResponseDto = {
+      alerts,
+      travelConditions: [],
+      lastUpdated: new Date().toISOString(),
+      rss_refined,
+    };
+    this.rssCache = { at: now, data };
+    this.logger.log(`SafeTravel RSS: ${alerts.length} item(s)`);
+    return data;
+  }
+
+  private async applyLlmRefinementToRss(
+    rows: SafetravelRssItemRow[],
+    rules: SafetravelRSSRefined[],
+    mode: 'auto' | 'always',
+  ): Promise<SafetravelRSSRefined[]> {
+    if (rules.length === 0) return rules;
+    const provider = this.resolveRssLlmProvider();
+    const out: SafetravelRSSRefined[] = [];
+    let attempted = 0;
+    let merged = 0;
+    for (let i = 0; i < rules.length; i++) {
+      const rule = rules[i];
+      const row = rows[i];
+      if (!row || !shouldRunSafetravelRssLlmRefine(mode, rule, row)) {
+        out.push(rule);
+        continue;
+      }
+      attempted += 1;
+      try {
+        const prompt = buildSafetravelRssLlmUserPrompt(rule, row);
+        const raw = await this.llmService!.callLlmWithSchema(provider, prompt, SAFETRAVEL_RSS_LLM_JSON_SCHEMA);
+        const obj = parseLlmRefinementJson(raw);
+        if (obj) {
+          out.push(mergeSafetravelRssRefinedWithLlm(rule, obj));
+          merged += 1;
+        } else {
+          this.logger.warn(`SafeTravel RSS LLM: parse failed for item ${i}, using rules only`);
+          out.push(rule);
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`SafeTravel RSS LLM: item ${i} failed (${msg}), using rules only`);
+        out.push(rule);
+      }
+    }
+    if (attempted > 0) {
+      this.logger.log(`SafeTravel RSS LLM: attempted=${attempted} merged=${merged} provider=${provider}`);
+    }
+    return out;
+  }
+
+  private resolveRssLlmProvider(): LlmProvider {
+    const raw = (
+      this.configService.get<string>('SAFETRAVEL_RSS_LLM_PROVIDER') || process.env.SAFETRAVEL_RSS_LLM_PROVIDER ||
+      ''
+    )
+      .toLowerCase()
+      .trim();
+    const map: Record<string, LlmProvider> = {
+      openai: LlmProvider.OPENAI,
+      deepseek: LlmProvider.DEEPSEEK,
+      gemini: LlmProvider.GEMINI,
+      anthropic: LlmProvider.ANTHROPIC,
+      vllm: LlmProvider.VLLM,
+    };
+    if (raw && map[raw]) return map[raw];
+    return this.llmService!.getDefaultProvider();
   }
 
   /**
@@ -105,7 +231,7 @@ export class SafetravelService {
     }));
 
     return {
-      alerts: alerts.filter((alert) => {
+      alerts: alerts.filter((alert: any) => {
         if (query.region && !alert.regions.includes(query.region)) {
           return false;
         }
@@ -114,7 +240,7 @@ export class SafetravelService {
         }
         return true;
       }),
-      travelConditions: travelConditions.filter((condition) => {
+      travelConditions: travelConditions.filter((condition: any) => {
         if (query.region && condition.region !== query.region) {
           return false;
         }

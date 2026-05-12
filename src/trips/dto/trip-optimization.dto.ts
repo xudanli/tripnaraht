@@ -38,7 +38,7 @@ export class ApplyOptimizationRequestDto {
   })
   @IsNotEmpty({ message: '优化结果数据不能为空' })
   @IsObject({ message: '优化结果数据必须是对象' })
-  result: any; // OptimizeRouteResponse 类型
+  result!: any; // OptimizeRouteResponse 类型
 
   @ApiPropertyOptional({ description: '应用选项', type: ApplyOptimizationOptionsDto })
   @IsOptional()
@@ -52,19 +52,19 @@ export class ApplyOptimizationRequestDto {
  */
 export class ChangePreviewDto {
   @ApiProperty({ description: '日期 ID' })
-  dayId: string;
+  dayId!: string;
 
   @ApiProperty({ description: '日期（YYYY-MM-DD）' })
-  date: string;
+  date!: string;
 
   @ApiProperty({ description: '新增项数量' })
-  added: number;
+  added!: number;
 
   @ApiProperty({ description: '删除项数量' })
-  removed: number;
+  removed!: number;
 
   @ApiProperty({ description: '修改项数量' })
-  modified: number;
+  modified!: number;
 }
 
 /**
@@ -72,13 +72,13 @@ export class ChangePreviewDto {
  */
 export class ApplyOptimizationResponseDto {
   @ApiProperty({ description: '是否成功' })
-  success: boolean;
+  success!: boolean;
 
   @ApiProperty({ description: '应用的行程项数量' })
-  appliedItems: number;
+  appliedItems!: number;
 
   @ApiProperty({ description: '修改的日期数组', type: [String] })
-  modifiedDays: string[];
+  modifiedDays!: string[];
 
   @ApiPropertyOptional({ description: '预览数据（如果 dryRun=true）', type: [ChangePreviewDto] })
   preview?: ChangePreviewDto[];

@@ -200,7 +200,7 @@ interface DecisionNode {
 - 疲劳评分
 - 风险评估
 
-**数据来源**：`dem.get.profile` Skill
+**数据来源**：`dem.get_profile` Skill（Registry 规范名；遗留名 `dem.get.profile` / `dem.getProfile` 仍可通过 Registry 解析）
 
 **参考**：
 - `src/skills/dem/dem-get-profile.skill.ts`

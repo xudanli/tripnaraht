@@ -11,6 +11,8 @@ import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
 import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 import { AgentContext } from '../interfaces/claude-orchestration.interface';
 import { GateResult, OrchestratorState, TripPlanRequest } from '../interfaces/trip-plan.interface';
@@ -117,6 +119,13 @@ describe('ClaudeOrchestratorService — executeVerifyPhase / executeRepairPhase 
           },
         },
         {
+          provide: PrismaService,
+          useValue: {
+            trip: { findUnique: jest.fn(), findFirst: jest.fn() },
+            tripRun: { findUnique: jest.fn(), findFirst: jest.fn() },
+          },
+        },
+        {
           provide: SKILLS_REGISTRY_TOKEN,
           useValue: {
             getAllSkills: jest.fn().mockReturnValue([]),
@@ -135,6 +144,13 @@ describe('ClaudeOrchestratorService — executeVerifyPhase / executeRepairPhase 
           },
         },
         { provide: DecisionKernelService, useValue: decisionKernel },
+        {
+          provide: RagRealityPolicyGateService,
+          useValue: {
+            resolve: jest.fn().mockReturnValue({ scope: 'full', policy: {} }),
+            mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
+          },
+        },
       ],
     }).compile();
     return module.get<ClaudeOrchestratorService>(ClaudeOrchestratorService);
@@ -189,17 +205,23 @@ describe('ClaudeOrchestratorService — executeVerifyPhase / executeRepairPhase 
       LlmProvider.ANTHROPIC,
     );
 
-    expect(decisionKernel.executeVerify).toHaveBeenCalledWith(dso0, {
-      requestId: rid,
-      itinerary: state.itinerary,
-      researchData: state.research_data,
-    });
+    expect(decisionKernel.executeVerify).toHaveBeenCalledWith(
+      dso0,
+      expect.objectContaining({
+        requestId: rid,
+        itinerary: state.itinerary,
+        researchData: state.research_data,
+        tripPlanRequest: state.trip_plan_request,
+      }),
+    );
     expect(outVerify).toBe(dsoAfterVerify);
     expect(state.errors.some((e) => e.step === 'VERIFY' && e.error_code === 'VERIFICATION_ISSUES')).toBe(true);
-    const verifyEntry = state.decision_log.filter((e) => e.step === 'VERIFY' && e.inputs_summary === 'Kernel 原生 VERIFY');
+    const verifyEntry = state.decision_log.filter(
+      (e) => e.step === 'VERIFY' && e.inputs_summary === '对草案做可执行性检查（开放时间、转乘、可达性等，Kernel）',
+    );
     const lastVerify = verifyEntry[verifyEntry.length - 1];
     expect((lastVerify.metadata as any)?.issues?.length).toBeGreaterThan(0);
-    expect(lastVerify.outputs_summary).toMatch(/fatal=\d+ conflict=\d+ advisory=\d+/);
+    expect(lastVerify.outputs_summary).toMatch(/共发现 \d+ 个问题/);
 
     const outRepair = await (orchestrator as any).executeRepairPhase(
       dsoAfterVerify,
@@ -220,8 +242,10 @@ describe('ClaudeOrchestratorService — executeVerifyPhase / executeRepairPhase 
     );
     expect(outRepair).toBe(dsoAfterRepair);
     expect(state.itinerary?.days?.[0]?.items?.[0]?.location_ref?.name).toBe('after-kernel');
-    const repairEntry = state.decision_log.filter((e) => e.step === 'REPAIR' && e.inputs_summary === 'Kernel 原生 REPAIR');
-    expect(repairEntry[repairEntry.length - 1].outputs_summary).toContain('已应用修复方案');
+    const repairEntry = state.decision_log.filter(
+      (e) => e.step === 'REPAIR' && e.inputs_summary === '在门禁结论允许的前提下尝试局部改行程（Kernel）',
+    );
+    expect(repairEntry[repairEntry.length - 1].outputs_summary).toContain('已根据验证结果自动调整');
     expect((repairEntry[repairEntry.length - 1].metadata as any)?.repair_applied).toBe(true);
   });
 });

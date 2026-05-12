@@ -34,6 +34,9 @@ export interface ToolsSelectInput extends SkillInput {
   
   /** 是否排除 Context Tools（默认 false） */
   excludeContextTools?: boolean;
+
+  /** 与编排超时联动：已 abort 时跳过向量检索 */
+  abortSignal?: AbortSignal;
 }
 
 export interface ToolsSelectOutput extends SkillOutput {
@@ -74,9 +77,11 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
     toolGroup: 'CONTEXT' as const,
   };
 
-  // 缓存：skill descriptions 的 embeddings（避免重复计算）
-  private skillEmbeddingsCache = new Map<string, number[]>();
+  /** Tool RAG 向量路径（embedding 缓存在 EmbeddingService / Redis） */
   private cacheEnabled = true;
+
+  /** 向量打分前最多考虑的 skill 数（预过滤 + 批量 embedding） */
+  private readonly maxVectorSkills = 56;
 
   private skillsRegistry?: SkillsRegistryService;
 
@@ -117,6 +122,10 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
     );
 
     try {
+      if (input.abortSignal?.aborted) {
+        return { tools: [], totalTools: 0 };
+      }
+
       // 1. 获取所有可用工具
       const skillsRegistry = this.getSkillsRegistry();
       let allSkills = skillsRegistry.getAllSkills();
@@ -135,7 +144,12 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
       // 3. 基于用户请求的匹配（优先向量检索，降级到关键词匹配）
       let queryTools: any[];
       if (this.embeddingService && this.cacheEnabled) {
-        queryTools = await this.selectToolsByVectorSimilarity(input.userQuery, allSkills);
+        const forVector = this.prefilterSkillsForVectorSearch(input.userQuery, allSkills);
+        queryTools = await this.selectToolsByVectorSimilarity(
+          input.userQuery,
+          forVector,
+          input.abortSignal,
+        );
       } else {
         queryTools = this.selectToolsByQuery(input.userQuery, allSkills);
       }
@@ -171,11 +185,22 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
    */
   private selectToolsByPhase(phase: string, allSkills: any[]): any[] {
     const phaseToolMap: Record<string, string[]> = {
-      planning: ['context.build', 'routeDirection.pickForIntent', 'world.buildContext'],
+      planning: [
+        'context.build',
+        'routeDirection.pickForIntent',
+        'world.buildContext',
+        'safetravel.get_advisories',
+        'iceland.rentalGuidance',
+      ],
       decision: ['decision.abuCheck', 'decision.drdrePace', 'decision.neptuneRepair'],
-      adjustment: ['decision.drdrePace', 'decision.neptuneRepair', 'plan.selectSlices'],
-      repair: ['decision.neptuneRepair', 'plan.selectSlices'],
-      readiness: ['readiness.generateChecklist', 'readiness.summarizeRisks'],
+      adjustment: ['itinerary.smart_update', 'decision.drdrePace', 'decision.neptuneRepair', 'plan.selectSlices'],
+      repair: ['itinerary.smart_update', 'decision.neptuneRepair', 'plan.selectSlices'],
+      readiness: [
+        'readiness.generateChecklist',
+        'readiness.summarizeRisks',
+        'safetravel.get_advisories',
+        'iceland.rentalGuidance',
+      ],
       countryPack: ['countryPack.newSkeleton', 'countryPack.validate'],
     };
 
@@ -196,8 +221,23 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
       checklist: ['readiness.generateChecklist'],
       country: ['countryPack.newSkeleton', 'countryPack.validate'],
       context: ['context.build', 'world.buildContext'],
-      plan: ['plan.selectSlices'],
+      plan: ['plan.selectSlices', 'itinerary.smart_update'],
       tools: ['tools.select'],
+      改行程: ['itinerary.smart_update', 'itinerary.verify'],
+      修改行程: ['itinerary.smart_update'],
+      调整行程: ['itinerary.smart_update', 'plan.selectSlices'],
+      // 冰岛 / 高地 / 官方旅行安全 RSS（与天气、路况证据互补）
+      iceland: ['safetravel.get_advisories', 'iceland.rentalGuidance'],
+      冰岛: ['safetravel.get_advisories', 'iceland.rentalGuidance'],
+      highland: ['safetravel.get_advisories', 'iceland.rentalGuidance'],
+      高地: ['safetravel.get_advisories', 'iceland.rentalGuidance'],
+      'f-road': ['safetravel.get_advisories', 'iceland.rentalGuidance'],
+      'f路': ['safetravel.get_advisories', 'iceland.rentalGuidance'],
+      safetravel: ['safetravel.get_advisories'],
+      landmannalaugar: ['safetravel.get_advisories', 'iceland.rentalGuidance'],
+      租车: ['iceland.rentalGuidance', 'safetravel.get_advisories'],
+      车行: ['iceland.rentalGuidance'],
+      carrental: ['iceland.rentalGuidance'],
     };
 
     const matchedToolNames: string[] = [];
@@ -229,48 +269,64 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
   }
 
   /**
+   * 在进入昂贵向量计算前按关键词/ token 重叠缩小候选集（仍保留 merge 与 phase 路径的完整性）
+   */
+  private prefilterSkillsForVectorSearch(userQuery: string, allSkills: any[]): any[] {
+    if (allSkills.length <= this.maxVectorSkills) {
+      return allSkills;
+    }
+    const q = userQuery.toLowerCase();
+    const tokens = [...new Set(q.split(/[\s,，。.!?；]+/).filter((t) => t.length > 1))];
+    const scored = allSkills.map((skill) => {
+      const hay = `${skill.metadata.name} ${skill.metadata.description}`.toLowerCase();
+      let score = 0;
+      for (const tok of tokens) {
+        if (hay.includes(tok)) score += 3;
+      }
+      const cat = skill.metadata.category ? String(skill.metadata.category).toLowerCase() : '';
+      if (cat && q.includes(cat)) score += 2;
+      return { skill, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, this.maxVectorSkills).map((x) => x.skill);
+  }
+
+  /**
    * 基于向量相似度选择工具（Tool RAG Embedding）
    */
   private async selectToolsByVectorSimilarity(
     userQuery: string,
     allSkills: any[],
+    abortSignal?: AbortSignal,
   ): Promise<any[]> {
     if (!this.embeddingService) {
       return this.selectToolsByQuery(userQuery, allSkills);
     }
+    if (abortSignal?.aborted) {
+      return [];
+    }
 
     try {
-      // 1. 生成查询的 embedding
       const queryEmbedding = await this.embeddingService.generateEmbedding(userQuery);
+      if (abortSignal?.aborted) {
+        return [];
+      }
 
-      // 2. 为每个 skill 生成 embedding（带缓存）
-      const skillWithScores = await Promise.all(
-        allSkills.map(async (skill) => {
-          const cacheKey = `skill:${skill.metadata.name}:${skill.metadata.description}`;
-          let skillEmbedding = this.skillEmbeddingsCache.get(cacheKey);
-
-          if (!skillEmbedding) {
-            const skillText = `${skill.metadata.name} ${skill.metadata.description}`;
-            skillEmbedding = await this.embeddingService!.generateEmbedding(skillText);
-            if (this.cacheEnabled) {
-              this.skillEmbeddingsCache.set(cacheKey, skillEmbedding);
-            }
-          }
-
-          // 3. 计算余弦相似度
-          const similarity = this.cosineSimilarity(queryEmbedding, skillEmbedding);
-
-          return {
-            skill,
-            similarity,
-          };
-        }),
+      const skillTexts = allSkills.map(
+        (skill) => `${skill.metadata.name} ${skill.metadata.description}`,
       );
+      const skillEmbeddings = await this.embeddingService.embedTextsOrdered(skillTexts);
+      if (abortSignal?.aborted) {
+        return [];
+      }
 
-      // 4. 按相似度排序
+      const skillWithScores = allSkills.map((skill, idx) => ({
+        skill,
+        similarity: this.cosineSimilarity(queryEmbedding, skillEmbeddings[idx]),
+      }));
+
       skillWithScores.sort((a, b) => b.similarity - a.similarity);
 
-      // 5. 选择相似度 > 0.3 的工具（阈值可调）
       const threshold = 0.3;
       return skillWithScores
         .filter((item) => item.similarity >= threshold)
@@ -341,10 +397,11 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
 
     // Phase 匹配加分
     const phaseToolMap: Record<string, string[]> = {
-      planning: ['context.build', 'routeDirection.pickForIntent'],
+      planning: ['context.build', 'routeDirection.pickForIntent', 'safetravel.get_advisories'],
       decision: ['decision.abuCheck', 'decision.drdrePace'],
-      adjustment: ['decision.drdrePace'],
-      repair: ['decision.neptuneRepair'],
+      adjustment: ['decision.drdrePace', 'itinerary.smart_update'],
+      repair: ['decision.neptuneRepair', 'itinerary.smart_update'],
+      readiness: ['readiness.generateChecklist', 'safetravel.get_advisories'],
     };
     const phaseKey = phase.toLowerCase();
     if (phaseToolMap[phaseKey]?.includes(skill.metadata.name)) {

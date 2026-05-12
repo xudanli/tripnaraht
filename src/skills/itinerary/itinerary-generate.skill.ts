@@ -11,6 +11,10 @@ import { TripPlanRequest, ItineraryDay, ItineraryItem, GateResult } from '../../
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { PlanningWorkbenchAgentService } from '../../agent/services/planning-workbench-agent.service';
 import { IncrementalItineraryGeneratorService } from '../../agent/context-engine/services/incremental-itinerary-generator.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { applyTripPoiEvidencePatch, loadTripPoiEvidencePatch } from './itinerary-trip-poi-hydration.util';
+import { injectCorridorDriveLegsIntoDays } from './itinerary-segment-tagger.util';
+import { resolveSparsePoiDayAllocation } from '../../agent/context-engine/utils/sparse-poi-day-allocation.util';
 import { DateTime } from 'luxon';
 
 /** 环境状态（专利实施例 2：含替代航班等） */
@@ -62,9 +66,10 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
   constructor(
     @Optional() private readonly planningWorkbench?: PlanningWorkbenchAgentService,
     @Optional() private readonly incrementalGenerator?: IncrementalItineraryGeneratorService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {
     this.logger.log(
-      `[ItineraryGenerateSkill] 已初始化, incrementalGenerator=${!!incrementalGenerator}`,
+      `[ItineraryGenerateSkill] 已初始化, incrementalGenerator=${!!incrementalGenerator}, prisma=${!!this.prisma}`,
     );
   }
 
@@ -75,6 +80,25 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
     try {
       const { request, research_data, gate_result, environment_state } = input;
 
+      const tripId =
+        request.trip_id ??
+        (request as { tripId?: string }).tripId ??
+        request.ontology_context?.trip_id;
+      let effectiveResearch = research_data;
+      if (tripId && this.prisma) {
+        try {
+          const tripPatch = await loadTripPoiEvidencePatch(this.prisma, tripId);
+          effectiveResearch = applyTripPoiEvidencePatch(research_data, tripPatch) ?? research_data;
+          if (tripPatch) {
+            this.logger.debug(`[itinerary.generate] 已合并 trip_id=${tripId} 的 TripDay/ItineraryItem 到 poi_evidence`);
+          }
+        } catch (e: any) {
+          this.logger.warn(`[itinerary.generate] 读取 trip_id=${tripId} POI 失败，回退仅用 research_data: ${e?.message}`);
+        }
+      } else if (tripId && !this.prisma) {
+        this.logger.warn(`[itinerary.generate] 请求含 trip_id=${tripId} 但 PrismaService 未注入，无法读取行程库 POI`);
+      }
+
       // 分段规划 POC: 当 days >= 3 时使用 Day1→Day2→Day3 迭代生成
       const useIncremental =
         this.incrementalGenerator &&
@@ -82,12 +106,16 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
       if (useIncremental) {
         const days = this.computeDays(request);
         if (days >= 3) {
+          const planningText = [request.message, (request as { intake_user_message?: string }).intake_user_message]
+            .filter(Boolean)
+            .join('\n');
           const result = await this.incrementalGenerator.generateIncremental({
             request: { ...request, request_id: requestId } as TripPlanRequest,
-            research_data,
+            research_data: effectiveResearch,
             gate_result,
             environment_state,
             minDaysToTrigger: 3,
+            sparsePoiDayAllocation: resolveSparsePoiDayAllocation(planningText),
           });
           return {
             request_id: requestId,
@@ -114,7 +142,7 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
       }
 
       // 3. 提取 POI 证据
-      const poiEvidence = research_data?.poi_evidence;
+      const poiEvidence = effectiveResearch?.poi_evidence;
       const pois = Array.isArray(poiEvidence) 
         ? poiEvidence 
         : (poiEvidence?.pois || []);
@@ -224,11 +252,11 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
       }
 
       // 6. 计算鲁棒性评分
-      const robustnessScore = this.calculateRobustnessScore(pois, gate_result, research_data);
+      const robustnessScore = this.calculateRobustnessScore(pois, gate_result, effectiveResearch);
 
       return {
         request_id: request.request_id,
-        days: itineraryDays,
+        days: injectCorridorDriveLegsIntoDays(itineraryDays, request.request_id),
         metadata: {
           total_days: days,
           total_cost_estimate: totalCostEstimate,

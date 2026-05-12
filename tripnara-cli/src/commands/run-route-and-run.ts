@@ -1,5 +1,8 @@
 import { Command } from "commander";
-import { callRouteAndRun } from "../core/api-client";
+import {
+  callRouteAndRun,
+  type ItineraryDayRow,
+} from "../core/api-client";
 import { logger } from "../infra/logger";
 import { getConfig } from "../infra/config";
 import { toCliError } from "../infra/errors";
@@ -7,6 +10,50 @@ import { toCliError } from "../infra/errors";
 function truncateText(s: string, max: number): string {
   const t = s.replace(/\s+/g, " ").trim();
   return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
+}
+
+function formatTimeWindow(start?: string, end?: string): string {
+  if (start && end) return `${start}–${end}`;
+  if (start) return `${start}–`;
+  if (end) return `–${end}`;
+  return "";
+}
+
+/** Terminal-friendly view of the same fields a web UI should map to cards (not raw JSON). */
+function printItineraryHuman(
+  days: ItineraryDayRow[],
+  colorize: (text: string, code: string, enabled: boolean) => string,
+  useColor: boolean,
+): void {
+  if (days.length === 0) {
+    console.log(colorize("--- itinerary: (empty — timeline & orchestration days both missing) ---", "90", useColor));
+    return;
+  }
+  console.log(
+    colorize(
+      "--- itinerary (from payload.timeline or orchestrationResult.itinerary.days) ---",
+      "36",
+      useColor,
+    ),
+  );
+  for (const d of days) {
+    const header = d.date ? d.date : `Day ${d.day_index}`;
+    console.log(colorize(`▸ ${header}`, "1", useColor));
+    if (d.items.length === 0) {
+      console.log("   (no items)");
+      continue;
+    }
+    for (const it of d.items) {
+      const win = formatTimeWindow(it.start_window, it.end_window).padEnd(13);
+      const title = it.name ?? "(unnamed)";
+      const metaParts = [it.type, it.place_id ? `#${it.place_id}` : undefined].filter(Boolean);
+      const meta = metaParts.length > 0 ? `  (${metaParts.join(" · ")})` : "";
+      console.log(`   ${win} ${title}${colorize(meta, "90", useColor)}`);
+      if (it.address) {
+        console.log(colorize(`             ${it.address}`, "90", useColor));
+      }
+    }
+  }
 }
 
 export function registerRunRouteAndRunCommand(program: Command): void {
@@ -23,7 +70,7 @@ export function registerRunRouteAndRunCommand(program: Command): void {
     .option("--trip-id <id>", "trip id")
     .option("--request-id <id>", "request id", `cli-${Date.now()}`)
     .option("--days <n>", "days hint", "2")
-    .option("--format <format>", "output format: json|table", "json")
+    .option("--format <format>", "output format: json|table|itinerary", "json")
     .option("--top-risks <n>", "top N risk tags in debug table output", "5")
     .option("--min-risk-count <n>", "minimum count threshold for risk breakdown", "1")
     .option("--color", "enable colored table output", true)
@@ -45,7 +92,7 @@ export function registerRunRouteAndRunCommand(program: Command): void {
         query: string;
         days: string;
         maxSeconds: string;
-        format?: string;
+        format?: "json" | "table" | "itinerary" | string;
         topRisks?: string;
         minRiskCount?: string;
         color?: boolean;
@@ -86,13 +133,17 @@ export function registerRunRouteAndRunCommand(program: Command): void {
             console.log(JSON.stringify(result.raw, null, 2));
             return;
           }
+          const useColor = options.color !== false;
+          if (options.format === "itinerary") {
+            printItineraryHuman(result.itinerary_days ?? [], colorize, useColor);
+            return;
+          }
           if (result.result_status === "TIMEOUT") {
             logger.warn(
               `编排超时：后端默认约 12s、上限 20s；已传 max_seconds=${maxSeconds}。若仍超时，需在后端放宽 deadline 或降低 LLM/技能耗时。`,
             );
           }
           if (options.format === "table") {
-            const useColor = options.color !== false;
             const risks = (result.risk_tags_summary ?? [])
               .map((x) => `${x.tag}(${x.count})`)
               .join(", ");
@@ -156,6 +207,7 @@ export function registerRunRouteAndRunCommand(program: Command): void {
                 }
               }
             }
+            printItineraryHuman(result.itinerary_days ?? [], colorize, useColor);
             return;
           }
 
@@ -166,6 +218,7 @@ export function registerRunRouteAndRunCommand(program: Command): void {
                 verdict: result.verdict,
                 gate_result: result.gate_result,
                 answer_text: result.answer_text,
+                itinerary_days: result.itinerary_days ?? [],
                 orchestration_errors: result.orchestration_errors ?? [],
                 risk_tags_summary: result.risk_tags_summary ?? [],
                 limitations: result.limitations ?? [],

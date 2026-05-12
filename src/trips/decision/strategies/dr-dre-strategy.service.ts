@@ -68,6 +68,15 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
     world: WorldModelContext,
     plan: RoutePlanDraft
   ): Promise<DecisionResult> {
+    if (!plan) {
+      this.logger.warn('Dr.Dre evaluate: plan 为空，跳过评估');
+      return {
+        allowed: true,
+        action: 'EVALUATE',
+        logs: [],
+      };
+    }
+
     this.logger.debug(`Dr.Dre 评估计划: ${plan.tripId}`);
 
     const pace = this.buildPaceConstraints(world);
@@ -267,7 +276,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
             persona: 'DR_DRE',
             action: 'ALLOW',
             explanation: '日节奏与连续疲劳均在可接受范围内，无需结构调整',
-            reasonCodes: [],
+            reasonCodes: ['PACE_WITHIN_BOUNDS'],
             evidenceRefs: [],
             timestamp: new Date().toISOString(),
             decisionSource: 'HUMAN',

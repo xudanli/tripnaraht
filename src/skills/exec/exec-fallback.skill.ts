@@ -11,7 +11,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { FallbackPlan } from './shared/execution-state.types';
 import { LlmService } from '../../llm/services/llm.service';
-import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { randomUUID } from 'crypto';
 
 export interface ExecFallbackInput extends SkillInput {
@@ -79,7 +78,7 @@ export class ExecFallbackSkill implements Skill<ExecFallbackInput, ExecFallbackO
 ${userPrompt}`;
       
       const resultStr = await this.llmService.callLlmWithSchema(
-        LlmProvider.OPENAI,
+        this.llmService.getDefaultProvider(),
         fullPrompt,
         {
           type: 'object',

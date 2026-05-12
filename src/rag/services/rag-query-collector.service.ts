@@ -2,7 +2,6 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RagService } from './rag.service';
 
 /**
  * RAGQueryCollectorService
@@ -18,10 +17,7 @@ import { RagService } from './rag.service';
 export class RAGQueryCollectorService {
   private readonly logger = new Logger(RAGQueryCollectorService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly ragService: RagService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * 收集 query-document 对

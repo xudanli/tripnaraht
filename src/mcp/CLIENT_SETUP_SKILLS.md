@@ -133,6 +133,8 @@ touch ~/.config/Claude/claude_desktop_config.json
    - `tripnara.countryPack.generateRegressionTests`
    - `tripnara.listSkills`
 
+   （DEM：MCP 工具名为 `tripnara.dem.getProfile`，应用内 Registry 规范名为 **`dem.get_profile`**。）
+
 ---
 
 ## 🧪 测试配置

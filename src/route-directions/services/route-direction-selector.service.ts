@@ -17,12 +17,19 @@ import {
   RejectedReason,
 } from '../interfaces/route-direction-explanation.interface';
 import { DecisionParamsInjectorService } from '../../agent/memory/services/decision-params-injector.service';
+import type { ExecutionPlanningContext } from '../../world-facts/execution-planning-context.types';
+import { ExecutionPlanningContextService } from '../../world-facts/execution-planning-context.service';
+import { RoutePlanningPolicyEngineService } from '../../world-facts/route-planning-policy-engine.service';
+import type { PolicyTraceEntry } from '../../world-facts/policy-dsl.types';
+import { ExecutionTimelineRecorderService } from '../../agent/runtime/execution-timeline-recorder.service';
 
 export interface UserIntent {
   preferences?: string[]; // 偏好标签（如 ['徒步', '摄影', '出海']）
   pace?: 'relaxed' | 'moderate' | 'intense'; // 节奏偏好
   riskTolerance?: 'low' | 'medium' | 'high'; // 风险承受度
   durationDays?: number; // 行程天数
+  /** P5：用于加载 Trip.metadata 决策执行历史（Execution-Aware Planning） */
+  tripId?: string;
   [key: string]: any; // 允许其他意图字段
 }
 
@@ -36,6 +43,17 @@ export interface RouteDirectionRecommendation {
   // 可解释性字段
   scoreBreakdown?: ScoreBreakdown; // 分数分解
   matchedSignals?: MatchedSignals; // 匹配信号
+  /** P6 / Policy DSL v1：显式策略 + 覆盖 trace + 配置版本 */
+  planningPolicy?: {
+    appliedRuleIds: string[];
+    reasons: string[];
+    trace?: PolicyTraceEntry[];
+    overrideTrace?: PolicyTraceEntry[];
+    policyRevision?: string;
+    policyConfigSources?: string[];
+    policyBundleId?: string;
+    policyRoutingRuleId?: string;
+  };
 }
 
 @Injectable()
@@ -44,9 +62,12 @@ export class RouteDirectionSelectorService {
 
   constructor(
     private readonly routeDirectionsService: RouteDirectionsService,
+    private readonly decisionParamsInjector: DecisionParamsInjectorService,
     @Optional() private readonly observabilityService?: RouteDirectionObservabilityService,
     @Optional() private readonly cacheService?: RouteDirectionCacheService,
-    @Optional() private readonly decisionParamsInjector?: DecisionParamsInjectorService
+    @Optional() private readonly executionPlanning?: ExecutionPlanningContextService,
+    @Optional() private readonly routePlanningPolicy?: RoutePlanningPolicyEngineService,
+    @Optional() private readonly executionTimelineRecorder?: ExecutionTimelineRecorderService,
   ) {}
 
   /**
@@ -68,16 +89,84 @@ export class RouteDirectionSelectorService {
     );
 
     const startTime = Date.now();
-    
-    // 0. 尝试从缓存获取
-    if (this.cacheService) {
+
+    const span = this.executionTimelineRecorder?.startSpan({
+      phase: 'route_selector',
+      operation: 'pickRouteDirections',
+      inputPayload: {
+        countryCode,
+        month: month ?? null,
+        tripId: userIntent.tripId ?? null,
+        pref_n: userIntent.preferences?.length ?? 0,
+      },
+    });
+
+    const finishOk = (rows: RouteDirectionRecommendation[], strategy: string) => {
+      span?.finishSuccess({
+        outputPayload: {
+          status: 'success',
+          selectedRouteCount: rows.length,
+        },
+        metadataSummary: {
+          strategy,
+          latencyMs: Date.now() - startTime,
+        },
+      });
+      return rows;
+    };
+
+    const finishErr = (e: unknown, retryable = true): never => {
+      const err = e instanceof Error ? e : new Error(String(e));
+      span?.finishError({
+        errorType: err.name,
+        retryable,
+      });
+      throw e;
+    };
+
+    try {
+    let planningContext: ExecutionPlanningContext | null = null;
+    if (this.executionPlanning) {
+      try {
+        planningContext = await this.executionPlanning.loadContext({
+          tripId: userIntent.tripId,
+          countryCode,
+        });
+      } catch (e: any) {
+        this.logger.warn(`Execution planning context failed: ${e?.message ?? e}`);
+      }
+    }
+
+    let bypassSelectionCache = false;
+    let policyOverrideTrace: PolicyTraceEntry[] = [];
+    let policyRevisionGlobal = '';
+    let policyConfigSourcesGlobal: string[] = [];
+    let policyBundleIdGlobal: string | undefined;
+    let policyRoutingRuleIdGlobal: string | undefined;
+    if (this.routePlanningPolicy) {
+      const ov = this.routePlanningPolicy.evaluateOverrides(planningContext);
+      bypassSelectionCache = ov.bypassSelectionCache;
+      policyOverrideTrace = ov.trace;
+      policyRevisionGlobal = ov.policyRevision;
+      policyConfigSourcesGlobal = ov.policyConfigSources ?? [];
+      policyBundleIdGlobal = ov.policyBundleId;
+      policyRoutingRuleIdGlobal = ov.policyRoutingRuleId;
+    } else if (planningContext) {
+      bypassSelectionCache =
+        Boolean(userIntent.tripId) ||
+        planningContext.tripExecutionHistory.length > 0 ||
+        !!planningContext.lastCountryDispatchFact;
+    }
+
+    // 0. 尝试从缓存获取（Override 策略要求跳过时必须跳过，否则会忽略执行记忆）
+    if (this.cacheService && !bypassSelectionCache) {
       const cached = await this.cacheService.getCachedRdSelection(countryCode, month, userIntent);
       if (cached) {
         this.logger.log(`使用缓存的 RD selection 结果`);
         if (this.observabilityService && requestId) {
           this.observabilityService.recordRdSelectLatency(requestId, Date.now() - startTime);
         }
-        return cached;
+        return finishOk(cached, 'cache_hit');
       }
     }
     
@@ -101,7 +190,7 @@ export class RouteDirectionSelectorService {
 
     if (routeDirections.length === 0) {
       this.logger.warn(`未找到 ${countryCode} 的路线方向`);
-      return [];
+      return finishOk([], 'empty_candidates');
     }
 
     // 2. 获取用户决策参数（如果可用）
@@ -125,7 +214,7 @@ export class RouteDirectionSelectorService {
       if (decisionParams && userId && this.decisionParamsInjector) {
         try {
           // 先应用 preferredRouteTypes 过滤（降权但不禁止）
-          const userProfile = await this.decisionParamsInjector['memoryService']?.getUserTravelProfile(userId);
+          const userProfile = await this.decisionParamsInjector.getUserTravelProfileForRuntime(userId);
           if (userProfile?.preferredRouteTypes && userProfile.preferredRouteTypes.length > 0) {
             const filterResult = this.decisionParamsInjector.filterRouteDirectionByPreference(
               rd,
@@ -157,16 +246,36 @@ export class RouteDirectionSelectorService {
         }
       }
 
+      let policyExcluded = false;
+      let policyAppliedRuleIds: string[] = [];
+      let policyReasons: string[] = [];
+      let policyRouteTrace: PolicyTraceEntry[] = [];
+      if (this.routePlanningPolicy) {
+        const policy = this.routePlanningPolicy.apply(finalScore, rd.id, planningContext);
+        finalScore = policy.score;
+        policyExcluded = policy.excluded;
+        policyAppliedRuleIds = policy.appliedRuleIds;
+        policyReasons = policy.reasons;
+        policyRouteTrace = policy.trace;
+        if (!policyRevisionGlobal) policyRevisionGlobal = policy.policyRevision;
+      }
+
       return {
         routeDirection: rd,
         score: finalScore,
         breakdown,
         matchedSignals: this.extractMatchedSignals(rd, userIntent, month),
+        policyExcluded,
+        policyAppliedRuleIds,
+        policyReasons,
+        policyRouteTrace,
       };
     }));
 
-    // 3. 按分数排序
-    const sorted = scored.sort((a, b) => b.score - a.score);
+    // 3. 按分数排序（策略排除的 RD 不参与 Top，除非全部被排除则回退）
+    const eligible = (scored as any[]).filter((s) => !s.policyExcluded);
+    const sortSource = eligible.length > 0 ? eligible : (scored as any[]);
+    const sorted = sortSource.sort((a, b) => b.score - a.score);
 
     // 4. 提取被淘汰的原因（Top 4-6）
     const rejected: RejectedReason[] = sorted.slice(3, 6).map(item => ({
@@ -204,6 +313,9 @@ export class RouteDirectionSelectorService {
     const top3 = sorted.slice(0, 3).map(item => {
       // 提取 breakdown（去掉 totalScore，只保留 ScoreBreakdown）
       const { totalScore: _totalScore, ...scoreBreakdown } = item.breakdown;
+      const polIds = (item as any).policyAppliedRuleIds as string[] | undefined;
+      const polReasons = (item as any).policyReasons as string[] | undefined;
+      const polRouteTrace = (item as any).policyRouteTrace as PolicyTraceEntry[] | undefined;
       return {
         routeDirection: item.routeDirection,
         score: item.score,
@@ -213,6 +325,24 @@ export class RouteDirectionSelectorService {
         signaturePois: item.routeDirection.signaturePois,
         scoreBreakdown: scoreBreakdown as ScoreBreakdown,
         matchedSignals: item.matchedSignals,
+        planningPolicy:
+          polIds?.length ||
+          polReasons?.length ||
+          (polRouteTrace && polRouteTrace.length > 0) ||
+          policyOverrideTrace.length > 0 ||
+          policyRevisionGlobal || policyBundleIdGlobal || policyRoutingRuleIdGlobal
+            ? {
+                appliedRuleIds: polIds ?? [],
+                reasons: polReasons ?? [],
+                trace: polRouteTrace,
+                overrideTrace: policyOverrideTrace.length ? policyOverrideTrace : undefined,
+                policyRevision: policyRevisionGlobal || undefined,
+                policyConfigSources:
+                  policyConfigSourcesGlobal.length > 0 ? policyConfigSourcesGlobal : undefined,
+                policyBundleId: policyBundleIdGlobal,
+                policyRoutingRuleId: policyRoutingRuleIdGlobal,
+              }
+            : undefined,
       };
     });
 
@@ -293,12 +423,16 @@ export class RouteDirectionSelectorService {
     }
 
     // 缓存结果
-    if (this.cacheService) {
+    if (this.cacheService && !bypassSelectionCache) {
       await this.cacheService.cacheRdSelection(countryCode, month, userIntent, top3);
     }
 
     this.logger.log(`选择了 ${top3.length} 条路线方向`);
-    return top3;
+    const strategy = bypassSelectionCache ? 'full_selection_bypass_cache' : 'full_selection';
+    return finishOk(top3, strategy);
+    } catch (e: unknown) {
+      return finishErr(e);
+    }
   }
 
   /**

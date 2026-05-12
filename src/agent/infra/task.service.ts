@@ -157,7 +157,7 @@ export class TaskService {
     // 如果内存中没有，尝试从缓存获取
     if (!task && this.cacheService) {
       const cacheKey = this.cacheService.generateKey(this.TASK_INFO_CACHE_PREFIX, taskId);
-      task = await this.cacheService.get<TaskInfo>(cacheKey);
+      task = (await this.cacheService.get<TaskInfo>(cacheKey)) ?? undefined;
       if (task) {
         // 回填到内存
         this.tasks.set(taskId, task);
@@ -179,7 +179,7 @@ export class TaskService {
       // 尝试从缓存获取
       if (this.cacheService) {
         const cacheKey = this.cacheService.generateKey(this.TASK_INFO_CACHE_PREFIX, taskId);
-        task = await this.cacheService.get<TaskInfo>(cacheKey);
+        task = (await this.cacheService.get<TaskInfo>(cacheKey)) ?? undefined;
         if (task) {
           this.tasks.set(taskId, task);
         }

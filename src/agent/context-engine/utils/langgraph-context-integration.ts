@@ -9,6 +9,12 @@ import { ContextEngineerService } from '../services/context-engineer.service';
 import { ContextPackageOptions, ContextPackage } from '../types/context-package.types';
 import { LangGraphState } from '../../../trips/decision/orchestration/langgraph-orchestrator.interface';
 import type { TripTaskPhase } from '../interfaces/trip-task-memory.interface';
+import { extractPrdWriteBackTraceFromLangGraphState } from '../../../trips/decision/orchestration/langgraph-prd-metadata.util';
+
+export {
+  mergePrdTraceIntoLangGraphMetadata,
+  extractPrdWriteBackTraceFromLangGraphState,
+} from '../../../trips/decision/orchestration/langgraph-prd-metadata.util';
 
 /**
  * 在每个节点开始时构建上下文包
@@ -85,6 +91,7 @@ export async function buildContextForNode(
  *       decisionLogDelta: [...],
  *       artifactsRefs: {...},
  *       phase: 'decision',  // 可选，用于 TripTaskMemory.currentPhase 更新
+ *       // requestId / planVersion 可从 state.metadata（request_id / plan_version）自动合并；此处显式传入优先。
  *     }
  *   );
  * }
@@ -107,15 +114,28 @@ export async function writeBackFromNode(
     };
     decisionLogDelta?: any[];
     artifactsRefs?: Record<string, string>;
+    requestId?: string;
+    planVersion?: number;
   },
 ): Promise<void> {
+  const fromState = extractPrdWriteBackTraceFromLangGraphState(state);
+  const requestId = data.requestId ?? fromState.requestId;
+  const planVersion = data.planVersion !== undefined ? data.planVersion : fromState.planVersion;
+
   await contextEngineer.writeBack(
     data.tripRunId,
     data.attemptNumber || 1,
     data.scratchpad,
     data.decisionLogDelta,
     data.artifactsRefs,
-    data.tripId || data.phase ? { tripId: data.tripId, phase: data.phase } : undefined,
+    data.tripId || data.phase || requestId || planVersion !== undefined
+      ? {
+          tripId: data.tripId,
+          phase: data.phase,
+          requestId,
+          planVersion,
+        }
+      : undefined,
   );
 }
 

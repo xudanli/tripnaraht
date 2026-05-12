@@ -321,10 +321,20 @@ export class RouteDirectionsService {
 
     updateData.updatedAt = new Date();
 
-    return this.prisma.routeDirection.update({
-      where: { id },
-      data: updateData,
-      // templates relation does not exist in Prisma schema
+    return await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.routeDirection.update({
+        where: { id },
+        data: updateData,
+      });
+      // 路线方向禁用时，同步禁用其下所有模板（避免父级已下架仍能用模板）
+      // 重新启用路线方向时不会自动启用模板，避免覆盖模板侧单独下架状态
+      if (data.isActive === false) {
+        await tx.routeTemplate.updateMany({
+          where: { routeDirectionId: id },
+          data: { isActive: false },
+        });
+      }
+      return updated;
     });
   }
 
@@ -332,9 +342,15 @@ export class RouteDirectionsService {
    * 删除路线方向（软删除：设置 isActive = false）
    */
   async deleteRouteDirection(id: number): Promise<void> {
-    await this.prisma.routeDirection.update({
-      where: { id },
-      data: { isActive: false },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.routeDirection.update({
+        where: { id },
+        data: { isActive: false },
+      });
+      await tx.routeTemplate.updateMany({
+        where: { routeDirectionId: id },
+        data: { isActive: false },
+      });
     });
   }
 

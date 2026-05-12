@@ -8,10 +8,17 @@ MCP Skills Server 已经成功启动，所有模块都已初始化完成。
 
 根据 `SkillsRegistryService`，以下 **9 个 Skills** 已成功注册：
 
-### 1. DEM Skills
-- **`tripnara.dem.getProfile`** - 获取路线的高程剖面、累计爬升、最大坡度、疲劳指数
+### 1. DEM Skills（双标：Registry vs MCP）
 
-### 2. Decision Skills
+| | |
+|---|--|
+| **Registry 唯一标识（代码 / SkillsRegistry / 编排提示词）** | `dem.get_profile` |
+| **MCP 工具名（stdio JSON-RPC `params.name`，对外兼容）** | `tripnara.dem.getProfile` |
+| **作用** | 基于 DEM 生成路线海拔剖面、累计爬升、最大坡度、疲劳指数；输出含 `data_quality`（`high` / `low` / `unknown`）供 telemetry 与 verify 参考。 |
+| **输入** | `polyline`（≥2 点）或带经纬度的 `destination` / `origin`+`destination`（由 `dem-get-profile-input.adapter` 归一）；可选 `samples`（米）。 |
+| **双轨** | 工作台 / WorldBuild 高频路径仍 **直接** `DEMEffortMetadataService`，不经本 Skill。 |
+
+- **`tripnara.dem.getProfile`** — MCP 调用示例见下文 JSON-RPC；语义与 `dem.get_profile` 一致。
 - **`tripnara.decision.abuCheck`** - 基于物理现实和合规的安全检查（Abu 策略）
 - **`tripnara.decision.drdrePace`** - 基于人类能力模型的节奏调整（Dr.Dre 策略）
 - **`tripnara.decision.neptuneRepair`** - 修复损坏的计划，替换高风险段（Neptune 策略）
@@ -116,6 +123,8 @@ npm run mcp:test
   }
 }
 ```
+
+> **命名说明**：`tripnara.dem.getProfile` 为 MCP 对外工具名；应用内注册表与编排层规范名为 **`dem.get_profile`**（遗留别名 `dem.getProfile` / `dem.get.profile` 仍可通过 `SkillsRegistryService.getSkill` 解析）。
 
 ### 示例 2: 创建冰岛 ReadinessPack 骨架
 

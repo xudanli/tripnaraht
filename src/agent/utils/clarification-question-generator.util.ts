@@ -1,10 +1,31 @@
 /**
  * 澄清问题生成工具
  * P3 B: 从 Orchestrator 提取，供 IntakeExecutor 与 Orchestrator 共用
+ *
+ * 文案 Fallback 来自 `src/common/constants/agent-prompts.ts`（按 GapCode + locale）。
  */
 
 import type { ClarificationQuestion } from '../interfaces/clarification.interface';
 import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
+import type { ClarificationLocale } from '../../common/constants/agent-prompts';
+import {
+  clarificationDefaultPaceOption,
+  clarificationGapIntentCompileError,
+  clarificationGapMissingConstraintsBudget,
+  clarificationGapMissingConstraintsParty,
+  clarificationGapMissingDatesDeparture,
+  clarificationGapMissingDatesReturn,
+  clarificationGapMissingDestination,
+  clarificationGapMissingPreferencesInterests,
+  clarificationGapMissingPreferencesPace,
+  clarificationGapSpecTypeError,
+  resolveClarificationLocale,
+} from '../../common/constants/agent-prompts';
+
+export interface GenerateClarificationQuestionsOptions {
+  /** 与 `conversation_context.locale` / Accept-Language 对齐 */
+  locale?: string | null;
+}
 
 export type IntakeGapType =
   | 'MISSING_DESTINATION'
@@ -33,6 +54,26 @@ export function isUnresolvedDestinationPlaceholder(destination: unknown): boolea
     s === '未知' ||
     /^destination$/i.test(s)
   );
+}
+
+/** 整串为「起点/终点」等指代词而非具体地名时，不应调用 transport.search */
+export function isTransportGeographicPlaceholder(text: unknown): boolean {
+  if (typeof text !== 'string') return false;
+  const s = text.trim();
+  if (!s) return false;
+  const lower = s.toLowerCase();
+  const zh = new Set([
+    '起点',
+    '终点',
+    '出发地',
+    '目的地',
+    '到达地',
+    '抵达地',
+    '出发站',
+    '到达站',
+  ]);
+  if (zh.has(s)) return true;
+  return ['origin', 'destination', 'start', 'end'].includes(lower);
 }
 
 /**
@@ -75,22 +116,26 @@ export function identifyGapsFromRequest(tripPlanRequest: TripPlanRequest): Intak
 export function generateClarificationQuestions(
   gaps: IntakeGap[],
   tripPlanRequest: TripPlanRequest,
+  options?: GenerateClarificationQuestionsOptions,
 ): ClarificationQuestion[] {
+  const locale: ClarificationLocale = resolveClarificationLocale(options?.locale ?? undefined);
   const questions: ClarificationQuestion[] = [];
   let questionId = 1;
 
   for (const gap of gaps) {
     switch (gap.type) {
-      case 'MISSING_DESTINATION':
+      case 'MISSING_DESTINATION': {
+        const copy = clarificationGapMissingDestination(locale);
         questions.push({
           id: `question-${questionId++}`,
-          question: '请选择您的目的地',
+          question: copy.question,
           type: 'text',
           required: true,
-          placeholder: '例如：冰岛、日本、瑞士',
-          hint: '这将帮助我们为您推荐合适的景点和活动',
+          placeholder: copy.placeholder,
+          hint: copy.hint,
         });
         break;
+      }
 
       case 'MISSING_DATES': {
         const tomorrow = new Date();
@@ -98,12 +143,13 @@ export function generateClarificationQuestions(
         const twoYearsLater = new Date();
         twoYearsLater.setFullYear(twoYearsLater.getFullYear() + 2);
 
+        const dep = clarificationGapMissingDatesDeparture(locale);
         questions.push({
           id: `question-${questionId++}`,
-          question: '请选择您的出行日期',
+          question: dep.question,
           type: 'date',
           required: true,
-          hint: '建议选择 1 个月后的日期，以便提前预订',
+          hint: dep.hint,
           validation: {
             min: tomorrow.getTime(),
             max: twoYearsLater.getTime(),
@@ -111,12 +157,13 @@ export function generateClarificationQuestions(
         });
 
         if (tripPlanRequest.start_date || tripPlanRequest.date_range?.start_date) {
+          const ret = clarificationGapMissingDatesReturn(locale);
           questions.push({
             id: `question-${questionId++}`,
-            question: '请选择您的返回日期',
+            question: ret.question,
             type: 'date',
             required: true,
-            hint: '返回日期必须晚于出发日期',
+            hint: ret.hint,
             validation: {
               min: tripPlanRequest.start_date
                 ? new Date(tripPlanRequest.start_date).getTime()
@@ -130,67 +177,77 @@ export function generateClarificationQuestions(
         break;
       }
 
-      case 'MISSING_CONSTRAINTS':
+      case 'MISSING_CONSTRAINTS': {
+        const party = clarificationGapMissingConstraintsParty(locale);
         questions.push({
           id: `question-${questionId++}`,
-          question: '同行人数',
+          question: party.question,
           type: 'single_choice',
           required: true,
-          options: ['1人', '2人', '3-4人', '5人以上'],
-          hint: '这将影响住宿和交通安排',
+          options: party.options,
+          hint: party.hint,
         });
+        const budget = clarificationGapMissingConstraintsBudget(locale);
         questions.push({
           id: `question-${questionId++}`,
-          question: '总预算（人民币）',
+          question: budget.question,
           type: 'number',
           required: true,
-          placeholder: '例如：100000',
-          hint: '包含机票、住宿、餐饮、活动等所有费用',
+          placeholder: budget.placeholder,
+          hint: budget.hint,
           validation: { min: 100, max: 1000000 },
         });
         break;
+      }
 
-      case 'MISSING_PREFERENCES':
+      case 'MISSING_PREFERENCES': {
+        const interests = clarificationGapMissingPreferencesInterests(locale);
         questions.push({
           id: `question-${questionId++}`,
-          question: '您的主要兴趣（可多选）',
+          question: interests.question,
           type: 'multi_choice',
           required: false,
-          options: ['极光', '冰川', '温泉', '文化', '美食', '户外运动', '购物', '摄影'],
-          hint: '帮助我们为您推荐合适的景点和活动',
+          options: interests.options,
+          hint: interests.hint,
         });
+        const pace = clarificationGapMissingPreferencesPace(locale);
         questions.push({
           id: `question-${questionId++}`,
-          question: '节奏偏好',
+          question: pace.question,
           type: 'single_choice',
           required: false,
-          options: ['轻松', '平衡', '紧凑'],
-          hint: '轻松：每天安排较少活动；平衡：适中安排；紧凑：尽可能多安排活动',
-          default: '平衡',
+          options: pace.options,
+          hint: pace.hint,
+          default: clarificationDefaultPaceOption(locale),
         });
         break;
+      }
 
-      case 'SPEC_TYPE_ERROR':
+      case 'SPEC_TYPE_ERROR': {
+        const copy = clarificationGapSpecTypeError(locale, gap.detail);
         questions.push({
           id: `question-${questionId++}`,
-          question: `【意图语法错误】${gap.detail}。请补充或修正关键字段后重试。`,
+          question: copy.question,
           type: 'text',
           required: true,
-          placeholder: '请用一句话补充：目的地/日期/天数/交通方式等',
-          hint: '这是编译器级语法/类型检查，信息缺失将导致后续物理推演不可用。',
+          placeholder: copy.placeholder,
+          hint: copy.hint,
         });
         break;
+      }
 
-      case 'INTENT_COMPILE_ERROR':
+      case 'INTENT_COMPILE_ERROR': {
+        const copy = clarificationGapIntentCompileError(locale, gap.detail);
         questions.push({
           id: `question-${questionId++}`,
-          question: `【意图编译失败】${gap.detail}`,
+          question: copy.question,
           type: 'single_choice',
           required: true,
-          options: ['增加天数', '缩小范围/减少必去点', '改为更快交通方式', '我想重新描述需求'],
-          hint: '这是物理下界校验失败：即使在最理想情况下也无法满足硬约束。',
+          options: copy.options,
+          hint: copy.hint,
         });
         break;
+      }
     }
   }
 

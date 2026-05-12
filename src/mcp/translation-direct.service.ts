@@ -29,7 +29,7 @@ export interface TranslationResult {
 @Injectable()
 export class TranslationDirectService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TranslationDirectService.name);
-  private axiosInstance: AxiosInstance;
+  private axiosInstance!: AxiosInstance;
   private apiKey: string | null = null;
   private isAvailable: boolean = false;
   private readonly baseUrl = 'https://translation.googleapis.com/language/translate/v2';

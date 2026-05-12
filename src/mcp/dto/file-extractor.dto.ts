@@ -7,7 +7,7 @@ export class ExtractMetadataDto {
     example: 'https://example.com/document.pdf',
   })
   @IsString()
-  url: string;
+  url!: string;
 }
 
 export class ExtractFileContentDto {
@@ -16,7 +16,7 @@ export class ExtractFileContentDto {
     example: 'https://example.com/document.pdf',
   })
   @IsString()
-  url: string;
+  url!: string;
 
   @ApiProperty({
     description: '页码（用于 PDF、PPTX）',

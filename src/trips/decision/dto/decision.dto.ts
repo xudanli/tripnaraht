@@ -6,9 +6,18 @@ import { TripPlan } from '../plan-model';
 import { TravelReadinessResult } from '../readiness/types/readiness-checklist.types';
 
 /**
- * 生成计划请求
+ * 生成计划请求（文档/示例；线上 `/api/decision-engine/v1` 以 `decision-engine-api.dto.ts` 为准）
  */
 export class GeneratePlanRequestDto {
+  @ApiPropertyOptional({
+    description:
+      'Prisma Trip.id（可选）；与 decision-engine API 一致，写入 `state.signals` / `state.context` 以便 ECO 账本对齐',
+  })
+  tripId?: string;
+
+  @ApiPropertyOptional({ description: '请求追踪 ID' })
+  requestId?: string;
+
   @ApiProperty({
     description: '旅行世界状态',
     example: {
@@ -55,7 +64,7 @@ export class GeneratePlanResponseDto {
         persona: 'ABU',
         action: 'ALLOW',
         explanation: '未发现硬性风险问题，允许继续',
-        reasonCodes: [],
+        reasonCodes: ['ABU_GATE_PASS'],
         timestamp: '2026-01-01T00:00:00.000Z',
       },
     ],
@@ -85,6 +94,11 @@ export class GeneratePlanResponseDto {
  * 修复计划请求
  */
 export class RepairPlanRequestDto {
+  @ApiPropertyOptional({
+    description: '行程 ID；设置时写入 `state.signals.ecoLedgerTripId` 以启用 ECO 身份账本 DB 冷启动恢复',
+  })
+  tripId?: string;
+
   @ApiProperty({ description: '旅行世界状态' })
   state!: TripWorldState;
 

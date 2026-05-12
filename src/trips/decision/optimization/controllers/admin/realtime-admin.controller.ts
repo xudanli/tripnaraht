@@ -127,7 +127,7 @@ export class RealtimeAdminController {
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
   @ApiResponse({ status: 200, description: '返回原始状态' })
-  async getRawState(@Param('tripId') tripId: string): Promise<ProbabilisticWorldModelContext> {
+  async getRawState(@Param('tripId') tripId: string): Promise<ProbabilisticWorldModelContext | null> {
     return this.realtimeService.getCurrentState(tripId);
   }
 

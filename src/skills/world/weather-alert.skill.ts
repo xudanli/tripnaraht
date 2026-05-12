@@ -12,8 +12,14 @@
  * - 恶劣天气代码 (95+) → ADJUST_REQUIRED (雷暴/冰雹)
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { IcelandWeatherRealtimeService, WeatherForecast, WeatherWarning } from './services/iceland-weather-realtime.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  IcelandWeatherRealtimeService,
+  WeatherForecast,
+  WeatherWarning,
+} from './services/iceland-weather-realtime.service';
+import type { VedurCapAlertItem, VedurCapAlertsPack } from './services/vedur-cap-alerts.service';
+import { VedurCapAlertsService } from './services/vedur-cap-alerts.service';
 
 /**
  * Skill 输入
@@ -78,12 +84,17 @@ export interface WeatherAlertSkillOutput {
    * 证据引用
    */
   evidenceRefs: Array<{
-    type: 'weather_forecast';
+    type: 'weather_forecast' | 'vedur_cap_alerts';
     location: string;
     timestamp: Date;
     source: string;
     confidence: number;
   }>;
+
+  /**
+   * 冰岛气象局 CAP：`vedurCap` 为全国活跃列表快照；各点合并时优先使用近邻地理查询，空则回退全国列表。
+   */
+  vedurCap?: VedurCapAlertsPack;
 
   /**
    * 执行总结
@@ -97,6 +108,7 @@ export class WeatherAlertSkill {
 
   constructor(
     private readonly weatherService: IcelandWeatherRealtimeService,
+    @Optional() private readonly vedurCapAlerts?: VedurCapAlertsService,
   ) {
     this.logger.log('✅ WeatherAlertSkill 已初始化');
   }
@@ -114,6 +126,24 @@ export class WeatherAlertSkill {
 
     let maxRiskLevel: 'safe' | 'moderate' | 'high' | 'extreme' = 'safe';
 
+    let vedurPack: VedurCapAlertsPack | undefined;
+    if (this.vedurCapAlerts) {
+      try {
+        vedurPack = await this.vedurCapAlerts.fetchActiveCapAlerts();
+        if (vedurPack.ok && vedurPack.items.length > 0) {
+          evidenceRefs.push({
+            type: 'vedur_cap_alerts',
+            location: 'IS',
+            timestamp: vedurPack.fetchedAt,
+            source: `vedur.is${vedurPack.sourcePath}`,
+            confidence: 0.92,
+          });
+        }
+      } catch (e: any) {
+        this.logger.warn(`[WeatherAlertSkill] Vedur CAP fetch skipped: ${e?.message ?? e}`);
+      }
+    }
+
     // 检查每个位置的天气
     for (const location of input.locations) {
       let forecast: any;
@@ -130,6 +160,20 @@ export class WeatherAlertSkill {
         } else {
           forecast = byStation ?? byLoc;
         }
+
+        let nearPack: VedurCapAlertsPack | undefined;
+        if (this.vedurCapAlerts) {
+          try {
+            nearPack = await this.vedurCapAlerts.fetchCapAlertsNear(location.lat, location.lng);
+          } catch (e: any) {
+            this.logger.debug(`[WeatherAlertSkill] Vedur CAP near skipped: ${e?.message ?? e}`);
+          }
+        }
+        const capItems =
+          nearPack?.ok && nearPack.items.length > 0 ? nearPack.items : vedurPack?.items ?? [];
+        const capWarningsForLoc = this.vedurItemsToWeatherWarnings(capItems);
+
+        forecast = this.appendVedurWarningsToForecast(forecast, capWarningsForLoc, location.lat, location.lng);
       } catch (e: any) {
         this.logger.error(
           `[WeatherAlertSkill] 天气服务调用失败: ${e?.message || 'unknown error'}`,
@@ -191,7 +235,7 @@ export class WeatherAlertSkill {
     }
 
     // 提取所有阻塞原因
-    const allBlockers = locationWeather.flatMap(lw => lw.blockers);
+    const _allBlockers = locationWeather.flatMap(lw => lw.blockers);
 
     // 决定 Gate 建议
     let gateRecommendation: WeatherAlertSkillOutput['gateRecommendation'];
@@ -217,7 +261,66 @@ export class WeatherAlertSkill {
       locationWeather,
       adjustments,
       evidenceRefs,
+      ...(vedurPack ? { vedurCap: vedurPack } : {}),
       summary,
+    };
+  }
+
+  private vedurItemsToWeatherWarnings(items: VedurCapAlertItem[]): WeatherWarning[] {
+    if (!items.length) return [];
+    const now = new Date();
+    const until = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    return items.slice(0, 12).map((it) => ({
+      type: 'SEVERE_WEATHER' as const,
+      severity: this.mapVedurCapSeverity(it.severity),
+      message: `Veðurstofa Íslands (CAP): ${it.headline}`,
+      validFrom: now,
+      validUntil: until,
+    }));
+  }
+
+  private mapVedurCapSeverity(
+    raw?: string,
+  ): 'low' | 'medium' | 'high' | 'very_high' {
+    const s = (raw || '').toLowerCase();
+    if (s.includes('extreme') || s.includes('red') || s.includes('danger')) return 'very_high';
+    if (s.includes('severe') || s.includes('orange') || s.includes('amber')) return 'high';
+    if (s.includes('moderate') || s.includes('yellow')) return 'medium';
+    return 'high';
+  }
+
+  /**
+   * 将国家级 CAP 预警并入预报对象（无 Open-Meteo 数据时也可仅依赖 CAP 触发 Gate）。
+   */
+  private appendVedurWarningsToForecast(
+    forecast: WeatherForecast | null,
+    extra: WeatherWarning[],
+    lat: number,
+    lng: number,
+  ): WeatherForecast | null {
+    if (!extra.length) return forecast;
+    const now = new Date();
+    if (!forecast) {
+      return {
+        regionKey: `vedur_cap_${lat.toFixed(2)}_${lng.toFixed(2)}`,
+        regionName: 'IMO CAP / Meteoalarm',
+        location: { lat, lng },
+        forecastTime: now,
+        validFrom: now,
+        validUntil: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+        warnings: [...extra],
+        hazards: [],
+        dataSource: 'vedur.is/cap',
+        confidence: 0.9,
+      };
+    }
+    const mergedSource = String(forecast.dataSource || '').includes('vedur')
+      ? forecast.dataSource
+      : `${forecast.dataSource || 'unknown'}+vedur.cap`;
+    return {
+      ...forecast,
+      warnings: [...(Array.isArray(forecast.warnings) ? forecast.warnings : []), ...extra],
+      dataSource: mergedSource,
     };
   }
 

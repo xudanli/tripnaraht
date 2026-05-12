@@ -51,6 +51,17 @@ export class NaturalLanguageToParamsDto {
   @IsObject()
   @IsOptional()
   destinationConfig?: any; // 使用 any 避免循环依赖，实际类型是 DestinationClarificationConfig
+
+  /**
+   * Clarification DSL Compiler：上一轮助手消息携带的约束片段，注入解析 Prompt，
+   * 避免模型在 reply 中复述系统卡片题干。
+   */
+  @ApiPropertyOptional({
+    description: 'DSL 澄清编译上下文（注入 NL 解析，禁止与 clarificationQuestions 冲突）',
+  })
+  @IsString()
+  @IsOptional()
+  dslClarificationContext?: string;
 }
 
 export class TripCreationParams {

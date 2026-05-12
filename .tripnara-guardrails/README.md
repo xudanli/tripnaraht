@@ -1,6 +1,6 @@
 # TripNARA Guardrails（工程守卫配置）
 
-本目录承载 **TripNARA Engineering Guardrails** 的机器可读规则与 PR 清单，与 `docs/TRIPNARA_ENGINEERING_GUARDRAILS.md` 配套。
+本目录承载 **TripNARA Engineering Guardrails** 的机器可读规则与 PR 清单，与 `docs/TRIPNARA_ENGINEERING_GUARDRAILS.md` 配套（含 **§16** TripNARA Runtime / live 能力准入，及 **`ADR-WORLD-RUNTIME-V1`**）。
 
 ## 文件索引
 

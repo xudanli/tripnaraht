@@ -19,6 +19,7 @@ export type AgentActionLogCreateInitInput = {
 @Injectable()
 export class AgentActionLogService {
   private readonly logger = new Logger(AgentActionLogService.name);
+  private minRetryFilterFallbackWarned = false;
 
   constructor(@Optional() private readonly prisma?: PrismaService) {}
 
@@ -91,14 +92,88 @@ export class AgentActionLogService {
   async listPaginated(opts: {
     status?: string;
     tripId?: string;
+    createdAtFrom?: Date;
+    createdAtTo?: Date;
+    hasEvidenceRequirementContext?: boolean;
+    hasApplyFailed?: boolean;
+    hasCompensationFailed?: boolean;
+    minRetryCount?: number;
+    hasManualInterventionRequired?: boolean;
     take: number;
     skip: number;
   }): Promise<{ rows: AgentActionLog[]; total: number }> {
     if (!this.isEnabled()) return { rows: [], total: 0 };
-    const where: Prisma.AgentActionLogWhereInput = {
+    const minRetryCount =
+      typeof opts.minRetryCount === 'number' && Number.isFinite(opts.minRetryCount)
+        ? Math.max(0, Math.floor(opts.minRetryCount))
+        : undefined;
+    const andFilters: Prisma.AgentActionLogWhereInput[] = [];
+    if (typeof opts.hasEvidenceRequirementContext === 'boolean') {
+      andFilters.push({
+        payload: {
+          path: ['evidence_requirement_context'],
+          ...(opts.hasEvidenceRequirementContext ? { not: null } : { equals: null }),
+        } as any,
+      });
+    }
+    if (typeof opts.hasApplyFailed === 'boolean') {
+      andFilters.push({
+        payload: {
+          path: ['realized_state', 'side_effects_ledger'],
+          ...(opts.hasApplyFailed
+            ? { array_contains: [{ status: 'APPLY_FAILED' }] }
+            : { not: { array_contains: [{ status: 'APPLY_FAILED' }] } }),
+        } as any,
+      });
+    }
+    if (typeof opts.hasCompensationFailed === 'boolean') {
+      andFilters.push({
+        payload: {
+          path: ['realized_state', 'side_effects_ledger'],
+          ...(opts.hasCompensationFailed
+            ? { array_contains: [{ status: 'COMPENSATION_FAILED' }] }
+            : { not: { array_contains: [{ status: 'COMPENSATION_FAILED' }] } }),
+        } as any,
+      });
+    }
+    if (typeof opts.hasManualInterventionRequired === 'boolean') {
+      andFilters.push({
+        payload: {
+          path: ['realized_state', 'side_effects_ledger'],
+          ...(opts.hasManualInterventionRequired
+            ? { array_contains: [{ status: 'MANUAL_INTERVENTION_REQUIRED' }] }
+            : { not: { array_contains: [{ status: 'MANUAL_INTERVENTION_REQUIRED' }] } }),
+        } as any,
+      });
+    }
+    const whereBase: Prisma.AgentActionLogWhereInput = {
       ...(opts.status?.trim() ? { status: opts.status.trim() } : {}),
       ...(opts.tripId?.trim() ? { tripId: opts.tripId.trim() } : {}),
+      ...(opts.createdAtFrom || opts.createdAtTo
+        ? {
+            createdAt: {
+              ...(opts.createdAtFrom ? { gte: opts.createdAtFrom } : {}),
+              ...(opts.createdAtTo ? { lte: opts.createdAtTo } : {}),
+            },
+          }
+        : {}),
+      ...(andFilters.length ? { AND: andFilters } : {}),
     };
+    const where: Prisma.AgentActionLogWhereInput =
+      minRetryCount !== undefined
+        ? ({
+            ...whereBase,
+            AND: [
+              ...((whereBase as any).AND ?? []),
+              {
+                payload: {
+                  path: ['realized_state', 'max_retry_count'],
+                  gte: minRetryCount,
+                },
+              },
+            ],
+          } as any)
+        : whereBase;
     try {
       const [rows, total] = await Promise.all([
         this.prisma!.agentActionLog.findMany({
@@ -111,8 +186,70 @@ export class AgentActionLogService {
       ]);
       return { rows, total };
     } catch (e: any) {
+      if (minRetryCount !== undefined) {
+        try {
+          if (!this.minRetryFilterFallbackWarned) {
+            this.logger.warn(`listPaginated minRetryCount DB filter fallback: ${e?.message ?? e}`);
+            this.minRetryFilterFallbackWarned = true;
+          }
+          const allRows = await this.prisma!.agentActionLog.findMany({
+            where: whereBase,
+            orderBy: { updatedAt: 'desc' },
+          });
+          const filtered = allRows.filter((row: any) => {
+            const maxRetryFromPayload = Number(row?.payload?.realized_state?.max_retry_count ?? NaN);
+            if (Number.isFinite(maxRetryFromPayload)) {
+              return Math.floor(maxRetryFromPayload) >= minRetryCount;
+            }
+            const ledger = row?.payload?.realized_state?.side_effects_ledger;
+            if (!Array.isArray(ledger)) return false;
+            const maxRetryFromLedger = ledger.reduce((acc: number, it: any) => {
+              const v = Number(it?.retry_count ?? 0);
+              return Number.isFinite(v) ? Math.max(acc, Math.floor(v)) : acc;
+            }, 0);
+            return maxRetryFromLedger >= minRetryCount;
+          });
+          return {
+            rows: filtered.slice(opts.skip, opts.skip + opts.take),
+            total: filtered.length,
+          };
+        } catch (fallbackErr: any) {
+          this.logger.warn(`listPaginated fallback failed: ${fallbackErr?.message ?? fallbackErr}`);
+        }
+      }
       this.logger.warn(`listPaginated failed: ${e?.message ?? e}`);
       return { rows: [], total: 0 };
+    }
+  }
+
+  /**
+   * Reconciliation scan helper:
+   * only logs older than a cutoff to avoid interfering with in-flight sagas.
+   */
+  async listStaleForReconciliation(opts: {
+    statuses: string[];
+    older_than_ms: number;
+    take: number;
+  }): Promise<AgentActionLog[]> {
+    if (!this.isEnabled()) return [];
+    const take = Math.max(1, Math.floor(opts.take));
+    const statuses = Array.isArray(opts.statuses) ? opts.statuses.filter(Boolean) : [];
+    if (statuses.length === 0) return [];
+    const olderMs =
+      typeof opts.older_than_ms === 'number' && Number.isFinite(opts.older_than_ms) ? Math.max(0, opts.older_than_ms) : 0;
+    const cutoff = new Date(Date.now() - olderMs);
+    try {
+      return await this.prisma!.agentActionLog.findMany({
+        where: {
+          status: { in: statuses as any },
+          updatedAt: { lte: cutoff },
+        },
+        orderBy: { updatedAt: 'asc' },
+        take,
+      });
+    } catch (e: any) {
+      this.logger.warn(`listStaleForReconciliation failed: ${e?.message ?? e}`);
+      return [];
     }
   }
 

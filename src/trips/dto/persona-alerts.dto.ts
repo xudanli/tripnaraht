@@ -8,6 +8,8 @@ export enum PersonaType {
   ABU = 'ABU',
   DR_DRE = 'DR_DRE',
   NEPTUNE = 'NEPTUNE',
+  /** 编排侧系统步骤（非三人格建议，默认不应对用户展示为「可采纳建议」） */
+  USER_ACTION = 'USER_ACTION',
 }
 
 /**

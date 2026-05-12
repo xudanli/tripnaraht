@@ -21,6 +21,7 @@ import {
 import { StateManagerService } from '../src/decision/kernel/state-manager.service';
 import { ConstraintEngineAdapterService } from '../src/decision/kernel/constraint-engine-adapter.service';
 import { OptimizationEngineAdapterService } from '../src/decision/kernel/optimization-engine-adapter.service';
+import { RagRealityPolicyGateService } from '../src/rag/services/rag-reality-policy-gate.service';
 import { ContextEngineAdapterService } from '../src/decision/kernel/context-engine-adapter.service';
 import { FeedbackEngineAdapterService } from '../src/decision/kernel/feedback-engine-adapter.service';
 import { DecisionKernelService } from '../src/decision/kernel/decision-kernel.service';
@@ -43,7 +44,7 @@ async function main() {
 
   const stateManager = new StateManagerService();
   const constraintAdapter = new ConstraintEngineAdapterService(undefined);
-  const optimizationAdapter = new OptimizationEngineAdapterService();
+  const optimizationAdapter = new OptimizationEngineAdapterService(new RagRealityPolicyGateService());
   const contextAdapter = new ContextEngineAdapterService(undefined);
   const feedbackAdapter = new FeedbackEngineAdapterService();
   const kernel = new DecisionKernelService(

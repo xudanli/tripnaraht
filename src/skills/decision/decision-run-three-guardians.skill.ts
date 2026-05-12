@@ -11,7 +11,11 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
-import { WorldModelContext, RoutePlanDraft } from '../../trips/decision/shared/world-model.types';
+import {
+  WorldModelContext,
+  RoutePlanDraft,
+  RouteSegment,
+} from '../../trips/decision/shared/world-model.types';
 import { StrategyOrchestratorService } from '../../trips/decision/services/strategy-orchestrator.service';
 import { WorldBuildContextSkill } from '../world/world-build-context.skill';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -22,8 +26,8 @@ export interface DecisionRunThreeGuardiansInput extends SkillInput {
   tripId?: string;
   /** 或已构建的 WorldModelContext */
   world?: WorldModelContext;
-  /** 候选计划 */
-  planCandidate: RoutePlanDraft;
+  /** 候选计划；缺省时若提供 tripId，将从 Trip/TripDay 行程项合成最小草案 */
+  planCandidate?: RoutePlanDraft;
 }
 
 export interface DecisionRunThreeGuardiansOutput extends SkillOutput {
@@ -110,18 +114,35 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
         throw new Error('必须提供 world 或 tripId');
       }
 
-      // 2. 执行策略编排
+      // 2. 候选路线草案：编排 LLM 常漏传 planCandidate → 从行程表合成最小 RoutePlanDraft（避免 StrategyOrchestrator 抛错）
+      let planCandidate = input.planCandidate;
+      if (!planCandidate && input.tripId) {
+        planCandidate =
+          (await this.synthesizeRoutePlanDraftFromTrip(input.tripId)) ?? undefined;
+        if (planCandidate) {
+          this.logger.debug(
+            `decision.runThreeGuardians: 已根据 tripId=${input.tripId} 合成 RoutePlanDraft（${planCandidate.segments.length} segments）`,
+          );
+        }
+      }
+      if (!planCandidate) {
+        throw new Error(
+          'RoutePlanDraft 不能为空：请在编排中传入 planCandidate，或提供可从数据库读取日程的 tripId',
+        );
+      }
+
+      // 3. 执行策略编排
       if (!this.strategyOrchestrator) {
         throw new Error('StrategyOrchestratorService 未可用，请确保 DecisionModule 已正确加载');
       }
-      const result = await this.strategyOrchestrator.run(world, input.planCandidate);
+      const result = await this.strategyOrchestrator.run(world, planCandidate);
 
-      // 3. 分离三个守护者的结果
+      // 4. 分离三个守护者的结果
       const abuLogs = result.logs.filter(log => log.persona === 'ABU');
       const drdreLogs = result.logs.filter(log => log.persona === 'DR_DRE');
       const neptuneLogs = result.logs.filter(log => log.persona === 'NEPTUNE');
 
-      // 4. 构建结构化输出
+      // 5. 构建结构化输出
       const abuResult = {
         allowed: result.allowed,
         violations: abuLogs
@@ -181,7 +202,7 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
         })),
       };
 
-      // 5. 生成决策摘要
+      // 6. 生成决策摘要
       const keyDecisions = result.logs
         .filter(log => log.action !== 'ALLOW')
         .map(log => ({
@@ -208,6 +229,87 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
     } catch (error: any) {
       this.logger.error(`执行三人格策略失败: ${error.message}`, error.stack);
       throw error;
+    }
+  }
+
+  /**
+   * 从持久化行程生成最小 RoutePlanDraft，供三人格在无 LLM 结构化 plan 时仍能运行。
+   */
+  private async synthesizeRoutePlanDraftFromTrip(tripId: string): Promise<RoutePlanDraft | null> {
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: {
+          id: true,
+          destination: true,
+          TripDay: {
+            orderBy: { date: 'asc' },
+            select: {
+              id: true,
+              date: true,
+              ItineraryItem: {
+                orderBy: { startTime: 'asc' },
+                select: { id: true },
+              },
+            },
+          },
+        },
+      });
+      if (!trip) return null;
+
+      const segments: RouteSegment[] = [];
+      const days = trip.TripDay ?? [];
+      if (days.length > 0) {
+        days.forEach((day, dayIdx) => {
+          const items = day.ItineraryItem ?? [];
+          if (items.length === 0) {
+            segments.push({
+              segmentId: `trip-${trip.id}-day-${dayIdx}-empty`,
+              dayIndex: dayIdx,
+              distanceKm: 0,
+              ascentM: 0,
+              slopePct: 0,
+              metadata: { tripDayId: day.id, date: day.date.toISOString().slice(0, 10) },
+            });
+          } else {
+            items.forEach((item, segIdx) => {
+              segments.push({
+                segmentId: `trip-${trip.id}-item-${item.id}`,
+                dayIndex: dayIdx,
+                distanceKm: 0,
+                ascentM: 0,
+                slopePct: 0,
+                metadata: {
+                  itineraryItemId: item.id,
+                  tripDayIndex: dayIdx,
+                  segmentOrder: segIdx,
+                },
+              });
+            });
+          }
+        });
+      }
+
+      if (segments.length === 0) {
+        segments.push({
+          segmentId: `trip-${trip.id}-placeholder`,
+          dayIndex: 0,
+          distanceKm: 0,
+          ascentM: 0,
+          slopePct: 0,
+          metadata: { synthetic: true, reason: 'no_trip_days' },
+        });
+      }
+
+      const dest = (trip.destination || 'XX').trim().toUpperCase();
+      return {
+        tripId: trip.id,
+        routeDirectionId: dest.length === 2 ? `synthetic-${dest}` : `synthetic-trip-${trip.id.slice(0, 8)}`,
+        segments,
+      };
+    } catch (e: any) {
+      this.logger.warn(`synthesizeRoutePlanDraftFromTrip failed: ${e?.message ?? e}`);
+      return null;
     }
   }
 

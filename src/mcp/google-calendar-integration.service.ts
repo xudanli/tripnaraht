@@ -165,8 +165,8 @@ export class GoogleCalendarIntegrationService {
 
               // 保存映射关系
               const eventId = event.id || event.eventId || event.event?.id;
-              if (eventId) {
-                await this.saveEventMapping(tripId, item.id, targetCalendarId, eventId);
+              if (eventId != null && eventId !== '') {
+                await this.saveEventMapping(tripId, item.id, targetCalendarId ?? 'primary', String(eventId));
                 result.eventsCreated++;
               } else {
                 this.logger.warn(`Failed to get event ID for item ${item.id}`);

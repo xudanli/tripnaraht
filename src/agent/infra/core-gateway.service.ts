@@ -242,6 +242,8 @@ export class CoreGatewayService {
 
   /**
    * 便捷方法：生成方案
+   *
+   * `tripId`：若与持久化 `Trip` 对齐，应传 Prisma 主键；经 payload 送达 PlanningWorkbench，便于决策引擎 / ECO 账本绑定。
    */
   async generatePlan(params: {
     userId: string;
@@ -249,6 +251,7 @@ export class CoreGatewayService {
     destination: string;
     preferences: Record<string, unknown>;
     constraints?: Record<string, unknown>;
+    tripId?: string;
   }): Promise<CoreActionResult> {
     return this.execute({
       type: 'generatePlan',

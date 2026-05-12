@@ -301,9 +301,28 @@ export class RepairApplySkill implements Skill<RepairApplyInput, RepairApplyOutp
    */
   private addBuffer(
     itinerary: Itinerary,
-    _adjustment: RequiredAdjustment,
+    adjustment: RequiredAdjustment,
   ): { applied: boolean; description: string } {
     const BUFFER_MINUTES = 30; // 默认缓冲 30 分钟
+
+    // TIME_WINDOW_OVERLAP：target 为后项；buffer_anchor_item_id(s) 为前项；多锚时取 max(锚 end)+buffer。
+    if (adjustment.target) {
+      const anchorIds: string[] = [];
+      if (adjustment.buffer_anchor_item_ids?.length) {
+        anchorIds.push(...adjustment.buffer_anchor_item_ids);
+      } else if (adjustment.buffer_anchor_item_id) {
+        anchorIds.push(adjustment.buffer_anchor_item_id);
+      }
+      const shifted = this.tryShiftItemAfterPredecessor(
+        itinerary,
+        adjustment.target,
+        BUFFER_MINUTES,
+        anchorIds,
+      );
+      if (shifted.applied) {
+        return shifted;
+      }
+    }
 
     for (const day of itinerary.days) {
       const items = day.items.filter(item => item.type !== 'REST');
@@ -349,6 +368,76 @@ export class RepairApplySkill implements Skill<RepairApplyInput, RepairApplyOutp
   }
 
   /**
+   * 在去 REST 的序列中，将 target 项的开始/结束时间整体后移，使其不早于「锚定前驱中最晚的 end + buffer」；无有效锚时用直接前驱。
+   */
+  private tryShiftItemAfterPredecessor(
+    itinerary: Itinerary,
+    targetItemId: string,
+    bufferMinutes: number,
+    anchorItemIds: string[],
+  ): { applied: boolean; description: string } {
+    for (const day of itinerary.days) {
+      const seq = day.items.filter((item) => item.type !== 'REST');
+      const k = seq.findIndex((item) => item.id === targetItemId);
+      if (k <= 0) {
+        continue;
+      }
+      const dayDate = DateTime.fromISO(day.date);
+      const cur = seq[k];
+
+      let prevEnd: DateTime | null = null;
+      let prevLabel = '';
+
+      for (const aid of anchorItemIds) {
+        const anchorIdx = seq.findIndex((item) => item.id === aid);
+        if (anchorIdx < 0 || anchorIdx >= k) {
+          continue;
+        }
+        const cand = seq[anchorIdx];
+        const pe = this.parseTimeWindow(cand.end_window, dayDate);
+        if (pe && (!prevEnd || pe > prevEnd)) {
+          prevEnd = pe;
+          prevLabel = cand.location_ref?.name || cand.id;
+        }
+      }
+
+      if (!prevEnd) {
+        const fallback = seq[k - 1];
+        prevEnd = this.parseTimeWindow(fallback.end_window, dayDate);
+        prevLabel = fallback.location_ref?.name || fallback.id;
+      }
+
+      if (!prevEnd) {
+        continue;
+      }
+
+      const curStart = this.parseTimeWindow(cur.start_window, dayDate);
+      const curEnd = this.parseTimeWindow(cur.end_window, dayDate);
+      if (!curStart || !curEnd) {
+        continue;
+      }
+      const gapMinutes = curStart.diff(prevEnd, 'minutes').minutes;
+      if (gapMinutes >= bufferMinutes) {
+        continue;
+      }
+      const newStart = prevEnd.plus({ minutes: bufferMinutes });
+      const durationMinutes = curEnd.diff(curStart, 'minutes').minutes;
+      if (durationMinutes <= 0) {
+        continue;
+      }
+      const newEnd = newStart.plus({ minutes: durationMinutes });
+      cur.start_window = newStart.toFormat('HH:mm');
+      cur.end_window = newEnd.toFormat('HH:mm');
+      const anchorHint = anchorItemIds.length > 1 ? `（取 ${anchorItemIds.length} 个锚中最晚结束）` : '';
+      return {
+        applied: true,
+        description: `已按「${prevLabel}」结束时刻拉开 ${bufferMinutes} 分钟间距${anchorHint}（后移「${cur.location_ref?.name || cur.id}」）`,
+      };
+    }
+    return { applied: false, description: '' };
+  }
+
+  /**
    * 缩短某天的行程
    */
   private shortenDay(
@@ -384,12 +473,15 @@ export class RepairApplySkill implements Skill<RepairApplyInput, RepairApplyOutp
     itinerary: Itinerary,
     adjustment: RequiredAdjustment,
   ): { applied: boolean; description: string } {
-    // 简化实现：将相关的 TRANSIT 项标记为需要更改
+    // 简化实现：将相关的 TRANSIT / DRIVE 路段标记为需要更改（含 SafeTravel 封路后的 detour 占位）
     let changed = false;
 
     for (const day of itinerary.days) {
       for (const item of day.items) {
-        if (item.type === 'TRANSIT' && (!adjustment.target || item.id === adjustment.target)) {
+        if (
+          (item.type === 'TRANSIT' || item.type === 'DRIVE') &&
+          (!adjustment.target || item.id === adjustment.target)
+        ) {
           item.metadata = item.metadata || {};
           item.metadata.transport_mode_changed = true;
           item.notes = (item.notes || '') + ' [交通方式已更改]';

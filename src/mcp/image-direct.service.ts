@@ -57,7 +57,7 @@ export interface ImageSearchResult {
 @Injectable()
 export class ImageDirectService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ImageDirectService.name);
-  private axiosInstance: AxiosInstance;
+  private axiosInstance!: AxiosInstance;
   private pexelsApiKey: string | null = null;
   private unsplashApiKey: string | null = null;
   private isAvailable: boolean = false;

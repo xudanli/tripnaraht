@@ -238,6 +238,83 @@
       ],
       "title": "Logic Debt Matrix (P0/P1/P2) · dominant_cid × delta_reason_kind · count (15m)",
       "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "id": 8,
+      "panels": [],
+      "title": "Decision OS · Audit Contract Violations",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "unit": "none"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 34 },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "sum(increase(tripnara_decision_os_audit_contract_violation_total[$__range]))",
+          "legendFormat": "violations",
+          "refId": "A"
+        }
+      ],
+      "title": "Contract Violations (total over range)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "links": [
+            {
+              "title": "Loki drill-down (recent decision_os_audit_report)",
+              "targetBlank": true,
+              "url": "/explore?left=%7B%22datasource%22:%22${DS_LOKI}%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bevent%3D%5C%22decision_os_audit_report%5C%22,app%3D%5C%22tripnara-decision-kernel%5C%22,namespace%3D%5C%22prod-engine%5C%22%7D%20%7C%20json%22%7D%5D,%22range%22:%7B%22from%22:%22now-10m%22,%22to%22:%22now%22%7D%7D"
+            }
+          ]
+        }
+      },
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 34 },
+      "id": 10,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Value" }]
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "sum by (stage, field, reason) (increase(tripnara_decision_os_audit_contract_violation_total[$__range]))",
+          "legendFormat": "{{stage}} · {{field}} · {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Violation Breakdown by stage/field/reason",
+      "type": "table"
     }
   ],
   "refresh": "30s",
@@ -277,6 +354,6 @@
   "timezone": "",
   "title": "Decision OS · Session Consistency",
   "uid": "decision-os-session-consistency",
-  "version": 1
+  "version": 2
 }
 

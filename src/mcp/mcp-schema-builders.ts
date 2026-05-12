@@ -16,9 +16,18 @@ export function buildDemGetProfileSchema() {
         z.object({
           lat: z.number(),
           lng: z.number(),
-        })
+        }),
       )
-      .describe('路线点数组（polyline）'),
+      .optional()
+      .describe('路线点数组（≥2 点）；与 destination / origin 二选一或组合'),
+    destination: z
+      .union([z.string(), z.object({ lat: z.number(), lng: z.number() })])
+      .optional()
+      .describe('目的地坐标或含 "lat,lng" 的字符串（RESEARCH 链路）'),
+    origin: z
+      .union([z.string(), z.object({ lat: z.number(), lng: z.number() })])
+      .optional()
+      .describe('起点（与 destination 均为坐标时可连成剖面）'),
     samples: z.number().optional().describe('采样间隔（米），默认 100'),
   };
 }
@@ -539,6 +548,8 @@ export function buildGeoCheckHazardZonesSchema() {
 
 export function getSchemaForSkill(skillName: string): any {
   const schemaMap: Record<string, () => any> = {
+    'dem.get_profile': buildDemGetProfileSchema,
+    'dem.get.profile': buildDemGetProfileSchema,
     'dem.getProfile': buildDemGetProfileSchema,
     'decision.abuCheck': buildDecisionAbuCheckSchema,
     'decision.drdrePace': buildDecisionDrdrePaceSchema,

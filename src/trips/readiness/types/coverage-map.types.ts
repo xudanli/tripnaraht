@@ -6,6 +6,8 @@
  * 定义覆盖地图相关的数据类型
  */
 
+import type { ReadinessTripFindingScope } from './readiness-findings.types';
+
 // ==================== 准备度分数类型 ====================
 
 /**
@@ -38,6 +40,8 @@ export interface ReadinessScoreFinding {
   severity: 'high' | 'medium' | 'low';
   affectedDays?: number[];
   actionRequired?: string;
+  /** 与树形 findings 对齐：覆盖缺口时的行程定位 */
+  tripScope?: ReadinessTripFindingScope;
 }
 
 /**

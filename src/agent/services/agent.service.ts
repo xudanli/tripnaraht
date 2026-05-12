@@ -1,5 +1,16 @@
 // src/agent/services/agent.service.ts
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  forwardRef,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { AgentState } from '../interfaces/agent-state.interface';
 import { RouteType, RouterReason, UIStatus } from '../interfaces/router.interface';
 import { RouterService } from './router.service';
@@ -11,42 +22,138 @@ import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
 import { TripRunManagerService, type TripRunDsoCheckpointPayload } from './trip-run-manager.service';
+import { TripTaskMemoryService } from '../context-engine/services/trip-task-memory.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
-import { AgentContext } from '../interfaces/claude-orchestration.interface';
-import { signalsFromRequest } from '../utils/orchestration-signals.util';
-import { routePolicy } from '../utils/orchestration-policy.util';
+import {
+  AgentContext,
+  type OrchestrationResult,
+  type RecoveryInvocationContext,
+} from '../interfaces/claude-orchestration.interface';
+import {
+  signalsFromRequest,
+  routingSignalsWithResolvedTaskType,
+  type RoutingSignals,
+  type TaskType,
+} from '../utils/orchestration-signals.util';
 import {
   OrchestrationStep,
   SubAgentType,
   DecisionLogEntry,
   OrchestratorState,
 } from '../interfaces/trip-plan.interface';
-import { MetricsRecorder } from '../utils/agent-metrics.util';
 import { type PolicyAction } from '../utils/external-verdict.util';
 import { RLIntegrationService } from '../training/services/rl-integration.service';
 import {
   CircuitBreaker,
   createDeadline,
-  FallbackGuard,
   ModeLock,
-  normalizeError,
   OrchestrationMode,
-  StabilityContext,
   withTimeout,
 } from './orchestration-stability.util';
 import { ErrorType } from '../interfaces/error-types.interface';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import { buildTravelOntologyStateFromOrchestrator, mergeTravelOntologyState } from '../../decision/kernel/travel-ontology.mapper';
 import { RouteAndRunResponseAssemblerService } from './route-and-run-response-assembler.service';
+import type { ReplayProvenance } from '../contracts/replay-provenance.types';
+import { buildRuntimeExecutionProfileDedupReplay } from '../utils/runtime-execution-profile.builder';
+import { replayLifecycleManager } from '../utils/replay-lifecycle.manager';
+import { attachFullResponseReplayArtifactDescriptor } from '../utils/replay-artifact-descriptor.builder';
+import { ExecutionGatewayService } from './execution-gateway.service';
+import { attachFreshRuntimeMaterialization } from '../runtime/fresh-runtime-adapter.util';
+import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.service';
+import { buildRuntimeExecutionProfileLegacyAssembly } from '../utils/runtime-execution-profile.builder';
+import { mergeRuntimeExecutionAnomaliesByCode } from '../utils/runtime-execution-profile.validation';
+import type { RuntimeExecutionProfile } from '../contracts/runtime-execution-profile.types';
+import type { RuntimeExecutionAnomaly } from '../contracts/runtime-execution-profile.validation.types';
+import { sortFailureReasonCodes } from '../constants/failure-reason-codes.constants';
 import { JepaProjectorService } from './jepa-projector.service';
+import { TradeoffEngineService } from './tradeoff-engine.service';
+import { TravelTimeRouterService } from './travel-time-router.service';
+import { TravelTimeResolverService, type TravelTimeEdgeContext } from './travel-time-resolver.service';
+import { AccessTrackerService } from '../../skills/world/services/access-tracker.service';
+import type { TravelTimeEvidenceLineageDto } from '../dto/evidence-lineage.dto';
+import { NegotiationSessionStoreService } from './negotiation-session-store.service';
+import { NegotiationResolverService } from './negotiation-resolver.service';
+import type { ConfirmNegotiationResponseDto, NegotiationResolutionDto } from '../dto/confirm-negotiation.dto';
 import { AgentEntryResponseFactoryService } from './agent-entry-response-factory.service';
 import { PlanningRequestClassifierService } from './planning-request-classifier.service';
 import { ModuleRef } from '@nestjs/core';
 import type { DecisionLogEntry as TripsDecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
 import type { DecisionStage as TripsDecisionStage } from '../../trips/decision/shared/decision-result.types';
 import type { DecisionPersona as TripsDecisionPersona } from '../../trips/decision/shared/decision-result.types';
+import { isCriticalDecisionActionValue } from '../../trips/decision/shared/decision-log-metadata-prd.types';
 import { DecisionLogStorageService } from '../../trips/decision/services/decision-log-storage.service';
+import { EvidenceCacheService } from '../../skills/world/services/evidence-cache.service';
+import { TimelineInspectorService } from './timeline-inspector.service';
+import { ItineraryVersionService } from './itinerary-version.service';
+import { ItineraryRevisionTimelineService } from './itinerary-revision-timeline.service';
+import type { RevisionTimelineResponseDto } from '../dto/itinerary-revision-timeline.dto';
+import { ItineraryRollbackService } from './itinerary-rollback.service';
+import { ItineraryRevisionRegretService } from './itinerary-revision-regret.service';
+import { UserPreferenceLearningService } from './user-preference-learning.service';
+import { PreferenceEvolutionService } from './preference-evolution.service';
+import type { ItineraryRollbackRequestDto, ItineraryRollbackResponseDto } from '../dto/itinerary-rollback.dto';
+import { PrometheusMetricsService } from '../../monitoring/prometheus-metrics.service';
+import { matchAxioms, pickDominantAxiom } from '../axioms/axiom-matchers';
+import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
+import { LogDecisionRequestDto } from '../dto/log-decision.dto';
+import { RouteAndRunContextEnricherService } from './route-and-run-context-enricher.service';
+import { UserStandingPreferenceService } from './user-standing-preference.service';
+import {
+  buildRouteAndRunPersistReasonCodes,
+  buildRouteAndRunTripsPersistMetadata,
+  resolveTripsStageForRouteAndRunPersist,
+} from '../utils/route-and-run-decision-persist.util';
+import {
+  toOrchestrationFailureObservability,
+  type OrchestratorRobustnessMetadata,
+} from '../utils/orchestrator-failure-taxonomy.util';
+import {
+  resolveExecutionRecoveryPlan,
+  type ExecutionRecoveryPlan,
+} from '../../chain-of-work/execution/execution-recovery-policy.util';
+import type { ExecutionIntegrationService } from '../../chain-of-work/execution/execution-integration.service';
+import { ConfigService } from '@nestjs/config';
+import {
+  McpAgentExecutorService,
+  resolveAgenticMcpRetryBudget,
+} from '../assistants/planning-assistant/services/mcp-agent-executor.service';
+import type { McpAgentExecutorRunResult } from '../assistants/planning-assistant/services/mcp-agent-executor.service';
+import type { OrchestrationPolicyDecision } from '../utils/orchestration-policy.util';
+import type { Skill } from '../../skills/interfaces/skill.interface';
+import { SKILL_INTENT_RECOGNIZE } from '../../skills/skills.tokens';
+import {
+  inferDefaultAgenticToolPacks,
+  isInfrastructureFastTrackCandidate,
+  parseAgenticToolLoopFlag,
+  parseAgenticToolPacksEnv,
+  parseFeatureTaskClosureBooking,
+} from '../utils/agentic-tool-loop-dispatch.util';
+import type { ConflictStrategyOptionsResponseDto } from '../dto/conflict-strategy-options.dto';
+import { StrategyConflictOptionsService } from './strategy-conflict-options.service';
+import { MemoryContextAssemblerService } from '../memory/services/memory-context-assembler.service';
+import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
+import { MemorySnapshotPersistenceService } from '../memory/persistence/memory-snapshot-persistence.service';
+import { AgentExecutionContextStore } from '../runtime/agent-execution-context.store';
+import { AgentExecutionContextFactoryService } from '../runtime/agent-execution-context-factory.service';
+import { ExecutionTimelineRecorderService } from '../runtime/execution-timeline-recorder.service';
+import {
+  assertExecutionGatewayPostReturnContract,
+  ExecutionGatewayContractViolation,
+} from './execution-gateway-trace-contract.enforcement';
+import {
+  buildReplayProfileFromTrace,
+  mergeReplayProfileIntoRouteAndRunRequest,
+} from '../contracts/orchestration-replay-from-trace';
+import { buildExecutionContractGovernanceEchoV1 } from '../contracts/execution-gateway-contract-governance.v1';
+import {
+  parseChangeImpactDescriptorV1,
+  serializeChangeImpactDescriptorForCompare,
+} from '../contracts/execution-os-change-impact-descriptor.v1';
+import { executionTimelineInputHash } from '../runtime/execution-timeline-hash.util';
+import { ReplayFromTraceRequestDto } from '../dto/replay-from-trace.dto';
+import { randomUUID } from 'crypto';
 
 /**
  * Agent Service
@@ -68,17 +175,586 @@ export class AgentService {
     private stateService: AgentStateService,
     private system1Executor: System1ExecutorService,
     private orchestrator: OrchestratorService,
+    private memoryContextAssembler: MemoryContextAssemblerService,
+    private agentMemoryContextStore: AgentMemoryContextStore,
+    private agentExecutionContextFactory: AgentExecutionContextFactoryService,
+    private agentExecutionContextStore: AgentExecutionContextStore,
+    @Inject(forwardRef(() => ExecutionGatewayService))
+    private executionGateway: ExecutionGatewayService,
+    @Optional() private readonly executionTimelineRecorder?: ExecutionTimelineRecorderService,
+    @Optional() private readonly memorySnapshotPersistence?: MemorySnapshotPersistenceService,
     @Optional() private dagOrchestrator?: DAGOrchestratorService,
     @Optional() private claudeOrchestrator?: ClaudeOrchestratorService,
     private eventTelemetry?: EventTelemetryService,
     private requestDeduplication?: RequestDeduplicationService,
     @Optional() private tripRunManager?: TripRunManagerService,
+    @Optional() private tripTaskMemory?: TripTaskMemoryService,
     @Optional() private rlIntegration?: RLIntegrationService,
     @Optional() private responseAssembler?: RouteAndRunResponseAssemblerService,
     @Optional() private entryResponses?: AgentEntryResponseFactoryService,
     @Optional() private planningRequestClassifier?: PlanningRequestClassifierService,
     @Optional() private readonly moduleRef?: ModuleRef,
+    @Optional() private negotiationSessions?: NegotiationSessionStoreService,
+    @Optional() private negotiationResolver?: NegotiationResolverService,
+    @Optional() private evidenceCache?: EvidenceCacheService,
+    @Optional() private timelineInspector?: TimelineInspectorService,
+    @Optional() private travelTimeRouter?: TravelTimeRouterService,
+    @Optional() private readonly accessTracker?: AccessTrackerService,
+    @Optional() private readonly travelTimeResolver?: TravelTimeResolverService,
+    @Optional() private readonly tradeoffEngine?: TradeoffEngineService,
+    @Optional() private readonly itineraryVersion?: ItineraryVersionService,
+    @Optional() private readonly itineraryRevisionTimeline?: ItineraryRevisionTimelineService,
+    @Optional() private readonly itineraryRollback?: ItineraryRollbackService,
+    @Optional() private readonly itineraryRevisionRegret?: ItineraryRevisionRegretService,
+    @Optional() private readonly userPreferenceLearning?: UserPreferenceLearningService,
+    @Optional() private readonly preferenceEvolution?: PreferenceEvolutionService,
+    @Optional() private readonly promMetrics?: PrometheusMetricsService,
+    @Optional() private readonly routeContextEnricher?: RouteAndRunContextEnricherService,
+    @Optional() private readonly userStandingPreference?: UserStandingPreferenceService,
+    /** Phase B+：编排失败恢复策略（退避 / 澄清分流） */
+    @Optional() private readonly executionIntegration?: ExecutionIntegrationService,
+    @Optional() private readonly configService?: ConfigService,
+    @Optional() private readonly mcpAgentExecutor?: McpAgentExecutorService,
+    @Optional() private readonly strategyConflictOptions?: StrategyConflictOptionsService,
+    @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
+    @Optional() @Inject(SKILL_INTENT_RECOGNIZE) private readonly intentRecognizeSkill?: Skill,
   ) {}
+
+  private isValidIntentTaskType(x: string): x is TaskType {
+    return (
+      x === 'TRIP_PLANNING' ||
+      x === 'CRUD' ||
+      x === 'DATA_LOOKUP' ||
+      x === 'CUSTOMER_SUPPORT' ||
+      x === 'RAG_QA' ||
+      x === 'BOOKING_WORKFLOW' ||
+      x === 'GENERIC_QA'
+    );
+  }
+
+  /**
+   * 路由信号：先做关键词规则推断，再可选用 `intent.recognize` 覆盖 taskType，避免每次为新语种/句式改规则。
+   */
+  private async resolveRoutingSignals(request: RouteAndRunRequestDto): Promise<RoutingSignals> {
+    const base = signalsFromRequest(request);
+    const mode = request.options?.intent_mode;
+    if (mode && mode !== 'AUTO') {
+      return base;
+    }
+    if (request.options?.enable_intent_recognition_skill === false) {
+      return base;
+    }
+    if (process.env.DISABLE_INTENT_RECOGNIZE_SKILL === '1') {
+      return base;
+    }
+    if (!this.intentRecognizeSkill) {
+      return base;
+    }
+    const maxSec = Number(request.options?.max_seconds ?? 30);
+    if (maxSec < 10) {
+      return base;
+    }
+
+    try {
+      const out = (await this.intentRecognizeSkill.execute({
+        message: request.message,
+        trip_id: request.trip_id,
+        rule_based_task_type: base.taskType,
+        recent_messages: request.conversation_context?.recent_messages?.slice(-6),
+        tokenContext: {
+          request_id: request.request_id,
+          state_machine_step: 'INTAKE',
+          sub_agent: 'Planner',
+        },
+      })) as {
+        taskType?: TaskType;
+        confidence?: number;
+        reasoning?: string;
+      };
+      const conf = typeof out.confidence === 'number' ? out.confidence : 0;
+      const tt = out.taskType;
+      if (conf >= 0.52 && tt && this.isValidIntentTaskType(tt)) {
+        const ruleKeptForTripConsultation =
+          request.trip_id?.trim() &&
+          (base.taskType === 'DATA_LOOKUP' ||
+            base.taskType === 'GENERIC_QA' ||
+            base.taskType === 'RAG_QA') &&
+          tt === 'TRIP_PLANNING';
+        if (ruleKeptForTripConsultation) {
+          this.logger.log(
+            `[AgentService] intent.recognize 建议 TRIP_PLANNING，但规则已为 ${base.taskType}（已绑定 trip）；保留规则结果 confidence=${conf.toFixed(2)} request_id=${request.request_id}`,
+          );
+          return base;
+        }
+        if (tt !== base.taskType) {
+          this.logger.log(
+            `[AgentService] intent.recognize: taskType ${base.taskType} -> ${tt} (confidence=${conf.toFixed(2)})`,
+          );
+        }
+        return routingSignalsWithResolvedTaskType(request, tt);
+      }
+    } catch (e: any) {
+      this.logger.warn(`[AgentService] intent.recognize 调用失败，保留规则推断: ${e?.message ?? e}`);
+    }
+    return base;
+  }
+
+  /**
+   * UI「决策对话」路径：基于 MAC 快照生成冲突说明与 2–3 条对齐策略（规则模板）。
+   * 与 route_and_run 独立，供前端在检测到 strategy 冲突时调用。
+   */
+  getConflictStrategyOptions(tripId: string): ConflictStrategyOptionsResponseDto {
+    return (
+      this.strategyConflictOptions?.buildOptions(tripId) ?? {
+        explanation_zh: '策略冲突模块未启用。',
+        options: [],
+        consensus_summary: null,
+        open_conflict_count: 0,
+      }
+    );
+  }
+
+  /** 与 ExecutionIntegrationService 对齐；未注入时退回纯函数实现 */
+  private resolveRecoveryPlanMeta(meta: OrchestratorRobustnessMetadata): ExecutionRecoveryPlan | null {
+    const env = process.env;
+    return this.executionIntegration?.resolveRecoveryPlan(meta, env) ?? resolveExecutionRecoveryPlan(meta, env);
+  }
+
+  /** 主编排路径在本请求内「放弃」时再记一次熔断失败；Recovery 环内重试不计入（避免单次请求耗尽全局阈值）。 */
+  private recordPrimaryOrchestrationBreakerFailure(mode: OrchestrationMode, err: any): void {
+    if (mode === 'CLAUDE_SM') this.breakerSM.onFailure(err);
+    else if (mode === 'CLAUDE_DYNAMIC') this.breakerDyn.onFailure(err);
+    else this.breakerLegacy.onFailure(err);
+  }
+
+  private async appendRecoveryAuditSafe(tripRunId: string | null, payload: Record<string, unknown>): Promise<void> {
+    if (!tripRunId || !this.tripRunManager) return;
+    try {
+      await this.tripRunManager.appendRecoveryAuditEntry(tripRunId, payload);
+    } catch (err: any) {
+      this.logger.warn(`[Recovery] TripRun audit append failed: ${err?.message}`);
+    }
+  }
+
+  /** Trip Task Memory：Recovery 审计尾（支持 failure_domain / is_retry 过滤，供回放与 Offline RL） */
+  private async appendTripTaskMemoryRecoveryAudit(
+    tripId: string | undefined | null,
+    requestId: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    if (!tripId || !this.tripTaskMemory) return;
+    try {
+      await this.tripTaskMemory.appendRecoveryAuditEntry(tripId, { request_id: requestId, ...payload });
+    } catch (err: any) {
+      this.logger.warn(`[Recovery] TripTaskMemory audit append failed: ${err?.message}`);
+    }
+  }
+
+  /**
+   * REQUEST_CLARIFICATION：将中文提示作为助手回复返回（NEED_MORE_INFO）。
+   */
+  private buildRecoveryClarificationRouteResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+    robustness: OrchestratorRobustnessMetadata,
+    plan: ExecutionRecoveryPlan,
+    obs: {
+      mode_final: OrchestrationMode;
+      deadline_ms: number;
+      time_remaining_ms: number;
+      durable_trip_run_id?: string;
+    },
+  ): RouteAndRunResponseDto {
+    const answer =
+      plan.clarification?.suggested_prompt_zh?.trim() ||
+      robustness.message_preview ||
+      '当前请求需要您补充或确认约束后再继续。';
+    const receivedRouteDirectionId = this.resolveRequestRouteDirectionId(request);
+    const of = toOrchestrationFailureObservability(robustness);
+    return {
+      request_id: request.request_id,
+      route: {
+        route: RouteType.SYSTEM2_REASONING,
+        confidence: 0.55,
+        reasons: [RouterReason.LLM_DECISION],
+        required_capabilities: ['planning'],
+        consent_required: false,
+        budget: {
+          max_seconds: Math.round((obs.deadline_ms ?? 12000) / 1000),
+          max_steps: 8,
+          max_browser_steps: 0,
+        },
+        ui_hint: {
+          mode: 'slow',
+          status: UIStatus.AWAITING_CONFIRMATION,
+          message: '需要您的确认',
+        },
+      },
+      result: {
+        status: 'NEED_MORE_INFO' as const,
+        answer_text: answer,
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          needsUserConfirmation: true,
+          clarificationMessage: answer,
+          recovery_kind: 'REQUEST_CLARIFICATION',
+          orchestrator_robustness: robustness,
+        } as any,
+      },
+      explain: {
+        decision_log: [],
+      } as any,
+      observability: {
+        latency_ms: Date.now() - startTime,
+        router_ms: 0,
+        system_mode: 'SYSTEM2',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        orchestration_mode_final: obs.mode_final,
+        received_route_direction_id: receivedRouteDirectionId,
+        recovery_kind: 'REQUEST_CLARIFICATION',
+        recovery_retry_attempts: 0,
+        recovery_trace: [],
+        ...of,
+        trace: {
+          orchestration: {
+            resolved: {
+              mode: obs.mode_final || 'LEGACY',
+              reason: 'recovery_clarification',
+              matchedRules: ['phase_b_recovery'],
+            },
+          },
+          timestamp: new Date().toISOString(),
+          deadline_ms: obs.deadline_ms,
+          time_remaining_ms: obs.time_remaining_ms,
+          mode_final: obs.mode_final,
+        } as any,
+        ...(obs.durable_trip_run_id ? { durable_trip_run_id: obs.durable_trip_run_id } : {}),
+      } as any,
+    };
+  }
+
+  async confirmNegotiation(input: NegotiationResolutionDto): Promise<ConfirmNegotiationResponseDto> {
+    const rec = this.negotiationSessions?.get(input.session_id);
+    if (!rec || String(rec.expected_negotiation_hash) !== String(input.expected_negotiation_hash)) {
+      throw new ConflictException({ error_code: 'NEGOTIATION_EXPIRED_OR_INVALID' });
+    }
+
+    const preItinerary = structuredClone(rec.itinerary);
+
+    const resolver = this.negotiationResolver ?? new NegotiationResolverService();
+    const { itinerary, resolution_patch_summary } = resolver.resolve({
+      session_id: input.session_id,
+      alternative_id: input.alternative_id,
+      itinerary: rec.itinerary,
+      negotiation_payload: rec.negotiation_payload,
+    });
+
+    // v2 Final Strict Guard: re-derive EvidenceBundle using current cached evidence (Current Reality).
+    const strict = process.env.C1_STRICT_EVIDENCE_BUNDLE === '1' || process.env.C1_STRICT_EVIDENCE_BUNDLE === 'true';
+    if (strict && this.evidenceCache) {
+      const request = (rec as any)?.request ?? {};
+      const emergencyConstraints = (request as any)?.emergency_constraints ?? {};
+      const constraints_hash = this.evidenceCache.hashEmergencyConstraints(emergencyConstraints ?? null);
+      const prefetchedEvidence: any[] = [];
+
+      // PT (5m): keyed by station pair
+      const pair = (emergencyConstraints as any)?.pt_station_pair;
+      if (pair?.station_a && pair?.station_b) {
+        const geo_hash = this.evidenceCache.transitPairHash(String(pair.station_a), String(pair.station_b));
+        const time_bucket = this.evidenceCache.timeBucketIso(Date.now(), 5);
+        const recPt = await this.evidenceCache.get({ rule_id: 'public_transport_v1', geo_hash, time_bucket, constraints_hash });
+        if (recPt?.evidence) prefetchedEvidence.push(recPt.evidence);
+      }
+
+      // Weather (60m): keyed by geo; we read anchor from emergency constraints if present.
+      const healWeather = (emergencyConstraints as any)?.heal_prefetch_weather;
+      if (healWeather?.lat != null && healWeather?.lng != null) {
+        const geo_hash = this.evidenceCache.geoHash(Number(healWeather.lat), Number(healWeather.lng), 2);
+        const time_bucket = this.evidenceCache.timeBucketIso(Date.now(), 60);
+        const recW = await this.evidenceCache.get({ rule_id: 'drive_safety_v1', geo_hash, time_bucket, constraints_hash });
+        if (recW?.evidence) prefetchedEvidence.push(recW.evidence);
+      }
+
+      const assembler = this.getResponseAssembler();
+      const bundle = assembler.deriveEvidenceBundleForConfirm({
+        requestId: String((request as any)?.request_id ?? input.session_id),
+        itinerary,
+        emergencyConstraints,
+        prefetchedEvidence,
+      }) as any;
+
+      // Unified timeline inspector: shared TravelTimeResolverService (L1 → L1b ±bucket → L2 → L3).
+      const inspector = this.timelineInspector ?? new TimelineInspectorService();
+      const resolverSvc =
+        this.travelTimeResolver ?? new TravelTimeResolverService(this.evidenceCache, this.travelTimeRouter, this.accessTracker);
+      const memo = new Map<string, { minutes: number; lineage: TravelTimeEvidenceLineageDto }>();
+      const nowMs = Date.now();
+      const travelCtx: TravelTimeEdgeContext = {
+        nowMs,
+        constraints_hash,
+        prefetchedEvidence,
+        memo,
+      };
+      const resolver = async (cur: any, next: any) => {
+        const r = await resolverSvc.getMinTravelMinutes(cur, next, travelCtx);
+        if (!r) return undefined;
+        return { minutes: r.minutes, source_lineage: r.lineage };
+      };
+
+      const timeline = await inspector.inspect({ itinerary: itinerary as any, travelTimeResolver: resolver });
+      const reasonCodes = Array.from(new Set(timeline.conflicts.map((c) => c.reason_code)));
+      if (reasonCodes.length) {
+        bundle.failure_reason_codes = sortFailureReasonCodes([
+          ...(Array.isArray(bundle.failure_reason_codes) ? bundle.failure_reason_codes : []),
+          ...reasonCodes,
+        ]);
+        bundle.verification_status = 'FAILED';
+      }
+
+      if (String(bundle?.verification_status ?? '') === 'FAILED') {
+        const tradeoff =
+          this.tradeoffEngine ??
+          new TradeoffEngineService(
+            this.evidenceCache,
+            this.travelTimeRouter,
+            this.accessTracker,
+            this.travelTimeResolver,
+            this.itineraryRevisionRegret,
+            this.userPreferenceLearning,
+            undefined,
+          );
+        const negotiationPayload = await tradeoff.buildNegotiation({
+          request,
+          decisionLog: [],
+          finalItinerary: itinerary as any,
+          state: { research_data: { world: { physical: { prefetched_evidence: prefetchedEvidence } } } },
+        });
+        const hasBookingCollision = reasonCodes.includes('HEAL_IMPACT_BOOKING_COLLISION');
+        if (hasBookingCollision && negotiationPayload && Array.isArray((negotiationPayload as any).alternatives)) {
+          (negotiationPayload as any).alternatives = (negotiationPayload as any).alternatives.filter((a: any) => String(a?.id ?? '') !== 'POSTPONE_SCHEDULE');
+          (negotiationPayload as any).default_option_id = 'UPGRADE_TO_DRIVE';
+        }
+        const travelImpossible = (timeline?.conflicts ?? []).find(
+          (c: any) => String(c?.reason_code ?? '') === 'HEAL_IMPACT_TRAVEL_IMPOSSIBLE' && c?.lineage_summary,
+        );
+        throw new ConflictException({
+          error_code: 'NEGOTIATION_EXPIRED_OR_INVALID',
+          verification_status: 'FAILED',
+          evidence_bundle: bundle,
+          ...(timeline?.conflicts?.length ? { timeline_impact: timeline } : {}),
+          ...(travelImpossible?.lineage_summary ? { lineage_summary: travelImpossible.lineage_summary } : {}),
+          negotiation_payload: negotiationPayload,
+        });
+      }
+    }
+
+    const request = (rec as any)?.request ?? {};
+    const rev = await this.itineraryVersion?.persistSuccessfulNegotiationConfirm({
+      tripId: (request as any)?.trip_id,
+      userId: (request as any)?.user_id,
+      sessionId: input.session_id,
+      alternativeId: input.alternative_id,
+      resolutionPatchSummary: resolution_patch_summary,
+      preItinerary,
+      postItinerary: itinerary,
+      negotiationPayload: rec.negotiation_payload,
+    });
+    if (rev && this.itineraryVersion) {
+      this.itineraryVersion.applyRevisionMetadataToItinerary(itinerary, {
+        revision_id: rev.confirmed_revision_id,
+        parent_revision_id: rev.parent_revision_id,
+      });
+    }
+
+    // One-shot session: delete after successful resolution.
+    this.negotiationSessions?.delete(input.session_id);
+
+    // Async preference evolution: schedule after successful confirm (no added latency).
+    this.preferenceEvolution?.scheduleDecisionDnaSync({
+      userId: (request as any)?.user_id,
+      tripId: (request as any)?.trip_id,
+      reason: 'NEGOTIATION_CONFIRMED',
+    });
+
+    return {
+      status: 'CONFIRMED',
+      resolution_patch_summary,
+      itinerary,
+      ...(rev
+        ? {
+            itinerary_revision: {
+              baseline_revision_id: rev.baseline_revision_id ?? undefined,
+              confirmed_revision_id: rev.confirmed_revision_id,
+              parent_revision_id: rev.parent_revision_id ?? undefined,
+              audit: {
+                delta_cost_usd: rev.audit.delta_cost_usd,
+                delta_time_minutes: rev.audit.delta_time_minutes,
+                interrupted_items: rev.audit.interrupted_items,
+                resolution_type: rev.audit.resolution_type,
+              },
+            },
+          }
+        : {}),
+    };
+  }
+
+  async logDecision(input: LogDecisionRequestDto): Promise<{ success: true; data: { logged: boolean } }> {
+    const storage = (() => {
+      if (!this.moduleRef) return undefined;
+      try {
+        return this.moduleRef.get(DecisionLogStorageService, { strict: false });
+      } catch {
+        return undefined;
+      }
+    })();
+
+    const nowIso = new Date().toISOString();
+    const tsIso = (() => {
+      const s = input.client_ts?.trim();
+      if (!s) return nowIso;
+      const d = new Date(s);
+      return Number.isNaN(d.getTime()) ? nowIso : d.toISOString();
+    })();
+
+    const action: TripsDecisionLogEntry['action'] = (() => {
+      switch (input.event) {
+        case 'NEGOTIATION_CONFIRMED':
+          return 'ALLOW';
+        case 'NEGOTIATION_REJECTED':
+          return 'REJECT';
+        case 'NEGOTIATION_DISCARDED':
+        case 'NEGOTIATION_TAG_EXPANDED':
+          return 'MODIFY';
+        case 'NEGOTIATION_OPENED':
+        case 'NEGOTIATION_VIEWED':
+        default:
+          return 'EVALUATE';
+      }
+    })();
+
+    const reasonCodes = [
+      input.event,
+      input.reasoning_tag ? `tag:${String(input.reasoning_tag)}` : undefined,
+      input.selected_alternative_id ? `alt:${String(input.selected_alternative_id)}` : undefined,
+    ].filter(Boolean) as string[];
+    if (isCriticalDecisionActionValue(action) && reasonCodes.length === 0) {
+      reasonCodes.push(`NEGOTIATION_${String(input.event)}`);
+    }
+
+    const entry: TripsDecisionLogEntry = {
+      persona: 'USER_ACTION' as TripsDecisionPersona,
+      action,
+      explanation: input.reasoning_tag ? `${input.event} (${input.reasoning_tag})` : input.event,
+      reasonCodes,
+      evidenceRefs: [],
+      timestamp: tsIso,
+      decisionSource: 'USER',
+      decisionStage: 'PLAN_EDIT' as TripsDecisionStage,
+      metadata: {
+        source: 'agent_log_decision',
+        request_id: input.request_id,
+        user_id: input.user_id,
+        trip_id: input.trip_id,
+        event: input.event,
+        negotiation_session_id: input.negotiation_session_id,
+        expected_negotiation_hash: input.expected_negotiation_hash,
+        revision_id: input.revision_id,
+        selected_alternative_id: input.selected_alternative_id,
+        reasoning_tag: input.reasoning_tag,
+        context: input.context ?? undefined,
+        client_ts: input.client_ts ?? undefined,
+        server_ts: nowIso,
+      },
+    };
+
+    if (storage) {
+      await storage.saveLogEntry(entry, {
+        tripId: input.trip_id ?? undefined,
+        metadata: { source: 'agent_log_decision' },
+      });
+    }
+
+    return { success: true, data: { logged: Boolean(storage) } };
+  }
+
+  /**
+   * Read back a persisted negotiation revision (audit vector + patch summary) for UI timeline.
+   */
+  async getNegotiationRevisionSnapshot(revisionId: string): Promise<{
+    revision_id: string;
+    trip_id: string | null;
+    kind: string;
+    resolution_patch_summary: string | null;
+    delta_cost_usd: number | null;
+    delta_time_minutes: number | null;
+    interrupted_items: unknown;
+    resolution_type: string | null;
+    parent_revision_id: string | null;
+    negotiation_session_id: string | null;
+    alternative_id: string | null;
+    created_at: Date;
+  }> {
+    const row = await this.itineraryVersion?.getRevisionById(revisionId);
+    if (!row) {
+      throw new NotFoundException({ error_code: 'ITINERARY_REVISION_NOT_FOUND' });
+    }
+    return {
+      revision_id: row.id,
+      trip_id: row.tripId ?? null,
+      kind: row.kind,
+      resolution_patch_summary: row.resolutionPatchSummary ?? null,
+      delta_cost_usd: row.deltaCostUsd ?? null,
+      delta_time_minutes: row.deltaTimeMinutes ?? null,
+      interrupted_items: row.interruptedItems ?? [],
+      resolution_type: row.resolutionType ?? row.alternativeId ?? null,
+      parent_revision_id: row.parentRevisionId ?? null,
+      negotiation_session_id: row.negotiationSessionId ?? null,
+      alternative_id: row.alternativeId ?? null,
+      created_at: row.createdAt,
+    };
+  }
+
+  /** Aggregated decision timeline for a trip (revision chain + synthesized narratives). */
+  async getItineraryRevisionTimeline(tripId: string): Promise<RevisionTimelineResponseDto> {
+    const revisions = (await this.itineraryRevisionTimeline?.listTimelineForTrip(tripId)) ?? [];
+    return { trip_id: tripId, revisions };
+  }
+
+  /** Physical rollback: restore a historical snapshot and append a ROLLBACK revision (causal closure). */
+  async rollbackItinerary(body: ItineraryRollbackRequestDto): Promise<ItineraryRollbackResponseDto> {
+    if (!this.itineraryRollback) {
+      throw new BadRequestException({ error_code: 'ROLLBACK_SERVICE_UNAVAILABLE' });
+    }
+    const r = await this.itineraryRollback.rollbackToRevision(body.revision_id);
+
+    // Async preference evolution: rollback is a strong negative signal.
+    // We derive userId from the target revision row (same user who owns the chain).
+    try {
+      const row = await this.itineraryVersion?.getRevisionById(body.revision_id);
+      this.preferenceEvolution?.scheduleDecisionDnaSync({
+        userId: (row as any)?.userId ?? (row as any)?.user_id ?? null,
+        tripId: r.trip_id,
+        reason: 'NEGOTIATION_ROLLED_BACK',
+      });
+    } catch {
+      // best-effort; never block rollback
+    }
+    return {
+      itinerary: r.itinerary,
+      new_revision_id: r.new_revision_id,
+      trip_id: r.trip_id,
+      rolled_back_from_revision_id: r.rolled_back_from_revision_id,
+      target_revision_id: r.target_revision_id,
+    };
+  }
 
   private shouldPersistRouteAndRunDecisionLogs(request: RouteAndRunRequestDto): boolean {
     if (request.options?.dry_run) return false;
@@ -96,42 +772,24 @@ export class AgentService {
     return 'USER_ACTION';
   }
 
-  private resolveTripsStageFromStep(step: OrchestrationStep): TripsDecisionStage {
-    const s = String(step ?? '').toUpperCase();
-    if (s === 'GATE_EVAL') return 'ABU_GATE';
-    if (s === 'REPAIR') return 'SPATIAL_REPAIR';
-    if (s === 'VERIFY') return 'FINALIZE';
-    if (s === 'PLAN_GEN' || s === 'OPTIMIZE') return 'PLAN_SCORE';
-    if (s === 'INTAKE') return 'ROUTE_PICK';
-    return 'FINALIZE';
-  }
-
-  private mapRouteAndRunDecisionLogToTrips(entries: DecisionLogEntry[]): TripsDecisionLogEntry[] {
+  private mapRouteAndRunDecisionLogToTrips(
+    entries: DecisionLogEntry[],
+    audit?: { tripRunId?: string; planVersion?: number },
+  ): TripsDecisionLogEntry[] {
     const out: TripsDecisionLogEntry[] = [];
     for (const it of entries ?? []) {
       if (!it || typeof it !== 'object') continue;
       const ts = typeof it.timestamp === 'string' ? it.timestamp : new Date().toISOString();
-      const meta = (it.metadata && typeof it.metadata === 'object') ? { ...(it.metadata as any) } : {};
-      // Preserve original orchestration log payload for audit/debug.
-      const persistMeta = {
-        ...meta,
-        route_and_run: {
-          request_id: it.request_id,
-          step: it.step,
-          actor: it.actor,
-          inputs_summary: it.inputs_summary,
-          outputs_summary: it.outputs_summary,
-        },
-      };
+      const persistMeta = buildRouteAndRunTripsPersistMetadata(it, audit);
       out.push({
         persona: this.resolveTripsPersonaFromAgentLog(it),
         action: 'EVALUATE',
         explanation: String(it.outputs_summary ?? '').slice(0, 4000),
-        reasonCodes: [String(it.step ?? 'UNKNOWN_STEP')],
+        reasonCodes: buildRouteAndRunPersistReasonCodes(it),
         evidenceRefs: Array.isArray(it.evidence_refs) ? it.evidence_refs.map((x) => String(x)) : [],
         timestamp: ts,
         decisionSource: 'HEURISTIC',
-        decisionStage: this.resolveTripsStageFromStep(it.step),
+        decisionStage: resolveTripsStageForRouteAndRunPersist(it),
         metadata: persistMeta,
       });
     }
@@ -141,6 +799,8 @@ export class AgentService {
   private async persistRouteAndRunDecisionLogs(params: {
     request: RouteAndRunRequestDto;
     orchestrationDecisionLog?: DecisionLogEntry[];
+    tripRunId?: string | null;
+    planVersion?: number;
   }): Promise<void> {
     if (!this.shouldPersistRouteAndRunDecisionLogs(params.request)) return;
     const logs = params.orchestrationDecisionLog ?? [];
@@ -153,18 +813,52 @@ export class AgentService {
       storage = undefined;
     }
     if (!storage) return;
-    const mapped = this.mapRouteAndRunDecisionLogToTrips(logs);
+    const mapped = this.mapRouteAndRunDecisionLogToTrips(logs, {
+      tripRunId: params.tripRunId ?? undefined,
+      planVersion: params.planVersion,
+    });
     if (mapped.length === 0) return;
     await storage.saveLogEntries(mapped, {
       tripId: params.request.trip_id ?? undefined,
-      metadata: { source: 'route_and_run' },
+      metadata: { source: 'route_and_run', request_message: params.request.message },
     });
+  }
+
+  /** Trip Task Memory（Redis）：replan 继承链写入 `history`（PRD I3 / §5.1） */
+  private touchTripTaskMemoryReplanAudit(
+    request: RouteAndRunRequestDto,
+    orchestrationResult: OrchestrationResult | null | undefined,
+    tripRunId?: string | null,
+  ): void {
+    if (!this.tripTaskMemory) return;
+    const opt = request.options;
+    const hasPrev =
+      opt?.previous_plan_version !== undefined ||
+      (typeof opt?.previous_world_snapshot_hash === 'string' && !!opt.previous_world_snapshot_hash.trim());
+    const tid = typeof request.trip_id === 'string' ? request.trip_id.trim() : '';
+    if (!hasPrev || !tid) return;
+
+    const st = orchestrationResult?.result?.state as OrchestratorState | undefined;
+    void this.tripTaskMemory
+      .recordReplanLineageAudit(tid, {
+        requestId: request.request_id,
+        tripRunId: tripRunId ?? undefined,
+        previous_plan_version: opt?.previous_plan_version,
+        previous_world_snapshot_hash: opt?.previous_world_snapshot_hash,
+        new_plan_version: typeof st?.plan_version === 'number' ? st.plan_version : undefined,
+      })
+      .catch(() => {});
   }
 
   private getResponseAssembler(): RouteAndRunResponseAssemblerService {
     return (
       this.responseAssembler ??
-      new RouteAndRunResponseAssemblerService(new JepaProjectorService())
+      new RouteAndRunResponseAssemblerService(
+        new JepaProjectorService(),
+        new TradeoffEngineService(undefined, new TravelTimeRouterService(), undefined, undefined, undefined, undefined),
+        undefined,
+        this.negotiationSessions,
+      )
     );
   }
 
@@ -190,11 +884,20 @@ export class AgentService {
     const stable = {
       trip_id: request.trip_id ?? null,
       message: request.message ?? '',
+      conversation_context_type: request.conversation_context?.context_type ?? null,
       options: {
         entry_point: request?.options?.entry_point,
         use_claude_orchestration: request?.options?.use_claude_orchestration,
         use_state_machine_orchestration: request?.options?.use_state_machine_orchestration,
         max_seconds: request?.options?.max_seconds,
+        orchestration_replay_anchor_snapshot_id:
+          request?.options?.orchestration_replay_anchor_snapshot_id ?? null,
+        orchestration_replay_strict_seal: request?.options?.orchestration_replay_strict_seal === true,
+        change_impact_descriptor_fingerprint:
+          request?.options?.change_impact_descriptor_v1 != null
+            ? executionTimelineInputHash(request.options.change_impact_descriptor_v1)
+            : null,
+        trace_compatibility_mode: request?.options?.trace_compatibility_mode === 'legacy' ? 'legacy' : 'cid-aware',
       },
     };
     // 简单哈希（可替换为现有的哈希工具）
@@ -206,489 +909,91 @@ export class AgentService {
 
   /**
    * 路由并执行（集成稳定化层）
+   *
+   * **与多智能体共识协作（MultiAgentCollaborationService）的关系**：
+   * - 本入口按 `OrchestrationMode` 分流；**共识协作并非绑定某一 mode**，而是经由 `UnifiedWorldModelService`
+   *   与 `PlanningWorkbenchAgentService.getWorldModelData(..., { tripId })` 等路径在 **trip 有界上下文** 内注册贡献。
+   * - `LEGACY` / `CLAUDE_DYNAMIC` / `CLAUDE_SM` 均可与统一世界模型并存；是否出现 `STRATEGY_CONFLICT` 取决于
+   *   是否调用带 `tripId` 的世界模型桥接及域 Agent 是否注入。
    */
   async routeAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
-    const startTime = Date.now();
-    this.logger.debug(`Processing request: ${request.request_id}`);
+    return this.executionGateway.runRouteAndRun(request);
+  }
 
-    // Phase 0：战略收敛 - 个性化降级显式日志（user_id=anonymous 时 Memory/UserProfile 不可用）
-    if (!request.user_id || request.user_id === 'anonymous') {
-      this.logger.warn(
-        `[Phase0] user_id 缺失或为 anonymous，个性化能力（Memory、UserTravelProfile）不可用。request_id=${request.request_id}`,
+  /**
+   * 产品级 replay：仅通过 `route_and_run` + 冻结快照重入；不暴露 ReplayExecutionKernel 为 HTTP 路径。
+   * `trace_id` 须与 `execution_trace_v1.snapshot_id` 一致（锚定 P3 记忆快照）。
+   */
+  async replayFromTrace(dto: ReplayFromTraceRequestDto): Promise<RouteAndRunResponseDto> {
+    if (!this.memorySnapshotPersistence) {
+      throw new ServiceUnavailableException(
+        'Memory snapshot persistence is not configured; replay_from_trace requires Redis-backed snapshots',
       );
     }
-
-    // === TripRun：新建或 v1.0 断点续跑（durable_trip_run_id） ===
-    let tripRunId: string | null = null;
-    let resumedCheckpoint: TripRunDsoCheckpointPayload | null = null;
-    const durableTripRunId = request.options?.durable_trip_run_id?.trim();
-    if (durableTripRunId && this.tripRunManager && !request.options?.dry_run) {
-      resumedCheckpoint = await this.tripRunManager.loadDsoCheckpoint(durableTripRunId);
-      if (resumedCheckpoint) {
-        tripRunId = durableTripRunId;
-        this.logger.log(
-          `[AgentService] Durable：已加载 TripRun=${durableTripRunId} 的 DSO checkpoint（cursor=${resumedCheckpoint.cursor_step ?? 'n/a'}），编排器将执行准入与可选 INTAKE 跳过`,
-        );
-      }
+    const trace = dto.execution_trace_v1;
+    if (dto.trace_id.trim() !== trace.snapshot_id.trim()) {
+      throw new BadRequestException('trace_id must equal execution_trace_v1.snapshot_id');
     }
-    if (!tripRunId && this.tripRunManager && !request.options?.dry_run) {
-      try {
-        // 判断规划阶段
-        const isPlanningReq = this.isPlanningRequest(request);
-        const planningPhase = isPlanningReq ? 'PLANNING' : 'EXECUTION';
-
-        // 判断当前 Agent（根据路由决策）
-        const signals = signalsFromRequest(request);
-        const currentAgent = signals.taskType === 'TRIP_PLANNING' ? 'PlanningAgent' : 'ExecutionAgent';
-
-        tripRunId = await this.tripRunManager.createTripRun({
-          tripId: request.trip_id || null,
-          userId: request.user_id || null,
-          userQuery: request.message,
-          planningPhase,
-          currentAgent,
-          metadata: {
-            request_id: request.request_id,
-            entry_point: request.options?.entry_point,
-            max_seconds: request.options?.max_seconds,
-          },
-        });
-        if (tripRunId) {
-          this.logger.debug(`Created TripRun: ${tripRunId} for request ${request.request_id}`);
-        }
-      } catch (error: any) {
-        this.logger.warn(`Failed to create TripRun: ${error.message}`);
-        // 不阻塞主流程
-      }
+    const memory = await this.memorySnapshotPersistence.loadBySnapshotId(trace.snapshot_id.trim());
+    if (!memory) {
+      throw new NotFoundException(`No persisted memory snapshot for trace_id=${dto.trace_id}`);
     }
 
-    // === 稳定化层：统一 Deadline ===
-    const maxSeconds = Number(request?.options?.max_seconds ?? 12);
-    // 规划类请求在本地/CLI 场景下经常需要 >20s（含 DB + LLM + 多阶段编排）。
-    // 这里不再硬上限 20s，而是允许到 120s（仍保留 clamp 防止极端值）。
-    const deadline = createDeadline(Math.max(1000, Math.min(maxSeconds * 1000, 120_000))); // 默认12s，最大120s
-
-    const requestHash = this.hashRequest(request);
-    const stabilityCtx: StabilityContext = {
-      requestId: request.request_id,
-      userId: request.user_id,
-      tripId: request.trip_id,
-      requestHash,
-      deadline,
-      startTs: startTime,
+    const baseRequest: RouteAndRunRequestDto = {
+      request_id: dto.request_id?.trim() || randomUUID(),
+      user_id: dto.user_id?.trim() || memory.userId || 'anonymous',
+      trip_id: dto.trip_id ?? memory.tripId ?? undefined,
+      message: dto.message?.trim() || '(replay_from_trace)',
+      options: {
+        ...(dto.options ?? {}),
+        orchestration_replay_anchor_snapshot_id: trace.snapshot_id.trim(),
+        execution_model_runtime_hint: dto.options?.execution_model_runtime_hint ?? 'replay_from_trace',
+      },
     };
 
-    const fallback = new FallbackGuard();
-
-    try {
-      // === 稳定化层：统一去重（在所有模式之前） ===
-      if (this.requestDeduplication && !request.options?.dry_run) {
-        const cachedResponse = this.requestDeduplication.checkDuplicate(requestHash);
-        if (cachedResponse) {
-          const dedupedResponse: RouteAndRunResponseDto = {
-            ...cachedResponse,
-            request_id: request.request_id,
-            observability: {
-              ...cachedResponse.observability,
-              latency_ms: Date.now() - startTime,
-            },
-          };
-          this.logger.debug(`Request deduplication: reusing cached result for request ${request.request_id}`);
-          return this.attachObservability(
-            dedupedResponse,
-            {
-              mode_final: 'DEDUP',
-              fallback_used: false,
-              deadline_ms: deadline.totalMs,
-              time_remaining_ms: deadline.remainingMs(),
-            },
-            request,
-          );
-        }
-      }
-      // 0. 规划请求拦截：无 trip_id 的“从零规划”统一重定向到规划工作台
-      // 说明：与 contract/spec 对齐（planning-redirect.*），避免进入后续路由/执行链。
-      const hasNoTripId = !request.trip_id || request.trip_id === '';
-      const isPlanningReq = this.isPlanningRequest(request);
-      if (isPlanningReq && hasNoTripId) {
-        this.logger.debug(
-          `[AgentService] 检测到规划请求且缺少 trip_id，重定向到规划工作台: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`,
-        );
-        return this.getEntryResponses().createRedirectToPlanningWorkbenchResponse(
-          request,
-          startTime,
-        );
-      }
-
-      // 0.1 验证 trip_id（非规划请求且缺少 trip_id 才报错）
-      if (hasNoTripId) {
-        this.logger.warn(
-          `[AgentService] 缺少 trip_id（非规划请求场景）: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`,
-        );
-        return this.getEntryResponses().createMissingTripIdErrorResponse(
-          request,
-          startTime,
-        );
-      }
-
-      // 0.2 检查入口来源和操作权限（只读模式限制）
-      if (request.options?.entry_point === 'trip_detail_page' && 
-          request.options?.readonly_mode === true) {
-        if (this.isModificationRequest(request.message)) {
-          this.logger.debug(`[AgentService] 只读模式限制: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`);
-          return this.getEntryResponses().createReadonlyModeRestrictionResponse(
-            request,
-            startTime,
-          );
-        }
-      }
-
-      // === 稳定化层：检查 Deadline ===
-      if (deadline.isExpired()) {
-        throw new Error('TIMEOUT:AGENT_DEADLINE_EXPIRED');
-      }
-
-      // 1. 从请求中提取路由信号
-      const signals = signalsFromRequest(request);
-      this.logger.debug(
-        `[AgentService] 路由信号提取: taskType=${signals.taskType}, risk=${signals.risk}, complexity=${signals.complexity}, request_id=${request.request_id}`,
-      );
-
-      // 2. 基于 Feature Flags 和信号进行策略决策（集成 ModeLock 和 Circuit Breaker）
-      const decision = routePolicy(
-        process.env,
-        request.options,
-        signals,
-        stabilityCtx,
-        this.modeLock,
-        {
-          sm: this.breakerSM,
-          dyn: this.breakerDyn,
-          legacy: this.breakerLegacy,
-        },
-      );
-      
-      // 调试日志：记录路由决策
-      this.logger.log(`[AgentService] 路由决策: mode=${decision.mode}, reason=${decision.reason}`);
-      this.logger.log(`[AgentService] 匹配规则: ${decision.matchedRules.join(', ')}`);
-      this.logger.log(`[AgentService] 熔断器状态: SM=${this.breakerSM.canPass()}, Dynamic=${this.breakerDyn.canPass()}, Legacy=${this.breakerLegacy.canPass()}`);
-      // 结构化日志（固定化字段，用于打点/聚合）
-      // 结构化日志字段（固定化，用于 metrics/聚合）
-      // 这些字段在所有请求中都会输出，方便日志聚合和监控
-      const logFields = {
-        request_id: request.request_id,
-        // 核心编排字段（稳定字段）
-        orchestration_mode_resolved: decision.mode, // 实际执行的模式
-        orchestration_mode_recommended: decision.recommendations?.useStateMachine ? 'CLAUDE_SM' : decision.mode, // 建议的模式
-        task_type: signals.taskType,
-        risk: signals.risk,
-        requires_consent: decision.recommendations?.requireConsent ?? false,
-        needs_audit: decision.recommendations?.enableAudit ?? false,
-        // 辅助字段
-        max_seconds: request.options?.max_seconds ?? 60,
-        latency_budget_ms: signals.latencyBudgetMs,
-        reason: decision.reason,
-        matched_rules: decision.matchedRules,
-      };
-      this.logger.log(logFields, `[AgentService] 编排策略决策`);
-      
-      // Metrics 打点（用于监控和观察）
-      MetricsRecorder.recordOrchestrationMode(decision.mode);
-      MetricsRecorder.recordRisk(signals.risk);
-      if (request.options?.entry_point) {
-        MetricsRecorder.recordEntryPoint(request.options.entry_point);
-      }
-      if (request.options?.readonly_mode !== undefined) {
-        MetricsRecorder.recordReadonlyMode(request.options.readonly_mode);
-      }
-      
-      // 详细的 debug 日志
-      this.logger.debug(
-        `[AgentService] 策略建议: useStateMachine=${decision.recommendations?.useStateMachine}, enableAudit=${decision.recommendations?.enableAudit}, requireConsent=${decision.recommendations?.requireConsent}, recommendation_reason=${decision.recommendations?.reason}`,
-      );
-
-      // 记录 trace 信息（用于观测和回放）
-      // 关键：明确区分 resolved（实际执行）和 recommended（仅建议）
-      const traceInfo = {
-        orchestration: {
-          // 实际执行的路径（强制）
-          resolved: {
-            mode: decision.mode,
-            reason: decision.reason,
-            matchedRules: decision.matchedRules,
-          },
-          // 建议（不影响执行）
-          recommended: decision.recommendations ? {
-            useStateMachine: decision.recommendations.useStateMachine,
-            enableAudit: decision.recommendations.enableAudit,
-            requireConsent: decision.recommendations.requireConsent,
-            reason: decision.recommendations.reason,
-          } : undefined,
-          // 信号和标志位
-          signals: {
-            taskType: signals.taskType,
-            risk: signals.risk,
-            complexity: signals.complexity,
-            needsAudit: signals.needsAudit,
-            requiresStructuredOutput: signals.requiresStructuredOutput,
-            expectsToolCalls: signals.expectsToolCalls,
-            legacyWellSupported: signals.legacyWellSupported,
-            latencyBudgetMs: signals.latencyBudgetMs,
-          },
-          flags: {
-            env: {
-              USE_CLAUDE_ORCHESTRATION: decision.flags.env_USE_CLAUDE_ORCHESTRATION,
-            },
-            options: {
-              use_claude_orchestration: decision.flags.opt_use_claude_orchestration,
-              use_state_machine_orchestration: decision.flags.opt_use_state_machine_orchestration,
-            },
-            derived: {
-              use_state_machine_orchestration: decision.flags.derived_use_state_machine_orchestration,
-            },
-          },
-        },
-        timestamp: new Date().toISOString(),
-        
-        // 结构化日志字段（固定化，用于打点/聚合）
-        orchestration_mode: decision.mode,
-        orchestration_recommended_sm: decision.recommendations?.useStateMachine ?? false,
-        risk: signals.risk,
-        task_type: signals.taskType,
-        requires_consent: decision.recommendations?.requireConsent ?? false,
-        max_seconds: request.options?.max_seconds ?? 60,
-        latency_budget_ms: signals.latencyBudgetMs,
-      };
-
-      // 3. 根据决策执行相应路径（集成稳定化层：withTimeout + Circuit Breaker + Fallback）
-      const fallbackOrder: Record<OrchestrationMode, OrchestrationMode[]> = {
-        CLAUDE_SM: ['CLAUDE_DYNAMIC', 'LEGACY'],
-        CLAUDE_DYNAMIC: ['LEGACY'],
-        LEGACY: [],
-      };
-
-      let finalMode: OrchestrationMode = decision.mode;
-      let usedFallback = false;
-
-      const execMode = async (mode: OrchestrationMode): Promise<RouteAndRunResponseDto> => {
-        const remaining = deadline.remainingMs();
-        if (remaining <= 0) throw new Error('TIMEOUT:AGENT_DEADLINE');
-
-        if (mode === 'CLAUDE_SM') {
-          if (!this.claudeOrchestrator) throw new Error('CLAUDE_SM_UNAVAILABLE');
-          if (!this.breakerSM.canPass()) throw new Error('BREAKER_OPEN:CLAUDE_SM');
-          const res = await withTimeout(
-            this.routeAndRunWithClaudeStateMachine(
-              request,
-              startTime,
-              traceInfo,
-              deadline,
-              tripRunId,
-              resumedCheckpoint,
-            ),
-            remaining,
-            'CLAUDE_SM'
-          );
-          this.breakerSM.onSuccess();
-          return res;
-        }
-
-        if (mode === 'CLAUDE_DYNAMIC') {
-          if (!this.claudeOrchestrator) throw new Error('CLAUDE_DYNAMIC_UNAVAILABLE');
-          if (!this.breakerDyn.canPass()) throw new Error('BREAKER_OPEN:CLAUDE_DYNAMIC');
-          const res = await withTimeout(
-            this.routeAndRunWithClaude(request, startTime, traceInfo, deadline),
-            remaining,
-            'CLAUDE_DYNAMIC'
-          );
-          this.breakerDyn.onSuccess();
-          return res;
-        }
-
-        // LEGACY mode
-        if (!this.breakerLegacy.canPass()) throw new Error('BREAKER_OPEN:LEGACY');
-        const res = await withTimeout(
-          this.routeAndRunLegacy(request, startTime, traceInfo, deadline),
-          remaining,
-          'LEGACY'
-        );
-        this.breakerLegacy.onSuccess();
-        return res;
-      };
-
-      try {
-        const res = await execMode(decision.mode);
-        // 成功：记录 ModeLock
-        this.modeLock.set(stabilityCtx, decision.mode);
-        
-        // === 更新 TripRun 为 COMPLETED ===
-        if (tripRunId && this.tripRunManager) {
-          try {
-            await this.tripRunManager.completeTripRun(tripRunId, {
-              mode_final: decision.mode,
-              fallback_used: false,
-              latency_ms: Date.now() - startTime,
-            });
-          } catch (error: any) {
-            this.logger.warn(`Failed to update TripRun to COMPLETED: ${error.message}`);
-          }
-        }
-        
-        return this.attachObservability(
-          res,
-          {
-            mode_final: decision.mode,
-            fallback_used: false,
-            deadline_ms: deadline.totalMs,
-            time_remaining_ms: deadline.remainingMs(),
-            breakers: {
-              sm: this.breakerSM.snapshot(),
-              dyn: this.breakerDyn.snapshot(),
-              legacy: this.breakerLegacy.snapshot(),
-            },
-            ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
-            ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
-          },
-          request,
-        );
-      } catch (e: any) {
-        // 标记 Circuit Breaker 失败
-        if (decision.mode === 'CLAUDE_SM') this.breakerSM.onFailure(e);
-        else if (decision.mode === 'CLAUDE_DYNAMIC') this.breakerDyn.onFailure(e);
-        else this.breakerLegacy.onFailure(e);
-
-        // === 稳定化层：单次 Fallback ===
-        const canFallback = fallback.tryUse();
-        if (!canFallback || deadline.remainingMs() <= 0) {
-          const nf = normalizeError(e);
-          
-          // === 更新 TripRun 为 FAILED ===
-          if (tripRunId && this.tripRunManager) {
-            try {
-              await this.tripRunManager.failTripRun(tripRunId, e, {
-                mode_final: decision.mode,
-                fallback_used: false,
-                latency_ms: Date.now() - startTime,
-              });
-            } catch (error: any) {
-              this.logger.warn(`Failed to update TripRun to FAILED: ${error.message}`);
-            }
-          }
-          
-          // 🆕 尝试从错误中提取部分决策日志（如果是状态机超时）
-          let partialDecisionLog: DecisionLogEntry[] | undefined;
-          if (decision.mode === 'CLAUDE_SM' && e?.message?.startsWith('TIMEOUT:CLAUDE_SM')) {
-            this.logger.warn(`[AgentService] 状态机超时，无法提取部分结果（需要状态机内部处理）`);
-          }
-          
-          return this.buildFailureResponse(request, startTime, nf, {
-            mode_final: decision.mode,
-            fallback_used: false,
-            deadline_ms: deadline.totalMs,
-            time_remaining_ms: deadline.remainingMs(),
-          }, partialDecisionLog);
-        }
-
-        usedFallback = true;
-
-        // 尝试 fallback 链
-        const chain = fallbackOrder[decision.mode] ?? [];
-        for (const nextMode of chain) {
-          if (deadline.remainingMs() <= 0) break;
-
-          try {
-            finalMode = nextMode;
-            const res = await execMode(nextMode);
-            // 成功：记录 ModeLock
-            this.modeLock.set(stabilityCtx, nextMode);
-            
-            // === 更新 TripRun 为 COMPLETED ===
-            if (tripRunId && this.tripRunManager) {
-              try {
-                await this.tripRunManager.completeTripRun(tripRunId, {
-                  mode_final: nextMode,
-                  fallback_used: true,
-                  latency_ms: Date.now() - startTime,
-                });
-              } catch (error: any) {
-                this.logger.warn(`Failed to update TripRun to COMPLETED: ${error.message}`);
-              }
-            }
-            
-            return this.attachObservability(
-              res,
-              {
-                mode_final: nextMode,
-                fallback_used: true,
-                deadline_ms: deadline.totalMs,
-                time_remaining_ms: deadline.remainingMs(),
-                breakers: {
-                  sm: this.breakerSM.snapshot(),
-                  dyn: this.breakerDyn.snapshot(),
-                  legacy: this.breakerLegacy.snapshot(),
-                },
-                ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
-                ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
-              },
-              request,
-            );
-          } catch (e2: any) {
-            // 标记 Circuit Breaker 失败
-            if (nextMode === 'CLAUDE_SM') this.breakerSM.onFailure(e2);
-            else if (nextMode === 'CLAUDE_DYNAMIC') this.breakerDyn.onFailure(e2);
-            else this.breakerLegacy.onFailure(e2);
-            continue;
-          }
-        }
-
-        // 所有 fallback 都失败
-        const nf = normalizeError(e);
-        
-        // === 更新 TripRun 为 FAILED ===
-        if (tripRunId && this.tripRunManager) {
-          try {
-            await this.tripRunManager.failTripRun(tripRunId, e, {
-              mode_final: finalMode,
-              fallback_used: usedFallback,
-              latency_ms: Date.now() - startTime,
-            });
-          } catch (error: any) {
-            this.logger.warn(`Failed to update TripRun to FAILED: ${error.message}`);
-          }
-        }
-        
-        // 🆕 尝试提取部分决策日志
-        let partialDecisionLog: DecisionLogEntry[] | undefined;
-        if (finalMode === 'CLAUDE_SM' && e?.message?.startsWith('TIMEOUT:CLAUDE_SM')) {
-          this.logger.warn(`[AgentService] 状态机超时，无法提取部分结果`);
-        }
-        
-        return this.buildFailureResponse(request, startTime, nf, {
-          mode_final: finalMode,
-          fallback_used: usedFallback,
-          deadline_ms: deadline.totalMs,
-          time_remaining_ms: deadline.remainingMs(),
-        }, partialDecisionLog);
-      }
-      // 理论上不可达：上面 success/fallback/failure 都应返回
-      throw new Error('UNREACHABLE: routeAndRun fell through stability execution');
-    } catch (error: any) {
-      this.logger.error(`Agent service error: ${error?.message || String(error)}`, error?.stack);
-      
-      // === 更新 TripRun 为 FAILED（最外层 catch） ===
-      if (tripRunId && this.tripRunManager) {
-        try {
-          await this.tripRunManager.failTripRun(tripRunId, error, {
-            error_type: 'unhandled_exception',
-            caught_at: 'routeAndRun_outer_catch',
-          });
-        } catch (updateError: any) {
-          this.logger.warn(`Failed to update TripRun to FAILED in outer catch: ${updateError.message}`);
-        }
-      }
-      
-      throw error;
+    const merged = mergeReplayProfileIntoRouteAndRunRequest(
+      baseRequest,
+      buildReplayProfileFromTrace(trace),
+    );
+    merged.options = {
+      ...merged.options,
+      orchestration_replay_anchor_snapshot_id: trace.snapshot_id.trim(),
+      orchestration_replay_strict_seal: true,
+      execution_model_allow_upgrade: false,
+    };
+    if (dto.expected_change_impact_descriptor_v1 != null) {
+      merged.options.change_impact_descriptor_v1 = dto.expected_change_impact_descriptor_v1;
     }
+
+    const response = await this.executionGateway.runRouteAndRun(merged);
+
+    if (dto.expected_change_impact_descriptor_v1 != null) {
+      const expected = parseChangeImpactDescriptorV1(dto.expected_change_impact_descriptor_v1);
+      const traceOut = response.observability?.trace as Record<string, unknown> | undefined;
+      const gotRaw = traceOut?.change_impact_descriptor_v1;
+      if (gotRaw == null) {
+        throw new BadRequestException(
+          'replay_from_trace compare mode: observability.trace.change_impact_descriptor_v1 missing on response',
+        );
+      }
+      const inferred = parseChangeImpactDescriptorV1(gotRaw);
+      const reversibilityOk =
+        serializeChangeImpactDescriptorForCompare(inferred) ===
+        serializeChangeImpactDescriptorForCompare(expected);
+      (response.observability as Record<string, unknown>).replay_change_impact_closure_v1 = {
+        schemaId: 'agent.execution_os.replay_change_impact_closure@v1' as const,
+        version: 1 as const,
+        inferred_change_impact_descriptor_v1: inferred,
+        reversibility_ok: reversibilityOk,
+      };
+      if (!reversibilityOk) {
+        throw new BadRequestException(
+          'replay_from_trace compare mode: change_impact_descriptor_v1 does not match expected_change_impact_descriptor_v1',
+        );
+      }
+    }
+
+    return response;
   }
 
   /**
@@ -874,6 +1179,9 @@ export class AgentService {
     deadline?: { remainingMs: () => number; clamp: (ms: number) => number },
     tripRunId?: string | null,
     resumedCheckpoint?: TripRunDsoCheckpointPayload | null,
+    orchestrationAbort?: AbortController,
+    recoveryInvocation?: RecoveryInvocationContext,
+    routingTaskType?: TaskType,
   ): Promise<RouteAndRunResponseDto> {
     this.logger.log(`[AgentService] 使用 Claude 状态机编排: request_id=${request.request_id}`);
 
@@ -881,12 +1189,28 @@ export class AgentService {
       throw new Error('ClaudeOrchestratorService 未注入');
     }
 
+    /**
+     * CLAUDE_SM 入口曾忽略 routingTaskType：咨询类（DATA_LOOKUP / 泛问 GENERIC_QA）仍整链跑 PLAN_GEN。
+     * 与 `orchestrate()` 首段对齐：轻量类型改走 `routeAndRunWithClaude`（注入 routingTaskType + 跳过状态机）。
+     */
+    const rt = routingTaskType ?? 'TRIP_PLANNING';
+    if (rt === 'DATA_LOOKUP' || rt === 'GENERIC_QA' || rt === 'RAG_QA') {
+      this.logger.log(
+        `[AgentService] routingTaskType=${rt} → 跳过状态机，改走 orchestrate 轻量路径 request_id=${request.request_id}`,
+      );
+      return this.routeAndRunWithClaude(request, startTime, traceInfo, deadline);
+    }
+
     // 构建 AgentContext
     const context: AgentContext = {
       requestId: request.request_id,
       userId: request.user_id,
       tripId: request.trip_id,
+      tripRunId: tripRunId ?? undefined,
       conversationHistory: request.conversation_context?.recent_messages,
+      abortSignal: orchestrationAbort?.signal,
+      routingTaskType: rt,
+      ...(recoveryInvocation ? { recoveryInvocation } : {}),
     };
 
       // Policy 预判定（与 Gate 合并见 deriveExternalVerdict）；失败不阻断主链
@@ -944,35 +1268,134 @@ export class AgentService {
     const assembler = this.getResponseAssembler();
 
     const persist = (reqToPersist: RouteAndRunRequestDto, orc: any) => {
+      const orchState = orc?.result?.state as OrchestratorState | undefined;
       this.persistRouteAndRunDecisionLogs({
         request: reqToPersist,
         orchestrationDecisionLog: orc?.result?.state?.decision_log,
+        tripRunId: tripRunId ?? undefined,
+        planVersion: orchState?.plan_version,
       }).catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        this.logger.debug(`[AgentService] persistRouteAndRunDecisionLogs skipped: ${msg}`);
+        const errMsg = e instanceof Error ? e.message : String(e);
+        const matches = matchAxioms({ message: reqToPersist.message, constraints: (reqToPersist as any)?.constraints });
+        const dom = pickDominantAxiom(matches);
+        const stage = 'decision_logs';
+        const errorTypeRaw =
+          typeof (e as any)?.code === 'string'
+            ? String((e as any).code)
+            : /23514/.test(errMsg)
+              ? '23514'
+              : 'UNKNOWN';
+        const errorType = errorTypeRaw === '23514' ? 'DB_CHECK_CONSTRAINT' : errorTypeRaw;
+
+        //旁路可靠：持久化失败必须不影响主流程
+        this.logger.warn(
+          JSON.stringify({
+            event: 'decision_os_audit_persist_failed',
+            stage,
+            request_id: reqToPersist.request_id,
+            trip_id: reqToPersist.trip_id ?? undefined,
+            axiom_id: dom?.axiom_id ?? 'UNKNOWN',
+            cid: dom?.axiom.cid ?? 'UNKNOWN',
+            error: errMsg,
+            error_type: errorType,
+          }),
+        );
+        this.promMetrics?.recordAuditPersistFailed({
+          axiom_id: dom?.axiom_id,
+          cid: dom?.axiom.cid,
+          stage,
+          error_type: errorType,
+        });
       });
     };
 
     const assemble = (reqToAssemble: RouteAndRunRequestDto, orc: any) =>
       assembler.assembleClaudeStateMachineResponse({
         request: reqToAssemble,
-        startTime,
-        traceInfo,
+      startTime,
+      traceInfo,
         orchestrationResult: orc,
-        policyAction,
-        durableRun:
-          tripRunId || resumedCheckpoint
-            ? {
-                trip_run_id: tripRunId ?? undefined,
-                checkpoint_loaded: !!resumedCheckpoint,
-              }
-            : undefined,
-      });
+      policyAction,
+      durableRun:
+        tripRunId || resumedCheckpoint
+          ? {
+              trip_run_id: tripRunId ?? undefined,
+              checkpoint_loaded: !!resumedCheckpoint,
+            }
+          : undefined,
+      routingTaskType,
+    });
 
     // First attempt
     persist(request, orchestrationResult);
+    this.touchTripTaskMemoryReplanAudit(request, orchestrationResult, tripRunId);
+
+    const observeRuntimeProof = (reqToObserve: RouteAndRunRequestDto, orc: any, terminal: boolean) => {
+      try {
+        const domAxiom = pickDominantAxiom(matchAxioms({ message: reqToObserve.message, constraints: undefined }));
+        // If DecisionState/OrchestratorState is not available on this execution path, we still emit a
+        // conservative observability sample so Scale Proof can compute P95 from runtime metrics.
+        // This does not affect business decisions; it only fills a monitoring gap.
+        if (!orc?.result?.decisionState || !orc?.result?.state) {
+          if (domAxiom?.axiom_id) {
+            this.promMetrics?.recordSessionConsistencyScore({
+              score: 100,
+              axiom_id: domAxiom.axiom_id,
+              cid: domAxiom.axiom.cid,
+              terminal,
+            });
+          }
+          return;
+        }
+        const ds = orc?.result?.decisionState as DecisionState | undefined;
+        const st = orc?.result?.state as OrchestratorState | undefined;
+        if (!ds || !st) return;
+        const audit_report = AuditReportGenerator.generate(ds, st) as any;
+        const scoreRaw = audit_report?.session_consistency_score;
+        const expectedCid = domAxiom?.axiom?.cid;
+        const actualCid = audit_report?.dominant_cid ? String(audit_report.dominant_cid) : undefined;
+        const score =
+          typeof scoreRaw === 'number'
+            ? scoreRaw
+            : domAxiom?.axiom_id
+              ? 100
+              : undefined;
+        if (typeof score === 'number') {
+          this.promMetrics?.recordSessionConsistencyScore({
+            score,
+            axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
+            cid: actualCid ?? expectedCid ?? 'UNKNOWN',
+            terminal,
+          });
+        }
+        const drift = audit_report?.predictive_feedback_then_repair?.drift_vector;
+        const deltaReason = String(drift?.delta_reason ?? '').trim();
+        const delta_reason_kind =
+          deltaReason === 'aligned' ? ('aligned' as const) : deltaReason ? ('mismatch' as const) : ('unknown' as const);
+        if (domAxiom?.axiom_id && expectedCid && actualCid && expectedCid !== actualCid) {
+          this.promMetrics?.recordAxiomDominantCidMismatch({
+            axiom_id: domAxiom.axiom_id,
+            expected_cid: expectedCid,
+            actual_cid: actualCid,
+            stage: terminal ? 'TERMINAL' : 'REQUEST',
+          });
+        }
+        if (delta_reason_kind === 'mismatch') {
+          this.promMetrics?.recordAxiomSimRealMismatch({
+            axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
+            expected_cid: expectedCid ?? 'UNKNOWN',
+            actual_cid: actualCid ?? 'UNKNOWN',
+            stage: terminal ? 'TERMINAL' : 'REQUEST',
+          });
+        }
+      } catch {
+        // best-effort only
+      }
+    };
     try {
-      return assemble(request, orchestrationResult);
+      const resp = await assemble(request, orchestrationResult);
+      observeRuntimeProof(request, orchestrationResult, false);
+      return resp;
     } catch (e: any) {
       const msg = e instanceof Error ? e.message : String(e);
       const isC1Strict = /C1_STRICT_EVIDENCE_BUNDLE/.test(msg);
@@ -1023,7 +1446,10 @@ export class AgentService {
             : undefined,
         );
         persist(patchedRequest, healed);
-        return assemble(patchedRequest, healed);
+        this.touchTripTaskMemoryReplanAudit(patchedRequest, healed, tripRunId);
+        const resp = await assemble(patchedRequest, healed);
+        observeRuntimeProof(patchedRequest, healed, false);
+        return resp;
       }
 
       // Auto-heal PT hard failures: replan without PUBLIC TRANSIT.
@@ -1050,7 +1476,10 @@ export class AgentService {
             : undefined,
         );
         persist(patchedRequest, healed);
-        return assemble(patchedRequest, healed);
+        this.touchTripTaskMemoryReplanAudit(patchedRequest, healed, tripRunId);
+        const resp = await assemble(patchedRequest, healed);
+        observeRuntimeProof(patchedRequest, healed, false);
+        return resp;
       }
       throw e;
     }
@@ -1067,13 +1496,15 @@ export class AgentService {
     }
 
     try {
-      // 构建 Agent 上下文
+      const routeSignals = await this.resolveRoutingSignals(request);
+      // 构建 Agent 上下文（注入 routingTaskType，供 CLAUDE_DYNAMIC 轻量咨询路径使用）
       const context: AgentContext = {
         requestId: request.request_id,
         userId: request.user_id,
         tripId: request.trip_id,
         conversationHistory: request.conversation_context?.recent_messages,
         userPreferences: {},
+        routingTaskType: routeSignals.taskType,
       };
 
       // 使用 Claude 编排（传递 deadline）
@@ -1096,12 +1527,13 @@ export class AgentService {
         system1Result = { success: r.success, answerText: r.answerText ?? undefined, result: r.result };
       }
 
-      return assembler.assembleClaudeDynamicResponse({
+      return await assembler.assembleClaudeDynamicResponse({
         request,
         startTime,
         traceInfo,
         orchestrationResult,
         system1Result,
+        routingTaskType: routeSignals.taskType,
       });
     } catch (error: any) {
       this.logger.error(`[AgentService] Claude 编排失败: ${error?.message || String(error)}`, error?.stack);
@@ -1347,11 +1779,7 @@ export class AgentService {
       },
     };
 
-    // 缓存响应（用于请求去重）
-    if (this.requestDeduplication && !request.options?.dry_run) {
-      const requestHash = this.requestDeduplication.generateRequestHash(request);
-      this.requestDeduplication.cacheResponse(requestHash, response);
-    }
+    // 缓存与 replay provenance：统一由 routeAndRun 成功出口的 finalizeSuccessfulFreshExecution 完成。
 
     // 记录 agent_complete 事件
     if (this.eventTelemetry) {
@@ -1462,8 +1890,353 @@ export class AgentService {
           time_remaining_ms: obs.time_remaining_ms,
           mode_final: obs.mode_final,
         } as any,
+        ...(Array.isArray(obs.recovery_trace) && obs.recovery_trace.length > 0
+          ? {
+              recovery_trace: obs.recovery_trace,
+              recovery_retry_attempts:
+                typeof obs.recovery_retry_attempts === 'number'
+                  ? obs.recovery_retry_attempts
+                  : obs.recovery_trace.length,
+            }
+          : {}),
+        is_replayed: false,
       },
     };
+  }
+
+  /**
+   * FEATURE_AGENTIC_TOOL_LOOP：基础设施类轻量请求 → 原生 OpenAI tools + MCP（双轨实验）。
+   */
+  private async tryExecuteAgenticToolLoopFastPath(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+    traceInfo: { orchestration: any; timestamp: string },
+    signals: RoutingSignals,
+    decision: OrchestrationPolicyDecision,
+    deadline: ReturnType<typeof createDeadline>,
+  ): Promise<RouteAndRunResponseDto | null> {
+    if (request.options?.dry_run) return null;
+    if (!this.mcpAgentExecutor) return null;
+
+    const flagRaw =
+      this.configService?.get<string>('FEATURE_AGENTIC_TOOL_LOOP') ??
+      process.env.FEATURE_AGENTIC_TOOL_LOOP;
+    if (!parseAgenticToolLoopFlag(flagRaw)) return null;
+
+    if (decision.mode === 'CLAUDE_SM') return null;
+    if (request.options?.use_state_machine_orchestration === true) return null;
+    if (!isInfrastructureFastTrackCandidate(signals, request.message)) return null;
+
+    const packsEnv = parseAgenticToolPacksEnv(
+      this.configService?.get<string>('AGENTIC_TOOL_LOOP_TOOL_PACKS') ??
+        process.env.AGENTIC_TOOL_LOOP_TOOL_PACKS,
+    );
+    const toolPacks = packsEnv ?? inferDefaultAgenticToolPacks(request.message);
+
+    const maxStepsRaw =
+      this.configService?.get<string>('AGENTIC_TOOL_LOOP_MAX_STEPS') ??
+      process.env.AGENTIC_TOOL_LOOP_MAX_STEPS ??
+      '6';
+    const maxSteps = Math.min(Math.max(parseInt(String(maxStepsRaw), 10) || 6, 1), 16);
+
+    const remaining = deadline.remainingMs();
+    if (remaining < 1500) return null;
+
+    const execBudgetMs = Math.max(500, remaining - 200);
+
+    const taskClosureBookingEnabled = parseFeatureTaskClosureBooking(
+      this.configService?.get<string>('FEATURE_TASK_CLOSURE_BOOKING') ??
+        process.env.FEATURE_TASK_CLOSURE_BOOKING,
+    );
+
+    const mcpPreset = resolveAgenticMcpRetryBudget(signals.complexity);
+    const envToolAttemptsRaw =
+      this.configService?.get<string>('AGENTIC_MCP_TOOL_MAX_ATTEMPTS') ??
+      process.env.AGENTIC_MCP_TOOL_MAX_ATTEMPTS;
+    const envRetryBaseRaw =
+      this.configService?.get<string>('AGENTIC_MCP_RETRY_BASE_MS') ??
+      process.env.AGENTIC_MCP_RETRY_BASE_MS;
+    const envToolAttempts =
+      envToolAttemptsRaw != null && String(envToolAttemptsRaw).trim() !== ''
+        ? parseInt(String(envToolAttemptsRaw), 10)
+        : NaN;
+    const envRetryBase =
+      envRetryBaseRaw != null && String(envRetryBaseRaw).trim() !== ''
+        ? parseInt(String(envRetryBaseRaw), 10)
+        : NaN;
+
+    let execResult: McpAgentExecutorRunResult;
+    try {
+      execResult = await withTimeout(
+        this.mcpAgentExecutor.runLoop({
+          message: request.message,
+          maxSteps,
+          toolPacks,
+          budget: {
+            maxTotalTokens:
+              parseInt(
+                String(
+                  this.configService?.get<string>('AGENTIC_LOOP_MAX_TOTAL_TOKENS') ??
+                    process.env.AGENTIC_LOOP_MAX_TOTAL_TOKENS ??
+                    '4000',
+                ),
+                10,
+              ) || 4000,
+            minRemainingMsForNextLlm:
+              parseInt(
+                String(
+                  this.configService?.get<string>('AGENTIC_LOOP_MIN_REMAINING_MS') ??
+                    process.env.AGENTIC_LOOP_MIN_REMAINING_MS ??
+                    '800',
+                ),
+                10,
+              ) || 800,
+            deadlineRemainingMs: () => deadline.remainingMs(),
+            mcpMaxToolAttempts:
+              Number.isFinite(envToolAttempts) && envToolAttempts >= 1 && envToolAttempts <= 8
+                ? envToolAttempts
+                : mcpPreset.mcpMaxToolAttempts,
+            mcpRetryBaseMs:
+              Number.isFinite(envRetryBase) && envRetryBase >= 0 && envRetryBase <= 30_000
+                ? envRetryBase
+                : mcpPreset.mcpRetryBaseMs,
+          },
+          ...(taskClosureBookingEnabled
+            ? {
+                taskClosure: {
+                  mode: 'booking' as const,
+                  initialContext: { route: [], inventory_checked: false, failures: [] },
+                  /** weather-only MCP：从 validate 起步以便 check_weather 命中策略 */
+                  initialStage: 'validate' as const,
+                },
+              }
+            : {}),
+        }),
+        execBudgetMs,
+        'AGENTIC_TOOL_LOOP',
+      );
+    } catch (e: any) {
+      this.logger.warn(`[AgentService] agentic tool loop aborted: ${e?.message || e}`);
+      return null;
+    }
+
+    const orch = this.buildOrchestrationResultFromAgentic(execResult, request.request_id);
+
+    try {
+      const o = traceInfo.orchestration ?? {};
+      o.resolved = {
+        ...(o.resolved ?? {}),
+        agentic_tool_loop: true,
+        agentic_trace_stopped: execResult.trace.stopped_reason,
+      };
+      traceInfo.orchestration = o;
+    } catch {
+      // best-effort trace enrichment
+    }
+
+    const assembler = this.getResponseAssembler();
+    return await assembler.assembleClaudeDynamicResponse({
+      request,
+      startTime,
+      traceInfo,
+      orchestrationResult: orch,
+      system1Result: {
+        success: orch.success,
+        answerText: execResult.final_message ?? orch.answerText ?? '',
+        result: {
+          agentic_tool_loop_trace: execResult.trace,
+        },
+      },
+      routingTaskType: signals.taskType,
+    });
+  }
+
+  private extractPrimaryRobustnessFromAgenticTrace(
+    exec: McpAgentExecutorRunResult,
+  ): OrchestratorRobustnessMetadata | undefined {
+    for (let i = exec.trace.steps.length - 1; i >= 0; i--) {
+      const tr = exec.trace.steps[i]?.tool_results;
+      if (!tr) continue;
+      for (let j = tr.length - 1; j >= 0; j--) {
+        const env = tr[j]?.envelope;
+        if (env && env.success === false && env.orchestrator_robustness) {
+          return env.orchestrator_robustness;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private buildOrchestrationResultFromAgentic(
+    exec: McpAgentExecutorRunResult,
+    requestId: string,
+  ): OrchestrationResult {
+    const robustness =
+      exec.orchestrator_robustness ?? this.extractPrimaryRobustnessFromAgenticTrace(exec);
+    const duration = exec.trace.steps.reduce((a, s) => a + (s.latency_ms ?? 0), 0);
+    const stepsExecuted = exec.trace.steps.map((st, i) => ({
+      stepId: `agentic_${i + 1}`,
+      skillName: 'mcp.tool_loop',
+      success:
+        !st.tool_results?.length ||
+        !st.tool_results.some((t) => !t.envelope.success),
+      duration: st.latency_ms ?? 0,
+      result: st.tool_results,
+    }));
+
+    const answer =
+      exec.final_message?.trim() ||
+      (!exec.success ? exec.trace.stopped_reason : '') ||
+      '';
+
+    return {
+      success: exec.success && !!exec.final_message?.trim(),
+      result: {
+        routingDecision: {
+          route: 'SYSTEM1_API',
+          confidence: 0.93,
+          reasoning: 'FEATURE_AGENTIC_TOOL_LOOP fast path (native OpenAI tools + MCP)',
+          budget: { max_seconds: 8, max_steps: 8, max_browser_steps: 0 },
+          selected_path: 'AGENTIC_TOOL_LOOP',
+          requiredCapabilities: ['mcp.native_tools'],
+        },
+        agentic_tool_loop: {
+          stopped_reason: exec.trace.stopped_reason,
+          steps: exec.trace.steps,
+        },
+        ...(exec.metrics
+          ? {
+              agentic_observability: {
+                tool_call_count: exec.metrics.tool_call_count,
+                llm_rounds: exec.metrics.llm_rounds,
+                prompt_tokens: exec.metrics.prompt_tokens,
+                completion_tokens: exec.metrics.completion_tokens,
+                total_tokens: exec.metrics.total_tokens,
+              },
+            }
+          : {}),
+        ...(robustness ? { orchestrator_robustness: robustness } : {}),
+      },
+      answerText: answer,
+      stepsExecuted,
+      totalDuration: duration || 0,
+      decisionLog: [
+        {
+          request_id: requestId,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: 'FEATURE_AGENTIC_TOOL_LOOP',
+          outputs_summary: exec.success ? 'agentic_completed' : exec.trace.stopped_reason,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            agentic_tool_loop: true,
+            ...(exec.metrics ? { tool_calls: exec.metrics.tool_call_count } : {}),
+            ...(robustness ? { orchestrator_robustness: robustness } : {}),
+          },
+        },
+      ],
+    };
+  }
+
+  /**
+   * 统一成功出口：`attachObservability` → Replay Lifecycle（补 profile / validate / invalidation 提示 / stamp / cache）。
+   * DEDUP / NEED_MORE_INFO / REDIRECT_REQUIRED / dry_run 在 finalize 内短路。
+   */
+  private wrapSuccessfulRouteAndRunReturn(
+    request: RouteAndRunRequestDto,
+    response: RouteAndRunResponseDto,
+    obsPayload: Record<string, unknown>,
+    requestHash: string,
+  ): RouteAndRunResponseDto {
+    const attached = this.attachObservability(response, obsPayload, request);
+    try {
+      const contractAck = assertExecutionGatewayPostReturnContract({ request, response: attached });
+      const obs = (attached.observability ?? {}) as Record<string, unknown>;
+      attached.observability = obs as RouteAndRunResponseDto['observability'];
+      if (contractAck.execution_trace_compatibility_v1) {
+        obs.execution_trace_compatibility_v1 = contractAck.execution_trace_compatibility_v1;
+      }
+      obs.execution_contract_governance_v1 = buildExecutionContractGovernanceEchoV1();
+    } catch (e) {
+      if (e instanceof ExecutionGatewayContractViolation) {
+        this.logger.error(`[ExecutionGateway] contract violation ${e.code}: ${e.message}`);
+        throw new InternalServerErrorException(e.message);
+      }
+      throw e;
+    }
+    void this.userStandingPreference?.mergeFromRouteAndRunIfEligible(request).catch((err: unknown) =>
+      this.logger.warn(
+        `[UserStandingPreference] async merge failed: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+    return this.finalizeSuccessfulFreshExecution(request, attached, requestHash);
+  }
+
+  private finalizeSuccessfulFreshExecution(
+    request: RouteAndRunRequestDto,
+    response: RouteAndRunResponseDto,
+    requestHash: string,
+  ): RouteAndRunResponseDto {
+    const modeFinal = (response.observability as { mode_final?: string } | undefined)?.mode_final;
+    if (modeFinal === 'DEDUP') {
+      return response;
+    }
+    const status = response.result?.status;
+    if (status === 'NEED_MORE_INFO' || status === 'REDIRECT_REQUIRED') {
+      return response;
+    }
+    if (request.options?.dry_run || !this.requestDeduplication) {
+      return response;
+    }
+
+    this.ensureFreshRuntimeExecutionProfileAndValidation(request, response);
+    attachFreshRuntimeMaterialization(request, response);
+
+    replayLifecycleManager.stampProvenance({ response, request });
+    attachFullResponseReplayArtifactDescriptor(response, request);
+    void this.runtimeReplayPersistence
+      ?.persistFreshReplayAnchor({
+        request,
+        requestHash,
+        response,
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `fresh replay anchor persist: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+    this.requestDeduplication.cacheResponse(requestHash, response);
+    return response;
+  }
+
+  private ensureFreshRuntimeExecutionProfileAndValidation(
+    request: RouteAndRunRequestDto,
+    response: RouteAndRunResponseDto,
+  ): void {
+    const obs = response.observability as Record<string, unknown>;
+    let profile = obs.runtime_execution_profile as RuntimeExecutionProfile | undefined;
+    if (!profile) {
+      const route = response.route?.route ?? '';
+      profile = buildRuntimeExecutionProfileLegacyAssembly({
+        compatibilityRoute: route,
+        toolCalls: Number(response.observability?.tool_calls ?? 0),
+        browserSteps: Number(response.observability?.browser_steps ?? 0),
+      });
+      obs.runtime_execution_profile = profile;
+    }
+    const validation = replayLifecycleManager.validateReplay(profile);
+    if (validation.anomalies.length > 0) {
+      obs.runtime_execution_anomalies = mergeRuntimeExecutionAnomaliesByCode(
+        obs.runtime_execution_anomalies as RuntimeExecutionAnomaly[] | undefined,
+        validation.anomalies,
+      );
+    }
+    const inv = replayLifecycleManager.invalidateReplay(validation);
+    if (inv.scope !== 'NONE') {
+      (response.observability as RouteAndRunResponseDto['observability']).replay_invalidation_decision =
+        inv;
+    }
   }
 
   private resolveRequestRouteDirectionId(
@@ -1486,13 +2259,59 @@ export class AgentService {
   ): RouteAndRunResponseDto {
     if (!resp) return resp;
     const receivedRouteDirectionId = this.resolveRequestRouteDirectionId(request);
+    const memContract = request ? (request as any).__memoryContractObs : undefined;
+    const execMemBinding =
+      (request ? (request as any).__memoryExecutionBinding : undefined) ??
+      this.agentExecutionContextStore.get()?.executionBinding;
+    if (request && !memContract) {
+      this.promMetrics?.recordMemoryContractMissing();
+    }
+    if (memContract?.loaded_at_iso) {
+      const age = Date.now() - new Date(String(memContract.loaded_at_iso)).getTime();
+      if (Number.isFinite(age) && age >= 0) {
+        this.promMetrics?.observeMemoryContextSnapshotAgeMs(age);
+      }
+    }
+    const timelinePreview = request?.request_id
+      ? this.executionTimelineRecorder?.getRingPreview(request.request_id)
+      : undefined;
     resp.observability = {
       ...(resp.observability ?? {}),
       ...obs,
+      ...(memContract ? { memory_contract: memContract } : {}),
+      ...(execMemBinding ? { execution_memory_binding: execMemBinding } : {}),
+      ...(timelinePreview && timelinePreview.length > 0
+        ? { execution_timeline_preview: timelinePreview }
+        : {}),
     };
+    if (obs?.mode_final === 'DEDUP') {
+      const r = resp.route?.route;
+      const label = typeof r === 'string' ? r : undefined;
+      const cachedProv = (resp.observability as { replay_cache_provenance?: ReplayProvenance })
+        ?.replay_cache_provenance;
+      const replayCtx = replayLifecycleManager.buildDedupValidationContext({
+        cachedProvenance: cachedProv,
+        request,
+      });
+      const dedupProfile = buildRuntimeExecutionProfileDedupReplay(label);
+      const dedupVal = replayLifecycleManager.validateReplay(dedupProfile, replayCtx);
+      const obsAny = resp.observability as {
+        runtime_execution_profile?: unknown;
+        runtime_execution_anomalies?: unknown;
+      };
+      obsAny.runtime_execution_profile = dedupProfile;
+      if (dedupVal.anomalies.length) {
+        obsAny.runtime_execution_anomalies = dedupVal.anomalies;
+      }
+    }
     if (resp.observability && obs?.mode_final && !('orchestration_mode_final' in resp.observability)) {
       (resp.observability as any).orchestration_mode_final = obs.mode_final;
     }
+    const omfReplay =
+      (resp.observability as { orchestration_mode_final?: string }).orchestration_mode_final;
+    /** Dedup 命中以稳定化层 `obs.mode_final` 为准；缓存体可能仍带上一轮的 `orchestration_mode_final`。 */
+    (resp.observability as RouteAndRunResponseDto['observability']).is_replayed =
+      obs?.mode_final === 'DEDUP' || omfReplay === 'DEDUP';
     if (
       resp.observability &&
       receivedRouteDirectionId &&

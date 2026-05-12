@@ -1,0 +1,12 @@
+{
+  "schemaId": "agent.execution_os.change_impact_descriptor@v1",
+  "version": 1,
+  "classification": "GOVERNANCE",
+  "impacts": {
+    "traceSchema": false,
+    "memoryBinding": false,
+    "replayDeterminism": false,
+    "governanceHash": true
+  },
+  "summary": "CID v1: executable change-impact manifest, strict PR diff hook, SSC freeze + §7, and governance module cross-links."
+}

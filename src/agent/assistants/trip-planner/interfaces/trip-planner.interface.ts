@@ -1,5 +1,7 @@
 // src/agent/assistants/trip-planner/interfaces/trip-planner.interface.ts
 
+import type { DecisionContextV0 } from '../../../../trips/reality-kernel/decision-context.types';
+
 /**
  * 行程规划智能助手接口定义
  * 
@@ -169,6 +171,9 @@ export interface TripPlannerState {
   tripId: string;
   userId: string;
   phase: TripPlannerPhase;
+
+  /** Latest Reality OS binding for this session — gates RAG when enforcement is on */
+  decisionContext?: DecisionContextV0;
   
   // 行程上下文（缓存）
   tripContext: TripContext;
@@ -244,6 +249,9 @@ export interface TripPlannerRequest {
   tripId: string;
   userId: string;
   message: string;
+
+  /** Optional — when REALITY_ENFORCEMENT / RAG_REALITY_POLICY_ENFORCE binds soft-world retrieval */
+  decisionContext?: DecisionContextV0;
   
   // 可选：指定操作的目标
   targetDay?: number;
@@ -349,6 +357,8 @@ export interface TripPlannerResponse {
     detectedGaps?: ResponseItineraryGap[]; // 检测到的行程缺口
     source?: 'RAG' | 'RAG+LLM' | 'LLM'; // 🚀 Phase 1 优化：回答来源
     ragConfidence?: number; // 🚀 Phase 1 优化：RAG 置信度
+    /** Soft-world RAG blocked by Reality policy (e.g. missing decisionContext) */
+    realityPolicyBlocked?: boolean;
   };
 }
 

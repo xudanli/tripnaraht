@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsObject, IsOptional, IsString, Min } from 'class-validator';
 
 export class AdminRulePatchDto {
   @ApiProperty()
@@ -96,4 +96,116 @@ export class AdminSagaLogsQueryDto {
   @IsOptional()
   @Type(() => Number)
   take?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether evidence_requirement_context exists. true = only rows with context; false = only rows without context.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  hasEvidenceRequirementContext?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether realized_state.side_effects_ledger contains APPLY_FAILED entry. true = only rows with apply-failed entries; false = only rows without apply-failed entries.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  hasApplyFailed?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether realized_state.side_effects_ledger contains COMPENSATION_FAILED entry. true = only rows with compensation failures; false = only rows without compensation failures.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  hasCompensationFailed?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter by minimum retry_count in realized_state.side_effects_ledger', minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  minRetryCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether realized_state.side_effects_ledger contains MANUAL_INTERVENTION_REQUIRED entry. true = only rows requiring manual intervention; false = only rows without manual-intervention entries.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  hasManualInterventionRequired?: boolean;
+}
+
+export class AdminSagaLogsMetricsQueryDto {
+  @ApiPropertyOptional({ description: 'Exact status match (e.g. COMMITTED, FAILED)' })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  tripId?: string;
+
+  @ApiPropertyOptional({ description: 'Start timestamp (ISO-8601), inclusive' })
+  @IsOptional()
+  @IsString()
+  since?: string;
+
+  @ApiPropertyOptional({ description: 'End timestamp (ISO-8601), inclusive' })
+  @IsOptional()
+  @IsString()
+  until?: string;
+
+  @ApiPropertyOptional({ description: 'Sample size used for metrics aggregation', default: 500, minimum: 1, maximum: 5000 })
+  @IsOptional()
+  @Type(() => Number)
+  @Min(1)
+  take?: number;
+
+  @ApiPropertyOptional({
+    description: 'Filter by resolved retry strategy for side effect entries.',
+    enum: ['none', 'fixed_interval', 'exponential_backoff'],
+  })
+  @IsOptional()
+  @IsIn(['none', 'fixed_interval', 'exponential_backoff'])
+  retryStrategy?: 'none' | 'fixed_interval' | 'exponential_backoff';
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether evidence_requirement_context exists. true = only rows with context; false = only rows without context.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  hasEvidenceRequirementContext?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether realized_state.side_effects_ledger contains APPLY_FAILED entry. true = only rows with apply-failed entries; false = only rows without apply-failed entries.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  hasApplyFailed?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether realized_state.side_effects_ledger contains COMPENSATION_FAILED entry. true = only rows with compensation failures; false = only rows without compensation failures.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  hasCompensationFailed?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter by minimum retry_count in realized_state.side_effects_ledger', minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  minRetryCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether realized_state.side_effects_ledger contains MANUAL_INTERVENTION_REQUIRED entry. true = only rows requiring manual intervention; false = only rows without manual-intervention entries.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  hasManualInterventionRequired?: boolean;
 }

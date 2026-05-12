@@ -128,7 +128,7 @@ export class PlanGenExecutorService implements IPlanGenExecutor {
     req: PhaseExecutorContext['tripPlanRequest'],
     requestId: string,
   ): TripPlanRequest {
-    return {
+    const out: TripPlanRequest = {
       request_id: requestId,
       origin: (req?.origin ?? '') as TripPlanRequest['origin'],
       destination: (req?.destination ?? '') as TripPlanRequest['destination'],
@@ -139,5 +139,9 @@ export class PlanGenExecutorService implements IPlanGenExecutor {
       party: req?.party as TripPlanRequest['party'],
       party_profile: req?.party_profile as TripPlanRequest['party_profile'],
     };
+    if (req?.trip_id) {
+      out.trip_id = req.trip_id;
+    }
+    return out;
   }
 }

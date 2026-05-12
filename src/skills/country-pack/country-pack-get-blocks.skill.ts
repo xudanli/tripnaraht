@@ -14,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ContextBlock } from '../../agent/context-engine/types/context-package.types';
 import { getCountryPack } from '../../trips/readiness/config/country-pack.config';
 import { PackStorageService } from '../../trips/readiness/storage/pack-storage.service';
+import { WorldFactReadinessProjectionService } from '../../world-facts/world-fact-readiness-projection.service';
 
 export interface CountryPackGetBlocksInput extends SkillInput {
   /** Pack ID 或国家代码 */
@@ -65,6 +66,7 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
   constructor(
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly packStorage?: PackStorageService,
+    @Optional() private readonly worldFactReadiness?: WorldFactReadinessProjectionService,
   ) {}
 
   /** 将可能是 string 或 {en,zh} 对象的值转为可搜索字符串，避免 toLowerCase is not a function */
@@ -167,6 +169,34 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
           blocks.push(blockWithEvidence);
         } else {
           missingTopics.push(topic);
+        }
+      }
+
+      // Phase 1：WorldFact → Readiness 投影（补充块，不删除 Pack；data.derivedFromFactIds 可审计）
+      if (
+        this.worldFactReadiness &&
+        (input.topics.includes('SAFETY') || input.topics.includes('ROAD_RULES'))
+      ) {
+        const adv = await this.worldFactReadiness.projectWindDriveAdvisory(countryCode);
+        if (adv) {
+          blocks.push({
+            key: `WORLD_FACT_ADVISORY_${countryCode}_${adv.templateId ?? 'wind'}`,
+            type: 'COUNTRY_SAFETY',
+            text: adv.message,
+            priority: 88,
+            visibility: 'public',
+            provenance: {
+              source: 'computed',
+              identifier: 'WorldFactReadinessProjection',
+              version: adv.templateId,
+              timestamp: new Date().toISOString(),
+            },
+            data: {
+              derivedFromFactIds: adv.derivedFromFactIds,
+              templateId: adv.templateId,
+            },
+            dataSource: 'COMPUTED',
+          });
         }
       }
 

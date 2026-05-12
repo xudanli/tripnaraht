@@ -8,6 +8,8 @@ import { PlanGatePrecheckSkill } from '../../../skills/plan/gate/plan-gate-prech
 import { FRoadCheckSkill } from '../../../skills/world/f-road-check.skill';
 import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
 import { AvalancheRiskAssessmentSkill } from '../../../skills/world/avalanche-risk-assessment.skill';
+import { SafetravelGetAdvisoriesSkill } from '../../../skills/world/safetravel-get-advisories.skill';
+import { AlertSeverity } from '../../../iceland-info/dto/safetravel.dto';
 
 /**
  * Gatekeeper Agent Service (Claude Orchestration)
@@ -18,6 +20,7 @@ import { AvalancheRiskAssessmentSkill } from '../../../skills/world/avalanche-ri
  *
  * 执行顺序:
  * Step 0: F-Road 检查（冰岛特定）
+ * Step 0.45: SafeTravel.is 官方 RSS 旅行安全警报（冰岛特定）
  * Step 0.5: 天气告警检查（冰岛特定）
  * Step 0.6: 雪崩风险评估（冰岛特定）
  * Step 1: 硬门控检查
@@ -35,9 +38,12 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
     @Optional() private readonly fRoadCheck?: FRoadCheckSkill,
     @Optional() private readonly weatherAlert?: WeatherAlertSkill,
     @Optional() private readonly avalancheRisk?: AvalancheRiskAssessmentSkill,
+    @Optional() private readonly safetravelGetAdvisories?: SafetravelGetAdvisoriesSkill,
   ) {
     this.logger.log(`[GatekeeperAgent] 已初始化`);
-    this.logger.log(`[GatekeeperAgent] GateRunThreeGuardians: ${!!this.gateRunThreeGuardians}, GatePrecheck: ${!!this.gatePrecheck}, FRoadCheck: ${!!this.fRoadCheck}, WeatherAlert: ${!!this.weatherAlert}, AvalancheRisk: ${!!this.avalancheRisk}`);
+    this.logger.log(
+      `[GatekeeperAgent] GateRunThreeGuardians: ${!!this.gateRunThreeGuardians}, GatePrecheck: ${!!this.gatePrecheck}, FRoadCheck: ${!!this.fRoadCheck}, WeatherAlert: ${!!this.weatherAlert}, AvalancheRisk: ${!!this.avalancheRisk}, SafeTravel: ${!!this.safetravelGetAdvisories}`,
+    );
   }
 
   /**
@@ -104,6 +110,73 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
         }
       }
 
+      // 0.45 SafeTravel.is 官方 RSS（冰岛：旅行安全警报，与 F-road/天气互补）
+      if (this.safetravelGetAdvisories && this.isIcelandTrip(request)) {
+        this.logger.debug(`[GatekeeperAgent] 检测到冰岛行程，执行 SafeTravel RSS 检查`);
+        try {
+          const st = await this.safetravelGetAdvisories.execute({});
+          researchData.safetravel_advisories = st;
+          researchData.safetravel_gate_recommendation = st.gate_recommendation;
+
+          if (st.gate_recommendation === 'BLOCK') {
+            const critical = st.alerts.filter((a) => a.severity === AlertSeverity.CRITICAL);
+            const violationAlerts = critical.length > 0 ? critical : st.alerts;
+            this.logger.warn(
+              `[GatekeeperAgent] SafeTravel RSS BLOCK: ${critical.length} critical alert(s); summary=${st.summary}`,
+            );
+            const violations =
+              violationAlerts.length > 0
+                ? violationAlerts.map((a) => ({
+                    type: 'SAFETY' as const,
+                    severity: 'HARD' as const,
+                    detail: `[SafeTravel / ${st.source}] ${a.title}: ${ClaudeGatekeeperAgentService.safetravelDetailSnippet(a.description)}`,
+                  }))
+                : [
+                    {
+                      type: 'SAFETY' as const,
+                      severity: 'HARD' as const,
+                      detail: `[SafeTravel / ${st.source}] ${st.summary}`,
+                    },
+                  ];
+            return {
+              gate_result: 'BLOCK',
+              violations,
+              required_adjustments: [
+                {
+                  action: 'REDUCE_SCOPE_OR_ADD_EVIDENCE' as const,
+                  why: 'Official SafeTravel.is RSS reports CRITICAL travel safety conditions; defer or replan until advisories clear.',
+                },
+              ],
+              confidence: 0.85,
+              evidence_refs:
+                violationAlerts.length > 0
+                  ? (violationAlerts.map((a) => ({
+                      evidence_id: `safetravel:${a.id}`,
+                      source: st.source,
+                      last_verified_at: st.lastUpdated || new Date().toISOString(),
+                      confidence: 0.85,
+                    })) as any)
+                  : ([
+                      {
+                        evidence_id: 'safetravel:rss',
+                        source: st.source,
+                        last_verified_at: st.lastUpdated || new Date().toISOString(),
+                        confidence: 0.75,
+                      },
+                    ] as any),
+            };
+          }
+
+          if (st.gate_recommendation === 'ADJUST_REQUIRED' || st.gate_recommendation === 'NEED_USER_CONFIRM') {
+            this.logger.warn(`[GatekeeperAgent] SafeTravel RSS 告警: ${st.summary}`);
+          }
+        } catch (stErr: any) {
+          this.logger.warn(`[GatekeeperAgent] SafeTravel RSS 检查出错 (降级): ${stErr?.message}`);
+          researchData.safetravel_check_failed = true;
+          researchData.safetravel_check_error = stErr?.message;
+        }
+      }
+
       // 0.5 检查冰岛天气条件（冰岛特定检查）
       if (this.weatherAlert && this.isIcelandTrip(request)) {
         this.logger.debug(`[GatekeeperAgent] 检测到冰岛行程，执行天气告警检查`);
@@ -111,22 +184,24 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
         // 提取行程位置
         const locations: Array<{ lat: number; lng: number; name?: string; type?: 'start' | 'end' | 'waypoint' }> = [];
 
-        // 添加起点
+        // 添加起点（禁止把字符串起终点打成 0,0：几内亚湾，会误触发天气/风极端 BLOCK）
         if (request.origin) {
+          const c = this.getCoordForGateLocation(request, 'origin');
           locations.push({
-            lat: typeof request.origin === 'string' ? 0 : request.origin.lat,
-            lng: typeof request.origin === 'string' ? 0 : request.origin.lng,
-            name: typeof request.origin === 'string' ? request.origin : '起点',
+            lat: c.lat,
+            lng: c.lng,
+            name: c.name,
             type: 'start' as const,
           });
         }
 
         // 添加终点
         if (request.destination) {
+          const c = this.getCoordForGateLocation(request, 'destination');
           locations.push({
-            lat: typeof request.destination === 'string' ? 0 : request.destination.lat,
-            lng: typeof request.destination === 'string' ? 0 : request.destination.lng,
-            name: typeof request.destination === 'string' ? request.destination : '终点',
+            lat: c.lat,
+            lng: c.lng,
+            name: c.name,
             type: 'end' as const,
           });
         }
@@ -215,22 +290,13 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
           // 提取路线点
           const routePoints: Array<{ lat: number; lng: number; name?: string }> = [];
 
-          // 添加起点
           if (request.origin) {
-            routePoints.push({
-              lat: typeof request.origin === 'string' ? 0 : request.origin.lat,
-              lng: typeof request.origin === 'string' ? 0 : request.origin.lng,
-              name: typeof request.origin === 'string' ? request.origin : '起点',
-            });
+            const c = this.getCoordForGateLocation(request, 'origin');
+            routePoints.push({ lat: c.lat, lng: c.lng, name: c.name });
           }
-
-          // 添加终点
           if (request.destination) {
-            routePoints.push({
-              lat: typeof request.destination === 'string' ? 0 : request.destination.lat,
-              lng: typeof request.destination === 'string' ? 0 : request.destination.lng,
-              name: typeof request.destination === 'string' ? request.destination : '终点',
-            });
+            const c = this.getCoordForGateLocation(request, 'destination');
+            routePoints.push({ lat: c.lat, lng: c.lng, name: c.name });
           }
 
           // 提取月份
@@ -405,9 +471,12 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
       violations.push('缺少日期信息（date_range 或 start_date）');
     }
 
-    // 检查可达性证据
-    if (researchData.transport_evidence && Array.isArray(researchData.transport_evidence)) {
-      if (researchData.transport_evidence.length === 0) {
+    // 检查可达性证据：transport.search 存的是单对象（非数组），仅对显式空数组 / missing 标记为不可达
+    const te = researchData.transport_evidence;
+    if (te !== undefined && te !== null) {
+      if (Array.isArray(te) && te.length === 0) {
+        violations.push('起点/终点不可达（无交通证据）');
+      } else if (typeof te === 'object' && !Array.isArray(te) && (te as { missing?: boolean }).missing === true) {
         violations.push('起点/终点不可达（无交通证据）');
       }
     }
@@ -611,5 +680,74 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
     if (!location) return undefined;
     if (typeof location === 'string') return location;
     return `${location.lat},${location.lng}`;
+  }
+
+  /** 冰岛门控/天气/雪崩步骤避免使用 0,0（几内亚湾，易误报极端天气 BLOCK） */
+  private static readonly ICELAND_DEFAULT_COORD = { lat: 64.1466, lng: -21.9426 };
+
+  private static safetravelDetailSnippet(raw: string | undefined, maxLen = 220): string {
+    if (!raw) return '';
+    const t = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    return t.length <= maxLen ? t : `${t.slice(0, maxLen)}…`;
+  }
+
+  /**
+   * 天气、雪崩步骤：对冰岛行程将字符串/占位起终点解析为有效坐标
+   */
+  private getCoordForGateLocation(
+    request: TripPlanRequest,
+    field: 'origin' | 'destination',
+  ): { lat: number; lng: number; name: string } {
+    const { ICELAND_DEFAULT_COORD: ICE } = ClaudeGatekeeperAgentService;
+    const loc = request[field] as
+      | string
+      | { lat: number; lng: number }
+      | undefined;
+
+    if (loc == null) {
+      return { ...ICE, name: field === 'origin' ? 'origin' : 'destination' };
+    }
+
+    if (typeof loc === 'object' && 'lat' in loc && 'lng' in loc) {
+      if (
+        this.isIcelandTrip(request) &&
+        Number(loc.lat) === 0 &&
+        Number(loc.lng) === 0
+      ) {
+        return { ...ICE, name: 'Iceland (default)' };
+      }
+      if (Number.isFinite(loc.lat) && Number.isFinite(loc.lng)) {
+        return {
+          lat: loc.lat,
+          lng: loc.lng,
+          name: field === 'origin' ? '起点' : '终点',
+        };
+      }
+    }
+
+    if (typeof loc === 'string') {
+      const s = loc.trim();
+      if (this.isIcelandTrip(request)) {
+        const m = s.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+        if (m) {
+          const la = Number(m[1]);
+          const ln = Number(m[2]);
+          if (Number.isFinite(la) && Number.isFinite(ln) && la >= -90 && la <= 90 && ln >= -180 && ln <= 180) {
+            return { lat: la, lng: ln, name: s };
+          }
+        }
+        if (!s) {
+          return { ...ICE, name: 'Iceland' };
+        }
+        if (/^(起点|终点|出发|到达|未指定|未知|destination|origin|目的地)$/i.test(s) || s === '未指定') {
+          return { ...ICE, name: s };
+        }
+        // 冰岛行程下未解析的任意地名/国家名（如「冰岛」）一律用本岛锚点，避免 0,0 几内亚湾
+        return { ...ICE, name: s };
+      }
+      return { lat: 0, lng: 0, name: s };
+    }
+
+    return { ...ICE, name: field === 'origin' ? 'origin' : 'destination' };
   }
 }

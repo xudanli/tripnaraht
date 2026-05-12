@@ -7,7 +7,7 @@ export class AirbnbSearchDto {
     example: 'Reykjavik, Iceland',
   })
   @IsString()
-  location: string;
+  location!: string;
 
   @ApiPropertyOptional({
     description: '成人数',
@@ -91,7 +91,7 @@ export class AirbnbListingDetailsDto {
     example: '1573970428683000922',
   })
   @IsString()
-  listingId: string;
+  listingId!: string;
 
   @ApiPropertyOptional({
     description: '入住日期，格式 YYYY-MM-DD',

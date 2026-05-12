@@ -27,6 +27,10 @@ export interface SkillValidationRule {
  * - extractors: 定义如何从 context/request 中提取参数
  */
 export const SKILL_VALIDATION_RULES: Record<string, SkillValidationRule> = {
+  'intent.recognize': {
+    dependencies: [{ param: 'message' }],
+  },
+
   'decision.runThreeGuardians': {
     dependencies: [
       { param: 'world', alternatives: ['tripId'] },
@@ -75,6 +79,14 @@ export const SKILL_VALIDATION_RULES: Record<string, SkillValidationRule> = {
       { param: 'itinerary' }, // 必需参数：Itinerary
     ],
     // itinerary 通常来自前面步骤（itinerary.generate）的结果
+  },
+
+  'itinerary.smart_update': {
+    dependencies: [{ param: 'itinerary' }],
+  },
+
+  'safetravel.get_advisories': {
+    dependencies: [],
   },
   
   'transport.search': {
@@ -196,11 +208,10 @@ export const SKILL_VALIDATION_RULES: Record<string, SkillValidationRule> = {
     ],
   },
   
-  'dem.getProfile': {
+  'dem.get_profile': {
     dependencies: [
-      { param: 'polyline' }, // 必需参数：Array<{ lat: number; lng: number }>
+      { param: 'polyline', alternatives: ['destination'] },
     ],
-    // samples 是可选的，默认 100
   },
   
   'routeDirection.listForCountry': {

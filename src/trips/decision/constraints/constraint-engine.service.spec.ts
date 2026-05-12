@@ -14,6 +14,7 @@ import { ConstraintEngineService } from './constraint-engine.service';
 import { ConstraintChecker } from './constraint-checker';
 import { TripWorldState } from '../world-model';
 import { TripPlan } from '../plan-model';
+import { buildTripExecutionSemanticViewSnapshot } from '../execution/trip-execution-semantic-view.builder';
 
 // === 测试数据工厂 ===
 
@@ -43,6 +44,17 @@ function createBaseState(): TripWorldState {
       maxBudgetOverrunRatio: 1.05,
     },
   };
+}
+
+function attachExecutionSemanticFromSignals(
+  state: TripWorldState,
+  planDates: string[],
+): void {
+  state.signals.executionSemanticView = buildTripExecutionSemanticViewSnapshot({
+    weatherByDate: state.signals.weatherByDate,
+    alerts: state.signals.alerts,
+    planDates,
+  });
 }
 
 function createBasePlan(): TripPlan {
@@ -249,11 +261,63 @@ describe('ConstraintEngineService', () => {
         },
       ];
 
+      attachExecutionSemanticFromSignals(state, [plan.days[0].date]);
+
       const result = await service.isFeasible(state, plan);
 
       expect(result.feasible).toBe(false);
       expect(result.violations.some(v => v.code === 'WEATHER_UNSAFE')).toBe(true);
       expect(result.infeasibilityExplanation?.reasons.some(r => r.constraint === 'weather')).toBe(true);
+    });
+
+    it('户外活动遇新版执行语义 HIGH_RISK（无 condition）时应标记为 infeasible', async () => {
+      const state = createBaseState();
+      state.signals.weatherByDate = {
+        '2026-06-10': {
+          executionState: 'HIGH_RISK',
+          violation: 'NONE',
+          hazardKinds: ['CROSSWIND'],
+          hazards: [
+            {
+              id: 'cw',
+              kind: 'CROSSWIND',
+              severity: 'HIGH',
+              confidence: 0.85,
+              evidence: [{ metric: 'crosswind_component_mps', value: 10, unit: 'm/s' }],
+            },
+          ],
+          source: 'weather_decision_evidence',
+        },
+      };
+      state.candidatesByDate['2026-06-10'] = [
+        {
+          id: 'poi-outdoor',
+          name: { en: 'Outdoor hike' },
+          type: 'nature',
+          durationMin: 120,
+          indoorOutdoor: 'outdoor',
+          weatherSensitivity: 3,
+        },
+      ];
+
+      const plan = createBasePlan();
+      plan.days[0].timeSlots = [
+        {
+          id: 's1',
+          time: '09:00',
+          endTime: '11:00',
+          title: 'Outdoor hike',
+          type: 'nature',
+          poiId: 'poi-outdoor',
+        },
+      ];
+
+      attachExecutionSemanticFromSignals(state, [plan.days[0].date]);
+
+      const result = await service.isFeasible(state, plan);
+
+      expect(result.feasible).toBe(false);
+      expect(result.violations.some(v => v.code === 'WEATHER_UNSAFE')).toBe(true);
     });
   });
 

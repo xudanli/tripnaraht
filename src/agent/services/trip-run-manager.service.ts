@@ -12,6 +12,9 @@ import type { DecisionState } from '../../decision/kernel/decision-state.types';
 /** TripRun.metadata 中 DSO 断点快照的键名（v1.0 Durable） */
 export const TRIP_RUN_DSO_CHECKPOINT_META_KEY = 'dso_checkpoint';
 
+/** Phase B+：编排恢复审计事件列表（刷新会话后可读） */
+export const TRIP_RUN_RECOVERY_AUDIT_META_KEY = 'recovery_audit';
+
 /** 写入 TripRun.metadata 的可序列化检查点 */
 export interface TripRunDsoCheckpointPayload {
   decision_state: DecisionState;
@@ -341,6 +344,39 @@ export class TripRunManagerService {
   /**
    * v1.0：将 DSO 快照写入 TripRun.metadata（与 `completeTripRun` 等元数据合并）。
    */
+  /**
+   * 追加单次恢复事件（与既有 metadata 合并；最多保留 40 条）。
+   */
+  async appendRecoveryAuditEntry(tripRunId: string, entry: Record<string, unknown>): Promise<boolean> {
+    if (!this.prisma || !this.isValidUUID(tripRunId)) {
+      return false;
+    }
+    try {
+      const existing = await this.prisma.tripRun.findUnique({
+        where: { id: tripRunId },
+        select: { metadata: true },
+      });
+      const meta = (existing?.metadata as Record<string, unknown>) || {};
+      const prev = (meta[TRIP_RUN_RECOVERY_AUDIT_META_KEY] as { events?: unknown[] }) || {};
+      const events = Array.isArray(prev.events) ? [...prev.events] : [];
+      events.push({
+        ...entry,
+        recorded_at: new Date().toISOString(),
+      });
+      while (events.length > 40) events.shift();
+
+      return this.updateTripRun({
+        runId: tripRunId,
+        metadata: {
+          [TRIP_RUN_RECOVERY_AUDIT_META_KEY]: { events },
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`appendRecoveryAuditEntry failed: ${err?.message}`);
+      return false;
+    }
+  }
+
   async saveDsoCheckpoint(tripRunId: string, checkpoint: TripRunDsoCheckpointPayload): Promise<boolean> {
     if (!this.isValidUUID(tripRunId)) {
       this.logger.warn(`saveDsoCheckpoint: invalid tripRunId ${tripRunId}`);

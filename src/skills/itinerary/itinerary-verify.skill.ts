@@ -9,27 +9,43 @@
  * - 疲劳阈值
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput, SkillMetadata } from '../interfaces/skill.interface';
 import { Itinerary } from '../../agent/interfaces/trip-plan.interface';
-import { applyRiskTagsFromVerifyIssues } from '../../agent/utils/itinerary-risk-tags.util';
+import { applyRiskTagsFromVerifyIssues, type VerifyIssueLike } from '../../agent/utils/itinerary-risk-tags.util';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { OpeningHoursUtil } from '../../common/utils/opening-hours.util';
 import { DateTime } from 'luxon';
 import type { ConstraintViolation } from '../../agent/services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../../agent/services/constraint-registry';
+import type { SafetravelRouteAlertEvidence } from './safetravel-verify-evidence.util';
+import {
+  collectIcelandVehicleTerrainArbitrationIssues,
+  type IcelandVehicleIntentHints,
+} from './iceland-vehicle-terrain-arbitrator.util';
+import { collectIcelandInsurancePolicyIssues } from './iceland-insurance-arbitrator.util';
+import { applySafetravelClosureShadowReadOnlyPhase } from './temporal-shadow-closure.util';
+import { WorldDecisionMemoryService } from '../../agent/memory/decision-memory/world-decision-memory.service';
+import { appendVehicleTerrainArbitrationTrace } from '../../agent/memory/decision-memory/vehicle-terrain-decision-memory.util';
+import { WorldStrategyService } from '../../agent/strategy/world-strategy.service';
 
 export interface ItineraryVerifyInput extends SkillInput {
   itinerary: Itinerary;
   research_data?: Record<string, any>;
+  /** 用户原话（可选）：冰岛车型–路况仲裁用于「提车/换车」与 SafeTravel 风况组合 */
+  user_query?: string;
+  /** 结构化车辆意图（可选）：与 TripPlanRequest.constraints.vehicle_type 等对齐，用于无 Booking 行时的虚拟租车注入 */
+  intent_hints?: IcelandVehicleIntentHints;
 }
 
 export interface ItineraryVerifyOutput extends SkillOutput {
   verified: boolean;
   issues: Array<{
     type: 'OPENING_HOURS_CONFLICT' | 'TRANSFER_BUFFER_INSUFFICIENT' | 'REACHABILITY_ISSUE' | 'FATIGUE_THRESHOLD_EXCEEDED' | 'TIME_WINDOW_OVERLAP';
-    severity: 'ERROR' | 'WARNING';
+    severity: 'CRITICAL' | 'ERROR' | 'WARNING' | 'INFO';
     item_id?: string;
+    /** TIME_WINDOW_OVERLAP：与 item_id（后项）构成重叠对的另一项（前项） */
+    related_item_id?: string;
     day?: string;
     message: string;
     suggestion?: string;
@@ -40,6 +56,8 @@ export interface ItineraryVerifyOutput extends SkillOutput {
     total_issues: number;
     error_count: number;
     warning_count: number;
+    /** 建议性 INFO（不计入 verified 阻断；不计入 error_count / warning_count） */
+    info_count: number;
   };
 }
 
@@ -77,7 +95,10 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
     },
   };
 
-  constructor() {
+  constructor(
+    @Optional() private readonly worldDecisionMemory?: WorldDecisionMemoryService,
+    @Optional() private readonly worldStrategy?: WorldStrategyService,
+  ) {
     this.logger.log(`[ItineraryVerifySkill] 已初始化`);
   }
 
@@ -85,7 +106,7 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
     this.logger.debug(`执行 itinerary.verify: request_id=${input.itinerary.request_id}`);
 
     try {
-      const { itinerary, research_data } = input;
+      const { itinerary, research_data, user_query } = input;
       const issues: ItineraryVerifyOutput['issues'] = [];
 
       // 1. 验证开放时间冲突
@@ -94,7 +115,37 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
       // 2. 验证换乘 buffer
       this.verifyTransferBuffers(itinerary, issues);
 
-      // 3. 验证可达性（如果有交通证据）
+      // 3a. SafeTravel / 封路证据（与 route_segment_ref 对齐）→ REACHABILITY_ISSUE
+      this.verifySafetravelRouteAlerts(itinerary, research_data, issues);
+      // 3a1. Verify V2 只读：封路 cut-point 锚点（不删项；供 smart_update / 级联传播后续接入）
+      applySafetravelClosureShadowReadOnlyPhase(itinerary, research_data as Record<string, unknown> | undefined);
+
+      // 3a2. 冰岛 V2：车型–路况仲裁（F-road × 2WD、冬季胎、大风提车）→ World Decision Memory
+      const terrainIssues = collectIcelandVehicleTerrainArbitrationIssues({
+        itinerary,
+        research_data,
+        user_query,
+        intent_hints: input.intent_hints,
+        world_strategy: this.worldStrategy?.getIcelandStrategyV1(),
+      });
+      issues.push(...terrainIssues);
+      appendVehicleTerrainArbitrationTrace(this.worldDecisionMemory, {
+        terrainIssues,
+        itinerary,
+        research_data,
+        user_query,
+        intent_hints: input.intent_hints,
+      });
+
+      issues.push(
+        ...collectIcelandInsurancePolicyIssues({
+          itinerary,
+          research_data,
+          user_query,
+        }),
+      );
+
+      // 3b. 验证可达性（如果有交通证据）
       this.verifyReachability(itinerary, research_data, issues);
 
       // 4. 验证疲劳阈值
@@ -103,11 +154,12 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
       // 5. 验证时间窗重叠
       this.verifyTimeWindowOverlaps(itinerary, issues);
 
-      const errorCount = issues.filter(i => i.severity === 'ERROR').length;
+      const errorCount = issues.filter(i => i.severity === 'ERROR' || i.severity === 'CRITICAL').length;
       const warningCount = issues.filter(i => i.severity === 'WARNING').length;
+      const infoCount = issues.filter(i => i.severity === 'INFO').length;
 
       // ADR-B1：按验证问题写入 item.metadata.risk_tags / risk_level（原地更新 itinerary）
-      applyRiskTagsFromVerifyIssues(itinerary, issues);
+      applyRiskTagsFromVerifyIssues(itinerary, issues as readonly VerifyIssueLike[]);
 
       return {
         verified: errorCount === 0,
@@ -116,6 +168,7 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
           total_issues: issues.length,
           error_count: errorCount,
           warning_count: warningCount,
+          info_count: infoCount,
         },
       };
     } catch (error: any) {
@@ -345,6 +398,84 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
   }
 
   /**
+   * `research_data.safetravel_alerts`：封路 / 极端天气等与路段 ref 对齐时阻断可达性。
+   */
+  private verifySafetravelRouteAlerts(
+    itinerary: Itinerary,
+    researchData: Record<string, any> | undefined,
+    issues: ItineraryVerifyOutput['issues'],
+  ): void {
+    const raw = researchData?.safetravel_alerts;
+    if (!raw) return;
+
+    const alerts: SafetravelRouteAlertEvidence[] = Array.isArray(raw) ? raw : raw.alerts ?? [];
+    if (!Array.isArray(alerts) || alerts.length === 0) return;
+
+    const affectedRefs = new Set<string>();
+    for (const a of alerts) {
+      const refs = a?.affected_route_segment_refs;
+      if (!Array.isArray(refs)) continue;
+      for (const r of refs) {
+        if (typeof r === 'string' && r.length > 0) affectedRefs.add(r);
+      }
+    }
+    if (affectedRefs.size === 0) return;
+
+    const alertByRef = new Map<string, SafetravelRouteAlertEvidence>();
+    for (const a of alerts) {
+      if (!Array.isArray(a?.affected_route_segment_refs)) continue;
+      for (const r of a.affected_route_segment_refs) {
+        if (typeof r === 'string') alertByRef.set(r, a);
+      }
+    }
+
+    const severityFromAlert = (a: SafetravelRouteAlertEvidence): 'CRITICAL' | 'ERROR' | 'WARNING' => {
+      const s = (a.severity ?? 'critical').toString().trim().toLowerCase();
+      if (s === 'critical') return 'CRITICAL';
+      if (s === 'high' || s === 'error') return 'ERROR';
+      return 'WARNING';
+    };
+
+    for (const day of itinerary.days) {
+      for (const item of day.items) {
+        const seg = item.metadata?.route_segment_ref;
+        if (!seg || !affectedRefs.has(seg)) continue;
+        const alert = alertByRef.get(seg);
+        const summary = alert?.summary ?? 'Route segment affected by travel safety alert';
+        const title = alert?.title ? `${alert.title}: ` : '';
+        const message = `${title}${summary}`.trim();
+        const issueSev = alert ? severityFromAlert(alert) : 'ERROR';
+
+        issues.push({
+          type: 'REACHABILITY_ISSUE',
+          severity: issueSev,
+          item_id: item.id,
+          day: day.date,
+          message,
+          suggestion:
+            'Road segment unsafe or closed — replan route (detour), delay leg, or stay overnight before crossing; do not assume Ring Road passage.',
+          violation: {
+            anchor: {
+              constraintId: CONSTRAINT_IDS.ENVIRONMENT_EXTREME_WEATHER_CLOSURE,
+              ruleId: 'itinerary.verify:safetravel_route_segment_v1',
+            },
+            entityRef: { type: 'SEGMENT', id: seg },
+            evidence: {
+              source: 'WEATHER',
+              refIds: alert?.id ? [String(alert.id)] : undefined,
+            },
+            scope: 'GLOBAL',
+            suggestedActions: [
+              { action: 'REPLACE', detail: 'Use inland detour or wait for reopening per SafeTravel' },
+              { action: 'ASK_USER', detail: 'Confirm willingness to skip Jökulsárlón leg or extend stay' },
+            ],
+          },
+        });
+      }
+    }
+  }
+
+  /**
    * 验证可达性
    */
   private verifyReachability(
@@ -460,6 +591,7 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
                 type: 'TIME_WINDOW_OVERLAP',
                 severity: 'ERROR',
                 item_id: item2.id,
+                related_item_id: item1.id,
                 day: day.date,
                 message: `时间窗重叠：${item1.location_ref?.name || '活动1'} 和 ${item2.location_ref?.name || '活动2'} 的时间窗重叠`,
                 suggestion: '请调整其中一个活动的时间',

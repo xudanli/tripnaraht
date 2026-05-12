@@ -260,8 +260,13 @@ export class AdaptiveWorldModelService {
     };
 
     for (const feedback of feedbacks) {
-      if (feedback.feedbackData?.riskTolerance) {
-        riskToleranceCounts[feedback.feedbackData.riskTolerance]++;
+      const rt = feedback.feedbackData?.riskTolerance;
+      if (rt === 'LOW') {
+        riskToleranceCounts.LOW++;
+      } else if (rt === 'MEDIUM') {
+        riskToleranceCounts.MEDIUM++;
+      } else if (rt === 'HIGH') {
+        riskToleranceCounts.HIGH++;
       }
     }
 

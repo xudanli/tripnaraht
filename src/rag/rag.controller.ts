@@ -5,10 +5,11 @@
  * 提供 RAG 相关的 API 端点
  */
 
-import { Controller, Get, Post, Body, Param, Query, Put, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Put, Delete, UseGuards, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { RagService } from './services/rag.service';
-import { ChunkRetrievalService } from './services/chunk-retrieval.service';
+import { ChunkRetrievalService, type ChunkRetrievalParams } from './services/chunk-retrieval.service';
 import { ComplianceFactsAgent } from './services/compliance-facts-agent.service';
 import { RouteKnowledgeCurator } from './services/route-knowledge-curator.service';
 import { LocalInsightService } from './services/local-insight.service';
@@ -24,10 +25,54 @@ import { RagMetricsService } from './services/rag-metrics.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
+import { RagRealityPolicyGateService } from './services/rag-reality-policy-gate.service';
+import type { DecisionContextV0 } from '../trips/reality-kernel/decision-context.types';
 
 @ApiTags('rag')
 @Controller('rag')
 export class RagController {
+  /** 解析 ?tags=a,b 或重复 ?tags= */
+  private static normalizeTagsQueryParam(tags?: string | string[]): string[] | undefined {
+    if (tags === undefined || tags === null) {
+      return undefined;
+    }
+    const parts = Array.isArray(tags) ? tags : [tags];
+    const flat = parts
+      .flatMap((p) => String(p).split(','))
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return flat.length ? flat : undefined;
+  }
+
+  /** 管理台详情/更新：统一 ISO 时间、裸对象 */
+  private static toAdminDocumentDetailPayload(document: NonNullable<
+    Awaited<ReturnType<RagService['getDocument']>>
+  >) {
+    return {
+      id: document.id,
+      collection: document.collection,
+      subType: document.subType ?? undefined,
+      title: document.title,
+      content: document.content,
+      source: document.source ?? undefined,
+      countryCode: document.countryCode ?? undefined,
+      tags: document.tags,
+      metadata: document.metadata ?? {},
+      createdAt:
+        document.createdAt instanceof Date
+          ? document.createdAt.toISOString()
+          : String(document.createdAt),
+      updatedAt:
+        document.updatedAt instanceof Date
+          ? document.updatedAt.toISOString()
+          : String(document.updatedAt),
+      fileId: document.fileId,
+      chunksCount: document.chunksCount,
+      chunks: document.chunks,
+    };
+  }
+
   constructor(
     private readonly ragService: RagService,
     private readonly chunkRetrieval: ChunkRetrievalService,
@@ -42,7 +87,32 @@ export class RagController {
     private readonly ragTestsetService: RagTestsetService,
     private readonly indexingService: IndexingService,
     private readonly ragMetricsService: RagMetricsService,
+    private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
   ) {}
+
+  private parseDecisionContextFromBody(body: { decision_context?: unknown }): DecisionContextV0 | undefined {
+    const raw = body.decision_context;
+    if (raw == null || typeof raw !== 'object') {
+      return undefined;
+    }
+    return raw as DecisionContextV0;
+  }
+
+  /** Query `decision_context`：JSON 字符串 */
+  private parseDecisionContextFromQueryParam(raw?: string): DecisionContextV0 | undefined {
+    if (raw == null || !String(raw).trim()) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(String(raw)) as unknown;
+      if (parsed && typeof parsed === 'object') {
+        return parsed as DecisionContextV0;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
 
   /**
    * 检索文档（已废弃）
@@ -142,7 +212,12 @@ export class RagController {
     summary: 'RAG 统计',
     description: '获取 RAG 知识库的统计信息，包括文档数量、集合统计等',
   })
-  @ApiQuery({ name: 'collection', description: '集合名称（可选，不提供则返回所有集合的统计）', required: false })
+  @ApiQuery({
+    name: 'collection',
+    description:
+      '集合（可选）；支持 canonical 或旧别名，将展开匹配表中多种 category 值',
+    required: false,
+  })
   @ApiResponse({ status: 200, description: '统计成功', type: ApiSuccessResponseDto })
   async getStats(@Query('collection') collection?: string) {
     try {
@@ -621,17 +696,28 @@ export class RagController {
       properties: {
         passType: { type: 'string', description: '通票类型' },
         countryCode: { type: 'string', description: '国家代码' },
+        decision_context: { type: 'object', description: 'DecisionContextV0' },
       },
       required: ['passType', 'countryCode'],
     },
   })
   @ApiResponse({ status: 200, description: '提取成功', type: ApiSuccessResponseDto })
   async extractRailPassRules(
-    @Body() body: { passType: string; countryCode: string }
+    @Body() body: { passType: string; countryCode: string; decision_context?: unknown }
   ) {
+    const decisionContext = this.parseDecisionContextFromBody(body);
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+        policy_verdict: policy.verdict,
+        policy_codes: policy.codes,
+        snapshot_id: decisionContext?.snapshot_id,
+      });
+    }
     return this.complianceFactsAgent.extractRailPassRules(
       body.passType,
-      body.countryCode
+      body.countryCode,
+      decisionContext,
     );
   }
 
@@ -650,17 +736,28 @@ export class RagController {
       properties: {
         trailId: { type: 'string', description: '步道 ID' },
         countryCode: { type: 'string', description: '国家代码' },
+        decision_context: { type: 'object', description: 'DecisionContextV0' },
       },
       required: ['trailId', 'countryCode'],
     },
   })
   @ApiResponse({ status: 200, description: '提取成功', type: ApiSuccessResponseDto })
   async extractTrailAccessRules(
-    @Body() body: { trailId: string; countryCode: string }
+    @Body() body: { trailId: string; countryCode: string; decision_context?: unknown }
   ) {
+    const decisionContext = this.parseDecisionContextFromBody(body);
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+        policy_verdict: policy.verdict,
+        policy_codes: policy.codes,
+        snapshot_id: decisionContext?.snapshot_id,
+      });
+    }
     return this.complianceFactsAgent.extractTrailAccessRules(
       body.trailId,
-      body.countryCode
+      body.countryCode,
+      decisionContext,
     );
   }
 
@@ -673,6 +770,15 @@ export class RagController {
     summary: '刷新合规规则缓存',
     description: '手动触发合规规则缓存刷新，用于后台管理系统。会重新从知识库加载最新的合规规则。',
   })
+  @ApiBody({
+    required: false,
+    schema: {
+      type: 'object',
+      properties: {
+        decision_context: { type: 'object', description: '可选 DecisionContextV0（门禁开启时建议携带）' },
+      },
+    },
+  })
   @ApiResponse({ 
     status: 200, 
     description: '刷新启动成功',
@@ -684,7 +790,16 @@ export class RagController {
       },
     },
   })
-  async refreshComplianceRules() {
+  async refreshComplianceRules(@Body() body?: { decision_context?: unknown }) {
+    const decisionContext = body ? this.parseDecisionContextFromBody(body) : undefined;
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+        policy_verdict: policy.verdict,
+        policy_codes: policy.codes,
+        snapshot_id: decisionContext?.snapshot_id,
+      });
+    }
     await this.complianceFactsAgent.refreshComplianceRules();
     return { success: true, message: 'Compliance rules refresh started' };
   }
@@ -701,22 +816,41 @@ export class RagController {
   @ApiParam({ name: 'routeDirectionId', description: '路线方向 ID' })
   @ApiQuery({ name: 'countryCode', description: '国家代码', required: false })
   @ApiQuery({ name: 'includeLocalInsights', description: '是否包含当地洞察信息', required: false, type: Boolean })
+  @ApiQuery({
+    name: 'decision_context',
+    required: false,
+    description: 'JSON 字符串：DecisionContextV0（策略门禁）',
+  })
   @ApiResponse({ status: 200, description: '生成成功', type: ApiSuccessResponseDto })
   async getRouteNarrative(
     @Param('routeDirectionId') routeDirectionId: string,
     @Query('countryCode') countryCode?: string,
     @Query('includeLocalInsights') includeLocalInsights?: string,
+    @Query('decision_context') decisionContextJson?: string,
   ) {
+    const decisionContext = this.parseDecisionContextFromQueryParam(decisionContextJson);
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+        policy_verdict: policy.verdict,
+        policy_codes: policy.codes,
+        snapshot_id: decisionContext?.snapshot_id,
+      });
+    }
+
     const narrative = await this.routeKnowledgeCurator.enrichRouteNarrative(
       routeDirectionId,
-      countryCode
+      countryCode,
+      decisionContext,
     );
 
     // 如果需要包含当地洞察，则添加
     if (includeLocalInsights === 'true' && countryCode) {
       const insights = await this.localInsightService.getLocalInsight(
         countryCode,
-        ['travel-guide']
+        ['travel-guide'],
+        undefined,
+        decisionContext,
       );
       return {
         narrative,
@@ -738,8 +872,18 @@ export class RagController {
       name?: string;
       description?: string;
       countryCode?: string;
+      decision_context?: unknown;
     }
   ) {
+    const decisionContext = this.parseDecisionContextFromBody(body);
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+        policy_verdict: policy.verdict,
+        policy_codes: policy.codes,
+        snapshot_id: decisionContext?.snapshot_id,
+      });
+    }
     return this.routeKnowledgeCurator.enrichSegmentNarrative(
       body.segmentId,
       body.dayIndex,
@@ -747,7 +891,8 @@ export class RagController {
         name: body.name,
         description: body.description,
         countryCode: body.countryCode,
-      }
+      },
+      decisionContext,
     );
   }
 
@@ -763,17 +908,29 @@ export class RagController {
   @ApiQuery({ name: 'countryCode', description: '国家代码', required: true })
   @ApiQuery({ name: 'tags', description: '标签（逗号分隔或数组）', required: true })
   @ApiQuery({ name: 'region', description: '地区', required: false })
+  @ApiQuery({ name: 'decision_context', required: false, description: 'JSON 字符串：DecisionContextV0' })
   @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
   async getLocalInsight(
     @Query('countryCode') countryCode: string,
     @Query('tags') tags: string | string[],
     @Query('region') region?: string,
+    @Query('decision_context') decisionContextJson?: string,
   ) {
+    const decisionContext = this.parseDecisionContextFromQueryParam(decisionContextJson);
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+        policy_verdict: policy.verdict,
+        policy_codes: policy.codes,
+        snapshot_id: decisionContext?.snapshot_id,
+      });
+    }
     const tagArray = Array.isArray(tags) ? tags : tags.split(',');
     return this.localInsightService.getLocalInsight(
       countryCode,
       tagArray,
-      region
+      region,
+      decisionContext,
     );
   }
 
@@ -797,6 +954,10 @@ export class RagController {
           example: ['culture', 'tips', 'etiquette'],
         },
         region: { type: 'string', description: '地区（可选）', example: 'Reykjavik' },
+        decision_context: {
+          type: 'object',
+          description: 'DecisionContextV0（门禁开启时建议携带）',
+        },
       },
       required: ['countryCode', 'tags'],
     },
@@ -819,12 +980,23 @@ export class RagController {
       countryCode: string;
       tags: string[];
       region?: string;
+      decision_context?: unknown;
     }
   ) {
+    const decisionContext = this.parseDecisionContextFromBody(body);
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+        policy_verdict: policy.verdict,
+        policy_codes: policy.codes,
+        snapshot_id: decisionContext?.snapshot_id,
+      });
+    }
     return this.localInsightService.refreshLocalInsight(
       body.countryCode,
       body.tags,
-      body.region
+      body.region,
+      decisionContext,
     );
   }
 
@@ -847,6 +1019,10 @@ export class RagController {
         segmentId: { type: 'string', description: '路线段 ID' },
         dayIndex: { type: 'number', description: '天数索引' },
         tripId: { type: 'string', description: '行程 ID' },
+        decision_context: {
+          type: 'object',
+          description: 'Reality OS DecisionContextV0 — 与行程 planning tick 对齐',
+        },
       },
       required: ['question'],
     },
@@ -860,6 +1036,7 @@ export class RagController {
       segmentId?: string;
       dayIndex?: number;
       tripId?: string;
+      decision_context?: unknown;
     }
   ) {
     const context: RouteQuestionContext = {
@@ -868,6 +1045,7 @@ export class RagController {
       segmentId: body.segmentId,
       dayIndex: body.dayIndex,
       tripId: body.tripId,
+      decisionContext: this.parseDecisionContextFromBody(body),
     };
 
     return this.enhancedChat.answerRouteQuestion(body.question, context);
@@ -882,12 +1060,14 @@ export class RagController {
       selectedRouteId: string;
       alternativeRouteId: string;
       countryCode: string;
+      decision_context?: unknown;
     }
   ) {
     return this.enhancedChat.explainWhyNotOtherRoute(
       body.selectedRouteId,
       body.alternativeRouteId,
-      body.countryCode
+      body.countryCode,
+      this.parseDecisionContextFromBody(body),
     );
   }
 
@@ -903,6 +1083,11 @@ export class RagController {
   @ApiQuery({ name: 'placeId', description: '地点 ID', required: true })
   @ApiQuery({ name: 'tripId', description: '行程 ID（可选）', required: false })
   @ApiQuery({ name: 'countryCode', description: '国家代码（可选）', required: false })
+  @ApiQuery({
+    name: 'decision_context',
+    required: false,
+    description: 'JSON 字符串：`DecisionContextV0`。开启 Reality / RAG 策略门禁后建议上传。',
+  })
   @ApiResponse({
     status: 200,
     description: '成功返回目的地深度信息',
@@ -911,23 +1096,45 @@ export class RagController {
     @Query('placeId') placeId: string,
     @Query('tripId') tripId?: string,
     @Query('countryCode') countryCode?: string,
+    @Query('decision_context') decisionContextJson?: string,
   ) {
     try {
-      // 使用 RAG 检索相关文档（使用新的 ChunkRetrievalService）
-      const ragResults = await this.chunkRetrieval.retrieve({
+      let decisionContext: DecisionContextV0 | undefined;
+      if (decisionContextJson?.trim()) {
+        try {
+          const parsed = JSON.parse(decisionContextJson) as unknown;
+          if (parsed && typeof parsed === 'object') {
+            decisionContext = parsed as DecisionContextV0;
+          }
+        } catch {
+          return errorResponse(ErrorCode.VALIDATION_ERROR, 'decision_context 须为有效 JSON');
+        }
+      }
+      const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+      if (scope === 'blocked') {
+        return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+          policy_verdict: policy.verdict,
+          policy_codes: policy.codes,
+        });
+      }
+      let retrieveParams: ChunkRetrievalParams = {
         query: `目的地实用信息、特色贴士、隐藏攻略、文化礼仪`,
         category: 'travel_guides',
         limit: 10,
         useHybridSearch: true,
-      });
+      };
+      retrieveParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(retrieveParams, scope);
+      const ragResults = await this.chunkRetrieval.retrieve(retrieveParams);
 
       // 获取当地洞察
       let localInsights: any[] = [];
-      if (countryCode) {
+      if (countryCode && scope === 'full') {
         try {
           localInsights = await this.localInsightService.getLocalInsight(
             countryCode,
-            ['culture', 'tips', 'etiquette', 'hidden_gems']
+            ['culture', 'tips', 'etiquette', 'hidden_gems'],
+            undefined,
+            decisionContext,
           );
         } catch (error) {
           // 忽略错误
@@ -941,6 +1148,7 @@ export class RagController {
           const context: RouteQuestionContext = {
             tripId,
             countryCode,
+            decisionContext,
           };
           routeInsights = await this.enhancedChat.answerRouteQuestion(
             `获取 ${placeId} 的深度实用信息和小众攻略`,
@@ -953,6 +1161,12 @@ export class RagController {
 
       return successResponse({
         placeId,
+        reality_policy: {
+          verdict: policy.verdict,
+          codes: policy.codes,
+          rag_scope: scope,
+          snapshot_id: decisionContext?.snapshot_id,
+        },
         insights: {
           tips: ragResults.map(r => ({
             content: r.content,
@@ -1004,6 +1218,10 @@ export class RagController {
           items: { type: 'string', enum: ['VISA', 'TRANSPORT', 'ENTRY', 'EXIT'] },
           description: '规则类型（可选）',
         },
+        decision_context: {
+          type: 'object',
+          description: 'Reality OS DecisionContextV0（门禁开启时建议必填）',
+        },
       },
     },
   })
@@ -1016,9 +1234,20 @@ export class RagController {
       tripId: string;
       countryCodes: string[];
       ruleTypes?: string[];
+      decision_context?: unknown;
     }
   ) {
     try {
+      const decisionContext = this.parseDecisionContextFromBody(body);
+      const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+      if (scope === 'blocked') {
+        return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+          policy_verdict: policy.verdict,
+          policy_codes: policy.codes,
+          snapshot_id: decisionContext?.snapshot_id,
+        });
+      }
+
       const rules: any[] = [];
       const checklist: Array<{
         category: string;
@@ -1037,7 +1266,8 @@ export class RagController {
           try {
             const railPassRules = await this.complianceFactsAgent.extractRailPassRules(
               'Eurail Global Pass',
-              countryCode
+              countryCode,
+              decisionContext,
             );
             if (railPassRules && railPassRules.length > 0) {
               rules.push(...railPassRules);
@@ -1061,13 +1291,15 @@ export class RagController {
           try {
           // 这里需要从行程中获取 trail IDs
           // 简化处理，使用通用查询（使用新的 ChunkRetrievalService）
-          const trailRules = await this.chunkRetrieval.retrieve({
+          let trailParams: ChunkRetrievalParams = {
             query: `${countryCode} trail access rules permits`,
             category: 'compliance_rules',
             chunkCategory: 'RULES',
             limit: 5,
             useHybridSearch: true,
-          });
+          };
+          trailParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(trailParams, scope);
+          const trailRules = await this.chunkRetrieval.retrieve(trailParams);
 
           if (trailRules.length > 0) {
             checklist.push({
@@ -1087,13 +1319,15 @@ export class RagController {
         // 提取签证规则（使用新的 ChunkRetrievalService）
         if (!body.ruleTypes || body.ruleTypes.includes('VISA')) {
           try {
-            const visaRules = await this.chunkRetrieval.retrieve({
+            let visaParams: ChunkRetrievalParams = {
               query: `${countryCode} visa requirements for Chinese citizens`,
               category: 'compliance_rules',
               chunkCategory: 'RULES',
               limit: 5,
               useHybridSearch: true,
-            });
+            };
+            visaParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(visaParams, scope);
+            const visaRules = await this.chunkRetrieval.retrieve(visaParams);
 
             if (visaRules.length > 0) {
               checklist.push({
@@ -1131,36 +1365,124 @@ export class RagController {
   // ==================== 后台管理接口：文档管理 ====================
 
   /**
-   * 获取文档列表（后台管理）
+   * 新建知识库文档（后台管理）
+   *
+   * 写入 `knowledge_files` 并分块、生成向量；请求字段与更新文档对齐。
    */
   @Public()
+  @UseGuards(AdminStrictAuthGuard)
+  @Post('knowledge-files')
+  @ApiOperation({
+    summary: '新建 RAG 知识库文档（后台管理）',
+    description:
+      '必填：title、collection、content。collection 使用六类 canonical（decision-support | geography | pois | practical | risks | routes）或旧别名（如 travel_guides→routes）。subType 须与该 collection 允许列表一致。成功：`{ success, data }`。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['title', 'collection', 'content'],
+      properties: {
+        title: { type: 'string' },
+        collection: {
+          type: 'string',
+          example: 'routes',
+          description:
+            'decision-support | geography | pois | practical | risks | routes（连字符注意 URL 编码）',
+        },
+        subType: {
+          type: 'string',
+          example: 'itinerary_template',
+          description: '可选；与 collection 组合校验，如 routes/itinerary_template',
+        },
+        content: {
+          type: 'string',
+          description: '正文；可为 JSON 字符串或纯文本',
+        },
+        countryCode: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+        source: { type: 'string' },
+        metadata: {
+          type: 'object',
+          description: '扩展 JSON；可含 taxonomy_version、source_doc、route_duration_bucket 等',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: '创建成功', type: ApiSuccessResponseDto })
+  async createKnowledgeFile(@Body() item: DocumentIndexItem) {
+    try {
+      const id = await this.ragService.createKnowledgeDocument(item);
+      const document = await this.ragService.getDocument(id);
+      if (!document) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, '创建成功但无法读取文档');
+      }
+      return successResponse(RagController.toAdminDocumentDetailPayload(document));
+    } catch (error: any) {
+      const msg = error?.message ?? String(error);
+      if (
+        msg.includes('不能为空') ||
+        msg.includes('title') ||
+        msg.includes('collection') ||
+        msg.includes('content') ||
+        msg.includes('subType') ||
+        msg.includes('不属于') ||
+        msg.includes('无效或不支持')
+      ) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, msg);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, msg);
+    }
+  }
+
+  /**
+   * 获取文档列表（后台管理）
+   *
+   * 需管理端权限：`Authorization: Bearer <JWT>`（用户 platformRole / JWT roles 含 ADMIN 或 OPERATOR），
+   * 或配置 `ADMIN_GOD_API_KEY` 时使用 `Authorization: Bearer <key>` / `x-admin-god-key`。
+   * 成功响应为裸 JSON：`{ documents, pagination }`（无 success 包裹）；401/403 见拦截器。
+   */
+  @Public()
+  @UseGuards(AdminStrictAuthGuard)
   @Get('documents')
   @ApiOperation({
     summary: '获取文档列表（后台管理）',
-    description: '获取 RAG 知识库中的文档列表，支持分页、筛选等功能',
+    description:
+      '数据来自 knowledge_files。collection 支持六类 canonical 或旧别名（如 travel_guides）；可与 subType 组合筛选。URL 中 decision-support 需编码。',
   })
-  @ApiQuery({ name: 'collection', required: false, description: '集合名称' })
+  @ApiQuery({
+    name: 'collection',
+    required: false,
+    description:
+      'decision-support | geography | pois | practical | risks | routes 或旧名 travel_guides、compliance_rules 等',
+  })
+  @ApiQuery({
+    name: 'subType',
+    required: false,
+    description: '业务子类型，如 scoring_matrix、itinerary_template（须与 collection 合法组合）',
+  })
   @ApiQuery({ name: 'countryCode', required: false, description: '国家代码' })
-  @ApiQuery({ name: 'tags', required: false, description: '标签（逗号分隔）' })
+  @ApiQuery({ name: 'tags', required: false, description: '标签（逗号分隔或重复参数）' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，从1开始', example: 1 })
   @ApiQuery({ name: 'pageSize', required: false, type: Number, description: '每页数量', example: 20 })
   @ApiQuery({ name: 'search', required: false, description: '搜索关键词（标题或内容）' })
   @ApiResponse({ status: 200, description: '获取成功', type: ApiSuccessResponseDto })
   async getDocuments(
     @Query('collection') collection?: string,
+    @Query('subType') subType?: string,
     @Query('countryCode') countryCode?: string,
-    @Query('tags') tags?: string,
+    @Query('tags') tags?: string | string[],
     @Query('page') page?: number,
     @Query('pageSize') pageSize?: number,
     @Query('search') search?: string,
   ) {
     try {
-      const pageNum = page ? parseInt(page.toString()) : 1;
-      const size = pageSize ? parseInt(pageSize.toString()) : 20;
-      const tagArray = tags ? tags.split(',').map(t => t.trim()) : undefined;
+      const pageNum = page ? parseInt(page.toString(), 10) : 1;
+      const size = pageSize ? parseInt(pageSize.toString(), 10) : 20;
+      const tagArray = RagController.normalizeTagsQueryParam(tags);
 
       const result = await this.ragService.getDocuments({
         collection,
+        subType,
         countryCode,
         tags: tagArray,
         search,
@@ -1168,18 +1490,31 @@ export class RagController {
         pageSize: size,
       });
 
-      // 添加内容预览（如果content太长，截断用于预览）
-      const documentsWithPreview = result.documents.map(doc => ({
-        ...doc,
-        contentPreview: doc.content.length > 200 
-          ? doc.content.substring(0, 200) + '...' 
-          : doc.content,
-      }));
-
-      return successResponse({
-        documents: documentsWithPreview,
-        pagination: result.pagination,
+      const documents = result.documents.map((doc) => {
+        const contentPreview =
+          doc.content.length > 200 ? `${doc.content.substring(0, 200)}...` : doc.content;
+        return {
+          id: doc.id,
+          collection: doc.collection,
+          subType: doc.subType ?? undefined,
+          title: doc.title,
+          content: doc.content,
+          contentPreview,
+          source: doc.source ?? undefined,
+          countryCode: doc.countryCode ?? undefined,
+          tags: doc.tags,
+          metadata: doc.metadata ?? {},
+          createdAt:
+            doc.createdAt instanceof Date ? doc.createdAt.toISOString() : String(doc.createdAt),
+          updatedAt:
+            doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : String(doc.updatedAt),
+        };
       });
+
+      return {
+        documents,
+        pagination: result.pagination,
+      };
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
@@ -1189,6 +1524,7 @@ export class RagController {
    * 获取文档详情（后台管理）
    */
   @Public()
+  @UseGuards(AdminStrictAuthGuard)
   @Get('documents/:id')
   @ApiOperation({
     summary: '获取文档详情（后台管理）',
@@ -1204,7 +1540,7 @@ export class RagController {
         return errorResponse(ErrorCode.NOT_FOUND, '文档不存在');
       }
 
-      return successResponse(document);
+      return RagController.toAdminDocumentDetailPayload(document);
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
@@ -1214,10 +1550,12 @@ export class RagController {
    * 更新文档（后台管理）
    */
   @Public()
+  @UseGuards(AdminStrictAuthGuard)
   @Put('documents/:id')
   @ApiOperation({
     summary: '更新文档（后台管理）',
-    description: '更新 RAG 知识库中的文档，如果内容更新会自动重新生成 embedding',
+    description:
+      '部分更新 KnowledgeFile；仅对请求体中出现的字段生效。传入 content 时会删除该文件下旧 chunks 并重新分块、向量化。',
   })
   @ApiParam({ name: 'id', description: '文档 ID' })
   @ApiBody({
@@ -1226,39 +1564,76 @@ export class RagController {
       properties: {
         title: { type: 'string', description: '文档标题' },
         content: { type: 'string', description: '文档内容' },
-        collection: { type: 'string', description: '集合名称' },
+        collection: {
+          type: 'string',
+          description: '六类 canonical 或旧别名；写入时会归一化为标准集合',
+        },
+        subType: { type: 'string', description: '业务子类型（与 collection 组合校验）' },
         countryCode: { type: 'string', description: '国家代码' },
         tags: { type: 'array', items: { type: 'string' }, description: '标签列表' },
         source: { type: 'string', description: '文档来源' },
-        metadata: { type: 'object', description: '元数据' },
+        metadata: { type: 'object', description: '扩展元数据（taxonomy_version、source_doc 等）' },
       },
     },
   })
-  @ApiResponse({ status: 410, description: '端点已废弃' })
+  @ApiResponse({ status: 200, description: '更新成功', type: ApiSuccessResponseDto })
   async updateDocument(
-    @Param('id') _id: string,
-    @Body() _item: Partial<DocumentIndexItem>,
+    @Param('id') id: string,
+    @Body() item: Partial<DocumentIndexItem>,
   ) {
-    throw new Error('document_index表已删除，此端点不再可用');
+    try {
+      await this.ragService.updateDocument(id, item);
+      const document = await this.ragService.getDocument(id);
+      if (!document) {
+        return errorResponse(ErrorCode.NOT_FOUND, '文档不存在');
+      }
+      return RagController.toAdminDocumentDetailPayload(document);
+    } catch (error: any) {
+      const msg = error?.message ?? String(error);
+      if (error?.code === 'NOT_FOUND' || msg === '文档不存在') {
+        return errorResponse(ErrorCode.NOT_FOUND, msg);
+      }
+      if (
+        msg.includes('文件名已存在') ||
+        msg.includes('title') ||
+        msg.includes('不能为空') ||
+        msg.includes('不属于') ||
+        msg.includes('无效或不支持') ||
+        msg.includes('映射到标准集合')
+      ) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, msg);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, msg);
+    }
   }
 
   /**
    * 删除文档（后台管理）
-   * 
-   * ⚠️ 已废弃：document_index表已删除
-   * 
-   * @deprecated document_index表已删除，此端点不再可用
+   *
+   * 从数据库删除 RAG 文档（`knowledge_files`）；关联 `chunks` 由外键级联删除。
+   * 成功响应为统一格式：`{ success: true, data: { deleted: true, id } }`。
    */
   @Public()
-  @Delete('documents/:id')
+  @UseGuards(AdminStrictAuthGuard)
+  @Delete('documents/:documentId')
   @ApiOperation({
-    summary: '删除文档（已废弃）',
-    description: '⚠️ document_index表已删除，此端点不再可用',
+    summary: '删除 RAG 文档（后台管理）',
+    description:
+      '从数据库删除知识库文件及其分块向量（knowledge_files + chunks）。需管理员权限。',
   })
-  @ApiParam({ name: 'id', description: '文档 ID' })
-  @ApiResponse({ status: 410, description: '端点已废弃' })
-  async deleteDocument(@Param('id') _id: string) {
-    throw new Error('document_index表已删除，此端点不再可用');
+  @ApiParam({ name: 'documentId', description: '文档 ID（KnowledgeFile.id / UUID）' })
+  @ApiResponse({ status: 200, description: '删除成功', type: ApiSuccessResponseDto })
+  async deleteDocument(@Param('documentId') documentId: string) {
+    try {
+      await this.ragService.deleteDocument(documentId);
+      return successResponse({ deleted: true, id: documentId });
+    } catch (error: any) {
+      const msg = error?.message ?? String(error);
+      if (error?.code === 'NOT_FOUND' || msg === '文档不存在') {
+        return errorResponse(ErrorCode.NOT_FOUND, msg);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, msg);
+    }
   }
 
   // ==================== RAG 检索质量评估 ====================
@@ -1294,6 +1669,10 @@ export class RagController {
           items: { type: 'string' },
           description: '正确答案文档 ID 列表',
         },
+        decision_context: {
+          type: 'object',
+          description: '可选 DecisionContextV0（门禁开启时用于 DEGRADE 语料合并）',
+        },
       },
       required: ['query', 'params', 'groundTruthDocumentIds'],
     },
@@ -1311,13 +1690,16 @@ export class RagController {
         minScore?: number;
       };
       groundTruthDocumentIds: string[];
+      decision_context?: unknown;
     },
   ) {
     try {
+      const decisionContext = this.parseDecisionContextFromBody(body);
       const result = await this.ragEvaluation.evaluateRetrieval(
         body.query,
         body.params,
         body.groundTruthDocumentIds,
+        decisionContext,
       );
       return successResponse(result);
     } catch (error: any) {
@@ -1349,6 +1731,10 @@ export class RagController {
             },
           },
         },
+        decision_context: {
+          type: 'object',
+          description: '可选 DecisionContextV0，应用于本批次每次检索',
+        },
       },
       required: ['testCases'],
     },
@@ -1361,10 +1747,12 @@ export class RagController {
         params: any;
         groundTruthDocumentIds: string[];
       }>;
+      decision_context?: unknown;
     },
   ) {
     try {
-      const result = await this.ragEvaluation.evaluateBatch(body.testCases);
+      const decisionContext = this.parseDecisionContextFromBody(body);
+      const result = await this.ragEvaluation.evaluateBatch(body.testCases, decisionContext);
       return successResponse(result);
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
@@ -1386,13 +1774,16 @@ export class RagController {
       query: string;
       params: any;
       groundTruthChunkIds: string[];
+      decision_context?: unknown;
     },
   ) {
     try {
+      const decisionContext = this.parseDecisionContextFromBody(body);
       const result = await this.ragEvaluation.evaluateChunkRetrieval(
         body.query,
         body.params,
         body.groundTruthChunkIds,
+        decisionContext,
       );
       return successResponse(result);
     } catch (error: any) {
@@ -1417,10 +1808,12 @@ export class RagController {
         params: any;
         groundTruthChunkIds: string[];
       }>;
+      decision_context?: unknown;
     },
   ) {
     try {
-      const result = await this.ragEvaluation.evaluateChunkBatch(body.testCases);
+      const decisionContext = this.parseDecisionContextFromBody(body);
+      const result = await this.ragEvaluation.evaluateChunkBatch(body.testCases, decisionContext);
       return successResponse(result);
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
@@ -1845,6 +2238,11 @@ export class RagController {
             'Chunk分类过滤：RULES, POI_INFO, GATE, WEATHER, GENERAL, DECISION_SUPPORT（细分库标签经服务端展开 OR 匹配）',
         },
         useIntentClassification: { type: 'boolean', description: '是否使用意图分类自动过滤（默认false）', default: false },
+        decision_context: {
+          type: 'object',
+          description:
+            'Reality OS `DecisionContextV0`。`REALITY_ENFORCEMENT` / `RAG_REALITY_POLICY_ENFORCE` 开启时须携带，与决策引擎 snapshot 对齐。',
+        },
       },
       required: ['query'],
     },
@@ -1866,25 +2264,43 @@ export class RagController {
     useQueryExpansion?: boolean;
     maxQueryVariants?: number;
     useIntentClassification?: boolean;
-  }) {
+    decision_context?: unknown;
+  }, @Res({ passthrough: true }) res: Response) {
     try {
-      const results = await this.chunkRetrieval.retrieve({
+      const decisionContext = this.parseDecisionContextFromBody(body);
+      const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+      if (scope === 'blocked') {
+        return errorResponse(ErrorCode.BUSINESS_ERROR, policy.reasons.join('; ') || 'rag_soft_world_blocked', {
+          policy_verdict: policy.verdict,
+          policy_codes: policy.codes,
+          snapshot_id: decisionContext?.snapshot_id,
+        });
+      }
+      let retrieveParams: ChunkRetrievalParams = {
         query: body.query,
         limit: body.limit || 10,
         credibilityMin: body.credibilityMin || 0.5,
         type: body.type,
         category: body.category,
-        chunkCategory: body.chunkCategory, // 传递chunkCategory参数
+        chunkCategory: body.chunkCategory,
         fileId: body.fileId,
-        useHybridSearch: body.useHybridSearch !== false, // 默认true
-        denseWeight: body.denseWeight || 0.6, // 优化后的默认值
-        sparseWeight: body.sparseWeight || 0.4, // 优化后的默认值
-        useReranking: body.useReranking === true, // 默认false
+        useHybridSearch: body.useHybridSearch !== false,
+        denseWeight: body.denseWeight || 0.6,
+        sparseWeight: body.sparseWeight || 0.4,
+        useReranking: body.useReranking === true,
         rerankTopK: body.rerankTopK || 20,
-        useQueryExpansion: body.useQueryExpansion === true, // 默认false
+        useQueryExpansion: body.useQueryExpansion === true,
         maxQueryVariants: body.maxQueryVariants || 3,
-        useIntentClassification: body.useIntentClassification === true, // 默认false
-      });
+        useIntentClassification: body.useIntentClassification === true,
+      };
+      retrieveParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(retrieveParams, scope);
+      const results = await this.chunkRetrieval.retrieve(retrieveParams);
+      res.setHeader('X-Rag-Reality-Verdict', policy.verdict);
+      res.setHeader('X-Rag-Reality-Scope', scope);
+      if (decisionContext?.snapshot_id) {
+        res.setHeader('X-Reality-Snapshot-Id', decisionContext.snapshot_id);
+      }
+      res.setHeader('X-Reality-Policy-Codes', policy.codes.join(','));
       return successResponse(results);
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);

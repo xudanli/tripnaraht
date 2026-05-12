@@ -9,6 +9,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { RouteAndRunResponseAssemblerService } from './route-and-run-response-assembler.service';
 import { JepaProjectorService } from './jepa-projector.service';
+import { TradeoffEngineService } from './tradeoff-engine.service';
+import { RouteRunItineraryPoiHydratorService } from './route-run-itinerary-poi-hydrator.service';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
@@ -16,6 +18,8 @@ import type { DecisionState, PoiPlanningDecisionSlice } from '../../decision/ker
 import type { OrchestrationResult } from '../interfaces/claude-orchestration.interface';
 import type { Itinerary, OrchestratorState } from '../interfaces/trip-plan.interface';
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
 
 describe('ClaudeOrchestratorService — poiPlanning outcome guardrail (Phase 2.1)', () => {
   const rid = 'orch-poi-outcome-guard-1';
@@ -84,6 +88,14 @@ describe('ClaudeOrchestratorService — poiPlanning outcome guardrail (Phase 2.1
             getSkill: jest.fn().mockReturnValue(null),
           },
         },
+        { provide: PrismaService, useValue: {} },
+        {
+          provide: RagRealityPolicyGateService,
+          useValue: {
+            resolve: jest.fn().mockReturnValue({ scope: 'full', policy: {} }),
+            mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
+          },
+        },
       ],
     }).compile();
     return module.get<ClaudeOrchestratorService>(ClaudeOrchestratorService);
@@ -91,7 +103,20 @@ describe('ClaudeOrchestratorService — poiPlanning outcome guardrail (Phase 2.1
 
   async function createAssembler() {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [RouteAndRunResponseAssemblerService, JepaProjectorService],
+      providers: [
+        RouteAndRunResponseAssemblerService,
+        JepaProjectorService,
+        {
+          provide: TradeoffEngineService,
+          useValue: { buildNegotiation: jest.fn().mockResolvedValue(null) },
+        },
+        {
+          provide: RouteRunItineraryPoiHydratorService,
+          useValue: {
+            hydrateFromItinerary: jest.fn().mockResolvedValue({ poi_cards: [], poi_cards_by_day: [] }),
+          },
+        },
+      ],
     }).compile();
     return module.get<RouteAndRunResponseAssemblerService>(RouteAndRunResponseAssemblerService);
   }
@@ -198,6 +223,13 @@ describe('ClaudeOrchestratorService — poiPlanning outcome guardrail (Phase 2.1
         state,
         itinerary: state.itinerary,
         decisionState: ds,
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 0.9,
+          evidence_refs: [],
+        },
       },
       stepsExecuted: [{ stepId: 'POI_SELECTION', success: true, duration: 1 }],
       totalDuration: 2,
@@ -209,7 +241,7 @@ describe('ClaudeOrchestratorService — poiPlanning outcome guardrail (Phase 2.1
       options: { max_seconds: 60, max_steps: 8 },
     } as RouteAndRunRequestDto;
 
-    const resp = assembler.assembleClaudeStateMachineResponse({
+    const resp = await assembler.assembleClaudeStateMachineResponse({
       request: req,
       startTime: Date.now(),
       orchestrationResult,

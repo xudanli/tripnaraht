@@ -4,7 +4,7 @@
  * 
  * P0: Geo/Spatial MCP - 标准化 DEM 高程采样
  * 
- * 功能：把 dem.getProfile 标准化，统一 PostGIS 栅格访问的安全出口
+ * 功能：把 dem.get_profile（Registry）标准化，统一 PostGIS 栅格访问的安全出口
  * 安全控制：限制采样点数量、采样间隔、记录查询日志
  */
 
@@ -153,7 +153,7 @@ export class GeoSampleElevationProfileSkill
         throw new Error('DemGetProfileSkill 未注入，无法执行高程采样');
       }
 
-      // 2. 调用 dem.getProfile Skill
+      // 2. 调用 dem.get_profile Skill
       const demResult = await this.demGetProfileSkill.execute({
         polyline: input.polyline,
         samples: validatedSamplingInterval,

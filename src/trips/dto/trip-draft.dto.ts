@@ -1,5 +1,10 @@
 // src/trips/dto/trip-draft.dto.ts
-import { IsString, IsNumber, IsOptional, IsEnum, IsArray, IsBoolean, ValidateNested, IsObject } from 'class-validator';
+import type { ExecutionSimulationReport } from '../draft-synthesis/execution-simulation/execution-simulation.types';
+import type { DecisionTrace } from '../draft-synthesis/decision-trace/decision-trace.types';
+import type { UserIntentState } from '../draft-synthesis/user-intent/user-intent-state.types';
+import type { TripDraftState } from '../draft-synthesis/state/trip-draft-state.types';
+import type { ObjectiveVector } from '../draft-synthesis/pareto/objective-vector.types';
+import { IsString, IsNumber, IsOptional, IsEnum, IsArray, IsBoolean, ValidateNested, IsObject, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -152,6 +157,33 @@ export class CreateTripDraftDto {
   @IsOptional()
   useAlgorithmicDraft?: boolean;
 
+  /**
+   * 统一运行时模式（OpenAPI 收敛）：优先于 useAlgorithmicDraft。
+   * - ALGO：仅路径引擎；LLM：仅体验草案合成；HYBRID：LLM∥Algo + 槽位仲裁。
+   */
+  @ApiPropertyOptional({ enum: ['LLM', 'ALGO', 'HYBRID'], description: '草案运行时模式（统一语义入口）' })
+  @IsOptional()
+  @IsIn(['LLM', 'ALGO', 'HYBRID'])
+  draftRuntimeMode?: 'LLM' | 'ALGO' | 'HYBRID';
+
+  /**
+   * 用户意图演化快照（与服务端 UserIntentState 合并后可写入契约）。
+   */
+  @ApiPropertyOptional({ description: 'UserIntentState 快照', type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  userIntentSnapshot?: UserIntentState;
+
+  /**
+   * 🆕 Deterministic seed（可回放）
+   * - 用于确保同一 tripId + 同一候选池 的编排/修复结果可复现
+   * - 通常由上游从 tripId 派生
+   */
+  @ApiPropertyOptional({ description: '确定性种子（可回放）', example: 123456 })
+  @IsNumber()
+  @IsOptional()
+  seed?: number;
+
   /** Travel World Model Phase 4: 路线方向 ID（uuid 或数字），用于候选检索优先 signaturePois / RouteTemplate */
   @ApiPropertyOptional({ description: '路线方向 ID，优先检索该路线的代表性 POI' })
   @IsString()
@@ -232,6 +264,19 @@ export class DraftItineraryItemEvidence {
 
   @ApiPropertyOptional({ description: '数据来源' })
   source?: string;
+
+  /** Experience Draft Synthesis：LLM 自评，供 VERIFY / Runtime 继承，非地面真值 */
+  @ApiPropertyOptional({ description: '草案置信度（LLM）', enum: ['low', 'medium', 'high'] })
+  draftConfidence?: 'low' | 'medium' | 'high';
+
+  @ApiPropertyOptional({ description: '是否必须由后续系统验证后才可视为可执行' })
+  validationRequired?: boolean;
+
+  @ApiPropertyOptional({ description: '风险标签（如 long_drive, weather_sensitive）', type: [String] })
+  riskTags?: string[];
+
+  @ApiPropertyOptional({ description: '草案层标识：体验草案合成，非 Solver 输出' })
+  draftLayer?: 'EXPERIENCE_DRAFT_SYNTHESIS';
 }
 
 /**
@@ -303,12 +348,138 @@ export class TripDraftMetadata {
 
   @ApiPropertyOptional({ description: 'LLM 提供商' })
   llmProvider?: string;
+
+  /**
+   * 🆕 Decision OS 可验收口径（lite）
+   * - VERIFIED：无显著松弛
+   * - VERIFIED_WITH_RELAXATION：发生显式松弛（如 TIME_COMPRESSION）
+   * - FAILED：存在不可恢复的硬约束失败（当前 draft 引擎尽量修复，必要时可升级为失败）
+   */
+  @ApiPropertyOptional({ description: '验证状态（Decision OS 口径）', enum: ['VERIFIED', 'VERIFIED_WITH_RELAXATION', 'FAILED'] })
+  verificationStatus?: 'VERIFIED' | 'VERIFIED_WITH_RELAXATION' | 'FAILED';
+
+  @ApiPropertyOptional({ description: '松弛等级', enum: ['NONE', 'MODERATE', 'HEAVY'] })
+  relaxationLevel?: 'NONE' | 'MODERATE' | 'HEAVY';
+
+  @ApiPropertyOptional({ description: '累计停留时间压缩（分钟）' })
+  totalCompressedMin?: number;
+
+  @ApiPropertyOptional({ description: '失败原因码（硬失败/不可修复约束）', type: [String] })
+  failureReasonCodes?: string[];
+
+  @ApiPropertyOptional({
+    description: '失败决策追踪（slot 级不可修复证据）',
+    type: 'array',
+    items: { type: 'object' },
+  })
+  failureDecisionTraces?: Array<{
+    slot: string;
+    trigger: string;
+    reasonCode: string;
+    rejectedTopK?: Array<{
+      placeId: number;
+      reason: string;
+      openingHours?: string;
+    }>;
+  }>;
+
+  /** 双引擎草案一致度（仲裁前 LLM vs 算法），0–1 */
+  @ApiPropertyOptional({ description: '双引擎草案一致度（仲裁前）' })
+  dualEngineAgreementScore?: number;
+
+  @ApiPropertyOptional({ description: '双引擎槽位分歧数（仲裁前）' })
+  dualEngineDivergenceCount?: number;
+
+  @ApiPropertyOptional({
+    description: '草案验证门状态（Convergence Engine / Draft Gate）',
+    enum: ['APPROVED', 'NEEDS_REPAIR', 'REJECTED'],
+  })
+  draftGateStatus?: 'APPROVED' | 'NEEDS_REPAIR' | 'REJECTED';
+
+  /** 已对 LLM 与 RouteEngine 输出做槽位级 LLM×算法融合后写入草案 */
+  @ApiPropertyOptional({ description: '已应用槽位级 LLM×算法融合' })
+  slotLevelMergeApplied?: boolean;
+
+  /**
+   * 草案契约摘要（/draft vs NL vs runtime 统一语义边界；便于观测「同一 Draft Engine、多入口」）。
+   */
+  @ApiPropertyOptional({ description: 'TripDraftContract 摘要', type: 'object', additionalProperties: true })
+  draftContractSummary?: {
+    mode: 'EXPLORATION' | 'BOOTSTRAP' | 'RUNTIME';
+    tripId?: string;
+    engine: 'LLM' | 'ALGO' | 'HYBRID';
+    executionLevel: 'NONE' | 'SIMULATED' | 'VALIDATED';
+    solverContextInjected?: boolean;
+    regionAnchorPlanning?: boolean;
+  };
+
+  /**
+   * 执行仿真层：校验「物理世界可走完」程度（非规划，而是回放式估计）。
+   */
+  @ApiPropertyOptional({
+    description: '执行前仿真报告（可行性 / 风险 / 建议）',
+    type: 'object',
+    additionalProperties: true,
+  })
+  executionSimulation?: ExecutionSimulationReport;
+
+  /** 当 TripDraftContract 携带 userIntent 时返回，便于观测画像注入是否生效 */
+  @ApiPropertyOptional({
+    description: '用户长期画像摘要（来自 UserIntentState.longTermProfile + behaviorMemory）',
+    type: 'object',
+    additionalProperties: true,
+  })
+  userIntentProfileSummary?: {
+    preferredPace: number;
+    mobilityTolerance: number;
+    spontaneityLevel: number;
+    budgetSensitivity: number;
+    behaviorPatternsCount: number;
+  };
+
+  /** Persona + Policy Engine 注入摘要（可解释个性化） */
+  @ApiPropertyOptional({
+    description: '人格与执行策略摘要（TravelPersona / ExecutionPolicy）',
+    type: 'object',
+    additionalProperties: true,
+  })
+  personaExecutionSummary?: {
+    personaId: string;
+    type: string;
+    gateProfile: string;
+    simulationLevel: string;
+    repairAggressiveness: string;
+    engineWeights: { llm: number; algo: number; solver: number };
+    constraintPriorityOrder: string[];
+    /** Global Optimization Layer 部署版本（内存/持久化骨架） */
+    systemPolicySchemaVersion?: number;
+  };
+
+  /** 多目标 Pareto 前沿 + 人格偏好选点 */
+  @ApiPropertyOptional({ description: 'Pareto 非支配集与选中方案', type: 'object', additionalProperties: true })
+  paretoDecisionSummary?: {
+    frontPlanIds: string[];
+    /** 最终执行方案（含 Multi-Agent 协商） */
+    selectedPlanId: string;
+    /** 仅人格效用标量在 Pareto 前沿上的选择（协商前） */
+    personaUtilityPickPlanId?: string;
+    objectivesByPlanId: Record<string, ObjectiveVector>;
+    negotiationAdjusted?: boolean;
+    multiAgentNegotiation?: {
+      contributions: Array<{ agent: string; supportedPlanIds: string[]; note: string }>;
+      conflictResolutionLog: Array<{ planId: string; action: string; detail: string }>;
+    };
+  };
 }
 
 /**
  * 行程草案响应 DTO
  */
 export class TripDraftResponseDto {
+  /** 单次草案运行标识（不落库；用于追踪 / Decision Trace） */
+  @ApiPropertyOptional({ description: '草案运行 ID' })
+  draftId?: string;
+
   @ApiProperty({ description: '目的地国家代码' })
   destination!: string;
 
@@ -332,6 +503,18 @@ export class TripDraftResponseDto {
 
   @ApiPropertyOptional({ type: TripDraftMetadata, description: '元数据' })
   metadata?: TripDraftMetadata;
+
+  /** 决策 SSOT（与管线内核一致；便于前端与追踪系统直接消费） */
+  @ApiPropertyOptional({ description: 'TripDraftState', type: 'object', additionalProperties: true })
+  tripDraftState?: TripDraftState;
+
+  /** 顶层仿真结果（等于 metadata.executionSimulation 时的快捷字段） */
+  @ApiPropertyOptional({ description: '执行仿真报告', type: 'object', additionalProperties: true })
+  simulation?: ExecutionSimulationReport;
+
+  /** 决策链追踪（因果图谱，可解释 / 学习埋点） */
+  @ApiPropertyOptional({ description: 'Decision Trace（规划执行图谱）', type: 'object', additionalProperties: true })
+  decisionTrace?: DecisionTrace;
 }
 
 /**

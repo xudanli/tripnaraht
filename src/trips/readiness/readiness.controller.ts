@@ -77,6 +77,15 @@ import { UserDecisionService } from './services/user-decision.service';
 import { ReadinessToConstraintsCompiler } from './compilers/readiness-to-constraints.compiler';
 import { serializePackForAdmin } from './utils/pack-serializer.util';
 import { deserializePackFromAdmin } from './utils/pack-deserializer.util';
+import type { TripWorldState } from '../decision/world-model';
+import { EcoIdentityLedgerPersistenceService } from '../decision/services/eco-identity-ledger-persistence.service';
+import { applyPrismaTripIdToWorldState } from '../execution-closure-persistence/apply-prisma-trip-id-to-world-state';
+import {
+  inferPlaceIdsForHazardType,
+  formatItineraryRiskSuffix,
+  formatMustItinerarySuffix,
+  type TripPlaceRef,
+} from './utils/itinerary-readiness-context.util';
 
 class TravelerDto {
   @IsOptional()
@@ -315,6 +324,35 @@ export class ReadinessController {
       }
     }
     return this.tripConflictsService || null;
+  }
+
+  /**
+   * Minimal `TripWorldState` for `extractTripContext` / AI：用 `applyPrismaTripIdToWorldState` 绑定 Prisma 行程 id，再尝试从 DB hydrate ECO 账本。
+   */
+  private async prepareTripWorldStateForAi(params: {
+    tripId: string;
+    destination: string;
+    startDate: string;
+    durationDays: number;
+  }): Promise<TripWorldState> {
+    const state: TripWorldState = {
+      context: {
+        destination: params.destination,
+        startDate: params.startDate,
+        durationDays: params.durationDays,
+        preferences: { intents: {}, pace: 'moderate', riskTolerance: 'medium' },
+      },
+      candidatesByDate: {},
+      signals: { lastUpdatedAt: new Date().toISOString() },
+    };
+    applyPrismaTripIdToWorldState(state, params.tripId);
+    try {
+      const svc = this.moduleRef.get(EcoIdentityLedgerPersistenceService, { strict: false });
+      await svc.hydrateWorldStateIfNeeded(state);
+    } catch {
+      // Ledger service absent in minimal/test graphs — AI path still works without prior ledger.
+    }
+    return state;
   }
 
   @Public()
@@ -572,7 +610,7 @@ export class ReadinessController {
       const geoLng = coordinates.length > 0 ? coordinates[0].lng : undefined;
 
       // 调用准备度检查（支持多语言）
-      const result = await this.readinessService.checkFromDestination(
+      let result = await this.readinessService.checkFromDestination(
         trip.destination,
         context,
         {
@@ -583,21 +621,34 @@ export class ReadinessController {
         }
       );
 
-      // 🆕 增强风险信息（如果存在）
+      // 🆕 增强风险信息 / 必须项：附着本行程 POI（天、名称），避免 Pack 级泛泛描述
       if (result.findings && result.findings.length > 0) {
-        // 构建POI映射（用于增强风险信息）
         const poiMap = new Map<number, { name: string; nameCN?: string; day: number }>();
+        const tripPlaceRefs: TripPlaceRef[] = [];
         try {
           if (trip.TripDay) {
+            const seenPlace = new Set<number>();
             trip.TripDay.forEach((day, dayIndex) => {
               day.ItineraryItem?.forEach((item) => {
                 if (item.Place) {
                   const placeId = item.Place.id;
-                  if (!poiMap.has(placeId)) {
+                  if (!seenPlace.has(placeId)) {
+                    seenPlace.add(placeId);
+                    const md = (item.Place.metadata as Record<string, unknown>) || {};
+                    const canonicalType =
+                      typeof md.canonicalType === 'string' ? md.canonicalType : undefined;
                     poiMap.set(placeId, {
                       name: item.Place.nameEN || item.Place.nameCN || `POI ${placeId}`,
-                      nameCN: item.Place.nameCN,
+                      nameCN: item.Place.nameCN ?? undefined,
                       day: dayIndex + 1,
+                    });
+                    tripPlaceRefs.push({
+                      placeId,
+                      day: dayIndex + 1,
+                      name: item.Place.nameEN || item.Place.nameCN || `POI ${placeId}`,
+                      nameCN: item.Place.nameCN ?? undefined,
+                      canonicalType,
+                      category: item.Place.category || '',
                     });
                   }
                 }
@@ -608,16 +659,31 @@ export class ReadinessController {
           this.logger.warn(`构建POI映射失败，风险信息将不包含POI详情: ${(poiError as Error).message}`);
         }
 
-        // 增强每个finding中的风险信息
+        const effectiveLang = lang || 'zh';
+
         result.findings = result.findings.map((finding: any) => {
           if (finding.risks && finding.risks.length > 0) {
             finding.risks = finding.risks.map((r: any) => {
+              let poiIds: number[] = [];
+              if (r.affectedPois?.length) {
+                poiIds = r.affectedPois
+                  .map((poiId: unknown) => {
+                    if (poiId != null && typeof poiId === 'object' && 'id' in (poiId as object)) {
+                      const id = (poiId as { id?: string | number }).id;
+                      return typeof id === 'number' ? id : parseInt(String(id), 10);
+                    }
+                    return typeof poiId === 'number' ? poiId : parseInt(String(poiId), 10);
+                  })
+                  .filter((n: number) => !Number.isNaN(n));
+              } else {
+                poiIds = inferPlaceIdsForHazardType(String(r.type || ''), tripPlaceRefs);
+              }
+
               const baseRisk: any = {
                 ...r,
                 sourceType: 'readiness',
                 severity: (r.severity || 'medium') as 'high' | 'medium' | 'low',
-                affectedPois: (r.affectedPois || []).map((poiId: any) => {
-                  const poiIdNum = typeof poiId === 'string' ? parseInt(poiId, 10) : poiId;
+                affectedPois: poiIds.map((poiIdNum: number) => {
                   const poiInfo = poiMap.get(poiIdNum);
                   if (poiInfo) {
                     return {
@@ -634,12 +700,52 @@ export class ReadinessController {
                   };
                 }),
               };
-              return this.riskTypeMapperService.enhanceRisk(baseRisk, lang || 'zh');
+              const enhanced = this.riskTypeMapperService.enhanceRisk(baseRisk, effectiveLang);
+              const suffix = formatItineraryRiskSuffix(enhanced.affectedPois || [], effectiveLang);
+              if (suffix) {
+                enhanced.summary = [enhanced.summary, suffix].filter(Boolean).join('\n');
+                enhanced.description = [enhanced.description, suffix].filter(Boolean).join('\n');
+                enhanced.message = [enhanced.message, suffix].filter(Boolean).join('\n');
+                enhanced.impact =
+                  effectiveLang === 'zh'
+                    ? `与本行程中上述地点相关`
+                    : `Related to the itinerary locations listed above`;
+              }
+              return enhanced;
             });
           }
+
+          if (finding.must?.length) {
+            finding.must = finding.must.map((item: ReadinessFindingItem) => {
+              const suffix = formatMustItinerarySuffix(tripPlaceRefs, effectiveLang);
+              if (!suffix) return item;
+              const ordered = tripPlaceRefs.length === 1 ? tripPlaceRefs[0] : undefined;
+              return {
+                ...item,
+                message: `${item.message}${suffix}`,
+                ...(ordered
+                  ? {
+                      tripScope: {
+                        kind: 'poi' as const,
+                        day: ordered.day,
+                        fromPoi: { id: String(ordered.placeId), name: ordered.name },
+                      },
+                    }
+                  : {}),
+              };
+            });
+          }
+
           return finding;
         });
       }
+
+      // 与 GET .../score 对齐：将覆盖地图 high severity 缺口写入对应 findings[].blockers（稳定 id：coverage-gap:*）
+      result = await this.coverageMapService.mergeHighSeverityCoverageGapBlockersIntoTripReadiness(
+        tripId,
+        trip.destination ?? '',
+        result,
+      );
 
       return successResponse(result);
     } catch (error) {
@@ -1118,23 +1224,13 @@ export class ReadinessController {
         });
       }
 
-      // 构建 Trip Context
-      const tripContext = this.readinessService.extractTripContext({
-        context: {
-          destination: trip.destination || '',
-          startDate: trip.startDate.toISOString().split('T')[0],
-          durationDays,
-          preferences: {
-            intents: {},
-            pace: 'moderate',
-            riskTolerance: 'medium',
-          },
-        },
-        candidatesByDate: {},
-        signals: {
-          lastUpdatedAt: new Date().toISOString(),
-        },
+      const tripWorldState = await this.prepareTripWorldStateForAi({
+        tripId,
+        destination: trip.destination || '',
+        startDate: trip.startDate.toISOString().split('T')[0],
+        durationDays,
       });
+      const tripContext = this.readinessService.extractTripContext(tripWorldState);
 
       // 构建用户画像
       const userProfile = effectiveUserId
@@ -1349,23 +1445,13 @@ export class ReadinessController {
         };
       }
 
-      // 构建 Trip Context
-      const tripContext = this.readinessService.extractTripContext({
-        context: {
-          destination: trip.destination || '',
-          startDate: trip.startDate.toISOString().split('T')[0],
-          durationDays,
-          preferences: {
-            intents: {},
-            pace: 'moderate',
-            riskTolerance: 'medium',
-          },
-        },
-        candidatesByDate: {},
-        signals: {
-          lastUpdatedAt: new Date().toISOString(),
-        },
+      const tripWorldState = await this.prepareTripWorldStateForAi({
+        tripId,
+        destination: trip.destination || '',
+        startDate: trip.startDate.toISOString().split('T')[0],
+        durationDays,
       });
+      const tripContext = this.readinessService.extractTripContext(tripWorldState);
 
       // 构建用户画像
       const userProfile = effectiveUserId
@@ -2116,23 +2202,13 @@ export class ReadinessController {
         });
       }
 
-      // 构建 Trip Context
-      const tripContext = this.readinessService.extractTripContext({
-        context: {
-          destination: trip.destination || '',
-          startDate: trip.startDate.toISOString().split('T')[0],
-          durationDays,
-          preferences: {
-            intents: {},
-            pace: 'moderate',
-            riskTolerance: 'medium',
-          },
-        },
-        candidatesByDate: {},
-        signals: {
-          lastUpdatedAt: new Date().toISOString(),
-        },
+      const tripWorldState = await this.prepareTripWorldStateForAi({
+        tripId,
+        destination: trip.destination || '',
+        startDate: trip.startDate.toISOString().split('T')[0],
+        durationDays,
       });
+      const tripContext = this.readinessService.extractTripContext(tripWorldState);
 
       // 构建用户画像
       const userProfile = effectiveUserId

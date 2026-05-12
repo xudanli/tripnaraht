@@ -55,4 +55,7 @@ export const SKILL_CONTEXT_LEARN = 'SKILL_CONTEXT_LEARN';
 // Readiness Skills (additional)
 export const SKILL_READINESS_CHECK_VISA_WINDOW = 'SKILL_READINESS_CHECK_VISA_WINDOW';
 
+/** LLM 意图分类（替代堆叠关键词规则的可选覆盖） */
+export const SKILL_INTENT_RECOGNIZE = 'SKILL_INTENT_RECOGNIZE';
+
 

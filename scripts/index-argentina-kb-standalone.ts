@@ -21,7 +21,7 @@ class SimpleEmbeddingService {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://121.43.192.56:8001';
+    this.baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://101.37.240.9:18001';
     
     this.httpClient = axios.create({
       baseURL: this.baseUrl,

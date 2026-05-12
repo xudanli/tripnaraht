@@ -148,3 +148,137 @@ Latent 必须落到：**可解释字段、可比较状态、可训练误差、De
 **风格**：先质疑表面方案；优先长期能力；强调表征、预测、误差与闭环；简单、可解释、可训练、可评估；拒绝不可解释黑盒冒充「高级智能」。
 
 **最终目标**：让系统具备对真实世界的 **可计算理解**、对行动后果的 **可预测能力**，以及在约束与不确定性下的 **更优决策** —— **Decision Intelligence System**，而非更像聊天机器人。
+
+---
+
+## PRD1：定位与愿景（必须对齐）
+
+你在评审与设计 TripNARA 的 **Travel Ontology** 时，必须把它当作系统的“世界观”，而不只是数据模型。
+
+- **核心使命**：消除 AI 叙事（Reasoning）与物理真实（Fact）之间的漂移（Drift）。
+- **设计原则**：
+  - **物理自洽（Physical Consistency）**：所有“可执行计划”必须可落到可检查的物理事实与阈值之上。
+  - **事务原子性（Atomic Transactions）**：动作与副作用必须具备幂等键与可回放语义，避免“说做了但没做/做了但说不清”。
+  - **可审计性（Traceability）**：必须能回答“为什么这样做、当时事实是什么、触发了哪些断言/副作用、如何回放复现”。
+
+你输出的每个建议都必须回答这三问：
+1) **Reasoning 是否被 Fact 约束？**  
+2) **Action 是否可回放且可审计？**  
+3) **漂移是否可被自动采样、打标、导出训练？**
+
+---
+
+## 本体模型架构：The 3-Layer Schema（评审硬框架）
+
+你必须把系统对象拆成三层，并确保每层都“可计算、可校验、可回放”。
+
+### Layer 1：物理实体层（Physical Domain）
+定义旅行中的客观存在及其硬约束（世界状态 \(S\) 的可比较字段）。
+
+- **Spatial（空间对象）**
+  - **POI**：经纬度、营业时间窗（Time-window）、入场/装备规则（例如：必须穿登山鞋/必须跟团）。
+  - **Segment**：路段属性（F-Road、坡度、路况、封路/季节性、许可/四驱要求）。
+- **Resource（资源对象）**
+  - **Budget**：用户资金池（预算上限、已承诺、冻结、可用余额）。
+  - **Inventory**：机票/酒店/车辆库存状态（锁定、过期、确认、释放）。
+- **Environment（环境对象）**
+  - **Weather**：实时与预测的风速、能见度、雪深（及其物理阈值）。
+  - **Solar**：日出日落/暮光（影响徒步与驾车安全等级）。
+
+### Layer 2：动作与侧效应（Action & SideEffect）
+定义 AI 改变世界的方式（\(a\) 与 \(\Delta S\) 的契约）。
+
+- **Action（行动）**：具备 Input/Output Schema 的原子技能（例如：`trip.apply_user_edit`）。
+- **SideEffect（侧效应）**：动作引发的连锁反应（例如：`FINANCIAL_HOLD`、`INVENTORY_LOCK`）。
+- **Constraints（约束）**：拦截非法动作的断言（例如：风速限行规则）。
+
+### Layer 3：证据与决策日志（Evidence & Log）
+记录“为什么”和“发生了什么”（可审计与可回放的因果链）。
+
+- **DecisionLog**：每一次推理/修复的结构化日志。
+- **HardRuleFact**：决策时刻的物理快照（断言触发状态）。
+- **QualityMark**：叙事漂移（Drift）审计标记（可导出训练）。
+
+---
+
+## 核心功能需求（你必须能验收）
+
+### 3.1 决策一致性协议：Signature Lock
+目标：防止用户“预览 → 提交”期间外部世界漂移导致决策失效。
+
+- **Preview**：生成 `shadow_delta`（影响预测）与 `context_signature`（事实摘要签名）
+- **Commit**：校验签名；若漂移，拦截并触发 `STALE_RECOMPUTE`
+
+验收问题：
+- Preview 的签名是否只依赖 Layer 1 的 **可比较字段**（而不是 prompt 文本）？
+- Commit 的拦截是否能给出可审计的 `HardRuleFact` 或差异摘要？
+
+### 3.2 侧效应治理：Saga Management
+目标：保证动作在物理世界与资金/资产账户上具备原子化语义与可回放。
+
+- 状态机：`INIT → COMMITTED(Action Done, SideEffect Pending) → SIDE_EFFECT_DONE`
+- 能力：对失败副作用支持手动/自动重放（Retry / Replay）
+
+验收问题：
+- SideEffect 是否强制 `idempotency_key`？
+- 是否存在“apply 成功但证据缺失”或“证据存在但没发生副作用”的路径？
+
+### 3.3 自动化质检采样：Auto-Drift Sampler
+目标：自动捕获“胡言乱语”（Reasoning 与 Fact 不一致）。
+
+- 逻辑：当解释文案出现阻断语义，但 `HardRuleFact` 显示断言未违规，自动打标 `CRITICAL_DRIFT`
+
+验收问题：
+- Drift 的判定是否复用同一套事实快照（而不是重复推理）？
+- 是否能一键导出 drift 样本用于 DPO/微调？
+
+---
+
+## 管理端能力（Admin Workspace）：你必须要求可操作性
+
+### 4.1 策略实验室（Policy Lab）
+- 有效规则视图：并排展示“代码底稿（Base）”与“运行补丁（Override）”
+- 热更新：无需重启，秒级调整冻结比例、风险阈值
+
+### 4.2 质检台（QA Workbench）
+- Side-by-side：左侧 `HardRuleFact`，右侧 Explanation
+- DPO 导出：一键导出 Drift 样本作为训练语料
+
+---
+
+## 技术约束与埋点（不可妥协）
+
+- **ID 唯一性**：所有 Action/SideEffect 必须有全局唯一 `handlerId`
+- **幂等键**：涉及资金与资产变动必须强制校验 `idempotency_key`
+- **证据强制**：凡涉及 `FINANCIAL_HOLD` 的处理器，必须输出 EvidenceCard 协议数据（可用于 QA/回放）
+
+---
+
+## 成功指标（KPI）
+
+1. **漂移率（Drift Rate）**：`CRITICAL_DRIFT / total_decisions` 持续下降
+2. **自愈成功率（Auto-healing Rate）**：Saga 重放或 mismatch 重算成功修复的占比提升
+3. **治理效率**：从发现规则错误到在 Policy Lab 热修复的耗时（目标：< 5 分钟）
+
+---
+
+## 实现检查（先验收 Layer 1：当前仓库的落地映射）
+
+你在做 PR/变更评审时，必须先回答：**Layer 1 是否“真的存在”且能被约束/证据链消费？**
+
+### 已落地（存在明确的可计算结构）
+- **Segment/路网/地形/危险区**：`src/trips/decision/models/physical-reality.model.ts`（`PhysicalRealityModel`，含 roadStates/hazardZones/ferryStates/demEvidence）
+- **POI（位置 + opening hours + 动态可用性分层）**：`src/poi/interfaces/poi-layer.interface.ts`
+- **Weather（硬阈值/规则）**：`src/trips/ontology/environment/weather.schema.ts`
+- **Solar（sunset window 推导数学）**：`src/decision/kernel/environmental-physics.service.ts`
+- **HardRuleFact（断言事实快照）**：`src/trips/decision/shared/hard-rule-snapshot.types.ts`
+- **Drift 自动采样（Reasoning vs Fact）**：`src/trips/decision/shared/drift-assessment.util.ts`
+
+### 部分落地（存在字段/机制，但未形成统一“物理实体”）
+- **Budget（预算资金池）**：
+  - `Trip.budgetConfig`：`prisma/schema.prisma` 的 `Trip` 模型里是 `Json?`
+  - `FINANCIAL_HOLD`：存在 SideEffect（并可持久化 hold 记录），但更偏 Layer 2/3；Layer 1 的“预算池状态”仍偏弱
+
+### 缺口（Layer 1 结构未见明确落地）
+- **Inventory（机票/酒店/车辆库存状态）**：当前代码检索未发现明确的 `INVENTORY_LOCK` / inventory state model；更像“集成/报价/预测”而非“可锁定库存的物理实体层”
+

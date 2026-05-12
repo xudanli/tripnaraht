@@ -2,6 +2,7 @@
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsEnum } from 'class-validator';
+import type { SafetravelRSSRefined } from '../interfaces/safetravel-rss-refined.interface';
 
 export enum AlertSeverity {
   LOW = 'low',
@@ -75,6 +76,11 @@ export class SafetravelResponseDto {
 
   @ApiProperty({ description: '最后更新时间' })
   lastUpdated!: string;
+
+  @ApiPropertyOptional({
+    description: 'RSS 精炼层（规则解析，与 alerts 同源；无 <item> 时为空数组）',
+  })
+  rss_refined?: SafetravelRSSRefined[];
 }
 
 export class SafetravelQueryDto {

@@ -13,7 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { Public } from '../../auth/decorators/public.decorator';
 import { AdminStrictAuthGuard } from '../guards/admin-strict-auth.guard';
@@ -39,6 +39,7 @@ import {
   AdminRulesBatchReplaceDto,
   AdminRulesListQueryDto,
   AdminSagaLogsQueryDto,
+  AdminSagaLogsMetricsQueryDto,
   AdminSagaRetryDto,
 } from '../dto/agent-ops-admin.dto';
 import { AdminQualityMarkCreateDto, AdminQualityMarkListQueryDto, AdminQualityMarkUpdateDto } from '../dto/admin-quality.dto';
@@ -95,6 +96,10 @@ type AdminDecisionContractCompareResponse = {
 @ApiBearerAuth()
 @ApiHeader({ name: 'x-admin-god-key', required: false, description: 'Optional when ADMIN_GOD_API_KEY is set (Bearer value alternative)' })
 export class AgentOpsAdminController {
+  private static readonly RETRY_POLICY_ACTION = '__admin__.retry_policy';
+  private static readonly SAGA_METRICS_CACHE_TTL_MS = 60_000;
+  private static readonly SAGA_METRICS_CACHE_MAX_ENTRIES = 200;
+  private readonly sagaMetricsCache = new Map<string, { expiresAtMs: number; value: any }>();
   constructor(
     private readonly prisma: PrismaService,
     private readonly ruleSyncer: SideEffectRuleSyncerService,
@@ -113,6 +118,57 @@ export class AgentOpsAdminController {
   private actor(req: Request): string {
     const u = (req as any).user;
     return String(u?.userId ?? u?.email ?? 'unknown');
+  }
+
+  private getSagaMetricsCache(key: string): any | null {
+    const now = Date.now();
+    for (const [k, v] of this.sagaMetricsCache.entries()) {
+      if (v.expiresAtMs <= now) this.sagaMetricsCache.delete(k);
+    }
+    const hit = this.sagaMetricsCache.get(key);
+    if (!hit || hit.expiresAtMs <= now) {
+      if (hit) this.sagaMetricsCache.delete(key);
+      return null;
+    }
+    return hit.value;
+  }
+
+  private setSagaMetricsCache(key: string, value: any): void {
+    const now = Date.now();
+    this.sagaMetricsCache.set(key, {
+      expiresAtMs: now + AgentOpsAdminController.SAGA_METRICS_CACHE_TTL_MS,
+      value,
+    });
+    if (this.sagaMetricsCache.size <= AgentOpsAdminController.SAGA_METRICS_CACHE_MAX_ENTRIES) return;
+    const firstKey = this.sagaMetricsCache.keys().next().value;
+    if (firstKey) this.sagaMetricsCache.delete(firstKey);
+  }
+
+  private async loadRetryStrategyBySideEffectType(): Promise<Map<string, 'none' | 'fixed_interval' | 'exponential_backoff'>> {
+    const out = new Map<string, 'none' | 'fixed_interval' | 'exponential_backoff'>();
+    if (!this.prisma?.isDbConnected?.()) return out;
+    try {
+      const rows = await this.prisma.decisionRuleConfig.findMany({
+        where: {
+          actionName: AgentOpsAdminController.RETRY_POLICY_ACTION,
+          isActive: true,
+        },
+      });
+      for (const row of rows) {
+        const p = row.params && typeof row.params === 'object' && !Array.isArray(row.params) ? (row.params as any) : {};
+        const sideEffectType = String(p.sideEffectType ?? '').trim().toUpperCase();
+        if (!sideEffectType) continue;
+        const retryStrategyRaw = String(p.retryStrategy ?? 'none').trim().toLowerCase();
+        const retryStrategy =
+          retryStrategyRaw === 'fixed_interval' || retryStrategyRaw === 'exponential_backoff'
+            ? retryStrategyRaw
+            : 'none';
+        out.set(sideEffectType, retryStrategy);
+      }
+      return out;
+    } catch {
+      return out;
+    }
   }
 
   @Get('rules')
@@ -197,28 +253,428 @@ export class AgentOpsAdminController {
 
   @Get('saga/logs')
   @ApiOperation({ summary: 'Paginated AgentActionLog list' })
+  @ApiQuery({ name: 'status', required: false, description: 'Exact saga status (e.g. COMMITTED, FAILED)' })
+  @ApiQuery({ name: 'tripId', required: false, description: 'Filter by trip id' })
+  @ApiQuery({ name: 'skip', required: false, description: 'Pagination offset', schema: { type: 'integer', minimum: 0 } })
+  @ApiQuery({ name: 'take', required: false, description: 'Pagination size', schema: { type: 'integer', minimum: 1, maximum: 200 } })
+  @ApiQuery({
+    name: 'hasEvidenceRequirementContext',
+    required: false,
+    description:
+      'true: only rows with evidence_requirement_context; false: only rows without evidence_requirement_context',
+    schema: { type: 'boolean' },
+  })
+  @ApiQuery({
+    name: 'hasApplyFailed',
+    required: false,
+    description:
+      'true: only rows where realized_state.side_effects_ledger contains APPLY_FAILED; false: only rows without APPLY_FAILED',
+    schema: { type: 'boolean' },
+  })
+  @ApiQuery({
+    name: 'hasCompensationFailed',
+    required: false,
+    description:
+      'true: only rows where realized_state.side_effects_ledger contains COMPENSATION_FAILED; false: only rows without COMPENSATION_FAILED',
+    schema: { type: 'boolean' },
+  })
+  @ApiQuery({
+    name: 'minRetryCount',
+    required: false,
+    description: 'only rows whose realized_state.side_effects_ledger has retry_count >= this value',
+    schema: { type: 'integer', minimum: 0 },
+  })
+  @ApiQuery({
+    name: 'hasManualInterventionRequired',
+    required: false,
+    description:
+      'true: only rows where realized_state.side_effects_ledger contains MANUAL_INTERVENTION_REQUIRED; false: only rows without MANUAL_INTERVENTION_REQUIRED',
+    schema: { type: 'boolean' },
+  })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      required: ['rows', 'total', 'enabled', 'db_connected'],
+      properties: {
+        rows: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              status: { type: 'string' },
+              payload: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  realized_state: {
+                    type: 'object',
+                    nullable: true,
+                    properties: {
+                      side_effects_ledger: {
+                        type: 'array',
+                        nullable: true,
+                        items: {
+                          type: 'object',
+                          properties: {
+                            handler_id: { type: 'string' },
+                            kind: { type: 'string', nullable: true },
+                            status: { type: 'string' },
+                            retry_count: { type: 'number' },
+                            last_error: { type: 'string', nullable: true },
+                            updated_at: { type: 'string', format: 'date-time' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              evidence_requirement_context: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  required_action_type: { type: 'string', example: 'FINANCIAL_HOLD' },
+                  required_evidence_type: { type: 'string', example: 'EvidenceCard' },
+                  side_effect_kind: { type: 'string', example: 'FINANCIAL_HOLD' },
+                },
+              },
+            },
+          },
+        },
+        total: { type: 'number' },
+        enabled: { type: 'boolean' },
+        db_connected: { type: 'boolean' },
+      },
+    },
+  })
   async sagaLogs(@Query() q: AdminSagaLogsQueryDto) {
     const take = Math.min(200, Math.max(1, Number(q.take ?? 50)));
     const skip = Math.max(0, Number(q.skip ?? 0));
     const r = await this.agentActionLog.listPaginated({
       status: q.status,
       tripId: q.tripId,
+      hasEvidenceRequirementContext: q.hasEvidenceRequirementContext,
+      hasApplyFailed: q.hasApplyFailed,
+      hasCompensationFailed: q.hasCompensationFailed,
+      minRetryCount: Number.isFinite(Number(q.minRetryCount)) ? Math.max(0, Math.floor(Number(q.minRetryCount))) : undefined,
+      hasManualInterventionRequired: q.hasManualInterventionRequired,
       take,
       skip,
     });
+    const rows = (r.rows ?? []).map((row: any) => {
+      const payload = row?.payload && typeof row.payload === 'object' ? (row.payload as any) : {};
+      return {
+        ...row,
+        evidence_requirement_context: payload.evidence_requirement_context ?? null,
+      };
+    });
     return {
       ...r,
+      rows,
       enabled: this.agentActionLog.isEnabled(),
       db_connected: this.prisma.isDbConnected(),
     };
   }
 
+  @Get('saga/logs/metrics')
+  @ApiOperation({ summary: 'Aggregate saga metrics for retry/compensation tuning' })
+  @ApiQuery({ name: 'status', required: false, description: 'Exact saga status (e.g. COMMITTED, FAILED)' })
+  @ApiQuery({ name: 'tripId', required: false, description: 'Filter by trip id' })
+  @ApiQuery({ name: 'since', required: false, description: 'Start timestamp (ISO-8601), inclusive' })
+  @ApiQuery({ name: 'until', required: false, description: 'End timestamp (ISO-8601), inclusive' })
+  @ApiQuery({ name: 'take', required: false, description: 'Sample size for aggregation', schema: { type: 'integer', minimum: 1, maximum: 5000 } })
+  @ApiQuery({
+    name: 'retryStrategy',
+    required: false,
+    description: 'Filter and aggregate by resolved retry strategy (none/fixed_interval/exponential_backoff)',
+    schema: { type: 'string', enum: ['none', 'fixed_interval', 'exponential_backoff'] },
+  })
+  @ApiQuery({ name: 'hasEvidenceRequirementContext', required: false, schema: { type: 'boolean' } })
+  @ApiQuery({ name: 'hasApplyFailed', required: false, schema: { type: 'boolean' } })
+  @ApiQuery({ name: 'hasCompensationFailed', required: false, schema: { type: 'boolean' } })
+  @ApiQuery({ name: 'minRetryCount', required: false, schema: { type: 'integer', minimum: 0 } })
+  @ApiQuery({ name: 'hasManualInterventionRequired', required: false, schema: { type: 'boolean' } })
+  async sagaLogsMetrics(@Query() q: AdminSagaLogsMetricsQueryDto) {
+    const normalizeBool = (v: unknown): boolean | undefined => {
+      if (v === true || v === 'true') return true;
+      if (v === false || v === 'false') return false;
+      return undefined;
+    };
+    const parseIso = (v: unknown): Date | undefined => {
+      const s = String(v ?? '').trim();
+      if (!s) return undefined;
+      const d = new Date(s);
+      return Number.isFinite(d.getTime()) ? d : undefined;
+    };
+    const createdAtFrom = parseIso(q.since);
+    const createdAtTo = parseIso(q.until);
+    const strategyFilterRaw = String(q.retryStrategy ?? '').trim().toLowerCase();
+    const strategyFilter =
+      strategyFilterRaw === 'fixed_interval' || strategyFilterRaw === 'exponential_backoff' || strategyFilterRaw === 'none'
+        ? strategyFilterRaw
+        : undefined;
+    const take = Math.min(5000, Math.max(1, Number(q.take ?? 500)));
+    const normalizedMinRetryCount =
+      Number.isFinite(Number(q.minRetryCount)) ? Math.max(0, Math.floor(Number(q.minRetryCount))) : undefined;
+    const cacheKey = JSON.stringify({
+      status: q.status ?? null,
+      tripId: q.tripId ?? null,
+      createdAtFrom: createdAtFrom?.toISOString?.() ?? null,
+      createdAtTo: createdAtTo?.toISOString?.() ?? null,
+      hasEvidenceRequirementContext: normalizeBool(q.hasEvidenceRequirementContext),
+      hasApplyFailed: normalizeBool(q.hasApplyFailed),
+      hasCompensationFailed: normalizeBool(q.hasCompensationFailed),
+      minRetryCount: normalizedMinRetryCount ?? null,
+      hasManualInterventionRequired: normalizeBool(q.hasManualInterventionRequired),
+      retryStrategy: strategyFilter ?? null,
+      take,
+    });
+    const cached = this.getSagaMetricsCache(cacheKey);
+    if (cached) return { ...cached, cache_hit: true };
+    const page = await this.agentActionLog.listPaginated({
+      status: q.status,
+      tripId: q.tripId,
+      createdAtFrom,
+      createdAtTo,
+      hasEvidenceRequirementContext: q.hasEvidenceRequirementContext,
+      hasApplyFailed: q.hasApplyFailed,
+      hasCompensationFailed: q.hasCompensationFailed,
+      minRetryCount: normalizedMinRetryCount,
+      hasManualInterventionRequired: q.hasManualInterventionRequired,
+      take,
+      skip: 0,
+    });
+    const retryStrategyByType = await this.loadRetryStrategyBySideEffectType();
+
+    const rowsAll = page.rows ?? [];
+    const rows =
+      strategyFilter === undefined
+        ? rowsAll
+        : (rowsAll as any[]).filter((row) => {
+            const ledger = Array.isArray(row?.payload?.realized_state?.side_effects_ledger)
+              ? row.payload.realized_state.side_effects_ledger
+              : [];
+            return ledger.some((entry: any) => {
+              const kind = String(entry?.kind ?? '').trim().toUpperCase();
+              const strategy = retryStrategyByType.get(kind) ?? 'none';
+              return strategy === strategyFilter;
+            });
+          });
+    const retryDistribution: Record<string, number> = { '0': 0, '1-2': 0, '3-5': 0, '6+': 0 };
+    const byType: Record<string, { total_entries: number; apply_failed: number; compensation_failed: number; manual_intervention_required: number }> = {};
+    const byStrategyDimension: Record<
+      string,
+      {
+        side_effect_type: string;
+        retry_strategy: 'none' | 'fixed_interval' | 'exponential_backoff';
+        total_entries: number;
+        apply_failed: number;
+        compensation_failed: number;
+        manual_intervention_required: number;
+      }
+    > = {};
+    const dailyBuckets = new Map<
+      string,
+      { sampled_logs: number; with_apply_failed_count: number; with_compensation_failed_count: number; with_manual_intervention_required_count: number; with_any_retry_count: number }
+    >();
+    let withApplyFailed = 0;
+    let withCompensationFailed = 0;
+    let withManualInterventionRequired = 0;
+    let withAnyRetry = 0;
+
+    for (const row of rows as any[]) {
+      const ledger = Array.isArray(row?.payload?.realized_state?.side_effects_ledger)
+        ? row.payload.realized_state.side_effects_ledger
+        : [];
+      let rowMaxRetry = 0;
+      let rowHasApplyFailed = false;
+      let rowHasCompensationFailed = false;
+      let rowHasManualInterventionRequired = false;
+      for (const entry of ledger) {
+        const status = String(entry?.status ?? '');
+        const kind = String(entry?.kind ?? 'UNKNOWN') || 'UNKNOWN';
+        const strategy = retryStrategyByType.get(kind.trim().toUpperCase()) ?? 'none';
+        if (strategyFilter && strategy !== strategyFilter) {
+          continue;
+        }
+        const retry = Number(entry?.retry_count ?? 0);
+        const retryCount = Number.isFinite(retry) ? Math.max(0, Math.floor(retry)) : 0;
+        rowMaxRetry = Math.max(rowMaxRetry, retryCount);
+        if (!byType[kind]) {
+          byType[kind] = { total_entries: 0, apply_failed: 0, compensation_failed: 0, manual_intervention_required: 0 };
+        }
+        const dimKey = `${kind}::${strategy}`;
+        if (!byStrategyDimension[dimKey]) {
+          byStrategyDimension[dimKey] = {
+            side_effect_type: kind,
+            retry_strategy: strategy,
+            total_entries: 0,
+            apply_failed: 0,
+            compensation_failed: 0,
+            manual_intervention_required: 0,
+          };
+        }
+        byType[kind].total_entries += 1;
+        byStrategyDimension[dimKey].total_entries += 1;
+        if (status === 'APPLY_FAILED') {
+          byType[kind].apply_failed += 1;
+          byStrategyDimension[dimKey].apply_failed += 1;
+          rowHasApplyFailed = true;
+        }
+        if (status === 'COMPENSATION_FAILED') {
+          byType[kind].compensation_failed += 1;
+          byStrategyDimension[dimKey].compensation_failed += 1;
+          rowHasCompensationFailed = true;
+        }
+        if (status === 'MANUAL_INTERVENTION_REQUIRED') {
+          byType[kind].manual_intervention_required += 1;
+          byStrategyDimension[dimKey].manual_intervention_required += 1;
+          rowHasManualInterventionRequired = true;
+        }
+      }
+      if (rowHasApplyFailed) withApplyFailed += 1;
+      if (rowHasCompensationFailed) withCompensationFailed += 1;
+      if (rowHasManualInterventionRequired) withManualInterventionRequired += 1;
+      if (rowMaxRetry >= 1) withAnyRetry += 1;
+      const createdAtMs = Date.parse(String((row as any)?.createdAt ?? (row as any)?.created_at ?? ''));
+      if (Number.isFinite(createdAtMs)) {
+        const day = new Date(createdAtMs).toISOString().slice(0, 10);
+        const cur =
+          dailyBuckets.get(day) ??
+          { sampled_logs: 0, with_apply_failed_count: 0, with_compensation_failed_count: 0, with_manual_intervention_required_count: 0, with_any_retry_count: 0 };
+        cur.sampled_logs += 1;
+        if (rowHasApplyFailed) cur.with_apply_failed_count += 1;
+        if (rowHasCompensationFailed) cur.with_compensation_failed_count += 1;
+        if (rowHasManualInterventionRequired) cur.with_manual_intervention_required_count += 1;
+        if (rowMaxRetry >= 1) cur.with_any_retry_count += 1;
+        dailyBuckets.set(day, cur);
+      }
+      if (rowMaxRetry === 0) retryDistribution['0'] += 1;
+      else if (rowMaxRetry <= 2) retryDistribution['1-2'] += 1;
+      else if (rowMaxRetry <= 5) retryDistribution['3-5'] += 1;
+      else retryDistribution['6+'] += 1;
+    }
+
+    const sampled = rows.length;
+    const pct = (v: number) => (sampled > 0 ? Number(((v / sampled) * 100).toFixed(2)) : 0);
+    const pctDay = (v: number, total: number) => (total > 0 ? Number(((v / total) * 100).toFixed(2)) : 0);
+    const dailyTrend = Array.from(dailyBuckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]) => ({
+        date,
+        sampled_logs: v.sampled_logs,
+        with_apply_failed_count: v.with_apply_failed_count,
+        with_compensation_failed_count: v.with_compensation_failed_count,
+        with_manual_intervention_required_count: v.with_manual_intervention_required_count,
+        with_any_retry_count: v.with_any_retry_count,
+        apply_failed_rate_pct: pctDay(v.with_apply_failed_count, v.sampled_logs),
+        compensation_failed_rate_pct: pctDay(v.with_compensation_failed_count, v.sampled_logs),
+        manual_intervention_required_rate_pct: pctDay(v.with_manual_intervention_required_count, v.sampled_logs),
+        any_retry_rate_pct: pctDay(v.with_any_retry_count, v.sampled_logs),
+      }));
+    const response = {
+      ok: true,
+      cache_hit: false,
+      sampled_logs: sampled,
+      sample_take: take,
+      filters: {
+        status: q.status ?? null,
+        tripId: q.tripId ?? null,
+        since: q.since ?? null,
+        until: q.until ?? null,
+        retryStrategy: strategyFilter ?? null,
+        hasEvidenceRequirementContext: q.hasEvidenceRequirementContext ?? null,
+        hasApplyFailed: q.hasApplyFailed ?? null,
+        hasCompensationFailed: q.hasCompensationFailed ?? null,
+        minRetryCount: q.minRetryCount ?? null,
+        hasManualInterventionRequired: q.hasManualInterventionRequired ?? null,
+      },
+      overview: {
+        with_apply_failed_count: withApplyFailed,
+        with_compensation_failed_count: withCompensationFailed,
+        with_manual_intervention_required_count: withManualInterventionRequired,
+        with_any_retry_count: withAnyRetry,
+        apply_failed_rate_pct: pct(withApplyFailed),
+        compensation_failed_rate_pct: pct(withCompensationFailed),
+        manual_intervention_required_rate_pct: pct(withManualInterventionRequired),
+        any_retry_rate_pct: pct(withAnyRetry),
+      },
+      retry_distribution: retryDistribution,
+      daily_trend: dailyTrend,
+      by_side_effect_type: byType,
+      by_strategy_dimension: byStrategyDimension,
+    };
+    this.setSagaMetricsCache(cacheKey, response);
+    return response;
+  }
+
   @Get('saga/logs/:id')
   @ApiOperation({ summary: 'Saga log detail (payload + lastError)' })
+  @ApiParam({ name: 'id', description: 'AgentActionLog id (saga log id)' })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      required: ['ok'],
+      properties: {
+        ok: { type: 'boolean' },
+        message: { type: 'string', nullable: true },
+        log: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            id: { type: 'string' },
+            status: { type: 'string' },
+            payload: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                realized_state: {
+                  type: 'object',
+                  nullable: true,
+                  properties: {
+                    side_effects_ledger: {
+                      type: 'array',
+                      nullable: true,
+                      items: {
+                        type: 'object',
+                        properties: {
+                          handler_id: { type: 'string' },
+                          kind: { type: 'string', nullable: true },
+                          status: { type: 'string' },
+                          retry_count: { type: 'number' },
+                          last_error: { type: 'string', nullable: true },
+                          updated_at: { type: 'string', format: 'date-time' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        evidence_requirement_context: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            required_action_type: { type: 'string', example: 'FINANCIAL_HOLD' },
+            required_evidence_type: { type: 'string', example: 'EvidenceCard' },
+            side_effect_kind: { type: 'string', example: 'FINANCIAL_HOLD' },
+          },
+        },
+      },
+    },
+  })
   async sagaLogDetail(@Param('id') id: string) {
     const row = await this.agentActionLog.findById(id);
     if (!row) return { ok: false, message: 'Not found' };
-    return { ok: true, log: row };
+    const payload = row.payload && typeof row.payload === 'object' ? (row.payload as any) : {};
+    return {
+      ok: true,
+      log: row,
+      evidence_requirement_context: payload.evidence_requirement_context ?? null,
+    };
   }
 
   @Get('saga/logs/:id/decision-contract')
@@ -234,6 +690,15 @@ export class AgentOpsAdminController {
         id: { type: 'string' },
         decision_contract: { type: 'object', nullable: true },
         realized_state: { type: 'object', nullable: true },
+        evidence_requirement_context: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            required_action_type: { type: 'string', example: 'FINANCIAL_HOLD' },
+            required_evidence_type: { type: 'string', example: 'EvidenceCard' },
+            side_effect_kind: { type: 'string', example: 'FINANCIAL_HOLD' },
+          },
+        },
         compare_path: { type: 'string' },
         evidence_links: {
           type: 'array',
@@ -259,6 +724,7 @@ export class AgentOpsAdminController {
       id: row.id,
       decision_contract: dc,
       realized_state: payload.realized_state ?? null,
+      evidence_requirement_context: payload.evidence_requirement_context ?? null,
       compare_path: `/api/admin/saga/logs/${row.id}/decision-contract/compare`,
       evidence_links: refs.map((rid) => ({
         decision_log_id: rid,

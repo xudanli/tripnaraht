@@ -4,6 +4,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PlannerAgent } from '../../interfaces/sub-agent.interface';
 import { TripPlanRequest, OrchestratorState } from '../../interfaces/trip-plan.interface';
 import { PlannerAgentService as LangGraphPlannerAgentService } from '../../../trips/decision/orchestration/planner-agent.service';
+import { mergePrdTraceIntoLangGraphMetadata } from '../../../trips/decision/orchestration/langgraph-prd-metadata.util';
 import { LlmService } from '../../../llm/services/llm.service';
 
 /**
@@ -203,6 +204,20 @@ export class ClaudePlannerAgentService implements PlannerAgent {
 
     const userQuery = queryParts.join('，');
 
+    const metadata = mergePrdTraceIntoLangGraphMetadata({
+      /** 真实 TripRun id 优先；否则回退为 request_id（与历史行为一致） */
+      tripRunId: (context.metadata as { tripRunId?: string } | undefined)?.tripRunId ?? context.request_id,
+      attemptNumber: 1,
+      userId: context.metadata?.userId,
+      tripId: context.metadata?.tripId,
+      requestId: request.request_id,
+      request_id: request.request_id,
+      ...(context.plan_version !== undefined && {
+        planVersion: context.plan_version,
+        plan_version: context.plan_version,
+      }),
+    });
+
     return {
       userQuery,
       extractedParams: {
@@ -216,13 +231,7 @@ export class ClaudePlannerAgentService implements PlannerAgent {
         },
       },
       planningPhase: 'DRAFTING',
-      metadata: {
-        tripRunId: context.request_id,
-        attemptNumber: 1,
-        // Context Orchestrator：供 buildContextForNode / UserTravelProfile 使用
-        userId: context.metadata?.userId,
-        tripId: context.metadata?.tripId,
-      },
+      metadata,
     };
   }
 

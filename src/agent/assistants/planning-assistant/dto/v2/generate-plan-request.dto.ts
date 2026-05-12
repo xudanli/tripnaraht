@@ -64,6 +64,13 @@ export class GeneratePlanRequestDto {
   @IsString()
   sessionId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Prisma 行程主键；传入 CoreGateway → PlanningWorkbench，便于决策引擎 / ECO 账本对齐',
+  })
+  @IsOptional()
+  @IsString()
+  tripId?: string;
+
   @ApiPropertyOptional({ description: '用户ID' })
   @IsOptional()
   @IsString()

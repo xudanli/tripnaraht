@@ -36,9 +36,28 @@ export interface PhaseExecutorContext {
     start_date?: string;
     days?: number;
     mode?: string;
+    message?: string;
+    /** 与 TripPlanRequest.trip_id 对齐：有值时 itinerary.generate 可从库合并 TripDay/ItineraryItem */
+    trip_id?: string;
     party?: { count: number; fitness_level?: string; has_elderly?: boolean };
     party_profile?: { risk_tolerance?: string; fitness?: string };
+    constraints?: { vehicle_type?: '2WD' | '4WD' };
   };
+  /** VERIFY 等阶段可选：用户画像偏好（如 transport_preferences） */
+  user_profile?: {
+    preferences?: {
+      transport_preferences?: string;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+  /** 与 route_and_run `conversation_context.recent_messages` 对齐，供 RESEARCH 指代消解 / 坐标回溯 */
+  recent_messages?: string[];
+  /**
+   * `transport_only`：澄清起终点后仅重跑 transport.search，并合并 `priorResearchData`（避免整段 RESEARCH 重跑）。
+   */
+  researchMode?: 'full' | 'transport_only';
+  priorResearchData?: Record<string, unknown>;
 }
 
 /** GateResult 兼容结构（避免直接依赖 trip-plan.interface） */
@@ -153,6 +172,8 @@ export interface IntakeExecutorContext extends PhaseExecutorContext {
   tripPlanRequest: PhaseExecutorContext['tripPlanRequest'] & { request_id?: string };
   /** OrchestratorState 快照，供 PlannerAgent.analyzeRequest 使用 */
   orchestratorState?: unknown;
+  /** BCP-47 / 应用 locale，用于澄清文案矩阵（如 zh-CN、en-US） */
+  locale?: string;
 }
 
 /** INTAKE 阶段执行器 */

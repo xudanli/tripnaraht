@@ -203,27 +203,28 @@ export class GeoFindNearbyPOISkill implements Skill<GeoFindNearbyPOIInput, GeoFi
       // 4. 应用额外过滤
       let filteredResults = results;
 
-      if (input.filters) {
+      const filters = input.filters;
+      if (filters) {
         filteredResults = results.filter((place) => {
           // 最小评分过滤
-          if (input.filters.minRating !== undefined) {
-            if (!place.rating || place.rating < input.filters.minRating) {
+          if (filters.minRating !== undefined) {
+            if (!place.rating || place.rating < filters.minRating) {
               return false;
             }
           }
 
           // 营业时间过滤
-          if (input.filters.hasOpeningHours !== undefined) {
+          if (filters.hasOpeningHours !== undefined) {
             const hasHours = place.status?.hoursToday && place.status.hoursToday !== '休息';
-            if (input.filters.hasOpeningHours !== hasHours) {
+            if (filters.hasOpeningHours !== hasHours) {
               return false;
             }
           }
 
           // 支付方式过滤
-          if (input.filters.paymentMethods && input.filters.paymentMethods.length > 0) {
+          if (filters.paymentMethods && filters.paymentMethods.length > 0) {
             const placePaymentMethods = place.tags || [];
-            const hasRequiredPayment = input.filters.paymentMethods.some((method) =>
+            const hasRequiredPayment = filters.paymentMethods.some((method) =>
               placePaymentMethods.includes(method),
             );
             if (!hasRequiredPayment) {

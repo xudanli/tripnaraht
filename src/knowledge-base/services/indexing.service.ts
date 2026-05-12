@@ -44,12 +44,17 @@ export class IndexingService {
 
   /**
    * 索引单个文件
+   * @param categoryOverride 可选；管理端新建文档时传入 collection 映射后的类别
+   * @returns 新建或更新后的 KnowledgeFile.id
    */
-  async indexSingleFile(fileData: KBFileData): Promise<void> {
+  async indexSingleFile(
+    fileData: KBFileData,
+    categoryOverride?: string,
+  ): Promise<string> {
     this.logger.log(`\n📝 索引文件: ${fileData.filename}`);
 
     // 1. 保存文件记录
-    const fileId = await this.loader.saveFile(fileData);
+    const fileId = await this.loader.saveFile(fileData, categoryOverride);
     const fileRow = await this.prisma.knowledgeFile.findUniqueOrThrow({
       where: { id: fileId },
       select: { category: true },
@@ -99,6 +104,59 @@ export class IndexingService {
     // 5. 批量插入（使用事务）
     await this.batchInsertChunks(chunkData);
     this.logger.log(`  💾 已保存到数据库`);
+    return fileId;
+  }
+
+  /**
+   * 删除某文件下全部 chunks 后重新分块、向量化并入库（管理端更新正文）。
+   */
+  async replaceChunksForFile(
+    fileId: string,
+    fileData: KBFileData,
+    fileCategory: string,
+  ): Promise<void> {
+    this.logger.log(`🔄 重建 chunks: ${fileData.filename} (${fileId})`);
+
+    await this.prisma.chunk.deleteMany({ where: { fileId } });
+
+    const chunks = this.chunking.autoChunk(fileData);
+    const totalChunks = chunks.length;
+
+    for (let i = 0; i < totalChunks; i++) {
+      await this.extractionMiddleware.run({
+        file: fileData,
+        fileId,
+        fileCategory,
+        chunk: chunks[i],
+        chunkIndex: i,
+        totalChunks,
+      });
+    }
+
+    const texts = chunks.map((c) => c.content);
+    const embeddings = await this.embedding.generateEmbeddingsBatch(texts);
+
+    const chunkData = chunks.map((chunk, index) => ({
+      id: uuidv4(),
+      chunkId: chunk.chunkId,
+      content: chunk.content.substring(0, 50000),
+      embedding: embeddings[index],
+      type: chunk.type,
+      credibilityScore: chunk.credibilityScore,
+      keywords: chunk.keywords,
+      fileId,
+      section: chunk.section,
+      metadata: chunk.metadata,
+      category: deriveChunkCategory({
+        filename: fileData.filename,
+        fileCategory,
+        chunkType: chunk.type,
+        metadata: chunk.metadata,
+      }),
+    }));
+
+    await this.batchInsertChunks(chunkData);
+    this.logger.log(`  ✅ 已重建 ${chunkData.length} 条 chunks`);
   }
 
   /**

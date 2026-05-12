@@ -1,11 +1,24 @@
 // src/skills/transport/transport-search.skill.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import { TransportSearchSkill } from './transport-search.skill';
+import { TransportSearchSkill, TRANSPORT_SEARCH_UNRESOLVED_COORDS_MARKER } from './transport-search.skill';
 import { TransportRoutingService } from '../../transport/transport-routing.service';
+import { EntityResolutionService } from '../../places/services/entity-resolution.service';
 
 describe('TransportSearchSkill', () => {
   let skill: TransportSearchSkill;
   let transportRoutingService: jest.Mocked<TransportRoutingService>;
+
+  const mockRoutingOk = {
+    options: [
+      {
+        mode: 'drive',
+        durationMinutes: 30,
+        walkDistance: 0,
+        distanceMeters: 15000,
+        steps: [{ instruction: '从起点出发', distance: 5000 }],
+      },
+    ],
+  };
 
   beforeEach(async () => {
     const mockTransportRoutingService = {
@@ -88,22 +101,92 @@ describe('TransportSearchSkill', () => {
       expect(result.evidence_id).toMatch(/^transport_\d+_64\.1_-21\.9_64\.2_-21\.8$/);
     });
 
-    it('应该拒绝字符串格式的地址（当前不支持）', async () => {
-      await expect(
-        skill.execute({
-          origin: 'Reykjavik',
-          destination: { lat: 64.2, lng: -21.8 },
-        }),
-      ).rejects.toThrow('transport.search 目前需要坐标格式的 origin 和 destination，字符串格式暂不支持');
+    it('应该通过冰岛地名锚点解析字符串 origin / destination', async () => {
+      transportRoutingService.planRoute.mockResolvedValue(mockRoutingOk as any);
+
+      await skill.execute({
+        origin: 'Reykjavik',
+        destination: 'Akureyri',
+      });
+
+      expect(transportRoutingService.planRoute).toHaveBeenCalledWith(
+        64.1466,
+        -21.9426,
+        65.6835,
+        -18.1262,
+        expect.any(Object),
+      );
     });
 
-    it('应该拒绝字符串格式的目的地（当前不支持）', async () => {
+    it('应该使用 EntityResolutionService.results 中的坐标解析地名', async () => {
+      const resolveEntities = jest.fn().mockResolvedValue({
+        results: [
+          {
+            id: 1,
+            name: '杭州西湖',
+            nameCN: '杭州西湖',
+            category: 'SCENIC',
+            lat: 30.2427,
+            lng: 120.1487,
+            score: 0.9,
+            source: 'vector_search' as const,
+            matchReasons: [],
+          },
+        ],
+        missingPois: [],
+        needsClarification: [],
+      });
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          TransportSearchSkill,
+          { provide: TransportRoutingService, useValue: { planRoute: jest.fn() } },
+          { provide: EntityResolutionService, useValue: { resolveEntities } },
+        ],
+      }).compile();
+
+      const s = module.get<TransportSearchSkill>(TransportSearchSkill);
+      const routing = module.get(TransportRoutingService) as jest.Mocked<TransportRoutingService>;
+      routing.planRoute.mockResolvedValue(mockRoutingOk as any);
+
+      await s.execute({
+        origin: '杭州西湖风景区',
+        destination: { lat: 30.25, lng: 120.15 },
+      });
+
+      expect(resolveEntities).toHaveBeenCalled();
+      expect(routing.planRoute).toHaveBeenCalledWith(
+        30.2427,
+        120.1487,
+        30.25,
+        120.15,
+        expect.any(Object),
+      );
+    });
+
+    it('应该在两端都无法解析为坐标时抛出明确错误', async () => {
+      const resolveEntities = jest.fn().mockResolvedValue({
+        results: [],
+        missingPois: [],
+        needsClarification: [],
+      });
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          TransportSearchSkill,
+          { provide: TransportRoutingService, useValue: { planRoute: jest.fn() } },
+          { provide: EntityResolutionService, useValue: { resolveEntities } },
+        ],
+      }).compile();
+
+      const s = module.get<TransportSearchSkill>(TransportSearchSkill);
+
       await expect(
-        skill.execute({
-          origin: { lat: 64.1, lng: -21.9 },
-          destination: 'Akureyri',
+        s.execute({
+          origin: '__no_such_place_xyz__',
+          destination: '__another_unknown__',
         }),
-      ).rejects.toThrow('transport.search 目前需要坐标格式的 origin 和 destination，字符串格式暂不支持');
+      ).rejects.toThrow(TRANSPORT_SEARCH_UNRESOLVED_COORDS_MARKER);
     });
 
     it('应该在 TransportRoutingService 未注入时抛出错误', async () => {

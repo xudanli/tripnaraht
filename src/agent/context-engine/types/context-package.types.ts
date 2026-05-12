@@ -204,6 +204,9 @@ export interface ContextPackageOptions {
    * 当 tripId 不可用时（如 from-natural-language 创建行程前）可传入，用于构建国家包块
    */
   destinationCountryCode?: string;
+
+  /** 与 Agent 编排超时联动：中止后跳过昂贵块（如 Tool RAG） */
+  abortSignal?: AbortSignal;
 }
 
 /**

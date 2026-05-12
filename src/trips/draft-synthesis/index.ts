@@ -1,0 +1,24 @@
+/** Draft Synthesis：状态 / Prompt Runtime / Diff / Convergence / Gate（决策草案层） */
+export * from './state';
+export * from './contract';
+export * from './runtime';
+export * from './decision-trace';
+export * from './user-intent';
+export * from './persona-policy';
+export * from './global-optimization';
+export * from './pareto';
+export * from './world-simulation';
+export * from './multi-agent';
+export * from './autonomous-world';
+export * from './real-world-execution';
+export * from './reality-governance';
+export * from './digital-twin';
+export * from './execution-simulation';
+export * from './diff';
+export * from './convergence';
+export * from './gate';
+export * from './arbitration';
+export * from './repair';
+export { assembleExperienceDraftPrompt } from './prompt-runtime';
+export type { DraftPromptAssemblyInput } from './prompt-runtime';
+export { renderStateTransformerPrompt } from './prompt-runtime/state-transformer-prompt';

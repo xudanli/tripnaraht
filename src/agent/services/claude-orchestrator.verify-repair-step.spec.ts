@@ -8,6 +8,8 @@ import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 import { AgentContext } from '../interfaces/claude-orchestration.interface';
 import { GateResult, OrchestratorState, TripPlanRequest } from '../interfaces/trip-plan.interface';
@@ -110,7 +112,21 @@ describe('ClaudeOrchestratorService — executeVerifyStep / executeRepairStep (s
             callLlmWithSchema: jest.fn(),
           },
         },
+        {
+          provide: PrismaService,
+          useValue: {
+            trip: { findUnique: jest.fn(), findFirst: jest.fn() },
+            tripRun: { findUnique: jest.fn(), findFirst: jest.fn() },
+          },
+        },
         { provide: SKILLS_REGISTRY_TOKEN, useValue: skillsRegistry },
+        {
+          provide: RagRealityPolicyGateService,
+          useValue: {
+            resolve: jest.fn().mockReturnValue({ scope: 'full', policy: {} }),
+            mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
+          },
+        },
       ],
     }).compile();
     return module.get<ClaudeOrchestratorService>(ClaudeOrchestratorService);

@@ -263,7 +263,9 @@ export class ExpectedUtilityService {
     weights: ObjectiveFunctionWeights,
     config: MonteCarloConfig = DEFAULT_MONTE_CARLO_CONFIG
   ): ExpectedUtilityResult {
-    this.logger.debug(`[ExpectedUtility] 开始 Monte Carlo 计算，样本数: ${config.sampleSize}`);
+    if (['1', 'true', 'yes'].includes(String(process.env.DECISION_OS_VERBOSE_OPTIMIZATION ?? '').toLowerCase())) {
+      this.logger.debug(`[ExpectedUtility] 开始 Monte Carlo 计算，样本数: ${config.sampleSize}`);
+    }
 
     const features = this.planFeatures.extract(plan);
     const exposure = this.exposureMap.extract(plan);

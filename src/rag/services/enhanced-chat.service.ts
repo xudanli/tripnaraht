@@ -13,11 +13,16 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { RagService } from './rag.service';
 import { RouteKnowledgeCurator } from './route-knowledge-curator.service';
 import { LocalInsightService } from './local-insight.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegratedRAGKPUService } from '../../kpu/services/integrated-rag-kpu.service';
+import type { DecisionContextV0 } from '../../trips/reality-kernel/decision-context.types';
+import type { RealityPolicyCode, RealityPolicyVerdict } from '../../trips/reality-kernel/reality-policy-engine.types';
+import { ChunkRetrievalService, type ChunkRetrievalParams } from './chunk-retrieval.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
+import type { RagSoftWorldScope } from '../reality-policy/rag-soft-world-policy';
+import { resolveRagSoftWorldPolicy } from '../reality-policy/rag-soft-world-policy';
 
 /**
  * 路线问答上下文
@@ -28,6 +33,8 @@ export interface RouteQuestionContext {
   segmentId?: string;
   dayIndex?: number;
   tripId?: string;
+  /** Reality OS — binds soft-world retrieval to snapshot validity (required when RAG policy gate is active). */
+  decisionContext?: DecisionContextV0;
 }
 
 /**
@@ -46,6 +53,13 @@ export interface EnhancedAnswer {
     content: string;
     tags: string[];
   }>;
+  /** Echo Reality policy when gate evaluated soft-world retrieval */
+  realityPolicy?: {
+    verdict: RealityPolicyVerdict;
+    codes: RealityPolicyCode[];
+    rag_scope: RagSoftWorldScope;
+    snapshot_id?: string;
+  };
 }
 
 @Injectable()
@@ -53,10 +67,11 @@ export class EnhancedChatService {
   private readonly logger = new Logger(EnhancedChatService.name);
 
   constructor(
-    private readonly ragService: RagService,
+    private readonly chunkRetrieval: ChunkRetrievalService,
     private readonly routeKnowledgeCurator: RouteKnowledgeCurator,
     private readonly localInsightService: LocalInsightService,
     private readonly prisma: PrismaService,
+    private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
     @Optional() private readonly integratedRAGKPU?: IntegratedRAGKPUService, // KPU服务（可选，如果未注入则不使用）
   ) {}
 
@@ -70,6 +85,24 @@ export class EnhancedChatService {
     this.logger.debug(`回答路线问题: "${question}"`);
 
     try {
+      const { scope, policy } = resolveRagSoftWorldPolicy(context.decisionContext);
+      const policyEcho = {
+        verdict: policy.verdict,
+        codes: policy.codes,
+        rag_scope: scope,
+        snapshot_id: context.decisionContext?.snapshot_id,
+      };
+      if (scope === 'blocked') {
+        const missing = policy.codes.includes('RAG_CONTEXT_REQUIRED');
+        return {
+          answer: missing
+            ? '扩展知识检索需要绑定行程现实上下文（decisionContext）。请从决策引擎或附带 snapshot 的请求发起。'
+            : '当前现实快照策略不允许检索扩展知识（例如快照已失效）。请刷新行程现实数据后再试。',
+          source: 'STRUCTURED',
+          realityPolicy: policyEcho,
+        };
+      }
+
       // 1. 先尝试用结构化数据回答（核心决策逻辑）
       const structuredAnswer = await this.answerFromStructuredData(question, context);
       
@@ -79,13 +112,14 @@ export class EnhancedChatService {
           answer: structuredAnswer.answer,
           source: 'STRUCTURED',
           structuredData: structuredAnswer.data,
+          realityPolicy: policyEcho,
         };
       }
 
       // 2. 如果结构化数据不够，用 RAG 补充
-      const ragAnswer = await this.answerWithRAG(question, context, structuredAnswer.answer);
+      const ragAnswer = await this.answerWithRAG(question, context, structuredAnswer.answer, scope);
 
-      return ragAnswer;
+      return { ...ragAnswer, realityPolicy: { ...policyEcho, rag_scope: scope } };
     } catch (error: any) {
       this.logger.error(`回答路线问题失败: ${error.message}`, error.stack);
       return {
@@ -167,11 +201,20 @@ export class EnhancedChatService {
   private async answerWithRAG(
     question: string,
     context: RouteQuestionContext,
-    structuredAnswer?: string
+    structuredAnswer: string | undefined,
+    scope: RagSoftWorldScope,
   ): Promise<EnhancedAnswer> {
     // 1. RAG 检索相关文档（如果KPU可用，使用KPU的检索和验证）
     let ragSnippets: Array<{ content: string; source?: string; score: number }> = [];
     let validationResult: any = null;
+
+    const baseChunk: ChunkRetrievalParams = {
+      query: question,
+      limit: 5,
+      useHybridSearch: true,
+      credibilityMin: 0.6,
+    };
+    const chunkParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(baseChunk, scope);
 
     try {
       // 如果KPU服务可用，使用KPU的检索和验证
@@ -179,8 +222,21 @@ export class EnhancedChatService {
         this.logger.debug('使用KPU进行检索和验证');
         
         const { results: validatedResults } = await this.integratedRAGKPU.retrieveAndValidate({
-          query: question,
-          limit: 5,
+          query: chunkParams.query ?? question,
+          limit: chunkParams.limit ?? 5,
+          credibilityMin: chunkParams.credibilityMin,
+          chunkCategory: chunkParams.chunkCategory,
+          type: chunkParams.type,
+          category: chunkParams.category,
+          fileId: chunkParams.fileId,
+          useHybridSearch: chunkParams.useHybridSearch,
+          denseWeight: chunkParams.denseWeight,
+          sparseWeight: chunkParams.sparseWeight,
+          useReranking: chunkParams.useReranking,
+          rerankTopK: chunkParams.rerankTopK,
+          useQueryExpansion: chunkParams.useQueryExpansion,
+          maxQueryVariants: chunkParams.maxQueryVariants,
+          useIntentClassification: chunkParams.useIntentClassification,
           enableSnippetValidation: true, // 启用片段验证
           minValidationScore: 0.6, // 最低验证得分
           validationOptions: {
@@ -191,6 +247,8 @@ export class EnhancedChatService {
           context: {
             countryCode: context.countryCode,
             routeDirectionId: context.routeDirectionId,
+            snapshot_id: context.decisionContext?.snapshot_id,
+            rag_scope: scope,
           },
         });
 
@@ -223,7 +281,9 @@ export class EnhancedChatService {
             try {
               const insights = await this.localInsightService.getLocalInsight(
                 context.countryCode,
-                this.extractTagsFromQuestion(question)
+                this.extractTagsFromQuestion(question),
+                undefined,
+                context.decisionContext,
               );
               localInsights = Array.isArray(insights) ? insights.map(insight => ({
                 content: insight.content || '',
@@ -246,29 +306,38 @@ export class EnhancedChatService {
           };
         }
       } else {
-        // 降级到原有RAG服务
-        this.logger.debug('KPU服务不可用，使用原有RAG服务');
-        const retrieved = await this.ragService.retrieve({
+        // 降级：Chunk 表检索（与 HTTP / KPU 一致的 taxonomy + Reality merge）
+        this.logger.debug('KPU服务不可用，使用 Chunk 检索');
+        const category = scope === 'restricted' ? 'legal_rules' : 'travel_guides';
+        let retrieveParams: ChunkRetrievalParams = {
           query: question,
-          collection: 'travel_guides',
-          countryCode: context.countryCode,
           limit: 5,
-        });
-        // 确保返回的是数组
-        ragSnippets = Array.isArray(retrieved) ? retrieved : [];
+          useHybridSearch: true,
+          credibilityMin: 0.6,
+          category,
+        };
+        retrieveParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(retrieveParams, scope);
+        const rows = await this.chunkRetrieval.retrieve(retrieveParams);
+        ragSnippets = rows.map((r) => ({
+          content: r.content,
+          source: r.sourceFile,
+          score: r.similarity ?? r.hybridScore ?? r.credibilityScore ?? 0,
+        }));
       }
     } catch (error: any) {
       this.logger.warn(`RAG 检索失败: ${error?.message || 'unknown error'}`);
       ragSnippets = [];
     }
 
-    // 2. 获取当地洞察（如果相关）
+    // 2. 获取当地洞察（如果相关）— STALE/降级时不附着我方叙事库，避免“软世界”覆盖硬约束观感
     let localInsights: Array<{ content: string; tags: string[] }> = [];
-    if (context.countryCode) {
+    if (context.countryCode && scope === 'full') {
       try {
         const insights = await this.localInsightService.getLocalInsight(
           context.countryCode,
-          this.extractTagsFromQuestion(question)
+          this.extractTagsFromQuestion(question),
+          undefined,
+          context.decisionContext,
         );
         localInsights = Array.isArray(insights) ? insights.map(insight => ({
           content: insight.content || '',
@@ -320,9 +389,31 @@ export class EnhancedChatService {
   async explainWhyNotOtherRoute(
     selectedRouteId: string,
     alternativeRouteId: string,
-    countryCode: string
+    countryCode: string,
+    decisionContext?: DecisionContextV0,
   ): Promise<EnhancedAnswer> {
     this.logger.debug(`解释为什么不是另一条路线: selected=${selectedRouteId}, alternative=${alternativeRouteId}`);
+
+    const { scope, policy } = resolveRagSoftWorldPolicy(decisionContext);
+    const policyEcho = {
+      verdict: policy.verdict,
+      codes: policy.codes,
+      rag_scope: scope,
+      snapshot_id: decisionContext?.snapshot_id,
+    };
+
+    if (scope === 'blocked') {
+      const missing = policy.codes.includes('RAG_CONTEXT_REQUIRED');
+      return {
+        answer: missing
+          ? '路线对比需要绑定行程现实上下文（decisionContext）。'
+          : '当前现实快照策略不允许检索扩展游记对比内容。请刷新行程现实数据后再试。',
+        source: 'STRUCTURED',
+        realityPolicy: policyEcho,
+      };
+    }
+
+    const ragCollection = scope === 'restricted' ? 'legal_rules' : 'travel_guides';
 
     try {
       // 1. 获取两条路线的信息
@@ -339,26 +430,33 @@ export class EnhancedChatService {
         return {
           answer: '无法找到路线信息。',
           source: 'STRUCTURED',
+          realityPolicy: policyEcho,
         };
       }
 
       // 2. 生成基础解释
       let answer = `我们选择了"${selected.nameCN || selected.nameEN}"而不是"${alternative.nameCN || alternative.nameEN}"，因为：\n\n`;
 
-      // 3. 使用 RAG 获取两条路线的对比信息
-      const selectedRag = await this.ragService.retrieve({
-        query: `${selected.nameCN || selected.nameEN} ${countryCode} experience`,
-        collection: 'travel_guides',
-        countryCode,
-        limit: 3,
-      });
+      // 3. 使用 RAG 获取两条路线的对比信息（优先 Chunk 表）
+      const retrieveRouteSnippets = async (name: string) => {
+        let p: ChunkRetrievalParams = {
+          query: `${name} ${countryCode} experience`,
+          limit: 3,
+          category: ragCollection,
+          useHybridSearch: true,
+          credibilityMin: 0.5,
+        };
+        p = this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, scope);
+        const rows = await this.chunkRetrieval.retrieve(p);
+        return rows.map((r) => ({
+          content: r.content,
+          source: r.sourceFile,
+          score: r.similarity ?? r.hybridScore ?? 0,
+        }));
+      };
 
-      const alternativeRag = await this.ragService.retrieve({
-        query: `${alternative.nameCN || alternative.nameEN} ${countryCode} experience`,
-        collection: 'travel_guides',
-        countryCode,
-        limit: 3,
-      });
+      const selectedRag = await retrieveRouteSnippets(String(selected.nameCN || selected.nameEN));
+      const alternativeRag = await retrieveRouteSnippets(String(alternative.nameCN || alternative.nameEN));
 
       // 4. 生成对比回答
       if (selectedRag.length > 0) {
@@ -396,6 +494,7 @@ export class EnhancedChatService {
             score: s.score,
           })),
         ],
+        realityPolicy: policyEcho,
       };
     } catch (error: any) {
       this.logger.error(`解释路线对比失败: ${error.message}`, error.stack);
@@ -433,8 +532,19 @@ export class EnhancedChatService {
       };
     }
 
+    const { scope, policy } = resolveRagSoftWorldPolicy(context.decisionContext);
+    if (scope === 'blocked') {
+      const missing = policy.codes.includes('RAG_CONTEXT_REQUIRED');
+      return {
+        answer: missing
+          ? '扩展知识检索需要绑定行程现实上下文（decisionContext）。'
+          : '当前现实快照策略不允许检索扩展知识。请刷新行程现实数据后再试。',
+        source: 'STRUCTURED',
+      };
+    }
+
     // 其他细节问题用 RAG 回答
-    return this.answerWithRAG(question, context);
+    return this.answerWithRAG(question, context, undefined, scope);
   }
 
   /**
@@ -442,7 +552,8 @@ export class EnhancedChatService {
    */
   async getRouteNarrative(
     routeDirectionId: string,
-    countryCode?: string
+    countryCode?: string,
+    decisionContext?: DecisionContextV0,
   ): Promise<{
     narrative?: any;
     localInsights?: any[];
@@ -450,11 +561,12 @@ export class EnhancedChatService {
     try {
       const narrative = await this.routeKnowledgeCurator.enrichRouteNarrative(
         routeDirectionId,
-        countryCode
+        countryCode,
+        decisionContext,
       );
 
       const insights = countryCode
-        ? await this.localInsightService.getLocalInsight(countryCode, ['travel-guide'])
+        ? await this.localInsightService.getLocalInsight(countryCode, ['travel-guide'], undefined, decisionContext)
         : [];
 
       return {

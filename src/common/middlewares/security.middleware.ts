@@ -36,10 +36,12 @@ export class SecurityMiddleware implements NestMiddleware {
       severity: 'critical',
       description: 'SQL injection attempt detected',
     },
-    // 命令注入尝试（更精确的模式，检测实际的命令执行模式）
+    // 命令注入尝试：避免匹配 Markdown 中的 `` `任意` ``（RAG/文档正文会大量误报）。
+    // 仅匹配 $() 内出现危险 shell 词，或分号/逻辑与后的典型链式命令。
     {
       type: 'command_injection',
-      pattern: /(\$\s*\([^)]*\)|`[^`]*`|;\s*(ls|cat|rm|wget|curl|nc|bash|sh|python|perl)|(\|\||&&)\s*(ls|cat|rm|wget|curl|nc|bash|sh|python|perl))/i,
+      pattern:
+        /\$\s*\(\s*[^)]{0,512}\b(?:curl|wget|bash|sh|nc|rm|cat|ls|python|perl|eval)\b|;\s*(?:ls|cat|rm|wget|curl|nc|bash|sh|python|perl)\b|(?:\|\||&&)\s*(?:ls|cat|rm|wget|curl|nc|bash|sh|python|perl)\b/i,
       severity: 'critical',
       description: 'Command injection attempt detected',
     },
@@ -64,14 +66,21 @@ export class SecurityMiddleware implements NestMiddleware {
       severity: 'high',
       description: 'File inclusion attempt detected',
     },
-    // XML 外部实体注入
+    // XML 外部实体注入（勿匹配正文里任意 http://，否则 RAG/聊天 JSON 中的链接会误报 403）
     {
       type: 'xxe_injection',
-      pattern: /<!ENTITY|SYSTEM\s+["']|file:\/\/|http:\/\//i,
+      pattern: /<!ENTITY|SYSTEM\s+["']|file:\/\/\/|expect:\/\/|php:\/\/filter/i,
       severity: 'high',
       description: 'XXE injection attempt detected',
     },
   ];
+
+  /**
+   * POST body 专用：`](../x)` 等 Markdown 相对链接含 `../`，不应视为路径遍历。
+   * URL / query 仍用 attackPatterns 中的全量规则。
+   */
+  private readonly bodyPathTraversalPattern =
+    /(?<!\]\()\.\.\/|(?<!\]\()\.\.\\|(?<!\]\()\.\.%2f|(?<!\]\()\.\.%5c|%2e%2e%2f|%2e%2e%5c/i;
 
   use(req: Request, res: Response, next: NextFunction) {
     const url = req.originalUrl || req.url;
@@ -98,10 +107,10 @@ export class SecurityMiddleware implements NestMiddleware {
       }
     }
 
-    // 检查 POST body（仅检查字符串内容）
+    // 检查 POST body（仅检查字符串内容；路径遍历规则见 detectThreatInBody）
     if (req.body && typeof req.body === 'object') {
       const bodyString = JSON.stringify(req.body);
-      const bodyThreat = this.detectThreat(bodyString);
+      const bodyThreat = this.detectThreatInBody(bodyString, url);
       if (bodyThreat) {
         return this.handleThreat(req, res, next, bodyThreat, { url, method, ip, userAgent, location: 'body' });
       }
@@ -138,6 +147,29 @@ export class SecurityMiddleware implements NestMiddleware {
   private detectThreat(input: string): SecurityEvent | null {
     for (const pattern of this.attackPatterns) {
       if (pattern.pattern.test(input)) {
+        return pattern;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Body 检测：path_traversal 排除 Markdown `[…](../…)`；对 `/api/rag/` 再跳过 path_traversal，
+   * 因正文/粘贴链接常含 `%2e%2e%2f`、`../` 等，误报 403。
+   */
+  private detectThreatInBody(bodyString: string, requestUrl: string): SecurityEvent | null {
+    const skipBodyPathTraversal = /\/api\/rag\//i.test(requestUrl);
+    for (const pattern of this.attackPatterns) {
+      if (pattern.type === 'path_traversal') {
+        if (skipBodyPathTraversal) {
+          continue;
+        }
+        if (this.bodyPathTraversalPattern.test(bodyString)) {
+          return pattern;
+        }
+        continue;
+      }
+      if (pattern.pattern.test(bodyString)) {
         return pattern;
       }
     }

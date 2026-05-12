@@ -9,6 +9,7 @@
 
 import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { DecisionKernelService } from '../../../decision/kernel/decision-kernel.service';
 import { DSO_FEEDBACK_PERSISTENCE } from '../../../decision/kernel/dso-feedback-persistence.interface';
@@ -57,7 +58,7 @@ export class WorldModelPushScheduler {
       where: {
         status: 'PLANNING',
         updatedAt: { gte: since },
-        metadata: { path: ['dso'], not: null },
+        metadata: { path: ['dso'], not: Prisma.JsonNull },
       },
       select: { id: true },
       take: 20,

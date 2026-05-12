@@ -8,6 +8,7 @@ import { TripContextExtractorService } from './shared/trip-context-extractor.ser
 import { ReadinessService } from '../../trips/readiness/services/readiness.service';
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import { ClaudeGatekeeperAgentService } from '../services/sub-agents/gatekeeper-agent.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 const minimalTripCtx = {
   destination: 'JP-Tokyo',
@@ -201,5 +202,69 @@ describe('GateEvalExecutorService — readiness gate branches', () => {
     expect(result.constraints.feasible).toBe(false);
     expect(result.gateResult.violations.some((v) => v.detail.includes('需确认但问题列表为空'))).toBe(true);
     expect((result.alternatives?.alternative_pois?.[0] as { poi_id?: string })?.poi_id).toBe('gate-block-readiness');
+  });
+});
+
+describe('GateEvalExecutorService — conflict matrix from DB', () => {
+  it('loads CONFLICT_MATRIX rule from DB and blocks on match', async () => {
+    const prismaMock = {
+      physicalDomainConstraintConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            ruleId: 'db_froad_visibility_block_v1',
+            enabled: true,
+            params: {
+              kind: 'CONFLICT_MATRIX',
+              conditions: ['segment.type = F_ROAD', 'weather.visibilityMeters < 100'],
+              effect: 'HARD_BLOCK',
+              priority: 120,
+            },
+            updatedAt: new Date(),
+          },
+        ]),
+      },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        GateEvalExecutorService,
+        TripContextExtractorService,
+        { provide: PrismaService, useValue: prismaMock },
+      ],
+    }).compile();
+    const svc = module.get<GateEvalExecutorService>(GateEvalExecutorService);
+    const result = await svc.execute({} as any, {
+      requestId: 'r-conflict-db-1',
+      tripPlanRequest: {
+        destination: 'Iceland',
+        constraints: { vehicle_type: '2WD' },
+        date_range: { start_date: '2026-06-01', end_date: '2026-06-02' },
+      },
+      researchData: {
+        world: {
+          physical: {
+            roadStates: [{ metadata: { segmentType: 'F_ROAD' } }],
+            prefetched_evidence: [
+              {
+                kind: 'environment_overrides_v1',
+                overrides: {
+                  weather: {
+                    forecastSeries: [
+                      {
+                        start: '2026-06-01T00:00:00.000Z',
+                        end: '2026-06-01T06:00:00.000Z',
+                        visibility_m: 80,
+                        confidenceScore: 0.9,
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    } as any);
+    expect(result.gateResult.gate_result).toBe('BLOCK');
+    expect(result.gateResult.violations.some((v) => String(v.detail).includes('db_froad_visibility_block_v1'))).toBe(true);
   });
 });

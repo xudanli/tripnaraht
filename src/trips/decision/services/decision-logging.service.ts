@@ -14,6 +14,9 @@ import {
   LearningSignals,
 } from '../interfaces/decision-logging.interface';
 import { ContextLearningService } from '../../../agent/context-engine/services/context-learning.service';
+import type { DecisionLogEntry } from '../shared/decision-result.types';
+import { normalizeDecisionLogEntryForPersistence } from '../shared/decision-log-entry-normalize.util';
+import { isCriticalDecisionActionValue } from '../shared/decision-log-metadata-prd.types';
 
 /**
  * 决策日志服务
@@ -48,6 +51,8 @@ export class DecisionLoggingService {
       explanation?: string;
       reasonCodes?: string[];
       evidenceRefs?: string[];
+      /** 可选；默认 ALLOW。与 DecisionLogStorage 路径一致时须经 PRD 归一化（关键动作 reasonCodes）。 */
+      action?: DecisionLogEntry['action'];
     },
   ): Promise<{ id: string }> {
     try {
@@ -57,22 +62,50 @@ export class DecisionLoggingService {
         userChoice.optionId,
       );
 
+      const action = (context?.action ?? 'ALLOW') as DecisionLogEntry['action'];
+      let reasonCodes = context?.reasonCodes ?? [];
+      if (isCriticalDecisionActionValue(action) && reasonCodes.length === 0) {
+        const dpSlug =
+          String(decisionPoint)
+            .trim()
+            .replace(/[^a-zA-Z0-9_-]+/g, '_')
+            .slice(0, 64) || 'UNKNOWN';
+        reasonCodes = [`DP_${dpSlug}`];
+      }
+
+      const baseEntry: DecisionLogEntry = {
+        persona: (context?.persona ?? 'NEPTUNE') as DecisionLogEntry['persona'],
+        action,
+        explanation: context?.explanation || `决策点：${decisionPoint}`,
+        reasonCodes,
+        evidenceRefs: context?.evidenceRefs ?? [],
+        timestamp: new Date().toISOString(),
+        decisionSource: (context?.decisionSource ?? 'PHYSICAL') as DecisionLogEntry['decisionSource'],
+        decisionStage: (context?.decisionStage ?? 'FINALIZE') as DecisionLogEntry['decisionStage'],
+        metadata: {
+          decisionPoint,
+          source: 'decision_logging_service',
+        },
+      };
+      const normalized = normalizeDecisionLogEntryForPersistence(baseEntry);
+
       // 创建决策日志
       const decisionLog = await this.prisma.decisionLog.create({
         data: {
           tripId,
           countryCode: context?.countryCode,
           routeDirectionId: context?.routeDirectionId,
-          persona: context?.persona || 'NEPTUNE',
-          action: 'ALLOW', // 默认允许，实际应该根据决策结果设置
-          decisionSource: context?.decisionSource || 'PHYSICAL',
-          decisionStage: context?.decisionStage || 'FINALIZE',
-          explanation: context?.explanation || `决策点：${decisionPoint}`,
-          reasonCodes: context?.reasonCodes || [],
-          evidenceRefs: context?.evidenceRefs || [],
-          timestamp: new Date(),
+          persona: normalized.persona,
+          action: normalized.action,
+          decisionSource: normalized.decisionSource,
+          decisionStage: normalized.decisionStage,
+          explanation: normalized.explanation,
+          reasonCodes: normalized.reasonCodes,
+          evidenceRefs: normalized.evidenceRefs || [],
+          timestamp: new Date(normalized.timestamp),
           metadata: {
             decisionPointType: decisionPoint,
+            ...(normalized.metadata && typeof normalized.metadata === 'object' ? normalized.metadata : {}),
           },
           // 新增字段（序列化为JSON）
           availableOptions: options as any,
@@ -107,6 +140,9 @@ export class DecisionLoggingService {
 
   /**
    * 记录决策结果
+   *
+   * `meta.decisionCausalityId` — 与因果链 `DecisionCausalityRecordV0.causality_id` / `signals.lastDecisionCausalityId` 对齐，
+   * 写入列 `decision_outcomes.decision_causality_id`。
    */
   async logOutcome(
     decisionId: string,
@@ -114,6 +150,7 @@ export class DecisionLoggingService {
     actualOutcome: ActualOutcome,
     userSatisfaction?: number,
     userFeedback?: string,
+    meta?: { decisionCausalityId?: string },
   ): Promise<{ id: string }> {
     try {
       // 检查决策日志是否存在
@@ -135,6 +172,8 @@ export class DecisionLoggingService {
         userSatisfaction,
       );
 
+      const causality = meta?.decisionCausalityId?.trim();
+
       // 创建决策结果
       const outcome = await this.prisma.decisionOutcome.create({
         data: {
@@ -145,6 +184,7 @@ export class DecisionLoggingService {
           userSatisfaction,
           userFeedback,
           learningSignals: learningSignals as any,
+          ...(causality ? { decisionCausalityId: causality } : {}),
         },
       });
 

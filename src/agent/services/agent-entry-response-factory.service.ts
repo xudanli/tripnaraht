@@ -4,15 +4,27 @@ import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route
 import type { DecisionLogEntry, OrchestrationStep, SubAgentType } from '../interfaces/trip-plan.interface';
 import { RouteAndRunResponseAssemblerService } from './route-and-run-response-assembler.service';
 import { JepaProjectorService } from './jepa-projector.service';
+import { TradeoffEngineService } from './tradeoff-engine.service';
+import { TravelTimeRouterService } from './travel-time-router.service';
+import { NegotiationSessionStoreService } from './negotiation-session-store.service';
 
 @Injectable()
 export class AgentEntryResponseFactoryService {
   constructor(
     @Optional() private readonly responseAssembler?: RouteAndRunResponseAssemblerService,
+    @Optional() private readonly negotiationSessions?: NegotiationSessionStoreService,
   ) {}
 
   private getAssembler(): RouteAndRunResponseAssemblerService {
-    return this.responseAssembler ?? new RouteAndRunResponseAssemblerService(new JepaProjectorService());
+    return (
+      this.responseAssembler ??
+      new RouteAndRunResponseAssemblerService(
+        new JepaProjectorService(),
+        new TradeoffEngineService(undefined, new TravelTimeRouterService(), undefined, undefined, undefined, undefined),
+        undefined,
+        this.negotiationSessions,
+      )
+    );
   }
 
   createMissingTripIdErrorResponse(
@@ -88,6 +100,7 @@ export class AgentEntryResponseFactoryService {
         tokens_est: 0,
         cost_est_usd: 0,
         fallback_used: false,
+        is_replayed: false,
         trace: {
           orchestration: {
             resolved: {
@@ -177,6 +190,7 @@ export class AgentEntryResponseFactoryService {
         tokens_est: 0,
         cost_est_usd: 0,
         fallback_used: false,
+        is_replayed: false,
         trace: {
           orchestration: {
             resolved: {
@@ -264,6 +278,7 @@ export class AgentEntryResponseFactoryService {
         tokens_est: 0,
         cost_est_usd: 0,
         fallback_used: false,
+        is_replayed: false,
         trace: {
           orchestration: {
             resolved: {
@@ -275,6 +290,96 @@ export class AgentEntryResponseFactoryService {
           timestamp: new Date().toISOString(),
         },
       },
+    };
+  }
+
+  /** orchestration_replay_anchor_snapshot_id 已设置但 Redis 快照层不可用 */
+  createReplayMemoryPersistenceUnavailableResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+  ): RouteAndRunResponseDto {
+    const latency = Date.now() - startTime;
+    return {
+      request_id: request.request_id,
+      route: {
+        route: RouteType.SYSTEM2_REASONING,
+        confidence: 1.0,
+        reasons: [RouterReason.MISSING_INFO],
+        required_capabilities: [],
+        consent_required: false,
+        budget: { max_seconds: 30, max_steps: 1, max_browser_steps: 0 },
+        ui_hint: { mode: 'slow', status: UIStatus.AWAITING_CONFIRMATION, message: '回放不可用' },
+      },
+      result: {
+        status: 'FAILED',
+        answer_text:
+          'replay 需要记忆快照持久化（Redis）；当前宿主未配置 MemorySnapshotPersistence，无法装载 orchestration_replay_anchor_snapshot_id。',
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          error_code: 'REPLAY_MEMORY_PERSISTENCE_UNAVAILABLE',
+        } as any,
+      },
+      explain: { decision_log: [] } as any,
+      observability: {
+        latency_ms: latency,
+        router_ms: 0,
+        system_mode: 'SYSTEM2',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        is_replayed: false,
+      } as any,
+    };
+  }
+
+  /** 指定 snapshot_id 在 Redis 中不存在或 body 与存储不一致 */
+  createReplayMemorySnapshotNotFoundResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+    snapshotId: string,
+  ): RouteAndRunResponseDto {
+    const latency = Date.now() - startTime;
+    return {
+      request_id: request.request_id,
+      route: {
+        route: RouteType.SYSTEM2_REASONING,
+        confidence: 1.0,
+        reasons: [RouterReason.MISSING_INFO],
+        required_capabilities: [],
+        consent_required: false,
+        budget: { max_seconds: 30, max_steps: 1, max_browser_steps: 0 },
+        ui_hint: { mode: 'slow', status: UIStatus.AWAITING_CONFIRMATION, message: '快照未找到' },
+      },
+      result: {
+        status: 'FAILED',
+        answer_text: `未找到与 orchestration_replay_anchor_snapshot_id 对齐的冻结记忆快照：${snapshotId}`,
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          error_code: 'REPLAY_MEMORY_SNAPSHOT_NOT_FOUND',
+        } as any,
+      },
+      explain: { decision_log: [] } as any,
+      observability: {
+        latency_ms: latency,
+        router_ms: 0,
+        system_mode: 'SYSTEM2',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        is_replayed: false,
+      } as any,
     };
   }
 }

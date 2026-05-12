@@ -5,6 +5,12 @@ on:
   pull_request:
     paths:
       - "src/trips/decision/**/*.ts"
+      - "src/agent/context-engine/**/*.ts"
+      - "src/agent/utils/**/*.ts"
+      - "src/agent/services/agent.service.ts"
+      - "src/agent/services/claude-orchestrator.service.ts"
+      - "src/agent/services/route-and-run-response-assembler.service.ts"
+      - "src/agent/services/sub-agents/**/*.ts"
       - "src/trips/decision/fixtures/**"
       - "package.json"
       - "package-lock.json"
@@ -14,6 +20,12 @@ on:
       - master
     paths:
       - "src/trips/decision/**/*.ts"
+      - "src/agent/context-engine/**/*.ts"
+      - "src/agent/utils/**/*.ts"
+      - "src/agent/services/agent.service.ts"
+      - "src/agent/services/claude-orchestrator.service.ts"
+      - "src/agent/services/route-and-run-response-assembler.service.ts"
+      - "src/agent/services/sub-agents/**/*.ts"
       - "src/trips/decision/fixtures/**"
       - "package.json"
       - "package-lock.json"
@@ -36,6 +48,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Decision OS unit (normalize + traceability + LangGraph PRD + task memory)
+        run: npm run test:decision-os:unit
 
       - name: Run Trips Decision P0 (complex samples + replan VERIFY→REPAIR)
         run: npm run test:td-p0

@@ -1,0 +1,31 @@
+# Multi-Agent Bridge 集成冒烟：保护 PlanningWorkbench ↔ MAC 协作链路与 strategyLayer 摘要
+name: World Model Bridge
+
+on:
+  pull_request:
+    paths:
+      # 架构定调：World 护城河 + Agent 服务层任一变动即跑 Bridge 冒烟（全仓 tsc 历史债独立）
+      - 'src/skills/world/**'
+      - 'src/agent/services/**'
+      - 'src/agent/utils/strategy-conflict-dna-tuning.util.ts'
+      - 'src/agent/dto/conflict-strategy-options.dto.ts'
+      - 'src/agent/agent.controller.ts'
+      - 'src/agent/agent.module.ts'
+      - '.github/workflows/world-model-bridge.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-smoke:
+    name: world-model-bridge (jest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Integration smoke — MultiAgent collaboration bridge
+        run: npm run test:world-model-bridge

@@ -7,6 +7,12 @@
  * 参考: docs/CHIEF_SCIENTIST_TECHNICAL_PROPOSAL.md 方案 C
  */
 
+/** DSO harness 上与 replan 继承相关的最小切片（避免与 decision-state.types 循环 import） */
+export type HarnessRuntimeReplanSlice = {
+  replan_previous_plan_version?: number;
+  replan_previous_world_snapshot_hash?: string;
+};
+
 /** 物理环境状态（PhysicalRealityModel 摘要） */
 export interface WorldStatePhysicalSummary {
   /** 道路状态摘要 */
@@ -69,6 +75,33 @@ export interface WorldStateSummary {
   physical?: WorldStatePhysicalSummary;
   human?: WorldStateHumanSummary;
   route?: WorldStateRouteSummary;
+  /** PRD I3：replan 继承（来自 DSO `harnessRuntime`） */
+  replanLineage?: {
+    previous_plan_version?: number;
+    previous_world_snapshot_hash?: string;
+  };
+}
+
+/** 将 `harnessRuntime.replan_*` 并入世界摘要（供 explain / 审计） */
+export function mergeReplanLineageFromHarness(
+  summary: WorldStateSummary,
+  harnessRuntime?: HarnessRuntimeReplanSlice | null,
+): WorldStateSummary {
+  const hr = harnessRuntime;
+  if (!hr) return summary;
+  const prev = hr.replan_previous_plan_version;
+  const h =
+    typeof hr.replan_previous_world_snapshot_hash === 'string'
+      ? hr.replan_previous_world_snapshot_hash.trim()
+      : '';
+  if (prev === undefined && !h) return summary;
+  return {
+    ...summary,
+    replanLineage: {
+      ...(prev !== undefined && Number.isFinite(Number(prev)) ? { previous_plan_version: Number(prev) } : {}),
+      ...(h ? { previous_world_snapshot_hash: h } : {}),
+    },
+  };
 }
 
 /**
@@ -76,12 +109,14 @@ export interface WorldStateSummary {
  * 将 environmentState、userIntent 映射为三段式结构
  * P3 增强：可选 researchData 补全 hazardZones、demEvidence、ferryStates
  * P3 增强：可选 worldModelContext（world.buildContext 输出）优先于 research_data，减少 stub
+ * PRD I3：`harnessRuntime.replan_*` 并入 `replanLineage`
  */
 export function buildWorldStateSummaryFromDso(
   state: {
     environmentState?: unknown;
     userIntent?: unknown;
     research_data?: Record<string, unknown>;
+    harnessRuntime?: HarnessRuntimeReplanSlice;
   },
   researchData?: Record<string, unknown>,
   worldModelContext?: WorldModelContextLike,
@@ -90,7 +125,8 @@ export function buildWorldStateSummaryFromDso(
   if (worldModelContext && (worldModelContext.physical || worldModelContext.human || worldModelContext.routeDirection)) {
     const fromWorld = worldModelContextToWorldStateSummary(worldModelContext);
     if (Object.keys(fromWorld).length > 0) {
-      return fromWorld;
+      const merged = mergeReplanLineageFromHarness(fromWorld, state.harnessRuntime);
+      return Object.keys(merged).length > 0 ? merged : {};
     }
   }
   const env = (state.environmentState ?? {}) as Record<string, unknown>;
@@ -177,7 +213,8 @@ export function buildWorldStateSummaryFromDso(
     };
   }
 
-  return Object.keys(summary).length > 0 ? summary : {};
+  const merged = mergeReplanLineageFromHarness(summary, state.harnessRuntime);
+  return Object.keys(merged).length > 0 ? merged : {};
 }
 
 /** 从 research_data 提取 hazardZones（risk_assessment / avalanche_hazard_zones） */

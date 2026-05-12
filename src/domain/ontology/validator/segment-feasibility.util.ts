@@ -4,7 +4,11 @@
 
 import { ICELAND_F_ROAD_POLICY_SOURCE, isIcelandHighlandFRoadSeasonallyClosed } from './iceland-f-road-policy.util';
 import type { SegmentLatestRoadStatusV1 } from './road-status-contract.types';
-import { parseRoadSurfaceCondition, roadSurfaceConditionIsBlocking } from './road-status-contract.types';
+import {
+  inferRoadAccessFromSurfaceCondition,
+  liveLatestStatusBlocksSegment,
+  parseRoadSurfaceCondition,
+} from './road-status-contract.types';
 
 export interface SegmentFeasibilityPoiLike {
   closed?: boolean;
@@ -38,7 +42,11 @@ export function computeSegmentFeasibilityViolations(params: {
 
   const ls = segment.latest_status as SegmentLatestRoadStatusV1 | undefined;
   const liveCondition = ls?.condition != null ? parseRoadSurfaceCondition(ls.condition) : undefined;
-  const roadIsBlocking = liveCondition != null ? roadSurfaceConditionIsBlocking(liveCondition) : false;
+  const liveAccessState = ls
+    ? ls.accessState ??
+      inferRoadAccessFromSurfaceCondition(liveCondition ?? 'UNKNOWN')
+    : undefined;
+  const roadIsBlocking = liveLatestStatusBlocksSegment(ls, vehicleType);
 
   /** Union: static admin road_condition OR live Road.is snapshot — any CLOSED-class condition blocks. */
   if (staticRoadClosed || roadIsBlocking) violations.push('SEGMENT_ROAD_CLOSED');
@@ -80,12 +88,13 @@ export function computeSegmentFeasibilityViolations(params: {
       seasonalBlocked,
       icelandPolicySeasonallyClosed,
       ...(icelandPolicySeasonallyClosed ? { road_policy_source: ICELAND_F_ROAD_POLICY_SOURCE } : {}),
-      ...(liveCondition != null
+      ...(ls
         ? {
-            roadIsCondition: liveCondition,
+            ...(liveCondition != null ? { roadIsCondition: liveCondition } : {}),
+            roadIsAccessState: liveAccessState,
             roadIsBlocking,
-            roadIsConditionText: typeof ls?.condition_text === 'string' ? ls.condition_text : undefined,
-            roadIsSourceUrl: typeof ls?.source_url === 'string' ? ls.source_url : undefined,
+            roadIsConditionText: typeof ls.condition_text === 'string' ? ls.condition_text : undefined,
+            roadIsSourceUrl: typeof ls.source_url === 'string' ? ls.source_url : undefined,
           }
         : {}),
       endpointReachable: endpointOpen,

@@ -1,8 +1,7 @@
-# Node CI — lint + Physical 逻辑岛类型检查（npm run check:physical）。
-# 全仓 `npm run typecheck:src` 因历史类型债未纳入 CI；物理竖切由 tsconfig.ci.json 闭包保证。
+# Node CI — lint + Physical 逻辑岛（check:physical）+ typecheck:physics + typecheck:trips。
 #
-# PR 主门禁：Readiness P1（.github/workflows/readiness-p1.yml）已在 scripts/readiness-p1.sh 中串入
-# lint → check:physical → build → …，请勿从该脚本移除 check:physical。
+# PR 主门禁：Readiness P1（.github/workflows/readiness-p1.yml）执行 scripts/readiness-p1.sh：
+# lint → check:physical → typecheck:physics → typecheck:trips → build → …；请勿从该脚本移除 check:physical。
 #
 # 本 workflow 供手动 workflow_dispatch 快速验证；日常 PR 以 Readiness P1 为准。
 
@@ -34,3 +33,9 @@ jobs:
 
       - name: Physical island typecheck (logic closure)
         run: npm run check:physical
+
+      - name: Physics kernel typecheck (ECO / closure / trips physics)
+        run: npm run typecheck:physics
+
+      - name: Trips island typecheck (src/trips closure + deps)
+        run: npm run typecheck:trips

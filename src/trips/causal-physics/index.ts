@@ -1,0 +1,30 @@
+export type {
+  CausalEdge,
+  CausalGraph,
+  CausalIntervention,
+  CausalNode,
+  CausalNodeType,
+  CausalRelation,
+  StateTrajectoryStep,
+} from './causal-graph.types';
+
+export { projectPhysicsIndexToCausalGraph } from './project-physics-to-causal-graph';
+
+export {
+  applyDoOperator,
+  intervene,
+  evaluateCausalUtility,
+  buildOutcomeTrajectory,
+} from './intervention-engine';
+
+export {
+  correctCausalWeights,
+  type CausalFeedbackInput,
+} from './causal-feedback';
+
+export {
+  attachCausalPlanningToProof,
+  defaultCandidateInterventions,
+  planCausalInterventions,
+  type CausalPlanningResult,
+} from './causal-planner';

@@ -78,7 +78,7 @@ export class PlanPaceFatigueScoreSkill implements Skill<PlanPaceFatigueScoreInpu
       // 3. 检查累计爬升（如果有 DEM 数据）
       // 这里简化处理，实际应该从 world.physical 获取
       if (input.planState.world?.physical) {
-        // 可以调用 skill.dem.getProfile 获取爬升数据
+        // 可以调用 skill dem.get_profile（Registry）获取爬升数据
         // 这里简化
       }
       

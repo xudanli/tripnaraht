@@ -6,14 +6,16 @@
  * 将 DecisionParams 注入到决策引擎的各个组件中
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { DecisionParams } from '../interfaces/decision-params.interface';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { DecisionParams, normalizeDecisionParams } from '../interfaces/decision-params.interface';
 import { MemoryService } from './memory.service';
+import { AgentMemoryContextStore } from '../context/agent-memory-context.store';
 import { UserProfileMapperService } from './user-profile-mapper.service';
 import { DecisionParamsMappingV2Service } from './decision-params-mapping-v2.service';
 import { ShadowModeDiffService } from './shadow-mode-diff.service';
 import { calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
 import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
+import { applyRoutePartyFitnessToDecisionParams } from '../utils/route-party-fitness-decision-overlay.util';
 
 @Injectable()
 export class DecisionParamsInjectorService {
@@ -24,20 +26,34 @@ export class DecisionParamsInjectorService {
     private readonly profileMapper: UserProfileMapperService,
     private readonly mappingV2: DecisionParamsMappingV2Service,
     private readonly shadowDiff: ShadowModeDiffService,
+    @Optional() private readonly memoryContextStore?: AgentMemoryContextStore,
   ) {}
+
+  /**
+   * Runtime 内优先读冻结 snapshot，避免同请求多阶段读到不一致 L1。
+   * 无 ALS 上下文（脚本 / 单测）时回退 MemoryService。
+   */
+  async getUserTravelProfileForRuntime(userId: string) {
+    const ctx = this.memoryContextStore?.get();
+    if (ctx !== undefined && ctx.userId === userId) {
+      if (ctx.userProfile !== null && ctx.userProfile !== undefined) {
+        return ctx.userProfile;
+      }
+      return createDefaultUserTravelProfile(userId);
+    }
+    return this.memoryService.getUserTravelProfile(userId);
+  }
 
   /**
    * 为指定用户获取决策参数
    */
   async getDecisionParamsForUser(userId: string): Promise<DecisionParams> {
-    // 读取用户画像（如果不存在会返回默认值）
-    const profile = await this.memoryService.getUserTravelProfile(userId);
+    const profile = await this.getUserTravelProfileForRuntime(userId);
     
     const useLegacy = process.env.DECISION_PARAMS_MAPPING_LEGACY === '1';
     const shadowMode = process.env.DECISION_PARAMS_SHADOW_MODE === '1';
 
     if (!profile) {
-      // 如果仍然为 null，创建默认值
       const defaultProfile = createDefaultUserTravelProfile(userId);
       const legacy = this.profileMapper.mapUserProfileToDecisionParams(defaultProfile);
       const v2 = this.mappingV2.map(defaultProfile).params;
@@ -48,8 +64,9 @@ export class DecisionParamsInjectorService {
         );
       }
       const params = useLegacy ? legacy : v2;
+      this.applyRoutePartyFitnessOverlay(userId, params);
       this.logger.debug(`Generated default decision params for new user ${userId}`);
-      return params;
+      return normalizeDecisionParams(params);
     }
     
     // 映射为决策参数
@@ -62,13 +79,26 @@ export class DecisionParamsInjectorService {
       );
     }
     const params = useLegacy ? legacy : v2;
-    
+    this.applyRoutePartyFitnessOverlay(userId, params);
+
     this.logger.debug(
       `Generated decision params for user ${userId}: ` +
       `pace=${profile.pacePreference}, confidence=${profile.confidence.toFixed(2)}`
     );
-    
-    return params;
+
+    return normalizeDecisionParams(params);
+  }
+
+  /**
+   * 当冻结 Memory 中存在本请求的 routePartyProfile.fitness_level 时，收紧/放宽 constraints（与 L1 画像叠加后再 normalize）。
+   */
+  private applyRoutePartyFitnessOverlay(userId: string, params: DecisionParams): void {
+    const snap = this.memoryContextStore?.get();
+    const fl = snap?.routePartyProfile?.fitness_level;
+    if (!fl) return;
+    if (snap.userId != null && snap.userId !== userId) return;
+    applyRoutePartyFitnessToDecisionParams(params, fl);
+    this.logger.debug(`[DecisionParamsInjector] route_party fitness=${fl} merged into decision constraints`);
   }
 
   /**

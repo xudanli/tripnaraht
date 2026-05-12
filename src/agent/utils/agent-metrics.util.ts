@@ -1,5 +1,7 @@
 // src/agent/utils/agent-metrics.util.ts
 
+import type { BookingNoProgressReason } from '../task-closure/booking-minimal.types';
+
 function skipMetricsConsole(): boolean {
   return process.env.JEST_WORKER_ID !== undefined || process.env.NODE_ENV === 'test';
 }
@@ -107,6 +109,28 @@ export const AgentMetrics = {
     name: 'agent_risk_distribution',
     labels: ['risk'] as const,
     description: '风险级别分布',
+  },
+
+  /**
+   * Phase 3 闸门样本：agentic MCP 在 failure_code=MCP_TOOL_ERROR 且错误文本含 ECONNREFUSED 时递增。
+   * 上线后聚合占比（相对 agentic 失败或全量失败）；若 >30% 且多为公网目标，再启用 Dispatcher 代理旁路。
+   *
+   * 指标名：agentic_mcp_proxy_bypass_gate_sample
+   */
+  agenticMcpProxyBypassGateSample: {
+    name: 'agentic_mcp_proxy_bypass_gate_sample',
+    labels: ['failure_code', 'pattern'] as const,
+    description: 'Agentic MCP ECONNREFUSED 闸门样本（代理/连接类基础设施故障）',
+  },
+
+  /**
+   * Task Closure booking：一轮内至少一次真实 MCP 执行，但 completion 契约无严格前进（合法但无效轮次）。
+   * 指标名：agentic_no_progress_step；标签：reason（no_effect | invalid_stage | bad_params | external_block）
+   */
+  agenticNoProgressStep: {
+    name: 'agentic_no_progress_step',
+    labels: ['reason'] as const,
+    description: 'Booking Task Closure：执行后 completion 未前进（带归因）',
   },
 } as const;
 
@@ -280,6 +304,56 @@ export class MetricsRecorder {
     
     if (!skipMetricsConsole()) {
       console.log(`[Metrics] ${AgentMetrics.riskDistribution.name}: ${risk}`);
+    }
+  }
+
+  /**
+   * Phase 3 数据闸门：failure_code === MCP_TOOL_ERROR 且 message 含 ECONNREFUSED。
+   * 日志前缀 `[Phase3Gate]` 便于 Loki/Datadog 查询占比；Metrics 名见 AgentMetrics.agenticMcpProxyBypassGateSample。
+   */
+  /**
+   * Task Closure：被 booking Policy 闸门拦截的 ProposedAction 数（仅统计真实执行路径）。
+   */
+  static recordAgenticPolicyGateBlocked(blockedCount: number) {
+    if (blockedCount <= 0) return;
+    if (!skipMetricsConsole()) {
+      console.log(`[Metrics] agentic_policy_gate_blocked count=${blockedCount}`);
+    }
+  }
+
+  /** P2.5 Progress + Attribution：completion 无前进时带 reason 维度。 */
+  static recordAgenticNoProgressStep(reason: BookingNoProgressReason) {
+    // TODO: prometheus.recordCounter(AgentMetrics.agenticNoProgressStep.name, { reason });
+    if (!skipMetricsConsole()) {
+      console.log(`[Metrics] ${AgentMetrics.agenticNoProgressStep.name} reason=${reason}`);
+    }
+  }
+
+  static recordAgenticMcpProxyBypassGateSample(payload: {
+    failure_code?: string;
+    error_message: string;
+    tool_ref?: string;
+  }) {
+    const fc = payload.failure_code;
+    const msg = payload.error_message ?? '';
+    if (fc !== 'MCP_TOOL_ERROR' || !msg.includes('ECONNREFUSED')) {
+      return;
+    }
+
+    // TODO: prometheus.recordCounter(AgentMetrics.agenticMcpProxyBypassGateSample.name, {
+    //   failure_code: fc,
+    //   pattern: 'ECONNREFUSED',
+    // });
+
+    if (!skipMetricsConsole()) {
+      console.log(
+        `[Phase3Gate] ${AgentMetrics.agenticMcpProxyBypassGateSample.name} ` +
+          JSON.stringify({
+            failure_code: fc,
+            pattern: 'ECONNREFUSED',
+            tool_ref: payload.tool_ref ?? null,
+          }),
+      );
     }
   }
 }

@@ -25,44 +25,44 @@ export class TrendAnalysisQueryDto {
 
 export class TrendAnalysisResponseDto {
   @ApiProperty({ description: '趋势类型', enum: ['IMPROVING', 'STABLE', 'DECLINING', 'INSUFFICIENT_DATA'] })
-  trend: string;
+  trend!: string;
 
   @ApiProperty({ description: '置信度 (0-1)' })
-  confidence: number;
+  confidence!: number;
 
   @ApiProperty({ description: '变化斜率' })
-  slope: number;
+  slope!: number;
 
   @ApiProperty({ description: '分析周期（天）' })
-  periodDays: number;
+  periodDays!: number;
 
   @ApiProperty({ description: '数据点数量' })
-  dataPoints: number;
+  dataPoints!: number;
 
   @ApiProperty({ description: '英文摘要' })
-  summary: string;
+  summary!: string;
 
   @ApiProperty({ description: '中文摘要' })
-  summaryZh: string;
+  summaryZh!: string;
 }
 
 // ==================== 异常检测 ====================
 
 export class AnomalyResponseDto {
   @ApiProperty({ description: '异常类型' })
-  type: string;
+  type!: string;
 
   @ApiProperty({ description: '严重程度', enum: ['LOW', 'MEDIUM', 'HIGH'] })
-  severity: string;
+  severity!: string;
 
   @ApiProperty({ description: '英文描述' })
-  description: string;
+  description!: string;
 
   @ApiProperty({ description: '中文描述' })
-  descriptionZh: string;
+  descriptionZh!: string;
 
   @ApiProperty({ description: '检测时间' })
-  detectedAt: Date;
+  detectedAt!: Date;
 
   @ApiPropertyOptional({ description: '相关行程ID' })
   relatedTripIds?: string[];
@@ -70,10 +70,10 @@ export class AnomalyResponseDto {
 
 export class AnomalyDetectionResponseDto {
   @ApiProperty({ description: '是否有异常' })
-  hasAnomaly: boolean;
+  hasAnomaly!: boolean;
 
   @ApiProperty({ description: '异常列表', type: [AnomalyResponseDto] })
-  anomalies: AnomalyResponseDto[];
+  anomalies!: AnomalyResponseDto[];
 }
 
 // ==================== 体能报告 ====================
@@ -90,69 +90,69 @@ export class FitnessReportQueryDto {
 
 export class FitnessReportSummaryDto {
   @ApiProperty({ description: '总行程数' })
-  totalTrips: number;
+  totalTrips!: number;
 
   @ApiProperty({ description: '平均疲劳指数' })
-  avgFatigueIndex: number;
+  avgFatigueIndex!: number;
 
   @ApiProperty({ description: '平均体力评分' })
-  avgEffortRating: number;
+  avgEffortRating!: number;
 
   @ApiProperty({ description: '完成率' })
-  completionRate: number;
+  completionRate!: number;
 }
 
 export class CapabilityChangesDto {
   @ApiProperty({ description: '开始时最大日爬升(m)' })
-  startMaxDailyAscentM: number;
+  startMaxDailyAscentM!: number;
 
   @ApiProperty({ description: '结束时最大日爬升(m)' })
-  endMaxDailyAscentM: number;
+  endMaxDailyAscentM!: number;
 
   @ApiProperty({ description: '变化百分比' })
-  changePercent: number;
+  changePercent!: number;
 
   @ApiProperty({ description: '校准次数' })
-  calibrationCount: number;
+  calibrationCount!: number;
 }
 
 export class FitnessReportResponseDto {
   @ApiProperty({ description: '生成时间' })
-  generatedAt: Date;
+  generatedAt!: Date;
 
   @ApiProperty({ description: '报告周期' })
-  period: { start: Date; end: Date };
+  period!: { start: Date; end: Date };
 
   @ApiProperty({ description: '基础统计', type: FitnessReportSummaryDto })
-  summary: FitnessReportSummaryDto;
+  summary!: FitnessReportSummaryDto;
 
   @ApiProperty({ description: '趋势分析', type: TrendAnalysisResponseDto })
-  trend: TrendAnalysisResponseDto;
+  trend!: TrendAnalysisResponseDto;
 
   @ApiProperty({ description: '异常检测', type: AnomalyDetectionResponseDto })
-  anomalies: AnomalyDetectionResponseDto;
+  anomalies!: AnomalyDetectionResponseDto;
 
   @ApiProperty({ description: '能力变化', type: CapabilityChangesDto })
-  capabilityChanges: CapabilityChangesDto;
+  capabilityChanges!: CapabilityChangesDto;
 
   @ApiProperty({ description: '英文建议' })
-  recommendations: string[];
+  recommendations!: string[];
 
   @ApiProperty({ description: '中文建议' })
-  recommendationsZh: string[];
+  recommendationsZh!: string[];
 }
 
 // ==================== 时间线 ====================
 
 export class TimelineEventDto {
   @ApiProperty({ description: '事件时间' })
-  date: Date;
+  date!: Date;
 
   @ApiProperty({ description: '事件类型', enum: ['TRIP_FEEDBACK', 'CALIBRATION', 'QUESTIONNAIRE'] })
-  event: string;
+  event!: string;
 
   @ApiProperty({ description: '事件详情' })
-  details: Record<string, any>;
+  details!: Record<string, any>;
 }
 
 export class TimelineQueryDto {
@@ -169,20 +169,20 @@ export class TimelineQueryDto {
 
 export class ExperimentResultsResponseDto {
   @ApiProperty({ description: '实验ID' })
-  experimentId: string;
+  experimentId!: string;
 
   @ApiProperty({ description: '状态', enum: ['INSUFFICIENT_DATA', 'IN_PROGRESS', 'SIGNIFICANT', 'NOT_SIGNIFICANT'] })
-  status: string;
+  status!: string;
 
   @ApiProperty({ description: '对照组数据' })
-  control: {
+  control!: {
     sampleSize: number;
     completionRate: number;
     avgEffortRating: number;
   };
 
   @ApiProperty({ description: '实验组数据' })
-  treatment: {
+  treatment!: {
     sampleSize: number;
     completionRate: number;
     avgEffortRating: number;
@@ -195,40 +195,40 @@ export class ExperimentResultsResponseDto {
   lift?: number;
 
   @ApiProperty({ description: '英文建议' })
-  recommendation: string;
+  recommendation!: string;
 
   @ApiProperty({ description: '中文建议' })
-  recommendationZh: string;
+  recommendationZh!: string;
 }
 
 export class ExperimentConfigDto {
   @ApiProperty({ description: '实验ID' })
-  id: string;
+  id!: string;
 
   @ApiProperty({ description: '实验名称' })
-  name: string;
+  name!: string;
 
   @ApiProperty({ description: '描述' })
-  description: string;
+  description!: string;
 
   @ApiProperty({ description: '状态', enum: ['DRAFT', 'RUNNING', 'PAUSED', 'COMPLETED'] })
-  status: string;
+  status!: string;
 
   @ApiProperty({ description: '流量百分比' })
-  trafficPercent: number;
+  trafficPercent!: number;
 
   @ApiProperty({ description: '开始日期' })
-  startDate: Date;
+  startDate!: Date;
 }
 
 // ==================== 可穿戴设备集成 ====================
 
 export class WearableConnectionDto {
   @ApiProperty({ description: '数据源', enum: ['STRAVA', 'GARMIN', 'APPLE_HEALTH', 'GOOGLE_FIT'] })
-  provider: string;
+  provider!: string;
 
   @ApiProperty({ description: '是否已连接' })
-  connected: boolean;
+  connected!: boolean;
 
   @ApiPropertyOptional({ description: '最后同步时间' })
   lastSyncAt?: Date;
@@ -251,28 +251,28 @@ export class WearableSyncRequestDto {
 
 export class WearableActivityDto {
   @ApiProperty({ description: '活动ID' })
-  id: string;
+  id!: string;
 
   @ApiProperty({ description: '数据源' })
-  provider: string;
+  provider!: string;
 
   @ApiProperty({ description: '活动名称' })
-  name: string;
+  name!: string;
 
   @ApiProperty({ description: '活动类型', enum: ['HIKE', 'RUN', 'WALK', 'BIKE', 'OTHER'] })
-  type: string;
+  type!: string;
 
   @ApiProperty({ description: '开始时间' })
-  startDate: Date;
+  startDate!: Date;
 
   @ApiProperty({ description: '距离(m)' })
-  distanceM: number;
+  distanceM!: number;
 
   @ApiProperty({ description: '爬升(m)' })
-  elevationGainM: number;
+  elevationGainM!: number;
 
   @ApiProperty({ description: '移动时间(s)' })
-  movingTimeSeconds: number;
+  movingTimeSeconds!: number;
 
   @ApiPropertyOptional({ description: '平均心率' })
   avgHeartRate?: number;
@@ -280,28 +280,28 @@ export class WearableActivityDto {
 
 export class WearableFitnessEstimateDto {
   @ApiProperty({ description: '数据源' })
-  provider: string;
+  provider!: string;
 
   @ApiProperty({ description: '评估时间' })
-  estimatedAt: Date;
+  estimatedAt!: Date;
 
   @ApiProperty({ description: '估算最大日爬升(m)' })
-  estimatedMaxDailyAscentM: number;
+  estimatedMaxDailyAscentM!: number;
 
   @ApiProperty({ description: '估算3天滚动爬升(m)' })
-  estimatedRollingAscent3DaysM: number;
+  estimatedRollingAscent3DaysM!: number;
 
   @ApiProperty({ description: '置信度 (0-1)' })
-  confidenceScore: number;
+  confidenceScore!: number;
 
   @ApiProperty({ description: '活动数量' })
-  activityCount: number;
+  activityCount!: number;
 
   @ApiProperty({ description: '数据范围(天)' })
-  dataRangeDays: number;
+  dataRangeDays!: number;
 
   @ApiProperty({ description: '峰值表现' })
-  peakPerformance: {
+  peakPerformance!: {
     maxSingleDayAscentM: number;
     maxSingleDayDistanceKm: number;
     longestMovingTimeHours: number;
@@ -312,57 +312,57 @@ export class WearableFitnessEstimateDto {
 
 export class CalibrationTriggerDto {
   @ApiProperty({ description: '用户ID' })
-  userId: string;
+  userId!: string;
 
   @ApiProperty({ description: '校准原因' })
-  reason: string;
+  reason!: string;
 
   @ApiProperty({ description: '优先级', enum: ['LOW', 'MEDIUM', 'HIGH'] })
-  priority: string;
+  priority!: string;
 
   @ApiProperty({ description: '待处理反馈数' })
-  pendingFeedbackCount: number;
+  pendingFeedbackCount!: number;
 }
 
 export class CalibrationResultDto {
   @ApiProperty({ description: '是否成功' })
-  success: boolean;
+  success!: boolean;
 
   @ApiProperty({ description: '校准原因' })
-  reason: string;
+  reason!: string;
 
   @ApiProperty({ description: '旧模型参数' })
-  oldModel: { maxDailyAscentM: number; rollingAscent3DaysM: number };
+  oldModel!: { maxDailyAscentM: number; rollingAscent3DaysM: number };
 
   @ApiProperty({ description: '新模型参数' })
-  newModel: { maxDailyAscentM: number; rollingAscent3DaysM: number };
+  newModel!: { maxDailyAscentM: number; rollingAscent3DaysM: number };
 
   @ApiProperty({ description: '校准因子' })
-  calibrationFactor: number;
+  calibrationFactor!: number;
 
   @ApiProperty({ description: '处理的反馈数' })
-  feedbacksProcessed: number;
+  feedbacksProcessed!: number;
 
   @ApiProperty({ description: '新置信度' })
-  newConfidenceLevel: string;
+  newConfidenceLevel!: string;
 
   @ApiProperty({ description: '校准时间' })
-  calibratedAt: Date;
+  calibratedAt!: Date;
 }
 
 export class CalibrationStatsDto {
   @ApiProperty({ description: '总校准次数' })
-  totalCalibrations: number;
+  totalCalibrations!: number;
 
   @ApiProperty({ description: '平均校准因子' })
-  avgCalibrationFactor: number;
+  avgCalibrationFactor!: number;
 
   @ApiProperty({ description: '已校准用户数' })
-  usersCalibrated: number;
+  usersCalibrated!: number;
 
   @ApiProperty({ description: '最后运行时间' })
-  lastRunAt: Date;
+  lastRunAt!: Date;
 
   @ApiProperty({ description: '下次计划时间' })
-  nextScheduledAt: Date;
+  nextScheduledAt!: Date;
 }

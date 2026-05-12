@@ -1,0 +1,52 @@
+name: Spatial Domain Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/admin/controllers/spatial-domain-admin.controller.ts"
+      - "src/admin/controllers/spatial-domain-admin.controller.spec.ts"
+      - "src/admin/controllers/spatial-domain-admin.controller.integration.spec.ts"
+      - "src/admin/dto/spatial-domain-admin.dto.ts"
+      - "src/admin/admin.module.ts"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/20260429183500_add_spatial_domain_admin_tables/migration.sql"
+      - "docs/api/spatial-domain-admin.md"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/spatial-domain-tests.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "src/admin/controllers/spatial-domain-admin.controller.ts"
+      - "src/admin/controllers/spatial-domain-admin.controller.spec.ts"
+      - "src/admin/controllers/spatial-domain-admin.controller.integration.spec.ts"
+      - "src/admin/dto/spatial-domain-admin.dto.ts"
+      - "src/admin/admin.module.ts"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/20260429183500_add_spatial_domain_admin_tables/migration.sql"
+      - "docs/api/spatial-domain-admin.md"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/spatial-domain-tests.yml"
+
+jobs:
+  spatial-domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Spatial Domain tests
+        run: npm run test:spatial-domain

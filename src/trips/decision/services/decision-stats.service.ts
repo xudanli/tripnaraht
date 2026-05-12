@@ -39,6 +39,8 @@ export interface DecisionDistributionStats {
     HUMAN: number;
     PHILOSOPHY: number;
     HEURISTIC: number;
+    UTILITY: number;
+    USER: number;
   };
   /** 按决策源占比 */
   bySourcePercentage: {
@@ -46,6 +48,8 @@ export interface DecisionDistributionStats {
     HUMAN: number;
     PHILOSOPHY: number;
     HEURISTIC: number;
+    UTILITY: number;
+    USER: number;
   };
   /** 硬现实驱动比例（PHYSICAL + HUMAN） */
   realityDrivenRatio: number;
@@ -65,6 +69,8 @@ export interface PersonaTriggerStats {
     HUMAN: number;
     PHILOSOPHY: number;
     HEURISTIC: number;
+    UTILITY: number;
+    USER: number;
   };
   /** 主要决策来源 */
   primarySource: DecisionSource;
@@ -119,6 +125,8 @@ export class DecisionStatsService {
       HUMAN: logs.filter(l => l.decisionSource === 'HUMAN').length,
       PHILOSOPHY: logs.filter(l => l.decisionSource === 'PHILOSOPHY').length,
       HEURISTIC: logs.filter(l => l.decisionSource === 'HEURISTIC').length,
+      UTILITY: logs.filter(l => l.decisionSource === 'UTILITY').length,
+      USER: logs.filter(l => l.decisionSource === 'USER').length,
     };
 
     const bySourcePercentage = {
@@ -126,6 +134,8 @@ export class DecisionStatsService {
       HUMAN: totalDecisions > 0 ? bySource.HUMAN / totalDecisions : 0,
       PHILOSOPHY: totalDecisions > 0 ? bySource.PHILOSOPHY / totalDecisions : 0,
       HEURISTIC: totalDecisions > 0 ? bySource.HEURISTIC / totalDecisions : 0,
+      UTILITY: totalDecisions > 0 ? bySource.UTILITY / totalDecisions : 0,
+      USER: totalDecisions > 0 ? bySource.USER / totalDecisions : 0,
     };
 
     const realityDrivenRatio = totalDecisions > 0
@@ -205,6 +215,8 @@ export class DecisionStatsService {
       HUMAN: logs.filter(l => l.decisionSource === 'HUMAN').length,
       PHILOSOPHY: logs.filter(l => l.decisionSource === 'PHILOSOPHY').length,
       HEURISTIC: logs.filter(l => l.decisionSource === 'HEURISTIC').length,
+      UTILITY: logs.filter(l => l.decisionSource === 'UTILITY').length,
+      USER: logs.filter(l => l.decisionSource === 'USER').length,
     };
 
     const bySourcePercentage = {
@@ -212,6 +224,8 @@ export class DecisionStatsService {
       HUMAN: totalDecisions > 0 ? bySource.HUMAN / totalDecisions : 0,
       PHILOSOPHY: totalDecisions > 0 ? bySource.PHILOSOPHY / totalDecisions : 0,
       HEURISTIC: totalDecisions > 0 ? bySource.HEURISTIC / totalDecisions : 0,
+      UTILITY: totalDecisions > 0 ? bySource.UTILITY / totalDecisions : 0,
+      USER: totalDecisions > 0 ? bySource.USER / totalDecisions : 0,
     };
 
     const realityDrivenRatio = totalDecisions > 0
@@ -220,7 +234,14 @@ export class DecisionStatsService {
 
     const details: DecisionStatsResult[] = [];
     if (routeDirectionId) {
-      for (const source of ['PHYSICAL', 'HUMAN', 'PHILOSOPHY', 'HEURISTIC'] as DecisionSource[]) {
+      for (const source of [
+        'PHYSICAL',
+        'HUMAN',
+        'PHILOSOPHY',
+        'HEURISTIC',
+        'UTILITY',
+        'USER',
+      ] as DecisionSource[]) {
         const count = bySource[source];
         if (count > 0) {
           details.push({
@@ -275,7 +296,13 @@ export class DecisionStatsService {
     });
 
     // 按 Persona 分组统计
-    const personaMap = new Map<string, { persona: 'ABU' | 'DR_DRE' | 'NEPTUNE'; bySource: { PHYSICAL: number; HUMAN: number; PHILOSOPHY: number; HEURISTIC: number } }>();
+    const personaMap = new Map<
+      string,
+      {
+        persona: 'ABU' | 'DR_DRE' | 'NEPTUNE';
+        bySource: Record<DecisionSource, number>;
+      }
+    >();
 
     for (const log of logs) {
       const persona = log.persona as 'ABU' | 'DR_DRE' | 'NEPTUNE';
@@ -290,17 +317,25 @@ export class DecisionStatsService {
             HUMAN: 0,
             PHILOSOPHY: 0,
             HEURISTIC: 0,
+            UTILITY: 0,
+            USER: 0,
           },
         };
         personaMap.set(persona, stats);
       }
 
-      stats.bySource[source]++;
+      stats.bySource[source] = (stats.bySource[source] ?? 0) + 1;
     }
 
     // 转换为结果格式
     const result: PersonaTriggerStats[] = Array.from(personaMap.values()).map(stats => {
-      const triggerCount = stats.bySource.PHYSICAL + stats.bySource.HUMAN + stats.bySource.PHILOSOPHY + stats.bySource.HEURISTIC;
+      const triggerCount =
+        stats.bySource.PHYSICAL +
+        stats.bySource.HUMAN +
+        stats.bySource.PHILOSOPHY +
+        stats.bySource.HEURISTIC +
+        stats.bySource.UTILITY +
+        stats.bySource.USER;
       
       // 确定主要决策来源
       let primarySource: DecisionSource = 'HEURISTIC';

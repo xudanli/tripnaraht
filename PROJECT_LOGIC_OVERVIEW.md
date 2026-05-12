@@ -358,11 +358,16 @@ Place
 - **定义**: 数字高程模型（Digital Elevation Model）证据
 - **作用**: 验证路线的物理可行性（坡度、累计爬升、疲劳指数）
 - **规则**: 没有DEM证据的路线不允许finalize
-
-### 4. Skills（能力颗粒）
+- **质量标记**: Agentic 路径下 `dem.get_profile` 返回 `data_quality`；为 `low`/`unknown` 时不应将「零爬升」默认可信，verify 链宜结合其它证据。
 - **定义**: 最小可复用的能力单元
 - **特点**: 可测试、可复用、对Agent友好
-- **示例**: `skill.decision.abuCheck`, `skill.geo.dem.getProfile`
+- **示例**: `skill.decision.abuCheck`, `skill.dem.get_profile`
+
+### 4b. Skill 命名契约（Registry vs MCP）
+
+- **Registry 名**：`SkillsRegistry` 中 `metadata.name` 的唯一真源（例：`dem.get_profile`），编排与 RESEARCH 必须以此为准。
+- **MCP 工具名**：`tripnara.*` 可与 Registry 不同，用于对外协议兼容（例：`tripnara.dem.getProfile` ↔ `dem.get_profile`）。文档与示例须 **双标并列**，避免「代码已改名、文档仍写旧名」的认知负荷。
+- **遗留别名**：仅在 Registry 边界解析（如 `dem.getProfile`、`dem.get.profile` → `dem.get_profile`）；新 Skill **禁止**再引入第三种拼写。
 
 ### 5. System 1 vs System 2
 - **System 1**: 快速路径（CRUD、简单查询、RAG检索）

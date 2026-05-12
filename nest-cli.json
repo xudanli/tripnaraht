@@ -6,7 +6,12 @@
   "compilerOptions": {
     "deleteOutDir": false,
     "tsConfigPath": "tsconfig.backend.json",
-    "assets": [],
+    "assets": [
+      {
+        "include": "assets/strategy/**/*",
+        "watchAssets": true
+      }
+    ],
     "watchAssets": true,
     "webpack": false,
     "plugins": []

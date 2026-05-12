@@ -1,5 +1,5 @@
 // src/agent/dto/router-output.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouteType, RouterReason, UIStatus } from '../interfaces/router.interface';
 
 /**
@@ -44,6 +44,13 @@ export class RouterOutputDto {
     example: RouteType.SYSTEM1_RAG,
   })
   route!: RouteType;
+
+  @ApiPropertyOptional({
+    description:
+      '路径标签（与 `route` 对照）：如 FAST≈System1、DEEP≈System2；可由路由 LLM 下发，缺失时由响应组装层按 `route` 推导',
+    example: 'DEEP',
+  })
+  selected_path?: string;
 
   @ApiProperty({ description: '置信度（0-1）', example: 0.85 })
   confidence!: number;

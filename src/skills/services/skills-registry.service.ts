@@ -1,12 +1,17 @@
 // src/skills/services/skills-registry.service.ts
 /**
  * Skills Registry Service
- * 
- * 统一注册和管理所有 Skills
+ *
+ * 统一注册和管理所有 Skills。
+ * 部分 Skill（如 transport / itinerary / **safetravel.get_advisories** / **iceland.rentalGuidance**）在 {@link SkillsModule} 构造函数中
+ * 通过 `registerSkill` 注入本注册表；本类构造函数中的 token 注入列表为另一子集。
+ * 启动后 `onModuleInit` 会调用 `warmupExternalDataSources()` 异步预热 SafeTravel RSS（见 `SAFETRAVEL_RSS_WARMUP`）。
  */
 
-import { Inject, Injectable, Optional, Logger } from '@nestjs/common';
-import { Skill } from '../interfaces/skill.interface';
+import { Inject, Injectable, Optional, Logger, OnModuleInit } from '@nestjs/common';
+import { SafetravelService } from '../../iceland-info/services/safetravel.service';
+import { Skill, SkillInput } from '../interfaces/skill.interface';
+import { wrapSkillExecution } from '../utils/skill-execution-wrap.util';
 import {
   SKILL_COUNTRY_PACK_GENERATE_REGRESSION_TESTS,
   SKILL_COUNTRY_PACK_NEW_SKELETON,
@@ -35,12 +40,19 @@ import {
   SKILL_CONTEXT_LEARN,
   SKILL_TOOLS_SELECT,
   SKILL_DECISION_LOG_APPEND,
+  SKILL_INTENT_RECOGNIZE,
 } from '../skills.tokens';
 
 @Injectable()
-export class SkillsRegistryService {
+export class SkillsRegistryService implements OnModuleInit {
   private readonly skills = new Map<string, Skill>();
   private readonly logger = new Logger(SkillsRegistryService.name);
+
+  /** 历史注册名 / 编排笔误 → 当前规范名（仅 Agentic getSkill 解析，不改变已存储的 key） */
+  private static readonly SKILL_NAME_LEGACY_ALIASES: Record<string, string> = {
+    'dem.get.profile': 'dem.get_profile',
+    'dem.getProfile': 'dem.get_profile',
+  };
 
   constructor(
     @Optional() @Inject(SKILL_DEM_GET_PROFILE) private readonly demGetProfile?: Skill,
@@ -80,6 +92,8 @@ export class SkillsRegistryService {
     @Optional() @Inject(SKILL_CONTEXT_LEARN) private readonly contextLearn?: Skill,
     @Optional() @Inject(SKILL_TOOLS_SELECT) private readonly toolsSelect?: Skill,
     @Optional() @Inject(SKILL_DECISION_LOG_APPEND) private readonly decisionLogAppend?: Skill,
+    @Optional() @Inject(SKILL_INTENT_RECOGNIZE) private readonly intentRecognize?: Skill,
+    @Optional() private readonly safetravelService?: SafetravelService,
   ) {
     this.logger.log('[SkillsRegistryService] 构造函数开始执行...');
     // 注册所有 Skills（只注册成功注入的）
@@ -111,31 +125,82 @@ export class SkillsRegistryService {
     if (this.contextLearn) this.registerSkill(this.contextLearn);
     if (this.toolsSelect) this.registerSkill(this.toolsSelect);
     if (this.decisionLogAppend) this.registerSkill(this.decisionLogAppend);
+    if (this.intentRecognize) this.registerSkill(this.intentRecognize);
     this.logger.log(`[SkillsRegistryService] 构造函数完成，已注册 ${this.skills.size} 个 Skills`);
   }
 
   /**
+   * 启动后异步预热依赖外部真源的读路径（如 SafeTravel RSS）。
+   * 缓存 TTL 由 `SafetravelService` 内部控制（默认 5min）。设置 `SAFETRAVEL_RSS_WARMUP=0` 可跳过。
+   */
+  onModuleInit(): void {
+    this.warmupExternalDataSources();
+  }
+
+  /**
+   * 触发异步 warmup（可重复调用；不阻塞事件循环）。
+   */
+  warmupExternalDataSources(): void {
+    if (process.env.SAFETRAVEL_RSS_WARMUP === '0') {
+      this.logger.debug('[SkillsRegistryService] SAFETRAVEL_RSS_WARMUP=0 — skip RSS warmup');
+      return;
+    }
+    setImmediate(() => {
+      void this.runSafetravelRssWarmup();
+    });
+  }
+
+  private async runSafetravelRssWarmup(): Promise<void> {
+    if (!this.safetravelService) {
+      this.logger.debug('[SkillsRegistryService] SafetravelService not injected — skip RSS warmup');
+      return;
+    }
+    try {
+      await this.safetravelService.fetchRssFeedAlerts();
+      this.logger.log('[SkillsRegistryService] SafeTravel RSS warmup completed');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`[SkillsRegistryService] SafeTravel RSS warmup failed (non-fatal): ${msg}`);
+    }
+  }
+
+  /**
    * 注册 Skill
+   *
+   * Phase A（I5）：统一包装 `execute`，失败抛出 {@link SkillExecutionError}（含 `orchestratorRobustness`）。
    */
   registerSkill(skill: Skill): void {
     if (!skill || !skill.metadata) {
       return;
     }
-    this.skills.set(skill.metadata.name, skill);
+    const name = skill.metadata.name;
+    const wrapped: Skill = {
+      metadata: skill.metadata,
+      execute: async (input: SkillInput) =>
+        wrapSkillExecution(name, () => skill.execute(input), {
+          orchestrator_step: input.tokenContext?.state_machine_step,
+        }),
+    };
+    this.skills.set(name, wrapped);
   }
 
   /**
    * 获取 Skill
    */
   getSkill(name: string): Skill | undefined {
-    return this.skills.get(name);
+    const direct = this.skills.get(name);
+    if (direct) return direct;
+    const canonical = SkillsRegistryService.SKILL_NAME_LEGACY_ALIASES[name];
+    return canonical ? this.skills.get(canonical) : undefined;
   }
 
   /**
    * 检查 Skill 是否已注册
    */
   hasSkill(name: string): boolean {
-    return this.skills.has(name);
+    if (this.skills.has(name)) return true;
+    const canonical = SkillsRegistryService.SKILL_NAME_LEGACY_ALIASES[name];
+    return Boolean(canonical && this.skills.has(canonical));
   }
 
   /**
@@ -143,6 +208,38 @@ export class SkillsRegistryService {
    */
   getAllSkills(): Skill[] {
     return Array.from(this.skills.values());
+  }
+
+  /**
+   * Sentinel-aware skills listing ("memory wipe" for sub-agents).
+   * When emergency constraints forbid a mode, remove related skills from the LLM-visible skill list.
+   *
+   * NOTE: This only affects *visibility* (prompt/tool schema). Execution may still call a specific
+   * skill by name if the state machine requires it.
+   */
+  getAllSkillsForEmergencyConstraints(emergencyConstraints?: { forbidden_modes?: string[] }): Skill[] {
+    const forbidden = (emergencyConstraints?.forbidden_modes ?? []).map((x) => String(x).toUpperCase());
+    if (forbidden.length === 0) return this.getAllSkills();
+
+    const forbidDrive = forbidden.includes('DRIVE') || forbidden.includes('MOTORCYCLE');
+    const forbidTransit = forbidden.includes('TRANSIT');
+    const forbidRail = forbidden.includes('RAIL');
+    const forbidFerry = forbidden.includes('FERRY');
+
+    const isDriveRelated = (name: string) =>
+      /(^|\.)(drive|car|parking|navigation|road_trip|roadtrip)(_|\.|$)/i.test(name);
+    const isTransitRelated = (name: string) => /(^|\.)transit(_|\.|$)/i.test(name);
+    const isRailRelated = (name: string) => /(^|\.)rail(_|\.|$)/i.test(name);
+    const isFerryRelated = (name: string) => /(^|\.)ferry(_|\.|$)/i.test(name);
+
+    return this.getAllSkills().filter((s) => {
+      const n = String(s?.metadata?.name ?? '');
+      if (forbidDrive && isDriveRelated(n)) return false;
+      if (forbidTransit && isTransitRelated(n)) return false;
+      if (forbidRail && isRailRelated(n)) return false;
+      if (forbidFerry && isFerryRelated(n)) return false;
+      return true;
+    });
   }
 
   /**

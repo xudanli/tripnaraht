@@ -2,6 +2,9 @@
  * VerifyExecutorService
  *
  * 实现 IVerifyExecutor，执行 VERIFY 阶段
+ *
+ * 注：本阶段对 transport.search 的调用均使用行程项内嵌坐标对象；若新增「字符串型」起终点，
+ * 请复用 `transport-endpoint-hydration.util` 与 Research 路径保持一致。
  * 1. 调用 itinerary.verify Skill
  * 2. 调用 ExperienceAgent.assessHumanExecutability（专利实施例：体验与人体可执行性评估）
  *
@@ -14,12 +17,20 @@ import type { IVerifyExecutor, PhaseExecutorContext } from '../../decision/kerne
 import { normalizeItem } from '../../decision/kernel/itinerary.types';
 import { solveDayTimeline, type SolveDayTimelineEnvironment } from '../../decision/kernel/itinerary-timeline.util';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { matchAxioms } from '../axioms/axiom-matchers';
+import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 import { ExperienceAgentService } from '../services/domain-agents/experience-agent.service';
 import type { Itinerary } from '../interfaces/trip-plan.interface';
 import { RouteFeasibilityEngineService } from '../services/route-feasibility-engine.service';
 import { classifyVerificationIssueFromText } from './verification-issue.rules';
 import type { ConstraintViolation, FeasibilityFinding } from '../services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../services/constraint-registry';
+import type { IcelandVehicleIntentHints } from '../../skills/itinerary/iceland-vehicle-terrain-arbitrator.util';
+import { WorldDecisionMemoryService } from '../memory/decision-memory/world-decision-memory.service';
+import {
+  buildTerrainFroadUnfitAxiomDecisionMemory,
+  pickLastVehicleAcceptedCausalityIds,
+} from '../memory/decision-memory/vehicle-terrain-decision-memory.util';
 
 @Injectable()
 export class VerifyExecutorService implements IVerifyExecutor {
@@ -29,6 +40,7 @@ export class VerifyExecutorService implements IVerifyExecutor {
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly experienceAgent?: ExperienceAgentService,
     @Optional() private readonly routeFeasibility?: RouteFeasibilityEngineService,
+    @Optional() private readonly worldDecisionMemory?: WorldDecisionMemoryService,
   ) {}
 
   /** 与 RepairExecutor.buildTimelineEnvironment 对齐：VERIFY 硬判定日落可行性 */
@@ -41,7 +53,11 @@ export class VerifyExecutorService implements IVerifyExecutor {
       if (typeof s === 'string' && s.trim()) sunsetByDate[k] = s.trim();
     }
     if (Object.keys(sunsetByDate).length === 0) return undefined;
-    const buf = Number(process.env.DECISION_REPAIR_TWILIGHT_BUFFER_MIN ?? '');
+    const overrideBuf = Number((dso.environmentState as any)?.twilightBufferMin);
+    const buf =
+      Number.isFinite(overrideBuf) && overrideBuf > 0
+        ? overrideBuf
+        : Number(process.env.DECISION_REPAIR_TWILIGHT_BUFFER_MIN ?? '');
     return {
       sunsetByDate,
       ...(Number.isFinite(buf) && buf > 0 ? { twilightBufferMin: Math.round(buf) } : {}),
@@ -135,26 +151,47 @@ export class VerifyExecutorService implements IVerifyExecutor {
     const issues: VerificationIssue[] = [];
     let confidenceDelta = 0;
 
+    const verifyUserQuery = (() => {
+      const m = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
+      if (m) return m;
+      const msgs = Array.isArray(ctx.recent_messages)
+        ? ctx.recent_messages.filter((x): x is string => typeof x === 'string')
+        : [];
+      const last = msgs.length ? msgs[msgs.length - 1].trim() : '';
+      return last || undefined;
+    })();
+
+    const verifyIntentHints: IcelandVehicleIntentHints | undefined = (() => {
+      const hints: IcelandVehicleIntentHints = {};
+      const vt = ctx.tripPlanRequest?.constraints?.vehicle_type;
+      if (vt === '2WD' || vt === '4WD') hints.constraints_vehicle_type = vt;
+
+      const profileTp = String(ctx.user_profile?.preferences?.transport_preferences ?? '').trim();
+      if (profileTp) {
+        hints.preference_text = profileTp;
+        if (!hints.transport_preferences) hints.transport_preferences = profileTp;
+      }
+
+      return Object.keys(hints).length > 0 ? hints : undefined;
+    })();
+
     // A. 显式约束投影（Constraint Projection）
     // 即便路径/POI 尚未完整编排，只要用户意图明确包含 F-road/高地，且车辆为 2WD，则必须给出 HARD 级别 terrain 证据。
     try {
-      const msg = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
-      const vehicle =
-        String((ctx.tripPlanRequest as any)?.constraints?.vehicle_type ?? '').toUpperCase() ||
-        (/4wd|4x4|四驱/i.test(msg) ? '4WD' : /2wd|两驱/i.test(msg) ? '2WD' : '');
-      const wantsFroad =
-        /\bf-?road\b/i.test(msg) ||
-        /\bF\d{2,4}\b/i.test(msg) || // F208 / F26 / F905...
-        /高地|内陆|山地|河渡|涉水/i.test(msg);
-      if (wantsFroad && vehicle === '2WD') {
+      const message = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
+      const constraints = (ctx.tripPlanRequest as any)?.constraints as Record<string, any> | undefined;
+      const matches = matchAxioms({ message, constraints });
+      const terrain = matches.find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
+      if (terrain) {
         const now = new Date().toISOString();
+        const terrainMsg =
+          `[L3-PROOF|${terrain.axiom.cid}|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
+          `意图要求 F-road/高地，但车辆为 2WD（冰岛高地普遍要求 4WD），物理上不可执行。`;
         issues.push({
           code: 'TERRAIN_F_ROAD_UNFIT',
           class: 'CONFLICT',
           // L3 proof-carrying prefix for dominant_cid + formal_proof_audit extraction
-          message:
-            `[L3-PROOF|terrain.f_road_compatibility|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
-            `意图要求 F-road/高地，但车辆为 2WD（冰岛高地普遍要求 4WD），物理上不可执行。`,
+          message: terrainMsg,
           source: 'ROUTE_FEASIBILITY',
           at: now,
           entityRef: { type: 'DESTINATION', id: String((ctx.tripPlanRequest as any)?.destination ?? '') || ctx.requestId },
@@ -163,6 +200,13 @@ export class VerifyExecutorService implements IVerifyExecutor {
             { action: 'ASK_USER', detail: '确认是否自担风险继续（可能仍无解）' },
           ],
         });
+        this.worldDecisionMemory?.append(
+          buildTerrainFroadUnfitAxiomDecisionMemory({
+            axiomCid: terrain.axiom.cid,
+            message: terrainMsg,
+            priorCausalityIds: pickLastVehicleAcceptedCausalityIds(this.worldDecisionMemory),
+          }),
+        );
         confidenceDelta -= 0.25;
       }
     } catch {
@@ -180,6 +224,8 @@ export class VerifyExecutorService implements IVerifyExecutor {
             risk_tolerance: (ctx.tripPlanRequest?.party_profile?.risk_tolerance?.toString().toUpperCase() as any) ?? undefined,
           },
           researchData: (ctx.researchData ?? {}) as any,
+          ...(verifyUserQuery ? { user_query: verifyUserQuery } : {}),
+          ...(verifyIntentHints ? { intent_hints: verifyIntentHints } : {}),
           environment: {
             month: dso.environmentState?.month,
             weather: {
@@ -247,6 +293,8 @@ export class VerifyExecutorService implements IVerifyExecutor {
           const result = await skill.execute({
             itinerary: ctx.itinerary as any,
             research_data: ctx.researchData,
+            ...(verifyUserQuery ? { user_query: verifyUserQuery } : {}),
+            ...(verifyIntentHints ? { intent_hints: verifyIntentHints } : {}),
           });
 
           if (result?.issues && Array.isArray(result.issues)) {
@@ -423,7 +471,20 @@ export class VerifyExecutorService implements IVerifyExecutor {
         ? `cmp:${m.cmp}|actual:${m.actual}|limit:${m.limit}|unit:${m.unit}|slack:${m.slack}`
         : 'cmp:LEQ|actual:|limit:|unit:|slack:';
     const ev = evid?.source ? `|evidence:${evid.source}${evid.refIds?.length ? `:${evid.refIds.join(',')}` : ''}` : '';
-    const prefix = `[L3-PROOF|${a.constraintId}|${entity}|${metric}${ev}]`;
+    const cid = (() => {
+      // Axiom-driven attribution: map certain raw constraintIds to axiom cids
+      switch (a.constraintId) {
+        case CONSTRAINT_IDS.TIME_SPACE_MAX_DRIVING_HOURS:
+          return AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid;
+        case CONSTRAINT_IDS.TIME_SPACE_ETA_FEASIBILITY:
+          return AXIOM_REGISTRY.ETA_INFEASIBLE.cid;
+        case CONSTRAINT_IDS.TERRAIN_F_ROAD_COMPATIBILITY:
+          return AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.cid;
+        default:
+          return a.constraintId;
+      }
+    })();
+    const prefix = `[L3-PROOF|${cid}|${entity}|${metric}${ev}]`;
     const tail = human && String(human).trim() ? ` ${String(human).trim()}` : '';
     return `${prefix}${tail}`;
   }

@@ -10,11 +10,20 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam, ApiQuery, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { DecisionReplayService, DecisionSnapshot, DecisionTimeline, WhatIfInput, WhatIfResult } from '../services/decision-replay.service';
+import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator';
+import {
+  DecisionReplayService,
+  DecisionSnapshot,
+  DecisionTimeline,
+  DecisionReplaySessionListItem,
+  WhatIfInput,
+  WhatIfResult,
+} from '../services/decision-replay.service';
 import { DecisionOutput } from '../interfaces/decision-node.interface';
 
 /**
@@ -30,6 +39,30 @@ export class DecisionReplayController {
   private readonly logger = new Logger(DecisionReplayController.name);
 
   constructor(private readonly replayService: DecisionReplayService) {}
+
+  // ============================================================================
+  // 会话列表（TripRun）
+  // ============================================================================
+
+  @Get('sessions')
+  @ApiOperation({
+    summary: '列出决策回放会话',
+    description:
+      '返回当前用户的 TripRun 记录；可选 trip_id 按行程筛选。兼容字段 sessions / items（内容相同）。' +
+      '每条含可读字段：trip_display_name、trip_destination、user_query_preview、planning_phase、completed_at、status_label_zh、list_summary（推荐直接用作列表主文案）。',
+  })
+  @ApiQuery({ name: 'trip_id', required: false, description: '行程 ID（UUID）' })
+  @ApiResponse({ status: 200, description: '会话列表' })
+  async listSessions(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('trip_id') tripId?: string,
+  ): Promise<{ sessions: DecisionReplaySessionListItem[]; items: DecisionReplaySessionListItem[] }> {
+    if (!user?.userId) {
+      throw new UnauthorizedException('Missing authenticated user');
+    }
+    const items = await this.replayService.listSessionsForUser(user.userId, tripId);
+    return { sessions: items, items };
+  }
 
   // ============================================================================
   // 时间线 API

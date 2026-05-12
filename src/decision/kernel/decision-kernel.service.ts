@@ -24,6 +24,7 @@ import {
   VerificationIssue,
   VerificationReport,
   PlanGenTerminalFailure,
+  type HarnessRuntimeState,
 } from './decision-state.types';
 import { StateManagerService } from './state-manager.service';
 import { ConstraintEngineAdapterService } from './constraint-engine-adapter.service';
@@ -63,6 +64,7 @@ import { NarrateExecutorService } from '../../agent/execution/narrate-executor.s
 import { GateEvalExecutorService } from '../../agent/execution/gate-eval-executor.service';
 import { PlanGenExecutorService } from '../../agent/execution/plan-gen-executor.service';
 import { VerifyExecutorService } from '../../agent/execution/verify-executor.service';
+import { MemoryContextAssemblerService } from '../../agent/memory/services/memory-context-assembler.service';
 import { RepairExecutorService } from '../../agent/execution/repair-executor.service';
 import { HarnessStepRunnerService } from '../../harness/runtime/harness-step-runner.service';
 import { HarnessTraceFilesystemExportService } from '../../harness/tracing/harness-trace-filesystem-export.service';
@@ -82,6 +84,7 @@ import {
   digestPlanDraftForCorrelation,
   isUserRepairResolutionLabel,
 } from './utils/decision-feedback-correlation.util';
+import type { HardRuleFact } from '../../trips/decision/shared/hard-rule-snapshot.types';
 
 @Injectable()
 export class DecisionKernelService {
@@ -141,6 +144,7 @@ export class DecisionKernelService {
     @Optional() private readonly harnessStepRunner?: HarnessStepRunnerService,
     @Optional() private readonly harnessTraceFilesystemExport?: HarnessTraceFilesystemExportService,
     @Optional() private readonly harnessShadowMetrics?: HarnessShadowMetricsCollector,
+    @Optional() private readonly memoryContextAssembler?: MemoryContextAssemblerService,
   ) {}
 
   /**
@@ -313,10 +317,19 @@ export class DecisionKernelService {
   /**
    * 创建初始 DecisionState
    * @param opts.evaluationRunId — 与 Evaluation Harness `runFingerprint.runId` / `route_and_run.meta.run_id` 对齐，供 Harness trace 关联
+   * @param opts.replanLineage — PRD I3：与 `OrchestratorState.metadata.replan_context` 对齐，写入 harnessRuntime
+   * @param opts.orchestratorPlanVersion — 与 `OrchestratorState.plan_version` 对齐，写入 tripState.planVersion
    */
   createInitialState(
     requestId: string,
-    opts?: { evaluationRunId?: string },
+    opts?: {
+      evaluationRunId?: string;
+      replanLineage?: {
+        previous_plan_version?: number;
+        previous_world_snapshot_hash?: string;
+      };
+      orchestratorPlanVersion?: number;
+    },
   ): DecisionState {
     const base: DecisionState = {
       userIntent: {},
@@ -330,14 +343,38 @@ export class DecisionKernelService {
       },
       requestId,
     };
+    const harnessRuntime: HarnessRuntimeState = {};
     const runId = opts?.evaluationRunId?.trim();
     if (runId) {
-      return {
-        ...base,
-        harnessRuntime: { evaluationRunId: runId },
-      };
+      harnessRuntime.evaluationRunId = runId;
     }
-    return base;
+    if (opts?.replanLineage) {
+      const rl = opts.replanLineage;
+      if (rl.previous_plan_version !== undefined && Number.isFinite(rl.previous_plan_version)) {
+        harnessRuntime.replan_previous_plan_version = Number(rl.previous_plan_version);
+      }
+      const h =
+        typeof rl.previous_world_snapshot_hash === 'string' ? rl.previous_world_snapshot_hash.trim() : '';
+      if (h) {
+        harnessRuntime.replan_previous_world_snapshot_hash = h;
+      }
+    }
+    const nextTrip = {
+      ...base.tripState,
+      ...(opts?.orchestratorPlanVersion !== undefined && Number.isFinite(opts.orchestratorPlanVersion)
+        ? { planVersion: opts.orchestratorPlanVersion }
+        : {}),
+    };
+    const hasTripDelta = nextTrip.planVersion !== undefined;
+    const hasHarness = Object.keys(harnessRuntime).length > 0;
+    if (!hasHarness && !hasTripDelta) {
+      return base;
+    }
+    return {
+      ...base,
+      ...(hasHarness ? { harnessRuntime } : {}),
+      ...(hasTripDelta ? { tripState: nextTrip } : {}),
+    };
   }
 
   /**
@@ -1319,13 +1356,68 @@ export class DecisionKernelService {
       hasAdvisory: counts.advisory > 0,
       counts,
       verifiedAt,
+      assertions_triggered: this.deriveVerifyTriggeredAssertions(issues, locked, verifiedAt),
     };
     const newState = this.stateManager.merge(locked, {
       confidence: Math.max(0.1, (dso.confidence ?? 0.9) + confidenceDelta),
       verification: report,
       systemState: { requestId: ctx.requestId, currentPhase: 'VERIFY', lastUpdatedAt: new Date().toISOString() },
     });
+    this.refreshOperationalNegativeOverlayAfterVerifyPhase();
     return { newState, issues, confidenceDelta };
+  }
+
+  /**
+   * VERIFY 结束：将 Decision ring 负向约束同步进 ExecutionContext（与 append 内 refresh 对齐，供 Planning 前 Context 稳定）。
+   */
+  private refreshOperationalNegativeOverlayAfterVerifyPhase(): void {
+    try {
+      this.memoryContextAssembler?.refreshOperationalNegativeExecutionOverlay();
+    } catch (e: any) {
+      this.logger.debug(
+        `[Kernel] refreshOperationalNegativeExecutionOverlay after VERIFY skipped: ${e?.message ?? e}`,
+      );
+    }
+  }
+
+  /**
+   * 从 VERIFY 结果提炼可审计 HardRuleFact（当前聚焦 SUNSET_BREACH → solar_safety_v1）。
+   */
+  private deriveVerifyTriggeredAssertions(
+    issues: VerificationIssue[],
+    dso: DecisionState,
+    at: string,
+  ): HardRuleFact[] {
+    const out: HardRuleFact[] = [];
+    for (const it of issues ?? []) {
+      if (it.code !== 'SUNSET_BREACH') continue;
+      const day = String(it.entityRef?.id ?? '').slice(0, 10);
+      const daylight =
+        day && dso.environmentState?.daylightByDate && typeof dso.environmentState.daylightByDate === 'object'
+          ? dso.environmentState.daylightByDate[day]
+          : undefined;
+      const sunsetOrDusk = daylight?.civil_dusk ?? daylight?.sunset;
+      const tw = Number((dso.environmentState as any)?.twilightBufferMin);
+      out.push({
+        rule_id: 'solar_safety_v1',
+        rule_name: 'Sunset visibility window breached',
+        actual_value: day || null,
+        threshold: typeof sunsetOrDusk === 'string' ? sunsetOrDusk : null,
+        unit: 'date',
+        is_violated: true,
+        severity: 'HARD',
+        evidence: {
+          type: 'solar_safety',
+          day,
+          sunset_or_civil_dusk: sunsetOrDusk,
+          ...(Number.isFinite(tw) ? { twilight_buffer_min: Math.round(tw) } : {}),
+          source: 'VERIFY/SUNSET_BREACH',
+          message: it.message,
+        },
+        at,
+      });
+    }
+    return out;
   }
 
   /**

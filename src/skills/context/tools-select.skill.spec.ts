@@ -16,6 +16,7 @@ describe('ToolsSelectSkill', () => {
 
     const mockEmbeddingService = {
       generateEmbedding: jest.fn(),
+      embedTextsOrdered: jest.fn(),
       getEmbeddingDimension: jest.fn().mockReturnValue(1536),
     };
 
@@ -36,6 +37,12 @@ describe('ToolsSelectSkill', () => {
     skill = module.get<ToolsSelectSkill>(ToolsSelectSkill);
     skillsRegistry = module.get(SkillsRegistryService);
     embeddingService = module.get(EmbeddingService);
+
+    const neutral = new Array(1536).fill(0.1);
+    embeddingService.generateEmbedding.mockResolvedValue(neutral);
+    embeddingService.embedTextsOrdered.mockImplementation((texts: string[]) =>
+      Promise.all(texts.map(() => Promise.resolve([...neutral]))),
+    );
   });
 
   it('应该被定义', () => {
@@ -89,6 +96,35 @@ describe('ToolsSelectSkill', () => {
       const toolNames = result.tools.map((t) => t.name);
       expect(toolNames.some((name) => name.includes('route'))).toBe(true);
     });
+
+    it('冰岛 / 高地意图应推荐 safetravel.get_advisories', async () => {
+      skillsRegistry.getAllSkills.mockReturnValue([
+        {
+          metadata: {
+            name: 'safetravel.get_advisories',
+            description: 'SafeTravel.is 官方 RSS 旅行安全警报',
+            category: 'world',
+            toolGroup: 'DOMAIN',
+          },
+        },
+        {
+          metadata: {
+            name: 'context.build',
+            description: '构建上下文',
+            category: 'rag',
+            toolGroup: 'CONTEXT',
+          },
+        },
+      ] as any);
+
+      const result = await skill.execute({
+        userQuery: 'Iceland highlands F-road trip next week',
+        planningPhase: 'planning',
+      });
+
+      const toolNames = result.tools.map((t) => t.name);
+      expect(toolNames).toContain('safetravel.get_advisories');
+    });
   });
 
   describe('execute - 向量检索', () => {
@@ -109,16 +145,20 @@ describe('ToolsSelectSkill', () => {
         },
       ] as any);
 
-      // Mock embeddings
-      embeddingService.generateEmbedding.mockImplementation((text: string) => {
-        // 简单的 mock：返回基于文本的固定向量
+      const mockVec = (text: string) => {
         const dimension = 1536;
         const vector = new Array(dimension).fill(0);
         if (text.includes('检查') || text.includes('check')) {
-          vector[0] = 0.9; // 高相似度
+          vector[0] = 0.9;
         }
-        return Promise.resolve(vector);
-      });
+        return vector;
+      };
+      embeddingService.generateEmbedding.mockImplementation((text: string) =>
+        Promise.resolve(mockVec(text)),
+      );
+      embeddingService.embedTextsOrdered.mockImplementation((texts: string[]) =>
+        Promise.all(texts.map((t) => Promise.resolve(mockVec(t)))),
+      );
     });
 
     it('应该使用向量检索（如果 EmbeddingService 可用）', async () => {

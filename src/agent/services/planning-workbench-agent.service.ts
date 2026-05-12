@@ -41,6 +41,15 @@ import { WeatherAgentService } from './domain-agents/weather-agent.service';
 import { CostAgentService } from './domain-agents/cost-agent.service';
 import { ExperienceAgentService } from './domain-agents/experience-agent.service';
 import { runBounded } from './orchestration-utils';
+import { MultiAgentCollaborationService } from '../../skills/world/services/multi-agent-collaboration.service';
+import type {
+  WorldModelFactLayerAnchor,
+  WorldModelStrategyLayer,
+} from '../../skills/world/interfaces/unified-world-model.interface';
+import {
+  applyDecisionDnaToStrategyLayers,
+  type DecisionDnaProfileForStrategy,
+} from '../utils/strategy-conflict-dna-tuning.util';
 
 export interface PlanningWorkbenchRequest {
   /** 规划上下文 */
@@ -119,6 +128,8 @@ export class PlanningWorkbenchAgentService {
     @Optional() private readonly demEffortMetadataService?: DEMEffortMetadataService,
     @Optional() private readonly geoFactsService?: GeoFactsService,
     @Optional() private readonly geoCheckHazardZonesSkill?: GeoCheckHazardZonesSkill,
+    @Optional()
+    private readonly multiAgentCollaboration?: MultiAgentCollaborationService,
   ) {}
 
   /**
@@ -205,6 +216,33 @@ export class PlanningWorkbenchAgentService {
       // 2. 根据用户操作执行不同流程
       let planState: PlanState = request.existingPlanState || this.createInitialPlanState(request.context, request.tripId);
       const uiOutput: PlanningWorkbenchResponse['uiOutput'] = {};
+
+      // 透传 tripId：域 Agent + MultiAgent 桥（与 UnifiedWorldModel 共享同一 trip 有界上下文）
+      if (request.tripId) {
+        try {
+          const wm = await this.getWorldModelData(request.context, {
+            tripId: request.tripId,
+          });
+          const summary =
+            wm.collaborationBridge?.consensusSummary ??
+            wm.strategyLayer?.consensusSummary ??
+            null;
+          planState.metadata = {
+            ...(planState.metadata || {}),
+            worldModelBridge: {
+              tripId: request.tripId,
+              collaborationRegistered: wm.collaborationBridge?.registered ?? false,
+              openConflictCount: wm.collaborationBridge?.openConflictCount ?? 0,
+              consensusSummary: summary,
+              strategyLayer: wm.strategyLayer,
+            },
+          };
+        } catch (e: any) {
+          this.logger.warn(
+            `[PlanningWorkbench] getWorldModelData skipped: ${e?.message || e}`,
+          );
+        }
+      }
 
       switch (request.userAction) {
         case 'generate':
@@ -2498,11 +2536,32 @@ export class PlanningWorkbenchAgentService {
    * 通过 Domain Agents 获取地理、天气、成本、体验等世界模型数据，
    * 用于支持决策核心引擎的约束检查和权衡分析。
    */
-  async getWorldModelData(context: PlanContext): Promise<{
+  async getWorldModelData(
+    context: PlanContext,
+    opts?: {
+      tripId?: string;
+      /** Decision DNA / 慢思考：微调策略层 reasoning 权重（Experience / Budget） */
+      decisionDnaBias?: { experience?: number; budget?: number };
+      /** 冲突场景下的 DNA 轴（注册 MAC 前应用，可与 UserProfile.decision_dna 映射） */
+      decisionDnaProfile?: DecisionDnaProfileForStrategy;
+    },
+  ): Promise<{
     geo?: Awaited<ReturnType<GeoAgentService['analyzeTerrain']>>;
     weather?: Awaited<ReturnType<WeatherAgentService['getForecast']>>;
     cost?: Awaited<ReturnType<CostAgentService['estimateTripCost']>>;
     experience?: Awaited<ReturnType<ExperienceAgentService['assessHumanExecutability']>>;
+    /** Layer 1：事实锚（有 Geo/Weather 结果时为 true） */
+    factLayerAnchor?: WorldModelFactLayerAnchor;
+    /** Layer 2：合并后的策略提案（独立于事协作注册也存在） */
+    strategyLayer?: WorldModelStrategyLayer;
+    /** MultiAgent 桥：贡献注册 + 冲突视图（需 tripId + 服务注入） */
+    collaborationBridge?: {
+      registered: boolean;
+      conflictCount: number;
+      openConflictCount: number;
+      conflicts: Array<{ id: string; conflictType: string; agents: string[] }>;
+      consensusSummary: string | null;
+    };
   }> {
     const result: {
       geo?: Awaited<ReturnType<GeoAgentService['analyzeTerrain']>>;
@@ -2511,35 +2570,185 @@ export class PlanningWorkbenchAgentService {
       experience?: Awaited<ReturnType<ExperienceAgentService['assessHumanExecutability']>>;
     } = {};
 
-    // 并行获取世界模型数据
+    // System 1：并行拉取（快路径）
     const promises: Promise<void>[] = [];
 
-    // Extract dates from constraints if available
     const startDate = context.constraints?.time?.startDate;
     const endDate = context.constraints?.time?.endDate;
     const hasDates = !!(startDate && endDate);
 
-    // Note: PlanContext.destination doesn't have coordinates, so GeoAgent and WeatherAgent 
-    // would need coordinates from another source (e.g., geocoding the city/country)
-    // For now, we skip these if no coordinates are available
-
-    // 成本数据
     if (this.costAgent && context.destination && hasDates) {
       promises.push(
-        this.costAgent.estimateTripCost(
-          context.destination.country || context.destination.city || '',
-          { start: startDate, end: endDate },
-          context.constraints?.companions?.count || 2
-        ).then(data => { result.cost = data; }).catch(e => {
-          this.logger.warn(`[WorldModel] CostAgent failed: ${e.message}`);
-        })
+        this.costAgent
+          .estimateTripCost(
+            context.destination.country || context.destination.city || '',
+            { start: startDate!, end: endDate! },
+            context.constraints?.companions?.count || 2,
+          )
+          .then((data) => {
+            result.cost = data;
+          })
+          .catch((e) => {
+            this.logger.warn(`[WorldModel] CostAgent failed: ${e.message}`);
+          }),
       );
     }
 
     await Promise.all(promises);
 
-    this.logger.debug(`[WorldModel] Data collected: geo=${!!result.geo}, weather=${!!result.weather}, cost=${!!result.cost}`);
+    const expBias = opts?.decisionDnaBias?.experience ?? 0;
+    const budgetBias = opts?.decisionDnaBias?.budget ?? 0;
 
-    return result;
+    let costStrategyLayer = result.cost
+      ? this.costAgent!.buildBudgetStrategyLayer(result.cost, {
+          budgetCeiling: context.constraints?.budget?.total,
+        })
+      : undefined;
+
+    let expStrategyLayer: WorldModelStrategyLayer | undefined;
+    if (this.experienceAgent) {
+      expStrategyLayer = this.experienceAgent.buildExperienceStrategyLayer(context, {
+        reasoningWeightBoost: expBias,
+      });
+      if (costStrategyLayer?.budgetProposal && budgetBias > 0) {
+        costStrategyLayer.budgetProposal = {
+          ...costStrategyLayer.budgetProposal,
+          reasoningWeight: Math.min(
+            0.98,
+            costStrategyLayer.budgetProposal.reasoningWeight + budgetBias,
+          ),
+        };
+      }
+    }
+
+    if (opts?.decisionDnaProfile) {
+      const tuned = applyDecisionDnaToStrategyLayers(
+        { cost: costStrategyLayer, experience: expStrategyLayer },
+        opts.decisionDnaProfile,
+      );
+      if (tuned.hint) {
+        this.logger.debug(`[WorldModel][DNA] ${tuned.hint}`);
+      }
+      if (tuned.cost) {
+        costStrategyLayer = tuned.cost;
+      }
+      if (tuned.experience) {
+        expStrategyLayer = tuned.experience;
+      }
+    }
+
+    const strategyLayer: WorldModelStrategyLayer | undefined =
+      costStrategyLayer || expStrategyLayer
+        ? {
+            budgetProposal: costStrategyLayer?.budgetProposal,
+            experienceProposal: expStrategyLayer?.experienceProposal,
+          }
+        : undefined;
+
+    const factLayerAnchor: WorldModelFactLayerAnchor | undefined =
+      result.geo || result.weather
+        ? {
+            geoPinned: !!result.geo,
+            weatherPinned: !!result.weather,
+            pinnedAt: new Date().toISOString(),
+          }
+        : undefined;
+
+    let collaborationBridge:
+      | {
+          registered: boolean;
+          conflictCount: number;
+          openConflictCount: number;
+          conflicts: Array<{ id: string; conflictType: string; agents: string[] }>;
+          consensusSummary: string | null;
+        }
+      | undefined;
+
+    const tripId = opts?.tripId?.trim();
+    if (
+      tripId &&
+      this.multiAgentCollaboration &&
+      (costStrategyLayer?.budgetProposal || expStrategyLayer?.experienceProposal)
+    ) {
+      try {
+        if (costStrategyLayer?.budgetProposal && result.cost) {
+          await this.multiAgentCollaboration.registerContribution(tripId, {
+            agentId: 'domain:cost',
+            agentType: 'COST_AGENT',
+            confidence: result.cost.confidence,
+            contribution: {
+              strategyLayer: { budgetProposal: costStrategyLayer.budgetProposal },
+            },
+            timestamp: new Date(),
+            metadata: {
+              source: 'CostAgentService.buildBudgetStrategyLayer',
+              reasoning: '预算估算 vs 用户软顶（constraints.budget.total）',
+            },
+          });
+        }
+        if (expStrategyLayer?.experienceProposal) {
+          await this.multiAgentCollaboration.registerContribution(tripId, {
+            agentId: 'domain:experience',
+            agentType: 'EXPERIENCE_AGENT',
+            confidence: expStrategyLayer.experienceProposal.confidence,
+            contribution: {
+              strategyLayer: {
+                experienceProposal: expStrategyLayer.experienceProposal,
+              },
+            },
+            timestamp: new Date(),
+            metadata: {
+              source: 'ExperienceAgentService.buildExperienceStrategyLayer',
+              reasoning: '体验层级（含极光玻璃屋等高阶供给语义）',
+            },
+          });
+        }
+        const view = this.multiAgentCollaboration.getCollaborationBridgeView(tripId);
+        collaborationBridge = {
+          registered: true,
+          conflictCount: view.conflicts.length,
+          openConflictCount: view.openConflictCount,
+          conflicts: view.conflicts.map((c) => ({
+            id: c.id,
+            conflictType: c.conflictType,
+            agents: c.agents,
+          })),
+          consensusSummary: view.consensusSummary,
+        };
+        this.logger.log(
+          `[WorldModel] MultiAgent bridge: tripId=${tripId}, conflicts=${view.conflicts.length}, open=${view.openConflictCount}`,
+        );
+      } catch (e: any) {
+        this.logger.warn(`[WorldModel] MultiAgent collaboration failed: ${e?.message || e}`);
+        collaborationBridge = {
+          registered: false,
+          conflictCount: 0,
+          openConflictCount: 0,
+          conflicts: [],
+          consensusSummary: null,
+        };
+      }
+    }
+
+    this.logger.debug(
+      `[WorldModel] Data collected: geo=${!!result.geo}, weather=${!!result.weather}, cost=${!!result.cost}, collaboration=${!!collaborationBridge?.registered}`,
+    );
+
+    const strategyLayerOut: WorldModelStrategyLayer | undefined =
+      strategyLayer || collaborationBridge?.consensusSummary
+        ? {
+            ...(strategyLayer || {}),
+            consensusSummary:
+              collaborationBridge?.consensusSummary ??
+              strategyLayer?.consensusSummary,
+          }
+        : undefined;
+
+    return {
+      ...result,
+      factLayerAnchor,
+      strategyLayer: strategyLayerOut,
+      collaborationBridge,
+    };
   }
 }

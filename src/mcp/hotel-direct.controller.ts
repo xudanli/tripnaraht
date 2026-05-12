@@ -41,8 +41,8 @@ export class HotelDirectController {
     try {
       const result = await this.hotelService.searchHotels(body);
       return {
-        success: true,
         ...result,
+        success: true,
       };
     } catch (error: any) {
       throw new HttpException(

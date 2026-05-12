@@ -15,6 +15,7 @@ import { ConstraintEngineService } from '../../trips/decision/constraints/constr
 import {
   itineraryToTripPlan,
   decisionStateToTripWorldState,
+  resolveKernelTripIdHint,
 } from './dso-to-trips-converter';
 import type { Itinerary } from '../../agent/interfaces/trip-plan.interface';
 
@@ -54,7 +55,9 @@ export class ConstraintEngineAdapterService {
     }
 
     try {
-      const tripWorldState = decisionStateToTripWorldState(state);
+      const tripWorldState = decisionStateToTripWorldState(state, {
+        prismaTripId: resolveKernelTripIdHint(state),
+      });
       const tripPlan = itineraryToTripPlan(planDraft);
       const result = await this.constraintEngine.isFeasible(tripWorldState, tripPlan);
 

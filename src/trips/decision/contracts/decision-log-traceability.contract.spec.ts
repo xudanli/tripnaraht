@@ -84,4 +84,17 @@ describe('decision-log-traceability.contract (TD-04)', () => {
     expect(r.valid).toBe(true);
     expect(r.warnings.some((w) => w.includes('empty trace'))).toBe(true);
   });
+
+  it('rejects critical action (REJECT) with empty reasonCodes (PRD §13.B)', () => {
+    const r = analyzeDecisionLogTraceability([minimalValid({ action: 'REJECT', reasonCodes: [] })]);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('reasonCodes') && e.includes('REJECT'))).toBe(true);
+  });
+
+  it('accepts critical action when reasonCodes is non-empty', () => {
+    const r = analyzeDecisionLogTraceability([
+      minimalValid({ action: 'ADJUST', reasonCodes: ['PACE_BUFFER'] }),
+    ]);
+    expect(r.valid).toBe(true);
+  });
 });

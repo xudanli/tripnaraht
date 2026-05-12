@@ -74,7 +74,8 @@ export class EntityResolutionService {
     mustHavePois: string[] = [],
     lat?: number,
     lng?: number,
-    limit: number = 10
+    limit: number = 10,
+    options?: { keywordOnly?: boolean },
   ): Promise<{
     results: EntityResolutionResult[];
     missingPois: string[];
@@ -123,7 +124,8 @@ export class EntityResolutionService {
         extracted.cities,
         lat,
         lng,
-        limit - results.length
+        limit - results.length,
+        options,
       );
       
       // 过滤低分结果
@@ -596,7 +598,8 @@ export class EntityResolutionService {
     _cities: string[],
     lat?: number,
     lng?: number,
-    limit: number = 10
+    limit: number = 10,
+    options?: { keywordOnly?: boolean },
   ): Promise<EntityResolutionResult[]> {
     // 调用vector-search服务
     const results = await this.vectorSearchService.hybridSearch(
@@ -605,7 +608,9 @@ export class EntityResolutionService {
       lng,
       undefined, // radius
       undefined, // category
-      limit
+      limit,
+      undefined,
+      options?.keywordOnly ? { keywordOnly: true } : undefined,
     );
 
     // 转换为EntityResolutionResult格式

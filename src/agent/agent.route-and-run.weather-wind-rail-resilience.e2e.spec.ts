@@ -27,6 +27,7 @@ import { summarizeP1RouteAndRunValidation } from './contracts/p1-route-and-run-v
 import { OptimizationEngineAdapterService } from '../decision/kernel/optimization-engine-adapter.service';
 import { CGUSSearchService } from '../trips/decision/optimization/cgus-search.service';
 import { UnifiedDecisionFormulaService } from '../trips/decision/optimization/unified-decision-formula.service';
+import { RagRealityPolicyGateService } from '../rag/services/rag-reality-policy-gate.service';
 
 describe('POST /agent/route_and_run — Wind Lock heals to RAIL (E2E)', () => {
   let app: INestApplication;
@@ -292,7 +293,15 @@ describe('POST /agent/route_and_run — Wind Lock heals to RAIL (E2E)', () => {
               // Real CGUS path (deterministic): prove forbidden DRIVE is pruned at search time.
               const unified = new UnifiedDecisionFormulaService();
               const cgus = new CGUSSearchService(unified);
-              const adapter = new OptimizationEngineAdapterService(undefined, undefined, undefined, undefined, undefined, cgus as any);
+              const adapter = new OptimizationEngineAdapterService(
+                new RagRealityPolicyGateService(),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                cgus as any,
+              );
 
               const dso: any = {
                 userIntent: { destination: 'X', days: 1, dateRange: { startDate: '2026-06-01', endDate: '2026-06-01' } },

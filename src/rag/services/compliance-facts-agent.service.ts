@@ -13,8 +13,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { DecisionContextV0 } from '../../trips/reality-kernel/decision-context.types';
+import type { ChunkRetrievalParams } from './chunk-retrieval.service';
 import { ChunkRetrievalService } from './chunk-retrieval.service';
 import { LlmExtractionService } from './llm-extraction.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
 
 /**
  * Rail Pass 规则
@@ -75,6 +78,7 @@ export class ComplianceFactsAgent {
     private readonly prisma: PrismaService,
     private readonly chunkRetrieval: ChunkRetrievalService,
     private readonly llmExtraction: LlmExtractionService,
+    private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
   ) {}
 
   /**
@@ -82,19 +86,28 @@ export class ComplianceFactsAgent {
    */
   async extractRailPassRules(
     passType: string,
-    countryCode: string
+    countryCode: string,
+    decisionContext?: DecisionContextV0,
   ): Promise<RailPassRule[]> {
     this.logger.debug(`提取 Rail Pass 规则: passType=${passType}, countryCode=${countryCode}`);
 
     try {
-      // 1. RAG 检索相关文档段落（使用新的 ChunkRetrievalService）
-      const snippets = await this.chunkRetrieval.retrieve({
+      const { scope } = this.ragRealityPolicyGate.resolve(decisionContext);
+      if (scope === 'blocked') {
+        return [];
+      }
+
+      let retrieveParams: ChunkRetrievalParams = {
         query: `${passType} rules for ${countryCode}`,
-        category: 'compliance_rules', // 对应原来的 collection: 'rail_pass_rules'
-        chunkCategory: 'RULES', // 规则类型的 chunk
+        category: 'compliance_rules',
+        chunkCategory: 'RULES',
         limit: 10,
-        useHybridSearch: true, // 启用混合检索以提高准确性
-      });
+        useHybridSearch: true,
+      };
+      retrieveParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(retrieveParams, scope);
+
+      // 1. RAG 检索相关文档段落（使用新的 ChunkRetrievalService）
+      const snippets = await this.chunkRetrieval.retrieve(retrieveParams);
 
       if (snippets.length === 0) {
         this.logger.warn(`未找到相关文档: passType=${passType}, countryCode=${countryCode}`);
@@ -181,19 +194,28 @@ Return only valid JSON array.`;
    */
   async extractTrailAccessRules(
     trailId: string,
-    countryCode: string
+    countryCode: string,
+    decisionContext?: DecisionContextV0,
   ): Promise<TrailAccessRule[]> {
     this.logger.debug(`提取 Trail Access 规则: trailId=${trailId}, countryCode=${countryCode}`);
 
     try {
-      // 1. RAG 检索（使用新的 ChunkRetrievalService）
-      const snippets = await this.chunkRetrieval.retrieve({
+      const { scope } = this.ragRealityPolicyGate.resolve(decisionContext);
+      if (scope === 'blocked') {
+        return [];
+      }
+
+      let retrieveParams: ChunkRetrievalParams = {
         query: `${trailId} access permit requirements ${countryCode}`,
-        category: 'compliance_rules', // 对应原来的 collection: 'trail_access_rules'
-        chunkCategory: 'RULES', // 规则类型的 chunk
+        category: 'compliance_rules',
+        chunkCategory: 'RULES',
         limit: 10,
-        useHybridSearch: true, // 启用混合检索以提高准确性
-      });
+        useHybridSearch: true,
+      };
+      retrieveParams = this.ragRealityPolicyGate.mergeChunkRetrievalParams(retrieveParams, scope);
+
+      // 1. RAG 检索（使用新的 ChunkRetrievalService）
+      const snippets = await this.chunkRetrieval.retrieve(retrieveParams);
 
       if (snippets.length === 0) {
         return [];

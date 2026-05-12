@@ -30,6 +30,8 @@ export interface TripPlanRequest {
   };
   start_date?: string; // ISO 8601
   days?: number;
+  /** 绑定 Trips 库行程时，itinerary.generate 等可读取 TripDay/ItineraryItem 作为槽位与 POI 来源 */
+  trip_id?: string;
   mode?: 'walk' | 'drive' | 'transit' | 'mixed';
   party?: {
     count: number;
@@ -42,6 +44,8 @@ export interface TripPlanRequest {
     risk_tolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
     fitness?: 'low' | 'medium' | 'high';
   };
+  /** route_and_run 显式提交：行动能力/体能补充（中文；不入 L1 DB，供 VERIFY/体验评估等读取） */
+  party_mobility_note_zh?: string;
   constraints?: {
     budget?: {
       total?: number;
@@ -176,6 +180,10 @@ export interface RequiredAdjustment {
   why: string;
   target?: string; // 调整目标（如 POI ID、路段 ID）
   alternatives?: string[]; // 替代方案
+  /** ADD_BUFFER：与 verify 的 TIME_WINDOW_OVERLAP.related_item_id 对齐，用该行程项的 end 作锚（非序列紧邻重叠时必需） */
+  buffer_anchor_item_id?: string;
+  /** ADD_BUFFER：多前项对同一后项重叠时由 map 合并；repair 取 max(各锚 end)+buffer。若与 buffer_anchor_item_id 同时存在，以本数组为准 */
+  buffer_anchor_item_ids?: string[];
 }
 
 /**
@@ -300,6 +308,31 @@ export interface ItineraryItem {
     flight?: string;
     /** 航班价格 */
     price?: number;
+    /** itinerary.generate / 增量骨架：当日 POI 来自研究排期还是启发式 */
+    slot_source?: 'research_schedule' | 'heuristic' | string;
+    /** 同上：时间窗来自 POI 字段、开放时间证据或默认启发式 */
+    time_source?: 'poi_evidence' | 'opening_hours_evidence' | 'heuristic' | string;
+    /** 分段规划：REST「待安排」占位原因（审计 / 工作台） */
+    placeholder_reason?: string;
+    /** 工作台二次 `poi.search` 建议检索串（只读提示） */
+    suggested_poi_search_queries?: string[];
+    /**
+     * 路段标识（如 `ring-road:vik-jokulsarlon`），与 `research_data.safetravel_alerts[].affected_route_segment_refs` 对齐；
+     * 用于 SafeTravel / 封路类 REACHABILITY 校验（Case 5 Lifeline）。
+     */
+    route_segment_ref?: string;
+    /** 写入 `route_segment_ref` 的打标器版本（审计 / replay），如 `corridor_v1` */
+    segment_tagger?: string;
+    /**
+     * Verify V2 只读：SafeTravel `affected_route_segment_refs` 与 `route_segment_ref` 对齐时的拓扑锚点（不删项）。
+     * 每轮 verify 会先清空再按当前 alerts 重算，避免陈旧标记。
+     */
+    closure_shadow?: {
+      cut_point?: boolean;
+      route_segment_ref?: string;
+      alert_severity?: 'CRITICAL' | 'ERROR' | 'WARNING';
+      alert_ids?: string[];
+    };
   };
 }
 
@@ -315,6 +348,8 @@ export interface Itinerary {
     total_days: number;
     total_cost_estimate?: number;
     robustness_score?: number; // 0..1
+    /** verify 旁路只读快照（避免 itinerary 合同依赖 skills 具体类型） */
+    verify_shadow?: Record<string, unknown>;
   };
   /**
    * Action 层执行计划（不代表已提交）
@@ -371,6 +406,14 @@ export interface DecisionLogEntry {
   outputs_summary: string; // 输出摘要
   evidence_refs: string[]; // 使用的证据引用 ID
   timestamp: string; // ISO 8601
+  /**
+   * 依据说明（本体 / 路况）：中文短句；与 `evidence_refs` 中 `ontology_*` 机器串配套。
+   * 决策日志 UI 应主区展示本字段，技术标识符折叠或悬停。
+   */
+  ontology_evidence_display_zh?: string[];
+  /** 准备度中文说明；`readiness_pack_check:` 见 `readiness_technical_evidence_refs`。 */
+  readiness_evidence_display_zh?: string[];
+  readiness_technical_evidence_refs?: string[];
   /** C1 Strict: evidence bundle linkage (stable id) */
   evidence_bundle_id?: string;
   /** C1 Strict: hard rule fact refs used by this decision */

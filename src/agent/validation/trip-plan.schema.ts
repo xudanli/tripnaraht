@@ -82,6 +82,7 @@ export const TripPlanRequestSchema = z.object({
   mode: z.enum(['walk', 'drive', 'transit', 'mixed']).optional(),
   party: PartySchema.optional(),
   party_profile: PartyProfileSchema.optional(),
+  party_mobility_note_zh: z.string().max(600).optional(),
   constraints: ConstraintsSchema,
   preferences: PreferencesSchema,
 });

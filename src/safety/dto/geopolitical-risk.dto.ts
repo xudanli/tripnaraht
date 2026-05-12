@@ -73,25 +73,25 @@ export enum DataSourceType {
  */
 export class RiskFactorsDto {
   @ApiProperty({ description: '活跃冲突风险 (0-1)' })
-  activeConflict: number;
+  activeConflict!: number;
 
   @ApiProperty({ description: '恐怖威胁风险 (0-1)' })
-  terrorismThreat: number;
+  terrorismThreat!: number;
 
   @ApiProperty({ description: '社会动荡风险 (0-1)' })
-  civilUnrest: number;
+  civilUnrest!: number;
 
   @ApiProperty({ description: '空域状态风险 (0-1)' })
-  airspaceStatus: number;
+  airspaceStatus!: number;
 
   @ApiProperty({ description: '边境状态风险 (0-1)' })
-  borderStatus: number;
+  borderStatus!: number;
 
   @ApiProperty({ description: '基础设施损坏风险 (0-1)' })
-  infrastructureDamage: number;
+  infrastructureDamage!: number;
 
   @ApiProperty({ description: '撤离难度 (0-1)' })
-  evacuationDifficulty: number;
+  evacuationDifficulty!: number;
 }
 
 /**
@@ -99,7 +99,7 @@ export class RiskFactorsDto {
  */
 export class AffectedRegionDto {
   @ApiProperty({ description: '国家代码 (ISO 3166-1 alpha-2)' })
-  countryCode: string;
+  countryCode!: string;
 
   @ApiPropertyOptional({ description: '国家名称' })
   countryName?: string;
@@ -108,10 +108,10 @@ export class AffectedRegionDto {
   region?: string;
 
   @ApiProperty({ description: '影响程度', enum: ['DIRECT', 'ADJACENT', 'REGIONAL', 'POTENTIAL'] })
-  impactLevel: 'DIRECT' | 'ADJACENT' | 'REGIONAL' | 'POTENTIAL';
+  impactLevel!: 'DIRECT' | 'ADJACENT' | 'REGIONAL' | 'POTENTIAL';
 
   @ApiProperty({ description: '风险等级', enum: GeopoliticalRiskLevel })
-  riskLevel: GeopoliticalRiskLevel;
+  riskLevel!: GeopoliticalRiskLevel;
 }
 
 /**
@@ -119,28 +119,28 @@ export class AffectedRegionDto {
  */
 export class TravelAdvisoryDto {
   @ApiProperty({ description: '警告ID' })
-  id: string;
+  id!: string;
 
   @ApiProperty({ description: '数据源', enum: DataSourceType })
-  source: DataSourceType;
+  source!: DataSourceType;
 
   @ApiProperty({ description: '国家代码' })
-  countryCode: string;
+  countryCode!: string;
 
   @ApiProperty({ description: '风险等级', enum: GeopoliticalRiskLevel })
-  riskLevel: GeopoliticalRiskLevel;
+  riskLevel!: GeopoliticalRiskLevel;
 
   @ApiProperty({ description: '标题' })
-  title: string;
+  title!: string;
 
   @ApiProperty({ description: '详细描述' })
-  description: string;
+  description!: string;
 
   @ApiPropertyOptional({ description: '风险类型', type: [String], enum: RiskType })
   riskTypes?: RiskType[];
 
   @ApiProperty({ description: '发布时间' })
-  publishedAt: Date;
+  publishedAt!: Date;
 
   @ApiPropertyOptional({ description: '更新时间' })
   updatedAt?: Date;
@@ -157,37 +157,37 @@ export class TravelAdvisoryDto {
  */
 export class SafetyAlertDto {
   @ApiProperty({ description: '警报ID' })
-  id: string;
+  id!: string;
 
   @ApiProperty({ description: '警报类型', enum: RiskType })
-  type: RiskType;
+  type!: RiskType;
 
   @ApiProperty({ description: '紧急程度', enum: AlertUrgency })
-  urgency: AlertUrgency;
+  urgency!: AlertUrgency;
 
   @ApiProperty({ description: '严重程度', enum: AlertSeverity })
-  severity: AlertSeverity;
+  severity!: AlertSeverity;
 
   @ApiProperty({ description: '风险等级', enum: GeopoliticalRiskLevel })
-  riskLevel: GeopoliticalRiskLevel;
+  riskLevel!: GeopoliticalRiskLevel;
 
   @ApiProperty({ description: '标题' })
-  title: string;
+  title!: string;
 
   @ApiProperty({ description: '简短描述' })
-  summary: string;
+  summary!: string;
 
   @ApiProperty({ description: '详细描述' })
-  description: string;
+  description!: string;
 
   @ApiProperty({ description: '受影响区域', type: [AffectedRegionDto] })
-  affectedRegions: AffectedRegionDto[];
+  affectedRegions!: AffectedRegionDto[];
 
   @ApiPropertyOptional({ description: '建议措施', type: [String] })
   recommendations?: string[];
 
   @ApiProperty({ description: '创建时间' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @ApiPropertyOptional({ description: '更新时间' })
   updatedAt?: Date;
@@ -196,7 +196,7 @@ export class SafetyAlertDto {
   expiresAt?: Date;
 
   @ApiProperty({ description: '是否活跃' })
-  isActive: boolean;
+  isActive!: boolean;
 }
 
 /**
@@ -204,25 +204,25 @@ export class SafetyAlertDto {
  */
 export class CountrySafetyAssessmentDto {
   @ApiProperty({ description: '国家代码' })
-  countryCode: string;
+  countryCode!: string;
 
   @ApiProperty({ description: '国家名称' })
-  countryName: string;
+  countryName!: string;
 
   @ApiProperty({ description: '综合风险等级', enum: GeopoliticalRiskLevel })
-  overallRiskLevel: GeopoliticalRiskLevel;
+  overallRiskLevel!: GeopoliticalRiskLevel;
 
   @ApiProperty({ description: '风险因素', type: RiskFactorsDto })
-  riskFactors: RiskFactorsDto;
+  riskFactors!: RiskFactorsDto;
 
   @ApiProperty({ description: '活跃警告', type: [TravelAdvisoryDto] })
-  activeAdvisories: TravelAdvisoryDto[];
+  activeAdvisories!: TravelAdvisoryDto[];
 
   @ApiProperty({ description: '活跃警报', type: [SafetyAlertDto] })
-  activeAlerts: SafetyAlertDto[];
+  activeAlerts!: SafetyAlertDto[];
 
   @ApiProperty({ description: '评估时间' })
-  assessedAt: Date;
+  assessedAt!: Date;
 
   @ApiPropertyOptional({ description: '下次评估时间' })
   nextAssessmentAt?: Date;
@@ -236,19 +236,19 @@ export class CountrySafetyAssessmentDto {
  */
 export class TripSafetyImpactDto {
   @ApiProperty({ description: '行程ID' })
-  tripId: string;
+  tripId!: string;
 
   @ApiProperty({ description: '是否受影响' })
-  isAffected: boolean;
+  isAffected!: boolean;
 
   @ApiProperty({ description: '影响程度', enum: ['NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] })
-  impactLevel: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  impactLevel!: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
   @ApiProperty({ description: '受影响的目的地', type: [AffectedRegionDto] })
-  affectedDestinations: AffectedRegionDto[];
+  affectedDestinations!: AffectedRegionDto[];
 
   @ApiProperty({ description: '相关警报', type: [SafetyAlertDto] })
-  relatedAlerts: SafetyAlertDto[];
+  relatedAlerts!: SafetyAlertDto[];
 
   @ApiPropertyOptional({ description: '建议措施', type: [String] })
   recommendations?: string[];
@@ -257,7 +257,7 @@ export class TripSafetyImpactDto {
   alternativeDestinations?: string[];
 
   @ApiProperty({ description: '评估时间' })
-  assessedAt: Date;
+  assessedAt!: Date;
 }
 
 /**
@@ -265,7 +265,7 @@ export class TripSafetyImpactDto {
  */
 export class SafetyAssessmentRequestDto {
   @ApiProperty({ description: '国家代码列表', type: [String] })
-  countryCodes: string[];
+  countryCodes!: string[];
 
   @ApiPropertyOptional({ description: '是否包含邻国风险' })
   includeAdjacentCountries?: boolean;
@@ -279,19 +279,19 @@ export class SafetyAssessmentRequestDto {
  */
 export class SafetyNotificationPreferencesDto {
   @ApiProperty({ description: '用户ID' })
-  userId: string;
+  userId!: string;
 
   @ApiProperty({ description: '是否启用推送通知' })
-  pushEnabled: boolean;
+  pushEnabled!: boolean;
 
   @ApiProperty({ description: '是否启用邮件通知' })
-  emailEnabled: boolean;
+  emailEnabled!: boolean;
 
   @ApiProperty({ description: '是否启用短信通知' })
-  smsEnabled: boolean;
+  smsEnabled!: boolean;
 
   @ApiProperty({ description: '最低通知风险等级', enum: GeopoliticalRiskLevel })
-  minRiskLevel: GeopoliticalRiskLevel;
+  minRiskLevel!: GeopoliticalRiskLevel;
 
   @ApiPropertyOptional({ description: '关注的国家列表', type: [String] })
   watchedCountries?: string[];

@@ -47,6 +47,8 @@ import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
     SkillMappingService,
     SubAgentMappingService,
     VersionService,
+    /** Phase B：I5 驱动履约恢复 / 退避，供 Agent 或其它模块注入 */
+    ExecutionIntegrationService,
   ],
 })
 export class ChainOfWorkModule {}

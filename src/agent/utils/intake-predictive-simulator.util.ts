@@ -1,5 +1,7 @@
 import type { RepairTrace, SimulatedRepairTrace } from '../services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../services/constraint-registry';
+import { matchAxioms } from '../axioms/axiom-matchers';
+import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 
 function round(n: number, digits: number): number {
   const p = Math.pow(10, digits);
@@ -32,7 +34,7 @@ export function estimateUtilityDeltaForSimulatedTrace(trace: Pick<RepairTrace, '
   // Utility convergence anchor (LogicOps): keep terrain F-road mismatch on a stable constant.
   // This enables delta_utility→0 when paired with audit-side real injection.
   if (trace.reason === 'TERRAIN_F_ROAD_UNFIT' && unit === 'bool') {
-    return -10;
+    return AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.utility_anchor.expected_penalty;
   }
   if (trace.reason === 'HISTORICAL_BOUNDARY_HIT' && unit === 'bool') {
     return -12;
@@ -48,6 +50,7 @@ export function buildHistoricalBoundarySimulations(input: {
 }): SimulatedRepairTrace[] {
   const traces: SimulatedRepairTrace[] = [];
   const t = input.tripPlanRequest;
+  const msgRaw = String((t as any)?.message ?? '').trim();
 
   const session = input.sessionRepairTraces ?? [];
   const fatigueExCount = session.filter((x) => x?.reason === 'FATIGUE_EXHAUSTION').length;
@@ -80,7 +83,7 @@ export function buildHistoricalBoundarySimulations(input: {
       evidence: { refIds: ['SESSION_HISTORY:FATIGUE_EXHAUSTION_COUNT_2'] },
     });
   }
-  const msg = String((t as any)?.message ?? '').toLowerCase();
+  const msg = msgRaw.toLowerCase();
   const days = typeof (t as any)?.days === 'number' ? (t as any).days : undefined;
   const party = (t as any)?.party;
   const hasElderly = Boolean(party?.has_elderly);
@@ -125,9 +128,73 @@ export function buildHistoricalBoundarySimulations(input: {
     }
   }
 
-  const vehicle = String((t as any)?.constraints?.vehicle_type ?? '').toUpperCase();
-  const hasFroadRequest = /f[\s-]?road|froad|highlands|高地|内陆|f路|f\s*路/.test(msg);
-  if (vehicle === '2WD' && hasFroadRequest) {
+  // Axiom hook: FATIGUE_OVERLOAD (minimal heuristic from message)
+  try {
+    const constraints = ((t as any)?.constraints ?? undefined) as Record<string, any> | undefined;
+    const match = matchAxioms({ message: msg, constraints }).find((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
+    if (match) {
+      const plannedMin = Number(match.evidence?.planned_duration_minutes);
+      const maxMin = 8 * 60; // default daily driving budget for dev baseline
+      const slackMin = Number.isFinite(plannedMin) ? maxMin - plannedMin : -120;
+      const metrics = {
+        fatigue_score01: 0.85,
+        fatigue_weight: deriveFatigueWeightPiecewise(0.85),
+        base_limit: maxMin / 60,
+        effective_limit: maxMin / 60,
+        actual_cost: Number.isFinite(plannedMin) ? plannedMin / 60 : 10,
+        unit: 'h' as const,
+      };
+      const est = AXIOM_REGISTRY.FATIGUE_OVERLOAD.utility_anchor.expected_penalty;
+      traces.push({
+        tacticId: 'IntakePredictiveSimulator',
+        targetEntity: { type: 'DAY', id: 'INTAKE' },
+        applied: false,
+        reason: AXIOM_REGISTRY.FATIGUE_OVERLOAD.sim_label as any,
+        metrics: { ...metrics, utility_delta: est },
+        estimated_utility_delta: est,
+        simulation: { kind: 'HISTORICAL_BOUNDARY', boundary_id: 'fatigue_overload_intent' },
+        evidence: {
+          refIds: [
+            `[L3-PROOF|${AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid}|DAY:intent|cmp:LEQ|actual:${round(
+              Number(metrics.actual_cost),
+              2,
+            )}|limit:${round(Number(metrics.effective_limit), 2)}|unit:h|slack:${round(slackMin / 60, 2)}|evidence:MODEL:intent_fatigue]`,
+          ],
+        },
+      });
+    }
+  } catch {
+    // best-effort
+  }
+
+  // Axiom hook: ETA_INFEASIBLE (minimal heuristic from message)
+  try {
+    const constraints = ((t as any)?.constraints ?? undefined) as Record<string, any> | undefined;
+    const match = matchAxioms({ message: msg, constraints }).find((m) => m.axiom_id === 'ETA_INFEASIBLE');
+    if (match) {
+      const est = AXIOM_REGISTRY.ETA_INFEASIBLE.utility_anchor.expected_penalty;
+      traces.push({
+        tacticId: 'IntakePredictiveSimulator',
+        targetEntity: { type: 'DAY', id: 'INTAKE' },
+        applied: false,
+        reason: AXIOM_REGISTRY.ETA_INFEASIBLE.sim_label as any,
+        metrics: { fatigue_score01: 0, fatigue_weight: 1, base_limit: 1, effective_limit: 1, actual_cost: 0, unit: 'bool', utility_delta: est } as any,
+        estimated_utility_delta: est,
+        simulation: { kind: 'HISTORICAL_BOUNDARY', boundary_id: 'eta_infeasible_intent' },
+        evidence: {
+          refIds: [
+            `[L3-PROOF|${AXIOM_REGISTRY.ETA_INFEASIBLE.cid}|DAY:intent|cmp:LEQ|actual:1|limit:0|unit:bool|slack:-1|evidence:MODEL:intent_eta]`,
+          ],
+        },
+      });
+    }
+  } catch {
+    // best-effort
+  }
+
+  const constraints = ((t as any)?.constraints ?? undefined) as Record<string, any> | undefined;
+  const matched = matchAxioms({ message: msg, constraints }).some((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
+  if (matched) {
     const f = 0.35;
     const w = deriveFatigueWeightPiecewise(f);
     const metrics = {
@@ -138,7 +205,7 @@ export function buildHistoricalBoundarySimulations(input: {
       actual_cost: 0,
       unit: 'bool' as const,
     };
-    const est = estimateUtilityDeltaForSimulatedTrace({ metrics, reason: 'TERRAIN_F_ROAD_UNFIT' });
+    const est = AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.utility_anchor.expected_penalty;
     traces.push({
       tacticId: 'IntakePredictiveSimulator',
       targetEntity: { type: 'DAY', id: 'INTAKE' },

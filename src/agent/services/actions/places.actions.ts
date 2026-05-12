@@ -210,10 +210,10 @@ export function createPlacesActions(
           // 提取地点名称（如果查询中包含"地点名称: xxx"的模式）
           let extractedPlaceName: string | null = null;
           const placeNameMatch = query.match(/地点名称[：:]\s*([^，,。.\n，,]+?)(?=，|,|。|\.|$)/i);
-          if (placeNameMatch && placeNameMatch[1]) {
-            extractedPlaceName = placeNameMatch[1].trim();
-            // 清理可能包含的其他字段标识（如"地点ID"等）
-            extractedPlaceName = extractedPlaceName.replace(/\s*[，,]\s*地点ID.*$/i, '').trim();
+          if (placeNameMatch?.[1]) {
+            let name = placeNameMatch[1].trim();
+            name = name.replace(/\s*[，,]\s*地点ID.*$/i, '').trim();
+            extractedPlaceName = name;
             logger.debug(`[resolve_entities] 提取的地点名称: "${extractedPlaceName}"`);
           }
 
@@ -422,7 +422,7 @@ export function createPlacesActions(
                 return null;
               }
             })
-            .filter((node: any) => node !== null); // 过滤掉 null
+            .filter((node: any): node is Exclude<typeof node, null> => node !== null); // 过滤掉 null
 
           // 真正过滤掉缺少坐标的节点（只保留前5个用于坐标补全）
           const nodesWithCoords: any[] = [];

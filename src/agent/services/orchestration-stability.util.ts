@@ -40,11 +40,19 @@ export function createDeadline(totalMs: number): Deadline {
   };
 }
 
-export async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+export async function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  label: string,
+  opts?: { abortController?: AbortController },
+): Promise<T> {
   if (ms <= 0) throw new Error(`TIMEOUT:${label}`);
   let t: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, rej) => {
-    t = setTimeout(() => rej(new Error(`TIMEOUT:${label}`)), ms);
+    t = setTimeout(() => {
+      opts?.abortController?.abort();
+      rej(new Error(`TIMEOUT:${label}`));
+    }, ms);
   });
   try {
     return await Promise.race([p, timeout]);
@@ -61,6 +69,9 @@ export interface StabilityContext {
   deadline: Deadline;
   traceInfo?: any;
   startTs: number;
+  /** P1：与 AgentMemoryContext 对齐，供 ModeLock / 日志 / replay 绑定 */
+  snapshotId?: string;
+  snapshotVersion?: number;
 }
 
 type CacheKey = string;

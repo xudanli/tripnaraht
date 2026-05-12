@@ -23,24 +23,24 @@ export enum McpCapabilityStatus {
 export class McpCapabilityDto {
   @ApiProperty({ description: '服务名称', example: 'google_maps' })
   @IsString()
-  serviceName: string;
+  serviceName!: string;
 
   @ApiProperty({ description: '服务显示名称', example: 'Google Maps' })
   @IsString()
-  displayName: string;
+  displayName!: string;
 
   @ApiProperty({ description: '服务描述', example: 'Google Maps API 服务，提供地点搜索、路线规划、地理编码等功能' })
   @IsString()
-  description: string; // 服务功能描述，用于列表显示
+  description!: string; // 服务功能描述，用于列表显示
 
   @ApiProperty({ description: '是否启用', example: true })
   @IsBoolean()
-  enabled: boolean;
+  enabled!: boolean;
 
   @ApiProperty({ description: '工具列表', example: ['google_maps.searchPlaces', 'google_maps.getRoute'] })
   @IsArray()
   @IsString({ each: true })
-  tools: string[];
+  tools!: string[];
 
   @ApiPropertyOptional({ description: '服务分类', example: 'mapping' })
   @IsOptional()
@@ -59,11 +59,11 @@ export class McpCapabilityDto {
 export class UpdateCapabilityStatusDto {
   @ApiProperty({ description: '服务名称', example: 'google_maps' })
   @IsString()
-  serviceName: string;
+  serviceName!: string;
 
   @ApiProperty({ description: '启用状态', enum: McpCapabilityStatus, example: McpCapabilityStatus.ENABLED })
   @IsEnum(McpCapabilityStatus)
-  status: McpCapabilityStatus;
+  status!: McpCapabilityStatus;
 }
 
 /**
@@ -72,7 +72,7 @@ export class UpdateCapabilityStatusDto {
 export class BatchUpdateCapabilityStatusDto {
   @ApiProperty({ description: '更新列表', type: [UpdateCapabilityStatusDto] })
   @IsArray()
-  updates: UpdateCapabilityStatusDto[];
+  updates!: UpdateCapabilityStatusDto[];
 }
 
 /**

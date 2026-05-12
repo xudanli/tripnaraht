@@ -11,6 +11,7 @@ export enum AgentEventType {
   WEBBROWSE_BLOCKED = 'webbrowse_blocked',
   FALLBACK_TRIGGERED = 'fallback_triggered',
   AGENT_COMPLETE = 'agent_complete',
+  SAGA_STUCK = 'saga_stuck',
 }
 
 /**

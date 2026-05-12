@@ -7,6 +7,11 @@
 import { DecisionLogEntry } from './trip-plan.interface';
 import { ErrorType } from './error-types.interface';
 import { ClarificationQuestion } from './clarification.interface';
+import type { TaskType } from '../utils/orchestration-signals.util';
+import type {
+  OrchestratorFailureDomain,
+  OrchestratorRobustnessMetadata,
+} from '../utils/orchestrator-failure-taxonomy.util';
 
 /**
  * 意图分析结果
@@ -35,6 +40,8 @@ export interface RoutingDecision {
   };
   requiredCapabilities?: string[];
   consentRequired?: boolean;
+  /** 产品/调试：快慢路径标签（如 FAST≈System1，DEEP≈System2）；亦可由前端 `route.route` 推导 */
+  selected_path?: string;
 }
 
 /**
@@ -91,7 +98,10 @@ export interface OrchestrationResult {
   result: {
     // 业务结果（成功时）
     [key: string]: any;
-    
+
+    /** PRD I5：失败路径主分类（与 observability.orchestration_failure 对齐） */
+    orchestrator_robustness?: OrchestratorRobustnessMetadata;
+
     // 澄清消息相关字段（失败且需要澄清时）
     needsUserConfirmation?: boolean;
     clarificationMessage?: string; // 向后兼容：简单字符串格式
@@ -116,14 +126,34 @@ export interface OrchestrationResult {
 }
 
 /**
+ * AgentService.routeAndRun 在 Recovery 环内再次调用状态机时注入，用于 decision_log.metadata.recovery_context。
+ */
+export type RecoveryInvocationContext = {
+  is_retry: boolean;
+  retry_attempt: number;
+  previous_failure_domain: OrchestratorFailureDomain;
+  elapsed_from_start_ms: number;
+  /** 与 observability.recovery_trace 对齐的摘要（可选） */
+  trace_summary?: Array<{ attempt: number; backoff_ms: number; failure_code?: string }>;
+};
+
+/**
  * Agent 上下文
  */
 export interface AgentContext {
   requestId: string;
   userId: string;
   tripId?: string | null;
+  /** `trip_runs.id`：AgentService 在编排前创建/续跑注入，供 Planner LangGraph metadata 与 Context writeBack */
+  tripRunId?: string | null;
   conversationHistory?: string[];
   userPreferences?: Record<string, any>;
   availableSkills?: string[];
   availableActions?: string[];
+  /** 编排外层超时（withTimeout）触发 abort，用于取消昂贵子步骤（如 tools.select embedding） */
+  abortSignal?: AbortSignal;
+  /** AgentService 注入：与 `signalsFromRequest` 的 taskType 对齐，供动态编排选择轻量路径 */
+  routingTaskType?: TaskType;
+  /** Phase B+：外层 Recovery 重试进入 SM 时携带，供每条 orchestrator decision_log 打章 */
+  recoveryInvocation?: RecoveryInvocationContext;
 }

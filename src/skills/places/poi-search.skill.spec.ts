@@ -75,6 +75,7 @@ describe('PoiSearchSkill', () => {
         64.1,
         -21.9,
         10,
+        undefined,
       );
       expect(result.pois).toHaveLength(1);
       expect(result.pois[0].poi_id).toBe('1');
@@ -168,6 +169,23 @@ describe('PoiSearchSkill', () => {
         undefined,
         undefined,
         10,
+        undefined,
+      );
+    });
+
+    it('keyword_only 时向 resolveEntities 传入 keywordOnly 选项', async () => {
+      entityResolutionService.resolveEntities.mockResolvedValue({ results: [] } as any);
+      await skill.execute({
+        query: '冰岛南岸',
+        keyword_only: true,
+      });
+      expect(entityResolutionService.resolveEntities).toHaveBeenCalledWith(
+        '冰岛南岸',
+        [],
+        undefined,
+        undefined,
+        10,
+        { keywordOnly: true },
       );
     });
 

@@ -5,9 +5,11 @@
  * 负责将 DecisionLogEntry 写入数据库
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { PrometheusMetricsService } from '../../../monitoring/prometheus-metrics.service';
+import { matchAxioms, pickDominantAxiom } from '../../../agent/axioms/axiom-matchers';
 import {
   analyzeDecisionLogTraceability,
   type DecisionLogTraceabilityResult,
@@ -28,12 +30,16 @@ import {
   normalizeHardRuleSnapshot,
 } from '../shared/hard-rule-snapshot.types';
 import { deriveFactsFromMetadata } from '../shared/fact-derivation.util';
+import { normalizeDecisionLogEntryForPersistence } from '../shared/decision-log-entry-normalize.util';
 
 @Injectable()
 export class DecisionLogStorageService {
   private readonly logger = new Logger(DecisionLogStorageService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly promMetrics?: PrometheusMetricsService,
+  ) {}
 
   /**
    * Best-effort: derive `metadata.assertions_triggered` from `metadata.details.evidence`.
@@ -148,7 +154,8 @@ export class DecisionLogStorageService {
     }
   ): Promise<void> {
     try {
-      const tr = this.logTraceabilityAnalysis([entry], 'save', options?.tripId);
+      const normalized = normalizeDecisionLogEntryForPersistence(entry);
+      const tr = this.logTraceabilityAnalysis([normalized], 'save', options?.tripId);
       if (this.isDecisionLogStrictWrite() && tr.errors.length > 0) {
         this.logger.error(
           `[TD-04][save] DECISION_LOG_STRICT_WRITE: skip persist (${tr.errors.length} traceability error(s))`,
@@ -174,27 +181,31 @@ export class DecisionLogStorageService {
           tripId: validTripId,
           countryCode: options?.countryCode,
           routeDirectionId: options?.routeDirectionId,
-          persona: entry.persona,
-          action: entry.action,
-          decisionSource: entry.decisionSource,
-          decisionStage: entry.decisionStage,
-          explanation: entry.explanation,
-          reasonCodes: entry.reasonCodes,
-          evidenceRefs: entry.evidenceRefs || [],
-          timestamp: new Date(entry.timestamp),
+          persona: normalized.persona,
+          action: normalized.action,
+          decisionSource: normalized.decisionSource,
+          decisionStage: normalized.decisionStage,
+          explanation: normalized.explanation,
+          reasonCodes: normalized.reasonCodes,
+          evidenceRefs: normalized.evidenceRefs || [],
+          timestamp: new Date(normalized.timestamp),
           metadata: mergeMetadataWithJepaTrace(
             this.enrichMetadataWithFacts({
               metadata: {
                 ...(((options?.metadata as Record<string, unknown> | undefined) ?? undefined) || {}),
-                ...((entry.metadata ?? {}) as Record<string, unknown>),
+                ...((normalized.metadata ?? {}) as Record<string, unknown>),
               },
-              entry: { reasonCodes: entry.reasonCodes, timestamp: entry.timestamp, action: entry.action },
+              entry: {
+                reasonCodes: normalized.reasonCodes,
+                timestamp: normalized.timestamp,
+                action: normalized.action,
+              },
             }),
-            entry.jepaTrace,
+            normalized.jepaTrace,
           ) as Prisma.InputJsonValue,
         },
       });
-      this.logger.debug(`Saved decision log: ${entry.persona} ${entry.action} (${entry.decisionSource})${validTripId ? ` for tripId: ${validTripId}` : ''}`);
+      this.logger.debug(`Saved decision log: ${normalized.persona} ${normalized.action} (${normalized.decisionSource})${validTripId ? ` for tripId: ${validTripId}` : ''}`);
     } catch (error) {
       this.logger.error(`Failed to save decision log: ${error}`, error instanceof Error ? error.stack : undefined);
       // 不抛出错误，避免影响主流程
@@ -218,7 +229,8 @@ export class DecisionLogStorageService {
     }
 
     try {
-      const tr = this.logTraceabilityAnalysis(entries, 'save', options?.tripId);
+      const normalizedEntries = entries.map((e) => normalizeDecisionLogEntryForPersistence(e));
+      const tr = this.logTraceabilityAnalysis(normalizedEntries, 'save', options?.tripId);
       if (this.isDecisionLogStrictWrite() && tr.errors.length > 0) {
         this.logger.error(
           `[TD-04][save] DECISION_LOG_STRICT_WRITE: skip batch persist (${tr.errors.length} traceability error(s))`,
@@ -240,7 +252,7 @@ export class DecisionLogStorageService {
       }
 
       await this.prisma.decisionLog.createMany({
-        data: entries.map((entry) => ({
+        data: normalizedEntries.map((entry) => ({
           tripId: validTripId,
           countryCode: options?.countryCode,
           routeDirectionId: options?.routeDirectionId,
@@ -264,9 +276,63 @@ export class DecisionLogStorageService {
           ) as Prisma.InputJsonValue,
         })),
       });
-      this.logger.debug(`Saved ${entries.length} decision logs${validTripId ? ` for tripId: ${validTripId}` : ' (no tripId)'}`);
+      this.logger.debug(`Saved ${normalizedEntries.length} decision logs${validTripId ? ` for tripId: ${validTripId}` : ' (no tripId)'}`);
     } catch (error) {
-      this.logger.error(`Failed to save decision logs: ${error}`, error instanceof Error ? error.stack : undefined);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Failed to save decision logs: ${errMsg}`, stack);
+
+      // Runtime Proof: audit persistence failure must not fail request nor kill process.
+      // Emit a single structured event for Loki drill-down + increment a dedicated metric.
+      try {
+        const sample: any = entries?.[0] ?? {};
+        const requestId =
+          sample?.metadata?.route_and_run?.request_id ??
+          sample?.metadata?.request_id ??
+          sample?.metadata?.requestId ??
+          undefined;
+        const stage = 'decision_logs';
+        const requestMessage =
+          typeof (options as any)?.metadata?.request_message === 'string'
+            ? String((options as any).metadata.request_message)
+            : undefined;
+        const ax = (() => {
+          try {
+            if (!requestMessage) return undefined;
+            const matches = matchAxioms({ message: requestMessage, constraints: undefined });
+            return pickDominantAxiom(matches);
+          } catch {
+            return undefined;
+          }
+        })();
+        const errorTypeRaw =
+          typeof (error as any)?.code === 'string'
+            ? String((error as any).code)
+            : /23514/.test(errMsg)
+              ? '23514'
+              : 'UNKNOWN';
+        const errorType = errorTypeRaw === '23514' ? 'DB_CHECK_CONSTRAINT' : errorTypeRaw;
+        this.logger.warn(
+          JSON.stringify({
+            event: 'decision_os_audit_persist_failed',
+            stage,
+            request_id: requestId,
+            trip_id: options?.tripId,
+            axiom_id: ax?.axiom_id ?? 'UNKNOWN',
+            cid: ax?.axiom.cid ?? 'UNKNOWN',
+            error: errMsg,
+            error_type: errorType,
+          }),
+        );
+        this.promMetrics?.recordAuditPersistFailed({
+          axiom_id: ax?.axiom_id,
+          cid: ax?.axiom.cid,
+          stage,
+          error_type: errorType,
+        });
+      } catch {
+        // best-effort
+      }
       // 不抛出错误，避免影响主流程
     }
   }

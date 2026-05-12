@@ -13,6 +13,17 @@ import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 
 let TRANSPORT_EVIDENCE_SEQ = 0;
 
+/** 供编排层识别：非服务故障，仅为起终点无法解析为坐标，应降级而非拒绝整次请求 */
+export const TRANSPORT_SEARCH_UNRESOLVED_COORDS_MARKER = '[transport.search:unresolved_coords]';
+
+function formatEndpointForError(v: string | { lat: number; lng: number }): string {
+  if (typeof v === 'string') {
+    const t = v.trim();
+    return t.length > 120 ? `${t.slice(0, 117)}...` : t || '(empty)';
+  }
+  return `${v.lat},${v.lng}`;
+}
+
 export interface TransportSearchInput extends SkillInput {
   origin: string | { lat: number; lng: number };
   destination: string | { lat: number; lng: number };
@@ -84,7 +95,11 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
           : { lat: input.destination.lat, lng: input.destination.lng };
 
       if (!origin || !destination) {
-        throw new Error('transport.search 目前需要坐标格式的 origin 和 destination（支持 "lat,lng" 字符串）');
+        const oRef = formatEndpointForError(input.origin);
+        const dRef = formatEndpointForError(input.destination);
+        throw new Error(
+          `${TRANSPORT_SEARCH_UNRESOLVED_COORDS_MARKER} 无法发起路径规划：未能将起点或终点解析为经纬度。请使用 "lat,lng" 或可检索的具体地名。当前起点: ${oRef}；终点: ${dRef}`,
+        );
       }
 
       const originLat = origin.lat;
@@ -133,7 +148,7 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
 
   /** Best-effort: accept coords strings; otherwise resolve to a place with coordinates. */
   private async resolveToCoords(s: string): Promise<{ lat: number; lng: number } | undefined> {
-    const parsed = parseCoordsFromString(s);
+    const parsed = tryParseLatLngPairFromString(s);
     if (parsed) return parsed;
 
     // Devbox / MCP mode often disables PlacesModule, which means EntityResolutionService may be absent.
@@ -144,10 +159,15 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
     if (!this.entityResolutionService) return undefined;
 
     try {
-      const results = await this.entityResolutionService.resolveEntities(String(s ?? ''), [], undefined, undefined);
-      const r = Array.isArray(results)
-        ? results.find((x: any) => Number.isFinite(x?.lat) && Number.isFinite(x?.lng))
-        : undefined;
+      const pack = await this.entityResolutionService.resolveEntities(
+        String(s ?? ''),
+        [],
+        undefined,
+        undefined,
+        10,
+      );
+      const list = Array.isArray(pack?.results) ? pack.results : [];
+      const r = list.find((x) => Number.isFinite(x?.lat) && Number.isFinite(x?.lng));
       if (!r) return undefined;
       const lat = Number((r as any).lat);
       const lng = Number((r as any).lng);
@@ -161,7 +181,11 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
   }
 }
 
-function parseCoordsFromString(s: string): { lat: number; lng: number } | undefined {
+/**
+ * 解析可进入路由规划的 lat,lng 子串（与 transport.search 内逻辑一致）。
+ * 供 RESEARCH 回填层在写入行程前做强类型坐标归一化。
+ */
+export function tryParseLatLngPairFromString(s: string): { lat: number; lng: number } | undefined {
   const raw = String(s ?? '').trim();
   if (!raw) return undefined;
 
@@ -210,6 +234,10 @@ function resolveKnownIcelandAnchor(s: string): { lat: number; lng: number } | un
 
   for (const row of table) {
     if (row.re.test(key)) return { lat: row.lat, lng: row.lng };
+  }
+  // 国家/地区级（与向量召回「冰岛」等无城市字段时仍要给 routing 一个锚点，默认用首都圈）
+  if (/\b(iceland|ísland|isl|冰岛|冰島)\b/i.test(key) || key === '冰岛' || key === '冰島') {
+    return { lat: 64.1466, lng: -21.9426 };
   }
   return undefined;
 }

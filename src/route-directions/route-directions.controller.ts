@@ -39,6 +39,11 @@ import { AvailablePoisQueryDto } from './dto/available-pois-query.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { DecisionAwarenessAugmentationService } from '../world-facts/decision-awareness-augmentation.service';
+import { DecisionActionExecutorService } from '../world-facts/decision-action-executor.service';
+import { ActionDispatcherService } from './services/action-dispatcher.service';
+import { RouteDecisionEngineService } from './services/route-decision-engine.service';
+import { DecisionExecutionReconciliationService } from '../world-facts/decision-execution-reconciliation.service';
 
 @ApiTags('route-directions')
 @Controller('route-directions')
@@ -51,6 +56,11 @@ export class RouteDirectionsController {
     private readonly cardService: RouteDirectionCardService,
     private readonly selectorService: RouteDirectionSelectorService,
     private readonly explainerService: RouteDirectionExplainerService,
+    private readonly decisionAwarenessAugmentation: DecisionAwarenessAugmentationService,
+    private readonly decisionActionExecutor: DecisionActionExecutorService,
+    private readonly actionDispatcher: ActionDispatcherService,
+    private readonly routeDecisionEngine: RouteDecisionEngineService,
+    private readonly executionReconciliation: DecisionExecutionReconciliationService,
   ) {}
 
   @Public()
@@ -286,6 +296,21 @@ export class RouteDirectionsController {
         error?.message || 'Failed to update route direction',
       );
     }
+  }
+
+  @Public()
+  @Patch(':id')
+  @ApiOperation({ summary: '部分更新路线方向', description: '部分更新路线方向信息（与 PUT 等价，支持管理端 PATCH 写入 metadata 等字段）' })
+  @ApiParam({ name: 'id', description: '路线方向 ID', type: Number })
+  @ApiBody({ type: UpdateRouteDirectionDto })
+  @ApiResponse({ status: 200, description: '成功更新路线方向' })
+  @ApiResponse({ status: 404, description: '路线方向不存在' })
+  async patchRouteDirection(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateRouteDirectionDto,
+  ) {
+    // For admin clients, PATCH behaves the same as PUT (partial update).
+    return this.updateRouteDirection(id, dto);
   }
 
   @Public()
@@ -958,6 +983,18 @@ export class RouteDirectionsController {
   @ApiQuery({ name: 'preferences', required: false, description: '偏好标签', type: [String] })
   @ApiQuery({ name: 'pace', required: false, description: '节奏偏好', enum: ['relaxed', 'moderate', 'intense'] })
   @ApiQuery({ name: 'riskTolerance', required: false, description: '风险承受度', enum: ['low', 'medium', 'high'] })
+  @ApiQuery({
+    name: 'routeDirectionId',
+    required: false,
+    description:
+      '可选：当前卡片选中的路线方向 ID；若存在则附加 ROAD_ACCESS（vehicle_required）DecisionFactor',
+  })
+  @ApiQuery({
+    name: 'tripId',
+    required: false,
+    description:
+      '可选：若携带则将本次 dispatch 摘要写入 Trip.metadata.decisionExecutionHistory（P4 状态回写）',
+  })
   @ApiResponse({ status: 200, description: '成功返回路线方向交互列表', type: RouteDirectionInteractionListDto })
   async getRouteDirectionInteractions(
     @Query('countryCode') countryCode: string,
@@ -965,21 +1002,47 @@ export class RouteDirectionsController {
     @Query('preferences') preferences?: string[],
     @Query('pace') pace?: 'relaxed' | 'moderate' | 'intense',
     @Query('riskTolerance') riskTolerance?: 'low' | 'medium' | 'high',
+    @Query('routeDirectionId') routeDirectionId?: string,
+    @Query('tripId') tripId?: string,
   ) {
     try {
-      // 获取路线方向推荐
+      // 获取路线方向推荐（P5：tripId → ExecutionPlanningContext → 分数记忆）
       const recommendations = await this.selectorService.pickRouteDirections(
         {
           preferences: preferences ? (Array.isArray(preferences) ? preferences : [preferences]) : undefined,
           pace,
           riskTolerance,
+          tripId,
         },
         countryCode,
         month ? parseInt(month.toString(), 10) : undefined
       );
 
-      // 转换为交互DTO
-      const interactions: RouteDirectionInteractionDto[] = recommendations.map(rec => {
+      const { decisionFactors, decisionImpacts } =
+        await this.decisionAwarenessAugmentation.buildRouteInteractionsAwareness({
+          countryCode,
+          routeDirectionId,
+        });
+
+      const decisionExecutableActions = this.decisionActionExecutor.buildExecutableActions(
+        decisionFactors,
+        { countryCode, routeDirectionId },
+      );
+
+      const dispatchOutcome = this.actionDispatcher.dispatch(decisionExecutableActions, {
+        recommendations,
+      });
+
+      const executionSync = await this.executionReconciliation.syncRouteDispatchOutcome({
+        countryCode,
+        routeDirectionId,
+        traces: dispatchOutcome.traces,
+        rollbackTokens: dispatchOutcome.rollbackTokens,
+        tripId,
+      });
+
+      // 调度后的推荐 → 交互 DTO（分数反映 ROUTE_DEGRADE 等已执行效果）
+      const interactions: RouteDirectionInteractionDto[] = dispatchOutcome.recommendations.map(rec => {
         const card = this.cardService.toCard(
           rec,
           rec.scoreBreakdown,
@@ -1012,6 +1075,12 @@ export class RouteDirectionsController {
         countryCode,
         month: month ? parseInt(month.toString(), 10) : undefined,
         preferences: preferences ? (Array.isArray(preferences) ? preferences : [preferences]) : [],
+        decisionFactors,
+        decisionImpacts,
+        decisionExecutableActions,
+        actionDispatchTraces: dispatchOutcome.traces,
+        dispatchRollbackTokens: dispatchOutcome.rollbackTokens,
+        executionSync,
       };
 
       return successResponse(result);
@@ -1021,6 +1090,33 @@ export class RouteDirectionsController {
         ErrorCode.INTERNAL_ERROR,
         error?.message || 'Failed to get route direction interactions',
       );
+    }
+  }
+
+  @Public()
+  @Post('interactions/dispatch-rollback')
+  @ApiOperation({
+    summary: '撤销 dispatch 前的路线推荐快照',
+    description:
+      '使用 interactions 响应中的 rollbackToken；一次性有效，对应 RouteDecisionEngine 内存快照（进程重启即失效）。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['rollbackToken'],
+      properties: { rollbackToken: { type: 'string' } },
+    },
+  })
+  async rollbackDispatchInteractions(@Body() body: { rollbackToken: string }) {
+    try {
+      const restored = this.routeDecisionEngine.rollbackRecommendations(body?.rollbackToken ?? '');
+      if (!restored) {
+        return errorResponse(ErrorCode.NOT_FOUND, 'Invalid or expired rollback token');
+      }
+      return successResponse({ restoredRecommendations: restored });
+    } catch (error: any) {
+      this.logger.error('rollback dispatch failed', error);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error?.message ?? 'Rollback failed');
     }
   }
 

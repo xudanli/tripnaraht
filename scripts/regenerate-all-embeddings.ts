@@ -13,7 +13,7 @@ dotenv.config();
 
 const prisma = new PrismaClient();
 
-const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://121.43.192.56:8001';
+const PYTHON_AI_SERVICE_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://101.37.240.9:18001';
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '10', 10);
 const DELAY_MS = parseInt(process.env.DELAY_MS || '200', 10);
 

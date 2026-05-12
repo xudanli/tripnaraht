@@ -26,7 +26,7 @@ import { ContextPerformanceAnalysisService } from './services/context-performanc
 import { ContextController } from './context.controller';
 import { SkillsModule } from '../../skills/skills.module';
 import { RedisModule } from '../../redis/redis.module';
-import { MemoryModule } from '../../agent/memory/memory.module';
+import { SharedMemoryModule } from '../../agent/memory/shared-memory.module';
 import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RAG 模块以使用 ParallelExecutorService
 
 @Global()
@@ -36,7 +36,7 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
     forwardRef(() => SkillsModule), // 使用 forwardRef 避免循环依赖
     RedisModule, // 提供 RedisService（用于持久化缓存）
     forwardRef(() => RagModule), // Phase 2.1 优化: 导入 RAG 模块以使用 ParallelExecutorService
-    forwardRef(() => MemoryModule), // Context Orchestrator: 读取 UserTravelProfile
+    forwardRef(() => SharedMemoryModule), // Context Orchestrator: 读取 UserTravelProfile（全局 SharedMemory）
   ],
   controllers: [ContextController],
   providers: [
@@ -59,6 +59,7 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
     { provide: 'ContextEngineerService', useExisting: ContextEngineerService },
   ],
   exports: [
+    TripTaskMemoryService,
     ContextEngineerService,
     ContextBuilderService,
     ContextRankerService,

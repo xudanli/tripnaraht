@@ -17,6 +17,7 @@ import {
 import { analyzeDiff } from './e2e-assertions';
 import { buildDecisionTraceSummary } from './replay-trace-contract';
 import { TripWorldState } from '../world-model';
+import { applyPrismaTripIdToWorldState } from '../../execution-closure-persistence/apply-prisma-trip-id-to-world-state';
 
 @Injectable()
 export class E2EReplayService {
@@ -178,14 +179,19 @@ export class E2EReplayService {
       },
     };
 
-    // 构建完整的 TripWorldState
-    return {
+    const world = {
       context,
       candidatesByDate: {}, // E2E Case 不需要候选池
       signals: {
         lastUpdatedAt: new Date().toISOString(),
       },
     } as unknown as TripWorldState;
+
+    if (testCase.input.tripId) {
+      applyPrismaTripIdToWorldState(world, testCase.input.tripId);
+    }
+
+    return world;
   }
 
   /**

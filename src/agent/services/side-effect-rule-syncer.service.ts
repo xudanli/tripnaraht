@@ -123,7 +123,7 @@ export class SideEffectRuleSyncerService implements OnModuleInit {
         ? { ...snap[r.actionName][r.handlerId] }
         : null;
       const db = dbByKey.get(`${r.actionName}::${r.handlerId}`) ?? null;
-      const dbParams =
+      const _dbParams =
         db?.params && typeof db.params === 'object' && db.params !== null && !Array.isArray(db.params)
           ? ({ ...(db.params as any) } as Record<string, any>)
           : null;

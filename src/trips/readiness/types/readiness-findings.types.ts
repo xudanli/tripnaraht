@@ -13,6 +13,23 @@ import { ActionLevel, ReadinessCategory, RuleSeverity, HazardType, Task, Localiz
  * 前端兼容的用户问题格式
  * 简化版本，用于 API 响应
  */
+/**
+ * 覆盖地图等来源的 finding 在行程中的位置（便于前端展示/跳转，不等同于规则 id）
+ */
+export interface ReadinessTripFindingScope {
+  kind: 'segment' | 'poi';
+  /** 行程日序号，从 1 开始 */
+  day?: number;
+  /** 路段 id（与覆盖地图 segment.id 一致） */
+  segmentId?: string;
+  /** 路段起点 POI */
+  fromPoi?: { id: string; name: string };
+  /** 路段终点 POI；kind === 'poi' 时表示该点本身 */
+  toPoi?: { id: string; name: string };
+  /** 路段距离（km） */
+  distanceKm?: number;
+}
+
 export interface FrontendUserQuestion {
   id: string;                          // 问题ID（必填）
   text: string | { zh: string; en: string }; // 问题文本（必填，支持国际化）
@@ -48,6 +65,8 @@ export interface ReadinessFindingItem {
     sectionId?: string;
     quote?: string;
   }>;
+  /** 行程内位置（覆盖缺口等），规则类 finding 通常不带此字段 */
+  tripScope?: ReadinessTripFindingScope;
 }
 
 export interface ReadinessFinding {

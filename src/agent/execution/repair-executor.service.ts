@@ -4,6 +4,9 @@
  * 实现 IRepairExecutor，执行 REPAIR 阶段
  * LocalInsightAgent.suggestAlternatives + repair.apply Skill
  *
+ * 注：本阶段 transport.search 调用使用行程项坐标对象；字符串型端点须与 RESEARCH 共用
+ * `transport-endpoint-hydration.util` 预检逻辑后再收口到 Skill。
+ *
  * 参考: docs/KERNEL_BUSINESS_LOGIC_MIGRATION_PLAN.md
  */
 
@@ -30,6 +33,8 @@ import type {
   ItineraryLike,
 } from '../../decision/kernel/interfaces/phase-executor.interface';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { matchAxioms } from '../axioms/axiom-matchers';
+import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 import { ClaudeLocalInsightAgentService } from '../services/sub-agents/local-insight-agent.service';
 import type { TripPlanRequest, GateResult } from '../interfaces/trip-plan.interface';
 import type { OrchestratorState } from '../interfaces/trip-plan.interface';
@@ -37,6 +42,13 @@ import { parseL3ProofPrefix } from '../utils/narrator-l3-persuasion.util';
 import { formatRepairDeadlockAudit } from '../utils/repair-causal-explainer.util';
 import { evaluateAltPath } from '../utils/terrain-reroute-evaluator.util';
 import type { RepairReason, RepairTrace } from '../services/route-feasibility.types';
+import { buildPoiSearchContext } from '../../planning-policy/utils/build-poi-search-context.util';
+import {
+  buildContextualPoiSearchQuerySuffix,
+  filterPoisByRejectedIds,
+} from '../../planning-policy/utils/contextual-poi-search-query.util';
+import { buildReplacementRetrievalDecisionTrace } from '../../planning-policy/utils/build-retrieval-decision-trace.util';
+import { detectItineraryGapsV1, gapRetrievalIntentQuerySuffix } from '../../planning-policy/utils/detect-itinerary-gaps.util';
 
 @Injectable()
 export class RepairExecutorService implements IRepairExecutor {
@@ -121,21 +133,21 @@ export class RepairExecutorService implements IRepairExecutor {
     // 在 REPAIR 入口做一次最小地形硬约束投影：F-road/高地语义 + 2WD => 必然生成 L3 证据 + real repair trace（applied=false）。
     try {
       const msg = String((req as any)?.message ?? '').trim();
-      const vehicle =
-        String((req as any)?.constraints?.vehicle_type ?? '').toUpperCase() ||
-        (/4wd|4x4|四驱/i.test(msg) ? '4WD' : /2wd|两驱/i.test(msg) ? '2WD' : '');
-      const wantsFroad =
-        /\bf-?road\b/i.test(msg) || /\bF\d{2,4}\b/i.test(msg) || /高地|内陆|山地|河渡|涉水/i.test(msg);
+      const constraints = (req as any)?.constraints as Record<string, any> | undefined;
+      const matches = matchAxioms({ message: msg, constraints });
+      const terrain = matches.find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
+      const fatigue = matches.find((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
+      const eta = matches.find((m) => m.axiom_id === 'ETA_INFEASIBLE');
       const hasExisting = (dso.verification?.issues ?? []).some(
         (i) => parseL3ProofPrefix(String(i?.message ?? ''))?.cid === 'terrain.f_road_compatibility',
       );
-      if (!hasExisting && wantsFroad && vehicle === '2WD') {
+      if (!hasExisting && terrain) {
         const now = new Date().toISOString();
         postRepairAdvisories.push({
           code: 'TERRAIN_F_ROAD_UNFIT',
           class: 'CONFLICT',
           message:
-            `[L3-PROOF|terrain.f_road_compatibility|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
+            `[L3-PROOF|${terrain.axiom.cid}|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
             `意图要求 F-road/高地，但车辆为 2WD（冰岛高地普遍要求 4WD），物理上不可执行。`,
           source: 'ROUTE_FEASIBILITY',
           at: now,
@@ -156,7 +168,7 @@ export class RepairExecutorService implements IRepairExecutor {
             effective_limit: 4,
             actual_cost: 2,
             unit: 'WD',
-            utility_delta: -12,
+            utility_delta: AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.utility_anchor.actual_penalty,
           },
           reason: 'TERRAIN_F_ROAD_UNFIT',
           evidence: { refIds: ['intent_froad'] },
@@ -168,6 +180,101 @@ export class RepairExecutorService implements IRepairExecutor {
           suggestedAction: 'ASK_USER',
           userClarificationSnippet:
             '【地形硬约束】2WD 与 F-road/高地意图不兼容（通常要求 4WD）。如坚持进入高地，请升级车辆或撤销 F-road 要求。',
+          at: now,
+          constraint: 'PHYSICAL_CONNECTIVITY',
+        };
+      }
+
+      // FATIGUE_OVERLOAD: minimal real trace injection for drift alignment (when VERIFY is skipped or did not persist)
+      const hasFatigueExisting = (dso.verification?.issues ?? []).some(
+        (i) => parseL3ProofPrefix(String(i?.message ?? ''))?.cid === AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid,
+      );
+      if (!hasFatigueExisting && fatigue) {
+        const now = new Date().toISOString();
+        postRepairAdvisories.push({
+          code: 'FATIGUE_OVERLOAD',
+          class: 'CONFLICT',
+          message:
+            `[L3-PROOF|${AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid}|DAY:INTAKE|cmp:LEQ|actual:10|limit:8|unit:h|slack:-2|evidence:MODEL:intent_fatigue] ` +
+            `行程强度/驾驶时长超过日常疲劳承载上限，可能导致疲劳过载。`,
+          source: 'ROUTE_FEASIBILITY',
+          at: now,
+          entityRef: { type: 'DAY', id: 'INTAKE' },
+          suggestedActions: [
+            { action: 'RELAX', detail: '增加天数 / 降低单日驾驶时长 / 增加休息与缓冲' },
+            { action: 'ASK_USER', detail: '确认是否坚持高强度节奏（不建议）' },
+          ],
+          metadata: { confidence_impact: -0.2 },
+        });
+        repairTraces.push({
+          tacticId: 'FatigueOverloadProjection',
+          targetEntity: { type: 'DAY', id: 'INTAKE' },
+          applied: false,
+          metrics: {
+            fatigue_weight: 0,
+            base_limit: 8,
+            effective_limit: 8,
+            actual_cost: 10,
+            unit: 'h',
+            utility_delta: AXIOM_REGISTRY.FATIGUE_OVERLOAD.utility_anchor.actual_penalty,
+          },
+          reason: AXIOM_REGISTRY.FATIGUE_OVERLOAD.real_label as any,
+          evidence: { refIds: ['intent_fatigue'] },
+        });
+        recoverySignal = recoverySignal ?? 'NEED_USER_INTERVENTION';
+        escalationPlan = escalationPlan ?? {
+          type: 'PHYSICAL_LIMIT_REACHED',
+          reason: AXIOM_REGISTRY.FATIGUE_OVERLOAD.real_label as any,
+          suggestedAction: 'ASK_USER',
+          userClarificationSnippet:
+            '【疲劳硬约束】单日驾驶/行程强度超过疲劳承载上限。建议增加天数或降低单日驾驶时长。',
+          at: now,
+          constraint: 'PHYSICAL_CONNECTIVITY',
+        };
+      }
+
+      // ETA_INFEASIBLE: minimal real trace injection for drift alignment
+      const hasEtaExisting = (dso.verification?.issues ?? []).some(
+        (i) => parseL3ProofPrefix(String(i?.message ?? ''))?.cid === AXIOM_REGISTRY.ETA_INFEASIBLE.cid,
+      );
+      if (!hasEtaExisting && eta) {
+        const now = new Date().toISOString();
+        postRepairAdvisories.push({
+          code: 'ROUTE_INFEASIBLE',
+          class: 'CONFLICT',
+          message:
+            `[L3-PROOF|${AXIOM_REGISTRY.ETA_INFEASIBLE.cid}|DAY:INTAKE|cmp:LEQ|actual:1|limit:0|unit:bool|slack:-1|evidence:MODEL:intent_eta] ` +
+            `到达时间/时间窗约束不可满足（ETA infeasible）。`,
+          source: 'ROUTE_FEASIBILITY',
+          at: now,
+          entityRef: { type: 'DAY', id: 'INTAKE' },
+          suggestedActions: [
+            { action: 'RELAX', detail: '放宽最晚到达时间 / 增加缓冲 / 减少当日行程点位' },
+            { action: 'ASK_USER', detail: '确认是否坚持硬时间窗（可能无解）' },
+          ],
+          metadata: { confidence_impact: -0.2 },
+        });
+        repairTraces.push({
+          tacticId: 'EtaInfeasibleProjection',
+          targetEntity: { type: 'DAY', id: 'INTAKE' },
+          applied: false,
+          metrics: {
+            fatigue_weight: 1,
+            base_limit: 0,
+            effective_limit: 0,
+            actual_cost: 1,
+            unit: 'bool',
+            utility_delta: AXIOM_REGISTRY.ETA_INFEASIBLE.utility_anchor.actual_penalty,
+          } as any,
+          reason: AXIOM_REGISTRY.ETA_INFEASIBLE.real_label as any,
+          evidence: { refIds: ['intent_eta'] },
+        });
+        recoverySignal = recoverySignal ?? 'NEED_USER_INTERVENTION';
+        escalationPlan = escalationPlan ?? {
+          type: 'PHYSICAL_LIMIT_REACHED',
+          reason: AXIOM_REGISTRY.ETA_INFEASIBLE.real_label as any,
+          suggestedAction: 'ASK_USER',
+          userClarificationSnippet: '【时间窗硬约束】ETA/最晚到达时间窗不可满足。建议放宽时间窗或减少当日行程。',
           at: now,
           constraint: 'PHYSICAL_CONNECTIVITY',
         };
@@ -1030,7 +1137,16 @@ export class RepairExecutorService implements IRepairExecutor {
       }))
       .filter((c) => c.poi_id && c.coordinates?.lat != null && c.coordinates?.lng != null);
 
-    const searched = await this.trySearchPoiReplacement(dest, closedLoc);
+    const closedPoiId = String(closedProfile?.poiId ?? '').trim();
+    const searched = await this.trySearchPoiReplacement(
+      dest,
+      closedLoc,
+      _dso,
+      ctx,
+      itinerary,
+      closedPoiId,
+      closedCategory,
+    );
     const searchCandidates = (searched.pois ?? []).map((p) => ({
       poi_id: p.poi_id,
       coordinates: p.coordinates,
@@ -1092,7 +1208,7 @@ export class RepairExecutorService implements IRepairExecutor {
       const raw = c.raw;
       const scratch = applyCandidate(itinerary, raw);
       const dayDate = String((scratch.days as any[])[slot.dayIdx]?.date ?? '');
-      let arrival =
+      const arrival =
         (await this.estimateArrivalAtItemIndex(scratch, slot.dayIdx, slot.idx, ctx, this.buildTimelineEnvironment(_dso))) ??
         (dayDate ? new Date(`${dayDate}T12:00:00.000Z`) : undefined);
       if (!arrival || !Number.isFinite(arrival.getTime())) {
@@ -1211,7 +1327,11 @@ export class RepairExecutorService implements IRepairExecutor {
       if (typeof s === 'string' && s.trim()) sunsetByDate[k] = s.trim();
     }
     if (Object.keys(sunsetByDate).length === 0) return undefined;
-    const buf = Number(process.env.DECISION_REPAIR_TWILIGHT_BUFFER_MIN ?? '');
+    const overrideBuf = Number((dso.environmentState as any)?.twilightBufferMin);
+    const buf =
+      Number.isFinite(overrideBuf) && overrideBuf > 0
+        ? overrideBuf
+        : Number(process.env.DECISION_REPAIR_TWILIGHT_BUFFER_MIN ?? '');
     return {
       sunsetByDate,
       ...(Number.isFinite(buf) && buf > 0 ? { twilightBufferMin: Math.round(buf) } : {}),
@@ -1310,22 +1430,70 @@ export class RepairExecutorService implements IRepairExecutor {
   }
 
   private async trySearchPoiReplacement(
-    destination?: string,
-    around?: { lat: number; lng: number },
+    destination: string | undefined,
+    around: { lat: number; lng: number } | undefined,
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    itinerary: ItineraryLike,
+    /** 被替换的闭馆点，避免检索又召回同一 id */
+    closedPoiId?: string,
+    /** 闭馆项 category，供语义缺口规则（Gap v1） */
+    closedItemCategoryHint?: string,
   ): Promise<{ pois?: Array<{ poi_id: string; coordinates?: { lat: number; lng: number }; category?: string }>; replacement?: any }> {
     if (!this.skillsRegistry) return {};
     if (!destination?.trim()) return {};
     const skill = this.skillsRegistry.getSkill('poi.search');
     if (!skill) return {};
     try {
+      const recent = Array.isArray(ctx.recent_messages) ? ctx.recent_messages.filter((m) => typeof m === 'string').slice(-5) : [];
+      const userMessage = recent.length ? recent.join('\n') : undefined;
+      const poiSearchCtx = buildPoiSearchContext({
+        destination,
+        decisionState: dso,
+        itinerary,
+        userMessage,
+      });
+      const ctxSuffix = buildContextualPoiSearchQuerySuffix(poiSearchCtx);
+      const baseQuery = `${destination!.trim()} attraction`;
+      const causedByEvent = closedPoiId?.trim()
+        ? ({ type: 'POI_CLOSED' as const, poiId: String(closedPoiId).trim().toLowerCase() } as const)
+        : undefined;
+      const semanticGaps = detectItineraryGapsV1({
+        poiSearchCtx,
+        decisionState: dso,
+        itinerary,
+        causedByEvent,
+        closedItemCategoryHint: closedItemCategoryHint,
+      });
+      const gapSuffix = gapRetrievalIntentQuerySuffix(semanticGaps);
+      const query = `${baseQuery}${ctxSuffix}${gapSuffix}`.replace(/\s+/g, ' ').trim();
       const r = await skill.execute({
-        query: `${destination} attraction`,
+        query,
         limit: 10,
         lat: around?.lat,
         lng: around?.lng,
       } as any);
-      const pois = Array.isArray((r as any)?.pois) ? (r as any).pois : Array.isArray(r) ? r : [];
+      let pois = Array.isArray((r as any)?.pois) ? (r as any).pois : Array.isArray(r) ? r : [];
+      const rej = [
+        ...(poiSearchCtx.rejectedPoiIds ?? []),
+        ...(closedPoiId ? [closedPoiId] : []),
+      ];
+      pois = filterPoisByRejectedIds(pois as any[], rej) as any[];
       const replacement = pois.find((p: any) => p && (p.poi_id || p.id || p.place_id));
+      const hardRejectedIds = rej.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+      const replTrace = buildReplacementRetrievalDecisionTrace({
+        poiSearchCtx,
+        query,
+        hardRejectedIds,
+        mergedPoiCount: pois.length,
+        retrievalReason: 'find_alternative_poi_same_category_near_closed_slot',
+        causedByEvent,
+        semanticGaps,
+      });
+      ctx.researchData = {
+        ...(typeof ctx.researchData === 'object' && ctx.researchData ? ctx.researchData : {}),
+        replacement_retrieval_trace: replTrace,
+      } as Record<string, unknown>;
       return { pois, replacement };
     } catch {
       return {};

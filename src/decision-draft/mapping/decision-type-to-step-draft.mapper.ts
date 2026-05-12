@@ -31,7 +31,7 @@ export class DecisionTypeToStepDraftMapper {
     'pace-decision': {
       decision_type: 'pace-decision',
       step_types: ['PLAN_GEN', 'VERIFY'],
-      required_skills: ['dem.getProfile'],
+      required_skills: ['dem.get_profile'],
       sub_agent: 'CoreDecision' as SubAgentType,
       guardian: 'DR_DRE',
     },

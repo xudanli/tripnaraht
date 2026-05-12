@@ -12,6 +12,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ILangGraphOrchestrator, LangGraphState, LangGraphNodeConfig } from './langgraph-orchestrator.interface';
+import { mergePrdTraceIntoLangGraphMetadata } from './langgraph-prd-metadata.util';
 import { PlannerAgentService } from './planner-agent.service';
 import { NarratorAgentService } from './narrator-agent.service';
 import { TripNaraCoreToolService } from '../tools/tripnara-core-tool.service';
@@ -39,7 +40,9 @@ export class LangGraphOrchestratorService implements ILangGraphOrchestrator {
     // 初始化状态
     const initialState: LangGraphState = {
       userQuery,
-      metadata: context,
+      metadata: mergePrdTraceIntoLangGraphMetadata(
+        context as Record<string, unknown> | undefined,
+      ) as LangGraphState['metadata'],
     };
 
     try {

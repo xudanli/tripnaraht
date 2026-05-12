@@ -474,8 +474,18 @@ export class GuardianDebateService {
 
       // TDFPM 疲劳提示（fatigueScore >= 60 或 recommendation 建议停止）
       const tdfpm = this.tdfpmPerDay.get(dayIndex);
-      if (tdfpm && (tdfpm.fatigueScore >= 60 || ['REST_NOW', 'SPLIT_DAY', 'STOP_DRIVING'].includes(tdfpm.recommendation))) {
-        const recText = { REST_NOW: '建议休息', SPLIT_DAY: '建议拆分日程', STOP_DRIVING: '建议停止驾驶' }[tdfpm.recommendation] ?? tdfpm.recommendation;
+      const urgentRecs = new Set(['REST_NOW', 'SPLIT_DAY', 'STOP_DRIVING']);
+      if (
+        tdfpm &&
+        (tdfpm.fatigueScore >= 60 ||
+          (typeof tdfpm.recommendation === 'string' && urgentRecs.has(tdfpm.recommendation)))
+      ) {
+        const recLabels: Record<string, string> = {
+          REST_NOW: '建议休息',
+          SPLIT_DAY: '建议拆分日程',
+          STOP_DRIVING: '建议停止驾驶',
+        };
+        const recText = recLabels[tdfpm.recommendation] ?? String(tdfpm.recommendation);
         out.push(`${dayLabel} TDFPM 疲劳指数 ${tdfpm.fatigueScore}（${tdfpm.riskLevel}），${recText}`);
       }
     }

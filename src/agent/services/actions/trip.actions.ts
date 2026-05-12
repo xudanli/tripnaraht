@@ -132,6 +132,10 @@ Please provide args.trip_id or ensure it is stored in agent state.`;
       // Runtime will merge DB / file overrides via SideEffectParamResolverService.
       side_effect_configs: [
         {
+          handlerId: 'side_effect.resource_lock.inventory_v1',
+          params: { ttl_seconds: 900 },
+        },
+        {
           handlerId: 'side_effect.financial_hold.book_flight_v1',
           params: { ttl_seconds: 900, hold_ratio: 1.0 },
         },

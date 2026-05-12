@@ -4,6 +4,8 @@
  *
  * 统一入口：/api/decision-engine/v1/*
  * 参考: docs/DECISION_ENGINE_API_PRD.md
+ *
+ * 也可从 `decision-http-clients.ts` 一并导入；并列路由 `/api/decision/*` 见 `decision-api-client.ts`。
  */
 
 const API_BASE = '/api/decision-engine/v1';
@@ -77,6 +79,7 @@ export async function validateSafety(params: {
 
 /** 约束校验 */
 export async function checkConstraints(params: {
+  tripId?: string;
   state: Record<string, unknown>;
   plan: Record<string, unknown>;
 }): Promise<ApiResponse<{ feasible: boolean; violations: unknown[]; infeasibilityExplanation?: unknown }>> {
@@ -88,6 +91,7 @@ export async function checkConstraints(params: {
 
 /** 多方案生成 */
 export async function generateMultiplePlans(params: {
+  tripId?: string;
   state: Record<string, unknown>;
   constraints?: Record<string, unknown>;
   count?: number;

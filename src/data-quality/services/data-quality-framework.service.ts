@@ -451,6 +451,14 @@ export class DataQualityFrameworkService {
       },
     } = options;
 
+    const weightSlice = {
+      completeness: weights.completeness ?? 0.2,
+      accuracy: weights.accuracy ?? 0.2,
+      consistency: weights.consistency ?? 0.2,
+      timeliness: weights.timeliness ?? 0.2,
+      traceability: weights.traceability ?? 0.2,
+    };
+
     // 评估各维度
     const completeness = this.assessCompleteness(data, requiredFields, optionalFields);
     const accuracy = this.assessAccuracy(data, validationRules, referenceData);
@@ -477,11 +485,11 @@ export class DataQualityFrameworkService {
 
     // 计算综合分数（加权平均）
     const overallScore =
-      completeness.currentValue * weights.completeness +
-      accuracy.currentValue * weights.accuracy +
-      consistency.currentValue * weights.consistency +
-      timeliness.currentValue * weights.timeliness +
-      traceability.currentValue * weights.traceability;
+      completeness.currentValue * weightSlice.completeness +
+      accuracy.currentValue * weightSlice.accuracy +
+      consistency.currentValue * weightSlice.consistency +
+      timeliness.currentValue * weightSlice.timeliness +
+      traceability.currentValue * weightSlice.traceability;
 
     // 确定质量等级
     let qualityLevel: 'EXCELLENT' | 'GOOD' | 'FAIR' | 'POOR' | 'CRITICAL';

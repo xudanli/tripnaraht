@@ -7,6 +7,7 @@
  */
 
 import { ISODatetime, ISODate } from './world-model';
+import type { EcoOrchestrationDigest } from '../execution-cognitive-orchestrator/execution-cognitive-orchestrator.types';
 import { DecisionPersona, DecisionAction } from './shared/decision-result.types';
 import { ConstraintConflict } from './constraints/constraint-dsl.types';
 
@@ -74,6 +75,9 @@ export interface DecisionRunLog {
 
   // quick explain to UI
   explanation?: string;
+
+  /** P-Next ECO：Neptune 之后的 P7–P10 编排摘要（若本 tick 启用）。 */
+  ecoOrchestration?: EcoOrchestrationDigest;
 
   // PART 3: 三人格策略日志（用于前端展示）
   strategyLogs?: Array<{
@@ -221,6 +225,33 @@ export interface DecisionRunLog {
    */
   cgusDsoSnapshot?: unknown;
   cgusDsoSnapshotNote?: string;
+
+  /** P-OPS-3：本 tick 营运策略治理快照（审计）。 */
+  opsOperationalGovernance?: import('./operational-policy/operational-policy.types').OpsOperationalGovernanceSnapshot;
+
+  /**
+   * Reality Kernel — shadow snapshot root reference（`REALITY_SNAPSHOT_SHADOW` 开启时写入）。
+   * 决策仍走 legacy 路径；此字段供回放 / diff / 与 OPS 行 join。
+   */
+  realityKernelShadow?: {
+    snapshot_id: string;
+    schema: string;
+    degraded: boolean;
+    max_staleness_sec: number;
+    valid_at: string;
+    generated_at: string;
+  };
+
+  /**
+   * Phase 3：`REALITY_ENFORCEMENT=1` 时写入 —— 本 tick 决策绑定的官方快照引用（与 `DecisionContextV0` 同源）。
+   */
+  snapshotBoundDecision?: {
+    schema: string;
+    snapshot_id: string;
+    planning_horizon: { start_at: string; end_at: string };
+    enforcement: 'bound_v0';
+    consistency_degraded: boolean;
+  };
 
   /** Phase 0: 约束引擎拒绝（硬约束违规，方案淘汰） */
   constraintEngineRejection?: {

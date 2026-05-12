@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-03-31T06:40:27.758Z",
-  "total": 81,
+  "total": 82,
   "skills": [
     {
       "name": "context.build",
@@ -201,10 +201,10 @@
       "sourceFile": "src/skills/decision/decision-stage.skill.ts"
     },
     {
-      "name": "dem.getProfile",
+      "name": "dem.get_profile",
       "category": "dem",
       "level": "L1",
-      "description": "基于 DEM 数据生成路线海拔剖面，计算累计爬升、最大坡度和疲劳指数",
+      "description": "基于 DEM 数据生成路线海拔剖面，计算累计爬升、最大坡度和疲劳指数；输出含 data_quality（high/low/unknown）供 telemetry",
       "version": "1.0.0",
       "className": "DemGetProfileSkill",
       "sourceFile": "src/skills/dem/dem-get-profile.skill.ts"
@@ -730,6 +730,15 @@
       "version": "1.0.0",
       "className": "WorldWeatherPredictionSkill",
       "sourceFile": "src/skills/world/world-weather-prediction.skill.ts"
+    },
+    {
+      "name": "iceland.rentalGuidance",
+      "category": "world",
+      "level": "L1",
+      "description": "冰岛自驾：官方路况/气象/安全源 + 聚合比价入口 + 本地高信任车行画像 + 保险与 F-road 策略清单；与 Booking 租车 MCP 及 SafeTravel/天气/F-road skill 编排使用。",
+      "version": "1.0.0",
+      "className": "IcelandRentalGuidanceSkill",
+      "sourceFile": "src/skills/world/iceland-rental-guidance.skill.ts"
     }
   ]
 }

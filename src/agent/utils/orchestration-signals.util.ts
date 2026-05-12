@@ -1,6 +1,9 @@
 // src/agent/utils/orchestration-signals.util.ts
 
+import type { IntentMode } from '../constants/intent-mode.constants';
+import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+import { isExecutableFlightInventoryQuery } from './flight-inventory-signals.util';
 
 /**
  * 任务类型
@@ -36,9 +39,180 @@ export interface RoutingSignals {
   requiresStructuredOutput: boolean;
   expectsToolCalls: boolean;
   legacyWellSupported: boolean;
+  /** options.intent_mode，缺省为 AUTO */
+  intent_mode_requested: IntentMode;
+  /** AUTO 推断或显式 intent 对应的展示档位（与 RouteDecision.task_type 对齐） */
+  intent_mode_resolved: 'TRIP_PLANNING' | 'DATA_LOOKUP' | 'GENERIC_QA';
 }
 
 const DEFAULT_MAX_SECONDS = 60;
+
+/**
+ * 明确「改行程 / 生成日程」意图（有 trip_id 时用于与「行程内咨询」分流）。
+ * 须早于 `isTripScopedConsultationQuery` 内的交通/路况等子串判断：否则「自驾返回…」会先命中用车咨询而误判 DATA_LOOKUP。
+ */
+const EXPLICIT_TRIP_PLANNING_VERBS_ZH: readonly string[] = [
+  '生成',
+  '安排',
+  '规划',
+  '修改',
+  '调整',
+  '重排',
+  '替换',
+  '删掉',
+  '删去',
+  '加上',
+  '减去',
+  '加一天',
+  '减一天',
+  '预订行程',
+  '生成行程',
+  '做行程',
+  '排行程',
+  '改行程',
+  '换酒店',
+  '换景点',
+  '订票',
+  '订酒店',
+  '插入',
+  '更新',
+  '移动',
+  '新增',
+  '去掉',
+];
+
+const EXPLICIT_TRIP_PLANNING_VERBS_EN: readonly string[] = [
+  'create itinerary',
+  'create a new itinerary',
+  'generate itinerary',
+  'generate a new itinerary',
+  'itinerary json',
+  'plan my trip',
+  'plan a trip',
+  'plan the trip',
+  'modify itinerary',
+  'modify the itinerary',
+  'update itinerary',
+  'update the itinerary',
+  'change itinerary',
+  'change the itinerary',
+  'edit itinerary',
+  'edit the itinerary',
+  'adjust itinerary',
+  'adjust the itinerary',
+  'revise itinerary',
+  'replan',
+  'replan my trip',
+  'replan the trip',
+  'apply the compromise',
+  'apply compromise',
+  'change day',
+  'replace poi',
+  'remove day',
+  'add day',
+  'book hotel',
+  'book flight',
+  'reschedule',
+];
+
+function hasExplicitTripPlanningIntent(msg: string, msgLower: string): boolean {
+  return (
+    EXPLICIT_TRIP_PLANNING_VERBS_ZH.some((v) => msg.includes(v)) ||
+    EXPLICIT_TRIP_PLANNING_VERBS_EN.some((v) => msgLower.includes(v))
+  );
+}
+
+/**
+ * 西峡湾路段：用户陈述「这段不开车/想坐小飞机/到了再租车」等接驳偏好，意在可行性咨询而非整表重排。
+ * 须优先于 `hasReplanningEditSignalBeforeTransportConsult`（否则会因 `hasSegmentTransportModeReplanningSignal` 误判 TRIP_PLANNING）。
+ * 显式「这段改成…/从 A 到 B 改成…」仍走规划钳位。
+ */
+/** 导出供轻量问答等路径复用：避免与「强改稿」分流重复实现。 */
+export function isWestfjordsLegTransportPreferenceConsultation(msg: string, msgLower: string): boolean {
+  if (hasExplicitTripPlanningIntent(msg, msgLower)) {
+    return false;
+  }
+  if (
+    /(?:修改|调整|重排|替换|改行程|换酒店|换景点|加一天|减一天|删掉|删去|加上|减去|订票|订酒店|插入|更新|移动|新增|去掉|生成行程|做行程|排行程|预订行程|折中方案)/.test(
+      msg,
+    )
+  ) {
+    return false;
+  }
+  if (/(?:生成|重排|替换)(?:\s|的|了|过|新|一下|一份|个)?(?:行程|日程|计划|草案|json|itinerary)/i.test(msg)) {
+    return false;
+  }
+  if (/这段.{0,18}?(?:改成|改为|改(?:乘|坐)|换乘|换掉)/.test(msg)) {
+    return false;
+  }
+  if (/(?:从|由).{2,22}?(?:到|往|至).{2,22}.{0,28}?(?:我想|我要)?(?:改成|改为|改(?:乘|坐)|换乘)/.test(msg)) {
+    return false;
+  }
+
+  const westfjords =
+    /西峡湾|西部峡湾|韦斯特峡湾/i.test(msg) ||
+    /\bwestfjords\b|\bísafjörður\b|\bisafjordur\b|\bvestfirðir\b/i.test(msgLower);
+  if (!westfjords) {
+    return false;
+  }
+
+  const segWishZh =
+    /(?:这段|这一?段).{0,20}?(?:不开(?:了)?车|不想开|不开了|不自驾)|(?:不开(?:了)?车|不想开|不开了|不自驾).{0,35}?(?:小)?(?:飞机|航班|直飞)|想坐.{0,10}?(?:小)?(?:飞机|直升机)|后面再租车|之后再租车|到(?:了)?那边再租车|分段租车/i.test(
+      msg,
+    );
+  const segWishEn =
+    /\b(?:won't|will\s+not|not)\s+driv(?:e|ing)\b.{0,40}?\b(?:plane|flight)\b|\btake\s+(?:a\s+)?(?:small\s+)?plane\b|\brent(?:\s+a\s+car)?\s+(?:later|after)\b/i.test(
+      msgLower,
+    );
+  if (!segWishZh && !segWishEn) {
+    return false;
+  }
+
+  return true;
+}
+
+/** 路段改接驳时允许匹配的运载方式（须与「这段/不开车/改乘/从 A 到 B」等锚点组合，见 hasSegmentTransportModeReplanningSignal） */
+const SEGMENT_TRANSPORT_MODALITY_ZH =
+  '飞机|航班|小飞机|直飞|渡轮|轮渡|渡船|邮轮|大巴|长途车|巴士|公交车?|火车|高铁|动车|磁悬浮|船|客运|地铁|轻轨|有轨电车|直升机|网约车|拼车|顺风车|缆车|索道|观光车|接驳车|区间车|电瓶车|快艇|摩托艇|水上巴士|水上出租|共享单车|共享电单车|电动滑板车|滑板车';
+
+/**
+ * 路段上「改交通方式」（不开车改飞机/渡轮/大巴等）：语义是改接驳/重排，不应被句中句末「租车」「自驾」
+ * 子串单独命中 `transportConsultZh` 打成纯 DATA_LOOKUP；与显式动词并列，仍**不含**泛用「规划/安排」。
+ *
+ * 刻意不把裸「想坐大巴」等单独成条，以免「怎么坐大巴」类纯咨询误判 TRIP_PLANNING；依赖「这段/从 A 到 B/不开车/改乘」等锚点。
+ */
+function hasSegmentTransportModeReplanningSignal(msg: string, msgLower: string): boolean {
+  const m = SEGMENT_TRANSPORT_MODALITY_ZH;
+  const zhRe = new RegExp(
+    `这段.{0,16}?(?:不开(?:了)?车|不想开|不开了|不自驾)|(?:不开(?:了)?车|不想开|不开了|不自驾).{0,28}?(?:${m})|想坐.{0,8}?(?:小)?(?:飞机|直升机|渡轮|缆车|快艇|摩托艇)|(?:改(?:乘|坐)|换乘|改走).{0,12}?(?:${m})|支线(?:航班|飞机)|(?:坐飞机|乘飞机|搭飞机|坐地铁|乘地铁|搭地铁|坐缆车|乘索道|坐快艇|搭快艇)(?:去|的)?|(?:从|由).{2,22}?(?:到|往|至).{2,22}.{0,18}?(?:不开(?:了)?车|不想开|不开了|不自驾)|这段.{0,20}?(?:改成|改为|改(?:乘|坐)|换乘|换).{0,14}?(?:${m})|(?:从|由).{2,22}?(?:到|往|至).{2,22}.{0,28}?(?:我想|我要)?(?:改成|改为|改(?:乘|坐)|换乘).{0,12}?(?:${m})`,
+  );
+  const en =
+    /\b(?:won't|will\s+not|not)\s+driv(?:e|ing)\b|\b(?:take|switch|change)\s+to\s+(?:a\s+)?(?:the\s+)?(?:small\s+)?plane\b|\btake\s+(?:a\s+)?(?:small\s+)?plane\b|\b(?:internal|domestic|regional)\s+flights?\b|\b(?:fly|flying)\s+(?:this\s+)?(?:leg|segment)\b|\b(?:switch|change)\s+to\s+(?:a\s+)?(?:the\s+)?(?:ferry|buses|bus|trains|train|coaches|coach|subway|metro|light\s+rail|streetcar|tram|helicopter|rideshare|cable\s+car|gondola|funicular|ropeway|shuttle(?:\s+bus)?|airport\s+shuttle|hotel\s+shuttle|maglev|water\s+taxi|speedboats?|motorboats?|e-?scooters?|bike-?share)\b/i.test(
+      msgLower,
+    );
+  return zhRe.test(msg) || en;
+}
+
+/**
+ * 早于「交通/用车咨询」中的「自驾」等子串判断：专用于改稿话术，**不含**单字「规划/安排」，
+ * 以免「行程规划情况」「目前安排怎么样」被当成重规划。
+ */
+function hasReplanningEditSignalBeforeTransportConsult(msg: string, msgLower: string): boolean {
+  if (
+    /(?:修改|调整|重排|替换|改行程|换酒店|换景点|加一天|减一天|删掉|删去|加上|减去|订票|订酒店|插入|更新|移动|新增|去掉|生成行程|做行程|排行程|预订行程|折中方案)/.test(
+      msg,
+    )
+  ) {
+    return true;
+  }
+  if (/(?:生成|重排|替换)(?:\s|的|了|过|新|一下|一份|个)?(?:行程|日程|计划|草案|json|itinerary)/i.test(msg)) {
+    return true;
+  }
+  if (hasSegmentTransportModeReplanningSignal(msg, msgLower)) {
+    return true;
+  }
+  return EXPLICIT_TRIP_PLANNING_VERBS_EN.some((v) => msgLower.includes(v));
+}
 
 /**
  * 从请求中提取路由信号
@@ -57,8 +231,13 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
   // 归一化延迟预算（毫秒）
   const latencyBudgetMs = clampInt((options.max_seconds ?? DEFAULT_MAX_SECONDS) * 1000, 0, 5 * 60_000);
 
-  // 推断各项信号
-  const taskType = inferTaskType(req.trip_id, msg, msgLower);
+  const intent_mode_requested = parseIntentMode(options?.intent_mode);
+
+  // 推断各项信号（intent_mode 非 AUTO 时覆盖 taskType）
+  const inferredTaskType = inferTaskType(req.trip_id, msg, msgLower);
+  let taskType = applyIntentModeToTaskType(intent_mode_requested, inferredTaskType);
+  /** 前端「深度思考」等场景常误传 intent_mode=GENERIC_QA；已绑定 trip 且用户明确改稿时仍须走 TRIP_PLANNING，避免 ui_surface=consultation */
+  taskType = clampTaskTypeForBoundTripReplanning(req.trip_id, msg, msgLower, taskType);
   const complexity = inferComplexity(msg, recentCount);
   const expectsToolCalls = inferExpectsToolCalls(taskType, msg, msgLower, options.allow_webbrowse);
   const requiresStructuredOutput = inferRequiresStructuredOutput(taskType, req.trip_id);
@@ -66,6 +245,7 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
   const risk = inferRisk(taskType, msg, msgLower);
 
   const legacyWellSupported = inferLegacyWellSupported(taskType, complexity);
+  const intent_mode_resolved = taskTypeToIntentBucket(taskType);
 
   return {
     taskType,
@@ -76,15 +256,488 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
     requiresStructuredOutput,
     expectsToolCalls,
     legacyWellSupported,
+    intent_mode_requested,
+    intent_mode_resolved,
   };
+}
+
+function parseIntentMode(raw: string | undefined): IntentMode {
+  if (raw && (INTENT_MODE_VALUES as readonly string[]).includes(raw)) {
+    return raw as IntentMode;
+  }
+  return 'AUTO';
+}
+
+/** 显式 intent 覆盖服务端推断（AUTO 保留推断结果） */
+function applyIntentModeToTaskType(mode: IntentMode, inferred: TaskType): TaskType {
+  if (mode === 'AUTO') return inferred;
+  if (mode === 'TRIP_PLANNING') return 'TRIP_PLANNING';
+  if (mode === 'DATA_LOOKUP') return 'DATA_LOOKUP';
+  return 'GENERIC_QA';
+}
+
+/**
+ * 已绑定行程且用户话术中为「改行程/生成草案」等强规划信号时，将误传的 GENERIC_QA / DATA_LOOKUP 钳回 TRIP_PLANNING。
+ * 不影响纯咨询（无强规划子串时保持原 taskType）。
+ */
+function clampTaskTypeForBoundTripReplanning(
+  tripId: string | null | undefined,
+  msg: string,
+  msgLower: string,
+  taskType: TaskType,
+): TaskType {
+  const tid = tripId?.trim();
+  if (!tid) return taskType;
+  if (isWestfjordsLegTransportPreferenceConsultation(msg, msgLower)) {
+    return taskType;
+  }
+  if (taskType === 'TRIP_PLANNING') return taskType;
+  /** 仅用窄信号：全量 hasExplicitTripPlanningIntent 含「规划/安排」，会误伤「行程规划情况」等状态问法 */
+  if (!hasReplanningEditSignalBeforeTransportConsult(msg, msgLower)) return taskType;
+  if (taskType === 'GENERIC_QA' || taskType === 'DATA_LOOKUP') {
+    return 'TRIP_PLANNING';
+  }
+  return taskType;
+}
+
+/** 与前端 RouteDecision / options.intent_mode 三档对齐 */
+export function taskTypeToIntentBucket(
+  taskType: TaskType,
+): 'TRIP_PLANNING' | 'DATA_LOOKUP' | 'GENERIC_QA' {
+  switch (taskType) {
+    case 'TRIP_PLANNING':
+      return 'TRIP_PLANNING';
+    case 'DATA_LOOKUP':
+      return 'DATA_LOOKUP';
+    default:
+      return 'GENERIC_QA';
+  }
+}
+
+/**
+ * 元对话：寒暄、自我介绍、能力/功能询问。优先级高于「有 trip_id → 默认 TRIP_PLANNING」的惯性，
+ * 用于将请求分流到 DATA_LOOKUP（与「非规划检索」统计对齐）→ 轻量问答，避免误入全量规划状态机。
+ *
+ * 保守策略：命中明确的「行程/规划/目的地」类语义时不视为元对话。
+ */
+export function isMetaChatQuery(msg: string, msgLower: string): boolean {
+  const t = msg.trim();
+  if (!t) return false;
+
+  // 较长输入极少是纯元对话（避免英文从句里误含 what can you do）
+  if (t.length > 120) return false;
+
+  const blocksTripOrPlanning =
+    /(?:规划|安排)(?:一下)?(?:行程|日程)|生成(?:一下)?行程|改行程|重做|行程表|plan\s+(?:a\s+)?trip|itinerary|\d+\s*天(?:行程|安排|规划)?|几天(?:的)?(?:行程|安排)|替换.*景点|订(?:酒店|机票)|我想去|帮我(?:规划|安排|设计)|去(?:玩|旅游)|攻略(?=.*行程)|签证.*办理/m.test(msg) ||
+    /trip|hotel|flight|itinerary|book(?:ing)?\s+(?:a\s+)?(?:hotel|flight)/i.test(msgLower);
+
+  if (blocksTripOrPlanning) return false;
+
+  const metaPatterns: RegExp[] = [
+    /^您好[，,！!。\s]*$/,
+    /^你好[，,！!。\s]*$/,
+    /^hi\b[!?.，。\s]*$/i,
+    /^hello\b[!?.，。\s]*$/i,
+    /^hey\b[!?.，。\s]*$/i,
+    /你是谁|你叫什么|哪位助手|什么助手|哪个模型|你是哪个|你是干嘛的|干啥的/,
+    /能做什么|会做什么|可以做什么|能做啥|会干啥|有什么功能|有哪些功能/,
+    /怎么用|如何使用|怎么上手|使用说明/,
+    /^介绍一下(?:你们|产品|功能|助手|系统|自己)\b/,
+    /产品介绍|功能列表|能力清单/,
+    /^\s*what\s+can\s+you\s+do\b[!?.，。\s]*$/i,
+    /^\s*who\s+are\s+you\b[!?.，。\s]*$/i,
+    /^\s*what\s+are\s+your\s+capabilities\b[!?.，。\s]*$/i,
+    /^\s*what\s+do\s+you\s+do\b[!?.，。\s]*$/i,
+  ];
+
+  if (metaPatterns.some((p) => p.test(t))) return true;
+
+  // 短句：问候 + 能力/身份问法，且未出现常见旅行实体
+  if (t.length <= 56 && /^(?:您好|你好)[，,]?\s*/.test(t)) {
+    if (
+      /(能做什么|会做什么|可以做什么|你是谁|干什么|哪位)/.test(t) &&
+      !/(冰岛|日本|瑞士|尼泊尔|行程|旅游|机票|酒店|签证|自驾|景点)/.test(t)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 用户是否在询问当前行程草稿的进度、汇总或概览（与规划动词区分：需在「安排」等动词之前判断）。
+ * 供轻量问答 Prompt 与路由共用。
+ */
+export function isTripStatusOverviewQuery(msg: string, msgLower: string): boolean {
+  /** 含「规划」但实为看草稿状态：须在 isTripScopedConsultationQuery 里早于「规划」动词黑名单判断 */
+  const tripReadinessZh =
+    /规划情况|规划如何|规划得怎么样|查看.{0,12}行程.{0,14}(?:规划|情况)|行程.{0,16}(?:规划情况|说明|总结|解读)|准备度|合理不合理|是否合理|有没有不合理|有没有订酒店|酒店.{0,10}(?:订了|定了|有没有)|用餐安排|中晚餐|(?:午餐|晚餐).{0,10}(?:安排|有没有|订)|伙食|吃住怎么|吃喝怎么安排/.test(
+      msg,
+    );
+  const tripStatusOverviewZh =
+    /(?:行程|这趟|本次|当前|草稿|日程|计划).{0,24}?(?:什么(?:情况|样)|进度|怎么样了|汇总|概览)/.test(
+      msg,
+    ) ||
+    /(?:这趟|本次|当前).{0,14}?(?:行程|计划).{0,18}?(?:进度|情况|汇总|概览|怎么样了)/.test(msg) ||
+    /目前安排(?:怎么样|如何|是怎样的)?/.test(msg) ||
+    /(?:进度|汇总|概览|怎么样了).{0,12}?(?:行程|计划|日程|草稿)/.test(msg);
+  const tripStatusOverviewEn =
+    /\b(?:trip|itinerary)\s+(?:status|progress|overview|summary)\b/i.test(msgLower) ||
+    /\bhow\s+(?:is|s|'s)\s+(?:my\s+)?(?:trip|itinerary)\b/i.test(msgLower) ||
+    /\b(?:status|progress|overview)\s+of\s+(?:my\s+)?(?:trip|itinerary)\b/i.test(msgLower) ||
+    /\b(readiness|preparedness)\b/i.test(msgLower);
+  return tripReadinessZh || tripStatusOverviewZh || tripStatusOverviewEn;
+}
+
+/**
+ * 用户主要关心「近期天气 + 道路/通行类提示」，而非租车攻略或「行程进度/住宿餐饮」式总览。
+ * 用于轻量编排：避免孤立「路况」触发租车主旨，并避免「汇总」叠行程 Dashboard 模板。
+ */
+export function isWeatherRoadConditionFocusedQuery(msg: string): boolean {
+  const m = msg.trim();
+  if (!m) return false;
+  const lower = m.toLowerCase();
+  const carPrimary =
+    /租车|自驾|包车|提车|还车|车型|四驱|SUV|用车|碎石险|车行|驾照|交规/i.test(m) ||
+    /\b(car\s+rental|rent(?:ing)?\s+a\s+car|self[-\s]?drive|rental\s+car)\b/i.test(lower);
+  if (carPrimary) return false;
+  const hasWx = /天气|气象|气温|降雨|刮风|大风|暴雨|降雪|forecast|\bweather\b/i.test(m);
+  const hasRoad = /路况|道路|封路|闭路|修路|交通管制|通行|路面|滑坡|风吹门/i.test(m);
+  if (hasWx && hasRoad) return true;
+  if (
+    hasWx &&
+    /近期|出发前|注意|预警|汇总|提醒/.test(m) &&
+    /目的地|行程|旅途|出行|当地/.test(m)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 轻量 DATA_LOOKUP 等：是否并发注入 `iceland.rentalGuidance`（与 Booking 租车 MCP 双路合并）。
+ * 条件：话术命中冰岛语境 + 租车/保险/F-road/指定本地品牌等；或行程摘要已锚 IS/冰岛且用户问租车相关。
+ */
+export function shouldInjectIcelandRentalGuidanceForLightweight(
+  message: string | undefined,
+  tripContextJoined: string,
+): boolean {
+  const m = (message ?? '').trim();
+  const t = (tripContextJoined ?? '').trim();
+  if (!m && !t) return false;
+
+  const icelandCtx =
+    /冰岛|\bIceland\b|雷克雅未克|Reykjavik|凯夫拉维克|KEF|斯奈山|南岸|米湖|黄金圈|环岛|维克|塞里雅兰/i.test(m) ||
+    /冰岛|\bIceland\b|目的地代码:\s*IS\b|国家代码:\s*IS\b/i.test(t);
+
+  const rentalTopic =
+    /(冰岛|Iceland).*(租车|车行|保险|F路|F-road|全险|自驾安全|Blue|Lotus|Zero|Lava)/i.test(m) ||
+    /(租车|车行|保险|F路|F-road|全险|自驾安全|Blue|Lotus|Zero|Lava).*(冰岛|Iceland)/i.test(m) ||
+    /租车|车行|自驾租车|碎石险|砂石险|全险|免赔|车行|car\s+rental|rent\s+a\s+car/i.test(m);
+
+  const brandOnly = /\b(Blue|Lotus|Zero|Lava)\s+Car\b/i.test(m) || /(Blue|Lotus|Zero|Lava).*租车/i.test(m);
+
+  if (!icelandCtx) return false;
+  return rentalTopic || brandOnly;
+}
+
+/**
+ * 轻量路径（DATA_LOOKUP / GENERIC_QA / RAG_QA）是否应尝试天气 MCP。
+ * 与 `ClaudeOrchestratorService.shouldAttemptLiveWeatherSensor` 中「开关 + 话术」逻辑对齐（不含 `mcpToolDispatcher` 是否注入）。
+ */
+export function shouldEnableLiveWeatherMcpForLightweightRoute(
+  routingTaskType: TaskType | string | undefined,
+  message: string | undefined,
+  options?: RouteAndRunRequestDto['options'],
+): boolean {
+  const rt = routingTaskType;
+  if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
+  const tools = options?.enable_live_tools ?? [];
+  const liveFacts = options?.intent_flags?.live_facts === true;
+  const msg = message ?? '';
+  if (tools.includes('weather')) return true;
+  if (liveFacts && /天气|气温|降雨|刮风|forecast|weather/i.test(msg)) return true;
+  if (isWeatherRoadConditionFocusedQuery(msg)) return true;
+  return false;
+}
+
+/**
+ * 当地当前时间 / 时区 / 时差（与行程草案无关）。
+ * 轻量编排用于：跳过整段行程摘要、并行 MCP、`<<<CONSULTATION_UI_JSON>>>`，避免「几点钟」触发预算/风险长文。
+ */
+export function isLocalClockOrTimezoneFactQuery(msg: string): boolean {
+  const m = msg.trim();
+  if (!m) return false;
+  const lower = m.toLowerCase();
+  const factualClockZh =
+    /(?:现在|当前)(?:是)?几点|几点了|当地(?:几点|时间)|时差多少|几小时差|时区|比北京|慢几小时|快几小时|GMT|UTC/i;
+  const factualClockEn =
+    /\bwhat\s+time\s+(?:is\s+it|now)\b/i.test(lower) ||
+    /\bcurrent\s+(?:local\s+)?time\b/i.test(lower) ||
+    /\btime\s+in\b/i.test(lower);
+  return factualClockZh.test(m) || factualClockEn;
+}
+
+/** 人口/面积/GDP 等宏观事实（与行程草案无关），与 `isLocalClockOrTimezoneFactQuery` 同用于轻量编排收紧 */
+export function isFactualMacroStatQuery(msg: string): boolean {
+  const m = msg.trim();
+  if (!m) return false;
+  const lower = m.toLowerCase();
+  const factualMacroStatZh =
+    /人口|面积(?:多大|多少)|有多少(?:万)?人|GDP|国内生产总值|共有.*座城/i;
+  const factualMacroStatEn =
+    /\bpopulation\b|\bhow\s+many\s+people\b|\bhow\s+big\s+(?:is|are)\b/i.test(lower);
+  return factualMacroStatZh.test(m) || factualMacroStatEn;
+}
+
+/**
+ * 在「已有行程会话」(trip_id 存在) 下，识别纯咨询/检索类问题，避免一律走 TRIP_PLANNING 状态机。
+ *
+ * 规则：命中咨询词且未命中强规划意图 → 视为 DATA_LOOKUP（保留 trip 上下文由上游决定，仅任务类型分流）。
+ */
+function isTripScopedConsultationQuery(msg: string, msgLower: string): boolean {
+  if (isWestfjordsLegTransportPreferenceConsultation(msg, msgLower)) {
+    return true;
+  }
+  /** 改行程话术里常同时出现「自驾/路况」等，必须在交通咨询分支之前排除（窄信号，避免误伤「规划情况」类问法） */
+  if (hasReplanningEditSignalBeforeTransportConsult(msg, msgLower)) {
+    return false;
+  }
+
+  // 住宿检索/推荐：不等于生成多日行程；有 trip_id 时若不单独分流会误判为 TRIP_PLANNING（用户期望「推荐酒店」不出规划流）
+  const accommodationLookupZh =
+    /推荐酒店|酒店推荐|找酒店|搜酒店|搜索酒店|查酒店|住宿推荐|有空房|哪家酒店|酒店价格|民宿推荐/i;
+  const accommodationLookupEn =
+    /\b(find|search|recommend)\s+(?:me\s+)?(?:some\s+)?(?:a\s+)?(?:hotels?|lodging|accommodation|bnb)\b/i;
+  if (accommodationLookupZh.test(msg) || accommodationLookupEn.test(msgLower)) {
+    return true;
+  }
+
+  /**
+   * 餐饮/餐厅检索（非改行程）：与「推荐酒店」并列。
+   * 「推荐黄金圈附近的餐厅」若不命中此处且无下列 QA 词根，会被 inferTaskType 判为 TRIP_PLANNING →
+   * POI 选择与通勤预算门控误判「目的地过大」，并触发错误的全域澄清。
+   */
+  const diningLookupZh =
+    /推荐.*餐厅|推荐.*吃|餐厅推荐|找餐厅|搜餐厅|附近.*餐厅|美食推荐|美食|好吃|吃的地方|去哪吃|吃饭推荐|有没有好吃的|宵夜|早餐店|想吃|吃啥|吃什么|特色小吃/i;
+  const diningLookupEn =
+    /\b(restaurants?|cafes?|dining|food\s+near|where\s+to\s+eat|places?\s+to\s+eat|eat\s+near)\b/i;
+  if (diningLookupZh.test(msg) || diningLookupEn.test(msgLower)) {
+    return true;
+  }
+
+  /**
+   * 票务预约提前量 / 购票 logistics（例：蓝湖门票提前多久订）。
+   * 若不命中，仅有 trip_id 时会被默认 TRIP_PLANNING → 状态机输出无关单日占位日程。
+   */
+  const ticketBookingLogisticsZh =
+    /(?:门票|入场券).{0,24}?(?:多久|提前|预订|预约)|(?:多久|几天).{0,16}?(?:提前|预订|订座|要买)|提前(?:多久|几天)|(?:蓝湖|温泉|博物馆).{0,12}?(?:门票|预定)/;
+  const ticketBookingLogisticsEn =
+    /\bhow\s+far\s+in\s+advance\b|\bhow\s+early\s+(?:do|should|to)\b|\blead\s*time\b|\btickets?\s+(?:in\s+advance|online)\b/i.test(
+      msgLower,
+    );
+  if (ticketBookingLogisticsZh.test(msg) || ticketBookingLogisticsEn) {
+    return true;
+  }
+
+  /** 交通/用车类咨询（非改行程）：与住宿检索同理，避免在有 trip 会话时被误判为 TRIP_PLANNING → 全量 System2 */
+  const transportConsultZh =
+    /租车|自驾|包车|提车|还车|租车行|路况|交规|碎石路|F\s*路|F\d+|环岛|驾照|冰岛开车/i;
+  const transportConsultEn =
+    /\b(car\s+rental|rent(?:ing)?\s+a\s+car|self[- ]drive|driving\s+in|road\s+rules|rental\s+car)\b/i;
+  if (transportConsultZh.test(msg) || transportConsultEn.test(msgLower)) {
+    return true;
+  }
+
+  if (isLocalClockOrTimezoneFactQuery(msg)) {
+    return true;
+  }
+
+  if (isFactualMacroStatQuery(msg)) {
+    return true;
+  }
+
+  /**
+   * 单日或具体时段「能不能做某事」——可行性问答，不是「重做整张行程表」。
+   * 若不命中此分流，仅有 trip_id 时会被 inferTaskType 默认判为 TRIP_PLANNING → 状态机整表重排，
+   * 易出现答非所问（用户问 Day1 17:00 后能否徒步，却返回重复占位日程）。
+   */
+  const scopedFeasibilityZh =
+    (/(\d{1,2}\s*点(?:之后|以前|前|后)|晚上|傍晚|下午|早上|凌晨|中午|晚间)/.test(msg) ||
+      /(?:第[一二三四五六七八九十1-7]+天|第一天|第二天|第三天|第四天|第五天|第六天|第七天|当天|这天|首日)/.test(
+        msg,
+      )) &&
+    /(?:可以|能|能否|是否|合适|安全|来得及|赶得上|顺路|绕路|顺不顺|折腾)/.test(msg) &&
+    /(?:吗|么|呢)/.test(msg);
+  const scopedFeasibilityEn =
+    /\b(?:day\s*[1-7]|first\s+day)\b/i.test(msgLower) &&
+    /\b(?:can\s+i|is\s+it\s+ok|possible|feasible|safe)\b/i.test(msgLower);
+  if (scopedFeasibilityZh || scopedFeasibilityEn) {
+    return true;
+  }
+
+  /** 人群适配/值不值得/谁适合类泛咨询（非改行程）：否则仅有 trip_id 时常被判 TRIP_PLANNING → 误以为要做日程卡片 */
+  const personaFitZh =
+    /适合(?:去|玩)?|什么人|哪种人|哪类人|人群|体质|新手|亲子|老人|小孩|值不值|值不值得|该不该去|推荐谁去|能不能去/i;
+  const personaFitEn =
+    /\b(who\s+should|what\s+kind\s+of\s+people|is\s+.*\s+(?:right|worth)|worth\s+it|beginners?|families?)\b/i;
+  if (personaFitZh.test(msg) || personaFitEn.test(msgLower)) {
+    return true;
+  }
+
+  if (isTripStatusOverviewQuery(msg, msgLower)) {
+    return true;
+  }
+
+  if (hasExplicitTripPlanningIntent(msg, msgLower)) {
+    return false;
+  }
+
+  /**
+   * 实时航班舱位 / 可订组合 / 开口程（轻量路径 flight sensor → Amadeus）。
+   * 此类话术往往不含「攻略/推荐」等 QA 词根，若在下方 hasQa 门控之前不分流，
+   * 仅有 trip_id 时会落入 TRIP_PLANNING → 不出实时报价。
+   */
+  if (isExecutableFlightInventoryQuery(msg)) {
+    return true;
+  }
+
+  // 预算/费用锚点优先：混合「黄金圈自驾 1 天 + 预算」仍以咨询为主（避免误入规划状态机缺参）
+  const budgetAnchorZh = ['预算', '费用', '多少钱', '大概多少钱', '花销', '开销', '花费'];
+  const budgetAnchorEn = ['budget', 'how much', 'cost estimate', 'cost of'];
+  if (
+    budgetAnchorZh.some((k) => msg.includes(k)) ||
+    budgetAnchorEn.some((k) => msgLower.includes(k))
+  ) {
+    return true;
+  }
+
+  const qaKeywordsZh = [
+    // 定义/常识问答（否则仅有 trip_id 时会误判 TRIP_PLANNING → 误入 PLAN_GEN）
+    '什么是',
+    '什么叫',
+    '是啥',
+    '什么意思',
+    '为何',
+    '为啥',
+    '推荐',
+    '指南',
+    '攻略',
+    '大概多',
+    /** 时长类事实问答（提前多久、车程多久）；勿仅靠「多久」以免极短句误判时可依赖票务词条） */
+    '多久',
+    '介绍一下',
+    '天气',
+    '气候',
+    '签证要',
+    '注意什么',
+    '带什么',
+    '安全吗',
+    '消费',
+    '物价',
+    '换汇',
+    '小费',
+    '省钱',
+    '参考价',
+    // 行前实用咨询（穿搭/打包/清单），避免在有行程会话时被误判为「规划改行程」
+    '穿搭',
+    '穿什么',
+    '衣物',
+    '衣服',
+    '打包',
+    '行李',
+    '清单',
+    '必备',
+    '装备',
+    '鞋',
+    '厚度',
+    '分层',
+    '冰爪',
+    '需要带',
+    '要带',
+    '月初',
+    // 行程会话内状态/进度/概览（与 isTripStatusOverviewQuery 互补）
+    '进度',
+    '情况',
+    '汇总',
+    '概览',
+    '怎么样了',
+    // 行前准备类（「需要做哪些准备」等不含「攻略/清单」词根时亦需命中）
+    '准备',
+    '行前',
+    '建议',
+    '注意',
+    '提示',
+    '要带什么',
+    '注意事项',
+    /** 签证常识子串（申根区/签证类型问答；不宜单独用「签证」以免与「办签证行程」类混淆） */
+    '申根',
+  ];
+  const qaKeywordsEn = [
+    'cost',
+    'guide',
+    'weather',
+    'tips',
+    'overview',
+    'safety',
+    'price',
+    'exchange rate',
+    'outfit',
+    'packing',
+    'what to wear',
+    'clothing',
+    'checklist',
+    'layers',
+    'crampon',
+    'crampons',
+    'do i need',
+    'should i bring',
+    'preparation',
+    'prepare for',
+    'what to prepare',
+    'tips',
+    'advise',
+    'advice',
+    'checklist',
+  ];
+
+  const hasQa =
+    qaKeywordsZh.some((k) => msg.includes(k)) || qaKeywordsEn.some((k) => msgLower.includes(k));
+
+  if (!hasQa) {
+    return false;
+  }
+
+  const tripIntentPatterns = [
+    /我想去/,
+    /帮我(?:规划|安排|设计)/,
+    /去(?:玩|旅游|几天)/,
+    /\d+\s*天\s*(?:的)?(?:行程|安排|规划)/,
+  ];
+  if (tripIntentPatterns.some((p) => p.test(msg))) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
  * 推断任务类型
  */
 function inferTaskType(tripId: string | null | undefined, msg: string, msgLower: string): TaskType {
-  // 有 trip_id → 优先 TRIP_PLANNING
-  if (tripId) return 'TRIP_PLANNING';
+  // 元对话优先：即使存在 trip_id，也不走 TRIP_PLANNING 惯性（定性为 DATA_LOOKUP，便于日志/RAG 与咨询类一致）
+  if (isMetaChatQuery(msg, msgLower)) {
+    return 'DATA_LOOKUP';
+  }
+
+  // 有 trip_id：默认行程规划，但允许咨询类请求降级为 DATA_LOOKUP（见 isTripScopedConsultationQuery）
+  if (tripId) {
+    if (isTripScopedConsultationQuery(msg, msgLower)) {
+      return 'DATA_LOOKUP';
+    }
+    return 'TRIP_PLANNING';
+  }
 
   // CRUD-ish（需要上下文，避免误触发）
   // 例如"我想删除烦恼"不应该命中 CRUD，需要明确的对象（记录/订单/行程/数据等）
@@ -169,7 +822,20 @@ function inferTaskType(tripId: string | null | undefined, msg: string, msgLower:
 
   // 处理完 CRUD 后继续其他类型判断
   // Data lookup / info retrieval
-  if (matchesAny(msg, ['查一下', '查询', '看看', '多少', '是什么', '列出', '给我数据'])) {
+  if (
+    matchesAny(msg, [
+      '查一下',
+      '查询',
+      '看看',
+      '多少',
+      '是什么',
+      '什么是',
+      '什么叫',
+      '几点',
+      '列出',
+      '给我数据',
+    ])
+  ) {
     return 'DATA_LOOKUP';
   }
 
@@ -236,6 +902,13 @@ function inferExpectsToolCalls(
  * 推断是否需要结构化输出
  */
 function inferRequiresStructuredOutput(taskType: TaskType, tripId: string | null | undefined): boolean {
+  // 行程会话内的纯咨询：不要求结构化行程输出，便于降级到 CLAUDE_DYNAMIC / 减少状态机误触发
+  if (
+    tripId &&
+    (taskType === 'DATA_LOOKUP' || taskType === 'GENERIC_QA' || taskType === 'RAG_QA')
+  ) {
+    return false;
+  }
   if (tripId) return true;
   return taskType === 'TRIP_PLANNING' || taskType === 'BOOKING_WORKFLOW';
 }
@@ -351,4 +1024,41 @@ function matchesAny(haystack: string, needles: string[]): boolean {
 function clampInt(n: number, min: number, max: number): number {
   const x = Number.isFinite(n) ? Math.floor(n) : min;
   return Math.max(min, Math.min(max, x));
+}
+
+/**
+ * 使用 intent.recognize（或其它来源）解析到的 taskType，重建完整 RoutingSignals。
+ * 保留 `options.intent_mode` 对用户显式三档（AUTO/TRIP_PLANNING/DATA_LOOKUP/GENERIC_QA）的覆盖语义。
+ */
+export function routingSignalsWithResolvedTaskType(
+  req: RouteAndRunRequestDto,
+  resolvedTaskType: TaskType,
+): RoutingSignals {
+  const msg = (req.message ?? '').trim();
+  const msgLower = msg.toLowerCase();
+  const options = req.options ?? {};
+  const ctx = req.conversation_context ?? {};
+  const recentCount = ctx.recent_messages?.length ?? 0;
+  const latencyBudgetMs = clampInt((options.max_seconds ?? DEFAULT_MAX_SECONDS) * 1000, 0, 5 * 60_000);
+  const intent_mode_requested = parseIntentMode(options?.intent_mode);
+  const taskType = applyIntentModeToTaskType(intent_mode_requested, resolvedTaskType);
+  const complexity = inferComplexity(msg, recentCount);
+  const expectsToolCalls = inferExpectsToolCalls(taskType, msg, msgLower, options.allow_webbrowse);
+  const requiresStructuredOutput = inferRequiresStructuredOutput(taskType, req.trip_id);
+  const needsAudit = inferNeedsAudit(taskType, requiresStructuredOutput, options);
+  const risk = inferRisk(taskType, msg, msgLower);
+  const legacyWellSupported = inferLegacyWellSupported(taskType, complexity);
+  const intent_mode_resolved = taskTypeToIntentBucket(taskType);
+  return {
+    taskType,
+    risk,
+    needsAudit,
+    latencyBudgetMs,
+    complexity,
+    requiresStructuredOutput,
+    expectsToolCalls,
+    legacyWellSupported,
+    intent_mode_requested,
+    intent_mode_resolved,
+  };
 }

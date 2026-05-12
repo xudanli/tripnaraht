@@ -1516,8 +1516,8 @@ export class RouteOptimizationService {
 
         hardGates.push({
           rule: this.mapIssueTypeToRule(issue.type),
-          result: issue.severity === 'ERROR' ? 'FAIL' : 'PASS',
-          severity: issue.severity as 'ERROR' | 'WARNING',
+          result: issue.severity === 'ERROR' || issue.severity === 'CRITICAL' ? 'FAIL' : 'PASS',
+          severity: (issue.severity === 'CRITICAL' ? 'ERROR' : issue.severity) as 'ERROR' | 'WARNING',
           detail: improvedMessage,
           suggestion: issue.suggestion,
           item_id: issue.item_id,
@@ -1919,7 +1919,9 @@ export class RouteOptimizationService {
     }
 
     // 从城市推断（如果目的地是城市）
-    const cities = ctx.days.flatMap(day => day.items.map(item => item.cityName || day.city)).filter(Boolean);
+    const cities = ctx.days
+      .flatMap(day => day.items.map(item => item.cityName || day.city))
+      .filter((c): c is string => typeof c === 'string' && c.length > 0);
     if (cities.length > 0) {
       // 简单的城市到国家映射
       const cityCountryMap: Record<string, string> = {
@@ -2009,7 +2011,7 @@ export class RouteOptimizationService {
    */
   private detectNightSegments(
     ctx: TripContext
-  ): RouteOptimizationEvidence['key_features']['night_segments'] {
+  ): NonNullable<RouteOptimizationEvidence['key_features']['night_segments']> {
     const segments: RouteOptimizationEvidence['key_features']['night_segments'] = [];
 
     for (const day of ctx.days) {
@@ -2082,7 +2084,7 @@ export class RouteOptimizationService {
    */
   private detectNoRescueSegments(
     ctx: TripContext
-  ): RouteOptimizationEvidence['key_features']['no_rescue_segments'] {
+  ): NonNullable<RouteOptimizationEvidence['key_features']['no_rescue_segments']> {
     const segments: RouteOptimizationEvidence['key_features']['no_rescue_segments'] = [];
 
     for (const day of ctx.days) {
@@ -2209,7 +2211,8 @@ export class RouteOptimizationService {
     const strategies = config.strategies || ['COMPACT', 'BALANCED', 'RELAXED'];
     const samplesPerStrategy = config.samples_per_strategy || 2;
     
-    const routes: RouteOptimizationEvidence['candidate_routes']['routes'] = [];
+    type CandidateRoutesBlock = NonNullable<RouteOptimizationEvidence['candidate_routes']>;
+    const routes: CandidateRoutesBlock['routes'] = [];
     let successful = 0;
     let failed = 0;
 
@@ -2253,9 +2256,13 @@ export class RouteOptimizationService {
     }
 
     // 选择最佳候选路线（分数最高）
-    const bestRoute = routes.length > 0 
-      ? routes.reduce((best, current) => current.score > best.score ? current : best)
-      : undefined;
+    const bestRoute =
+      routes.length > 0
+        ? routes.reduce(
+            (best: CandidateRoutesBlock['routes'][number], current: CandidateRoutesBlock['routes'][number]) =>
+              current.score > best.score ? current : best,
+          )
+        : undefined;
 
     return {
       routes,

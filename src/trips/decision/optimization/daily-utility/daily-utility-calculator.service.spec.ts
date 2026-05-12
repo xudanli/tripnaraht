@@ -8,6 +8,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DailyUtilityCalculatorService } from './daily-utility-calculator.service';
 import { TripPlan, PlanDay } from '../../plan-model';
 import { TripWorldState } from '../../world-model';
+import { buildTripExecutionSemanticViewSnapshot } from '../../execution/trip-execution-semantic-view.builder';
 
 function createBaseState(): TripWorldState {
   return {
@@ -42,7 +43,12 @@ function createBaseState(): TripWorldState {
         },
       ],
     },
-    signals: { lastUpdatedAt: new Date().toISOString() },
+    signals: {
+      lastUpdatedAt: new Date().toISOString(),
+      executionSemanticView: buildTripExecutionSemanticViewSnapshot({
+        planDates: ['2026-06-10'],
+      }),
+    },
   };
 }
 

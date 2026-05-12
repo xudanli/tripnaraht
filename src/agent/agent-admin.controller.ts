@@ -5,19 +5,32 @@
  * 后台管理 Agent 运行（TripRun）和尝试（TripAttempt）的接口
  */
 
-import { Controller, Get, Post, Param, Query, Logger } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Post, Param, Query, Logger, Optional, UseGuards } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBearerAuth,
+  ApiHeader,
+} from '@nestjs/swagger';
+import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { AgentRunAdminService } from './services/agent-run-admin.service';
+import { RuntimeReplayPersistenceService } from './services/runtime-replay-persistence.service';
 
 @ApiTags('agent-admin')
 @Controller('agent/admin')
 export class AgentAdminController {
   private readonly logger = new Logger(AgentAdminController.name);
 
-  constructor(private readonly agentRunAdminService: AgentRunAdminService) {}
+  constructor(
+    private readonly agentRunAdminService: AgentRunAdminService,
+    @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
+  ) {}
 
   @Public()
   @Get('runs/stats')
@@ -205,6 +218,74 @@ export class AgentAdminController {
       return successResponse(attempt);
     } catch (error: any) {
       this.logger.error(`获取 Attempt 详情失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /** @Public：跳过全局 JwtAuthGuard；实际鉴权由 AdminStrictAuthGuard（JWT 管理员或 ADMIN_GOD_API_KEY）。 */
+  @Public()
+  @UseGuards(AdminStrictAuthGuard)
+  @ApiBearerAuth()
+  @ApiHeader({
+    name: 'x-admin-god-key',
+    required: false,
+    description: 'Optional when ADMIN_GOD_API_KEY is set',
+  })
+  @Get('runtime-replay-anchors/by-snapshot/:snapshotId')
+  @ApiOperation({
+    summary: '按 snapshot_id 获取单条 P3 replay 锚点（管理接口）',
+    description:
+      '与 observability.runtime_replay_persistence.snapshot_id 一致；唯一索引查询。',
+  })
+  @ApiParam({ name: 'snapshotId', description: '64 字符 hex snapshot_id' })
+  @ApiResponse({ status: 200, description: '单条锚点', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 404, description: '不存在', type: ApiErrorResponseDto })
+  async getRuntimeReplayAnchorBySnapshot(@Param('snapshotId') snapshotId: string) {
+    try {
+      const s = typeof snapshotId === 'string' ? snapshotId.trim() : '';
+      if (!s) {
+        return errorResponse(ErrorCode.BAD_REQUEST, 'snapshotId is required');
+      }
+      const anchor = await this.runtimeReplayPersistence?.findAnchorBySnapshotId(s);
+      if (!anchor) {
+        return errorResponse(ErrorCode.NOT_FOUND, `replay anchor not found for snapshot_id=${s}`);
+      }
+      return successResponse({ anchor });
+    } catch (error: any) {
+      this.logger.error(`查询 replay 锚点失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @UseGuards(AdminStrictAuthGuard)
+  @ApiBearerAuth()
+  @ApiHeader({
+    name: 'x-admin-god-key',
+    required: false,
+    description: 'Optional when ADMIN_GOD_API_KEY is set',
+  })
+  @Get('runtime-replay-anchors')
+  @ApiOperation({
+    summary: '按 query_id 列出 P3 runtime replay 锚点（管理接口）',
+    description:
+      'query_id 与 route_and_run 的 request_id 对齐；用于与 observability.runtime_replay_persistence 对账。',
+  })
+  @ApiQuery({ name: 'query_id', required: true, type: String })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiResponse({ status: 200, description: '锚点列表', type: ApiSuccessResponseDto })
+  async listRuntimeReplayAnchors(@Query('query_id') queryId: string, @Query('limit') limitRaw?: string) {
+    try {
+      const q = typeof queryId === 'string' ? queryId.trim() : '';
+      if (!q) {
+        return errorResponse(ErrorCode.BAD_REQUEST, 'query_id is required');
+      }
+      const parsed = limitRaw !== undefined && limitRaw !== '' ? parseInt(String(limitRaw), 10) : 50;
+      const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+      const anchors = (await this.runtimeReplayPersistence?.listAnchorsByQueryId(q, limit)) ?? [];
+      return successResponse({ anchors });
+    } catch (error: any) {
+      this.logger.error(`列出 replay 锚点失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

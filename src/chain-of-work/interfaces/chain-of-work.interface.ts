@@ -86,7 +86,7 @@ export interface TripNARAWorkflowDraft {
  */
 export interface SkillMapping {
   step_id: string;
-  skill_name: string; // 如 'transport.search', 'dem.getProfile'
+  skill_name: string; // 如 'transport.search', 'dem.get_profile'
   confidence: number; // 0-1
   matching_reason: string; // 匹配依据
   input_mapping?: Record<string, string>; // 输入字段映射

@@ -143,7 +143,7 @@ export class PersonaStateManagerService {
         toStateInfo,
       );
 
-      if (conflicts.length > 0 && !request.force) {
+      if ((conflicts ?? []).length > 0 && !request.force) {
         return {
           success: false,
           fromPersona: request.fromPersona,

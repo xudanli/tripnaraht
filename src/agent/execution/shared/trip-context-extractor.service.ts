@@ -21,6 +21,8 @@ export interface TripRequestForContext {
   start_date?: string;
   constraints?: {
     budget?: { total?: number; currency?: string };
+    /** 与 `TripPlanRequest.constraints` 对齐的最小字段（Gate / 准备度） */
+    vehicle_type?: '2WD' | '4WD';
   };
 }
 

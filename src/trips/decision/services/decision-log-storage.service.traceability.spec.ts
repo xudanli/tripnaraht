@@ -7,6 +7,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import type { DecisionLogEntry } from '../shared/decision-result.types';
 import { minimalJepaTraceForCandidate } from '../shared/decision-trace-jepa.types';
 import { DecisionLogStorageService } from './decision-log-storage.service';
+import { PRD_FALLBACK_REASON_CODE } from '../shared/decision-log-entry-normalize.util';
 
 describe('DecisionLogStorageService (TD-04 traceability)', () => {
   const tripUuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -76,6 +77,32 @@ describe('DecisionLogStorageService (TD-04 traceability)', () => {
 
     expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('[TD-04][save]'));
     expect(prisma.decisionLog.create).toHaveBeenCalled();
+  });
+
+  it('saveLogEntry: PRD fallback fills critical action empty reasonCodes before persist', async () => {
+    await service.saveLogEntry(
+      validEntry({
+        action: 'REJECT',
+        reasonCodes: [],
+        explanation: 'blocked',
+      }),
+      { tripId: tripUuid },
+    );
+
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('[TD-04][save]'));
+    expect(prisma.decisionLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'REJECT',
+          reasonCodes: [PRD_FALLBACK_REASON_CODE],
+          metadata: expect.objectContaining({
+            risk_tier: 'HIGH',
+            responsibility_mode: 'ASSIST_ONLY',
+            prd_reason_codes_fallback: true,
+          }),
+        }),
+      }),
+    );
   });
 
   it('saveLogEntries: logs traceability once for batch', async () => {

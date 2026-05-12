@@ -4,6 +4,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LocalInsightAgent } from '../../interfaces/sub-agent.interface';
 import { TripPlanRequest, GateResult, OrchestratorState } from '../../interfaces/trip-plan.interface';
 import { LocalInsightService } from '../../../rag/services/local-insight.service';
+import { getBoundDecisionContext } from '../../../trips/reality-kernel/reality-context.storage';
 import { SpatialReplacementService } from '../../../trips/decision/services/spatial-replacement.service';
 import { POIRouteAffinityService } from '../../../poi/services/poi-route-affinity.service';
 
@@ -96,6 +97,8 @@ export class ClaudeLocalInsightAgentService implements LocalInsightAgent {
             const insights = await this.localInsightService.getLocalInsight(
               countryCode,
               ['restaurant', 'accommodation', 'attraction'],
+              undefined,
+              getBoundDecisionContext(),
             );
             
             // 当地洞察通常无硬证据，标记为 ASSUMPTION

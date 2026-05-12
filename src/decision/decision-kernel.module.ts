@@ -27,11 +27,13 @@ import { HarnessModule } from '../harness/harness.module';
 import { RagModule } from '../rag/rag.module';
 import { InterventionEngine } from './actuator/intervention-engine';
 import { DemModule } from '../trips/dem/dem.module';
+import { SharedMemoryModule } from '../agent/memory/shared-memory.module';
 
 @Global()
 @Module({
   imports: [
     DemModule,
+    forwardRef(() => SharedMemoryModule),
     HarnessModule,
     forwardRef(() => RagModule),
     ContextEngineModule,

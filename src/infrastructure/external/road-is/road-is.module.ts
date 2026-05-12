@@ -3,10 +3,11 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { RoadIsProviderService } from './road-is-provider.service';
 import { EnvSyncWorkerService } from './env-sync-worker.service';
+import { OntologyRoadStatusProviderService } from './ontology-road-status-provider.service';
 
 @Module({
   imports: [ConfigModule, PrismaModule],
-  providers: [RoadIsProviderService, EnvSyncWorkerService],
-  exports: [RoadIsProviderService],
+  providers: [RoadIsProviderService, EnvSyncWorkerService, OntologyRoadStatusProviderService],
+  exports: [RoadIsProviderService, OntologyRoadStatusProviderService],
 })
 export class RoadIsModule {}

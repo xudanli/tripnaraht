@@ -53,11 +53,6 @@ export interface ConflictStateGraphJSON {
   };
 }
 
-function safeParseTime(t: unknown): number | undefined {
-  const ms = Date.parse(String(t ?? ''));
-  return Number.isFinite(ms) ? ms : undefined;
-}
-
 /**
  * 构建一个轻量级中间表示（IR），统一 Memory/Context/Harness。
  * - 节点：early_warning_id

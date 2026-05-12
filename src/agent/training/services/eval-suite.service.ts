@@ -54,7 +54,7 @@ export class EvalSuiteService {
         const startTime = Date.now();
 
         // 调用PolicyService进行推理
-        const response = await this.policyService.predict({
+        const response = await this.policyService!.predict({
           request_id: `eval_${testCase.id}`,
           state: testCase.input as any,
           model_version: modelVersion,
@@ -148,7 +148,7 @@ export class EvalSuiteService {
       try {
         const startTime = Date.now();
 
-        const response = await this.policyService.predict({
+        const response = await this.policyService!.predict({
           request_id: `eval_${testCase.id}`,
           state: testCase.input as any,
           model_version: modelVersion,
@@ -260,7 +260,7 @@ export class EvalSuiteService {
       try {
         const startTime = Date.now();
 
-        const response = await this.policyService.predict({
+        const response = await this.policyService!.predict({
           request_id: `eval_${testCase.id}`,
           state: testCase.input as any,
           model_version: modelVersion,

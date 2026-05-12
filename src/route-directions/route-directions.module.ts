@@ -14,12 +14,16 @@ import { EnhancedRiskAssessmentService } from './services/enhanced-risk-assessme
 import { ResultPresentationService } from './services/result-presentation.service';
 import { CompliancePluginService } from './plugins/compliance-plugin.service';
 import { TransportPluginService } from './plugins/transport-plugin.service';
+import { RouteDecisionEngineService } from './services/route-decision-engine.service';
+import { ActionDispatcherService } from './services/action-dispatcher.service';
 import { forwardRef } from '@nestjs/common';
 import { DecisionModule } from '../trips/decision/decision.module';
+import { SharedMemoryModule } from '../agent/memory/shared-memory.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { POIModule } from '../poi/poi.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisService } from '../redis/redis.service';
+import { WorldFactsModule } from '../world-facts/world-facts.module';
 
 // 检查是否在 MCP 模式下
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
@@ -50,8 +54,9 @@ class MockRedisService {
           return RedisModule;
         })(),
     POIModule,
+    WorldFactsModule,
     forwardRef(() => DecisionModule), // 用于RhythmMatchingService和ThreeLayerExplanationService - 使用 forwardRef 避免循环依赖
-    // MemoryModule, // 暂时禁用，测试是否导致阻塞
+    SharedMemoryModule,
   ],
   controllers: [RouteDirectionsController],
   providers: [
@@ -66,6 +71,8 @@ class MockRedisService {
     CompliancePluginService,
     TransportPluginService,
     RouteDirectionExplainerService,
+    RouteDecisionEngineService,
+    ActionDispatcherService,
     PackKPIAcceptanceService,
     RouteJudgmentService,
     EnhancedRiskAssessmentService,
@@ -81,6 +88,8 @@ class MockRedisService {
     CompliancePluginService,
     TransportPluginService,
     RouteDirectionExplainerService,
+    RouteDecisionEngineService,
+    ActionDispatcherService,
     PackKPIAcceptanceService,
     RouteJudgmentService,
     EnhancedRiskAssessmentService,

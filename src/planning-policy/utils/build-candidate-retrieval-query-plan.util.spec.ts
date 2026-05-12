@@ -37,4 +37,16 @@ describe('buildCandidateRetrievalQueryPlan', () => {
     expect(joined).toContain('haukadalur');
     expect(joined).toContain('strokkur');
   });
+
+  it('用户文案含西峡湾：boostedTerms 含 Westfjords 相关词，regionTags 含 westfjords', () => {
+    const plan = buildCandidateRetrievalQueryPlan(
+      '雷克雅未克到西峡湾这段想坐小飞机',
+      '冰岛',
+      undefined,
+    );
+    const joined = plan.boostedTerms.join(' ').toLowerCase();
+    expect(plan.regionTags).toContain('westfjords');
+    expect(joined).toContain('westfjords');
+    expect(joined).toContain('ísafjörður');
+  });
 });

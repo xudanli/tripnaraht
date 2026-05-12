@@ -1,0 +1,112 @@
+{
+  "bundles": [
+    {
+      "id": "route-planning-default",
+      "revision": "2026.05.08/route-planning-policy@v1",
+      "parameters": {
+        "revision": "2026.05.08/route-planning-policy@v1",
+        "softStackCap": 3,
+        "softFactorPerStack": 0.97,
+        "hardPenaltyAfterCount": 3,
+        "hardMultiplier": 0.35,
+        "excludeAtCount": 8,
+        "ambientCap": 5,
+        "ambientFactor": 0.992
+      },
+      "policyDeclarations": [
+        {
+          "id": "POLICY_CONFIG_ACTIVE_REVISION",
+          "type": "OVERRIDE",
+          "target": "CACHE",
+          "conditionSummary": "policy_bundle_selected",
+          "actionSummary": "inject_revision_trace"
+        },
+        {
+          "id": "POLICY_GRADUATED_SOFT_DEGRADE",
+          "type": "SOFT",
+          "target": "ROUTE",
+          "conditionSummary": "repeated_route_degrade_count > 0",
+          "actionSummary": "multiply_score_by_soft_factor_stacks"
+        },
+        {
+          "id": "POLICY_HARD_PENALTY_AFTER_THREE_DEGRADES",
+          "type": "HARD",
+          "target": "ROUTE",
+          "conditionSummary": "repeated_route_degrade_count > hardPenaltyAfterCount",
+          "actionSummary": "multiply_score_by_hard_multiplier"
+        },
+        {
+          "id": "POLICY_EXCLUDE_EXTREME_REPEATED_ROUTE_DEGRADE",
+          "type": "HARD",
+          "target": "ROUTE",
+          "conditionSummary": "repeated_route_degrade_count >= excludeAtCount",
+          "actionSummary": "exclude_from_top_candidates"
+        },
+        {
+          "id": "POLICY_AMBIENT_EXECUTION_STRESS",
+          "type": "SOFT",
+          "target": "ROUTE",
+          "conditionSummary": "ambient_degrade_events > 0",
+          "actionSummary": "multiply_score_by_ambient_factor"
+        },
+        {
+          "id": "POLICY_OVERRIDE_BYPASS_CACHE_TRIP_BOUNDARY",
+          "type": "OVERRIDE",
+          "target": "CACHE",
+          "conditionSummary": "trip_id_present",
+          "actionSummary": "bypass_rd_selection_cache"
+        },
+        {
+          "id": "POLICY_OVERRIDE_BYPASS_CACHE_TRIP_EXECUTION_HISTORY",
+          "type": "OVERRIDE",
+          "target": "CACHE",
+          "conditionSummary": "trip_execution_history_non_empty",
+          "actionSummary": "bypass_rd_selection_cache"
+        },
+        {
+          "id": "POLICY_OVERRIDE_BYPASS_CACHE_WORLD_DISPATCH_SIGNAL",
+          "type": "OVERRIDE",
+          "target": "CACHE",
+          "conditionSummary": "country_execution_dispatch_fact_exists",
+          "actionSummary": "bypass_rd_selection_cache"
+        }
+      ]
+    },
+    {
+      "id": "route-planning-aggressive",
+      "revision": "2026.05.08/route-planning-policy@v2-aggressive",
+      "parameters": {
+        "revision": "2026.05.08/route-planning-policy@v2-aggressive",
+        "softStackCap": 3,
+        "softFactorPerStack": 0.96,
+        "hardPenaltyAfterCount": 2,
+        "hardMultiplier": 0.45,
+        "excludeAtCount": 6,
+        "ambientCap": 5,
+        "ambientFactor": 0.988
+      },
+      "policyDeclarations": [
+        {
+          "id": "bundle-note",
+          "type": "OVERRIDE",
+          "target": "ROUTE",
+          "conditionSummary": "POLICY_ACTIVE_BUNDLE_ID=route-planning-aggressive",
+          "actionSummary": "tighter_hard_threshold_and_multiplier_for_experiment"
+        }
+      ]
+    }
+  ],
+  "routing": {
+    "enabled": true,
+    "rules": [
+      {
+        "id": "demo-trip-cohort-aggressive",
+        "priority": 10,
+        "bundleId": "route-planning-aggressive",
+        "when": {
+          "tripIdPrefixes": ["policy-router-demo-"]
+        }
+      }
+    ]
+  }
+}

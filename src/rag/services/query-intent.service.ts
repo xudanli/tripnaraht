@@ -45,12 +45,37 @@ const INTENT_KEYWORDS: Record<QueryIntentType, {
     },
   },
   WEATHER: {
-    keywords: ['天气', '气候', '温度', '几月', '季节', '下雨', '下雪', '极光', '日照', 'weather', 'climate'],
+    keywords: [
+      '天气',
+      '气候',
+      '温度',
+      '几月',
+      '季节',
+      '下雨',
+      '下雪',
+      '极光',
+      '日照',
+      /** 天文晨光/暮光：原先仅有「日照」，纯「日出日落」无法命中 WEATHER 意图 */
+      '日出',
+      '日落',
+      '朝霞',
+      '晚霞',
+      '黄昏',
+      '晨光',
+      '暮光',
+      'golden hour',
+      'sunrise',
+      'sunset',
+      'weather',
+      'climate',
+    ],
     chunkCategory: 'WEATHER',
     synonyms: {
       '天气': ['气候', '气温', 'weather'],
       '极光': ['北极光', 'aurora', 'northern lights'],
       '季节': ['月份', '时节'],
+      '日出': ['sunrise', '黎明', '晨光'],
+      '日落': ['sunset', '黄昏', '晚霞', '暮色'],
     },
   },
   POI: {
@@ -72,7 +97,7 @@ const INTENT_KEYWORDS: Record<QueryIntentType, {
   },
   RENTAL: {
     keywords: ['租车', '保险', '费用', '价格', '预算', '租金', '车型', '四驱'],
-    chunkCategory: 'GENERAL',
+    /** 不设 chunkCategory：租车语料多在 `pois` / `decision-support` 文件与 POI_INFO chunk，误用 GENERAL 会整库过滤掉 */
     synonyms: {
       '租车': ['car rental', '租赁', '借车'],
       '保险': ['insurance', '全险', '碎石险'],

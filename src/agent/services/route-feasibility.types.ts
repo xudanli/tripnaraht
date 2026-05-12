@@ -1,4 +1,5 @@
 import type { Itinerary } from '../interfaces/trip-plan.interface';
+import type { IcelandVehicleIntentHints } from '../../skills/itinerary/iceland-vehicle-terrain-arbitrator.util';
 
 export interface FeasibilityResult {
   is_feasible: boolean;
@@ -138,6 +139,10 @@ export interface RouteFeasibilityEngineInput {
    * - world.physical.demEvidence[] (from world.buildContext)
    */
   researchData?: Record<string, unknown>;
+  /** 用户原话（可选）：透传 itinerary.verify 冰岛车型–路况仲裁 */
+  user_query?: string;
+  /** 与 TripPlanRequest.constraints.vehicle_type 等对齐；无 Booking 行时虚拟租车仲裁 */
+  intent_hints?: IcelandVehicleIntentHints;
   environment?: {
     /** Month 1..12 */
     month?: number;

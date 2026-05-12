@@ -57,7 +57,7 @@ export interface RestaurantDetails {
 @Injectable()
 export class RestaurantDirectService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RestaurantDirectService.name);
-  private axiosInstance: AxiosInstance;
+  private axiosInstance!: AxiosInstance;
   private apiKey: string | null = null;
   private isAvailable: boolean = false;
   private readonly baseUrl = 'https://maps.googleapis.com/maps/api/place';

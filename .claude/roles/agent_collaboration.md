@@ -151,7 +151,7 @@ state.trip_plan_request = {...};
 - `transport.search` - 交通搜索
 - `poi.search` - POI 搜索
 - `opening_hours.get` - 开放时间
-- `dem.get.profile` - DEM 数据
+- `dem.get_profile` - DEM 数据（Agentic；Internal Path 仍用 DEMEffortMetadataService）
 - `geo.check.hazard.zones` - 风险区域检查
 
 **输出**：

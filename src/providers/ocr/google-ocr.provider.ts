@@ -89,7 +89,7 @@ export class GoogleOcrProvider implements OcrProvider {
         }));
 
         // 按行分割
-        const lines = fullText.split('\n').filter((line) => line.trim().length > 0);
+        const lines = fullText.split('\n').filter((line: string) => line.trim().length > 0);
 
         return {
           fullText,

@@ -41,7 +41,7 @@ export class ReplayComparatorService {
     for (const trajectory of trajectories) {
       try {
         // 使用baseline版本进行推理
-        const response = await this.policyService.predict({
+        const response = await this.policyService!.predict({
           request_id: `replay_baseline_${trajectory.trajectory_id}`,
           state: trajectory.steps[0]?.state || ({} as any),
           model_version: baselineVersion,
@@ -85,7 +85,7 @@ export class ReplayComparatorService {
 
     for (const trajectory of trajectories) {
       try {
-        const response = await this.policyService.predict({
+        const response = await this.policyService!.predict({
           request_id: `replay_new_${trajectory.trajectory_id}`,
           state: trajectory.steps[0]?.state || ({} as any),
           model_version: newPolicyVersion,

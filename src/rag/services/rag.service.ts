@@ -10,11 +10,21 @@
  * @deprecated 新代码应使用 ChunkRetrievalService
  */
 
+import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { EmbeddingService } from '../../places/services/embedding.service';
+import { IndexingService } from '../../knowledge-base/services/indexing.service';
+import type { KBFileData } from '../../knowledge-base/interfaces/knowledge-base.interface';
 import { RagRetrievalParams, RagRetrievalResult, DocumentIndexItem } from '../interfaces/rag.interface';
+import {
+  assertSubTypeAllowed,
+  canonicalFromStoredCategory,
+  expandCollectionForFilter,
+  normalizeCollectionForWrite,
+  outboundCollection,
+} from '../taxonomy/knowledge-taxonomy';
 
 @Injectable()
 export class RagService {
@@ -23,8 +33,25 @@ export class RagService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
+    private readonly indexingService: IndexingService,
   ) {
     this.logger.log('✅ RagService 已统一使用新系统：KnowledgeFile + Chunks');
+  }
+
+  /** 将管理端正文解析为 JSON 对象或保留纯文本 */
+  private parseDocumentContent(content: string): unknown {
+    const trimmed = content.trim();
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        return JSON.parse(content) as unknown;
+      } catch {
+        /* 非法 JSON，按原文存储 */
+      }
+    }
+    return content;
   }
 
   /**
@@ -271,31 +298,203 @@ export class RagService {
   }
 
   /**
-   * 删除文档索引
-   * 
-   * ⚠️ 已废弃：document_index表已删除
-   * 
-   * @deprecated document_index表已删除，此方法不再可用
+   * 删除知识库文档（`knowledge_files`）。关联 `chunks` 由 Prisma 关系 `onDelete: Cascade` 一并删除。
    */
-  async deleteDocument(_id: string): Promise<void> {
-    this.logger.warn(
-      '⚠️  document_index表已删除，RagService.deleteDocument()不再可用'
-    );
-    throw new Error('document_index表已删除');
+  async deleteDocument(id: string): Promise<void> {
+    const existing = await this.prisma.knowledgeFile.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw Object.assign(new Error('文档不存在'), { code: 'NOT_FOUND' });
+    }
+    await this.prisma.knowledgeFile.delete({ where: { id } });
+    this.logger.log(`已删除 RAG 文档（KnowledgeFile）: ${id}`);
   }
 
   /**
-   * 更新文档索引
-   * 
-   * ⚠️ 已废弃：document_index表已删除
-   * 
-   * @deprecated document_index表已删除，此方法不再可用
+   * 管理端新建：写入 knowledge_files 并分块、向量化（与磁盘 Loader 索引链路一致）。
    */
-  async updateDocument(_id: string, _item: Partial<DocumentIndexItem>): Promise<void> {
-    this.logger.warn(
-      '⚠️  document_index表已删除，RagService.updateDocument()不再可用'
-    );
-    throw new Error('document_index表已删除');
+  async createKnowledgeDocument(item: DocumentIndexItem): Promise<string> {
+    const title = item.title?.trim();
+    const collection = item.collection?.trim();
+    const contentRaw = item.content;
+
+    if (!title) {
+      throw new Error('title 不能为空');
+    }
+    if (!collection) {
+      throw new Error('collection 不能为空');
+    }
+    if (
+      contentRaw === undefined ||
+      contentRaw === null ||
+      String(contentRaw).trim() === ''
+    ) {
+      throw new Error('content 不能为空');
+    }
+
+    const contentStr =
+      typeof contentRaw === 'string' ? contentRaw : String(contentRaw);
+    const parsed = this.parseDocumentContent(contentStr);
+
+    const slug =
+      title
+        .replace(/[^\w\u4e00-\u9fa5.-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80) || 'doc';
+    const filename = `${slug}_${randomUUID().slice(0, 12)}.json`;
+
+    const canonical = normalizeCollectionForWrite(collection);
+    assertSubTypeAllowed(canonical, item.subType);
+
+    const kbFile: KBFileData = {
+      filename,
+      filepath: filename,
+      content: parsed,
+      metadata: {
+        version: '1.0.0',
+        credibility_score: 0.85,
+        language: 'zh-CN',
+        data_sources: item.tags ?? [],
+        last_updated: new Date().toISOString(),
+      },
+    };
+
+    const fileId = await this.indexingService.indexSingleFile(kbFile, canonical);
+
+    await this.prisma.knowledgeFile.update({
+      where: { id: fileId },
+      data: {
+        countryCode: item.countryCode?.trim() || null,
+        source: item.source?.trim() || null,
+        dataSources: item.tags ?? [],
+        subType: item.subType?.trim() || null,
+        adminMetadata: (item.metadata ?? {}) as Prisma.InputJsonValue,
+      },
+    });
+
+    return fileId;
+  }
+
+  /**
+   * 更新知识库文档（KnowledgeFile + Chunks）：部分字段更新；传入 content 时会删除旧 chunks 并重新分块、向量化。
+   */
+  async updateDocument(id: string, item: Partial<DocumentIndexItem>): Promise<void> {
+    const existing = await this.prisma.knowledgeFile.findUnique({ where: { id } });
+    if (!existing) {
+      throw Object.assign(new Error('文档不存在'), { code: 'NOT_FOUND' });
+    }
+
+    const touched =
+      item.title !== undefined ||
+      item.collection !== undefined ||
+      item.subType !== undefined ||
+      item.countryCode !== undefined ||
+      item.source !== undefined ||
+      item.tags !== undefined ||
+      item.metadata !== undefined ||
+      item.content !== undefined;
+
+    if (!touched) {
+      return;
+    }
+
+    const data: Prisma.KnowledgeFileUpdateInput = {
+      lastUpdated: new Date(),
+    };
+
+    if (item.title !== undefined) {
+      const name = item.title.trim();
+      if (!name) {
+        throw new Error('title 不能为空');
+      }
+      if (name !== existing.filename) {
+        const clash = await this.prisma.knowledgeFile.findFirst({
+          where: { filename: name, NOT: { id } },
+          select: { id: true },
+        });
+        if (clash) {
+          throw new Error(`文件名已存在: ${name}`);
+        }
+      }
+      data.filename = name;
+      data.filepath = name;
+    }
+
+    if (item.collection !== undefined) {
+      data.category = normalizeCollectionForWrite(item.collection.trim());
+    }
+
+    if (item.subType !== undefined) {
+      const effectiveCanon =
+        item.collection !== undefined
+          ? normalizeCollectionForWrite(item.collection.trim())
+          : canonicalFromStoredCategory(existing.category);
+      assertSubTypeAllowed(effectiveCanon, item.subType);
+      data.subType = item.subType?.trim() ? item.subType.trim() : null;
+    }
+
+    if (item.countryCode !== undefined) {
+      const cc = item.countryCode.trim();
+      data.countryCode = cc || null;
+    }
+
+    if (item.source !== undefined) {
+      const s = item.source.trim();
+      data.source = s || null;
+    }
+
+    if (item.tags !== undefined) {
+      data.dataSources = item.tags;
+    }
+
+    if (item.metadata !== undefined) {
+      const prev =
+        existing.adminMetadata &&
+        typeof existing.adminMetadata === 'object' &&
+        !Array.isArray(existing.adminMetadata)
+          ? (existing.adminMetadata as Record<string, unknown>)
+          : {};
+      data.adminMetadata = { ...prev, ...item.metadata } as Prisma.InputJsonValue;
+    }
+
+    let updated = existing;
+    try {
+      updated = await this.prisma.knowledgeFile.update({
+        where: { id },
+        data,
+      });
+    } catch (e: unknown) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        throw new Error('文件名已存在');
+      }
+      throw e;
+    }
+
+    if (item.content !== undefined) {
+      const parsed = this.parseDocumentContent(item.content);
+      const kbFile: KBFileData = {
+        filename: updated.filename,
+        filepath: updated.filepath,
+        content: parsed,
+        metadata: {
+          version: updated.version,
+          credibility_score: updated.credibilityScore,
+          language: updated.language,
+          data_sources: updated.dataSources,
+          last_updated: updated.lastUpdated.toISOString(),
+        },
+      };
+      await this.indexingService.replaceChunksForFile(
+        id,
+        kbFile,
+        updated.category,
+      );
+    }
   }
 
   /**
@@ -304,6 +503,7 @@ export class RagService {
    */
   async getDocuments(params: {
     collection?: string;
+    subType?: string;
     countryCode?: string;
     tags?: string[];
     search?: string;
@@ -313,6 +513,7 @@ export class RagService {
     documents: Array<{
       id: string;
       collection: string;
+      subType?: string;
       title: string;
       content: string;
       source: string | null;
@@ -331,17 +532,29 @@ export class RagService {
       totalPages: number;
     };
   }> {
-    const { collection, search, page = 1, pageSize = 20 } = params;
+    const { collection, subType, countryCode, tags, search, page = 1, pageSize = 20 } =
+      params;
     const skip = (page - 1) * pageSize;
 
     // 使用新系统：KnowledgeFile表
     const where: any = {};
-    
-    // collection映射到category
-    if (collection) {
-      where.category = collection;
+
+    if (collection?.trim()) {
+      where.category = { in: expandCollectionForFilter(collection.trim()) };
     }
-    
+
+    if (subType?.trim()) {
+      where.subType = subType.trim();
+    }
+
+    if (countryCode) {
+      where.countryCode = countryCode;
+    }
+
+    if (tags && tags.length > 0) {
+      where.dataSources = { hasSome: tags };
+    }
+
     // search搜索文件名和路径
     if (search) {
       where.OR = [
@@ -385,11 +598,12 @@ export class RagService {
       
       return {
         id: file.id,
-        collection: file.category, // category映射到collection
+        collection: outboundCollection(file.category),
+        subType: file.subType ?? undefined,
         title: file.filename,
         content: contentPreview, // 使用chunks的实际内容
-        source: file.filepath,
-        countryCode: null, // KnowledgeFile表没有countryCode字段
+        source: file.source ?? file.filepath,
+        countryCode: file.countryCode ?? null,
         tags: file.dataSources || [],
         metadata: {
           version: file.version,
@@ -399,6 +613,11 @@ export class RagService {
           category: file.category,
           filepath: file.filepath,
           filename: file.filename,
+          ...(typeof file.adminMetadata === 'object' &&
+          file.adminMetadata !== null &&
+          !Array.isArray(file.adminMetadata)
+            ? (file.adminMetadata as Record<string, unknown>)
+            : {}),
         },
         createdAt: file.createdAt,
         updatedAt: file.updatedAt,
@@ -425,6 +644,7 @@ export class RagService {
   async getDocument(id: string): Promise<{
     id: string;
     collection: string;
+    subType?: string;
     title: string;
     content: string;
     source: string | null;
@@ -448,7 +668,6 @@ export class RagService {
       where: { id },
       include: {
         chunks: {
-          take: 10, // 返回前10个chunks作为预览
           orderBy: { createdAt: 'asc' },
           select: {
             id: true,
@@ -467,18 +686,22 @@ export class RagService {
       return null;
     }
 
-    // 聚合chunks内容作为文档内容
-    const content = file.chunks
-      .map(chunk => `[${chunk.type}] ${chunk.content.substring(0, 500)}`)
-      .join('\n\n---\n\n') || `文件: ${file.filename}\n路径: ${file.filepath}`;
+    // 聚合全文（管理端编辑需要完整正文；列表接口仍用截断预览）
+    const content =
+      file.chunks.length > 0
+        ? file.chunks
+            .map(chunk => `[${chunk.type}] ${chunk.content}`)
+            .join('\n\n---\n\n')
+        : `文件: ${file.filename}\n路径: ${file.filepath}`;
 
     return {
       id: file.id,
-      collection: file.category,
+      collection: outboundCollection(file.category),
+      subType: file.subType ?? undefined,
       title: file.filename,
       content,
-      source: file.filepath,
-      countryCode: null,
+      source: file.source ?? file.filepath,
+      countryCode: file.countryCode ?? null,
       tags: file.dataSources || [],
       metadata: {
         version: file.version,
@@ -488,6 +711,11 @@ export class RagService {
         category: file.category,
         filepath: file.filepath,
         filename: file.filename,
+        ...(typeof file.adminMetadata === 'object' &&
+        file.adminMetadata !== null &&
+        !Array.isArray(file.adminMetadata)
+          ? (file.adminMetadata as Record<string, unknown>)
+          : {}),
       },
       createdAt: file.createdAt,
       updatedAt: file.updatedAt,
@@ -510,60 +738,76 @@ export class RagService {
     totalDocuments: number;
     collections: Array<{
       name: string;
+      rawCategory: string;
       count: number;
       countries: string[];
     }>;
     byCollection?: {
       name: string;
+      rawCategory: string;
       count: number;
       countries: string[];
       tags: string[];
     };
+    /** 按表中 category + sub_type 聚合（迁移期 sub_type 可为空） */
+    byCategoryAndSubType: Array<{
+      collectionCanonical: string;
+      rawCategory: string;
+      subType: string | null;
+      count: number;
+    }>;
   }> {
     try {
-      // 使用新系统：KnowledgeFile表
-      const where = collection ? { category: collection } : undefined;
-      
-      // 获取总文档数
-      const totalCount = await this.prisma.knowledgeFile.count({
+      const where =
+        collection?.trim() !== undefined && collection.trim() !== ''
+          ? { category: { in: expandCollectionForFilter(collection.trim()) } }
+          : undefined;
+
+      const totalCount = await this.prisma.knowledgeFile.count({ where });
+
+      const categoryGroups = await this.prisma.knowledgeFile.groupBy({
+        by: [Prisma.KnowledgeFileScalarFieldEnum.category],
         where,
+        _count: true,
       });
 
-      // 获取类别统计
-      const categoryStats = await this.prisma.$queryRaw<Array<{
-        category: string;
-        count: bigint;
-        chunks_count: bigint;
-      }>>`
-        SELECT 
-          kf.category,
-          COUNT(DISTINCT kf.id)::bigint as count,
-          COUNT(c.id)::bigint as chunks_count
-        FROM knowledge_files kf
-        LEFT JOIN chunks c ON c.file_id = kf.id
-        ${collection ? Prisma.sql`WHERE kf.category = ${collection}` : Prisma.empty}
-        GROUP BY kf.category
-        ORDER BY kf.category
-      `;
+      const collections = categoryGroups.map((row) => ({
+        name: outboundCollection(row.category),
+        rawCategory: row.category,
+        count: row._count,
+        countries: [] as string[],
+      }));
 
-      const collections = categoryStats.map((stat) => ({
-        name: stat.category,
-        count: Number(stat.count),
-        countries: [], // KnowledgeFile表没有countryCode字段
-        tags: [], // 可以从dataSources提取
+      const breakdown = await this.prisma.knowledgeFile.groupBy({
+        by: [
+          Prisma.KnowledgeFileScalarFieldEnum.category,
+          Prisma.KnowledgeFileScalarFieldEnum.subType,
+        ],
+        where,
+        _count: true,
+      });
+
+      const byCategoryAndSubType = breakdown.map((row) => ({
+        collectionCanonical: outboundCollection(row.category),
+        rawCategory: row.category,
+        subType: row.subType,
+        count: row._count,
       }));
 
       const result: any = {
         totalDocuments: totalCount,
         collections,
+        byCategoryAndSubType,
       };
 
-      // 如果指定了集合，返回该集合的详细信息
-      if (collection) {
-        const collectionInfo = collections.find((c) => c.name === collection);
-        if (collectionInfo) {
-          result.byCollection = collectionInfo;
-        }
+      if (collection?.trim()) {
+        result.byCollection = {
+          name: outboundCollection(collection.trim()),
+          rawCategory: expandCollectionForFilter(collection.trim()).join('|'),
+          count: totalCount,
+          countries: [],
+          tags: [],
+        };
       }
 
       return result;

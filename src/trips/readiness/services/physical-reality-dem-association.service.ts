@@ -128,8 +128,28 @@ export class PhysicalRealityDEMAssociationService {
   private async calculateTerrainFeatures(
     roadState: RoadStateInfo
   ): Promise<RoadTerrainFeatures> {
-    const start = roadState.coordinates!.start;
-    const end = roadState.coordinates!.end;
+    if (!this.demService) {
+      return {
+        roadId: roadState.roadId,
+        demAvailable: false,
+      };
+    }
+
+    const start = roadState.coordinates?.start;
+    const end = roadState.coordinates?.end;
+    if (
+      !start ||
+      !end ||
+      start.lat == null ||
+      start.lng == null ||
+      end.lat == null ||
+      end.lng == null
+    ) {
+      return {
+        roadId: roadState.roadId,
+        demAvailable: false,
+      };
+    }
 
     // 查询起点和终点海拔
     const startElevation = await this.demService.getElevation(start.lat, start.lng);

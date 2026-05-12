@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, HttpCode, HttpStatus, Optional, Post, Get, Query, Param, Delete } from '@nestjs/common';
+import { Body, Controller, Inject, HttpCode, HttpStatus, Optional, Post, Get, Query, Param, Delete, Patch, HttpException } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiExtraModels, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FinancialHoldSideEffectParamsDto } from './dto/financial-hold-side-effect-params.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -10,9 +10,11 @@ import {
   ActionRollbackRequestDto,
 } from './dto/action-execution.dto';
 import { ActionExecutionService } from './services/action-execution.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { FinancialHoldStoreService } from './services/financial-hold-store.service';
 import { SideEffectParamResolverService } from './services/side-effect-param-resolver.service';
 import { SideEffectRuleSyncerService } from './services/side-effect-rule-syncer.service';
+import { ActionGraphSagaCompilerService } from './services/action-graph-saga-compiler.service';
 import {
   SideEffectParamPatchesBodyDto,
   SideEffectParamReplaceBodyDto,
@@ -21,23 +23,186 @@ import { SideEffectRuleUpsertBodyDto } from './dto/side-effect-rule-row.dto';
 import { HardTruthRuleUpsertBodyDto } from './dto/hard-truth-rule-row.dto';
 import { validateHardTruthRuleParams } from './dto/hard-truth-rule.validation';
 import { HARD_TRUTH_GLOBAL_ACTION } from './constants/hard-truth-rule.constants';
+import { assertSideEffectParamsForHandler } from './dto/side-effect-params.validation';
+import {
+  getActionLabel,
+  getHandlerLabel,
+  getParamsSchemaForActionHandler,
+  getSupportedActionDefaults,
+  getSupportedHandlerDefaults,
+  isSupportedActionHandlerPair,
+  SIDE_EFFECT_RULE_META_SCHEMA_VERSION,
+  SIDE_EFFECT_RULE_SCHEMA_VERSION,
+} from './constants/side-effect-rule-schema.dictionary';
 import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
 import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { DecisionState } from '../decision/kernel/decision-state.types';
 import { projectJepaZStateFromDecisionState } from './services/jepa-z-state.projection';
+import { ActionGraph, SagaCompileResult } from './interfaces/action-graph.interface';
+import { isActionType } from './contracts/action-sideeffect.contract';
 
 @ApiTags('agent-actions')
 @ApiBearerAuth()
 @ApiExtraModels(FinancialHoldSideEffectParamsDto)
 @Controller('agent/actions')
 export class ActionsController {
+  private static readonly COMPENSATION_POLICY_ACTION = '__admin__.compensation_policy';
+  private static readonly EVIDENCE_REQUIREMENT_ACTION = '__admin__.evidence_requirement';
+  private static readonly RETRY_POLICY_ACTION = '__admin__.retry_policy';
+  private static readonly MANUAL_REVIEW_STATUS = ['PENDING', 'PROCESSING', 'RESOLVED'] as const;
+  private static readonly SIDE_EFFECT_TYPES = ['FINANCIAL_HOLD', 'RESOURCE_LOCK', 'INVENTORY_LOCK'] as const;
+  // Backward-compatible business action enums (legacy frontend options).
+  private static readonly BUSINESS_ACTION_TYPES = ['BOOKING_CREATE', 'BOOKING_COMMIT', 'PAYMENT_CAPTURE', 'BOOKING_CANCEL'] as const;
+  private static readonly COMPENSATION_ACTION_TYPES = [
+    'FINANCIAL_REFUND',
+    'RESOURCE_RELEASE',
+    'INVENTORY_RELEASE',
+    'BOOKING_CANCEL',
+  ] as const;
+  private static readonly COMPENSATION_CANONICAL_BY_SIDE_EFFECT: Record<string, string[]> = {
+    FINANCIAL_HOLD: ['FINANCIAL_REFUND'],
+    RESOURCE_LOCK: ['RESOURCE_RELEASE'],
+    INVENTORY_LOCK: ['INVENTORY_RELEASE', 'BOOKING_CANCEL'],
+  };
+  private static readonly EVIDENCE_TYPES = ['EvidenceCard', 'AuditTrail', 'Receipt'] as const;
+  private static readonly RETRY_STRATEGIES = ['none', 'fixed_interval', 'exponential_backoff'] as const;
+  private readonly compensationPolicies = new Map<
+    string,
+    {
+      id: string;
+      sideEffectType: string;
+      compensationActionType: string;
+      compensationActionTypeCanonical: string;
+      compensationActionTypeRaw?: string;
+      isLegacyNormalized: boolean;
+      enabled: boolean;
+      updatedAt: string;
+    }
+  >();
+  private readonly evidenceRequirements = new Map<
+    string,
+    {
+      id: string;
+      actionType: string;
+      evidenceType: string;
+      required: boolean;
+      updatedAt: string;
+    }
+  >();
+  private readonly retryPolicies = new Map<
+    string,
+    {
+      id: string;
+      sideEffectType: string;
+      retryStrategy: 'none' | 'fixed_interval' | 'exponential_backoff';
+      maxRetry: number;
+      intervalMs: number;
+      enabled: boolean;
+      updatedAt: string;
+    }
+  >();
+  private readonly manualReviewQueue = new Map<
+    string,
+    {
+      queueId: string;
+      actionId: string;
+      sideEffectId: string;
+      reasonCode: string;
+      status: 'PENDING' | 'PROCESSING' | 'RESOLVED';
+      createdAt: string;
+      updatedAt: string;
+      comment?: string;
+      operator?: string;
+      resolution?: string;
+    }
+  >();
+
   constructor(
     private readonly actionExecutionService: ActionExecutionService,
+    private readonly actionGraphSagaCompilerService: ActionGraphSagaCompilerService,
+    @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly financialHoldStore?: FinancialHoldStoreService,
     @Optional() private readonly sideEffectParamResolver?: SideEffectParamResolverService,
     @Optional() private readonly sideEffectRuleSyncer?: SideEffectRuleSyncerService,
     @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private readonly dsoFeedbackPersistence?: IDsoFeedbackPersistence,
-  ) {}
+  ) {
+    const now = new Date().toISOString();
+    this.manualReviewQueue.set('mrq_001', {
+      queueId: 'mrq_001',
+      actionId: 'act_001',
+      sideEffectId: 'se_001',
+      reasonCode: 'NO_COMPENSATION_PATH',
+      status: 'PENDING',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  private canUseDb(): boolean {
+    return Boolean(this.prisma?.isDbConnected?.());
+  }
+
+  private createErrorPayload(code: string, message: string, details: Array<{ field: string; reason: string }>) {
+    return {
+      ok: false as const,
+      error: {
+        code,
+        message,
+        details,
+      },
+    };
+  }
+
+  private throwValidationError(details: Array<{ field: string; reason: string }>): never {
+    throw new HttpException(this.createErrorPayload('VALIDATION_ERROR', '参数校验失败', details), HttpStatus.BAD_REQUEST);
+  }
+
+  private throwNotFoundError(field: string, reason: string): never {
+    throw new HttpException(
+      this.createErrorPayload('NOT_FOUND', '资源不存在', [{ field, reason }]),
+      HttpStatus.NOT_FOUND,
+    );
+  }
+
+  private normalizeCompensationActionType(
+    sideEffectType: string,
+    compensationActionType: string,
+  ): { canonical: string; raw?: string; isLegacyNormalized: boolean } {
+    // Legacy compatibility: BOOKING_CANCEL is normalized into INVENTORY_RELEASE semantics.
+    if (sideEffectType === 'INVENTORY_LOCK' && compensationActionType === 'BOOKING_CANCEL') {
+      return { canonical: 'INVENTORY_RELEASE', raw: 'BOOKING_CANCEL', isLegacyNormalized: true };
+    }
+    return { canonical: compensationActionType, isLegacyNormalized: false };
+  }
+
+  private async buildRuleMetaDictionary(): Promise<{
+    actionNames: string[];
+    handlerIds: string[];
+  }> {
+    const setAction = new Set<string>();
+    const setHandler = new Set<string>();
+    if (this.sideEffectRuleSyncer) {
+      const rows = await this.sideEffectRuleSyncer.listActiveSideEffectRules();
+      for (const r of rows) {
+        setAction.add(String(r.actionName));
+        setHandler.add(String(r.handlerId));
+      }
+      const effective = await this.sideEffectRuleSyncer.getEffectiveRulesForAdmin();
+      for (const row of effective.rows) {
+        setAction.add(String(row.actionName));
+        setHandler.add(String(row.handlerId));
+      }
+    }
+    if (setAction.size === 0) {
+      getSupportedActionDefaults().forEach((a) => setAction.add(a));
+    }
+    getSupportedActionDefaults().forEach((a) => setAction.add(a));
+    getSupportedHandlerDefaults().forEach((h) => setHandler.add(h));
+    return {
+      actionNames: Array.from(setAction.values()).sort(),
+      handlerIds: Array.from(setHandler.values()).sort(),
+    };
+  }
 
   @Post('preview')
   @HttpCode(HttpStatus.OK)
@@ -173,6 +338,517 @@ export class ActionsController {
     }
 
     return actionResult;
+  }
+
+  @Post('graph/compile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Compile ActionGraph into staged Saga execution plan' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        graphId: { type: 'string' },
+        decisionId: { type: 'string' },
+        nodes: { type: 'array', items: { type: 'object' } },
+        edges: { type: 'array', items: { type: 'object' } },
+        contextSignature: { type: 'object' },
+        createdAt: { type: 'string' },
+      },
+      required: ['graphId', 'decisionId', 'nodes', 'edges', 'contextSignature', 'createdAt'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Compile result with plan when valid, or rule errors when invalid.',
+  })
+  async compileActionGraph(@Body() graph: ActionGraph): Promise<SagaCompileResult> {
+    const invalidTypeNode = (graph?.nodes ?? []).find((n: any) => !isActionType(String(n?.actionType ?? '')));
+    if (invalidTypeNode) {
+      this.throwValidationError([
+        {
+          field: `nodes.${String(invalidTypeNode.nodeId ?? 'unknown')}.actionType`,
+          reason: `unsupported actionType: ${String(invalidTypeNode.actionType ?? '')}`,
+        },
+      ]);
+    }
+    return this.actionGraphSagaCompilerService.compile(graph);
+  }
+
+  @Get('registry')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'List registered actions for frontend mapping UI' })
+  async getActionRegistry(): Promise<{
+    ok: boolean;
+    total: number;
+    actions: Array<{
+      name: string;
+      description: string;
+      category: string;
+      side_effect_handlers: string[];
+      preconditions: string[];
+    }>;
+  }> {
+    const catalog = this.actionExecutionService.getActionRegistryCatalog();
+    return { ok: true, ...catalog };
+  }
+
+  @Post('mapping/simulate')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Simulate action_type + target_type to action_name mapping' })
+  async simulateActionMapping(
+    @Body()
+    body: {
+      action_type: string;
+      target_type: 'FLIGHT' | 'HOTEL' | 'ACTIVITY' | 'TRANSPORT' | 'ITINERARY';
+      action_name?: string;
+    },
+  ): Promise<{
+    ok: boolean;
+    mapping: {
+      action_type: string;
+      normalized_action_type: string;
+      target_type: string;
+      mapped_action_name: string | null;
+      exists_in_registry: boolean;
+      source: 'explicit' | 'mapping';
+    };
+  }> {
+    return {
+      ok: true,
+      mapping: this.actionExecutionService.simulateActionNameMapping(body),
+    };
+  }
+
+  @Post('compensation-policies')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create or update compensation policy' })
+  async upsertCompensationPolicy(
+    @Body() body: { id: string; sideEffectType: string; compensationActionType: string; enabled: boolean },
+  ): Promise<any> {
+    const id = String(body?.id ?? '').trim();
+    const sideEffectType = String(body?.sideEffectType ?? '').trim();
+    const compensationActionType = String(body?.compensationActionType ?? '').trim();
+    const details: Array<{ field: string; reason: string }> = [];
+    if (!id || !sideEffectType || !compensationActionType) {
+      if (!id) details.push({ field: 'id', reason: 'required' });
+      if (!sideEffectType) details.push({ field: 'sideEffectType', reason: 'required' });
+      if (!compensationActionType) details.push({ field: 'compensationActionType', reason: 'required' });
+    }
+    if (sideEffectType && !ActionsController.SIDE_EFFECT_TYPES.includes(sideEffectType as any)) {
+      details.push({ field: 'sideEffectType', reason: 'unsupported sideEffectType' });
+    }
+    if (compensationActionType && !ActionsController.COMPENSATION_ACTION_TYPES.includes(compensationActionType as any)) {
+      details.push({ field: 'compensationActionType', reason: 'unsupported compensationActionType' });
+    }
+    if (
+      sideEffectType &&
+      compensationActionType &&
+      ActionsController.COMPENSATION_CANONICAL_BY_SIDE_EFFECT[sideEffectType] &&
+      !ActionsController.COMPENSATION_CANONICAL_BY_SIDE_EFFECT[sideEffectType]!.includes(compensationActionType)
+    ) {
+      details.push({
+        field: 'compensationActionType',
+        reason: `invalid pair for sideEffectType=${sideEffectType}`,
+      });
+    }
+    if (details.length > 0) {
+      this.throwValidationError(details);
+    }
+    const normalized = this.normalizeCompensationActionType(sideEffectType, compensationActionType);
+    if (sideEffectType === compensationActionType || sideEffectType === normalized.canonical) {
+      this.throwValidationError([{ field: 'sideEffectType,compensationActionType', reason: 'types cannot be the same' }]);
+    }
+
+    let existingByPair:
+      | {
+          id: string;
+          sideEffectType: string;
+          compensationActionType: string;
+          compensationActionTypeCanonical: string;
+          compensationActionTypeRaw?: string;
+          isLegacyNormalized: boolean;
+          enabled: boolean;
+          updatedAt: string;
+        }
+      | undefined;
+    if (this.canUseDb()) {
+      const rows = await this.prisma!.decisionRuleConfig.findMany({
+        where: { actionName: ActionsController.COMPENSATION_POLICY_ACTION, isActive: true },
+      });
+      existingByPair = rows
+        .map((r) => {
+          const p = (r.params && typeof r.params === 'object' && !Array.isArray(r.params) ? (r.params as any) : {}) as any;
+          return {
+            id: String(r.handlerId),
+            sideEffectType: String(p.sideEffectType ?? ''),
+            compensationActionType: String(p.compensationActionType ?? ''),
+            compensationActionTypeCanonical: String(p.compensationActionTypeCanonical ?? p.compensationActionType ?? ''),
+            compensationActionTypeRaw: p.compensationActionTypeRaw ? String(p.compensationActionTypeRaw) : undefined,
+            isLegacyNormalized: Boolean(p.isLegacyNormalized),
+            enabled: Boolean(p.enabled),
+            updatedAt: r.updatedAt.toISOString(),
+          };
+        })
+        .find((x) => x.sideEffectType === sideEffectType && x.compensationActionTypeCanonical === normalized.canonical);
+    } else {
+      existingByPair = Array.from(this.compensationPolicies.values()).find(
+        (x) => x.sideEffectType === sideEffectType && x.compensationActionTypeCanonical === normalized.canonical,
+      );
+    }
+    const resolvedId = existingByPair?.id ?? id;
+    const item = {
+      id: resolvedId,
+      sideEffectType,
+      compensationActionType: compensationActionType,
+      compensationActionTypeCanonical: normalized.canonical,
+      ...(normalized.raw ? { compensationActionTypeRaw: normalized.raw } : {}),
+      isLegacyNormalized: normalized.isLegacyNormalized,
+      enabled: Boolean(body?.enabled),
+      updatedAt: new Date().toISOString(),
+    };
+    if (this.canUseDb()) {
+      await this.prisma!.decisionRuleConfig.upsert({
+        where: {
+          actionName_handlerId: {
+            actionName: ActionsController.COMPENSATION_POLICY_ACTION,
+            handlerId: resolvedId,
+          },
+        },
+        update: {
+          params: item as any,
+          isActive: true,
+        },
+        create: {
+          actionName: ActionsController.COMPENSATION_POLICY_ACTION,
+          handlerId: resolvedId,
+          params: item as any,
+          isActive: true,
+        },
+      });
+    } else {
+      if (existingByPair && existingByPair.id !== resolvedId) {
+        this.compensationPolicies.delete(existingByPair.id);
+      }
+      this.compensationPolicies.set(resolvedId, item);
+    }
+    return { ok: true, item };
+  }
+
+  @Get('compensation-policies')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'List compensation policies' })
+  async listCompensationPolicies(@Query('sideEffectType') sideEffectType?: string): Promise<any> {
+    if (
+      sideEffectType &&
+      !ActionsController.SIDE_EFFECT_TYPES.includes(sideEffectType as any)
+    ) {
+      this.throwValidationError([{ field: 'sideEffectType', reason: 'unsupported sideEffectType' }]);
+    }
+    const baseRows = this.canUseDb()
+      ? (
+          await this.prisma!.decisionRuleConfig.findMany({
+            where: { actionName: ActionsController.COMPENSATION_POLICY_ACTION, isActive: true },
+          })
+        ).map((r) => {
+          const p = (r.params && typeof r.params === 'object' && !Array.isArray(r.params) ? (r.params as any) : {}) as any;
+          return {
+            id: String(r.handlerId),
+            sideEffectType: String(p.sideEffectType ?? ''),
+            compensationActionType: String(p.compensationActionType ?? ''),
+            compensationActionTypeCanonical: p.compensationActionTypeCanonical
+              ? String(p.compensationActionTypeCanonical)
+              : undefined,
+            compensationActionTypeRaw: p.compensationActionTypeRaw ? String(p.compensationActionTypeRaw) : undefined,
+            isLegacyNormalized: Boolean(p.isLegacyNormalized),
+            enabled: Boolean(p.enabled),
+            updatedAt: r.updatedAt.toISOString(),
+          };
+        })
+      : Array.from(this.compensationPolicies.values());
+    const items = baseRows.map((row) => {
+      if (row.compensationActionTypeCanonical) return row;
+      const normalized = this.normalizeCompensationActionType(row.sideEffectType, row.compensationActionType);
+      return {
+        ...row,
+        compensationActionTypeCanonical: normalized.canonical,
+        ...(normalized.raw ? { compensationActionTypeRaw: normalized.raw } : {}),
+        isLegacyNormalized: normalized.isLegacyNormalized,
+      };
+    });
+    const filtered = sideEffectType ? items.filter((x) => x.sideEffectType === sideEffectType) : items;
+    return { ok: true, items: filtered };
+  }
+
+  @Delete('compensation-policies/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete compensation policy by id' })
+  async deleteCompensationPolicy(@Param('id') id: string): Promise<any> {
+    if (this.canUseDb()) {
+      await this.prisma!.decisionRuleConfig.updateMany({
+        where: { actionName: ActionsController.COMPENSATION_POLICY_ACTION, handlerId: String(id) },
+        data: { isActive: false },
+      });
+    } else {
+      this.compensationPolicies.delete(String(id));
+    }
+    return { ok: true };
+  }
+
+  @Post('evidence-requirements')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create or update evidence requirement' })
+  async upsertEvidenceRequirement(
+    @Body() body: { id: string; actionType: string; evidenceType: string; required: boolean },
+  ): Promise<any> {
+    const id = String(body?.id ?? '').trim();
+    const actionType = String(body?.actionType ?? '').trim();
+    const evidenceType = String(body?.evidenceType ?? '').trim();
+    const details: Array<{ field: string; reason: string }> = [];
+    if (!id || !actionType || !evidenceType) {
+      if (!id) details.push({ field: 'id', reason: 'required' });
+      if (!actionType) details.push({ field: 'actionType', reason: 'required' });
+      if (!evidenceType) details.push({ field: 'evidenceType', reason: 'required' });
+    }
+    if (actionType && !ActionsController.SIDE_EFFECT_TYPES.includes(actionType as any)) {
+      if (!ActionsController.BUSINESS_ACTION_TYPES.includes(actionType as any)) {
+        details.push({ field: 'actionType', reason: 'unsupported actionType' });
+      }
+    }
+    if (evidenceType && !ActionsController.EVIDENCE_TYPES.includes(evidenceType as any)) {
+      details.push({ field: 'evidenceType', reason: 'unsupported evidenceType' });
+    }
+    if (details.length > 0) {
+      this.throwValidationError(details);
+    }
+    const item = { id, actionType, evidenceType, required: Boolean(body?.required), updatedAt: new Date().toISOString() };
+    if (this.canUseDb()) {
+      await this.prisma!.decisionRuleConfig.upsert({
+        where: {
+          actionName_handlerId: {
+            actionName: ActionsController.EVIDENCE_REQUIREMENT_ACTION,
+            handlerId: id,
+          },
+        },
+        update: {
+          params: item as any,
+          isActive: true,
+        },
+        create: {
+          actionName: ActionsController.EVIDENCE_REQUIREMENT_ACTION,
+          handlerId: id,
+          params: item as any,
+          isActive: true,
+        },
+      });
+    } else {
+      this.evidenceRequirements.set(id, item);
+    }
+    return { ok: true, item };
+  }
+
+  @Get('evidence-requirements')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'List evidence requirements' })
+  async listEvidenceRequirements(): Promise<any> {
+    if (this.canUseDb()) {
+      const rows = await this.prisma!.decisionRuleConfig.findMany({
+        where: { actionName: ActionsController.EVIDENCE_REQUIREMENT_ACTION, isActive: true },
+      });
+      const items = rows.map((r) => {
+        const p = (r.params && typeof r.params === 'object' && !Array.isArray(r.params) ? (r.params as any) : {}) as any;
+        return {
+          id: String(r.handlerId),
+          actionType: String(p.actionType ?? ''),
+          evidenceType: String(p.evidenceType ?? ''),
+          required: Boolean(p.required),
+          updatedAt: r.updatedAt.toISOString(),
+        };
+      });
+      return { ok: true, items };
+    }
+    return { ok: true, items: Array.from(this.evidenceRequirements.values()) };
+  }
+
+  @Delete('evidence-requirements/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete evidence requirement by id' })
+  async deleteEvidenceRequirement(@Param('id') id: string): Promise<any> {
+    if (this.canUseDb()) {
+      await this.prisma!.decisionRuleConfig.updateMany({
+        where: { actionName: ActionsController.EVIDENCE_REQUIREMENT_ACTION, handlerId: String(id) },
+        data: { isActive: false },
+      });
+    } else {
+      this.evidenceRequirements.delete(String(id));
+    }
+    return { ok: true };
+  }
+
+  @Post('retry-policies')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create or update retry policy' })
+  async upsertRetryPolicy(
+    @Body()
+    body: {
+      id: string;
+      sideEffectType: string;
+      retryStrategy: 'none' | 'fixed_interval' | 'exponential_backoff';
+      maxRetry: number;
+      intervalMs: number;
+      enabled: boolean;
+    },
+  ): Promise<any> {
+    const id = String(body?.id ?? '').trim();
+    const sideEffectType = String(body?.sideEffectType ?? '').trim();
+    const retryStrategy = String(body?.retryStrategy ?? '').trim() as 'none' | 'fixed_interval' | 'exponential_backoff';
+    const maxRetry = Number(body?.maxRetry ?? 0);
+    const intervalMs = Number(body?.intervalMs ?? 0);
+    const details: Array<{ field: string; reason: string }> = [];
+    if (!id || !sideEffectType || !retryStrategy) {
+      if (!id) details.push({ field: 'id', reason: 'required' });
+      if (!sideEffectType) details.push({ field: 'sideEffectType', reason: 'required' });
+      if (!retryStrategy) details.push({ field: 'retryStrategy', reason: 'required' });
+    }
+    if (sideEffectType && !ActionsController.SIDE_EFFECT_TYPES.includes(sideEffectType as any)) {
+      details.push({ field: 'sideEffectType', reason: 'unsupported sideEffectType' });
+    }
+    if (retryStrategy && !ActionsController.RETRY_STRATEGIES.includes(retryStrategy as any)) {
+      details.push({ field: 'retryStrategy', reason: 'unsupported retryStrategy' });
+    }
+    if (!Number.isFinite(maxRetry) || maxRetry < 0) {
+      details.push({ field: 'maxRetry', reason: 'must be >= 0' });
+    }
+    if (!Number.isFinite(intervalMs) || intervalMs < 0) {
+      details.push({ field: 'intervalMs', reason: 'must be >= 0' });
+    }
+    if (details.length > 0) this.throwValidationError(details);
+    const item = {
+      id,
+      sideEffectType,
+      retryStrategy,
+      maxRetry: Math.floor(maxRetry),
+      intervalMs: Math.floor(intervalMs),
+      enabled: Boolean(body?.enabled),
+      updatedAt: new Date().toISOString(),
+    };
+    if (this.canUseDb()) {
+      await this.prisma!.decisionRuleConfig.upsert({
+        where: {
+          actionName_handlerId: {
+            actionName: ActionsController.RETRY_POLICY_ACTION,
+            handlerId: id,
+          },
+        },
+        update: {
+          params: item as any,
+          isActive: true,
+        },
+        create: {
+          actionName: ActionsController.RETRY_POLICY_ACTION,
+          handlerId: id,
+          params: item as any,
+          isActive: true,
+        },
+      });
+    } else {
+      this.retryPolicies.set(id, item);
+    }
+    return { ok: true, item };
+  }
+
+  @Get('retry-policies')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'List retry policies' })
+  async listRetryPolicies(): Promise<any> {
+    if (this.canUseDb()) {
+      const rows = await this.prisma!.decisionRuleConfig.findMany({
+        where: { actionName: ActionsController.RETRY_POLICY_ACTION, isActive: true },
+      });
+      const items = rows.map((r) => {
+        const p = (r.params && typeof r.params === 'object' && !Array.isArray(r.params) ? (r.params as any) : {}) as any;
+        return {
+          id: String(r.handlerId),
+          sideEffectType: String(p.sideEffectType ?? ''),
+          retryStrategy: String(p.retryStrategy ?? 'none'),
+          maxRetry: Number(p.maxRetry ?? 0),
+          intervalMs: Number(p.intervalMs ?? 0),
+          enabled: Boolean(p.enabled),
+          updatedAt: r.updatedAt.toISOString(),
+        };
+      });
+      return { ok: true, items };
+    }
+    return { ok: true, items: Array.from(this.retryPolicies.values()) };
+  }
+
+  @Delete('retry-policies/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete retry policy by id' })
+  async deleteRetryPolicy(@Param('id') id: string): Promise<any> {
+    if (this.canUseDb()) {
+      await this.prisma!.decisionRuleConfig.updateMany({
+        where: { actionName: ActionsController.RETRY_POLICY_ACTION, handlerId: String(id) },
+        data: { isActive: false },
+      });
+    } else {
+      this.retryPolicies.delete(String(id));
+    }
+    return { ok: true };
+  }
+
+  @Get('manual-review-queue')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'List manual review queue' })
+  async listManualReviewQueue(@Query('status') status?: 'PENDING' | 'PROCESSING' | 'RESOLVED'): Promise<any> {
+    if (status && !ActionsController.MANUAL_REVIEW_STATUS.includes(status as any)) {
+      this.throwValidationError([{ field: 'status', reason: 'unsupported status' }]);
+    }
+    const all = Array.from(this.manualReviewQueue.values());
+    const items = status ? all.filter((i) => i.status === status) : all;
+    return { ok: true, items };
+  }
+
+  @Post('manual-review-queue/:id/resolve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resolve manual review item' })
+  async resolveManualReviewQueueItem(
+    @Param('id') id: string,
+    @Body() body: { resolution: string; operator: string },
+  ): Promise<any> {
+    const row = this.manualReviewQueue.get(String(id));
+    if (!row) {
+      this.throwNotFoundError('id', 'queue item not found');
+    }
+    row.status = 'RESOLVED';
+    row.resolution = String(body?.resolution ?? '');
+    row.operator = String(body?.operator ?? '');
+    row.updatedAt = new Date().toISOString();
+    this.manualReviewQueue.set(row.queueId, row);
+    return { ok: true };
+  }
+
+  @Patch('manual-review-queue/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update manual review queue item status/comment' })
+  async updateManualReviewQueueItem(
+    @Param('id') id: string,
+    @Body() body: { status?: 'PENDING' | 'PROCESSING' | 'RESOLVED'; comment?: string; operator?: string },
+  ): Promise<any> {
+    const row = this.manualReviewQueue.get(String(id));
+    if (!row) {
+      this.throwNotFoundError('id', 'queue item not found');
+    }
+    if (body?.status && !['PENDING', 'PROCESSING', 'RESOLVED'].includes(String(body.status))) {
+      this.throwValidationError([{ field: 'status', reason: 'unsupported status' }]);
+    }
+    row.status = (body?.status as any) ?? row.status;
+    row.comment = body?.comment ?? row.comment;
+    row.operator = body?.operator ?? row.operator;
+    row.updatedAt = new Date().toISOString();
+    this.manualReviewQueue.set(row.queueId, row);
+    return { ok: true, item: row };
   }
 
   @Post('rollback')
@@ -384,6 +1060,102 @@ export class ActionsController {
     };
   }
 
+  @Get('decision-rules/side-effect-params/rules/meta')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Action + side-effect handler dictionary for dropdowns' })
+  async getSideEffectRuleMeta(): Promise<{
+    schema_version: string;
+    updated_at: string;
+    action_names: Array<{ value: string; label: string }>;
+    handler_ids: Array<{ value: string; label: string }>;
+  }> {
+    const dict = await this.buildRuleMetaDictionary();
+    return {
+      schema_version: SIDE_EFFECT_RULE_META_SCHEMA_VERSION,
+      updated_at: new Date().toISOString(),
+      action_names: dict.actionNames.map((v) => ({ value: v, label: getActionLabel(v) })),
+      handler_ids: dict.handlerIds.map((v) => ({ value: v, label: getHandlerLabel(v) })),
+    };
+  }
+
+  @Get('decision-rules/side-effect-params/rules/schema')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get params JSON schema by action_name + handler_id' })
+  @ApiQuery({ name: 'action_name', required: true, type: String })
+  @ApiQuery({ name: 'handler_id', required: true, type: String })
+  async getSideEffectRuleSchema(
+    @Query('action_name') actionName: string,
+    @Query('handler_id') handlerId: string,
+  ): Promise<{
+    ok: boolean;
+    schema_version: string;
+    updated_at: string;
+    action_name: string;
+    handler_id: string;
+    schema?: Record<string, any>;
+    error?: {
+      code: 'VALIDATION_ERROR';
+      message: string;
+      details: Array<{ field: string; reason: string }>;
+    };
+  }> {
+    const dict = await this.buildRuleMetaDictionary();
+    const an = String(actionName ?? '').trim();
+    const hid = String(handlerId ?? '').trim();
+    if (!an || !dict.actionNames.includes(an)) {
+      return {
+        ok: false,
+        schema_version: SIDE_EFFECT_RULE_SCHEMA_VERSION,
+        updated_at: new Date().toISOString(),
+        action_name: an,
+        handler_id: hid,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'action_name validation failed',
+          details: [{ field: 'action_name', reason: 'unsupported action_name' }],
+        },
+      };
+    }
+    if (!hid || !dict.handlerIds.includes(hid)) {
+      return {
+        ok: false,
+        schema_version: SIDE_EFFECT_RULE_SCHEMA_VERSION,
+        updated_at: new Date().toISOString(),
+        action_name: an,
+        handler_id: hid,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'handler_id validation failed',
+          details: [{ field: 'handler_id', reason: 'unsupported handler_id' }],
+        },
+      };
+    }
+    if (!isSupportedActionHandlerPair(an, hid)) {
+      return {
+        ok: false,
+        schema_version: SIDE_EFFECT_RULE_SCHEMA_VERSION,
+        updated_at: new Date().toISOString(),
+        action_name: an,
+        handler_id: hid,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'action_name and handler_id pair validation failed',
+          details: [{ field: 'action_name,handler_id', reason: 'unsupported action-handler pair' }],
+        },
+      };
+    }
+    return {
+      ok: true,
+      schema_version: SIDE_EFFECT_RULE_SCHEMA_VERSION,
+      updated_at: new Date().toISOString(),
+      action_name: an,
+      handler_id: hid,
+      schema: getParamsSchemaForActionHandler(an, hid),
+    };
+  }
+
   @Get('decision-rules/side-effect-params/rules/:id')
   @Public()
   @HttpCode(HttpStatus.OK)
@@ -417,11 +1189,50 @@ export class ActionsController {
   @ApiBody({ type: SideEffectRuleUpsertBodyDto })
   async upsertSideEffectRule(
     @Body() body: SideEffectRuleUpsertBodyDto,
-  ): Promise<{ ok: boolean; rule?: { id: string; action_name: string; handler_id: string; params: Record<string, any>; updated_at: string }; message?: string }> {
+  ): Promise<{
+    ok: boolean;
+    rule?: { id: string; action_name: string; handler_id: string; params: Record<string, any>; updated_at: string };
+    message?: string;
+    error?: {
+      code: 'VALIDATION_ERROR';
+      message: string;
+      details: Array<{ field: string; reason: string }>;
+    };
+  }> {
     if (!this.sideEffectRuleSyncer) {
       return { ok: false, message: 'SideEffectRuleSyncerService not available (database or module)' };
     }
+    const dict = await this.buildRuleMetaDictionary();
+    const details: Array<{ field: string; reason: string }> = [];
+    if (!dict.actionNames.includes(String(body.action_name))) {
+      details.push({ field: 'action_name', reason: 'unsupported action_name' });
+    }
+    if (!dict.handlerIds.includes(String(body.handler_id))) {
+      details.push({ field: 'handler_id', reason: 'unsupported handler_id' });
+    }
+    if (
+      dict.actionNames.includes(String(body.action_name)) &&
+      dict.handlerIds.includes(String(body.handler_id)) &&
+      !isSupportedActionHandlerPair(String(body.action_name), String(body.handler_id))
+    ) {
+      details.push({ field: 'action_name,handler_id', reason: 'unsupported action-handler pair' });
+    }
     const params = body.params ?? {};
+    const paramCheck = assertSideEffectParamsForHandler(String(body.handler_id), params);
+    if (paramCheck.ok === false) {
+      details.push({ field: 'params', reason: paramCheck.message });
+    }
+    if (details.length > 0) {
+      return {
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'params validation failed',
+          details,
+        },
+        message: 'params validation failed',
+      };
+    }
     const row = await this.sideEffectRuleSyncer.upsertRuleExact(body.action_name, body.handler_id, params as any);
     return {
       ok: true,

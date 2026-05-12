@@ -29,8 +29,11 @@ import { UserProfileService } from './user-profile.service';
 import { CompressionLearningService } from './compression-learning.service';
 import { DynamicContextSelectorService } from './dynamic-context-selector.service';
 import { TripTaskMemoryService } from './trip-task-memory.service';
+import { formatLatestReplanLineageLine } from '../utils/trip-task-memory-context-lines.util';
 import { ExecutionHistoryCompressorService } from './execution-history-compressor.service';
 import { MemoryService } from '../../../agent/memory/services/memory.service';
+import { AgentMemoryContextStore } from '../../../agent/memory/context/agent-memory-context.store';
+import { AgentExecutionContextStore } from '../../../agent/runtime/agent-execution-context.store';
 import { DEFAULT_TOKEN_BUDGET } from '../constants/token-budget.constants';
 import { ContextBudgetManagerService } from './context-budget-manager.service';
 import { ContextCacheService } from './context-cache.service';
@@ -93,6 +96,9 @@ export class ContextEngineerService {
   private skillsCalledInBuild: string[] = [];
 
   constructor(
+    private readonly memoryService: MemoryService,
+    @Optional() private readonly agentMemoryContextStore?: AgentMemoryContextStore,
+    @Optional() private readonly agentExecutionContextStore?: AgentExecutionContextStore,
     @Inject('PrismaService') @Optional() private readonly prisma?: PrismaService,
     @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly redisService?: RedisService,
@@ -104,7 +110,6 @@ export class ContextEngineerService {
     @Optional() private readonly dynamicContextSelector?: DynamicContextSelectorService,
     @Optional() private readonly tripTaskMemory?: TripTaskMemoryService,
     @Optional() private readonly executionHistoryCompressor?: ExecutionHistoryCompressorService,
-    @Optional() private readonly memoryService?: MemoryService,
     @Optional() private readonly contextRanker?: ContextRankerService,
     @Optional() private readonly contextCompressor?: ContextCompressorService,
     @Optional() private readonly contextBudgetManager?: ContextBudgetManagerService,
@@ -475,6 +480,12 @@ export class ContextEngineerService {
       );
       blocks.push(...constraintBlocks);
     }
+
+    const tripWdArchive = this.buildTripWorldDecisionArchiveBlock();
+    if (tripWdArchive) blocks.push(tripWdArchive);
+
+    const opNeg = this.buildOperationalNegativeConstraintBlock();
+    if (opNeg) blocks.push(opNeg);
 
     // 6. 获取 API 文档块
     if (options.includeApiDocs) {
@@ -947,6 +958,11 @@ export class ContextEngineerService {
       return { toolBlocks, toolList };
     }
 
+    if (options.abortSignal?.aborted) {
+      this.logger.debug('tools.select 跳过：abortSignal 已触发');
+      return { toolBlocks, toolList };
+    }
+
     try {
       this.skillsCalledInBuild.push('tools.select');
       const result = await toolsSelectSkill.execute({
@@ -957,6 +973,7 @@ export class ContextEngineerService {
           phase: options.phase,
           agent: options.agent,
         },
+        abortSignal: options.abortSignal,
       });
 
       if (result.tools?.length > 0) {
@@ -1008,11 +1025,14 @@ export class ContextEngineerService {
       const memory = await this.tripTaskMemory.get(tripId);
       if (!memory) return blocks;
 
+      const replanHint = formatLatestReplanLineageLine(memory.history);
+
       const text = [
         `当前阶段: ${memory.currentPhase}`,
         memory.selectedRouteDirectionId && `已选路线: ${memory.selectedRouteDirectionId}`,
         memory.decisionLogSummary && `决策摘要: ${memory.decisionLogSummary.substring(0, 300)}`,
         memory.artifactsRefs?.length && `artifacts: ${memory.artifactsRefs.length} 个`,
+        replanHint,
       ]
         .filter(Boolean)
         .join('; ');
@@ -1156,6 +1176,58 @@ export class ContextEngineerService {
   }
 
   /**
+   * Decision Memory ring 负向约束压缩块（ExecutionContext overlay；与冻结 Memory snapshot 解耦）。
+   */
+  private buildOperationalNegativeConstraintBlock(): ContextBlock | null {
+    const ex = this.agentExecutionContextStore?.get();
+    const md = String(ex?.operationalNegativeConstraintsMarkdown ?? '').trim();
+    if (!md) return null;
+    const v1 = ex.operationalNegativeConstraints;
+    return {
+      key: 'tripnara.operational_negative_constraints.v1',
+      type: 'CONSTRAINTS',
+      text: md,
+      ...(v1 ? { data: { revision: v1.revision, lineCount: v1.lines.length } } : {}),
+      priority: 88,
+      visibility: 'public',
+      provenance: {
+        source: 'memory',
+        identifier: 'world_decision_memory.negative_compressor',
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  /**
+   * 冻结 Memory snapshot 中的 trip 级 WDMA 归档尾（跨请求）；与 execution overlay 当前 request 负向块互补。
+   */
+  private buildTripWorldDecisionArchiveBlock(): ContextBlock | null {
+    const mem = this.agentMemoryContextStore?.get();
+    const list = mem?.recentWorldDecisions;
+    if (!list?.length) return null;
+    const lines = list.map((d) => {
+      const caused = (d.causedBy ?? []).slice(0, 10).join(', ');
+      const rat = (d.rationale?.[0] ?? '').slice(0, 220);
+      return `- [${d.decisionType}|${d.outcome}] id=${d.causalityId} causedBy=${caused}\n  ${rat}`;
+    });
+    const text = `本 trip 近期世界侧决策归档（跨请求；避免重复撞墙）:\n${lines.join('\n')}`;
+    const capped = text.length > 3800 ? `${text.slice(0, 3800)}\n…` : text;
+    return {
+      key: 'tripnara.trip_world_decision_archive.v1',
+      type: 'METADATA',
+      text: capped,
+      priority: 71,
+      visibility: 'public',
+      provenance: {
+        source: 'memory',
+        identifier: 'trip_world_decision_memory.archive',
+        timestamp: new Date().toISOString(),
+      },
+      data: { entryCount: list.length },
+    };
+  }
+
+  /**
    * 构建约束块
    * @param userId 用户 ID（可选，用于从 MemoryService 读取 UserTravelProfile）
    */
@@ -1228,14 +1300,13 @@ export class ContextEngineerService {
 
         // 用户画像：合并 Trip metadata + MemoryService UserTravelProfile
         let userProfileData: Record<string, unknown> | undefined = (trip.metadata as any)?.userProfile;
-        if (userId && !this.memoryService) {
-          this.logger.warn(
-            `[Phase0 降级] userId=${userId} 已提供但 MemoryService 未注入，UserTravelProfile 个性化不可用。影响：buildConstraintBlocks 无法从 Memory 读取用户偏好`,
-          );
-        }
-        if (userId && this.memoryService) {
+        if (userId) {
           try {
-            const memoryProfile = await this.memoryService.getUserTravelProfile(userId);
+            const memCtx = this.agentMemoryContextStore?.get();
+            const memoryProfile =
+              memCtx !== undefined && memCtx.userId === userId
+                ? memCtx.userProfile
+                : await this.memoryService.getUserTravelProfile(userId);
             if (memoryProfile) {
               userProfileData = {
                 ...memoryProfile,
@@ -1247,7 +1318,7 @@ export class ContextEngineerService {
               } as Record<string, unknown>;
             }
           } catch (e: any) {
-            this.logger.debug(`读取 MemoryService UserTravelProfile 失败: ${e?.message}`);
+            this.logger.debug(`读取 UserTravelProfile 失败: ${e?.message}`);
           }
         }
         if (userProfileData && Object.keys(userProfileData).length > 0) {
@@ -1259,7 +1330,7 @@ export class ContextEngineerService {
             priority: 60,
             visibility: 'public',
             provenance: {
-              source: userId && this.memoryService ? 'memory' : 'db',
+              source: userId ? 'memory' : 'db',
               identifier: userId ? `memory:user:${userId}` : `trip:${tripId}:userProfile`,
               timestamp: new Date().toISOString(),
             },
@@ -1918,7 +1989,12 @@ Context 管理:
     },
     decisionLogDelta?: any[],
     artifactsRefs?: Record<string, string>,
-    options?: { tripId?: string; phase?: import('../interfaces/trip-task-memory.interface').TripTaskPhase },
+    options?: {
+      tripId?: string;
+      phase?: import('../interfaces/trip-task-memory.interface').TripTaskPhase;
+      requestId?: string;
+      planVersion?: number;
+    },
   ): Promise<void> {
     try {
       // Context Orchestrator: 更新 TripTaskMemory
@@ -1936,6 +2012,8 @@ Context 管理:
             scratchpad,
             artifactsRefs,
             ...(options?.phase && { phase: options.phase }),
+            ...(options?.requestId && { requestId: options.requestId }),
+            ...(options?.planVersion !== undefined && { planVersion: options.planVersion }),
           });
         }
       }

@@ -73,7 +73,7 @@ export class DailyUtilityCalculatorService {
         this.utilityLogService
           .logEvaluation(result, resolvedWeights, {
             planId: (plan as any).id,
-            tripId: (state.context as any)?.tripId,
+            tripId: state.context.tripId,
             userId: (state.context as any)?.userId,
             countryCode: this.extractCountryCode(state),
             source: 'internal',
@@ -255,15 +255,21 @@ export class DailyUtilityCalculatorService {
    */
   private computeSafetyScore(day: PlanDay, state: TripWorldState): number {
     let score = 1.0;
-    const weather = state.signals?.weatherByDate?.[day.date];
     const alerts = state.signals?.alerts || [];
     const candidates = state.candidatesByDate[day.date] || [];
     const candidateMap = new Map(candidates.map(c => [c.id, c]));
 
-    if (weather?.condition === 'storm' || weather?.condition === 'rain') {
+    const critical = alerts.some(a => a.severity === 'critical');
+    const dayView = state.signals.executionSemanticView?.byDate[day.date];
+    const stress =
+      dayView?.outdoorWeatherStress ?? {
+        adverse: false,
+        reasons: ['missing_execution_semantic_day'],
+      };
+    if (stress.adverse) {
       score -= 0.2;
     }
-    if (alerts.some(a => a.severity === 'critical')) {
+    if (critical) {
       score -= 0.3;
     }
 
@@ -310,7 +316,6 @@ export class DailyUtilityCalculatorService {
   private computeWeatherRisk(plan: TripPlan, state: TripWorldState): number {
     let risk = 0;
     for (const day of plan.days) {
-      const weather = state.signals?.weatherByDate?.[day.date];
       const candidates = state.candidatesByDate[day.date] || [];
       const candidateMap = new Map(candidates.map(c => [c.id, c]));
 
@@ -318,7 +323,13 @@ export class DailyUtilityCalculatorService {
         const c = slot.poiId ? candidateMap.get(slot.poiId) : undefined;
         return c?.indoorOutdoor === 'outdoor';
       });
-      if (hasOutdoor && (weather?.condition === 'rain' || weather?.condition === 'storm')) {
+      const dayV = state.signals.executionSemanticView?.byDate[day.date];
+      const outdoorStress =
+        dayV?.outdoorWeatherStress ?? {
+          adverse: false,
+          reasons: ['missing_execution_semantic_day'],
+        };
+      if (hasOutdoor && outdoorStress.adverse) {
         risk += 0.3;
       }
     }

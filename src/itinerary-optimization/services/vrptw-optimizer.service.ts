@@ -122,12 +122,12 @@ export class VRPTWOptimizerService {
         // 计算到达时间
         const currentIndex = route[route.length - 1];
         const travelTime = input.timeMatrix[currentIndex][i];
-        const arrivalTime = currentTime.plus({ minutes: travelTime });
+        const arrivalTime: DateTime = currentTime.plus({ minutes: travelTime });
 
         // 检查是否在时间窗内
         if (arrivalTime <= latest) {
           // 如果早于最早时间，需要等待
-          const actualArrival = arrivalTime < earliest ? earliest : arrivalTime;
+          const actualArrival: DateTime = arrivalTime < earliest ? earliest : arrivalTime;
 
           // 选择时间窗最早的地点
           if (bestNext === null || earliest < (minEarliestWindow || DateTime.fromMillis(0))) {

@@ -2,16 +2,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LocalInsightService } from './local-insight.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RagService } from './rag.service';
+import { ChunkRetrievalService } from './chunk-retrieval.service';
+import { RagRealityPolicyGateService } from './rag-reality-policy-gate.service';
 import { LlmExtractionService } from './llm-extraction.service';
 
 describe('LocalInsightService', () => {
   let service: LocalInsightService;
   let prisma: jest.Mocked<PrismaService>;
-  let ragService: jest.Mocked<RagService>;
+  let chunkRetrieval: jest.Mocked<Pick<ChunkRetrievalService, 'retrieve'>>;
   let llmExtraction: jest.Mocked<LlmExtractionService>;
 
   beforeEach(async () => {
+    process.env.REALITY_ENFORCEMENT = '0';
+    process.env.RAG_REALITY_POLICY_ENFORCE = '0';
+
     const mockPrisma = {
       localInsight: {
         findMany: jest.fn(),
@@ -20,7 +24,7 @@ describe('LocalInsightService', () => {
       },
     };
 
-    const mockRagService = {
+    const mockChunkRetrieval = {
       retrieve: jest.fn(),
     };
 
@@ -36,8 +40,14 @@ describe('LocalInsightService', () => {
           useValue: mockPrisma,
         },
         {
-          provide: RagService,
-          useValue: mockRagService,
+          provide: ChunkRetrievalService,
+          useValue: mockChunkRetrieval,
+        },
+        {
+          provide: RagRealityPolicyGateService,
+          useValue: {
+            mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
+          },
         },
         {
           provide: LlmExtractionService,
@@ -48,7 +58,7 @@ describe('LocalInsightService', () => {
 
     service = module.get<LocalInsightService>(LocalInsightService);
     prisma = module.get(PrismaService);
-    ragService = module.get(RagService);
+    chunkRetrieval = module.get(ChunkRetrievalService);
     llmExtraction = module.get(LlmExtractionService);
   });
 
@@ -83,7 +93,7 @@ describe('LocalInsightService', () => {
       expect(prisma.localInsight.findMany).toHaveBeenCalled();
       expect(result).toHaveLength(1);
       expect(result[0].content).toBe('缓存的内容');
-      expect(ragService.retrieve).not.toHaveBeenCalled();
+      expect(chunkRetrieval.retrieve).not.toHaveBeenCalled();
     });
 
     it('应该在缓存过期时重新生成', async () => {
@@ -104,12 +114,18 @@ describe('LocalInsightService', () => {
         },
       ];
 
-      const mockRagSnippets = [
+      const mockChunkRows = [
         {
           id: '1',
+          chunkId: 'c1',
           content: '新的 RAG 内容',
-          title: 'New Content',
-          score: 0.8,
+          type: 'text',
+          credibilityScore: 0.8,
+          keywords: [] as string[],
+          metadata: { title: 'New Content' },
+          fileId: 'f1',
+          similarity: 0.8,
+          sourceFile: 'doc.md',
         },
       ];
 
@@ -135,14 +151,14 @@ describe('LocalInsightService', () => {
 
       // @ts-ignore
       prisma.localInsight.findMany.mockResolvedValue(mockOldCached);
-      ragService.retrieve.mockResolvedValue(mockRagSnippets);
+      chunkRetrieval.retrieve.mockResolvedValue(mockChunkRows as any);
       llmExtraction.extractStructured.mockResolvedValue(mockGeneratedInsights);
       // @ts-ignore
       prisma.localInsight.create.mockResolvedValue(mockSaved);
 
       const result = await service.getLocalInsight('IS', ['culture']);
 
-      expect(ragService.retrieve).toHaveBeenCalled();
+      expect(chunkRetrieval.retrieve).toHaveBeenCalled();
       expect(llmExtraction.extractStructured).toHaveBeenCalled();
       expect(prisma.localInsight.create).toHaveBeenCalled();
       expect(result).toHaveLength(1);
@@ -161,7 +177,7 @@ describe('LocalInsightService', () => {
           lastUpdated: fortyDaysAgo,
         },
       ]);
-      ragService.retrieve.mockResolvedValue([]);
+      chunkRetrieval.retrieve.mockResolvedValue([]);
 
       const result = await service.getLocalInsight('IS', ['culture']);
 
@@ -181,11 +197,11 @@ describe('LocalInsightService', () => {
           lastUpdated: fortyDaysAgo,
         },
       ]);
-      ragService.retrieve.mockResolvedValue([]);
+      chunkRetrieval.retrieve.mockResolvedValue([]);
 
       await service.getLocalInsight('IS', ['culture'], 'Reykjavik');
 
-      expect(ragService.retrieve).toHaveBeenCalledWith(
+      expect(chunkRetrieval.retrieve).toHaveBeenCalledWith(
         expect.objectContaining({
           query: expect.stringContaining('Reykjavik'),
         })
@@ -253,14 +269,20 @@ describe('LocalInsightService', () => {
       // getLocalInsight 会先查缓存（此时已删除，所以会查不到），然后 RAG 检索
       // @ts-ignore
       prisma.localInsight.findMany.mockResolvedValue([]); // 缓存为空
-      ragService.retrieve.mockResolvedValue([
+      chunkRetrieval.retrieve.mockResolvedValue([
         {
           id: '1',
+          chunkId: 'c1',
           content: '新内容',
-          title: 'New',
-          score: 0.8,
+          type: 'text',
+          credibilityScore: 0.8,
+          keywords: [] as string[],
+          metadata: { title: 'New' },
+          fileId: 'f1',
+          similarity: 0.8,
+          sourceFile: 'doc.md',
         },
-      ]);
+      ] as any);
       llmExtraction.extractStructured.mockResolvedValue([
         {
           content: '新洞察',
@@ -282,7 +304,7 @@ describe('LocalInsightService', () => {
       const result = await service.refreshLocalInsight('IS', ['culture']);
 
       expect(prisma.localInsight.deleteMany).toHaveBeenCalled();
-      expect(ragService.retrieve).toHaveBeenCalled();
+      expect(chunkRetrieval.retrieve).toHaveBeenCalled();
       expect(result).toHaveLength(1);
     });
   });

@@ -27,7 +27,7 @@ export class ValidationOptionsDto {
 export class RetrievalAndValidateRequestDto {
   @ApiProperty({ description: '查询文本', example: '冰岛F26公路冬天能走吗？' })
   @IsString()
-  query: string;
+  query!: string;
 
   @ApiPropertyOptional({ description: '返回数量限制', default: 10 })
   @IsOptional()
@@ -124,56 +124,56 @@ export class RetrievalAndValidateRequestDto {
 
 export class ValidationMetadataDto {
   @ApiProperty({ description: '总候选数' })
-  totalCandidates: number;
+  totalCandidates!: number;
 
   @ApiProperty({ description: '验证数量' })
-  validatedCount: number;
+  validatedCount!: number;
 
   @ApiProperty({ description: '过滤后数量' })
-  filteredCount: number;
+  filteredCount!: number;
 
   @ApiProperty({ description: '平均验证得分' })
-  avgValidationScore: number;
+  avgValidationScore!: number;
 
   @ApiProperty({ description: '延迟（毫秒）' })
-  latency: number;
+  latency!: number;
 }
 
 export class ValidationResultDto {
   @ApiProperty({ description: '事实检查状态', enum: ['pass', 'fail', 'unknown'] })
-  factCheck: 'pass' | 'fail' | 'unknown';
+  factCheck!: 'pass' | 'fail' | 'unknown';
 
   @ApiProperty({ description: '来源可信度', example: 0.85 })
-  sourceCredibility: number;
+  sourceCredibility!: number;
 
   @ApiProperty({ description: '新鲜度', example: 0.9 })
-  freshness: number;
+  freshness!: number;
 
   @ApiProperty({ description: '完整性', example: 0.8 })
-  completeness: number;
+  completeness!: number;
 
   @ApiProperty({ description: '一致性状态', enum: ['consistent', 'inconsistent', 'unknown'] })
-  consistency: 'consistent' | 'inconsistent' | 'unknown';
+  consistency!: 'consistent' | 'inconsistent' | 'unknown';
 
   @ApiProperty({ description: '综合得分', example: 0.85 })
-  overallScore: number;
+  overallScore!: number;
 }
 
 export class CitationDto {
   @ApiProperty({ description: '引用ID' })
-  id: string;
+  id!: string;
 
   @ApiProperty({ description: '引用内容' })
-  content: string;
+  content!: string;
 
   @ApiProperty({ description: '来源' })
-  source: string;
+  source!: string;
 
   @ApiPropertyOptional({ description: '文档ID' })
   documentId?: string;
 
   @ApiProperty({ description: '置信度', example: 0.9 })
-  confidence: number;
+  confidence!: number;
 
   @ApiPropertyOptional({ description: '位置信息' })
   position?: {
@@ -185,37 +185,37 @@ export class CitationDto {
 
 export class ValidatedRetrievalResultDto {
   @ApiProperty({ description: '结果ID' })
-  id: string;
+  id!: string;
 
   @ApiProperty({ description: 'Chunk ID' })
-  chunkId: string;
+  chunkId!: string;
 
   @ApiProperty({ description: '内容' })
-  content: string;
+  content!: string;
 
   @ApiProperty({ description: '类型' })
-  type: string;
+  type!: string;
 
   @ApiProperty({ description: '可信度得分', example: 0.85 })
-  credibilityScore: number;
+  credibilityScore!: number;
 
   @ApiProperty({ description: '相似度', example: 0.9 })
-  similarity: number;
+  similarity!: number;
 
   @ApiPropertyOptional({ description: '混合得分' })
   hybridScore?: number;
 
   @ApiProperty({ description: '验证结果', type: ValidationResultDto })
-  validation: ValidationResultDto;
+  validation!: ValidationResultDto;
 
   @ApiProperty({ description: '引用列表', type: [CitationDto] })
-  citations: CitationDto[];
+  citations!: CitationDto[];
 }
 
 export class RetrievalAndValidateResponseDto {
   @ApiProperty({ description: '验证后的检索结果', type: [ValidatedRetrievalResultDto] })
-  results: ValidatedRetrievalResultDto[];
+  results!: ValidatedRetrievalResultDto[];
 
   @ApiProperty({ description: '元数据', type: ValidationMetadataDto })
-  metadata: ValidationMetadataDto;
+  metadata!: ValidationMetadataDto;
 }

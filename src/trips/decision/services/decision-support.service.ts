@@ -318,7 +318,7 @@ export class DecisionSupportService {
     // 距离对比
     const distanceValues: Record<string, number> = {};
     options.forEach(opt => {
-      distanceValues[opt.routeId] = opt.systemAnalysis.characteristics.distance;
+      distanceValues[opt.routeId] = opt.systemAnalysis.characteristics.distance ?? 0;
     });
     dimensions.push({
       name: '距离（公里）',
@@ -338,7 +338,7 @@ export class DecisionSupportService {
     // 时长对比
     const durationValues: Record<string, number> = {};
     options.forEach(opt => {
-      durationValues[opt.routeId] = opt.systemAnalysis.characteristics.estimatedDuration;
+      durationValues[opt.routeId] = opt.systemAnalysis.characteristics.estimatedDuration ?? 0;
     });
     dimensions.push({
       name: '预计时长（小时）',

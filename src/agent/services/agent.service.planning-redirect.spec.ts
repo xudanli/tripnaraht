@@ -15,6 +15,8 @@ import { System1ExecutorService } from './system1-executor.service';
 import { OrchestratorService } from './orchestrator.service';
 import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
+import { ExecutionGatewayService } from './execution-gateway.service';
+import { ROUTE_AND_RUN_MEMORY_TEST_PROVIDERS } from '../memory/testing/route-and-run-memory.providers';
 
 describe('AgentService - Planning Request Interception', () => {
   let agentService: AgentService;
@@ -127,6 +129,8 @@ describe('AgentService - Planning Request Interception', () => {
     module = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true })],
       providers: [
+        ...ROUTE_AND_RUN_MEMORY_TEST_PROVIDERS,
+        ExecutionGatewayService,
         AgentService,
         {
           provide: RouterService,
