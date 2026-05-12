@@ -202,6 +202,20 @@ async function createMcpServer() {
   
   console.error(`Registered ${allSkills.length} tools successfully`);
 
+  try {
+    const { registerCheckTripSafetyTool } = await import('./handlers/iceland-safety-check.handler');
+    registerCheckTripSafetyTool(server, app, formatResponse);
+  } catch (e: any) {
+    console.error('⚠️  Failed to register check_trip_safety:', e?.message ?? e);
+  }
+
+  try {
+    const { registerCheckTripSafetyWithAlternativesTool } = await import('./handlers/iceland-safety-with-alternatives.handler');
+    registerCheckTripSafetyWithAlternativesTool(server, app, formatResponse);
+  } catch (e: any) {
+    console.error('⚠️  Failed to register check_trip_safety_with_alternatives:', e?.message ?? e);
+  }
+
   // 获取 MCP 能力管理器（用于检查能力是否启用）
   let capabilityManager: any = null;
   try {
@@ -2386,6 +2400,7 @@ async function main() {
       // Log to stderr (stdout is used for JSON-RPC communication)
       console.error('TripNARA MCP Skills Server started and ready');
       console.error(`Registered ${allSkills.length} tools`);
+      console.error('Iceland driving OS gateway: check_trip_safety (dual audit: routeFeasibility + gasAndEvChargePlanner)');
       if (airbnbClient) {
         console.error('Airbnb tools available: airbnb.search, airbnb.listingDetails');
       }
