@@ -23,6 +23,7 @@ import { ExaModule } from '../mcp/exa.module';
 import { CacheModule } from '../common/cache/cache.module';
 import { IcelandInfoModule } from '../iceland-info/iceland-info.module';
 import { MemoryModule } from '../agent/memory/memory.module';
+import { GovernanceModule } from '../governance/governance.module';
 import { WorldStrategyModule } from '../agent/strategy/world-strategy.module';
 import { CountryConfigService } from './world/services/country-config.service';
 import { EvidenceCacheService } from './world/services/evidence-cache.service';
@@ -120,6 +121,14 @@ import { PlanSelectSlicesSkill } from './context/plan-select-slices.skill';
 import { ToolsSelectSkill } from './context/tools-select.skill';
 import { IntentRecognizeSkill } from './intent/intent-recognize.skill';
 import { ContextCompilePackageSkill } from './context/context-compile-package.skill';
+
+// Runtime OS (P0): world gate / policy / working memory
+import { WorldStateSummarizeSkill } from './runtime-os/world-state-summarize.skill';
+import { ReadinessAssessSkill } from './runtime-os/readiness-assess.skill';
+import { PolicyResolveSkill } from './runtime-os/policy-resolve.skill';
+import { DecisionCompressSkill } from './runtime-os/decision-compress.skill';
+import { IcelandOperationalDomainPipeline } from '../world/domains/iceland/iceland-operational-domain.pipeline';
+import { WorldOperationalArbitrator } from '../world/operational/world-operational-arbitrator';
 
 // Geo Skills
 import { GeoFindNearbyPOISkill } from './geo/geo-find-nearby-poi.skill';
@@ -280,6 +289,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     CacheModule, // 导入 CacheModule 以支持 WorldBuildContextSkill 使用缓存
     forwardRef(() => IcelandInfoModule), // SafeTravel / Vedur 等冰岛信息源（SafetravelGetAdvisoriesSkill）
     forwardRef(() => MemoryModule), // WorldDecisionMemory：itinerary.verify 车型仲裁因果写入
+    forwardRef(() => GovernanceModule), // Governance ledger + GRG (re-exports LedgerModule)
     forwardRef(() => WorldStrategyModule), // WorldStrategy：冰岛策略 JSON → 仲裁 strat: 留痕
   ],
   controllers: [
@@ -306,6 +316,12 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     PrefetcherService,
     WorldBuildContextSkill,
     { provide: SKILL_WORLD_BUILD_CONTEXT, useExisting: WorldBuildContextSkill },
+    IcelandOperationalDomainPipeline,
+    WorldOperationalArbitrator,
+    WorldStateSummarizeSkill,
+    ReadinessAssessSkill,
+    PolicyResolveSkill,
+    DecisionCompressSkill,
     WorldModelEvidenceService, // 世界模型证据服务
     WorldModelEvidenceService,
     // 护城河扩展World Services（作为降级策略）
@@ -718,6 +734,10 @@ export class SkillsModule {
     @Optional() private readonly icelandGasEvChargePlannerSkill?: IcelandGasEvChargePlannerSkill,
     @Optional() private readonly icelandStormReroutingEngineSkill?: IcelandStormReroutingEngineSkill,
     @Optional() private readonly icelandAlternativeValidatorSkill?: IcelandAlternativeValidatorSkill,
+    @Optional() private readonly worldStateSummarizeSkill?: WorldStateSummarizeSkill,
+    @Optional() private readonly readinessAssessSkill?: ReadinessAssessSkill,
+    @Optional() private readonly policyResolveSkill?: PolicyResolveSkill,
+    @Optional() private readonly decisionCompressSkill?: DecisionCompressSkill,
   ) {
     this.logger.log('[SkillsModule] 构造函数开始执行...');
     
@@ -877,6 +897,23 @@ export class SkillsModule {
     if (this.icelandAlternativeValidatorSkill) {
       this.skillsRegistry.registerSkill(this.icelandAlternativeValidatorSkill);
       this.logger.debug('Registered IcelandAlternativeValidatorSkill');
+    }
+
+    if (this.worldStateSummarizeSkill) {
+      this.skillsRegistry.registerSkill(this.worldStateSummarizeSkill);
+      this.logger.debug('Registered WorldStateSummarizeSkill');
+    }
+    if (this.readinessAssessSkill) {
+      this.skillsRegistry.registerSkill(this.readinessAssessSkill);
+      this.logger.debug('Registered ReadinessAssessSkill');
+    }
+    if (this.policyResolveSkill) {
+      this.skillsRegistry.registerSkill(this.policyResolveSkill);
+      this.logger.debug('Registered PolicyResolveSkill');
+    }
+    if (this.decisionCompressSkill) {
+      this.skillsRegistry.registerSkill(this.decisionCompressSkill);
+      this.logger.debug('Registered DecisionCompressSkill');
     }
 
     // 临时在构造函数中执行扫描（延迟到下一个 tick，确保依赖已初始化）

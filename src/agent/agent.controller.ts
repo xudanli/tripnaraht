@@ -1,9 +1,15 @@
 // src/agent/agent.controller.ts
-import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Logger, Optional } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Logger, Optional, Headers } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiOkResponse, ApiExtraModels } from '@nestjs/swagger';
 import { AgentService } from './services/agent.service';
 import { HotspotRegistryService } from '../skills/world/services/hotspot-registry.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from './dto/route-and-run.dto';
+import {
+  LedgerHealingMetricsDto,
+  LedgerHealingObservabilityDto,
+  LedgerHealingStepDto,
+  LEDGER_HEALING_ICELAND_SUCCESS_EXAMPLE,
+} from './dto/ledger-healing-observability.dto';
 import { ReplayFromTraceRequestDto } from './dto/replay-from-trace.dto';
 import { buildTravelOntologyStateFromOrchestrator } from '../decision/kernel/travel-ontology.mapper';
 import { Public } from '../auth/decorators/public.decorator';
@@ -28,6 +34,7 @@ import { PhysicalActionPlanEnricherService } from '../domain/spatial/physical-ac
  * - System 2（慢）：ReAct 循环 + 工具 + 规划（< 60s）
  */
 @ApiTags('agent')
+@ApiExtraModels(LedgerHealingObservabilityDto, LedgerHealingStepDto, LedgerHealingMetricsDto)
 @Controller('agent')
 export class AgentController {
   private readonly logger = new Logger(AgentController.name);
@@ -271,10 +278,26 @@ export class AgentController {
       },
     },
   })
-  @ApiResponse({
-    status: 200,
+  @ApiOkResponse({
     description: '成功返回路由和执行结果',
     type: RouteAndRunResponseDto,
+    content: {
+      'application/json': {
+        examples: {
+          observability_ledger_healing_iceland: {
+            summary: 'observability.ledger_healing（冰岛南岸 staging · 成功自愈）',
+            description:
+              '与 `fixtures/agent/ledger-healing-iceland-success.observability.json` 对齐；`steps[].action` 为内核 trace 原文。',
+            value: {
+              observability: {
+                layers: ['ledger_reconcile_blocking_start', 'ledger_reconcile_converged'],
+                ledger_healing: LEDGER_HEALING_ICELAND_SUCCESS_EXAMPLE,
+              },
+            },
+          },
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 400,
@@ -285,8 +308,13 @@ export class AgentController {
     description: '服务器内部错误',
   })
   async routeAndRun(
-    @Body() request: RouteAndRunRequestDto
+    @Body() request: RouteAndRunRequestDto,
+    @Headers('x-client-profile') xClientProfile?: string,
   ): Promise<RouteAndRunResponseDto> {
+    const headerProfile = xClientProfile?.trim();
+    if (headerProfile) {
+      request.meta = { ...(request.meta ?? {}), client_profile: request.meta?.client_profile ?? headerProfile };
+    }
     // Hotspot observation (metrics-driven v0): record station pairing usage for PT warmup scheduler.
     const pair = (request as any)?.emergency_constraints?.pt_station_pair;
     if (this.hotspotRegistry && pair?.station_a && pair?.station_b) {

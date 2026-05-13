@@ -35,12 +35,17 @@ import {
   formatRepairOutputsZh,
   formatResearchInputsKernelZh,
   formatResearchOutputsZh,
+  formatResearchTeamAuditOutputsZh,
   formatStateUpdateOutputsZh,
   formatVerifyInputsKernelZh,
   formatVerifyOutputsZh,
   formatVerifyPoiClosedOutputsZh,
   formatVerifyTemporalOpeningInputsZh,
 } from '../utils/decision-log-user-facing.zh.util';
+import type { ResearchTeamAuditEntry } from '../teams/research/research-team.types';
+import { isResearchConflictNegotiationReport } from '../teams/research/research-conflict-negotiation.util';
+import { readRealtimeRerollCount } from '../memory/emotional-resonance/research-realtime-frustration.util';
+import { MEMORY_REPLAY_DECISION_SOURCE } from '../memory/experience-replay/memory-replay.constants';
 import { CONSTRAINT_IDS } from './constraint-registry';
 import { buildL3PersuasionLine, selectPersuasionMode } from '../utils/narrator-l3-persuasion.util';
 import { formatPredictiveFailureReport } from '../utils/repair-causal-explainer.util';
@@ -85,8 +90,16 @@ import {
   isWeatherRoadConditionFocusedQuery,
   shouldEnableLiveWeatherMcpForLightweightRoute,
   shouldInjectIcelandRentalGuidanceForLightweight,
+  shouldPullSafetravelAdvisoriesForLightweightIceland,
   isWestfjordsLegTransportPreferenceConsultation,
 } from '../utils/orchestration-signals.util';
+import {
+  dedupeResearchScopes,
+  invalidateResearchScopesInPlace,
+  isResearchAssetScope,
+  cloneResearchRecord,
+} from '../utils/research-asset-scope.util';
+import { extractNluResearchInvalidateScopes } from '../utils/intake-research-scope-signals.util';
 import {
   isExecutableFlightInventoryQuery,
   resolveFlightInventoryLegs,
@@ -101,6 +114,8 @@ import {
   NARRATIVE_INTEGRITY_VALIDATOR_VERSION,
   type NarrativeIntegrityReport,
 } from '../inventory/narrative-integrity-validator.util';
+import { evaluateIcelandLightweightFroad2wdFastFail } from '../utils/iceland-lightweight-froad-2wd-fast-fail.util';
+import { evaluateIcelandLightweightRedAlertFastFail } from '../utils/iceland-lightweight-red-alert-fast-fail.util';
 import {
   isDiningRecommendationQuery,
   messageHasDiningLocationAnchor,
@@ -124,6 +139,7 @@ import {
   buildIcelandRentalGuidancePromptLines,
 } from '../utils/iceland-rental-lightweight.util';
 import { IcelandRentalGuidanceSkill, type IcelandRentalGuidanceOutput } from '../../skills/world/iceland-rental-guidance.skill';
+import { SafetravelGetAdvisoriesSkill, type SafetravelGetAdvisoriesOutput } from '../../skills/world/safetravel-get-advisories.skill';
 import {
   classifyDrivingRagIntentPhase,
   expandedRentalTransactionRagQuery,
@@ -282,6 +298,7 @@ import {
   type PoiPlanningDecisionSlice,
 } from '../../decision/kernel/decision-state.types';
 import type { PlanGenTerminalFailure } from '../../decision/kernel/decision-state.types';
+import type { RuntimeBranchDirective } from '../../governance/activation/runtime/runtime-branch-directive.types';
 import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
 import { normalizeDecisionOsAuditContract } from '../contracts/decision-os-audit.contract';
 import {
@@ -455,6 +472,8 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly ontologyRoadStatusProvider?: OntologyRoadStatusProviderService,
     /** 冰岛租车决策层（与 Booking 租车 MCP 轻量双路合并） */
     @Optional() private readonly icelandRentalGuidanceSkill?: IcelandRentalGuidanceSkill,
+    /** SafeTravel RSS（轻量路径红警闸数据通路） */
+    @Optional() private readonly safetravelGetAdvisoriesSkill?: SafetravelGetAdvisoriesSkill,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -538,6 +557,36 @@ export class ClaudeOrchestratorService {
       ...(rc ? { replanLineage: rc } : {}),
       orchestratorPlanVersion: state.plan_version,
     };
+  }
+
+  private mergeGovernanceRuntimeBranchDirective(
+    request: RouteAndRunRequestDto,
+    decisionState: DecisionState | undefined,
+  ): DecisionState | undefined {
+    if (!this.decisionKernel || !decisionState) return decisionState;
+    const dir = (request as { __runtimeBranchDirective?: RuntimeBranchDirective }).__runtimeBranchDirective;
+    if (!dir || dir.branchType === 'normal_execution') return decisionState;
+    const intent = dir.replanningIntent;
+    return this.decisionKernel.updateState(decisionState, {
+      harnessRuntime: {
+        ...(decisionState.harnessRuntime ?? {}),
+        governance_runtime_branch_v1: {
+          branchType: dir.branchType,
+          sourceActivationIds: dir.sourceActivationIds,
+          ...(intent
+            ? {
+                replanningIntent: {
+                  trigger: intent.trigger,
+                  requiredActions: intent.requiredActions,
+                  preservedConstraints: intent.preservedConstraints,
+                  forbiddenStrategies: intent.forbiddenStrategies,
+                  replanningScope: intent.replanningScope,
+                },
+              }
+            : {}),
+        },
+      },
+    });
   }
 
   /**
@@ -3078,7 +3127,32 @@ export class ClaudeOrchestratorService {
     const wantReadinessForLightweight =
       Boolean(effectiveTripId) && !lightweightTriviaFact && !!this.readinessService;
 
-    const [wBranch, fBranch, hBranch, rBranch, readinessSupplement, structuredRagBiasZh, gBranch] = lightweightTriviaFact
+    const shouldStPull =
+      !lightweightTriviaFact &&
+      shouldPullSafetravelAdvisoriesForLightweightIceland({
+        message: request.message ?? '',
+        tripContextJoined: tripCtxJoined,
+        hasAnchoredTripFact,
+        weatherRoadFocused,
+      });
+    const stSkill = this.safetravelGetAdvisoriesSkill;
+    const stPullP =
+      shouldStPull && stSkill
+        ? (async () => {
+            const t0 = Date.now();
+            try {
+              const out = await stSkill.execute({ max_items: 40 });
+              return { out, ms: Math.max(0, Date.now() - t0) };
+            } catch (e: any) {
+              this.logger.warn(
+                `[Lightweight] SafeTravel.get_advisories failed request_id=${request.request_id}: ${e?.message ?? e}`,
+              );
+              return { out: null as SafetravelGetAdvisoriesOutput | null, ms: 0 };
+            }
+          })()
+        : Promise.resolve({ out: null as SafetravelGetAdvisoriesOutput | null, ms: 0 });
+
+    const [wBranch, fBranch, hBranch, rBranch, readinessSupplement, structuredRagBiasZh, gBranch, stPack] = lightweightTriviaFact
       ? [
           { audits: [] as LiveSensorAuditRow[], block: null },
           { audits: [] as LiveSensorAuditRow[], block: null },
@@ -3092,6 +3166,7 @@ export class ClaudeOrchestratorService {
             promptLines: [] as string[],
             footnotesZh: [] as string[],
           },
+          { out: null as SafetravelGetAdvisoriesOutput | null, ms: 0 },
         ]
       : await Promise.all([
           this.runLiveWeatherSensorBranch(request, context, effectiveTripId),
@@ -3101,6 +3176,7 @@ export class ClaudeOrchestratorService {
           this.runLightweightReadinessSupplement(effectiveTripId, request.message ?? '', wantReadinessForLightweight),
           this.resolveTripnaraStructuredRagBiasForLightweight(request),
           this.runIcelandRentalGuidanceLightweightBranch(request, tripCtxJoined),
+          stPullP,
         ]);
     const liveSensorAudit: LiveSensorAuditRow[] = [
       ...wBranch.audits,
@@ -3109,6 +3185,27 @@ export class ClaudeOrchestratorService {
       ...rBranch.audits,
       ...gBranch.audits,
     ];
+
+    const anchoredIcelandTrip =
+      hasAnchoredTripFact && /目的地代码:\s*IS\b|国家代码:\s*IS\b/i.test(tripCtxJoined);
+
+    const redFf = lightweightTriviaFact
+      ? null
+      : evaluateIcelandLightweightRedAlertFastFail({
+          message: request.message ?? '',
+          tripContextJoined: tripCtxJoined,
+          safetravel_alerts: stPack.out?.safetravel_alerts ?? [],
+          gate_recommendation: stPack.out?.gate_recommendation,
+          anchoredIcelandTrip,
+        });
+
+    const icelandFf = lightweightTriviaFact
+      ? null
+      : evaluateIcelandLightweightFroad2wdFastFail({
+          message: request.message ?? '',
+          tripContextJoined: tripCtxJoined,
+          structuredStartYmd: request.structured_travel_input?.start_date,
+        });
 
     const ragPayload = lightweightTriviaFact
       ? {
@@ -3228,7 +3325,9 @@ export class ClaudeOrchestratorService {
             rBranch.block,
           ]
         : []),
+      ...(redFf?.hit ? ['', ...redFf.promptLines] : []),
       ...(gBranch.promptLines.length ? ['', ...gBranch.promptLines] : []),
+      ...(icelandFf?.hit ? ['', ...icelandFf.promptLines] : []),
       ...(hBranch.hotelRouteRunUi?.hotel_search_meta?.strategy === 'per_night_sample'
         ? [
             '上文住宿数据已按行程拆成「每晚上一间」的采样（卡片含中文锚点），请勿建议用户用同一房源覆盖全程所有夜晚；环岛/多地线路应在不同城镇分段预订。',
@@ -3411,6 +3510,21 @@ export class ClaudeOrchestratorService {
     if (gBranch.guidance) {
       evidenceRefs.push(`skill:iceland.rentalGuidance:${request.request_id}`);
     }
+    if (stPack.out) {
+      evidenceRefs.push(`skill:safetravel.get_advisories:${request.request_id}`);
+    }
+    if (redFf?.hit) {
+      for (const rid of redFf.refIds) {
+        evidenceRefs.push(rid);
+      }
+      evidenceRefs.push(`skill:iceland.lightweight_red_alert_fast_fail:${request.request_id}`);
+    }
+    if (icelandFf?.hit) {
+      for (const rid of icelandFf.refIds) {
+        evidenceRefs.push(rid);
+      }
+      evidenceRefs.push(`skill:iceland.lightweight_fast_fail:${request.request_id}`);
+    }
     if (liveSensorAudit.some((a) => a.tool_id.includes('amadeus'))) {
       evidenceRefs.push(`live_tool:amadeus:flight_offers:${request.request_id}`);
     }
@@ -3522,6 +3636,34 @@ export class ClaudeOrchestratorService {
             }
           : {}),
         ...(gBranch.guidance ? { iceland_rental_guidance: gBranch.guidance } : {}),
+        ...(stPack.out
+          ? {
+              lightweight_research_data: {
+                safetravel_alerts: stPack.out.safetravel_alerts,
+                safetravel_gate_recommendation: stPack.out.gate_recommendation,
+                safetravel_rss_last_updated: stPack.out.lastUpdated,
+                safetravel_rss_summary: stPack.out.summary,
+              },
+            }
+          : {}),
+        ...(redFf?.hit
+          ? {
+              iceland_lightweight_red_alert_fast_fail: {
+                strat_ids: redFf.stratIds,
+                ref_ids: redFf.refIds,
+                duration_ms: redFf.durationMs,
+              },
+            }
+          : {}),
+        ...(icelandFf?.hit
+          ? {
+              iceland_lightweight_vehicle_terrain_fast_fail: {
+                strat_ids: icelandFf.stratIds,
+                ref_ids: icelandFf.refIds,
+                duration_ms: icelandFf.durationMs,
+              },
+            }
+          : {}),
         ...(gBranch.footnotesZh.length ? { car_rental_guidance_footnotes_zh: gBranch.footnotesZh } : {}),
         ...(fBranch.flight_inventory_snapshot
           ? { flight_inventory_snapshot: fBranch.flight_inventory_snapshot }
@@ -3586,6 +3728,43 @@ export class ClaudeOrchestratorService {
                 : []),
             ]
           : []),
+        ...(stPack.out
+          ? [
+              {
+                stepId: 'lightweight_safetravel_advisories',
+                skillName: 'safetravel.get_advisories',
+                success: true,
+                duration: stPack.ms,
+                result: {
+                  gate_recommendation: stPack.out.gate_recommendation,
+                  rss_alert_count: stPack.out.alerts?.length ?? 0,
+                  route_alert_count: stPack.out.safetravel_alerts?.length ?? 0,
+                },
+              },
+            ]
+          : []),
+        ...(redFf?.hit
+          ? [
+              {
+                stepId: 'iceland_lightweight_red_alert_fast_fail',
+                skillName: 'iceland.lightweight_red_alert_fast_fail',
+                success: true,
+                duration: redFf.durationMs,
+                result: { issues: redFf.rawIssues },
+              },
+            ]
+          : []),
+        ...(icelandFf?.hit
+          ? [
+              {
+                stepId: 'iceland_lightweight_froad_2wd_fast_fail',
+                skillName: 'iceland.lightweight_fast_fail',
+                success: true,
+                duration: icelandFf.durationMs,
+                result: { issues: icelandFf.rawIssues },
+              },
+            ]
+          : []),
         {
           stepId: 'lightweight_llm_answer',
           skillName: 'direct_llm',
@@ -3629,6 +3808,9 @@ export class ClaudeOrchestratorService {
             (liveSensorAudit.some((a) => a.tool_id.includes('hotel')) ? '含住宿检索 MCP；' : '') +
             (liveSensorAudit.some((a) => a.tool_id.includes('car_rental')) ? '含租车检索 MCP；' : '') +
             (gBranch.guidance ? '含冰岛租车决策 iceland.rentalGuidance；' : '') +
+            (stPack.out ? '含 SafeTravel RSS（轻量拉取）；' : '') +
+            (redFf?.hit ? '含冰岛红警生命红线闸（STRAT_ICE_000）；' : '') +
+            (icelandFf?.hit ? '含冰岛 F-road/2WD 极速安全闸（非完整 verify）；' : '') +
             (ragPayload.citations.length ? `知识库 RAG ${ragPayload.citations.length} 条；` : '') +
             (readinessSupplement ? '含准备度 Readiness（Pack）；' : '') +
             (ontologyHitDefs.length > 0
@@ -5719,6 +5901,50 @@ ${JSON.stringify(routingDecision, null, 2)}
       input.research_data = this.mergePriorSafetravelIntoResearchData(input.research_data, results);
     }
 
+    if (step.skillName === 'worldState.summarize') {
+      if (!input.world) {
+        for (const stepResult of Object.values(results)) {
+          if (stepResult && typeof stepResult === 'object' && (stepResult as any).world) {
+            input.world = (stepResult as any).world;
+            this.logger.debug('[Claude Orchestrator] worldState.summarize: 注入先前步骤的 world');
+            break;
+          }
+        }
+      }
+    }
+
+    if (step.skillName === 'policy.resolve') {
+      for (const stepResult of Object.values(results)) {
+        if (!stepResult || typeof stepResult !== 'object') continue;
+        const sr = stepResult as Record<string, unknown>;
+        if (!input.operationalWorldState && sr.operationalWorldState) {
+          input.operationalWorldState = sr.operationalWorldState;
+          this.logger.debug('[Claude Orchestrator] policy.resolve: 注入 operationalWorldState');
+        }
+        if (!input.operationalArbitration && sr.operationalArbitration) {
+          input.operationalArbitration = sr.operationalArbitration;
+          this.logger.debug('[Claude Orchestrator] policy.resolve: 注入 operationalArbitration');
+        }
+        if (input.operationalWorldState && input.operationalArbitration) {
+          break;
+        }
+      }
+    }
+
+    if (step.skillName === 'itinerary.generate') {
+      if (!input.executionPolicyHook) {
+        for (const stepResult of Object.values(results)) {
+          if (!stepResult || typeof stepResult !== 'object') continue;
+          const sr = stepResult as Record<string, unknown>;
+          if (sr.executionPolicyHook) {
+            input.executionPolicyHook = sr.executionPolicyHook;
+            this.logger.debug('[Claude Orchestrator] itinerary.generate: 注入 executionPolicyHook');
+            break;
+          }
+        }
+      }
+    }
+
     // P0: Skills 内 LLM 打点 - 注入 tokenContext（skillName → state_machine_step 映射）
     const requestId = context.requestId || request.request_id;
     if (requestId && step.skillName) {
@@ -5740,7 +5966,12 @@ ${JSON.stringify(routingDecision, null, 2)}
   /** skillName → OrchestrationStep（用于 Token 按阶段打点） */
   private mapSkillNameToStep(skillName?: string): import('../../agent/interfaces/trip-plan.interface').OrchestrationStep {
     if (!skillName) return 'INTAKE';
-    if (skillName.includes('gate') || skillName.includes('runThreeGuardians') || skillName.includes('precheck')) return 'GATE_EVAL';
+    if (skillName === 'policy.resolve' || skillName === 'worldState.summarize' || skillName === 'readiness.assess') {
+      return 'GATE_EVAL';
+    }
+    if (skillName.includes('gate') || skillName.includes('runThreeGuardians') || skillName.includes('precheck')) {
+      return 'GATE_EVAL';
+    }
     if (skillName.includes('itinerary.generate') || skillName.includes('plan.') || skillName.includes('architect') || skillName.includes('transit') || skillName.includes('budget') || skillName.includes('pace') || skillName.includes('constraints')) return 'PLAN_GEN';
     if (skillName === 'itinerary.smart_update') return 'REPAIR';
     if (skillName.includes('verify')) return 'VERIFY';
@@ -6155,6 +6386,8 @@ ${JSON.stringify(routingDecision, null, 2)}
       this.logger.debug(`[Claude Orchestrator] DSO 已初始化: requestId=${request.request_id}`);
     }
 
+    decisionState = this.mergeGovernanceRuntimeBranchDirective(request, decisionState);
+
     try {
       // 步骤 1: INTAKE - 解析请求 & 缺口识别（Durable：lastStep=INTAKE 时跳过重复 INTAKE）
       if (!resumeSkipIntake) {
@@ -6231,6 +6464,69 @@ ${JSON.stringify(routingDecision, null, 2)}
           `[Claude Orchestrator] HARD 缺口且已有澄清问题，跳过 RESEARCH/Gate/Plan，直接返回澄清`,
         );
         return this.buildClarificationResult(state, startTime, decisionState, context);
+      }
+
+      // 2.0 细粒度 Checkpoint（COW）：仅在副本上 invalidate；Options 显式 scopes 优先于 NLU（数组合并顺序 + dedupe 保序）
+      const optInv = request.options?.research_invalidate_scopes;
+      const nluInv = extractNluResearchInvalidateScopes(request);
+      const combinedInv = dedupeResearchScopes([
+        ...(Array.isArray(optInv) ? optInv.filter(isResearchAssetScope) : []),
+        ...nluInv,
+      ]);
+      if (combinedInv.length > 0) {
+        const scopes = combinedInv;
+          let rdBase: Record<string, unknown> | undefined =
+            state.research_data && typeof state.research_data === 'object'
+              ? cloneResearchRecord(state.research_data as Record<string, unknown>)
+              : undefined;
+          if (
+            (!rdBase || Object.keys(rdBase).length === 0) &&
+            this.researchPriorSnapshot
+          ) {
+            const loaded = await this.researchPriorSnapshot.load(request);
+            if (loaded && typeof loaded === 'object' && Object.keys(loaded).length > 0) {
+              rdBase = cloneResearchRecord(loaded as Record<string, unknown>);
+            }
+          }
+          if (rdBase && Object.keys(rdBase).length > 0) {
+            const researchAtomicRollbackSnapshot = cloneResearchRecord(rdBase);
+            const draftRd = cloneResearchRecord(rdBase);
+            if (!draftRd) {
+              this.logger.warn(`[Claude Orchestrator] research COW: draft clone failed request_id=${state.request_id}`);
+            } else {
+            const { clearedKeys } = invalidateResearchScopesInPlace(
+              draftRd,
+              scopes,
+              'research_invalidate_scopes+nlu',
+            );
+            const m0 = { ...(state.metadata as any) };
+            m0.research_scopes_to_recompute = scopes;
+            m0.research_scope_invalidation = {
+              scopes,
+              cleared_keys: clearedKeys,
+              at: new Date().toISOString(),
+            };
+            m0.pending_research_prior_for_kernel = draftRd;
+            m0.research_atomic_rollback_snapshot = researchAtomicRollbackSnapshot;
+            state.metadata = m0 as OrchestratorState['metadata'];
+            state.decision_log.push({
+              request_id: state.request_id,
+              step: 'RESEARCH',
+              actor: 'Orchestrator',
+              inputs_summary: 'Harness：研究资产作用域局部无效化（COW 副本，主干未提交）',
+              outputs_summary: `INVALIDATE_SCOPES scopes=${scopes.join(',')} cleared_key_count=${clearedKeys.length}`,
+              evidence_refs: [],
+              timestamp: new Date().toISOString(),
+              metadata: {
+                system_action: 'RESEARCH_SCOPE_INVALIDATION',
+                scopes,
+                cleared_keys_sample: clearedKeys.slice(0, 32),
+                nlu_scopes: nluInv.length ? nluInv : undefined,
+                option_scopes: Array.isArray(optInv) ? optInv.filter(isResearchAssetScope) : undefined,
+              },
+            });
+            }
+          }
       }
 
       // 步骤 3: RESEARCH - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
@@ -8042,6 +8338,17 @@ ${JSON.stringify(routingDecision, null, 2)}
   }
 
   /**
+   * RESEARCH 原子元数据清理（pending COW / rollback 句柄）
+   */
+  private clearResearchAtomicPendingMetadata(state: OrchestratorState): void {
+    const m = { ...(state.metadata as any) };
+    delete m.pending_research_prior_for_kernel;
+    delete m.research_atomic_rollback_snapshot;
+    delete m.research_scopes_to_recompute;
+    state.metadata = m as OrchestratorState['metadata'];
+  }
+
+  /**
    * RESEARCH 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
    */
   private async executeResearchPhase(
@@ -8087,6 +8394,27 @@ ${JSON.stringify(routingDecision, null, 2)}
         }
       }
       const didRunTransportOnly = !!(transportFollowup && priorResearch);
+      const scopesToRecompute = (state.metadata as any)?.research_scopes_to_recompute as unknown;
+      const pendingPrior = (state.metadata as any)?.pending_research_prior_for_kernel as
+        | Record<string, unknown>
+        | undefined;
+      const priorForScoped =
+        pendingPrior && typeof pendingPrior === 'object' && Object.keys(pendingPrior).length > 0
+          ? pendingPrior
+          : state.research_data &&
+              typeof state.research_data === 'object' &&
+              Object.keys(state.research_data as object).length > 0
+            ? (state.research_data as Record<string, unknown>)
+            : undefined;
+      const scopedPartial =
+        !didRunTransportOnly &&
+        Array.isArray(scopesToRecompute) &&
+        scopesToRecompute.length > 0 &&
+        !!priorForScoped &&
+        Object.keys(priorForScoped).length > 0;
+      const rollbackSnap = (state.metadata as any)?.research_atomic_rollback_snapshot as
+        | Record<string, unknown>
+        | undefined;
       const ctx = {
         requestId: state.request_id,
         routeDirectionId: request.route_direction_id ?? undefined,
@@ -8098,9 +8426,54 @@ ${JSON.stringify(routingDecision, null, 2)}
               researchMode: 'transport_only' as const,
               priorResearchData: priorResearch,
             }
-          : {}),
+          : scopedPartial
+            ? {
+                researchMode: 'scoped_partial' as const,
+                priorResearchData: priorForScoped,
+                researchScopesToRecompute: scopesToRecompute,
+                ...(rollbackSnap && Object.keys(rollbackSnap).length > 0
+                  ? { researchAtomicRollbackSnapshot: rollbackSnap }
+                  : {}),
+              }
+            : {}),
       };
-      const { newState, researchData } = await this.decisionKernel.executeResearch(decisionState, ctx);
+      const researchExecutionKind = didRunTransportOnly
+        ? 'TRANSPORT_ONLY'
+        : scopedPartial
+          ? 'SCOPED_PARTIAL'
+          : 'FULL';
+      const researchCloneBeforeKernel = cloneResearchRecord(state.research_data as Record<string, unknown>);
+      let newState!: DecisionState;
+      let researchData!: Record<string, unknown>;
+      let teamAuditLog: ResearchTeamAuditEntry[] | undefined;
+      try {
+        const out = await this.decisionKernel.executeResearch(decisionState, ctx);
+        newState = out.newState;
+        researchData = out.researchData;
+        teamAuditLog = out.teamAuditLog;
+      } catch (kernelErr: unknown) {
+        const msg = kernelErr instanceof Error ? kernelErr.message : String(kernelErr);
+        if (researchCloneBeforeKernel && Object.keys(researchCloneBeforeKernel).length > 0) {
+          state.research_data = cloneResearchRecord(researchCloneBeforeKernel) as any;
+        } else {
+          delete state.research_data;
+        }
+        this.clearResearchAtomicPendingMetadata(state);
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'RESEARCH',
+          actor: 'Orchestrator',
+          inputs_summary: 'Kernel RESEARCH 失败，已恢复 research_data 至 Kernel 调用前快照',
+          outputs_summary: `RESEARCH_FAILURE_RESTORED: ${msg.slice(0, 240)}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'RESEARCH_FAILURE_RESTORED',
+            error_message: msg.slice(0, 500),
+          },
+        });
+        throw kernelErr;
+      }
       const derived = decisionStateToOrchestratorState(newState, state);
       Object.assign(state, derived);
       state.research_data = researchData;
@@ -8130,6 +8503,32 @@ ${JSON.stringify(routingDecision, null, 2)}
           }
         }
       }
+      if (teamAuditLog?.length) {
+        (state.metadata as any) = {
+          ...(state.metadata ?? {}),
+          last_team_execution: {
+            at: new Date().toISOString(),
+            request_id: state.request_id,
+            research_execution_kind: researchExecutionKind,
+            team_audit_log: teamAuditLog,
+          },
+        };
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'RESEARCH',
+          actor: 'Orchestrator',
+          inputs_summary: 'Research Team 执行审计（Kernel）',
+          outputs_summary: formatResearchTeamAuditOutputsZh(teamAuditLog),
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'RESEARCH_TEAM_AUDIT',
+            request_id: state.request_id,
+            research_execution_kind: researchExecutionKind,
+            team_audit_log: teamAuditLog,
+          },
+        });
+      }
       state.decision_log.push({
         request_id: state.request_id,
         step: 'RESEARCH',
@@ -8142,12 +8541,31 @@ ${JSON.stringify(routingDecision, null, 2)}
           duration_ms: Date.now() - stepStartTime,
           data_types: Object.keys(researchData),
           ...(didRunTransportOnly ? { system_action: 'TRANSPORT_RESEARCH_FOLLOWUP', research_mode: 'transport_only' } : {}),
+          ...(scopedPartial
+            ? {
+                research_mode: 'scoped_partial',
+                research_scopes_to_recompute: scopesToRecompute,
+              }
+            : {}),
+          ...(teamAuditLog?.length
+            ? {
+                research_execution_kind: researchExecutionKind,
+                team_audit_entry_count: teamAuditLog.length,
+              }
+            : {}),
         },
       });
       state.metadata.last_updated_at = new Date().toISOString();
+      this.clearResearchAtomicPendingMetadata(state);
       await this.generateDecisionStepForStep(state, 'RESEARCH', 'LocalInsight');
       await this.researchPriorSnapshot?.save(request, researchData as Record<string, unknown>);
       return newState;
+    }
+    if ((state.metadata as any)?.pending_research_prior_for_kernel) {
+      this.logger.warn(
+        `[Claude Orchestrator] RESEARCH 降级路径：KERNEL_NATIVE_EXECUTION 关闭，丢弃 pending COW 元数据 request_id=${state.request_id}`,
+      );
+      this.clearResearchAtomicPendingMetadata(state);
     }
     return this.executePhaseViaKernel(decisionState, state, 'RESEARCH', () =>
       this.executeResearchStep(request, context, state, llmProvider, decisionState),
@@ -11123,11 +11541,17 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.logger.debug(`[Claude Orchestrator] 执行 NARRATE 步骤...`);
 
     try {
+      const rd0 = state.research_data as Record<string, unknown> | undefined;
+      const rawEbpNegotiation = rd0?.__research_conflict_negotiation;
+      const narrateEbpReport = isResearchConflictNegotiationReport(rawEbpNegotiation) ? rawEbpNegotiation : undefined;
+      const narrateRealtimeRerollCount = readRealtimeRerollCount(rd0);
+
       if (this.decisionKernel && state.itinerary && state.gate_result) {
         const narrateCtx: import('../../decision/kernel/interfaces/phase-executor.interface').NarrateExecutorContext = {
           requestId: state.request_id,
           userId: request.user_id,
           orchestratorState: state,
+          ...(narrateEbpReport ? { researchConflict: narrateEbpReport } : {}),
         };
         const dso = this.decisionKernel.createInitialState(state.request_id, this.kernelCreateInitialOpts(request, state));
         const result = await this.decisionKernel.executeNarrate(dso, narrateCtx);
@@ -11159,11 +11583,15 @@ ${JSON.stringify(routingDecision, null, 2)}
             confidence: 0.9,
           } as GateResult);
         try {
+          const fbState = {
+            ...state,
+            ...(narrateEbpReport ? { narration_research_conflict: narrateEbpReport } : {}),
+          };
           const fb = await this.narratorAgent.narrate(
             state.itinerary as Itinerary,
             gate,
             state.decision_log ?? [],
-            state,
+            fbState,
           );
           state.narration = fb as any;
           this.logger.debug(
@@ -11172,6 +11600,13 @@ ${JSON.stringify(routingDecision, null, 2)}
         } catch (e: any) {
           this.logger.warn(`[Claude Orchestrator] NARRATE fallback narrator failed: ${e?.message ?? e}`);
         }
+      }
+
+      let manifestAudit: { collapsed_suture_count: number } | undefined;
+      if (state.narration && state.research_data && typeof state.research_data === 'object') {
+        const { mergeResearchManifestIntoNarration } = await import('../utils/narrator-research-manifest-hints.util');
+        manifestAudit = { collapsed_suture_count: 0 };
+        state.narration = mergeResearchManifestIntoNarration(state.narration as any, state, manifestAudit) as any;
       }
 
       state.decision_log.push({
@@ -11186,6 +11621,24 @@ ${JSON.stringify(routingDecision, null, 2)}
         timestamp: new Date().toISOString(),
         metadata: {
           duration_ms: Date.now() - stepStartTime,
+          ...(narrateEbpReport
+            ? {
+                ebp_stance: narrateEbpReport.primary_narrative_stance,
+                conflict_count: narrateEbpReport.items.length,
+                ...(narrateEbpReport.stitch_tactic ? { stitch_tactic: narrateEbpReport.stitch_tactic } : {}),
+                ...(narrateEbpReport.memory_replay
+                  ? { decision_source: MEMORY_REPLAY_DECISION_SOURCE }
+                  : {}),
+              }
+            : {}),
+          ...(manifestAudit && manifestAudit.collapsed_suture_count > 0
+            ? { collapsed_suture_count: manifestAudit.collapsed_suture_count }
+            : {}),
+          ...(narrateRealtimeRerollCount > 0 ? { realtime_reroll_count: narrateRealtimeRerollCount } : {}),
+          effective_voice_tone:
+            state.narration && typeof state.narration === 'object'
+              ? ((state.narration as { voice_tone_modifier?: string }).voice_tone_modifier ?? null)
+              : null,
         },
       });
 

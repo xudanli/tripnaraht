@@ -14,6 +14,9 @@ import type {
   VerificationIssue,
 } from '../decision-state.types';
 import type { RepairTrace, SimulatedRepairTrace } from '../../../agent/services/route-feasibility.types';
+import type { ResearchAssetScope } from '../../../agent/utils/research-asset-scope.util';
+import type { UserCognitiveProfile } from '../../../agent/memory/experience-replay/user-cognitive-profile.types';
+import type { ResearchConflictNegotiationReport } from '../../../agent/teams/research/research-conflict-negotiation.types';
 
 /** 阶段执行上下文 */
 export interface PhaseExecutorContext {
@@ -42,6 +45,10 @@ export interface PhaseExecutorContext {
     party?: { count: number; fitness_level?: string; has_elderly?: boolean };
     party_profile?: { risk_tolerance?: string; fitness?: string };
     constraints?: { vehicle_type?: '2WD' | '4WD' };
+    /** 行程总预算（元或与上游一致）；5.0 Leader 预分桶与财务审计用 */
+    total_budget?: number;
+    totalBudget?: number;
+    budget?: { total?: number; amount?: number; currency?: string };
   };
   /** VERIFY 等阶段可选：用户画像偏好（如 transport_preferences） */
   user_profile?: {
@@ -55,9 +62,21 @@ export interface PhaseExecutorContext {
   recent_messages?: string[];
   /**
    * `transport_only`：澄清起终点后仅重跑 transport.search，并合并 `priorResearchData`（避免整段 RESEARCH 重跑）。
+   * `scoped_partial`：合并 `priorResearchData` 后，仅对 `researchScopesToRecompute` 列出的资产域重跑对应子管线（2.0 局部回溯）。
    */
-  researchMode?: 'full' | 'transport_only';
+  researchMode?: 'full' | 'transport_only' | 'scoped_partial';
   priorResearchData?: Record<string, unknown>;
+  /** `researchMode === 'scoped_partial'` 时必填：要重新收集的研究资产域（与 `research-asset-scope.util` 对齐） */
+  researchScopesToRecompute?: ResearchAssetScope[];
+  /**
+   * invalidation COW：无效化**前**的完整 research 快照，供 `live_hotel_refresh` 失败时按 hotel 域缝合或 Trace 对齐。
+   */
+  researchAtomicRollbackSnapshot?: Record<string, unknown>;
+  /**
+   * 4.0 Experience Replay：由 `MemoryKernelService` 在 `MEMORY_KERNEL_LOAD_BUDGET_MS` 内注入的非 PII 认知侧写；
+   * 缺省或未加载成功时不存在（走 3.0 无记忆路径）。
+   */
+  userCognitiveProfile?: UserCognitiveProfile;
 }
 
 /** GateResult 兼容结构（避免直接依赖 trip-plan.interface） */
@@ -79,6 +98,10 @@ export interface ItineraryLike {
   request_id: string;
   days: Array<{ date: string; items: unknown[] }>;
   metadata?: Record<string, unknown>;
+  /** itinerary.generate 治理输出：与 `days` 并列的控制面，勿从 metadata 推断 */
+  resultType?: import('../../../world/operational/execution-governance.contract').ItineraryGenerateResultType;
+  partialExecutionState?: import('../../../world/operational/execution-governance.contract').PartialExecutionState;
+  executionDecision?: import('../../../world/operational/execution-governance.contract').ExecutionDecision;
 }
 
 /** PLAN_GEN 执行器在空草案时回传的说明，供 Kernel 写入 `systemState.planGenTerminalFailure` */
@@ -220,6 +243,25 @@ export interface NarrationEvidenceCard {
 
 export type NarrationWarningEntry = string | NarrationEvidenceCard;
 
+/** Harness `__research_asset_manifest` → NARRATOR / BFF 结构化提示（2.0） */
+export type NarrationResearchUiHint = {
+  scope: string;
+  freshness: string;
+  message_zh: string;
+  attribution?: string;
+};
+
+/** NARRATE：语气修饰符（2.0 manifest + 3.0 EBP 立场映射） */
+export type NarrationVoiceToneModifier =
+  | 'neutral'
+  | 'reassuring_transparency'
+  | 'professional_authoritative'
+  | 'rational_economical'
+  /** 5.1：预算仲裁紧缩重跑后，强调高性价比与透明「省钱」叙事 */
+  | 'rational_frugal'
+  /** 6.1：挫败感熔断时，共情安抚优先于「理性节俭」表功 */
+  | 'empathetic_reassurance';
+
 /** NARRATE 阶段叙述输出（P3 C） */
 export interface NarrationLike {
   user_friendly_summary: string;
@@ -227,12 +269,25 @@ export interface NarrationLike {
   highlights: string[];
   tips: string[];
   warnings?: NarrationWarningEntry[];
+  /** 研究域新鲜度/归因的结构化提示（UI 卡片绑定） */
+  research_ui_hints?: NarrationResearchUiHint[];
+  /** 语气修饰：研究新鲜度 / EBP 协商立场（BFF / TTS / UI） */
+  voice_tone_modifier?: NarrationVoiceToneModifier;
+  /** BFF：EBP / 冲突协商后的视觉层建议（多模态前端） */
+  visual_hint?: string;
+  /** BFF：语音韵律 / TTS 建议（多模态语音） */
+  audio_prosody?: string;
 }
 
 /** NARRATE 阶段执行器上下文（P3 C：orchestratorState 含 itinerary/gate_result/decision_log） */
 export interface NarrateExecutorContext extends PhaseExecutorContext {
   /** OrchestratorState 快照，供 NarratorAgent.narrate 使用 */
   orchestratorState?: unknown;
+  /**
+   * MAT 3.0+：Research Team EBP 协商报告；由编排器从 `research_data.__research_conflict_negotiation` 提取后注入，
+   * NarrateExecutor 写入 `orchestratorState.narration_research_conflict` 供 Narrator 消费。
+   */
+  researchConflict?: ResearchConflictNegotiationReport;
 }
 
 /** NARRATE 阶段执行器（P3 C） */

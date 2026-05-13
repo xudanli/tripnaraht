@@ -20,7 +20,15 @@ import { WorldModelCollectorService } from './shared/world-model-collector.servi
 import { PredictionCollectorService } from './shared/prediction-collector.service';
 import { TripContextExtractorService } from './shared/trip-context-extractor.service';
 import { ContextHydrationService } from './shared/context-hydration.service';
-import { ResearchExecutorService } from './research-executor.service';
+import { ResearchPipelineService } from '../teams/research/research-pipeline.service';
+import { ResearchTeamLeaderService } from '../teams/research/research-team-leader.service';
+import { HotelResearchMember } from '../teams/research/hotel-research.member';
+import { FlightResearchMember } from '../teams/research/flight-research.member';
+import { TransportResearchMember } from '../teams/research/transport-research.member';
+import { DestinationResearchMember } from '../teams/research/destination-research.member';
+import { ComplianceResearchMember } from '../teams/research/compliance-research.member';
+import { ResearchMemberRegistry } from '../teams/research/research-member.registry';
+import { ResearchTeamBusService } from '../teams/research/research-team-bus.service';
 import { GateEvalExecutorService } from './gate-eval-executor.service';
 import { HardTruthRuleResolverService } from '../services/hard-truth-rule-resolver.service';
 import { PlanGenExecutorService } from './plan-gen-executor.service';
@@ -58,7 +66,15 @@ import { TrainingModule } from '../training/training.module';
     PredictionCollectorService,
     TripContextExtractorService,
     ContextHydrationService,
-    ResearchExecutorService,
+    DestinationResearchMember,
+    HotelResearchMember,
+    FlightResearchMember,
+    TransportResearchMember,
+    ComplianceResearchMember,
+    ResearchMemberRegistry,
+    ResearchTeamBusService,
+    ResearchPipelineService,
+    ResearchTeamLeaderService,
     HardTruthRuleResolverService,
     GateEvalExecutorService,
     PlanGenExecutorService,
@@ -75,7 +91,9 @@ import { TrainingModule } from '../training/training.module';
     PredictionCollectorService,
     TripContextExtractorService,
     ContextHydrationService,
-    ResearchExecutorService,
+    ResearchPipelineService,
+    ResearchTeamBusService,
+    ResearchTeamLeaderService,
     HardTruthRuleResolverService,
     GateEvalExecutorService,
     PlanGenExecutorService,

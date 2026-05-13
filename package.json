@@ -34,6 +34,8 @@
     "prisma:migrate-deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "seed:admin": "npx tsx scripts/seed-admin-platform-user.ts",
+    "staging:seed:iceland-wind": "npx tsx scripts/seed-iceland-ledger-drift-staging.ts",
+    "staging:clean:iceland": "npx tsx scripts/staging-clean-iceland-memory.ts",
     "rag:backfill-chunk-categories": "npx tsx scripts/backfill-chunk-categories.ts",
     "migrate:decision-draft": "npx tsx scripts/run-decision-draft-migration.ts",
     "migrate:add-debug-info": "npx tsx scripts/add-debug-info-column.ts",

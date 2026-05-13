@@ -2,6 +2,7 @@ import {
   formatGateEvalOutputsZh,
   formatIntakeOutputsZh,
   formatResearchOutputsZh,
+  formatResearchTeamAuditOutputsZh,
   formatStateUpdateOutputsZh,
   formatVerifyOutputsZh,
 } from './decision-log-user-facing.zh.util';
@@ -29,6 +30,22 @@ describe('decision-log-user-facing.zh.util', () => {
     const s = formatResearchOutputsZh(['transport_evidence', 'poi_evidence', 'unknown_key']);
     expect(s).toMatch(/3 类/);
     expect(s).toContain('交通');
+  });
+
+  it('formatResearchTeamAuditOutputsZh：执行形态与成员规划', () => {
+    const s = formatResearchTeamAuditOutputsZh([
+      {
+        action: 'plan_members',
+        detail: {
+          research_execution_kind: 'SCOPED_PARTIAL',
+          members_planned: ['HotelResearchMember'],
+        },
+      },
+      { action: 'execute', duration_ms: 42 },
+    ]);
+    expect(s).toContain('SCOPED_PARTIAL');
+    expect(s).toContain('HotelResearchMember');
+    expect(s).toContain('42');
   });
 
   it('formatGateEvalOutputsZh：放行措辞', () => {

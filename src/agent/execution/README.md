@@ -8,7 +8,7 @@ Phase Executors 实现专利「Conductor 只调 Kernel」：业务逻辑从 Orch
 Conductor (claude-orchestrator.service.ts)
   └─ KERNEL_NATIVE_EXECUTION=true 时
        └─ Kernel.executeResearch / executeGateEval / executePlanGen / executeVerify / executeRepair
-            └─ ResearchExecutorService / GateEvalExecutorService / PlanGenExecutorService / VerifyExecutorService / RepairExecutorService
+            └─ ResearchPipelineService / GateEvalExecutorService / PlanGenExecutorService / VerifyExecutorService / RepairExecutorService
   └─ KERNEL_NATIVE_EXECUTION=false 时（降级）
        └─ executePhaseViaKernel(..., () => execute*Step(...))
 ```
@@ -17,7 +17,8 @@ Conductor (claude-orchestrator.service.ts)
 
 | 文件 | 职责 |
 |------|------|
-| `research-executor.service.ts` | RESEARCH：Skills + WorldModel + Prediction |
+| `research-executor.service.ts` | **弃用占位**：仅 re-export `ResearchPipelineService`；实现见 `../teams/research/research-pipeline.service.ts` |
+| `../teams/research/research-pipeline.service.ts` | RESEARCH：拓扑管线 + Member 调度（MAT 3.0） |
 | `gate-eval-executor.service.ts` | GATE_EVAL：Readiness + GatekeeperAgent |
 | `plan-gen-executor.service.ts` | PLAN_GEN：itinerary.generate |
 | `verify-executor.service.ts` | VERIFY：itinerary.verify |

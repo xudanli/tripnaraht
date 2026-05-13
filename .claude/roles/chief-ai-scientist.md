@@ -347,7 +347,7 @@ INTAKE → STATE_UPDATE → RESEARCH → GATE_EVAL → CONTEXT_BUILD → PLAN_GE
 
 **Kernel 与 Phase Executors**（`DECISION_KERNEL_ENABLED=true` 且 `KERNEL_NATIVE_EXECUTION=true` 时）：
 - **INTAKE** → `Kernel.executeIntake()` → IntakeExecutorService
-- **RESEARCH** → `Kernel.executeResearch()` → ResearchExecutorService
+- **RESEARCH** → `Kernel.executeResearch()` → `ResearchPipelineService`（`research-pipeline.service.ts`）
 - **GATE_EVAL** → `Kernel.executeGateEval()` → GateEvalExecutorService
 - **PLAN_GEN** → `Kernel.executePlanGen()` → PlanGenExecutorService
 - **VERIFY** → `Kernel.executeVerify()` → VerifyExecutorService

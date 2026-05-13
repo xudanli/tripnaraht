@@ -546,6 +546,136 @@ export function buildGeoCheckHazardZonesSchema() {
   };
 }
 
+/** P0 Runtime OS — worldState.summarize */
+export function buildWorldStateSummarizeSchema() {
+  return {
+    tripId: z.string().optional().describe('行程 ID；与 world / slices 三选一'),
+    world: z.record(z.any()).optional().describe('已构建的 WorldModelContext（physical/human/routeDirection）'),
+    slices: z
+      .object({
+        weather: z.any().optional(),
+        road: z.any().optional(),
+        safeTravel: z.any().optional(),
+        rental: z.any().optional(),
+        daylight: z.any().optional(),
+      })
+      .optional()
+      .describe('各域工具原始结果切片（无 trip 时的保守合并）'),
+    gatherIcelandDomainSlices: z
+      .boolean()
+      .optional()
+      .describe('tripId+冰岛时是否拉取 SafeTravel/rental/daylight/fRoad（默认 true）'),
+    routeBrief: z
+      .object({
+        includesFRoad: z.boolean().optional(),
+        includesHighlands: z.boolean().optional(),
+      })
+      .optional()
+      .describe('裁决器用路线摘要'),
+    vehiclePolicy: z
+      .object({
+        drivetrain: z.enum(['2WD', '4WD', 'AWD', 'unknown']).optional(),
+        camper: z.boolean().optional(),
+      })
+      .optional()
+      .describe('裁决器用车辆策略'),
+  };
+}
+
+/** P0 Runtime OS — readiness.assess */
+export function buildReadinessAssessSchema() {
+  return {
+    vehicle: z
+      .object({
+        class: z.string().optional(),
+        drivetrain: z.enum(['2WD', '4WD', 'AWD', 'unknown']).optional(),
+        studdedTires: z.boolean().optional(),
+      })
+      .optional(),
+    weather: z
+      .object({
+        severity: z.enum(['low', 'medium', 'high']).optional(),
+        windMps: z.number().optional(),
+        summary: z.string().optional(),
+      })
+      .optional(),
+    route: z
+      .object({
+        includesFRoad: z.boolean().optional(),
+        includesHighlands: z.boolean().optional(),
+        maxRoadGradePct: z.number().optional(),
+        summary: z.string().optional(),
+      })
+      .optional(),
+    daylight: z
+      .object({
+        nightDrivingRisk: z.enum(['low', 'medium', 'high']).optional(),
+        usableDaylightH: z.number().optional(),
+      })
+      .optional(),
+    experience: z
+      .object({
+        winterDriving: z.enum(['none', 'some', 'strong']).optional(),
+        fRoadExperience: z.boolean().optional(),
+      })
+      .optional(),
+  };
+}
+
+/** P0 Runtime OS — policy.resolve */
+export function buildPolicyResolveSchema() {
+  return {
+    strategy: z.record(z.any()).optional(),
+    userPreference: z.record(z.any()).optional(),
+    operationalWorldState: z
+      .object({
+        operationalRisk: z.enum(['low', 'medium', 'high']),
+        blockingFactors: z.array(z.string()),
+        warnings: z.array(z.string()),
+        recommendedPolicies: z.array(z.string()),
+        confidence: z.number(),
+      })
+      .optional(),
+    operationalArbitration: z
+      .object({
+        executionStatus: z.enum(['safe', 'caution', 'dangerous', 'blocked']),
+        blockingReasons: z.array(z.string()),
+        recommendedActions: z.array(z.string()),
+        enforcedPolicies: z.array(z.string()),
+        confidence: z.number(),
+        rawSeverity: z.string(),
+      })
+      .optional()
+      .describe('来自 worldState.summarize 的运行裁决；传入时 policy.resolve 写入 executionPolicyHook'),
+    readiness: z
+      .object({
+        executable: z.boolean(),
+        blockers: z.array(z.string()),
+        warnings: z.array(z.string()),
+        mitigationActions: z.array(z.string()),
+      })
+      .optional(),
+  };
+}
+
+/** P0 Runtime OS — decision.compress */
+export function buildDecisionCompressSchema() {
+  return {
+    toolResults: z
+      .array(
+        z.object({
+          tool: z.string().optional(),
+          ok: z.boolean().optional(),
+          summary: z.string().optional(),
+          data: z.any().optional(),
+        }),
+      )
+      .optional(),
+    conversationSnippet: z.array(z.string()).optional(),
+    maxFacts: z.number().min(4).max(60).optional(),
+  };
+}
+
 export function getSchemaForSkill(skillName: string): any {
   const schemaMap: Record<string, () => any> = {
     'dem.get_profile': buildDemGetProfileSchema,
@@ -576,6 +706,10 @@ export function getSchemaForSkill(skillName: string): any {
     'readiness.summarizeRisks': buildReadinessSummarizeRisksSchema,
     'readiness.checkVisaWindow': buildReadinessCheckVisaWindowSchema,
     'world.buildContext': buildWorldBuildContextSchema,
+    'worldState.summarize': buildWorldStateSummarizeSchema,
+    'readiness.assess': buildReadinessAssessSchema,
+    'policy.resolve': buildPolicyResolveSchema,
+    'decision.compress': buildDecisionCompressSchema,
     'trip.quickEvaluate': buildTripQuickEvaluateSchema,
     'countryPack.suggestImprovements': buildCountryPackSuggestImprovementsSchema,
     'countryPack.newSkeleton': buildCountryPackNewSkeletonSchema,

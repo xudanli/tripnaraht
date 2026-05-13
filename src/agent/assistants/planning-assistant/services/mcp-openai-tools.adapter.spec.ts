@@ -69,4 +69,37 @@ describe('buildOpenAiToolsFromMcpDefinitions', () => {
     expect(tools[0].function.name).toBe('weather_getCurrentWeather');
     expect(droppedToolNames).toEqual(['google-calendar.createEvent']);
   });
+
+  it('applies runtime MCP allowlist after audited whitelist', () => {
+    const defs: McpToolDefinition[] = [
+      {
+        serviceName: 'weather',
+        toolName: 'weather.getCurrentWeather',
+        displayName: '当前天气',
+        description: '获取当前天气',
+        category: 'weather',
+        parameters: [{ name: 'location', type: 'string', required: true, description: '城市' }],
+        returnType: 'WeatherData',
+        examples: [],
+      },
+      {
+        serviceName: 'exa',
+        toolName: 'exa.webSearch',
+        displayName: '搜索',
+        description: 'web',
+        category: 'search',
+        parameters: [{ name: 'q', type: 'string', required: true, description: 'q' }],
+        returnType: 'x',
+        examples: [],
+      },
+    ];
+
+    const { tools, droppedToolNames } = buildOpenAiToolsFromMcpDefinitions(defs, {
+      runtimeAllowedMcpToolNames: new Set(['weather.getCurrentWeather']),
+    });
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0].function.name).toBe('weather_getCurrentWeather');
+    expect(droppedToolNames).toContain('exa.webSearch');
+  });
 });

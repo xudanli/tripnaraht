@@ -173,12 +173,27 @@ export class EmailVerificationService {
   }
 
   /**
+   * 非 production 环境下可用的固定测试验证码（勿用于生产）。
+   */
+  private isNonProdTestVerificationCode(code: string): boolean {
+    if (process.env.NODE_ENV === 'production') {
+      return false;
+    }
+    return code === '888888';
+  }
+
+  /**
    * 验证验证码
    */
   async verifyCode(email: string, code: string): Promise<boolean> {
     // 验证邮箱格式
     if (!this.validateEmail(email)) {
       throw new BadRequestException('无效的邮箱地址');
+    }
+
+    if (this.isNonProdTestVerificationCode(code)) {
+      this.logger.warn(`已使用固定测试验证码 888888（email=${email}，仅 NODE_ENV!=production 时有效）`);
+      return true;
     }
 
     // 查找验证码

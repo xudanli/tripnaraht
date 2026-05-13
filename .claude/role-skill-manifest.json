@@ -304,7 +304,7 @@
       "claude_md_section": "13.1",
       "default_paths": [
         ".claude/roles/decision-evidence-world-model-engineer.md",
-        "src/agent/execution/research-executor.service.ts",
+        "src/agent/teams/research/research-pipeline.service.ts",
         "src/skills/world/",
         "src/rag/"
       ],

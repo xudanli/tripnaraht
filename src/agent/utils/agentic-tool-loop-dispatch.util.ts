@@ -41,6 +41,12 @@ export function parseAgenticToolLoopFlag(raw?: string | null): boolean {
   return v === 'true' || v === '1' || v === 'yes';
 }
 
+/** FEATURE_AGENTIC_RUNTIME_MCP_CAP：在审计白名单之后按相位（及应急约束）再收窄 LLM 可见 MCP 工具面。 */
+export function parseAgenticRuntimeMcpCapFlag(raw?: string | null): boolean {
+  const v = String(raw ?? '').trim().toLowerCase();
+  return v === 'true' || v === '1' || v === 'yes';
+}
+
 /** FEATURE_TASK_CLOSURE_BOOKING：agentic 路径启用 booking Task Closure（Proposal→Policy→Execute）。 */
 export function parseFeatureTaskClosureBooking(raw?: string | null): boolean {
   const v = String(raw ?? '').trim().toLowerCase();

@@ -13,6 +13,7 @@ import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import {
   DecisionState,
   DecisionStatePatch,
+  EnvironmentState,
   StateHistoryDelta,
   ConstraintReport,
   OptimizationHints,
@@ -58,13 +59,17 @@ import type {
   IntakeExecutorContext,
   NarrateExecutorContext,
 } from './interfaces/phase-executor.interface';
-import { ResearchExecutorService } from '../../agent/execution/research-executor.service';
+import { ResearchPipelineService } from '../../agent/teams/research/research-pipeline.service';
+import { ResearchTeamLeaderService } from '../../agent/teams/research/research-team-leader.service';
+import type { ResearchTeamAuditEntry } from '../../agent/teams/research/research-team.types';
+import type { ResearchConflictNegotiationReport } from '../../agent/teams/research/research-conflict-negotiation.types';
 import { IntakeExecutorService } from '../../agent/execution/intake-executor.service';
 import { NarrateExecutorService } from '../../agent/execution/narrate-executor.service';
 import { GateEvalExecutorService } from '../../agent/execution/gate-eval-executor.service';
 import { PlanGenExecutorService } from '../../agent/execution/plan-gen-executor.service';
 import { VerifyExecutorService } from '../../agent/execution/verify-executor.service';
 import { MemoryContextAssemblerService } from '../../agent/memory/services/memory-context-assembler.service';
+import { MemoryKernelService } from '../../agent/memory/experience-replay/memory-kernel.service';
 import { RepairExecutorService } from '../../agent/execution/repair-executor.service';
 import { HarnessStepRunnerService } from '../../harness/runtime/harness-step-runner.service';
 import { HarnessTraceFilesystemExportService } from '../../harness/tracing/harness-trace-filesystem-export.service';
@@ -130,7 +135,7 @@ export class DecisionKernelService {
     private readonly optimizationAdapter: OptimizationEngineAdapterService,
     private readonly contextAdapter: ContextEngineAdapterService,
     private readonly feedbackAdapter: FeedbackEngineAdapterService,
-    @Optional() private readonly researchExecutor?: ResearchExecutorService,
+    @Optional() private readonly researchPipeline?: ResearchPipelineService,
     @Optional() private readonly gateEvalExecutor?: GateEvalExecutorService,
     @Optional() private readonly planGenExecutor?: PlanGenExecutorService,
     @Optional() private readonly verifyExecutor?: VerifyExecutorService,
@@ -145,6 +150,8 @@ export class DecisionKernelService {
     @Optional() private readonly harnessTraceFilesystemExport?: HarnessTraceFilesystemExportService,
     @Optional() private readonly harnessShadowMetrics?: HarnessShadowMetricsCollector,
     @Optional() private readonly memoryContextAssembler?: MemoryContextAssemblerService,
+    @Optional() private readonly researchTeamLeader?: ResearchTeamLeaderService,
+    @Optional() private readonly memoryKernel?: MemoryKernelService,
   ) {}
 
   /**
@@ -695,8 +702,13 @@ export class DecisionKernelService {
   async executeResearch(
     dso: DecisionState,
     ctx: PhaseExecutorContext,
-  ): Promise<{ newState: DecisionState; researchData: Record<string, unknown> }> {
-    if (!this.researchExecutor) {
+  ): Promise<{
+    newState: DecisionState;
+    researchData: Record<string, unknown>;
+    teamAuditLog?: ResearchTeamAuditEntry[];
+    conflictNegotiation?: ResearchConflictNegotiationReport;
+  }> {
+    if (!this.researchPipeline) {
       this.logger.warn('[Kernel] IResearchExecutor 未注入，无法执行 executeResearch');
       return { newState: dso, researchData: {} };
     }
@@ -725,7 +737,29 @@ export class DecisionKernelService {
       }
     }
     const startMs = Date.now();
-    const { researchData, environmentPatch } = await this.researchExecutor.execute(dso, ctx);
+    let researchData: Record<string, unknown>;
+    let environmentPatch: Partial<EnvironmentState>;
+    let teamAuditLog: ResearchTeamAuditEntry[] | undefined;
+    let conflictNegotiation: ResearchConflictNegotiationReport | undefined;
+    let execCtx = ctx;
+    if (this.memoryKernel && !ctx.userCognitiveProfile) {
+      const subject = ctx.userId?.trim() || ctx.requestId?.trim();
+      if (subject) {
+        const profile = await this.memoryKernel.loadProfileForSubject(subject);
+        if (profile) execCtx = { ...ctx, userCognitiveProfile: profile };
+      }
+    }
+    if (this.researchTeamLeader) {
+      const team = await this.researchTeamLeader.run(dso, execCtx);
+      researchData = team.researchData;
+      environmentPatch = team.environmentPatch;
+      teamAuditLog = team.teamAuditLog;
+      conflictNegotiation = team.conflictNegotiation;
+    } else {
+      const out = await this.researchPipeline.execute(dso, execCtx);
+      researchData = out.researchData;
+      environmentPatch = out.environmentPatch;
+    }
     const useAtomicResearch = process.env.DECISION_OS_RESEARCH_ATOMIC === '1';
     const historyDeltas: StateHistoryDelta[] = [];
     let newState = this.stateManager.merge(dso, {
@@ -968,7 +1002,7 @@ export class DecisionKernelService {
     this.logger.debug(
       `[Kernel] executeResearch 完成 duration_ms=${Date.now() - startMs} dataKeys=${Object.keys(researchData).length}`,
     );
-    return { newState, researchData };
+    return { newState, researchData, teamAuditLog, conflictNegotiation };
   }
 
   /**
@@ -1114,6 +1148,27 @@ export class DecisionKernelService {
       request_id: ctx.requestId,
       days: [],
     });
+
+    const grb = dso.harnessRuntime?.governance_runtime_branch_v1;
+    if (grb?.branchType === 'replanning') {
+      const failure: PlanGenTerminalFailure = {
+        code: 'GOVERNANCE_REPLANNING_DEFERRED',
+        message:
+          'Governance runtime 要求重规划：已跳过常规 itinerary 生成，请按 replanningIntent 收敛走廊/载具后再扩线。',
+        detail: grb.replanningIntent?.trigger,
+      };
+      return {
+        newState: this.stateManager.merge(dso, {
+          tripState: { planDraft: emptyItin() },
+          systemState: {
+            requestId: ctx.requestId,
+            currentPhase: 'PLAN_GEN',
+            planGenTerminalFailure: failure,
+          } as any,
+        }),
+        itinerary: emptyItin(),
+      };
+    }
 
     if (!this.planGenExecutor) {
       this.logger.warn('[Kernel] PlanGenExecutorService 未注入');

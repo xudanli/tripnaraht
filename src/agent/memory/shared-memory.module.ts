@@ -5,10 +5,11 @@
  */
 import { Global, Module } from '@nestjs/common';
 import { MemoryModule } from './memory.module';
+import { ExperienceReplayModule } from './experience-replay/experience-replay.module';
 
 @Global()
 @Module({
-  imports: [MemoryModule],
-  exports: [MemoryModule],
+  imports: [MemoryModule, ExperienceReplayModule],
+  exports: [MemoryModule, ExperienceReplayModule],
 })
 export class SharedMemoryModule {}

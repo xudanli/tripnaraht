@@ -163,87 +163,105 @@ export class ContextEngineerService {
     if (useCache && this.contextCache) {
       const cached = await this.contextCache.get(cacheKey);
       if (cached.hit) {
-        this.logger.debug(`✅ ${cached.level}缓存命中: ${cacheKey}`);
-        if (this.metricsService) {
-          await this.metricsService.recordMetrics(cached.package, {
-            tripId: resolvedOptions.tripId,
-            phase: resolvedOptions.phase,
-            agent: resolvedOptions.agent,
-            buildTimeMs: Date.now() - buildStartTime,
-            cacheHit: true,
-            cacheLevel: cached.level,
-            skillsCalled: [],
-            userQuery: resolvedOptions.userQuery,
-          });
-        }
-        if (this.prometheusMetrics) {
-          this.prometheusMetrics.recordBuild(
-            resolvedOptions.phase,
-            resolvedOptions.agent,
-            Date.now() - buildStartTime,
-            true,
-            cached.level,
+        if (this.shouldInvalidateCachedContextForPhaseShift(cached.package, resolvedOptions.phase)) {
+          this.logger.debug(
+            `ContextCache 命中但 phase 不一致（包=${cached.package.phase} 请求=${resolvedOptions.phase}），跳过缓存`,
           );
+        } else {
+          this.logger.debug(`✅ ${cached.level}缓存命中: ${cacheKey}`);
+          if (this.metricsService) {
+            await this.metricsService.recordMetrics(cached.package, {
+              tripId: resolvedOptions.tripId,
+              phase: resolvedOptions.phase,
+              agent: resolvedOptions.agent,
+              buildTimeMs: Date.now() - buildStartTime,
+              cacheHit: true,
+              cacheLevel: cached.level,
+              skillsCalled: [],
+              userQuery: resolvedOptions.userQuery,
+            });
+          }
+          if (this.prometheusMetrics) {
+            this.prometheusMetrics.recordBuild(
+              resolvedOptions.phase,
+              resolvedOptions.agent,
+              Date.now() - buildStartTime,
+              true,
+              cached.level,
+            );
+          }
+          return cached.package;
         }
-        return cached.package;
       }
     } else if (useCache) {
       // 降级：无 ContextCache 时使用原有 L1/L2 逻辑
       const memoryCached = this.memoryCache.get(cacheKey);
       if (memoryCached && Date.now() - memoryCached.timestamp < this.l1CacheTtl) {
-        this.logger.debug(`✅ L1缓存命中(降级): ${cacheKey}`);
-        if (this.metricsService) {
-          await this.metricsService.recordMetrics(memoryCached.package, {
-            tripId: resolvedOptions.tripId,
-            phase: resolvedOptions.phase,
-            agent: resolvedOptions.agent,
-            buildTimeMs: Date.now() - buildStartTime,
-            cacheHit: true,
-            cacheLevel: 'L1',
-            skillsCalled: [],
-            userQuery: resolvedOptions.userQuery,
-          });
-        }
-        if (this.prometheusMetrics) {
-          this.prometheusMetrics.recordBuild(
-            options.phase,
-            options.agent,
-            Date.now() - buildStartTime,
-            true,
-            'L1',
+        if (this.shouldInvalidateCachedContextForPhaseShift(memoryCached.package, resolvedOptions.phase)) {
+          this.logger.debug(
+            `L1 缓存命中但 phase 不一致（包=${memoryCached.package.phase} 请求=${resolvedOptions.phase}），跳过缓存`,
           );
+        } else {
+          this.logger.debug(`✅ L1缓存命中(降级): ${cacheKey}`);
+          if (this.metricsService) {
+            await this.metricsService.recordMetrics(memoryCached.package, {
+              tripId: resolvedOptions.tripId,
+              phase: resolvedOptions.phase,
+              agent: resolvedOptions.agent,
+              buildTimeMs: Date.now() - buildStartTime,
+              cacheHit: true,
+              cacheLevel: 'L1',
+              skillsCalled: [],
+              userQuery: resolvedOptions.userQuery,
+            });
+          }
+          if (this.prometheusMetrics) {
+            this.prometheusMetrics.recordBuild(
+              options.phase,
+              options.agent,
+              Date.now() - buildStartTime,
+              true,
+              'L1',
+            );
+          }
+          return memoryCached.package;
         }
-        return memoryCached.package;
       }
       if (this.redisService) {
         try {
           const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
           const cached = await this.redisService.get<ContextPackage>(redisKey);
           if (cached) {
-            this.logger.debug(`✅ L2缓存命中(降级): ${cacheKey}`);
-            this.memoryCache.set(cacheKey, { package: cached, timestamp: Date.now() });
-            if (this.metricsService) {
-              await this.metricsService.recordMetrics(cached, {
-                tripId: resolvedOptions.tripId,
-                phase: resolvedOptions.phase,
-                agent: resolvedOptions.agent,
-                buildTimeMs: Date.now() - buildStartTime,
-                cacheHit: true,
-                cacheLevel: 'L2',
-                skillsCalled: [],
-                userQuery: resolvedOptions.userQuery,
-              });
-            }
-            if (this.prometheusMetrics) {
-              this.prometheusMetrics.recordBuild(
-                resolvedOptions.phase,
-                resolvedOptions.agent,
-                Date.now() - buildStartTime,
-                true,
-                'L2',
+            if (this.shouldInvalidateCachedContextForPhaseShift(cached, resolvedOptions.phase)) {
+              this.logger.debug(
+                `L2 缓存命中但 phase 不一致（包=${cached.phase} 请求=${resolvedOptions.phase}），跳过缓存`,
               );
+            } else {
+              this.logger.debug(`✅ L2缓存命中(降级): ${cacheKey}`);
+              this.memoryCache.set(cacheKey, { package: cached, timestamp: Date.now() });
+              if (this.metricsService) {
+                await this.metricsService.recordMetrics(cached, {
+                  tripId: resolvedOptions.tripId,
+                  phase: resolvedOptions.phase,
+                  agent: resolvedOptions.agent,
+                  buildTimeMs: Date.now() - buildStartTime,
+                  cacheHit: true,
+                  cacheLevel: 'L2',
+                  skillsCalled: [],
+                  userQuery: resolvedOptions.userQuery,
+                });
+              }
+              if (this.prometheusMetrics) {
+                this.prometheusMetrics.recordBuild(
+                  resolvedOptions.phase,
+                  resolvedOptions.agent,
+                  Date.now() - buildStartTime,
+                  true,
+                  'L2',
+                );
+              }
+              return cached;
             }
-            return cached;
           }
         } catch (error: any) {
           this.logger.warn(`从 L2 Redis 获取缓存失败: ${error.message}`);
@@ -358,6 +376,13 @@ export class ContextEngineerService {
         },
       };
 
+      await this.syncToolAllowlistToTripTaskConstraints(
+        options.tripId,
+        contextPackage,
+        toolAllowlist ?? [],
+        options.includeToolSelection,
+      );
+
       // 存储 Context Package（用于后台管理查询）
       this.packageStore.set(packageId, contextPackage);
       // 限制存储大小（最多保留 1000 个）
@@ -410,6 +435,66 @@ export class ContextEngineerService {
     } catch (error) {
       this.logger.error(`Failed to build context package: ${error}`, error instanceof Error ? error.stack : undefined);
       throw error;
+    }
+  }
+
+  /**
+   * 防御：包内 phase 与当前请求不一致时视为缓存失配（序列化漂移、老 key、错误回源等），
+   * 跳过命中并走 doBuild，以便 tools.select 与 TripTask.constraints.toolAllowlist 与执行硬闸对齐。
+   */
+  private shouldInvalidateCachedContextForPhaseShift(
+    pkg: ContextPackage,
+    requestPhase: string | undefined,
+  ): boolean {
+    const p = String(pkg?.phase ?? '').trim().toLowerCase();
+    const r = String(requestPhase ?? '').trim().toLowerCase();
+    if (!p && !r) return false;
+    return p !== r;
+  }
+
+  /**
+   * 将 tools.select 产出的 toolAllowlist 写入 TripTaskMemory.constraints（Redis），
+   * 供 route_and_run Agentic MCP Runtime Cap 经 extractAgenticSkillAllowlistForMcpCap 读取。
+   * `includeToolSelection === false` 时不写入，避免用空结果覆盖上一轮推荐。
+   */
+  private async syncToolAllowlistToTripTaskConstraints(
+    tripId: string | undefined,
+    pkg: ContextPackage,
+    toolAllowlist: Array<{ name: string; reason: string; priority: number }>,
+    includeToolSelection: boolean | undefined,
+  ): Promise<void> {
+    if (!this.tripTaskMemory) return;
+    const tid = typeof tripId === 'string' ? tripId.trim() : '';
+    if (!tid) return;
+    if (includeToolSelection === false) return;
+
+    try {
+      const existing = await this.tripTaskMemory.get(tid);
+      const prevRaw = existing?.constraints;
+      const prev =
+        prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+          ? { ...(prevRaw as Record<string, unknown>) }
+          : {};
+
+      const entries = toolAllowlist.map((t) => ({
+        name: t.name,
+        reason: t.reason,
+        priority: t.priority,
+      }));
+
+      await this.tripTaskMemory.update(tid, {
+        constraints: {
+          ...prev,
+          toolAllowlist: entries,
+          tool_allowlist_context_package_id: pkg.id,
+          tool_allowlist_updated_at: pkg.createdAt,
+        },
+      });
+      this.logger.debug(
+        `[TripTaskMemory] synced constraints.toolAllowlist tripId=${tid} count=${entries.length} ctx=${pkg.id}`,
+      );
+    } catch (e: any) {
+      this.logger.warn(`[TripTaskMemory] sync constraints.toolAllowlist failed: ${e?.message}`);
     }
   }
 

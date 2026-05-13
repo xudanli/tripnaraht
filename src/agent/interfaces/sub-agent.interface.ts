@@ -8,6 +8,7 @@
  */
 
 import { OrchestratorState, TripPlanRequest, GateResult, Itinerary, DecisionLogEntry } from './trip-plan.interface';
+import type { NarrationLike } from '../../decision/kernel/interfaces/phase-executor.interface';
 
 /**
  * Planner Agent
@@ -155,17 +156,7 @@ export interface NarratorAgent {
     gateResult: GateResult,
     decisionLog: DecisionLogEntry[],
     context: OrchestratorState
-  ): Promise<{
-    user_friendly_summary: string;
-    day_by_day_narrative: Array<{
-      day: number;
-      date: string;
-      narrative: string;
-    }>;
-    highlights: string[];
-    tips: string[];
-    warnings?: string[];
-  }>;
+  ): Promise<NarrationLike>;
 }
 
 // ============================================================================

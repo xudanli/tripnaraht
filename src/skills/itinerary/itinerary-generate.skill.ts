@@ -16,6 +16,27 @@ import { applyTripPoiEvidencePatch, loadTripPoiEvidencePatch } from './itinerary
 import { injectCorridorDriveLegsIntoDays } from './itinerary-segment-tagger.util';
 import { resolveSparsePoiDayAllocation } from '../../agent/context-engine/utils/sparse-poi-day-allocation.util';
 import { DateTime } from 'luxon';
+import type { ResolvedPolicies } from '../runtime-os/types/runtime-os.types';
+import {
+  applyExecutionPolicyHookToItineraryDays,
+  shouldSuppressCorridorDriveInjection,
+  type ItineraryGovernanceApplyResult,
+} from './itinerary-execution-policy-hook.util';
+import type {
+  ExecutionDecision,
+  ItineraryGenerateResultType,
+  PartialExecutionState,
+} from '../../world/operational/execution-governance.contract';
+import { composeExecutionDecision } from '../../world/operational/execution-governance.contract';
+import {
+  buildExecutionGovernanceMemoryRecord,
+  type ExecutionGovernanceMemoryRecord,
+} from '../../agent/memory/execution/build-execution-governance-memory.util';
+import { GovernanceLedgerStoreService } from '../../agent/ledger/governance-ledger.store.service';
+import { compactGovernanceSnapshot } from '../../governance/snapshot/compact-governance-snapshot.util';
+import { validateGovernanceRecovery } from '../../governance/runtime-state-machine/validate-governance-recovery.util';
+import { completeGovernanceRecoveryTransition } from '../../governance/runtime-state-machine/complete-governance-recovery-transition.util';
+import type { RuntimeBranchDirective } from '../../governance/activation/runtime/runtime-branch-directive.types';
 
 /** 环境状态（专利实施例 2：含替代航班等） */
 export interface ItineraryGenerateEnvironmentState {
@@ -28,16 +49,25 @@ export interface ItineraryGenerateInput extends SkillInput {
   gate_result?: GateResult;
   /** 环境状态（如 REPLAN 后的替代航班），供 Day1 行程使用 */
   environment_state?: ItineraryGenerateEnvironmentState;
+  /** policy.resolve 的 executionPolicyHook；编排可从先前步骤自动注入 */
+  executionPolicyHook?: NonNullable<ResolvedPolicies['executionPolicyHook']>;
 }
 
 export interface ItineraryGenerateOutput extends SkillOutput {
   request_id: string;
   days: ItineraryDay[];
+  resultType: ItineraryGenerateResultType;
+  partialExecutionState: PartialExecutionState;
+  executionDecision: ExecutionDecision;
+  /** decision.memory.execution — 供后续记忆管线消费 */
+  executionGovernanceMemory?: ExecutionGovernanceMemoryRecord;
   metadata?: {
     total_days: number;
     total_cost_estimate?: number;
     robustness_score?: number;
     mode?: string;
+    /** 当传入 executionPolicyHook 并由生成路径消费时为 true（兼容字段；控制面见 executionDecision） */
+    execution_policy_hook_applied?: boolean;
   };
 }
 
@@ -67,9 +97,10 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
     @Optional() private readonly planningWorkbench?: PlanningWorkbenchAgentService,
     @Optional() private readonly incrementalGenerator?: IncrementalItineraryGeneratorService,
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly governanceLedger?: GovernanceLedgerStoreService,
   ) {
     this.logger.log(
-      `[ItineraryGenerateSkill] 已初始化, incrementalGenerator=${!!incrementalGenerator}, prisma=${!!this.prisma}`,
+      `[ItineraryGenerateSkill] 已初始化, incrementalGenerator=${!!incrementalGenerator}, prisma=${!!this.prisma}, governanceLedger=${!!this.governanceLedger}`,
     );
   }
 
@@ -78,7 +109,7 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
     this.logger.debug(`执行 itinerary.generate: request_id=${requestId}`);
 
     try {
-      const { request, research_data, gate_result, environment_state } = input;
+      const { request, research_data, gate_result, environment_state, executionPolicyHook } = input;
 
       const tripId =
         request.trip_id ??
@@ -116,15 +147,22 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
             environment_state,
             minDaysToTrigger: 3,
             sparsePoiDayAllocation: resolveSparsePoiDayAllocation(planningText),
+            executionPolicyHook,
+            governance_runtime_state: request.governance_runtime_state,
           });
-          return {
-            request_id: requestId,
-            days: result.itinerary.days,
+          return await this.finalizeGovernedOutput({
+            request: { ...request, request_id: requestId } as TripPlanRequest,
+            requestId,
+            gov: result.governanceApply,
+            hook: executionPolicyHook,
+            gate_result,
+            generator: 'incremental_itinerary_generator',
             metadata: {
-              total_days: result.itinerary.days.length,
+              total_days: result.governanceApply.days.length,
               mode: result.mode,
+              execution_policy_hook_applied: Boolean(executionPolicyHook),
             },
-          };
+          });
         }
       }
 
@@ -254,18 +292,131 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
       // 6. 计算鲁棒性评分
       const robustnessScore = this.calculateRobustnessScore(pois, gate_result, effectiveResearch);
 
-      return {
-        request_id: request.request_id,
-        days: injectCorridorDriveLegsIntoDays(itineraryDays, request.request_id),
+      const suppressed = shouldSuppressCorridorDriveInjection(executionPolicyHook);
+      const withDrives = suppressed
+        ? itineraryDays
+        : injectCorridorDriveLegsIntoDays(itineraryDays, request.request_id);
+      const gov = applyExecutionPolicyHookToItineraryDays(withDrives, executionPolicyHook, suppressed);
+
+      return await this.finalizeGovernedOutput({
+        request,
+        requestId: request.request_id,
+        gov,
+        hook: executionPolicyHook,
+        gate_result,
+        generator: 'itinerary.generate',
         metadata: {
-          total_days: days,
+          total_days: gov.days.length,
           total_cost_estimate: totalCostEstimate,
           robustness_score: robustnessScore,
+          execution_policy_hook_applied: Boolean(executionPolicyHook),
         },
-      };
+      });
     } catch (error: any) {
       this.logger.error(`itinerary.generate 失败: ${error?.message}`, error?.stack);
       throw error;
+    }
+  }
+
+  private async finalizeGovernedOutput(args: {
+    request: TripPlanRequest;
+    requestId: string;
+    gov: ItineraryGovernanceApplyResult;
+    hook: ItineraryGenerateInput['executionPolicyHook'];
+    gate_result?: GateResult;
+    generator: ExecutionGovernanceMemoryRecord['affectedGenerator'];
+    metadata: ItineraryGenerateOutput['metadata'];
+  }): Promise<ItineraryGenerateOutput> {
+    const executionDecision = composeExecutionDecision(args.hook, args.gov);
+    const executionGovernanceMemory =
+      args.hook || args.gov.suppressionApplied
+        ? buildExecutionGovernanceMemoryRecord({
+            affectedGenerator: args.generator,
+            hook: args.hook,
+            suppressionApplied: args.gov.suppressionApplied,
+            resultType: args.gov.resultType,
+            partialExecutionState: args.gov.partialExecutionState,
+            recoverySuggested: executionDecision.recoveryOptions,
+          })
+        : undefined;
+    const out: ItineraryGenerateOutput = {
+      request_id: args.requestId,
+      days: args.gov.days,
+      resultType: args.gov.resultType,
+      partialExecutionState: args.gov.partialExecutionState,
+      executionDecision,
+      metadata: args.metadata,
+      executionGovernanceMemory,
+    };
+    await this.tryCompleteGovernanceRecoveryClosure({
+      request: args.request,
+      requestId: args.requestId,
+      gov: args.gov,
+      gateResult: args.gate_result,
+    });
+    this.governanceLedger?.appendFromItineraryGenerate(args.request, {
+      resultType: out.resultType,
+      partialExecutionState: out.partialExecutionState,
+      executionDecision: out.executionDecision,
+      executionGovernanceMemory: out.executionGovernanceMemory,
+    });
+    return out;
+  }
+
+  /** RCC: RECOVERING → NORMAL after governed itinerary + RVL (single write authority). */
+  private async tryCompleteGovernanceRecoveryClosure(args: {
+    request: TripPlanRequest;
+    requestId: string;
+    gov: ItineraryGovernanceApplyResult;
+    gateResult?: GateResult;
+  }): Promise<void> {
+    const tripId =
+      args.request.trip_id ?? (args.request as { tripId?: string }).tripId ?? args.request.ontology_context?.trip_id;
+    if (!this.governanceLedger || !tripId?.trim()) return;
+    if (args.request.governance_runtime_state !== 'RECOVERING') return;
+    if (args.gateResult?.gate_result === 'BLOCK') return;
+    if (args.gov.resultType !== 'itinerary') return;
+
+    let snap;
+    try {
+      const events = await this.governanceLedger.replayGovernanceTimeline(tripId.trim());
+      snap = compactGovernanceSnapshot(events, { tripId: tripId.trim() });
+    } catch (e: any) {
+      this.logger.warn(`[RCC] replay snapshot failed trip_id=${tripId}: ${e?.message}`);
+      return;
+    }
+
+    const validation = validateGovernanceRecovery({
+      itineraryDays: args.gov.days,
+      bannedCorridorRefs: [],
+      activeWorldRiskHints: snap.latestWorldRisks,
+      snapshotActiveRestrictions: snap.activeRestrictions,
+    });
+
+    const directive: RuntimeBranchDirective = {
+      branchType: 'replanning',
+      sourceActivationIds: ['governance.rcc.closure@v1'],
+      replanningIntent: {
+        trigger: 'execution_block',
+        requiredActions: [],
+        preservedConstraints: [],
+        forbiddenStrategies: [],
+        replanningScope: 'trip',
+      },
+    };
+
+    const r = await completeGovernanceRecoveryTransition(this.governanceLedger, {
+      tripId: tripId.trim(),
+      requestId: args.requestId,
+      validation,
+      directiveForOutcome: directive,
+    });
+    if (r.applied) {
+      this.logger.log(
+        `[RCC] recovery closure applied trip_id=${tripId} resolved_blocks=${r.resolvedBlockIds.length} toState=${r.toState}`,
+      );
+    } else if (r.skipReason === 'rvl_not_clear_for_normal') {
+      this.logger.debug(`[RCC] skipped (${r.skipReason}) trip_id=${tripId}`);
     }
   }
 

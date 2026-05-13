@@ -20,6 +20,13 @@ import type {
 } from '../../interfaces/trip-plan.interface';
 import type { SparsePoiDayAllocation } from '../utils/sparse-poi-day-allocation.util';
 import { injectCorridorDriveLegsIntoDays } from '../../../skills/itinerary/itinerary-segment-tagger.util';
+import type { ResolvedPolicies } from '../../../skills/runtime-os/types/runtime-os.types';
+import {
+  applyExecutionPolicyHookToItineraryDays,
+  shouldSuppressCorridorDriveInjection,
+  type ItineraryGovernanceApplyResult,
+} from '../../../skills/itinerary/itinerary-execution-policy-hook.util';
+import { mapGovernanceRuntimeStateToPlannerMode } from '../../../governance/runtime-state-machine/map-runtime-state-to-planner-mode.util';
 
 /** 单日行程摘要（用于下一日的 Context 注入） */
 export interface DaySummary {
@@ -45,6 +52,10 @@ export interface IncrementalItineraryInput {
    * POI 数少于天数且单日单槽时：block=按天块状铺开；round_robin=按日轮替（用餐/节奏类规划更自然）
    */
   sparsePoiDayAllocation?: SparsePoiDayAllocation;
+  /** policy.resolve 输出；控制走廊 DRIVE 注入与行程裁剪 */
+  executionPolicyHook?: ResolvedPolicies['executionPolicyHook'];
+  /** GRSM：恢复态等由编排水合并注入 */
+  governance_runtime_state?: import('../../../governance/runtime-state-machine/governance-runtime-state.types').GovernanceRuntimeState;
 }
 
 @Injectable()
@@ -74,6 +85,7 @@ export class IncrementalItineraryGeneratorService {
     itinerary: Itinerary;
     daySummaries: DaySummary[];
     mode: 'incremental' | 'full';
+    governanceApply: ItineraryGovernanceApplyResult;
   }> {
     const {
       request,
@@ -82,10 +94,43 @@ export class IncrementalItineraryGeneratorService {
       environment_state,
       minDaysToTrigger = 3,
       sparsePoiDayAllocation = 'block',
+      executionPolicyHook,
+      governance_runtime_state,
     } = input;
     const requestId = (request as any).request_id ?? 'unknown';
 
-    const { days, startDate, pois } = this.extractParams(request, research_data);
+    let researchData = research_data ?? {};
+    if (governance_runtime_state != null) {
+      researchData = {
+        ...researchData,
+        planner_governance_mode: mapGovernanceRuntimeStateToPlannerMode(governance_runtime_state),
+      };
+      if (governance_runtime_state === 'RECOVERING') {
+        researchData = {
+          ...researchData,
+          governance_recovery_v1: {
+            conservative_corridors: true,
+            suppress_new_region_exploration: true,
+            shorter_legs_bias: true,
+          },
+        };
+        this.logger.log(`[GRSM] RECOVERING → conservative incremental search request_id=${requestId}`);
+      }
+    }
+
+    const driftInfl = request.governance_drift_influences;
+    if (Array.isArray(driftInfl) && driftInfl.length > 0) {
+      researchData = {
+        ...researchData,
+        governance_drift_influence_v1: {
+          influences: driftInfl,
+          source: 'gfil',
+        },
+      };
+      this.logger.debug(`[GFIL] injected ${driftInfl.length} drift influence vector(s) request_id=${requestId}`);
+    }
+
+    const { days, startDate, pois } = this.extractParams(request, researchData);
 
     // 天数不足则使用全量模式（单次生成）
     const useIncremental = days >= minDaysToTrigger;
@@ -96,14 +141,19 @@ export class IncrementalItineraryGeneratorService {
         startDate,
         pois,
         environment_state,
-        research_data,
+        researchData,
         sparsePoiDayAllocation,
       );
-      const taggedDays = injectCorridorDriveLegsIntoDays(itineraryDays, requestId);
+      const taggedDays = shouldSuppressCorridorDriveInjection(executionPolicyHook)
+        ? itineraryDays
+        : injectCorridorDriveLegsIntoDays(itineraryDays, requestId);
+      const suppressed = shouldSuppressCorridorDriveInjection(executionPolicyHook);
+      const gov = applyExecutionPolicyHookToItineraryDays(taggedDays, executionPolicyHook, suppressed);
       return {
-        itinerary: { request_id: requestId, days: taggedDays },
-        daySummaries: this.compressPreviousDays(taggedDays),
+        itinerary: { request_id: requestId, days: gov.days },
+        daySummaries: this.compressPreviousDays(gov.days),
         mode: 'full',
+        governanceApply: gov,
       };
     }
 
@@ -130,7 +180,7 @@ export class IncrementalItineraryGeneratorService {
         previousSummaries,
         environment_state,
         prevDayLeadPoiKey,
-        research_data,
+        research_data: researchData,
         sparsePoiDayAllocation,
       });
 
@@ -150,11 +200,16 @@ export class IncrementalItineraryGeneratorService {
       );
     }
 
-    const taggedDays = injectCorridorDriveLegsIntoDays(itineraryDays, requestId);
+    const taggedDays = shouldSuppressCorridorDriveInjection(executionPolicyHook)
+      ? itineraryDays
+      : injectCorridorDriveLegsIntoDays(itineraryDays, requestId);
+    const suppressed = shouldSuppressCorridorDriveInjection(executionPolicyHook);
+    const gov = applyExecutionPolicyHookToItineraryDays(taggedDays, executionPolicyHook, suppressed);
     return {
-      itinerary: { request_id: requestId, days: taggedDays },
-      daySummaries: this.compressPreviousDays(taggedDays),
+      itinerary: { request_id: requestId, days: gov.days },
+      daySummaries: this.compressPreviousDays(gov.days),
       mode: 'incremental',
+      governanceApply: gov,
     };
   }
 

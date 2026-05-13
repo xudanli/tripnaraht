@@ -193,7 +193,42 @@ function extractVerifyIssuesFromSteps(
     (s) => s.skillName === 'itinerary.smart_update' && s.success && s.result && typeof s.result === 'object',
   );
   const smartIssues = (smartStep?.result as { verify_issues?: unknown } | undefined)?.verify_issues;
-  return sanitizeVerifyIssues(smartIssues);
+  const smartSan = sanitizeVerifyIssues(smartIssues);
+  if (smartSan.length) return smartSan;
+
+  const mapFf = (
+    step:
+      | { skillName?: string; result?: any; success?: boolean }
+      | undefined,
+    defaultPrefix: string,
+  ): SafetySurfaceVerifyIssue[] => {
+    if (!step?.success || !step.result || typeof step.result !== 'object') return [];
+    const issues = (step.result as { issues?: unknown }).issues;
+    const san = sanitizeVerifyIssues(issues);
+    return san.map((x) => ({
+      ...x,
+      message: /^\[极速安全闸/.test(x.message) ? x.message : `${defaultPrefix} ${x.message}`,
+    }));
+  };
+
+  const redStep = rev.find(
+    (s) =>
+      s.skillName === 'iceland.lightweight_red_alert_fast_fail' &&
+      s.success &&
+      s.result &&
+      typeof s.result === 'object',
+  );
+  const froadStep = rev.find(
+    (s) =>
+      s.skillName === 'iceland.lightweight_fast_fail' &&
+      s.success &&
+      s.result &&
+      typeof s.result === 'object',
+  );
+  const redSan = mapFf(redStep, '[极速安全闸·生命红线]');
+  const froadSan = mapFf(froadStep, '[极速安全闸·依法裁决]');
+  if (!redSan.length && !froadSan.length) return [];
+  return [...redSan, ...froadSan];
 }
 
 /**

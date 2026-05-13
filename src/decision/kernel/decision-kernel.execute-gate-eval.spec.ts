@@ -58,7 +58,7 @@ describe('DecisionKernelService.executeGateEval', () => {
       optimizationAdapter as any,
       contextAdapter as any,
       feedbackAdapter as any,
-      undefined, // researchExecutor
+      undefined, // researchPipeline
       gateEvalExecutor as any,
     );
   };

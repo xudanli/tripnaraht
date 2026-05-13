@@ -17,6 +17,16 @@ import {
   WORLD_DECISION_MEMORY_ARCHIVE,
   type WorldDecisionMemoryArchivePort,
 } from '../decision-memory/world-decision-memory-archive.port';
+import {
+  buildLedgerAnchorBundle,
+  buildLedgerEdgesFromNodes,
+  projectRouteDirectionMemoriesToLedgerNodes,
+} from '../decision-ledger/decision-ledger-anchors.util';
+import { deriveMemoryLedgerPhaseFromTripTask } from '../decision-ledger/decision-ledger-world-anchor.util';
+import { invalidateLedgerByAnchorDrift, planLedgerRecomputeOrder } from '../decision-ledger/decision-ledger-invalidation.util';
+import { mergePendingWorldAnchorsIntoLedger } from '../decision-ledger/ledger-pending-audit.merge.util';
+import type { DecisionLedgerSnapshot } from '../decision-ledger/decision-ledger.types';
+import { LedgerPendingAuditStoreService } from '../decision-ledger/ledger-pending-audit.store.service';
 
 export type MemoryContractObservabilityV1 = {
   revision: 'v1';
@@ -45,6 +55,7 @@ export class MemoryContextAssemblerService {
     @Optional()
     @Inject(WORLD_DECISION_MEMORY_ARCHIVE)
     private readonly wdArchive?: WorldDecisionMemoryArchivePort,
+    @Optional() private readonly ledgerPendingAudit?: LedgerPendingAuditStoreService,
   ) {}
 
   /**
@@ -129,6 +140,40 @@ export class MemoryContextAssemblerService {
       layers.push('route_party_profile');
     }
 
+    const travelPreference = this.mergeTravelPreferenceSummary(userProfile, routePartyProfile);
+    const anchorBundle = buildLedgerAnchorBundle({
+      activeTripState,
+      travelPreference,
+      userProfile,
+      routePartyProfile,
+      recentWorldDecisions,
+    });
+    const ledgerNodes = projectRouteDirectionMemoriesToLedgerNodes(recentDecisions, anchorBundle.anchors);
+    let ledgerForDrift: DecisionLedgerSnapshot = {
+      revision: 'v1' as const,
+      nodes: ledgerNodes,
+      edges: buildLedgerEdgesFromNodes(ledgerNodes),
+      anchors: anchorBundle.anchors,
+      worldSlices: anchorBundle.worldSlices,
+      staleWorldTopics: anchorBundle.staleWorldTopics,
+    };
+    if (tripId && this.ledgerPendingAudit?.isEnabled()) {
+      const pending = await this.ledgerPendingAudit.consume(tripId);
+      if (pending) {
+        ledgerForDrift = mergePendingWorldAnchorsIntoLedger(ledgerForDrift, pending);
+        layers.push('decision_ledger_pending_mcp_world');
+      }
+    }
+    const memoryPhase = deriveMemoryLedgerPhaseFromTripTask(activeTripState);
+    const drifted = invalidateLedgerByAnchorDrift(ledgerForDrift, { memoryPhase });
+    if (drifted.invalidatedNodeIds.length > 0 || drifted.staleNodeIds.length > 0) {
+      layers.push('decision_ledger_drift');
+    }
+    if (anchorBundle.staleWorldTopics.length > 0) {
+      layers.push('decision_ledger_stale_world_topics');
+    }
+    const ledgerRecomputePlan = planLedgerRecomputeOrder(drifted.ledger);
+
     const ctx: AgentMemoryContext = {
       snapshotId,
       snapshotVersion,
@@ -136,9 +181,11 @@ export class MemoryContextAssemblerService {
       userId,
       tripId,
       userProfile,
-      travelPreference: this.mergeTravelPreferenceSummary(userProfile, routePartyProfile),
+      travelPreference,
       routePartyProfile,
       recentDecisions,
+      decisionLedger: drifted.ledger,
+      ledgerRecomputePlan,
       recentWorldDecisions,
       activeTripState,
       recoveryHistory,

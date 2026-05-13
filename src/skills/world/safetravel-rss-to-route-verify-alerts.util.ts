@@ -71,7 +71,7 @@ export function matchSafetravelRegionKeys(blob: string): string[] {
   if (/east\s+iceland|austurland|egilsstadir|seydisfjordur|\bhofn\b|hornafjordur|fjardabyggd/i.test(t)) {
     keys.add('East');
   }
-  if (/south\s+iceland|sudurland|suðurland|south\s+coast|selfoss|\bvik\b|skogar|kirkjubaejarklaustur/i.test(t)) {
+  if (/south\s+iceland|sudurland|suðurland|south\s+coast|selfoss|\bvik\b|skogar|kirkjubaejarklaustur|维克|維克|冰河湖|杰古沙龙|jokulsarlon|jökulsárlón/i.test(t)) {
     keys.add('South');
   }
   if (/west\s+iceland|vesturland|borgarnes|snaefellsnes|stykkisholmur/i.test(t)) {

@@ -415,6 +415,8 @@ export class LlmService {
       temperature?: number;
       max_tokens?: number;
       tokenContext?: LlmTokenContext;
+      /** OpenAI / 部分兼容端点：json_object 时需对话中出现 “json” 字样 */
+      response_format?: { type: 'json_object' };
     },
   ): Promise<ChatCompletionsWithToolsResult> {
     if (this.useMock) {
@@ -1002,6 +1004,7 @@ export class LlmService {
       tool_choice?: ToolChoice;
       temperature?: number;
       max_tokens?: number;
+      response_format?: { type: 'json_object' };
     },
   ): Promise<unknown> {
     const temperature = options?.temperature ?? 0.2;
@@ -1010,11 +1013,16 @@ export class LlmService {
 
     const body: Record<string, unknown> = {
       messages,
-      tools,
-      tool_choice,
       temperature,
       max_tokens,
     };
+    if (tools.length > 0) {
+      body.tools = tools;
+      body.tool_choice = tool_choice;
+    }
+    if (options?.response_format) {
+      body.response_format = options.response_format;
+    }
 
     if (kind === 'openai') {
       const apiKey = this.configService?.get<string>('OPENAI_API_KEY') || process.env.OPENAI_API_KEY;

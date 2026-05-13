@@ -443,6 +443,37 @@ export function shouldInjectIcelandRentalGuidanceForLightweight(
 }
 
 /**
+ * 轻量问答：是否应拉取 SafeTravel RSS（写入 `lightweight_research_data`，供红警闸与 `safety_surface.safetravel_route_alerts`）。
+ * 避免「冰岛几月好」类泛问也打外网；仅在行程锚 IS、租车/路况意图、显式风险问法时启用。
+ */
+export function shouldPullSafetravelAdvisoriesForLightweightIceland(input: {
+  message: string | undefined;
+  tripContextJoined: string;
+  hasAnchoredTripFact: boolean;
+  weatherRoadFocused: boolean;
+}): boolean {
+  const m = (input.message ?? '').trim();
+  const t = (input.tripContextJoined ?? '').trim();
+  const icelandAnchored =
+    input.hasAnchoredTripFact && /目的地代码:\s*IS\b|国家代码:\s*IS\b/i.test(t);
+  const explicitRiskQuery =
+    /safetravel|safe\s*travel|红警|封路|极端天气|火山|路况预警|橙色预警|红色预警|do\s+not\s+travel|unsafe\s+to\s+travel/i.test(
+      m,
+    );
+  const icelandMsg =
+    /冰岛|\bIceland\b|雷克雅未克|Reykjavik|凯夫拉维克|KEF|斯奈山|南岸|米湖|黄金圈|环岛|维克|塞里雅兰/i.test(m);
+  const drivingish =
+    /自驾|租车|行车|路况|道路|封路|F-road|F路|\bF\s*\d{2,3}\b|高地|内陆|碎石|横风/i.test(m);
+  return (
+    icelandAnchored ||
+    shouldInjectIcelandRentalGuidanceForLightweight(m, t) ||
+    input.weatherRoadFocused ||
+    explicitRiskQuery ||
+    (icelandMsg && drivingish)
+  );
+}
+
+/**
  * 轻量路径（DATA_LOOKUP / GENERIC_QA / RAG_QA）是否应尝试天气 MCP。
  * 与 `ClaudeOrchestratorService.shouldAttemptLiveWeatherSensor` 中「开关 + 话术」逻辑对齐（不含 `mcpToolDispatcher` 是否注入）。
  */

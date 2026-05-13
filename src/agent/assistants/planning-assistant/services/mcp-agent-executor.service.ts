@@ -9,7 +9,17 @@ import type {
 import type { McpToolDefinition } from './mcp-tool-registry.service';
 import { McpToolRegistryService } from './mcp-tool-registry.service';
 import { McpToolDispatcherService } from './mcp-tool-dispatcher.service';
-import { buildOpenAiToolsFromMcpDefinitions, type McpToolRoutingEntry } from './mcp-openai-tools.adapter';
+import {
+  buildOpenAiToolsFromMcpDefinitions,
+  type McpToolRoutingEntry,
+} from './mcp-openai-tools.adapter';
+import {
+  buildToolGovernanceHoldEnvelope,
+  isGovernanceAskPreApproved,
+  policyForMcpTool,
+  type GovernanceApprovedToolInvocation,
+  type ToolGovernancePolicyEntry,
+} from '../../../runtime/agentic-tool-governance.util';
 import {
   classifyOrchestratorFailure,
   truncateOrchestratorFailurePreview,
@@ -128,6 +138,25 @@ export interface McpAgentExecutorRunInput {
   toolPack?: 'weather';
   /** 多工具包合并注册（去重 toolName） */
   toolPacks?: AgentToolPack[];
+  /**
+   * Runtime MCP 硬装配：在审计白名单（AGENTIC_MCP_LLM_EXPOSE_WHITELIST）之后，仅允许这些 MCP toolName。
+   * `undefined`：不启用第二道闸；`[]`：显式拒绝全部 MCP（与 RCS 空集语义一致）。
+   */
+  runtimeMcpToolAllowlist?: string[];
+  /**
+   * 可观测：deriveAgenticMcpRuntimeAllowlist 等写入的简短溯源（可选）。
+   */
+  runtimeMcpCapProvenance?: string;
+  /**
+   * MCP toolName → 治理模式；由 Agent 合并 FEATURE_AGENTIC_GOVERNANCE_HITL 默认与 TripTaskMemory.constraints.tool_policies。
+   * `ask` / `deny` 在 dispatch 前短路，返回结构化 envelope（不发起真实 MCP）。
+   */
+  toolGovernancePolicies?: Record<string, ToolGovernancePolicyEntry>;
+  /**
+   * HITL 续跑：用户确认后的 tool_call_id 列表（可与 TripTask.constraints.approved_tool_invocations 合并）。
+   * 对 `mode: ask` 的工具，若命中则跳过挂起并执行真实 MCP。
+   */
+  governanceApprovedToolInvocations?: GovernanceApprovedToolInvocation[];
   /**
    * Task Closure：booking 时强制执行 Proposal→Policy→Execute，禁止绕过 Policy 直连 MCP。
    */
@@ -252,17 +281,28 @@ export class McpAgentExecutorService {
       };
     }
 
-    const { tools, routing, droppedToolNames } = buildOpenAiToolsFromMcpDefinitions(defs);
+    const filterOpts =
+      input.runtimeMcpToolAllowlist !== undefined
+        ? { runtimeAllowedMcpToolNames: new Set(input.runtimeMcpToolAllowlist) }
+        : undefined;
+    if (input.runtimeMcpCapProvenance && filterOpts) {
+      this.logger.debug(`Agentic runtime MCP cap provenance: ${input.runtimeMcpCapProvenance}`);
+    }
+    const { tools, routing, droppedToolNames } = buildOpenAiToolsFromMcpDefinitions(defs, filterOpts);
     if (droppedToolNames.length > 0) {
       this.logger.debug(
-        `Agentic MCP LLM whitelist dropped ${droppedToolNames.length} tool(s): ${droppedToolNames.join(', ')}`,
+        `Agentic MCP defs dropped ${droppedToolNames.length} tool(s): ${droppedToolNames.join(', ')}`,
       );
     }
     if (tools.length === 0) {
       return {
         success: false,
         final_message: null,
-        trace: this.finalizeTrace([], 'all_tools_filtered_by_agentic_llm_whitelist', bookingClosureActive),
+        trace: this.finalizeTrace(
+          [],
+          filterOpts ? 'all_tools_filtered_by_runtime_mcp_cap' : 'all_tools_filtered_by_agentic_llm_whitelist',
+          bookingClosureActive,
+        ),
         metrics: this.emptyMetrics(),
       };
     }
@@ -607,6 +647,9 @@ export class McpAgentExecutorService {
             stripBookingProposalInternalArgs(proposal.args),
             routing,
             input.budget,
+            input.toolGovernancePolicies,
+            input.governanceApprovedToolInvocations,
+            call.id,
           );
           mcpExecutedThisRound++;
           if (decision.discouraged.includes(proposal)) {
@@ -713,7 +756,15 @@ export class McpAgentExecutorService {
         }
       } else {
         for (const call of calls) {
-          const envelope = await this.executeOneTool(call.name, call.args, routing, input.budget);
+          const envelope = await this.executeOneTool(
+            call.name,
+            call.args,
+            routing,
+            input.budget,
+            input.toolGovernancePolicies,
+            input.governanceApprovedToolInvocations,
+            call.id,
+          );
           toolResults!.push({ tool_call_id: call.id, envelope });
           messages.push({
             role: 'tool',
@@ -933,7 +984,10 @@ export class McpAgentExecutorService {
     llmFunctionName: string,
     args: Record<string, unknown>,
     routing: Map<string, McpToolRoutingEntry>,
-    budget?: McpAgentExecutorBudget,
+    budget: McpAgentExecutorBudget | undefined,
+    toolGovernancePolicies: Record<string, ToolGovernancePolicyEntry> | undefined,
+    governanceApprovedToolInvocations: GovernanceApprovedToolInvocation[] | undefined,
+    toolCallId?: string,
   ): Promise<McpToolRuntimeEnvelope> {
     const entry = routing.get(llmFunctionName);
     if (!entry) {
@@ -949,6 +1003,33 @@ export class McpAgentExecutorService {
         confidence: 0,
         orchestrator_robustness: robustness,
       };
+    }
+
+    const gov = policyForMcpTool(entry.mcpToolName, toolGovernancePolicies);
+    if (gov.mode === 'deny') {
+      this.logger.warn(
+        `[AgenticGovernance] deny mcp=${entry.mcpToolName} reason=${gov.reason ?? 'policy'}`,
+      );
+      return buildToolGovernanceHoldEnvelope(entry.mcpToolName, 'deny', gov.reason) as McpToolRuntimeEnvelope;
+    }
+    if (gov.mode === 'ask') {
+      if (
+        isGovernanceAskPreApproved(governanceApprovedToolInvocations, toolCallId, entry.mcpToolName)
+      ) {
+        this.logger.debug(
+          `[AgenticGovernance] ask bypass (pre-approved) mcp=${entry.mcpToolName} tool_call_id=${toolCallId ?? ''}`,
+        );
+      } else {
+        this.logger.warn(
+          `[AgenticGovernance] ask hold mcp=${entry.mcpToolName} reason=${gov.reason ?? 'hitl'}`,
+        );
+        return buildToolGovernanceHoldEnvelope(
+          entry.mcpToolName,
+          'ask',
+          gov.reason,
+          toolCallId,
+        ) as McpToolRuntimeEnvelope;
+      }
     }
 
     const maxAttempts = resolveMcpToolMaxAttempts(budget);

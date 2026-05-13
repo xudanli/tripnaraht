@@ -2,6 +2,8 @@ import { Injectable, Optional } from '@nestjs/common';
 import { RouteType, RouterReason, UIStatus } from '../interfaces/router.interface';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import type { DecisionLogEntry, OrchestrationStep, SubAgentType } from '../interfaces/trip-plan.interface';
+import type { RuntimeBranchDirective } from '../../governance/activation/runtime/runtime-branch-directive.types';
+import type { StructuredGovernanceRuntimeTraceV1 } from '../../governance/activation/runtime/build-structured-governance-runtime-trace.util';
 import { RouteAndRunResponseAssemblerService } from './route-and-run-response-assembler.service';
 import { JepaProjectorService } from './jepa-projector.service';
 import { TradeoffEngineService } from './tradeoff-engine.service';
@@ -379,6 +381,159 @@ export class AgentEntryResponseFactoryService {
         cost_est_usd: 0,
         fallback_used: false,
         is_replayed: false,
+      } as any,
+    };
+  }
+
+  /** Governance Activation: require_confirmation → runtime short-circuit (orchestration boundary). */
+  createGovernanceRuntimeNeedsConfirmationResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+    directive: RuntimeBranchDirective,
+    trace?: StructuredGovernanceRuntimeTraceV1,
+  ): RouteAndRunResponseDto {
+    const latency = Date.now() - startTime;
+    const decisionLog: DecisionLogEntry[] = [
+      {
+        request_id: request.request_id,
+        step: 'INTAKE' as OrchestrationStep,
+        actor: 'Orchestrator' as SubAgentType,
+        inputs_summary: `governance branch=${directive.branchType}`,
+        outputs_summary: 'NEED_USER_CONFIRM: governance require_confirmation activation',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: {
+          governance_runtime: true,
+          source_activation_ids: directive.sourceActivationIds,
+        },
+      },
+    ];
+    return {
+      request_id: request.request_id,
+      route: {
+        route: RouteType.SYSTEM2_REASONING,
+        confidence: 1.0,
+        reasons: [RouterReason.HIGH_RISK_ACTION],
+        required_capabilities: [],
+        consent_required: true,
+        budget: { max_seconds: 30, max_steps: 2, max_browser_steps: 0 },
+        ui_hint: { mode: 'slow', status: UIStatus.AWAITING_CONFIRMATION, message: '需要您确认治理侧约束' },
+      },
+      result: {
+        status: 'NEED_CONFIRMATION',
+        answer_text:
+          '治理运行时发现需人工确认的高基数或敏感策略组合；请确认是否继续本轮自动编排，或收紧约束后再试。',
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          governance_runtime_branch: directive,
+        } as any,
+      },
+      explain: {
+        decision_log: decisionLog,
+        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(decisionLog, undefined),
+      },
+      observability: {
+        latency_ms: latency,
+        router_ms: latency,
+        system_mode: 'SYSTEM2',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        is_replayed: false,
+        governance_runtime_trace_v1: trace,
+        trace: {
+          orchestration: {
+            resolved: {
+              mode: 'GOVERNANCE_RUNTIME',
+              reason: 'require_confirmation',
+              matchedRules: ['GOVERNANCE_ACTIVATION_ROUTER'],
+            },
+          },
+          timestamp: new Date().toISOString(),
+        },
+      } as any,
+    };
+  }
+
+  /** Governance Activation: suppress_execution → deny execution stage at orchestration boundary. */
+  createGovernanceRuntimeSuppressedExecutionResponse(
+    request: RouteAndRunRequestDto,
+    startTime: number,
+    directive: RuntimeBranchDirective,
+    trace?: StructuredGovernanceRuntimeTraceV1,
+  ): RouteAndRunResponseDto {
+    const latency = Date.now() - startTime;
+    const decisionLog: DecisionLogEntry[] = [
+      {
+        request_id: request.request_id,
+        step: 'INTAKE' as OrchestrationStep,
+        actor: 'Orchestrator' as SubAgentType,
+        inputs_summary: `governance branch=${directive.branchType}`,
+        outputs_summary: 'EXECUTION_SUPPRESSED: governance suppress_execution activation',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: {
+          governance_runtime: true,
+          source_activation_ids: directive.sourceActivationIds,
+        },
+      },
+    ];
+    return {
+      request_id: request.request_id,
+      route: {
+        route: RouteType.SYSTEM2_REASONING,
+        confidence: 1.0,
+        reasons: [RouterReason.HIGH_RISK_ACTION],
+        required_capabilities: [],
+        consent_required: false,
+        budget: { max_seconds: 30, max_steps: 1, max_browser_steps: 0 },
+        ui_hint: { mode: 'slow', status: UIStatus.FAILED, message: '执行已被治理层抑制' },
+      },
+      result: {
+        status: 'FAILED',
+        answer_text:
+          '治理运行时在近期账本中检测到 halt 级执行姿态；已在本轮阻止自动编排扩线，请先解除阻塞或走受控重规划。',
+        payload: {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+          error_code: 'GOVERNANCE_EXECUTION_SUPPRESSED',
+          governance_runtime_branch: directive,
+        } as any,
+      },
+      explain: {
+        decision_log: decisionLog,
+        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(decisionLog, undefined),
+      },
+      observability: {
+        latency_ms: latency,
+        router_ms: latency,
+        system_mode: 'SYSTEM2',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        is_replayed: false,
+        governance_runtime_trace_v1: trace,
+        trace: {
+          orchestration: {
+            resolved: {
+              mode: 'GOVERNANCE_RUNTIME',
+              reason: 'suppress_execution',
+              matchedRules: ['GOVERNANCE_ACTIVATION_ROUTER'],
+            },
+          },
+          timestamp: new Date().toISOString(),
+        },
       } as any,
     };
   }

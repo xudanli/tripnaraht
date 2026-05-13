@@ -1,0 +1,28 @@
+{
+  "_comment": "TripNARA staging: observability.ledger_healing fragment for frontend typegen / UI mocks (matches production trace shape).",
+  "status": "CONVERGED",
+  "reconcile_status": "CONVERGED",
+  "affected_node_ids": ["POI_REYNISFJARA"],
+  "metrics": {
+    "initial_invalidated": 1,
+    "secondary_invalidated": 1,
+    "loops": 2
+  },
+  "steps": [
+    {
+      "phase": "merge_loop",
+      "action": "loop_0: merged=1 secondary=1 stable=false",
+      "target_nodes": []
+    },
+    {
+      "phase": "merge_loop",
+      "action": "loop_1: merged=1 secondary=0 stable=true",
+      "target_nodes": []
+    },
+    {
+      "phase": "kernel",
+      "action": "converged: snapshot_version=2",
+      "target_nodes": []
+    }
+  ]
+}

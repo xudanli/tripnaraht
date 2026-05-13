@@ -202,7 +202,7 @@ export const SKILLS_SELECTION_PROMPT = `
 - risk.check: 风险检查
 
 **行程生成与变更类 Skills（Plan / 修改 阶段）**：
-- itinerary.generate: 生成结构化行程草案
+- itinerary.generate: 生成结构化行程草案；若编排已执行 **policy.resolve** 且返回 **executionPolicyHook**，编排器会自动注入本 skill —— 用于抑制自动长距走廊 DRIVE 注入、在 **blocked+halt** 时返回 **\`resultType: execution_block\`** 与 **空 \`days\`**（不伪造占位日程）、为 DRIVE 项写入 **\`governance.max_drive_leg_hours\`**，并在输出根级附带 **\`executionDecision\`** / **\`executionGovernanceMemory\`**（控制面与 \`metadata\` 分离）。
 - itinerary.smart_update: **默认推荐**——生成或变更后的校验 + 自动修复闭环（内含 verify / repair；带分阶段 telemetry）
 - itinerary.verify: 仅当你**明确**不要自动修复、只要诊断报告时使用（与 smart_update 二选一，勿并列）
 - repair.apply: 仅当你已有完整 adjustments、且**跳过** verify 时使用（与 smart_update 二选一，勿并列）
@@ -219,6 +219,12 @@ export const SKILLS_SELECTION_PROMPT = `
 **地理类 Skills**：
 - geo.findNearbyPOI: 附近 POI 查找
 - geo.checkHazardZones: 危险区域检查
+
+**Runtime OS（P0：统一世界 → 门控 → 策略 → 工作记忆）**：
+- worldState.summarize: 在 \`world.buildContext\` 或各域工具结果之后调用，将天气/路/SafeTravel/租车/日照等压成单一 \`OperationalWorldState\`（operationalRisk、blockingFactors、warnings、recommendedPolicies、confidence），避免每个 planner 各自解读世界。**若同时传 \`tripId\` 且世界为冰岛（IS）**，由 \`IcelandOperationalDomainPipeline\` 并行拉取域技能并归一为 **typed OperationalSlice**（含 severity / TTL / freshness），再由 \`WorldOperationalArbitrator\` 产出 \`operationalArbitration\`（executionStatus: safe|caution|dangerous|blocked）。可用 \`gatherIcelandDomainSlices: false\` 关闭域拉取；可选 \`routeBrief\` / \`vehiclePolicy\` 参与裁决。匿名 JSON \`slices\` 仅为遗留路径。
+- readiness.assess: **执行门控** — 输入车辆/天气/路线/日照/经验摘要，输出 \`executable\`、blockers、warnings、mitigationActions。
+- policy.resolve: **宪法引擎** — 融合 strategy、userPreference、OperationalWorldState、readiness.assess；若上一步提供 \`operationalArbitration\`（来自 worldState.summarize），则写入 **executionPolicyHook**（denyLongDistanceAutorouting、maxSingleLegDriveHours、haltAutomatedExecution、forcedMinimumVehicleClass 等），供 planner / 路由在扩线前遵守。
+- decision.compress: **工作记忆** — 将多轮 tool 结果压成 stableFacts、unresolvedRisks、rejectedOptions、activePolicies（与 \`context.compress\` 的 ContextBlock 预算压缩不同）。
 
 **准备度类 Skills**：
 - readiness.generateChecklist: 行前清单生成

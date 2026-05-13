@@ -1,6 +1,9 @@
 // src/app.module.ts
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { LlmService } from './llm/services/llm.service';
+import { INCREMENTAL_RECOMPUTE_LLM } from './agent/memory/decision-ledger/incremental-recompute-llm.port';
+import { createIncrementalRecomputeLlmAdapter } from './agent/adapters/llm/incremental-recompute.llm-adapter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { PlacesModule } from './places/places.module';
@@ -154,6 +157,13 @@ import { RoadIsModule } from './infrastructure/external/road-is/road-is.module';
     AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
     SafetyModule, // 安全预警模块（地缘政治风险评估、旅行警告、安全通知）
     WorldModelSchedulerModule, // 专利实施例：世界模型异步推送调度（WeatherAgent → pushEnvironmentDelta）
+  ],
+  providers: [
+    {
+      provide: INCREMENTAL_RECOMPUTE_LLM,
+      useFactory: (llm: LlmService, config: ConfigService) => createIncrementalRecomputeLlmAdapter(llm, config),
+      inject: [LlmService, ConfigService],
+    },
   ],
 })
 export class AppModule {}

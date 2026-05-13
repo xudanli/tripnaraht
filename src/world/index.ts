@@ -135,3 +135,40 @@ export type {
   WorldEditingSessionViewModel,
   WorldUiLayerId,
 } from './world-editing-ui-paradigm';
+
+// Runtime OS — operational contracts, Iceland domain pipeline, world arbitrator
+export {
+  OperationalSeverity,
+  operationalSlice,
+  computeFreshness,
+  maxOperationalSeverity,
+  OPERATIONAL_SLICE_TTL_SECONDS,
+} from './contracts/operational-severity.contract';
+export type { OperationalSlice, FreshnessState } from './contracts/operational-severity.contract';
+export { WorldOperationalArbitrator } from './operational/world-operational-arbitrator';
+export type {
+  OperationalArbitration,
+  WorldOperationalArbitrationInput,
+  OperationalExecutionStatus,
+} from './operational/world-operational-arbitrator';
+export { applyOperationalArbitrationToPolicies } from './operational/apply-arbitration-to-resolved-policies.util';
+export type {
+  ExecutionDecision,
+  FrozenExecutionPolicyHook,
+  ItineraryGenerateResultType,
+  PartialExecutionState,
+  RecoveryAction,
+} from './operational/execution-governance.contract';
+export {
+  EXECUTION_POLICY_VERSION,
+  composeExecutionDecision,
+  cloneRecoveryActions,
+  defaultExecutionDecision,
+  deriveCausedByPoliciesFromArbitration,
+  buildRecoveryActionsFromBlocking,
+  freezeExecutionPolicyHook,
+} from './operational/execution-governance.contract';
+export type {
+  IcelandOperationalPipelineRunInput,
+  IcelandOperationalPipelineRunOutput,
+} from './domains/iceland/iceland-operational-domain.pipeline';

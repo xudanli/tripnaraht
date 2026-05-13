@@ -10,10 +10,18 @@ import {
   DecisionLogEntry,
   OrchestratorState,
 } from '../../interfaces/trip-plan.interface';
+import type { NarrationLike } from '../../../decision/kernel/interfaces/phase-executor.interface';
+import type { ResearchConflictNegotiationReport } from '../../teams/research/research-conflict-negotiation.types';
 import { NarratorAgentService as LangGraphNarratorAgentService } from '../../../trips/decision/orchestration/narrator-agent.service';
 import { DecisionExplainForHumanSkill } from '../../../skills/decision/decision-explain-for-human.skill';
 import { LlmService } from '../../../llm/services/llm.service';
 import { DecisionOutput, ComparisonMatrix } from '../../interfaces/decision-node.interface';
+import {
+  buildEbpToneMannerInstructionZh,
+  buildMultimodalPresentationHints,
+  extractBudgetAggregateSavingsFromResearchData,
+  mapVoiceToneModifierForNegotiationAndBudget,
+} from '../../utils/narrator-ebp-tone.util';
 
 /**
  * 决策故事输出
@@ -108,17 +116,7 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
     gateResult: GateResult,
     decisionLog: DecisionLogEntry[],
     _context: OrchestratorState,
-  ): Promise<{
-    user_friendly_summary: string;
-    day_by_day_narrative: Array<{
-      day: number;
-      date: string;
-      narrative: string;
-    }>;
-    highlights: string[];
-    tips: string[];
-    warnings?: string[];
-  }> {
+  ): Promise<NarrationLike> {
     this.logger.debug(`[ClaudeNarratorAgent] 生成叙述: request_id=${itinerary.request_id}`);
 
     try {
@@ -141,29 +139,65 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
       // 5. 生成警告
       const warnings = this.generateWarnings(gateResult, decisionLog);
 
-      return {
-        user_friendly_summary,
-        day_by_day_narrative,
-        highlights,
-        tips,
-        warnings,
-      };
+      return this.applyNegotiationReport(
+        {
+          user_friendly_summary,
+          day_by_day_narrative,
+          highlights,
+          tips,
+          warnings,
+        },
+        _context,
+      );
     } catch (error: any) {
       this.logger.error(`[ClaudeNarratorAgent] 生成叙述失败: ${error?.message}`, error?.stack);
-      
+
       // 降级：返回基本叙述
-      return {
-        user_friendly_summary: `已为您生成 ${itinerary.days.length} 天的行程安排。`,
-        day_by_day_narrative: itinerary.days.map((day, index) => ({
-          day: index + 1,
-          date: day.date,
-          narrative: `第 ${index + 1} 天行程，包含 ${day.items.length} 个活动。`,
-        })),
-        highlights: [],
-        tips: ['请以官方信息为准，出行前再次确认'],
-        warnings: gateResult.violations.length > 0 ? ['请注意行程中的风险提示'] : undefined,
-      };
+      return this.applyNegotiationReport(
+        {
+          user_friendly_summary: `已为您生成 ${itinerary.days.length} 天的行程安排。`,
+          day_by_day_narrative: itinerary.days.map((day, index) => ({
+            day: index + 1,
+            date: day.date,
+            narrative: `第 ${index + 1} 天行程，包含 ${day.items.length} 个活动。`,
+          })),
+          highlights: [],
+          tips: ['请以官方信息为准，出行前再次确认'],
+          warnings: gateResult.violations.length > 0 ? ['请注意行程中的风险提示'] : undefined,
+        },
+        _context,
+      );
     }
+  }
+
+  /** MAT 3.0+：合并 EBP 协商报告到叙述输出（tips 前置 Tone 约束 + 多模态建议）。 */
+  private applyNegotiationReport(narration: NarrationLike, context: OrchestratorState): NarrationLike {
+    const conflict = (
+      context as OrchestratorState & { narration_research_conflict?: ResearchConflictNegotiationReport }
+    ).narration_research_conflict;
+    const researchData = (context as OrchestratorState & { research_data?: Record<string, unknown> }).research_data;
+    const budgetSavingsYuan = extractBudgetAggregateSavingsFromResearchData(researchData);
+    const toneZh = buildEbpToneMannerInstructionZh(conflict, { budget_savings_yuan: budgetSavingsYuan });
+    const mm = buildMultimodalPresentationHints(conflict, { budget_savings_yuan: budgetSavingsYuan });
+    const tips = [...(toneZh ? [toneZh] : []), ...(narration.tips ?? [])];
+    const ebpVoice = mapVoiceToneModifierForNegotiationAndBudget(conflict, researchData);
+    const curVoice = narration.voice_tone_modifier;
+    const voice_tone_modifier =
+      ebpVoice === 'empathetic_reassurance'
+        ? ebpVoice
+        : ebpVoice !== undefined &&
+            (curVoice === undefined ||
+              curVoice === 'neutral' ||
+              (ebpVoice === 'rational_frugal' && curVoice === 'reassuring_transparency'))
+          ? ebpVoice
+          : curVoice;
+    return {
+      ...narration,
+      tips,
+      visual_hint: mm.visual_hint,
+      audio_prosody: mm.audio_prosody,
+      ...(voice_tone_modifier !== undefined ? { voice_tone_modifier } : {}),
+    };
   }
 
   /**

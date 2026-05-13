@@ -3289,3 +3289,29 @@ model OpsRealityAuditSnapshot {
   @@index([decisionRunId])
   @@map("ops_reality_audit_snapshots")
 }
+
+/// Append-only governance / execution audit (event sourcing). Application code must not UPDATE rows.
+model GovernanceLedgerEventRecord {
+  id                 String   @id @map("id") @db.Text
+  tripId             String?  @map("trip_id") @db.Text
+  timestampMs        BigInt   @map("timestamp_ms")
+  eventType          String   @map("event_type") @db.Text
+  eventLevel         String   @map("event_level") @db.Text
+  executionStatus    String   @map("execution_status") @db.Text
+  policyVersion      String   @map("policy_version") @db.Text
+  causedByPolicies   Json     @map("caused_by_policies")
+  affectedSubsystems Json     @map("affected_subsystems")
+  recoveryActions    Json?    @map("recovery_actions")
+  executionContext   Json?    @map("execution_context")
+  executionDecision  Json     @map("execution_decision")
+  routeRegion        String?  @map("route_region") @db.Text
+  countryCode        String?  @map("country_code") @db.VarChar(8)
+  correlationId      String   @map("correlation_id") @db.Text
+  causalityChainId   String   @map("causality_chain_id") @db.Text
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tripId, timestampMs(sort: Desc)])
+  @@index([eventType, timestampMs(sort: Desc)])
+  @@index([routeRegion])
+  @@map("governance_ledger_events")
+}

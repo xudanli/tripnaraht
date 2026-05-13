@@ -1,16 +1,22 @@
- /**
- * ResearchExecutorService 单元测试
+/**
+ * ResearchPipelineService 单元测试
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { ResearchExecutorService } from './research-executor.service';
+import { ResearchPipelineService } from '../teams/research/research-pipeline.service';
 import { WorldModelCollectorService } from './shared/world-model-collector.service';
 import { PredictionCollectorService } from './shared/prediction-collector.service';
 import { ContextHydrationService } from './shared/context-hydration.service';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { ResearchMemberRegistry } from '../teams/research/research-member.registry';
+import { TransportResearchMember } from '../teams/research/transport-research.member';
+import { ComplianceResearchMember } from '../teams/research/compliance-research.member';
+import { DestinationResearchMember } from '../teams/research/destination-research.member';
+import { HotelResearchMember } from '../teams/research/hotel-research.member';
+import { FlightResearchMember } from '../teams/research/flight-research.member';
 
-describe('ResearchExecutorService', () => {
-  let service: ResearchExecutorService;
+describe('ResearchPipelineService', () => {
+  let service: ResearchPipelineService;
   let mockWorldModel: { collect: jest.Mock };
   let mockPrediction: { collect: jest.Mock };
   let mockSkillsRegistry: { getSkill: jest.Mock };
@@ -21,14 +27,20 @@ describe('ResearchExecutorService', () => {
     mockSkillsRegistry = { getSkill: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ResearchExecutorService,
+        ResearchPipelineService,
         ContextHydrationService,
+        DestinationResearchMember,
+        HotelResearchMember,
+        FlightResearchMember,
+        TransportResearchMember,
+        ComplianceResearchMember,
+        ResearchMemberRegistry,
         { provide: WorldModelCollectorService, useValue: mockWorldModel },
         { provide: PredictionCollectorService, useValue: mockPrediction },
         { provide: SkillsRegistryService, useValue: mockSkillsRegistry },
       ],
     }).compile();
-    service = module.get<ResearchExecutorService>(ResearchExecutorService);
+    service = module.get<ResearchPipelineService>(ResearchPipelineService);
   });
 
   it('should be defined', () => {
@@ -131,13 +143,19 @@ describe('ResearchExecutorService', () => {
   it('无 skillsRegistry 时应跳过 Skills 但仍返回 environmentPatch', async () => {
     const module2 = await Test.createTestingModule({
       providers: [
-        ResearchExecutorService,
+        ResearchPipelineService,
         ContextHydrationService,
+        DestinationResearchMember,
+        HotelResearchMember,
+        FlightResearchMember,
+        TransportResearchMember,
+        ComplianceResearchMember,
+        ResearchMemberRegistry,
         { provide: WorldModelCollectorService, useValue: mockWorldModel },
         { provide: PredictionCollectorService, useValue: mockPrediction },
       ],
     }).compile();
-    const svc = module2.get<ResearchExecutorService>(ResearchExecutorService);
+    const svc = module2.get<ResearchPipelineService>(ResearchPipelineService);
     const result = await svc.execute({} as any, {
       requestId: 'r1',
       tripPlanRequest: { destination: 'Iceland', date_range: { start_date: '2026-06-01', end_date: '2026-06-05' } },

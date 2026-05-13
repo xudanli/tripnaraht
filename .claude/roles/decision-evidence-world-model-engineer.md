@@ -16,7 +16,7 @@
 
 - 数据工程 + 检索工程 + API 集成
 - 会把「事实」做成 **结构化约束输入**，而不是塞进 prompt 杂糅
-- 能读：`src/agent/execution/research-executor.service.ts`、`src/skills/world/`、`src/rag/`（按需）
+- 能读：`src/agent/teams/research/research-pipeline.service.ts`（RESEARCH 管线）、`src/skills/world/`、`src/rag/`（按需）
 
 ## 硬约束
 
@@ -27,7 +27,7 @@
 ## 必读上下文
 
 - `docs/TRIPNARA_DECISION_KERNEL_DECOUPLING_V1.md`
-- `src/agent/execution/research-executor.service.ts`
+- `src/agent/teams/research/research-pipeline.service.ts`
 - `.claude/roles/rag_engineer.md`（检索侧协作）
 
 ## Consult

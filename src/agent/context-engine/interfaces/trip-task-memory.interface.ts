@@ -26,7 +26,13 @@ export interface TripTaskMemory {
   lastUpdated: string; // ISO 8601
   /** 用户目标摘要（自然语言或结构化由上层约定） */
   goal?: string;
-  /** 结构化约束（预算、禁行、体能等） */
+  /**
+   * 结构化约束（预算、禁行、体能等）。
+   * 约定键（非穷尽）：`toolAllowlist` — 与 ContextPackage.metadata.toolAllowlist 对齐；
+   * 由 ContextEngineer 在每次 context build（且 includeToolSelection 未关闭）后写入，供 Agentic MCP Runtime Cap 等读取（见 extractAgenticSkillAllowlistForMcpCap）。
+   * `tool_policies` — MCP toolName → `{ mode: 'auto'|'ask'|'deny', reason? }`；与 FEATURE_AGENTIC_GOVERNANCE_HITL 合并后由 McpAgentExecutorService 在 dispatch 前执行硬闸。
+   * `approved_tool_invocations` — HITL 续跑：`string[]` 或 `{ tool_call_id, mcp_tool_name? }[]`；与 options.agentic_approved_tool_invocations 合并后，对 `ask` 工具在匹配 id（及可选 mcp 名）时放行真实 MCP。
+   */
   constraints?: Record<string, unknown>;
   /** 执行态快照标签（如 pending_confirm / replanning） */
   execution_state?: string;

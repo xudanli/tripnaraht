@@ -24,6 +24,13 @@ import { ExecutionTimelineRecorderService } from '../runtime/execution-timeline-
 import { WorldDecisionMemoryService } from './decision-memory/world-decision-memory.service';
 import { PrismaWorldDecisionMemoryArchiveService } from './decision-memory/prisma-world-decision-memory-archive.service';
 import { WORLD_DECISION_MEMORY_ARCHIVE } from './decision-memory/world-decision-memory-archive.port';
+import { LedgerRecomputeExecutorService } from './decision-ledger/ledger-recompute-executor.service';
+import { LedgerDriftAuditService } from './decision-ledger/ledger-drift-audit.service';
+import { LedgerPendingAuditStoreService } from './decision-ledger/ledger-pending-audit.store.service';
+import { LedgerWritebackService } from './decision-ledger/ledger-writeback.service';
+import { LEDGER_LOGIC_CONSTRAINT_VALIDATORS } from './decision-ledger/ledger-logic-constraint-validator.port';
+import { TimelineLedgerLogicConstraintValidator } from './decision-ledger/ledger-timeline-logic-constraint.validator';
+import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incremental-recompute-orchestrator.service';
 
 /**
  * Memory Module
@@ -56,6 +63,15 @@ import { WORLD_DECISION_MEMORY_ARCHIVE } from './decision-memory/world-decision-
     PrismaWorldDecisionMemoryArchiveService,
     { provide: WORLD_DECISION_MEMORY_ARCHIVE, useExisting: PrismaWorldDecisionMemoryArchiveService },
     WorldDecisionMemoryService,
+    LedgerRecomputeExecutorService,
+    LedgerDriftAuditService,
+    LedgerPendingAuditStoreService,
+    {
+      provide: LEDGER_LOGIC_CONSTRAINT_VALIDATORS,
+      useValue: [new TimelineLedgerLogicConstraintValidator()],
+    },
+    LedgerWritebackService,
+    IncrementalRecomputeOrchestratorService,
   ],
   exports: [
     MemoryService,
@@ -73,6 +89,11 @@ import { WORLD_DECISION_MEMORY_ARCHIVE } from './decision-memory/world-decision-
     MemorySnapshotPersistenceService,
     PrismaWorldDecisionMemoryArchiveService,
     WorldDecisionMemoryService,
+    LedgerRecomputeExecutorService,
+    LedgerDriftAuditService,
+    LedgerPendingAuditStoreService,
+    LedgerWritebackService,
+    IncrementalRecomputeOrchestratorService,
   ],
 })
 export class MemoryModule {}

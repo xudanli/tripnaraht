@@ -13,6 +13,61 @@ import type {
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import type { ExecutionTraceEmitter } from '../utils/execution-trace.emitter';
 import { projectKernelToLegacyTier } from '../utils/legacy-execution-projection.util';
+import type { AgentTurnContractV1 } from '../contracts/agent-turn-contract.v1';
+import { canonicalTripIdForRouteAndRunRequest } from '../contracts/agent-turn-contract.v1';
+import type { AgentTurnPolicyAppliedTag } from '../contracts/agent-turn-contract-trace-seal.v1';
+import { resolveAgentTurnPolicyAppliedV1 } from '../contracts/agent-turn-contract-trace-seal.v1';
+
+export type EngineContractValidationResult =
+  | { status: 'skipped'; reason: 'no_contract' }
+  | {
+      status: 'ok';
+      contract: AgentTurnContractV1;
+      policy_applied: AgentTurnPolicyAppliedTag;
+    }
+  | { status: 'mismatch'; issues: string[]; contract: AgentTurnContractV1 };
+
+/**
+ * Bridge Gateway-sealed {@link AgentTurnContractV1} into engine dispatch (signature-stable).
+ * When a contract is present, {@link ExecutionEngineRouterService.run} fail-fast on identity/hint drift.
+ */
+export class EngineContractAdapter {
+  /**
+   * If `request.__agentTurnContract` exists (Gateway), ensure it still matches the live request
+   * (audit: proves runners did not bypass the pre-execution seal).
+   */
+  static validateContract(request: RouteAndRunRequestDto): EngineContractValidationResult {
+    const contract = (request as { __agentTurnContract?: AgentTurnContractV1 }).__agentTurnContract;
+    if (contract == null) {
+      return { status: 'skipped', reason: 'no_contract' };
+    }
+    const issues: string[] = [];
+    if (contract.input.request_id !== request.request_id) {
+      issues.push('request_id_drift');
+    }
+    if (contract.input.user_id !== request.user_id) {
+      issues.push('user_id_drift');
+    }
+    const liveTrip = canonicalTripIdForRouteAndRunRequest(request);
+    if ((contract.input.trip_id ?? null) !== (liveTrip ?? null)) {
+      issues.push('trip_id_drift');
+    }
+    const optHint = request.options?.execution_model_runtime_hint?.trim() || null;
+    const sealedHint = contract.profile.execution_model_runtime_hint;
+    if (optHint !== sealedHint) {
+      issues.push('execution_model_runtime_hint_drift');
+    }
+    if (issues.length > 0) {
+      return { status: 'mismatch', issues, contract };
+    }
+    const policy_applied = resolveAgentTurnPolicyAppliedV1({
+      contract,
+      taskType: '',
+      readonly_mode: request.options?.readonly_mode,
+    });
+    return { status: 'ok', contract, policy_applied };
+  }
+}
 
 /**
  * Execution Engine Router — ECPS `ExecutionDecision.kernel` → legacy runner via projection.
@@ -63,6 +118,10 @@ export class ExecutionEngineRouterService {
     traceEmitter?: ExecutionTraceEmitter,
   ): Promise<RouteAndRunResponseDto> {
     this.assertDecisionContract(decision);
+    const contractGate = EngineContractAdapter.validateContract(request);
+    if (contractGate.status === 'mismatch') {
+      throw new Error(`ENGINE_CONTRACT_MISMATCH:${contractGate.issues.join(',')}`);
+    }
     const payload: ExecutionEngineRunPayload = { request, control, decision };
     const profile = this.resolveProfile(decision, control?.modeHint);
 
@@ -72,6 +131,15 @@ export class ExecutionEngineRouterService {
         decision,
         request_id: request.request_id,
         trip_id: request.trip_id,
+        ...(contractGate.status === 'ok'
+          ? {
+              agent_turn_contract: {
+                policy_applied: contractGate.policy_applied,
+                execution_affinity: contractGate.contract.execution_affinity,
+                execution_model_runtime_hint: contractGate.contract.profile.execution_model_runtime_hint,
+              },
+            }
+          : {}),
       },
       output: {
         kernel: decision.kernel,

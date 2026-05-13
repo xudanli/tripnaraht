@@ -33,6 +33,60 @@ describe('IncrementalItineraryGeneratorService', () => {
       });
       expect(result.mode).toBe('full');
       expect(result.itinerary.days).toHaveLength(2);
+      expect(result.governanceApply.resultType).toBe('itinerary');
+    });
+
+    it('RECOVERING 时向 research 合并 governance_recovery_v1（供分段/全量生成消费）', async () => {
+      const spy = jest.spyOn(service as any, 'extractParams');
+      const request = {
+        request_id: 'req-rec',
+        origin: 'Reykjavik',
+        destination: 'Iceland',
+        days: 2,
+        start_date: '2025-07-01',
+      } as any;
+      await service.generateIncremental({
+        request,
+        research_data: { poi_evidence: { pois: [] } },
+        minDaysToTrigger: 3,
+        governance_runtime_state: 'RECOVERING',
+      });
+      expect(spy).toHaveBeenCalled();
+      expect(spy.mock.calls[0][1]).toMatchObject({
+        governance_recovery_v1: {
+          conservative_corridors: true,
+          suppress_new_region_exploration: true,
+          shorter_legs_bias: true,
+        },
+        planner_governance_mode: 'recovery',
+      });
+      spy.mockRestore();
+    });
+
+    it('merges governance_drift_influence_v1 when request carries governance_drift_influences', async () => {
+      const spy = jest.spyOn(service as any, 'extractParams');
+      const request = {
+        request_id: 'req-gfil',
+        origin: 'Reykjavik',
+        destination: 'Iceland',
+        days: 2,
+        start_date: '2025-07-01',
+        governance_drift_influences: [
+          { target: 'search_constraints', suggestedDelta: 0.08, confidence: 0.8, driftReasonCodes: ['t'] },
+        ],
+      } as any;
+      await service.generateIncremental({
+        request,
+        research_data: { poi_evidence: { pois: [] } },
+        minDaysToTrigger: 3,
+      });
+      expect(spy.mock.calls[0][1]).toMatchObject({
+        governance_drift_influence_v1: {
+          source: 'gfil',
+          influences: [{ target: 'search_constraints' }],
+        },
+      });
+      spy.mockRestore();
     });
 
     it('当 days >= 3 时使用 incremental 模式', async () => {

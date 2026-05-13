@@ -16,6 +16,8 @@ import { LlmService } from '../../../llm/services/llm.service';
 import { LlmProvider } from '../../../llm/dto/llm-request.dto';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
 import { buildContextForNode, writeBackFromNode, buildPromptFromContextPackage, mapPhaseToTripTaskPhase } from '../../../agent/context-engine/utils/langgraph-context-integration';
+import { isResearchConflictNegotiationReport } from '../../../agent/teams/research/research-conflict-negotiation.util';
+import { buildEbpLlmSystemPromptAppendixZh } from '../../../agent/utils/narrator-ebp-tone.util';
 
 @Injectable()
 export class NarratorAgentService implements INarratorAgent {
@@ -150,6 +152,15 @@ export class NarratorAgentService implements INarratorAgent {
         ? `\n\nhistorical_precedents（判例库召回结果）：\n${JSON.stringify(precedentsArr, null, 2)}\n\n${citationRule}\n`
         : `\n\nhistorical_precedents：[]\n\n${citationRule}\n`;
 
+    const researchData =
+      state && typeof (state as { research_data?: unknown }).research_data === 'object'
+        ? ((state as { research_data: Record<string, unknown> }).research_data as Record<string, unknown>)
+        : undefined;
+    const rawEbp = researchData?.__research_conflict_negotiation;
+    const ebpZh =
+      isResearchConflictNegotiationReport(rawEbp) ? buildEbpLlmSystemPromptAppendixZh(rawEbp).trim() : '';
+    const ebpAppendix = ebpZh ? `\n\n${ebpZh}\n` : '';
+
     const prompt = `你是一个旅行规划助手，负责将技术性的决策结果转化为友好、易懂的自然语言解释。
 
 决策结果：
@@ -160,7 +171,7 @@ export class NarratorAgentService implements INarratorAgent {
 决策日志：
 ${JSON.stringify(personaLogs, null, 2)}
 
-${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, null, 2)}` : ''}${contextPrompt}${precedentsPrompt}
+${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, null, 2)}` : ''}${contextPrompt}${precedentsPrompt}${ebpAppendix}
 
 请生成一段友好、易懂的中文解释，要求：
 1. 如果路线被拒绝，要说明原因并给出建议

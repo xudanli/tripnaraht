@@ -84,13 +84,24 @@ export class PlanGenExecutorService implements IPlanGenExecutor {
       });
 
       if (result && typeof result === 'object' && 'request_id' in result && 'days' in result) {
+        const r = result as {
+          request_id: string;
+          days: ItineraryLike['days'];
+          metadata?: ItineraryLike['metadata'];
+          resultType?: ItineraryLike['resultType'];
+          partialExecutionState?: ItineraryLike['partialExecutionState'];
+          executionDecision?: ItineraryLike['executionDecision'];
+        };
         const itinerary: ItineraryLike = {
-          request_id: result.request_id,
-          days: result.days,
-          metadata: result.metadata,
+          request_id: r.request_id,
+          days: r.days,
+          metadata: r.metadata,
+          resultType: r.resultType,
+          partialExecutionState: r.partialExecutionState,
+          executionDecision: r.executionDecision,
         };
         const days = Array.isArray(itinerary.days) ? itinerary.days : [];
-        if (days.length === 0) {
+        if (days.length === 0 && itinerary.resultType !== 'execution_block') {
           return {
             itinerary,
             planDraft: itinerary,

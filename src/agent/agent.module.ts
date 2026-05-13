@@ -113,6 +113,7 @@ import { DecisionReplayService } from './services/decision-replay.service';
 import { UserStandingPreferenceService } from './services/user-standing-preference.service';
 import { RouteAndRunContextEnricherService } from './services/route-and-run-context-enricher.service';
 import { SkillsModule } from '../skills/skills.module';
+import { GovernanceModule } from '../governance/governance.module';
 // 子 Agent 服务（Claude 编排）
 import { ClaudePlannerAgentService } from './services/sub-agents/planner-agent.service';
 import { ClaudeGatekeeperAgentService } from './services/sub-agents/gatekeeper-agent.service';
@@ -170,6 +171,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     forwardRef(() => RagModule), // RAG 模块（用于增强对话），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
     forwardRef(() => SkillsModule), // Skills 模块（用于 Claude 编排），使用 forwardRef 避免循环依赖（SkillsModule -> PlacesModule -> RagModule -> SkillsModule -> AgentModule）
+    GovernanceModule,
     AssistantsModule, // 智能体助手模块（规划助手、行程助手）
     AgentInfraModule, // Infra 层（LLMExecutor、CoreGateway）
     RouteDirectionsModule, // 路线方向模块（用于信息卡片）

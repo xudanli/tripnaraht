@@ -69,6 +69,7 @@ export class NarrateExecutorService implements INarrateExecutor {
       const stateForNarrate = {
         ...state,
         ...(escalation ? { kernel_escalation_plan: escalation } : {}),
+        ...(ctx.researchConflict ? { narration_research_conflict: ctx.researchConflict } : {}),
       } as OrchestratorState;
 
       let narration = (await this.narratorAgent.narrate(

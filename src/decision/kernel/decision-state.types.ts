@@ -581,6 +581,21 @@ export interface HarnessRuntimeState {
   replan_previous_plan_version?: number;
   /** PRD I3：上一版世界快照哈希 */
   replan_previous_world_snapshot_hash?: string;
+  /**
+   * Governance Activation Layer — orchestration-only branch contract mirrored from
+   * `RuntimeBranchDirective` (see `governance/activation/runtime`).
+   */
+  governance_runtime_branch_v1?: {
+    branchType: 'normal_execution' | 'replanning' | 'halted' | 'needs_confirmation';
+    sourceActivationIds: string[];
+    replanningIntent?: {
+      trigger: string;
+      requiredActions: string[];
+      preservedConstraints: string[];
+      forbiddenStrategies: string[];
+      replanningScope: string;
+    };
+  };
 }
 
 /** Phase 1.5：区域解析溯源（可观测 / 排障） */

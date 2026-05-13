@@ -58,33 +58,45 @@ function buildParametersSchema(parameters: ToolParameter[]): Record<string, unkn
   };
 }
 
+export interface FilterMcpDefinitionsOptions {
+  /** 第二道闸：须在审计白名单之后应用；仅保留 toolName 属于此集的 MCP（Decision OS / RCS 硬装配）。 */
+  runtimeAllowedMcpToolNames?: Set<string>;
+}
+
 export function filterMcpDefinitionsByLlmWhitelist(
   defs: McpToolDefinition[],
+  options?: FilterMcpDefinitionsOptions,
 ): { allowed: McpToolDefinition[]; droppedToolNames: string[] } {
+  const runtime = options?.runtimeAllowedMcpToolNames;
   const droppedToolNames: string[] = [];
   const allowed: McpToolDefinition[] = [];
   for (const def of defs) {
-    if (AGENTIC_MCP_LLM_EXPOSE_WHITELIST.has(def.toolName)) {
-      allowed.push(def);
-    } else {
+    if (!AGENTIC_MCP_LLM_EXPOSE_WHITELIST.has(def.toolName)) {
       droppedToolNames.push(def.toolName);
+      continue;
     }
+    if (runtime && !runtime.has(def.toolName)) {
+      droppedToolNames.push(def.toolName);
+      continue;
+    }
+    allowed.push(def);
   }
   return { allowed, droppedToolNames };
 }
 
 /**
  * 将 MCP 工具定义转为 OpenAI tools[]，并生成路由表。
- * 仅包含 {@link AGENTIC_MCP_LLM_EXPOSE_WHITELIST} 中的工具。
+ * 先应用审计白名单 {@link AGENTIC_MCP_LLM_EXPOSE_WHITELIST}，再可选按 {@link FilterMcpDefinitionsOptions.runtimeAllowedMcpToolNames} 第二道闸收窄。
  */
 export function buildOpenAiToolsFromMcpDefinitions(
   defs: McpToolDefinition[],
+  options?: FilterMcpDefinitionsOptions,
 ): {
   tools: OpenAiFunctionToolDefinition[];
   routing: Map<string, McpToolRoutingEntry>;
   droppedToolNames: string[];
 } {
-  const { allowed: filteredDefs, droppedToolNames } = filterMcpDefinitionsByLlmWhitelist(defs);
+  const { allowed: filteredDefs, droppedToolNames } = filterMcpDefinitionsByLlmWhitelist(defs, options);
   const routing = new Map<string, McpToolRoutingEntry>();
   const tools: OpenAiFunctionToolDefinition[] = [];
 

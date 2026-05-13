@@ -31,6 +31,7 @@ import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.se
 import { AgentService } from './agent.service';
 import { runRouteAndRunMainChain } from './execution-gateway.route-and-run.orchestration';
 import { shouldRejectDedupForStaleTraceContract } from './execution-gateway-trace-compatibility.util';
+import { GovernanceHydrationService } from '../../governance/activation/governance-hydration.service';
 
 /**
  * Execution Gateway — Stage 2 runtime surface: replay admission + ECPS **before** any engine runs.
@@ -68,6 +69,7 @@ export class ExecutionGatewayService {
     @Optional() private readonly cognitiveMarket?: CognitiveMarketService,
     @Optional() private readonly policyVersionRegistry?: ExecutionPolicyVersionRegistryService,
     @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
+    @Optional() readonly governanceHydration?: GovernanceHydrationService,
   ) {}
 
   /**

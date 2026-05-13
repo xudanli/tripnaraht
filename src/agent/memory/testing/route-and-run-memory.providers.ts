@@ -21,6 +21,8 @@ export const ROUTE_AND_RUN_MEMORY_TEST_PROVIDERS: Provider[] = [
         travelPreference: null,
         routePartyProfile: null,
         recentDecisions: [],
+        decisionLedger: null,
+        ledgerRecomputePlan: null,
         recentWorldDecisions: [],
         activeTripState: null,
         recoveryHistory: [],

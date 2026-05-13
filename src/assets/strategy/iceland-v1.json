@@ -13,6 +13,16 @@
         "id": "STRAT_ICE_002",
         "description": "2WD vehicles are prohibited on F-roads and highland tracks regardless of season under typical rental and insurance terms in Iceland.",
         "severity": "CRITICAL"
+      },
+      "red_alert_life_safety": {
+        "id": "STRAT_ICE_000",
+        "description": "When SafeTravel / official travel-safety feeds indicate red-tier (critical) alerts that match the user's stated regions or an Iceland-anchored trip, the assistant must not normalize risk or suggest proceeding; defer to official guidance and emergency services.",
+        "severity": "CRITICAL"
+      },
+      "wind_safety_pickup": {
+        "id": "STRAT_ICE_003",
+        "description": "Operational wind-safety guidance for vehicle pickup/door handling and cross-wind driving near alerts; WARNING-tier consumer messaging, not a legal prohibition gate.",
+        "severity": "WARNING"
       }
     }
   }

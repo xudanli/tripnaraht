@@ -30,11 +30,35 @@ import { buildOrchestrationExecutionTraceV1 } from '../contracts/orchestration-e
 import { EXECUTION_MODEL_RUNTIME_ROUTER } from '../runtime/execution-model-runtime-router';
 import { buildSemanticModelSnapshotDescriptor } from '../runtime/testing/semantic-model-snapshot-descriptor';
 import type { AgentMemoryContext } from '../memory/interfaces/agent-memory-context.interface';
+import { deriveMemoryLedgerPhaseFromTripTask } from '../memory/decision-ledger/decision-ledger-world-anchor.util';
+import { planLedgerRecomputeOrder } from '../memory/decision-ledger/decision-ledger-invalidation.util';
+import {
+  isLedgerReconcileBlockingPhase,
+  LEDGER_RECONCILE_POLICY,
+} from '../engine/execution-gateway.config';
+import { LedgerRecomputeEscalationException } from '../engine/ledger-recompute-escalation.exception';
+import { buildLedgerHealingObservabilityV1 } from '../memory/decision-ledger/ledger-healing-observability.util';
+import type { LedgerRecomputeStepV1 } from '../memory/decision-ledger/ledger-recompute.types';
 import {
   buildCidSemanticViewV1,
   computeExecutionSemanticFingerprintV1,
   parseChangeImpactDescriptorV1,
 } from '../contracts/execution-os-change-impact-descriptor.v1';
+import { buildAgentTurnContract, type AgentTurnContractV1, canonicalTripIdForRouteAndRunRequest } from '../contracts/agent-turn-contract.v1';
+import { buildAgentTurnContractTraceSealV1 } from '../contracts/agent-turn-contract-trace-seal.v1';
+import { GovernanceHydrationService } from '../../governance/activation/governance-hydration.service';
+import { routeGovernanceActivationsToRuntimeBranch } from '../../governance/activation/runtime/governance-activation-router.util';
+import type { RuntimeBranchDirective } from '../../governance/activation/runtime/runtime-branch-directive.types';
+import type { HydratedGovernanceRuntimeContext } from '../../governance/activation/governance-activation.types';
+import {
+  buildStructuredGovernanceRuntimeTraceV1,
+  type StructuredGovernanceRuntimeTraceV1,
+} from '../../governance/activation/runtime/build-structured-governance-runtime-trace.util';
+import { buildControlledReplanningContext } from '../../governance/replanning-runtime/build-controlled-replanning-context.util';
+import {
+  tryRecordGovernanceBranchOutcomeWithGrsm,
+  tryRecordGovernanceBranchSelectedWithGrsm,
+} from '../../governance/replanning-runtime/record-governance-branch-on-ledger.util';
 
 export async function runRouteAndRunMainChain(
   agent: AgentService,
@@ -58,6 +82,99 @@ export async function runRouteAndRunMainChain(
     memory = { ...loaded, requestId: request.request_id };
   } else {
     memory = await $.memoryContextAssembler.loadForRouteAndRun(request);
+  }
+
+  /** 分相位账本调解：PLANNING advisory；GATE_EVAL/EXECUTION 阻塞 reconcile（见 engine/execution-gateway.config） */
+  if (
+    !replayAnchor &&
+    request.trip_id &&
+    String(request.trip_id).trim() !== '' &&
+    memory.decisionLedger &&
+    $.ledgerRecomputeExecutor
+  ) {
+    const tripId = String(request.trip_id).trim();
+    const phase = deriveMemoryLedgerPhaseFromTripTask(memory.activeTripState);
+    const execPlan = $.ledgerRecomputeExecutor.buildExecutionPlan(memory.decisionLedger);
+    const hasInv = execPlan.invalidatedSteps.length > 0;
+    if (hasInv) {
+      const blocking = isLedgerReconcileBlockingPhase(phase);
+      const initialInv = execPlan.invalidatedSteps.length;
+      if (blocking && $.incrementalRecomputeOrchestrator && $.memorySnapshotPersistence) {
+        memory.observability.layers.push('ledger_reconcile_blocking_start');
+        const result = await $.incrementalRecomputeOrchestrator.reconcile(tripId, {
+          maxRetries: LEDGER_RECONCILE_POLICY.MAX_RETRIES,
+        });
+        (request as any).__ledgerHealingObs = buildLedgerHealingObservabilityV1({
+          initialInvalidatedCount: initialInv,
+          ranBlockingReconcile: true,
+          reconcileResult: result,
+          invalidatedNodeIds: execPlan.invalidatedSteps.map((s: LedgerRecomputeStepV1) => s.nodeId),
+        });
+        if (result.status === 'CONVERGED') {
+          const refreshed = await $.memorySnapshotPersistence.loadLatestContextForTrip(tripId);
+          if (refreshed) {
+            memory = { ...refreshed, requestId: request.request_id };
+            memory.observability.layers.push('ledger_reconcile_converged');
+          } else if (result.finalLedger) {
+            memory = {
+              ...memory,
+              decisionLedger: result.finalLedger,
+              ledgerRecomputePlan: planLedgerRecomputeOrder(result.finalLedger),
+              snapshotVersion: result.snapshotVersion ?? memory.snapshotVersion,
+            };
+            memory.observability.layers.push('ledger_reconcile_converged_merge_local');
+          } else {
+            memory.observability.layers.push('ledger_reconcile_converged_no_ledger_payload');
+          }
+        } else if (LEDGER_RECONCILE_POLICY.ABORT_ON_ESCALATION) {
+          throw new LedgerRecomputeEscalationException(result);
+        } else {
+          memory.observability.layers.push(`ledger_reconcile_blocking_nonfatal:${result.status}`);
+        }
+      } else if (blocking && (!$.incrementalRecomputeOrchestrator || !$.memorySnapshotPersistence)) {
+        memory.observability.layers.push('ledger_reconcile_blocking_skipped_missing_deps');
+        (request as any).__ledgerHealingObs = buildLedgerHealingObservabilityV1({
+          initialInvalidatedCount: initialInv,
+          ranBlockingReconcile: false,
+          skippedMissingDeps: true,
+          invalidatedNodeIds: execPlan.invalidatedSteps.map((s: LedgerRecomputeStepV1) => s.nodeId),
+        });
+        $.logger?.warn?.(
+          `[LedgerReconcile] blocking phase=${phase} skipped: orchestrator=${!!$.incrementalRecomputeOrchestrator} persistence=${!!$.memorySnapshotPersistence} request_id=${request.request_id}`,
+        );
+      } else {
+        memory.observability.layers.push('ledger_reconcile_advisory_hint');
+        (request as any).__ledgerPendingPlan = execPlan;
+        (request as any).__ledgerHealingObs = buildLedgerHealingObservabilityV1({
+          initialInvalidatedCount: initialInv,
+          ranBlockingReconcile: false,
+          advisoryDeferred: true,
+          invalidatedNodeIds: execPlan.invalidatedSteps.map((s: LedgerRecomputeStepV1) => s.nodeId),
+        });
+      }
+    }
+  }
+
+  /** 观测闭包：装配后若账本存在失效/STALE，生成重算执行计划并打标 observability（不改变主编排分支）。 */
+  if ($.ledgerRecomputeExecutor && memory.decisionLedger) {
+    const plan = memory.ledgerRecomputePlan;
+    const hasTopo =
+      !!plan &&
+      (plan.orderedNodeIds.length > 0 || (plan.unorderedFallbackNodeIds?.length ?? 0) > 0);
+    const hasStale = memory.decisionLedger.nodes.some(n => n.status === 'STALE');
+    if (hasTopo || hasStale) {
+      (request as any).__ledgerRecomputeExecution = $.ledgerRecomputeExecutor.buildExecutionPlan(memory.decisionLedger);
+      const ex = (request as any).__ledgerRecomputeExecution as {
+        invalidatedSteps: { length: number };
+        staleSteps: { length: number };
+      };
+      if (ex.invalidatedSteps.length > 0) {
+        memory.observability.layers.push('ledger_full_replan_hint');
+      }
+      if (ex.staleSteps.length > 0) {
+        memory.observability.layers.push('ledger_stale_refresh_hint');
+      }
+    }
   }
 
   void $.memorySnapshotPersistence?.persistSerializableSnapshot(memory);
@@ -100,6 +217,72 @@ export async function runRouteAndRunMainChain(
         const runBody = async (): Promise<RouteAndRunResponseDto> => {
 
     mergeTripIdAliasesIntoRouteAndRunRequest(request);
+
+    const canonicalTripIdEarly = canonicalTripIdForRouteAndRunRequest(request);
+    let governanceRuntime: HydratedGovernanceRuntimeContext | undefined;
+    const govHydration = (gateway as ExecutionGatewayService & { governanceHydration?: GovernanceHydrationService })
+      .governanceHydration;
+    if (canonicalTripIdEarly && govHydration && !replayAnchor) {
+      try {
+        const driftInjectionEnabled =
+          process.env.GOVERNANCE_DRIFT_FEEDBACK_INJECTION === 'true' ||
+          (request as any).options?.governance_drift_feedback_injection === true;
+        governanceRuntime = await govHydration.hydrateGovernanceSnapshot(canonicalTripIdEarly, {
+          allowDriftFeedbackInjection: driftInjectionEnabled,
+        });
+      } catch (err: unknown) {
+        $.logger.warn(
+          `[GovernanceRuntime] hydrate failed trip_id=${canonicalTripIdEarly} err=${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    const runtimeDirective: RuntimeBranchDirective = governanceRuntime
+      ? routeGovernanceActivationsToRuntimeBranch(governanceRuntime)
+      : { branchType: 'normal_execution', sourceActivationIds: [] };
+    (request as any).__runtimeBranchDirective = runtimeDirective;
+    const governanceStructuredTrace: StructuredGovernanceRuntimeTraceV1 | undefined =
+      governanceRuntime && canonicalTripIdEarly
+        ? buildStructuredGovernanceRuntimeTraceV1({
+            tripId: canonicalTripIdEarly,
+            hydrated: governanceRuntime,
+            directive: runtimeDirective,
+          })
+        : undefined;
+    (request as any).__governanceStructuredTrace = governanceStructuredTrace;
+
+    if (governanceRuntime) {
+      (request as any).__controlledReplanningContext = buildControlledReplanningContext({
+        directive: runtimeDirective,
+        hydrated: governanceRuntime,
+        userMessage: request.message,
+      });
+      (request as any).governance_runtime_state = governanceRuntime.runtimeState;
+      (request as any).governance_drift_influences = governanceRuntime.driftInfluences ?? [];
+    } else {
+      (request as any).__controlledReplanningContext = undefined;
+      (request as any).governance_runtime_state = undefined;
+      (request as any).governance_drift_influences = [];
+    }
+
+    /** Harness-style turn snapshot：编排层唯一聚合点（引擎逐步改为只读此契约）。 */
+    (request as any).__agentTurnContract = buildAgentTurnContract({
+      request,
+      memory,
+      governanceRuntime: governanceRuntime ?? null,
+    });
+
+    $.logger.log(
+      governanceStructuredTrace ?? {
+        schemaId: 'tripnara.governance_runtime.trace@v1',
+        version: 1,
+        governanceSnapshotId: 'n/a',
+        activeActivationTypes: [],
+        selectedBranch: runtimeDirective.branchType,
+        unresolvedBlockCount: 0,
+        pressureSummary: { weather: 0, world: 0, policy: 0, execution: 0, recovery: 0 },
+      },
+      `[GovernanceRuntime] trace request_id=${request.request_id}`,
+    );
 
     /** Replay determinism seal：禁止 enricher 改写上下文、禁止编排 mode fallback（见 execution-gateway-contract-governance.v1） */
     const replayStrictSeal = request.options?.orchestration_replay_strict_seal === true;
@@ -330,6 +513,73 @@ export async function runRouteAndRunMainChain(
         matched_rules: decision.matchedRules,
       };
       $.logger.log(logFields, `[AgentService] 编排策略决策`);
+
+      const dryRunLedger = request.options?.dry_run === true;
+      await tryRecordGovernanceBranchSelectedWithGrsm($.governanceLedgerStore, {
+        tripId: canonicalTripIdEarly,
+        requestId: request.request_id,
+        directive: (request as any).__runtimeBranchDirective as RuntimeBranchDirective,
+        dryRun: dryRunLedger,
+      });
+
+      const govDirective = (request as any).__runtimeBranchDirective as RuntimeBranchDirective | undefined;
+      const gTrace = (request as any).__governanceStructuredTrace as StructuredGovernanceRuntimeTraceV1 | undefined;
+      if (govDirective?.branchType === 'needs_confirmation') {
+        await tryRecordGovernanceBranchOutcomeWithGrsm($.governanceLedgerStore, {
+          tripId: canonicalTripIdEarly,
+          requestId: request.request_id,
+          directive: govDirective,
+          outcome: 'confirmation_requested',
+          dryRun: dryRunLedger,
+        });
+        return $.wrapSuccessfulRouteAndRunReturn(
+          request,
+          $.getEntryResponses().createGovernanceRuntimeNeedsConfirmationResponse(request, startTime, govDirective, gTrace),
+          {
+            mode_final: decision.mode,
+            governance_runtime: true,
+            governance_runtime_trace_v1: gTrace,
+            deadline_ms: deadline.totalMs,
+            time_remaining_ms: deadline.remainingMs(),
+            breakers: {
+              sm: $.breakerSM.snapshot(),
+              dyn: $.breakerDyn.snapshot(),
+              legacy: $.breakerLegacy.snapshot(),
+            },
+            ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
+            ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+          } as any,
+          requestHash,
+        );
+      }
+      if (govDirective?.branchType === 'halted') {
+        await tryRecordGovernanceBranchOutcomeWithGrsm($.governanceLedgerStore, {
+          tripId: canonicalTripIdEarly,
+          requestId: request.request_id,
+          directive: govDirective,
+          outcome: 'execution_suppressed',
+          dryRun: dryRunLedger,
+        });
+        return $.wrapSuccessfulRouteAndRunReturn(
+          request,
+          $.getEntryResponses().createGovernanceRuntimeSuppressedExecutionResponse(request, startTime, govDirective, gTrace),
+          {
+            mode_final: decision.mode,
+            governance_runtime: true,
+            governance_runtime_trace_v1: gTrace,
+            deadline_ms: deadline.totalMs,
+            time_remaining_ms: deadline.remainingMs(),
+            breakers: {
+              sm: $.breakerSM.snapshot(),
+              dyn: $.breakerDyn.snapshot(),
+              legacy: $.breakerLegacy.snapshot(),
+            },
+            ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
+            ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+          } as any,
+          requestHash,
+        );
+      }
       
       // Metrics 打点（用于监控和观察）
       MetricsRecorder.recordOrchestrationMode(decision.mode);
@@ -408,6 +658,8 @@ export async function runRouteAndRunMainChain(
           snapshot_version: memory.snapshotVersion,
           request_id: request.request_id,
         },
+        governance_runtime_trace_v1: (request as { __governanceStructuredTrace?: StructuredGovernanceRuntimeTraceV1 })
+          .__governanceStructuredTrace,
         ...((): Record<string, unknown> => {
           const execution_trace_v1 = buildOrchestrationExecutionTraceV1({
             snapshotId: memory.snapshotId,
@@ -431,9 +683,19 @@ export async function runRouteAndRunMainChain(
             routeDecisionPath: execution_trace_v1.route_decision_path,
             changeImpactDescriptor: cidParsed,
           });
+          const agentTurnContract = (request as { __agentTurnContract?: AgentTurnContractV1 }).__agentTurnContract;
+          const agent_turn_contract_seal_v1 =
+            agentTurnContract != null
+              ? buildAgentTurnContractTraceSealV1({
+                  contract: agentTurnContract,
+                  taskType: signals.taskType,
+                  readonly_mode: request.options?.readonly_mode,
+                })
+              : undefined;
           return {
             execution_trace_v1,
             execution_semantic_fingerprint_v1,
+            ...(agent_turn_contract_seal_v1 ? { agent_turn_contract_seal_v1 } : {}),
             ...(cidParsed
               ? {
                   change_impact_descriptor_v1: cidParsed,
@@ -547,6 +809,7 @@ export async function runRouteAndRunMainChain(
       };
 
       try {
+        /** Agentic 快路径：FEATURE_AGENTIC_RUNTIME_MCP_CAP / FEATURE_AGENTIC_GOVERNANCE_HITL；相位 options.agentic_runtime_planning_phase；tool 面 TripTask.constraints.toolAllowlist；策略 tool_policies；HITL 续跑 approved_tool_invocations + options.agentic_approved_tool_invocations。 */
         const agenticFastPath = await $.tryExecuteAgenticToolLoopFastPath(
           request,
           startTime,
@@ -554,6 +817,7 @@ export async function runRouteAndRunMainChain(
           signals,
           decision,
           deadline,
+          memory,
         );
         if (agenticFastPath) {
           $.modeLock.set(stabilityCtx, decision.mode);

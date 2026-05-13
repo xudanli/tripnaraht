@@ -1,9 +1,11 @@
-import { ExecutionEngineRouterService } from './execution-engine-router.service';
+import { ExecutionEngineRouterService, EngineContractAdapter } from './execution-engine-router.service';
 import type { ExecutionDecision } from '../contracts/execution-control-policy.types';
 import type { ExecutionKernel } from '../contracts/execution-semantic-field.types';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { ExecutionTraceEmitter } from '../utils/execution-trace.emitter';
 import { projectKernelToLegacyTier } from '../utils/legacy-execution-projection.util';
+import { buildAgentTurnContract } from '../contracts/agent-turn-contract.v1';
+import type { AgentMemoryContext } from '../memory/interfaces/agent-memory-context.interface';
 
 function decisionForKernel(kernel: ExecutionKernel): ExecutionDecision {
   return {
@@ -28,6 +30,29 @@ function req(): RouteAndRunRequestDto {
     trip_id: 't',
     message: 'm',
   } as RouteAndRunRequestDto;
+}
+
+function minimalMemory(overrides: Partial<AgentMemoryContext> = {}): AgentMemoryContext {
+  return {
+    snapshotId: 'snap',
+    snapshotVersion: 1,
+    requestId: 'r',
+    userId: 'u',
+    tripId: 't',
+    userProfile: null,
+    travelPreference: null,
+    routePartyProfile: null,
+    recentDecisions: [],
+    decisionLedger: null,
+    ledgerRecomputePlan: null,
+    recentWorldDecisions: [],
+    activeTripState: null,
+    recoveryHistory: [],
+    failurePatterns: [],
+    loadedAt: '2026-05-13T00:00:00.000Z',
+    observability: { layers: [] },
+    ...overrides,
+  };
 }
 
 async function ok(): Promise<RouteAndRunResponseDto> {
@@ -134,5 +159,63 @@ describe('ExecutionEngineRouterService', () => {
         confidenceGate: 'INVALID',
       }),
     ).toThrow('ECPS_CONTRACT_MISSING_KERNEL');
+  });
+
+  describe('EngineContractAdapter', () => {
+    it('validateContract skips when __agentTurnContract absent', () => {
+      expect(EngineContractAdapter.validateContract(req())).toEqual({ status: 'skipped', reason: 'no_contract' });
+    });
+
+    it('validateContract ok when request matches sealed contract', () => {
+      const request = {
+        ...req(),
+        options: { execution_model_runtime_hint: 'replay_session_a' },
+      } as RouteAndRunRequestDto;
+      (request as any).__agentTurnContract = buildAgentTurnContract({
+        request,
+        memory: minimalMemory(),
+      });
+      const v = EngineContractAdapter.validateContract(request);
+      expect(v.status).toBe('ok');
+      if (v.status === 'ok') {
+        expect(v.policy_applied).toBeDefined();
+      }
+    });
+
+    it('validateContract mismatch when runtime hint drifts', () => {
+      const request = {
+        ...req(),
+        options: { execution_model_runtime_hint: 'A' },
+      } as RouteAndRunRequestDto;
+      (request as any).__agentTurnContract = buildAgentTurnContract({
+        request: { ...request, options: { execution_model_runtime_hint: 'B' } } as RouteAndRunRequestDto,
+        memory: minimalMemory(),
+      });
+      const v = EngineContractAdapter.validateContract(request);
+      expect(v.status).toBe('mismatch');
+      if (v.status === 'mismatch') {
+        expect(v.issues).toContain('execution_model_runtime_hint_drift');
+      }
+    });
+
+    it('run throws ENGINE_CONTRACT_MISMATCH when contract drifts', async () => {
+      const request = {
+        ...req(),
+        options: { execution_model_runtime_hint: 'stable' },
+      } as RouteAndRunRequestDto;
+      (request as any).__agentTurnContract = buildAgentTurnContract({
+        request,
+        memory: minimalMemory(),
+      });
+      request.options = { execution_model_runtime_hint: 'changed' };
+      await expect(
+        router.run(decisionForKernel('REFLEX_KERNEL'), request, undefined, {
+          system1: ok,
+          lightweightQa: ok,
+          system2React: ok,
+          system2StateMachine: ok,
+        }),
+      ).rejects.toThrow('ENGINE_CONTRACT_MISMATCH');
+    });
   });
 });

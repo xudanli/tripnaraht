@@ -17,6 +17,32 @@ const RESEARCH_KEY_ZH: Record<string, string> = {
   prediction_data: '预测数据',
 };
 
+/** Research Team 审计条目（展示层弱类型，避免 decision_log 工具反向依赖 teams 模块） */
+export type ResearchTeamAuditEntryLike = {
+  action?: string;
+  duration_ms?: number;
+  detail?: {
+    request_id?: string;
+    research_execution_kind?: string;
+    members_planned?: string[];
+  };
+};
+
+/**
+ * Research Team 执行审计一行摘要（详细结构见 metadata.team_audit_log / last_team_execution）。
+ */
+export function formatResearchTeamAuditOutputsZh(entries: ResearchTeamAuditEntryLike[]): string {
+  if (!entries.length) return '';
+  const plan = entries.find((e) => e.action === 'plan_members');
+  const members = plan?.detail?.members_planned ?? [];
+  const kind = plan?.detail?.research_execution_kind ?? 'FULL';
+  const exec = entries.find((e) => e.action === 'execute');
+  const execMs = typeof exec?.duration_ms === 'number' ? exec.duration_ms : undefined;
+  const parts = [`执行形态「${kind}」`, `规划成员：${members.length ? members.join('、') : '—'}`];
+  if (execMs !== undefined) parts.push(`执行体耗时 ${execMs}ms`);
+  return parts.join('；');
+}
+
 export function researchKeysDisplayZh(keys: string[]): string {
   if (!keys.length) return '';
   const labels = keys.map((k) => RESEARCH_KEY_ZH[k] ?? k);

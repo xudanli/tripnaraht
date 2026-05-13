@@ -66,6 +66,7 @@ import type { NarrativeSafetyPayload } from '../inventory/narrative-safety-evalu
 import { buildConsultationDashboardFallbackFromSuggestedOperations } from '../utils/consultation-dashboard-fallback.util';
 import type { TripConsultationSuggestedOperation } from '../utils/trip-consultation-suggested-operations.util';
 import { buildSafetySurfacePayload } from '../utils/safety-surface-payload.util';
+import { appendBudgetArbitrationEntriesToDecisionLogInPlace } from '../teams/research/research-budget-arbitration-k3-decision-log.util';
 
 @Injectable()
 export class RouteAndRunResponseAssemblerService {
@@ -1637,6 +1638,14 @@ export class RouteAndRunResponseAssemblerService {
           ? ({ request_id: request.request_id, days: [] } as Itinerary)
           : undefined;
 
+    const researchDataForSafetySurface = {
+      ...(((orchestrationResult.result as any)?.state?.research_data as Record<string, unknown> | undefined) ??
+        {}),
+      ...(((orchestrationResult.result as any)?.research_data as Record<string, unknown> | undefined) ?? {}),
+      ...(((orchestrationResult.result as any)?.lightweight_research_data as Record<string, unknown> | undefined) ??
+        {}),
+    } as Record<string, unknown>;
+
     /** 轻量问答路径（单次 LLM + 可选 MCP）：不等价于 System1Executor，但产品上与「快速路径」一致 */
     const lightweightKnowledgeQa = Boolean(
       (orchestrationResult.result as { lightweightKnowledgeQa?: boolean } | undefined)
@@ -1778,6 +1787,23 @@ export class RouteAndRunResponseAssemblerService {
           ...((orchestrationResult.result as any)?.iceland_rental_guidance
             ? { iceland_rental_guidance: (orchestrationResult.result as any).iceland_rental_guidance }
             : {}),
+          ...((orchestrationResult.result as any)?.lightweight_research_data
+            ? {
+                lightweight_research_data: (orchestrationResult.result as any).lightweight_research_data,
+              }
+            : {}),
+          ...((orchestrationResult.result as any)?.iceland_lightweight_red_alert_fast_fail
+            ? {
+                iceland_lightweight_red_alert_fast_fail: (orchestrationResult.result as any)
+                  .iceland_lightweight_red_alert_fast_fail,
+              }
+            : {}),
+          ...((orchestrationResult.result as any)?.iceland_lightweight_vehicle_terrain_fast_fail
+            ? {
+                iceland_lightweight_vehicle_terrain_fast_fail: (orchestrationResult.result as any)
+                  .iceland_lightweight_vehicle_terrain_fast_fail,
+              }
+            : {}),
           ...((orchestrationResult.result as any)?.car_rental_guidance_footnotes_zh?.length
             ? {
                 car_rental_guidance_footnotes_zh: (orchestrationResult.result as any)
@@ -1856,6 +1882,12 @@ export class RouteAndRunResponseAssemblerService {
                 errorType: orchestrationResult.result?.errorType,
               }
             : {}),
+          safety_surface: buildSafetySurfacePayload({
+            research_data: researchDataForSafetySurface,
+            itinerary:
+              itineraryShellDyn ?? (orchestrationResult.result?.itinerary as Itinerary | undefined) ?? undefined,
+            stepsExecuted: orchestrationResult.stepsExecuted,
+          }),
           ...this.buildIronShieldPayloadBlocks((orchestrationResult.result as any)?.state as OrchestratorState | undefined),
         } as any,
       },
@@ -1871,6 +1903,8 @@ export class RouteAndRunResponseAssemblerService {
           orchestrationResult.result?.gate_result,
           orchestrationResult.result?.state,
         ),
+        optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
+        kernel_explainability: this.buildKernelExplainability(orchestrationResult.result?.decisionState),
       } as any,
       observability: {
         latency_ms: latency,
@@ -2183,10 +2217,22 @@ export class RouteAndRunResponseAssemblerService {
     return out;
   }
 
+  private mergeResearchDataShardsForK3(orchestrationResult: OrchestrationResult): Record<string, unknown> {
+    const r = orchestrationResult.result as Record<string, unknown> | undefined;
+    if (!r || typeof r !== 'object') return {};
+    const st = r.state as { research_data?: Record<string, unknown> } | undefined;
+    return {
+      ...((st?.research_data as Record<string, unknown> | undefined) ?? {}),
+      ...((r.research_data as Record<string, unknown> | undefined) ?? {}),
+      ...((r.lightweight_research_data as Record<string, unknown> | undefined) ?? {}),
+    };
+  }
+
   /**
    * 编排层 `DecisionLogEntry`（trip-plan.interface：request_id/step/actor）与
    * trips/decision `DecisionLogEntry`（persona/action/reasonCodes）是两套契约；
    * PRD reasonCodes 归一化仅在 DecisionLogStorage / trips 流水线执行，此处不做混洗。
+   * 5.0.1：将 `research_data.__research_budget_arbitration_decision_log` 并入 K3 三处同源 `decision_log`。
    */
   private resolveCanonicalDecisionLogForK3(orchestrationResult: OrchestrationResult): DecisionLogEntry[] {
     const r = orchestrationResult.result as {
@@ -2199,13 +2245,23 @@ export class RouteAndRunResponseAssemblerService {
 
     // 勿把「空数组」当成权威来源：轻量问答只在顶层 decisionLog 写入 DONE+RAG，
     // 若 result.state.decision_log 被初始化成 []，原先会覆盖顶层导致 explain.decision_log 为空、前端决策面板空白。
-    if (Array.isArray(fromState) && fromState.length > 0) return fromState;
-    if (Array.isArray(fromResult) && fromResult.length > 0) return fromResult;
-    if (top.length > 0) return top;
+    let canonical: DecisionLogEntry[];
+    if (Array.isArray(fromState) && fromState.length > 0) canonical = fromState;
+    else if (Array.isArray(fromResult) && fromResult.length > 0) canonical = fromResult;
+    else if (top.length > 0) canonical = top;
+    else if (Array.isArray(fromState)) canonical = fromState;
+    else if (Array.isArray(fromResult)) canonical = fromResult;
+    else canonical = Array.isArray(top) ? top : [];
 
-    if (Array.isArray(fromState)) return fromState;
-    if (Array.isArray(fromResult)) return fromResult;
-    return [];
+    const research = this.mergeResearchDataShardsForK3(orchestrationResult);
+    const requestId = String((r as any)?.state?.request_id ?? canonical[0]?.request_id ?? '');
+    appendBudgetArbitrationEntriesToDecisionLogInPlace(canonical, research, requestId);
+
+    orchestrationResult.decisionLog = canonical;
+    if ((r as any)?.state) (r as any).state.decision_log = canonical;
+    if (r) (r as any).decision_log = canonical;
+
+    return canonical;
   }
 
   private buildKernelExplainability(

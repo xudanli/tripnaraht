@@ -77,6 +77,7 @@ import { NegotiationSessionStoreService } from './negotiation-session-store.serv
 import { NegotiationResolverService } from './negotiation-resolver.service';
 import type { ConfirmNegotiationResponseDto, NegotiationResolutionDto } from '../dto/confirm-negotiation.dto';
 import { AgentEntryResponseFactoryService } from './agent-entry-response-factory.service';
+import { GovernanceLedgerStoreService } from '../ledger/governance-ledger.store.service';
 import { PlanningRequestClassifierService } from './planning-request-classifier.service';
 import { ModuleRef } from '@nestjs/core';
 import type { DecisionLogEntry as TripsDecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
@@ -129,12 +130,22 @@ import {
   parseAgenticToolLoopFlag,
   parseAgenticToolPacksEnv,
   parseFeatureTaskClosureBooking,
+  parseAgenticRuntimeMcpCapFlag,
 } from '../utils/agentic-tool-loop-dispatch.util';
+import { deriveAgenticMcpRuntimeAllowlist, extractAgenticSkillAllowlistForMcpCap } from '../runtime/agentic-mcp-runtime-cap.util';
+import {
+  mergeAgenticToolPolicies,
+  mergeApprovedToolInvocations,
+  parseAgenticGovernanceHitlFlag,
+} from '../runtime/agentic-tool-governance.util';
 import type { ConflictStrategyOptionsResponseDto } from '../dto/conflict-strategy-options.dto';
 import { StrategyConflictOptionsService } from './strategy-conflict-options.service';
 import { MemoryContextAssemblerService } from '../memory/services/memory-context-assembler.service';
+import type { AgentMemoryContext } from '../memory/interfaces/agent-memory-context.interface';
 import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
 import { MemorySnapshotPersistenceService } from '../memory/persistence/memory-snapshot-persistence.service';
+import { LedgerRecomputeExecutorService } from '../memory/decision-ledger/ledger-recompute-executor.service';
+import { IncrementalRecomputeOrchestratorService } from '../memory/decision-ledger/incremental-recompute-orchestrator.service';
 import { AgentExecutionContextStore } from '../runtime/agent-execution-context.store';
 import { AgentExecutionContextFactoryService } from '../runtime/agent-execution-context-factory.service';
 import { ExecutionTimelineRecorderService } from '../runtime/execution-timeline-recorder.service';
@@ -183,6 +194,8 @@ export class AgentService {
     private executionGateway: ExecutionGatewayService,
     @Optional() private readonly executionTimelineRecorder?: ExecutionTimelineRecorderService,
     @Optional() private readonly memorySnapshotPersistence?: MemorySnapshotPersistenceService,
+    @Optional() private readonly ledgerRecomputeExecutor?: LedgerRecomputeExecutorService,
+    @Optional() private readonly incrementalRecomputeOrchestrator?: IncrementalRecomputeOrchestratorService,
     @Optional() private dagOrchestrator?: DAGOrchestratorService,
     @Optional() private claudeOrchestrator?: ClaudeOrchestratorService,
     private eventTelemetry?: EventTelemetryService,
@@ -217,6 +230,7 @@ export class AgentService {
     @Optional() private readonly mcpAgentExecutor?: McpAgentExecutorService,
     @Optional() private readonly strategyConflictOptions?: StrategyConflictOptionsService,
     @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
+    @Optional() private readonly governanceLedgerStore?: GovernanceLedgerStoreService,
     @Optional() @Inject(SKILL_INTENT_RECOGNIZE) private readonly intentRecognizeSkill?: Skill,
   ) {}
 
@@ -1914,6 +1928,7 @@ export class AgentService {
     signals: RoutingSignals,
     decision: OrchestrationPolicyDecision,
     deadline: ReturnType<typeof createDeadline>,
+    memory?: AgentMemoryContext,
   ): Promise<RouteAndRunResponseDto | null> {
     if (request.options?.dry_run) return null;
     if (!this.mcpAgentExecutor) return null;
@@ -1949,6 +1964,26 @@ export class AgentService {
         process.env.FEATURE_TASK_CLOSURE_BOOKING,
     );
 
+    const runtimeMcpCapEnabled = parseAgenticRuntimeMcpCapFlag(
+      this.configService?.get<string>('FEATURE_AGENTIC_RUNTIME_MCP_CAP') ??
+        process.env.FEATURE_AGENTIC_RUNTIME_MCP_CAP,
+    );
+    let runtimeMcpToolAllowlist: string[] | undefined;
+    let runtimeMcpCapProvenance: string | undefined;
+    if (runtimeMcpCapEnabled) {
+      const phase = request.options?.agentic_runtime_planning_phase ?? 'planning';
+      const derived = deriveAgenticMcpRuntimeAllowlist({
+        phase,
+        skillAllowlist: extractAgenticSkillAllowlistForMcpCap(request, memory),
+        emergency: request.emergency_constraints ?? undefined,
+      });
+      runtimeMcpToolAllowlist = [...derived.allowedMcpToolNames];
+      runtimeMcpCapProvenance = derived.provenance;
+      this.logger.debug(
+        `[AgenticRuntimeMcpCap] phase=${phase} provenance=${derived.provenance} tools=${runtimeMcpToolAllowlist.length}`,
+      );
+    }
+
     const mcpPreset = resolveAgenticMcpRetryBudget(signals.complexity);
     const envToolAttemptsRaw =
       this.configService?.get<string>('AGENTIC_MCP_TOOL_MAX_ATTEMPTS') ??
@@ -1964,6 +1999,19 @@ export class AgentService {
       envRetryBaseRaw != null && String(envRetryBaseRaw).trim() !== ''
         ? parseInt(String(envRetryBaseRaw), 10)
         : NaN;
+
+    const hitlGovEnabled = parseAgenticGovernanceHitlFlag(
+      this.configService?.get<string>('FEATURE_AGENTIC_GOVERNANCE_HITL') ??
+        process.env.FEATURE_AGENTIC_GOVERNANCE_HITL,
+    );
+    const toolGovernancePolicies = mergeAgenticToolPolicies(
+      hitlGovEnabled,
+      memory?.activeTripState?.constraints?.tool_policies,
+    );
+    const governanceApprovedToolInvocations = mergeApprovedToolInvocations(
+      memory?.activeTripState?.constraints?.approved_tool_invocations,
+      request.options?.agentic_approved_tool_invocations,
+    );
 
     let execResult: McpAgentExecutorRunResult;
     try {
@@ -2001,6 +2049,11 @@ export class AgentService {
                 ? envRetryBase
                 : mcpPreset.mcpRetryBaseMs,
           },
+          ...(runtimeMcpCapEnabled
+            ? { runtimeMcpToolAllowlist, runtimeMcpCapProvenance }
+            : {}),
+          toolGovernancePolicies,
+          governanceApprovedToolInvocations,
           ...(taskClosureBookingEnabled
             ? {
                 taskClosure: {
@@ -2260,6 +2313,7 @@ export class AgentService {
     if (!resp) return resp;
     const receivedRouteDirectionId = this.resolveRequestRouteDirectionId(request);
     const memContract = request ? (request as any).__memoryContractObs : undefined;
+    const ledgerHealing = request ? (request as any).__ledgerHealingObs : undefined;
     const execMemBinding =
       (request ? (request as any).__memoryExecutionBinding : undefined) ??
       this.agentExecutionContextStore.get()?.executionBinding;
@@ -2279,6 +2333,7 @@ export class AgentService {
       ...(resp.observability ?? {}),
       ...obs,
       ...(memContract ? { memory_contract: memContract } : {}),
+      ...(ledgerHealing ? { ledger_healing: ledgerHealing } : {}),
       ...(execMemBinding ? { execution_memory_binding: execMemBinding } : {}),
       ...(timelinePreview && timelinePreview.length > 0
         ? { execution_timeline_preview: timelinePreview }

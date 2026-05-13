@@ -3,14 +3,19 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ItineraryGenerateSkill } from './itinerary-generate.skill';
 import { PlanningWorkbenchAgentService } from '../../agent/services/planning-workbench-agent.service';
 import { TripPlanRequest, GateResult } from '../../agent/interfaces/trip-plan.interface';
+import { freezeExecutionPolicyHook } from '../../world/operational/execution-governance.contract';
+import { GovernanceModule } from '../../governance/governance.module';
+import { GovernanceLedgerStoreService } from '../../agent/ledger/governance-ledger.store.service';
 
 describe('ItineraryGenerateSkill', () => {
   let skill: ItineraryGenerateSkill;
+  let testModule: TestingModule;
 
   beforeEach(async () => {
     const mockPlanningWorkbench = {};
 
-    const module: TestingModule = await Test.createTestingModule({
+    testModule = await Test.createTestingModule({
+      imports: [GovernanceModule],
       providers: [
         ItineraryGenerateSkill,
         {
@@ -20,7 +25,7 @@ describe('ItineraryGenerateSkill', () => {
       ],
     }).compile();
 
-    skill = module.get<ItineraryGenerateSkill>(ItineraryGenerateSkill);
+    skill = testModule.get<ItineraryGenerateSkill>(ItineraryGenerateSkill);
   });
 
   it('应该被定义', () => {
@@ -67,6 +72,9 @@ describe('ItineraryGenerateSkill', () => {
       expect(result.request_id).toBe('test-request-1');
       expect(result.days).toHaveLength(3);
       expect(result.metadata?.total_days).toBe(3);
+      expect(result.resultType).toBe('itinerary');
+      expect(result.partialExecutionState).toBe('none');
+      expect(result.executionDecision.status).toBe('allow');
       expect(result.days[0].items.length).toBeGreaterThan(0);
     });
 
@@ -203,6 +211,44 @@ describe('ItineraryGenerateSkill', () => {
       });
 
       expect(resultWithBlock.metadata?.robustness_score).toBeLessThan(0.5);
+    });
+
+    it('executionPolicyHook blocked 时返回 execution_block 与空 days', async () => {
+      const hook = freezeExecutionPolicyHook({
+        policySource: 'test',
+        policyGeneratedAt: 0,
+        causedByPolicies: ['safetravel.gate.block'],
+        policyStrengthDominant: 'hard',
+        executionStatus: 'blocked',
+        denyLongDistanceAutorouting: true,
+        maxSingleLegDriveHours: 2.5,
+        forcedMinimumVehicleClass: null,
+        haltAutomatedExecution: true,
+        arbitrationConfidence: 0.5,
+        rawSeverity: 'BLOCKED',
+        blockingSummary: ['gate'],
+        recoverySuggestions: [{ type: 'reroute', rationale: ['x'] }],
+      });
+      const result = await skill.execute({
+        request: {
+          ...baseRequest,
+          trip_id: 'trip-ledger-1',
+          days: 2,
+          start_date: '2024-07-01',
+        },
+        research_data: {
+          poi_evidence: [{ poi_id: 'p1', name: '地点1' }],
+        },
+        executionPolicyHook: hook,
+      });
+      expect(result.days).toHaveLength(0);
+      expect(result.resultType).toBe('execution_block');
+      expect(result.executionDecision.status).toBe('halt');
+      expect(result.executionGovernanceMemory?.blockedReason).toEqual(['gate']);
+      const ledger = testModule.get(GovernanceLedgerStoreService);
+      const blocks = ledger.findRecentExecutionBlocks('trip-ledger-1');
+      expect(blocks.length).toBe(1);
+      expect(blocks[0].eventType).toBe('execution_block');
     });
 
     it('应该处理 research_data 中的不同 POI 格式', async () => {

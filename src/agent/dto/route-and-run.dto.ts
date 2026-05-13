@@ -22,8 +22,15 @@ import { ClarificationAnswer, ClarificationQuestion } from '../interfaces/clarif
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { TravelActionType } from '../constants/action-execution.constants';
 import { EvidenceLineageDto } from './evidence-lineage.dto';
+import {
+  LedgerHealingMetricsDto,
+  LedgerHealingObservabilityDto,
+  LedgerHealingStepDto,
+  LEDGER_HEALING_ICELAND_SUCCESS_EXAMPLE,
+} from './ledger-healing-observability.dto';
 import type { IntentMode } from '../constants/intent-mode.constants';
 import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
+import { RESEARCH_ASSET_SCOPE_VALUES, type ResearchAssetScope } from '../utils/research-asset-scope.util';
 import type { RuntimeExecutionProfile } from '../contracts/runtime-execution-profile.types';
 import type { RuntimeExecutionAnomaly } from '../contracts/runtime-execution-profile.validation.types';
 import type { ReplayProvenance } from '../contracts/replay-provenance.types';
@@ -92,6 +99,40 @@ export class IntentFlagsDto {
   @IsOptional()
   @IsBoolean()
   live_facts?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'INTAKE/NLU：本轮修改目标标签（如 hotel、flight）；与 `itinerary_context.is_replan` / `refinement_signal` 联用时驱动 research 局部失效（见 `extractNluResearchInvalidateScopes`）。',
+    example: ['hotel', 'flight'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  modification_targets?: string[];
+}
+
+/** 行程上下文信号（与 NLU INTAKE 对齐） */
+export class ItineraryContextSignalsDto {
+  @ApiPropertyOptional({
+    description: '是否在已有行程上做二次修改（replan）；为 true 时才消费 modification_targets 做研究域局部失效。',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_replan?: boolean;
+}
+
+/** 细化/编辑类信号（与 NLU INTAKE 对齐） */
+export class RefinementSignalDto {
+  @ApiPropertyOptional({
+    description: '编辑类型：与 is_replan 一起门控 NLU 驱动的 research invalidate',
+    enum: ['REPLACEMENT', 'REMOVAL', 'ADDITION'],
+    example: 'REPLACEMENT',
+  })
+  @IsOptional()
+  @IsIn(['REPLACEMENT', 'REMOVAL', 'ADDITION'])
+  type?: 'REPLACEMENT' | 'REMOVAL' | 'ADDITION';
 }
 
 export class AgentOptionsDto {
@@ -393,6 +434,37 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
+      '2.0 局部回溯：进入 RESEARCH 前按作用域就地删除 `OrchestratorState.research_data` 中对应键（如仅 `hotel` 时保留航班/POI/交通等），Kernel 以 `scoped_partial` 仅重算所列域，降低 Token 与延迟。',
+    example: ['hotel'],
+    isArray: true,
+    enum: RESEARCH_ASSET_SCOPE_VALUES,
+  })
+  @IsOptional()
+  @IsArray()
+  @IsIn([...RESEARCH_ASSET_SCOPE_VALUES], { each: true })
+  research_invalidate_scopes?: ResearchAssetScope[];
+
+  @ApiPropertyOptional({
+    description:
+      'INTAKE/NLU：行程上下文（与 `intent_flags.modification_targets` 联用，驱动 2.0 research 局部失效「自动挡」）。',
+    type: ItineraryContextSignalsDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ItineraryContextSignalsDto)
+  itinerary_context?: ItineraryContextSignalsDto;
+
+  @ApiPropertyOptional({
+    description: 'INTAKE/NLU：细化信号类型，与 `itinerary_context.is_replan` 共同门控 modification_targets。',
+    type: RefinementSignalDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RefinementSignalDto)
+  refinement_signal?: RefinementSignalDto;
+
+  @ApiPropertyOptional({
+    description:
       'Replan（PRD I3）：上一版编排 `plan_version`；与 `previous_world_snapshot_hash` 一并写入新建 TripRun.metadata.replan_context，支撑继承审计。',
     example: 2,
   })
@@ -430,6 +502,39 @@ export class AgentOptionsDto {
   @IsArray()
   @IsString({ each: true })
   enable_live_tools?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Agentic MCP Runtime Cap（FEATURE_AGENTIC_RUNTIME_MCP_CAP）：与 tools.select / context 对齐的规划相位（小写），用于将 LLM 可见 MCP 限制为相位子集；缺省 planning。',
+    example: 'decision',
+  })
+  @IsOptional()
+  @IsString()
+  agentic_runtime_planning_phase?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Agentic MCP Runtime Cap：与 ContextPackage.metadata.toolAllowlist[].name 对齐的 skill / MCP 标识列表（网关或 BFF 从上一轮 context 轻量透传）；与相位默认集求交以收窄 MCP 暴露面。',
+    type: [String],
+    example: ['weather.search', 'readiness.assess'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  agentic_runtime_tool_allowlist?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Agentic HITL 续跑：用户已确认的工具调用 id（OpenAI `tool_calls[].id`），与挂起 envelope `data.tool_call_id` 对齐。可与 TripTask.constraints.approved_tool_invocations 合并（后者先、本字段覆盖同 id）。元素可为 `string` 或 `{ tool_call_id, mcp_tool_name? }`（填 mcp_tool_name 时须与待执行 MCP 名一致才放行）。',
+    example: ['call_abc', { tool_call_id: 'call_xyz', mcp_tool_name: 'exa.deepSearch' }],
+    type: 'array',
+    items: {
+      oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }],
+    },
+  })
+  @IsOptional()
+  @IsArray()
+  agentic_approved_tool_invocations?: Array<string | Record<string, unknown>>;
 
   @ApiPropertyOptional({
     description: '意图微标志（与 intent_mode / task_type 并行）；用于 live_facts 等细粒度开关',
@@ -570,6 +675,15 @@ export class RouteAndRunRequestMetaDto {
   @IsOptional()
   @IsString()
   conversation_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '客户端环境画像（可与 HTTP `x-client-profile` 合并；具体策略由 ExecutionGateway 配置表消费，Controller 仅透传）。',
+    example: 'factory_deterministic',
+  })
+  @IsOptional()
+  @IsString()
+  client_profile?: string;
 }
 
 /**
@@ -2002,6 +2116,8 @@ export class RouteAndRunResponseDto {
       tokens_est: 0,
       cost_est_usd: 0.0,
       fallback_used: false,
+      layers: ['ledger_reconcile_blocking_start', 'ledger_reconcile_converged'],
+      ledger_healing: LEDGER_HEALING_ICELAND_SUCCESS_EXAMPLE,
       trace: {
         orchestration: {
           mode: 'LEGACY',
@@ -2109,6 +2225,26 @@ export class RouteAndRunResponseDto {
       snapshot_id?: string;
       snapshot_version?: number;
       loaded_at_iso?: string;
+    };
+    /**
+     * 决策账本自愈（增量 reconcile）：供前端进度条 / 信任动画消费（与 GATE_EVAL/EXECUTION 阻塞式调解对齐）。
+     * OpenAPI 独立模型见 `LedgerHealingObservabilityDto`（`ledger-healing-observability.dto.ts`）。
+     */
+    ledger_healing?: {
+      status: 'CONVERGED' | 'ESCALATED' | 'NO_OP';
+      reconcile_status?: string;
+      /** 进入 reconcile 前 INVALIDATED 的节点 id，与 UI 行程卡片对齐 */
+      affected_node_ids?: string[];
+      metrics: {
+        initial_invalidated: number;
+        secondary_invalidated: number;
+        loops: number;
+      };
+      steps: Array<{
+        phase: string;
+        action: string;
+        target_nodes: string[];
+      }>;
     };
     /** P1：执行链与 memory snapshot 绑定（planner / recovery / skill 应对齐同一锚点） */
     execution_memory_binding?: {
@@ -2259,6 +2395,18 @@ export class RouteAndRunResponseDto {
       requires_consent?: boolean;
       max_seconds?: number;
       latency_budget_ms?: number;
+      /**
+       * Decision OS：执行前契约固化（与 `AgentTurnContractV1` 同源；`contract_snapshot.input` 不含原文 message，仅长度）。
+       * 与 `execution_trace_v1` 并列，供审计 / 回放对齐 scope、budget、memory 锚点。
+       */
+      agent_turn_contract_seal_v1?: {
+        schema_id: string;
+        version: number;
+        step: string;
+        policy_applied: string;
+        task_type_route_signal: string;
+        contract_snapshot?: Record<string, unknown>;
+      };
       // 执行步骤（可选）
       steps?: Array<{
         step_id: string;

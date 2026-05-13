@@ -226,4 +226,10 @@ export const SKILL_VALIDATION_RULES: Record<string, SkillValidationRule> = {
     },
     // season, intentTags, difficultyLevel 都是可选的
   },
+
+  /** P0 Runtime OS — 参数由编排显式传入，无强制依赖 */
+  'worldState.summarize': { dependencies: [] },
+  'readiness.assess': { dependencies: [] },
+  'policy.resolve': { dependencies: [] },
+  'decision.compress': { dependencies: [] },
 };

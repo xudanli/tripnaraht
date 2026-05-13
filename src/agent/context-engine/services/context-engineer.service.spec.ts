@@ -8,6 +8,7 @@ import { RedisService } from '../../../redis/redis.service';
 import { ContextMetricsService } from './context-metrics.service';
 import { ContextPackageOptions } from '../types/context-package.types';
 import { MemoryService } from '../../memory/services/memory.service';
+import { TripTaskMemoryService } from './trip-task-memory.service';
 
 describe('ContextEngineerService', () => {
   let service: ContextEngineerService;
@@ -15,8 +16,13 @@ describe('ContextEngineerService', () => {
   let skillsRegistry: jest.Mocked<SkillsRegistryService>;
   let redisService: jest.Mocked<RedisService>;
   let metricsService: jest.Mocked<ContextMetricsService>;
+  let tripTaskMemoryMock: { get: jest.Mock; update: jest.Mock };
 
   beforeEach(async () => {
+    tripTaskMemoryMock = {
+      get: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
     // Mock PrismaService
     const mockPrisma = {
       trip: {
@@ -36,6 +42,7 @@ describe('ContextEngineerService', () => {
       },
       tripRun: {
         upsert: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue(null),
       },
       tripAttempt: {
         upsert: jest.fn(),
@@ -88,6 +95,10 @@ describe('ContextEngineerService', () => {
         {
           provide: ContextMetricsService,
           useValue: mockMetricsService,
+        },
+        {
+          provide: TripTaskMemoryService,
+          useValue: tripTaskMemoryMock,
         },
       ],
     }).compile();
@@ -166,6 +177,23 @@ describe('ContextEngineerService', () => {
 
       // Mock Skills
       skillsRegistry.getSkill.mockImplementation((name: string) => {
+        if (name === 'tools.select') {
+          return {
+            execute: jest.fn().mockResolvedValue({
+              tools: [
+                {
+                  name: 'weather.search',
+                  description: 'd',
+                  schema: {},
+                  suggestion: 's',
+                  priority: 80,
+                  reason: 'phase',
+                },
+              ],
+              totalTools: 1,
+            }),
+          };
+        }
         if (name === 'countryPack.getBlocks') {
           return {
             execute: jest.fn().mockResolvedValue({
@@ -217,6 +245,35 @@ describe('ContextEngineerService', () => {
       expect(result.tokenBudget).toBe(3600);
     });
 
+    it('应将 metadata.toolAllowlist 同步到 TripTaskMemory.constraints（Redis 经 update）', async () => {
+      tripTaskMemoryMock.update.mockClear();
+      tripTaskMemoryMock.get.mockResolvedValue({
+        tripId: 'trip-123',
+        currentPhase: 'intake',
+        decisionLogSummary: '',
+        artifactsRefs: [],
+        lastUpdated: new Date().toISOString(),
+        constraints: { other_key: 1 },
+      });
+      await service.build(mockOptions, false);
+      expect(tripTaskMemoryMock.update).toHaveBeenCalled();
+      const call = tripTaskMemoryMock.update.mock.calls.find(
+        (c) => c[0] === 'trip-123' && (c[1] as { constraints?: { toolAllowlist?: unknown } }).constraints?.toolAllowlist,
+      );
+      expect(call).toBeDefined();
+      const delta = call![1] as { constraints?: Record<string, unknown> };
+      expect(delta.constraints?.other_key).toBe(1);
+      expect(delta.constraints?.tool_allowlist_context_package_id).toBeDefined();
+      expect(Array.isArray(delta.constraints?.toolAllowlist)).toBe(true);
+      expect((delta.constraints?.toolAllowlist as { name: string }[])[0]?.name).toBe('weather.search');
+    });
+
+    it('includeToolSelection=false 时不应写入 constraints.toolAllowlist', async () => {
+      tripTaskMemoryMock.update.mockClear();
+      await service.build({ ...mockOptions, includeToolSelection: false }, false);
+      expect(tripTaskMemoryMock.update).not.toHaveBeenCalled();
+    });
+
     it('应该使用缓存（内存缓存）', async () => {
       // 第一次构建
       const result1 = await service.build(mockOptions, true);
@@ -226,6 +283,21 @@ describe('ContextEngineerService', () => {
       const result2 = await service.build(mockOptions, true);
       expect(result2).toBeDefined();
       expect(result2.id).toBe(result1.id); // 应该是同一个包
+    });
+
+    it('L1 缓存命中但包 phase 与请求不一致时应跳过缓存并重建', async () => {
+      const result1 = await service.build(mockOptions, true);
+      expect(result1.phase).toBe('planning');
+      const key = (service as any).buildCacheKey(
+        (service as any).resolveOptionsWithDynamicContext(mockOptions),
+      );
+      (service as any).memoryCache.set(key, {
+        package: { ...result1, id: 'stale-wrong-phase', phase: 'decision' },
+        timestamp: Date.now(),
+      });
+      const result2 = await service.build(mockOptions, true);
+      expect(result2.phase).toBe('planning');
+      expect(result2.id).not.toBe('stale-wrong-phase');
     });
 
     it('应该使用 Redis 缓存（如果可用）', async () => {

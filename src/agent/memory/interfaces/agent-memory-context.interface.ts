@@ -3,6 +3,7 @@ import type { UserTravelProfile } from './user-travel-profile.interface';
 import type { RouteDirectionDecisionMemory } from './route-direction-decision-memory.interface';
 import type { TripTaskMemory, TripTaskRecoveryAuditLine } from '../../context-engine/interfaces/trip-task-memory.interface';
 import type { DecisionMemory } from '../decision-memory/decision-memory.types';
+import type { DecisionLedgerSnapshot, LedgerRecomputePlanV1 } from '../decision-ledger/decision-ledger.types';
 
 /** 单请求 route_and_run 显式提交的同行/体能（不写入 L1 DB；供本链路 Memory / TripPlanRequest 只读消费） */
 export interface RouteRunPartyProfileSnapshot {
@@ -39,6 +40,12 @@ export interface AgentMemoryContext {
   routePartyProfile: RouteRunPartyProfileSnapshot | null;
 
   recentDecisions: RouteDirectionDecisionMemory[];
+  /**
+   * v0：由 L2 路线决策 + 当前全局锚投影的决策账本；经锚漂移检测后可能含 INVALIDATED/STALE。
+   */
+  decisionLedger: DecisionLedgerSnapshot | null;
+  /** 对 decisionLedger 中 INVALIDATED 节点的建议重算顺序（纯拓扑，不含具体重算实现）。 */
+  ledgerRecomputePlan: LedgerRecomputePlanV1 | null;
   /**
    * 本 trip 在持久化归档中的近期世界侧决策（WDMA）；route_and_run 装载时拉取。
    * 与当次请求的 execution overlay（operational_negative_constraints）互补：后者是当前 request ring 热路径。

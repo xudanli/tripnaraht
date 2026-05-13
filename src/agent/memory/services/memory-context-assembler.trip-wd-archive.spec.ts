@@ -52,5 +52,11 @@ describe('MemoryContextAssemblerService (trip WDMA archive)', () => {
     expect(ctx.recentWorldDecisions[0].causedBy).toContain('strat:STRAT_ICE_002');
     expect(archive.listRecentForTrip).toHaveBeenCalledWith('trip-wd-arch-1', 32);
     expect(ctx.observability.layers).toContain('trip_world_decision_archive');
+    expect(ctx.decisionLedger).not.toBeNull();
+    expect(ctx.decisionLedger?.revision).toBe('v1');
+    expect(ctx.decisionLedger?.worldSlices?.length).toBeGreaterThanOrEqual(3);
+    expect(ctx.decisionLedger?.anchors.worldLayered.coarseDigest.length).toBeGreaterThan(0);
+    expect(ctx.ledgerRecomputePlan).not.toBeNull();
+    expect(ctx.ledgerRecomputePlan?.revision).toBe('v1');
   });
 });

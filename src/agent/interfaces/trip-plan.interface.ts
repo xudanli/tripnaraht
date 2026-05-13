@@ -10,7 +10,12 @@
 
 import { ClarificationQuestion } from './clarification.interface';
 import type { TravelActionType } from '../constants/action-execution.constants';
-import type { NarrationWarningEntry } from '../../decision/kernel/interfaces/phase-executor.interface';
+import type {
+  NarrationWarningEntry,
+  NarrationResearchUiHint,
+  NarrationVoiceToneModifier,
+} from '../../decision/kernel/interfaces/phase-executor.interface';
+import type { ResearchConflictNegotiationReport } from '../teams/research/research-conflict-negotiation.types';
 
 /**
  * TripPlanRequest（最小字段）
@@ -32,6 +37,17 @@ export interface TripPlanRequest {
   days?: number;
   /** 绑定 Trips 库行程时，itinerary.generate 等可读取 TripDay/ItineraryItem 作为槽位与 POI 来源 */
   trip_id?: string;
+  /**
+   * 可选：编排器注入的治理追踪 ID，用于 Governance Ledger 将多跳因果与单次 orchestration 关联。
+   */
+  governance_trace?: {
+    correlation_id?: string;
+    causality_chain_id?: string;
+  };
+  /** GRSM posture (orchestration hydrate); incremental / planner recovery strategies. */
+  governance_runtime_state?: import('../../governance/runtime-state-machine/governance-runtime-state.types').GovernanceRuntimeState;
+  /** GFIL: gated drift influence vectors (orchestration; no ledger). */
+  governance_drift_influences?: import('../../governance/feedback/governance-drift-influence.types').GovernanceDriftInfluence[];
   mode?: 'walk' | 'drive' | 'transit' | 'mixed';
   party?: {
     count: number;
@@ -291,6 +307,13 @@ export interface ItineraryItem {
   evidence_refs: string[]; // EvidenceRef ID 列表
   verified: boolean; // 是否已验证
   verification_status?: 'VERIFIED' | 'UNVERIFIED' | 'NEED_TOOL' | 'ASSUMPTION';
+  /**
+   * 执行控制面（policy.resolve → itinerary.generate），与展示用 `metadata` 分离。
+   * 例如：单段驾驶时长上限由策略裁决写入，勿再用 metadata 传播同类语义。
+   */
+  governance?: {
+    max_drive_leg_hours?: number;
+  };
   metadata?: {
     duration_minutes?: number;
     cost?: number;
@@ -424,6 +447,21 @@ export interface DecisionLogEntry {
     cost_est_usd?: number;
     alternatives_considered?: number;
     guardian?: GuardianType; // 归因到三人格（P1 改进：ABU/DR_DRE/NEPTUNE）
+    /** MAT 3.0 NARRATE：`ResearchConflictNegotiationReport.primary_narrative_stance` */
+    ebp_stance?: string;
+    /** MAT 3.0 NARRATE：合并 manifest 后最终生效的 `NarrationLike.voice_tone_modifier` */
+    effective_voice_tone?: string | null;
+    /** MAT 6.1 NARRATE：STITCH 叙事坍缩策略（与 `ResearchConflictNegotiationReport.stitch_tactic` 对齐） */
+    stitch_tactic?: 'TRANSPARENT_SEGMENTED' | 'AGGRESSIVE_COMPENSATION';
+    /** MAT 6.2 NARRATE：manifest 中非合规 STALE_RECOVERED 域经实体坍缩合并的数量 */
+    collapsed_suture_count?: number;
+    /** MAT 6.3 NARRATE：`research_data.__research_realtime_reroll_count` 快照（预算仲裁等成功重跑次数） */
+    realtime_reroll_count?: number;
+    /**
+     * 4.0 Experience Replay：当 `ResearchConflictNegotiationReport.memory_replay` 存在（EBP 受历史认知软化）时写入，
+     * 与 `MEMORY_REPLAY_DECISION_SOURCE` 对齐，便于持久化与认知切片回放。
+     */
+    decision_source?: string;
     [key: string]: any; // 允许额外的元数据字段
   };
 }
@@ -544,7 +582,13 @@ export interface OrchestratorState {
     detail: string;
   }>;
   clarification_questions?: ClarificationQuestion[]; // 结构化澄清问题（P1 改进）
-  research_data?: Record<string, any>; // Skills 返回的硬数据
+  /** Skills 返回的硬数据；可含 `__research_asset_manifest`（2.0 研究资产作用域版本/无效化审计） */
+  research_data?: Record<string, any>;
+  /**
+   * MAT 3.0+：由 NarrateExecutor 从 `NarrateExecutorContext.researchConflict` 注入，供 Narrator 读取 EBP 协商结果
+   *（避免在叙述层解析 `research_data.__research_conflict_negotiation`）。
+   */
+  narration_research_conflict?: ResearchConflictNegotiationReport;
   gate_result?: GateResult;
   compliance_result?: {
     risk_warnings: Array<{
@@ -583,6 +627,12 @@ export interface OrchestratorState {
     highlights: string[];
     tips: string[];
     warnings?: NarrationWarningEntry[];
+    research_ui_hints?: NarrationResearchUiHint[];
+    voice_tone_modifier?: NarrationVoiceToneModifier;
+    /** BFF：EBP / 冲突协商后的视觉层建议 */
+    visual_hint?: string;
+    /** BFF：语音韵律 / TTS 参数建议 */
+    audio_prosody?: string;
   };
   evidence_registry: Map<string, EvidenceRef>; // evidence_id -> EvidenceRef
   decision_log: DecisionLogEntry[];

@@ -230,6 +230,70 @@ describe('RouteAndRunResponseAssemblerService — consultation surface strips it
     expect(orch?.itinerary?.days?.length ?? 0).toBe(0);
   });
 
+  it('assembleClaudeDynamicResponse: lightweight includes safety_surface from iceland.lightweight_fast_fail step', async () => {
+    const assembler = await createAssembler();
+    const request = { request_id: 'c2-ss', message: '问一句' } as RouteAndRunRequestDto;
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: '答复',
+      stepsExecuted: [
+        {
+          stepId: 'iceland_lightweight_froad_2wd_fast_fail',
+          skillName: 'iceland.lightweight_fast_fail',
+          success: true,
+          duration: 2,
+          result: {
+            issues: [
+              {
+                type: 'REACHABILITY_ISSUE',
+                severity: 'CRITICAL',
+                message: '两驱不得进入 F-road',
+              },
+            ],
+          },
+        },
+      ],
+      totalDuration: 1,
+      totalCost: 0,
+      result: {
+        routingDecision: {
+          route: 'SYSTEM2_REASONING',
+          confidence: 0.9,
+          reasons: [],
+          requiredCapabilities: [],
+          consentRequired: false,
+          budget: { max_seconds: 60, max_steps: 8, max_browser_steps: 0 },
+        },
+        lightweightKnowledgeQa: true,
+        state: minimalState('c2-ss'),
+        itinerary: {
+          request_id: 'c2-ss',
+          days: [{ date: '2026-06-02', items: [{ id: 'p', type: 'POI' }] }],
+        },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 1,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeDynamicResponse({
+      request,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'GENERIC_QA',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    const ss = payload?.safety_surface as { verify_issues?: Array<{ message?: string }> };
+    expect(ss?.verify_issues?.length).toBe(1);
+    expect(String(ss?.verify_issues?.[0]?.message)).toMatch(/极速安全闸·依法裁决/);
+  });
+
   it('assembleClaudeDynamicResponse: DATA_LOOKUP lightweight + ops but no trip_id skips fallback consultation_dashboard', async () => {
     const assembler = await createAssembler();
     const request = { request_id: 'c2-nodash', message: '问一句' } as RouteAndRunRequestDto;
