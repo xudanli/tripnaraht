@@ -1,0 +1,494 @@
+import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
+import { ICELAND_POI_SLUG_KEYWORDS } from '../../../../planning-policy/regions/iceland-poi-slugs';
+import { POI_PLANNING_SCORE_REASON } from '../../../../planning-policy/constants/poi-planning-score-reasons';
+import type { PoiPlanningAdmissionDiagnosticsInput } from '../../../../planning-policy/utils/poi-planning-outcome-metrics.util';
+import {
+  buildPoiPlanningAdmissionDiagnostics,
+  enforceRequiredAnchorsTopN,
+} from '../../../../planning-policy/utils/poi-planning-anchor-admission.util';
+import {
+  annotateRetrievalTraceAfterPoiSelection,
+} from '../../../../planning-policy/utils/build-retrieval-decision-trace.util';
+import { buildGapBehaviorObservation } from '../../../../planning-policy/utils/build-gap-behavior-observation.util';
+import type { RetrievalDecisionTrace } from '../../../../planning-policy/types/retrieval-decision-trace.types';
+import {
+  formatPoiSelectionInputsZh,
+  formatPoiSelectionOutputsZh,
+} from '../../../utils/decision-log-user-facing.zh.util';
+import {
+  buildDestinationScopeClarificationOptions,
+  shouldSkipPoiDestinationClarificationForItineraryAdjust,
+} from '../../../utils/itinerary-adjust-intent.util';
+import { extractSelectedPlaceIdsFromItinerary } from '../../../../planning-policy/utils/build-poi-search-context.util';
+import { filterPoisByRejectedIds } from '../../../../planning-policy/utils/contextual-poi-search-query.util';
+import {
+  applyDiversityPenaltyToSortedRows,
+  applySelectedPoiPenalty,
+  sortPoiScoreRowsDesc,
+} from '../../../../planning-policy/utils/poi-selection-diversity.util';
+import type { RouteAndRunIntentAnalysis } from '../../../utils/route-and-run-intent-analyzer.util';
+import { detectRhythmOrDiningPlanningIntent } from '../../../context-engine/utils/sparse-poi-day-allocation.util';
+import {
+  sanitizeOrchestratorStateAfterPoiSelection,
+  sanitizeOrchestratorStateBeforePoiSelection,
+} from './poi-selection-projection.util';
+import type {
+  PoiSelectionPhaseHost,
+  PoiSelectionStepResult,
+  RunPoiSelectionPhaseParams,
+} from './poi-selection-phase.host';
+
+/**
+ * POI_SELECTION 执行体：仅消费 research_data + DSO 空间约束；工作区键在漏斗口熔断。
+ */
+export async function runPoiSelectionPhase(
+  host: PoiSelectionPhaseHost,
+  params: RunPoiSelectionPhaseParams,
+): Promise<PoiSelectionStepResult> {
+  const { state, decisionState } = params;
+  sanitizeOrchestratorStateBeforePoiSelection(state);
+  try {
+    return await runPoiSelectionPhaseCore(host, params);
+  } finally {
+    sanitizeOrchestratorStateAfterPoiSelection(state);
+  }
+}
+
+async function runPoiSelectionPhaseCore(
+  host: PoiSelectionPhaseHost,
+  params: RunPoiSelectionPhaseParams,
+): Promise<PoiSelectionStepResult> {
+  const { state, decisionState } = params;
+
+    const stepStartTime = Date.now();
+    state.current_step = 'POI_SELECTION';
+
+    const rawPoiEvidence = state.research_data?.poi_evidence;
+    const asArray = Array.isArray(rawPoiEvidence)
+      ? rawPoiEvidence
+      : Array.isArray((rawPoiEvidence as any)?.pois)
+        ? (rawPoiEvidence as any).pois
+        : [];
+
+    const destinationRaw =
+      typeof state.trip_plan_request?.destination === 'string'
+        ? state.trip_plan_request.destination
+        : '';
+    const poiPolicy = host.resolvePoiPolicy(
+      state.metadata?.poi_policy,
+      state.metadata?.require_poi_data === true,
+    );
+    const requirePoiData = poiPolicy === 'strict';
+    const destinationCountry = host.inferCountryFromDestination(destinationRaw);
+    const destinationCity = host.normalizeText(destinationRaw);
+
+    let deduped = host.dedupePois(asArray);
+    const routeIntent = (state.metadata as Record<string, unknown>)
+      ?.route_and_run_intent as RouteAndRunIntentAnalysis | undefined;
+    const isItineraryAdjust = routeIntent?.primary === 'ITINERARY_ADJUST';
+    let itineraryAdjustTripPoiSeedCount = 0;
+    if (isItineraryAdjust) {
+      const tripId =
+        state.trip_plan_request?.ontology_context?.trip_id?.trim() ??
+        (state.metadata as { tripId?: string })?.tripId?.trim();
+      const userId = (state.metadata as { userId?: string })?.userId;
+      if (tripId) {
+        const tripPois = await host.loadTripPlacePoiEvidenceForAdjust(tripId, userId);
+        itineraryAdjustTripPoiSeedCount = tripPois.length;
+        if (tripPois.length) {
+          deduped = host.dedupePois([...tripPois, ...deduped]);
+          (state.metadata as Record<string, unknown>).itinerary_adjust_trip_poi_seed_count =
+            tripPois.length;
+        }
+      }
+    }
+    const rejectedIds = (decisionState?.userIntent?.excludePoiIds ?? [])
+      .map((x) => String(x).trim().toLowerCase())
+      .filter(Boolean);
+    if (rejectedIds.length) {
+      deduped = filterPoisByRejectedIds(deduped as any[], rejectedIds) as any[];
+    }
+    const planningAug = host.applyPoiPlanningToResearchPois(
+      deduped,
+      decisionState,
+      destinationCountry,
+    );
+    const withPlanning = planningAug.pois;
+    if (planningAug.excludedFilteredCount > 0) {
+      (state.metadata as Record<string, unknown>).poiPlanningExcludedFilteredCount =
+        planningAug.excludedFilteredCount;
+    }
+    const sliceMeta = decisionState?.poiPlanning;
+    if (sliceMeta?.budgetGateApplied) {
+      (state.metadata as Record<string, unknown>).poiPlanningBudgetGateApplied = true;
+      (state.metadata as Record<string, unknown>).poiPlanningFeasibility =
+        sliceMeta.schedulePlan?.feasibility;
+      (state.metadata as Record<string, unknown>).poiPlanningEnrichmentDisabled = true;
+    }
+    const poiPlanSlice = decisionState?.poiPlanning;
+    let scoredRows = withPlanning
+      .filter((poi: any) =>
+        host.passesHardPoiGuards(poi, destinationCountry, destinationRaw),
+      )
+      .map((poi: any, idx: number) => {
+        const riskLevel = poi?.metadata?.risk_level;
+        const riskPenalty =
+          riskLevel === 'HIGH' ? 2 : riskLevel === 'MEDIUM' ? 1 : 0;
+        const hasOpeningHours = !!poi?.opening_hours;
+        const openingHoursBonus = hasOpeningHours ? 1 : 0;
+        const localityScore = host.poiLocalityScore(
+          poi,
+          destinationCountry,
+          destinationCity,
+        );
+        const dataCompletenessBonus =
+          poi?.address && poi?.name ? 0.5 : 0;
+        let optionalBoost = 0;
+        if (
+          !poiPlanSlice?.budgetGateApplied &&
+          poiPlanSlice?.poiPlan?.optionalCandidatePoiIds?.length &&
+          destinationCountry === 'IS'
+        ) {
+          const hay = `${poi?.name ?? ''} ${poi?.nameCN ?? poi?.name ?? ''}`;
+          for (const slug of poiPlanSlice.poiPlan.optionalCandidatePoiIds) {
+            const kws = ICELAND_POI_SLUG_KEYWORDS[slug];
+            if (!kws?.length) continue;
+            if (
+              kws.some(
+                (k) =>
+                  hay.includes(k) ||
+                  hay.toLowerCase().includes(k.toLowerCase()),
+              )
+            ) {
+              optionalBoost = 2;
+              poi.poi_planning_score_reasons = [
+                ...(poi.poi_planning_score_reasons ?? []),
+                POI_PLANNING_SCORE_REASON.OPTIONAL_BOOST,
+              ];
+              break;
+            }
+          }
+        }
+        const anchorBoost = poi?.poi_planning_anchor_slug ? 3 : 0;
+        return {
+          poi,
+          idx,
+          localityScore,
+          openingHoursBonus,
+          dataCompletenessBonus,
+          riskPenalty,
+          score:
+            localityScore +
+            openingHoursBonus +
+            dataCompletenessBonus +
+            optionalBoost +
+            anchorBoost -
+            riskPenalty -
+            idx * 0.01,
+        };
+      });
+    scoredRows = applySelectedPoiPenalty(
+      scoredRows,
+      extractSelectedPlaceIdsFromItinerary(state.itinerary),
+    );
+    scoredRows = sortPoiScoreRowsDesc(scoredRows);
+    scoredRows = applyDiversityPenaltyToSortedRows(scoredRows);
+    scoredRows = sortPoiScoreRowsDesc(scoredRows);
+    const startCoordinates = host.tryExtractStartCoordinates(
+      state.trip_plan_request?.origin,
+    );
+    const rankedPois = scoredRows.map((x) => x.poi);
+    const requiredAnchors = poiPlanSlice?.poiPlan?.requiredAnchorPoiIds ?? [];
+    const topNLimit = 8;
+    const planningTextForDiversity = [
+      (state.metadata as { intake_user_message?: string })?.intake_user_message,
+      state.trip_plan_request?.message,
+    ]
+      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+      .join('\n');
+    const skipGeoClusterForDiversity =
+      detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
+      rankedPois.length >= 3;
+    const skipGeoClusterForAdjust =
+      isItineraryAdjust && itineraryAdjustTripPoiSeedCount >= 2;
+    let scored =
+      skipGeoClusterForDiversity || skipGeoClusterForAdjust
+      ? rankedPois.slice(0, topNLimit)
+      : host.selectClusteredPois(
+          rankedPois,
+          topNLimit,
+          startCoordinates,
+          destinationRaw,
+        );
+    /** Phase 2.6：最后一跳强制锚点进入 TopN（候选来自 rankedPois；与聚类解耦） */
+    if (destinationCountry === 'IS' && requiredAnchors.length > 0) {
+      const beforeLen = scored.length;
+      scored = enforceRequiredAnchorsTopN(
+        scored,
+        rankedPois,
+        requiredAnchors,
+        topNLimit,
+        {
+          createFallbackForSlug: (slug) =>
+            host.buildPoiPlanningAnchorFallbackStub(slug),
+        },
+      );
+      host.logger.debug(
+        `[POI_PLANNING_ADMISSION] required=${JSON.stringify(requiredAnchors)} clustered_len=${beforeLen} final_len=${scored.length}`,
+      );
+    }
+
+    const admissionDiag: PoiPlanningAdmissionDiagnosticsInput | undefined =
+      buildPoiPlanningAdmissionDiagnostics(
+        decisionState?.poiPlanning,
+        withPlanning,
+        rankedPois,
+        scored,
+      ) ?? undefined;
+
+    annotateRetrievalTraceAfterPoiSelection(state.research_data?.retrieval_decision_trace);
+
+    const gapBehaviorObs = buildGapBehaviorObservation({
+      trace: state.research_data?.retrieval_decision_trace as RetrievalDecisionTrace | undefined,
+      selectedPois: scored,
+    });
+    if (gapBehaviorObs) {
+      (state.metadata as Record<string, unknown>).gap_behavior_observation = {
+        ...gapBehaviorObs,
+        ts: new Date().toISOString(),
+      };
+    }
+
+    host.recordPoiPlanningOutcomeAfterSelection(state, decisionState, scored, admissionDiag);
+
+    if (state.metadata?.show_poi_trace) {
+      const selectedForTrace = scored
+        .slice(0, 4)
+        .map((x) => host.toPoiTraceNode(x));
+      const metaObs = state.metadata as Record<string, unknown>;
+      state.metadata.poi_trace = {
+        ...(state.metadata.poi_trace || {}),
+        policy: poiPolicy,
+        sourceHint: state.metadata?.poi_source_hint,
+        inputCount: asArray.length,
+        selectedCount: scored.length,
+        selected_region: destinationRaw || undefined,
+        destination_country: destinationCountry,
+        recall_raw_research: asArray.length,
+        recall_after_route_augment: asArray.length,
+        after_dedupe: deduped.length,
+        after_hard_guards: scoredRows.length,
+        selected_after_rank: scored.length,
+        country_filter_applied: Boolean(destinationCountry),
+        /** Phase 1.6：固定可观测块（与 docs/POI_REGION_INTENT_EVAL.md 对齐） */
+        poi_planning_trace: decisionState?.poiPlanning
+          ? {
+              regionId: decisionState.poiPlanning.routeIntent?.regionId,
+              resolution: decisionState.poiPlanning.resolution,
+              feasibility: decisionState.poiPlanning.schedulePlan?.feasibility,
+              budgetGateApplied: decisionState.poiPlanning.budgetGateApplied,
+              appliedBackoffSteps: decisionState.poiPlanning.appliedBackoffSteps,
+              narrationHint: decisionState.poiPlanning.narrationHint,
+            }
+          : undefined,
+        poiPlanningExcludedFilteredCount: metaObs.poiPlanningExcludedFilteredCount,
+        poiPlanningEnrichmentDisabled: metaObs.poiPlanningEnrichmentDisabled,
+        score_reasons_top: scoredRows.slice(0, 8).map((x: any) => ({
+          rank: x.idx + 1,
+          reasons: x.poi?.poi_planning_score_reasons ?? [],
+        })),
+        debug_scores: scoredRows.slice(0, 12).map((x: any) => ({
+          slot: `RANK_${x.idx + 1}`,
+          desiredType: String(x.poi?.category ?? x.poi?.type ?? 'poi'),
+          poiName: String(x.poi?.name ?? ''),
+          typeScore: 0,
+          timeScore: x.openingHoursBonus,
+          ratingScore: 0,
+          affordabilityScore: x.dataCompletenessBonus,
+          nameHintScore: 0,
+          commuteDistanceKm: undefined,
+          commuteMinutes: undefined,
+          commutePenalty: x.riskPenalty,
+          timeWindowPenalty: 0,
+          totalScore: Number((x.score ?? 0).toFixed(2)),
+          score_reasons: x.poi?.poi_planning_score_reasons ?? [],
+        })),
+        commute_matrix:
+          state.metadata?.show_commute_matrix === true
+            ? host.buildPoiTraceCommuteMatrix(
+                selectedForTrace,
+                state.trip_plan_request?.mode as any,
+                startCoordinates,
+              )
+            : undefined,
+      };
+    }
+
+    const commuteBudgetMinutes = 240;
+    const estimatedCommuteMinutes = host.estimateNearestTotalCommuteMinutes(
+      scored.map((x) => host.toPoiTraceNode(x)),
+      state.trip_plan_request?.mode as any,
+      startCoordinates,
+    );
+    const skipCommuteClarifyForItineraryAdjust =
+      shouldSkipPoiDestinationClarificationForItineraryAdjust(
+        routeIntent?.primary,
+        itineraryAdjustTripPoiSeedCount,
+      );
+    if (
+      estimatedCommuteMinutes > commuteBudgetMinutes &&
+      !skipCommuteClarifyForItineraryAdjust
+    ) {
+      const destinationExample = destinationRaw || '雷克雅未克';
+      state.gaps = [
+        ...(state.gaps || []),
+        {
+          type: 'MISSING_DESTINATION',
+          severity: 'HARD',
+          detail: `估算单日通勤约 ${estimatedCommuteMinutes} 分钟，超过预算 ${commuteBudgetMinutes} 分钟，请补充更具体的城市/区域（例如：${destinationExample} 市区）`,
+        } as any,
+      ];
+      state.clarification_questions = [
+        {
+          id: 'destination_scope_refine',
+          question:
+            '当前目的地范围过大，单日通勤过长。请选择更聚焦的区域继续规划：',
+          type: 'single_choice',
+          options: buildDestinationScopeClarificationOptions(destinationExample),
+          required: true,
+        } as any,
+      ];
+      if (state.metadata?.show_poi_trace) {
+        state.metadata.poi_trace = {
+          ...(state.metadata.poi_trace || {}),
+          commute_budget_minutes: commuteBudgetMinutes,
+          estimated_commute_minutes: estimatedCommuteMinutes,
+          over_budget: true,
+        };
+      }
+      return {
+        needsClarification: true,
+        allowWithFallback: false,
+      };
+    }
+
+    const minPoiRequired = 2;
+    const skipSparseForItineraryAdjust = shouldSkipPoiDestinationClarificationForItineraryAdjust(
+      routeIntent?.primary,
+      itineraryAdjustTripPoiSeedCount,
+      minPoiRequired,
+    );
+    if (skipSparseForItineraryAdjust && scored.length < minPoiRequired) {
+      scored = rankedPois.slice(0, Math.max(minPoiRequired, scored.length));
+    }
+    if (scored.length > 0 && scored.length < minPoiRequired && !skipSparseForItineraryAdjust) {
+      const destinationExample = destinationRaw || '雷克雅未克';
+      state.gaps = [
+        ...(state.gaps || []),
+        {
+          type: 'MISSING_DESTINATION',
+          severity: 'HARD',
+          detail: `当前可执行 POI 仅 ${scored.length} 个（至少需要 ${minPoiRequired} 个），请补充更具体的城市/区域（例如：${destinationExample} 市区）`,
+        } as any,
+      ];
+      state.clarification_questions = [
+        {
+          id: 'destination_scope_too_sparse',
+          question:
+            '当前目的地范围过大或过散，候选点不足以生成可执行单日行程。请选择更聚焦区域：',
+          type: 'single_choice',
+          options: buildDestinationScopeClarificationOptions(destinationExample),
+          required: true,
+        } as any,
+      ];
+      if (state.metadata?.show_poi_trace) {
+        state.metadata.poi_trace = {
+          ...(state.metadata.poi_trace || {}),
+          min_poi_required: minPoiRequired,
+          selected_too_sparse: true,
+        };
+      }
+      return {
+        needsClarification: true,
+        allowWithFallback: false,
+      };
+    }
+
+    if (destinationCountry && scored.length === 0) {
+      const destinationExample = destinationRaw ? `${destinationRaw} ${host.countryDisplayName(destinationCountry)}` : 'Tokyo, Japan';
+      const fallbackDecision = {
+        verdict: 'ALLOW_WITH_FALLBACK',
+        reason: 'NO_POI_DATA',
+      };
+      state.gaps = [
+        ...(state.gaps || []),
+        {
+          type: 'MISSING_DESTINATION',
+          severity: 'HARD',
+          detail: `未找到与目的地国家(${destinationCountry})一致的 POI，请明确国家/城市（例如：${destinationExample}）`,
+        } as any,
+      ];
+      state.clarification_questions = [
+        host.buildPoiCountryClarificationQuestion(destinationRaw, destinationCountry) as any,
+      ];
+      state.metadata.fallback_decision = fallbackDecision;
+      state.metadata.fallback_explain = {
+        summary: '由于缺少POI数据，系统采用城市探索策略',
+        reasoning: [
+          `目的地明确（${destinationRaw || '未提供'}）`,
+          '未获取到可用POI数据',
+          '触发Fallback机制',
+        ],
+      };
+      if (requirePoiData) {
+        state.gaps = [
+          ...(state.gaps || []),
+          {
+            type: 'MISSING_DESTINATION',
+            severity: 'HARD',
+            detail: '已启用 require_poi_data：POI 数据为空，需补充目的地或扩展检索范围',
+          } as any,
+        ];
+        return {
+          needsClarification: true,
+          allowWithFallback: false,
+        };
+      }
+    }
+
+    if (state.research_data && rawPoiEvidence) {
+      if (Array.isArray(rawPoiEvidence)) {
+        state.research_data.poi_evidence = scored;
+      } else {
+        state.research_data.poi_evidence = {
+          ...(rawPoiEvidence as Record<string, unknown>),
+          pois: scored,
+        };
+      }
+    }
+
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'POI_SELECTION',
+      actor: 'Planner',
+      inputs_summary: formatPoiSelectionInputsZh(asArray.length),
+      outputs_summary: formatPoiSelectionOutputsZh(asArray.length, scored.length),
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        duration_ms: Date.now() - stepStartTime,
+        destination: destinationRaw || undefined,
+        destination_country: destinationCountry || undefined,
+        input_count: asArray.length,
+        deduped_count: deduped.length,
+        selected_count: scored.length,
+      },
+    });
+    state.metadata.last_updated_at = new Date().toISOString();
+    await host.generateDecisionStepForStep(state, 'POI_SELECTION', 'Planner');
+    const allowWithFallback = poiPolicy !== 'strict' && !!(destinationRaw && scored.length === 0);
+    return {
+      needsClarification: false,
+      allowWithFallback,
+    };
+}

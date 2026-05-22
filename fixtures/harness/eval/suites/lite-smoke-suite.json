@@ -1,0 +1,44 @@
+{
+  "suiteId": "lite-smoke-suite",
+  "version": "1",
+  "description": "L1 编排防御网：Context Lint STRICT + plan-verify Controller/Verdict/瞬态预算 + Harness on-failure trace",
+  "env": {
+    "ORCHESTRATOR_CONTEXT_LINT_ENABLED": "1",
+    "ORCHESTRATOR_CONTEXT_LINT_STRICT": "1",
+    "HARNESS_TRACE_MODE": "on-failure"
+  },
+  "pathFingerprintBaseline": "0537ff978954174142a770d18fbadddaad23743b3850b82c9d224fbaf9b965cf",
+  "cases": [
+    {
+      "caseId": "orchestrator-context-lint",
+      "kind": "jest",
+      "jestPattern": "src/agent/orchestration/context/orchestrator-context-lint.service.spec.ts",
+      "description": "Phase 4a 动态边界审计"
+    },
+    {
+      "caseId": "plan-verify-loop-runner",
+      "kind": "jest",
+      "jestPattern": "src/agent/orchestration/plan-verify-loop/plan-verify-loop.runner.spec.ts"
+    },
+    {
+      "caseId": "plan-verify-transient-budget",
+      "kind": "jest",
+      "jestPattern": "src/agent/orchestration/plan-verify-loop/plan-verify-loop-transient.util.spec.ts"
+    },
+    {
+      "caseId": "verify-verdict",
+      "kind": "jest",
+      "jestPattern": "src/agent/orchestration/graph/nodes/verify-verdict.util.spec.ts"
+    },
+    {
+      "caseId": "verify-return-to-research-retry",
+      "kind": "jest",
+      "jestPattern": "src/agent/orchestration/plan-verify-loop/verify-return-to-research-retry.runner.spec.ts"
+    },
+    {
+      "caseId": "kernel-on-failure-trace",
+      "kind": "jest",
+      "jestPattern": "src/decision/kernel/decision-kernel.harness-on-failure-trace.spec.ts"
+    }
+  ]
+}

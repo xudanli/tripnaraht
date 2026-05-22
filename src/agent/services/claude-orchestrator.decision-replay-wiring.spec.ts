@@ -58,15 +58,29 @@ function createStubbedOrchestratorForStateMachineTest(decisionReplay?: { createS
     state.current_step = 'REPAIR';
     return dso;
   };
-  svc.executeNarrateStep = async (_req: any, _ctx: any, state: any) => {
-    state.current_step = 'NARRATE';
-  };
-  svc.executeFeedbackStep = async (state: any, dso: any) => {
-    state.current_step = 'FEEDBACK';
-    return dso;
-  };
-  svc.executeHallucinationDetectionStep = async () => {};
   svc.buildSuccessResult = (state: any) => ({ ok: true, state });
+  svc.asPostPlanGraphHost = function (this: any) {
+    return {
+      logger: this.logger,
+      recordPoiPlanningOutcomeAfterItinerary: () => {},
+      touchAsyncTaskProgress: () => {},
+      maybeSnapshot: (st: any, trigger: any) => this.maybeSnapshot(st, trigger),
+      runNarratePhase: async ({ state }: any) => {
+        state.current_step = 'NARRATE';
+      },
+      runFeedbackPhase: async ({ state, decisionState }: any) => {
+        state.current_step = 'FEEDBACK';
+        return decisionState;
+      },
+      runHallucinationPhase: async () => {},
+      buildSuccessResult: (state: any) => ({ ok: true, state }),
+      resolveDosExecutionContext: () => null,
+      kernelCreateInitialOpts: () => ({}),
+      parseResearchConflictReport: () => undefined,
+      readRealtimeRerollCount: () => 0,
+      memoryReplayDecisionSource: 'memory_replay',
+    };
+  };
   return svc;
 }
 

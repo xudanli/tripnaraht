@@ -1,5 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import type { DecisionState } from '../../decision/kernel/decision-state.types';
+import { HarnessStepName } from '../contracts/harness-step.types';
+import { HarnessStepContractRegistryService } from '../runtime/harness-step-contract.registry';
+import {
+  HarnessStateProjectionService,
+  type HarnessProjectParams,
+} from '../runtime/state-projection.service';
+import { getAtPath } from '../lib/dso-path.util';
 import type {
+  HarnessOnFailureRetrofitParams,
   HarnessTrace,
   HarnessTraceCorrelationMeta,
   HarnessTraceFinalStatus,
@@ -10,6 +19,11 @@ import type {
 export class HarnessTraceRecorderService {
   private readonly logger = new Logger(HarnessTraceRecorderService.name);
   private readonly traces = new Map<string, HarnessTrace>();
+
+  constructor(
+    @Optional() private readonly projection?: HarnessStateProjectionService,
+    @Optional() private readonly contracts?: HarnessStepContractRegistryService,
+  ) {}
 
   /**
    * 在插入新 trace 前按 FIFO 淘汰最旧条目，防止 `HARNESS_RECORD_TRACE=1` 长进程内存膨胀。
@@ -90,5 +104,127 @@ export class HarnessTraceRecorderService {
   /** 测试用 */
   clearTrace(traceId: string): void {
     this.traces.delete(traceId);
+  }
+
+  /**
+   * `HARNESS_TRACE_MODE=on-failure`：不依赖成功路径上的 append，在失败点按 DSO 现场逆向合成闭合 trace。
+   * 合成结果写入内存 Map（便于 `exportClosedTraceIfConfigured` 复用），且带 `retrofit` 元数据。
+   */
+  retrofitTrajectoryOnFailure(params: HarnessOnFailureRetrofitParams): HarnessTrace {
+    const now = new Date().toISOString();
+    const dso = params.dsoSnapshot as DecisionState;
+    const finalStatus: HarnessTraceFinalStatus =
+      params.runStatus === 'BLOCKED'
+        ? 'BLOCKED'
+        : params.runStatus === 'PASSED' || params.runStatus === 'REPAIRED'
+          ? 'DONE'
+          : 'FAILED';
+
+    const primaryFailure = params.failureEvents[0];
+    const severity =
+      primaryFailure?.level ??
+      params.validationResults.find((r) => !r.passed)?.severity ??
+      'L2';
+
+    const visibleState = this.buildOnFailureVisibleState(dso, params.failedPhase, params);
+
+    const step: HarnessTraceStep = {
+      step: params.failedPhase,
+      startedAt: now,
+      endedAt: now,
+      durationMs: 0,
+      runStatus: params.runStatus,
+      visibleStateSnapshot: visibleState,
+      decisionJustification: params.decisionJustification ?? {
+        summary: `on-failure retrofit: ${String(params.failedPhase)}`,
+        createdAt: now,
+      },
+      toolCalls: [],
+      validationResults: params.validationResults,
+      graderResults: params.graderResults,
+      failureEvents: params.failureEvents.length ? params.failureEvents : undefined,
+    };
+
+    const trace: HarnessTrace = {
+      traceId: params.traceId,
+      requestId: params.requestId,
+      startedAt: now,
+      endedAt: now,
+      finalStatus,
+      steps: [step],
+      ...(params.evaluationRunId
+        ? { meta: { evaluationRunId: params.evaluationRunId } }
+        : {}),
+      retrofit: {
+        triggeredBy: 'ON_FAILURE_TRIGGER',
+        failedPhase: params.failedPhase,
+        severity: String(severity),
+      },
+    };
+
+    this.traces.set(params.traceId, trace);
+    this.logger.log(
+      `[HarnessTraceRecorder] on-failure retrofit traceId=${params.traceId} phase=${String(params.failedPhase)} status=${params.runStatus}`,
+    );
+    return trace;
+  }
+
+  private buildOnFailureVisibleState(
+    dso: DecisionState,
+    step: HarnessStepName,
+    params: HarnessOnFailureRetrofitParams,
+  ): Record<string, unknown> {
+    const contract = this.contracts?.getContract(step);
+    const projectionParams: HarnessProjectParams = {
+      traceId: params.traceId,
+      requestId: params.requestId,
+    };
+    if (contract && this.projection) {
+      const ctx = this.projection.project(step, dso, contract, projectionParams);
+      return {
+        ...(ctx.visibleState as Record<string, unknown>),
+        diagnosticContext: this.buildDiagnosticContext(dso, params),
+      };
+    }
+    return {
+      diagnosticContext: this.buildDiagnosticContext(dso, params),
+      readableFallback: this.readablePathsFallback(dso),
+    };
+  }
+
+  private buildDiagnosticContext(
+    dso: DecisionState,
+    params: HarnessOnFailureRetrofitParams,
+  ): Record<string, unknown> {
+    const hr = dso.harnessRuntime;
+    const constraints = dso.constraints as { gateOutcome?: string } | undefined;
+    return {
+      researchEvidenceSnapshotId: hr?.researchEvidenceSnapshotId ?? null,
+      gateOutcome: constraints?.gateOutcome ?? null,
+      currentPhase: dso.systemState?.currentPhase ?? null,
+      historicalFailuresInRun: params.priorFailuresSummary.map((f) => ({
+        phase: f.step,
+        level: f.severity,
+        code: f.code,
+        message: f.message,
+        suggestedAction: f.suggestedAction,
+      })),
+    };
+  }
+
+  private readablePathsFallback(dso: DecisionState): Record<string, unknown> {
+    const paths = [
+      'userIntent',
+      'tripState.planDraft',
+      'harnessRuntime',
+      'constraints',
+      'systemState.requestId',
+    ];
+    const out: Record<string, unknown> = {};
+    for (const p of paths) {
+      const key = p.replace(/\./g, '_');
+      out[key] = getAtPath(dso, p);
+    }
+    return out;
   }
 }

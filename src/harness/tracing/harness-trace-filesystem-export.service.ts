@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { HarnessTraceRecorderService } from './harness-trace-recorder.service';
+import type { HarnessTrace } from './harness-trace.types';
 
 /**
  * 将已闭合的内存 Harness trace 导出为 JSON（Evaluation Harness ↔ Kernel 落盘关联）。
@@ -40,16 +41,22 @@ export class HarnessTraceFilesystemExportService {
    * 将已 finalize 的 trace 落盘；返回相对 `process.cwd()` 的 POSIX 路径，失败返回 `null`。
    */
   exportClosedTraceIfConfigured(traceId: string): string | null {
-    const rawDir = process.env.HARNESS_TRACE_EXPORT_DIR?.trim();
-    if (!rawDir) return null;
-
     const trace = this.recorder.getTrace(traceId);
     if (!trace) {
       this.logger.warn(`[HarnessTraceExport] skip: no in-memory trace for traceId=${traceId}`);
       return null;
     }
+    return this.exportHarnessTraceIfConfigured(trace);
+  }
+
+  /**
+   * 直接落盘已闭合的 trace（含 `on-failure` 逆向合成结果）。
+   */
+  exportHarnessTraceIfConfigured(trace: HarnessTrace): string | null {
+    const rawDir = process.env.HARNESS_TRACE_EXPORT_DIR?.trim();
+    if (!rawDir) return null;
     if (!trace.endedAt) {
-      this.logger.warn(`[HarnessTraceExport] skip: trace not finalized yet traceId=${traceId}`);
+      this.logger.warn(`[HarnessTraceExport] skip: trace not finalized yet traceId=${trace.traceId}`);
       return null;
     }
 
@@ -59,10 +66,11 @@ export class HarnessTraceFilesystemExportService {
         ? absDir
         : path.join(absDir, this.utcDateFolder(trace.endedAt));
       fs.mkdirSync(targetDir, { recursive: true });
-      const file = path.join(targetDir, `${this.safeFileBase(traceId)}.json`);
+      const file = path.join(targetDir, `${this.safeFileBase(trace.traceId)}.json`);
       const body = {
         exportedAt: new Date().toISOString(),
         trace,
+        ...(trace.retrofit ? { retrofit: trace.retrofit } : {}),
       };
       fs.writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`, 'utf8');
       const rel = path.relative(process.cwd(), file);
@@ -71,7 +79,7 @@ export class HarnessTraceFilesystemExportService {
       return posix;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.logger.warn(`[HarnessTraceExport] failed (non-fatal) traceId=${traceId}: ${msg}`);
+      this.logger.warn(`[HarnessTraceExport] failed (non-fatal) traceId=${trace.traceId}: ${msg}`);
       return null;
     }
   }
