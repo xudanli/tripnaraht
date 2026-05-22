@@ -1,10 +1,12 @@
 # Internal architecture docs (version-controlled)
 
-The repository root `docs/` directory is listed in `.gitignore` for local scratch notes. **Canonical, team-shared** architecture write-ups live here under `internal-docs/`.
+Repository root `docs/` is gitignored for local scratch notes. **Team-canonical** design docs live here.
 
 | Path | Purpose |
 |------|---------|
-| [orchestration/harness-1x-roadmap.md](./orchestration/harness-1x-roadmap.md) | Post-freeze Harness 1.x tiers (Context Lint, eval L1, on-failure trace, Shadow Grader) |
-| [orchestration/orchestrator-graph-refactor-backlog.md](./orchestration/orchestrator-graph-refactor-backlog.md) | Orchestration graph node/edge catalog and Phase 1–4b backlog |
+| [orchestration/harness-1x-roadmap.md](./orchestration/harness-1x-roadmap.md) | Post-freeze four-tier Harness evolution, trace modes, L1 smoke |
+| [orchestration/harness-architecture-map.md](./orchestration/harness-architecture-map.md) | Module dependency + env var map (mermaid) |
+| [orchestration/harness-architecture-map.md](./orchestration/harness-architecture-map.md) | **Module dependency + environment variable map** (companion diagram) |
+| [orchestration/orchestrator-graph-refactor-backlog.md](./orchestration/orchestrator-graph-refactor-backlog.md) | Graph node/edge catalog, Phase 1–4b backlog |
 
-Local mirrors may still exist under `docs/`; prefer editing **`internal-docs/`** when changes should ship with the repo.
+Edit **`internal-docs/`** when changes should ship with the repo; keep ephemeral notes under `docs/`.

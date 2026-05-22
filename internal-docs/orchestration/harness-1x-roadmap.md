@@ -1,6 +1,8 @@
 # TripNARA 1.x Post-Freeze Harness 演进路线图
 
-> **状态**：1.0 Feature Freeze 之后的主线规划。与 `docs/Harness Runtime.md`（契约与模块设计，本地 `docs/`）、`internal-docs/orchestration/orchestrator-graph-refactor-backlog.md`（编排图 Phase 1–4b）互补。
+> **状态**：1.0 Feature Freeze 之后的主线规划。与本地 `docs/Harness Runtime.md`、[orchestrator-graph-refactor-backlog.md](./orchestrator-graph-refactor-backlog.md)（Phase 1–4b）互补。
+>
+> **模块与环境变量全景图：** [harness-architecture-map.md](./harness-architecture-map.md)
 
 ## 1. 物理架构演进依赖栈
 
@@ -46,6 +48,8 @@
 - `src/decision/kernel/decision-kernel.service.ts` — `handleHarnessStepFailure()` / `buildOnFailureHarnessRuntimePatch()`，各 phase Harness 失败分支统一调用
 - `src/harness/tracing/harness-trace-filesystem-export.service.ts` — `exportHarnessTraceIfConfigured(trace)`
 
+详见 [harness-architecture-map.md §3](./harness-architecture-map.md#3-trace-三态与-kernel-失败单点)。
+
 ### 可选采样（仅 `full`）
 
 - `HARNESS_TRACE_SAMPLE_RATE`（0–1）：成功路径 append 采样，与 `on-failure` 独立。
@@ -72,6 +76,8 @@ HARNESS_TRACE_EXPORT_DIR=artifacts/harness-on-failure
 
 `scripts/lib/harness-run-fingerprint.ts` 已 re-export 至 `src/harness/eval/fingerprint/eval-fingerprint.util.ts`。
 
+架构图：[harness-architecture-map.md §2](./harness-architecture-map.md#2-l1-smoke-数据流26s-指纹门禁)。
+
 ## 5. 梯队 3 摘要（待排期）
 - **Shadow Grader**：`HARNESS_SHADOW_GRADER=1` + PLAN/VERIFY 异步语义分 → `HarnessShadowMetricsCollector`；不阻塞主链。
 - **同步硬门禁**：rubric 稳定后 `HARNESS_KERNEL_HARD=1`（须运维签字）。
@@ -85,6 +91,10 @@ HARNESS_TRACE_EXPORT_DIR=artifacts/harness-on-failure
 | `decision-kernel.harness-on-failure-trace.spec.ts` | Kernel 成功零 retrofit / 失败落盘 |
 | `decision-kernel.finalize-harness-trace.spec.ts` | `full` vs `on-failure` 编排收口 |
 
+## 7. 架构拼图（已补齐）
+
+- **[harness-architecture-map.md](./harness-architecture-map.md)** — Nest 模块依赖、L1 序列图、Trace 状态机、路由 SSOT、环境变量速查、生产 vs CI 配置矩阵。
+
 ---
 
-*维护：变更 Trace 语义或 Kernel 失败收口时同步更新本节与 `Harness Runtime.md`。*
+*维护：变更 Trace 语义、Kernel 失败收口或新增 env 时，同步更新 [harness-architecture-map.md](./harness-architecture-map.md) 与 Harness Runtime 本地笔记。*
