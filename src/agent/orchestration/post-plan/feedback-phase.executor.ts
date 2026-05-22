@@ -1,3 +1,4 @@
+import type { DecisionState } from '../../../decision/kernel/decision-state.types';
 import {
   buildPatchFromDSOPrimary,
   orchestratorStateToDecisionStatePatch,
