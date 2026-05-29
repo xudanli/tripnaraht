@@ -18,6 +18,7 @@ export const ROUTE_AND_RUN_MEMORY_TEST_PROVIDERS: Provider[] = [
         userId: null,
         tripId: null,
         userProfile: null,
+        userBasics: null,
         travelPreference: null,
         routePartyProfile: null,
         recentDecisions: [],

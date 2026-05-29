@@ -1,10 +1,18 @@
 import type { RoutePlanDraft } from '../../shared/world-model.types';
 import type { ConstraintRelaxation } from '../../../../decision/kernel/decision-state.types';
 import { NeighborhoodOperators, type NeighborhoodVariant } from './neighborhood-operators';
+import {
+  applyTopologyMutation,
+  isTopologyMutationViolation,
+  REPAIR_SPATIAL_POI_V2_ID,
+  type TopologyMutationContext,
+} from '../../constraint-graph/topology-mutation.util';
 
 export interface RepairResult extends NeighborhoodVariant {
   /** Which violation codes this repair targets. */
   targets: string[];
+  /** Stable candidate id override (e.g. repair-spatial-poi-v2) */
+  candidateId?: string;
 }
 
 /**
@@ -25,9 +33,33 @@ export class RepairOperators {
       details?: Record<string, any>;
       activityId?: string;
     }>,
+    topologyContext?: TopologyMutationContext,
   ): RepairResult[] {
     const codes = violationCodes.map((c) => String(c || '').toUpperCase());
     const out: RepairResult[] = [];
+
+    // PR-3: spatial POI topology mutation (Ring vs F208)
+    if (topologyContext && isTopologyMutationViolation(codes)) {
+      const mutation = applyTopologyMutation(plan, topologyContext);
+      if (mutation) {
+        out.push({
+          id: REPAIR_SPATIAL_POI_V2_ID,
+          candidateId: REPAIR_SPATIAL_POI_V2_ID,
+          plan: mutation.plan,
+          summary: mutation.summary,
+          targets: codes.filter((c) => isTopologyMutationViolation([c])),
+          relaxations: [
+            {
+              id: 'relax-topology-ring-bypass',
+              constraintType: 'ROAD_CLOSED',
+              severity: 'SOFT',
+              degree: 0.15,
+              reason: 'F-road 封路后采用环岛 continuity 拓扑变异（PR-3）',
+            },
+          ],
+        });
+      }
+    }
 
     // TIME / schedule window / connectivity
     if (

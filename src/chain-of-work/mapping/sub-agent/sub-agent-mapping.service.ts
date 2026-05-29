@@ -18,6 +18,7 @@ export class SubAgentMappingService {
 
   // 步骤类型到 Sub-Agent 的映射规则（10步完整流程）
   private readonly stepToSubAgentMap: Record<OrchestrationStep, SubAgentType> = {
+    'INTENT_COMPILE': 'DecisionOS.IntentCompiler',
     'INTAKE': 'Planner',
     'STATE_UPDATE': 'Orchestrator',
     'RESEARCH': 'Planner', // RESEARCH 步骤通过 Domain Agents 调用 Skills
@@ -47,6 +48,7 @@ export class SubAgentMappingService {
     'Compliance': 'ABU',
     'Orchestrator': null,
     'HallucinationDetection': null,
+    'DecisionOS.IntentCompiler': null,
   };
 
   /**

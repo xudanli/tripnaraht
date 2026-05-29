@@ -185,6 +185,10 @@ describe('ResearchTeamLeaderService', () => {
     });
     expect(planAudit?.detail?.memory_replay).toBeNull();
     expect(out.researchData.__research_conflict_negotiation).toEqual(planAudit?.detail?.conflict_negotiation);
+    const trace = out.researchData.__research_trace_signals as Record<string, unknown>;
+    expect(trace?.schemaVersion).toBe('research-trace-signals/v1');
+    expect(trace?.narrative_track).toBe('EXPERIENCE_FIRST');
+    expect(trace?.frustration_circuit_triggered).toBe(false);
     const r = sharedRegistry as any;
     expect(r.transport.runTransportSearch).toHaveBeenCalled();
     expect(r.destination.runDestinationBundle).toHaveBeenCalled();

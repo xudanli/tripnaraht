@@ -53,6 +53,30 @@ export class CountryConfigService {
   
   /** 数据文件基础路径 */
   private readonly dataBasePath = path.join(process.cwd(), 'data', 'physical-reality');
+
+  /** ISO → 物理区域文件前缀（data/physical-reality 下为 {region}-road-status.json） */
+  private readonly regionAliasMap: Record<string, string[]> = {
+    IS: ['iceland'],
+    NO: ['lofoten'],
+    GL: ['greenland'],
+    FO: ['faroe-islands'],
+    SJ: ['svalbard'],
+    CH: ['alps'],
+    NZ: ['new-zealand-south-island'],
+    AR: ['argentina'],
+  };
+
+  /** 磁盘区域名 → ISO（getSupportedCountries 反查） */
+  private readonly regionFileToIso: Record<string, string> = {
+    iceland: 'IS',
+    lofoten: 'NO',
+    greenland: 'GL',
+    'faroe-islands': 'FO',
+    svalbard: 'SJ',
+    alps: 'CH',
+    'new-zealand-south-island': 'NZ',
+    argentina: 'AR',
+  };
   
   /** 国家配置缓存 */
   private readonly countryConfigCache = new Map<string, CountryConfig>();
@@ -66,29 +90,57 @@ export class CountryConfigService {
   }
 
   /**
+   * 解析物理数据区域前缀（ISO / 显式 subregion → 文件名前缀）
+   */
+  resolvePhysicalDataRegion(countryCode: string, subregion?: string): string {
+    const code = countryCode.toUpperCase();
+    if (subregion?.trim()) {
+      return subregion.trim().toLowerCase();
+    }
+    if (code === 'IS') return 'iceland';
+    // 无 subregion 时不自动套用 regionAliasMap，避免 NO→lofoten 等空间错位
+    return code.toLowerCase();
+  }
+
+  /** 列出某 ISO 码下已入库的物理区域前缀（只读 data/physical-reality） */
+  listAvailableRegionsForCountry(countryCode: string): string[] {
+    const code = countryCode.toUpperCase();
+    const fromAlias = this.regionAliasMap[code] ?? [];
+    return fromAlias.filter((r) => this.regionDataFileExists('road-status', r));
+  }
+
+  private regionDataFileExists(category: 'road-status' | 'weather-windows' | 'ferry-schedules', region: string): boolean {
+    const suffix =
+      category === 'road-status'
+        ? 'road-status.json'
+        : category === 'weather-windows'
+          ? 'weather-windows.json'
+          : 'ferry-schedules.json';
+    return fs.existsSync(path.join(this.dataBasePath, category, `${region}-${suffix}`));
+  }
+
+  /**
    * 获取国家配置
    */
-  getCountryConfig(countryCode: string): CountryConfig {
-    // 检查缓存
-    const cached = this.countryConfigCache.get(countryCode.toUpperCase());
+  getCountryConfig(countryCode: string, subregion?: string): CountryConfig {
+    const cacheKey = `${countryCode.toUpperCase()}:${subregion?.toLowerCase() ?? ''}`;
+    const cached = this.countryConfigCache.get(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // 生成配置
     const config: CountryConfig = {
       countryCode: countryCode.toUpperCase(),
-      roadStatusPath: this.getRoadStatusPath(countryCode),
-      weatherWindowsPath: this.getWeatherWindowsPath(countryCode),
-      ferrySchedulesPath: this.getFerrySchedulesPath(countryCode),
+      roadStatusPath: this.getRoadStatusPath(countryCode, subregion),
+      weatherWindowsPath: this.getWeatherWindowsPath(countryCode, subregion),
+      ferrySchedulesPath: this.getFerrySchedulesPath(countryCode, subregion),
       adapterType: this.getAdapterType(countryCode),
       centerCoordinates: this.getCenterCoordinates(countryCode),
       defaultRouteDirectionConfig: this.getDefaultRouteDirectionConfig(countryCode),
       worldModelParameters: this.getWorldModelParameters(countryCode),
     };
 
-    // 缓存配置
-    this.countryConfigCache.set(countryCode.toUpperCase(), config);
+    this.countryConfigCache.set(cacheKey, config);
 
     return config;
   }
@@ -96,30 +148,27 @@ export class CountryConfigService {
   /**
    * 获取道路状态文件路径
    */
-  getRoadStatusPath(countryCode: string): string {
-    // 特殊处理：冰岛使用iceland而不是is
-    const countryName = countryCode.toUpperCase() === 'IS' ? 'iceland' : countryCode.toLowerCase();
-    const fileName = `${countryName}-road-status.json`;
+  getRoadStatusPath(countryCode: string, subregion?: string): string {
+    const region = this.resolvePhysicalDataRegion(countryCode, subregion);
+    const fileName = `${region}-road-status.json`;
     return path.join(this.dataBasePath, 'road-status', fileName);
   }
 
   /**
    * 获取天气窗口文件路径
    */
-  getWeatherWindowsPath(countryCode: string): string {
-    // 特殊处理：冰岛使用iceland而不是is
-    const countryName = countryCode.toUpperCase() === 'IS' ? 'iceland' : countryCode.toLowerCase();
-    const fileName = `${countryName}-weather-windows.json`;
+  getWeatherWindowsPath(countryCode: string, subregion?: string): string {
+    const region = this.resolvePhysicalDataRegion(countryCode, subregion);
+    const fileName = `${region}-weather-windows.json`;
     return path.join(this.dataBasePath, 'weather-windows', fileName);
   }
 
   /**
    * 获取渡轮时刻表文件路径
    */
-  getFerrySchedulesPath(countryCode: string): string {
-    // 特殊处理：冰岛使用iceland而不是is
-    const countryName = countryCode.toUpperCase() === 'IS' ? 'iceland' : countryCode.toLowerCase();
-    const fileName = `${countryName}-ferry-schedules.json`;
+  getFerrySchedulesPath(countryCode: string, subregion?: string): string {
+    const region = this.resolvePhysicalDataRegion(countryCode, subregion);
+    const fileName = `${region}-ferry-schedules.json`;
     return path.join(this.dataBasePath, 'ferry-schedules', fileName);
   }
 
@@ -159,32 +208,32 @@ export class CountryConfigService {
   /**
    * 检查数据文件是否存在
    */
-  hasRoadStatusData(countryCode: string): boolean {
-    const filePath = this.getRoadStatusPath(countryCode);
+  hasRoadStatusData(countryCode: string, subregion?: string): boolean {
+    const filePath = this.getRoadStatusPath(countryCode, subregion);
     return fs.existsSync(filePath);
   }
 
   /**
    * 检查天气窗口数据是否存在
    */
-  hasWeatherWindowsData(countryCode: string): boolean {
-    const filePath = this.getWeatherWindowsPath(countryCode);
+  hasWeatherWindowsData(countryCode: string, subregion?: string): boolean {
+    const filePath = this.getWeatherWindowsPath(countryCode, subregion);
     return fs.existsSync(filePath);
   }
 
   /**
    * 检查渡轮时刻表数据是否存在
    */
-  hasFerrySchedulesData(countryCode: string): boolean {
-    const filePath = this.getFerrySchedulesPath(countryCode);
+  hasFerrySchedulesData(countryCode: string, subregion?: string): boolean {
+    const filePath = this.getFerrySchedulesPath(countryCode, subregion);
     return fs.existsSync(filePath);
   }
 
   /**
    * 加载道路状态数据
    */
-  async loadRoadStatusData(countryCode: string): Promise<any> {
-    const filePath = this.getRoadStatusPath(countryCode);
+  async loadRoadStatusData(countryCode: string, subregion?: string): Promise<any> {
+    const filePath = this.getRoadStatusPath(countryCode, subregion);
     
     if (!fs.existsSync(filePath)) {
       this.logger.warn(`道路状态数据文件不存在: ${filePath}`);
@@ -203,8 +252,8 @@ export class CountryConfigService {
   /**
    * 加载天气窗口数据
    */
-  async loadWeatherWindowsData(countryCode: string): Promise<any> {
-    const filePath = this.getWeatherWindowsPath(countryCode);
+  async loadWeatherWindowsData(countryCode: string, subregion?: string): Promise<any> {
+    const filePath = this.getWeatherWindowsPath(countryCode, subregion);
     
     if (!fs.existsSync(filePath)) {
       this.logger.warn(`天气窗口数据文件不存在: ${filePath}`);
@@ -223,8 +272,8 @@ export class CountryConfigService {
   /**
    * 加载渡轮时刻表数据
    */
-  async loadFerrySchedulesData(countryCode: string): Promise<any> {
-    const filePath = this.getFerrySchedulesPath(countryCode);
+  async loadFerrySchedulesData(countryCode: string, subregion?: string): Promise<any> {
+    const filePath = this.getFerrySchedulesPath(countryCode, subregion);
     
     if (!fs.existsSync(filePath)) {
       this.logger.warn(`渡轮时刻表数据文件不存在: ${filePath}`);
@@ -252,19 +301,13 @@ export class CountryConfigService {
 
     const files = fs.readdirSync(roadStatusDir);
     const countries: string[] = [];
-    const countryNameMap: Record<string, string> = {
-      'iceland': 'IS',
-      'norway': 'NO',
-      'greenland': 'GL',
-      'lofoten': 'NO', // Lofoten是挪威的一部分
-    };
-
     for (const file of files) {
-      // 匹配格式: {countryName}-road-status.json
-      const match = file.match(/^([a-z]+)-road-status\.json$/i);
+      // 匹配格式: {region}-road-status.json（region 可含连字符）
+      const match = file.match(/^([a-z0-9-]+)-road-status\.json$/i);
       if (match) {
         const countryName = match[1].toLowerCase();
-        const countryCode = countryNameMap[countryName] || countryName.toUpperCase().substring(0, 2);
+        const countryCode =
+          this.regionFileToIso[countryName] || countryName.toUpperCase().substring(0, 2);
         if (!countries.includes(countryCode)) {
           countries.push(countryCode);
         }

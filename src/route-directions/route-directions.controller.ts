@@ -13,6 +13,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { RouteDirectionsService } from './route-directions.service';
@@ -38,7 +39,11 @@ import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-c
 import { AvailablePoisQueryDto } from './dto/available-pois-query.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import {
+  CurrentUser,
+  CurrentUserPayload,
+} from '../auth/decorators/current-user.decorator';
 import { DecisionAwarenessAugmentationService } from '../world-facts/decision-awareness-augmentation.service';
 import { DecisionActionExecutorService } from '../world-facts/decision-action-executor.service';
 import { ActionDispatcherService } from './services/action-dispatcher.service';
@@ -89,6 +94,11 @@ export class RouteDirectionsController {
   @ApiQuery({ name: 'tags', required: false, description: '标签数组', type: [String] })
   @ApiQuery({ name: 'isActive', required: false, description: '是否激活', type: Boolean })
   @ApiQuery({ name: 'month', required: false, description: '月份（1-12）', type: Number })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description: '列表扩展：hikingList（tag=徒步 时自动附带卡片字段，也可显式指定）',
+  })
   @ApiResponse({ status: 200, description: '成功返回路线方向列表' })
   async findRouteDirections(@Query() query: QueryRouteDirectionDto) {
     try {
@@ -229,14 +239,49 @@ export class RouteDirectionsController {
   }
 
   @Public()
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
-  @ApiOperation({ summary: '获取路线方向详情', description: '根据 ID 获取路线方向详情' })
+  @ApiOperation({
+    summary: '获取路线方向详情',
+    description:
+      '根据 ID 获取路线方向详情。tags 含「徒步」时自动返回完整 hikingDetail（详情页用）；也可用 include=hikingDetail 强制附带。',
+  })
   @ApiParam({ name: 'id', description: '路线方向 ID', type: Number })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description:
+      '扩展块，逗号分隔。hikingDetail=强制附带；非徒步线仅在使用该参数时尝试构建',
+  })
+  @ApiQuery({
+    name: 'longestHike',
+    required: false,
+    description: '体能问卷档位 0–4（含 hikingDetail 时影响 fitnessMatch）',
+    type: Number,
+  })
   @ApiResponse({ status: 200, description: '成功返回路线方向详情' })
   @ApiResponse({ status: 404, description: '路线方向不存在' })
-  async getRouteDirectionById(@Param('id', ParseIntPipe) id: number) {
+  async getRouteDirectionById(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('include') include?: string,
+    @Query('longestHike') longestHike?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
     try {
-      const result = await this.routeDirectionsService.findRouteDirectionById(id);
+      const includes = include?.split(',').map((s) => s.trim()) ?? [];
+      const hikeLevel =
+        longestHike != null && longestHike !== ''
+          ? Math.min(4, Math.max(0, parseInt(longestHike, 10)))
+          : undefined;
+      const result = await this.routeDirectionsService.findRouteDirectionById(id, {
+        includeHikingDetail: includes.includes('hikingDetail')
+          ? true
+          : includes.includes('noHikingDetail')
+            ? false
+            : undefined,
+        longestHike: hikeLevel,
+        userId: user?.userId,
+      });
       return successResponse(result);
     } catch (error: any) {
       if (error instanceof NotFoundException) {

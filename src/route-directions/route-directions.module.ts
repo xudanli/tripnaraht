@@ -24,6 +24,8 @@ import { POIModule } from '../poi/poi.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisService } from '../redis/redis.service';
 import { WorldFactsModule } from '../world-facts/world-facts.module';
+import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
+import { HikingDetailOverrideController } from './hiking-detail-override.controller';
 
 // 检查是否在 MCP 模式下
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
@@ -55,10 +57,11 @@ class MockRedisService {
         })(),
     POIModule,
     WorldFactsModule,
+    HikingDemoModule,
     forwardRef(() => DecisionModule), // 用于RhythmMatchingService和ThreeLayerExplanationService - 使用 forwardRef 避免循环依赖
     SharedMemoryModule,
   ],
-  controllers: [RouteDirectionsController],
+  controllers: [RouteDirectionsController, HikingDetailOverrideController],
   providers: [
     // 在 MCP 模式下，提供假的 RedisService
     ...(disableRedis ? [{ provide: RedisService, useClass: MockRedisService }] : []),

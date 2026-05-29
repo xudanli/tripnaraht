@@ -49,4 +49,7 @@ export interface GateEvalPhaseHost {
   enrichGuardianDebateTripContextAfterGateEval(state: OrchestratorState): void;
 
   applyMarathonPipelineSignals(state: OrchestratorState, request: RouteAndRunRequestDto): void;
+
+  /** PR-A：GATE_EVAL 完成后写入 DecisionTrajectory 草稿（可选）。 */
+  onGateEvalCompleted?(state: OrchestratorState, request: RouteAndRunRequestDto): Promise<void>;
 }

@@ -55,7 +55,7 @@ export class CountryPackSuggestImprovementsSkill implements Skill<CountryPackSug
 
   metadata = {
     name: 'countryPack.suggestImprovements',
-    description: '在验证 Pack 后提供改进建议，包括缺失字段、质量缺口和优先级待办事项',
+    description: 'countryPack.suggestImprovements：在验证 Pack 后提供改进建议，包括缺失字段、质量缺口和优先级待办事项',
     version: '1.0.0',
     category: 'countryPack' as const,
   };

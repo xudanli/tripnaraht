@@ -1,6 +1,7 @@
 import type { RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import type { DecisionLogEntry } from '../interfaces/trip-plan.interface';
 import { recordDoneVerifyGuardrailOutcome } from './done-verify-metrics';
+import { parseClientDsoVersionNumber } from '../utils/client-dso-version.util';
 
 export type DoneCompletenessContext = {
   /** 编排执行痕迹（VERIFY 主口径：runtime truth） */
@@ -29,10 +30,22 @@ export function assertDoneResponseCompleteness(
   const missing: string[] = [];
   const payload = response.result.payload as Record<string, unknown> | undefined;
   const orch = payload?.orchestrationResult as
-    | { itinerary?: unknown; state?: { current_step?: string }; decision_log?: DecisionLogEntry[] }
+    | {
+        itinerary?: unknown;
+        state?: { current_step?: string; metadata?: Record<string, unknown> };
+        decision_log?: DecisionLogEntry[];
+      }
     | undefined;
 
+  const isItineraryCrudShortCircuit =
+    orch?.state?.metadata?.itinerary_item_delete_intake === true ||
+    orch?.state?.metadata?.itinerary_item_add_intake === true ||
+    orch?.state?.metadata?.itinerary_item_update_intake === true ||
+    (response.observability as { itinerary_item_crud?: boolean } | undefined)?.itinerary_item_crud ===
+      true;
+
   const hasResult =
+    isItineraryCrudShortCircuit ||
     (orch?.itinerary != null && typeof orch.itinerary === 'object') ||
     (Array.isArray(payload?.timeline) && (payload.timeline as unknown[]).length > 0);
   if (!hasResult) missing.push('result.payload.orchestrationResult.itinerary|timeline');
@@ -48,7 +61,7 @@ export function assertDoneResponseCompleteness(
   const lightweightQa =
     (response.observability as { lightweight_knowledge_qa?: boolean } | undefined)
       ?.lightweight_knowledge_qa === true;
-  const skipKernelVerify = systemMode === 'SYSTEM1' || lightweightQa;
+  const skipKernelVerify = systemMode === 'SYSTEM1' || lightweightQa || isItineraryCrudShortCircuit;
 
   if (!skipKernelVerify) {
     if (hasVerifyInSteps) {
@@ -75,8 +88,8 @@ export function assertDoneResponseCompleteness(
     (response.explain.simplified_explanation != null || (response.explain.decision_log?.length ?? 0) > 0);
   if (!hasExplain) missing.push('explain');
 
-  const obs = response.observability as { dso_version?: number } | undefined;
-  if (typeof obs?.dso_version !== 'number') {
+  const obs = response.observability as { dso_version?: number | string } | undefined;
+  if (parseClientDsoVersionNumber(obs?.dso_version) === undefined) {
     missing.push('dsoVersion(observability.dso_version)');
   }
 

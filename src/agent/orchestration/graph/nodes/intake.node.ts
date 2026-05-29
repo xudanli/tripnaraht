@@ -6,6 +6,18 @@ import {
   type IntakePrePlanSegmentInput,
 } from './base.node';
 import type { IntakeNodeHost, IntakePrePlanSegmentResult } from './intake-node.host';
+import {
+  applyItineraryItemDeleteIfRequested,
+  shouldTerminalAfterItineraryItemDelete,
+} from './intake-itinerary-delete.util';
+import {
+  applyItineraryItemAddIfRequested,
+  shouldTerminalAfterItineraryItemAdd,
+} from './intake-itinerary-add.util';
+import {
+  applyItineraryItemUpdateIfRequested,
+  shouldTerminalAfterItineraryItemUpdate,
+} from './intake-itinerary-update.util';
 import { segmentOutcomeToNodeResult } from './node-outcome.adapter';
 
 /**
@@ -49,6 +61,39 @@ export async function runIntakePrePlanSegment(
     host.logger.log('[Claude Orchestrator] Durable resume: 跳过 INTAKE，进入 STATE_UPDATE');
     state.current_step = 'STATE_UPDATE';
     state.metadata.last_updated_at = new Date().toISOString();
+    await applyItineraryItemDeleteIfRequested(host, {
+      message: request.message,
+      tripId: request.trip_id,
+      userId: request.user_id,
+      state,
+    });
+    await applyItineraryItemAddIfRequested(host, {
+      message: request.message,
+      tripId: request.trip_id,
+      userId: request.user_id,
+      state,
+    });
+    await applyItineraryItemUpdateIfRequested(host, {
+      message: request.message,
+      tripId: request.trip_id,
+      userId: request.user_id,
+      state,
+    });
+  }
+
+  if (
+    shouldTerminalAfterItineraryItemDelete(state) ||
+    shouldTerminalAfterItineraryItemAdd(state) ||
+    shouldTerminalAfterItineraryItemUpdate(state)
+  ) {
+    host.maybeSnapshot(state, 'CHECKPOINT');
+    state.current_step = 'DONE';
+    state.metadata.last_updated_at = new Date().toISOString();
+    state.metadata.total_duration_ms = Date.now() - prePlan.startTime;
+    return prePlan.prePlanTerminal(
+      'terminal_done',
+      host.buildPrePlanSuccessResult(state, prePlan.startTime, decisionState, context),
+    );
   }
 
   host.maybeSnapshot(state, 'AUTO');

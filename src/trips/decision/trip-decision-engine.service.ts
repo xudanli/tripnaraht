@@ -194,6 +194,8 @@ import { ReadinessAgentService } from './readiness/readiness-agent.service';
 import { TravelReadinessResult } from './readiness/types/readiness-checklist.types';
 import { EcoIdentityLedgerPersistenceService } from './services/eco-identity-ledger-persistence.service';
 import { enrichTripWorldStateInventoryPlaceholders } from './inventory-ontology/inventory-candidate-enrichment';
+import { TrailPlanningAdapter } from './adapters/trail-planning.adapter';
+import { attachHardTrekTrailPlanToState } from './adapters/hard-trek-trail-planning.hook';
 import { buildShadowRealitySnapshotV0 } from '../reality-kernel/build-shadow-reality-snapshot-v0';
 import {
   buildDecisionContextV0,
@@ -269,6 +271,7 @@ export class TripDecisionEngineService {
     @Optional() private readonly promMetrics?: PrometheusMetricsService,
     @Optional() private readonly opsRealityAudit?: OpsRealityAuditService,
     @Optional() private readonly operationalPolicy?: OperationalPolicyService,
+    @Optional() private readonly trailPlanningAdapter?: TrailPlanningAdapter,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
     // ReadinessService 和 ReadinessAgentService 在需要时通过 ModuleRef 获取
@@ -1180,6 +1183,18 @@ export class TripDecisionEngineService {
                 0
               );
               this.observabilityService.recordPoiPoolSize(traceRequestId, afterMergeSize, 'afterConstraints');
+            }
+
+            if (this.trailPlanningAdapter && selectedRouteDirection?.routeDirection) {
+              try {
+                await attachHardTrekTrailPlanToState(
+                  state,
+                  selectedRouteDirection.routeDirection,
+                  this.trailPlanningAdapter,
+                );
+              } catch (trailErr) {
+                this.logger.warn(`Hard trek trail plan attach skipped: ${trailErr}`);
+              }
             }
           }
         }
@@ -2159,6 +2174,7 @@ export class TripDecisionEngineService {
       strategyLogs: strategyLogs,
       // RouteDirection 解释
       routeDirectionExplanation: routeDirectionExplanation,
+      hardTrekTrailPlan: state.signals.hardTrekTrailPlan,
       ...(cgusDsoSnapshot ? { cgusDsoSnapshot, cgusDsoSnapshotNote } : {}),
       ...(state.signals.opsOperationalGovernance
         ? { opsOperationalGovernance: state.signals.opsOperationalGovernance }

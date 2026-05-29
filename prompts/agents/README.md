@@ -190,6 +190,7 @@ UI 展示的是：**「你在为哪种风险付费」**
 11. **Narrator** (`Narrator.md`) - 决策可视化
 12. **TripDetail** (`TripDetail.md`) - 决策回放
 13. **Execution** (`Execution.md`) - 信号与反馈
+14. **Guardians debate** (`guardians-debate.md`) — 三人格影子辩论 Prompt（`options.enable_guardians_debate_llm`）
 
 ---
 

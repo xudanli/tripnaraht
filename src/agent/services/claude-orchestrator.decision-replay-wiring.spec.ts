@@ -1,5 +1,6 @@
 import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 
 /** Minimal stubs so `orchestrateWithStateMachine` runs end-to-end without real LLM/skills. */
 function createStubbedOrchestratorForStateMachineTest(decisionReplay?: { createSnapshot: jest.Mock }): any {
@@ -7,7 +8,8 @@ function createStubbedOrchestratorForStateMachineTest(decisionReplay?: { createS
     {} as any, // llmService
     { trip: { findUnique: jest.fn().mockResolvedValue(null) } } as any, // prisma
     new RagRealityPolicyGateService(),
-    ...(Array(54).fill(undefined) as undefined[]),
+    new ContextSlidingWindowAdapter(),
+    ...(Array(53).fill(undefined) as undefined[]),
   );
   if (decisionReplay) {
     svc.decisionReplay = decisionReplay;

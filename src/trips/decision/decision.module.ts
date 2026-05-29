@@ -41,6 +41,9 @@ import { RouteDirectionsModule } from '../../route-directions/route-directions.m
 import { ContextEngineModule } from '../../agent/context-engine/context-engine.module';
 import { SkillsModule } from '../../skills/skills.module';
 import { DemModule } from '../dem/dem.module';
+import { TrailsModule } from '../../trails/trails.module';
+import { TrailPlanningAdapter } from './adapters/trail-planning.adapter';
+import { HardTrekTripMetadataService } from '../../hiking-demo/services/hard-trek-trip-metadata.service';
 
 // 使用 forwardRef 来解决循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
 // 注意：DecisionModule 现在主要通过 DemModule 获取 DEM 服务，而不是直接依赖 ReadinessModule
@@ -54,6 +57,7 @@ const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE === '
 const enableSkillsModule = process.env.ENABLE_SKILLS_MODULE === 'true';
 // import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
 import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
+import { PersonaClosureLoopService } from './services/persona-closure-loop.service';
 import { SpatialReplacementService } from './services/spatial-replacement.service';
 import { SpatialIssueDetectorService } from './services/spatial-issue-detector.service';
 import { FatigueCalculatorService } from './services/fatigue-calculator.service';
@@ -129,6 +133,7 @@ try {
     PrismaModule, // DsoLatestStateFromTripProvider 需要
     TransportModule, // 必需：SenseToolsAdapter 需要 SmartRoutesService
     DemModule, // 恢复：DemModule 不是问题
+    TrailsModule, // Phase 2.5：硬徒步 Trail 段编排
     ...(DataQualityModule ? [forwardRef(() => DataQualityModule)] : []), // 数据质量模块（用于信息源标注）
     ...(DataModelingModule ? [DataModelingModule] : []), // 数据建模模块（用于不确定性建模）
     // forwardRef(() => ReadinessModule), // 暂时禁用，使用懒加载获取 ReadinessService（打破循环依赖）
@@ -159,6 +164,8 @@ try {
   providers: [
     InterventionEngine,
     EcoIdentityLedgerPersistenceService,
+    TrailPlanningAdapter,
+    HardTrekTripMetadataService,
     TripDecisionEngineService,
     SenseToolsAdapter,
     // 二分法：暂时禁用最后2个服务，测试是否导致阻塞
@@ -199,6 +206,7 @@ try {
     WeatherDecisionEvidenceService,
     // PersonaExplanationService,
     StrategyOrchestratorService, // 恢复：DecisionRunThreeGuardiansSkill 需要它（所有依赖都已提供，应该不会导致阻塞）
+    PersonaClosureLoopService,
     SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     SpatialIssueDetectorService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     FatigueCalculatorService, // 必需：DrDreStrategy 需要它（DecisionDrdrePaceSkill 需要 DrDreStrategy）

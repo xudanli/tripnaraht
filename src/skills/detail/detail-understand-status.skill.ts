@@ -1,36 +1,56 @@
 // src/skills/detail/detail-understand-status.skill.ts
 /**
  * skill.detail.understandStatus
- * 
- * 目的：理解当前行程状态（规划中/进行中/已完成）
- * 
- * System 1 技能：快速理解状态
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { TripStatusUnderstanding } from './shared/detail-state.types';
+import { PrismaService } from '../../prisma/prisma.service';
+import { DecisionLogStorageService } from '../../trips/decision/services/decision-log-storage.service';
+import {
+  extractOpportunitiesFromTripData,
+  extractRisksFromDecisionLogs,
+  loadDecisionLogsForTrip,
+  loadDetailTripData,
+} from './utils/detail-data.util';
 
 export interface DetailUnderstandStatusInput extends SkillInput {
-  /** Trip ID */
   tripId: string;
-  
-  /** 行程数据（可选，如果不提供则从数据库查询） */
   tripData?: any;
 }
 
 export interface DetailUnderstandStatusOutput extends SkillOutput {
-  /** 状态理解 */
   statusUnderstanding: TripStatusUnderstanding;
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 @Injectable()
 export class DetailUnderstandStatusSkill implements Skill<DetailUnderstandStatusInput, DetailUnderstandStatusOutput> {
   private readonly logger = new Logger(DetailUnderstandStatusSkill.name);
+  private decisionLogStorage?: DecisionLogStorageService;
+
+  constructor(
+    private readonly moduleRef: ModuleRef,
+    @Optional() private readonly prisma?: PrismaService,
+  ) {}
+
+  private getDecisionLogStorage(): DecisionLogStorageService | null {
+    if (!this.decisionLogStorage) {
+      try {
+        this.decisionLogStorage = this.moduleRef.get(DecisionLogStorageService, { strict: false });
+      } catch {
+        return null;
+      }
+    }
+    return this.decisionLogStorage ?? null;
+  }
 
   metadata = {
     name: 'detail.understandStatus',
-    description: '理解当前行程状态（规划中/进行中/已完成），识别下一步行动和风险',
+    description: 'detail.understandStatus：理解当前行程状态（规划中/进行中/已完成），识别下一步行动和风险',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -39,82 +59,87 @@ export class DetailUnderstandStatusSkill implements Skill<DetailUnderstandStatus
   async execute(input: DetailUnderstandStatusInput): Promise<DetailUnderstandStatusOutput> {
     this.logger.debug(`执行 detail.understandStatus: tripId=${input.tripId}`);
 
-    try {
-      // TODO: 从数据库查询行程数据
-      const tripData = input.tripData || {};
-      
-      // 判断当前阶段
-      const now = new Date();
-      const startDate = tripData.startDate ? new Date(tripData.startDate) : null;
-      const endDate = tripData.endDate ? new Date(tripData.endDate) : null;
-      
-      let currentPhase: TripStatusUnderstanding['currentPhase'] = 'PLANNING';
-      if (startDate && endDate) {
-        if (now < startDate) {
-          currentPhase = 'PLANNING';
-        } else if (now >= startDate && now <= endDate) {
-          currentPhase = 'IN_PROGRESS';
-        } else {
-          currentPhase = 'COMPLETED';
-        }
-      }
+    let tripData = input.tripData;
+    let degraded = false;
+    let degradedReason: string | undefined;
 
-      // 计算进度
-      const totalItems = tripData.days?.reduce((sum: number, day: any) => sum + (day.items?.length || 0), 0) || 0;
-      const completedItems = tripData.days?.reduce((sum: number, day: any) => {
+    if (!tripData && this.prisma) {
+      const loaded = await loadDetailTripData(this.prisma, input.tripId);
+      if (loaded) {
+        tripData = loaded;
+      } else {
+        degraded = true;
+        degradedReason = `Trip ${input.tripId} not found`;
+        tripData = {};
+      }
+    } else if (!tripData) {
+      degraded = true;
+      degradedReason = 'PrismaService unavailable and tripData not provided';
+      tripData = {};
+    }
+
+    const now = new Date();
+    const startDate = tripData.startDate ? new Date(tripData.startDate) : null;
+    const endDate = tripData.endDate ? new Date(tripData.endDate) : null;
+
+    let currentPhase: TripStatusUnderstanding['currentPhase'] = 'PLANNING';
+    if (tripData.status === 'CANCELLED') {
+      currentPhase = 'CANCELLED';
+    } else if (startDate && endDate) {
+      if (now < startDate) {
+        currentPhase = 'PLANNING';
+      } else if (now >= startDate && now <= endDate) {
+        currentPhase = 'IN_PROGRESS';
+      } else {
+        currentPhase = 'COMPLETED';
+      }
+    }
+
+    const totalItems =
+      tripData.days?.reduce((sum: number, day: any) => sum + (day.items?.length || 0), 0) || 0;
+    const completedItems =
+      tripData.days?.reduce((sum: number, day: any) => {
         return sum + (day.items?.filter((item: any) => item.completed).length || 0);
       }, 0) || 0;
-      
-      const progress = {
-        completed: completedItems,
-        total: totalItems,
-        percentage: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0,
-      };
 
-      // 识别下一步行动
-      const nextSteps: TripStatusUnderstanding['nextSteps'] = [];
-      if (currentPhase === 'PLANNING') {
-        nextSteps.push({
-          step: '确认行程细节',
-          priority: 'high',
-        });
-        nextSteps.push({
-          step: '准备行前清单',
-          priority: 'medium',
-        });
-      } else if (currentPhase === 'IN_PROGRESS') {
-        nextSteps.push({
-          step: '查看今日行程',
-          priority: 'high',
-        });
-        nextSteps.push({
-          step: '确认交通安排',
-          priority: 'medium',
-        });
+    const progress = {
+      completed: completedItems,
+      total: totalItems,
+      percentage: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0,
+    };
+
+    const nextSteps: TripStatusUnderstanding['nextSteps'] = [];
+    if (currentPhase === 'PLANNING') {
+      nextSteps.push({ step: '确认行程细节', priority: 'high' });
+      nextSteps.push({ step: '准备行前清单', priority: 'medium' });
+    } else if (currentPhase === 'IN_PROGRESS') {
+      nextSteps.push({ step: '查看今日行程', priority: 'high' });
+      nextSteps.push({ step: '确认交通安排', priority: 'medium' });
+    }
+
+    let risks: TripStatusUnderstanding['risks'] = [];
+    const storage = this.getDecisionLogStorage();
+    if (storage) {
+      try {
+        const logs = await loadDecisionLogsForTrip(storage, input.tripId);
+        risks = extractRisksFromDecisionLogs(logs);
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`加载决策日志失败: ${msg}`);
       }
+    }
 
-      // 识别风险
-      const risks: TripStatusUnderstanding['risks'] = [];
-      // TODO: 从决策日志中提取风险
+    const opportunities = tripData.days ? extractOpportunitiesFromTripData(tripData) : [];
 
-      // 识别机会
-      const opportunities: TripStatusUnderstanding['opportunities'] = [];
-      // TODO: 分析优化机会
-
-      const statusUnderstanding: TripStatusUnderstanding = {
+    return {
+      statusUnderstanding: {
         currentPhase,
         progress,
         nextSteps,
         risks,
         opportunities,
-      };
-
-      return {
-        statusUnderstanding,
-      };
-    } catch (error: any) {
-      this.logger.error(`理解状态失败: ${error.message}`, error.stack);
-      throw error;
-    }
+      },
+      ...(degraded ? { degraded, degradedReason } : {}),
+    };
   }
 }

@@ -50,6 +50,8 @@ import {
   applyDecisionDnaToStrategyLayers,
   type DecisionDnaProfileForStrategy,
 } from '../utils/strategy-conflict-dna-tuning.util';
+import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import type { ConflictDetection } from '../../skills/plan/shared/plan-state.types';
 
 export interface PlanningWorkbenchRequest {
   /** 规划上下文 */
@@ -63,6 +65,9 @@ export interface PlanningWorkbenchRequest {
   
   /** 用户操作（可选） */
   userAction?: 'generate' | 'compare' | 'commit' | 'adjust';
+
+  /** 节奏调整反馈（userAction === 'adjust' 时） */
+  paceFeedback?: 'too_tired' | 'too_rushed' | 'too_relaxed';
 }
 
 export interface PlanningWorkbenchResponse {
@@ -114,6 +119,7 @@ export class PlanningWorkbenchAgentService {
     @Optional() private readonly gateRunThreeGuardians?: PlanGateRunThreeGuardiansSkill,
     @Optional() private readonly constraintsDetectConflicts?: PlanConstraintsDetectConflictsSkill,
     @Optional() private readonly logAppendDecision?: PlanLogAppendDecisionSkill,
+    @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly personaShell?: PersonaShellService,
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly stateStore?: StateStoreService,
@@ -712,9 +718,26 @@ export class PlanningWorkbenchAgentService {
           }
           break;
 
-        case 'adjust':
-          // 调整计划
+        case 'adjust': {
+          if (request.paceFeedback) {
+            const adjustSkill = this.skillsRegistry?.getSkill('plan.pace.adjustSchedule');
+            if (adjustSkill) {
+              const adjustResult = await adjustSkill.execute({
+                planState,
+                userFeedback: request.paceFeedback,
+              });
+              planState.metadata = {
+                ...planState.metadata,
+                paceAdjustment: adjustResult,
+              };
+              const changes = adjustResult.adjustedTimeline?.changes?.map((c: { description: string }) => c.description) ?? [];
+              if (changes.length > 0) {
+                uiOutput.confirmations = [`节奏调整建议: ${changes.join('; ')}`];
+              }
+            }
+          }
           break;
+        }
 
         default:
           // 默认流程：生成方案（技能层已有超时保护，不需要重复）
@@ -904,6 +927,7 @@ export class PlanningWorkbenchAgentService {
         if (this.transitBuildTransferGraph) {
           const transitResult = await this.transitBuildTransferGraph.execute({ planState });
           planState.mobility.transferGraph = transitResult.transferGraph;
+          await this.enrichTransitWithSkills(planState);
         }
 
         // 计算时间窗
@@ -926,8 +950,10 @@ export class PlanningWorkbenchAgentService {
 
         // 冲突检测
         if (this.constraintsDetectConflicts) {
-          await this.constraintsDetectConflicts.execute({ planState });
-          // 如果有冲突，可以触发仲裁
+          const conflictResult = await this.constraintsDetectConflicts.execute({ planState });
+          if (conflictResult.conflicts.conflicts.length > 0) {
+            await this.arbitrateConflicts(planState, conflictResult.conflicts, uiOutput);
+          }
         }
       }
 
@@ -954,6 +980,8 @@ export class PlanningWorkbenchAgentService {
       } else {
         this.logger.warn('PersonaShellService 未注入，跳过三人格输出');
       }
+
+      await this.ensureEvidenceEnvelopes(planState);
 
       // 7. 记录决策日志
       if (this.logAppendDecision && planState.plan_id) {
@@ -1543,6 +1571,90 @@ export class PlanningWorkbenchAgentService {
   /**
    * 计算健康度
    */
+  private async enrichTransitWithSkills(planState: PlanState): Promise<void> {
+    if (!this.skillsRegistry) return;
+
+    const suggestSkill = this.skillsRegistry.getSkill('plan.transit.suggestModes');
+    const planBSkill = this.skillsRegistry.getSkill('plan.transit.generatePlanB');
+    const planBOptions: unknown[] = [];
+
+    for (const segment of planState.mobility.transferSegments) {
+      if (segment.feasibility === 'infeasible' && planBSkill) {
+        try {
+          const planBResult = await planBSkill.execute({ segment, context: { planId: planState.plan_id } });
+          planBOptions.push({ segmentId: segment.id, options: planBResult.planBOptions });
+        } catch (error: any) {
+          this.logger.warn(`plan.transit.generatePlanB 失败 segment=${segment.id}: ${error.message}`);
+        }
+      } else if (suggestSkill && segment.from?.city && segment.to?.city) {
+        try {
+          const modesResult = await suggestSkill.execute({
+            from: segment.from,
+            to: segment.to,
+          });
+          segment.availableModes = modesResult.modes;
+        } catch (error: any) {
+          this.logger.warn(`plan.transit.suggestModes 失败 ${segment.from.city}→${segment.to.city}: ${error.message}`);
+        }
+      }
+    }
+
+    if (planBOptions.length > 0) {
+      planState.metadata = { ...planState.metadata, transitPlanB: planBOptions };
+    }
+  }
+
+  private async arbitrateConflicts(
+    planState: PlanState,
+    conflicts: ConflictDetection,
+    uiOutput: PlanningWorkbenchResponse['uiOutput'],
+  ): Promise<void> {
+    const arbitrateSkill = this.skillsRegistry?.getSkill('plan.constraints.arbitrateTradeoffs');
+    if (!arbitrateSkill) return;
+
+    try {
+      const arbitration = await arbitrateSkill.execute({ planState, conflicts });
+      planState.metadata = { ...planState.metadata, conflictArbitration: arbitration };
+      if (arbitration.userConfirmationRequired) {
+        const confirmations = uiOutput.confirmations ?? [];
+        confirmations.push(
+          `约束冲突需确认: ${arbitration.recommendedResolution.description}`,
+        );
+        uiOutput.confirmations = confirmations;
+      }
+    } catch (error: any) {
+      this.logger.warn(`plan.constraints.arbitrateTradeoffs 失败: ${error.message}`);
+    }
+  }
+
+  private async ensureEvidenceEnvelopes(planState: PlanState): Promise<void> {
+    if (planState.evidence_refs.length > 0 || !this.skillsRegistry) return;
+
+    const buildSkill = this.skillsRegistry.getSkill('plan.evidence.buildEnvelope');
+    if (!buildSkill) return;
+
+    const excerpts: string[] = [
+      ...planState.gate.reasons,
+      ...(planState.gate.guardianResults?.abu.evidence ?? []),
+      ...(planState.gate.guardianResults?.drdre.evidence ?? []),
+      ...(planState.gate.guardianResults?.neptune.evidence ?? []),
+    ].filter(Boolean);
+
+    for (const excerpt of excerpts.slice(0, 5)) {
+      try {
+        const result = await buildSkill.execute({
+          source_title: 'plan.gate',
+          excerpt,
+          relevance: 'gate evaluation',
+          confidence: 'MEDIUM',
+        });
+        planState.evidence_refs.push(result.envelope);
+      } catch (error: any) {
+        this.logger.warn(`plan.evidence.buildEnvelope 失败: ${error.message}`);
+      }
+    }
+  }
+
   private computeHealth(planState: PlanState): PlanningWorkbenchResponse['uiOutput']['health'] {
     const health: PlanningWorkbenchResponse['uiOutput']['health'] = {
       budget: 'healthy',

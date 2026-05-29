@@ -19,6 +19,17 @@ export {
   buildExecutionSemanticWorldOverlay,
   toConstraintField,
 } from './world-constraint.pipeline';
+export {
+  worldEventsFromRagChunks,
+  type RagChunksToWorldEventsOptions,
+} from './rag-chunks-to-world-events.util';
+export {
+  materializeRagChunksToWorldStore,
+  materializeWorldEventsToStore,
+  type WorldConstraintMaterializationSummary,
+  type MaterializeRagWorldConstraintsOptions,
+} from './materialize-rag-world-constraints';
+export { injectWorldStoreViolationsIntoCgusCandidates } from './inject-world-store-into-cgus-candidates.util';
 export type { WorldConstraintStoreSnapshot } from './world-snapshot';
 export { snapshotWorldConstraintStore } from './world-snapshot';
 export type { ExecutionSemanticWorldOverlay } from './execution-semantic-world.types';

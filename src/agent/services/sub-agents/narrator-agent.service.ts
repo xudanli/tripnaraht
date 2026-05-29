@@ -22,6 +22,10 @@ import {
   extractBudgetAggregateSavingsFromResearchData,
   mapVoiceToneModifierForNegotiationAndBudget,
 } from '../../utils/narrator-ebp-tone.util';
+import { compileCausalNarrative } from '../../../trips/decision/narration/causal-narrative-compiler.service';
+import { polishCausalNarrativeWithLlm } from '../../../trips/decision/narration/polish-causal-narrative-with-llm.util';
+import type { CausalNarrativeCompileResult } from '../../../trips/decision/narration/causal-chain.types';
+import type { OptimizationHints } from '../../../decision/kernel/decision-state.types';
 
 /**
  * 决策故事输出
@@ -120,8 +124,16 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
     this.logger.debug(`[ClaudeNarratorAgent] 生成叙述: request_id=${itinerary.request_id}`);
 
     try {
+      const causalPolished = await this.buildCausalProtectionSummary(_context, decisionLog);
+
       // 1. 生成总览
-      const user_friendly_summary = this.generateSummary(itinerary, gateResult, _context);
+      let user_friendly_summary = this.generateSummary(itinerary, gateResult, _context);
+      if (causalPolished?.trim()) {
+        const anchor = causalPolished.slice(0, Math.min(24, causalPolished.length));
+        if (!user_friendly_summary.includes(anchor)) {
+          user_friendly_summary = `${causalPolished.trim()}\n\n${user_friendly_summary}`.trim();
+        }
+      }
 
       // 2. 生成逐日叙述
       const day_by_day_narrative = itinerary.days.map((day, index) => ({
@@ -144,8 +156,20 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
           user_friendly_summary,
           day_by_day_narrative,
           highlights,
-          tips,
+          tips: causalPolished
+            ? [`[决策保护] ${causalPolished.split('\n')[0]?.trim()}`.slice(0, 500), ...tips]
+            : tips,
           warnings,
+          ...(causalPolished
+            ? {
+                causal_protection_summary_zh: causalPolished,
+                causal_chain: (
+                  _context as OrchestratorState & {
+                    kernel_causal_narrative_compile?: CausalNarrativeCompileResult;
+                  }
+                ).kernel_causal_narrative_compile?.chain,
+              }
+            : {}),
         },
         _context,
       );
@@ -198,6 +222,53 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
       audio_prosody: mm.audio_prosody,
       ...(voice_tone_modifier !== undefined ? { voice_tone_modifier } : {}),
     };
+  }
+
+  /**
+   * 因果叙事编译 + 可选 LLM 润色（数值 SSOT 来自 Decision Kernel trace）。
+   */
+  private async buildCausalProtectionSummary(
+    context: OrchestratorState,
+    decisionLog: DecisionLogEntry[],
+  ): Promise<string | undefined> {
+    const precompiled = (
+      context as OrchestratorState & {
+        kernel_causal_narrative_compile?: CausalNarrativeCompileResult;
+      }
+    ).kernel_causal_narrative_compile;
+
+    const optHints = this.resolveOptimizationHintsFromContext(context);
+    const party = (context.trip_plan_request as { party?: { has_elderly?: boolean } })?.party;
+    const partyNoteZh = party?.has_elderly
+      ? '我们注意到您带着父母同行，已在体能与路况校验中采用更保守的物理门槛。'
+      : undefined;
+
+    const compiled =
+      precompiled ??
+      compileCausalNarrative({
+        decisionLogs: decisionLog as unknown as import('../../../trips/decision/shared/decision-result.types').DecisionLogEntry[],
+        optimizationHints: optHints,
+        partyNoteZh,
+      });
+    if (!compiled) return undefined;
+
+    if (this.llmService) {
+      try {
+        return await polishCausalNarrativeWithLlm(this.llmService, compiled);
+      } catch (e: unknown) {
+        this.logger.debug(
+          `[ClaudeNarratorAgent] causal LLM polish skipped: ${(e as Error)?.message}`,
+        );
+      }
+    }
+    return compiled.deterministicSummaryZh;
+  }
+
+  private resolveOptimizationHintsFromContext(
+    context: OrchestratorState,
+  ): OptimizationHints | undefined {
+    return (context as OrchestratorState & { kernel_optimization_hints?: OptimizationHints })
+      .kernel_optimization_hints;
   }
 
   /**

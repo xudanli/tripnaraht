@@ -1,0 +1,36 @@
+{
+  "trajectoryId": "0c0e03b0-e3f8-4afd-8bb3-f7198542a172",
+  "skillId": "country_pack.IS",
+  "skillVersion": 2,
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "DEM Evidence missing for segment (highlands)",
+      "action": "ABU REJECT E_DEM_MISSING",
+      "result": "DEM Evidence missing for segment (highlands)",
+      "isError": true,
+      "timestamp": "2026-05-26T07:11:02.365Z"
+    },
+    {
+      "stepIndex": 1,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "fixture trace summary audit",
+      "action": "EXPECTED_UTILITY EVALUATE EXPECTED_UTILITY_EVAL",
+      "result": "fixture trace summary audit",
+      "isError": false,
+      "timestamp": "2026-05-26T07:11:02.365Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好，并**检查高地路线相关的证据可用性**（若涉及 `highlands` 关键词）。\n   - 如果 action=ABU REJECT 且 result=E_DEM_MISSING，则触发证据补充流程。\n   - 当检测到 `'highlands'` 关键词时，必须检查 DEM 证据是否完整。\n2. 输出初步路线方向建议。\n   - 当证据缺失时，EXPECTED_UTILITY 评估应基于 `'reject'` 状态进行条件计算。\n   - 在 ABU REJECT 后，应输出明确的证据缺失说明和下一步建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：**已知缺陷**——缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。\n\n> ⚠️ **注意**  \n> - 在夏季高地路线处理中，必须包含 `'reject'` 和 `'dem'` 关键词对应的逻辑。  \n> - 证据完整性检查应优先于路线建议生成。  \n> - ABU REJECT 动作后的反馈信息应包含具体的证据缺失段标识。  \n> - 两条轨迹在 Step 2 中均未对 `E_DEM_MISSING` 状态做出差异化处理。  \n> - 轨迹未在 ABU REJECT 后输出用户可理解的缺失证据提示。",
+  "evalMode": "decision_replay",
+  "decisionReplayPassed": true,
+  "liveDecisionReplay": false,
+  "createdAt": "2026-05-26T07:11:02.365Z",
+  "fixtureCaseId": "iceland-highlands-dem-missing",
+  "score": 97.98
+}

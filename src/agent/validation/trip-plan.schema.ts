@@ -85,6 +85,7 @@ export const TripPlanRequestSchema = z.object({
   party_mobility_note_zh: z.string().max(600).optional(),
   constraints: ConstraintsSchema,
   preferences: PreferencesSchema,
+  guardian_debate_trip_context: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type TripPlanRequestInput = z.infer<typeof TripPlanRequestSchema>;
@@ -110,6 +111,7 @@ export const GateViolationSchema = z.object({
   severity: z.enum(['HARD', 'SOFT']),
   detail: z.string().min(1, 'Violation detail is required'),
   evidence_refs: z.array(z.string()).optional(),
+  verify_synthetic: z.boolean().optional(),
 });
 
 export const RequiredAdjustmentSchema = z.object({
@@ -128,6 +130,42 @@ export const RequiredAdjustmentSchema = z.object({
   alternatives: z.array(z.string()).optional(),
 });
 
+const GuardianEvidenceAtomSchema = z.object({
+  text: z.string(),
+  violation_code: z.string().optional(),
+  tag: z
+    .enum([
+      'safety',
+      'reachability',
+      'dem',
+      'fatigue',
+      'pacing',
+      'replace_segment',
+      'scope',
+      'adjustment',
+      'generic',
+    ])
+    .optional(),
+});
+
+const guardianAbuSchema = z.object({
+  verdict: z.enum(['ALLOW', 'REJECT']),
+  evidence: z.array(z.string()),
+  evidence_atoms: z.array(GuardianEvidenceAtomSchema).optional(),
+});
+
+const guardianDrdreSchema = z.object({
+  verdict: z.enum(['ALLOW', 'ADJUST', 'REJECT']),
+  evidence: z.array(z.string()),
+  evidence_atoms: z.array(GuardianEvidenceAtomSchema).optional(),
+});
+
+const guardianNeptuneSchema = z.object({
+  verdict: z.enum(['ALLOW', 'REPLACE', 'REJECT']),
+  evidence: z.array(z.string()),
+  evidence_atoms: z.array(GuardianEvidenceAtomSchema).optional(),
+});
+
 export const GateResultSchema = z.object({
   gate_result: GateResultStatusSchema,
   violations: z.array(GateViolationSchema),
@@ -136,24 +174,16 @@ export const GateResultSchema = z.object({
   evidence_refs: z.array(z.string()).optional(),
   guardian_results: z
     .object({
-      abu: z
-        .object({
-          verdict: z.enum(['ALLOW', 'REJECT']),
-          evidence: z.array(z.string()),
-        })
-        .optional(),
-      drdre: z
-        .object({
-          verdict: z.enum(['ALLOW', 'ADJUST', 'REJECT']),
-          evidence: z.array(z.string()),
-        })
-        .optional(),
-      neptune: z
-        .object({
-          verdict: z.enum(['ALLOW', 'REPLACE', 'REJECT']),
-          evidence: z.array(z.string()),
-        })
-        .optional(),
+      source: z.string().optional(),
+      is_simulated: z.boolean().optional(),
+      debate_summary_zh: z.string().optional(),
+      debate_latency_ms: z.number().optional(),
+      debate_shadow_wait_ms: z.number().optional(),
+      debate_overlapping_latency_saved_estimate_ms: z.number().optional(),
+      debate_shadow_triggered_at: z.number().optional(),
+      abu: guardianAbuSchema.optional(),
+      drdre: guardianDrdreSchema.optional(),
+      neptune: guardianNeptuneSchema.optional(),
     })
     .optional(),
 });

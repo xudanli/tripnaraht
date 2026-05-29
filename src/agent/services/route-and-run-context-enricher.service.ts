@@ -2,7 +2,11 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
-import { buildBriefItineraryLinesFromTripDays } from '../../trips/utils/trip-prompt-summary.util';
+import { compressWorldStateToNarrative } from '../runtime/decision-os-narrative-projection.util';
+import {
+  formatDecisionOsTripTime,
+  type DecisionOsWorldState,
+} from '../runtime/decision-os-world-state.types';
 import { UserStandingPreferenceService } from './user-standing-preference.service';
 
 /**
@@ -68,18 +72,29 @@ export class RouteAndRunContextEnricherService {
         return;
       }
 
-      const lines: string[] = [];
-      lines.push(`[active_trip_summary trip_id=${tripId}]`);
-      if (trip.name) lines.push(`名称: ${trip.name}`);
-      if (trip.status) lines.push(`状态: ${trip.status}`);
-      if (trip.destination) lines.push(`目的地代码: ${trip.destination}`);
-      if (trip.startDate) lines.push(`开始: ${trip.startDate.toISOString().slice(0, 10)}`);
-      if (trip.endDate) lines.push(`结束: ${trip.endDate.toISOString().slice(0, 10)}`);
-
-      lines.push(...buildBriefItineraryLinesFromTripDays(trip.TripDay));
-
-      const block = lines.join('\n');
-      const injected = `[系统注入·当前行程摘要]\n${block}`;
+      const worldState: DecisionOsWorldState = {
+        revision: 'v1',
+        tripId,
+        name: trip.name,
+        status: trip.status,
+        destination: trip.destination,
+        startDate: trip.startDate?.toISOString().slice(0, 10) ?? null,
+        endDate: trip.endDate?.toISOString().slice(0, 10) ?? null,
+        days: (trip.TripDay ?? []).map((day) => ({
+          date: day.date?.toISOString().slice(0, 10) ?? '?',
+          items: (day.ItineraryItem ?? []).map((it) => ({
+            type: it.type,
+            note: it.note,
+            placeName: it.Place?.nameCN ?? it.Place?.nameEN ?? null,
+            startTime: formatDecisionOsTripTime(it.startTime),
+            endTime: formatDecisionOsTripTime(it.endTime),
+          })),
+        })),
+      };
+      const injected = compressWorldStateToNarrative(worldState, tripId);
+      if (!injected.trim()) {
+        return;
+      }
       const prev = request.conversation_context?.recent_messages ?? [];
       request.conversation_context = {
         ...request.conversation_context,

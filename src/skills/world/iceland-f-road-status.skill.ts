@@ -38,7 +38,7 @@ export class IcelandFRoadStatusSkill implements Skill<IcelandFRoadStatusInput, I
   metadata = {
     name: 'iceland.fRoadStatus',
     description:
-      '冰岛 F-road 统一状态契约（开放/积雪/不可通行、4x4、涉水、房车限制、confidence）。',
+      '查询 iceland F-road 统一状态（开放/积雪/不可通行、4x4、涉水、房车限制）。在路线含高地 F-road 或 gate 需 F路通行裁决时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

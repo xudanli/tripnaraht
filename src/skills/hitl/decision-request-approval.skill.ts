@@ -108,7 +108,7 @@ export interface DecisionRequestApprovalOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'decision.requestApproval',
-  description: '请求用户审批高风险决策（Human-in-the-loop）。当 Agent 需要做出高风险决定时，挂起任务并等待用户确认',
+  description: 'decision.requestApproval：请求用户审批高风险决策（Human-in-the-loop）。当 Agent 需要做出高风险决定时，挂起任务并等待用户确认',
   version: '1.0.0',
   category: 'decision',
 })
@@ -118,7 +118,7 @@ export class DecisionRequestApprovalSkill implements Skill<DecisionRequestApprov
 
   metadata = {
     name: 'decision.requestApproval',
-    description: '请求用户审批高风险决策（Human-in-the-loop）。当 Agent 需要做出高风险决定时，挂起任务并等待用户确认',
+    description: 'decision.requestApproval：请求用户审批高风险决策（Human-in-the-loop）。当 Agent 需要做出高风险决定时，挂起任务并等待用户确认',
     version: '1.0.0',
     category: 'decision' as const,
   };

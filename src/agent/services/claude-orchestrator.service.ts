@@ -85,6 +85,7 @@ import type {
   SkillInputIntentSnapshot,
 } from '../../skills/itinerary/iceland-vehicle-terrain-arbitrator.util';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 import {
   computeGuardiansDebateAwaitBudgetMs,
   GuardiansDebateService,
@@ -122,6 +123,7 @@ import {
   isMarathonDeferredIntakeClarificationPending,
   isPeakSeasonTimeShiftIntakeClarificationPending,
 } from '../utils/structured-intake-clarification.util';
+import { enrichStateForIntakeGuardianDebateShortCircuit } from '../utils/intake-guardian-debate-short-circuit.util';
 import {
   analyzeRouteAndRunIntent,
   type RouteAndRunIntentAnalysis,
@@ -135,6 +137,34 @@ import {
   shouldSkipPoiDestinationClarificationForItineraryAdjust,
   type TripPlaceRowForPoiEvidence,
 } from '../utils/itinerary-adjust-intent.util';
+import {
+  buildItineraryItemDeleteAnswerText,
+  detectItineraryItemDeleteIntent,
+  parseItineraryItemDeleteSpec,
+  resolveItemIdsForDeleteWithFallback,
+  type TripLikeForDelete,
+} from '../utils/itinerary-item-delete.util';
+import {
+  buildItineraryItemAddAnswerText,
+  detectItineraryItemAddIntent,
+  itemAlreadyOnDay,
+  parseItineraryItemAddSpec,
+  resolvePlaceIdForAdd,
+  resolveTripDayIdForAdd,
+} from '../utils/itinerary-item-add.util';
+import {
+  openingHoursEvidenceToText,
+  suggestActivitySlotForDayAdd,
+} from '../utils/itinerary-item-add-slot.util';
+import {
+  applyExistingItemDurationToUpdateSpec,
+  buildItineraryItemUpdateAnswerText,
+  buildIsoTimesForUpdate,
+  detectItineraryItemUpdateIntent,
+  parseItineraryItemUpdateSpec,
+  resolveItemForUpdateWithFallback,
+} from '../utils/itinerary-item-update.util';
+import { mapOrchestratorDecisionLogToStepsExecuted } from '../utils/itinerary-item-crud-decision-log.util';
 import {
   buildItinerarySlotPlacementClarificationQuestion,
   isItinerarySlotPlacementIntakeClarificationPending,
@@ -156,6 +186,7 @@ import {
 import { ItinerarySlotPolisherService } from './itinerary-slot-polisher.service';
 import type { IntakeGap } from '../utils/clarification-question-generator.util';
 import { enrichGuardianDebateTripContextFromGateEval } from '../utils/guardian-debate-trip-context-enricher.util';
+import { resolvePersonaClosureAudit } from '../utils/persona-closure-repair-skip.util';
 import {
   applyMarathonIntakeSignalsToTripPlan,
   buildMarathonIntakeSignalsFromGaps,
@@ -357,6 +388,12 @@ import {
 import { SkillInputValidatorService } from './skill-input-validator.service';
 import { HallucinationDetectionService } from './hallucination-detection.service';
 import { TrajectoryCollectionService } from '../training/services/trajectory-collection.service';
+import { DecisionTrajectoryInterlocutorService } from '../training/services/decision-trajectory-interlocutor.service';
+import {
+  finalizeOrchestrationDecisionTrajectory,
+  recordGateEvalTrajectoryDraft,
+  recordPlanGenDraftSnapshot,
+} from '../training/utils/decision-trajectory-orchestration.hook';
 import { ReadinessService } from '../../trips/readiness/services/readiness.service';
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import { TripContext, TravelerProfile, ItineraryInfo } from '../../trips/readiness/types/trip-context.types';
@@ -581,6 +618,7 @@ export class ClaudeOrchestratorService {
     private llmService: LlmService,
     private readonly prisma: PrismaService,
     private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
+    private readonly contextSlidingWindow: ContextSlidingWindowAdapter,
     @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private skillsRegistry?: SkillsRegistryService,
     @Optional() private actionRegistry?: ActionRegistryService,
     @Optional() private plannerAgent?: ClaudePlannerAgentService,
@@ -596,6 +634,7 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly localCaseStore?: LocalCaseStoreService,
     @Optional() private readonly cbrAggregator?: CbrAggregatorService,
     @Optional() private trajectoryCollection?: TrajectoryCollectionService,
+    @Optional() private readonly decisionTrajectoryInterlocutor?: DecisionTrajectoryInterlocutorService,
     @Optional() private readonly readinessService?: ReadinessService,
     @Optional() private readonly userDecisionService?: UserDecisionService,
     @Optional() private readonly decisionDraftGenerator?: DecisionDraftGeneratorService,
@@ -6984,7 +7023,10 @@ ${JSON.stringify(routingDecision, null, 2)}
     const structOrigin =
       typeof structIn?.origin === 'string' ? structIn.origin.trim() : '';
     // message 有时仅为「继续/规划」而日期在上一轮或仅通过 structured 提交；全角数字归一后便于正则命中
-    const recentSlice = (request.conversation_context?.recent_messages ?? []).slice(-16);
+    const recentSlice = this.contextSlidingWindow.slice(
+      'orchestrator_claude',
+      request.conversation_context?.recent_messages,
+    );
     const rawIntakeBundle = [request.message, ...recentSlice].filter(Boolean).join('\n');
     const textForIntake = String(rawIntakeBundle).replace(
       /[０-９]/g,
@@ -7539,7 +7581,10 @@ ${JSON.stringify(routingDecision, null, 2)}
     const structuredHasDates =
       Boolean(stStart && stEnd && /^\d{4}-\d{2}-\d{2}$/.test(stStart) && /^\d{4}-\d{2}-\d{2}$/.test(stEnd));
 
-    const recentSlice = (request.conversation_context?.recent_messages ?? []).slice(-16);
+    const recentSlice = this.contextSlidingWindow.slice(
+      'orchestrator_claude',
+      request.conversation_context?.recent_messages,
+    );
     const intakeTextBundle = [request.message, ...recentSlice].filter(Boolean).join('\n');
     const textForHydration = String(intakeTextBundle).replace(
       /[０-９]/g,
@@ -7654,6 +7699,476 @@ ${JSON.stringify(routingDecision, null, 2)}
     return this.intakeOrchestratorNode;
   }
 
+  private async tryApplyBoundTripItineraryItemDelete(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    deletedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectItineraryItemDeleteIntent(message)) {
+      return { applied: false, reason: 'not_delete_intent' };
+    }
+    const spec = parseItineraryItemDeleteSpec(message);
+    if (!spec) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: '未能理解要删除的行程项，请说明第几天以及景点名称。',
+      };
+    }
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildItineraryItemDeleteAnswerText(spec, 0),
+      };
+    }
+
+    let trip: TripLikeForDelete;
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as TripLikeForDelete;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary delete: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        answerText: buildItineraryItemDeleteAnswerText(spec, 0),
+      };
+    }
+
+    const resolved = resolveItemIdsForDeleteWithFallback(trip, spec);
+    const itemIds = resolved.itemIds;
+    if (!itemIds.length) {
+      return {
+        applied: false,
+        reason: 'no_matching_items',
+        answerText: buildItineraryItemDeleteAnswerText(spec, 0),
+        itemIds: [],
+      };
+    }
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        answerText: buildItineraryItemDeleteAnswerText(spec, 0, resolved),
+        itemIds,
+      };
+    }
+
+    try {
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: itemIds.map((itemId) => ({ type: 'delete' as const, itemId })),
+      })) as { success?: boolean };
+      if (out?.success) {
+        return {
+          applied: true,
+          deletedCount: itemIds.length,
+          itemIds,
+          skillsHit: ['trip.applyEdit'],
+          answerText: buildItineraryItemDeleteAnswerText(spec, itemIds.length, resolved),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary delete apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit: ['trip.applyEdit'],
+      answerText: buildItineraryItemDeleteAnswerText(spec, 0, resolved),
+      itemIds,
+    };
+  }
+
+  private async tryApplyBoundTripItineraryItemAdd(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    addedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectItineraryItemAddIntent(message)) {
+      return { applied: false, reason: 'not_add_intent' };
+    }
+    const spec = parseItineraryItemAddSpec(message);
+    if (!spec) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: '未能理解要新增的行程项，请说明第几天以及景点名称。',
+      };
+    }
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildItineraryItemAddAnswerText(spec, 0),
+      };
+    }
+
+    let trip: TripLikeForDelete & {
+      TripDay?: Array<{
+        id?: string;
+        date?: Date | string | null;
+        ItineraryItem?: Array<{
+          id: string;
+          startTime?: Date | string | null;
+          endTime?: Date | string | null;
+          Place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+          place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+        }>;
+      }>;
+    };
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as typeof trip;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary add: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        answerText: buildItineraryItemAddAnswerText(spec, 0),
+      };
+    }
+
+    const dayResolved = resolveTripDayIdForAdd(trip, spec.dayNumber);
+    const effectiveDay = dayResolved.dayNumber ?? spec.dayNumber;
+    if (!dayResolved.tripDayId) {
+      return {
+        applied: false,
+        reason: 'day_not_found',
+        answerText: buildItineraryItemAddAnswerText(spec, 0, { dayNumber: effectiveDay }),
+      };
+    }
+
+    if (itemAlreadyOnDay(trip, effectiveDay, spec.poiQuery)) {
+      return {
+        applied: false,
+        reason: 'already_exists',
+        answerText: buildItineraryItemAddAnswerText(spec, 0, {
+          dayNumber: effectiveDay,
+          alreadyExists: true,
+        }),
+      };
+    }
+
+    const externalCandidates: Array<{
+      id?: number;
+      nameCN?: string | null;
+      nameEN?: string | null;
+      category?: string | null;
+    }> = [];
+    let resolvedPlaceName = spec.poiQuery;
+    let resolvedPlaceCategory: string | null = null;
+    const skillsHit: string[] = [];
+    const poiSkill = this.skillsRegistry?.getSkill('poi.search');
+    if (poiSkill) {
+      skillsHit.push('poi.search');
+      try {
+        const searchOut = (await poiSkill.execute({
+          query: spec.poiQuery,
+          limit: 8,
+          keyword_only: true,
+        })) as {
+          pois?: Array<{
+            poi_id?: string;
+            name?: string;
+            nameCN?: string;
+            nameEN?: string;
+            category?: string;
+          }>;
+        };
+        for (const p of searchOut?.pois ?? []) {
+          const id = Number(p.poi_id);
+          if (!Number.isFinite(id)) continue;
+          externalCandidates.push({
+            id,
+            nameCN: p.nameCN ?? p.name ?? null,
+            nameEN: p.nameEN ?? null,
+            category: p.category ?? null,
+          });
+        }
+      } catch (e: unknown) {
+        this.logger.warn(
+          `[Claude Orchestrator] itinerary add poi.search failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    const placeId = resolvePlaceIdForAdd(trip, spec, externalCandidates);
+    if (!placeId) {
+      return {
+        applied: false,
+        reason: 'place_not_found',
+        answerText: buildItineraryItemAddAnswerText(spec, 0, { dayNumber: effectiveDay }),
+      };
+    }
+
+    const matched =
+      externalCandidates.find((c) => c.id === placeId) ??
+      (() => {
+        for (const day of trip.TripDay ?? []) {
+          for (const item of day.ItineraryItem ?? []) {
+            const place = item.Place ?? item.place;
+            if (place?.id === placeId) return place;
+          }
+        }
+        return undefined;
+      })();
+    if (matched?.nameCN || matched?.nameEN) {
+      resolvedPlaceName = String(matched.nameCN ?? matched.nameEN);
+    }
+    if ((matched as { category?: string | null })?.category) {
+      resolvedPlaceCategory = String((matched as { category?: string | null }).category);
+    }
+
+    let openingHoursText: string | undefined;
+    const ohSkill = this.skillsRegistry?.getSkill('opening_hours.get');
+    if (ohSkill) {
+      skillsHit.push('opening_hours.get');
+      try {
+        const ohOut = (await ohSkill.execute({ poi_ids: [String(placeId)] })) as {
+          opening_hours?: Array<{ opening_hours?: unknown }>;
+        };
+        const dayRow = (trip.TripDay ?? [])[(effectiveDay ?? 1) - 1];
+        const dayDate =
+          dayRow?.date instanceof Date
+            ? dayRow.date
+            : dayRow?.date
+              ? new Date(String(dayRow.date))
+              : new Date();
+        openingHoursText = openingHoursEvidenceToText(
+          ohOut?.opening_hours?.[0]?.opening_hours,
+          dayDate,
+          'Atlantic/Reykjavik',
+        );
+      } catch (e: unknown) {
+        this.logger.debug(
+          `[Claude Orchestrator] itinerary add opening_hours.get skipped: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    const dayRow = (trip.TripDay ?? [])[(effectiveDay ?? 1) - 1];
+    const slot = suggestActivitySlotForDayAdd({
+      tripDayDate: dayRow?.date,
+      items: dayRow?.ItineraryItem ?? [],
+      poiQuery: spec.poiQuery,
+      placeCategory: resolvedPlaceCategory,
+      openingHoursText,
+      timezone: 'Atlantic/Reykjavik',
+    });
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        answerText: buildItineraryItemAddAnswerText(spec, 0, {
+          dayNumber: effectiveDay,
+          placeName: resolvedPlaceName,
+        }),
+      };
+    }
+
+    try {
+      skillsHit.push('trip.applyEdit');
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: [
+          {
+            type: 'add' as const,
+            tripDayId: dayResolved.tripDayId,
+            placeId,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          },
+        ],
+      })) as { success?: boolean; dbEdit?: { results?: Array<{ success?: boolean }> } };
+      if (out?.success) {
+        return {
+          applied: true,
+          addedCount: 1,
+          skillsHit,
+          answerText: buildItineraryItemAddAnswerText(spec, 1, {
+            dayNumber: effectiveDay,
+            placeName: resolvedPlaceName,
+            scheduledTimeLabel: slot.localLabel,
+            scheduleReasonZh: slot.reasonZh,
+          }),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary add apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit,
+      answerText: buildItineraryItemAddAnswerText(spec, 0, {
+        dayNumber: effectiveDay,
+        placeName: resolvedPlaceName,
+      }),
+    };
+  }
+
+  private async tryApplyBoundTripItineraryItemUpdate(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    updatedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectItineraryItemUpdateIntent(message)) {
+      return { applied: false, reason: 'not_update_intent' };
+    }
+    const spec = parseItineraryItemUpdateSpec(message);
+    if (!spec) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: '未能理解要修改的行程时间，请说明景点名称以及开始/结束时间。',
+      };
+    }
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildItineraryItemUpdateAnswerText(spec, false),
+      };
+    }
+
+    let trip: TripLikeForDelete & {
+      TripDay?: Array<{
+        id?: string;
+        date?: Date | string | null;
+        ItineraryItem?: Array<{
+          id: string;
+          Place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+          place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+        }>;
+      }>;
+    };
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as typeof trip;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary update: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        answerText: buildItineraryItemUpdateAnswerText(spec, false),
+      };
+    }
+
+    const resolved = resolveItemForUpdateWithFallback(trip, spec);
+    if (!resolved.itemId) {
+      return {
+        applied: false,
+        reason: 'no_matching_items',
+        answerText: buildItineraryItemUpdateAnswerText(spec, false, {
+          dayNumber: spec.dayNumber,
+        }),
+      };
+    }
+
+    const effectiveSpec = applyExistingItemDurationToUpdateSpec(spec, resolved.matchedItem);
+    const times = buildIsoTimesForUpdate(resolved.tripDayDate, effectiveSpec);
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        answerText: buildItineraryItemUpdateAnswerText(spec, false, {
+          dayNumber: resolved.matchedDayNumber,
+          placeName: resolved.placeName,
+          localLabel: times.localLabel,
+          usedDayFallback: resolved.usedDayFallback,
+        }),
+        itemIds: [resolved.itemId],
+      };
+    }
+
+    try {
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: [
+          {
+            type: 'update' as const,
+            itemId: resolved.itemId,
+            updates: {
+              startTime: times.startTime,
+              endTime: times.endTime,
+            },
+          },
+        ],
+      })) as { success?: boolean };
+      if (out?.success) {
+        return {
+          applied: true,
+          updatedCount: 1,
+          itemIds: [resolved.itemId],
+          skillsHit: ['trip.applyEdit'],
+          answerText: buildItineraryItemUpdateAnswerText(spec, true, {
+            dayNumber: resolved.matchedDayNumber,
+            placeName: resolved.placeName,
+            localLabel: times.localLabel,
+            usedDayFallback: resolved.usedDayFallback,
+          }),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary update apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit: ['trip.applyEdit'],
+      answerText: buildItineraryItemUpdateAnswerText(spec, false, {
+        dayNumber: resolved.matchedDayNumber,
+        placeName: resolved.placeName,
+        localLabel: times.localLabel,
+        usedDayFallback: resolved.usedDayFallback,
+      }),
+      itemIds: [resolved.itemId],
+    };
+  }
+
   private createIntakePhaseHost(): IntakePhaseHost {
     return {
       logger: this.logger,
@@ -7671,6 +8186,12 @@ ${JSON.stringify(routingDecision, null, 2)}
         this.loadTripDaySnapshotsForSlotPlacement(tripId, userId),
       resolveItinerarySlotCandidatesForIntake: (msg, tp, tripId, userId, snaps) =>
         this.resolveItinerarySlotCandidatesForIntake(msg, tp, tripId, userId, snaps),
+      tryApplyBoundTripItineraryItemDelete: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemDelete(tripId, userId, message),
+      tryApplyBoundTripItineraryItemAdd: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
+      tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
     };
   }
 
@@ -7681,6 +8202,14 @@ ${JSON.stringify(routingDecision, null, 2)}
       executeIntakeStep: (req, ctx, st, llm) =>
         runIntakePhase(phaseHost, { request: req, context: ctx, state: st, llmProvider: llm }),
       maybeSnapshot: (st, trigger) => this.maybeSnapshot(st, trigger),
+      buildPrePlanSuccessResult: (st, start, dso, ctx) =>
+        this.buildSuccessResult(st, start, dso, ctx),
+      tryApplyBoundTripItineraryItemDelete: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemDelete(tripId, userId, message),
+      tryApplyBoundTripItineraryItemAdd: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
+      tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
     };
   }
 
@@ -7716,6 +8245,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         this.maybeStateUpdateTerminalNoSolution(input, dso),
       maybeHaltHardGapsClarification: (input, dso) =>
         this.maybeStateUpdateHardGapsClarification(input, dso),
+      maybeHaltStructuredIntakeClarification: (input, dso) =>
+        this.maybeStateUpdateStructuredIntakeClarification(input, dso),
       applyResearchScopeInvalidationCow: (req, st) =>
         this.applyResearchScopeInvalidationCowBeforeResearch(req, st),
     };
@@ -7764,6 +8295,51 @@ ${JSON.stringify(routingDecision, null, 2)}
         input.context,
       ),
     );
+  }
+
+  private async maybeStateUpdateStructuredIntakeClarification(
+    input: import('../orchestration/graph/nodes/base.node').StateUpdatePrePlanSegmentInput,
+    decisionState: DecisionState | undefined,
+  ): Promise<import('../orchestration/graph/orchestration-graph.types').GraphRunOutcome | null> {
+  if (
+    !this.shouldReturnClarificationForMarathonIntake(input.state) &&
+    !this.shouldReturnClarificationForFroad2wdIntake(input.state) &&
+    !this.shouldReturnClarificationForPeakSeasonTimeShiftIntake(input.state) &&
+    !this.shouldReturnClarificationForItinerarySlotPlacementIntake(input.state)
+  ) {
+    return null;
+  }
+
+  if (
+    this.shouldReturnClarificationForMarathonIntake(input.state) ||
+    this.shouldReturnClarificationForFroad2wdIntake(input.state) ||
+    this.shouldReturnClarificationForPeakSeasonTimeShiftIntake(input.state)
+  ) {
+    enrichStateForIntakeGuardianDebateShortCircuit(input.state, input.request);
+  }
+
+  input.state.decision_log.push({
+    request_id: input.state.request_id,
+    step: 'STATE_UPDATE',
+    actor: 'Orchestrator',
+    inputs_summary: 'INTAKE structured clarification → guardian debate surface',
+    outputs_summary: `gate=${input.state.gate_result?.gate_result ?? 'n/a'} personas=${Boolean(input.state.gate_result?.guardian_results)}`,
+    evidence_refs: [],
+    timestamp: new Date().toISOString(),
+    metadata: {
+      system_action: 'INTAKE_GUARDIAN_DEBATE_SHORT_CIRCUIT',
+      marathon_intake: (input.state.metadata as Record<string, unknown>)?.marathon_intake_clarification_short_circuit === true,
+      debate_gate_fusion: (input.state.metadata as Record<string, unknown>)?.debate_gate_fusion,
+    },
+  });
+
+  this.logger.debug(
+    `[Claude Orchestrator] INTAKE 结构化澄清 + 三人格合议，跳过 RESEARCH/Gate/Plan`,
+  );
+  return input.prePlan.prePlanTerminal(
+    'terminal_clarification',
+    this.buildClarificationResult(input.state, input.prePlan.startTime, decisionState, input.context),
+  );
   }
 
   private async maybeStateUpdateHardGapsClarification(
@@ -7981,6 +8557,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       enrichGuardianDebateTripContextAfterGateEval: (st) =>
         this.enrichGuardianDebateTripContextAfterGateEval(st),
       applyMarathonPipelineSignals: (st, req) => this.applyMarathonPipelineSignals(st, req),
+      onGateEvalCompleted: (st, req) => recordGateEvalTrajectoryDraft(this.decisionTrajectoryInterlocutor, st, req),
     };
   }
 
@@ -8607,6 +9184,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     let itineraryAdjustTripPoiSeedCount = 0;
     if (isItineraryAdjust) {
       const tripId =
+        state.trip_plan_request?.trip_id?.trim() ??
         state.trip_plan_request?.ontology_context?.trip_id?.trim() ??
         (state.metadata as { tripId?: string })?.tripId?.trim();
       const userId = (state.metadata as { userId?: string })?.userId;
@@ -9142,6 +9720,10 @@ ${JSON.stringify(routingDecision, null, 2)}
       personaHint: request.options.persona_hint as TripPlanRequest['persona_hint'],
       tripContext: state.trip_plan_request,
       llmProvider: request.options.llm_provider,
+      personaClosureAudit: resolvePersonaClosureAudit({
+        gateResult: gate,
+        orchestratorMetadata: state.metadata as Record<string, unknown>,
+      }),
     });
     if (state.metadata) {
       (state.metadata as Record<string, unknown>).debate_triggered_at = Date.now();
@@ -9182,6 +9764,10 @@ ${JSON.stringify(routingDecision, null, 2)}
           personaHint: request.options.persona_hint as TripPlanRequest['persona_hint'],
           tripContext: state.trip_plan_request,
           llmProvider: request.options.llm_provider,
+          personaClosureAudit: resolvePersonaClosureAudit({
+            gateResult: gateBefore,
+            orchestratorMetadata: state.metadata as Record<string, unknown>,
+          }),
         },
         debateBudgetMs,
       );
@@ -9752,6 +10338,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         trip ? syncPlanRoutingMetricsToTripPlan(trip, itinerary) : trip,
       generateDecisionStepForStep: (st, step, actor) =>
         this.generateDecisionStepForStep(st, step, actor),
+      onPlanGenDraftCaptured: (requestId, itinerary) =>
+        recordPlanGenDraftSnapshot(this.decisionTrajectoryInterlocutor, requestId, itinerary),
       collectTrajectoryAfterPlanGen: async ({ request, state }) => {
         if (!this.trajectoryCollection || !state.itinerary || !state.gate_result) return;
         try {
@@ -10224,8 +10812,12 @@ ${JSON.stringify(routingDecision, null, 2)}
               systemState: { requestId: state.request_id ?? '' },
               requestId: state.request_id,
             } as DecisionState);
+          const sanitizedRecentMessages = this.contextSlidingWindow.slice(
+            'orchestrator_claude',
+            request.conversation_context?.recent_messages,
+          );
           const hydration = hydrateTripPlanTransportEndpoints(dsoForHydration, tripRequest, {
-            recentMessages: request.conversation_context?.recent_messages,
+            recentMessages: sanitizedRecentMessages,
           });
           const { trip: hydratedTrip, patchedFields } = hydration;
           if (patchedFields.length > 0) {
@@ -11902,6 +12494,19 @@ ${JSON.stringify(routingDecision, null, 2)}
    * 构建成功结果
    * @param decisionState DSO（含 confidence/history/decisionMeta），供 RLHF/分析/前端使用
    */
+  private async persistDecisionTrajectoryAtOrchestrationExit(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+    answerText?: string,
+  ): Promise<void> {
+    await finalizeOrchestrationDecisionTrajectory({
+      interlocutor: this.decisionTrajectoryInterlocutor,
+      state,
+      decisionState,
+      answerText,
+    });
+  }
+
   private buildSuccessResult(
     state: OrchestratorState,
     startTime: number,
@@ -11920,6 +12525,13 @@ ${JSON.stringify(routingDecision, null, 2)}
     const answerText = hasClarificationQuestions
       ? clarificationIntroPlain((state.metadata as any)?.clarification_locale)
       : this.buildUserFacingAnswerText(state);
+
+    void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
+      (e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`[Claude Orchestrator] DecisionTrajectory finalize failed: ${msg}`);
+      },
+    );
 
     this.logger.log(`[Claude Orchestrator] 构建成功结果: decision_log.length=${state.decision_log.length}, current_step=${state.current_step}`);
 
@@ -11944,11 +12556,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         } : {}),
       },
       answerText,
-      stepsExecuted: state.decision_log.map(log => ({
-        stepId: log.step,
-        success: true,
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
     };
@@ -11968,6 +12576,12 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'BLOCKED');
     const violations = state.gate_result?.violations || [];
     const answerText = `行程规划被阻止。原因：${violations.map(v => v.detail).join('；')}`;
+    void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
+      (e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`[Claude Orchestrator] DecisionTrajectory finalize failed: ${msg}`);
+      },
+    );
 
     // 如果有澄清问题，也包含在结果中（虽然被阻止，但可能需要用户提供替代方案）
     const hasClarificationQuestions = state.clarification_questions && state.clarification_questions.length > 0;
@@ -11990,11 +12604,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         } : {}),
       },
       answerText,
-      stepsExecuted: state.decision_log.map(log => ({
-        stepId: log.step,
-        success: true,
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
     };
@@ -12115,11 +12725,18 @@ ${JSON.stringify(routingDecision, null, 2)}
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'NEED_USER_CONFIRM');
     const answerText = clarificationIntroPlain((state.metadata as any)?.clarification_locale);
+    void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
+      (e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`[Claude Orchestrator] DecisionTrajectory finalize failed: ${msg}`);
+      },
+    );
 
     return {
       success: false, // 需要用户输入，所以 success 为 false
       result: {
         state,
+        ...(state.gate_result ? { gate_result: state.gate_result } : {}),
         needsUserConfirmation: true,
         clarificationQuestions: state.clarification_questions || [],
         clarificationMessage: this.formatClarificationMessage(
@@ -12129,11 +12746,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         gaps: state.gaps,
       },
       answerText,
-      stepsExecuted: state.decision_log.map(log => ({
-        stepId: log.step,
-        success: true,
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
     };
@@ -12154,6 +12767,9 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'FAILED');
+    void this.decisionTrajectoryInterlocutor
+      ?.markFailed(state.request_id)
+      .catch(() => {});
     // 🆕 检查是否是超时错误
     const isTimeout =
       error?.message?.startsWith('TIMEOUT:') ||
@@ -12190,11 +12806,9 @@ ${JSON.stringify(routingDecision, null, 2)}
         ...(decisionState && { decisionState }),
       },
       answerText,
-      stepsExecuted: state.decision_log.map(log => ({
-        stepId: log.step,
-        success: log.step !== 'FAILED' && log.step !== 'TIMEOUT',
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log, {
+        isSuccess: (step) => step !== 'FAILED' && step !== 'TIMEOUT',
+      }),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log, // 🆕 确保决策日志被包含
     };
@@ -12395,11 +13009,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         ...(decisionState && { decisionState }),
       } as any,
       answerText,
-      stepsExecuted: state.decision_log.map((log) => ({
-        stepId: log.step,
-        success: true,
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
     };

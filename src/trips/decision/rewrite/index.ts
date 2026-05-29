@@ -19,3 +19,5 @@ export {
   resolveAffectedTemporalSubgraphPlaceholder,
   type AffectedTemporalSubgraph,
 } from './affected-subgraph.stub';
+export { resolveAffectedTemporalSubgraph } from './resolve-affected-temporal-subgraph';
+export type { ResolveAffectedTemporalSubgraphInput } from './resolve-affected-temporal-subgraph';

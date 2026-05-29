@@ -27,6 +27,10 @@ import { invalidateLedgerByAnchorDrift, planLedgerRecomputeOrder } from '../deci
 import { mergePendingWorldAnchorsIntoLedger } from '../decision-ledger/ledger-pending-audit.merge.util';
 import type { DecisionLedgerSnapshot } from '../decision-ledger/decision-ledger.types';
 import { LedgerPendingAuditStoreService } from '../decision-ledger/ledger-pending-audit.store.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+import type { AgentMemoryUserBasics } from '../interfaces/agent-memory-context.interface';
+import { extractAgentMemoryUserBasicsFromPreferences } from '../utils/agent-memory-user-basics.util';
+import { buildMergedTravelPreferenceSummary } from '../utils/travel-preference-merge.util';
 
 export type MemoryContractObservabilityV1 = {
   revision: 'v1';
@@ -56,6 +60,7 @@ export class MemoryContextAssemblerService {
     @Inject(WORLD_DECISION_MEMORY_ARCHIVE)
     private readonly wdArchive?: WorldDecisionMemoryArchivePort,
     @Optional() private readonly ledgerPendingAudit?: LedgerPendingAuditStoreService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   /**
@@ -91,14 +96,37 @@ export class MemoryContextAssemblerService {
 
     const layers: string[] = [];
     let userProfile: UserTravelProfile | null = null;
+    let userBasics: AgentMemoryUserBasics | null = null;
     let recentDecisions: AgentMemoryContext['recentDecisions'] = [];
 
     if (userId && userId !== 'anonymous') {
       try {
-        userProfile = await this.memoryService.getUserTravelProfile(userId);
+        const [l1, l0] = await Promise.all([
+          this.memoryService.getUserTravelProfile(userId),
+          this.loadL0UserBasics(userId),
+        ]);
+        userProfile = l1;
+        userBasics = l0;
         layers.push('L1_user_profile');
+        if (userBasics) {
+          layers.push('L0_user_basics');
+        }
       } catch (e: any) {
-        this.logger.warn(`MemoryContextAssembler: L1 load failed: ${e?.message ?? e}`);
+        this.logger.warn(`MemoryContextAssembler: L1/L0 parallel load failed: ${e?.message ?? e}`);
+        try {
+          userProfile = await this.memoryService.getUserTravelProfile(userId);
+          layers.push('L1_user_profile');
+        } catch (e2: any) {
+          this.logger.warn(`MemoryContextAssembler: L1 load failed: ${e2?.message ?? e2}`);
+        }
+        try {
+          userBasics = await this.loadL0UserBasics(userId);
+          if (userBasics) {
+            layers.push('L0_user_basics');
+          }
+        } catch (e3: any) {
+          this.logger.warn(`MemoryContextAssembler: L0 load failed: ${e3?.message ?? e3}`);
+        }
       }
       try {
         recentDecisions = await this.memoryService.getUserRouteDirectionDecisions(userId);
@@ -140,7 +168,11 @@ export class MemoryContextAssemblerService {
       layers.push('route_party_profile');
     }
 
-    const travelPreference = this.mergeTravelPreferenceSummary(userProfile, routePartyProfile);
+    const travelPreference = buildMergedTravelPreferenceSummary({
+      profile: userProfile,
+      routeParty: routePartyProfile,
+      basics: userBasics,
+    });
     const anchorBundle = buildLedgerAnchorBundle({
       activeTripState,
       travelPreference,
@@ -181,6 +213,7 @@ export class MemoryContextAssemblerService {
       userId,
       tripId,
       userProfile,
+      userBasics,
       travelPreference,
       routePartyProfile,
       recentDecisions,
@@ -224,37 +257,23 @@ export class MemoryContextAssemblerService {
     applyDecisionRingToExecutionOperationalOverlay(ex, mem.requestId, this.worldDecisionMemory);
   }
 
-  private mergeTravelPreferenceSummary(
-    profile: UserTravelProfile | null,
-    routeParty: RouteRunPartyProfileSnapshot | null,
-  ): Record<string, unknown> | null {
-    const fromProfile = profile
-      ? {
-          pacePreference: profile.pacePreference,
-          riskTolerance: profile.riskTolerance,
-          travelPhilosophy: profile.travelPhilosophy,
-          preferredRouteTypes: profile.preferredRouteTypes,
-          confidence: profile.confidence,
-        }
-      : null;
-    const fromRoute =
-      routeParty &&
-      (routeParty.fitness_level != null ||
-        routeParty.risk_tolerance != null ||
-        routeParty.party_total != null ||
-        routeParty.has_children != null ||
-        routeParty.has_elderly != null ||
-        (typeof routeParty.mobility_note_zh === 'string' && routeParty.mobility_note_zh.trim().length > 0))
-        ? {
-            route_fitness_level: routeParty.fitness_level ?? null,
-            route_risk_tolerance: routeParty.risk_tolerance ?? null,
-            route_party_total: routeParty.party_total ?? null,
-            route_has_children: routeParty.has_children ?? null,
-            route_has_elderly: routeParty.has_elderly ?? null,
-            route_mobility_note_zh: routeParty.mobility_note_zh?.trim() ?? null,
-          }
-        : null;
-    if (!fromProfile && !fromRoute) return null;
-    return { ...(fromProfile ?? {}), ...(fromRoute ?? {}) };
+  /** L0：`UserProfile.preferences`（Prisma），与 L1 并行读取；失败或非 DB 模式返回 null。 */
+  private async loadL0UserBasics(userId: string): Promise<AgentMemoryUserBasics | null> {
+    if (!this.prisma?.isDbConnected()) {
+      return null;
+    }
+    try {
+      const row = await this.prisma.userProfile.findUnique({
+        where: { userId },
+        select: { preferences: true, updatedAt: true },
+      });
+      if (!row?.preferences) {
+        return null;
+      }
+      return extractAgentMemoryUserBasicsFromPreferences(row.preferences, row.updatedAt.toISOString());
+    } catch (e: any) {
+      this.logger.warn(`MemoryContextAssembler: L0 user basics load failed: ${e?.message ?? e}`);
+      return null;
+    }
   }
 }

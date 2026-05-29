@@ -28,6 +28,8 @@ import { PersonaShellService } from '../../services/persona-shell.service';
 import { SharedAssistantsModule } from '../shared/shared-assistants.module';
 import { AgentInfraModule } from '../../infra/infra.module';
 import { CacheModule } from '../../../common/cache/cache.module';
+import { RedisModule } from '../../../redis/redis.module';
+import { PaConversationContextService } from './services/pa-conversation-context.service';
 import { HotelDirectModule } from '../../../mcp/hotel-direct.module';
 import { GoogleMapsDirectModule } from '../../../mcp/google-maps-direct.module';
 import { AirbnbModule } from '../../../mcp/airbnb.module';
@@ -70,6 +72,7 @@ const throttlerConfig = disableThrottler
     forwardRef(() => AgentModule), // 方案 A: 注入 AgentService 用于 route_and_run 编排
     AgentInfraModule, // V2.1: Infra层 (LLMExecutor, CoreGateway, TaskService)
     CacheModule, // 通用缓存模块
+    RedisModule, // PA 对话上下文 Redis 双写
     HotelDirectModule, // 酒店搜索服务
     GoogleMapsDirectModule, // Google Maps 服务（用于地理编码）
     AirbnbModule, // Airbnb/民宿搜索服务
@@ -96,6 +99,7 @@ const throttlerConfig = disableThrottler
     McpAgentLoopController, // 原生 Tool Calling + MCP 闭环（实验）
   ],
   providers: [
+    PaConversationContextService,
     PlanningAssistantService,
     PlanningAssistantV2Service, // V2 Service
     SmartRouterService, // 智能路由服务

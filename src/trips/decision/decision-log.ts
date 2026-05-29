@@ -91,6 +91,9 @@ export interface DecisionRunLog {
   // RouteDirection 解释（为什么选择这个路线方向）
   routeDirectionExplanation?: string;
 
+  /** Phase 2.5：硬徒步 Trail 段计划（与 POI 主路径并行，供 UI / 日志回放） */
+  hardTrekTrailPlan?: import('./adapters/trail-planning.adapter').TrailPlanPreviewResult;
+
   // RouteDirection selection info (for E2E testing and observability)
   routeDirection?: {
     selected: {
@@ -188,7 +191,7 @@ export interface DecisionRunLog {
   demEvidence?: {
     segmentEvidences?: Array<{
       segmentId: string;
-      violation: 'HARD' | 'SOFT' | 'NONE';
+      violation: 'HARD' | 'SOFT' | 'NONE' | 'UNKNOWN';
       explanation: string;
     }>;
     hasHardViolation?: boolean;

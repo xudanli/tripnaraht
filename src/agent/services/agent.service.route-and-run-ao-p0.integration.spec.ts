@@ -496,7 +496,10 @@ describe('AgentService.routeAndRun — AO P0 (CLAUDE_SM assembly)', () => {
       }),
     );
 
-    const res = await agentService.routeAndRun(aoP0Request());
+    const res = await agentService.routeAndRun({
+      ...aoP0Request(),
+      options: { ...aoP0Request().options, show_debug_scores: true },
+    });
     const st = res.result.payload.orchestrationResult?.state;
     expect(st?.gate_result?.gate_result).toBe('ALLOW');
     expect(st?.itinerary?.days?.[0]?.items?.[0]?.location_ref?.name).toBe('Hallgrímskirkja');

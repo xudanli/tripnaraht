@@ -1,0 +1,84 @@
+{
+  "trajectoryId": "bd5d5555-f536-42ef-972e-f2dae36230e9",
+  "skillId": "api_calling",
+  "skillVersion": 1,
+  "strategyId": "D",
+  "strategy": {
+    "strategyId": "D",
+    "philosophy": "最小变更，贴近技能原文",
+    "approach": "严格按技能步骤顺序执行",
+    "emphasis": "技能遵守度",
+    "risk": "对异常场景反应慢"
+  },
+  "taskIds": [
+    "t1",
+    "t2"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "用户要求查询北京天气",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 查询天气 API 并解析 JSON 返回",
+      "result": "[进行中] 已执行: 处理: 查询天气 API 并解析 JSON 返回",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:42.813Z"
+    },
+    {
+      "stepIndex": 1,
+      "observation": "[进行中] 已执行: 处理: 查询天气 API 并解析 JSON 返回",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 查询天气 API 并解析 JSON 返回",
+      "result": "[进行中] 已执行: 处理: 查询天气 API 并解析 JSON 返回",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:42.813Z"
+    },
+    {
+      "stepIndex": 2,
+      "observation": "[进行中] 已执行: 处理: 查询天气 API 并解析 JSON 返回",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 查询天气 API 并解析 JSON 返回",
+      "result": "[完成] 处理: 查询天气 API 并解析 JSON 返回",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:42.813Z"
+    },
+    {
+      "stepIndex": 3,
+      "observation": "API 返回 401 Unauthorized",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 处理 API 401 错误",
+      "result": "[进行中] 已执行: 处理: 处理 API 401 错误",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:42.813Z"
+    },
+    {
+      "stepIndex": 4,
+      "observation": "[进行中] 已执行: 处理: 处理 API 401 错误",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 处理 API 401 错误",
+      "result": "[进行中] 已执行: 处理: 处理 API 401 错误",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:42.813Z"
+    },
+    {
+      "stepIndex": 5,
+      "observation": "[进行中] 已执行: 处理: 处理 API 401 错误",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 处理 API 401 错误",
+      "result": "[完成] 处理: 处理 API 401 错误",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:42.813Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# API 调用规范\n\n## 原则\n调用外部 API 前，必须先验证参数合法性，避免发送无效请求。\n\n## 步骤\n1. **参数检查**：检查所有必填参数是否已提供且类型正确\n2. **URL 构建**：使用标准库构造查询参数，禁止手写未转义拼接\n3. **重试策略**：对 5xx 错误使用指数退避，最多重试 3 次\n4. **错误处理**：\n   - 4xx 错误：记录详细错误信息，不再重试\n   - 5xx 错误：按重试策略处理\n   - 超时：视为 5xx 处理\n5. **响应解析**：优先尝试 JSON 解析，失败则记录原始响应\n\n## 注意事项\n- 绝不要在日志中记录 api_key\n- 对 429 (Rate Limit) 响应，读取 Retry-After 头部",
+  "createdAt": "2026-05-26T04:54:42.813Z",
+  "score": 65,
+  "evalMode": "fixture"
+}

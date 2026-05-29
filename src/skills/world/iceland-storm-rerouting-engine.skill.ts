@@ -39,7 +39,7 @@ export interface IcelandStormReroutingEngineOutput extends SkillOutput {
 export class IcelandStormReroutingEngineSkill implements Skill<IcelandStormReroutingEngineInput, IcelandStormReroutingEngineOutput> {
   metadata = {
     name: 'iceland.stormReroutingEngine',
-    description: 'Plan B segment suggestions from structured verdict (no external routing API).',
+    description: 'iceland.stormReroutingEngine：Plan B segment suggestions from structured verdict (no external routing API).',
     version: '0.1.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

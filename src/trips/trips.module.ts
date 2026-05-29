@@ -68,9 +68,11 @@ import { RealWorldExecutionService } from './services/real-world-execution.servi
 import { RealityGovernanceService } from './services/reality-governance.service';
 import { CityDigitalTwinService } from './services/city-digital-twin.service';
 import { StubRealityApiService } from './services/stub-reality-api.service';
+import { EmbeddedHikingTripSummaryService } from './services/embedded-hiking-trip-summary.service';
+import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule, PlanningPolicyModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
@@ -122,6 +124,7 @@ import { StubRealityApiService } from './services/stub-reality-api.service';
     EvidenceFetchTaskService,
     NLConversationContextService,
     SolverService,
+    EmbeddedHikingTripSummaryService,
   ],
   exports: [
     WorldKernelService,

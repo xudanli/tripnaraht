@@ -53,7 +53,7 @@ export class CountryPackNewSkeletonSkill implements Skill<CountryPackNewSkeleton
 
   metadata = {
     name: 'countryPack.newSkeleton',
-    description: '创建国家 Pack 骨架，支持 ReadinessPack 和 RouteDirectionPack 两种类型',
+    description: 'countryPack.newSkeleton：创建国家 Pack 骨架，支持 ReadinessPack 和 RouteDirectionPack 两种类型',
     version: '1.0.0',
     category: 'countryPack' as const,
   };

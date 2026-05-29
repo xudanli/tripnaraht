@@ -282,6 +282,7 @@ async function main() {
     new DSOSnapshotAuditService(),
     new DecisionMetricsService(),
     new DistributedLockService(),
+    undefined, // rlhfPersistence
   );
 
   await facade.onModuleInit();

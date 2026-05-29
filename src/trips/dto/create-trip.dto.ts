@@ -1,5 +1,5 @@
 // src/trips/dto/create-trip.dto.ts
-import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional, IsInt, Length } from 'class-validator';
+import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional, IsInt, Length, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TripStatus } from './trip-status.dto';
@@ -183,4 +183,13 @@ export class CreateTripDto {
   @IsString({ message: 'name 必须是字符串' })
   @Length(1, 200, { message: '行程名称长度必须在 1-200 字符之间' })
   name?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '行程元数据（如 hikingProfile、hikingSegments）；与 preferences/constraints 一并写入 Trip.metadata',
+    example: { hikingProfile: 'embedded', hikingSegments: [] },
+  })
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
 }

@@ -17,6 +17,8 @@ import type { IVerifyExecutor, PhaseExecutorContext } from '../../decision/kerne
 import { normalizeItem } from '../../decision/kernel/itinerary.types';
 import { solveDayTimeline, type SolveDayTimelineEnvironment } from '../../decision/kernel/itinerary-timeline.util';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
+import { buildL3ProofPrefixFromMatch } from '../axioms/axiom-l3-proof.util';
 import { matchAxioms } from '../axioms/axiom-matchers';
 import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 import { ExperienceAgentService } from '../services/domain-agents/experience-agent.service';
@@ -180,12 +182,22 @@ export class VerifyExecutorService implements IVerifyExecutor {
     try {
       const message = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
       const constraints = (ctx.tripPlanRequest as any)?.constraints as Record<string, any> | undefined;
-      const matches = matchAxioms({ message, constraints });
+      const clarAnswers = (ctx.tripPlanRequest as { clarification_answers?: unknown })?.clarification_answers;
+      const matches = matchAxioms(
+        buildAxiomMatchContext({
+          message,
+          constraints,
+          trip: ctx.tripPlanRequest as any,
+          tripId: ctx.requestId,
+          itinerary: ctx.itinerary as any,
+          clarificationAnswers: Array.isArray(clarAnswers) ? (clarAnswers as any) : undefined,
+        }),
+      );
       const terrain = matches.find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
       if (terrain) {
         const now = new Date().toISOString();
         const terrainMsg =
-          `[L3-PROOF|${terrain.axiom.cid}|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
+          `${buildL3ProofPrefixFromMatch(terrain, `DESTINATION:${ctx.requestId}`)} ` +
           `意图要求 F-road/高地，但车辆为 2WD（冰岛高地普遍要求 4WD），物理上不可执行。`;
         issues.push({
           code: 'TERRAIN_F_ROAD_UNFIT',

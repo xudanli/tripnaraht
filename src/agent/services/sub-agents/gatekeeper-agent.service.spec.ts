@@ -108,6 +108,9 @@ describe('ClaudeGatekeeperAgentService', () => {
 
       // Assert
       expect(result.gate_result).toBe('ALLOW');
+      expect(result.guardian_results?.abu?.verdict).toBe('ALLOW');
+      expect(result.guardian_results?.drdre?.verdict).toBe('ALLOW');
+      expect(result.guardian_results?.neptune?.verdict).toBe('ALLOW');
       expect(mockFRoadCheck.execute).not.toHaveBeenCalled();
       expect(mockWeatherAlert.execute).not.toHaveBeenCalled();
       expect(mockSafetravelGetAdvisories.execute).not.toHaveBeenCalled();
@@ -156,6 +159,8 @@ describe('ClaudeGatekeeperAgentService', () => {
 
       // Assert
       expect(result.gate_result).toBe('BLOCK');
+      expect(result.guardian_results?.abu?.verdict).toBe('REJECT');
+      expect(result.guardian_results?.neptune?.verdict).toBe('REPLACE');
       expect(result.violations.length).toBeGreaterThan(0);
       expect(result.violations[0].type).toBe('REACHABILITY');
       expect(result.violations[0].severity).toBe('HARD');

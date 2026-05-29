@@ -43,7 +43,11 @@ description: >-
 
 ## 环境变量（Kernel 集成）
 
-- **`HARNESS_RECORD_TRACE=1`**：`DecisionKernelService` 在调用 `HarnessStepRunner.runStep` 时 **写入** `HarnessTraceRecorderService` 内存 trace（默认 `skipTrace`，避免长进程堆积；回放/nightly 再打开）。**Harness 任一步失败**时，Kernel 会调用 **`HarnessStepRunner.finalizeRecordedTrace(traceId, 'FAILED'|'BLOCKED')`**，避免 trace 长期停留在默认 `DONE`。**`HarnessTraceRecorderService.appendStep`**：若 trace 已 **`finalize`/`finalizeIfStillOpen` 闭合**（`endedAt` 已存在），**不再追加**并 **`warn`**。
+- **`HARNESS_TRACE_MODE`**：`off`（默认）| `full` | `on-failure`。向后兼容：`HARNESS_RECORD_TRACE=1` 等价于 `full`。
+  - **`off` / `on-failure`**：`runStep` 使用 `skipTrace`（零逐步 append）。
+  - **`full`**：逐步 append；编排出口 `finalizeHarnessTraceIfRecorded`。
+  - **`on-failure`**：仅 Kernel **`handleHarnessStepFailure`** 调用 **`HarnessTraceRecorderService.retrofitTrajectoryOnFailure`** 逆向合成闭合 trace，并按 **`HARNESS_TRACE_EXPORT_DIR`** 落盘（见 `docs/harness-1x-roadmap.md`）。
+- **`HARNESS_RECORD_TRACE=1`**：未设 `HARNESS_TRACE_MODE` 时映射为 **`full`**（见 `src/harness/tracing/harness-trace-mode.util.ts`）。
 - **`HARNESS_TRACE_MAX_ENTRIES`**（可选，正整数）：内存中同时保留的 trace 条数上限；新建 trace 且将超限时按 **FIFO** 删除最旧条目（见 `HarnessTraceRecorderService`）。
 - **`HARNESS_RELAX_USER_INTENT_BUDGET=1`**：跳过 **RESEARCH / INTAKE / PLAN_GEN** 的 `user-intent-budget` 校验（仅 dev）。
 - **`HARNESS_RELAX_SYSTEM_REQUEST_ID_MATCH=1`**：跳过 **`system-request-id.validator`**（`systemState.requestId` 与 `context.requestId` 对齐检查；仅 dev）。
@@ -86,6 +90,13 @@ description: >-
 - [ ] 当步骤改写 plan / gate / verify 叙事时，trace 步须含 `decisionJustification`。
 - [ ] 故障事件携带 `level`、`type`、`code`、`suggestedAction`。
 - [ ] 与 orchestrator 的集成是 **包装后的** step executor，禁止旁路钩子绕开 Harness。
+
+## Phase 4a Context Lint（编排边界）
+
+- **`OrchestratorContextLintService`**：`src/agent/orchestration/context/`
+- **`ORCHESTRATOR_CONTEXT_LINT_ENABLED=1`**：Kernel 各 `execute*` 入口前校验（默认 warn；**`ORCHESTRATOR_CONTEXT_LINT_STRICT=1`** 抛错）
+- **`ORCHESTRATOR_CONTEXT_LINT_MAX_BYTES`**：按 Harness 契约 `readableStatePaths` 投影后的载荷上限（默认 100KB）
+- 路径规则与 **`HarnessStepContractRegistry`** 共用，避免与 Harness 双份契约
 
 ## 协作（人工流程）
 

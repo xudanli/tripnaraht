@@ -277,23 +277,8 @@ export class ContextMetricsService {
       endTime?: string;
     },
   ): Promise<ContextMetricsSummary> {
-    // 1. 获取相关记录
-    const key = options.tripId || 'global';
-    let records = this.metricsStore.get(key) || [];
-
-    // 2. 过滤记录
-    if (options.phase) {
-      records = records.filter((r) => r.phase === options.phase);
-    }
-    if (options.agent) {
-      records = records.filter((r) => r.agent === options.agent);
-    }
-    if (options.startTime) {
-      records = records.filter((r) => r.timestamp >= options.startTime!);
-    }
-    if (options.endTime) {
-      records = records.filter((r) => r.timestamp <= options.endTime!);
-    }
+    // 与 getAllMetrics 一致：未指定 tripId 时聚合所有 trip 的记录（不仅 global）
+    const records = this.getAllMetrics(options);
 
     if (records.length === 0) {
       return {

@@ -23,7 +23,7 @@ export interface IcelandRoadSurfaceAlertsOutput {
 @SkillDecorator({
   name: 'iceland.roadSurfaceAlerts',
   description:
-    '路面语义提醒：gravel 路段时提示碎石击伤、租车条款与 GP/SAAP 类承保方向（非法律/保单结论）。',
+    '检测 gravel 路段并输出 iceland 租车条款/碎石击伤与 GP 承保方向提醒（启发式）。在冰岛 routeFeasibility 或 worldState 需路面语义告警时调用。',
   version: '1.0.0',
   category: 'world',
   toolGroup: 'DOMAIN',
@@ -32,7 +32,7 @@ export interface IcelandRoadSurfaceAlertsOutput {
 export class IcelandRoadSurfaceAlertsSkill implements Skill<IcelandRoadSurfaceAlertsInput, IcelandRoadSurfaceAlertsOutput> {
   metadata = {
     name: 'iceland.roadSurfaceAlerts',
-    description: 'Gravel-surface rental insurance and driving-hazard hints (heuristic).',
+    description: '检测 gravel 路段并输出 iceland 租车条款/碎石击伤与 GP 承保方向提醒（启发式）。在冰岛 routeFeasibility 或 worldState 需路面语义告警时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

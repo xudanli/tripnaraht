@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "c7b8617e-612b-410d-8612-40dc32de5905",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "SPEED-OVER-RIGOR-V1",
+  "strategy": {
+    "strategyId": "SPEED-OVER-RIGOR-V1",
+    "philosophy": "速度优先，快速决策避免阻塞",
+    "approach": "在测试中，若 DEM 缺失，仅做最小检查：确认 countryCode=IS 且当前为开放季（7–8月），则快速输出 REJECT 但省略详细 audit 轨迹记录。不执行 Dr.Dre 节奏调整或 Neptune 修复等额外步骤，以最快速度完成断言匹配。",
+    "emphasis": "执行速度与吞吐量",
+    "risk": "可能遗漏 repair 轨迹或 pace 调整动作，导致回放断言失败；长期可能积累不可追踪的决策日志缺陷。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求在7月去冰岛高地，根据规则，高地路段仅在开放季且Abu允许时进入候选。当前DEM证据缺失，Abu必须REJECT，不能静默降级为ALLOW。由于采用SPEED-OVER-RIGOR-V1策略，仅需确认countryCode=IS且当前为开放季（7月），快速输出REJECT，省略详细audit轨迹。最终allowed应为false。",
+      "action": "REJECT",
+      "result": "[完成] REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:09:54.489Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:09:54.489Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

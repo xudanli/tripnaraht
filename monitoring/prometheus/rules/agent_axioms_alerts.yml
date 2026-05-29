@@ -1,0 +1,70 @@
+# Agent runtime axioms (v2) — Prometheus alerting
+#
+# Load alongside prometheus-alerts.yml, e.g. in prometheus.yml:
+#   rule_files:
+#     - '/etc/prometheus/rules/prometheus-alerts.yml'
+#     - '/etc/prometheus/rules/agent_axioms_alerts.yml'
+
+groups:
+  - name: tripnara_agent_axioms_alerts
+    interval: 1m
+    rules:
+      # Layer-1 intent captured a SKU/defense signal, but runtime axiom resolved to no dominant CID at audit.
+      - alert: AxiomIntentValidationLeaking
+        expr: |
+          sum by (expected_cid, stage) (
+            increase(tripnara_axiom_dominant_cid_mismatch_total{
+              match_source="INTENT_SIGNAL",
+              actual_cid="NONE"
+            }[5m])
+          ) > 5
+        for: 5m
+        labels:
+          severity: critical
+          tier: agent-intelligence
+          team: decision-os
+        annotations:
+          summary: "Agent axiom intent defense leak (CID {{ $labels.expected_cid }})"
+          description: |
+            Layer-1 route-and-run intent matched with INTENT_SIGNAL, but dominant_cid was NONE at
+            {{ $labels.stage }}. Matchers may not be consuming intent context — defense penetration risk.
+
+      # Sim/real drift concentrated on intent channel (should be rare once PLAN_GEN + REPAIR sync is hot).
+      - alert: AxiomSimRealMismatchIntentSpike
+        expr: |
+          sum by (axiom_id, stage) (
+            increase(tripnara_axiom_sim_real_mismatch_total{match_source="INTENT_SIGNAL"}[15m])
+          ) > 10
+        for: 10m
+        labels:
+          severity: warning
+          tier: agent-intelligence
+          team: decision-os
+        annotations:
+          summary: "Axiom sim/real mismatch spike on INTENT_SIGNAL ({{ $labels.axiom_id }})"
+          description: |
+            Simulated vs real axiom reasons diverged {{ $value | printf "%.0f" }} times in 15m for
+            {{ $labels.axiom_id }} at {{ $labels.stage }}. Check intake simulator vs terminal audit join.
+
+      # High HEURISTIC share → promote NL patterns into Layer-1 SKU sub_signals.
+      - alert: AxiomHeuristicFallbackRateHigh
+        expr: |
+          (
+            sum(increase(tripnara_axiom_dominant_cid_mismatch_total{match_source="HEURISTIC"}[1h]))
+            /
+            clamp_min(
+              sum(increase(tripnara_axiom_dominant_cid_mismatch_total[1h])),
+              1
+            )
+          ) > 0.5
+          and sum(increase(tripnara_axiom_dominant_cid_mismatch_total[1h])) > 20
+        for: 30m
+        labels:
+          severity: warning
+          tier: agent-intelligence
+          team: decision-os
+        annotations:
+          summary: "Axiom HEURISTIC fallback rate > 50% (1h)"
+          description: |
+            More than half of dominant_cid mismatches used HEURISTIC match_source in the last hour.
+            Consider folding recurring phrasing into route-and-run SKU intent signals.

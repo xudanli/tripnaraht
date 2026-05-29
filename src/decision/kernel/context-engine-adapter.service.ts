@@ -9,6 +9,8 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ContextEngineerService } from '../../agent/context-engine/services/context-engineer.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { resolveTravelerNationality } from '../../countries/utils/resolve-traveler-nationality.util';
 import { DecisionState } from './decision-state.types';
 import { ContextPackage } from '../../agent/context-engine/types/context-package.types';
 
@@ -24,6 +26,13 @@ export interface ContextPackageOverrides {
   destinationCountryCode?: string;
   /** 编排超时 abort：避免 Tool RAG 在 deadline 后继续跑 */
   abortSignal?: AbortSignal;
+
+  /** 旅客护照国籍（ISO 3166-1 alpha-2）；未传时由 Adapter 从 DSO / UserProfile / userQuery 解析 */
+  travelerNationality?: string;
+  /** 当前 DSO systemState.version */
+  dsoVersion?: number;
+  /** 当前 route_and_run request_id */
+  requestId?: string;
 }
 
 @Injectable()
@@ -32,6 +41,7 @@ export class ContextEngineAdapterService {
 
   constructor(
     @Optional() private readonly contextEngineer?: ContextEngineerService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   /**
@@ -44,10 +54,18 @@ export class ContextEngineAdapterService {
   ): Promise<ContextPackage | undefined> {
     if (!this.contextEngineer) return undefined;
 
-    const tripId = overrides.tripId ?? (state.requestId as string);
-    const phase = overrides.phase ?? state.systemState.currentPhase ?? 'PLANNING';
+    const tripId =
+      overrides.tripId?.trim() ||
+      state.travelOntologyState?.tripId?.trim() ||
+      undefined;
+    const phase = overrides.phase ?? state.systemState?.currentPhase ?? 'PLANNING';
     const agent = overrides.agent ?? 'PLANNER';
     const userQuery = overrides.userQuery ?? this.inferUserQuery(state);
+    const dsoVersion = overrides.dsoVersion ?? state.systemState?.version;
+    const requestId =
+      overrides.requestId ??
+      state.systemState?.requestId ??
+      state.requestId;
     if (!userQuery) {
       this.logger.warn('[ContextAdapter] 无法推断 userQuery，跳过 build');
       return undefined;
@@ -70,6 +88,9 @@ export class ContextEngineAdapterService {
           ? gateEvalTopics
           : undefined;
 
+    const travelerNationality = await this.resolveTravelerNationality(state, overrides, userQuery);
+    const tripStartDate = state.userIntent?.dateRange?.startDate;
+
     try {
       const package_ = await this.contextEngineer.build({
         tripId,
@@ -82,13 +103,51 @@ export class ContextEngineAdapterService {
         destinationCountryCode,
         requiredTopics: requiredTopicsOverride,
         abortSignal: overrides.abortSignal,
+        travelerNationality,
+        tripStartDate,
+        dsoVersion,
+        requestId,
       });
-      this.logger.debug(`[ContextAdapter] Built: blocks=${package_.blocks?.length ?? 0}, tokens=${package_.totalTokens ?? 0}`);
+      this.logger.debug(
+        `[ContextAdapter] Built: blocks=${package_.blocks?.length ?? 0}, tokens=${package_.totalTokens ?? 0}, nationality=${travelerNationality ?? 'n/a'}`,
+      );
       return package_;
     } catch (err) {
       this.logger.warn(`[ContextAdapter] build 失败: ${err instanceof Error ? err.message : String(err)}`);
       return undefined;
     }
+  }
+
+  private async resolveTravelerNationality(
+    state: DecisionState,
+    overrides: ContextPackageOverrides,
+    userQuery: string,
+  ): Promise<string | undefined> {
+    let userProfilePreferences: unknown;
+    const userId = overrides.userId ?? (state as { metadata?: { userId?: string } }).metadata?.userId;
+
+    if (!overrides.travelerNationality && userId && this.prisma) {
+      const dbUp = typeof this.prisma.isDbConnected === 'function' ? this.prisma.isDbConnected() : true;
+      if (dbUp) {
+        try {
+          const row = await this.prisma.userProfile.findUnique({
+            where: { userId },
+            select: { preferences: true },
+          });
+          userProfilePreferences = row?.preferences;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.debug(`[ContextAdapter] userProfile nationality lookup skipped: ${msg}`);
+        }
+      }
+    }
+
+    return resolveTravelerNationality({
+      explicit: overrides.travelerNationality,
+      userIntentPreferences: state.userIntent?.preferences,
+      userProfilePreferences,
+      userQuery,
+    });
   }
 
   private inferUserQuery(state: DecisionState): string {

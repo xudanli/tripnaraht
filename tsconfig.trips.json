@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src/trips/**/*.ts"],
+  "include": ["src/trips/**/*.ts", "src/suncalc.d.ts"],
   "exclude": [
     "node_modules",
     "dist",

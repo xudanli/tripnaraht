@@ -215,6 +215,9 @@ export interface HumanCapabilityModel {
   /** 已完成的行程数量（用于计算置信度） */
   completedTripCount?: number;
 
+  /** 问卷「最长连续徒步天数」档位 0–4（与徒步详情 longestHike query 对齐） */
+  questionnaireLongestHike?: 0 | 1 | 2 | 3 | 4;
+
   /** 当前状态修正系数（0.7-1.3，基于近期状态） */
   currentConditionModifier?: number;
 
@@ -596,6 +599,7 @@ export function createHumanCapabilityModelFromQuestionnaire(
     assessmentSource: 'QUESTIONNAIRE',
     confidenceLevel,
     completedTripCount,
+    questionnaireLongestHike: questionnaire.longestHike,
   };
 }
 

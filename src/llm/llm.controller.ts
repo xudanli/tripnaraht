@@ -14,6 +14,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { TokenStatsService } from '../agent/services/token-stats.service';
 import { LlmCostService } from './services/llm-cost.service';
 import { PythonAIService } from './services/python-ai.service';
+import { LlmUsageRecorderService } from './services/llm-usage-recorder.service';
 
 @ApiTags('llm')
 @Controller('llm')
@@ -22,6 +23,7 @@ export class LlmController {
     private readonly llmService: LlmService,
     private readonly tokenStatsService: TokenStatsService,
     private readonly llmCostService: LlmCostService,
+    private readonly llmUsageRecorder: LlmUsageRecorderService,
     private readonly pythonAIService?: PythonAIService,
   ) {}
 
@@ -165,6 +167,71 @@ export class LlmController {
   }
 
   /**
+   * Token 流水列表（分页，管理后台表格）
+   */
+  @Public()
+  @Get('logs')
+  @ApiOperation({
+    summary: 'Token 使用流水列表',
+    description:
+      '分页查询 llm_token_logs 明细，支持按 requestId、provider、step、时间范围等筛选；默认按 createdAt 倒序',
+  })
+  @ApiQuery({ name: 'page', required: false, description: '页码，从 1 开始', example: 1 })
+  @ApiQuery({ name: 'pageSize', required: false, description: '每页条数，最大 100', example: 20 })
+  @ApiQuery({ name: 'requestId', required: false, description: 'route_and_run request_id' })
+  @ApiQuery({ name: 'subAgent', required: false, description: 'Sub-Agent 类型' })
+  @ApiQuery({ name: 'provider', required: false, enum: LlmProvider, description: 'LLM 提供商' })
+  @ApiQuery({ name: 'stepName', required: false, description: '编排阶段，如 INTAKE' })
+  @ApiQuery({ name: 'model', required: false, description: '模型名（模糊匹配）' })
+  @ApiQuery({
+    name: 'success',
+    required: false,
+    description: '是否成功：true / false',
+  })
+  @ApiQuery({ name: 'startTime', required: false, description: '开始时间（ISO 8601）' })
+  @ApiQuery({ name: 'endTime', required: false, description: '结束时间（ISO 8601）' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回分页流水（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getLogs(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('requestId') requestId?: string,
+    @Query('subAgent') subAgent?: string,
+    @Query('provider') provider?: LlmProvider,
+    @Query('stepName') stepName?: string,
+    @Query('model') model?: string,
+    @Query('success') success?: string,
+    @Query('startTime') startTime?: string,
+    @Query('endTime') endTime?: string,
+  ) {
+    try {
+      let successFilter: boolean | undefined;
+      if (success === 'true') successFilter = true;
+      else if (success === 'false') successFilter = false;
+
+      const result = await this.llmUsageRecorder.listLogs({
+        page: page ? parseInt(page, 10) : 1,
+        pageSize: pageSize ? parseInt(pageSize, 10) : 20,
+        requestId,
+        subAgent,
+        provider,
+        stepName,
+        model,
+        success: successFilter,
+        startTime,
+        endTime,
+      });
+
+      return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
    * 获取 Token 使用统计
    */
   @Public()
@@ -177,6 +244,7 @@ export class LlmController {
   @ApiQuery({ name: 'provider', required: false, enum: LlmProvider, description: 'LLM 提供商' })
   @ApiQuery({ name: 'startTime', required: false, description: '开始时间（ISO 8601）' })
   @ApiQuery({ name: 'endTime', required: false, description: '结束时间（ISO 8601）' })
+  @ApiQuery({ name: 'requestId', required: false, description: '单次 route_and_run 请求 ID（Trace）' })
   @ApiResponse({
     status: 200,
     description: '成功返回 Token 使用统计（统一响应格式）',
@@ -187,11 +255,46 @@ export class LlmController {
     @Query('provider') provider?: LlmProvider,
     @Query('startTime') startTime?: string,
     @Query('endTime') endTime?: string,
+    @Query('requestId') requestId?: string,
   ) {
     try {
       const timeRange = startTime && endTime
         ? { start: new Date(startTime), end: new Date(endTime) }
         : undefined;
+
+      if (requestId?.trim() && this.llmUsageRecorder.isDbEnabled()) {
+        const trace = await this.llmUsageRecorder.getTraceByRequestId(requestId.trim());
+        const byStep: Record<string, { total_tokens: number; calls: number; cost_usd: number }> =
+          {};
+        for (const row of trace) {
+          if (!byStep[row.stepName]) {
+            byStep[row.stepName] = { total_tokens: 0, calls: 0, cost_usd: 0 };
+          }
+          byStep[row.stepName].total_tokens += row.totalTokens;
+          byStep[row.stepName].calls += 1;
+          byStep[row.stepName].cost_usd += Number(row.costUsd);
+        }
+        return successResponse({
+          source: 'db',
+          requestId: requestId.trim(),
+          rows: trace,
+          byStep,
+        });
+      }
+
+      const filters = { subAgent, provider, startTime, endTime };
+      if (this.llmUsageRecorder.isDbEnabled()) {
+        const dbStats = await this.llmUsageRecorder.aggregateUsage(filters);
+        if (dbStats.source === 'db') {
+          if (subAgent && dbStats.subAgent) {
+            return successResponse({ subAgent: dbStats.subAgent, source: 'db' });
+          }
+          if (provider && dbStats.provider) {
+            return successResponse({ provider: dbStats.provider, source: 'db' });
+          }
+          return successResponse(dbStats);
+        }
+      }
 
       let stats: any = {};
 
@@ -278,6 +381,14 @@ export class LlmController {
       const timeRange = startTime && endTime
         ? { start: new Date(startTime), end: new Date(endTime) }
         : undefined;
+
+      const filters = { subAgent, provider, startTime, endTime };
+      if (this.llmUsageRecorder.isDbEnabled()) {
+        const dbCost = await this.llmUsageRecorder.aggregateCost(filters);
+        if (dbCost?.source === 'db') {
+          return successResponse(dbCost);
+        }
+      }
 
       const costStats = await this.llmCostService.getCostStats({
         subAgent: subAgent as any,

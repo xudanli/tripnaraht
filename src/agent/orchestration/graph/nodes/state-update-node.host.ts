@@ -31,6 +31,11 @@ export interface StateUpdateNodeHost {
     decisionState: DecisionState | undefined,
   ): Promise<GraphRunOutcome | null>;
 
+  maybeHaltStructuredIntakeClarification(
+    input: StateUpdatePrePlanSegmentInput,
+    decisionState: DecisionState | undefined,
+  ): Promise<GraphRunOutcome | null>;
+
   applyResearchScopeInvalidationCow(
     request: RouteAndRunRequestDto,
     state: OrchestratorState,

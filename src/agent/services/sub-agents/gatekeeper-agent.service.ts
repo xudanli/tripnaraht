@@ -10,6 +10,7 @@ import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
 import { AvalancheRiskAssessmentSkill } from '../../../skills/world/avalanche-risk-assessment.skill';
 import { SafetravelGetAdvisoriesSkill } from '../../../skills/world/safetravel-get-advisories.skill';
 import { AlertSeverity } from '../../../iceland-info/dto/safetravel.dto';
+import { deriveGuardianPersonaVotes } from '../../utils/guardian-persona-surface.util';
 
 /**
  * Gatekeeper Agent Service (Claude Orchestration)
@@ -70,7 +71,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
         // 如果有道路关闭，直接返回 BLOCK
         if (!fRoadResult.can_proceed) {
           this.logger.warn(`[GatekeeperAgent] F-Road 检查失败: ${fRoadResult.blocked_roads.length} 条道路关闭`);
-          return {
+          return this.withGuardianPersonaSurface({
             gate_result: 'BLOCK',
             violations: fRoadResult.blocked_roads.map(r => ({
               type: 'REACHABILITY' as const,
@@ -91,7 +92,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
                   : new Date(ref?.last_verified_at ?? Date.now()).toISOString(),
               confidence: ref.confidence,
             } as any)),
-          };
+          });
         }
 
         // 如果有告警，记录为软检查
@@ -138,7 +139,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
                       detail: `[SafeTravel / ${st.source}] ${st.summary}`,
                     },
                   ];
-            return {
+            return this.withGuardianPersonaSurface({
               gate_result: 'BLOCK',
               violations,
               required_adjustments: [
@@ -164,7 +165,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
                         confidence: 0.75,
                       },
                     ] as any),
-            };
+            });
           }
 
           if (st.gate_recommendation === 'ADJUST_REQUIRED' || st.gate_recommendation === 'NEED_USER_CONFIRM') {
@@ -243,7 +244,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
           // 如果天气条件极端，直接返回 BLOCK
           if (weatherResult.gateRecommendation === 'BLOCK') {
             this.logger.warn(`[GatekeeperAgent] 天气检查 BLOCK: ${weatherResult.overallRisk}`);
-            return {
+            return this.withGuardianPersonaSurface({
               gate_result: 'BLOCK',
               violations: weatherResult.locationWeather.flatMap(lw =>
                 lw.blockers.map(b => ({
@@ -263,7 +264,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
                 last_verified_at: ref.timestamp.toISOString(),
                 confidence: ref.confidence,
               } as any)),
-            };
+            });
           }
 
           // 记录天气结果用于软检查
@@ -345,7 +346,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
           // 如果雪崩风险评估建议 BLOCK，直接返回
           if (avalancheResult.gateRecommendation === 'BLOCK') {
             this.logger.warn(`[GatekeeperAgent] 雪崩风险评估 BLOCK: ${avalancheResult.overallRisk}`);
-            return {
+            return this.withGuardianPersonaSurface({
               gate_result: 'BLOCK',
               violations: avalancheResult.blockers.map(blocker => ({
                 type: 'SAFETY' as const,
@@ -363,7 +364,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
                 last_verified_at: ref.last_verified_at,
                 confidence: ref.confidence,
               } as any)),
-            };
+            });
           }
 
           // 记录雪崩风险结果用于软检查
@@ -393,7 +394,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
       // 1. 硬门控检查（快速失败）
       const hardGateResult = this.checkHardGate(request, researchData);
       if (!hardGateResult.allowed) {
-        return {
+        return this.withGuardianPersonaSurface({
           gate_result: 'BLOCK',
           violations: hardGateResult.violations.map(v => ({
             type: this.mapViolationType(v),
@@ -403,7 +404,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
           required_adjustments: [],
           confidence: 0.9,
           evidence_refs: [],
-        };
+        });
       }
 
       // 2. 如果有 gatePrecheck，执行快速预检查
@@ -424,13 +425,13 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
       const softChecks = this.performSoftChecks(request, researchData);
 
       // 5. 生成 GateResult
-      const gateResult: GateResult = {
+      const gateResult: GateResult = this.withGuardianPersonaSurface({
         gate_result: softChecks.hasAdjustments ? 'ADJUST_REQUIRED' : 'ALLOW',
         violations: softChecks.violations,
         required_adjustments: softChecks.adjustments,
         confidence: softChecks.confidence,
         evidence_refs: this.extractEvidenceRefs(researchData),
-      };
+      });
 
       this.logger.log(`[GatekeeperAgent] Gate 评估完成: ${gateResult.gate_result}, 置信度: ${gateResult.confidence}`);
 
@@ -439,7 +440,7 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
       this.logger.error(`[GatekeeperAgent] Gate 评估失败: ${error?.message}`, error?.stack);
 
       // 降级：返回需要用户确认
-      return {
+      return this.withGuardianPersonaSurface({
         gate_result: 'NEED_USER_CONFIRM',
         violations: [{
           type: 'DATA_MISSING',
@@ -449,8 +450,15 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
         required_adjustments: [],
         confidence: 0.3,
         evidence_refs: [],
-      };
+      });
     }
+  }
+
+  /**
+   * Gatekeeper 为门控真源：每次评估后强制重算三人格投影（与上游是否曾带 guardian_results 无关）。
+   */
+  private withGuardianPersonaSurface(gate: GateResult): GateResult {
+    return { ...gate, guardian_results: deriveGuardianPersonaVotes(gate) };
   }
 
   /**

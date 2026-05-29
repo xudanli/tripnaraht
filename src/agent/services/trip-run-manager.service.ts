@@ -401,6 +401,56 @@ export class TripRunManagerService {
   /**
    * v1.0：读取上次持久化的 DSO 检查点（供断点续跑编排接入；当前仅 API 层加载与可观测性）。
    */
+  /**
+   * Phase 2：解析 trip 维度服务端最新 DSO systemState.version（TripRun.metadata.dso_checkpoint）。
+   * 优先 durable_trip_run_id，否则取该 trip 最近更新的 TripRun。
+   */
+  async resolveLatestServerDsoVersionForTrip(
+    tripId: string,
+    preferredTripRunId?: string | null,
+  ): Promise<number | undefined> {
+    if (!this.prisma) return undefined;
+    const tid = tripId?.trim();
+    if (!tid || !this.isValidUUID(tid)) return undefined;
+
+    const readVersionFromMetadata = (metadata: unknown): number | undefined => {
+      const raw = (metadata as Record<string, unknown> | null)?.[TRIP_RUN_DSO_CHECKPOINT_META_KEY];
+      if (!raw || typeof raw !== 'object') return undefined;
+      const ds = (raw as Record<string, unknown>).decision_state;
+      if (!ds || typeof ds !== 'object') return undefined;
+      const ver = (ds as DecisionState).systemState?.version;
+      return typeof ver === 'number' && Number.isFinite(ver) ? Math.floor(ver) : undefined;
+    };
+
+    const preferred = preferredTripRunId?.trim();
+    if (preferred && this.isValidUUID(preferred)) {
+      try {
+        const row = await this.prisma.tripRun.findUnique({
+          where: { id: preferred },
+          select: { metadata: true, tripId: true },
+        });
+        if (row && row.tripId === tid) {
+          const v = readVersionFromMetadata(row.metadata);
+          if (v !== undefined) return v;
+        }
+      } catch (error: any) {
+        this.logger.debug(`resolveLatestServerDsoVersion preferred run failed: ${error.message}`);
+      }
+    }
+
+    try {
+      const row = await this.prisma.tripRun.findFirst({
+        where: { tripId: tid },
+        orderBy: { updatedAt: 'desc' },
+        select: { metadata: true },
+      });
+      return readVersionFromMetadata(row?.metadata);
+    } catch (error: any) {
+      this.logger.warn(`resolveLatestServerDsoVersionForTrip failed: ${error.message}`);
+      return undefined;
+    }
+  }
+
   async loadDsoCheckpoint(tripRunId: string): Promise<TripRunDsoCheckpointPayload | null> {
     if (!this.prisma) {
       return null;

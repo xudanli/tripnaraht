@@ -155,6 +155,7 @@ export function buildIcelandSouthCoastWindStagingMemoryContext(
     userId: 'staging-user',
     tripId,
     userProfile: null,
+    userBasics: null,
     travelPreference: null,
     routePartyProfile: null,
     recentDecisions: [],

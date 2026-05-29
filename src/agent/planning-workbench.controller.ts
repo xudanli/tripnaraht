@@ -13,7 +13,6 @@ import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-re
 import { Public } from '../auth/decorators/public.decorator';
 import { BudgetEvaluationService } from '../trips/services/budget-evaluation.service';
 import { TripBudgetService, BudgetConstraint } from '../trips/services/trip-budget.service';
-import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataSourceRouterService } from '../data-contracts/services/data-source-router.service';
 import { WeatherQuery } from '../data-contracts/interfaces/weather.interface';
@@ -32,7 +31,6 @@ export class PlanningWorkbenchController {
     private readonly planningWorkbenchAgent: PlanningWorkbenchAgentService,
     private readonly budgetEvaluationService: BudgetEvaluationService,
     private readonly tripBudgetService: TripBudgetService,
-    private readonly planningWorkbenchAdminService: PlanningWorkbenchAdminService,
     private readonly prisma?: PrismaService,
     @Optional() private readonly dataSourceRouter?: DataSourceRouterService,
     @Optional() private readonly placesService?: PlacesService,
@@ -714,163 +712,7 @@ export class PlanningWorkbenchController {
     }
   }
 
-  // ==================== 后台管理接口 ====================
-
-  @Public()
-  @Get('admin/sessions')
-  @ApiOperation({
-    summary: '获取规划会话列表（管理接口）',
-    description: '获取规划会话列表，支持分页、筛选、排序。',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'tripId', required: false, type: String })
-  @ApiQuery({ name: 'userId', required: false, type: String })
-  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PROPOSED', 'NEED_CONFIRM', 'LOCKED'] })
-  @ApiQuery({ name: 'startDate', required: false, type: String })
-  @ApiQuery({ name: 'endDate', required: false, type: String })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回会话列表',
-    type: ApiSuccessResponseDto,
-  })
-  async getAdminSessions(@Query() query: any) {
-    try {
-      const result = await this.planningWorkbenchAdminService.getSessions({
-        tripId: query.tripId,
-        userId: query.userId,
-        status: query.status,
-        startDate: query.startDate ? new Date(query.startDate) : undefined,
-        endDate: query.endDate ? new Date(query.endDate) : undefined,
-        page: query.page ? parseInt(query.page, 10) : undefined,
-        limit: query.limit ? parseInt(query.limit, 10) : undefined,
-        sortBy: query.sortBy,
-        sortOrder: query.sortOrder,
-      });
-      return successResponse(result);
-    } catch (error: any) {
-      this.logger.error(`获取会话列表失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/sessions/stats')
-  @ApiOperation({
-    summary: '获取会话统计（管理接口）',
-    description: '获取规划会话的统计信息，包括成功率、平均时长等。',
-  })
-  @ApiQuery({ name: 'startDate', required: false, type: String })
-  @ApiQuery({ name: 'endDate', required: false, type: String })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回会话统计',
-    type: ApiSuccessResponseDto,
-  })
-  async getAdminSessionStats(@Query() query: any) {
-    try {
-      const stats = await this.planningWorkbenchAdminService.getSessionStats({
-        startDate: query.startDate ? new Date(query.startDate) : undefined,
-        endDate: query.endDate ? new Date(query.endDate) : undefined,
-      });
-      return successResponse(stats);
-    } catch (error: any) {
-      this.logger.error(`获取会话统计失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/sessions/:id')
-  @ApiOperation({
-    summary: '获取规划会话详情（管理接口）',
-    description: '获取单个规划会话的详细信息，包含所有交互历史。',
-  })
-  @ApiParam({ name: 'id', description: '会话ID（PlanningPlan ID）' })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回会话详情',
-    type: ApiSuccessResponseDto,
-  })
-  @ApiResponse({
-    status: 404,
-    description: '会话不存在',
-    type: ApiErrorResponseDto,
-  })
-  async getAdminSessionDetail(@Param('id') id: string) {
-    try {
-      const session = await this.planningWorkbenchAdminService.getSessionById(id);
-      if (!session) {
-        return errorResponse(ErrorCode.NOT_FOUND, `会话 ${id} 不存在`);
-      }
-      return successResponse(session);
-    } catch (error: any) {
-      this.logger.error(`获取会话详情失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/plans')
-  @ApiOperation({
-    summary: '获取规划方案列表（管理接口）',
-    description: '获取规划方案列表，支持分页、筛选。',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'tripId', required: false, type: String })
-  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PROPOSED', 'NEED_CONFIRM', 'LOCKED'] })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回方案列表',
-    type: ApiSuccessResponseDto,
-  })
-  async getAdminPlans(@Query() query: any) {
-    try {
-      const result = await this.planningWorkbenchAdminService.getPlans({
-        tripId: query.tripId,
-        status: query.status,
-        page: query.page ? parseInt(query.page, 10) : undefined,
-        limit: query.limit ? parseInt(query.limit, 10) : undefined,
-        sortBy: query.sortBy,
-        sortOrder: query.sortOrder,
-      });
-      return successResponse(result);
-    } catch (error: any) {
-      this.logger.error(`获取方案列表失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/plans/:id')
-  @ApiOperation({
-    summary: '获取规划方案详情（管理接口）',
-    description: '获取单个规划方案的详细信息。',
-  })
-  @ApiParam({ name: 'id', description: '方案ID（PlanningPlan ID）' })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回方案详情',
-    type: ApiSuccessResponseDto,
-  })
-  @ApiResponse({
-    status: 404,
-    description: '方案不存在',
-    type: ApiErrorResponseDto,
-  })
-  async getAdminPlanDetail(@Param('id') id: string) {
-    try {
-      const plan = await this.planningWorkbenchAdminService.getPlanById(id);
-      if (!plan) {
-        return errorResponse(ErrorCode.NOT_FOUND, `方案 ${id} 不存在`);
-      }
-      return successResponse(plan);
-    } catch (error: any) {
-      this.logger.error(`获取方案详情失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
+  // 后台管理接口见 PlanningWorkbenchAdminController（/api/planning-workbench/admin/*，AdminStrictAuthGuard）
 
   // ==================== 天气数据获取接口 ====================
 

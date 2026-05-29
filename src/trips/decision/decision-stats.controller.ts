@@ -96,6 +96,32 @@ export class DecisionStatsController {
   }
 
   /**
+   * Persona closure 指标（Neptune REPLACE → Abu 重验）
+   *
+   * GET /decision-stats/persona-closure?countryCode=IS&startDate=2026-01-01
+   */
+  @Public()
+  @Get('persona-closure')
+  @ApiOperation({
+    summary: 'Persona closure 闭环指标',
+    description:
+      'Neptune REPLACE 触发率、Abu 重验后拒绝率、ITER_LIMIT / SHRINK_EXHAUSTED 占比与重验次数分位数',
+  })
+  @ApiQuery({ name: 'countryCode', required: false, description: '国家代码' })
+  @ApiQuery({ name: 'startDate', required: false, description: '开始日期（YYYY-MM-DD）' })
+  @ApiQuery({ name: 'endDate', required: false, description: '结束日期（YYYY-MM-DD）' })
+  @ApiResponse({ status: 200, description: '成功返回指标', type: ApiSuccessResponseDto })
+  async getPersonaClosureStats(
+    @Query('countryCode') countryCode?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+    return this.decisionStats.getPersonaClosureStats(start, end, countryCode);
+  }
+
+  /**
    * 获取硬现实驱动比例
    * 
    * GET /decision-stats/reality-driven-ratio?countryCode=IS

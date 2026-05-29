@@ -10,6 +10,7 @@ import { LlmJudgeClientService } from './services/llm-judge-client.service';
 
 // 现有的训练相关服务
 import { TrajectoryCollectionService } from './services/trajectory-collection.service';
+import { DecisionTrajectoryInterlocutorService } from './services/decision-trajectory-interlocutor.service';
 import { TrajectoryValidatorService } from './services/trajectory-validator.service';
 import { RewardSignalExtractorService } from './services/reward-signal-extractor.service';
 import { TrainingDataPreparationService } from './services/training-data-preparation.service';
@@ -26,6 +27,10 @@ import { EvalSuiteService } from './services/eval-suite.service';
 import { RegressionGateService } from './services/regression-gate.service';
 import { ReplayComparatorService } from './services/replay-comparator.service';
 import { TrajectoryETLService } from './services/trajectory-etl.service';
+import { DecisionTrajectoryTrainingSyncService } from './services/decision-trajectory-training-sync.service';
+import { ShadowDeploymentRegistryService } from './services/shadow-deployment-registry.service';
+import { HarnessShadowGraderService } from './services/harness-shadow-grader.service';
+import { ShadowDeploymentWorkflowService } from './services/shadow-deployment-workflow.service';
 import { DataQualityCheckerService } from './services/data-quality-checker.service';
 import { PIIAnonymizerService } from './services/pii-anonymizer.service';
 import { RLIntegrationService } from './services/rl-integration.service';
@@ -34,6 +39,8 @@ import { ConstraintsEngineService } from './services/constraints-engine.service'
 
 // Controllers
 import { TrainingController } from './controllers/training.controller';
+import { ShadowPromotionCronService } from './crons/shadow-promotion.cron';
+import { SkillEvolverModule } from './skill-evolver/skill-evolver.module';
 
 /**
  * TripNARA 训练模块
@@ -53,6 +60,7 @@ import { TrainingController } from './controllers/training.controller';
     }),
     ConfigModule,
     PrismaModule,
+    SkillEvolverModule,
   ],
   controllers: [
     TrainingController,
@@ -65,6 +73,7 @@ import { TrainingController } from './controllers/training.controller';
     
     // 现有服务
     TrajectoryCollectionService,
+    DecisionTrajectoryInterlocutorService,
     TrajectoryValidatorService,
     RewardSignalExtractorService,
     TrainingDataPreparationService,
@@ -81,6 +90,11 @@ import { TrainingController } from './controllers/training.controller';
     RegressionGateService,
     ReplayComparatorService,
     TrajectoryETLService,
+    DecisionTrajectoryTrainingSyncService,
+    ShadowDeploymentRegistryService,
+    HarnessShadowGraderService,
+    ShadowDeploymentWorkflowService,
+    ShadowPromotionCronService,
     IterativeDeploymentWorkflowService,
     ModelDeploymentService,
     /** 编排层可选注入：`preDecision` 与对外 `verdict` 合并（仅依赖 ConfigService，其余 Optional） */
@@ -89,14 +103,20 @@ import { TrainingController } from './controllers/training.controller';
     ConstraintsEngineService,
   ],
   exports: [
+    SkillEvolverModule,
     FineTuneService,
     VllmClientService,
     LlmJudgeClientService,
     TrajectoryCollectionService,
+    DecisionTrajectoryInterlocutorService,
     TrajectoryValidatorService,
     RewardSignalExtractorService,
     TrainingDataPreparationService,
     TrainingPipelineService,
+    TrajectoryETLService,
+    DecisionTrajectoryTrainingSyncService,
+    ShadowDeploymentWorkflowService,
+    HarnessShadowGraderService,
     MLflowClientService,
     ModelRegistryService,
     IterativeDeploymentWorkflowService,

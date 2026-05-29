@@ -718,6 +718,66 @@ export class TrainingController {
   /**
    * ETL: 抽取轨迹数据
    */
+  @Post('etl/decision-trajectories/extract')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'PR-C：从 decision_trajectories 抽取 FINALIZED 执行轨迹' })
+  async extractDecisionTrajectories(
+    @Body()
+    dto: {
+      ids?: string[];
+      request_ids?: string[];
+      statuses?: string[];
+      orchestration_outcomes?: string[];
+      min_total_reward?: number;
+      updated_after?: string;
+      exclude_critical_fail?: boolean;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) {
+    const rows = await this.etlService.extractDecisionTrajectories({
+      ...dto,
+      statuses: (dto.statuses as any) ?? ['FINALIZED'],
+      orchestration_outcomes: dto.orchestration_outcomes as any,
+    });
+    return {
+      success: true,
+      data: {
+        count: rows.length,
+        rows: rows.map((r) => ({
+          id: r.id,
+          request_id: r.requestId,
+          orchestration_outcome: r.orchestrationOutcome,
+          total_reward: r.totalReward,
+          steps: r.payload.orchestration_steps?.length ?? 0,
+        })),
+      },
+    };
+  }
+
+  @Post('etl/decision-trajectories/export-training-pack')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'PR-C：导出 DPO + SFT Repair 训练包（decision_trajectories SSOT）' })
+  async exportDecisionTrajectoryTrainingPack(
+    @Body()
+    dto: {
+      request_ids?: string[];
+      updated_after?: string;
+      limit?: number;
+      output_dir?: string;
+    } = {},
+  ) {
+    const result = await this.etlService.exportDecisionTrajectoryTrainingPack(
+      {
+        request_ids: dto.request_ids,
+        updated_after: dto.updated_after,
+        limit: dto.limit,
+      },
+      dto.output_dir ?? './data/training/decision-trajectories',
+    );
+    return { success: true, data: result };
+  }
+
   @Post('etl/extract')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '抽取轨迹数据并转换为RL格式' })

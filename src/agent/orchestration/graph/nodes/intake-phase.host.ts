@@ -65,4 +65,40 @@ export interface IntakePhaseHost {
     candidates: ItinerarySlotCandidate[];
     paAnalysis?: ItinerarySlotPlacementGapResult;
   }>;
+
+  tryApplyBoundTripItineraryItemDelete?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    deletedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+  }>;
+
+  tryApplyBoundTripItineraryItemAdd?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    addedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+  }>;
+
+  tryApplyBoundTripItineraryItemUpdate?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    updatedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+  }>;
 }

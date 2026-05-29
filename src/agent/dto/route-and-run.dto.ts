@@ -135,6 +135,27 @@ export class RefinementSignalDto {
   type?: 'REPLACEMENT' | 'REMOVAL' | 'ADDITION';
 }
 
+/** System 1 侧人格倾向：不在快路径运行三人格；透传至 TripPlanRequest.persona_hint 供 System 2 参考 */
+export class PersonaHintDto {
+  @ApiPropertyOptional({ enum: ['NORMAL', 'CRITICAL'], example: 'CRITICAL' })
+  @IsOptional()
+  @IsEnum(['NORMAL', 'CRITICAL'])
+  abu_strictness?: 'NORMAL' | 'CRITICAL';
+
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], example: 'HIGH' })
+  @IsOptional()
+  @IsEnum(['LOW', 'MEDIUM', 'HIGH'])
+  drdre_tolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
+
+  @ApiPropertyOptional({
+    enum: ['CONSERVATIVE', 'BALANCED', 'EXPLORATORY'],
+    example: 'BALANCED',
+  })
+  @IsOptional()
+  @IsEnum(['CONSERVATIVE', 'BALANCED', 'EXPLORATORY'])
+  neptune_creativity?: 'CONSERVATIVE' | 'BALANCED' | 'EXPLORATORY';
+}
+
 export class AgentOptionsDto {
   @ApiPropertyOptional({ 
     description: '是否仅执行 dry-run（不实际执行操作）',
@@ -237,7 +258,8 @@ export class AgentOptionsDto {
   fallback_strategy?: 'CITY_WALK' | 'CLASSIC' | 'HOT_SPOTS' | 'BALANCED' | 'ROAD_TRIP';
 
   @ApiPropertyOptional({
-    description: '是否返回 fallback 的候选打分明细（调试用途）',
+    description:
+      '调试模式：返回 fallback 候选打分明细，并在 explain.simplified_explanation 中附带「结构化说明」（解释摘要/关键决策）；默认不向终端用户暴露',
     example: false,
     default: false,
   })
@@ -300,6 +322,26 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsBoolean()
   show_poi_trace?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      '人格倾向预设：由 System 1 / NL 侧传入，不在 System 1 执行三人格；写入 TripPlanRequest.persona_hint 供门控与编排参考。',
+    type: PersonaHintDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PersonaHintDto)
+  persona_hint?: PersonaHintDto;
+
+  @ApiPropertyOptional({
+    description:
+      '启用三人格影子辩论 LLM（`prompts/agents/guardians-debate.md`）：在硬门未致命时对 `guardian_results` 做结构化合议；BLOCK/HARD 时跳过 LLM 并保留确定性投影。行程规划状态机路径下未传时默认为 `true`；传 `false` 可显式关闭。',
+    example: true,
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  enable_guardians_debate_llm?: boolean;
 
   @ApiPropertyOptional({ 
     description: '入口来源标识（用于权限控制和操作限制）',
@@ -434,6 +476,13 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
+      '内部：Fitness Hydrator 写入的 travelPreference 快照，仅供 INTAKE 漏斗消费（`intake_travel_preference_snapshot`）；INTAKE 后须剥离。',
+  })
+  @IsOptional()
+  intake_travel_preference_snapshot?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
       '2.0 局部回溯：进入 RESEARCH 前按作用域就地删除 `OrchestratorState.research_data` 中对应键（如仅 `hotel` 时保留航班/POI/交通等），Kernel 以 `scoped_partial` 仅重算所列域，降低 Token 与延迟。',
     example: ['hotel'],
     isArray: true,
@@ -465,12 +514,46 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
+      'DOS Phase 5：启用 LLM Intent Compiler 将自然语言编译为 PlanDeltaIR（默认关；可用 INTENT_COMPILER_LLM_ENABLED=true 全局开启）。',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  enable_llm_intent_compiler?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'DOS 实验：前端直传结构化 Plan Delta AST，跳过 LLM/legacy 编译（免检注入 INTENT_COMPILE）。',
+    isArray: true,
+    example: [
+      {
+        op: 'REPLACE',
+        target: { type: 'POI', dayIndex: 1, id: 'poi_tokyo_tower' },
+        payload: { query: '涩谷' },
+      },
+    ],
+  })
+  @IsOptional()
+  @IsArray()
+  experimental_plan_delta?: Array<Record<string, unknown>>;
+
+  @ApiPropertyOptional({
+    description:
       'Replan（PRD I3）：上一版编排 `plan_version`；与 `previous_world_snapshot_hash` 一并写入新建 TripRun.metadata.replan_context，支撑继承审计。',
     example: 2,
   })
   @IsOptional()
   @IsNumber()
   previous_plan_version?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Phase 2 因果防御：客户端持有的最新 DSO `systemState.version`。若落后于服务端最新版本，返回 409 `STALE_PLAN_VERSION`（在写锁内/抢锁前校验，避免空转 LLM）。',
+    example: 10,
+  })
+  @IsOptional()
+  @IsNumber()
+  client_dso_version?: number;
 
   @ApiPropertyOptional({
     description:
@@ -491,6 +574,17 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsIn([...INTENT_MODE_VALUES])
   intent_mode?: IntentMode;
+
+  @ApiPropertyOptional({
+    description:
+      'Durable Task 委托：`OFF` 默认同步；`AUTO` 在 INTENT_COMPILE 后若判定为重规划则 HTTP 202 秒回 task_id；`FORCE` 立即后台执行（等同 `/route_and_run/async`）。',
+    enum: ['OFF', 'AUTO', 'FORCE'],
+    example: 'AUTO',
+    default: 'OFF',
+  })
+  @IsOptional()
+  @IsIn(['OFF', 'AUTO', 'FORCE'])
+  async_mode?: 'OFF' | 'AUTO' | 'FORCE';
 
   @ApiPropertyOptional({
     description:
@@ -684,6 +778,14 @@ export class RouteAndRunRequestMetaDto {
   @IsOptional()
   @IsString()
   client_profile?: string;
+
+  @ApiPropertyOptional({
+    description: '规划助手等非标准入口可选：目的地提示（不参与契约校验语义，仅观测/提示）。',
+    example: '冰岛',
+  })
+  @IsOptional()
+  @IsString()
+  planning_destination_hint?: string;
 }
 
 /**
@@ -1477,6 +1579,7 @@ export class ReferenceSourceDto {
 
 @ApiExtraModels(
   RouteAndRunPartyProfileDto,
+  PersonaHintDto,
   DecisionMetadataDto,
   DecisionEvidenceCardDto,
   DecisionEvidenceCardFlagsDto,
@@ -1504,6 +1607,30 @@ export class RouteAndRunResponseDto {
     type: RouterOutputDto,
   })
   route!: RouterOutputDto;
+
+  @ApiPropertyOptional({
+    description:
+      '异步委托元数据：`async_mode=AUTO|FORCE` 且已切入后台任务时出现；前端轮询 `poll_path` 直至 SUCCESS。',
+    example: {
+      task_id: 'task_trip_xxx_1716000000000',
+      status: 'PROCESSING',
+      is_async_delegated: true,
+      current_phase: 'INTENT_COMPILE',
+      progress_percentage: 5,
+      message: '已拦截高耗时规划请求，正在切入异步流水线…',
+      poll_path: '/api/agent/task/status/task_trip_xxx_1716000000000',
+    },
+  })
+  async_task?: {
+    task_id: string;
+    status: 'PENDING' | 'PROCESSING';
+    is_async_delegated: true;
+    current_phase: string;
+    progress_percentage: number;
+    message: string;
+    poll_path: string;
+    delegation_reason?: string;
+  };
 
   @ApiPropertyOptional({ 
     description: 'UI 状态（P1 改进：状态机步骤到 UI 状态的映射，用于前端加载状态显示）',
@@ -1665,7 +1792,15 @@ export class RouteAndRunResponseDto {
     },
   })
   result!: {
-    status: 'OK' | 'NEED_MORE_INFO' | 'NEED_CONSENT' | 'NEED_CONFIRMATION' | 'FAILED' | 'TIMEOUT' | 'REDIRECT_REQUIRED';
+    status:
+      | 'OK'
+      | 'PROCESSING'
+      | 'NEED_MORE_INFO'
+      | 'NEED_CONSENT'
+      | 'NEED_CONFIRMATION'
+      | 'FAILED'
+      | 'TIMEOUT'
+      | 'REDIRECT_REQUIRED';
     answer_text: string;
     payload: {
       timeline: ItineraryDay[];
@@ -1854,6 +1989,10 @@ export class RouteAndRunResponseDto {
        */
       consultation_dashboard?: ConsultationDashboardV1;
       jepa?: JepaPayload;
+      /**
+       * Claude 状态机编排结果。`gate_result.guardian_results` 含 `source` / `is_simulated`（审计）、
+       * `evidence_atoms`（结构化证据）；与 `explain.guardian_personas` 同源只读。
+       */
       orchestrationResult?: {
         state?: OrchestratorState;
         itinerary?: Itinerary;
@@ -2062,6 +2201,11 @@ export class RouteAndRunResponseDto {
     failure_reason_labels_zh?: string[];
     simplified_explanation?: SimplifiedExplanation; // 🆕 简化版解释（减少认知负荷）
     ai_capability_display?: AICapabilityDisplay; // 🆕 AI能力展示（信任建立机制）
+    /**
+     * 三人格只读投影：与 `result.payload.orchestrationResult.gate_result.guardian_results` 同源；
+     * 装配时为同一引用，客户端应只读、勿作为独立可写状态；展示与审计以 payload 门控结果为准。
+     */
+    guardian_personas?: GateResult['guardian_results'];
     /** OPTIMIZE/CGUS 输出（用于直接展示备选方案与推荐理由） */
     optimization?: {
       method?: 'CGUS' | 'MONTE_CARLO' | 'HEURISTIC';
@@ -2076,11 +2220,50 @@ export class RouteAndRunResponseDto {
           upper: number;
           level: number;
         };
+        violations?: Array<{ type: string; severity: string; degree?: number; detail?: string }>;
       }>;
+      /** 决策判决书：为何选中 / 为何弃选 / MC 采样 / 降级链 */
+      decision_verdict?: {
+        chosen_plan_id: string;
+        rejected_plans: Array<{
+          id: string;
+          status: 'chosen' | 'rejected' | 'infeasible';
+          rejection_reasons?: string[];
+          hard_violation_count?: number;
+          soft_penalty_degree?: number;
+          expected_utility?: number;
+          feasibility_probability?: number;
+          utility_delta_vs_chosen?: number;
+        }>;
+        monte_carlo_summary?: {
+          used: boolean;
+          total_samples?: number;
+          samples_per_candidate?: Record<string, number>;
+        };
+        fallback_chain?: Array<{ step: string; reason: string }>;
+      };
+      meta_decision_audit?: string;
+      decision_verdict_narration_zh?: string;
+      world_constraint_materialization?: {
+        /** RAG → WorldConstraintStore 写入条数 */
+        applied_events: number;
+        road_ids: string[];
+        weather_dates: string[];
+        store_version: number;
+        unified_graph_node_count?: number;
+        unified_graph_edge_count?: number;
+      };
+      emergency_mask_audit?: {
+        forbidden_modes: string[];
+        candidates_before: number;
+        candidates_after: number;
+        pruned_candidates: number;
+        pruned_segments_by_type: Record<string, number>;
+      };
     };
     /** v1.0：内核可解释性（约束拒绝、DSO 版本、与 optimization 对齐的效用参数摘要） */
     kernel_explainability?: {
-      dso_version?: number;
+      dso_version?: string;
       last_step?: string;
       current_phase?: string;
       cursor_step?: string;
@@ -2102,6 +2285,24 @@ export class RouteAndRunResponseDto {
       /** PRD I3：DSO `harnessRuntime.replan_*`（与 observability / worldStateSummary 对齐） */
       replan_previous_plan_version?: number;
       replan_previous_world_snapshot_hash?: string;
+    };
+    /**
+     * 世界模型投产门控（物理不完整 / 路由拓扑锁）。
+     * 从 DSO 投影；与 `persist_dso_checkpoint` 快照字段同源，单次响应即可驱动前端段编辑器与 Banner。
+     */
+    world_model_guards?: {
+      physical_reality_incomplete?: boolean;
+      physical_data_region?: string;
+      is_route_topology_locked?: boolean;
+      route_skeleton_locked?: boolean;
+      locked_segment_ids?: string[];
+      route_skeleton_signature?: string;
+      freeze_route_selection?: boolean;
+      topology_match?: boolean;
+      recommended_plan_rejected?: boolean;
+      /** 建议的段编辑器模式：full | slot_timing_only | readonly */
+      segment_editor_mode?: 'full' | 'slot_timing_only' | 'readonly';
+      banner_message_zh?: string;
     };
   };
 
@@ -2246,6 +2447,10 @@ export class RouteAndRunResponseDto {
         target_nodes: string[];
       }>;
     };
+    /** INTAKE 删除 POI 短路：轻量 CRUD，不要求完整 planning 日程块 */
+    itinerary_item_delete?: boolean;
+    /** DSO `systemState.version`（字符串，兼容前端 `.trim()` 消费） */
+    dso_version?: string;
     /** P1：执行链与 memory snapshot 绑定（planner / recovery / skill 应对齐同一锚点） */
     execution_memory_binding?: {
       snapshot_id: string;

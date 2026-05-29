@@ -13,6 +13,7 @@ describe('research-asset-scope.util', () => {
     expect(inferResearchKeyScope('hotel_search_meta')).toBe('hotel');
     expect(inferResearchKeyScope('flight_quotes_v1')).toBe('flight');
     expect(inferResearchKeyScope('safetravel_alerts')).toBe('compliance');
+    expect(inferResearchKeyScope('cost_estimate')).toBe('destination');
     expect(inferResearchKeyScope('__research_asset_manifest')).toBe('common');
   });
 

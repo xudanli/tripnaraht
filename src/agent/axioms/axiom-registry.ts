@@ -1,8 +1,9 @@
 import type { AxiomId, AxiomSchema } from './axiom-schema';
 
 /**
- * v2.0 (alpha): minimal registry — only 3 axioms.
- * Goal: replace hardcoded terrain special-cases with a template-driven pipeline.
+ * Agent Runtime Defensive Core v2.0 — registry (3 runtime guardians).
+ * Distinct from optimization seven-axioms (`trips/decision/optimization/axioms/`).
+ * See `src/agent/axioms/README.md` for SKU ↔ axiom ↔ cid mapping.
  */
 export const AXIOM_REGISTRY: Record<AxiomId, AxiomSchema> = {
   TERRAIN_F_ROAD_UNFIT: {

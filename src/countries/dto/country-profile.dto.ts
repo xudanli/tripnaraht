@@ -2,6 +2,7 @@
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentType } from '@prisma/client';
+import type { CountryProfileV2TimeBoundaries } from '../types/country-profile-v2.types';
 
 /**
  * 电源信息
@@ -184,7 +185,15 @@ export class CountryProfileDto {
   @ApiPropertyOptional({ description: '紧急信息', type: EmergencyInfoDto })
   emergency?: EmergencyInfoDto;
 
-  @ApiPropertyOptional({ description: '中国公民签证信息', type: VisaInfoDto })
+  @ApiPropertyOptional({
+    description: '全球入境要求（按旅客护照国籍 ISO2 索引）',
+  })
+  entryRequirements?: {
+    officialLink?: string;
+    byNationality?: Record<string, VisaInfoDto>;
+  };
+
+  @ApiPropertyOptional({ description: '@deprecated 请用 entryRequirements.byNationality.CN', type: VisaInfoDto })
   visaForCN?: VisaInfoDto;
 
   @ApiPropertyOptional({ description: '合规信息', type: ComplianceInfoDto })
@@ -192,4 +201,10 @@ export class CountryProfileDto {
 
   @ApiPropertyOptional({ description: '旅行文化', type: TravelCultureDto })
   travelCulture?: TravelCultureDto;
+
+  @ApiProperty({ description: '档案 schema 版本（恒为 2）', example: 2 })
+  schemaVersion!: 2;
+
+  @ApiPropertyOptional({ description: 'V2 时空与天候边界' })
+  timeBoundaries?: CountryProfileV2TimeBoundaries;
 }

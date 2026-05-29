@@ -58,7 +58,7 @@ export class HitlResolveApprovalTaskSkill
 
   metadata = {
     name: 'hitl.resolveApprovalTask',
-    description: '解决审批任务：approve/reject/feedback，和 decision logs 绑定',
+    description: 'hitl.resolveApprovalTask：解决审批任务：approve/reject/feedback，和 decision logs 绑定',
     version: '1.0.0',
     category: 'decision' as const,
   };

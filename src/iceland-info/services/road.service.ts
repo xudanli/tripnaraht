@@ -3,7 +3,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpClientFactory } from '../../common/utils/http-client.factory';
-import { RoadConditionsQueryDto, RoadConditionsResponseDto, RoadStatus, RoadCondition } from '../dto/road-conditions.dto';
+import { RoadConditionsQueryDto, RoadConditionsResponseDto, RoadStatus, RoadCondition, RoadSegmentDto } from '../dto/road-conditions.dto';
 import { AxiosInstance } from 'axios';
 
 @Injectable()
@@ -69,7 +69,7 @@ export class RoadService {
     }));
 
     return {
-      fRoads: fRoads.filter((road) => {
+      fRoads: fRoads.filter((road: RoadSegmentDto) => {
         if (query.fRoads) {
           const requestedRoads = query.fRoads.split(',');
           if (!requestedRoads.includes(road.fRoadNumber)) {

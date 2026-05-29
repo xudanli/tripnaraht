@@ -72,6 +72,7 @@ import { VerifyExecutorService } from '../../agent/execution/verify-executor.ser
 import { MemoryContextAssemblerService } from '../../agent/memory/services/memory-context-assembler.service';
 import { MemoryKernelService } from '../../agent/memory/experience-replay/memory-kernel.service';
 import { RepairExecutorService } from '../../agent/execution/repair-executor.service';
+import { resolvePersonaClosureAudit } from '../../agent/utils/persona-closure-repair-skip.util';
 import {
   HarnessStepRunnerService,
   type HarnessStepExecutionResult,
@@ -103,6 +104,13 @@ import type { HardRuleFact } from '../../trips/decision/shared/hard-rule-snapsho
 import { ObservationHarnessService } from './observation/observation-harness.service';
 import { integratePassabilityIntoBeliefSamples } from './observation/belief-observation-integrator';
 import { OrchestratorContextLintService } from '../../agent/orchestration/context/orchestrator-context-lint.service';
+import { MultiPersonDecisionService } from '../../trips/decision/services/multi-person-decision.service';
+import {
+  attachPartyCoordinationToResearchData,
+  buildTravelersFromParty,
+  resolveRoutePlanDraftForPartyCoordination,
+  shouldRunPartyCoordination,
+} from './party-coordination-bridge.util';
 
 @Injectable()
 export class DecisionKernelService {
@@ -168,6 +176,7 @@ export class DecisionKernelService {
     @Optional() private readonly memoryKernel?: MemoryKernelService,
     @Optional() private readonly observationHarness?: ObservationHarnessService,
     @Optional() private readonly contextLint?: OrchestratorContextLintService,
+    @Optional() private readonly multiPersonDecision?: MultiPersonDecisionService,
   ) {}
 
   /**
@@ -716,6 +725,25 @@ export class DecisionKernelService {
             },
           });
         }
+      }
+    }
+    if (shouldRunPartyCoordination(current) && this.multiPersonDecision) {
+      try {
+        const routePlan = resolveRoutePlanDraftForPartyCoordination(current);
+        if (routePlan) {
+          const coordination = await this.multiPersonDecision.supportMultiPersonDecision(
+            buildTravelersFromParty(current),
+            routePlan,
+          );
+          current = this.updateState(current, {
+            research_data: attachPartyCoordinationToResearchData(current, coordination),
+          });
+          this.logger.log(
+            `[Kernel] OPTIMIZE party coordination: conflicts=${coordination.conflictAreas.length} strategy=${coordination.optionsForCoordination[0]?.strategy ?? 'n/a'}`,
+          );
+        }
+      } catch (e) {
+        this.logger.warn(`[Kernel] OPTIMIZE party coordination skipped: ${(e as Error)?.message}`);
       }
     }
     const planDraft = current.tripState?.planDraft;
@@ -1817,6 +1845,14 @@ export class DecisionKernelService {
     let repairRecoverySignal: 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION' | undefined =
       dso.systemState?.recoverySignal as 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION' | undefined;
     const hadPendingAtStart = (dso.systemState?.pendingMigrations?.length ?? 0) > 0;
+    ctx = {
+      ...ctx,
+      personaClosureAudit: resolvePersonaClosureAudit({
+        personaClosureAudit: ctx.personaClosureAudit,
+        gateResult: ctx.gateResult,
+        systemState: dso.systemState,
+      }),
+    };
     try {
       const out = await this.repairExecutor.execute(dso, ctx);
       itinerary = out.itinerary;

@@ -35,6 +35,8 @@ model CountryProfile {
   emergency         Json?
   paymentInfo       Json?
   visaForCN         Json?
+  /// 全球入境要求：{ officialLink?, byNationality: { US: {...}, CN: {...} } }
+  entryRequirements Json?
   updatedAt         DateTime
   currencyCode      String?
   currencyName      String?
@@ -46,6 +48,10 @@ model CountryProfile {
   complianceInfo    Json?
   /// 旅行文化（小费习惯、禁忌列表、着装提示、节庆日历等）
   travelCulture     Json?
+  /// 档案 schema 版本（仅 V2：算法决策就绪）
+  schemaVersion     Int          @default(2)
+  /// V2：极昼/极夜季节窗、环境触发器 Hook（与 complianceInfo 分工）
+  timeBoundaries    Json?
 }
 
 model DayOfWeekFactor {
@@ -530,6 +536,9 @@ model RouteDirection {
   rolloutPercent    Int?                      @default(100)
   audienceFilter    Json?
   RouteTemplate     RouteTemplate[]
+  HikePlan                  HikePlan[]
+  HikeTrailBookmark         HikeTrailBookmark[]
+  HikeRouteDirectionShare   HikeRouteDirectionShare[]
 
   @@index([status], map: "route_direction_status_idx")
   @@index([corridorGeom], map: "idx_route_direction_corridor_geom", type: Gist)
@@ -1925,6 +1934,27 @@ model DataRetentionPolicy {
   @@map("data_retention_policies")
 }
 
+/// Decision OS 级执行轨迹 SSOT（在线编排 → 离线 SFT/DPO），与 PLAN_GEN 快照型 ValidatedTrajectory 正交。
+model DecisionTrajectory {
+  id                          String   @id @default(uuid()) @db.Uuid
+  requestId                   String   @unique @map("request_id") @db.VarChar(255)
+  tripId                      String?  @map("trip_id") @db.Uuid
+  payload                     Json
+  status                      String   @default("PENDING") @db.VarChar(20)
+  totalReward                 Float?   @map("total_reward")
+  rewardSignals               Json     @default("[]") @map("reward_signals")
+  orchestrationOutcome        String?  @map("orchestration_outcome") @db.VarChar(32)
+  legacyValidatedTrajectoryId String?  @map("legacy_validated_trajectory_id") @db.VarChar(255)
+  legacyValidatedTrajectory   ValidatedTrajectory? @relation(fields: [legacyValidatedTrajectoryId], references: [trajectoryId], onDelete: SetNull)
+  createdAt                   DateTime @default(now()) @map("created_at")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  @@index([tripId])
+  @@index([status])
+  @@index([orchestrationOutcome])
+  @@map("decision_trajectories")
+}
+
 model ValidatedTrajectory {
   id                   String   @id @default(uuid()) @db.Uuid
   trajectoryId         String   @unique @map("trajectory_id") @db.VarChar(255)
@@ -1950,6 +1980,7 @@ model ValidatedTrajectory {
   usedForTrainingCount Int      @default(0) @map("used_for_training_count")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
+  decisionTrajectories DecisionTrajectory[]
 
   @@index([validationStatus])
   @@index([validationScore])
@@ -3064,6 +3095,55 @@ model AdminQualityMark {
   @@map("admin_quality_marks")
 }
 
+/// LLM token usage audit trail (route_and_run and all LlmService exits).
+model LlmTokenLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  requestId        String   @map("request_id") @db.VarChar(255)
+  spanId           String?  @map("span_id") @db.VarChar(255)
+  provider         String   @db.VarChar(32)
+  model            String   @db.VarChar(128)
+  stepName         String   @map("step_name") @db.VarChar(64)
+  subAgent         String?  @map("sub_agent") @db.VarChar(64)
+  promptTokens     Int      @map("prompt_tokens")
+  completionTokens Int      @map("completion_tokens")
+  totalTokens      Int      @map("total_tokens")
+  isEstimated      Boolean  @default(false) @map("is_estimated")
+  success          Boolean  @default(true)
+  durationMs       Int?     @map("duration_ms")
+  costUsd          Decimal  @map("cost_usd") @db.Decimal(12, 6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([requestId])
+  @@index([createdAt])
+  @@index([provider])
+  @@index([stepName])
+  @@map("llm_token_logs")
+}
+
+/// Skill execution audit trail (route_and_run via SkillsRegistry wrap).
+model SkillExecutionLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  requestId      String   @map("request_id") @db.VarChar(255)
+  spanId         String?  @map("span_id") @db.VarChar(255)
+  skillName      String   @map("skill_name") @db.VarChar(128)
+  canonicalName  String?  @map("canonical_name") @db.VarChar(128)
+  stepName       String   @map("step_name") @db.VarChar(64)
+  subAgent       String?  @map("sub_agent") @db.VarChar(64)
+  routePath      String?  @map("route_path") @db.VarChar(32)
+  category       String?  @db.VarChar(32)
+  success        Boolean  @default(true)
+  durationMs     Int      @map("duration_ms")
+  error          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([requestId])
+  @@index([skillName])
+  @@index([canonicalName])
+  @@index([createdAt])
+  @@index([routePath])
+  @@map("skill_execution_logs")
+}
+
 /// Physical Domain admin: Budget snapshot per account.
 model PhysicalDomainBudget {
   accountId String   @id @map("account_id") @db.VarChar(191)
@@ -3314,4 +3394,81 @@ model GovernanceLedgerEventRecord {
   @@index([eventType, timestampMs(sort: Desc)])
   @@index([routeRegion])
   @@map("governance_ledger_events")
+}
+
+/// 徒步行前/执行/复盘计划（HikePlan 全生命周期，P1）
+model HikePlan {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  routeDirectionId Int       @map("route_direction_id")
+  tripId           String?   @map("trip_id") @db.Uuid
+  status           String    @default("draft")
+  plannedDate      DateTime? @map("planned_date") @db.Date
+  plannedStartTime String?   @map("planned_start_time")
+  prep             Json?
+  liveState        Json?     @map("live_state")
+  review           Json?
+  trackBatchIds    String[]  @default([]) @map("track_batch_ids")
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  routeDirection RouteDirection   @relation(fields: [routeDirectionId], references: [id])
+  trackPoints    HikeTrackPoint[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([routeDirectionId])
+  @@map("hike_plan")
+}
+
+/// 用户收藏的徒步路线（F3）
+model HikeTrailBookmark {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  routeDirectionId Int      @map("route_direction_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  routeDirection RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, routeDirectionId])
+  @@index([userId])
+  @@map("hike_trail_bookmark")
+}
+
+/// 徒步路线分享链接（权限 + 过期）
+model HikeRouteDirectionShare {
+  id               String    @id @default(uuid()) @db.Uuid
+  routeDirectionId Int       @map("route_direction_id")
+  createdByUserId  String?   @map("created_by_user_id") @db.Uuid
+  shareToken       String    @unique @map("share_token")
+  permission       String    @default("VIEW")
+  expiresAt        DateTime? @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  routeDirection RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
+
+  @@index([shareToken])
+  @@index([routeDirectionId])
+  @@map("hike_route_direction_share")
+}
+
+model HikeTrackPoint {
+  id            String   @id @default(uuid()) @db.Uuid
+  hikePlanId    String   @map("hike_plan_id") @db.Uuid
+  lat           Float
+  lng           Float
+  altitudeM     Float?   @map("altitude_m")
+  accuracyM     Float?   @map("accuracy_m")
+  recordedAt    DateTime @map("recorded_at")
+  clientBatchId String?  @map("client_batch_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  hikePlan HikePlan @relation(fields: [hikePlanId], references: [id], onDelete: Cascade)
+
+  @@index([hikePlanId, recordedAt])
+  @@index([hikePlanId, clientBatchId])
+  @@map("hike_track_point")
 }

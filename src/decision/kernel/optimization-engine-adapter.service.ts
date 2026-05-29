@@ -40,6 +40,23 @@ import { StateConsistencyGuardService } from '../../trips/dem/services/state-con
 import { PlanFeaturesService } from '../../trips/decision/optimization/plan-features/plan-features.service';
 import { decisionStateToTripWorldState, resolveKernelTripIdHint } from './dso-to-trips-converter';
 import { convertRoutePlanDraftToTripPlan } from '../../trips/decision/tot/plan-converter';
+import { runCgusSubgraphPreflight } from '../../trips/decision/constraint-graph/cgus-subgraph-preflight.util';
+import {
+  buildDecisionVerdictFromCgusResult,
+} from './decision-verdict.util';
+import { formatDecisionVerdictNarrationZh } from '../../agent/utils/decision-verdict-narration.zh.util';
+import { CandidateSearchPipeline } from './candidate-search.pipeline';
+import type { CandidateSearchAudit } from './decision-state.types';
+import { ConstraintEngineService } from '../../trips/decision/constraints/constraint-engine.service';
+import {
+  appendFallbackStep,
+  enrichHintsWithFallbackChain,
+  isCandidatePipelineEnabledFromEnv,
+  type OptimizationFallbackStep,
+} from './optimization-fallback.util';
+import { REPAIR_SPATIAL_POI_V2_ID } from '../../trips/decision/constraint-graph/topology-mutation.util';
+import { resolvePhysicalRealityIncomplete } from '../../skills/world/utils/world-model-production-guards.util';
+import { enrichRoutePlanForOptimize } from './pre-optimize-dem-enrichment.util';
 
 @Injectable()
 export class OptimizationEngineAdapterService {
@@ -57,6 +74,7 @@ export class OptimizationEngineAdapterService {
     @Optional() @Inject(ChunkRetrievalService) private readonly chunkRetrieval?: ChunkRetrievalService,
     @Optional() private readonly stateConsistencyGuard?: StateConsistencyGuardService,
     @Optional() private readonly planFeatures?: PlanFeaturesService,
+    @Optional() private readonly constraintEngine?: ConstraintEngineService,
   ) {}
 
   /**
@@ -113,6 +131,11 @@ export class OptimizationEngineAdapterService {
     if (!baseHints) baseHints = {};
 
     const planDraft = state.tripState?.planDraft as Itinerary | undefined;
+    if (resolvePhysicalRealityIncomplete(state) && !planDraft?.days?.length) {
+      return this.buildPhysicalIncompleteHints(baseHints);
+    }
+
+    const fallbackChain: OptimizationFallbackStep[] = [];
     const worldContext = dsoToMinimalWorldModelContext(state);
 
     const cgusDiagnostics = {
@@ -138,6 +161,7 @@ export class OptimizationEngineAdapterService {
           this.logger.log(`[OptimizationAdapter] OPTIMIZE path: ${JSON.stringify({ mode: 'CGUS' })}`);
           return cgusHints;
         }
+        fallbackChain.push(...appendFallbackStep([], 'cgus_search', 'cgus_returned_undefined'));
         this.logger.warn(
           `[OptimizationAdapter] OPTIMIZE fallback: ${JSON.stringify({
             mode: 'MonteCarloOrHeuristic',
@@ -145,6 +169,7 @@ export class OptimizationEngineAdapterService {
           })}`,
         );
       } catch (e: unknown) {
+        fallbackChain.push(...appendFallbackStep([], 'cgus_search', `cgus_exception:${(e as Error)?.message?.slice(0, 80)}`));
         this.logger.warn(`[OptimizationAdapter] CGUS 路径失败，降级: ${(e as Error)?.message}`);
         this.logger.warn(
           `[OptimizationAdapter] OPTIMIZE fallback: ${JSON.stringify({
@@ -154,7 +179,7 @@ export class OptimizationEngineAdapterService {
         );
       }
     } else {
-      // 诊断：为何未走 CGUS（常见是 planDraft/worldContext 缺失或 cgusSearch 未注入）
+      fallbackChain.push(...appendFallbackStep([], 'cgus_gate', 'cgus_gate_false'));
       this.logger.debug(
         `[OptimizationAdapter] CGUS skipped: ${JSON.stringify(cgusDiagnostics)}`,
       );
@@ -183,6 +208,7 @@ export class OptimizationEngineAdapterService {
       !this.probabilisticWorldModel ||
       !hasUncertainty
     ) {
+      fallbackChain.push(...appendFallbackStep([], 'monte_carlo_gate', 'monte_carlo_gate_false'));
       this.logger.warn(
         `[OptimizationAdapter] OPTIMIZE fallback: ${JSON.stringify({
           mode: 'Heuristic',
@@ -196,7 +222,7 @@ export class OptimizationEngineAdapterService {
         })}`,
       );
       this.logger.log(`[OptimizationAdapter] OPTIMIZE path: ${JSON.stringify({ mode: 'Heuristic' })}`);
-      return Object.keys(baseHints).length > 0 ? baseHints : undefined;
+      return this.finalizeHeuristicHints(baseHints, fallbackChain, state);
     }
 
     try {
@@ -280,8 +306,13 @@ export class OptimizationEngineAdapterService {
           `P(feasible)=${result.feasibilityProbability.toFixed(2)}`,
       );
       this.logger.log(`[OptimizationAdapter] OPTIMIZE path: ${JSON.stringify({ mode: 'MonteCarlo' })}`);
-      return hints;
+      return fallbackChain.length
+        ? enrichHintsWithFallbackChain(hints, fallbackChain, {
+            chosenPlanId: hints.recommendedAlternativeId ?? 'monte-carlo-plan',
+          })
+        : hints;
     } catch (error: unknown) {
+      fallbackChain.push(...appendFallbackStep([], 'monte_carlo', `monte_carlo_exception:${(error as Error)?.message?.slice(0, 80)}`));
       this.logger.warn(
         `[OptimizationAdapter] Monte Carlo 失败，降级为确定性 Hints: ${(error as Error)?.message}`,
       );
@@ -292,8 +323,155 @@ export class OptimizationEngineAdapterService {
         })}`,
       );
       this.logger.log(`[OptimizationAdapter] OPTIMIZE path: ${JSON.stringify({ mode: 'Heuristic' })}`);
-      return baseHints;
+      return this.finalizeHeuristicHints(baseHints, fallbackChain, state);
     }
+  }
+
+  private finalizeHeuristicHints(
+    baseHints: OptimizationHints,
+    fallbackChain: OptimizationFallbackStep[],
+    state: DecisionState,
+  ): OptimizationHints | undefined {
+    if (Object.keys(baseHints).length === 0 && fallbackChain.length === 0) return undefined;
+    let hints: OptimizationHints = {
+      ...baseHints,
+      method: 'HEURISTIC',
+      optimizationFlags: {
+        ...(baseHints.optimizationFlags ?? {}),
+        useMonteCarlo: false,
+      },
+    };
+    hints = enrichHintsWithFallbackChain(hints, fallbackChain, {
+      chosenPlanId: hints.recommendedAlternativeId ?? 'heuristic-current',
+    });
+    return hints;
+  }
+
+  /**
+   * G1 CandidateSearchPipeline（真实邻域+修复）或 legacy 合成 stub。
+   */
+  private async resolveCgusCandidates(
+    state: DecisionState,
+    planDraft: Itinerary,
+    plan: ReturnType<typeof itineraryToRoutePlanDraft>,
+    routeDirectionId: string,
+    tripId: string,
+    violations: Array<{ type: string; severity: string; degree: number }>,
+  ): Promise<{
+    candidates: CGUSCandidate[];
+    candidateSearchAudit?: CandidateSearchAudit;
+    source: 'pipeline' | 'legacy_stub';
+  }> {
+    if (
+      isCandidatePipelineEnabledFromEnv() &&
+      this.planFeatures &&
+      this.constraintEngine &&
+      planDraft.days?.length
+    ) {
+      try {
+        const pipeline = new CandidateSearchPipeline(this.planFeatures, this.constraintEngine);
+        const result = await pipeline.buildCandidatesFromItinerary(
+          state,
+          planDraft,
+          routeDirectionId,
+          tripId,
+          { maxCandidates: 8, repairMaxIters: 1, repairTopKPerCandidate: 2 },
+        );
+        if (result.candidates.length > 0) {
+          this.logger.log(
+            `[OptimizationAdapter] CGUS candidates from pipeline: ${JSON.stringify({
+              count: result.candidates.length,
+              feasible: result.audit.finalFeasibleCount,
+              stopReason: result.audit.stopReason,
+            })}`,
+          );
+          return {
+            candidates: result.candidates,
+            candidateSearchAudit: result.audit,
+            source: 'pipeline',
+          };
+        }
+      } catch (e: unknown) {
+        this.logger.warn(
+          `[OptimizationAdapter] CandidateSearchPipeline failed, legacy stub fallback: ${(e as Error)?.message}`,
+        );
+      }
+    }
+
+    return {
+      candidates: this.buildLegacySyntheticCandidates(plan, violations, state),
+      source: 'legacy_stub',
+    };
+  }
+
+  /** @deprecated 演示性 stub；KERNEL_CGUS_USE_CANDIDATE_PIPELINE=1 时由 Pipeline 替代 */
+  private buildLegacySyntheticCandidates(
+    plan: ReturnType<typeof itineraryToRoutePlanDraft>,
+    violations: Array<{ type: string; severity: string; degree: number }>,
+    state: DecisionState,
+  ): CGUSCandidate[] {
+    const hard = violations.filter((v) => v.severity === 'HARD');
+    const baseFeasible = (state.constraints?.feasible ?? hard.length === 0) && hard.length === 0;
+    const cgusViolations = (items: Array<{ type: string; severity: string; degree: number }>) =>
+      items.map((v) => ({
+        type: v.type,
+        severity: (v.severity === 'HARD' ? 'HARD' : 'SOFT') as 'HARD' | 'SOFT',
+        degree: v.degree,
+      }));
+
+    const base: CGUSCandidate = {
+      id: 'plan-base',
+      plan,
+      constraintViolations: cgusViolations(violations),
+      feasible: baseFeasible,
+    };
+
+    const relaxed: CGUSCandidate = {
+      id: 'plan-relaxed-pace',
+      plan: {
+        ...plan,
+        segments: plan.segments.filter((s, idx) => idx % 2 === 0),
+      },
+      constraintViolations: cgusViolations(violations.filter((v) => !v.type.includes('TIME'))),
+      feasible: baseFeasible,
+    };
+
+    const dense: CGUSCandidate = {
+      id: 'plan-high-density',
+      plan: {
+        ...plan,
+        segments: [...plan.segments, ...plan.segments.slice(0, Math.min(2, plan.segments.length))].map(
+          (s, i) => ({ ...s, segmentId: `${s.segmentId}-dup-${i}` }),
+        ),
+      },
+      constraintViolations: [
+        ...cgusViolations(violations),
+        { type: 'TIME_SLACK_SOFT', severity: 'SOFT' as const, degree: 0.6 },
+      ],
+      feasible: baseFeasible,
+    };
+
+    const philosophyAligned: CGUSCandidate = {
+      id: 'plan-philosophy-aligned',
+      plan,
+      constraintViolations: cgusViolations(violations.filter((v) => !v.type.includes('PHILOSOPHY'))),
+      feasible: baseFeasible,
+    };
+
+    const budgetSafe: CGUSCandidate = {
+      id: 'plan-budget-safe',
+      plan: {
+        ...plan,
+        segments: plan.segments.slice(0, Math.max(1, Math.floor(plan.segments.length * 0.8))),
+      },
+      constraintViolations: [
+        ...cgusViolations(violations.filter((v) => !v.type.includes('TIME'))),
+        { type: 'BUDGET_SOFT', severity: 'SOFT' as const, degree: 0.7 },
+      ],
+      feasible: baseFeasible,
+    };
+
+    return [base, relaxed, dense, philosophyAligned, budgetSafe].filter((c) => c.plan.segments.length > 0);
   }
 
   /**
@@ -391,7 +569,8 @@ export class OptimizationEngineAdapterService {
     const tripId = state.systemState?.requestId ?? state.requestId ?? 'unknown';
     let plan = itineraryToRoutePlanDraft(planDraft, tripId, routeDirectionId);
     if (this.stateConsistencyGuard) {
-      ({ plan } = await this.stateConsistencyGuard.enrichRoutePlanDraftIfNeeded(plan));
+      const enriched = await enrichRoutePlanForOptimize(plan, this.stateConsistencyGuard);
+      plan = enriched.plan;
     }
 
     const violations = (state.constraints?.violations ?? []).map((v) => ({
@@ -400,72 +579,8 @@ export class OptimizationEngineAdapterService {
       degree: v.degree ?? (v.severity === 'HARD' ? 1 : 0.5),
     }));
 
-    const buildCandidates = (): CGUSCandidate[] => {
-      const hard = violations.filter((v) => v.severity === 'HARD');
-      const baseFeasible = (state.constraints?.feasible ?? hard.length === 0) && hard.length === 0;
-
-      const base: CGUSCandidate = {
-        id: 'plan-base',
-        plan,
-        constraintViolations: violations,
-        feasible: baseFeasible,
-      };
-
-      // 轻量 Top-K 变体：用 segments 密度 + 约束类型来制造可区分候选
-      const relaxed: CGUSCandidate = {
-        id: 'plan-relaxed-pace',
-        plan: {
-          ...plan,
-          segments: plan.segments.filter((s, idx) => idx % 2 === 0),
-        },
-        constraintViolations: violations.filter((v) => !v.type.includes('TIME')),
-        feasible: baseFeasible,
-      };
-
-      const dense: CGUSCandidate = {
-        id: 'plan-high-density',
-        plan: {
-          ...plan,
-          segments: [...plan.segments, ...plan.segments.slice(0, Math.min(2, plan.segments.length))].map(
-            (s, i) => ({ ...s, segmentId: `${s.segmentId}-dup-${i}` }),
-          ),
-        },
-        constraintViolations: [
-          ...violations,
-          { type: 'TIME_SLACK_SOFT', severity: 'SOFT' as const, degree: 0.6 },
-        ],
-        feasible: baseFeasible,
-      };
-
-      const philosophyAligned: CGUSCandidate = {
-        id: 'plan-philosophy-aligned',
-        plan,
-        constraintViolations: violations.filter((v) => !v.type.includes('PHILOSOPHY')),
-        feasible: baseFeasible,
-      };
-
-      const budgetSafe: CGUSCandidate = {
-        id: 'plan-budget-safe',
-        plan: {
-          ...plan,
-          segments: plan.segments.slice(0, Math.max(1, Math.floor(plan.segments.length * 0.8))),
-        },
-        constraintViolations: [
-          ...violations.filter((v) => !v.type.includes('TIME')),
-          { type: 'BUDGET_SOFT', severity: 'SOFT' as const, degree: 0.7 },
-        ],
-        feasible: baseFeasible,
-      };
-
-      // 去重：避免 segments 为空或重复过多导致不稳定排序
-      const candidates = [base, relaxed, dense, philosophyAligned, budgetSafe].filter(
-        (c) => c.plan.segments.length > 0,
-      );
-
-      return candidates;
-    };
-
-    const candidates = buildCandidates();
+    const { candidates, candidateSearchAudit, source: candidateSource } =
+      await this.resolveCgusCandidates(state, planDraft, plan, routeDirectionId, tripId, violations);
 
     const retrievalCategoryEvidence = await this.resolveRetrievalEvidenceForCgus(state);
 
@@ -526,9 +641,66 @@ export class OptimizationEngineAdapterService {
         `${JSON.stringify(summaryToLog)}`,
     );
 
+    let effectiveWorldContext = worldContext;
+    let effectiveCandidates =
+      process.env.CGUS_INJECT_CONTRAST_CANDIDATES === '1' ? patchedCandidates : candidates;
+    let globalSubgraphStats:
+      | { nodeCount: number; edgeCount: number; prunedNodeCount: number }
+      | undefined;
+
+    const subgraphPreflightEnabled =
+      (process.env.KERNEL_GLOBAL_SUBGRAPH_PREFLIGHT ?? '1').trim().toLowerCase() !== '0';
+    if (subgraphPreflightEnabled && plan.segments.length > 0) {
+      const month =
+        worldContext.physical.month ??
+        (env as { month?: number }).month ??
+        new Date().getMonth() + 1;
+      const constraints = state.userIntent?.constraints as { vehicle_type?: '2WD' | '4WD' } | undefined;
+      const closedNodeIds =
+        worldContext.physical.roadStates
+          ?.filter((r) => r.status === 'CLOSED')
+          .map((r) => {
+            const id = r.roadId ?? r.segmentId ?? '';
+            return id.startsWith('road:') ? id : `road:${id}`;
+          })
+          .filter(Boolean) ?? [];
+      const windMs = Number(
+        (env as { windSpeedMs?: number }).windSpeedMs ??
+          (env as { weather?: { wind_speed_mps?: number } }).weather?.wind_speed_mps,
+      );
+      const edgeDelayMinutes: Record<string, number> = {};
+      if (Number.isFinite(windMs) && windMs > 18) {
+        const delay = Math.min(60, Math.round((windMs - 15) * 3));
+        for (const seg of plan.segments.slice(0, 4)) {
+          edgeDelayMinutes[`connects:seg:${seg.segmentId}`] = delay;
+        }
+      }
+
+      const preflight = runCgusSubgraphPreflight({
+        worldContext: effectiveWorldContext,
+        candidates: effectiveCandidates,
+        month,
+        vehicleType: constraints?.vehicle_type,
+        perturbation: {
+          closedNodeIds: closedNodeIds.length ? closedNodeIds : undefined,
+          edgeDelayMinutes: Object.keys(edgeDelayMinutes).length ? edgeDelayMinutes : undefined,
+        },
+      });
+      effectiveWorldContext = preflight.worldContext;
+      effectiveCandidates = preflight.candidates;
+      globalSubgraphStats = {
+        nodeCount: preflight.stats.nodeCount,
+        edgeCount: preflight.stats.edgeCount,
+        prunedNodeCount: preflight.prunedNodeIds.length,
+      };
+      this.logger.log(
+        `[OptimizationAdapter] Global subgraph preflight: ${JSON.stringify(globalSubgraphStats)}`,
+      );
+    }
+
     const result: CGUSSearchResult = await this.cgusSearch.search(
-      patchedCandidates,
-      worldContext,
+      effectiveCandidates,
+      effectiveWorldContext,
       {
         useMonteCarlo: !!this.expectedUtility && !!this.probabilisticWorldModel,
         sampleSize: 200,
@@ -644,11 +816,53 @@ export class OptimizationEngineAdapterService {
       } as any;
     };
 
+    const sampleSize = 200;
+    let cgusFallback: OptimizationFallbackStep[] =
+      candidateSource === 'legacy_stub'
+        ? [{ step: 'candidate_generation', reason: 'legacy_synthetic_stub' }]
+        : [{ step: 'candidate_generation', reason: 'g1_neighborhood_pipeline' }];
+
+    const chosenId = result.recommended?.id ?? top?.candidate.id;
+    const entropy01 = state.uncertaintyProfile?.entropy01;
+    if (typeof entropy01 === 'number' && entropy01 > 0.7) {
+      cgusFallback = appendFallbackStep(cgusFallback, 'mc_rank_authority', 'entropy>0.7');
+    }
+    if (chosenId === REPAIR_SPATIAL_POI_V2_ID) {
+      cgusFallback = appendFallbackStep(cgusFallback, 'repair_accept', 'WORLD_ROAD_HARD');
+    }
+
+    const decisionVerdict = buildDecisionVerdictFromCgusResult(result, {
+      fallback_chain: cgusFallback,
+    });
+    const metaAudit = `META_BUDGET(sample=${sampleSize},cand=${effectiveCandidates.length},monteCarlo=${result.usedMonteCarlo ? 1 : 0}${result.monteCarloSamplingDetails?.totalSamples ? `,mcTotal=${result.monteCarloSamplingDetails.totalSamples}` : ''}${globalSubgraphStats ? `,gsg=${globalSubgraphStats.nodeCount}/${globalSubgraphStats.edgeCount}` : ''})`;
+    const decisionVerdictNarrationZh = formatDecisionVerdictNarrationZh(decisionVerdict, {
+      method: 'CGUS',
+      metaDecisionAudit: metaAudit,
+      recommendedAlternativeId: result.recommended?.id ?? top?.candidate.id,
+    });
+
     return {
       ...baseHints,
       method: 'CGUS',
-      strategyDirection: `CGUS(${candidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}`,
+      strategyDirection: `CGUS(${effectiveCandidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}`,
       recommendedAlternativeId: result.recommended?.id ?? top?.candidate.id,
+      metaDecisionAudit: metaAudit,
+      ...(candidateSearchAudit ? { candidateSearchAudit } : {}),
+      ...(decisionVerdict ? { decisionVerdict } : {}),
+      ...(decisionVerdictNarrationZh ? { decisionVerdictNarrationZh } : {}),
+      ...(globalSubgraphStats
+        ? {
+            worldConstraintMaterialization: {
+              appliedEvents: 0,
+              roadIds: [],
+              weatherDates: [],
+              storeVersion: 0,
+              globalSubgraphNodeCount: globalSubgraphStats.nodeCount,
+              globalSubgraphEdgeCount: globalSubgraphStats.edgeCount,
+              globalSubgraphPrunedNodes: globalSubgraphStats.prunedNodeCount,
+            },
+          }
+        : {}),
       ...(result.emergencyMaskAudit ? { emergencyMaskAudit: result.emergencyMaskAudit as any } : {}),
       ...(terrainEpistemicUncertainty ? { terrainEpistemicUncertainty } : {}),
       ...(earlyWarningCodes ? { earlyWarningCodes } : {}),
@@ -748,6 +962,21 @@ export class OptimizationEngineAdapterService {
     return {
       value,
       weights: { safety: 0.6, fatigueRisk: 0.4 },
+    };
+  }
+
+  /** PR-4：DEM/物理现实不完整时降级 HEURISTIC + Topology Lock */
+  private buildPhysicalIncompleteHints(baseHints: OptimizationHints): OptimizationHints {
+    return {
+      ...baseHints,
+      method: 'HEURISTIC',
+      optimizationFlags: {
+        ...(baseHints.optimizationFlags ?? {}),
+        useMonteCarlo: false,
+        freezeRouteSelection: true,
+        physicalRealityIncomplete: true,
+        relaxationFactor: 1.5,
+      },
     };
   }
 }

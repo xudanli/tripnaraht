@@ -100,7 +100,7 @@ export class IcelandWindRiskSkill implements Skill<IcelandWindRiskInput, Iceland
 
   metadata = {
     name: 'iceland.windRisk',
-    description: '冰岛横风驾驶风险（结合区域暴露度与 Open-Meteo 风速）。',
+    description: '评估 iceland 横风驾驶 wind 风险（区域暴露度 + Open-Meteo 风速）。在 storm/高地路线 planning 或 verify 需风况门控时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

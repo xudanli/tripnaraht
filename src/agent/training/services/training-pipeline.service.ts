@@ -14,6 +14,7 @@ import {
 import { TrainingDataPreparationService } from './training-data-preparation.service';
 import { DatasetVersionManagerService } from './dataset-version-manager.service';
 import { DataQualityCheckerService } from './data-quality-checker.service';
+import { DecisionTrajectoryTrainingSyncService } from './decision-trajectory-training-sync.service';
 
 /**
  * TrainingPipelineService
@@ -39,6 +40,7 @@ export class TrainingPipelineService {
     @Optional() private readonly dataPrepService: TrainingDataPreparationService,
     @Optional() private readonly versionManager: DatasetVersionManagerService,
     @Optional() private readonly dataQualityChecker?: DataQualityCheckerService,
+    @Optional() private readonly decisionTrajectorySync?: DecisionTrajectoryTrainingSyncService,
   ) {
     // 从环境变量获取Python训练服务URL
     this.trainingServiceUrl =
@@ -103,6 +105,18 @@ export class TrainingPipelineService {
     // 更新状态为RUNNING
     job.status = 'RUNNING';
     job.started_at = new Date().toISOString();
+
+    // PR-D：线上 decision_trajectories → DPO/SFT 训练包（增量）
+    const prepared = await this.decisionTrajectorySync?.syncAndPrepareForPythonTraining();
+    if (prepared?.pack) {
+      (job as TrainingJob & { decision_trajectory_pack?: unknown }).decision_trajectory_pack = {
+        dpo_jsonl_path: prepared.pack.dpo_jsonl_path,
+        dpo_dataset_path: prepared.dataset_paths?.dpo_dataset_path,
+        stats: prepared.pack.stats,
+        exported_at: prepared.pack.exported_at,
+        python_registration: prepared.registration ?? undefined,
+      };
+    }
 
     // 可选质量门禁：在训练启动前对候选轨迹做快速抽样质量检查
     await this.runDataQualityGateIfEnabled(job);

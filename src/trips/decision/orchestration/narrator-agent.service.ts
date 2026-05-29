@@ -152,9 +152,11 @@ export class NarratorAgentService implements INarratorAgent {
         ? `\n\nhistorical_precedents（判例库召回结果）：\n${JSON.stringify(precedentsArr, null, 2)}\n\n${citationRule}\n`
         : `\n\nhistorical_precedents：[]\n\n${citationRule}\n`;
 
+    const stateBag = state as unknown as Record<string, unknown>;
+    const rawResearch = state ? stateBag['research_data'] : undefined;
     const researchData =
-      state && typeof (state as { research_data?: unknown }).research_data === 'object'
-        ? ((state as { research_data: Record<string, unknown> }).research_data as Record<string, unknown>)
+      rawResearch !== null && typeof rawResearch === 'object' && !Array.isArray(rawResearch)
+        ? (rawResearch as Record<string, unknown>)
         : undefined;
     const rawEbp = researchData?.__research_conflict_negotiation;
     const ebpZh =

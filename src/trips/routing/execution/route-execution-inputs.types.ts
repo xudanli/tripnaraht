@@ -34,9 +34,16 @@ export interface WeatherAlongRouteGrid {
 export interface RoadConditionAlongRoute {
   /** Corridor-level hints merged from road constraint graph / official status. */
   fRoad?: boolean;
+  gravelRoad?: boolean;
+  mountainPass?: boolean;
+  winterBlackIce?: boolean;
   requires4WD?: boolean;
   seasonalClosureRisk?: number;
 }
+
+import type { CountryEtaPolicyInput } from '../../../countries/utils/country-eta-policy-for-route.util';
+
+export type { CountryEtaPolicyInput };
 
 export interface RouteExecutionWindow {
   startIso: string;
@@ -55,4 +62,8 @@ export interface ProjectRouteExecutionHazardsInput {
   baselineDurationMin?: number;
   /** Override segment count (otherwise derived from geometry). */
   segmentCount?: number;
+  /** ISO country code for logging / assessment rollup */
+  countryCode?: string;
+  /** V2 national commons ETA multiplier (from CountryKnowledgeService) */
+  countryEtaPolicy?: CountryEtaPolicyInput;
 }

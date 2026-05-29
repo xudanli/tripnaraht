@@ -17,6 +17,7 @@ import type { RepairTrace, SimulatedRepairTrace } from '../../../agent/services/
 import type { ResearchAssetScope } from '../../../agent/utils/research-asset-scope.util';
 import type { UserCognitiveProfile } from '../../../agent/memory/experience-replay/user-cognitive-profile.types';
 import type { ResearchConflictNegotiationReport } from '../../../agent/teams/research/research-conflict-negotiation.types';
+import type { PersonaClosureAudit } from '../../../trips/decision/shared/persona-closure.types';
 
 /** 阶段执行上下文 */
 export interface PhaseExecutorContext {
@@ -77,6 +78,8 @@ export interface PhaseExecutorContext {
    * 缺省或未加载成功时不存在（走 3.0 无记忆路径）。
    */
   userCognitiveProfile?: UserCognitiveProfile;
+  /** Persona closure 收敛审计（FINALIZE / three-guardians 写入） */
+  personaClosureAudit?: PersonaClosureAudit;
 }
 
 /** GateResult 兼容结构（避免直接依赖 trip-plan.interface） */
@@ -277,6 +280,12 @@ export interface NarrationLike {
   visual_hint?: string;
   /** BFF：语音韵律 / TTS 建议（多模态语音） */
   audio_prosody?: string;
+  /** OPTIMIZE/CGUS 决策判决书中文摘要 */
+  optimization_decision_narration_zh?: string;
+  /** 因果保护叙事（内核 trace 编译） */
+  causal_protection_summary_zh?: string;
+  /** 结构化因果链（UI / 审计） */
+  causal_chain?: import('../../../trips/decision/narration/causal-chain.types').CausalChain;
 }
 
 /** NARRATE 阶段执行器上下文（P3 C：orchestratorState 含 itinerary/gate_result/decision_log） */

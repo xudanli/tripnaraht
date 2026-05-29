@@ -46,7 +46,7 @@ export class DecisionAbuCheckSkill implements Skill<DecisionAbuCheckInput, Decis
 
   metadata = {
     name: 'decision.abuCheck',
-    description: '基于物理现实和合规的安全检查，不考虑体验偏好。只能 ALLOW 或 REJECT，不可调整。',
+    description: 'decision.abuCheck：基于物理现实和合规的安全检查，不考虑体验偏好。只能 ALLOW 或 REJECT，不可调整。',
     version: '1.0.0',
     category: 'decision' as const,
     toolGroup: 'DOMAIN' as const,

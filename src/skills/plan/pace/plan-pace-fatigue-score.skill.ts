@@ -27,7 +27,7 @@ export class PlanPaceFatigueScoreSkill implements Skill<PlanPaceFatigueScoreInpu
 
   metadata = {
     name: 'plan.pace.fatigueScore',
-    description: '计算疲劳与节奏评分（连续早起、长距离移动、累计爬升/步行）',
+    description: '计算 plan pace 疲劳与节奏评分（早起/长距/爬升/步行）。在 pace 子系统评估是否过载或需 adjustSchedule 时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

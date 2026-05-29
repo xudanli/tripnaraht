@@ -8,10 +8,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  WeightLearnerService,
-  type FeedbackRecord,
-} from '../../trips/decision/optimization/learning/weight-learner.service';
+import { WeightLearnerService, type FeedbackRecord } from '../../trips/decision/optimization/learning/weight-learner.service';
+import { WeightPersistenceService } from '../../trips/decision/optimization/learning/weight-persistence.service';
 import { DEFAULT_OBJECTIVE_WEIGHTS } from '../../trips/decision/optimization/objective-function.interface';
 import { ContextLearningService } from '../../agent/context-engine/services/context-learning.service';
 import type { ContextBlock, BlockType } from '../../agent/context-engine/types/context-package.types';
@@ -24,6 +22,7 @@ export class FeedbackLearningSchedulerService {
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly weightLearner?: WeightLearnerService,
     @Optional() private readonly contextLearning?: ContextLearningService,
+    @Optional() private readonly weightPersistence?: WeightPersistenceService,
   ) {}
 
   /**
@@ -65,6 +64,11 @@ export class FeedbackLearningSchedulerService {
     let usersProcessed = 0;
     let totalSamples = 0;
 
+    const minSignals = Math.max(
+      1,
+      parseInt(process.env.FEEDBACK_LEARNING_MIN_SIGNALS ?? '10', 10) || 10,
+    );
+
     const signals = await this.prisma!.$queryRaw<
       Array<{ user_id: string | null; trip_run_id: string; context: unknown }>
     >`
@@ -95,11 +99,31 @@ export class FeedbackLearningSchedulerService {
     }
 
     for (const [userId, feedback] of byUser) {
-      if (feedback.length < 10) continue;
+      if (feedback.length < minSignals) continue;
       try {
         const result = await this.weightLearner!.learnFromFeedback(userId, feedback);
         usersProcessed++;
         totalSamples += result.samplesUsed;
+
+        const hasChange = Object.values(result.weightChanges).some(
+          (v) => typeof v === 'number' && Math.abs(v) > 1e-8,
+        );
+        if (this.weightPersistence && hasChange) {
+          try {
+            const existing = await this.weightPersistence.loadUserProfile(userId);
+            await this.weightPersistence.saveUserProfile(userId, {
+              userId,
+              currentWeights: result.updatedWeights,
+              weightHistory: existing?.weightHistory ?? [],
+              totalFeedback: (existing?.totalFeedback ?? 0) + feedback.length,
+              learningConfidence: result.confidence,
+              lastUpdated: new Date().toISOString(),
+            });
+            this.logger.debug(`[FeedbackLearning] 用户权重已持久化 userId=${userId}`);
+          } catch (pe: unknown) {
+            this.logger.warn(`[FeedbackLearning] saveUserProfile 失败: ${(pe as Error)?.message}`);
+          }
+        }
       } catch (e: unknown) {
         errors.push(`${userId}: ${(e as Error)?.message}`);
       }

@@ -11,6 +11,7 @@ import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { WeatherPredictionService } from './services/weather-prediction.service';
 import { WeatherSearchSkill } from '../weather/weather-search.skill';
 import { WeatherPrediction } from './interfaces/unified-world-model.interface';
+import { markWorldSkillDegraded } from './utils/world-skill-degraded.util';
 
 export interface WorldWeatherPredictionInput extends SkillInput {
   /** 区域代码（如 'IS'） */
@@ -41,11 +42,14 @@ export interface WorldWeatherPredictionOutput extends SkillOutput {
   
   /** 查询区域 */
   region: string;
+
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 @SkillDecorator({
   name: 'world.weatherPrediction',
-  description: '获取天气预测数据（使用weather.search Skill）',
+  description: '获取 world 天气预报摘要（委托 weather.search）。在 planning 阶段评估未来窗口风险或 failureRisk 输入时调用。',
   version: '1.0.0',
   category: 'world',
   toolGroup: 'DOMAIN',
@@ -56,7 +60,7 @@ export class WorldWeatherPredictionSkill implements Skill<WorldWeatherPrediction
 
   metadata = {
     name: 'world.weatherPrediction',
-    description: '获取天气预测数据（使用weather.search Skill）',
+    description: '获取 world 天气预报摘要（委托 weather.search）。在 planning 阶段评估未来窗口风险或 failureRisk 输入时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,
@@ -149,14 +153,17 @@ export class WorldWeatherPredictionSkill implements Skill<WorldWeatherPrediction
         };
       }
 
-      // 3. 最终降级：返回空数组
+      // 3. 最终降级：返回空数组（显式 degraded）
       this.logger.warn(`[WorldWeatherPredictionSkill] 无可用服务，返回空预测列表`);
-      return {
-        predictions: [],
-        evidence_id: `world_weather_prediction_fallback_${Date.now()}`,
-        source: 'fallback',
-        region: input.region,
-      };
+      return markWorldSkillDegraded(
+        {
+          predictions: [],
+          evidence_id: `world_weather_prediction_fallback_${Date.now()}`,
+          source: 'fallback',
+          region: input.region,
+        },
+        'WeatherPredictionService and WeatherSearchSkill unavailable',
+      );
     } catch (error: any) {
       this.logger.error(
         `world.weatherPrediction 失败: ${error?.message}`,

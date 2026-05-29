@@ -1,5 +1,7 @@
 import {
+  buildHallucinationAuditSampleRowsZh,
   formatGateEvalOutputsZh,
+  formatHallucinationOutputsZh,
   formatIntakeOutputsZh,
   formatResearchOutputsZh,
   formatResearchTeamAuditOutputsZh,
@@ -57,5 +59,34 @@ describe('decision-log-user-facing.zh.util', () => {
     expect(
       formatVerifyOutputsZh({ issueCount: 2, fatal: 1, conflict: 1, advisory: 0 }),
     ).toContain('个问题');
+  });
+
+  it('formatHallucinationOutputsZh：零风险时措辞与可选明细', () => {
+    const base = formatHallucinationOutputsZh(24, 24, 0, {
+      durationMs: 12,
+      sampleRows: buildHallucinationAuditSampleRowsZh({
+        verifiedClaims: [{ text: '冰岛夏季白昼很长。', verified: true, confidence: 0.9 }],
+        riskClaims: [],
+        maxRows: 3,
+      }),
+    });
+    expect(base).toContain('未发现需额外标注或移除的高风险陈述');
+    expect(base).toContain('本步耗时约 12ms');
+    expect(base).toContain('抽查摘录');
+    expect(base).toContain('冰岛夏季白昼很长');
+  });
+
+  it('buildHallucinationAuditSampleRowsZh：优先风险样例再补充一致项', () => {
+    const rows = buildHallucinationAuditSampleRowsZh({
+      verifiedClaims: [
+        { text: 'A', verified: true, confidence: 0.5 },
+        { text: 'B', verified: true, confidence: 0.99 },
+      ],
+      riskClaims: [{ text: '可疑句', action: 'FLAG', confidence: 0.2 }],
+      maxRows: 3,
+    });
+    expect(rows[0].outcome_zh).toContain('存疑');
+    expect(rows[0].excerpt_zh).toContain('可疑');
+    expect(rows.some((r) => r.excerpt_zh === 'B')).toBe(true);
   });
 });

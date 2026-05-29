@@ -3,6 +3,10 @@
  */
 
 import type { Itinerary } from '../interfaces/trip-plan.interface';
+import {
+  humanizeVerifyIssueHeadlineZh,
+  surfaceRawVerifyIssueMessageForUserZh,
+} from './feasibility-message-surface.zh.util';
 
 export const SAFETY_SURFACE_VERSION = '1.0' as const;
 
@@ -30,6 +34,8 @@ export type SafetySurfaceVerifyIssue = {
   item_id?: string;
   day?: string;
   message: string;
+  /** BFF 出站：中文标题（供前端替代直显 ROUTE_INFEASIBLE 等英码） */
+  headline_zh?: string;
   suggestion?: string;
   segment_ref?: string;
 };
@@ -109,7 +115,8 @@ function sanitizeVerifyIssues(issues: unknown): SafetySurfaceVerifyIssue[] {
     const x = i as Record<string, unknown>;
     const type = typeof x.type === 'string' ? x.type : 'UNKNOWN';
     const severity = typeof x.severity === 'string' ? x.severity : 'WARNING';
-    const message = typeof x.message === 'string' ? truncate(x.message, SUMMARY_MAX) : '';
+    const rawMsg = typeof x.message === 'string' ? x.message : '';
+    const message = rawMsg ? truncate(surfaceRawVerifyIssueMessageForUserZh(rawMsg), SUMMARY_MAX) : '';
     if (!message) continue;
     const violation = x.violation as Record<string, unknown> | undefined;
     const entityRef = violation?.entityRef as Record<string, unknown> | undefined;
@@ -117,6 +124,7 @@ function sanitizeVerifyIssues(issues: unknown): SafetySurfaceVerifyIssue[] {
     out.push({
       type,
       severity,
+      ...(type !== 'UNKNOWN' ? { headline_zh: humanizeVerifyIssueHeadlineZh(type) } : {}),
       ...(typeof x.item_id === 'string' ? { item_id: x.item_id } : {}),
       ...(typeof x.day === 'string' ? { day: x.day } : {}),
       message,

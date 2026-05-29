@@ -1,0 +1,50 @@
+name: SkillEvolver dry-run
+
+on:
+  pull_request:
+    paths:
+      - 'src/agent/training/skill-evolver/**'
+      - 'data/skill-evolver/**'
+      - 'scripts/skill-evolver*.ts'
+      - 'scripts/export-e2e-to-skill-evolver-replay.ts'
+      - '.github/workflows/skill-evolver-dry-run.yml'
+  workflow_dispatch:
+
+jobs:
+  skill-evolver-smoke:
+    runs-on: ubuntu-latest
+    env:
+      LLM_USE_MOCK: 'true'
+      SKILL_EVOLVER_USE_DECISION_REPLAY: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx jest src/agent/training/skill-evolver --no-cache
+
+      - run: npm run skill-evolver:export-e2e
+
+      - run: npm run skill-evolver:validate-agent-skills
+
+      - run: >
+          npm run skill-evolver:pipeline --
+          --skill country_pack.IS
+          --replay-case iceland-highlands-dem-missing
+          --seed weak
+          --max-rounds 1
+          --dry-run
+
+      - run: >
+          npm run skill-evolver:pipeline --
+          --skill api_calling
+          --replay-case api-smoke
+          --eval fixture
+          --max-rounds 1
+          --dry-run

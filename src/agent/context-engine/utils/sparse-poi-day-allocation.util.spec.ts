@@ -15,4 +15,9 @@ describe('sparse-poi-day-allocation.util', () => {
     expect(resolveSparsePoiDayAllocation('推荐餐厅')).toBe('round_robin');
     expect(resolveSparsePoiDayAllocation('黄金圈一日游')).toBe('block');
   });
+
+  it('ring-road / Route 1 intent forces block (not round_robin)', () => {
+    expect(resolveSparsePoiDayAllocation('7天冰岛一号公路环岛自驾')).toBe('block');
+    expect(resolveSparsePoiDayAllocation('ring road marathon')).toBe('block');
+  });
 });

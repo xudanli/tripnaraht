@@ -12,6 +12,8 @@ import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { TripHealth } from './shared/detail-state.types';
 import { TripConflictsService } from '../../trips/services/trip-conflicts.service';
 import { ConflictType, ConflictSeverity } from '../../trips/dto/trip-conflicts.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { loadDetailTripData } from './utils/detail-data.util';
 
 export interface DetailAnalyzeHealthInput extends SkillInput {
   /** Trip ID */
@@ -34,12 +36,13 @@ export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput,
   private readonly logger = new Logger(DetailAnalyzeHealthSkill.name);
 
   constructor(
-    @Optional() private readonly tripConflictsService?: TripConflictsService
+    @Optional() private readonly tripConflictsService?: TripConflictsService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   metadata = {
     name: 'detail.analyzeHealth',
-    description: '分析行程健康度（时间、预算、节奏、可达性），识别问题和风险',
+    description: 'detail.analyzeHealth：分析 itinerary 健康度（时间/预算/节奏/可达性）并列出风险。在用户查看行程详情或 execution 前需体检摘要时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -48,10 +51,16 @@ export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput,
   async execute(input: DetailAnalyzeHealthInput): Promise<DetailAnalyzeHealthOutput> {
     this.logger.debug(`执行 detail.analyzeHealth: tripId=${input.tripId}`);
 
-    try {
-      // 维度权重定义（来自文档：.claude/product-decisions/trip-detail-page-key-decisions.md）
-      // 注意：整体健康度使用加权平均，权重用于计算总体健康度和指标详细说明
-      const dimensionWeights = {
+    let tripData = input.tripData;
+    if (!tripData && this.prisma) {
+      const loaded = await loadDetailTripData(this.prisma, input.tripId);
+      if (loaded) {
+        tripData = loaded;
+      }
+    }
+    tripData = tripData ?? {};
+
+    const dimensionWeights = {
         schedule: 0.30,    // 时间安排最重要
         budget: 0.25,      // 预算次重要
         pace: 0.25,        // 节奏同样重要
@@ -60,19 +69,19 @@ export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput,
 
       // 分析各个维度
       const schedule = {
-        ...await this.analyzeSchedule(input.tripId, input.tripData, input.planState),
+        ...(await this.analyzeSchedule(input.tripId, tripData, input.planState)),
         weight: dimensionWeights.schedule,
       };
       const budget = {
-        ...this.analyzeBudget(input.tripData, input.planState),
+        ...this.analyzeBudget(tripData, input.planState),
         weight: dimensionWeights.budget,
       };
       const pace = {
-        ...this.analyzePace(input.tripData, input.planState),
+        ...this.analyzePace(tripData, input.planState),
         weight: dimensionWeights.pace,
       };
       const feasibility = {
-        ...this.analyzeFeasibility(input.tripData, input.planState),
+        ...this.analyzeFeasibility(tripData, input.planState),
         weight: dimensionWeights.feasibility,
       };
 
@@ -104,13 +113,7 @@ export class DetailAnalyzeHealthSkill implements Skill<DetailAnalyzeHealthInput,
         },
       };
 
-      return {
-        health,
-      };
-    } catch (error: any) {
-      this.logger.error(`分析健康度失败: ${error.message}`, error.stack);
-      throw error;
-    }
+      return { health };
   }
 
   private async analyzeSchedule(

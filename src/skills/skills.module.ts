@@ -10,6 +10,7 @@ import { DecisionModule } from '../trips/decision/decision.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
 import { ReadinessModule } from '../trips/readiness/readiness.module';
 import { TripsModule } from '../trips/trips.module';
+import { ItineraryItemsModule } from '../itinerary-items/itinerary-items.module';
 import { ContextEngineModule } from '../agent/context-engine/context-engine.module';
 import { PlacesModule } from '../places/places.module';
 import { PlacesEmbeddingModule } from '../places/places-embedding.module';
@@ -53,19 +54,17 @@ import { ReadinessCheckVisaWindowSkill } from './readiness/readiness-check-visa-
 
 // Trip Skills
 import { TripQuickEvaluateSkill } from './trip/trip-quick-evaluate.skill';
+import { TripLoadSkill } from './trip/trip-load.skill';
+import { TripApplyEditSkill } from './trip/trip-apply-edit.skill';
+import { TripDeleteItemSkill } from './trip/trip-delete-item.skill';
 
 // World Skills
 import { WorldBuildContextSkill } from './world/world-build-context.skill';
 import { WorldModelEvidenceController } from './world/world-model-evidence.controller';
 import { WorldModelEvidenceService } from './world/services/world-model-evidence.service';
 import { WorldController } from './world/world.controller';
-// 护城河扩展World Skills
-import { WorldRealtimeWeatherSkill } from './world/world-realtime-weather.skill';
+// 护城河扩展World Skills（world.weatherPrediction 保留；其余 5 个 PM 确认未注册）
 import { WorldWeatherPredictionSkill } from './world/world-weather-prediction.skill';
-import { WorldFailureRiskPredictionSkill } from './world/world-failure-risk-prediction.skill';
-import { WorldAdaptiveParametersSkill } from './world/world-adaptive-parameters.skill';
-import { WorldMultimodalPerceptionSkill } from './world/world-multimodal-perception.skill';
-import { WorldCollaborativeDataSkill } from './world/world-collaborative-data.skill';
 import { CollaborativeWorldModelService } from './world/services/collaborative-world-model.service';
 import { CausalReasoningService } from './world/services/causal-reasoning.service';
 import { MultiAgentCollaborationService } from './world/services/multi-agent-collaboration.service';
@@ -91,9 +90,6 @@ import { IcelandRouteFeasibilitySkill } from './world/iceland-route-feasibility.
 import { IcelandTunnelProtocolSkill } from './world/iceland-tunnel-protocol.skill';
 import { IcelandRoadSurfaceAlertsSkill } from './world/iceland-road-surface-alerts.skill';
 import { IcelandGasEvChargePlannerSkill } from './world/iceland-gas-ev-planner.skill';
-import { IcelandStormReroutingEngineSkill } from './world/iceland-storm-rerouting-engine.skill';
-import { IcelandAlternativeValidatorSkill } from './world/iceland-alternative-validator.skill';
-
 
 // Decision Skills (additional)
 import { DecisionRunThreeGuardiansSkill } from './decision/decision-run-three-guardians.skill';
@@ -116,7 +112,6 @@ import { RoutePackGenerateRegressionTestsSkill } from './route-pack/route-pack-g
 import { ContextBuildSkill } from './context/context-build.skill';
 import { ContextCompressSkill } from './context/context-compress.skill';
 import { ContextEvaluateSkill } from './context/context-evaluate.skill';
-import { ContextRegressionTestsSkill } from './context/context-regression-tests.skill';
 import { PlanSelectSlicesSkill } from './context/plan-select-slices.skill';
 import { ToolsSelectSkill } from './context/tools-select.skill';
 import { IntentRecognizeSkill } from './intent/intent-recognize.skill';
@@ -207,8 +202,10 @@ import { DecisionStageSkill } from './decision/decision-stage.skill';
 import { DecisionReplaySkill } from './decision/decision-replay.skill';
 
 // Skills Registry Service
+import { Skill as SkillContract } from './interfaces/skill.interface';
 import { SkillsRegistryService } from './services/skills-registry.service';
 import { SkillScannerService } from './services/skill-scanner.service';
+import { SkillExecutionRecorderService } from './services/skill-execution-recorder.service';
 import { SKILLS_REGISTRY_TOKEN } from './services/skills-registry.token';
 
 // HITL Skills
@@ -231,7 +228,6 @@ import {
   SKILL_INTENT_RECOGNIZE,
   SKILL_DECISION_LOG_APPEND,
   SKILL_CONTEXT_EVALUATE,
-  SKILL_CONTEXT_REGRESSION_TESTS,
   SKILL_READINESS_CHECK_VISA_WINDOW,
   SKILL_TRIP_QUICK_EVALUATE,
   SKILL_DECISION_ABU_CHECK,
@@ -278,7 +274,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     // 默认禁用 RouteDirectionsModule（避免启动阻塞），除非明确设置 ENABLE_ROUTE_DIRECTIONS_MODULE=true
     ...(process.env.ENABLE_ROUTE_DIRECTIONS_MODULE === 'true' ? [forwardRef(() => RouteDirectionsModule)] : []),
     ...(enableReadinessModule ? [forwardRef(() => ReadinessModule)] : []), // 使用 forwardRef 避免与 ReadinessModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> SkillsModule -> ReadinessModule）
-    ...(enableTripsModule ? [forwardRef(() => TripsModule)] : []), // 使用 forwardRef 避免与 TripsModule 的循环依赖（TripsModule -> DecisionModule -> SkillsModule -> TripsModule）
+    ...(enableTripsModule ? [forwardRef(() => TripsModule), ItineraryItemsModule] : []), // 使用 forwardRef 避免与 TripsModule 的循环依赖（TripsModule -> DecisionModule -> SkillsModule -> TripsModule）
     ...(enableContextEngineModule ? [forwardRef(() => ContextEngineModule)] : []), // 使用 forwardRef 避免循环依赖，默认启用
     forwardRef(() => TransportModule), // 导入 TransportModule 以支持 TransportSearchSkill 使用 TransportRoutingService
     PrismaModule, // 导入 PrismaModule 以支持 ApprovalStorageService 使用数据库
@@ -331,13 +327,8 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     WorldModelVersionService, // 世界模型版本管理服务
     WorldModelEventsService, // 世界模型事件服务（Code Review P2-3修复）
     WorldModelMonitoringService, // 世界模型监控服务（Code Review P2-4修复）
-    // 护城河扩展World Skills（使用@Skill装饰器自动注册）
-    WorldRealtimeWeatherSkill,
+    // 护城河扩展World Skills（PM 未注册 5 个实验 skill，见 skill-deprecation-decisions.json）
     WorldWeatherPredictionSkill,
-    WorldFailureRiskPredictionSkill,
-    WorldAdaptiveParametersSkill,
-    WorldMultimodalPerceptionSkill,
-    WorldCollaborativeDataSkill,
 
     // 冰岛特定 World Skills (Phase 6 - Avalanche Risk Integration)
     RoadStatusRealtimeService,
@@ -356,8 +347,6 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     IcelandRoadSurfaceAlertsSkill,
     IcelandRouteFeasibilitySkill,
     IcelandGasEvChargePlannerSkill,
-    IcelandStormReroutingEngineSkill,
-    IcelandAlternativeValidatorSkill,
     AvalancheRiskAssessmentSkill,
 
     // Decision Skills
@@ -402,6 +391,9 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ...(enableTripsModule
       ? [
           TripQuickEvaluateSkill,
+          TripLoadSkill,
+          TripApplyEditSkill,
+          TripDeleteItemSkill,
           { provide: SKILL_TRIP_QUICK_EVALUATE, useExisting: TripQuickEvaluateSkill },
         ]
       : []),
@@ -437,7 +429,6 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
           ContextBuildSkill,
           ContextCompressSkill,
           ContextEvaluateSkill,
-          ContextRegressionTestsSkill,
           PlanSelectSlicesSkill,
           ContextCompilePackageSkill,
         ]
@@ -449,7 +440,6 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
           { provide: SKILL_CONTEXT_BUILD, useExisting: ContextBuildSkill },
           { provide: SKILL_CONTEXT_COMPRESS, useExisting: ContextCompressSkill },
           { provide: SKILL_CONTEXT_EVALUATE, useExisting: ContextEvaluateSkill },
-          { provide: SKILL_CONTEXT_REGRESSION_TESTS, useExisting: ContextRegressionTestsSkill },
           { provide: SKILL_PLAN_SELECT_SLICES, useExisting: PlanSelectSlicesSkill },
         ]
       : []),
@@ -467,6 +457,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     // Registry
     SkillsRegistryService,
     SkillScannerService,
+    SkillExecutionRecorderService,
     { provide: SKILLS_REGISTRY_TOKEN, useExisting: SkillsRegistryService },
     
     // HITL Skills (使用 @Skill() 装饰器自动注册)
@@ -549,18 +540,13 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
   ],
   exports: [
     SkillsRegistryService,
+    SkillExecutionRecorderService,
     SKILLS_REGISTRY_TOKEN,
     // AgentController (route_and_run); provider is declared in this module.
     HotspotRegistryService,
     ...(enableReadinessModule ? [DemGetProfileSkill] : []),
     WorldBuildContextSkill,
-    // 护城河扩展World Skills
-    WorldRealtimeWeatherSkill,
     WorldWeatherPredictionSkill,
-    WorldFailureRiskPredictionSkill,
-    WorldAdaptiveParametersSkill,
-    WorldMultimodalPerceptionSkill,
-    WorldCollaborativeDataSkill,
     ...(enableDecisionSkills
       ? [
           DecisionAbuCheckSkill,
@@ -575,7 +561,9 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ...(enableReadinessChecklistSkill && enableReadinessModule
       ? [ReadinessGenerateChecklistSkill, ReadinessSummarizeRisksSkill, ReadinessCheckVisaWindowSkill]
       : []),
-    ...(enableTripsModule ? [TripQuickEvaluateSkill] : []),
+    ...(enableTripsModule
+      ? [TripQuickEvaluateSkill, TripLoadSkill, TripApplyEditSkill, TripDeleteItemSkill]
+      : []),
     CountryPackNewSkeletonSkill,
     CountryPackValidateSkill,
     CountryPackGenerateRegressionTestsSkill,
@@ -587,7 +575,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     RoutePackValidateSkill,
     RoutePackGenerateRegressionTestsSkill,
     ...(enableContextEngineModule
-      ? [ContextBuildSkill, ContextCompressSkill, ContextEvaluateSkill, ContextRegressionTestsSkill, PlanSelectSlicesSkill]
+      ? [ContextBuildSkill, ContextCompressSkill, ContextEvaluateSkill, PlanSelectSlicesSkill]
       : []),
     ToolsSelectSkill,
     IntentRecognizeSkill,
@@ -661,8 +649,6 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     IcelandRoadSurfaceAlertsSkill,
     IcelandRouteFeasibilitySkill,
     IcelandGasEvChargePlannerSkill,
-    IcelandStormReroutingEngineSkill,
-    IcelandAlternativeValidatorSkill,
 
     // Plan Skills - Evidence
     PlanEvidenceBuildEnvelopeSkill,
@@ -732,12 +718,41 @@ export class SkillsModule {
     @Optional() private readonly icelandWeatherSeverityClassifierSkill?: IcelandWeatherSeverityClassifierSkill,
     @Optional() private readonly icelandRouteFeasibilitySkill?: IcelandRouteFeasibilitySkill,
     @Optional() private readonly icelandGasEvChargePlannerSkill?: IcelandGasEvChargePlannerSkill,
-    @Optional() private readonly icelandStormReroutingEngineSkill?: IcelandStormReroutingEngineSkill,
-    @Optional() private readonly icelandAlternativeValidatorSkill?: IcelandAlternativeValidatorSkill,
     @Optional() private readonly worldStateSummarizeSkill?: WorldStateSummarizeSkill,
     @Optional() private readonly readinessAssessSkill?: ReadinessAssessSkill,
     @Optional() private readonly policyResolveSkill?: PolicyResolveSkill,
     @Optional() private readonly decisionCompressSkill?: DecisionCompressSkill,
+    @Optional() private readonly decisionCheckApprovalSkill?: DecisionCheckApprovalSkill,
+    @Optional() private readonly decisionRequestApprovalSkill?: DecisionRequestApprovalSkill,
+    @Optional() private readonly icelandTunnelProtocolSkill?: IcelandTunnelProtocolSkill,
+    @Optional() private readonly icelandRoadSurfaceAlertsSkill?: IcelandRoadSurfaceAlertsSkill,
+    @Optional() private readonly planArchitectGenerateSkeletonSkill?: PlanArchitectGenerateSkeletonSkill,
+    @Optional() private readonly planArchitectCompareOptionsSkill?: PlanArchitectCompareOptionsSkill,
+    @Optional() private readonly planArchitectCommitOptionSkill?: PlanArchitectCommitOptionSkill,
+    @Optional() private readonly planBudgetEstimateBaselineSkill?: PlanBudgetEstimateBaselineSkill,
+    @Optional() private readonly planBudgetDetectOverrunSkill?: PlanBudgetDetectOverrunSkill,
+    @Optional() private readonly planBudgetProposeTradeoffsSkill?: PlanBudgetProposeTradeoffsSkill,
+    @Optional() private readonly planTransitBuildTransferGraphSkill?: PlanTransitBuildTransferGraphSkill,
+    @Optional() private readonly planTransitSuggestModesSkill?: PlanTransitSuggestModesSkill,
+    @Optional() private readonly planTransitGeneratePlanBSkill?: PlanTransitGeneratePlanBSkill,
+    @Optional() private readonly planPaceComputeTimeWindowsSkill?: PlanPaceComputeTimeWindowsSkill,
+    @Optional() private readonly planPaceFatigueScoreSkill?: PlanPaceFatigueScoreSkill,
+    @Optional() private readonly planPaceAdjustScheduleSkill?: PlanPaceAdjustScheduleSkill,
+    @Optional() private readonly planEvidenceBuildEnvelopeSkill?: PlanEvidenceBuildEnvelopeSkill,
+    @Optional() private readonly planConstraintsDetectConflictsSkill?: PlanConstraintsDetectConflictsSkill,
+    @Optional() private readonly planConstraintsArbitrateTradeoffsSkill?: PlanConstraintsArbitrateTradeoffsSkill,
+    @Optional() private readonly planLogAppendDecisionSkill?: PlanLogAppendDecisionSkill,
+    @Optional() private readonly execRemindSkill?: ExecRemindSkill,
+    @Optional() private readonly execHandleChangeSkill?: ExecHandleChangeSkill,
+    @Optional() private readonly execFallbackSkill?: ExecFallbackSkill,
+    @Optional() private readonly detailUnderstandStatusSkill?: DetailUnderstandStatusSkill,
+    @Optional() private readonly detailAnalyzeHealthSkill?: DetailAnalyzeHealthSkill,
+    @Optional() private readonly detailExplainDecisionSkill?: DetailExplainDecisionSkill,
+    @Optional() private readonly detailShowEvidenceSkill?: DetailShowEvidenceSkill,
+    @Optional() private readonly tripLoadSkill?: TripLoadSkill,
+    @Optional() private readonly tripApplyEditSkill?: TripApplyEditSkill,
+    @Optional() private readonly tripDeleteItemSkill?: TripDeleteItemSkill,
+    @Optional() private readonly worldWeatherPredictionSkill?: WorldWeatherPredictionSkill,
   ) {
     this.logger.log('[SkillsModule] 构造函数开始执行...');
     
@@ -890,14 +905,6 @@ export class SkillsModule {
       this.skillsRegistry.registerSkill(this.icelandGasEvChargePlannerSkill);
       this.logger.debug('Registered IcelandGasEvChargePlannerSkill');
     }
-    if (this.icelandStormReroutingEngineSkill) {
-      this.skillsRegistry.registerSkill(this.icelandStormReroutingEngineSkill);
-      this.logger.debug('Registered IcelandStormReroutingEngineSkill');
-    }
-    if (this.icelandAlternativeValidatorSkill) {
-      this.skillsRegistry.registerSkill(this.icelandAlternativeValidatorSkill);
-      this.logger.debug('Registered IcelandAlternativeValidatorSkill');
-    }
 
     if (this.worldStateSummarizeSkill) {
       this.skillsRegistry.registerSkill(this.worldStateSummarizeSkill);
@@ -916,6 +923,43 @@ export class SkillsModule {
       this.logger.debug('Registered DecisionCompressSkill');
     }
 
+    this.registerSkillsIfPresent(
+      [
+        this.decisionCheckApprovalSkill,
+        this.decisionRequestApprovalSkill,
+        this.icelandTunnelProtocolSkill,
+        this.icelandRoadSurfaceAlertsSkill,
+        this.planArchitectGenerateSkeletonSkill,
+        this.planArchitectCompareOptionsSkill,
+        this.planArchitectCommitOptionSkill,
+        this.planBudgetEstimateBaselineSkill,
+        this.planBudgetDetectOverrunSkill,
+        this.planBudgetProposeTradeoffsSkill,
+        this.planTransitBuildTransferGraphSkill,
+        this.planTransitSuggestModesSkill,
+        this.planTransitGeneratePlanBSkill,
+        this.planPaceComputeTimeWindowsSkill,
+        this.planPaceFatigueScoreSkill,
+        this.planPaceAdjustScheduleSkill,
+        this.planEvidenceBuildEnvelopeSkill,
+        this.planConstraintsDetectConflictsSkill,
+        this.planConstraintsArbitrateTradeoffsSkill,
+        this.planLogAppendDecisionSkill,
+        this.execRemindSkill,
+        this.execHandleChangeSkill,
+        this.execFallbackSkill,
+        this.detailUnderstandStatusSkill,
+        this.detailAnalyzeHealthSkill,
+        this.detailExplainDecisionSkill,
+        this.detailShowEvidenceSkill,
+        this.tripLoadSkill,
+        this.tripApplyEditSkill,
+        this.tripDeleteItemSkill,
+        this.worldWeatherPredictionSkill,
+      ],
+      'manifest-only Skills',
+    );
+
     // 临时在构造函数中执行扫描（延迟到下一个 tick，确保依赖已初始化）
     // TODO: 如果应用上下文能成功创建，说明问题确实在 onModuleInit
     const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
@@ -929,6 +973,19 @@ export class SkillsModule {
       });
     }
     this.logger.log('[SkillsModule] 构造函数执行完成');
+  }
+
+  private registerSkillsIfPresent(skills: (SkillContract | undefined)[], label: string): void {
+    let count = 0;
+    for (const skill of skills) {
+      if (skill) {
+        this.skillsRegistry.registerSkill(skill);
+        count++;
+      }
+    }
+    if (count > 0) {
+      this.logger.log(`[SkillsModule] Registered ${count} ${label}`);
+    }
   }
 
   /**

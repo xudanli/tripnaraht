@@ -41,7 +41,7 @@ export class PlanTransitGeneratePlanBSkill implements Skill<PlanTransitGenerateP
 
   metadata = {
     name: 'plan.transit.generatePlanB',
-    description: '为高风险段生成 Plan B（替代城市、替代交通、替代时间窗）',
+    description: '为 plan transit 高风险段生成 Plan B（替代城市/交通/时间窗）。在 buildTransferGraph 标记不可达段后需备选方案时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

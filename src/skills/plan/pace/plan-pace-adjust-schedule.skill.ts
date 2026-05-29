@@ -54,7 +54,7 @@ export class PlanPaceAdjustScheduleSkill implements Skill<PlanPaceAdjustSchedule
 
   metadata = {
     name: 'plan.pace.adjustSchedule',
-    description: '根据用户反馈调整节奏（太累/太赶），不破坏主线',
+    description: 'plan.pace.adjustSchedule：根据用户反馈 adjust plan 节奏（太累/太赶），不破坏主线。在用户反馈 pace 过载/过赶且已有 planState 时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

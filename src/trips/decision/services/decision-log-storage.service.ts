@@ -9,6 +9,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PrometheusMetricsService } from '../../../monitoring/prometheus-metrics.service';
+import { buildAxiomMatchContext } from '../../../agent/axioms/build-axiom-match-context.util';
 import { matchAxioms, pickDominantAxiom } from '../../../agent/axioms/axiom-matchers';
 import {
   analyzeDecisionLogTraceability,
@@ -299,7 +300,7 @@ export class DecisionLogStorageService {
         const ax = (() => {
           try {
             if (!requestMessage) return undefined;
-            const matches = matchAxioms({ message: requestMessage, constraints: undefined });
+            const matches = matchAxioms(buildAxiomMatchContext({ message: requestMessage }));
             return pickDominantAxiom(matches);
           } catch {
             return undefined;

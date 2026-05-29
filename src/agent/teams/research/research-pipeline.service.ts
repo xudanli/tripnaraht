@@ -598,6 +598,7 @@ export class ResearchPipelineService implements IResearchExecutor {
         tripPlanRequest: trip,
         researchAtomicRollbackSnapshot: ctx.researchAtomicRollbackSnapshot,
         userCognitiveProfile: ctx.userCognitiveProfile,
+        dso,
         ...(bucket ? { budgetBucket: bucket } : {}),
         ...(emo ? { userEmotionalAccount: emo } : {}),
       };

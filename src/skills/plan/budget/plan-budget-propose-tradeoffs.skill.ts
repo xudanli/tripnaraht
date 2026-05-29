@@ -41,7 +41,8 @@ export class PlanBudgetProposeTradeoffsSkill implements Skill<PlanBudgetProposeT
 
   metadata: SkillMetadata = {
     name: 'plan.budget.proposeTradeoffs',
-    description: '给出"最小牺牲"的降本方案，不破坏路线哲学',
+    description:
+      'plan.budget.proposeTradeoffs：提出 plan 最小牺牲的降本 tradeoff 方案，保持路线哲学。在 budget.detectOverrun 报超支且需可选减负方案时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

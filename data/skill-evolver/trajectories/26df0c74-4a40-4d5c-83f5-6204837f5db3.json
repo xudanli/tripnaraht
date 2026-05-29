@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "26df0c74-4a40-4d5c-83f5-6204837f5db3",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "localized-fallback-chain",
+  "strategy": {
+    "strategyId": "localized-fallback-chain",
+    "philosophy": "局部容错，在证据缺失时尝试其他数据源",
+    "approach": "步骤1完成后，若发现DEM Evidence缺失，不立即REJECT，而是依次检查：1) 是否有历史DEM缓存；2) 是否有用户上传的替代高程数据；3) 是否有第三方API可临时获取。若均无，则执行REJECT。",
+    "emphasis": "数据利用最大化与任务完成率，避免过早拒绝",
+    "risk": "高风险：依赖外部数据可能引入延迟或错误，且若所有后备均失败，最终仍需REJECT，增加处理时间"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户表示7月要去冰岛高地，符合夏季高地路线条件。按照编排规则，首先确认季节与强度偏好。接下来需要检查DEM Evidence，但根据任务设定，DEM Evidence缺失。按照执行策略，依次检查历史DEM缓存、用户上传替代高程数据、第三方API，均无可用数据，因此必须执行REJECT，最终allowed=false。",
+      "action": "REJECT",
+      "result": "[完成] REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:18:26.380Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:18:26.380Z",
+  "score": 56.92,
+  "evalMode": "fixture"
+}

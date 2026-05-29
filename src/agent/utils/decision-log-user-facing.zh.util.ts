@@ -286,8 +286,107 @@ export function formatFeedbackInputsZh(): string {
   return '将本轮结构化决策写入训练/反馈队列（不影响你看到的行程正文）';
 }
 
-export function formatHallucinationOutputsZh(total: number, verified: number, risks: number): string {
-  return `对叙述文案做了事实抽查：共抽取 ${total} 条陈述，其中 ${verified} 条与证据一致；仍有 ${risks} 条存在不确定性（已标注或弱化）。`;
+/** 幻觉检测 decision_log 中可折叠展示的抽查样例行 */
+export type HallucinationAuditSampleRowZh = {
+  excerpt_zh: string;
+  /** 与证据一致 / 已标注存疑 / 已从叙述移除或弱化 等 */
+  outcome_zh: string;
+};
+
+export type HallucinationOutputsDetailZh = {
+  /** 已从叙述移除或弱化的陈述条数（与 statistics.removedClaims 对齐） */
+  removedCount?: number;
+  durationMs?: number;
+  /** 最多展示若干条，避免 decision_log 过长 */
+  sampleRows?: HallucinationAuditSampleRowZh[];
+};
+
+function truncateHallucinationExcerpt(text: string, maxLen: number): string {
+  const s = String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!s) return '（空）';
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+/**
+ * 为统一入口生成「抽查摘录」：优先展示风险项，再补充高置信的一致项。
+ */
+export function buildHallucinationAuditSampleRowsZh(params: {
+  verifiedClaims: ReadonlyArray<{ text: string; verified: boolean; confidence?: number }>;
+  riskClaims: ReadonlyArray<{ text: string; action: string; confidence?: number }>;
+  maxRows?: number;
+  excerptMaxLen?: number;
+}): HallucinationAuditSampleRowZh[] {
+  const maxRows = params.maxRows ?? 5;
+  const excerptMaxLen = params.excerptMaxLen ?? 88;
+  const riskSet = new Set(params.riskClaims.map((r) => String(r.text ?? '').trim()));
+  const rows: HallucinationAuditSampleRowZh[] = [];
+
+  for (const r of params.riskClaims) {
+    if (rows.length >= maxRows) break;
+    const action = String(r.action ?? '').trim();
+    const outcomeZh =
+      action === 'REMOVE'
+        ? '已从叙述移除或弱化'
+        : action === 'FLAG'
+          ? '已标注存疑'
+          : action
+            ? `处置「${action}」`
+            : '已标记待复核';
+    rows.push({
+      excerpt_zh: truncateHallucinationExcerpt(r.text, excerptMaxLen),
+      outcome_zh: outcomeZh,
+    });
+  }
+
+  const okPool = params.verifiedClaims.filter(
+    (c) => c.verified && !riskSet.has(String(c.text ?? '').trim()),
+  );
+  const sortedOk = [...okPool].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+  for (const c of sortedOk) {
+    if (rows.length >= maxRows) break;
+    const conf =
+      typeof c.confidence === 'number' && !Number.isNaN(c.confidence)
+        ? `模型置信约 ${(c.confidence * 100).toFixed(0)}%`
+        : '';
+    rows.push({
+      excerpt_zh: truncateHallucinationExcerpt(c.text, excerptMaxLen),
+      outcome_zh: conf ? `与证据一致（${conf}）` : '与证据一致',
+    });
+  }
+
+  return rows;
+}
+
+export function formatHallucinationOutputsZh(
+  total: number,
+  verified: number,
+  risks: number,
+  detail?: HallucinationOutputsDetailZh,
+): string {
+  const removed = Math.max(0, Math.min(risks, detail?.removedCount ?? 0));
+  const flagged = Math.max(0, risks - removed);
+
+  let head = `对叙述文案做了事实抽查：共抽取 ${total} 条可核对陈述，其中 ${verified} 条与检索证据一致；`;
+  if (risks === 0) {
+    head += '未发现需额外标注或移除的高风险陈述。';
+  } else {
+    head += `${flagged} 条已标注存疑或弱化措辞，${removed} 条已从叙述中移除或改写。`;
+  }
+
+  const tail: string[] = [];
+  if (detail?.durationMs !== undefined && detail.durationMs >= 0) {
+    tail.push(`本步耗时约 ${detail.durationMs}ms。`);
+  }
+  if (detail?.sampleRows?.length) {
+    const segs = detail.sampleRows.map(
+      (r, i) => `「样例${i + 1}·${r.outcome_zh}」${r.excerpt_zh}`,
+    );
+    tail.push(`抽查摘录：${segs.join(' ')}`);
+  }
+  return tail.length ? `${head}${tail.join('')}` : head;
 }
 
 export function formatHallucinationInputsZh(): string {

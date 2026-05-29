@@ -47,6 +47,12 @@ import {
 } from './utils/trip-prompt-summary.util';
 import { BookingComIntegrationService } from '../mcp/booking-com-integration.service';
 import { RouteDirectionsService } from '../route-directions/route-directions.service';
+import {
+  mergeTripMetadata,
+  assertMetadataSizeLimit,
+  validateHikingMetadataFields,
+  validateHikingSegmentHikePlanRefs,
+} from './utils/embedded-hiking-trip-metadata.util';
 import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { DecisionState } from '../decision/kernel/decision-state.types';
@@ -355,6 +361,15 @@ export class TripsService {
       };
     }
 
+    if (dto.metadata && typeof dto.metadata === 'object') {
+      Object.assign(metadata, dto.metadata);
+      validateHikingMetadataFields(metadata, {
+        startDate: start.toJSDate(),
+        endDate: end.toJSDate(),
+      });
+      assertMetadataSizeLimit(metadata);
+    }
+
     // ============================================
     // 步骤 4: 写入数据库 (使用 Transaction 保证原子性)
     // ============================================
@@ -423,6 +438,10 @@ export class TripsService {
         },
       };
     });
+
+    if (dto.metadata && typeof dto.metadata === 'object') {
+      await validateHikingSegmentHikePlanRefs(result.id, metadata, this.prisma);
+    }
 
     // 专利实施例：写入初始 DSO 到 Trip.metadata，供 REPLAN/反馈/世界模型推送使用
     if (this.dsoFeedbackPersistence) {
@@ -811,11 +830,21 @@ export class TripsService {
     const hasMeta = dtoWithMeta.metadata !== undefined && typeof dtoWithMeta.metadata === 'object';
     if (hasTravelers || hasMeta) {
       const existing = (existingTrip.metadata as Record<string, unknown>) || {};
-      updateData.metadata = {
-        ...existing,
+      const patch: Record<string, unknown> = {
         ...(hasTravelers ? { travelers: dto.travelers } : {}),
-        ...(hasMeta ? dtoWithMeta.metadata : {}),
+        ...(hasMeta ? dtoWithMeta.metadata! : {}),
       };
+      const merged = mergeTripMetadata(existing, patch);
+      const nextStart =
+        updateData.startDate ?? existingTrip.startDate;
+      const nextEnd = updateData.endDate ?? existingTrip.endDate;
+      validateHikingMetadataFields(merged, {
+        startDate: nextStart,
+        endDate: nextEnd,
+      });
+      await validateHikingSegmentHikePlanRefs(id, merged, this.prisma);
+      assertMetadataSizeLimit(merged);
+      updateData.metadata = merged;
     }
 
     // 处理状态更新
@@ -1578,7 +1607,9 @@ export class TripsService {
    * @param dateISO 日期（YYYY-MM-DD）
    * @param schedule DayScheduleResult
    */
-  async saveSchedule(tripId: string, dateISO: string, schedule: DayScheduleResult) {
+  async saveSchedule(tripId: string, dateISO: string, scheduleOrBody: DayScheduleResult | unknown) {
+    const schedule = this.scheduleConverter.normalizeDaySchedulePayload(scheduleOrBody, dateISO);
+
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
@@ -1714,6 +1745,21 @@ export class TripsService {
       await tx.tripOfflinePack.deleteMany({
         where: { tripId: id },
       });
+
+      // 4b. 级联删除关联 HikePlan（GPS track 随 HikePlan 级联）
+      const hikePlans = await tx.hikePlan.findMany({
+        where: { tripId: id },
+        select: { id: true },
+      });
+      if (hikePlans.length > 0) {
+        const hikePlanIds = hikePlans.map((p) => p.id);
+        await tx.hikeTrackPoint.deleteMany({
+          where: { hikePlanId: { in: hikePlanIds } },
+        });
+        await tx.hikePlan.deleteMany({
+          where: { tripId: id },
+        });
+      }
 
       // 5. 删除 Trip（其他已设置级联删除的关联会自动删除）
       await tx.trip.delete({

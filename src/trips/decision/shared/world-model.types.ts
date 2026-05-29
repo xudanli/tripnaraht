@@ -15,6 +15,8 @@ import {
   type WeatherObservationEvidence,
 } from '../models/physical-reality.model';
 import { HumanCapabilityModel } from '../models/human-capability.model';
+import type { ExperienceFlowModel } from '../models/experience-flow.model';
+import type { PartyAggregationResult, TravelPartyPersona } from '../models/travel-party-persona.model';
 import { RouteDirectionData } from '../../../route-directions/interfaces/route-direction.interface';
 import { RoutePhilosophy } from '../models/route-philosophy.model';
 
@@ -31,7 +33,7 @@ export interface DemDecisionEvidence {
   maxSlopePct: number;
   rollingAscent3Days: number;  // 与 DemDecisionEvidenceService 保持一致
   fatigueIndex: number;  // 与 DemDecisionEvidenceService 保持一致
-  violation: 'HARD' | 'SOFT' | 'NONE';
+  violation: 'HARD' | 'SOFT' | 'NONE' | 'UNKNOWN';
   explanation: string;  // 与 DemDecisionEvidenceService 保持一致
   metadata?: {
     consecutiveHighAltitudeDays?: number;
@@ -60,7 +62,7 @@ export interface ComplianceEvidence {
   requiresPermit: boolean;
   requiresGuide: boolean;
   valid: boolean;
-  violation: 'HARD' | 'SOFT' | 'NONE';
+  violation: 'HARD' | 'SOFT' | 'NONE' | 'UNKNOWN';
 }
 
 /**
@@ -102,6 +104,13 @@ export interface WorldModelContext {
   /** 路线方向（带哲学模型，必须） */
   routeDirection: RouteDirectionWithPhilosophy;
 
+  /** 体验流（可选） */
+  experienceFlow?: ExperienceFlowModel;
+
+  /** 多人格派对 */
+  partyPersonas?: TravelPartyPersona[];
+  partyAggregation?: PartyAggregationResult;
+
   /** 合规证据（可选，用于 Abu 检查） */
   complianceEvidence?: ComplianceEvidence[];
 
@@ -109,6 +118,13 @@ export interface WorldModelContext {
    * 决策唯一执行语义视图（引擎写入）。Neptune 天气类 issue 优先读此层，而非直接解析 physical.weatherEvidence。
    */
   executionSemanticView?: import('../execution/unified-execution-semantic-view').UnifiedExecutionSemanticView;
+
+  /** CGUS 前置：全局常驻图子图提取结果 */
+  subgraphExtraction?: {
+    prunedNodeIds: string[];
+    cascadeDelayHints: Array<{ edgeId: string; deltaMinutes: number; cause: string }>;
+    stats: { nodeCount: number; edgeCount: number };
+  };
 }
 
 /**
@@ -160,5 +176,7 @@ export interface RoutePlanDraft {
   tripId: string;
   routeDirectionId: string;
   segments: RouteSegment[];
+  /** MAT 6.x：research_data 共识镜像（含 trace signals） */
+  researchDataMirror?: Record<string, unknown>;
 }
 

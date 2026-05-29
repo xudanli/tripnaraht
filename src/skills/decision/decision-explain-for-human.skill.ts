@@ -65,7 +65,7 @@ export class DecisionExplainForHumanSkill implements Skill<DecisionExplainForHum
 
   metadata = {
     name: 'decision.explainForHuman',
-    description: '将技术性的决策日志转换为用户可读的解释，包括三人格的工作说明、风险点和取舍',
+    description: 'decision.explainForHuman：将技术性的决策日志转换为用户可读的解释，包括三人格的工作说明、风险点和取舍',
     version: '1.0.0',
     category: 'decision' as const,
   };

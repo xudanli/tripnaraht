@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "d4f8007a-66fe-4f2a-9747-02ae92dc027a",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "global-batch-precheck-003",
+  "strategy": {
+    "strategyId": "global-batch-precheck-003",
+    "philosophy": "全局预检，批量拒绝降低单次开销",
+    "approach": "在正式编排前，对任务列表进行全局扫描：识别所有 `DEM Evidence missing` 的测试用例（如 `iceland-highlands-dem-missing-001`），批量标记为 REJECT。随后再逐一处理剩余任务，确保已拒绝任务不消耗 Dr.Dre 或 Neptune 资源。",
+    "emphasis": "执行速度与资源效率最大化。通过批量决策减少单次编排上下文切换，同时避免对缺失证据的任务进行不必要的节奏调整或修复。",
+    "risk": "全局预检可能遗漏上下文依赖（如某些任务虽 DEM 缺失，但可通过其他规则（如历史开放季记录）间接推断）。批量拒绝后若发现误判，回滚成本高，且可能违反 `回放断言` 一致性要求。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求在7月去冰岛高地，但根据任务要求，DEM证据缺失时必须REJECT。当前没有提供DEM证据，因此Abu必须拒绝该请求。同时，遵循全局预检策略，直接标记为REJECT，不进行后续的节奏调整或修复。",
+      "action": "REJECT",
+      "result": "[完成] REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:11:18.664Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:11:18.664Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

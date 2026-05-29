@@ -148,7 +148,7 @@ describe('IncrementalItineraryGeneratorService', () => {
       }
     });
 
-    it('POI 少于天数时单日单槽按块状铺开（非 A/B 交替），每日仍为具名 POI', async () => {
+    it('POI 少于天数时单日单槽按块状铺开，且同一 POI 全程最多 2 次', async () => {
       const request = {
         request_id: 'req-sparse',
         destination: 'Iceland',
@@ -167,22 +167,21 @@ describe('IncrementalItineraryGeneratorService', () => {
       );
       for (const d of result.itinerary.days) {
         expect(d.items.length).toBeGreaterThanOrEqual(1);
-        const poiItem = d.items.find((it: any) => it.type === 'POI');
-        expect(poiItem?.location_ref?.name).toMatch(/Alpha景點|Beta景點/);
       }
-      // 2 POIs × 7 days → floor(day*2/7): 前 4 天 p1，后 3 天 p2
-      expect(leadNames.slice(0, 4)).toEqual(['Alpha景點', 'Alpha景點', 'Alpha景點', 'Alpha景點']);
-      expect(leadNames.slice(4)).toEqual(['Beta景點', 'Beta景點', 'Beta景點']);
-      // 连续同日参考点应有复用说明
-      expect(result.itinerary.days[1].items.find((it: any) => it.type === 'POI')?.notes).toBeDefined();
-      const day7 = result.itinerary.days[6];
-      const restPlaceholder = day7.items.some((it: any) => it.type === 'REST' && it.location_ref?.name === '待安排');
-      expect(restPlaceholder).toBe(false);
+      const alphaDays = leadNames.filter((n) => n === 'Alpha景點').length;
+      const betaDays = leadNames.filter((n) => n === 'Beta景點').length;
+      expect(alphaDays).toBeLessThanOrEqual(2);
+      expect(betaDays).toBeLessThanOrEqual(2);
+      expect(
+        result.itinerary.days.some(
+          (d) => d.items.some((it: any) => it.type === 'REST' && it.location_ref?.name === '待安排'),
+        ),
+      ).toBe(true);
     });
 
-    it('sparsePoiDayAllocation=round_robin 时单日单槽按日轮替（用餐/节奏类规划）', async () => {
+    it('round_robin 下同一 POI 全程最多落槽 2 次，其余日为待安排', async () => {
       const request = {
-        request_id: 'req-rr',
+        request_id: 'req-cap',
         destination: 'Iceland',
         days: 7,
         start_date: '2025-07-01',
@@ -194,18 +193,18 @@ describe('IncrementalItineraryGeneratorService', () => {
         minDaysToTrigger: 3,
         sparsePoiDayAllocation: 'round_robin',
       });
-      const leadNames = result.itinerary.days.map(
-        (d) => d.items.find((it: any) => it.type === 'POI')?.location_ref?.name,
-      );
-      expect(leadNames).toEqual([
-        'Alpha景點',
-        'Beta景點',
-        'Alpha景點',
-        'Beta景點',
-        'Alpha景點',
-        'Beta景點',
-        'Alpha景點',
-      ]);
+      const p1Count = result.itinerary.days.filter((d) =>
+        d.items.some((it: any) => it.type === 'POI' && it.location_ref?.name === 'Alpha景點'),
+      ).length;
+      const p2Count = result.itinerary.days.filter((d) =>
+        d.items.some((it: any) => it.type === 'POI' && it.location_ref?.name === 'Beta景點'),
+      ).length;
+      expect(p1Count).toBeLessThanOrEqual(2);
+      expect(p2Count).toBeLessThanOrEqual(2);
+      const restDays = result.itinerary.days.filter((d) =>
+        d.items.some((it: any) => it.type === 'REST' && it.location_ref?.name === '待安排'),
+      ).length;
+      expect(restDays).toBeGreaterThan(0);
     });
 
     it('优先使用 poi_evidence.slots_by_day 作为当日槽位（合并 catalog 中的完整 POI）', async () => {

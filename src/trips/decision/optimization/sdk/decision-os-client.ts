@@ -60,6 +60,8 @@ export interface FeedbackRequest {
   userId: string;
   satisfactionScore?: number;
   actualUtility?: number;
+  /** 决策时给出的期望效用，与 actualUtility 一起用于 prediction regret */
+  predictedUtility?: number;
   explicitFeedback?: {
     type: 'LIKE' | 'DISLIKE' | 'NEUTRAL';
     comment?: string;
@@ -76,6 +78,8 @@ export interface FeedbackResponse {
   learningTriggered: boolean;
   weightsUpdated: boolean;
   newConvergenceStatus?: string;
+  /** [0,1] 单侧预测 regret，仅当请求同时含 predictedUtility 与 actualUtility 时有值 */
+  predictionRegret01?: number;
 }
 
 export interface HealthStatus {

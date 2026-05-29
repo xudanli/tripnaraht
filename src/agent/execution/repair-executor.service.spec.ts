@@ -6,6 +6,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { RepairExecutorService } from './repair-executor.service';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import { ClaudeLocalInsightAgentService } from '../services/sub-agents/local-insight-agent.service';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 
 describe('RepairExecutorService', () => {
   let service: RepairExecutorService;
@@ -18,6 +19,7 @@ describe('RepairExecutorService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RepairExecutorService,
+        ContextSlidingWindowAdapter,
         { provide: SkillsRegistryService, useValue: mockSkillsRegistry },
         { provide: ClaudeLocalInsightAgentService, useValue: mockLocalInsight },
       ],
@@ -74,6 +76,56 @@ describe('RepairExecutorService', () => {
     );
     expect(result.repairApplied).toBe(true);
     expect(result.itinerary?.days).toHaveLength(1);
+  });
+
+  it('当 persona closure 已收敛时应跳过 LocalInsight 与 REPLACE_* repair.apply', async () => {
+    mockSkillsRegistry.getSkill.mockReturnValue({
+      execute: jest.fn().mockResolvedValue({
+        repaired: true,
+        itinerary: { request_id: 'r1', days: [{ date: '2026-06-01', items: [] }] },
+      }),
+    });
+    mockLocalInsight.suggestAlternatives.mockResolvedValue({
+      alternative_pois: [{ id: 'p1' }],
+      alternative_routes: [],
+    });
+
+    const audit = {
+      stopReason: 'ABU_RECHECK_PASS' as const,
+      totalAbuRechecks: 1,
+      iters: [],
+    };
+
+    const result = await service.execute(
+      { verification: { issues: [] } } as any,
+      {
+        requestId: 'r1',
+        tripPlanRequest: { destination: 'Iceland' },
+        gateResult: {
+          gate_result: 'ADJUST_REQUIRED',
+          violations: [],
+          required_adjustments: [
+            { action: 'REPLACE_SEGMENT', why: 'already fixed by Neptune closure' },
+            { action: 'REDUCE_SCOPE', why: 'still needed' },
+          ],
+          confidence: 0.8,
+          persona_closure_audit: audit,
+        },
+        itinerary: { request_id: 'r1', days: [] },
+      },
+    );
+
+    expect(mockLocalInsight.suggestAlternatives).not.toHaveBeenCalled();
+    const repairApply = mockSkillsRegistry.getSkill.mock.results.find(
+      (r) => r.value?.execute,
+    )?.value?.execute;
+    expect(repairApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        adjustments: [{ action: 'REDUCE_SCOPE', why: 'still needed' }],
+      }),
+    );
+    expect(result.repairTraces?.some((t) => t.tacticId === 'PersonaClosureConvergedSkip')).toBe(true);
+    expect(result.repairApplied).toBe(true);
   });
 
   it('当 required_adjustments 含 REDUCE_SCOPE_OR_ADD_EVIDENCE 时应跳过 LocalInsightAgent', async () => {
@@ -191,7 +243,12 @@ describe('RepairExecutorService', () => {
         patch: { segment_id: 'seg-1', encoded_polyline: 'abc', distance_meters: 12345, eta_minutes: 70 },
       }),
     };
-    const s = new (RepairExecutorService as any)(mockSkillsRegistry, mockLocalInsight, terrainEngine);
+    const s = new (RepairExecutorService as any)(
+      new ContextSlidingWindowAdapter(),
+      mockSkillsRegistry,
+      mockLocalInsight,
+      terrainEngine,
+    );
     const dso: any = {
       tripState: { fatigue: 10 }, // low fatigue -> w≈0.9
       verification: {
@@ -235,7 +292,12 @@ describe('RepairExecutorService', () => {
         patch: { segment_id: 'seg-1', encoded_polyline: 'abc', distance_meters: 12345, eta_minutes: 70 },
       }),
     };
-    const s = new (RepairExecutorService as any)(mockSkillsRegistry, mockLocalInsight, terrainEngine);
+    const s = new (RepairExecutorService as any)(
+      new ContextSlidingWindowAdapter(),
+      mockSkillsRegistry,
+      mockLocalInsight,
+      terrainEngine,
+    );
     const dso: any = {
       tripState: { fatigue: 80 }, // high fatigue -> w≈0.2 => effSoft≈6
       verification: {
@@ -278,7 +340,12 @@ describe('RepairExecutorService', () => {
         patch: { segment_id: 'seg-1', encoded_polyline: 'abc', distance_meters: 12345, eta_minutes: 70 },
       }),
     };
-    const s = new (RepairExecutorService as any)(mockSkillsRegistry, mockLocalInsight, terrainEngine);
+    const s = new (RepairExecutorService as any)(
+      new ContextSlidingWindowAdapter(),
+      mockSkillsRegistry,
+      mockLocalInsight,
+      terrainEngine,
+    );
     const dso: any = {
       tripState: { fatigue: 10 },
       verification: {

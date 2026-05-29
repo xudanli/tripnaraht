@@ -4,6 +4,7 @@ import { AgentController } from './agent.controller';
 import { ActionsController } from './actions.controller';
 import { AgentService } from './services/agent.service';
 import { ExecutionGatewayService } from './services/execution-gateway.service';
+import { TripOrchestrationLockService } from './services/trip-orchestration-lock.service';
 import { EcpsRuntimeBiasService } from './services/ecps-runtime-bias.service';
 import { ExecutionPolicyVersionRegistryService } from './services/execution-policy-version-registry.service';
 import { PolicyAgentPopulationService } from './services/policy-agent-population.service';
@@ -70,6 +71,7 @@ import { TripDetailAgentService } from './services/trip-detail-agent.service';
 import { ExecutionController } from './execution.controller';
 import { TripDetailController } from './trip-detail.controller';
 import { PlanningWorkbenchController } from './planning-workbench.controller';
+import { PlanningWorkbenchAdminController } from './planning-workbench-admin.controller';
 import { AgentAdminController } from './agent-admin.controller';
 import { DecisionReplayController } from './controllers/decision-replay.controller';
 import { AgentRunAdminService } from './services/agent-run-admin.service';
@@ -89,6 +91,8 @@ import { CbrRepository } from './cbr/cbr.repository';
 import { CbrAggregatorService } from './cbr/cbr-aggregator.service';
 import { JepaProjectorService } from './services/jepa-projector.service';
 import { RouteAndRunResponseAssemblerService } from './services/route-and-run-response-assembler.service';
+import { GuardiansDebateService } from './services/guardians-debate.service';
+import { ItinerarySlotPolisherService } from './services/itinerary-slot-polisher.service';
 import { RouteRunItineraryPoiHydratorService } from './services/route-run-itinerary-poi-hydrator.service';
 import { TradeoffEngineService } from './services/tradeoff-engine.service';
 import { NegotiationNarratorService } from './services/negotiation-narrator.service';
@@ -112,6 +116,26 @@ import { PlanningRequestClassifierService } from './services/planning-request-cl
 import { DecisionReplayService } from './services/decision-replay.service';
 import { UserStandingPreferenceService } from './services/user-standing-preference.service';
 import { RouteAndRunContextEnricherService } from './services/route-and-run-context-enricher.service';
+import { DecisionOsContextAssemblerService } from './runtime/decision-os-context-assembler.service';
+import { DecisionOsExecutionContextStore } from './runtime/decision-os-execution-context.store';
+import { DecisionRuntimeKernelService } from './runtime/decision-runtime-kernel.service';
+import { RouteAndRunTaskProgressReporter } from './runtime/route-and-run-task-progress.reporter';
+import { RouteAndRunAsyncTaskStore } from './services/route-and-run-async-task.store';
+import { RouteAndRunAsyncService } from './services/route-and-run-async.service';
+import { RouteAndRunAsyncDelegationService } from './services/route-and-run-async-delegation.service';
+import { LocalRouteAndRunTaskEventBus } from './services/local-route-and-run-task-event.bus';
+import { RouteAndRunTaskStreamService } from './services/route-and-run-task-stream.service';
+import { RouteAndRunTaskStreamRegistry } from './services/route-and-run-task-stream.registry';
+import { RouteAndRunTaskStreamMetricsService } from './services/route-and-run-task-stream-metrics.service';
+import { RouteAndRunTaskLifecycleService } from './services/route-and-run-task-lifecycle.service';
+import { RedisPubSubRouteAndRunTaskEventBus } from './services/redis-pub-sub-route-and-run-task-event.bus';
+import { routeAndRunRedisPubSubProviders } from './redis/route-and-run-redis-pubsub.providers';
+import { routeAndRunTaskEventBusProvider } from './providers/route-and-run-task-event-bus.provider';
+import { CacheModule } from '../common/cache/cache.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { LlmIntentCompilerService } from './runtime/llm-intent-compiler.service';
+import { DecisionOsGrayRouterService } from './runtime/decision-os-gray-router.service';
+import { RouteRunRequestFitnessHydratorService } from './memory/services/route-run-request-fitness-hydrator.service';
 import { SkillsModule } from '../skills/skills.module';
 import { GovernanceModule } from '../governance/governance.module';
 // 子 Agent 服务（Claude 编排）
@@ -138,6 +162,7 @@ import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
 import { AmadeusDirectModule } from '../mcp/amadeus-direct.module';
 import { FlightMcpModule } from '../mcp/flight-mcp.module';
 import { RedisModule } from '../redis/redis.module';
+import { AgentContextModule } from './context/agent-context.module';
 import { RoadIsModule } from '../infrastructure/external/road-is/road-is.module';
 import { DecisionContractCapturerService } from './services/decision-contract-capturer.service';
 import { AgentActionReconcilerService } from './services/agent-action-reconciler.service';
@@ -174,6 +199,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     GovernanceModule,
     AssistantsModule, // 智能体助手模块（规划助手、行程助手）
     AgentInfraModule, // Infra 层（LLMExecutor、CoreGateway）
+    CacheModule, // 异步 route_and_run 任务进度（task_progress:*）
+    EventEmitterModule.forRoot({ wildcard: false, maxListeners: 32 }),
     RouteDirectionsModule, // 路线方向模块（用于信息卡片）
     DataModelingModule, // 数据建模模块（用于不确定性建模）
     PrismaModule, // Prisma 模块（用于数据库访问）
@@ -186,6 +213,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     AmadeusDirectModule, // Amadeus REST（轻量 path：航班库存 sensor）
     FlightMcpModule, // Flight MCP（Smithery/Kiwi，与 Amadeus 二选一或回退）
     RedisModule, // research prior 快照（可选 Redis；MCP 模式下为内存 cache）
+    AgentContextModule, // P1-a：recent_messages 滑动窗口适配器（消费端迁移见 P1-b）
     forwardRef(() => AuthModule), // AdminStrictAuthGuard（replay 锚点 admin API）
     RoadIsModule, // ontology 区域 → Road.is / segment 缓存路况（轻量问答硬锚点附录）
   ],
@@ -193,6 +221,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     AgentController,
     ActionsController,
     PlanningWorkbenchController,
+    PlanningWorkbenchAdminController,
     ExecutionController,
     TripDetailController,
     AgentAdminController,
@@ -200,6 +229,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
   ],
   providers: [
     ExecutionGatewayService,
+    TripOrchestrationLockService,
     EcpsRuntimeBiasService,
     ExecutionPolicyVersionRegistryService,
     PolicyAgentPopulationService,
@@ -259,6 +289,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     DecisionContractCapturerService,
     JepaProjectorService,
     RouteRunItineraryPoiHydratorService,
+    GuardiansDebateService,
+    ItinerarySlotPolisherService,
     RouteAndRunResponseAssemblerService,
     TravelTimeResolverService,
     TradeoffEngineService,
@@ -282,6 +314,24 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     DecisionReplayService,
     UserStandingPreferenceService,
     RouteAndRunContextEnricherService,
+    DecisionOsContextAssemblerService,
+    DecisionOsExecutionContextStore,
+    DecisionRuntimeKernelService,
+    RouteAndRunTaskProgressReporter,
+    RouteAndRunAsyncTaskStore,
+    RouteAndRunAsyncService,
+    RouteAndRunAsyncDelegationService,
+    ...routeAndRunRedisPubSubProviders,
+    LocalRouteAndRunTaskEventBus,
+    RedisPubSubRouteAndRunTaskEventBus,
+    routeAndRunTaskEventBusProvider,
+    RouteAndRunTaskStreamService,
+    RouteAndRunTaskStreamRegistry,
+    RouteAndRunTaskStreamMetricsService,
+    RouteAndRunTaskLifecycleService,
+    LlmIntentCompilerService,
+    DecisionOsGrayRouterService,
+    RouteRunRequestFitnessHydratorService,
     StrategyConflictOptionsService,
     ClarificationHandlerService,
     ResearchPriorSnapshotService,
@@ -292,6 +342,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     // TokenStatsService 已移至 AgentInfraModule
   ],
   exports: [
+    AgentContextModule,
     AgentService,
     ActionRegistryService,
     TripNaraSystemPromptService,

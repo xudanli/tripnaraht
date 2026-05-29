@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "787c581a-9648-45d9-911d-4fda51722683",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "contextual-validate-then-reject",
+  "strategy": {
+    "strategyId": "contextual-validate-then-reject",
+    "philosophy": "验证后拒绝，避免误判",
+    "approach": "先收集用户季节与强度偏好（遵循技能步骤1），然后检查 DEM 证据是否缺失。若缺失，则输出 REJECT 并附上解释‘由于缺乏数字高程模型证据，无法验证高地路线可行性’。保留用户输入上下文以备后续进化。",
+    "emphasis": "准确性与用户沟通完整性，牺牲少量速度。",
+    "risk": "在 DEM 缺失场景下增加了不必要的交互轮次，但降低了因过早拒绝而忽略用户其他需求的概率。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户表明7月去冰岛高地，符合夏季条件。按照步骤1已收集季节（7月）和强度偏好（未明确但暗示高地）。按照执行策略，我需要检查DEM证据是否缺失。当前上下文中无DEM数据，因此缺失。根据规则，应输出REJECT并附上解释。最终结果中需体现final allowed=false。",
+      "action": "REJECT 由于缺乏数字高程模型证据，无法验证高地路线可行性。",
+      "result": "[完成] REJECT 由于缺乏数字高程模型证据，无法验证高地路线可行性。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T06:26:33.151Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T06:26:33.151Z",
+  "score": 56.92,
+  "evalMode": "fixture"
+}

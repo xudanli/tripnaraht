@@ -26,7 +26,7 @@ export class ReadinessAssessSkill implements Skill<ReadinessAssessInput, Readine
   metadata = {
     name: 'readiness.assess',
     description:
-      'OS: 执行门控 — 根据车辆/天气/路线/日照/经验判断是否可执行，输出 executable、blockers、warnings、mitigationActions。',
+      'readiness.assess：OS: 执行门控 — 根据车辆/天气/路线/日照/经验判断是否可执行，输出 executable、blockers、warnings、mitigationActions。',
     version: '1.0.0',
     category: 'readiness' as const,
     toolGroup: 'CONTEXT' as const,

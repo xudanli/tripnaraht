@@ -59,6 +59,7 @@ import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags
 import { CapabilityPackChecklistService, AddFromCapabilityPackRequest } from './services/capability-pack-checklist.service';
 import { RiskTypeMapperService } from './services/risk-type-mapper.service';
 import { CoverageMapService } from './services/coverage-map.service';
+import { ReadinessAutoRepairService } from './services/readiness-auto-repair.service';
 import { UpdateChecklistStatusDto } from './dto/checklist-status.dto';
 import {
   MarkNotApplicableDto,
@@ -303,6 +304,7 @@ export class ReadinessController {
     private readonly userDecisionService: UserDecisionService,
     private readonly constraintsCompiler: ReadinessToConstraintsCompiler,
     private readonly coverageMapService: CoverageMapService,
+    private readonly readinessAutoRepairService: ReadinessAutoRepairService,
     private readonly riskTypeMapperService: RiskTypeMapperService,
     private readonly moduleRef: ModuleRef,
   ) {
@@ -1904,6 +1906,112 @@ export class ReadinessController {
         return errorResponse(ErrorCode.NOT_FOUND, err.message);
       }
       this.logger.error(`Failed to get repair options: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Post('auto-repair')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '自动修复准备度阻塞项',
+    description:
+      '批量处理阻塞项：先刷新证据（冰岛行程拉取天气/路况），再按修复选项自动执行。返回修复前后分数。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tripId'],
+      properties: {
+        tripId: { type: 'string' },
+        blockerIds: { type: 'array', items: { type: 'string' } },
+        maxActions: { type: 'number', example: 5 },
+      },
+    },
+  })
+  async autoRepair(
+    @Body() body: { tripId: string; blockerIds?: string[]; maxActions?: number },
+  ): Promise<any> {
+    try {
+      const result = await this.readinessAutoRepairService.autoRepair(body.tripId, {
+        blockerIds: body.blockerIds,
+        maxActions: body.maxActions,
+      });
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to auto-repair: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Post('apply-repair')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '应用单项修复',
+    description: '对指定阻塞项执行单个修复选项（与 repair-options 返回的 optionId 对应）',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tripId', 'blockerId', 'optionId'],
+      properties: {
+        tripId: { type: 'string' },
+        blockerId: { type: 'string' },
+        optionId: { type: 'string' },
+      },
+    },
+  })
+  async applyRepair(
+    @Body() body: { tripId: string; blockerId: string; optionId: string },
+  ): Promise<any> {
+    try {
+      const result = await this.readinessAutoRepairService.applyRepair(
+        body.tripId,
+        body.blockerId,
+        body.optionId,
+      );
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to apply repair: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Post('refresh-evidence')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '刷新行程证据',
+    description: '为冰岛行程批量拉取区域天气/路况并写入 POI metadata，并生成证据获取建议任务。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tripId'],
+      properties: {
+        tripId: { type: 'string' },
+      },
+    },
+  })
+  async refreshEvidence(@Body() body: { tripId: string }): Promise<any> {
+    try {
+      const result = await this.readinessAutoRepairService.refreshEvidence(body.tripId);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to refresh evidence: ${err.message}`, err.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
     }
   }

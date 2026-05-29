@@ -1,5 +1,11 @@
 import { RouteDirectionsService } from './route-directions.service';
 
+const mockHikingTrailDetail = {
+  isHikingRoute: jest.fn().mockReturnValue(false),
+  build: jest.fn(),
+  buildListCardFields: jest.fn().mockReturnValue({}),
+} as any;
+
 function mockTx(txImpl: {
   routeDirection: { update: jest.Mock };
   routeTemplate: { updateMany: jest.Mock };
@@ -18,7 +24,7 @@ describe('RouteDirectionsService — deleteRouteDirection', () => {
       $transaction: mockTx(tx),
     } as any;
 
-    const svc = new RouteDirectionsService(prisma);
+    const svc = new RouteDirectionsService(prisma, mockHikingTrailDetail);
     await svc.deleteRouteDirection(42);
 
     expect(routeDirection.update).toHaveBeenCalledWith({
@@ -47,7 +53,7 @@ describe('RouteDirectionsService — updateRouteDirection', () => {
       $transaction: mockTx({ routeDirection, routeTemplate }),
     } as any;
 
-    const svc = new RouteDirectionsService(prisma);
+    const svc = new RouteDirectionsService(prisma, mockHikingTrailDetail);
     await svc.updateRouteDirection(1, { isActive: false } as any);
 
     expect(routeTemplate.updateMany).toHaveBeenCalledWith({
@@ -68,7 +74,7 @@ describe('RouteDirectionsService — updateRouteDirection', () => {
       $transaction: mockTx({ routeDirection, routeTemplate }),
     } as any;
 
-    const svc = new RouteDirectionsService(prisma);
+    const svc = new RouteDirectionsService(prisma, mockHikingTrailDetail);
     await svc.updateRouteDirection(1, { nameCN: '仅改名' } as any);
 
     expect(routeTemplate.updateMany).not.toHaveBeenCalled();

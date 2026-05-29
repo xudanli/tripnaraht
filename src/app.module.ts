@@ -68,6 +68,10 @@ import { SafetyModule } from './safety/safety.module';
 import { WorldModelSchedulerModule } from './trips/decision/world-model-scheduler.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { RoadIsModule } from './infrastructure/external/road-is/road-is.module';
+import { HikingDemoModule } from './hiking-demo/hiking-demo.module';
+import { HikingPlansModule } from './hiking-plans/hiking-plans.module';
+import { HikingTrailBookmarksModule } from './hiking-trail-bookmarks/hiking-trail-bookmarks.module';
+import { HikingRouteShareModule } from './hiking-route-share/hiking-route-share.module';
 
 @Module({
   imports: [
@@ -124,6 +128,10 @@ import { RoadIsModule } from './infrastructure/external/road-is/road-is.module';
     // 第七批：智能体和技能（可能有问题）
     RailPassModule, // RailPass 合规与订座决策模块（测试中）
     DemModule, // DEM 地形数据模块（独立导入，确保 DEM 服务可用）
+    HikingDemoModule, // Laugavegur 融资 Demo + hiking-audit（不替换决策主路径）
+    HikingPlansModule, // HikePlan 全生命周期（P1）
+    HikingTrailBookmarksModule, // F3 徒步路线收藏
+    HikingRouteShareModule, // 徒步路线分享（token + 过期）
     // ReadinessModule, // 暂时禁用，测试是否导致阻塞（DecisionModule 使用懒加载获取 ReadinessService）
     RouteDirectionsModule, // 恢复：测试是否导致阻塞
     RagModule, // 恢复：RAG 模块（用于增强对话）

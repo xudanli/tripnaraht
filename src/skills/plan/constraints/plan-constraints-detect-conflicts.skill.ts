@@ -27,7 +27,7 @@ export class PlanConstraintsDetectConflictsSkill implements Skill<PlanConstraint
 
   metadata = {
     name: 'plan.constraints.detectConflicts',
-    description: '检测约束冲突（预算不足、时间不够、节奏过载、不可达）',
+    description: 'plan.constraints.detectConflicts：检测 plan 约束冲突（预算/时间/节奏/可达性）。在 architect 产出方案后或用户修改约束需 gate 前扫描时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

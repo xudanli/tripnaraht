@@ -91,6 +91,8 @@ export function assertExecutionGatewayPostReturnContract(params: {
 
   const status = response.result?.status;
   if (
+    status === 'PROCESSING' ||
+    response.async_task?.is_async_delegated === true ||
     status === 'NEED_MORE_INFO' ||
     status === 'NEED_CONSENT' ||
     status === 'NEED_CONFIRMATION' ||

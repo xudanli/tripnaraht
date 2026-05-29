@@ -35,7 +35,7 @@ export class PlanBudgetEstimateBaselineSkill implements Skill<PlanBudgetEstimate
 
   metadata = {
     name: 'plan.budget.estimateBaseline',
-    description: '快速给出预算拆分与区间估算（交通/住宿/餐饮/门票/体验/缓冲）',
+    description: '估算 plan 预算基线与区间（交通/住宿/餐饮/门票/体验/缓冲）。在 PLAN_GEN 早期缺省 budget 或用户询问大概花费时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

@@ -73,7 +73,7 @@ export interface ItineraryGenerateOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'itinerary.generate',
-  description: '生成结构化行程草案',
+  description: '生成结构化 itinerary 草案（按天活动与交通骨架）。在 PLAN_GEN 阶段、RESEARCH 已完成且需首版行程时调用。',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -84,7 +84,7 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
 
   metadata = {
     name: 'itinerary.generate',
-    description: '生成结构化行程草案',
+    description: '生成结构化 itinerary 草案（按天活动与交通骨架）。在 PLAN_GEN 阶段、RESEARCH 已完成且需首版行程时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

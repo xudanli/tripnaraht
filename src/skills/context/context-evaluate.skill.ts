@@ -105,7 +105,7 @@ export class ContextEvaluateSkill implements Skill<ContextEvaluateInput, Context
 
   metadata = {
     name: 'context.evaluate',
-    description: '上下文质量评估：计算命中率、噪音率、超预算率、压缩率、相关性得分等指标',
+    description: '评估 context 包质量：计算命中率、噪音率、超预算率、压缩率与相关性得分。在 context.build/compress 后需 metrics 回归或调优 blocks 时调用。',
     version: '1.0.0',
     category: 'rag' as const,
   };

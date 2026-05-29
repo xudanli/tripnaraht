@@ -42,7 +42,7 @@ export class ExecHandleChangeSkill implements Skill<ExecHandleChangeInput, ExecH
 
   metadata = {
     name: 'exec.handleChange',
-    description: '处理执行期间的变更（时间、地点、活动取消、交通延误等），生成调整方案',
+    description: 'exec.handleChange：处理执行期间的变更（时间、地点、活动取消、交通延误等），生成调整方案',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

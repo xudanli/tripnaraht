@@ -76,7 +76,7 @@ export class GeoCheckHazardZonesSkill
 
   metadata = {
     name: 'geo.checkHazardZones',
-    description: '检查危险区域：Abu 统一读取危险区域信息，检查路线是否经过危险区域',
+    description: 'geo.checkHazardZones：检查危险区域：Abu 统一读取危险区域信息，检查路线是否经过危险区域',
     version: '1.0.0',
     category: 'rag' as const,
     toolGroup: 'DOMAIN' as const,

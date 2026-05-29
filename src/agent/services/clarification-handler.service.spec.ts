@@ -81,6 +81,36 @@ describe('ClarificationHandlerService', () => {
     expect(r.tripPlanRequest.destination).toBe('雷克雅未克');
   });
 
+  it('guardian_debate_abu_reject_v1 accept_neptune_alternative marks segmented ring', () => {
+    const trip = {
+      ...baseTrip(),
+      days: 7,
+      guardian_debate_trip_context: {
+        user_intent_anchors: { midnight_sun_continuous_drive: true, ring_road_full_scope: true },
+      },
+    } as TripPlanRequest;
+    const r = svc.applyRelaxationsFromAnswers(trip, [
+      {
+        questionId: 'guardian_debate_abu_reject_v1',
+        value: 'accept_neptune_alternative',
+      },
+    ]);
+    expect(r.didPatch).toBe(true);
+    expect(r.tripPlanRequest.guardian_debate_trip_context?.debate_user_confirm?.choice).toBe(
+      'accept_neptune_alternative',
+    );
+    expect(
+      r.tripPlanRequest.guardian_debate_trip_context?.user_intent_anchors?.user_accepted_segmented_ring,
+    ).toBe(true);
+    expect(
+      r.tripPlanRequest.guardian_debate_trip_context?.user_intent_anchors?.midnight_sun_continuous_drive,
+    ).toBe(false);
+    expect(
+      r.tripPlanRequest.guardian_debate_trip_context?.scheduling_constraints
+        ?.segmented_ring_over_calendar_days,
+    ).toBe(true);
+  });
+
   it('clarify_transport_endpoints_v1: single string updates origin only', () => {
     const trip = { ...baseTrip(), origin: '起点', destination: 'Akureyri' } as TripPlanRequest;
     const r = svc.applyRelaxationsFromAnswers(trip, [

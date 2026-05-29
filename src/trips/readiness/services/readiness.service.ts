@@ -14,9 +14,10 @@ import { ReadinessCheckResult, ReadinessDisclaimer, ReadinessFinding } from '../
 import { TrustMetricsService } from './trust-metrics.service';
 import { ReadinessChecker } from '../engine/readiness-checker';
 import { FactsToReadinessCompiler } from '../compilers/facts-to-readiness.compiler';
-import type { CountryFacts } from '../compilers/facts-to-readiness.compiler';
+import { prismaRowToCountryFacts } from '../../../countries/country-profile-v2.mapper';
 import { ReadinessToConstraintsCompiler } from '../compilers/readiness-to-constraints.compiler';
 import { PackStorageService } from '../storage/pack-storage.service';
+import { mergeReadinessFindings } from '../utils/readiness-pack-overlay.util';
 import { TripWorldState } from '../../decision/world-model';
 import { GeoFactsService } from './geo-facts.service';
 
@@ -465,34 +466,27 @@ export class ReadinessService {
     if (countryCode) {
       const packs = await this.packStorage.findPacksByCountry(countryCode);
       if (packs.length > 0) {
-        this.logger.debug(`Found ${packs.length} pack(s) by country: ${countryCode}`);
-        // 如果有多个国家级别的 packs，返回所有（让规则引擎处理）
-        // 或者可以选择最通用的 pack（如果有优先级标记）
-        const result = await this.readinessChecker.checkMultipleDestinations(packs, enhancedContext, lang);
-        
-        // 计算信任指标（如果服务可用）
-        let trustMetrics;
-        if (this.trustMetricsService) {
-          try {
-            const tempResult: ReadinessCheckResult = {
-              ...result,
-              disclaimer: this.generateDisclaimer(result.findings, lang),
-            };
-            trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
-          } catch (error) {
-            this.logger.warn(`计算信任指标失败: ${error}`);
-          }
-        }
-
-        return {
-          ...result,
-          disclaimer: this.generateDisclaimer(result.findings, lang),
-          trustMetrics,
-        };
+        this.logger.debug(
+          `Found ${packs.length} pack(s) by country: ${countryCode} (strict derivation)`,
+        );
+        const result = await this.checkPacksWithCountryDerivation(
+          packs,
+          countryCode,
+          enhancedContext,
+          lang,
+        );
+        return this.finalizeCheckResult(result, lang);
       }
     }
 
-    // 7. 如果都没有找到，返回空结果
+    // 7. 无 ReadinessPack 时回退 CountryProfile V2 事实层
+    if (countryCode && /^[A-Za-z]{2}$/.test(countryCode)) {
+      this.logger.debug(
+        `No pack for destination ${destinationId}; falling back to CountryProfile facts: ${countryCode}`,
+      );
+      return this.checkFromCountryFacts([countryCode.toUpperCase()], enhancedContext, lang);
+    }
+
     this.logger.warn(`No pack found for destination: ${destinationId}`);
     return {
       findings: [],
@@ -505,6 +499,110 @@ export class ReadinessService {
       },
       disclaimer: this.generateDisclaimer([], lang),
     };
+  }
+
+  /**
+   * Phase 3: Profile-derived Findings + Pack overlay (dynamic `when` only).
+   */
+  async checkCountryStrictDerivation(
+    countryCode: string,
+    packs: ReadinessPack[],
+    context: TripContext,
+    lang: 'en' | 'zh' = 'en',
+  ): Promise<ReadinessCheckResult> {
+    const iso = countryCode.toUpperCase();
+    const factsResult = await this.checkFromCountryFacts([iso], context, lang);
+    let merged = factsResult.findings.find((f) => f.destinationId === iso) ?? factsResult.findings[0];
+
+    if (!merged && packs.length === 0) {
+      return {
+        findings: [],
+        summary: {
+          totalBlockers: 0,
+          totalMust: 0,
+          totalShould: 0,
+          totalOptional: 0,
+          totalRisks: 0,
+        },
+        disclaimer: this.generateDisclaimer([], lang),
+      };
+    }
+
+    if (!merged) {
+      return this.checkFromPacks(packs, context, lang);
+    }
+
+    for (const pack of packs) {
+      const overlay = this.readinessChecker.checkPackOverlay(pack, context, lang);
+      merged = mergeReadinessFindings(merged, overlay);
+    }
+
+    const findings = [merged];
+    const summary = {
+      totalBlockers: findings.reduce((sum, f) => sum + f.blockers.length, 0),
+      totalMust: findings.reduce((sum, f) => sum + f.must.length, 0),
+      totalShould: findings.reduce((sum, f) => sum + f.should.length, 0),
+      totalOptional: findings.reduce((sum, f) => sum + f.optional.length, 0),
+      totalRisks: findings.reduce((sum, f) => sum + f.risks.length, 0),
+    };
+
+    return {
+      findings,
+      summary,
+      disclaimer: this.generateDisclaimer(findings, lang),
+    };
+  }
+
+  /**
+   * Merged finding for Context blocks (Strict Derivation).
+   */
+  async getMergedCountryFinding(
+    countryCode: string,
+    context: TripContext,
+    pack?: ReadinessPack | null,
+  ): Promise<ReadinessFinding | null> {
+    const packs = pack ? [pack] : [];
+    const result = await this.checkCountryStrictDerivation(
+      countryCode,
+      packs as ReadinessPack[],
+      context,
+    );
+    return result.findings[0] ?? null;
+  }
+
+  private async checkPacksWithCountryDerivation(
+    packs: ReadinessPack[],
+    countryCode: string | undefined,
+    context: TripContext,
+    lang: 'en' | 'zh',
+  ): Promise<ReadinessCheckResult> {
+    if (countryCode && /^[A-Za-z]{2}$/.test(countryCode)) {
+      return this.checkCountryStrictDerivation(countryCode, packs, context, lang);
+    }
+    return this.checkFromPacks(packs, context, lang);
+  }
+
+  private finalizeCheckResult(
+    result: ReadinessCheckResult,
+    lang: 'en' | 'zh',
+  ): Promise<ReadinessCheckResult> {
+    let trustMetrics;
+    if (this.trustMetricsService) {
+      try {
+        const tempResult: ReadinessCheckResult = {
+          ...result,
+          disclaimer: this.generateDisclaimer(result.findings, lang),
+        };
+        trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
+      } catch (error) {
+        this.logger.warn(`计算信任指标失败: ${error}`);
+      }
+    }
+    return Promise.resolve({
+      ...result,
+      disclaimer: this.generateDisclaimer(result.findings, lang),
+      trustMetrics,
+    });
   }
 
   /**
@@ -527,22 +625,7 @@ export class ReadinessService {
         continue;
       }
 
-      // 转换为 CountryFacts 格式
-      const facts: CountryFacts = {
-        isoCode: profile.isoCode,
-        nameCN: profile.nameCN,
-        nameEN: profile.nameEN || undefined,
-        currencyCode: profile.currencyCode || undefined,
-        currencyName: profile.currencyName || undefined,
-        paymentType: profile.paymentType || undefined,
-        paymentInfo: profile.paymentInfo as any,
-        powerInfo: profile.powerInfo as any,
-        emergency: profile.emergency as any,
-        visaForCN: profile.visaForCN as any,
-        exchangeRateToCNY: profile.exchangeRateToCNY || undefined,
-        exchangeRateToUSD: profile.exchangeRateToUSD || undefined,
-      };
-
+      const facts = prismaRowToCountryFacts(profile);
       const finding = this.factsCompiler.compile(facts, context);
       findings.push(finding);
     }
@@ -571,40 +654,40 @@ export class ReadinessService {
     context: TripContext,
     lang: 'en' | 'zh' = 'en'
   ): Promise<ReadinessCheckResult> {
-    const packFindings = await this.checkFromPacks(packs, context, lang);
-    const factsFindings = await this.checkFromCountryFacts(countryCodes, context, lang);
+    const isoCodes = countryCodes
+      .map((c) => c.toUpperCase())
+      .filter((c) => /^[A-Z]{2}$/.test(c));
 
-    // 合并结果
-    const allFindings = [...packFindings.findings, ...factsFindings.findings];
-    const summary = {
-      totalBlockers: allFindings.reduce((sum, f) => sum + f.blockers.length, 0),
-      totalMust: allFindings.reduce((sum, f) => sum + f.must.length, 0),
-      totalShould: allFindings.reduce((sum, f) => sum + f.should.length, 0),
-      totalOptional: allFindings.reduce((sum, f) => sum + f.optional.length, 0),
-      totalRisks: allFindings.reduce((sum, f) => sum + f.risks.length, 0),
-    };
+    if (isoCodes.length === 1) {
+      return this.checkCountryStrictDerivation(isoCodes[0], packs, context, lang);
+    }
 
-    // 计算信任指标（如果服务可用）
-    let trustMetrics;
-    if (this.trustMetricsService) {
-      try {
-        const tempResult: ReadinessCheckResult = {
-          findings: allFindings,
-          summary,
-          disclaimer: this.generateDisclaimer(allFindings, lang),
-        };
-        trustMetrics = this.trustMetricsService.calculateTrustMetrics(tempResult, lang);
-      } catch (error) {
-        this.logger.warn(`计算信任指标失败: ${error}`);
+    const findings: ReadinessFinding[] = [];
+    for (const iso of isoCodes) {
+      const r = await this.checkCountryStrictDerivation(iso, [], context, lang);
+      if (r.findings[0]) findings.push(r.findings[0]);
+    }
+    if (packs.length > 0) {
+      const packOnly = await this.checkFromPacks(packs, context, lang);
+      for (const pf of packOnly.findings) {
+        const idx = findings.findIndex((f) => f.destinationId === pf.destinationId);
+        if (idx >= 0) {
+          findings[idx] = mergeReadinessFindings(findings[idx], pf);
+        } else {
+          findings.push(pf);
+        }
       }
     }
 
-    return {
-      findings: allFindings,
-      summary,
-      disclaimer: this.generateDisclaimer(allFindings, lang),
-      trustMetrics,
+    const summary = {
+      totalBlockers: findings.reduce((sum, f) => sum + f.blockers.length, 0),
+      totalMust: findings.reduce((sum, f) => sum + f.must.length, 0),
+      totalShould: findings.reduce((sum, f) => sum + f.should.length, 0),
+      totalOptional: findings.reduce((sum, f) => sum + f.optional.length, 0),
+      totalRisks: findings.reduce((sum, f) => sum + f.risks.length, 0),
     };
+
+    return this.finalizeCheckResult({ findings, summary }, lang);
   }
 
   /**

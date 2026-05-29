@@ -11,6 +11,7 @@ import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { RealtimeWeatherService } from './services/realtime-weather.service';
 import { WeatherSearchSkill } from '../weather/weather-search.skill';
 import { WeatherAlert } from './interfaces/unified-world-model.interface';
+import { markWorldSkillDegraded } from './utils/world-skill-degraded.util';
 
 export interface WorldRealtimeWeatherInput extends SkillInput {
   /** 区域代码（如 'IS'） */
@@ -41,11 +42,14 @@ export interface WorldRealtimeWeatherOutput extends SkillOutput {
   
   /** 查询区域 */
   region: string;
+
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 @SkillDecorator({
   name: 'world.realtimeWeather',
-  description: '获取实时天气预警数据（使用weather.search Skill）',
+  description: '获取 world 实时天气预警（委托 weather.search）。在 gate/readiness 需当前预警或 execution 期风险刷新时调用。',
   version: '1.0.0',
   category: 'world',
   toolGroup: 'DOMAIN',
@@ -56,7 +60,7 @@ export class WorldRealtimeWeatherSkill implements Skill<WorldRealtimeWeatherInpu
 
   metadata = {
     name: 'world.realtimeWeather',
-    description: '获取实时天气预警数据（使用weather.search Skill）',
+    description: '获取 world 实时天气预警（委托 weather.search）。在 gate/readiness 需当前预警或 execution 期风险刷新时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,
@@ -127,14 +131,19 @@ export class WorldRealtimeWeatherSkill implements Skill<WorldRealtimeWeatherInpu
         };
       }
 
-      // 3. 最终降级：返回空数组
+      // 3. 最终降级：返回空数组（显式 degraded）
       this.logger.warn(`[WorldRealtimeWeatherSkill] 无可用服务，返回空预警列表`);
-      return {
-        alerts: [],
-        evidence_id: `world_realtime_weather_fallback_${Date.now()}`,
-        source: 'fallback',
-        region: input.region,
-      };
+      return markWorldSkillDegraded(
+        {
+          alerts: [],
+          evidence_id: `world_realtime_weather_fallback_${Date.now()}`,
+          source: 'fallback',
+          region: input.region,
+        },
+        input.location
+          ? 'RealtimeWeatherService and WeatherSearchSkill unavailable'
+          : 'RealtimeWeatherService unavailable and location missing for weather.search fallback',
+      );
     } catch (error: any) {
       this.logger.error(
         `world.realtimeWeather 失败: ${error?.message}`,

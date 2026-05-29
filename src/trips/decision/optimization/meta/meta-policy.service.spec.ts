@@ -43,6 +43,23 @@ describe('MetaPolicyService', () => {
     expect(out.useExploration).toBe(true);
   });
 
+  it('极高不确定性应输出 sampleSize=2000', () => {
+    const out = service.selectPolicy(
+      createDSO({
+        environmentState: { weatherRisk: 0.9, failureRiskLevel: 'HIGH' },
+      }),
+    );
+    expect(out.sampleSize).toBe(2000);
+    expect(out.useWorldModelRollout).toBe(true);
+  });
+
+  it('entropy01>0.7 应输出 sampleSize=1000', () => {
+    const out = service.selectPolicy(
+      createDSO({ uncertaintyProfile: { entropy01: 0.75, hasUncertainty: true } }),
+    );
+    expect(out.sampleSize).toBe(1000);
+  });
+
   it('无约束时应返回有效配置', () => {
     const out = service.selectPolicy(createDSO());
     expect(out.horizon).toBeGreaterThanOrEqual(1);

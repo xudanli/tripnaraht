@@ -5,6 +5,19 @@ import type { TripTaskMemory, TripTaskRecoveryAuditLine } from '../../context-en
 import type { DecisionMemory } from '../decision-memory/decision-memory.types';
 import type { DecisionLedgerSnapshot, LedgerRecomputePlanV1 } from '../decision-ledger/decision-ledger.types';
 
+/**
+ * L0：设置页 / `UserProfile.preferences` 中的静态事实与显式偏好（与 L1 `UserTravelProfile` 分轨，装配层左连接）。
+ */
+export type AgentMemoryUserBasics = Readonly<{
+  nationality?: string;
+  residencyCountry?: string;
+  tags?: readonly string[];
+  preferredAttractionTypes?: readonly string[];
+  dietaryRestrictions?: readonly string[];
+  /** `user_profile` 行 `updatedAt`（ISO8601），供审计 */
+  profilePreferencesUpdatedAt?: string;
+}>;
+
 /** 单请求 route_and_run 显式提交的同行/体能（不写入 L1 DB；供本链路 Memory / TripPlanRequest 只读消费） */
 export interface RouteRunPartyProfileSnapshot {
   fitness_level?: 'low' | 'medium' | 'high';
@@ -30,6 +43,8 @@ export interface AgentMemoryContext {
   tripId: string | null;
 
   userProfile: UserTravelProfile | null;
+  /** L0：`UserProfile.preferences` 扁平字段快照（国籍、标签、景点类型等）；无数据时为 null */
+  userBasics: AgentMemoryUserBasics | null;
   /** 从 L1 画像摘要出的偏好（供路由/策略快速消费） */
   travelPreference: Record<string, unknown> | null;
 

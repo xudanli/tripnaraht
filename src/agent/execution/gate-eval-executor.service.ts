@@ -234,13 +234,19 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     const need4x4 = /4x4|4wd|四驱/.test(vehicleRequired);
 
     const vehicleType = (tripRequest as any)?.constraints?.vehicle_type as '2WD' | '4WD' | undefined;
-    const is2wd = vehicleType === undefined ? true : vehicleType === '2WD';
+    const is2wd = vehicleType === '2WD';
 
     if (hardTruth.gateFroadBlock2wd && need4x4 && is2wd) {
       out.push({
         type: 'REACHABILITY',
         severity: 'HARD',
-        detail: `Route requires 4x4/4WD (${String(vehicleRequiredRaw)}), but vehicle_type is ${vehicleType ?? '2WD (assumed)'}.`,
+        detail: `Route requires 4x4/4WD (${String(vehicleRequiredRaw)}), but vehicle_type is 2WD.`,
+      });
+    } else if (hardTruth.gateFroadBlock2wd && need4x4 && vehicleType === undefined) {
+      out.push({
+        type: 'REACHABILITY',
+        severity: 'SOFT',
+        detail: `Route may require 4x4/4WD (${String(vehicleRequiredRaw)}); vehicle_type is unspecified — confirm rental drivetrain before committing.`,
       });
     }
 
@@ -284,7 +290,12 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
             : typeof w?.wind_threshold_mps === 'number'
               ? Number(w.wind_threshold_mps)
               : null;
-        const thr = explicitThr != null && Number.isFinite(explicitThr) ? explicitThr : driveSafetyWindThresholdMps(vehicleType ?? '2WD');
+        const windVehicleHint =
+          vehicleType === '4WD' ? 'SUV' : vehicleType === '2WD' ? '2WD' : 'SUV';
+        const thr =
+          explicitThr != null && Number.isFinite(explicitThr)
+            ? explicitThr
+            : driveSafetyWindThresholdMps(windVehicleHint);
         if (wind > thr) {
           out.push({
             type: 'SAFETY',
@@ -357,7 +368,8 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         const s = String(md?.surfaceType ?? '').toLowerCase();
         return t === 'F_ROAD' || s === 'f-road';
       });
-      const vehicleClass = is2wd ? 'SMALL_CAR' : 'SUV_4WD';
+      const vehicleClass =
+        vehicleType === '2WD' ? 'SMALL_CAR' : vehicleType === '4WD' ? 'SUV_4WD' : 'UNKNOWN';
       const facts: Record<string, unknown> = {
         segment: { type: hasFRoad ? 'F_ROAD' : 'OTHER' },
         weather: {

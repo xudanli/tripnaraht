@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 2,
+  "isoCode": "IS",
+  "nameCN": "冰岛",
+  "nameEN": "Iceland",
+  "currencyCode": "ISK",
+  "currencyName": "冰岛克朗",
+  "exchangeRateToCNY": 0.055617,
+  "exchangeRateToUSD": 0.007953,
+  "paymentType": "DIGITAL_ONLY",
+  "paymentInfo": {
+    "contactlessUbiquitous": true,
+    "cashRarelyNeeded": true,
+    "notes": "冰岛是欧洲最数字化的国家之一，几乎所有地方都支持无接触支付。",
+    "tipping": "无需小费（包含在账单中）。",
+    "atm_network": "所有银行 ATM 支持银联卡，但手续费较高。",
+    "wallet_apps": ["Apple Pay", "Google Pay", "Strætó (公交)"],
+    "cash_preparation": "基本不需要现金，一张支持 Contactless 的信用卡即可。"
+  },
+  "powerInfo": {
+    "plugs": ["C", "F"],
+    "plugTypes": ["C", "F"],
+    "voltage": 230,
+    "voltageUnit": "V",
+    "frequency": 50,
+    "frequencyUnit": "Hz"
+  },
+  "emergency": {
+    "fire": "112",
+    "police": "112",
+    "rescue": "112",
+    "ambulance": "112",
+    "unifiedNumber": "112"
+  },
+  "entryRequirements": {
+    "officialLink": "https://www.government.is/topics/foreigners/visas-and-residence-permits/",
+    "byNationality": {
+      "CN": {
+        "cost": 650,
+        "link": "https://www.government.is/diplomatic-missions/embassy-of-iceland-in-beijing/",
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Schengen visa required",
+        "statusLabelCN": "需要签证",
+        "requirementSummary": "Schengen visa required for Iceland (short stay).",
+        "requirementSummaryCN": "前往冰岛须持有效申根签证。",
+        "schengenZone": true,
+        "visaApplicationLeadTimeDays": 45
+      },
+      "US": {
+        "status": "VISA_FREE",
+        "statusLabel": "Visa-free (Schengen short stay)",
+        "requirementSummary": "US passport: visa-free up to 90 days in Schengen area per rolling 180-day period.",
+        "schengenZone": true,
+        "allowedStay": "90 days per 180-day period"
+      },
+      "GB": {
+        "status": "VISA_FREE",
+        "statusLabel": "Visa-free (Schengen short stay)",
+        "requirementSummary": "UK passport: visa-free short stay in Schengen; ETIAS may apply when in force.",
+        "schengenZone": true,
+        "allowedStay": "90 days per 180-day period"
+      },
+      "AU": {
+        "status": "VISA_FREE",
+        "statusLabel": "Visa-free (Schengen short stay)",
+        "requirementSummary": "Australian passport: visa-free Schengen short stay.",
+        "schengenZone": true,
+        "allowedStay": "90 days per 180-day period"
+      },
+      "JP": {
+        "status": "VISA_FREE",
+        "statusLabel": "Visa-free (Schengen short stay)",
+        "requirementSummary": "Japanese passport: visa-free Schengen short stay.",
+        "schengenZone": true,
+        "allowedStay": "90 days per 180-day period"
+      },
+      "IN": {
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Schengen visa required",
+        "requirementSummary": "Indian passport: Schengen visa required before travel.",
+        "schengenZone": true,
+        "visaApplicationLeadTimeDays": 45
+      }
+    }
+  },
+  "complianceInfo": {
+    "droneRules": {
+      "allowed": true,
+      "maxAltitudeMeter": 120,
+      "requiresRegistration": true,
+      "registrationUrl": "https://www.icetra.is/",
+      "restrictions": [
+        "禁止在人群密集区域飞行",
+        "需要保持至少 150 米距离",
+        "禁止在国家公园内飞行（需特殊许可）"
+      ],
+      "prohibitedPoiCategories": ["NATIONAL_PARK", "NATURE_RESERVE", "SPA_HOT_SPRING"],
+      "prohibitedPoiIds": ["POI_BLUE_LAGOON", "POI_REYKJAVIK_CENTER"]
+    },
+    "drivingRules": {
+      "minAge": 17,
+      "drivingSide": "RIGHT",
+      "requiresInternationalLicense": true,
+      "requires4x4ForFRoad": true,
+      "gravelRoadPresent": true,
+      "acceptedLicenseTypes": ["IDP", "CHINESE_LICENSE_WITH_TRANSLATION"],
+      "speedLimits": {
+        "urban": 50,
+        "gravelRoad": 80,
+        "asphaltHighway": 90,
+        "algorithmEtaPenaltyCoefficients": {
+          "gravelRoad": 1.4,
+          "fRoad": 2.0
+        }
+      },
+      "specialRules": [
+        "F-road 需要 4x4 车辆",
+        "冬季某些路段可能封闭",
+        "注意道路上的羊",
+        "全天候强制开启日间行车灯 (Daytime Running Lights)"
+      ],
+      "infrastructure": {
+        "selfServiceGasStation": true,
+        "gasBrandRequiredApp": ["N1", "Olis"],
+        "tollRoads": ["Vaðlaheiðargöng"]
+      }
+    },
+    "alcoholPolicy": {
+      "bacLimit": 0.05,
+      "legalAge": 20,
+      "specialRules": [
+        "普通超市仅售卖低度啤酒（小于2.25%），高浓度酒精必须在国家垄断商店 Vínbúðin 购买"
+      ],
+      "publicDrinking": false
+    }
+  },
+  "timeBoundaries": {
+    "daylightFluctuation": true,
+    "seasons": [
+      {
+        "name": "WINTER_PEAK_DARKNESS",
+        "months": [11, 12, 1],
+        "avgDaylightHours": 4,
+        "outdoorRoutingWindow": { "start": "11:00", "end": "15:00" },
+        "recommendedCarType": "4WD_SUV_STUDDED_TIRES"
+      },
+      {
+        "name": "SUMMER_MIDNIGHT_SUN",
+        "months": [6, 7, 8],
+        "avgDaylightHours": 21,
+        "outdoorRoutingWindow": { "start": "06:00", "end": "23:00" },
+        "recommendedCarType": "ANY"
+      }
+    ],
+    "environmentalTriggers": {
+      "weatherAlertSource": "https://www.vedur.is/",
+      "roadStatusSource": "https://www.road.is/",
+      "autoRerouteTriggers": [
+        "WIND_SPEED_OVER_20MS",
+        "ROAD_STATUS_CLOSED",
+        "AVALANCHE_WARNING"
+      ]
+    }
+  },
+  "travelCulture": {
+    "tippingHabits": {
+      "level": "NONE",
+      "description": "冰岛没有强制小费文化，账单通常已包含服务费"
+    },
+    "experienceRules": [
+      {
+        "targetPoiCategory": "HOT_SPRING",
+        "requirementsCN": [
+          "进入温泉池前必须全身淋浴洗净",
+          "更衣室禁止穿鞋",
+          "严禁携带玻璃制品"
+        ],
+        "smartTipsCN": ["高浓度硫磺会使银饰变黑，请提前摘下", "带好防水手机袋和干毛巾"]
+      },
+      {
+        "targetPoiCategory": "GLACIER_TREKKING",
+        "requirementsCN": ["必须由持牌向导陪同", "强制穿着高帮登山鞋（用于固定冰爪）"],
+        "smartTipsCN": ["冲锋衣裤需完全防水防风", "准备好保暖手套"]
+      }
+    ]
+  }
+}

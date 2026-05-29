@@ -13,6 +13,7 @@ import { ContextRankerService } from './services/context-ranker.service';
 import { ContextCompressorService } from './services/context-compressor.service';
 import { ContextBudgetManagerService } from './services/context-budget-manager.service';
 import { ContextCacheService } from './services/context-cache.service';
+import { ContextCacheEvictionService } from './services/context-cache-eviction.service';
 import { DynamicContextSelectorService } from './services/dynamic-context-selector.service';
 import { TripTaskMemoryService } from './services/trip-task-memory.service';
 import { ExecutionHistoryCompressorService } from './services/execution-history-compressor.service';
@@ -46,6 +47,7 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
     ContextCompressorService, // Phase 3: Context Engine 工业化
     ContextBudgetManagerService, // Phase 4: Context Engine 工业化
     ContextCacheService, // Phase 5: Context Engine 工业化
+    ContextCacheEvictionService,
     DynamicContextSelectorService,
     TripTaskMemoryService,
     ExecutionHistoryCompressorService,
@@ -66,6 +68,7 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
     ContextCompressorService,
     ContextBudgetManagerService,
     ContextCacheService,
+    ContextCacheEvictionService,
     IncrementalItineraryGeneratorService,
     ContextMetricsService,
     ContextLearningService,

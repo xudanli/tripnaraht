@@ -291,6 +291,22 @@ export interface ExternalSignalsState {
   _decisionCausalityDraft?: import('../reality-kernel/decision-causality.types').DecisionCausalityDraftPayload;
   /** 最近一次写入因果链的 `causality_id`（供 outcome / telemetry 关联） */
   lastDecisionCausalityId?: string;
+  /**
+   * Phase 2.5：硬徒步 Trail 段计划（`generatePlan` 内挂载；POI 优化主路径仍保留）。
+   */
+  hardTrekTrailPlan?: import('./adapters/trail-planning.adapter').TrailPlanPreviewResult;
+  /** `trail_first` 当 hardTrekTrailPlan.mode === trail_segments */
+  planningMode?: 'poi_first' | 'trail_first';
+  /** MAT 6.x 本轮 research_data 共识镜像（供 decision_logs.metadata） */
+  planResearchDataMirror?: Record<string, unknown>;
+  /** 混合出行 embedded：generate-plan 按片段日期裁剪天数 */
+  embeddedHiking?: {
+    hikingProfile: 'embedded';
+    segmentCount: number;
+    effectiveDurationDays: number;
+    segmentIds: string[];
+    dateRange: { start: string; end: string };
+  };
   alerts?: Array<{ code: string; severity: 'info'|'warn'|'critical'; message: string }>;
   lastUpdatedAt: ISODatetime;
 }

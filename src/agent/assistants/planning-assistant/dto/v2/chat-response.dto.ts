@@ -48,6 +48,12 @@ export class RoutingInfoDto {
   @ApiProperty({ description: '路由原因' })
   reason!: string;
 
+  @ApiPropertyOptional({
+    description: '交付模式：`SYNC` 默认；`ASYNC_POLLING` 表示需轮询 `GET /api/agent/task/status/:taskId`',
+    enum: ['SYNC', 'ASYNC_POLLING'],
+  })
+  mode?: 'SYNC' | 'ASYNC_POLLING';
+
   @ApiPropertyOptional({ description: '提取的参数' })
   params?: Record<string, any>;
 }
@@ -95,6 +101,24 @@ export class ChatResponseDto {
 
   @ApiPropertyOptional({ description: '会话ID' })
   sessionId?: string;
+
+  @ApiPropertyOptional({
+    description: 'route_and_run 异步任务 ID（routing.mode=ASYNC_POLLING 时由前端轮询）',
+    example: 'task_trip_xxx_1716000000000',
+  })
+  task_id?: string;
+
+  @ApiPropertyOptional({
+    description: '异步任务状态（与 RouteAndRunTaskStatusResponseDto.status 对齐）',
+    enum: ['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED'],
+  })
+  task_status?: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+
+  @ApiPropertyOptional({
+    description: '轮询路径（相对 API 根；默认 `/api/agent/task/status/{task_id}`）',
+    example: '/api/agent/task/status/task_trip_xxx_1716000000000',
+  })
+  task_poll_path?: string;
 
   @ApiPropertyOptional({ 
     description: '目的地推荐列表（当路由到推荐接口时包含）', 

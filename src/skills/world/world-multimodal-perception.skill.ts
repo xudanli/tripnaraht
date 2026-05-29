@@ -10,6 +10,7 @@ import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { MultimodalWorldPerceptionService } from './services/multimodal-world-perception.service';
 import { MultimodalPerceptionData } from './interfaces/unified-world-model.interface';
+import { markWorldSkillDegraded } from './utils/world-skill-degraded.util';
 
 export interface WorldMultimodalPerceptionInput extends SkillInput {
   /** POI ID（可选） */
@@ -28,11 +29,14 @@ export interface WorldMultimodalPerceptionOutput extends SkillOutput {
   
   /** 数据源 */
   source: string;
+
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 @SkillDecorator({
   name: 'world.multimodalPerception',
-  description: '获取多模态感知数据（图像、文本分析）',
+  description: '获取 world 多模态感知摘要（图像/文本线索）。在 world.buildContext 需补充非结构化现场证据时调用。',
   version: '1.0.0',
   category: 'world',
   toolGroup: 'DOMAIN',
@@ -43,7 +47,7 @@ export class WorldMultimodalPerceptionSkill implements Skill<WorldMultimodalPerc
 
   metadata = {
     name: 'world.multimodalPerception',
-    description: '获取多模态感知数据（图像、文本分析）',
+    description: '获取 world 多模态感知摘要（图像/文本线索）。在 world.buildContext 需补充非结构化现场证据时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,
@@ -79,24 +83,27 @@ export class WorldMultimodalPerceptionSkill implements Skill<WorldMultimodalPerc
         };
       }
 
-      // 降级策略：返回空感知数据
+      // 降级策略：返回空感知数据（显式 degraded）
       this.logger.warn(`[WorldMultimodalPerceptionSkill] MultimodalWorldPerceptionService不可用，返回空感知数据`);
-      return {
-        perception: {
-          poiId: input.poiId,
-          routeDirectionId: input.routeDirectionId,
-          images: [],
-          texts: [],
-          aggregatedInsights: {
-            averageSentiment: 0,
-            commonKeywords: [],
-            commonTopics: [],
+      return markWorldSkillDegraded(
+        {
+          perception: {
+            poiId: input.poiId,
+            routeDirectionId: input.routeDirectionId,
+            images: [],
+            texts: [],
+            aggregatedInsights: {
+              averageSentiment: 0,
+              commonKeywords: [],
+              commonTopics: [],
+            },
+            confidence: 0.3,
           },
-          confidence: 0.3,
+          evidence_id: `world_multimodal_perception_fallback_${Date.now()}`,
+          source: 'fallback',
         },
-        evidence_id: `world_multimodal_perception_fallback_${Date.now()}`,
-        source: 'fallback',
-      };
+        'MultimodalWorldPerceptionService unavailable',
+      );
     } catch (error: any) {
       this.logger.error(
         `world.multimodalPerception 失败: ${error?.message}`,

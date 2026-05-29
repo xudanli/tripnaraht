@@ -8,6 +8,11 @@ import { E2EReplayService } from './e2e-replay.service';
 import { TripDecisionEngineService } from '../trip-decision-engine.service';
 import { DecisionLogStorageService } from '../services/decision-log-storage.service';
 import { icelandHighlandsCase } from './e2e-cases/iceland-highlands.example';
+import { icelandStormIcecaveFailureCase } from './e2e-cases/iceland-storm-icecave-failure.example';
+import {
+  buildDecisionLogsForFixture,
+  buildGeneratePlanResultForFixture,
+} from './e2e-replay.fixture-mocks';
 
 describe('E2EReplayService', () => {
   let service: E2EReplayService;
@@ -222,5 +227,18 @@ describe('E2EReplayService', () => {
 
     expect(results.length).toBe(1);
     expect(results[0].case.id).toBe(icelandHighlandsCase.id);
+  });
+
+  it('南岸暴风雪 + 蓝冰洞取消：合成 fixture 回放与 expected 对齐', async () => {
+    decisionEngine.generatePlan.mockResolvedValue(buildGeneratePlanResultForFixture(icelandStormIcecaveFailureCase) as any);
+    logStorage.queryLogs.mockResolvedValue(buildDecisionLogsForFixture(icelandStormIcecaveFailureCase) as any);
+
+    const result = await service.replay(icelandStormIcecaveFailureCase);
+    expect(result.case.id).toBe('iceland-storm-icecave-failure-001');
+    expect(result.passed).toBe(true);
+    expect(result.diff.hasDiff).toBe(false);
+    expect(logStorage.queryLogs).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: 'e2e-iceland-storm-icecave-failure-001' }),
+    );
   });
 });

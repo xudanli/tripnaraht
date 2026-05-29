@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-05-26T07:41:17.914Z",
+  "spec": "https://agentskills.io/specification.md",
+  "skills": [
+    {
+      "tripnaraSkillId": "country_pack.IS",
+      "agentSkillsName": "country-pack-is",
+      "exportDir": "/home/devbox/project/data/skill-evolver/agent-skills-export/country-pack-is",
+      "skillMdPath": "/home/devbox/project/data/skill-evolver/agent-skills-export/country-pack-is/SKILL.md"
+    }
+  ]
+}

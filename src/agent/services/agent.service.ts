@@ -24,6 +24,7 @@ import { RequestDeduplicationService } from './request-deduplication.service';
 import { TripRunManagerService, type TripRunDsoCheckpointPayload } from './trip-run-manager.service';
 import { TripTaskMemoryService } from '../context-engine/services/trip-task-memory.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import {
   AgentContext,
@@ -96,7 +97,12 @@ import { UserPreferenceLearningService } from './user-preference-learning.servic
 import { PreferenceEvolutionService } from './preference-evolution.service';
 import type { ItineraryRollbackRequestDto, ItineraryRollbackResponseDto } from '../dto/itinerary-rollback.dto';
 import { PrometheusMetricsService } from '../../monitoring/prometheus-metrics.service';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
 import { matchAxioms, pickDominantAxiom } from '../axioms/axiom-matchers';
+import {
+  axiomMatchSourceForMetrics,
+  normalizeAxiomCidForMetrics,
+} from '../axioms/axiom-prometheus.util';
 import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
 import { LogDecisionRequestDto } from '../dto/log-decision.dto';
 import { RouteAndRunContextEnricherService } from './route-and-run-context-enricher.service';
@@ -141,6 +147,7 @@ import {
 import type { ConflictStrategyOptionsResponseDto } from '../dto/conflict-strategy-options.dto';
 import { StrategyConflictOptionsService } from './strategy-conflict-options.service';
 import { MemoryContextAssemblerService } from '../memory/services/memory-context-assembler.service';
+import { RouteRunRequestFitnessHydratorService } from '../memory/services/route-run-request-fitness-hydrator.service';
 import type { AgentMemoryContext } from '../memory/interfaces/agent-memory-context.interface';
 import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
 import { MemorySnapshotPersistenceService } from '../memory/persistence/memory-snapshot-persistence.service';
@@ -148,6 +155,9 @@ import { LedgerRecomputeExecutorService } from '../memory/decision-ledger/ledger
 import { IncrementalRecomputeOrchestratorService } from '../memory/decision-ledger/incremental-recompute-orchestrator.service';
 import { AgentExecutionContextStore } from '../runtime/agent-execution-context.store';
 import { AgentExecutionContextFactoryService } from '../runtime/agent-execution-context-factory.service';
+import { DecisionOsContextAssemblerService } from '../runtime/decision-os-context-assembler.service';
+import { DecisionOsExecutionContextStore } from '../runtime/decision-os-execution-context.store';
+import { DecisionRuntimeKernelService } from '../runtime/decision-runtime-kernel.service';
 import { ExecutionTimelineRecorderService } from '../runtime/execution-timeline-recorder.service';
 import {
   assertExecutionGatewayPostReturnContract,
@@ -186,12 +196,16 @@ export class AgentService {
     private stateService: AgentStateService,
     private system1Executor: System1ExecutorService,
     private orchestrator: OrchestratorService,
+    private readonly contextSlidingWindow: ContextSlidingWindowAdapter,
     private memoryContextAssembler: MemoryContextAssemblerService,
     private agentMemoryContextStore: AgentMemoryContextStore,
     private agentExecutionContextFactory: AgentExecutionContextFactoryService,
     private agentExecutionContextStore: AgentExecutionContextStore,
     @Inject(forwardRef(() => ExecutionGatewayService))
     private executionGateway: ExecutionGatewayService,
+    @Optional() private readonly decisionOsContextAssembler?: DecisionOsContextAssemblerService,
+    @Optional() private readonly decisionOsExecutionContextStore?: DecisionOsExecutionContextStore,
+    @Optional() private readonly decisionRuntimeKernel?: DecisionRuntimeKernelService,
     @Optional() private readonly executionTimelineRecorder?: ExecutionTimelineRecorderService,
     @Optional() private readonly memorySnapshotPersistence?: MemorySnapshotPersistenceService,
     @Optional() private readonly ledgerRecomputeExecutor?: LedgerRecomputeExecutorService,
@@ -232,7 +246,21 @@ export class AgentService {
     @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
     @Optional() private readonly governanceLedgerStore?: GovernanceLedgerStoreService,
     @Optional() @Inject(SKILL_INTENT_RECOGNIZE) private readonly intentRecognizeSkill?: Skill,
+    @Optional() private readonly routeRunRequestFitnessHydrator?: RouteRunRequestFitnessHydratorService,
+    @Optional() private readonly routeAndRunAsyncService?: import('./route-and-run-async.service').RouteAndRunAsyncService,
+    @Optional() private readonly routeAndRunAsyncTaskStore?: import('./route-and-run-async-task.store').RouteAndRunAsyncTaskStore,
+    @Optional()
+    private readonly routeAndRunAsyncDelegationService?: import('./route-and-run-async-delegation.service').RouteAndRunAsyncDelegationService,
   ) {}
+
+  /**
+   * route_and_run：在 Memory snapshot 冻结前，按 user_id 即时拉取体能画像并写回 request / memory（请求级，不落 L1）。
+   */
+  async hydrateRequestFitnessIfNeeded(request: RouteAndRunRequestDto, memory: AgentMemoryContext): Promise<void> {
+    if (this.routeRunRequestFitnessHydrator) {
+      await this.routeRunRequestFitnessHydrator.hydrate(request, memory);
+    }
+  }
 
   private isValidIntentTaskType(x: string): x is TaskType {
     return (
@@ -274,7 +302,10 @@ export class AgentService {
         message: request.message,
         trip_id: request.trip_id,
         rule_based_task_type: base.taskType,
-        recent_messages: request.conversation_context?.recent_messages?.slice(-6),
+        recent_messages: this.contextSlidingWindow.slice(
+          'agent_telemetry',
+          request.conversation_context?.recent_messages,
+        ),
         tokenContext: {
           request_id: request.request_id,
           state_machine_step: 'INTAKE',
@@ -931,7 +962,35 @@ export class AgentService {
    *   是否调用带 `tripId` 的世界模型桥接及域 Agent 是否注入。
    */
   async routeAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
+    const asyncMode = String(request.options?.async_mode ?? 'OFF').trim().toUpperCase();
+    if (asyncMode === 'FORCE') {
+      if (!this.routeAndRunAsyncDelegationService) {
+        throw new ServiceUnavailableException('RouteAndRunAsyncDelegationService is not configured');
+      }
+      return this.routeAndRunAsyncDelegationService.delegate(request, {
+        delegation_reason: 'async_mode=FORCE：入口立即委托后台 Durable Task',
+      });
+    }
     return this.executionGateway.runRouteAndRun(request);
+  }
+
+  /** Durable Task Pattern：秒回 task_id，后台执行完整 route_and_run */
+  async routeAndRunAsync(request: RouteAndRunRequestDto) {
+    if (!this.routeAndRunAsyncService) {
+      throw new ServiceUnavailableException('RouteAndRunAsyncService is not configured');
+    }
+    return this.routeAndRunAsyncService.startRouteAndRunAsync(request);
+  }
+
+  async getRouteAndRunTaskStatus(taskId: string) {
+    if (!this.routeAndRunAsyncTaskStore) {
+      throw new ServiceUnavailableException('RouteAndRunAsyncTaskStore is not configured');
+    }
+    const status = await this.routeAndRunAsyncTaskStore.getStatus(taskId);
+    if (!status) {
+      throw new NotFoundException(`Task not found: ${taskId}`);
+    }
+    return status;
   }
 
   /**
@@ -1221,7 +1280,10 @@ export class AgentService {
       userId: request.user_id,
       tripId: request.trip_id,
       tripRunId: tripRunId ?? undefined,
-      conversationHistory: request.conversation_context?.recent_messages,
+      conversationHistory: this.contextSlidingWindow.slice(
+        'orchestrator_claude',
+        request.conversation_context?.recent_messages,
+      ),
       abortSignal: orchestrationAbort?.signal,
       routingTaskType: rt,
       ...(recoveryInvocation ? { recoveryInvocation } : {}),
@@ -1290,7 +1352,14 @@ export class AgentService {
         planVersion: orchState?.plan_version,
       }).catch((e: unknown) => {
         const errMsg = e instanceof Error ? e.message : String(e);
-        const matches = matchAxioms({ message: reqToPersist.message, constraints: (reqToPersist as any)?.constraints });
+        const matches = matchAxioms(
+          buildAxiomMatchContext({
+            message: reqToPersist.message,
+            constraints: (reqToPersist as any)?.constraints,
+            tripId: reqToPersist.trip_id,
+            clarificationAnswers: (reqToPersist as any)?.clarification_answers,
+          }),
+        );
         const dom = pickDominantAxiom(matches);
         const stage = 'decision_logs';
         const errorTypeRaw =
@@ -1346,7 +1415,21 @@ export class AgentService {
 
     const observeRuntimeProof = (reqToObserve: RouteAndRunRequestDto, orc: any, terminal: boolean) => {
       try {
-        const domAxiom = pickDominantAxiom(matchAxioms({ message: reqToObserve.message, constraints: undefined }));
+        const orchState = orc?.result?.state as { metadata?: Record<string, unknown>; trip_plan_request?: unknown } | undefined;
+        const orchStateMeta = orchState?.metadata;
+        const domAxiom = pickDominantAxiom(
+          matchAxioms(
+            buildAxiomMatchContext({
+              message: reqToObserve.message,
+              trip: orchState?.trip_plan_request as any,
+              tripId: reqToObserve.trip_id,
+              itinerary: (orchState as { itinerary?: unknown })?.itinerary as any,
+              routeAndRunIntent: orchStateMeta?.route_and_run_intent as any,
+              clarificationAnswers:
+                (reqToObserve as any)?.clarification_answers ?? (orchStateMeta?.clarification_answers as any),
+            }),
+          ),
+        );
         // If DecisionState/OrchestratorState is not available on this execution path, we still emit a
         // conservative observability sample so Scale Proof can compute P95 from runtime metrics.
         // This does not affect business decisions; it only fills a monitoring gap.
@@ -1368,6 +1451,7 @@ export class AgentService {
         const scoreRaw = audit_report?.session_consistency_score;
         const expectedCid = domAxiom?.axiom?.cid;
         const actualCid = audit_report?.dominant_cid ? String(audit_report.dominant_cid) : undefined;
+        const axiomMatchSource = axiomMatchSourceForMetrics(domAxiom);
         const score =
           typeof scoreRaw === 'number'
             ? scoreRaw
@@ -1389,17 +1473,20 @@ export class AgentService {
         if (domAxiom?.axiom_id && expectedCid && actualCid && expectedCid !== actualCid) {
           this.promMetrics?.recordAxiomDominantCidMismatch({
             axiom_id: domAxiom.axiom_id,
-            expected_cid: expectedCid,
-            actual_cid: actualCid,
+            expected_cid: normalizeAxiomCidForMetrics(expectedCid),
+            actual_cid: normalizeAxiomCidForMetrics(actualCid),
             stage: terminal ? 'TERMINAL' : 'REQUEST',
+            match_source: axiomMatchSource,
           });
         }
         if (delta_reason_kind === 'mismatch') {
           this.promMetrics?.recordAxiomSimRealMismatch({
             axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
-            expected_cid: expectedCid ?? 'UNKNOWN',
-            actual_cid: actualCid ?? 'UNKNOWN',
+            expected_cid: normalizeAxiomCidForMetrics(expectedCid),
+            actual_cid: normalizeAxiomCidForMetrics(actualCid),
             stage: terminal ? 'TERMINAL' : 'REQUEST',
+            match_source: axiomMatchSource,
+            severity: domAxiom?.axiom?.severity ?? 'UNKNOWN',
           });
         }
       } catch {
@@ -1516,7 +1603,10 @@ export class AgentService {
         requestId: request.request_id,
         userId: request.user_id,
         tripId: request.trip_id,
-        conversationHistory: request.conversation_context?.recent_messages,
+        conversationHistory: this.contextSlidingWindow.slice(
+          'orchestrator_claude',
+          request.conversation_context?.recent_messages,
+        ),
         userPreferences: {},
         routingTaskType: routeSignals.taskType,
       };
@@ -1655,7 +1745,10 @@ export class AgentService {
       request.message,
       {
         tripId: request.trip_id,
-        recentMessages: request.conversation_context?.recent_messages,
+        recentMessages: this.contextSlidingWindow.slice(
+          'default',
+          request.conversation_context?.recent_messages,
+        ),
         userId: request.user_id,
       },
       initialState.request_id
@@ -1767,7 +1860,9 @@ export class AgentService {
             evidence_refs: [],
             timestamp: new Date().toISOString(),
           })),
-          undefined
+          undefined,
+          undefined,
+          request.options,
         ),
       },
       observability: {
@@ -2236,6 +2331,9 @@ export class AgentService {
       return response;
     }
     const status = response.result?.status;
+    if (response.async_task?.is_async_delegated === true || status === 'PROCESSING') {
+      return response;
+    }
     if (status === 'NEED_MORE_INFO' || status === 'REDIRECT_REQUIRED') {
       return response;
     }

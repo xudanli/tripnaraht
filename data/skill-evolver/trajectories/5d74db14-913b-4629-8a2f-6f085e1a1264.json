@@ -1,0 +1,53 @@
+{
+  "trajectoryId": "5d74db14-913b-4629-8a2f-6f085e1a1264",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "C",
+  "strategy": {
+    "strategyId": "C",
+    "philosophy": "全局最优，先规划后执行",
+    "approach": "先列出完整计划再逐步执行",
+    "emphasis": "依赖关系与顺序",
+    "risk": "计划可能过度复杂"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "result": "[进行中] 已执行: 处理: 测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T06:42:34.632Z"
+    },
+    {
+      "stepIndex": 1,
+      "observation": "[进行中] 已执行: 处理: 测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "result": "[进行中] 已执行: 处理: 测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T06:42:34.632Z"
+    },
+    {
+      "stepIndex": 2,
+      "observation": "[进行中] 已执行: 处理: 测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "result": "[完成] 处理: 测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T06:42:34.632Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T06:42:34.632Z",
+  "score": 25.61,
+  "evalMode": "decision_replay"
+}

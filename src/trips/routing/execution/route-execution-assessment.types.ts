@@ -26,6 +26,9 @@ export interface RouteExecutionAssessment {
   executionReliability: number;
   /** Multiplier vs ideal conditions (≥ 1). */
   estimatedDelayFactor: number;
+  /** CountryProfile V2 leg-level ETA modifier (left-hand habit + road surface coeffs). */
+  countryBaselineEtaModifier?: number;
+  countryCode?: string;
   recommendedVehicleClass?: VehicleClass;
   executionState: ExecutionState;
 }

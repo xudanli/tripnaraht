@@ -21,7 +21,7 @@ function minimalOkResponse(overrides: Partial<RouteAndRunResponseDto> = {}): Rou
     },
     observability: {
       system_mode: 'SYSTEM2' as const,
-      dso_version: 1,
+      dso_version: '1',
     },
   };
   return { ...base, ...overrides, result: { ...base.result, ...overrides.result } } as unknown as RouteAndRunResponseDto;
@@ -96,7 +96,7 @@ describe('assertDoneResponseCompleteness + VERIFY metrics', () => {
 
   it('does not increment VERIFY metrics for SYSTEM1', () => {
     const r = minimalOkResponse({
-      observability: { system_mode: 'SYSTEM1', dso_version: 1 } as any,
+      observability: { system_mode: 'SYSTEM1', dso_version: '1' } as any,
     });
     assertDoneResponseCompleteness(r, { stepsExecuted: [] });
     expect(getDoneVerifyMetricsSnapshot()).toEqual({
@@ -104,6 +104,23 @@ describe('assertDoneResponseCompleteness + VERIFY metrics', () => {
       done_verify_log_fallback_total: 0,
       done_verify_missing_total: 0,
     });
+  });
+
+  it('skips itinerary and VERIFY for itinerary delete short-circuit', () => {
+    const r = minimalOkResponse({
+      result: {
+        status: 'OK',
+        answer_text: '已从第2天删除 1 个相关行程项',
+        payload: {
+          orchestrationResult: {
+            state: { metadata: { itinerary_item_delete_intake: true } },
+            decision_log: [{ step: 'REPAIR', metadata: {} } as any],
+          },
+        },
+      } as any,
+      observability: { system_mode: 'SYSTEM2', dso_version: '3', itinerary_item_crud: true } as any,
+    });
+    expect(() => assertDoneResponseCompleteness(r, { stepsExecuted: [] })).not.toThrow();
   });
 
   it('with DECISION_DONE_VERIFY_STEPS_ONLY=1, log-only VERIFY counts as missing', () => {

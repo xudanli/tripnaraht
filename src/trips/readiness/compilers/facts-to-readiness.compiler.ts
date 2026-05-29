@@ -10,6 +10,13 @@
 import { Injectable } from '@nestjs/common';
 import { ReadinessFinding, ReadinessFindingItem } from '../types/readiness-findings.types';
 import { TripContext } from '../types/trip-context.types';
+import { getCountryPack } from '../config/country-pack.config';
+import type {
+  CountryProfileV2Compliance,
+  CountryProfileV2EntryRequirements,
+  CountryProfileV2TimeBoundaries,
+  CountryProfileV2TravelCulture,
+} from '../../../countries/types/country-profile-v2.types';
 
 // CountryFacts 接口定义
 export interface CountryFacts {
@@ -47,6 +54,12 @@ export interface CountryFacts {
   };
   exchangeRateToCNY?: number;
   exchangeRateToUSD?: number;
+  /** CountryProfile V2 扩展字段（与 prismaRowToCountryFacts 对齐） */
+  schemaVersion?: number;
+  entryRequirements?: CountryProfileV2EntryRequirements;
+  complianceInfo?: CountryProfileV2Compliance;
+  timeBoundaries?: CountryProfileV2TimeBoundaries;
+  travelCulture?: CountryProfileV2TravelCulture;
 }
 
 @Injectable()
@@ -65,6 +78,8 @@ export class FactsToReadinessCompiler {
 
     // 3. 安全与风险（Safety & Hazards）- 紧急电话
     items.push(...this.compileSafety(facts, context));
+
+    items.push(...this.compileHikingTerrainAndGear(facts, context));
 
     // 分类
     const blockers: ReadinessFindingItem[] = [];
@@ -250,6 +265,68 @@ export class FactsToReadinessCompiler {
         });
       }
     }
+
+    return items;
+  }
+
+  /**
+   * 徒步标签行程：合并地形阈值 + 装备核对（与 country-pack terrain 策略对齐）
+   */
+  compileHikingTerrainAndGear(
+    facts: CountryFacts,
+    context: TripContext,
+  ): ReadinessFindingItem[] {
+    const acts = context.itinerary?.activities ?? [];
+    const hasHiking = acts.some((a) =>
+      /hik|trek|trail|徒步/i.test(a),
+    );
+    if (!hasHiking) return [];
+
+    const pack = getCountryPack(facts.isoCode);
+    const items: ReadinessFindingItem[] = [];
+    const thresholds = pack.riskThresholds ?? {};
+
+    if (thresholds.bigAscentDayM != null) {
+      items.push({
+        id: `fact.${facts.isoCode}.hiking.big-ascent-day`,
+        category: 'safety_hazards',
+        severity: 'high',
+        level: 'must',
+        message: `${facts.nameCN} 徒步：建议单日爬升不超过 ${thresholds.bigAscentDayM}m（超出需拆分日程或降低负重）`,
+        tasks: [
+          {
+            title: '核对每日爬升与体能问卷',
+            dueOffsetDays: -14,
+            tags: ['hiking', 'fitness'],
+          },
+        ],
+      });
+    }
+
+    if (thresholds.rapidAscentM != null) {
+      items.push({
+        id: `fact.${facts.isoCode}.hiking.rapid-ascent`,
+        category: 'safety_hazards',
+        severity: 'medium',
+        level: 'must',
+        message: `${facts.nameCN} 徒步：快速爬升阈值 ${thresholds.rapidAscentM}m/日，高海拔行程需留适应日`,
+      });
+    }
+
+    items.push({
+      id: `fact.${facts.isoCode}.hiking.gear-check`,
+      category: 'logistics',
+      severity: 'medium',
+      level: 'must',
+      message: `${facts.nameCN} 多日徒步：确认防水装备、导航设备、应急通讯与补给计划`,
+      tasks: [
+        {
+          title: '完成徒步装备核对清单',
+          dueOffsetDays: -7,
+          tags: ['gear', 'hiking'],
+        },
+      ],
+    });
 
     return items;
   }

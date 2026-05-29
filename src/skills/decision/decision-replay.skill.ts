@@ -126,7 +126,7 @@ export class DecisionReplaySkill implements Skill<DecisionReplayInput, DecisionR
 
   metadata = {
     name: 'decision.replay',
-    description: 'E2E 回放：给定 logs + inputs，回放并 diff，这是 E2E 与评测的生命线',
+    description: 'decision.replay：E2E 回放 decision logs+inputs 并 diff 期望输出。在评测/CI 回归或调试 orchestration 决策链时调用。',
     version: '1.0.0',
     category: 'decision' as const,
   };

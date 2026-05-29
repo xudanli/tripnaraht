@@ -1,5 +1,7 @@
 import type { RepairTrace, SimulatedRepairTrace } from '../services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../services/constraint-registry';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
+import { buildL3ProofPrefixFromMatch } from '../axioms/axiom-l3-proof.util';
 import { matchAxioms } from '../axioms/axiom-matchers';
 import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 
@@ -128,20 +130,25 @@ export function buildHistoricalBoundarySimulations(input: {
     }
   }
 
+  const axiomCtx = buildAxiomMatchContext({
+    message: msgRaw,
+    constraints: (t as any)?.constraints,
+    trip: t as any,
+  });
+
   // Axiom hook: FATIGUE_OVERLOAD (minimal heuristic from message)
   try {
-    const constraints = ((t as any)?.constraints ?? undefined) as Record<string, any> | undefined;
-    const match = matchAxioms({ message: msg, constraints }).find((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
+    const match = matchAxioms(axiomCtx).find((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
     if (match) {
-      const plannedMin = Number(match.evidence?.planned_duration_minutes);
-      const maxMin = 8 * 60; // default daily driving budget for dev baseline
-      const slackMin = Number.isFinite(plannedMin) ? maxMin - plannedMin : -120;
+      const md = match.evidence.metric_details;
+      const limitH = md?.limit ?? 8;
+      const actualH = md?.actual ?? 10;
       const metrics = {
         fatigue_score01: 0.85,
         fatigue_weight: deriveFatigueWeightPiecewise(0.85),
-        base_limit: maxMin / 60,
-        effective_limit: maxMin / 60,
-        actual_cost: Number.isFinite(plannedMin) ? plannedMin / 60 : 10,
+        base_limit: limitH,
+        effective_limit: limitH,
+        actual_cost: actualH,
         unit: 'h' as const,
       };
       const est = AXIOM_REGISTRY.FATIGUE_OVERLOAD.utility_anchor.expected_penalty;
@@ -154,12 +161,7 @@ export function buildHistoricalBoundarySimulations(input: {
         estimated_utility_delta: est,
         simulation: { kind: 'HISTORICAL_BOUNDARY', boundary_id: 'fatigue_overload_intent' },
         evidence: {
-          refIds: [
-            `[L3-PROOF|${AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid}|DAY:intent|cmp:LEQ|actual:${round(
-              Number(metrics.actual_cost),
-              2,
-            )}|limit:${round(Number(metrics.effective_limit), 2)}|unit:h|slack:${round(slackMin / 60, 2)}|evidence:MODEL:intent_fatigue]`,
-          ],
+          refIds: [buildL3ProofPrefixFromMatch(match, 'DAY:INTAKE')],
         },
       });
     }
@@ -169,8 +171,7 @@ export function buildHistoricalBoundarySimulations(input: {
 
   // Axiom hook: ETA_INFEASIBLE (minimal heuristic from message)
   try {
-    const constraints = ((t as any)?.constraints ?? undefined) as Record<string, any> | undefined;
-    const match = matchAxioms({ message: msg, constraints }).find((m) => m.axiom_id === 'ETA_INFEASIBLE');
+    const match = matchAxioms(axiomCtx).find((m) => m.axiom_id === 'ETA_INFEASIBLE');
     if (match) {
       const est = AXIOM_REGISTRY.ETA_INFEASIBLE.utility_anchor.expected_penalty;
       traces.push({
@@ -182,9 +183,7 @@ export function buildHistoricalBoundarySimulations(input: {
         estimated_utility_delta: est,
         simulation: { kind: 'HISTORICAL_BOUNDARY', boundary_id: 'eta_infeasible_intent' },
         evidence: {
-          refIds: [
-            `[L3-PROOF|${AXIOM_REGISTRY.ETA_INFEASIBLE.cid}|DAY:intent|cmp:LEQ|actual:1|limit:0|unit:bool|slack:-1|evidence:MODEL:intent_eta]`,
-          ],
+          refIds: [buildL3ProofPrefixFromMatch(match, 'DAY:INTAKE')],
         },
       });
     }
@@ -192,9 +191,8 @@ export function buildHistoricalBoundarySimulations(input: {
     // best-effort
   }
 
-  const constraints = ((t as any)?.constraints ?? undefined) as Record<string, any> | undefined;
-  const matched = matchAxioms({ message: msg, constraints }).some((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
-  if (matched) {
+  const terrainMatch = matchAxioms(axiomCtx).find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
+  if (terrainMatch) {
     const f = 0.35;
     const w = deriveFatigueWeightPiecewise(f);
     const metrics = {
@@ -215,9 +213,7 @@ export function buildHistoricalBoundarySimulations(input: {
       estimated_utility_delta: est,
       simulation: { kind: 'HISTORICAL_BOUNDARY', boundary_id: 'terrain_high_risk' },
       evidence: {
-        refIds: [
-          `[L3-PROOF|${CONSTRAINT_IDS.TERRAIN_F_ROAD_COMPATIBILITY}|DAY:historical_boundary|cmp:GEQ|actual:0|limit:1|unit:bool|slack:-1|evidence:HISTORICAL_BOUNDARY]`,
-        ],
+        refIds: [buildL3ProofPrefixFromMatch(terrainMatch, 'DAY:historical_boundary')],
       },
     });
   }

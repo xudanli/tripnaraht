@@ -30,7 +30,7 @@ export class PlanPaceComputeTimeWindowsSkill implements Skill<PlanPaceComputeTim
 
   metadata = {
     name: 'plan.pace.computeTimeWindows',
-    description: '计算每天的可用时间窗（入住退房、交通耗时、缓冲）',
+    description: '计算 plan 每日可用 time windows（入住退房、交通、缓冲）。在 pace 评估或 architect 排程前需时间窗约束时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

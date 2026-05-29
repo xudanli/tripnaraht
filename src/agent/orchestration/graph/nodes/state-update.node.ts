@@ -55,6 +55,11 @@ export async function runStateUpdatePrePlanSegment(
     return terminalOutcome;
   }
 
+  const structuredIntakeOutcome = await host.maybeHaltStructuredIntakeClarification(input, decisionState);
+  if (structuredIntakeOutcome) {
+    return structuredIntakeOutcome;
+  }
+
   const clarificationOutcome = await host.maybeHaltHardGapsClarification(input, decisionState);
   if (clarificationOutcome) {
     return clarificationOutcome;

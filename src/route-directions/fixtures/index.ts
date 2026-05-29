@@ -23,6 +23,7 @@ export { IS_WESTFJORDS, IS_WESTFJORDS_PHILOSOPHY } from './is_westfjords.fixture
 export { IS_HIGHLANDS, IS_HIGHLANDS_PHILOSOPHY } from './is_highlands.fixture';
 export { IS_SELF_DRIVE_COAST, IS_SELF_DRIVE_COAST_PHILOSOPHY } from './is_self_drive_coast.fixture';
 export { IS_TREKKING_WILDERNESS, IS_TREKKING_WILDERNESS_PHILOSOPHY } from './is_trekking_wilderness.fixture';
+export { IS_LAUGAVEGUR, IS_LAUGAVEGUR_PHILOSOPHY } from './is_laugavegur.fixture';
 
 // ============================================================================
 // 格陵兰路线 (Greenland) - 3条
@@ -107,6 +108,7 @@ import { IS_WESTFJORDS } from './is_westfjords.fixture';
 import { IS_HIGHLANDS } from './is_highlands.fixture';
 import { IS_SELF_DRIVE_COAST } from './is_self_drive_coast.fixture';
 import { IS_TREKKING_WILDERNESS } from './is_trekking_wilderness.fixture';
+import { IS_LAUGAVEGUR } from './is_laugavegur.fixture';
 import { GL_ILULISSAT_ICE_FJORD } from './gl_ilulissat_ice_fjord.fixture';
 import { GL_DISKO_BAY } from './gl_disko_bay.fixture';
 import { GL_EAST_GREENLAND } from './gl_east_greenland_wilderness.fixture';
@@ -155,6 +157,7 @@ export const ALL_ROUTE_DIRECTION_FIXTURES: RouteDirectionData[] = [
   IS_HIGHLANDS,
   IS_SELF_DRIVE_COAST,
   IS_TREKKING_WILDERNESS,
+  IS_LAUGAVEGUR,
   // 格陵兰 (3条)
   GL_ILULISSAT_ICE_FJORD,
   GL_DISKO_BAY,
@@ -203,7 +206,7 @@ export const ALL_ROUTE_DIRECTION_FIXTURES: RouteDirectionData[] = [
  * 按国家分组的 fixtures
  */
 export const ROUTE_FIXTURES_BY_COUNTRY: Record<string, RouteDirectionData[]> = {
-  IS: [IS_GOLDEN_CIRCLE, IS_RING_ROAD_SOUTH, IS_SNAEFELLSNES, IS_RING_ROAD_FULL, IS_WESTFJORDS, IS_HIGHLANDS, IS_SELF_DRIVE_COAST, IS_TREKKING_WILDERNESS],
+  IS: [IS_GOLDEN_CIRCLE, IS_RING_ROAD_SOUTH, IS_SNAEFELLSNES, IS_RING_ROAD_FULL, IS_WESTFJORDS, IS_HIGHLANDS, IS_SELF_DRIVE_COAST, IS_TREKKING_WILDERNESS, IS_LAUGAVEGUR],
   GL: [GL_ILULISSAT_ICE_FJORD, GL_DISKO_BAY, GL_EAST_GREENLAND],
   AR: [AR_MARTIAL_GLACIER, AR_LAGUNA_ESMERALDA, AR_TIERRA_DEL_FUEGO_COASTAL, AR_BEAGLE_CHANNEL_CRUISE, AR_CERRO_TORRE, AR_SAN_VALENTIN],
   SJ: [SJ_LONGYEARBYEN, SJ_PYRAMIDEN, SJ_BARENTSBURG, SJ_GLACIER_EXPEDITION, SJ_NY_ALESUND],
@@ -239,7 +242,7 @@ export const ROUTE_FIXTURES_BY_DIFFICULTY: Record<string, RouteDirectionData[]> 
   ],
   extreme: [
     IS_HIGHLANDS, GL_ILULISSAT_ICE_FJORD, GL_EAST_GREENLAND,
-    IS_TREKKING_WILDERNESS, SJ_GLACIER_EXPEDITION, HAUTE_ROUTE, CN_WESTERN_TIBET_EXPEDITION,
+    IS_TREKKING_WILDERNESS, IS_LAUGAVEGUR, SJ_GLACIER_EXPEDITION, HAUTE_ROUTE, CN_WESTERN_TIBET_EXPEDITION,
     AR_CERRO_TORRE, AR_SAN_VALENTIN,
     // 8000米高峰 (6条)
     NP_EVEREST_SOUTH_COL, PK_K2_ABRUZZI_SPUR, NP_KANGCHENJUNGA_SW_FACE,

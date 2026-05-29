@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "be6aee75-6b00-488c-95e9-835f5a81070a",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "S1_STRICT_GATEKEEPER",
+  "strategy": {
+    "strategyId": "S1_STRICT_GATEKEEPER",
+    "philosophy": "保守优先，规则即铁律。任何缺失的关键证据都应直接触发拒绝，不依赖上下文推断或用户意图猜测。",
+    "approach": "在编排第一步即强制检查 DEM Evidence 是否存在。若缺失，立即输出 REJECT 并终止后续所有路线生成，不询问用户是否愿意补充信息。",
+    "emphasis": "全局规则一致性，牺牲交互流畅度换取绝对合规性。",
+    "risk": "可能误拒真实需求：用户本可后续提供 DEM，但策略未留任何协商空间，导致体验生硬、用户流失。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求7月去冰岛高地，符合夏季条件，但根据[S1_STRICT_GATEKEEPER]策略，我必须先检查DEM Evidence是否存在。当前用户消息中未提及DEM（数字高程模型）相关证据，因此直接触发REJECT，不继续生成路线。",
+      "action": "REJECT: 缺少DEM Evidence，无法确认高地路线的可行性。请提供DEM数据或相关地形信息。",
+      "result": "[完成] REJECT: 缺少DEM Evidence，无法确认高地路线的可行性。请提供DEM数据或相关地形信息。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:12:43.317Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 DEM 缺失 REJECT 等门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:12:43.317Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

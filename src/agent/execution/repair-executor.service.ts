@@ -33,6 +33,8 @@ import type {
   ItineraryLike,
 } from '../../decision/kernel/interfaces/phase-executor.interface';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
+import { applyPostRepairRoutingMetricsSync } from '../axioms/post-repair-routing-sync.util';
 import { matchAxioms } from '../axioms/axiom-matchers';
 import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 import { ClaudeLocalInsightAgentService } from '../services/sub-agents/local-insight-agent.service';
@@ -49,6 +51,13 @@ import {
 } from '../../planning-policy/utils/contextual-poi-search-query.util';
 import { buildReplacementRetrievalDecisionTrace } from '../../planning-policy/utils/build-retrieval-decision-trace.util';
 import { detectItineraryGapsV1, gapRetrievalIntentQuerySuffix } from '../../planning-policy/utils/detect-itinerary-gaps.util';
+import {
+  buildPersonaClosureSkipRepairTrace,
+  filterSpatialReplaceAdjustments,
+  resolvePersonaClosureAudit,
+  shouldSkipRepairNeptuneReplace,
+} from '../utils/persona-closure-repair-skip.util';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 
 @Injectable()
 export class RepairExecutorService implements IRepairExecutor {
@@ -57,6 +66,7 @@ export class RepairExecutorService implements IRepairExecutor {
   private static readonly OSCILLATION_MOVE_THRESHOLD = 3; // >2 times
 
   constructor(
+    private readonly contextSlidingWindow: ContextSlidingWindowAdapter,
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly localInsightAgent?: ClaudeLocalInsightAgentService,
     /**
@@ -118,6 +128,22 @@ export class RepairExecutorService implements IRepairExecutor {
     const hasLowBudgetDirective =
       (ctx.gateResult.required_adjustments ?? []).some((a) => a.action === 'REDUCE_SCOPE_OR_ADD_EVIDENCE') === true;
 
+    const personaClosureAudit = resolvePersonaClosureAudit({
+      personaClosureAudit: ctx.personaClosureAudit,
+      gateResult: ctx.gateResult as GateResult,
+    });
+    const skipNeptuneSpatialReplace = shouldSkipRepairNeptuneReplace(personaClosureAudit, dso);
+    if (skipNeptuneSpatialReplace) {
+      repairTraces.push(buildPersonaClosureSkipRepairTrace());
+      this.logger.debug(
+        `[RepairExecutor] Skipping Neptune spatial REPLACE (persona_closure_already_converged, stopReason=${personaClosureAudit?.stopReason})`,
+      );
+    }
+    const repairAdjustments = filterSpatialReplaceAdjustments(
+      ctx.gateResult.required_adjustments,
+      skipNeptuneSpatialReplace,
+    );
+
     const req = this.toTripPlanRequest(ctx.tripPlanRequest, ctx.requestId);
     const minimalState: Partial<OrchestratorState> = {
       request_id: ctx.requestId,
@@ -134,7 +160,15 @@ export class RepairExecutorService implements IRepairExecutor {
     try {
       const msg = String((req as any)?.message ?? '').trim();
       const constraints = (req as any)?.constraints as Record<string, any> | undefined;
-      const matches = matchAxioms({ message: msg, constraints });
+      const matches = matchAxioms(
+        buildAxiomMatchContext({
+          message: msg,
+          constraints,
+          trip: req as any,
+          itinerary: ctx.itinerary as any,
+          clarificationAnswers: (req as any)?.clarification_answers,
+        }),
+      );
       const terrain = matches.find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
       const fatigue = matches.find((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
       const eta = matches.find((m) => m.axiom_id === 'ETA_INFEASIBLE');
@@ -341,7 +375,8 @@ export class RepairExecutorService implements IRepairExecutor {
     // 1. LocalInsight Agent 生成替代方案（保留：当 deterministic/targeted 未覆盖时）
     let alternatives = ctx.alternatives;
     // 当 Kernel 指示“低预算/补证据”时，跳过替代方案生成以节省链路与 token（repair.apply 只需执行 required_adjustments）。
-    if (this.localInsightAgent && ctx.gateResult && !hasLowBudgetDirective) {
+    // persona closure 已收敛（ABU_RECHECK_PASS）时跳过，避免重复 Neptune 空间替换。
+    if (this.localInsightAgent && ctx.gateResult && !hasLowBudgetDirective && !skipNeptuneSpatialReplace) {
       try {
         const alt = await this.localInsightAgent.suggestAlternatives(
           req,
@@ -357,14 +392,48 @@ export class RepairExecutorService implements IRepairExecutor {
       }
     }
 
+    // 1.5 trip.applyEdit：用户改行程 / Gate 需调整时，优先 smart_update 闭环
+    if (this.skillsRegistry && itinerary) {
+      const userIntent = String((req as { message?: string; user_change_intent?: string }).message
+        ?? (req as { user_change_intent?: string }).user_change_intent
+        ?? '').trim();
+      const gateAdjust =
+        ctx.gateResult.gate_result === 'ADJUST_REQUIRED' ||
+        ctx.gateResult.gate_result === 'NEED_USER_CONFIRM';
+      if (userIntent.length > 0 || gateAdjust) {
+        try {
+          const applyEditSkill = this.skillsRegistry.getSkill('trip.applyEdit');
+          if (applyEditSkill) {
+            const editOut = await applyEditSkill.execute({
+              mode: 'smart',
+              tripId: String((req as { trip_id?: string }).trip_id ?? ''),
+              itinerary: itinerary as any,
+              research_data: minimalState.research_data as Record<string, unknown> | undefined,
+              user_change_intent: userIntent || undefined,
+            });
+            if (editOut?.itinerary) {
+              itinerary = {
+                request_id: editOut.itinerary.request_id,
+                days: editOut.itinerary.days,
+                metadata: editOut.itinerary.metadata,
+              };
+              repairApplied = true;
+            }
+          }
+        } catch (e: unknown) {
+          this.logger.warn(`[RepairExecutor] trip.applyEdit 失败: ${(e as Error)?.message}`);
+        }
+      }
+    }
+
     // 2. repair.apply Skill 应用修复（保留 legacy：当 gateResult.required_adjustments 显式存在时）
-    if (this.skillsRegistry && itinerary && ctx.gateResult.required_adjustments?.length > 0) {
+    if (this.skillsRegistry && itinerary && repairAdjustments.length > 0) {
       try {
         const skill = this.skillsRegistry.getSkill('repair.apply');
         if (skill) {
           const result = await skill.execute({
             itinerary: itinerary as any,
-            adjustments: ctx.gateResult.required_adjustments,
+            adjustments: repairAdjustments,
             alternatives: alternatives || { alternative_pois: [], alternative_routes: [] },
           });
           if (result?.repaired && result.itinerary) {
@@ -397,6 +466,29 @@ export class RepairExecutorService implements IRepairExecutor {
           `继续静默压缩/迁移可能显著拉低体验分；请您进行更高级别放宽（减 POI / 加天 / 降强度 / 调交通）以避免“修到不像旅行”。`,
         at: new Date().toISOString(),
       };
+    }
+
+    if (
+      repairApplied &&
+      itinerary &&
+      Array.isArray(itinerary.days) &&
+      itinerary.days.length > 0 &&
+      ctx.tripPlanRequest
+    ) {
+      try {
+        const req = this.toTripPlanRequest(ctx.tripPlanRequest, ctx.requestId);
+        const { trip: synced } = applyPostRepairRoutingMetricsSync({
+          trip: req,
+          itinerary: itinerary as import('../interfaces/trip-plan.interface').Itinerary,
+        });
+        Object.assign(ctx.tripPlanRequest as object, {
+          plan_output: synced.plan_output,
+          routing_metadata: synced.routing_metadata,
+          routing_metrics: synced.routing_metrics,
+        });
+      } catch {
+        // best-effort: routing sync must not block REPAIR
+      }
     }
 
     return {
@@ -1445,7 +1537,10 @@ export class RepairExecutorService implements IRepairExecutor {
     const skill = this.skillsRegistry.getSkill('poi.search');
     if (!skill) return {};
     try {
-      const recent = Array.isArray(ctx.recent_messages) ? ctx.recent_messages.filter((m) => typeof m === 'string').slice(-5) : [];
+      const stringMessages = Array.isArray(ctx.recent_messages)
+        ? ctx.recent_messages.filter((m): m is string => typeof m === 'string')
+        : [];
+      const recent = this.contextSlidingWindow.slice('repair_executor', stringMessages);
       const userMessage = recent.length ? recent.join('\n') : undefined;
       const poiSearchCtx = buildPoiSearchContext({
         destination,

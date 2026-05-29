@@ -30,12 +30,16 @@ fi
 
 lint_skipped="false"
 lint=0
+skills_audit=0
 if [ "${READINESS_P1_SKIP_LINT:-}" = "1" ]; then
   lint_skipped="true"
   echo "readiness:p1 — SKIP lint (READINESS_P1_SKIP_LINT=1)"
 else
   npm run lint || lint=1
 fi
+
+npm run skills:audit-usage || skills_audit=1
+npm run skills:audit-descriptions:ci || skills_audit=1
 
 physical_island=0
 npm run check:physical || physical_island=1
@@ -106,6 +110,9 @@ fi
 
 overall=0
 if [ "$lint_skipped" = "false" ] && [ "$lint" -ne 0 ]; then
+  overall=1
+fi
+if [ "$skills_audit" -ne 0 ]; then
   overall=1
 fi
 if [ "$physical_island" -ne 0 ]; then
@@ -179,6 +186,7 @@ printf '%s\n' "{
   },
   \"suites\": {
     $lint_block,
+    \"skills_audit_descriptions\": { \"exitCode\": $skills_audit },
     \"check_physical\": { \"exitCode\": $physical_island },
     \"typecheck_physics\": { \"exitCode\": $physics_kernel },
     $typecheck_trips_block,

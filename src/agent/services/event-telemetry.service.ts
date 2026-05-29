@@ -12,6 +12,9 @@ export enum AgentEventType {
   FALLBACK_TRIGGERED = 'fallback_triggered',
   AGENT_COMPLETE = 'agent_complete',
   SAGA_STUCK = 'saga_stuck',
+  ROUTE_AND_RUN_SSE_CONNECT = 'route_and_run_sse_connect',
+  ROUTE_AND_RUN_SSE_FIRST_ACTION = 'route_and_run_sse_first_action',
+  ROUTE_AND_RUN_SSE_CLOSE = 'route_and_run_sse_close',
 }
 
 /**

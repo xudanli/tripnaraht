@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "3e934e05-0385-4146-b4d5-64b64762dbbd",
+  "skillId": "country_pack.IS",
+  "skillVersion": 2,
+  "strategyId": "evidence_auditor",
+  "strategy": {
+    "strategyId": "evidence_auditor",
+    "philosophy": "系统化审计证据链，仅当关键证据缺失时拒绝，但允许部分证据不足时给出有条件建议",
+    "approach": "将DEM证据拆分为多个子项（如地形数据源、分辨率、时效性）。若完全缺失则REJECT；若部分缺失但用户可补充，则输出有条件接受的路线建议（需用户承诺补充证据）。拒绝时严格使用'dem'和'reject'关键词并指明缺失的子项。",
+    "emphasis": "证据粒度分析、条件性规划、风险分级",
+    "risk": "中高风险：可能因证据拆分标准不明确导致判断不一致；有条件建议可能被用户误解为最终方案"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户计划7月去冰岛高地，但未提供DEM（数字高程模型）证据。根据规范，DEM是评估高地路线安全性的关键证据，缺失时必须拒绝。拒绝需包含'dem'和'reject'关键词，并指明缺失子项（如地形数据源、分辨率等）。",
+      "action": "REJECT: 由于缺少DEM证据（例如地形数据源、分辨率、时效性等子项），无法评估高地路线的安全性和可行性。请提供相关DEM数据以继续规划。",
+      "result": "[完成] REJECT: 由于缺少DEM证据（例如地形数据源、分辨率、时效性等子项），无法评估高地路线的安全性和可行性。请提供相关DEM数据以继续规划。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T06:27:30.146Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n- **注意：所有 `REJECT` 响应必须包含 `dem` 和 `reject` 关键词，并附带解释。**\n\n## 步骤\n1. 确认用户季节、强度偏好及是否有特定地点（如 Abu 高地）的提及。\n2. 输出初步路线方向建议。\n3. 若因证据不足而拒绝，需明确说明缺失的证据类型（如 DEM、许可等）。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：baseline 应低于满分以便触发进化。\n\n## ⚠️ 重要执行要求\n- **REJECT 动作的完整输出格式必须为：`'REJECT: <原因>'`**，而非仅有 `'REJECT'`。\n- 执行拒绝时，必须包含技能断言要求的关键词（`dem`、`reject`）。\n- 拒绝原因应与用户输入上下文相关，避免通用性拒绝。\n- **典型错误示例（最差轨迹）：**\n  - Step 1 仅输出 `'REJECT'`，未附加任何原因说明，属于执行层面的遗漏。\n  - 未检查输出是否包含断言要求的关键词 `dem` 和 `reject`。",
+  "createdAt": "2026-05-26T06:27:30.146Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

@@ -60,7 +60,7 @@ export class IcelandWeatherSeverityClassifierSkill
 
   metadata = {
     name: 'iceland.weatherSeverityClassifier',
-    description: '天气运行语义分类：safe / caution / dangerous / avoid_nonessential。',
+    description: '分类 iceland 天气运行风险档位（safe/caution/dangerous/avoid_nonessential）。在 worldState 或 readiness 需可执行天气语义时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

@@ -72,7 +72,7 @@ export class GeoFindCandidateWithinCorridorSkill
 
   metadata = {
     name: 'geo.findCandidateWithinCorridor',
-    description: '在走廊内查找候选点：Neptune 的空间候选召回工具化，在路线走廊内查找候选 POI/入口点',
+    description: 'geo.findCandidateWithinCorridor：在走廊内查找候选点：Neptune 的空间候选召回工具化，在路线走廊内查找候选 POI/入口点',
     version: '1.0.0',
     category: 'rag' as const,
     toolGroup: 'DOMAIN' as const,

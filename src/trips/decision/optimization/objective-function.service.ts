@@ -357,13 +357,29 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
       return 0.7;
     }
 
-    // 1. DEM 违规惩罚
+    // 1. DEM 违规惩罚（占位符/UNKNOWN → 区域底噪，非 0 分乐观）
     const demEvidence = physical.demEvidence || [];
-    const demViolations = demEvidence.filter(
-      e => e.violation !== 'NONE' && !e.segmentId.includes('placeholder')
+    const unknownDem = demEvidence.filter(
+      (e) =>
+        e.violation === 'UNKNOWN' ||
+        e.segmentId?.startsWith('placeholder_') ||
+        (e as { dataProvenance?: string }).dataProvenance === 'PLACEHOLDER',
     );
-    const hardDemViolations = demViolations.filter(e => e.violation === 'HARD');
-    const softDemViolations = demViolations.filter(e => e.violation === 'SOFT');
+    if (unknownDem.length > 0) {
+      const baselineRisk = Math.max(
+        0.12,
+        Math.min(0.45, 0.5 - (physical.climateSeasonality?.accessibilityScore ?? 0.55) * 0.35),
+      );
+      score -= baselineRisk;
+    }
+    const demViolations = demEvidence.filter(
+      (e) =>
+        e.violation !== 'NONE' &&
+        e.violation !== 'UNKNOWN' &&
+        !e.segmentId?.includes('placeholder'),
+    );
+    const hardDemViolations = demViolations.filter((e) => e.violation === 'HARD');
+    const softDemViolations = demViolations.filter((e) => e.violation === 'SOFT');
 
     if (hardDemViolations.length > 0) {
       score -= 0.5; // 硬违规大幅扣分
@@ -603,7 +619,7 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
   ): ConstraintSatisfactionResult {
     const demEvidence = world?.physical?.demEvidence || [];
     const violations = demEvidence.filter(
-      e => e.violation === 'HARD' && !e.segmentId.includes('placeholder')
+      (e) => e.violation === 'HARD' && !e.segmentId?.includes('placeholder'),
     );
 
     return {

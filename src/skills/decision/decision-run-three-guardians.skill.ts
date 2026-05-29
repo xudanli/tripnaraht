@@ -20,6 +20,10 @@ import { StrategyOrchestratorService } from '../../trips/decision/services/strat
 import { WorldBuildContextSkill } from '../world/world-build-context.skill';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
+import {
+  isPersonaClosureLoopEnabled,
+  type PersonaClosureAudit,
+} from '../../trips/decision/shared/persona-closure.types';
 
 export interface DecisionRunThreeGuardiansInput extends SkillInput {
   /** 行程 ID（如果有） */
@@ -69,6 +73,8 @@ export interface DecisionRunThreeGuardiansOutput extends SkillOutput {
   };
   /** 所有决策日志 */
   allLogs: DecisionLogEntry[];
+  /** Neptune REPLACE 后 Abu 有界重验审计（TRIP_PERSONA_CLOSURE_LOOP=1） */
+  personaClosureAudit?: PersonaClosureAudit;
 }
 
 @Injectable()
@@ -77,7 +83,7 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
 
   metadata = {
     name: 'decision.runThreeGuardians',
-    description: '一次性执行三人格策略编排（Abu → Dr.Dre → Neptune），返回结构化决策结果和最终计划',
+    description: 'decision.runThreeGuardians：一次性执行三人格策略编排（Abu → Dr.Dre → Neptune），返回结构化决策结果和最终计划',
     version: '1.0.0',
     category: 'decision' as const,
     inputSchema: {
@@ -135,7 +141,9 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
       if (!this.strategyOrchestrator) {
         throw new Error('StrategyOrchestratorService 未可用，请确保 DecisionModule 已正确加载');
       }
-      const result = await this.strategyOrchestrator.run(world, planCandidate);
+      const result = await this.strategyOrchestrator.run(world, planCandidate, {
+        enablePersonaClosureLoop: isPersonaClosureLoopEnabled(),
+      });
 
       // 4. 分离三个守护者的结果
       const abuLogs = result.logs.filter(log => log.persona === 'ABU');
@@ -225,6 +233,7 @@ export class DecisionRunThreeGuardiansSkill implements Skill<DecisionRunThreeGua
         finalPlan: result.plan,
         decisionSummary,
         allLogs: result.logs,
+        personaClosureAudit: result.personaClosureAudit,
       };
     } catch (error: any) {
       this.logger.error(`执行三人格策略失败: ${error.message}`, error.stack);

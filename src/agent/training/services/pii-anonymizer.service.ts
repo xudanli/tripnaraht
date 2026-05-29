@@ -295,6 +295,41 @@ export class PIIAnonymizerService {
   }
 
   /**
+   * 对任意 JSON 可序列化值做浅层 PII 脱敏（DecisionTrajectory 载荷用）。
+   */
+  anonymizeJsonValue<T>(value: T, config: PIIAnonymizationConfig = {}): T {
+    const finalConfig = { ...this.defaultConfig, ...config };
+    return this.anonymizeJsonValueRecursive(value, finalConfig) as T;
+  }
+
+  private anonymizeJsonValueRecursive(value: unknown, config: PIIAnonymizationConfig): unknown {
+    if (value == null) return value;
+    if (typeof value === 'string') {
+      return this.anonymizeUserRequest(value, config);
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.anonymizeJsonValueRecursive(item, config));
+    }
+    if (typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+        const lk = key.toLowerCase();
+        if (config.anonymize_user_ids && (lk === 'userid' || lk === 'user_id')) {
+          out[key] = this.hashValue(String(v), 'user', config.hash_salt);
+          continue;
+        }
+        if (config.anonymize_emails && lk.includes('email') && typeof v === 'string') {
+          out[key] = '[email_redacted]';
+          continue;
+        }
+        out[key] = this.anonymizeJsonValueRecursive(v, config);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  /**
    * 脱敏用户请求文本
    */
   private anonymizeUserRequest(
@@ -318,6 +353,12 @@ export class PIIAnonymizerService {
         '[phone_redacted]',
       );
     }
+
+    // 酒店/航班确认号、订单号（PR-B 辩论文本）
+    anonymized = anonymized.replace(
+      /\b(?:订单|预订|confirmation|booking\s*ref|pnr|record\s*locator)[#:\s-]*[A-Z0-9]{5,12}\b/gi,
+      '[booking_ref_redacted]',
+    );
 
     return anonymized;
   }

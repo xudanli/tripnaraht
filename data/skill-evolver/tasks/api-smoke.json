@@ -1,0 +1,28 @@
+{
+  "batchId": "api-smoke",
+  "description": "API 调用技能冒烟任务集",
+  "tasks": [
+    {
+      "id": "t1",
+      "description": "查询天气 API 并解析 JSON 返回",
+      "initialObservation": "用户要求查询北京天气",
+      "successCriteria": "返回解析后的温度字段"
+    },
+    {
+      "id": "t2",
+      "description": "处理 API 401 错误",
+      "initialObservation": "API 返回 401 Unauthorized",
+      "successCriteria": "记录错误且不重试"
+    },
+    {
+      "id": "t3",
+      "description": "处理超时并重试",
+      "initialObservation": "请求超时，已等待 30 秒",
+      "successCriteria": "按指数退避重试"
+    }
+  ],
+  "assertions": [
+    { "type": "skill_body_contains", "value": "参数", "weight": 1 },
+    { "type": "task_completed", "value": "true", "weight": 2 }
+  ]
+}

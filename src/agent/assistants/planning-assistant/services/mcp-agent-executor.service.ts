@@ -28,6 +28,7 @@ import type { OrchestratorRobustnessMetadata } from '../../../utils/orchestrator
 import { isMcpToolExecutionError } from '../errors/mcp-tool-execution.error';
 import { extractTokenUsage } from '../../../../llm/utils/token-extractor.util';
 import type { ComplexityLevel } from '../../../utils/orchestration-signals.util';
+import { buildTemporalGroundingLine } from '../../../utils/temporal-grounding.util';
 import { MetricsRecorder } from '../../../utils/agent-metrics.util';
 import type {
   BookingCompletionContract,
@@ -198,12 +199,6 @@ export interface McpAgentExecutorRunResult {
 const DEFAULT_SYSTEM_WEATHER = `你是 TripNARA 旅行助理。你可以调用提供的工具获取实时天气。
 策略：若用户询问某地天气，先调用相应天气工具，再基于工具结果用中文简洁回答。
 不要编造气象数据；工具失败时说明原因并给出可行建议。`;
-
-/** 减少日期参数幻觉：每次请求注入当前 UTC 锚点（工具参数字符串请与此对齐）。 */
-function buildTemporalGroundingLine(now: Date = new Date()): string {
-  const iso = now.toISOString();
-  return `[Temporal anchor] UTC now: ${iso}. Interpret 今天/明天/后天 and weather startDate/endDate relative to this instant.`;
-}
 
 /** 按路由复杂度给出 MCP 韧性默认值（可被 budget / 环境变量覆盖）。 */
 export function resolveAgenticMcpRetryBudget(complexity: ComplexityLevel): Pick<

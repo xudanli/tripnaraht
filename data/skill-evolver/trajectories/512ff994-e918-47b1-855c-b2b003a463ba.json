@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "512ff994-e918-47b1-855c-b2b003a463ba",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "IS-ACCURACY-GUARD",
+  "strategy": {
+    "strategyId": "IS-ACCURACY-GUARD",
+    "philosophy": "准确性与安全绝对优先，宁可拒绝也不放过任何不确定性。对每条规则严格执行，不依赖默认假设。",
+    "approach": "1. 季节检查：7月虽为默认开放季，但需额外验证具体日期与当年路政公告（如F208实际开放日可能晚于7月1日）。\n2. Abu门禁：DEM/海拔数据缺失时强制`REJECT`并记录错误日志，不允许静默降级。\n3. Dr.Dre节奏：`mustAdjust=true`时输出完整pace调整动作，并强制经过`PLAN_SCORE`。\n4. Neptune修复：空间冲突时记录完整repair轨迹，包括冲突坐标、用户原始意图与修复后路径。\n5. 风暴场景：`recovery-wind`片段保留完整上下文（风速、时间轴、用户动作）。",
+    "emphasis": "规则合规性与用户安全，确保所有决策可审计且可回溯",
+    "risk": "中等风险：过度拒绝可能导致可用路线减少，用户满意度下降；决策延迟增加，但安全性提升。"
+  },
+  "taskIds": [
+    "iceland-highlands-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地，中等强度，7天行程",
+      "thought": "用户请求7月冰岛高地路线，中等强度，7天行程。根据[IS-ACCURACY-GUARD]规则：1）季节检查：7月为默认开放季，但需验证当年路政公告，目前无具体年份和公告数据，无法确认F208等路段实际开放日期，存在不确定性。2）Abu门禁：DEM/海拔证据缺失，必须REJECT，不可静默允许。3）Dr.Dre节奏：用户未提及pace调整需求，mustAdjust=false，无需输出pace动作。4）Neptune修复：无空间冲突证据，mustRepair=false。5）风暴场景：未涉及。综合判断：由于Abu门禁规则强制要求海拔/DEM证据，当前无此数据，必须REJECT，无法达到final allowed=true。因此任务无法完成。",
+      "action": "REJECT：缺少高地路线所需的海拔/DEM证据，根据Abu门禁规则强制拒绝；季节检查因无具体路政公告无法确认开放状态，拒绝以保安全。",
+      "result": "[完成] REJECT：缺少高地路线所需的海拔/DEM证据，根据Abu门禁规则强制拒绝；季节检查因无具体路政公告无法确认开放状态，拒绝以保安全。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:04:10.893Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:04:10.893Z",
+  "score": 79,
+  "evalMode": "fixture"
+}

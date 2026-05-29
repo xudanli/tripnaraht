@@ -43,19 +43,18 @@ import {
   PlanCandidate,
   ConversationMessage,
 } from '../interfaces/planning-assistant.interface';
+import { PaConversationContextService } from './pa-conversation-context.service';
 import { randomUUID as uuidv4 } from 'crypto';
 
 @Injectable()
 export class PlanningAssistantService {
   private readonly logger = new Logger(PlanningAssistantService.name);
-  
-  // 会话状态存储（生产环境应使用 Redis）
-  private sessions: Map<string, PlanningConversationState> = new Map();
-  
+
   // 会话过期时间（24小时）
   private readonly SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
   constructor(
+    private readonly paConversationContext: PaConversationContextService,
     // V2.1 Infra 层服务
     @Optional() private readonly coreGateway?: CoreGatewayService,
     @Optional() private readonly llmExecutor?: LLMExecutorService,
@@ -177,8 +176,18 @@ export class PlanningAssistantService {
   /**
    * 获取会话状态
    */
-  async getSessionState(sessionId: string): Promise<PlanningConversationState | null> {
-    return this.sessions.get(sessionId) || null;
+  async getSessionState(sessionId: string, userId?: string): Promise<PlanningConversationState | null> {
+    return this.paConversationContext.get(sessionId, userId);
+  }
+
+  /** 持久化会话（供 V2 业务路径在编排回调后写入） */
+  async saveSession(state: PlanningConversationState): Promise<void> {
+    await this.paConversationContext.set(state);
+  }
+
+  /** 删除会话上下文（Redis + 内存） */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.paConversationContext.delete(sessionId);
   }
 
   // ==================== LLM 增强的意图分析 ====================
@@ -1058,8 +1067,8 @@ To give you the best recommendations, I'd like to know a bit more:
   // ==================== 辅助方法 ====================
 
   private async loadOrCreateSession(sessionId: string, userId?: string): Promise<PlanningConversationState> {
-    let state = this.sessions.get(sessionId);
-    
+    let state = await this.paConversationContext.get(sessionId, userId);
+
     if (!state || new Date(state.expiresAt) < new Date()) {
       const now = new Date().toISOString();
       state = {
@@ -1072,13 +1081,10 @@ To give you the best recommendations, I'd like to know a bit more:
         updatedAt: now,
         expiresAt: new Date(Date.now() + this.SESSION_TTL_MS).toISOString(),
       };
+      await this.paConversationContext.set(state);
     }
-    
-    return state;
-  }
 
-  private async saveSession(state: PlanningConversationState): Promise<void> {
-    this.sessions.set(state.sessionId, state);
+    return state;
   }
 
   private addMessage(state: PlanningConversationState, message: ConversationMessage): PlanningConversationState {

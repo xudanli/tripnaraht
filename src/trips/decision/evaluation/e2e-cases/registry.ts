@@ -16,8 +16,75 @@ import {
   icelandGoldenHighlandsRepairCapturedCase,
   icelandGoldenRingRoadCapturedCase,
 } from './iceland-golden-corpus.example';
+import { icelandStormIcecaveFailureCase } from './iceland-storm-icecave-failure.example';
+import { icelandStormRecoveryExperienceFirstCase } from './iceland-storm-recovery-experience-first.example';
+import { icelandDecisionClosureStormF208Case } from './iceland-decision-closure-storm-f208.example';
+import { icelandDecisionClosureRingStableCase } from './iceland-decision-closure-ring-stable.example';
+import {
+  PERSONA_CLOSURE_REPLAY_FIXTURES,
+} from './persona-closure.examples';
 import fs from 'fs';
 import path from 'path';
+
+function loadStormDecisionClosureGoldenIfPresent(): E2ECase | undefined {
+  try {
+    const goldenPath = path.join(
+      __dirname,
+      'iceland-storm-icecave-failure.decision-closure.golden.json',
+    );
+    if (!fs.existsSync(goldenPath)) return undefined;
+    const golden = JSON.parse(fs.readFileSync(goldenPath, 'utf8')) as Record<string, unknown>;
+    return {
+      ...icelandStormIcecaveFailureCase,
+      expected: {
+        ...icelandStormIcecaveFailureCase.expected,
+        scientificExpected: {
+          ...icelandStormIcecaveFailureCase.expected.scientificExpected,
+          decisionClosure: {
+            mustHaveDecisionVerdict: true,
+            chosenPlanIdIncludes: ['plan-'],
+            metaDecisionAuditIncludes: ['mcTotal'],
+            narrationZhIncludes: ['推荐方案', 'CGUS'],
+            monteCarloMinTotalSamples: 50,
+            minRejectedPlans: 1,
+            ...(function roadMaterializationFromGolden(g: Record<string, unknown>) {
+              const hints = (g.optimizationHints ?? {}) as {
+                worldConstraintMaterialization?: { appliedEvents?: number; roadIds?: string[] };
+              };
+              const applied = hints.worldConstraintMaterialization?.appliedEvents ?? 0;
+              if (applied < 1) return {};
+              return {
+                worldMaterialization: {
+                  minAppliedEvents: 1,
+                  roadIdsIncludes: hints.worldConstraintMaterialization?.roadIds?.slice(0, 2),
+                },
+              };
+            })(golden),
+          },
+        },
+      },
+      metadata: {
+        ...icelandStormIcecaveFailureCase.metadata,
+        decisionClosureGolden: golden,
+        tags: [...(icelandStormIcecaveFailureCase.metadata?.tags ?? []), 'decision-closure-captured'],
+      },
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+const stormDecisionClosureCase = loadStormDecisionClosureGoldenIfPresent();
+
+/** P0：Neptune REPLACE → Abu 有界重验 replay golden */
+export const PERSONA_CLOSURE_FIXTURES: readonly E2ECase[] = [...PERSONA_CLOSURE_REPLAY_FIXTURES];
+
+/** P0：决策闭环 golden（判决书 + 路政物化）；独立门禁 `test:decision-closure-p0` */
+export const ICELAND_DECISION_CLOSURE_FIXTURES: readonly E2ECase[] = [
+  icelandDecisionClosureStormF208Case,
+  icelandDecisionClosureRingStableCase,
+  ...(stormDecisionClosureCase ? [stormDecisionClosureCase] : []),
+];
 
 /** 当前纳入 TD 回放门禁的全部真实 fixture（可随 EVAL 评审追加） */
 export const TD_SYNTHETIC_REPLAY_FIXTURES: readonly E2ECase[] = [
@@ -74,6 +141,8 @@ export const TD_GOLDEN_REPLAY_FIXTURES: readonly E2ECase[] = [
 
 export const TD_REPLAY_FIXTURES: readonly E2ECase[] = [
   ...TD_SYNTHETIC_REPLAY_FIXTURES,
+  icelandStormIcecaveFailureCase,
+  icelandStormRecoveryExperienceFirstCase,
   ...TD_GOLDEN_REPLAY_FIXTURES,
 ];
 
@@ -100,6 +169,18 @@ export function getTdGoldenReplayFixturesForRun(): E2ECase[] {
   const found = TD_GOLDEN_REPLAY_FIXTURES.filter((c) => c.id === id);
   if (found.length === 0) {
     return [];
+  }
+  return [...found];
+}
+
+export function getPersonaClosureFixturesForRun(): E2ECase[] {
+  const id = process.env.TD_REPLAY_MATRIX_ID?.trim();
+  if (!id) return [...PERSONA_CLOSURE_FIXTURES];
+  const found = PERSONA_CLOSURE_FIXTURES.filter((c) => c.id === id);
+  if (found.length === 0) {
+    throw new Error(
+      `TD_REPLAY_MATRIX_ID=${id} not in PERSONA_CLOSURE_FIXTURES (${PERSONA_CLOSURE_FIXTURES.map((c) => c.id).join(', ')})`,
+    );
   }
   return [...found];
 }

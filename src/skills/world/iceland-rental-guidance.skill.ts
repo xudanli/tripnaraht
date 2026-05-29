@@ -224,7 +224,7 @@ export class IcelandRentalGuidanceSkill implements Skill<IcelandRentalGuidanceIn
   metadata: SkillMetadata = {
     name: 'iceland.rentalGuidance',
     description:
-      '结构化输出冰岛租车「风险层 + 聚合层 + 本地信任层」与保险/F-road 检查项；无外部 HTTP，供 Gate/Readiness/Planner 注入。',
+      'iceland.rentalGuidance：结构化输出冰岛租车「风险层 + 聚合层 + 本地信任层」与保险/F-road 检查项；无外部 HTTP，供 Gate/Readiness/Planner 注入。',
     version: '1.0.0',
     category: 'world',
     toolGroup: 'DOMAIN',

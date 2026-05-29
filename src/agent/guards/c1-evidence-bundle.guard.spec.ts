@@ -201,6 +201,50 @@ describe('C1 strict evidence bundle guard', () => {
     await expect(p).rejects.toThrow(/C1_STRICT_EVIDENCE_BUNDLE/);
   });
 
+  it('itinerary CRUD short-circuit with iron_shield_ui_suppressed does not require evidence_bundle under strict', async () => {
+    process.env.C1_STRICT_EVIDENCE_BUNDLE = '1';
+    const svc = new RouteAndRunResponseAssemblerService(
+      { buildJePaPayload: () => undefined } as unknown as JepaProjectorService,
+      mockTradeoffEngine,
+      undefined,
+    );
+
+    const now = new Date().toISOString();
+    const req: any = { request_id: 'req-crud', message: '改时间', trip_id: 't1', options: { dry_run: true } };
+    const orchestrationResult: any = {
+      success: true,
+      answerText: '已将行程中「黄金瀑布」的行程时间调整为 08:15-09:15。',
+      stepsExecuted: [{ stepId: 'REPAIR', skillName: 'trip.applyEdit', success: true, duration: 1 }],
+      totalDuration: 1,
+      decisionLog: [],
+      result: {
+        state: {
+          request_id: 'req-crud',
+          current_step: 'DONE',
+          decision_log: [],
+          errors: [],
+          evidence_registry: new Map(),
+          metadata: {
+            started_at: now,
+            last_updated_at: now,
+            itinerary_item_update_intake: true,
+            itinerary_item_update_short_circuit: { applied: true, updatedCount: 1 },
+          },
+        },
+        gate_result: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 1, evidence_refs: [] },
+      },
+    };
+
+    const resp = await svc.assembleClaudeStateMachineResponse({
+      request: req,
+      startTime: Date.now(),
+      orchestrationResult,
+    } as any);
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.iron_shield_ui_suppressed).toBe(true);
+    expect(payload?.evidence_bundle).toBeUndefined();
+  });
+
   it('Environment hard facts: solar_safety_v1 violation forces FAIL under strict', async () => {
     process.env.C1_STRICT_EVIDENCE_BUNDLE = '1';
     const svc = new RouteAndRunResponseAssemblerService(

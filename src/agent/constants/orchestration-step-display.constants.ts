@@ -4,6 +4,7 @@
  */
 
 const STEP_DISPLAY_ZH: Record<string, string> = {
+  INTENT_COMPILE: '意图编译',
   INTAKE: '需求接入',
   STATE_UPDATE: '状态同步',
   RESEARCH: '数据调研',

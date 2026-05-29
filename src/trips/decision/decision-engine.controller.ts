@@ -23,6 +23,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { TripDecisionEngineService } from './trip-decision-engine.service';
+import { HardTrekTripMetadataService } from '../../hiking-demo/services/hard-trek-trip-metadata.service';
+import type { TrailPlanPreviewResult } from './adapters/trail-planning.adapter';
 import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
 import { ConstraintEngineService } from './constraints/constraint-engine.service';
 import { ExplainabilityService } from './explainability/explainability.service';
@@ -56,6 +58,12 @@ import {
 } from './failure-ontology/failure-ontology-outcome';
 import { applyPrismaTripIdToWorldState } from '../execution-closure-persistence/apply-prisma-trip-id-to-world-state';
 import { DecisionLoggingService } from './services/decision-logging.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { applyEmbeddedHikingToWorldState } from '../utils/embedded-hiking-trip-metadata.util';
+import {
+  buildLegacyEngineSsotBlockPayload,
+  isLegacyTripEngineHttpBlocked,
+} from '../../decision/kernel/decision-kernel-ssot.util';
 
 @ApiTags('decision-engine')
 @Controller('decision-engine/v1')
@@ -77,6 +85,8 @@ export class DecisionEngineController {
 
   constructor(
     private readonly decisionEngine: TripDecisionEngineService,
+    private readonly hardTrekTripMetadata: HardTrekTripMetadataService,
+    private readonly prisma: PrismaService,
     @Optional() private readonly strategyOrchestrator?: StrategyOrchestratorService,
     @Optional() private readonly constraintEngine?: ConstraintEngineService,
     @Optional() private readonly explainabilityService?: ExplainabilityService,
@@ -132,14 +142,45 @@ export class DecisionEngineController {
   @ApiOperation({ summary: '生成计划', description: '根据世界状态生成行程计划' })
   @ApiBody({ type: GeneratePlanRequestDto })
   @ApiResponse({ status: 200, description: '生成成功' })
-  async generatePlan(@Body() body: GeneratePlanRequestDto) {
+  async generatePlan(
+    @Body() body: GeneratePlanRequestDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
     try {
+      if (isLegacyTripEngineHttpBlocked(headers)) {
+        return errorResponse(
+          ErrorCode.BUSINESS_ERROR,
+          'Legacy TripDecisionEngine generate-plan is non-authoritative under Decision Kernel SSOT',
+          buildLegacyEngineSsotBlockPayload(),
+        );
+      }
       if (!body.state?.context) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'state.context 是必需的');
       }
       const state = body.state as TripWorldState;
       applyPrismaTripIdToWorldState(state, body.tripId);
+      const tripId = body.tripId ?? state.context?.tripId;
+      if (tripId) {
+        const trip = await this.prisma.trip.findUnique({
+          where: { id: tripId },
+          select: { metadata: true },
+        });
+        const embedded = applyEmbeddedHikingToWorldState(state, trip?.metadata);
+        if (embedded.applied) {
+          this.logger.debug(
+            `embedded hiking generate-plan: durationDays=${embedded.hint?.effectiveDurationDays} segments=${embedded.hint?.segmentCount}`,
+          );
+        }
+      }
       const { plan, log } = await this.decisionEngine.generatePlan(state, body.requestId);
+      const hardPlan = log?.hardTrekTrailPlan as TrailPlanPreviewResult | undefined;
+      if (tripId && hardPlan?.segments?.length) {
+        try {
+          await this.hardTrekTripMetadata.persistHardTrekTrailPlan(tripId, hardPlan);
+        } catch (persistErr: any) {
+          this.logger.warn(`hardTrekTrailPlan persist skipped: ${persistErr?.message}`);
+        }
+      }
       return successResponse({ plan, log, ...this.echoLastDecisionCausalityId(state) });
     } catch (error: any) {
       if (error instanceof RealityExecutionBlockedError) {
@@ -159,8 +200,18 @@ export class DecisionEngineController {
   @ApiOperation({ summary: '修复计划', description: '天气/闭馆等变化时最小改动修复' })
   @ApiBody({ type: RepairPlanRequestDto })
   @ApiResponse({ status: 200, description: '修复成功' })
-  async repairPlan(@Body() body: RepairPlanRequestDto) {
+  async repairPlan(
+    @Body() body: RepairPlanRequestDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
     try {
+      if (isLegacyTripEngineHttpBlocked(headers)) {
+        return errorResponse(
+          ErrorCode.BUSINESS_ERROR,
+          'Legacy TripDecisionEngine repair-plan is non-authoritative under Decision Kernel SSOT',
+          buildLegacyEngineSsotBlockPayload(),
+        );
+      }
       if (!body.state?.context) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'state.context 是必需的');
       }
@@ -264,8 +315,18 @@ export class DecisionEngineController {
   @ApiOperation({ summary: '多方案生成', description: '生成 2–N 个不同权衡方案' })
   @ApiBody({ type: GenerateMultiplePlansRequestDto })
   @ApiResponse({ status: 200, description: '生成成功' })
-  async generateMultiplePlans(@Body() body: GenerateMultiplePlansRequestDto) {
+  async generateMultiplePlans(
+    @Body() body: GenerateMultiplePlansRequestDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
     try {
+      if (isLegacyTripEngineHttpBlocked(headers)) {
+        return errorResponse(
+          ErrorCode.BUSINESS_ERROR,
+          'Legacy TripDecisionEngine generate-multiple-plans is non-authoritative under Decision Kernel SSOT',
+          buildLegacyEngineSsotBlockPayload(),
+        );
+      }
       if (!body.state?.context) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'state.context 是必需的');
       }

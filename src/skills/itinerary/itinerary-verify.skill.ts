@@ -63,7 +63,7 @@ export interface ItineraryVerifyOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'itinerary.verify',
-  description: '验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）',
+  description: 'itinerary.verify：验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -74,7 +74,7 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
 
   metadata: SkillMetadata = {
     name: 'itinerary.verify',
-    description: '验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）',
+    description: 'itinerary.verify：验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

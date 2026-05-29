@@ -11,6 +11,7 @@ import type {
   CandidateSearchBudget,
 } from '../../../decision/kernel/decision-state.types';
 import type { DecisionStage } from '../shared/decision-result.types';
+import type { PersonaClosureStopReason } from '../shared/persona-closure.types';
 
 /**
  * 用户画像（简化版）
@@ -70,11 +71,31 @@ export interface FinalStateExpected {
 
 export type DecisionTraceSchemaVersion = 'trace/v1';
 
+/** RESEARCH 观测闭环回放摘要（来自 metadata.observationHarness） */
+export interface ObservationHarnessTraceSummary {
+  parallel?: boolean;
+  observationTimeoutMs?: number;
+  auditEntryCount?: number;
+  excludedPoiIds?: string[];
+  passabilityEvidence?: { passability01?: number; evidenceWeight?: number };
+  suggestDilemmaElicitation?: { reason?: string; crossSpread?: number; hint?: string };
+  auditSummaries?: string[];
+}
+
 export interface DecisionTraceSummary {
   schemaVersion: DecisionTraceSchemaVersion;
   metaDecisionAudit?: string;
   candidateSearchBudget?: CandidateSearchBudget;
   candidateSearchAudit?: CandidateSearchAudit;
+  observationHarness?: ObservationHarnessTraceSummary;
+  /**
+   * 与 `DecisionState.optimizationHints.dilemmaElicitationHint` 对齐；回放 log metadata 可直写。
+   */
+  dilemmaElicitationHint?: {
+    reason: string;
+    crossSpread?: number;
+    hint?: string;
+  };
 }
 
 export type ExpectedDecisionTraceSummary = {
@@ -96,14 +117,57 @@ export interface ScientificOptimizationExpected {
   metaDecisionAuditIncludes?: string[];
 }
 
+/**
+ * P0：冰岛决策闭环 — 对 `metadata.decisionClosureGolden`（optimizationHints 形）的 golden 断言。
+ * 与 `explain.optimization` 投影字段对齐（snake_case 在 API 层由 assembler 生成）。
+ */
+export interface DecisionClosureExpected {
+  mustHaveDecisionVerdict?: boolean;
+  chosenPlanId?: string;
+  chosenPlanIdIncludes?: string[];
+  minRejectedPlans?: number;
+  metaDecisionAuditIncludes?: string[];
+  narrationZhIncludes?: string[];
+  narrationZhMinLength?: number;
+  monteCarloMinTotalSamples?: number;
+  worldMaterialization?: {
+    minAppliedEvents?: number;
+    roadIdsIncludes?: string[];
+    minWeatherDates?: number;
+  };
+}
+
 export interface ScientificReplayExpected {
   optimization?: ScientificOptimizationExpected;
+  /** 决策闭环 golden（见 docs/iceland-decision-closure-v1.md） */
+  decisionClosure?: DecisionClosureExpected;
 }
 
 export interface ReplayTimelineExpected {
   requiredStages?: DecisionStage[];
   forbiddenStages?: DecisionStage[];
   orderedStages?: DecisionStage[];
+}
+
+/** Neptune REPLACE → Abu 有界重验（persona closure loop）回放断言 */
+export interface PersonaClosureExpected {
+  /** 至少几次 post-Neptune Abu 重验（metadata.persona_closure.phase=post_neptune_recheck） */
+  minAbuRechecks?: number;
+  maxAbuRechecks?: number;
+  allowedStopReasons?: PersonaClosureStopReason[];
+  forbiddenStopReasons?: PersonaClosureStopReason[];
+  /** 是否必须在日志链中出现 FINALIZE + personaClosureAudit */
+  mustEmitAudit?: boolean;
+}
+
+/**
+ * TD-05：写入 `DecisionLogEntry.metadata`（通常与 PLAN_SCORE / trace 块同源）的可断言研究轨信号。
+ * 与 {@link DecisionLogMetadataPrd} 中 `stability_mode_active` 等字段对齐。
+ */
+export interface ReplayTraceSignalsExpected {
+  stability_mode_active?: boolean;
+  frustration_circuit_triggered?: boolean;
+  narrative_track?: string;
 }
 
 /**
@@ -119,6 +183,9 @@ export interface E2ECaseExpected {
   traceSummary?: ExpectedDecisionTraceSummary;
   scientificExpected?: ScientificReplayExpected;
   timelineExpected?: ReplayTimelineExpected;
+  personaClosureExpected?: PersonaClosureExpected;
+  /** 可选：与 `buildDecisionLogsForFixture` 注入的 PLAN_SCORE metadata 对齐 */
+  traceSignals?: ReplayTraceSignalsExpected;
 }
 
 /**
@@ -148,7 +215,14 @@ export interface E2ECaseMetadata {
   cgusDsoGeneratedAt?: string;
   /** Which base case produced this generated fixture. */
   cgusDsoSourceCaseId?: string;
+  /**
+   * P0 decision closure：frozen `DecisionState.optimizationHints` for offline contract tests.
+   * Shape matches kernel `OptimizationHints` (camelCase).
+   */
+  decisionClosureGolden?: Record<string, unknown>;
   counterfactualGroup?: string;
+  /** persona closure P0 fixtures（offline replay；不依赖全链路 agent） */
+  personaClosureFixture?: boolean;
   baselineCaseId?: string;
   counterfactualExpectation?: {
     expectedOutcomeShift?: 'ADD_ADJUST' | 'ADD_REPAIR' | 'ADD_ADJUST_AND_REPAIR' | 'REJECT';
@@ -197,6 +271,11 @@ export interface E2EDiff {
   traceDiff?: Array<StructuredDiffItem<keyof DecisionTraceSummary>>; // 关键 trace / metadata 差异
   scientificDiff?: string[];
   timelineDiff?: string[];
+  personaClosureDiff?: string[];
+  /** PLAN_SCORE（或同源）metadata 上 stability / frustration / narrative_track 与预期不一致 */
+  traceSignalsDiff?: string[];
+  /** decisionClosureGolden vs scientificExpected.decisionClosure */
+  decisionClosureDiff?: string[];
   hasDiff: boolean; // 是否有差异
 }
 

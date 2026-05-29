@@ -8,6 +8,7 @@
 import type { ClarificationQuestion } from '../interfaces/clarification.interface';
 import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
 import type { ClarificationLocale } from '../../common/constants/agent-prompts';
+import { buildPhysicalLowerBoundClarificationQuestion } from './structured-intake-clarification.util';
 import {
   clarificationDefaultPaceOption,
   clarificationGapIntentCompileError,
@@ -237,14 +238,15 @@ export function generateClarificationQuestions(
       }
 
       case 'INTENT_COMPILE_ERROR': {
-        const copy = clarificationGapIntentCompileError(locale, gap.detail);
+        const structured = buildPhysicalLowerBoundClarificationQuestion(
+          tripPlanRequest,
+          gap,
+          (tripPlanRequest as { message?: string }).message,
+        );
         questions.push({
-          id: `question-${questionId++}`,
-          question: copy.question,
-          type: 'single_choice',
-          required: true,
-          options: copy.options,
-          hint: copy.hint,
+          ...structured,
+          id: structured.id || `question-${questionId++}`,
+          hint: structured.hint ?? clarificationGapIntentCompileError(locale, gap.detail).hint,
         });
         break;
       }

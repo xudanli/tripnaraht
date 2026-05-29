@@ -1,10 +1,6 @@
 // src/skills/detail/detail-show-evidence.skill.ts
 /**
  * skill.detail.showEvidence
- * 
- * 目的：展示证据（基于证据引用）
- * 
- * System 1 技能：快速展示
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -12,18 +8,12 @@ import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { EvidenceEnvelope } from '../plan/shared/plan-state.types';
 
 export interface DetailShowEvidenceInput extends SkillInput {
-  /** Trip ID */
   tripId: string;
-  
-  /** 证据引用 ID 列表（可选，如果不提供则返回所有证据） */
   evidenceRefs?: string[];
-  
-  /** PlanState（可选，如果有） */
   planState?: any;
 }
 
 export interface DetailShowEvidenceOutput extends SkillOutput {
-  /** 证据列表 */
   evidence: Array<{
     id: string;
     source: string;
@@ -39,7 +29,7 @@ export class DetailShowEvidenceSkill implements Skill<DetailShowEvidenceInput, D
 
   metadata = {
     name: 'detail.showEvidence',
-    description: '展示证据（基于证据引用），让用户了解决策依据',
+    description: 'detail.showEvidence：展示 decision evidence 引用与依据摘要。在用户需要验证结论来源或 detail 页展示证据链时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -48,29 +38,31 @@ export class DetailShowEvidenceSkill implements Skill<DetailShowEvidenceInput, D
   async execute(input: DetailShowEvidenceInput): Promise<DetailShowEvidenceOutput> {
     this.logger.debug(`执行 detail.showEvidence: tripId=${input.tripId}`);
 
-    try {
-      // 从 PlanState 中提取证据
-      const evidenceRefs = input.planState?.evidence_refs || [];
-      
-      const evidence = evidenceRefs.map((env: EvidenceEnvelope, index: number) => ({
-        id: `evidence_${index}`,
-        source: env.source_title,
-        excerpt: env.excerpt,
-        relevance: env.relevance,
-        confidence: env.confidence,
-      }));
+    const evidenceRefs = input.planState?.evidence_refs || [];
 
-      // 如果指定了证据引用，只返回匹配的
-      if (input.evidenceRefs && input.evidenceRefs.length > 0) {
-        // TODO: 根据 evidenceRefs 过滤
-      }
+    let evidence = evidenceRefs.map((env: EvidenceEnvelope, index: number) => ({
+      id: `evidence_${index}`,
+      source: env.source_title,
+      excerpt: env.excerpt,
+      relevance: env.relevance,
+      confidence:
+        env.confidence === 'LOW'
+          ? 'low'
+          : env.confidence === 'HIGH'
+            ? 'high'
+            : 'medium',
+    }));
 
-      return {
-        evidence,
-      };
-    } catch (error: any) {
-      this.logger.error(`展示证据失败: ${error.message}`, error.stack);
-      throw error;
+    if (input.evidenceRefs && input.evidenceRefs.length > 0) {
+      const refSet = new Set(input.evidenceRefs);
+      evidence = evidence.filter(
+        (item, index) =>
+          refSet.has(item.id) ||
+          refSet.has(`evidence_${index}`) ||
+          refSet.has(evidenceRefs[index]?.source_title ?? ''),
+      );
     }
+
+    return { evidence };
   }
 }

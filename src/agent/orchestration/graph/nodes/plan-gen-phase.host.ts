@@ -39,6 +39,9 @@ export interface PlanGenPhaseHost {
     state: OrchestratorState;
   }): Promise<void>;
 
+  /** PR-D：PLAN_GEN 产出首轮行程后冻结拓扑快照 */
+  onPlanGenDraftCaptured?(requestId: string, itinerary: Itinerary): void;
+
   executePhaseViaKernel(
     decisionState: DecisionState | undefined,
     state: OrchestratorState,

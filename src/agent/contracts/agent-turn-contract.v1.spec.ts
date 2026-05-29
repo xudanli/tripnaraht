@@ -10,6 +10,7 @@ function minimalMemory(overrides: Partial<AgentMemoryContext> = {}): AgentMemory
     userId: 'u1',
     tripId: 't1',
     userProfile: null,
+    userBasics: null,
     travelPreference: null,
     routePartyProfile: null,
     recentDecisions: [],

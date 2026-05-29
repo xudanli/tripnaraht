@@ -5,6 +5,13 @@ on:
   pull_request:
     paths:
       - "src/trips/decision/**/*.ts"
+      - "src/decision/kernel/**/*.ts"
+      - "src/world/**/*.ts"
+      - "docs/iceland-decision-closure-v1.md"
+      - "docs/rag-chunk-road-constraint-metadata.md"
+      - "docs/schemas/rag-chunk-road-constraint-metadata.schema.json"
+      - "scripts/run-decision-closure-gate.ts"
+      - "scripts/lib/decision-closure-gate.ts"
       - "src/agent/context-engine/**/*.ts"
       - "src/agent/utils/**/*.ts"
       - "src/agent/services/agent.service.ts"
@@ -20,6 +27,13 @@ on:
       - master
     paths:
       - "src/trips/decision/**/*.ts"
+      - "src/decision/kernel/**/*.ts"
+      - "src/world/**/*.ts"
+      - "docs/iceland-decision-closure-v1.md"
+      - "docs/rag-chunk-road-constraint-metadata.md"
+      - "docs/schemas/rag-chunk-road-constraint-metadata.schema.json"
+      - "scripts/run-decision-closure-gate.ts"
+      - "scripts/lib/decision-closure-gate.ts"
       - "src/agent/context-engine/**/*.ts"
       - "src/agent/utils/**/*.ts"
       - "src/agent/services/agent.service.ts"

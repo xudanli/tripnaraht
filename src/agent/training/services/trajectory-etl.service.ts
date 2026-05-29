@@ -12,6 +12,16 @@ import {
   ETLExportFormat,
   ETLExportResult,
 } from '../interfaces/trajectory.interface';
+import { trajectoriesToDpoPreferenceRecords } from '../dpo/dpo-dataset-from-trajectory.util';
+import { extractDpoPreferencesFromDecisionTrajectories } from '../dpo/dpo-preference-extractor.util';
+import { compileAllSftRepairChains } from '../sft/sft-repair-chain-compiler.util';
+import type {
+  DecisionTrajectoryETLOptions,
+  DecisionTrajectoryETLRow,
+  DecisionTrajectoryTrainingPackResult,
+} from '../interfaces/decision-trajectory-etl.types';
+import { prismaRowToDecisionTrajectoryETL } from '../utils/decision-trajectory-row.parser.util';
+import { isDecisionTrajectoryCaptureEnabled } from '../utils/decision-trajectory-feature.util';
 import { Itinerary, DecisionLogEntry, GateResult } from '../../interfaces/trip-plan.interface';
 import { ComplianceResult } from '../interfaces/trajectory.interface';
 import { DataQualityCheckerService } from './data-quality-checker.service';
@@ -43,11 +53,132 @@ export class TrajectoryETLService {
   ) {}
 
   /**
-   * 从数据库抽取轨迹数据
+   * PR-C：从 decision_trajectories（SSOT）增量抽取 FINALIZED 轨迹。
+   * 仅处理 schema_id === tripnara.decision_trajectory@v1 的有效 payload。
+   */
+  async extractDecisionTrajectories(
+    options: DecisionTrajectoryETLOptions = {},
+  ): Promise<DecisionTrajectoryETLRow[]> {
+    if (!isDecisionTrajectoryCaptureEnabled()) {
+      this.logger.warn(
+        '[TrajectoryETL] DECISION_TRAJECTORY_ENABLED 未开启；仍允许读取已落库 FINALIZED 行',
+      );
+    }
+
+    const where: Record<string, unknown> = {
+      status: { in: options.statuses?.length ? options.statuses : ['FINALIZED'] },
+    };
+
+    if (options.ids?.length) where.id = { in: options.ids };
+    if (options.request_ids?.length) where.requestId = { in: options.request_ids };
+    if (options.min_total_reward !== undefined) {
+      where.totalReward = { gte: options.min_total_reward };
+    }
+    const outcomes = options.orchestration_outcomes?.filter(
+      (o) => options.exclude_critical_fail === false || o !== 'CRITICAL_FAIL',
+    );
+    if (outcomes?.length) {
+      where.orchestrationOutcome = { in: outcomes };
+    } else if (options.exclude_critical_fail !== false) {
+      where.orchestrationOutcome = { not: 'CRITICAL_FAIL' };
+    }
+    if (options.updated_after) {
+      where.updatedAt = { ...(where.updatedAt as object), gte: new Date(options.updated_after) };
+    }
+    if (options.date_range) {
+      where.createdAt = {
+        gte: new Date(options.date_range.start),
+        lte: new Date(options.date_range.end),
+      };
+    }
+
+    const rows = await this.prisma.decisionTrajectory.findMany({
+      where: where as any,
+      orderBy: { updatedAt: 'asc' },
+      take: options.limit ?? 2000,
+      skip: options.offset ?? 0,
+    });
+
+    const parsed: DecisionTrajectoryETLRow[] = [];
+    for (const row of rows) {
+      const etl = prismaRowToDecisionTrajectoryETL({
+        ...row,
+        rewardSignals: row.rewardSignals as unknown,
+        payload: row.payload,
+      });
+      if (etl) parsed.push(etl);
+      else {
+        this.logger.warn(`[TrajectoryETL] 跳过无效 payload requestId=${row.requestId}`);
+      }
+    }
+
+    this.logger.log(
+      `[TrajectoryETL] decision_trajectories 抽取: db=${rows.length} valid=${parsed.length}`,
+    );
+    return parsed;
+  }
+
+  /**
+   * PR-C：导出 DPO + SFT 训练包（仅 decision_trajectories）。
+   */
+  async exportDecisionTrajectoryTrainingPack(
+    options: DecisionTrajectoryETLOptions = {},
+    outputDir: string = './data/training/decision-trajectories',
+  ): Promise<DecisionTrajectoryTrainingPackResult> {
+    const rows = await this.extractDecisionTrajectories(options);
+    if (!rows.length) {
+      throw new Error('No FINALIZED decision_trajectories found matching criteria');
+    }
+
+    await fs.mkdir(outputDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    const dpoRecords = extractDpoPreferencesFromDecisionTrajectories(rows);
+    const dpoPath = path.join(outputDir, `dpo_preferences_${timestamp}.jsonl`);
+    await fs.writeFile(dpoPath, dpoRecords.map((r) => JSON.stringify(r)).join('\n'), 'utf-8');
+
+    const sftRecords = compileAllSftRepairChains(rows);
+    const sftAlpaca = sftRecords.filter((r) => r.format === 'alpaca');
+    const sftSharegpt = sftRecords.filter((r) => r.format === 'sharegpt');
+
+    const alpacaPath = path.join(outputDir, `sft_repair_alpaca_${timestamp}.jsonl`);
+    const sharegptPath = path.join(outputDir, `sft_repair_sharegpt_${timestamp}.jsonl`);
+    await fs.writeFile(alpacaPath, sftAlpaca.map((r) => JSON.stringify(r)).join('\n'), 'utf-8');
+    await fs.writeFile(sharegptPath, sftSharegpt.map((r) => JSON.stringify(r)).join('\n'), 'utf-8');
+
+    const plannerPairs = dpoRecords.filter((r) => r.pair_type === 'planner_obedience');
+    const stats = {
+      decision_trajectory_count: rows.length,
+      dpo_planner_obedience: plannerPairs.length,
+      dpo_planner_true_topology: plannerPairs.filter((r) => r.rejected_source === 'true_topology')
+        .length,
+      dpo_planner_violation_surrogate: plannerPairs.filter(
+        (r) => r.rejected_source === 'violation_surrogate',
+      ).length,
+      dpo_debate_narrator: dpoRecords.filter((r) => r.pair_type === 'debate_narrator').length,
+      sft_repair_chains: sftAlpaca.length,
+    };
+
+    this.logger.log(`[TrajectoryETL] PR-C 训练包: ${JSON.stringify(stats)}`);
+
+    return {
+      dpo_jsonl_path: dpoPath,
+      sft_alpaca_jsonl_path: alpacaPath,
+      sft_sharegpt_jsonl_path: sharegptPath,
+      stats,
+      exported_at: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * [Legacy] 从 validated_trajectories 抽取（PLAN_GEN 快照）；新管线请用 extractDecisionTrajectories。
    */
   async extractTrajectories(
     options: TrajectoryETLOptions = {},
   ): Promise<RLTrajectory[]> {
+    this.logger.warn(
+      '[TrajectoryETL] extractTrajectories 使用 legacy validated_trajectories；推荐 extractDecisionTrajectories',
+    );
     this.logger.log(
       `[TrajectoryETL] 开始抽取轨迹数据: options=${JSON.stringify(options)}`,
     );
@@ -346,6 +477,69 @@ export class TrajectoryETLService {
     );
 
     return result;
+  }
+
+  /**
+   * DPO：将轨迹中的「候选 + 分数 / 审批」投影为 preference 对，导出标准 JSONL（prompt, chosen, rejected）。
+   * 可直接上传常见云端微调管线；无偏好信号的轨迹不产生行。
+   */
+  /**
+   * PR-C：从 decision_trajectories 导出 DPO JSONL。
+   */
+  async exportDecisionTrajectoryDpoJsonl(
+    options: DecisionTrajectoryETLOptions = {},
+    outputDir: string = './data/training/decision-trajectories',
+  ): Promise<ETLExportResult> {
+    const rows = await this.extractDecisionTrajectories(options);
+    const records = extractDpoPreferencesFromDecisionTrajectories(rows);
+    await fs.mkdir(outputDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePath = path.join(outputDir, `dpo_preferences_${timestamp}.jsonl`);
+    const content = records.map((r) => JSON.stringify(r)).join('\n');
+    await fs.writeFile(filePath, content, 'utf-8');
+    return {
+      format: 'jsonl',
+      file_path: filePath,
+      record_count: records.length,
+      file_size_bytes: Buffer.byteLength(content, 'utf-8'),
+      metadata: {
+        exported_at: new Date().toISOString(),
+        trajectory_ids: rows.map((r) => r.id),
+        stats: { total_steps: 0, avg_reward: 0, avg_validation_score: 0 },
+      },
+    };
+  }
+
+  async exportDpoPreferenceJsonl(
+    trajectories: RLTrajectory[],
+    outputDir: string = './data/training',
+  ): Promise<ETLExportResult> {
+    const records = trajectoriesToDpoPreferenceRecords(trajectories);
+    await fs.mkdir(outputDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePath = path.join(outputDir, `dpo_preferences_${timestamp}.jsonl`);
+    const content = records.map((r) => JSON.stringify(r)).join('\n');
+    await fs.writeFile(filePath, content, 'utf-8');
+    const fileSizeBytes = Buffer.byteLength(content, 'utf-8');
+    const totalSteps = trajectories.reduce((sum, t) => sum + t.steps.length, 0);
+    this.logger.log(
+      `[TrajectoryETL] DPO 导出: records=${records.length}, file=${filePath}`,
+    );
+    return {
+      format: 'jsonl',
+      file_path: filePath,
+      record_count: records.length,
+      file_size_bytes: fileSizeBytes,
+      metadata: {
+        exported_at: new Date().toISOString(),
+        trajectory_ids: trajectories.map((t) => t.trajectory_id),
+        stats: {
+          total_steps: totalSteps,
+          avg_reward: 0,
+          avg_validation_score: 0,
+        },
+      },
+    };
   }
 
   /**

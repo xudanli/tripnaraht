@@ -12,6 +12,11 @@ import { TripAdjustmentService, TripModificationRequest } from './services/trip-
 import { LlmService } from '../llm/services/llm.service';
 import { LlmResponseTransformerService } from '../llm/services/llm-response-transformer.service';
 import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
+import {
+  extractHttpErrorCode,
+  extractHttpErrorMessage,
+} from './utils/embedded-hiking-trip-metadata.util';
+import { EmbeddedHikingTripSummaryService } from './services/embedded-hiking-trip-summary.service';
 import { CreateTripFromNaturalLanguageDto } from './dto/create-trip-from-nl.dto';
 import { nlDiscussionDraftGuidance } from './constants/nl-discussion-draft-guidance';
 import { SelectGateAlternativeDto } from './dto/select-gate-alternative.dto';
@@ -225,6 +230,7 @@ export class TripsController {
     private readonly prisma: PrismaService,
     private readonly tokenService: TokenService,
     private readonly jwtService: JwtService,
+    private readonly embeddedHikingSummary: EmbeddedHikingTripSummaryService,
     @Optional() private readonly hotelRecommendationService?: HotelRecommendationService,
     @Optional() private readonly contextEngineerService?: ContextEngineerService,
     @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
@@ -344,7 +350,8 @@ export class TripsController {
       }
     } catch (error: any) {
       if (error instanceof BadRequestException) {
-        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+        const code = extractHttpErrorCode(error) ?? ErrorCode.VALIDATION_ERROR;
+        return errorResponse(code, extractHttpErrorMessage(error));
       }
       throw error;
     }
@@ -4638,6 +4645,59 @@ export class TripsController {
     }
   }
 
+  @Get(':id/hiking-summary')
+  @ApiOperation({
+    summary: '混合出行徒步摘要（embedded）',
+    description:
+      '返回 hikingProfile、hikingPhase、metadata.hikingSegments 及关联 HikePlan 状态。需为行程协作者。',
+  })
+  async getHikingSummary(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    try {
+      const data = await this.embeddedHikingSummary.getSummary(id, user.userId);
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/hiking-segments/:segmentId/evaluate')
+  @ApiOperation({
+    summary: '评估单个徒步片段',
+    description: '返回 Readiness、许可清单与费用提示（供 embedded 片段卡片）',
+  })
+  async evaluateHikingSegment(
+    @Param('id') id: string,
+    @Param('segmentId') segmentId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('longestHike') longestHike?: string,
+    @Query('plannedDate') plannedDate?: string,
+  ) {
+    try {
+      const hikeLevel =
+        longestHike != null && longestHike !== ''
+          ? Math.min(4, Math.max(0, parseInt(longestHike, 10)))
+          : undefined;
+      const data = await this.embeddedHikingSummary.evaluateSegment(
+        id,
+        segmentId,
+        user.userId,
+        { longestHike: hikeLevel, plannedDate },
+      );
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
   @Get(':id/insight')
   @ApiOperation({
     summary: '获取行程洞察摘要',
@@ -4698,7 +4758,8 @@ export class TripsController {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       if (error instanceof BadRequestException) {
-        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+        const code = extractHttpErrorCode(error) ?? ErrorCode.VALIDATION_ERROR;
+        return errorResponse(code, extractHttpErrorMessage(error));
       }
       this.logger.error(`更新行程失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
@@ -4714,7 +4775,8 @@ export class TripsController {
                  '- 所有协作者（TripCollaborator）\n' +
                  '- 所有收藏（TripCollection）\n' +
                  '- 所有点赞（TripLike）\n' +
-                 '- 所有分享（TripShare）\n\n' +
+                 '- 所有分享（TripShare）\n' +
+                 '- 关联 HikePlan 与 GPS 轨迹（HikeTrackPoint）\n\n' +
                  '**安全确认**：为防止误删，需要输入目的地国家代码（如：JP、IS）来确认删除。\n\n' +
                  '**警告**：此操作不可恢复，请谨慎使用。'
   })
@@ -4776,7 +4838,8 @@ export class TripsController {
   @Get(':id/schedule')
   @ApiOperation({
     summary: '获取指定日期的 Schedule',
-    description: '从数据库读取指定日期的 Schedule（DayScheduleResult 格式）。如果该日期没有 Schedule，返回 null。',
+    description:
+      '从数据库读取指定日期的 Schedule（DayScheduleResult）。`schedule.items` 为该日全部 ItineraryItem（含无地点项），并附带 `totalDuration`（活动分钟 + 段间 travelFromPreviousDuration）与 `totalCost`（actual/estimated 求和）。若当天无任何行程项则 `schedule` 为 null。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
   @ApiQuery({ name: 'date', description: '日期（YYYY-MM-DD）', example: '2024-05-01', required: true })
@@ -4820,7 +4883,7 @@ export class TripsController {
     @Body() body: SaveScheduleDto,
   ) {
     try {
-      const result = await this.tripsService.saveSchedule(id, dateISO, body.schedule);
+      const result = await this.tripsService.saveSchedule(id, dateISO, body);
       return successResponse(result);
     } catch (error: any) {
       if (error.status === 404) {

@@ -3,6 +3,12 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DecisionOutput } from '../interfaces/decision-node.interface';
+import type {
+  RlhfDilemmaElicitationSnapshot,
+  RlhfJsonKvInfluenceSnapshot,
+  RlhfObservationHarnessSnapshot,
+  RlhfTradeoffComparisonDwell,
+} from './rlhf-decision-context.types';
 
 /**
  * 行为信号
@@ -22,6 +28,8 @@ export interface BehaviorSignal {
     duration_ms?: number;
     scroll_depth?: number;
     viewport_visible?: boolean;
+    /** P0：两难/方案对比停留（内存模型全量；DB 可落在 element_context JSON 串） */
+    tradeoffComparison?: RlhfTradeoffComparisonDwell;
   };
 }
 
@@ -82,6 +90,12 @@ export interface FeedbackSignal {
     correlation_id?: string;
     user_repair_resolution?: string;
     feedback_phase?: 'INTAKE' | 'REPAIR';
+    /** P0：RESEARCH 观测链快照（与 Kernel researchData.observationHarness 对齐） */
+    observationHarness?: RlhfObservationHarnessSnapshot;
+    /** P0：两难诱导提示（与 optimizationHints.dilemmaElicitationHint 对齐） */
+    dilemmaElicitationHint?: RlhfDilemmaElicitationSnapshot;
+    /** P0：非语义 KV 影响归因（Outcome / MODIFY 等信号上挂载） */
+    jsonKvInfluence?: RlhfJsonKvInfluenceSnapshot;
   };
 }
 
@@ -239,6 +253,31 @@ export class RLHFSignalCollectorService {
       target: {
         element_type: elementType,
         element_id: elementId,
+      },
+    });
+  }
+
+  /**
+   * 记录用户在两个方案（如省钱 vs 省时）之间的对比停留时间（P0 两难行为信号）
+   */
+  recordTradeoffComparisonDwell(
+    tripRunId: string,
+    dwell: RlhfTradeoffComparisonDwell,
+    userId?: string,
+  ): BehaviorSignal {
+    const pairId = `${dwell.option_a_id}__vs__${dwell.option_b_id}`;
+    return this.recordBehaviorSignal({
+      trip_run_id: tripRunId,
+      user_id: userId,
+      signal_type: 'TIME_SPENT',
+      target: {
+        element_type: 'TRADEOFF',
+        element_id: pairId,
+        element_context: JSON.stringify({ tradeoffComparison: dwell }),
+      },
+      metadata: {
+        duration_ms: dwell.dwell_ms,
+        tradeoffComparison: dwell,
       },
     });
   }

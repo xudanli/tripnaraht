@@ -24,41 +24,27 @@ import {
 } from '../utils/route-and-run-recovery.util';
 import { ExecutionGatewayService } from './execution-gateway.service';
 import type { AgentService } from './agent.service';
-import { freezeAgentMemorySnapshot } from '../memory/utils/memory-snapshot-freeze.util';
 import { randomUUID } from 'crypto';
 import { buildOrchestrationExecutionTraceV1 } from '../contracts/orchestration-execution-trace-v1.types';
 import { EXECUTION_MODEL_RUNTIME_ROUTER } from '../runtime/execution-model-runtime-router';
 import { buildSemanticModelSnapshotDescriptor } from '../runtime/testing/semantic-model-snapshot-descriptor';
-import type { AgentMemoryContext } from '../memory/interfaces/agent-memory-context.interface';
-import { deriveMemoryLedgerPhaseFromTripTask } from '../memory/decision-ledger/decision-ledger-world-anchor.util';
-import { planLedgerRecomputeOrder } from '../memory/decision-ledger/decision-ledger-invalidation.util';
-import {
-  isLedgerReconcileBlockingPhase,
-  LEDGER_RECONCILE_POLICY,
-} from '../engine/execution-gateway.config';
-import { LedgerRecomputeEscalationException } from '../engine/ledger-recompute-escalation.exception';
-import { buildLedgerHealingObservabilityV1 } from '../memory/decision-ledger/ledger-healing-observability.util';
-import type { LedgerRecomputeStepV1 } from '../memory/decision-ledger/ledger-recompute.types';
 import {
   buildCidSemanticViewV1,
   computeExecutionSemanticFingerprintV1,
   parseChangeImpactDescriptorV1,
 } from '../contracts/execution-os-change-impact-descriptor.v1';
-import { buildAgentTurnContract, type AgentTurnContractV1, canonicalTripIdForRouteAndRunRequest } from '../contracts/agent-turn-contract.v1';
+import { type AgentTurnContractV1, canonicalTripIdForRouteAndRunRequest } from '../contracts/agent-turn-contract.v1';
 import { buildAgentTurnContractTraceSealV1 } from '../contracts/agent-turn-contract-trace-seal.v1';
-import { GovernanceHydrationService } from '../../governance/activation/governance-hydration.service';
-import { routeGovernanceActivationsToRuntimeBranch } from '../../governance/activation/runtime/governance-activation-router.util';
 import type { RuntimeBranchDirective } from '../../governance/activation/runtime/runtime-branch-directive.types';
-import type { HydratedGovernanceRuntimeContext } from '../../governance/activation/governance-activation.types';
 import {
-  buildStructuredGovernanceRuntimeTraceV1,
   type StructuredGovernanceRuntimeTraceV1,
 } from '../../governance/activation/runtime/build-structured-governance-runtime-trace.util';
-import { buildControlledReplanningContext } from '../../governance/replanning-runtime/build-controlled-replanning-context.util';
 import {
   tryRecordGovernanceBranchOutcomeWithGrsm,
   tryRecordGovernanceBranchSelectedWithGrsm,
 } from '../../governance/replanning-runtime/record-governance-branch-on-ledger.util';
+import { DecisionRuntimeKernelService } from '../runtime/decision-runtime-kernel.service';
+import type { DecisionRuntimeTickBundle } from '../runtime/decision-runtime-kernel.types';
 
 export async function runRouteAndRunMainChain(
   agent: AgentService,
@@ -66,226 +52,53 @@ export async function runRouteAndRunMainChain(
   request: RouteAndRunRequestDto,
 ): Promise<RouteAndRunResponseDto> {
   const $ = agent as any;
-  const wallStart = Date.now();
-  const replayAnchor = request.options?.orchestration_replay_anchor_snapshot_id?.trim();
-
-  let memory: AgentMemoryContext;
-  if (replayAnchor) {
-    const persistence = $.memorySnapshotPersistence as { loadBySnapshotId: (id: string) => Promise<AgentMemoryContext | null> } | undefined;
-    if (!persistence) {
-      return $.getEntryResponses().createReplayMemoryPersistenceUnavailableResponse(request, wallStart);
-    }
-    const loaded = await persistence.loadBySnapshotId(replayAnchor);
-    if (!loaded || String(loaded.snapshotId ?? '').trim() !== replayAnchor) {
-      return $.getEntryResponses().createReplayMemorySnapshotNotFoundResponse(request, wallStart, replayAnchor);
-    }
-    memory = { ...loaded, requestId: request.request_id };
-  } else {
-    memory = await $.memoryContextAssembler.loadForRouteAndRun(request);
+  const kernel = $.decisionRuntimeKernel as DecisionRuntimeKernelService | undefined;
+  if (!kernel) {
+    throw new Error('DecisionRuntimeKernelService is not configured');
   }
+  return kernel.handleTick(agent, gateway, request, (bundle) =>
+    runRouteAndRunTickBody(agent, $, gateway, request, bundle, kernel),
+  );
+}
 
-  /** 分相位账本调解：PLANNING advisory；GATE_EVAL/EXECUTION 阻塞 reconcile（见 engine/execution-gateway.config） */
-  if (
-    !replayAnchor &&
-    request.trip_id &&
-    String(request.trip_id).trim() !== '' &&
-    memory.decisionLedger &&
-    $.ledgerRecomputeExecutor
-  ) {
-    const tripId = String(request.trip_id).trim();
-    const phase = deriveMemoryLedgerPhaseFromTripTask(memory.activeTripState);
-    const execPlan = $.ledgerRecomputeExecutor.buildExecutionPlan(memory.decisionLedger);
-    const hasInv = execPlan.invalidatedSteps.length > 0;
-    if (hasInv) {
-      const blocking = isLedgerReconcileBlockingPhase(phase);
-      const initialInv = execPlan.invalidatedSteps.length;
-      if (blocking && $.incrementalRecomputeOrchestrator && $.memorySnapshotPersistence) {
-        memory.observability.layers.push('ledger_reconcile_blocking_start');
-        const result = await $.incrementalRecomputeOrchestrator.reconcile(tripId, {
-          maxRetries: LEDGER_RECONCILE_POLICY.MAX_RETRIES,
-        });
-        (request as any).__ledgerHealingObs = buildLedgerHealingObservabilityV1({
-          initialInvalidatedCount: initialInv,
-          ranBlockingReconcile: true,
-          reconcileResult: result,
-          invalidatedNodeIds: execPlan.invalidatedSteps.map((s: LedgerRecomputeStepV1) => s.nodeId),
-        });
-        if (result.status === 'CONVERGED') {
-          const refreshed = await $.memorySnapshotPersistence.loadLatestContextForTrip(tripId);
-          if (refreshed) {
-            memory = { ...refreshed, requestId: request.request_id };
-            memory.observability.layers.push('ledger_reconcile_converged');
-          } else if (result.finalLedger) {
-            memory = {
-              ...memory,
-              decisionLedger: result.finalLedger,
-              ledgerRecomputePlan: planLedgerRecomputeOrder(result.finalLedger),
-              snapshotVersion: result.snapshotVersion ?? memory.snapshotVersion,
-            };
-            memory.observability.layers.push('ledger_reconcile_converged_merge_local');
-          } else {
-            memory.observability.layers.push('ledger_reconcile_converged_no_ledger_payload');
-          }
-        } else if (LEDGER_RECONCILE_POLICY.ABORT_ON_ESCALATION) {
-          throw new LedgerRecomputeEscalationException(result);
-        } else {
-          memory.observability.layers.push(`ledger_reconcile_blocking_nonfatal:${result.status}`);
-        }
-      } else if (blocking && (!$.incrementalRecomputeOrchestrator || !$.memorySnapshotPersistence)) {
-        memory.observability.layers.push('ledger_reconcile_blocking_skipped_missing_deps');
-        (request as any).__ledgerHealingObs = buildLedgerHealingObservabilityV1({
-          initialInvalidatedCount: initialInv,
-          ranBlockingReconcile: false,
-          skippedMissingDeps: true,
-          invalidatedNodeIds: execPlan.invalidatedSteps.map((s: LedgerRecomputeStepV1) => s.nodeId),
-        });
-        $.logger?.warn?.(
-          `[LedgerReconcile] blocking phase=${phase} skipped: orchestrator=${!!$.incrementalRecomputeOrchestrator} persistence=${!!$.memorySnapshotPersistence} request_id=${request.request_id}`,
-        );
-      } else {
-        memory.observability.layers.push('ledger_reconcile_advisory_hint');
-        (request as any).__ledgerPendingPlan = execPlan;
-        (request as any).__ledgerHealingObs = buildLedgerHealingObservabilityV1({
-          initialInvalidatedCount: initialInv,
-          ranBlockingReconcile: false,
-          advisoryDeferred: true,
-          invalidatedNodeIds: execPlan.invalidatedSteps.map((s: LedgerRecomputeStepV1) => s.nodeId),
-        });
-      }
-    }
-  }
+async function runRouteAndRunTickBody(
+  agent: AgentService,
+  $: any,
+  gateway: ExecutionGatewayService,
+  request: RouteAndRunRequestDto,
+  bundle: DecisionRuntimeTickBundle,
+  kernel: DecisionRuntimeKernelService,
+): Promise<RouteAndRunResponseDto> {
+  const memory = bundle.memory;
+  const replayAnchor = bundle.replayAnchor;
+  let recoveryTriggered = false;
+  const startTime = Date.now();
 
-  /** 观测闭包：装配后若账本存在失效/STALE，生成重算执行计划并打标 observability（不改变主编排分支）。 */
-  if ($.ledgerRecomputeExecutor && memory.decisionLedger) {
-    const plan = memory.ledgerRecomputePlan;
-    const hasTopo =
-      !!plan &&
-      (plan.orderedNodeIds.length > 0 || (plan.unorderedFallbackNodeIds?.length ?? 0) > 0);
-    const hasStale = memory.decisionLedger.nodes.some(n => n.status === 'STALE');
-    if (hasTopo || hasStale) {
-      (request as any).__ledgerRecomputeExecution = $.ledgerRecomputeExecutor.buildExecutionPlan(memory.decisionLedger);
-      const ex = (request as any).__ledgerRecomputeExecution as {
-        invalidatedSteps: { length: number };
-        staleSteps: { length: number };
-      };
-      if (ex.invalidatedSteps.length > 0) {
-        memory.observability.layers.push('ledger_full_replan_hint');
-      }
-      if (ex.staleSteps.length > 0) {
-        memory.observability.layers.push('ledger_stale_refresh_hint');
-      }
-    }
-  }
+  mergeTripIdAliasesIntoRouteAndRunRequest(request);
+  const canonicalTripIdEarly = canonicalTripIdForRouteAndRunRequest(request);
 
-  void $.memorySnapshotPersistence?.persistSerializableSnapshot(memory);
-  freezeAgentMemorySnapshot(memory);
-  (request as any).__memoryContractObs = $.memoryContextAssembler.buildObservability(memory);
-  const execCtxBase = $.agentExecutionContextFactory.createFromFrozenMemory(memory);
-  const goldenChainSpanId = randomUUID();
-  const execCtx = { ...execCtxBase, activeParentSpanId: goldenChainSpanId };
-  return await $.agentMemoryContextStore.runPromise(memory, async () => {
-    return await $.agentExecutionContextStore.runPromise(execCtx, async () => {
-      (request as any).__memoryExecutionBinding = execCtx.executionBinding;
+  const replayStrictSeal = request.options?.orchestration_replay_strict_seal === true;
+  await kernel.hydrateGovernanceAndDos(agent, gateway, request, bundle, replayStrictSeal);
 
-      const startTime = Date.now();
-      $.executionTimelineRecorder?.recordPoint({
-        phase: 'route_and_run',
-        eventType: 'chain.enter',
-        nodeId: 'rr:gold:enter',
-        parentNodeId: null,
-        spanId: goldenChainSpanId,
-        inputPayload: { trip_id: request.trip_id ?? null, has_message: !!request.message },
-      });
-      $.logger.debug(`Processing request: ${request.request_id}`);
+  const dosExecutionContext = bundle.dosExecutionContext;
+  const governanceStructuredTrace = (request as any).__governanceStructuredTrace;
+  const runtimeDirective = (request as any).__runtimeBranchDirective;
 
-      const chainSpan = $.executionTimelineRecorder?.startSpan({
-        phase: 'route_and_run',
-        operation: 'route_and_run.chain',
-        parentSpanId: goldenChainSpanId,
-        inputPayload: {
-          request_id: request.request_id,
-          trip_id: request.trip_id ?? null,
-        },
-      });
-      const execInner = {
-        ...execCtx,
-        activeParentSpanId: chainSpan?.spanId ?? execCtx.activeParentSpanId,
-      };
+  $.logger.log(
+    governanceStructuredTrace ?? {
+      schemaId: 'tripnara.governance_runtime.trace@v1',
+      version: 1,
+      governanceSnapshotId: 'n/a',
+      activeActivationTypes: [],
+      selectedBranch: runtimeDirective?.branchType ?? 'normal_execution',
+      unresolvedBlockCount: 0,
+      pressureSummary: { weather: 0, world: 0, policy: 0, execution: 0, recovery: 0 },
+    },
+    `[GovernanceRuntime] trace request_id=${request.request_id}`,
+  );
 
-      return await $.agentExecutionContextStore.runPromise(execInner, async () => {
-        let recoveryTriggered = false;
-        const runBody = async (): Promise<RouteAndRunResponseDto> => {
-
-    mergeTripIdAliasesIntoRouteAndRunRequest(request);
-
-    const canonicalTripIdEarly = canonicalTripIdForRouteAndRunRequest(request);
-    let governanceRuntime: HydratedGovernanceRuntimeContext | undefined;
-    const govHydration = (gateway as ExecutionGatewayService & { governanceHydration?: GovernanceHydrationService })
-      .governanceHydration;
-    if (canonicalTripIdEarly && govHydration && !replayAnchor) {
-      try {
-        const driftInjectionEnabled =
-          process.env.GOVERNANCE_DRIFT_FEEDBACK_INJECTION === 'true' ||
-          (request as any).options?.governance_drift_feedback_injection === true;
-        governanceRuntime = await govHydration.hydrateGovernanceSnapshot(canonicalTripIdEarly, {
-          allowDriftFeedbackInjection: driftInjectionEnabled,
-        });
-      } catch (err: unknown) {
-        $.logger.warn(
-          `[GovernanceRuntime] hydrate failed trip_id=${canonicalTripIdEarly} err=${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-    const runtimeDirective: RuntimeBranchDirective = governanceRuntime
-      ? routeGovernanceActivationsToRuntimeBranch(governanceRuntime)
-      : { branchType: 'normal_execution', sourceActivationIds: [] };
-    (request as any).__runtimeBranchDirective = runtimeDirective;
-    const governanceStructuredTrace: StructuredGovernanceRuntimeTraceV1 | undefined =
-      governanceRuntime && canonicalTripIdEarly
-        ? buildStructuredGovernanceRuntimeTraceV1({
-            tripId: canonicalTripIdEarly,
-            hydrated: governanceRuntime,
-            directive: runtimeDirective,
-          })
-        : undefined;
-    (request as any).__governanceStructuredTrace = governanceStructuredTrace;
-
-    if (governanceRuntime) {
-      (request as any).__controlledReplanningContext = buildControlledReplanningContext({
-        directive: runtimeDirective,
-        hydrated: governanceRuntime,
-        userMessage: request.message,
-      });
-      (request as any).governance_runtime_state = governanceRuntime.runtimeState;
-      (request as any).governance_drift_influences = governanceRuntime.driftInfluences ?? [];
-    } else {
-      (request as any).__controlledReplanningContext = undefined;
-      (request as any).governance_runtime_state = undefined;
-      (request as any).governance_drift_influences = [];
-    }
-
-    /** Harness-style turn snapshot：编排层唯一聚合点（引擎逐步改为只读此契约）。 */
-    (request as any).__agentTurnContract = buildAgentTurnContract({
-      request,
-      memory,
-      governanceRuntime: governanceRuntime ?? null,
-    });
-
-    $.logger.log(
-      governanceStructuredTrace ?? {
-        schemaId: 'tripnara.governance_runtime.trace@v1',
-        version: 1,
-        governanceSnapshotId: 'n/a',
-        activeActivationTypes: [],
-        selectedBranch: runtimeDirective.branchType,
-        unresolvedBlockCount: 0,
-        pressureSummary: { weather: 0, world: 0, policy: 0, execution: 0, recovery: 0 },
-      },
-      `[GovernanceRuntime] trace request_id=${request.request_id}`,
-    );
-
-    /** Replay determinism seal：禁止 enricher 改写上下文、禁止编排 mode fallback（见 execution-gateway-contract-governance.v1） */
-    const replayStrictSeal = request.options?.orchestration_replay_strict_seal === true;
+  const withDosContext = async <T>(fn: () => Promise<T>): Promise<T> =>
+    kernel.withDosContext(bundle, fn);
 
     // Phase 0：战略收敛 - 个性化降级显式日志（user_id=anonymous 时 Memory/UserProfile 不可用）
     if (!request.user_id || request.user_id === 'anonymous') {
@@ -426,7 +239,15 @@ export async function runRouteAndRunMainChain(
       }
 
       if (!replayStrictSeal) {
-        await $.routeContextEnricher?.maybeInjectActiveTripSummary(request);
+        const wantsTripSummary =
+          request.conversation_context?.context_type?.trim() === 'active_trip_summary';
+        if (wantsTripSummary) {
+          if (dosExecutionContext) {
+            dosExecutionContext.applyNarrativeToConversationContext(request);
+          } else {
+            await $.routeContextEnricher?.maybeInjectActiveTripSummary(request);
+          }
+        }
         await $.routeContextEnricher?.maybeInjectUserStandingSummary(request);
       }
 
@@ -440,6 +261,38 @@ export async function runRouteAndRunMainChain(
       $.logger.debug(
         `[AgentService] 路由信号提取: taskType=${signals.taskType}, risk=${signals.risk}, complexity=${signals.complexity}, request_id=${request.request_id}`,
       );
+
+      // A3：`async_mode=AUTO` — INTENT_COMPILE 后预分类，重规划切入 Durable Task（E4）
+      if ($.routeAndRunAsyncDelegationService) {
+        const wouldRedirectToPlanningWorkbench = isPlanningReq && hasNoTripId;
+        const planDeltaRaw = bundle.dosExecutionContext?.planDelta;
+        const planDelta = planDeltaRaw?.length
+          ? planDeltaRaw.map((d) => ({ target: { type: d.target?.type } }))
+          : [];
+        const delegated = await $.routeAndRunAsyncDelegationService.delegateIfRequested(request, {
+          signals,
+          planDelta,
+          wouldRedirectToPlanningWorkbench,
+        });
+        if (delegated) {
+          $.logger.log(
+            `[AgentService] async_mode=AUTO 已委托后台 task_id=${delegated.async_task?.task_id} request_id=${request.request_id}`,
+          );
+          return $.wrapSuccessfulRouteAndRunReturn(
+            request,
+            delegated,
+            {
+              mode_final: 'ASYNC_DELEGATED',
+              async_delegation: true,
+              task_id: delegated.async_task?.task_id,
+              deadline_ms: deadline.totalMs,
+              time_remaining_ms: deadline.remainingMs(),
+              ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
+            } as Record<string, unknown>,
+            requestHash,
+          );
+        }
+      }
 
       // 编排 deadline 与路由信号对齐：默认 max_seconds=30 时常小于单次 LLM 超时（如 60s），
       // DATA_LOOKUP 轻量路径会在 DeepSeek 返回前被 withTimeout 掐断 → TripRun FAILED 且 HTTP 仍 200。
@@ -460,6 +313,19 @@ export async function runRouteAndRunMainChain(
           if (effectiveTotalMs > before) {
             $.logger.log(
               `[AgentService] 酒店/住宿问法: deadline 下限抬升至 ${effectiveTotalMs}ms（原 ${before}ms） taskType=${signals.taskType} request_id=${request.request_id}`,
+            );
+          }
+        }
+        const tripPlanningHeavy =
+          signals.taskType === 'TRIP_PLANNING' ||
+          Boolean(request.trip_id?.trim()) ||
+          request.options?.enable_guardians_debate_llm === true;
+        if (tripPlanningHeavy) {
+          const before = effectiveTotalMs;
+          effectiveTotalMs = Math.min(120_000, Math.max(effectiveTotalMs, 90_000));
+          if (effectiveTotalMs > before) {
+            $.logger.log(
+              `[AgentService] 行程规划/三人格辩论: deadline 下限抬升至 ${effectiveTotalMs}ms（原 ${before}ms） taskType=${signals.taskType} request_id=${request.request_id}`,
             );
           }
         }
@@ -765,21 +631,23 @@ export async function runRouteAndRunMainChain(
           if (!$.claudeOrchestrator) throw new Error('CLAUDE_SM_UNAVAILABLE');
           if (!$.breakerSM.canPass()) throw new Error('BREAKER_OPEN:CLAUDE_SM');
           const orchestrationAbort = new AbortController();
-          const res = await withTimeout<RouteAndRunResponseDto>(
-            $.routeAndRunWithClaudeStateMachine(
-              request,
-              startTime,
-              traceInfo,
-              deadline,
-              tripRunId,
-              resumedCheckpoint,
-              orchestrationAbort,
-              recoveryInvocation,
-              signals.taskType,
+          const res = await withDosContext(() =>
+            withTimeout<RouteAndRunResponseDto>(
+              $.routeAndRunWithClaudeStateMachine(
+                request,
+                startTime,
+                traceInfo,
+                deadline,
+                tripRunId,
+                resumedCheckpoint,
+                orchestrationAbort,
+                recoveryInvocation,
+                signals.taskType,
+              ),
+              remaining,
+              'CLAUDE_SM',
+              { abortController: orchestrationAbort },
             ),
-            remaining,
-            'CLAUDE_SM',
-            { abortController: orchestrationAbort },
           );
           $.breakerSM.onSuccess();
           return res;
@@ -788,10 +656,12 @@ export async function runRouteAndRunMainChain(
         if (mode === 'CLAUDE_DYNAMIC') {
           if (!$.claudeOrchestrator) throw new Error('CLAUDE_DYNAMIC_UNAVAILABLE');
           if (!$.breakerDyn.canPass()) throw new Error('BREAKER_OPEN:CLAUDE_DYNAMIC');
-          const res = await withTimeout<RouteAndRunResponseDto>(
-            $.routeAndRunWithClaude(request, startTime, traceInfo, deadline),
-            remaining,
-            'CLAUDE_DYNAMIC'
+          const res = await withDosContext(() =>
+            withTimeout<RouteAndRunResponseDto>(
+              $.routeAndRunWithClaude(request, startTime, traceInfo, deadline),
+              remaining,
+              'CLAUDE_DYNAMIC',
+            ),
           );
           $.breakerDyn.onSuccess();
           return res;
@@ -1210,29 +1080,4 @@ export async function runRouteAndRunMainChain(
       
       throw error;
     }
-        };
-
-        try {
-          const chainOutcome = await runBody();
-          chainSpan?.finishSuccess({
-            outputPayload: {
-              status: 'success',
-              finalStage: 'route_selector',
-            },
-            metadataSummary: {
-              totalSemanticSteps: recoveryTriggered ? 2 : 1,
-              recoveryTriggered,
-            },
-          });
-          return chainOutcome;
-        } catch (chainErr: unknown) {
-          chainSpan?.finishError({
-            errorType: chainErr instanceof Error ? chainErr.name : 'Error',
-            metadataSummary: { failedPhase: 'route_and_run' },
-          });
-          throw chainErr;
-        }
-      });
-    });
-  });
 }

@@ -85,7 +85,7 @@ export class GeoSampleElevationProfileSkill
 
   metadata = {
     name: 'geo.sampleElevationProfile',
-    description: '标准化 DEM 高程采样：基于 PostGIS 栅格生成路线海拔剖面，计算累计爬升、最大坡度和疲劳指数',
+    description: 'geo.sampleElevationProfile：基于 PostGIS/DEM 采样路线海拔剖面（爬升/坡度/疲劳）。在 verify/pace 评估需高程 profile 且已有 polyline 时调用。',
     version: '1.0.0',
     category: 'dem' as const,
   };

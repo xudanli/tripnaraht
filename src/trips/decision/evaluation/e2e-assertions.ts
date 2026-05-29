@@ -14,9 +14,15 @@ import {
   E2EDiff,
   ExpectedDecisionTraceSummary,
   ReplayTimelineExpected,
+  ReplayTraceSignalsExpected,
   ScientificReplayExpected,
+  PersonaClosureExpected,
 } from './e2e-case.types';
 import { diffDecisionTraceSummary } from './replay-trace-contract';
+import {
+  countAbuPostNeptuneRechecks,
+  extractPersonaClosureAuditFromLogs,
+} from '../shared/persona-closure-log.util';
 
 /**
  * 断言 Abu 行为
@@ -360,6 +366,96 @@ function analyzeTimelineDiff(
   };
 }
 
+function analyzeTraceSignalsDiff(
+  expected: { traceSignals?: ReplayTraceSignalsExpected },
+  actual: { logs: DecisionLogEntry[] },
+): Pick<E2EDiff, 'traceSignalsDiff' | 'hasDiff'> {
+  const signals = expected.traceSignals;
+  if (!signals) {
+    return { hasDiff: false };
+  }
+  const hasAnyExpected = (
+    ['stability_mode_active', 'frustration_circuit_triggered', 'narrative_track'] as const
+  ).some((k) => signals[k] !== undefined);
+  if (!hasAnyExpected) {
+    return { hasDiff: false };
+  }
+
+  const planScore = actual.logs.find(
+    (l) =>
+      l.decisionStage === 'PLAN_SCORE' &&
+      (l.persona === 'EXPECTED_UTILITY' ||
+        (!!l.metadata &&
+          typeof l.metadata === 'object' &&
+          typeof (l.metadata as Record<string, unknown>).schemaVersion === 'string')),
+  );
+
+  if (!planScore?.metadata || typeof planScore.metadata !== 'object') {
+    return {
+      traceSignalsDiff: ['traceSignals: expected PLAN_SCORE log with metadata but none matched'],
+      hasDiff: true,
+    };
+  }
+
+  const meta = planScore.metadata as Record<string, unknown>;
+  const traceSignalsDiff: string[] = [];
+  for (const key of ['stability_mode_active', 'frustration_circuit_triggered', 'narrative_track'] as const) {
+    if (signals[key] === undefined) continue;
+    const exp = signals[key];
+    const act = meta[key];
+    if (act !== exp) {
+      traceSignalsDiff.push(
+        `traceSignals.${key}: expected ${JSON.stringify(exp)}, actual ${JSON.stringify(act)}`,
+      );
+    }
+  }
+
+  return {
+    traceSignalsDiff: traceSignalsDiff.length > 0 ? traceSignalsDiff : undefined,
+    hasDiff: traceSignalsDiff.length > 0,
+  };
+}
+
+function analyzePersonaClosureDiff(
+  expected: { personaClosureExpected?: PersonaClosureExpected },
+  actual: { logs: DecisionLogEntry[] },
+): Pick<E2EDiff, 'personaClosureDiff' | 'hasDiff'> {
+  const pc = expected.personaClosureExpected;
+  if (!pc) return { hasDiff: false };
+
+  const personaClosureDiff: string[] = [];
+  const rechecks = countAbuPostNeptuneRechecks(actual.logs);
+  const audit = extractPersonaClosureAuditFromLogs(actual.logs);
+  const stopReason = audit?.stopReason;
+
+  if (pc.minAbuRechecks !== undefined && rechecks < pc.minAbuRechecks) {
+    personaClosureDiff.push(
+      `persona closure: minAbuRechecks ${pc.minAbuRechecks} but actual ${rechecks}`,
+    );
+  }
+  if (pc.maxAbuRechecks !== undefined && rechecks > pc.maxAbuRechecks) {
+    personaClosureDiff.push(
+      `persona closure: maxAbuRechecks ${pc.maxAbuRechecks} but actual ${rechecks}`,
+    );
+  }
+  if (pc.mustEmitAudit && !audit) {
+    personaClosureDiff.push('persona closure: missing personaClosureAudit on FINALIZE log');
+  }
+  if (pc.allowedStopReasons?.length && stopReason && !pc.allowedStopReasons.includes(stopReason)) {
+    personaClosureDiff.push(
+      `persona closure stopReason: expected one of ${pc.allowedStopReasons.join(',')} actual=${stopReason}`,
+    );
+  }
+  if (pc.forbiddenStopReasons?.length && stopReason && pc.forbiddenStopReasons.includes(stopReason)) {
+    personaClosureDiff.push(`persona closure stopReason forbidden: ${stopReason}`);
+  }
+
+  return {
+    personaClosureDiff: personaClosureDiff.length > 0 ? personaClosureDiff : undefined,
+    hasDiff: personaClosureDiff.length > 0,
+  };
+}
+
 /**
  * 分析差异
  */
@@ -373,6 +469,8 @@ export function analyzeDiff(
     traceSummary?: ExpectedDecisionTraceSummary;
     scientificExpected?: ScientificReplayExpected;
     timelineExpected?: ReplayTimelineExpected;
+    traceSignals?: ReplayTraceSignalsExpected;
+    personaClosureExpected?: PersonaClosureExpected;
   },
   actual: {
     logs: DecisionLogEntry[];
@@ -385,12 +483,22 @@ export function analyzeDiff(
   const trace = analyzeTraceDiff(expected, actual);
   const scientific = analyzeScientificDiff(expected, actual);
   const timeline = analyzeTimelineDiff(expected, actual);
+  const traceSignals = analyzeTraceSignalsDiff(expected, actual);
+  const personaClosure = analyzePersonaClosureDiff(expected, actual);
 
   return {
     ...outcome,
     traceDiff: trace.traceDiff,
     scientificDiff: scientific.scientificDiff,
     timelineDiff: timeline.timelineDiff,
-    hasDiff: outcome.hasDiff || trace.hasDiff || scientific.hasDiff || timeline.hasDiff,
+    traceSignalsDiff: traceSignals.traceSignalsDiff,
+    personaClosureDiff: personaClosure.personaClosureDiff,
+    hasDiff:
+      outcome.hasDiff ||
+      trace.hasDiff ||
+      scientific.hasDiff ||
+      timeline.hasDiff ||
+      traceSignals.hasDiff ||
+      personaClosure.hasDiff,
   };
 }

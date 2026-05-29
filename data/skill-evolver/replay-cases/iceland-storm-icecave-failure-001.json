@@ -1,0 +1,56 @@
+{
+  "caseId": "iceland-storm-icecave-failure-001",
+  "description": "[e2e] 冰岛南岸暴风雪 — 蓝冰洞不可用（合成）",
+  "source_e2e_case_id": "iceland-storm-icecave-failure-001",
+  "tasks": [
+    {
+      "id": "iceland-storm-icecave-failure-001",
+      "description": "极端负面场景：RED_ALERT、1 号公路南岸封闭、蓝冰洞 UNAVAILABLE；心理账户高挫败感 + 研究稳健模式；预期仍 ALLOW 且 POI 级空间修复 + 节奏缓冲。",
+      "initialObservation": "1 月冰岛南岸自驾，已订蓝冰洞团，遇暴风雪封路和洞体关闭",
+      "successCriteria": "final allowed=true; Abu ALLOW; Dr.Dre mustAdjust=true; Neptune mustRepair=true",
+      "optimalSteps": 7
+    }
+  ],
+  "assertions": [
+    {
+      "type": "task_completed",
+      "value": "true",
+      "weight": 2
+    },
+    {
+      "type": "trajectory_contains",
+      "value": "allow",
+      "weight": 1
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "allow",
+      "weight": 2
+    },
+    {
+      "type": "trajectory_contains",
+      "value": "abu gate pass",
+      "weight": 0.5
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "abu gate pass",
+      "weight": 1
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "is",
+      "weight": 0.5
+    },
+    {
+      "type": "action_contains",
+      "value": "pace",
+      "weight": 0.5
+    },
+    {
+      "type": "action_contains",
+      "value": "repair",
+      "weight": 0.5
+    }
+  ]
+}

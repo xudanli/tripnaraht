@@ -300,7 +300,15 @@ export class UnifiedWorldModelService {
     return {
       weatherAlerts,
       roadStatusUpdates,
-      poiStatusUpdates: [], // TODO: 实现POI状态更新
+      poiStatusUpdates: [
+        {
+          poiId: 'all_pois_fallback',
+          status: 'UNKNOWN',
+          currentStatus: 'UNKNOWN',
+          provenance: 'NONE',
+          lastUpdate: new Date(),
+        },
+      ],
     };
   }
 

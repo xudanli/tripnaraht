@@ -38,7 +38,7 @@ export interface PoiSearchOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'poi.search',
-  description: '搜索 POI（地点）',
+  description: '搜索 poi 地点（类型、半径、关键词）。在 RESEARCH 阶段收集景点/餐厅/地标或 repair 需替换 POI 时调用。',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -49,7 +49,7 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
 
   metadata = {
     name: 'poi.search',
-    description: '搜索 POI（地点）',
+    description: '搜索 poi 地点（类型、半径、关键词）。在 RESEARCH 阶段收集景点/餐厅/地标或 repair 需替换 POI 时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

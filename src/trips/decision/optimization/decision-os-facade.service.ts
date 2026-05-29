@@ -18,6 +18,7 @@ import { ProbabilisticWorldModelService } from './probabilistic/probabilistic-wo
 import { PolicyNetworkService, ActionType, PolicyOutput } from './learning/policy-network.service';
 import { OnlineLearningLoopService, DecisionOutcome } from './learning/online-learning-loop.service';
 import { WeightLearnerService } from './learning/weight-learner.service';
+import { RlhfPersistenceService } from './learning/rlhf-persistence.service';
 import { DifferentiableDecisionService } from './differentiable/differentiable-decision.service';
 
 // 审计和监控
@@ -26,6 +27,7 @@ import { DecisionMetricsService } from './metrics/decision-metrics.service';
 
 // 分布式锁
 import { DistributedLockService } from '../../../redis/distributed-lock.service';
+import { DEFAULT_OBJECTIVE_WEIGHTS } from './objective-function.interface';
 
 // ========== 类型定义 ==========
 
@@ -56,6 +58,8 @@ export interface FeedbackRequest {
   userId: string;
   satisfactionScore?: number;
   actualUtility?: number;
+  /** 决策时模型/系统给出的效用或置信标量 [0,1]，与 actualUtility 对齐后可算预测 regret */
+  predictedUtility?: number;
   explicitFeedback?: { type: 'LIKE' | 'DISLIKE' | 'NEUTRAL'; comment?: string };
   behavioralSignals?: {
     completed: boolean;
@@ -69,6 +73,11 @@ export interface FeedbackResponse {
   learningTriggered: boolean;
   weightsUpdated: boolean;
   newConvergenceStatus?: string;
+  /**
+   * 预测–实现缺口（单侧 regret 代理）：max(0, predictedUtility − actualUtility)，域 [0,1]。
+   * 仅当请求同时提供 `predictedUtility` 与 `actualUtility` 时返回。
+   */
+  predictionRegret01?: number;
 }
 
 export interface SystemStatus {
@@ -118,6 +127,7 @@ export class DecisionOSFacadeService implements OnModuleInit {
     @Optional() private readonly auditService?: DSOSnapshotAuditService,
     @Optional() private readonly metricsService?: DecisionMetricsService,
     @Optional() private readonly lockService?: DistributedLockService,
+    @Optional() private readonly rlhfPersistence?: RlhfPersistenceService,
   ) {}
 
   async onModuleInit() {
@@ -240,12 +250,40 @@ export class DecisionOSFacadeService implements OnModuleInit {
       userId,
       satisfactionScore,
       actualUtility,
+      predictedUtility: request.predictedUtility,
       explicitFeedback,
       behavioralSignals,
       timestamp: new Date().toISOString(),
     };
 
     const result = await this.learningLoop.processDecisionOutcome(outcome);
+
+    const predictionRegret01 = result.predictionRegret01;
+    if (predictionRegret01 !== undefined) {
+      this.logger.debug(
+        `[DecisionOS] predictionRegret01=${predictionRegret01.toFixed(4)} pred=${request.predictedUtility} act=${request.actualUtility}`,
+      );
+      if (this.rlhfPersistence) {
+        const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+        void this.rlhfPersistence
+          .recordFeedback({
+            userId,
+            tripId: decisionId,
+            feedbackType: 'PREDICTION_REGRET',
+            feedbackData: {
+              predictionRegret01,
+              predictedUtility: request.predictedUtility,
+              actualUtility: request.actualUtility,
+              decisionId,
+            },
+            weightsAtTime: { ...DEFAULT_OBJECTIVE_WEIGHTS },
+            utilityAtTime: clamp01(request.actualUtility!),
+          })
+          .catch((e: unknown) =>
+            this.logger.warn(`[DecisionOS] RLHF PREDICTION_REGRET 持久化失败: ${(e as Error)?.message}`),
+          );
+      }
+    }
 
     if (this.metricsService) {
       if (result.weightsUpdated) {
@@ -260,6 +298,7 @@ export class DecisionOSFacadeService implements OnModuleInit {
       learningTriggered: result.learningTriggered,
       weightsUpdated: result.weightsUpdated,
       newConvergenceStatus: state.convergenceStatus,
+      ...(predictionRegret01 !== undefined ? { predictionRegret01 } : {}),
     };
   }
 

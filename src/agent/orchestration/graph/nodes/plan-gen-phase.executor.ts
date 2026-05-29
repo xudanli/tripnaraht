@@ -79,10 +79,15 @@ export async function runPlanGenPhase(
     });
     state.metadata.last_updated_at = new Date().toISOString();
     await host.generateDecisionStepForStep(state, 'PLAN_GEN', 'Planner');
+    host.onPlanGenDraftCaptured?.(state.request_id, state.itinerary as Itinerary);
     await host.collectTrajectoryAfterPlanGen({ request, state });
     return newState;
   }
-  return host.executePhaseViaKernel(decisionState, state, 'PLAN_GEN', () =>
+  const legacyDso = await host.executePhaseViaKernel(decisionState, state, 'PLAN_GEN', () =>
     host.executePlanGenStep(request, context, state, llmProvider),
   );
+  if (state.itinerary) {
+    host.onPlanGenDraftCaptured?.(state.request_id, state.itinerary as Itinerary);
+  }
+  return legacyDso;
 }

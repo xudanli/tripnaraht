@@ -25,7 +25,7 @@ export interface OpeningHoursGetOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'opening_hours.get',
-  description: '获取 POI 的开放时间',
+  description: '获取 POI opening_hours 与时区规则。在 RESEARCH/VERIFY 阶段校验活动时间窗或 repair 需判断营业冲突时调用。',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -36,7 +36,7 @@ export class OpeningHoursGetSkill implements Skill<OpeningHoursGetInput, Opening
 
   metadata = {
     name: 'opening_hours.get',
-    description: '获取 POI 的开放时间',
+    description: '获取 POI opening_hours 与时区规则。在 RESEARCH/VERIFY 阶段校验活动时间窗或 repair 需判断营业冲突时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

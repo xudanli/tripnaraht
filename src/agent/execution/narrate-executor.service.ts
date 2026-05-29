@@ -25,6 +25,10 @@ import {
 } from '../utils/narrator-l3-persuasion.util';
 import { ConstraintsEngineService } from '../training/services/constraints-engine.service';
 import { resolveWallHitDistanceMsForConstraints } from '../utils/wall-hit-distance.util';
+import { mergeOptimizationDecisionNarration } from './merge-optimization-decision-narration.util';
+import { compileCausalNarrative } from '../../trips/decision/narration/causal-narrative-compiler.service';
+import type { DecisionLogEntry as KernelDecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
+import type { TimeDrift } from '../../trips/decision/temporal/time-drift.types';
 
 @Injectable()
 export class NarrateExecutorService implements INarrateExecutor {
@@ -66,10 +70,24 @@ export class NarrateExecutorService implements INarrateExecutor {
 
     try {
       const escalation = dso.verification?.escalationPlan;
+      const party = (state.trip_plan_request as { party?: { has_elderly?: boolean } })?.party;
+      const partyNoteZh = party?.has_elderly
+        ? '我们注意到您带着父母同行，已在体能与路况校验中采用更保守的物理门槛。'
+        : undefined;
+      const causalCompiled = compileCausalNarrative({
+        decisionLogs: (state.decision_log ?? []) as unknown as KernelDecisionLogEntry[],
+        optimizationHints: dso.optimizationHints,
+        timeDrifts: (state.itinerary as { temporal?: { drifts?: TimeDrift[] } } | undefined)?.temporal
+          ?.drifts,
+        partyNoteZh,
+      });
+
       const stateForNarrate = {
         ...state,
         ...(escalation ? { kernel_escalation_plan: escalation } : {}),
         ...(ctx.researchConflict ? { narration_research_conflict: ctx.researchConflict } : {}),
+        ...(causalCompiled ? { kernel_causal_narrative_compile: causalCompiled } : {}),
+        ...(dso.optimizationHints ? { kernel_optimization_hints: dso.optimizationHints } : {}),
       } as OrchestratorState;
 
       let narration = (await this.narratorAgent.narrate(
@@ -80,6 +98,8 @@ export class NarrateExecutorService implements INarrateExecutor {
       )) as NarrationLike;
 
       narration = this.mergeTransportResearchGuidanceIntoNarration(narration, state);
+      narration = mergeOptimizationDecisionNarration(narration, dso.optimizationHints);
+      narration = this.mergeCausalProtectionNarration(narration, dso, state);
 
       if (state.metadata && typeof state.metadata === 'object') {
         const m = state.metadata as Record<string, unknown>;
@@ -306,5 +326,58 @@ export class NarrateExecutorService implements INarrateExecutor {
     }
     if (tips.length === prevTips.length) return narration;
     return { ...narration, tips };
+  }
+
+  /**
+   * 因果叙事编译器：将 monte_carlo / Neptune / TimeDrift trace 译为受控用户文案。
+   * 若 NarratorAgent 已写入 causal_protection_summary_zh 则跳过（避免重复）。
+   */
+  private mergeCausalProtectionNarration(
+    narration: NarrationLike,
+    dso: DecisionState,
+    state: OrchestratorState,
+  ): NarrationLike {
+    if (narration.causal_protection_summary_zh?.trim()) {
+      return narration;
+    }
+
+    const plan = state.itinerary as { temporal?: { drifts?: TimeDrift[] } } | undefined;
+    const party = (state.trip_plan_request as { party?: { has_elderly?: boolean } })?.party;
+    const partyNoteZh = party?.has_elderly
+      ? '我们注意到您带着父母同行，已在体能与路况校验中采用更保守的物理门槛。'
+      : undefined;
+
+    const compiled = compileCausalNarrative({
+      decisionLogs: (state.decision_log ?? []) as unknown as KernelDecisionLogEntry[],
+      optimizationHints: dso.optimizationHints,
+      timeDrifts: plan?.temporal?.drifts,
+      partyNoteZh,
+    });
+    if (!compiled) return narration;
+
+    const summary = compiled.deterministicSummaryZh.trim();
+    let userSummary = (narration.user_friendly_summary ?? '').trim();
+    const anchor = summary.slice(0, Math.min(24, summary.length));
+    if (anchor && !userSummary.includes(anchor)) {
+      userSummary = userSummary ? `${summary}\n\n${userSummary}` : summary;
+    }
+
+    const tips = [...(narration.tips ?? [])];
+    const label = '[决策保护]';
+    const firstLine = summary.split('\n')[0]?.trim();
+    if (firstLine) {
+      const line = `${label} ${firstLine}`.slice(0, 500);
+      if (!tips.some((t) => t.startsWith(label))) {
+        tips.unshift(line);
+      }
+    }
+
+    return {
+      ...narration,
+      user_friendly_summary: userSummary,
+      tips,
+      causal_protection_summary_zh: summary,
+      causal_chain: compiled.chain,
+    };
   }
 }

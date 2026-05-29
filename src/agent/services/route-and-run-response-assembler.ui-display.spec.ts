@@ -254,6 +254,9 @@ describe('RouteAndRunResponseAssemblerService — ui_display.evidence_cards_ui',
     expect(qs![0].id).toBe('nl_fallback_clarification');
     expect(qs![0].question).toContain('目的地');
     expect(qs![0].type).toBe('text');
+    expect(resp.ui_state?.ui_status).toBe('awaiting_confirmation');
+    expect(resp.ui_state?.requires_user_action).toBe(true);
+    expect(resp.ui_state?.progress_percent).toBe(100);
   });
 
   it('explain.decision_log uses top-level orchestration decisionLog when state.decision_log is empty (RAG 轻量问答)', async () => {
@@ -320,6 +323,187 @@ describe('RouteAndRunResponseAssemblerService — ui_display.evidence_cards_ui',
 
     // 轻量问答走 SYSTEM2_REASONING，observability 须为 SYSTEM2，避免前端用 system_mode 误藏「决策日志」
     expect((resp.observability as { system_mode?: string }).system_mode).toBe('SYSTEM2');
+  });
+
+  it('sanitizes gate_result violations for client (no L3-PROOF / ROUTE_INFEASIBLE in payload)', async () => {
+    const assembler = await createAssembler();
+    const rawDetail =
+      '[VERIFY] ROUTE_INFEASIBLE [entity:OTHER:vehicle_terrain_arbitrator]: ' +
+      '[L3-PROOF|terrain.f_road_compatibility|OTHER:vehicle_terrain_arbitrator|cmp:LEQ|actual:|limit:|unit:|slack:|evidence:MODEL:user_query,intent_virtual_car_rental,itinerary_text] ' +
+      '【车型-路况仲裁·意图合规】行程含 F-road/高地特征，用户话术表明使用 2WD/经济型车辆。';
+    const state: OrchestratorState = {
+      request_id: 'gate-sanitize-1',
+      current_step: 'DONE',
+      verdict: 'ALLOW',
+      plan_version: 0,
+      decision_log: [],
+      evidence_registry: new Map(),
+      errors: [],
+      metadata: {
+        started_at: new Date().toISOString(),
+        last_updated_at: new Date().toISOString(),
+      },
+    } as OrchestratorState;
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: 'ok',
+      stepsExecuted: [],
+      totalDuration: 1,
+      result: {
+        state,
+        itinerary: { request_id: 'gate-sanitize-1', days: [] },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [
+            {
+              type: 'SAFETY',
+              severity: 'HARD',
+              detail: rawDetail,
+              verify_synthetic: true,
+            },
+          ],
+          required_adjustments: [],
+          confidence: 0.9,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeDynamicResponse({
+      request: { request_id: 'gate-sanitize-1', message: '冰岛自驾' } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result.payload as {
+      orchestrationResult?: { gate_result?: { violations?: Array<{ detail?: string; display_headline_zh?: string }> } };
+      safety_surface?: { verify_issues?: Array<{ message?: string; headline_zh?: string; type?: string }> };
+    };
+    const gate = payload.orchestrationResult?.gate_result;
+    expect(gate?.violations).toHaveLength(1);
+    expect(gate?.violations?.[0]?.detail).not.toContain('[L3-PROOF');
+    expect(gate?.violations?.[0]?.detail).not.toContain('ROUTE_INFEASIBLE');
+    expect(gate?.violations?.[0]?.display_headline_zh).toContain('可执行性');
+  });
+
+  it('sanitizes VERIFY decision_log metadata.issues for advisory POI_CLOSED', async () => {
+    const assembler = await createAssembler();
+    const l3 =
+      '[L3-PROOF|entity.opening_hours_overlap|POI:req-1_day1_item1|cmp:LEQ|actual:|limit:|unit:|slack:|evidence:OPENING_HOURS] ' +
+      'POI "Krossá River Crossing" 缺少开放时间数据';
+    const verifyEntry: DecisionLogEntry = {
+      request_id: 'advisory-1',
+      step: 'VERIFY',
+      actor: 'Orchestrator',
+      inputs_summary: '验证',
+      outputs_summary: '共发现 1 个问题',
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        issues: [{ code: 'POI_CLOSED', class: 'ADVISORY', message: l3 }],
+      },
+    };
+    const state: OrchestratorState = {
+      request_id: 'advisory-1',
+      current_step: 'DONE',
+      verdict: 'ALLOW',
+      plan_version: 0,
+      decision_log: [verifyEntry],
+      evidence_registry: new Map(),
+      errors: [],
+      metadata: {
+        started_at: new Date().toISOString(),
+        last_updated_at: new Date().toISOString(),
+      },
+    } as OrchestratorState;
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: 'ok',
+      stepsExecuted: [],
+      totalDuration: 1,
+      decisionLog: [verifyEntry],
+      result: {
+        state,
+        itinerary: { request_id: 'advisory-1', days: [] },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 0.9,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeDynamicResponse({
+      request: { request_id: 'advisory-1', message: '冰岛' } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const explain = resp.explain as { decision_log?: Array<{ metadata?: { issues?: Array<Record<string, unknown>> } }> };
+    const issue = explain.decision_log?.find((e) => e.metadata?.issues)?.metadata?.issues?.[0];
+    expect(issue?.message).not.toContain('[L3-PROOF');
+    expect(issue?.code_label_zh).toContain('开放时间');
+    expect(issue?.class_label_zh).toBe('提示');
+  });
+
+  it('itinerary CRUD short-circuit uses planning success surface (not consultation red)', async () => {
+    const assembler = await createAssembler();
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: '已将行程中「冰河湖」的行程时间调整为 11:00–12:40。',
+      stepsExecuted: [{ stepId: 'REPAIR', skillName: 'trip.applyEdit', success: true, duration: 1 }],
+      totalDuration: 1,
+      totalCost: 0,
+      result: {
+        state: {
+          request_id: 'crud-1',
+          current_step: 'DONE',
+          verdict: 'ALLOW',
+          plan_version: 1,
+          decision_log: [],
+          evidence_registry: new Map(),
+          errors: [],
+          metadata: {
+            started_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+            itinerary_item_update_intake: true,
+            itinerary_item_update_short_circuit: { applied: true, updatedCount: 1 },
+          },
+        } as OrchestratorState,
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 1,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeStateMachineResponse({
+      request: { request_id: 'crud-1', message: '修改冰河湖时间', trip_id: 'trip-1' } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.ui_surface).toBe('planning');
+    expect(payload?.itinerary_item_crud).toBe(true);
+    expect(payload?.consultation_itinerary_payload_suppressed).toBeUndefined();
+    expect(resp.route.ui_hint.message).toBe('行程已更新');
+    expect(resp.route.ui_hint.status).toBe('done');
+    expect(resp.result?.status).toBe('OK');
+    expect(payload?.iron_shield_ui_suppressed).toBe(true);
+    expect(payload?.evidence_bundle).toBeUndefined();
+    expect(payload?.ui_display).toBeUndefined();
+    expect(payload?.decision_metadata).toBeUndefined();
   });
 
 });

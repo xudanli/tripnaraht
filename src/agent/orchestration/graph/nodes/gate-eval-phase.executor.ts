@@ -53,6 +53,7 @@ export async function runGateEvalPhase(
     await host.generateDecisionStepForStep(state, 'GATE_EVAL', 'Gatekeeper');
     host.enrichGuardianDebateTripContextAfterGateEval(state);
     host.applyMarathonPipelineSignals(state, request);
+    await host.onGateEvalCompleted?.(state, request);
     return newState;
   }
 
@@ -61,5 +62,6 @@ export async function runGateEvalPhase(
   );
   host.enrichGuardianDebateTripContextAfterGateEval(state);
   host.applyMarathonPipelineSignals(state, request);
+  await host.onGateEvalCompleted?.(state, request);
   return gateEvalDecisionState;
 }

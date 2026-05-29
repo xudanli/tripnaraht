@@ -1,0 +1,44 @@
+{
+  "trajectoryId": "e2e2cbd7-52b3-4d61-b19a-fd819175743e",
+  "skillId": "api_calling",
+  "skillVersion": 1,
+  "strategyId": "S1_FAST_FIRST",
+  "strategy": {
+    "strategyId": "S1_FAST_FIRST",
+    "philosophy": "速度优先，容忍局部失败",
+    "approach": "对 t1（天气查询）采用激进并发策略：跳过前置参数深度校验（仅检查必填字段非空），直接发起请求。若成功则快速返回。对 t2（401 错误）采用轻量处理：仅记录错误摘要，不进行上下文关联分析，立即返回错误码。整体链路中，只要主路径正常，即视为成功。",
+    "emphasis": "全局速度最大化，牺牲准确性和错误恢复细节",
+    "risk": "参数非法导致无效请求被 API 拒绝，浪费一次网络往返；401 错误可能遗漏关键上下文（如 token 过期原因），导致后续调用链重复失败"
+  },
+  "taskIds": [
+    "t1",
+    "t2"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "用户要求查询北京天气",
+      "thought": "用户要求查询北京天气，根据S1_FAST_FIRST策略，跳过深度参数校验，仅确认'北京'非空，直接发起天气API请求。使用激进并发，快速获取结果。",
+      "action": "调用天气API，查询北京当前天气，解析JSON返回。",
+      "result": "[完成] 调用天气API，查询北京当前天气，解析JSON返回。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:01:04.223Z"
+    },
+    {
+      "stepIndex": 1,
+      "observation": "API 返回 401 Unauthorized",
+      "thought": "根据S1_FAST_FIRST策略，对401错误采用轻量处理：仅记录错误摘要，不进行上下文关联分析，立即返回错误码。当前任务目标是完成用户查询北京天气的请求，但API返回401表示认证失败，无法继续获取数据。由于策略强调速度优先且主路径已中断，直接返回错误信息，标记任务为未完成。",
+      "action": "返回401错误信息给用户：'API认证失败（401 Unauthorized），请检查API密钥是否有效或重新配置。'",
+      "result": "[完成] 返回401错误信息给用户：'API认证失败（401 Unauthorized），请检查API密钥是否有效或重新配置。'",
+      "isError": true,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:01:06.480Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# API 调用规范\n\n## 原则\n调用外部 API 前，必须先验证参数合法性，避免发送无效请求。\n\n## 步骤\n1. **参数检查**：检查所有必填参数是否已提供且类型正确\n2. **URL 构建**：使用标准库构造查询参数，禁止手写未转义拼接\n3. **重试策略**：对 5xx 错误使用指数退避，最多重试 3 次\n4. **错误处理**：\n   - 4xx 错误：记录详细错误信息，不再重试\n   - 5xx 错误：按重试策略处理\n   - 超时：视为 5xx 处理\n5. **响应解析**：优先尝试 JSON 解析，失败则记录原始响应\n\n## 注意事项\n- 绝不要在日志中记录 api_key\n- 对 429 (Rate Limit) 响应，读取 Retry-After 头部",
+  "createdAt": "2026-05-26T05:01:06.480Z",
+  "score": 95.5,
+  "evalMode": "fixture"
+}

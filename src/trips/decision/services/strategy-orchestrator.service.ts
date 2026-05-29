@@ -22,6 +22,21 @@ import { mergeTriggeredAssertions, type HardRuleFact, normalizeHardRuleSnapshot 
 import { DecisionLogStorageService } from './decision-log-storage.service';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
 import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';
+import { mapResearchTraceSignalsToLogMetadata } from '../shared/research-trace-signals-log-metadata.util';
+import { enrichWorldContextWithExperienceFlow } from '../models/experience-flow.model';
+import {
+  DEFAULT_PERSONA_CLOSURE_BUDGET,
+  isPersonaClosureLoopEnabled,
+  type PersonaClosureAudit,
+  type PersonaClosureBudget,
+} from '../shared/persona-closure.types';
+import { PersonaClosureLoopService } from './persona-closure-loop.service';
+
+export interface StrategyOrchestratorRunOptions {
+  personaClosureBudget?: PersonaClosureBudget;
+  /** 测试 / 调用方覆盖；未设时读 TRIP_PERSONA_CLOSURE_LOOP */
+  enablePersonaClosureLoop?: boolean;
+}
 
 /**
  * 策略编排结果
@@ -40,6 +55,8 @@ export interface StrategyOrchestrationResult {
   expectedUtility?: number;
   /** 效用权重摘要（可选） */
   expectedUtilityWeights?: Record<string, number>;
+  /** Neptune REPLACE 后 Abu 有界重验审计（TRIP_PERSONA_CLOSURE_LOOP=1） */
+  personaClosureAudit?: PersonaClosureAudit;
 }
 
 @Injectable()
@@ -54,6 +71,7 @@ export class StrategyOrchestratorService {
     private readonly nep: NeptuneStrategy,
     private readonly logStorage: DecisionLogStorageService,
     private readonly moduleRef: ModuleRef, // 使用 ModuleRef 懒加载可选依赖
+    private readonly personaClosureLoop: PersonaClosureLoopService,
   ) {}
 
   /**
@@ -70,7 +88,8 @@ export class StrategyOrchestratorService {
    */
   async run(
     world: WorldModelContext,
-    plan: RoutePlanDraft
+    plan: RoutePlanDraft,
+    options?: StrategyOrchestratorRunOptions,
   ): Promise<StrategyOrchestrationResult> {
     // 参数验证
     if (!world) {
@@ -82,33 +101,43 @@ export class StrategyOrchestratorService {
       throw new Error('RoutePlanDraft 不能为空');
     }
 
-    this.logger.debug(`开始策略编排: ${plan.tripId || 'unknown'}`);
+    const worldWithFlow = enrichWorldContextWithExperienceFlow(world, plan.researchDataMirror);
 
+    const closureEnabled =
+      options?.enablePersonaClosureLoop ?? isPersonaClosureLoopEnabled();
+    if (closureEnabled) {
+      this.logger.debug(`开始策略编排（persona closure）: ${plan.tripId || 'unknown'}`);
+      const closureResult = await this.personaClosureLoop.run(
+        worldWithFlow,
+        plan,
+        options?.personaClosureBudget ?? DEFAULT_PERSONA_CLOSURE_BUDGET,
+      );
+      await this.buildContextPackages(plan);
+      this.saveLogs(closureResult.logs, worldWithFlow, plan, closureResult.personaClosureAudit).catch(
+        (error) => {
+          this.logger.warn(`Failed to save decision logs: ${error}`);
+        },
+      );
+      const { personaClosureAudit, ...result } = closureResult;
+      return { ...result, personaClosureAudit };
+    }
+
+    return this.runSinglePass(worldWithFlow, plan);
+  }
+
+  /**
+   * 单遍流水线（Abu → Dr.Dre → Neptune），flag 关闭时的默认行为。
+   */
+  private async runSinglePass(
+    world: WorldModelContext,
+    plan: RoutePlanDraft,
+  ): Promise<StrategyOrchestrationResult> {
     const allLogs: DecisionLogEntry[] = [];
     let currentPlan: RoutePlanDraft = plan;
 
+    await this.buildContextPackages(plan);
+
     // 1️⃣ Abu 评估（安全否决者）
-    this.logger.debug('执行 Abu 策略...');
-    
-    // 为 Abu 构建上下文（如果 Context Engineer 可用）
-    const contextEngineer = this.getContextEngineer();
-    if (contextEngineer && plan.tripId) {
-      try {
-        const ctx = await contextEngineer.build({
-          tripId: plan.tripId,
-          phase: 'SAFETY_CHECK',
-          agent: 'ABU',
-          userQuery: `安全评估: ${plan.tripId}`,
-          tokenBudget: 3000,
-          requiredTopics: ['ABU_RULES', 'COUNTRY_SAFETY', 'COUNTRY_ROAD_RULES', 'REJECTION_LOG'],
-        });
-        this.logger.debug(`Abu Context Package: ${ctx.blocks.length} 个块, ${ctx.totalTokens} tokens`);
-        // 注意：Abu 策略的 evaluate() 方法目前不接收上下文，但上下文已构建并可用于后续决策
-      } catch (error: any) {
-        this.logger.warn(`为 Abu 构建上下文失败: ${error.message}`);
-      }
-    }
-    
     const abuResult = await this.abu.evaluate(world, currentPlan);
     allLogs.push(...abuResult.logs);
 
@@ -125,23 +154,6 @@ export class StrategyOrchestratorService {
     // 2️⃣ Dr.Dre 评估（结构修复者）
     this.logger.debug('执行 Dr.Dre 策略...');
     
-    // 为 Dr.Dre 构建上下文（如果 Context Engineer 可用）
-    if (contextEngineer && plan.tripId) {
-      try {
-        const ctx = await contextEngineer.build({
-          tripId: plan.tripId,
-          phase: 'PACING_ADJUSTMENT',
-          agent: 'DR_DRE',
-          userQuery: `节奏调整: ${plan.tripId}`,
-          tokenBudget: 3000,
-          requiredTopics: ['PLAN_DAY', 'PLAN_SEGMENT', 'DECISION_LOG'],
-        });
-        this.logger.debug(`Dr.Dre Context Package: ${ctx.blocks.length} 个块, ${ctx.totalTokens} tokens`);
-      } catch (error: any) {
-        this.logger.warn(`为 Dr.Dre 构建上下文失败: ${error.message}`);
-      }
-    }
-    
     const dreResult = await this.dre.evaluate(world, currentPlan);
     allLogs.push(...dreResult.logs);
 
@@ -153,23 +165,6 @@ export class StrategyOrchestratorService {
 
     // 3️⃣ Neptune 评估（空间修复者）
     this.logger.debug('执行 Neptune 策略...');
-    
-    // 为 Neptune 构建上下文（如果 Context Engineer 可用）
-    if (contextEngineer && plan.tripId) {
-      try {
-        const ctx = await contextEngineer.build({
-          tripId: plan.tripId,
-          phase: 'FINALIZING',
-          agent: 'NEPTUNE',
-          userQuery: `空间修复: ${plan.tripId}`,
-          tokenBudget: 3000,
-          requiredTopics: ['REJECTION_LOG', 'PLAN_SEGMENT', 'DECISION_LOG'],
-        });
-        this.logger.debug(`Neptune Context Package: ${ctx.blocks.length} 个块, ${ctx.totalTokens} tokens`);
-      } catch (error: any) {
-        this.logger.warn(`为 Neptune 构建上下文失败: ${error.message}`);
-      }
-    }
     
     const nepResult = await this.nep.evaluate(world, currentPlan);
     allLogs.push(...nepResult.logs);
@@ -204,13 +199,59 @@ export class StrategyOrchestratorService {
     };
   }
 
+  /** Context Engineer 包（Abu / Dr.Dre / Neptune），best-effort */
+  private async buildContextPackages(plan: RoutePlanDraft): Promise<void> {
+    this.logger.debug(`开始策略编排: ${plan.tripId || 'unknown'}`);
+    const contextEngineer = this.getContextEngineer();
+    if (!contextEngineer || !plan.tripId) return;
+
+    const phases: Array<{
+      phase: 'SAFETY_CHECK' | 'PACING_ADJUSTMENT' | 'FINALIZING';
+      agent: 'ABU' | 'DR_DRE' | 'NEPTUNE';
+      topics: string[];
+    }> = [
+      {
+        phase: 'SAFETY_CHECK',
+        agent: 'ABU',
+        topics: ['ABU_RULES', 'COUNTRY_SAFETY', 'COUNTRY_ROAD_RULES', 'REJECTION_LOG'],
+      },
+      {
+        phase: 'PACING_ADJUSTMENT',
+        agent: 'DR_DRE',
+        topics: ['PLAN_DAY', 'PLAN_SEGMENT', 'DECISION_LOG'],
+      },
+      {
+        phase: 'FINALIZING',
+        agent: 'NEPTUNE',
+        topics: ['REJECTION_LOG', 'PLAN_SEGMENT', 'DECISION_LOG'],
+      },
+    ];
+
+    for (const p of phases) {
+      try {
+        const ctx = await contextEngineer.build({
+          tripId: plan.tripId,
+          phase: p.phase,
+          agent: p.agent,
+          userQuery: `${p.agent} 评估: ${plan.tripId}`,
+          tokenBudget: 3000,
+          requiredTopics: p.topics,
+        });
+        this.logger.debug(`${p.agent} Context Package: ${ctx.blocks.length} 块`);
+      } catch (error: any) {
+        this.logger.warn(`为 ${p.agent} 构建上下文失败: ${error.message}`);
+      }
+    }
+  }
+
   /**
    * 保存决策日志到数据库（优先使用 decision.logAppend skill）
    */
   private async saveLogs(
     logs: DecisionLogEntry[],
     world: WorldModelContext,
-    plan: RoutePlanDraft
+    plan: RoutePlanDraft,
+    personaClosureAudit?: PersonaClosureAudit,
   ): Promise<void> {
     if (logs.length === 0) {
       return;
@@ -265,6 +306,18 @@ export class StrategyOrchestratorService {
       return { ...log, metadata: { ...meta, ...merged } };
     });
 
+    const traceOverlay = mapResearchTraceSignalsToLogMetadata(plan.researchDataMirror);
+    const withTrace: DecisionLogEntry[] =
+      Object.keys(traceOverlay).length > 0
+        ? withFacts.map((log) => {
+            const meta =
+              log.metadata && typeof log.metadata === 'object' && !Array.isArray(log.metadata)
+                ? { ...(log.metadata as Record<string, unknown>) }
+                : {};
+            return { ...log, metadata: { ...meta, ...traceOverlay } };
+          })
+        : withFacts;
+
     // 优先使用 decision.logAppend skill（如果可用）
     const skillsRegistry = this.getSkillsRegistry();
     if (skillsRegistry) {
@@ -275,7 +328,7 @@ export class StrategyOrchestratorService {
             tripId: plan.tripId,
             countryCode: world.physical.countryCode,
             routeDirectionId: plan.routeDirectionId,
-            entries: withFacts.map((log) => ({
+            entries: withTrace.map((log) => ({
               persona: log.persona,
               action: log.action,
               reasonCodes: log.reasonCodes,
@@ -289,6 +342,7 @@ export class StrategyOrchestratorService {
             })),
             metadata: {
               month: world.physical.month,
+              ...(personaClosureAudit ? { personaClosureAudit } : {}),
             },
           });
           this.logger.debug(`使用 decision.logAppend skill 保存了 ${result.writtenCount} 条日志`);
@@ -300,12 +354,13 @@ export class StrategyOrchestratorService {
     }
 
     // 回退到直接调用 DecisionLogStorageService
-    await this.logStorage.saveLogEntries(withFacts, {
+    await this.logStorage.saveLogEntries(withTrace, {
       tripId: plan.tripId,
       countryCode: world.physical.countryCode,
       routeDirectionId: plan.routeDirectionId,
       metadata: {
         month: world.physical.month,
+        ...(personaClosureAudit ? { personaClosureAudit } : {}),
       },
     });
   }

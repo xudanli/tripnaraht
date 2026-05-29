@@ -56,7 +56,7 @@ export class ReadinessCheckVisaWindowSkill implements Skill<ReadinessCheckVisaWi
 
   metadata = {
     name: 'readiness.checkVisaWindow',
-    description: '检查签证和入境时间窗风险，提供准备建议和特殊规则',
+    description: 'readiness.checkVisaWindow：检查签证和入境时间窗风险，提供准备建议和特殊规则',
     version: '1.0.0',
     category: 'readiness' as const,
   };

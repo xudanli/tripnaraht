@@ -37,7 +37,7 @@ import {
   buildMarathonIntakeClarificationQuestion,
   buildPeakSeasonTimeShiftIntakeClarificationQuestion,
   isFroad2wdIntakeClarificationPending,
-  isMarathonDeferredIntakeClarificationPending,
+  isMarathonIntakeClarificationPending,
   isPeakSeasonTimeShiftIntakeClarificationPending,
 } from '../../../utils/structured-intake-clarification.util';
 import {
@@ -46,6 +46,9 @@ import {
 } from '../../../utils/route-and-run-intent-analyzer.util';
 import type { IntakeExecutorContext } from '../../../../decision/kernel/interfaces/phase-executor.interface';
 import { appendItineraryAdjustSystemHints } from '../../../utils/itinerary-adjust-intent.util';
+import { applyItineraryItemDeleteIfRequested } from './intake-itinerary-delete.util';
+import { applyItineraryItemAddIfRequested } from './intake-itinerary-add.util';
+import { applyItineraryItemUpdateIfRequested } from './intake-itinerary-update.util';
 import {
   buildItinerarySlotPlacementClarificationQuestion,
   isItinerarySlotPlacementIntakeClarificationPending,
@@ -511,6 +514,31 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
         (state.metadata as Record<string, unknown>).itinerary_adjust_intake = true;
       }
 
+      if (tripIdForIntent) {
+        const deleteHandled = await applyItineraryItemDeleteIfRequested(host, {
+          message: intakeMsg,
+          tripId: tripIdForIntent,
+          userId: request.user_id,
+          state,
+        });
+        if (!deleteHandled) {
+          const updateHandled = await applyItineraryItemUpdateIfRequested(host, {
+            message: intakeMsg,
+            tripId: tripIdForIntent,
+            userId: request.user_id,
+            state,
+          });
+          if (!updateHandled) {
+            await applyItineraryItemAddIfRequested(host, {
+              message: intakeMsg,
+              tripId: tripIdForIntent,
+              userId: request.user_id,
+              state,
+            });
+          }
+        }
+      }
+
       if (isFroad2wdIntakeClarificationPending(state.trip_plan_request, intakeMsg, clarAnswers)) {
         const froadSignals = buildFroadHighlandIntentSignals(intakeMsg ?? '');
         if (froadSignals && state.trip_plan_request) {
@@ -590,8 +618,9 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
         ];
         (state.metadata as Record<string, unknown>).peak_season_time_shift_intake_short_circuit = true;
       } else if (
-        isMarathonDeferredIntakeClarificationPending(
+        isMarathonIntakeClarificationPending(
           state.gaps as IntakeGap[] | undefined,
+          intakeMsg,
           clarAnswers,
         )
       ) {

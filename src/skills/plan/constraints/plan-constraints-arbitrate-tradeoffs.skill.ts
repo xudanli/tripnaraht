@@ -46,7 +46,8 @@ export class PlanConstraintsArbitrateTradeoffsSkill implements Skill<PlanConstra
 
   metadata = {
     name: 'plan.constraints.arbitrateTradeoffs',
-    description: '给"最小牺牲"仲裁结果，并要求用户确认关键取舍',
+    description:
+      'plan.constraints.arbitrateTradeoffs：对 plan 约束冲突给出最小牺牲仲裁并标记需用户确认的取舍。在 constraints.detectConflicts 发现冲突后需 System2 仲裁时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

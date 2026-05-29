@@ -1,0 +1,18 @@
+{
+  "confirmedBy": "Danny (PM)",
+  "confirmedAt": "2026-05-24",
+  "summary": "9 个 world/rag 实验技能 PM 确认未注册（manifest 保留）；countryPack.rankBlocks 保留并接入 context.build",
+  "registrationStatus": "unregistered",
+  "deprecated": [
+    "context.learn",
+    "context.regressionTests",
+    "iceland.alternativeValidator",
+    "iceland.stormReroutingEngine",
+    "world.adaptiveParameters",
+    "world.collaborativeData",
+    "world.failureRiskPrediction",
+    "world.multimodalPerception",
+    "world.realtimeWeather"
+  ],
+  "keep": ["countryPack.rankBlocks"]
+}

@@ -10,6 +10,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { DecisionSource } from '../shared/decision-result.types';
+import type { PersonaClosureStopReason } from '../shared/persona-closure.types';
+import {
+  countAbuPostNeptuneRechecks,
+  extractPersonaClosureAuditFromLogs,
+} from '../shared/persona-closure-log.util';
+import type { DecisionLogEntry } from '../shared/decision-result.types';
 
 /**
  * 决策统计结果
@@ -74,6 +80,31 @@ export interface PersonaTriggerStats {
   };
   /** 主要决策来源 */
   primarySource: DecisionSource;
+}
+
+/**
+ * Persona closure loop 可观测指标（Neptune REPLACE → Abu 重验）
+ */
+export interface PersonaClosureStats {
+  /** 含 Neptune SPATIAL_REPAIR REPLACE 的行程批次数（按 tripId 去重） */
+  neptuneReplaceTripCount: number;
+  /** 至少一次 post-Neptune Abu 重验的行程数 */
+  closureTriggeredTripCount: number;
+  /** closureTriggered / neptuneReplace（0..1） */
+  personaClosureTriggerRate: number;
+  /** Abu 重验后 REJECT 次数 / 重验总次数 */
+  abuRejectAfterReplaceRate: number;
+  /** stopReason=ITER_LIMIT 占比（在含 audit 的 run 中） */
+  iterLimitRate: number;
+  /** stopReason=NEPTUNE_SHRINK_EXHAUSTED 占比 */
+  neptuneShrinkExhaustedRate: number;
+  totalAbuRechecks: number;
+  /** 含 audit 的 run 中 totalAbuRechecks 的 P50 */
+  p50AbuRechecks: number;
+  /** 含 audit 的 run 中 totalAbuRechecks 的 P95 */
+  p95AbuRechecks: number;
+  stopReasonCounts: Partial<Record<PersonaClosureStopReason, number>>;
+  sampleSize: number;
 }
 
 @Injectable()
@@ -469,6 +500,123 @@ export class DecisionStatsService {
       .slice(0, limit);
 
     return hotspots;
+  }
+
+  /**
+   * Persona closure 指标：Neptune REPLACE 后 Abu 重验触发率与失败率。
+   * 数据来源：`metadata.persona_closure`（单条 ABU 日志）与 `metadata.personaClosureAudit`（FINALIZE 载体）。
+   */
+  async getPersonaClosureStats(
+    startDate?: Date,
+    endDate?: Date,
+    countryCode?: string,
+  ): Promise<PersonaClosureStats> {
+    const where: Record<string, unknown> = {
+      decisionStage: { in: ['ABU_GATE', 'SPATIAL_REPAIR', 'FINALIZE'] },
+      persona: { in: ['ABU', 'NEPTUNE'] },
+    };
+    if (countryCode) where.countryCode = countryCode;
+    if (startDate || endDate) {
+      where.timestamp = {
+        ...(startDate ? { gte: startDate } : {}),
+        ...(endDate ? { lte: endDate } : {}),
+      };
+    }
+
+    const rows = await this.prisma.decisionLog.findMany({
+      where: where as any,
+      select: {
+        tripId: true,
+        persona: true,
+        action: true,
+        decisionStage: true,
+        metadata: true,
+      },
+      take: 50_000,
+      orderBy: { timestamp: 'desc' },
+    });
+
+    const byTrip = new Map<string, DecisionLogEntry[]>();
+    for (const row of rows) {
+      const tripId = row.tripId ?? 'unknown';
+      const list = byTrip.get(tripId) ?? [];
+      list.push({
+        persona: row.persona as DecisionLogEntry['persona'],
+        action: row.action as DecisionLogEntry['action'],
+        explanation: '',
+        reasonCodes: [],
+        timestamp: new Date().toISOString(),
+        decisionSource: 'PHYSICAL',
+        decisionStage: row.decisionStage as DecisionLogEntry['decisionStage'],
+        metadata: (row.metadata as Record<string, unknown>) ?? undefined,
+      });
+      byTrip.set(tripId, list);
+    }
+
+    let neptuneReplaceTripCount = 0;
+    let closureTriggeredTripCount = 0;
+    let abuRecheckTotal = 0;
+    let abuRecheckReject = 0;
+    const recheckCounts: number[] = [];
+    const stopReasonCounts: Partial<Record<PersonaClosureStopReason, number>> = {};
+
+    for (const logs of byTrip.values()) {
+      const hasReplace = logs.some(
+        (l) =>
+          l.persona === 'NEPTUNE' &&
+          l.decisionStage === 'SPATIAL_REPAIR' &&
+          l.action === 'REPLACE',
+      );
+      if (!hasReplace) continue;
+      neptuneReplaceTripCount += 1;
+
+      const rechecks = countAbuPostNeptuneRechecks(logs);
+      if (rechecks > 0) {
+        closureTriggeredTripCount += 1;
+        abuRecheckTotal += rechecks;
+        recheckCounts.push(rechecks);
+        const rejectLogs = logs.filter(
+          (l) =>
+            l.persona === 'ABU' &&
+            (l.metadata as Record<string, unknown> | undefined)?.persona_closure &&
+            ((l.metadata as Record<string, unknown>).persona_closure as Record<string, unknown>)
+              .phase === 'post_neptune_recheck' &&
+            l.action === 'REJECT',
+        );
+        abuRecheckReject += rejectLogs.length > 0 ? 1 : 0;
+      }
+
+      const audit = extractPersonaClosureAuditFromLogs(logs);
+      if (audit?.stopReason) {
+        stopReasonCounts[audit.stopReason] = (stopReasonCounts[audit.stopReason] ?? 0) + 1;
+      }
+    }
+
+    const auditRuns = Object.values(stopReasonCounts).reduce((a, b) => a + b, 0);
+    const sortedRechecks = [...recheckCounts].sort((a, b) => a - b);
+    const p50Idx = sortedRechecks.length
+      ? Math.floor((sortedRechecks.length - 1) * 0.5)
+      : 0;
+    const p95Idx = sortedRechecks.length
+      ? Math.floor((sortedRechecks.length - 1) * 0.95)
+      : 0;
+
+    return {
+      neptuneReplaceTripCount,
+      closureTriggeredTripCount,
+      personaClosureTriggerRate:
+        neptuneReplaceTripCount > 0 ? closureTriggeredTripCount / neptuneReplaceTripCount : 0,
+      abuRejectAfterReplaceRate:
+        closureTriggeredTripCount > 0 ? abuRecheckReject / closureTriggeredTripCount : 0,
+      iterLimitRate: auditRuns > 0 ? (stopReasonCounts.ITER_LIMIT ?? 0) / auditRuns : 0,
+      neptuneShrinkExhaustedRate:
+        auditRuns > 0 ? (stopReasonCounts.NEPTUNE_SHRINK_EXHAUSTED ?? 0) / auditRuns : 0,
+      totalAbuRechecks: abuRecheckTotal,
+      p50AbuRechecks: sortedRechecks[p50Idx] ?? 0,
+      p95AbuRechecks: sortedRechecks[p95Idx] ?? 0,
+      stopReasonCounts,
+      sampleSize: byTrip.size,
+    };
   }
 }
 

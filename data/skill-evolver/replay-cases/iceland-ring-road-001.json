@@ -1,0 +1,36 @@
+{
+  "caseId": "iceland-ring-road-001",
+  "description": "[e2e] 冰岛环岛路线 - 保守基线",
+  "source_e2e_case_id": "iceland-ring-road-001",
+  "tasks": [
+    {
+      "id": "iceland-ring-road-001",
+      "description": "测试较低风险偏好的沿海/环岛基线方案，默认无需节奏调整或空间修复",
+      "initialObservation": "我想在8月环岛自驾，偏保守舒适，不走高风险高地路段",
+      "successCriteria": "final allowed=true; Abu ALLOW; Dr.Dre mustAdjust=false; Neptune mustRepair=false",
+      "optimalSteps": 8
+    }
+  ],
+  "assertions": [
+    {
+      "type": "task_completed",
+      "value": "true",
+      "weight": 2
+    },
+    {
+      "type": "trajectory_contains",
+      "value": "allow",
+      "weight": 1
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "allow",
+      "weight": 2
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "is",
+      "weight": 0.5
+    }
+  ]
+}

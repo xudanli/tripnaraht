@@ -35,9 +35,7 @@ import {
   SKILL_CONTEXT_BUILD,
   SKILL_CONTEXT_COMPRESS,
   SKILL_CONTEXT_EVALUATE,
-  SKILL_CONTEXT_REGRESSION_TESTS,
   SKILL_PLAN_SELECT_SLICES,
-  SKILL_CONTEXT_LEARN,
   SKILL_TOOLS_SELECT,
   SKILL_DECISION_LOG_APPEND,
   SKILL_INTENT_RECOGNIZE,
@@ -87,9 +85,7 @@ export class SkillsRegistryService implements OnModuleInit {
     @Optional() @Inject(SKILL_CONTEXT_BUILD) private readonly contextBuild?: Skill,
     @Optional() @Inject(SKILL_CONTEXT_COMPRESS) private readonly contextCompress?: Skill,
     @Optional() @Inject(SKILL_CONTEXT_EVALUATE) private readonly contextEvaluate?: Skill,
-    @Optional() @Inject(SKILL_CONTEXT_REGRESSION_TESTS) private readonly contextRegressionTests?: Skill,
     @Optional() @Inject(SKILL_PLAN_SELECT_SLICES) private readonly planSelectSlices?: Skill,
-    @Optional() @Inject(SKILL_CONTEXT_LEARN) private readonly contextLearn?: Skill,
     @Optional() @Inject(SKILL_TOOLS_SELECT) private readonly toolsSelect?: Skill,
     @Optional() @Inject(SKILL_DECISION_LOG_APPEND) private readonly decisionLogAppend?: Skill,
     @Optional() @Inject(SKILL_INTENT_RECOGNIZE) private readonly intentRecognize?: Skill,
@@ -120,9 +116,7 @@ export class SkillsRegistryService implements OnModuleInit {
     if (this.contextBuild) this.registerSkill(this.contextBuild);
     if (this.contextCompress) this.registerSkill(this.contextCompress);
     if (this.contextEvaluate) this.registerSkill(this.contextEvaluate);
-    if (this.contextRegressionTests) this.registerSkill(this.contextRegressionTests);
     if (this.planSelectSlices) this.registerSkill(this.planSelectSlices);
-    if (this.contextLearn) this.registerSkill(this.contextLearn);
     if (this.toolsSelect) this.registerSkill(this.toolsSelect);
     if (this.decisionLogAppend) this.registerSkill(this.decisionLogAppend);
     if (this.intentRecognize) this.registerSkill(this.intentRecognize);
@@ -179,6 +173,8 @@ export class SkillsRegistryService implements OnModuleInit {
       execute: async (input: SkillInput) =>
         wrapSkillExecution(name, () => skill.execute(input), {
           orchestrator_step: input.tokenContext?.state_machine_step,
+          tokenContext: input.tokenContext,
+          category: skill.metadata?.category,
         }),
     };
     this.skills.set(name, wrapped);

@@ -62,6 +62,8 @@ import { ItineraryItemsService } from '../../../../itinerary-items/itinerary-ite
 import { ItemType } from '../../../../itinerary-items/dto/create-itinerary-item.dto';
 import { DateTime } from 'luxon';
 import { AgentService } from '../../../services/agent.service';
+import type { RouteAndRunRequestDto } from '../../../dto/route-and-run.dto';
+import { formatPaHistoryForRouteAndRun } from '../utils/pa-bridge.util';
 import { TripSuggestionsService } from '../../../../trips/services/trip-suggestions.service';
 import {
   parseExplicitStayWindowFromUserMessage,
@@ -312,10 +314,7 @@ export class PlanningAssistantV2Service {
       });
     }
 
-    // 实现删除逻辑
-    // 删除会话（PlanningAssistantService使用内存存储，删除操作会自然过期）
-    // 如果需要立即删除，可以通过内部方法实现
-    // await (this.planningAssistantService as any).sessions?.delete(sessionId);
+    await this.planningAssistantService.deleteSession(sessionId);
     if (this.cacheService && sessionId) {
       await this.cacheService.delete(`session:${sessionId}`).catch((error: any) => {
         this.logger.warn(`删除会话状态缓存失败: sessionId=${sessionId}`, error);
@@ -937,7 +936,7 @@ export class PlanningAssistantV2Service {
               }
 
               case 'generate': {
-                // 方案 A：优先使用 route_and_run 编排，返回 ui_state 和 orchestrationResult
+                // C1：方案生成走 route_and_run 异步 Durable Task，秒回 task_id 供侧栏轮询
                 const genParams: GeneratePlanRequestDto = {
                   sessionId: dto.sessionId,
                   userId: dto.userId,
@@ -945,6 +944,19 @@ export class PlanningAssistantV2Service {
                   ...routingResult.extractedParams,
                 };
                 if (this.agentService) {
+                  try {
+                    const asyncChat = await this.startGenerateViaRouteAndRunAsync(
+                      genParams,
+                      dto,
+                      routingResult,
+                      isChinese,
+                    );
+                    if (asyncChat) {
+                      return asyncChat;
+                    }
+                  } catch (err: any) {
+                    this.logger.warn(`[方案 A/C1] route_and_run 异步委托失败，降级: ${err?.message}`);
+                  }
                   try {
                     const routeAndRunResponse = await this.generatePlanViaRouteAndRun(
                       genParams,
@@ -955,7 +967,7 @@ export class PlanningAssistantV2Service {
                       return routeAndRunResponse;
                     }
                   } catch (err: any) {
-                    this.logger.warn(`[方案 A] route_and_run 失败，降级到 CoreGateway: ${err?.message}`);
+                    this.logger.warn(`[方案 A] route_and_run 同步失败，降级到 CoreGateway: ${err?.message}`);
                   }
                 }
                 // 降级：使用 CoreGateway.generatePlan
@@ -2378,6 +2390,108 @@ export class PlanningAssistantV2Service {
   }
 
   /**
+   * C1：通过 `POST /agent/route_and_run` 异步委托（FORCE），秒回 Chat 气泡 + task_id。
+   */
+  private async startGenerateViaRouteAndRunAsync(
+    genParams: GeneratePlanRequestDto,
+    dto: ChatRequestDto,
+    routingResult: { target: string; reason?: string; extractedParams?: Record<string, unknown> },
+    isChinese: boolean,
+  ): Promise<ChatResponseDto | null> {
+    if (!this.agentService) return null;
+
+    const init = await this.agentService.routeAndRunAsync(
+      await this.buildRouteAndRunRequestForPaGenerate(genParams, dto.message, dto.context?.tripId, {
+        async_mode: 'FORCE',
+        locale: dto.language === 'en' ? 'en' : 'zh-CN',
+      }),
+    );
+
+    const messageCN =
+      '收到您的规划需求，决策内核已在后台运行；下方进度条将实时同步空间检索与路线生成…';
+    const messageEN =
+      'Your planning request is running in the background; progress below reflects live orchestration.';
+
+    await this.updateSessionAfterBusinessCall(dto.sessionId, {
+      message: dto.message,
+      response: messageCN,
+      phase: 'COMPARING_PLANS',
+    });
+
+    const pollPath = `/api/agent/task/status/${init.task_id}`;
+
+    return {
+      message: messageEN,
+      messageCN,
+      reply: isChinese ? messageCN : messageEN,
+      replyCN: messageCN,
+      phase: 'COMPARING_PLANS',
+      sessionId: dto.sessionId,
+      task_id: init.task_id,
+      task_status: 'PROCESSING',
+      task_poll_path: pollPath,
+      ui_state: {
+        phase: init.current_phase,
+        ui_status: 'thinking',
+        progress_percent: init.progress_percentage,
+        message: init.message,
+        requires_user_action: false,
+      },
+      routing: {
+        target: 'generate' as const,
+        mode: 'ASYNC_POLLING',
+        reason: routingResult.reason || 'Routed via route_and_run async (C1)',
+        params: {
+          ...routingResult.extractedParams,
+          task_id: init.task_id,
+          poll_path: pollPath,
+        },
+      },
+    };
+  }
+
+  private async buildRouteAndRunRequestForPaGenerate(
+    dto: GeneratePlanRequestDto,
+    userMessage: string,
+    tripId?: string,
+    opts?: { async_mode?: 'OFF' | 'AUTO' | 'FORCE'; locale?: string },
+  ): Promise<RouteAndRunRequestDto> {
+    const destination = dto.destination || (dto as { naturalLanguageDescription?: string }).naturalLanguageDescription;
+    const message = userMessage || this.buildPlanMessageFromParams(dto);
+    const requestId = `pa-gen-${Date.now()}-${randomUUID().slice(0, 8)}`;
+
+    const state = dto.sessionId
+      ? await this.planningAssistantService.getSessionState(dto.sessionId)
+      : null;
+    const recent_messages = formatPaHistoryForRouteAndRun(state?.messageHistory, {
+      limit: 10,
+      excludeTrailingUserContent: message,
+    });
+
+    return {
+      request_id: requestId,
+      user_id: dto.userId || 'anonymous',
+      trip_id: tripId as string | undefined,
+      message,
+      conversation_context: {
+        locale: opts?.locale ?? 'zh-CN',
+        ...(tripId ? { context_type: 'active_trip_summary' as const } : {}),
+        ...(recent_messages.length > 0 ? { recent_messages } : {}),
+      },
+      options: {
+        entry_point: 'planning_workbench' as const,
+        use_claude_orchestration: true,
+        use_state_machine_orchestration: true,
+        max_seconds: 60,
+        max_steps: 8,
+        intent_mode: 'TRIP_PLANNING' as const,
+        async_mode: opts?.async_mode ?? 'FORCE',
+      },
+      meta: destination ? { planning_destination_hint: destination } : undefined,
+    };
+  }
+
+  /**
    * 方案 A：通过 route_and_run 编排生成方案，返回 ui_state 和 orchestrationResult
    * 供前端展示可折叠「编排进度」卡片
    * @param tripId 规划工作台场景下的行程 ID，传入时编排会关联已有行程
@@ -2392,26 +2506,44 @@ export class PlanningAssistantV2Service {
     const destination = dto.destination || (dto as any).naturalLanguageDescription;
     if (!destination) return null;
 
-    const message = userMessage || this.buildPlanMessageFromParams(dto);
-    const requestId = `pa-gen-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const routeAndRunRequest = await this.buildRouteAndRunRequestForPaGenerate(dto, userMessage, tripId, {
+      async_mode: 'AUTO',
+    });
 
-    const routeAndRunRequest = {
-      request_id: requestId,
-      user_id: dto.userId || 'anonymous',
-      trip_id: tripId as string | undefined,
-      message,
-      options: {
-        entry_point: 'planning_workbench' as const,
-        use_claude_orchestration: true,
-        use_state_machine_orchestration: true,
-        max_seconds: 60,
-        max_steps: 8,
-      },
-    };
-
-    this.logger.debug(`[方案 A] 调用 route_and_run: request_id=${requestId}, message=${message.substring(0, 50)}...`);
+    this.logger.debug(
+      `[方案 A] 调用 route_and_run: request_id=${routeAndRunRequest.request_id}, async_mode=${routeAndRunRequest.options?.async_mode}, message=${String(routeAndRunRequest.message).substring(0, 50)}...`,
+    );
 
     const response = await this.agentService.routeAndRun(routeAndRunRequest);
+
+    if (response.async_task?.is_async_delegated && response.async_task.task_id) {
+      const isChinese = /[\u4e00-\u9fa5]/.test(userMessage);
+      const pollPath = response.async_task.poll_path;
+      const messageCN = response.result?.answer_text || response.async_task.message;
+      return {
+        message: messageCN,
+        messageCN,
+        reply: messageCN,
+        replyCN: messageCN,
+        phase: 'COMPARING_PLANS',
+        sessionId: dto.sessionId,
+        task_id: response.async_task.task_id,
+        task_status: 'PROCESSING',
+        task_poll_path: pollPath,
+        ui_state: {
+          phase: response.ui_state?.phase,
+          ui_status: 'thinking',
+          progress_percent: response.ui_state?.progress_percent,
+          message: response.ui_state?.message,
+        },
+        routing: {
+          target: 'generate' as const,
+          mode: 'ASYNC_POLLING',
+          reason: 'Routed via route_and_run async_mode=AUTO (A3)',
+          params: { task_id: response.async_task.task_id, poll_path: pollPath },
+        },
+      };
+    }
 
     if (response.result?.status === 'REDIRECT_REQUIRED') {
       this.logger.warn('[方案 A] route_and_run 返回 REDIRECT_REQUIRED，降级');
@@ -3520,7 +3652,7 @@ export class PlanningAssistantV2Service {
           updatedAt: now,
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         };
-        await (this.planningAssistantService as any).saveSession(newState);
+        await this.planningAssistantService.saveSession(newState);
       }
     } catch (error: any) {
       this.logger.warn(`确保会话存在失败: sessionId=${sessionId}, error=${error.message}`);
@@ -3537,7 +3669,7 @@ export class PlanningAssistantV2Service {
           updatedAt: now,
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         };
-        await (this.planningAssistantService as any).saveSession(newState);
+        await this.planningAssistantService.saveSession(newState);
       } catch (createError: any) {
         this.logger.error(`创建会话失败: ${createError.message}`);
       }
@@ -3642,7 +3774,7 @@ export class PlanningAssistantV2Service {
       }
 
       // 保存会话状态
-      await (this.planningAssistantService as any).saveSession(finalState);
+      await this.planningAssistantService.saveSession(finalState);
 
       // 清除缓存，强制下次从源获取最新状态
       if (this.cacheService) {
@@ -4883,7 +5015,7 @@ export class PlanningAssistantV2Service {
       };
 
       // 保存更新后的状态（通过内部方法）
-      await (this.planningAssistantService as any).saveSession(updatedState);
+      await this.planningAssistantService.saveSession(updatedState);
 
       // 清除缓存，强制下次从源获取最新状态
       if (this.cacheService) {

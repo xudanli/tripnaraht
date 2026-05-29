@@ -75,7 +75,7 @@ export interface WeatherSearchOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'weather.search',
-  description: '查询指定地点的天气预报信息（当前天气或未来预报）',
+  description: 'weather.search：查询指定地点的天气预报信息（当前天气或未来预报）',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -86,7 +86,7 @@ export class WeatherSearchSkill implements Skill<WeatherSearchInput, WeatherSear
 
   metadata = {
     name: 'weather.search',
-    description: '查询指定地点的天气预报信息（当前天气或未来预报）',
+    description: 'weather.search：查询指定地点的天气预报信息（当前天气或未来预报）',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

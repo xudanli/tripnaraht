@@ -1,0 +1,21 @@
+{
+  "version": "2026.05.20",
+  "bounds": {
+    "south": 63.5995,
+    "west": -19.56,
+    "north": 64.81,
+    "east": -18.020000000000003
+  },
+  "provider": "mapbox-vector",
+  "styleUrl": "mapbox://styles/mapbox/outdoors-v12",
+  "packKey": "is-laugavegur",
+  "minZoom": 10,
+  "maxZoom": 14,
+  "attribution": "© Mapbox © OpenStreetMap",
+  "vectorTiles": [],
+  "tiles": [],
+  "vectorTileTemplateUrl": "https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/{z}/{x}/{y}.vector.pbf?access_token={access_token}",
+  "accessTokenPlaceholder": "{access_token}",
+  "noteZh": "vectorTiles 为空：准备页可用 vectorTileTemplateUrl 拉取 Mapbox .pbf（前端注入 access_token）。生产请预打包并写入 vector-tiles-index.json。",
+  "generatedAt": "2026-05-21T15:38:38.186Z"
+}

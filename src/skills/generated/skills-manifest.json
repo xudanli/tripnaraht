@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-03-31T06:40:27.758Z",
-  "total": 82,
+  "generatedAt": "2026-05-26T16:14:26.801Z",
+  "total": 102,
   "skills": [
     {
       "name": "context.build",
@@ -9,7 +9,8 @@
       "description": "构建 Context Package：输入 tripId + phase + agent + 用户请求，输出分块、带优先级、带来源、可裁剪的上下文包",
       "version": "1.0.0",
       "className": "ContextBuildSkill",
-      "sourceFile": "src/skills/context/context-build.skill.ts"
+      "sourceFile": "src/skills/context/context-build.skill.ts",
+      "toolGroup": "CONTEXT"
     },
     {
       "name": "context.compilePackage",
@@ -24,7 +25,7 @@
       "name": "context.compress",
       "category": "rag",
       "level": "L1",
-      "description": "上下文压缩：按预算压缩 blocks（递归摘要/剪枝），保留硬门槛、关键决策点、失败尝试",
+      "description": "context.compress：上下文压缩：按预算压缩 blocks（递归摘要/剪枝），保留硬门槛、关键决策点、失败尝试",
       "version": "1.0.0",
       "className": "ContextCompressSkill",
       "sourceFile": "src/skills/context/context-compress.skill.ts"
@@ -33,7 +34,7 @@
       "name": "context.evaluate",
       "category": "rag",
       "level": "L1",
-      "description": "上下文质量评估：计算命中率、噪音率、超预算率、压缩率、相关性得分等指标",
+      "description": "评估 context 包质量：计算命中率、噪音率、超预算率、压缩率与相关性得分。在 context.build/compress 后需 metrics 回归或调优 blocks 时调用。",
       "version": "1.0.0",
       "className": "ContextEvaluateSkill",
       "sourceFile": "src/skills/context/context-evaluate.skill.ts"
@@ -45,13 +46,14 @@
       "description": "学习Context使用情况：输入学习事件（context_built, context_used, decision_made, user_feedback），输出学习结果（更新的Block优先级、推荐的Block组合、学习置信度）",
       "version": "1.0.0",
       "className": "ContextLearnSkill",
-      "sourceFile": "src/skills/context/context-learn.skill.ts"
+      "sourceFile": "src/skills/context/context-learn.skill.ts",
+      "toolGroup": "CONTEXT"
     },
     {
       "name": "context.regressionTests",
       "category": "rag",
       "level": "L1",
-      "description": "上下文编译回归测试：生成快照 hash，比较两次构建的差异，检测回归",
+      "description": "运行 context 编译回归测试：生成快照 hash 并 diff 两次构建。在 context 编译逻辑变更后 CI 或本地防回归时调用。",
       "version": "1.0.0",
       "className": "ContextRegressionTestsSkill",
       "sourceFile": "src/skills/context/context-regression-tests.skill.ts"
@@ -60,7 +62,7 @@
       "name": "countryPack.generateRegressionTests",
       "category": "countryPack",
       "level": "L1",
-      "description": "为 Pack 生成回归测试用例，确保 Pack 变更不会破坏现有功能",
+      "description": "为 countryPack 生成回归测试用例，防止 Pack 变更破坏现有块。在 countryPack validate 后或 CI 维护 Pack 契约时调用。",
       "version": "1.0.0",
       "className": "CountryPackGenerateRegressionTestsSkill",
       "sourceFile": "src/skills/country-pack/country-pack-generate-regression-tests.skill.ts"
@@ -78,7 +80,7 @@
       "name": "countryPack.newSkeleton",
       "category": "countryPack",
       "level": "L1",
-      "description": "创建国家 Pack 骨架，支持 ReadinessPack 和 RouteDirectionPack 两种类型",
+      "description": "countryPack.newSkeleton：创建国家 Pack 骨架，支持 ReadinessPack 和 RouteDirectionPack 两种类型",
       "version": "1.0.0",
       "className": "CountryPackNewSkeletonSkill",
       "sourceFile": "src/skills/country-pack/country-pack-new-skeleton.skill.ts"
@@ -87,7 +89,7 @@
       "name": "countryPack.rankBlocks",
       "category": "countryPack",
       "level": "L1",
-      "description": "国家包块排序：根据 query、phase、intent 对块进行相关性排序",
+      "description": "countryPack.rankBlocks：国家包块排序：根据 query、phase、intent 对块进行相关性排序",
       "version": "1.0.0",
       "className": "CountryPackRankBlocksSkill",
       "sourceFile": "src/skills/country-pack/country-pack-rank-blocks.skill.ts"
@@ -96,7 +98,7 @@
       "name": "countryPack.suggestImprovements",
       "category": "countryPack",
       "level": "L1",
-      "description": "在验证 Pack 后提供改进建议，包括缺失字段、质量缺口和优先级待办事项",
+      "description": "countryPack.suggestImprovements：在验证 Pack 后提供改进建议，包括缺失字段、质量缺口和优先级待办事项",
       "version": "1.0.0",
       "className": "CountryPackSuggestImprovementsSkill",
       "sourceFile": "src/skills/country-pack/country-pack-suggest-improvements.skill.ts"
@@ -105,7 +107,7 @@
       "name": "countryPack.validate",
       "category": "countryPack",
       "level": "L1",
-      "description": "验证 Pack 数据的完整性和正确性，输出结构化错误和警告",
+      "description": "countryPack.validate：验证 Pack 数据的完整性和正确性，输出结构化错误和警告",
       "version": "1.0.0",
       "className": "CountryPackValidateSkill",
       "sourceFile": "src/skills/country-pack/country-pack-validate.skill.ts"
@@ -114,34 +116,46 @@
       "name": "decision.abuCheck",
       "category": "decision",
       "level": "L1",
-      "description": "基于物理现实和合规的安全检查，不考虑体验偏好。只能 ALLOW 或 REJECT，不可调整。",
+      "description": "decision.abuCheck：基于物理现实和合规的安全检查，不考虑体验偏好。只能 ALLOW 或 REJECT，不可调整。",
       "version": "1.0.0",
       "className": "DecisionAbuCheckSkill",
-      "sourceFile": "src/skills/decision/decision-abu-check.skill.ts"
+      "sourceFile": "src/skills/decision/decision-abu-check.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "decision.checkApproval",
       "category": "decision",
       "level": "L1",
-      "description": "检查审批请求的状态",
+      "description": "查询 HITL 审批任务状态（pending/approved/rejected）。在 decision 阶段续跑、用户追问审批进度或需按 approval_id 同步结果时调用。",
       "version": "1.0.0",
       "className": "DecisionCheckApprovalSkill",
       "sourceFile": "src/skills/hitl/decision-check-approval.skill.ts"
     },
     {
+      "name": "decision.compress",
+      "category": "decision",
+      "level": "L1",
+      "description": "decision.compress：OS: 将多轮 tool 结果压缩为工作记忆（stableFacts、unresolvedRisks、rejectedOptions、activePolicies），供后续推理续写。",
+      "version": "1.0.0",
+      "className": "DecisionCompressSkill",
+      "sourceFile": "src/skills/runtime-os/decision-compress.skill.ts",
+      "toolGroup": "CONTEXT"
+    },
+    {
       "name": "decision.drdrePace",
       "category": "decision",
       "level": "L1",
-      "description": "基于人体能力模型调整行程节奏，可以拆分天数或插入缓冲日，但不能替换路线。",
+      "description": "decision.drdrePace：基于人体能力模型调整行程节奏，可以拆分天数或插入缓冲日，但不能替换路线。",
       "version": "1.0.0",
       "className": "DecisionDrdrePaceSkill",
-      "sourceFile": "src/skills/decision/decision-drdre-pace.skill.ts"
+      "sourceFile": "src/skills/decision/decision-drdre-pace.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "decision.explainForHuman",
       "category": "decision",
       "level": "L1",
-      "description": "将技术性的决策日志转换为用户可读的解释，包括三人格的工作说明、风险点和取舍",
+      "description": "decision.explainForHuman：将技术性的决策日志转换为用户可读的解释，包括三人格的工作说明、风险点和取舍",
       "version": "1.0.0",
       "className": "DecisionExplainForHumanSkill",
       "sourceFile": "src/skills/decision/decision-explain-for-human.skill.ts"
@@ -150,7 +164,7 @@
       "name": "decision.logAppend",
       "category": "decision",
       "level": "L1",
-      "description": "决策日志写入：把三人格输出写入可检索事件流",
+      "description": "decision.logAppend：追加三人格 decision 日志到可检索事件流。在 runThreeGuardians 或 gate 每次产生结构化决策后需审计留痕时调用。",
       "version": "1.0.0",
       "className": "DecisionLogAppendSkill",
       "sourceFile": "src/skills/decision/decision-log-append.skill.ts"
@@ -159,16 +173,17 @@
       "name": "decision.neptuneRepair",
       "category": "decision",
       "level": "L1",
-      "description": "在保持路线哲学的前提下，替换不可用的路段、入口或 POI。可以 REPLACE，但不能改变路线方向。",
+      "description": "decision.neptuneRepair：Neptune 修复：在保持路线哲学下替换不可用路段、入口或 POI（仅 REPLACE，不改方向）。在 VERIFY/REPAIR 阶段 verify 报不可达或需 Plan B 换段时调用。",
       "version": "1.0.0",
       "className": "DecisionNeptuneRepairSkill",
-      "sourceFile": "src/skills/decision/decision-neptune-repair.skill.ts"
+      "sourceFile": "src/skills/decision/decision-neptune-repair.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "decision.replay",
       "category": "decision",
       "level": "L1",
-      "description": "E2E 回放：给定 logs + inputs，回放并 diff，这是 E2E 与评测的生命线",
+      "description": "decision.replay：E2E 回放 decision logs+inputs 并 diff 期望输出。在评测/CI 回归或调试 orchestration 决策链时调用。",
       "version": "1.0.0",
       "className": "DecisionReplaySkill",
       "sourceFile": "src/skills/decision/decision-replay.skill.ts"
@@ -177,7 +192,7 @@
       "name": "decision.requestApproval",
       "category": "decision",
       "level": "L1",
-      "description": "请求用户审批高风险决策（Human-in-the-loop）。当 Agent 需要做出高风险决定时，挂起任务并等待用户确认",
+      "description": "decision.requestApproval：请求用户审批高风险决策（Human-in-the-loop）。当 Agent 需要做出高风险决定时，挂起任务并等待用户确认",
       "version": "1.0.0",
       "className": "DecisionRequestApprovalSkill",
       "sourceFile": "src/skills/hitl/decision-request-approval.skill.ts"
@@ -186,7 +201,7 @@
       "name": "decision.runThreeGuardians",
       "category": "decision",
       "level": "L1",
-      "description": "一次性执行三人格策略编排（Abu → Dr.Dre → Neptune），返回结构化决策结果和最终计划",
+      "description": "decision.runThreeGuardians：一次性执行三人格策略编排（Abu → Dr.Dre → Neptune），返回结构化决策结果和最终计划",
       "version": "1.0.0",
       "className": "DecisionRunThreeGuardiansSkill",
       "sourceFile": "src/skills/decision/decision-run-three-guardians.skill.ts"
@@ -204,106 +219,117 @@
       "name": "dem.get_profile",
       "category": "dem",
       "level": "L1",
-      "description": "基于 DEM 数据生成路线海拔剖面，计算累计爬升、最大坡度和疲劳指数；输出含 data_quality（high/low/unknown）供 telemetry",
+      "description": "基于 DEM 生成路线海拔剖面、累计爬升、最大坡度、疲劳指数。参数：polyline（≥2 点）或带经纬度的 destination / origin+destination。",
       "version": "1.0.0",
       "className": "DemGetProfileSkill",
-      "sourceFile": "src/skills/dem/dem-get-profile.skill.ts"
+      "sourceFile": "src/skills/dem/dem-get-profile.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "detail.analyzeHealth",
       "category": "trip",
       "level": "L1",
-      "description": "分析行程健康度（时间、预算、节奏、可达性），识别问题和风险",
+      "description": "detail.analyzeHealth：分析 itinerary 健康度（时间/预算/节奏/可达性）并列出风险。在用户查看行程详情或 execution 前需体检摘要时调用。",
       "version": "1.0.0",
       "className": "DetailAnalyzeHealthSkill",
-      "sourceFile": "src/skills/detail/detail-analyze-health.skill.ts"
+      "sourceFile": "src/skills/detail/detail-analyze-health.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "detail.explainDecision",
       "category": "trip",
       "level": "L1",
-      "description": "解释决策（基于决策日志），生成面向用户的解释",
+      "description": "detail.explainDecision：基于 decision log 生成面向用户的决策解释。在用户查看行程详情页或追问「为什么这样安排」时调用。",
       "version": "1.0.0",
       "className": "DetailExplainDecisionSkill",
-      "sourceFile": "src/skills/detail/detail-explain-decision.skill.ts"
+      "sourceFile": "src/skills/detail/detail-explain-decision.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "detail.showEvidence",
       "category": "trip",
       "level": "L1",
-      "description": "展示证据（基于证据引用），让用户了解决策依据",
+      "description": "detail.showEvidence：展示 decision evidence 引用与依据摘要。在用户需要验证结论来源或 detail 页展示证据链时调用。",
       "version": "1.0.0",
       "className": "DetailShowEvidenceSkill",
-      "sourceFile": "src/skills/detail/detail-show-evidence.skill.ts"
+      "sourceFile": "src/skills/detail/detail-show-evidence.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "detail.understandStatus",
       "category": "trip",
       "level": "L1",
-      "description": "理解当前行程状态（规划中/进行中/已完成），识别下一步行动和风险",
+      "description": "detail.understandStatus：理解当前行程状态（规划中/进行中/已完成），识别下一步行动和风险",
       "version": "1.0.0",
       "className": "DetailUnderstandStatusSkill",
-      "sourceFile": "src/skills/detail/detail-understand-status.skill.ts"
+      "sourceFile": "src/skills/detail/detail-understand-status.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "exec.fallback",
       "category": "trip",
       "level": "L1",
-      "description": "生成兜底方案（当原计划无法执行时），保持路线哲学",
+      "description": "exec.fallback：生成兜底方案（当原计划无法执行时），保持路线哲学",
       "version": "1.0.0",
       "className": "ExecFallbackSkill",
-      "sourceFile": "src/skills/exec/exec-fallback.skill.ts"
+      "sourceFile": "src/skills/exec/exec-fallback.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "exec.handleChange",
       "category": "trip",
       "level": "L1",
-      "description": "处理执行期间的变更（时间、地点、活动取消、交通延误等），生成调整方案",
+      "description": "exec.handleChange：处理执行期间的变更（时间、地点、活动取消、交通延误等），生成调整方案",
       "version": "1.0.0",
       "className": "ExecHandleChangeSkill",
-      "sourceFile": "src/skills/exec/exec-handle-change.skill.ts"
+      "sourceFile": "src/skills/exec/exec-handle-change.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "exec.remind",
       "category": "trip",
       "level": "L1",
-      "description": "生成贴心管家式的提醒（出发、入住、活动、交通、天气、安全、预算等）",
+      "description": "生成 exec 阶段管家式提醒（出发/入住/交通/天气/安全/预算）。在 trip 进入执行期或用户需要行前/行中提醒时调用。",
       "version": "1.0.0",
       "className": "ExecRemindSkill",
-      "sourceFile": "src/skills/exec/exec-remind.skill.ts"
+      "sourceFile": "src/skills/exec/exec-remind.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "geo.checkHazardZones",
       "category": "rag",
       "level": "L1",
-      "description": "检查危险区域：Abu 统一读取危险区域信息，检查路线是否经过危险区域",
+      "description": "geo.checkHazardZones：检查危险区域：Abu 统一读取危险区域信息，检查路线是否经过危险区域",
       "version": "1.0.0",
       "className": "GeoCheckHazardZonesSkill",
-      "sourceFile": "src/skills/geo/geo-check-hazard-zones.skill.ts"
+      "sourceFile": "src/skills/geo/geo-check-hazard-zones.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "geo.findCandidateWithinCorridor",
       "category": "rag",
       "level": "L1",
-      "description": "在走廊内查找候选点：Neptune 的空间候选召回工具化，在路线走廊内查找候选 POI/入口点",
+      "description": "geo.findCandidateWithinCorridor：在走廊内查找候选点：Neptune 的空间候选召回工具化，在路线走廊内查找候选 POI/入口点",
       "version": "1.0.0",
       "className": "GeoFindCandidateWithinCorridorSkill",
-      "sourceFile": "src/skills/geo/geo-find-candidate-within-corridor.skill.ts"
+      "sourceFile": "src/skills/geo/geo-find-candidate-within-corridor.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "geo.findNearbyPOI",
       "category": "trip",
       "level": "L1",
-      "description": "查找附近 POI：带类型/半径/过滤的空间查询，统一 PostGIS 访问的安全出口",
+      "description": "geo.findNearbyPOI：按类型/半径/过滤查找附近 POI（PostGIS 安全出口）。在 RESEARCH 阶段补全周边景点或 repair 需空间候选召回时调用。",
       "version": "1.0.0",
       "className": "GeoFindNearbyPOISkill",
-      "sourceFile": "src/skills/geo/geo-find-nearby-poi.skill.ts"
+      "sourceFile": "src/skills/geo/geo-find-nearby-poi.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "geo.sampleElevationProfile",
       "category": "dem",
       "level": "L1",
-      "description": "标准化 DEM 高程采样：基于 PostGIS 栅格生成路线海拔剖面，计算累计爬升、最大坡度和疲劳指数",
+      "description": "geo.sampleElevationProfile：基于 PostGIS/DEM 采样路线海拔剖面（爬升/坡度/疲劳）。在 verify/pace 评估需高程 profile 且已有 polyline 时调用。",
       "version": "1.0.0",
       "className": "GeoSampleElevationProfileSkill",
       "sourceFile": "src/skills/geo/geo-sample-elevation-profile.skill.ts"
@@ -312,7 +338,7 @@
       "name": "hitl.createApprovalTask",
       "category": "decision",
       "level": "L1",
-      "description": "创建审批任务：输出 task_id + payload，支持多种审批类型，与 Decision Logs 绑定",
+      "description": "hitl.createApprovalTask：创建审批任务：输出 task_id + payload，支持多种审批类型，与 Decision Logs 绑定",
       "version": "1.0.0",
       "className": "HitlCreateApprovalTaskSkill",
       "sourceFile": "src/skills/hitl/hitl-create-approval-task.skill.ts"
@@ -321,181 +347,330 @@
       "name": "hitl.resolveApprovalTask",
       "category": "decision",
       "level": "L1",
-      "description": "解决审批任务：approve/reject/feedback，和 decision logs 绑定",
+      "description": "hitl.resolveApprovalTask：解决审批任务：approve/reject/feedback，和 decision logs 绑定",
       "version": "1.0.0",
       "className": "HitlResolveApprovalTaskSkill",
       "sourceFile": "src/skills/hitl/hitl-resolve-approval-task.skill.ts"
     },
     {
+      "name": "iceland.alternativeValidator",
+      "category": "world",
+      "level": "L1",
+      "description": "iceland.alternativeValidator：Recursive dual-audit filter for Plan B segments.",
+      "version": "0.1.0",
+      "className": "IcelandAlternativeValidatorSkill",
+      "sourceFile": "src/skills/world/iceland-alternative-validator.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.daylightWindow",
+      "category": "world",
+      "level": "L1",
+      "description": "计算 iceland 日照与安全驾驶 daylight 时间窗（suncalc + Atlantic/Reykjavik）。在 planning/readiness 需判断可驾驶时段或 polar night 风险时调用。",
+      "version": "1.0.0",
+      "className": "IcelandDaylightWindowSkill",
+      "sourceFile": "src/skills/world/iceland-daylight-window.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.fRoadStatus",
+      "category": "world",
+      "level": "L1",
+      "description": "查询 iceland F-road 统一状态（开放/积雪/不可通行、4x4、涉水、房车限制）。在路线含高地 F-road 或 gate 需 F路通行裁决时调用。",
+      "version": "1.0.0",
+      "className": "IcelandFRoadStatusSkill",
+      "sourceFile": "src/skills/world/iceland-f-road-status.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.gasAndEvChargePlanner",
+      "category": "world",
+      "level": "L1",
+      "description": "iceland.gasAndEvChargePlanner：Gas/EV 生存审计与走廊匹配推荐站（种子数据）。",
+      "version": "1.0.0",
+      "className": "IcelandGasEvChargePlannerSkill",
+      "sourceFile": "src/skills/world/iceland-gas-ev-planner.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.rentalGuidance",
+      "category": "world",
+      "level": "L1",
+      "description": "iceland.rentalGuidance：结构化输出冰岛租车「风险层 + 聚合层 + 本地信任层」与保险/F-road 检查项；无外部 HTTP，供 Gate/Readiness/Planner 注入。",
+      "version": "1.0.0",
+      "className": "IcelandRentalGuidanceSkill",
+      "sourceFile": "src/skills/world/iceland-rental-guidance.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.roadSurfaceAlerts",
+      "category": "world",
+      "level": "L1",
+      "description": "检测 gravel 路段并输出 iceland 租车条款/碎石击伤与 GP 承保方向提醒（启发式）。在冰岛 routeFeasibility 或 worldState 需路面语义告警时调用。",
+      "version": "1.0.0",
+      "className": "IcelandRoadSurfaceAlertsSkill",
+      "sourceFile": "src/skills/world/iceland-road-surface-alerts.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.routeFeasibility",
+      "category": "world",
+      "level": "L1",
+      "description": "Segment-based 冰岛驾驶 OS 约束裁决器（组合 iceland.* P0）。",
+      "version": "1.0.0",
+      "className": "IcelandRouteFeasibilitySkill",
+      "sourceFile": "src/skills/world/iceland-route-feasibility.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.stormReroutingEngine",
+      "category": "world",
+      "level": "L1",
+      "description": "iceland.stormReroutingEngine：Plan B segment suggestions from structured verdict (no external routing API).",
+      "version": "0.1.0",
+      "className": "IcelandStormReroutingEngineSkill",
+      "sourceFile": "src/skills/world/iceland-storm-rerouting-engine.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.tunnelProtocol",
+      "category": "world",
+      "level": "L1",
+      "description": "生成西峡湾 iceland 单车道 tunnel 会车与让行协议（启发式预设）。在西部 fjords 路线含隧道段、readiness/planning 需驾驶协议时调用。",
+      "version": "1.0.0",
+      "className": "IcelandTunnelProtocolSkill",
+      "sourceFile": "src/skills/world/iceland-tunnel-protocol.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.weatherSeverityClassifier",
+      "category": "world",
+      "level": "L1",
+      "description": "分类 iceland 天气运行风险档位（safe/caution/dangerous/avoid_nonessential）。在 worldState 或 readiness 需可执行天气语义时调用。",
+      "version": "1.0.0",
+      "className": "IcelandWeatherSeverityClassifierSkill",
+      "sourceFile": "src/skills/world/iceland-weather-severity-classifier.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "iceland.windRisk",
+      "category": "world",
+      "level": "L1",
+      "description": "评估 iceland 横风驾驶 wind 风险（区域暴露度 + Open-Meteo 风速）。在 storm/高地路线 planning 或 verify 需风况门控时调用。",
+      "version": "1.0.0",
+      "className": "IcelandWindRiskSkill",
+      "sourceFile": "src/skills/world/iceland-wind-risk.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "intent.recognize",
+      "category": "rag",
+      "level": "L1",
+      "description": "intent.recognize：基于用户自然语言识别路由任务类型（与 orchestration TaskType 对齐），用于减少关键词规则维护成本",
+      "version": "1.0.0",
+      "className": "IntentRecognizeSkill",
+      "sourceFile": "src/skills/intent/intent-recognize.skill.ts",
+      "toolGroup": "CONTEXT"
+    },
+    {
       "name": "itinerary.generate",
       "category": "trip",
       "level": "L1",
-      "description": "生成结构化行程草案",
+      "description": "生成结构化 itinerary 草案（按天活动与交通骨架）。在 PLAN_GEN 阶段、RESEARCH 已完成且需首版行程时调用。",
       "version": "1.0.0",
       "className": "ItineraryGenerateSkill",
-      "sourceFile": "src/skills/itinerary/itinerary-generate.skill.ts"
+      "sourceFile": "src/skills/itinerary/itinerary-generate.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "itinerary.smart_update",
+      "category": "trip",
+      "level": "L1",
+      "description": "itinerary.smart_update：一键改行程：itinerary.verify →（可选）decision.neptuneRepair → 推导 adjustments → repair.apply；支持部分失败回退与分阶段观测。",
+      "version": "1.0.0",
+      "className": "ItinerarySmartUpdateSkill",
+      "sourceFile": "src/skills/itinerary/itinerary-smart-update.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "itinerary.verify",
       "category": "trip",
       "level": "L1",
-      "description": "验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）",
+      "description": "itinerary.verify：验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）",
       "version": "1.0.0",
       "className": "ItineraryVerifySkill",
-      "sourceFile": "src/skills/itinerary/itinerary-verify.skill.ts"
+      "sourceFile": "src/skills/itinerary/itinerary-verify.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "opening_hours.get",
       "category": "trip",
       "level": "L1",
-      "description": "获取 POI 的开放时间",
+      "description": "获取 POI opening_hours 与时区规则。在 RESEARCH/VERIFY 阶段校验活动时间窗或 repair 需判断营业冲突时调用。",
       "version": "1.0.0",
       "className": "OpeningHoursGetSkill",
-      "sourceFile": "src/skills/places/opening-hours-get.skill.ts"
+      "sourceFile": "src/skills/places/opening-hours-get.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.architect.commitOption",
       "category": "trip",
       "level": "L1",
-      "description": "用户选定方案后，写入 PlanState 并产生版本号",
+      "description": "plan.architect.commitOption：用户选定方案后，写入 PlanState 并产生版本号",
       "version": "1.0.0",
       "className": "PlanArchitectCommitOptionSkill",
-      "sourceFile": "src/skills/plan/architect/plan-architect-commit-option.skill.ts"
+      "sourceFile": "src/skills/plan/architect/plan-architect-commit-option.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.architect.compareOptions",
       "category": "trip",
       "level": "L1",
-      "description": "对多个行程骨架方案进行可解释对比，输出推荐与取舍理由",
+      "description": "plan.architect.compareOptions：对多个行程骨架方案进行可解释对比，输出推荐与取舍理由",
       "version": "1.0.0",
       "className": "PlanArchitectCompareOptionsSkill",
-      "sourceFile": "src/skills/plan/architect/plan-architect-compare-options.skill.ts"
+      "sourceFile": "src/skills/plan/architect/plan-architect-compare-options.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.architect.generateSkeleton",
       "category": "trip",
       "level": "L1",
-      "description": "从目标与约束生成 2-3 套行程骨架方案（紧凑/均衡/松弛），包含每天主题、锚点、移动日和取舍理由",
+      "description": "从目标与约束生成 2-3 套 plan architect 骨架（紧凑/均衡/松弛）。在 PLAN_GEN 早期需多方案骨架对比时调用。",
       "version": "1.0.0",
       "className": "PlanArchitectGenerateSkeletonSkill",
-      "sourceFile": "src/skills/plan/architect/plan-architect-generate-skeleton.skill.ts"
+      "sourceFile": "src/skills/plan/architect/plan-architect-generate-skeleton.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.budget.detectOverrun",
       "category": "trip",
       "level": "L1",
-      "description": "实时检测预算是否超支，识别超支来源",
+      "description": "检测 plan 预算超支并归因到交通/住宿/体验等类别。在 planning 阶段用户关注花费或 budget 子系统需实时预警时调用。",
       "version": "1.0.0",
       "className": "PlanBudgetDetectOverrunSkill",
-      "sourceFile": "src/skills/plan/budget/plan-budget-detect-overrun.skill.ts"
+      "sourceFile": "src/skills/plan/budget/plan-budget-detect-overrun.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.budget.estimateBaseline",
       "category": "trip",
       "level": "L1",
-      "description": "快速给出预算拆分与区间估算（交通/住宿/餐饮/门票/体验/缓冲）",
+      "description": "估算 plan 预算基线与区间（交通/住宿/餐饮/门票/体验/缓冲）。在 PLAN_GEN 早期缺省 budget 或用户询问大概花费时调用。",
       "version": "1.0.0",
       "className": "PlanBudgetEstimateBaselineSkill",
-      "sourceFile": "src/skills/plan/budget/plan-budget-estimate-baseline.skill.ts"
+      "sourceFile": "src/skills/plan/budget/plan-budget-estimate-baseline.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.budget.proposeTradeoffs",
       "category": "trip",
       "level": "L1",
-      "description": "给出",
+      "description": "plan.budget.proposeTradeoffs：提出 plan 最小牺牲的降本 tradeoff 方案，保持路线哲学。在 budget.detectOverrun 报超支且需可选减负方案时调用。",
       "version": "1.0.0",
       "className": "PlanBudgetProposeTradeoffsSkill",
-      "sourceFile": "src/skills/plan/budget/plan-budget-propose-tradeoffs.skill.ts"
+      "sourceFile": "src/skills/plan/budget/plan-budget-propose-tradeoffs.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.constraints.arbitrateTradeoffs",
       "category": "trip",
       "level": "L1",
-      "description": "给",
+      "description": "plan.constraints.arbitrateTradeoffs：对 plan 约束冲突给出最小牺牲仲裁并标记需用户确认的取舍。在 constraints.detectConflicts 发现冲突后需 System2 仲裁时调用。",
       "version": "1.0.0",
       "className": "PlanConstraintsArbitrateTradeoffsSkill",
-      "sourceFile": "src/skills/plan/constraints/plan-constraints-arbitrate-tradeoffs.skill.ts"
+      "sourceFile": "src/skills/plan/constraints/plan-constraints-arbitrate-tradeoffs.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.constraints.detectConflicts",
       "category": "trip",
       "level": "L1",
-      "description": "检测约束冲突（预算不足、时间不够、节奏过载、不可达）",
+      "description": "plan.constraints.detectConflicts：检测 plan 约束冲突（预算/时间/节奏/可达性）。在 architect 产出方案后或用户修改约束需 gate 前扫描时调用。",
       "version": "1.0.0",
       "className": "PlanConstraintsDetectConflictsSkill",
-      "sourceFile": "src/skills/plan/constraints/plan-constraints-detect-conflicts.skill.ts"
+      "sourceFile": "src/skills/plan/constraints/plan-constraints-detect-conflicts.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.evidence.buildEnvelope",
       "category": "trip",
       "level": "L1",
-      "description": "统一 Evidence 结构，让所有结论可解释、可审计、可对比",
+      "description": "构建 plan 统一 evidence envelope，使结论可解释可审计。在 gate/decision 输出需绑定证据引用时调用。",
       "version": "1.0.0",
       "className": "PlanEvidenceBuildEnvelopeSkill",
-      "sourceFile": "src/skills/plan/evidence/plan-evidence-build-envelope.skill.ts"
+      "sourceFile": "src/skills/plan/evidence/plan-evidence-build-envelope.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.gate.precheck",
       "category": "trip",
       "level": "L1",
-      "description": "快速门控检查（数据足够时做硬判断，数据不足时标记需确认）",
+      "description": "执行 plan gate 快速预检（数据足够则硬判，不足则标记待确认）。在完整三守护者评审前的轻量门控阶段调用。",
       "version": "1.0.0",
       "className": "PlanGatePrecheckSkill",
-      "sourceFile": "src/skills/plan/gate/plan-gate-precheck.skill.ts"
+      "sourceFile": "src/skills/plan/gate/plan-gate-precheck.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.gate.proposeSafeAlternatives",
       "category": "trip",
       "level": "L1",
-      "description": "为被拒绝或需确认的方案生成安全替代方案（Neptune 风格）",
+      "description": "plan.gate.proposeSafeAlternatives：为被拒绝或需确认的方案生成安全替代方案（Neptune 风格）",
       "version": "1.0.0",
       "className": "PlanGateProposeSafeAlternativesSkill",
-      "sourceFile": "src/skills/plan/gate/plan-gate-propose-safe-alternatives.skill.ts"
+      "sourceFile": "src/skills/plan/gate/plan-gate-propose-safe-alternatives.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.gate.runThreeGuardians",
       "category": "trip",
       "level": "L1",
-      "description": "调用三人格（Abu/Dr.Dre/Neptune）对方案进行完整评审",
+      "description": "编排 plan gate 三人格（Abu/Dr.Dre/Neptune）完整评审并输出结构化 gate 结果。在 precheck 后需正式 gate 决策或用户确认方案前调用。",
       "version": "1.0.0",
       "className": "PlanGateRunThreeGuardiansSkill",
-      "sourceFile": "src/skills/plan/gate/plan-gate-run-three-guardians.skill.ts"
+      "sourceFile": "src/skills/plan/gate/plan-gate-run-three-guardians.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.log.appendDecision",
       "category": "trip",
       "level": "L1",
-      "description": "把每一次结论写成可追溯日志",
+      "description": "写入 plan 可追溯 decision log（结论、证据、版本）。在 plan/gate 产生用户可见结论后需审计留痕时调用。",
       "version": "1.0.0",
       "className": "PlanLogAppendDecisionSkill",
-      "sourceFile": "src/skills/plan/log/plan-log-append-decision.skill.ts"
+      "sourceFile": "src/skills/plan/log/plan-log-append-decision.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.pace.adjustSchedule",
       "category": "trip",
       "level": "L1",
-      "description": "根据用户反馈调整节奏（太累/太赶），不破坏主线",
+      "description": "plan.pace.adjustSchedule：根据用户反馈 adjust plan 节奏（太累/太赶），不破坏主线。在用户反馈 pace 过载/过赶且已有 planState 时调用。",
       "version": "1.0.0",
       "className": "PlanPaceAdjustScheduleSkill",
-      "sourceFile": "src/skills/plan/pace/plan-pace-adjust-schedule.skill.ts"
+      "sourceFile": "src/skills/plan/pace/plan-pace-adjust-schedule.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.pace.computeTimeWindows",
       "category": "trip",
       "level": "L1",
-      "description": "计算每天的可用时间窗（入住退房、交通耗时、缓冲）",
+      "description": "计算 plan 每日可用 time windows（入住退房、交通、缓冲）。在 pace 评估或 architect 排程前需时间窗约束时调用。",
       "version": "1.0.0",
       "className": "PlanPaceComputeTimeWindowsSkill",
-      "sourceFile": "src/skills/plan/pace/plan-pace-compute-time-windows.skill.ts"
+      "sourceFile": "src/skills/plan/pace/plan-pace-compute-time-windows.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.pace.fatigueScore",
       "category": "trip",
       "level": "L1",
-      "description": "计算疲劳与节奏评分（连续早起、长距离移动、累计爬升/步行）",
+      "description": "计算 plan pace 疲劳与节奏评分（早起/长距/爬升/步行）。在 pace 子系统评估是否过载或需 adjustSchedule 时调用。",
       "version": "1.0.0",
       "className": "PlanPaceFatigueScoreSkill",
-      "sourceFile": "src/skills/plan/pace/plan-pace-fatigue-score.skill.ts"
+      "sourceFile": "src/skills/plan/pace/plan-pace-fatigue-score.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.selectSlices",
@@ -504,49 +679,74 @@
       "description": "选择计划相关片段（Plan RAG）：根据 scope 返回当前 day/segment/rejection 的结构化块",
       "version": "1.0.0",
       "className": "PlanSelectSlicesSkill",
-      "sourceFile": "src/skills/context/plan-select-slices.skill.ts"
+      "sourceFile": "src/skills/context/plan-select-slices.skill.ts",
+      "toolGroup": "CONTEXT"
     },
     {
       "name": "plan.transit.buildTransferGraph",
       "category": "trip",
       "level": "L1",
-      "description": "构建跨城段可达图，识别不可达/高风险段",
+      "description": "构建 plan 跨城 transit 换乘可达图并标记不可达/高风险段。在多城 transit planning 阶段评估连通性时调用。",
       "version": "1.0.0",
       "className": "PlanTransitBuildTransferGraphSkill",
-      "sourceFile": "src/skills/plan/transit/plan-transit-build-transfer-graph.skill.ts"
+      "sourceFile": "src/skills/plan/transit/plan-transit-build-transfer-graph.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.transit.generatePlanB",
       "category": "trip",
       "level": "L1",
-      "description": "为高风险段生成 Plan B（替代城市、替代交通、替代时间窗）",
+      "description": "为 plan transit 高风险段生成 Plan B（替代城市/交通/时间窗）。在 buildTransferGraph 标记不可达段后需备选方案时调用。",
       "version": "1.0.0",
       "className": "PlanTransitGeneratePlanBSkill",
-      "sourceFile": "src/skills/plan/transit/plan-transit-generate-plan-b.skill.ts"
+      "sourceFile": "src/skills/plan/transit/plan-transit-generate-plan-b.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "plan.transit.suggestModes",
       "category": "trip",
       "level": "L1",
-      "description": "为同一段 A→B 给出多模式交通对比（飞机/火车/大巴/自驾）",
+      "description": "对比 plan transit 同段 A→B 多模式交通（飞机/火车/大巴/自驾）。在跨城段 mode 选择或 budget/时间权衡时调用。",
       "version": "1.0.0",
       "className": "PlanTransitSuggestModesSkill",
-      "sourceFile": "src/skills/plan/transit/plan-transit-suggest-modes.skill.ts"
+      "sourceFile": "src/skills/plan/transit/plan-transit-suggest-modes.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "poi.search",
       "category": "trip",
       "level": "L1",
-      "description": "搜索 POI（地点）",
+      "description": "搜索 poi 地点（类型、半径、关键词）。在 RESEARCH 阶段收集景点/餐厅/地标或 repair 需替换 POI 时调用。",
       "version": "1.0.0",
       "className": "PoiSearchSkill",
-      "sourceFile": "src/skills/places/poi-search.skill.ts"
+      "sourceFile": "src/skills/places/poi-search.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "policy.resolve",
+      "category": "decision",
+      "level": "L1",
+      "description": "OS: 将 strategy、userPreference、OperationalWorldState、readiness.assess、operationalArbitration 融合为 driving/route/lodging/risk 策略；裁决为 blocked/dangerous 时写入 executionPolicyHook（长距/F-road 等限制）。",
+      "version": "1.1.0",
+      "className": "PolicyResolveSkill",
+      "sourceFile": "src/skills/runtime-os/policy-resolve.skill.ts",
+      "toolGroup": "CONTEXT"
+    },
+    {
+      "name": "readiness.assess",
+      "category": "readiness",
+      "level": "L1",
+      "description": "readiness.assess：OS: 执行门控 — 根据车辆/天气/路线/日照/经验判断是否可执行，输出 executable、blockers、warnings、mitigationActions。",
+      "version": "1.0.0",
+      "className": "ReadinessAssessSkill",
+      "sourceFile": "src/skills/runtime-os/readiness-assess.skill.ts",
+      "toolGroup": "CONTEXT"
     },
     {
       "name": "readiness.checkVisaWindow",
       "category": "readiness",
       "level": "L1",
-      "description": "检查签证和入境时间窗风险，提供准备建议和特殊规则",
+      "description": "readiness.checkVisaWindow：检查签证和入境时间窗风险，提供准备建议和特殊规则",
       "version": "1.0.0",
       "className": "ReadinessCheckVisaWindowSkill",
       "sourceFile": "src/skills/readiness/readiness-check-visa-window.skill.ts"
@@ -555,7 +755,7 @@
       "name": "readiness.generateChecklist",
       "category": "readiness",
       "level": "L1",
-      "description": "基于世界模型和路线方向生成行前准备清单（证件、装备、健康、技能等）",
+      "description": "readiness.generateChecklist：基于世界模型和路线方向生成行前准备清单（证件、装备、健康、技能等）",
       "version": "1.0.0",
       "className": "ReadinessGenerateChecklistSkill",
       "sourceFile": "src/skills/readiness/readiness-generate-checklist.skill.ts"
@@ -564,7 +764,7 @@
       "name": "readiness.summarizeRisks",
       "category": "readiness",
       "level": "L1",
-      "description": "从世界模型和决策结果中提炼旅程的关键风险点，并提供缓解建议",
+      "description": "从 world 模型与决策结果提炼 readiness 关键风险与缓解建议。在 readiness 阶段向用户展示行前风险摘要时调用。",
       "version": "1.0.0",
       "className": "ReadinessSummarizeRisksSkill",
       "sourceFile": "src/skills/readiness/readiness-summarize-risks.skill.ts"
@@ -573,16 +773,17 @@
       "name": "repair.apply",
       "category": "trip",
       "level": "L1",
-      "description": "应用修复方案到行程",
+      "description": "将 verify/neptune 产出的 repair adjustments 应用到 itinerary。在 REPAIR 阶段 verify 失败且已有修复方案需落盘时调用。",
       "version": "1.0.0",
       "className": "RepairApplySkill",
-      "sourceFile": "src/skills/itinerary/repair-apply.skill.ts"
+      "sourceFile": "src/skills/itinerary/repair-apply.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "routeDirection.listForCountry",
       "category": "routeDirection",
       "level": "L1",
-      "description": "列出指定国家可用的路线方向，包括基本信息、标签和适合人群",
+      "description": "routeDirection.listForCountry：列出指定国家可用的路线方向，包括基本信息、标签和适合人群",
       "version": "1.0.0",
       "className": "RouteDirectionListForCountrySkill",
       "sourceFile": "src/skills/route-direction/route-direction-list-for-country.skill.ts"
@@ -591,7 +792,7 @@
       "name": "routeDirection.pickForIntent",
       "category": "routeDirection",
       "level": "L1",
-      "description": "根据国家、季节和用户意图标签选择最合适的路线方向",
+      "description": "routeDirection.pickForIntent：根据国家、季节和用户意图标签选择最合适的路线方向",
       "version": "1.0.0",
       "className": "RouteDirectionPickForIntentSkill",
       "sourceFile": "src/skills/route-direction/route-direction-pick-for-intent.skill.ts"
@@ -600,7 +801,7 @@
       "name": "routePack.generateRegressionTests",
       "category": "countryPack",
       "level": "L1",
-      "description": "为 RoutePack 生成回归测试用例，确保 Pack 变更不会破坏现有功能",
+      "description": "为 routePack 生成回归测试用例，防止 Pack 变更破坏现有块。在 routePack validate 后或 CI 维护 RouteDirection Pack 契约时调用。",
       "version": "1.0.0",
       "className": "RoutePackGenerateRegressionTestsSkill",
       "sourceFile": "src/skills/route-pack/route-pack-generate-regression-tests.skill.ts"
@@ -624,28 +825,70 @@
       "sourceFile": "src/skills/route-pack/route-pack-validate.skill.ts"
     },
     {
+      "name": "safetravel.get_advisories",
+      "category": "world",
+      "level": "L1",
+      "description": "拉取 safetravel.is/feed RSS，解析为结构化 alerts、rss_refined 与 safetravel_alerts（路段级，供 verify 对齐）；含 gate_recommendation（CRITICAL→BLOCK）。",
+      "version": "1.0.0",
+      "className": "SafetravelGetAdvisoriesSkill",
+      "sourceFile": "src/skills/world/safetravel-get-advisories.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
       "name": "tools.select",
       "category": "rag",
       "level": "L1",
-      "description": "工具选择（Tool RAG）：根据用户请求、规划阶段和当前状态，推荐 3-5 个最相关的工具",
+      "description": "tools.select：工具选择（Tool RAG）：根据用户请求、规划阶段和当前状态，推荐 3-5 个最相关的工具",
       "version": "1.0.0",
       "className": "ToolsSelectSkill",
-      "sourceFile": "src/skills/context/tools-select.skill.ts"
+      "sourceFile": "src/skills/context/tools-select.skill.ts",
+      "toolGroup": "CONTEXT"
     },
     {
       "name": "transport.search",
       "category": "trip",
       "level": "L1",
-      "description": "搜索两点之间的交通路线",
+      "description": "搜索 transport 两点间路线与耗时。在 RESEARCH/VERIFY/REPAIR 阶段计算转场或校验可达性时调用。",
       "version": "1.0.0",
       "className": "TransportSearchSkill",
-      "sourceFile": "src/skills/transport/transport-search.skill.ts"
+      "sourceFile": "src/skills/transport/transport-search.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "trip.applyEdit",
+      "category": "trip",
+      "level": "L1",
+      "description": "trip.applyEdit：统一改行程。有 user_change_intent + itinerary 时走 itinerary.smart_update；有结构化 edits 时直接落库。新增 POI 应携带白天游览时段；修改 POI 时间应携带明确的 startTime/endTime。",
+      "version": "1.0.0",
+      "className": "TripApplyEditSkill",
+      "sourceFile": "src/skills/trip/trip-apply-edit.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "trip.deleteItem",
+      "category": "trip",
+      "level": "L1",
+      "description": "trip.deleteItem：删除指定 ItineraryItem。在用户明确取消某活动/行程项且已有 itemId 时调用。",
+      "version": "1.0.0",
+      "className": "TripDeleteItemSkill",
+      "sourceFile": "src/skills/trip/trip-delete-item.skill.ts",
+      "toolGroup": "DOMAIN"
+    },
+    {
+      "name": "trip.load",
+      "category": "trip",
+      "level": "L1",
+      "description": "trip.load：从数据库加载行程（Trip + 展平 ItineraryItem）。在 INTAKE/route_and_run 需 Hydrate 已有 trip 或 Agent 读行程上下文时调用。",
+      "version": "1.0.0",
+      "className": "TripLoadSkill",
+      "sourceFile": "src/skills/trip/trip-load.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "trip.quickEvaluate",
       "category": "analytics",
       "level": "L1",
-      "description": "对行程进行快速体检，输出统一的评分、警告和修复建议",
+      "description": "trip.quickEvaluate：对行程进行快速体检，输出统一的评分、警告和修复建议",
       "version": "1.0.0",
       "className": "TripQuickEvaluateSkill",
       "sourceFile": "src/skills/trip/trip-quick-evaluate.skill.ts"
@@ -654,34 +897,37 @@
       "name": "weather.search",
       "category": "trip",
       "level": "L1",
-      "description": "查询指定地点的天气预报信息（当前天气或未来预报）",
+      "description": "weather.search：查询指定地点的天气预报信息（当前天气或未来预报）",
       "version": "1.0.0",
       "className": "WeatherSearchSkill",
-      "sourceFile": "src/skills/weather/weather-search.skill.ts"
+      "sourceFile": "src/skills/weather/weather-search.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "web.browse",
       "category": "rag",
       "level": "L1",
-      "description": "浏览网页并提取结构化内容（用于 RAG Level 4 降级）",
+      "description": "web.browse：浏览网页并提取结构化内容（用于 RAG Level 4 降级）",
       "version": "1.0.0",
       "className": "WebBrowseSkill",
-      "sourceFile": "src/skills/web/web-browse.skill.ts"
+      "sourceFile": "src/skills/web/web-browse.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "world.adaptiveParameters",
       "category": "world",
       "level": "L1",
-      "description": "获取自适应世界模型参数（基于用户反馈和学习后的能力）",
+      "description": "world.adaptiveParameters：获取自适应世界模型参数（基于用户反馈和学习后的能力）",
       "version": "1.0.0",
       "className": "WorldAdaptiveParametersSkill",
-      "sourceFile": "src/skills/world/world-adaptive-parameters.skill.ts"
+      "sourceFile": "src/skills/world/world-adaptive-parameters.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "world.buildContext",
       "category": "world",
       "level": "L1",
-      "description": "构建完整的世界模型上下文（PhysicalRealityModel + HumanCapabilityModel + RouteDirection），一次性拉齐决策所需的所有数据",
+      "description": "构建 world 完整上下文（PhysicalReality + HumanCapability + RouteDirection）。在 planning/decision 阶段需一次性拉齐世界模型时调用。",
       "version": "1.0.0",
       "className": "WorldBuildContextSkill",
       "sourceFile": "src/skills/world/world-build-context.skill.ts"
@@ -690,10 +936,11 @@
       "name": "world.collaborativeData",
       "category": "world",
       "level": "L1",
-      "description": "获取协作世界模型数据（用户贡献、专家验证）",
+      "description": "world.collaborativeData：获取协作 world 模型数据（用户贡献、专家验证）。在 world.buildContext 需补充众包/专家字段时调用。",
       "version": "1.0.0",
       "className": "WorldCollaborativeDataSkill",
-      "sourceFile": "src/skills/world/world-collaborative-data.skill.ts"
+      "sourceFile": "src/skills/world/world-collaborative-data.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "world.failureRiskPrediction",
@@ -702,43 +949,48 @@
       "description": "预测行程失败风险（使用world.weatherPrediction Skill）",
       "version": "1.0.0",
       "className": "WorldFailureRiskPredictionSkill",
-      "sourceFile": "src/skills/world/world-failure-risk-prediction.skill.ts"
+      "sourceFile": "src/skills/world/world-failure-risk-prediction.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "world.multimodalPerception",
       "category": "world",
       "level": "L1",
-      "description": "获取多模态感知数据（图像、文本分析）",
+      "description": "获取 world 多模态感知摘要（图像/文本线索）。在 world.buildContext 需补充非结构化现场证据时调用。",
       "version": "1.0.0",
       "className": "WorldMultimodalPerceptionSkill",
-      "sourceFile": "src/skills/world/world-multimodal-perception.skill.ts"
+      "sourceFile": "src/skills/world/world-multimodal-perception.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "world.realtimeWeather",
       "category": "world",
       "level": "L1",
-      "description": "获取实时天气预警数据（使用weather.search Skill）",
+      "description": "获取 world 实时天气预警（委托 weather.search）。在 gate/readiness 需当前预警或 execution 期风险刷新时调用。",
       "version": "1.0.0",
       "className": "WorldRealtimeWeatherSkill",
-      "sourceFile": "src/skills/world/world-realtime-weather.skill.ts"
+      "sourceFile": "src/skills/world/world-realtime-weather.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
       "name": "world.weatherPrediction",
       "category": "world",
       "level": "L1",
-      "description": "获取天气预测数据（使用weather.search Skill）",
+      "description": "获取 world 天气预报摘要（委托 weather.search）。在 planning 阶段评估未来窗口风险或 failureRisk 输入时调用。",
       "version": "1.0.0",
       "className": "WorldWeatherPredictionSkill",
-      "sourceFile": "src/skills/world/world-weather-prediction.skill.ts"
+      "sourceFile": "src/skills/world/world-weather-prediction.skill.ts",
+      "toolGroup": "DOMAIN"
     },
     {
-      "name": "iceland.rentalGuidance",
+      "name": "worldState.summarize",
       "category": "world",
       "level": "L1",
-      "description": "冰岛自驾：官方路况/气象/安全源 + 聚合比价入口 + 本地高信任车行画像 + 保险与 F-road 策略清单；与 Booking 租车 MCP 及 SafeTravel/天气/F-road skill 编排使用。",
-      "version": "1.0.0",
-      "className": "IcelandRentalGuidanceSkill",
-      "sourceFile": "src/skills/world/iceland-rental-guidance.skill.ts"
+      "description": "worldState.summarize：汇总 physical 世界为 OperationalWorldState（冰岛 tripId 走 IcelandOperationalDomainPipeline + WorldOperationalArbitration）。在 planning/decision 阶段 policy.resolve/readiness 前需 OS 世界状态时调用。",
+      "version": "1.2.0",
+      "className": "WorldStateSummarizeSkill",
+      "sourceFile": "src/skills/runtime-os/world-state-summarize.skill.ts",
+      "toolGroup": "CONTEXT"
     }
   ]
 }

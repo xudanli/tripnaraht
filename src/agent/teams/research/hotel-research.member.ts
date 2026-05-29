@@ -5,10 +5,16 @@ import type { IResearchMember, ResearchMemberScopedCommerceInput } from './resea
 import { computeResearchPatchFromIsolation, deepCloneResearchData } from './research-context-manager';
 import { ResearchTeamBusService } from './research-team-bus.service';
 import { isResearchParallelAssignmentPayload } from './research-team-bus.types';
+import type { DecisionState } from '../../../decision/kernel/decision-state.types';
 import type { UserCognitiveProfile } from '../../memory/experience-replay/user-cognitive-profile.types';
 import { shouldApplyExperienceGossip } from './research-member-cognitive-gossip.util';
 import { buildResearchFinancialsFromHotelLiveRefresh } from './research-member-hotel-financials.util';
 import { shouldEnableStabilityMode } from '../../memory/emotional-resonance/research-member-stability.util';
+import {
+  hotelStabilityRiskBuffer,
+  resolveHotelEnvironmentConfidence,
+  type HotelEnvironmentConfidence,
+} from './research-member-hotel-env-confidence.util';
 
 /**
  * 住宿域 Member：`scoped_partial` + hotel 时的 live commerce 刷新与 rollback 缝合。
@@ -41,6 +47,7 @@ export class HotelResearchMember implements IResearchMember, OnModuleInit, OnMod
           evidenceRefs: p.evidenceRefs,
           researchAtomicRollbackSnapshot: p.researchAtomicRollbackSnapshot,
           userCognitiveProfile: p.userCognitiveProfile,
+          ...(p.dso ? { dso: p.dso } : {}),
           ...(p.userEmotionalAccount ? { userEmotionalAccount: p.userEmotionalAccount } : {}),
           ...(p.budgetArbitrationHints?.austerity_mode
             ? {
@@ -87,11 +94,13 @@ export class HotelResearchMember implements IResearchMember, OnModuleInit, OnMod
       userCognitiveProfile,
       budgetRerunHints,
       userEmotionalAccount,
+      dso,
     } = input;
     const stabilityFirst = shouldEnableStabilityMode(userEmotionalAccount);
     await this.runCommerceHotelRefresh(tripPlanRequest, researchData, evidenceRefs, userCognitiveProfile, {
       austerityMode: !!budgetRerunHints?.austerityMode,
       stabilityFirst,
+      dso,
     });
     if (!this.isLiveHotelRefreshHealthy(researchData) && researchAtomicRollbackSnapshot) {
       this.stitchHotelScopeFromRollback(researchData, researchAtomicRollbackSnapshot);
@@ -146,7 +155,7 @@ export class HotelResearchMember implements IResearchMember, OnModuleInit, OnMod
     researchData: Record<string, unknown>,
     evidenceRefs: string[],
     userCognitiveProfile?: ResearchMemberScopedCommerceInput['userCognitiveProfile'],
-    opts?: Readonly<{ austerityMode?: boolean; stabilityFirst?: boolean }>,
+    opts?: Readonly<{ austerityMode?: boolean; stabilityFirst?: boolean; dso?: DecisionState }>,
   ): Promise<void> {
     if (!this.skillsRegistry) return;
     const dest = tripRequest.destination;
@@ -158,7 +167,9 @@ export class HotelResearchMember implements IResearchMember, OnModuleInit, OnMod
           : '酒店 住宿';
     const austerity = !!opts?.austerityMode;
     const stabilityFirst = !!opts?.stabilityFirst;
-    const gossip = austerity || stabilityFirst ? null : this.buildHotelSearchGossip(userCognitiveProfile);
+    const dso = opts?.dso;
+    const gossip =
+      austerity || stabilityFirst ? null : this.buildHotelSearchGossip(userCognitiveProfile, researchData, dso);
     const candidates = stabilityFirst ? (['hotel.search'] as const) : (['hotel.search', 'hotel.recommend'] as const);
     const limit = austerity ? 4 : 8;
     for (const name of candidates) {
@@ -168,7 +179,17 @@ export class HotelResearchMember implements IResearchMember, OnModuleInit, OnMod
         const skillInput: Record<string, unknown> = { query, limit };
         const sp: Record<string, unknown> = {};
         if (austerity) sp.austerityMode = true;
-        if (stabilityFirst) sp.stabilityMode = 'STABILITY_FIRST';
+        let stabilityEnvBand: HotelEnvironmentConfidence | undefined;
+        let stabilityRiskBuffer: 'MODERATE' | 'MAXIMUM' | undefined;
+        if (stabilityFirst) {
+          stabilityEnvBand = resolveHotelEnvironmentConfidence({ researchData, dso });
+          stabilityRiskBuffer = hotelStabilityRiskBuffer(stabilityEnvBand);
+          sp.stabilityMode = 'STABILITY_FIRST';
+          sp.mode = 'STABILITY_DRIVEN';
+          sp.risk_buffer = stabilityRiskBuffer;
+          sp.guarantee_priority = true;
+          sp.environment_confidence = stabilityEnvBand;
+        }
         if (Object.keys(sp).length) {
           skillInput.search_preferences = sp;
         } else if (gossip) {
@@ -182,6 +203,14 @@ export class HotelResearchMember implements IResearchMember, OnModuleInit, OnMod
           ...(gossip ? { cognitive_gossip: gossip.audit_stub } : {}),
           ...(austerity ? { budget_arbitration_austerity: true as const } : {}),
           ...(stabilityFirst ? { stability_mode_active: true as const } : {}),
+          ...(stabilityFirst && stabilityEnvBand !== undefined && stabilityRiskBuffer !== undefined
+            ? {
+                stability_env_modulation: {
+                  environment_confidence: stabilityEnvBand,
+                  risk_buffer: stabilityRiskBuffer,
+                },
+              }
+            : {}),
         };
         const ev = (result as { evidence_id?: unknown })?.evidence_id;
         if (typeof ev === 'string' && ev.trim()) evidenceRefs.push(ev.trim());
@@ -195,15 +224,21 @@ export class HotelResearchMember implements IResearchMember, OnModuleInit, OnMod
 
   /**
    * 4.0 Gossip：体验轴足够负时向酒店 Skill 注入 `search_preferences.relaxedSafety`，供底层放宽安全硬滤、偏景观/体验信号。
+   * 同时附带 `environment_confidence`（来自 researchData / 可选 DSO），供 Skill 或 MCP 侧做软参考（不关闭 Gossip 本身阈值）。
    */
-  private buildHotelSearchGossip(profile: UserCognitiveProfile | undefined): {
-    search_preferences: { relaxedSafety: true };
-    audit_stub: { relaxed_safety: true };
+  private buildHotelSearchGossip(
+    profile: UserCognitiveProfile | undefined,
+    researchData: Record<string, unknown>,
+    dso?: DecisionState,
+  ): {
+    search_preferences: { relaxedSafety: true; environment_confidence: HotelEnvironmentConfidence };
+    audit_stub: { relaxed_safety: true; environment_confidence: HotelEnvironmentConfidence };
   } | null {
     if (!shouldApplyExperienceGossip(profile)) return null;
+    const environment_confidence = resolveHotelEnvironmentConfidence({ researchData, dso });
     return {
-      search_preferences: { relaxedSafety: true },
-      audit_stub: { relaxed_safety: true as const },
+      search_preferences: { relaxedSafety: true, environment_confidence },
+      audit_stub: { relaxed_safety: true as const, environment_confidence },
     };
   }
 }

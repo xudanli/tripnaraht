@@ -2,6 +2,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CountryPackGetBlocksSkill } from './country-pack-get-blocks.skill';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ReadinessService } from '../../trips/readiness/services/readiness.service';
 
 describe('CountryPackGetBlocksSkill', () => {
   let skill: CountryPackGetBlocksSkill;
@@ -12,9 +13,13 @@ describe('CountryPackGetBlocksSkill', () => {
       readinessPack: {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       countryPack: {
         findFirst: jest.fn(),
+      },
+      countryProfile: {
+        findUnique: jest.fn(),
       },
     };
 
@@ -285,6 +290,147 @@ describe('CountryPackGetBlocksSkill', () => {
       // 验证至少方法正确执行了（不抛出错误）
       expect(Array.isArray(result.blocks)).toBe(true);
       expect(Array.isArray(result.missingTopics)).toBe(true);
+    });
+  });
+
+  describe('CountryProfile V2 fallback', () => {
+    const mockCountryProfileRow = {
+      isoCode: 'IS',
+      nameCN: '冰岛',
+      nameEN: 'Iceland',
+      currencyCode: 'ISK',
+      currencyName: '冰岛克朗',
+      paymentType: 'DIGITAL_ONLY',
+      paymentInfo: { tipping: '无需小费' },
+      powerInfo: { plugTypes: ['C', 'F'], voltage: 230, frequency: 50 },
+      emergency: { police: '112', fire: '112', medical: '112' },
+      entryRequirements: {
+        byNationality: {
+          CN: {
+            status: 'VISA_REQUIRED',
+            statusLabelCN: '需要签证',
+            schengenZone: true,
+            visaApplicationLeadTimeDays: 45,
+          },
+        },
+      },
+      complianceInfo: {
+        droneRules: {
+          allowed: true,
+          maxAltitudeMeter: 120,
+          restrictions: ['禁止在国家公园内飞行'],
+        },
+        drivingRules: {
+          requires4x4ForFRoad: true,
+          requiresInternationalLicense: true,
+          gravelRoadPresent: true,
+          speedLimits: {
+            algorithmEtaPenaltyCoefficients: { gravelRoad: 1.4, fRoad: 2.0 },
+          },
+        },
+      },
+      timeBoundaries: {
+        seasons: [
+          {
+            name: 'SUMMER_MIDNIGHT_SUN',
+            months: [6, 7, 8],
+            avgDaylightHours: 21,
+            outdoorRoutingWindow: { start: '06:00', end: '23:00' },
+          },
+        ],
+        environmentalTriggers: {
+          autoRerouteTriggers: ['WIND_SPEED_OVER_20MS'],
+          weatherAlertSource: 'https://www.vedur.is/',
+        },
+      },
+      travelCulture: null,
+      visaForCN: null,
+      exchangeRateToCNY: null,
+      exchangeRateToUSD: null,
+    };
+
+    beforeEach(() => {
+      prisma.readinessPack.findUnique = jest.fn().mockResolvedValue(null);
+      prisma.readinessPack.findMany = jest.fn().mockResolvedValue([]);
+      prisma.countryProfile.findUnique = jest
+        .fn()
+        .mockResolvedValue(mockCountryProfileRow as any);
+    });
+
+    it('无 ReadinessPack 时从 CountryProfile 填充 VISA', async () => {
+      const result = await skill.execute({
+        packId: 'IS',
+        topics: ['VISA'],
+        travelerNationality: 'CN',
+        phase: 'planning',
+      });
+
+      const visa = result.blocks.find((b) => b.type === 'COUNTRY_VISA');
+      expect(visa).toBeDefined();
+      expect(visa?.dataSource).toBe('FACTS');
+      expect(visa?.data?.derivedFrom).toBe('findings');
+      expect(visa?.data?.nationality).toBe('CN');
+      expect(visa?.text).toMatch(/CN|签证|Schengen/i);
+      expect(result.missingTopics).not.toContain('VISA');
+    });
+
+    it('同一国家 US 与 CN 国籍 VISA 文案不同', async () => {
+      const cn = await skill.execute({
+        packId: 'IS',
+        topics: ['VISA'],
+        travelerNationality: 'CN',
+      });
+      const us = await skill.execute({
+        packId: 'IS',
+        topics: ['VISA'],
+        travelerNationality: 'US',
+      });
+      expect(cn.blocks[0]?.text).not.toEqual(us.blocks[0]?.text);
+      expect(us.blocks[0]?.text).toMatch(/visa-free|US/i);
+    });
+
+    it('Phase3: Pack 静态 visa 规则不进入 Context，走 Findings 投影', async () => {
+      const mockReadiness = {
+        getMergedCountryFinding: jest.fn().mockResolvedValue({
+          destinationId: 'IS',
+          packId: 'facts.is',
+          blockers: [],
+          must: [
+            {
+              id: 'fact.IS.entry.visa.CN',
+              category: 'entry_transit',
+              severity: 'high',
+              level: 'must',
+              message: 'CN passport holders: Schengen visa required',
+            },
+          ],
+          should: [],
+          optional: [],
+          risks: [],
+        }),
+      };
+
+      const moduleRef = await Test.createTestingModule({
+        providers: [
+          CountryPackGetBlocksSkill,
+          { provide: PrismaService, useValue: prisma },
+          { provide: ReadinessService, useValue: mockReadiness },
+        ],
+      }).compile();
+      const skillP3 = moduleRef.get(CountryPackGetBlocksSkill);
+
+      const result = await skillP3.execute({
+        packId: 'pack.is.iceland',
+        topics: ['VISA'],
+        travelerNationality: 'CN',
+        phase: 'planning',
+      });
+
+      expect(mockReadiness.getMergedCountryFinding).toHaveBeenCalled();
+      const visa = result.blocks.find((b) => b.type === 'COUNTRY_VISA');
+      expect(visa?.data?.derivedFrom).toBe('findings');
+      expect(visa?.text).toMatch(/Schengen|CN/i);
+      expect(visa?.text).not.toContain('Pack 申根签证');
     });
   });
 });

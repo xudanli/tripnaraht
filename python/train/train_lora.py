@@ -168,7 +168,8 @@ class TripNARATrainer:
         dataset_name = self.config.get('dataset', 'tripnara_decision')
         
         # 支持多种数据格式
-        train_file = dataset_dir / f"{dataset_name}_train.jsonl"
+        sft_override = self.config.get('sft_jsonl_path') or self.config.get('sft_dataset_path')
+        train_file = Path(sft_override) if sft_override else dataset_dir / f"{dataset_name}_train.jsonl"
         eval_file = dataset_dir / f"{dataset_name}_eval.jsonl"
         
         if train_file.exists():
@@ -516,8 +517,30 @@ class TripNARATrainer:
                 trainer.save_metrics("eval", eval_metrics)
             
             logger.info(f"Training complete. Model saved to {training_args.output_dir}")
+
+            self._export_pipeline_checkpoint(training_args.output_dir)
             
             return train_result
+
+    def _export_pipeline_checkpoint(self, output_dir: str) -> None:
+        """Pipeline 模式下固化 checkpoint-sft-final。"""
+        alias = self.config.get("checkpoint_export_name")
+        if not alias:
+            return
+        from checkpoint_utils import export_lora_checkpoint
+
+        pipeline_root = self.config.get("pipeline_root")
+        dest = (
+            Path(pipeline_root) / alias
+            if pipeline_root
+            else Path(output_dir).parent / alias
+        )
+        export_lora_checkpoint(
+            output_dir,
+            dest,
+            manifest_extra={"stage": self.config.get("stage", "sft")},
+        )
+        logger.info("Exported pipeline checkpoint: %s", dest)
 
 
 def main():

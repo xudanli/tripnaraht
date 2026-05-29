@@ -114,7 +114,7 @@ export class ItinerarySmartUpdateSkill implements Skill<ItinerarySmartUpdateInpu
   metadata: SkillMetadata = {
     name: 'itinerary.smart_update',
     description:
-      '一键改行程：itinerary.verify →（可选）decision.neptuneRepair → 推导 adjustments → repair.apply；支持部分失败回退与分阶段观测。',
+      'itinerary.smart_update：一键改行程：itinerary.verify →（可选）decision.neptuneRepair → 推导 adjustments → repair.apply；支持部分失败回退与分阶段观测。',
     version: '1.0.0',
     category: 'trip',
     toolGroup: 'DOMAIN',

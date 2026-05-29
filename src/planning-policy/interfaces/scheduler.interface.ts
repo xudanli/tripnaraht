@@ -61,6 +61,44 @@ export interface PlannedStop {
 }
 
 /**
+ * GET /trips/:id/schedule 等接口中，与数据库 ItineraryItem 对齐的视图（便于前端与 stops 并行使用）
+ */
+export interface ScheduleItineraryItemView {
+  id: string;
+  type: string;
+  order: number | null;
+  placeId: number | null;
+  trailId: number | null;
+  /** 当天本地时间 HH:mm */
+  startTime: string | null;
+  /** 当天本地时间 HH:mm */
+  endTime: string | null;
+  /** 与 start/end 对应的完整时间（ISO），便于跨时区客户端 */
+  startTimeISO: string | null;
+  endTimeISO: string | null;
+  /** 活动段时长（分钟），由 end-start 得到 */
+  durationMinutes: number | null;
+  note: string | null;
+  estimatedCost: number | null;
+  actualCost: number | null;
+  currency: string | null;
+  travelFromPreviousDuration: number | null;
+  travelFromPreviousDistance: number | null;
+  travelMode: string | null;
+  /** 便于展示的地点名 */
+  placeName: string | null;
+  Place?: {
+    id: number;
+    nameCN: string | null;
+    nameEN: string | null;
+    address?: string | null;
+    category?: string | null;
+    rating?: number | null;
+    coordinates?: { lat: number; lng: number } | null;
+  } | null;
+}
+
+/**
  * 日程排程结果
  */
 export interface DayScheduleResult {
@@ -83,4 +121,10 @@ export interface DayScheduleResult {
     /** 违反的约束（若失败） */
     violated?: string[];
   };
+  /** 当天真实行程项（与 ItineraryItem 一致），按开始时间排序 */
+  items?: ScheduleItineraryItemView[];
+  /** 分钟：各活动段 durationMinutes 之和 + 各段 travelFromPreviousDuration（若有） */
+  totalDuration?: number;
+  /** 与行程项费用字段对齐的当日合计（actualCost ?? estimatedCost） */
+  totalCost?: number;
 }

@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "861359ce-54bc-4a47-8637-2755e7c5ae9c",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "S2_LOCAL_OVERRIDE_WITH_WARNING",
+  "strategy": {
+    "strategyId": "S2_LOCAL_OVERRIDE_WITH_WARNING",
+    "philosophy": "局部快速响应，但保留安全网。在保持主线速度的同时，只在关键决策点触发硬性检查。",
+    "approach": "仅在夏季高地路线分支前检查 DEM。若缺失，先输出 REJECT 但附加一条提示：'可尝试提供 DEM 后重新请求'。非高地场景则跳过检查，默认通过。",
+    "emphasis": "速度优先，将检查范围压缩至最小必要局部，避免全流程减速。",
+    "risk": "低风险误通过：若用户意图是高地但未明说季节，策略可能因局部条件不满足而漏检，导致不合规路线被输出。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求在7月前往冰岛高地，属于夏季高地路线。根据S2_LOCAL_OVERRIDE_WITH_WARNING策略，需在分支前检查DEM证据。当前DEM缺失，应执行REJECT并附加提示。",
+      "action": "REJECT: DEM缺失，无法验证高地路线可行性。提示：可尝试提供DEM后重新请求。",
+      "result": "[完成] REJECT: DEM缺失，无法验证高地路线可行性。提示：可尝试提供DEM后重新请求。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:12:44.549Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 DEM 缺失 REJECT 等门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:12:44.549Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

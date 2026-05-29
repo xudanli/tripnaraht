@@ -1,0 +1,1760 @@
+{
+  "generatedAt": "2026-05-24T10:12:12.139Z",
+  "rubric": {
+    "CORE": "getSkill 或 orchestration skillName 硬编码（生产代码）",
+    "WORKBENCH": "Planning Workbench 等编排器直接注入调用",
+    "REFERENCED": "在其他文件中出现 skill 名字符串引用",
+    "DORMANT": "仅 manifest/registry/自身文件",
+    "KEEP": "已在主路径或 Tool RAG 上下文层，保留",
+    "WIRE_OR_DOCUMENT": "有产品意图但未接线，应接 API/编排或写清边界",
+    "REVIEW": "Pack/配置类，确认是否仍被 context 链使用",
+    "CANDIDATE_DEPRECATE": "无引用且非核心域，可标记 experimental 或下线候选"
+  },
+  "summary": {
+    "total": 99,
+    "byTier": {
+      "CORE": 28,
+      "WORKBENCH": 14,
+      "REFERENCED": 48,
+      "DORMANT": 9
+    },
+    "byRecommendation": {
+      "KEEP": 46,
+      "WIRE_OR_DOCUMENT": 44,
+      "REVIEW": 0,
+      "CANDIDATE_DEPRECATE": 9
+    },
+    "byCategory": {
+      "rag": {
+        "count": 12,
+        "core": 6,
+        "dormant": 2
+      },
+      "countryPack": {
+        "count": 9,
+        "core": 2,
+        "dormant": 0
+      },
+      "decision": {
+        "count": 14,
+        "core": 1,
+        "dormant": 0
+      },
+      "dem": {
+        "count": 2,
+        "core": 1,
+        "dormant": 0
+      },
+      "trip": {
+        "count": 35,
+        "core": 30,
+        "dormant": 0
+      },
+      "world": {
+        "count": 20,
+        "core": 2,
+        "dormant": 7
+      },
+      "readiness": {
+        "count": 4,
+        "core": 0,
+        "dormant": 0
+      },
+      "routeDirection": {
+        "count": 2,
+        "core": 0,
+        "dormant": 0
+      },
+      "analytics": {
+        "count": 1,
+        "core": 0,
+        "dormant": 0
+      }
+    }
+  },
+  "skills": [
+    {
+      "name": "context.compress",
+      "category": "rag",
+      "className": "ContextCompressSkill",
+      "sourceFile": "src/skills/context/context-compress.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/context-engine/context.controller.ts",
+        "src/agent/context-engine/services/context-compressor.service.ts",
+        "src/agent/context-engine/services/context-engineer.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "context.evaluate",
+      "category": "rag",
+      "className": "ContextEvaluateSkill",
+      "sourceFile": "src/skills/context/context-evaluate.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [
+        "src/agent/context-engine/services/context-metrics.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "countryPack.getBlocks",
+      "category": "countryPack",
+      "className": "CountryPackGetBlocksSkill",
+      "sourceFile": "src/skills/country-pack/country-pack-get-blocks.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/context-engine/services/context-engineer.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "countryPack.rankBlocks",
+      "category": "countryPack",
+      "className": "CountryPackRankBlocksSkill",
+      "sourceFile": "src/skills/country-pack/country-pack-rank-blocks.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/context-engine/services/context-engineer.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "decision.logAppend",
+      "category": "decision",
+      "className": "DecisionLogAppendSkill",
+      "sourceFile": "src/skills/decision/decision-log-append.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/trips/decision/services/strategy-orchestrator.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "dem.get_profile",
+      "category": "dem",
+      "className": "DemGetProfileSkill",
+      "sourceFile": "src/skills/dem/dem-get-profile.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/admin/controllers/skills-admin.controller.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/route-and-run-response-assembler.service.ts",
+        "src/agent/services/skill-input-validator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/teams/research/destination-research.member.ts",
+        "src/agent/utils/skill-importance.util.ts",
+        "src/chain-of-work/draft/prompts/draft-generation.prompt.ts"
+      ],
+      "harnessPathLikely": true,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "detail.analyzeHealth",
+      "category": "trip",
+      "className": "DetailAnalyzeHealthSkill",
+      "sourceFile": "src/skills/detail/detail-analyze-health.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/trip-detail-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "detail.explainDecision",
+      "category": "trip",
+      "className": "DetailExplainDecisionSkill",
+      "sourceFile": "src/skills/detail/detail-explain-decision.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/trip-detail-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "detail.showEvidence",
+      "category": "trip",
+      "className": "DetailShowEvidenceSkill",
+      "sourceFile": "src/skills/detail/detail-show-evidence.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/trip-detail-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "detail.understandStatus",
+      "category": "trip",
+      "className": "DetailUnderstandStatusSkill",
+      "sourceFile": "src/skills/detail/detail-understand-status.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/trip-detail-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "exec.fallback",
+      "category": "trip",
+      "className": "ExecFallbackSkill",
+      "sourceFile": "src/skills/exec/exec-fallback.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/execution-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "exec.handleChange",
+      "category": "trip",
+      "className": "ExecHandleChangeSkill",
+      "sourceFile": "src/skills/exec/exec-handle-change.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/execution-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "exec.remind",
+      "category": "trip",
+      "className": "ExecRemindSkill",
+      "sourceFile": "src/skills/exec/exec-remind.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/execution-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "itinerary.generate",
+      "category": "trip",
+      "className": "ItineraryGenerateSkill",
+      "sourceFile": "src/skills/itinerary/itinerary-generate.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/execution/plan-gen-executor.service.ts",
+        "src/agent/ledger/governance-ledger-event.builder.util.ts",
+        "src/agent/memory/execution/build-execution-governance-memory.util.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/utils/skill-importance.util.ts",
+        "src/skills/interfaces/skill.interface.ts",
+        "src/skills/itinerary/itinerary-smart-update.skill.ts"
+      ],
+      "harnessPathLikely": true,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "itinerary.verify",
+      "category": "trip",
+      "className": "ItineraryVerifySkill",
+      "sourceFile": "src/skills/itinerary/itinerary-verify.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/execution/verify-executor.service.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/route-feasibility-engine.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/utils/safety-surface-payload.util.ts",
+        "src/agent/utils/skill-importance.util.ts",
+        "src/skills/context/tools-select.skill.ts",
+        "src/skills/itinerary/repair-apply.skill.ts"
+      ],
+      "harnessPathLikely": true,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "opening_hours.get",
+      "category": "trip",
+      "className": "OpeningHoursGetSkill",
+      "sourceFile": "src/skills/places/opening-hours-get.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/assistants/trip-planner/services/route-optimization.service.ts",
+        "src/agent/execution/repair-executor.service.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/teams/research/destination-research.member.ts",
+        "src/agent/utils/skill-importance.util.ts",
+        "src/chain-of-work/draft/prompts/draft-generation.prompt.ts",
+        "src/decision-draft/mapping/decision-type-to-step-draft.mapper.ts"
+      ],
+      "harnessPathLikely": true,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.constraints.arbitrateTradeoffs",
+      "category": "trip",
+      "className": "PlanConstraintsArbitrateTradeoffsSkill",
+      "sourceFile": "src/skills/plan/constraints/plan-constraints-arbitrate-tradeoffs.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/planning-workbench-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.evidence.buildEnvelope",
+      "category": "trip",
+      "className": "PlanEvidenceBuildEnvelopeSkill",
+      "sourceFile": "src/skills/plan/evidence/plan-evidence-build-envelope.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/planning-workbench-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.pace.adjustSchedule",
+      "category": "trip",
+      "className": "PlanPaceAdjustScheduleSkill",
+      "sourceFile": "src/skills/plan/pace/plan-pace-adjust-schedule.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/planning-workbench-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.selectSlices",
+      "category": "rag",
+      "className": "PlanSelectSlicesSkill",
+      "sourceFile": "src/skills/context/plan-select-slices.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/context-engine/services/context-engineer.service.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.transit.generatePlanB",
+      "category": "trip",
+      "className": "PlanTransitGeneratePlanBSkill",
+      "sourceFile": "src/skills/plan/transit/plan-transit-generate-plan-b.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/planning-workbench-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.transit.suggestModes",
+      "category": "trip",
+      "className": "PlanTransitSuggestModesSkill",
+      "sourceFile": "src/skills/plan/transit/plan-transit-suggest-modes.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/planning-workbench-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "poi.search",
+      "category": "trip",
+      "className": "PoiSearchSkill",
+      "sourceFile": "src/skills/places/poi-search.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/execution/repair-executor.service.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/route-and-run-response-assembler.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/teams/research/destination-research.member.ts",
+        "src/agent/utils/skill-importance.util.ts",
+        "src/chain-of-work/draft/prompts/draft-generation.prompt.ts",
+        "src/decision-draft/mapping/decision-type-to-step-draft.mapper.ts"
+      ],
+      "harnessPathLikely": true,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "repair.apply",
+      "category": "trip",
+      "className": "RepairApplySkill",
+      "sourceFile": "src/skills/itinerary/repair-apply.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/execution/repair-executor.service.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/utils/skill-importance.util.ts"
+      ],
+      "harnessPathLikely": true,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "safetravel.get_advisories",
+      "category": "world",
+      "className": "SafetravelGetAdvisoriesSkill",
+      "sourceFile": "src/skills/world/safetravel-get-advisories.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": true,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/teams/research/compliance-research.member.ts",
+        "src/agent/utils/skill-importance.util.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": true,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "tools.select",
+      "category": "rag",
+      "className": "ToolsSelectSkill",
+      "sourceFile": "src/skills/context/tools-select.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/context-engine/services/context-engineer.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "transport.search",
+      "category": "trip",
+      "className": "TransportSearchSkill",
+      "sourceFile": "src/skills/transport/transport-search.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": true,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/assistants/trip-planner/services/route-optimization.service.ts",
+        "src/agent/execution/repair-executor.service.ts",
+        "src/agent/execution/verify-executor.service.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/route-and-run-response-assembler.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/teams/research/transport-research.member.ts",
+        "src/agent/utils/skill-importance.util.ts"
+      ],
+      "harnessPathLikely": true,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "world.buildContext",
+      "category": "world",
+      "className": "WorldBuildContextSkill",
+      "sourceFile": "src/skills/world/world-build-context.skill.ts",
+      "tier": "CORE",
+      "hardGetSkill": false,
+      "orchestrationSkillName": true,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "context.build",
+      "category": "rag",
+      "className": "ContextBuildSkill",
+      "sourceFile": "src/skills/context/context-build.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "geo.checkHazardZones",
+      "category": "rag",
+      "className": "GeoCheckHazardZonesSkill",
+      "sourceFile": "src/skills/geo/geo-check-hazard-zones.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/admin/controllers/skills-admin.controller.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts",
+        "src/skills/services/skill-execution-recorder.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.architect.commitOption",
+      "category": "trip",
+      "className": "PlanArchitectCommitOptionSkill",
+      "sourceFile": "src/skills/plan/architect/plan-architect-commit-option.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/planning-workbench-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.architect.compareOptions",
+      "category": "trip",
+      "className": "PlanArchitectCompareOptionsSkill",
+      "sourceFile": "src/skills/plan/architect/plan-architect-compare-options.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/planning-workbench-agent.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.architect.generateSkeleton",
+      "category": "trip",
+      "className": "PlanArchitectGenerateSkeletonSkill",
+      "sourceFile": "src/skills/plan/architect/plan-architect-generate-skeleton.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/planning-workbench-agent.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.budget.detectOverrun",
+      "category": "trip",
+      "className": "PlanBudgetDetectOverrunSkill",
+      "sourceFile": "src/skills/plan/budget/plan-budget-detect-overrun.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.budget.estimateBaseline",
+      "category": "trip",
+      "className": "PlanBudgetEstimateBaselineSkill",
+      "sourceFile": "src/skills/plan/budget/plan-budget-estimate-baseline.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.constraints.detectConflicts",
+      "category": "trip",
+      "className": "PlanConstraintsDetectConflictsSkill",
+      "sourceFile": "src/skills/plan/constraints/plan-constraints-detect-conflicts.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.gate.precheck",
+      "category": "trip",
+      "className": "PlanGatePrecheckSkill",
+      "sourceFile": "src/skills/plan/gate/plan-gate-precheck.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.gate.runThreeGuardians",
+      "category": "trip",
+      "className": "PlanGateRunThreeGuardiansSkill",
+      "sourceFile": "src/skills/plan/gate/plan-gate-run-three-guardians.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.log.appendDecision",
+      "category": "trip",
+      "className": "PlanLogAppendDecisionSkill",
+      "sourceFile": "src/skills/plan/log/plan-log-append-decision.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.pace.computeTimeWindows",
+      "category": "trip",
+      "className": "PlanPaceComputeTimeWindowsSkill",
+      "sourceFile": "src/skills/plan/pace/plan-pace-compute-time-windows.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.pace.fatigueScore",
+      "category": "trip",
+      "className": "PlanPaceFatigueScoreSkill",
+      "sourceFile": "src/skills/plan/pace/plan-pace-fatigue-score.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "plan.transit.buildTransferGraph",
+      "category": "trip",
+      "className": "PlanTransitBuildTransferGraphSkill",
+      "sourceFile": "src/skills/plan/transit/plan-transit-build-transfer-graph.skill.ts",
+      "tier": "WORKBENCH",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": true,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "context.compilePackage",
+      "category": "rag",
+      "className": "ContextCompilePackageSkill",
+      "sourceFile": "src/skills/context/context-compile-package.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "countryPack.generateRegressionTests",
+      "category": "countryPack",
+      "className": "CountryPackGenerateRegressionTestsSkill",
+      "sourceFile": "src/skills/country-pack/country-pack-generate-regression-tests.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "countryPack.newSkeleton",
+      "category": "countryPack",
+      "className": "CountryPackNewSkeletonSkill",
+      "sourceFile": "src/skills/country-pack/country-pack-new-skeleton.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "countryPack.suggestImprovements",
+      "category": "countryPack",
+      "className": "CountryPackSuggestImprovementsSkill",
+      "sourceFile": "src/skills/country-pack/country-pack-suggest-improvements.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "countryPack.validate",
+      "category": "countryPack",
+      "className": "CountryPackValidateSkill",
+      "sourceFile": "src/skills/country-pack/country-pack-validate.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.abuCheck",
+      "category": "decision",
+      "className": "DecisionAbuCheckSkill",
+      "sourceFile": "src/skills/decision/decision-abu-check.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/context-engine/utils/langgraph-context-integration.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.checkApproval",
+      "category": "decision",
+      "className": "DecisionCheckApprovalSkill",
+      "sourceFile": "src/skills/hitl/decision-check-approval.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.compress",
+      "category": "decision",
+      "className": "DecisionCompressSkill",
+      "sourceFile": "src/skills/runtime-os/decision-compress.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.drdrePace",
+      "category": "decision",
+      "className": "DecisionDrdrePaceSkill",
+      "sourceFile": "src/skills/decision/decision-drdre-pace.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/context-engine/utils/langgraph-context-integration.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.explainForHuman",
+      "category": "decision",
+      "className": "DecisionExplainForHumanSkill",
+      "sourceFile": "src/skills/decision/decision-explain-for-human.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.neptuneRepair",
+      "category": "decision",
+      "className": "DecisionNeptuneRepairSkill",
+      "sourceFile": "src/skills/decision/decision-neptune-repair.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.replay",
+      "category": "decision",
+      "className": "DecisionReplaySkill",
+      "sourceFile": "src/skills/decision/decision-replay.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.requestApproval",
+      "category": "decision",
+      "className": "DecisionRequestApprovalSkill",
+      "sourceFile": "src/skills/hitl/decision-request-approval.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.runThreeGuardians",
+      "category": "decision",
+      "className": "DecisionRunThreeGuardiansSkill",
+      "sourceFile": "src/skills/decision/decision-run-three-guardians.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "decision.stage",
+      "category": "decision",
+      "className": "DecisionStageSkill",
+      "sourceFile": "src/skills/decision/decision-stage.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "geo.findCandidateWithinCorridor",
+      "category": "rag",
+      "className": "GeoFindCandidateWithinCorridorSkill",
+      "sourceFile": "src/skills/geo/geo-find-candidate-within-corridor.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "geo.findNearbyPOI",
+      "category": "trip",
+      "className": "GeoFindNearbyPOISkill",
+      "sourceFile": "src/skills/geo/geo-find-nearby-poi.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "geo.sampleElevationProfile",
+      "category": "dem",
+      "className": "GeoSampleElevationProfileSkill",
+      "sourceFile": "src/skills/geo/geo-sample-elevation-profile.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "hitl.createApprovalTask",
+      "category": "decision",
+      "className": "HitlCreateApprovalTaskSkill",
+      "sourceFile": "src/skills/hitl/hitl-create-approval-task.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "hitl.resolveApprovalTask",
+      "category": "decision",
+      "className": "HitlResolveApprovalTaskSkill",
+      "sourceFile": "src/skills/hitl/hitl-resolve-approval-task.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.daylightWindow",
+      "category": "world",
+      "className": "IcelandDaylightWindowSkill",
+      "sourceFile": "src/skills/world/iceland-daylight-window.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/skills/world/iceland-route-feasibility.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.fRoadStatus",
+      "category": "world",
+      "className": "IcelandFRoadStatusSkill",
+      "sourceFile": "src/skills/world/iceland-f-road-status.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/skills/world/iceland-route-feasibility.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.gasAndEvChargePlanner",
+      "category": "world",
+      "className": "IcelandGasEvChargePlannerSkill",
+      "sourceFile": "src/skills/world/iceland-gas-ev-planner.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/handlers/iceland-safety-check.handler.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.rentalGuidance",
+      "category": "world",
+      "className": "IcelandRentalGuidanceSkill",
+      "sourceFile": "src/skills/world/iceland-rental-guidance.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.roadSurfaceAlerts",
+      "category": "world",
+      "className": "IcelandRoadSurfaceAlertsSkill",
+      "sourceFile": "src/skills/world/iceland-road-surface-alerts.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/skills/world/iceland-route-feasibility.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.routeFeasibility",
+      "category": "world",
+      "className": "IcelandRouteFeasibilitySkill",
+      "sourceFile": "src/skills/world/iceland-route-feasibility.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/handlers/iceland-safety-check.handler.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.tunnelProtocol",
+      "category": "world",
+      "className": "IcelandTunnelProtocolSkill",
+      "sourceFile": "src/skills/world/iceland-tunnel-protocol.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/skills/world/iceland-route-feasibility.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.weatherSeverityClassifier",
+      "category": "world",
+      "className": "IcelandWeatherSeverityClassifierSkill",
+      "sourceFile": "src/skills/world/iceland-weather-severity-classifier.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/runtime/agentic-mcp-runtime-cap.util.ts",
+        "src/skills/world/iceland-route-feasibility.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "iceland.windRisk",
+      "category": "world",
+      "className": "IcelandWindRiskSkill",
+      "sourceFile": "src/skills/world/iceland-wind-risk.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/skills/world/iceland-route-feasibility.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "intent.recognize",
+      "category": "rag",
+      "className": "IntentRecognizeSkill",
+      "sourceFile": "src/skills/intent/intent-recognize.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "itinerary.smart_update",
+      "category": "trip",
+      "className": "ItinerarySmartUpdateSkill",
+      "sourceFile": "src/skills/itinerary/itinerary-smart-update.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/agent/utils/safety-surface-payload.util.ts",
+        "src/agent/utils/skill-importance.util.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "plan.budget.proposeTradeoffs",
+      "category": "trip",
+      "className": "PlanBudgetProposeTradeoffsSkill",
+      "sourceFile": "src/skills/plan/budget/plan-budget-propose-tradeoffs.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "plan.gate.proposeSafeAlternatives",
+      "category": "trip",
+      "className": "PlanGateProposeSafeAlternativesSkill",
+      "sourceFile": "src/skills/plan/gate/plan-gate-propose-safe-alternatives.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/skill-validation-rules.config.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "policy.resolve",
+      "category": "decision",
+      "className": "PolicyResolveSkill",
+      "sourceFile": "src/skills/runtime-os/policy-resolve.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "readiness.assess",
+      "category": "readiness",
+      "className": "ReadinessAssessSkill",
+      "sourceFile": "src/skills/runtime-os/readiness-assess.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/dto/route-and-run.dto.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "readiness.checkVisaWindow",
+      "category": "readiness",
+      "className": "ReadinessCheckVisaWindowSkill",
+      "sourceFile": "src/skills/readiness/readiness-check-visa-window.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "readiness.generateChecklist",
+      "category": "readiness",
+      "className": "ReadinessGenerateChecklistSkill",
+      "sourceFile": "src/skills/readiness/readiness-generate-checklist.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/runtime/agentic-mcp-runtime-cap.util.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "readiness.summarizeRisks",
+      "category": "readiness",
+      "className": "ReadinessSummarizeRisksSkill",
+      "sourceFile": "src/skills/readiness/readiness-summarize-risks.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/runtime/agentic-mcp-runtime-cap.util.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "routeDirection.listForCountry",
+      "category": "routeDirection",
+      "className": "RouteDirectionListForCountrySkill",
+      "sourceFile": "src/skills/route-direction/route-direction-list-for-country.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/runtime/agentic-mcp-runtime-cap.util.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "routeDirection.pickForIntent",
+      "category": "routeDirection",
+      "className": "RouteDirectionPickForIntentSkill",
+      "sourceFile": "src/skills/route-direction/route-direction-pick-for-intent.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/runtime/agentic-mcp-runtime-cap.util.ts",
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "routePack.generateRegressionTests",
+      "category": "countryPack",
+      "className": "RoutePackGenerateRegressionTestsSkill",
+      "sourceFile": "src/skills/route-pack/route-pack-generate-regression-tests.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "routePack.newSkeleton",
+      "category": "countryPack",
+      "className": "RoutePackNewSkeletonSkill",
+      "sourceFile": "src/skills/route-pack/route-pack-new-skeleton.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "routePack.validate",
+      "category": "countryPack",
+      "className": "RoutePackValidateSkill",
+      "sourceFile": "src/skills/route-pack/route-pack-validate.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts",
+        "src/mcp/static-verify-skills.ts",
+        "src/mcp/verify-skills-registration.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "trip.quickEvaluate",
+      "category": "analytics",
+      "className": "TripQuickEvaluateSkill",
+      "sourceFile": "src/skills/trip/trip-quick-evaluate.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/mcp/mcp-schema-builders.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "weather.search",
+      "category": "trip",
+      "className": "WeatherSearchSkill",
+      "sourceFile": "src/skills/weather/weather-search.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/dto/route-and-run.dto.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "web.browse",
+      "category": "rag",
+      "className": "WebBrowseSkill",
+      "sourceFile": "src/skills/web/web-browse.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "KEEP"
+    },
+    {
+      "name": "world.weatherPrediction",
+      "category": "world",
+      "className": "WorldWeatherPredictionSkill",
+      "sourceFile": "src/skills/world/world-weather-prediction.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/runtime/agentic-mcp-runtime-cap.util.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "worldState.summarize",
+      "category": "world",
+      "className": "WorldStateSummarizeSkill",
+      "sourceFile": "src/skills/runtime-os/world-state-summarize.skill.ts",
+      "tier": "REFERENCED",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": true,
+      "referenceFiles": [
+        "src/agent/services/claude-orchestrator.service.ts",
+        "src/agent/services/skill-validation-rules.config.ts",
+        "src/governance/world-events/world-arbitration-to-ledger-events.util.ts",
+        "src/mcp/mcp-schema-builders.ts",
+        "src/skills/context/tools-select.skill.ts"
+      ],
+      "harnessPathLikely": false,
+      "recommendation": "WIRE_OR_DOCUMENT"
+    },
+    {
+      "name": "context.learn",
+      "category": "rag",
+      "className": "ContextLearnSkill",
+      "sourceFile": "src/skills/context/context-learn.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    },
+    {
+      "name": "context.regressionTests",
+      "category": "rag",
+      "className": "ContextRegressionTestsSkill",
+      "sourceFile": "src/skills/context/context-regression-tests.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    },
+    {
+      "name": "iceland.alternativeValidator",
+      "category": "world",
+      "className": "IcelandAlternativeValidatorSkill",
+      "sourceFile": "src/skills/world/iceland-alternative-validator.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    },
+    {
+      "name": "iceland.stormReroutingEngine",
+      "category": "world",
+      "className": "IcelandStormReroutingEngineSkill",
+      "sourceFile": "src/skills/world/iceland-storm-rerouting-engine.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    },
+    {
+      "name": "world.adaptiveParameters",
+      "category": "world",
+      "className": "WorldAdaptiveParametersSkill",
+      "sourceFile": "src/skills/world/world-adaptive-parameters.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    },
+    {
+      "name": "world.collaborativeData",
+      "category": "world",
+      "className": "WorldCollaborativeDataSkill",
+      "sourceFile": "src/skills/world/world-collaborative-data.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    },
+    {
+      "name": "world.failureRiskPrediction",
+      "category": "world",
+      "className": "WorldFailureRiskPredictionSkill",
+      "sourceFile": "src/skills/world/world-failure-risk-prediction.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    },
+    {
+      "name": "world.multimodalPerception",
+      "category": "world",
+      "className": "WorldMultimodalPerceptionSkill",
+      "sourceFile": "src/skills/world/world-multimodal-perception.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    },
+    {
+      "name": "world.realtimeWeather",
+      "category": "world",
+      "className": "WorldRealtimeWeatherSkill",
+      "sourceFile": "src/skills/world/world-realtime-weather.skill.ts",
+      "tier": "DORMANT",
+      "hardGetSkill": false,
+      "orchestrationSkillName": false,
+      "workbenchInjected": false,
+      "referencedElsewhere": false,
+      "referenceFiles": [],
+      "harnessPathLikely": false,
+      "recommendation": "CANDIDATE_DEPRECATE"
+    }
+  ]
+}

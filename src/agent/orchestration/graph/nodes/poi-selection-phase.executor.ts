@@ -89,6 +89,7 @@ async function runPoiSelectionPhaseCore(
     let itineraryAdjustTripPoiSeedCount = 0;
     if (isItineraryAdjust) {
       const tripId =
+        state.trip_plan_request?.trip_id?.trim() ??
         state.trip_plan_request?.ontology_context?.trip_id?.trim() ??
         (state.metadata as { tripId?: string })?.tripId?.trim();
       const userId = (state.metadata as { userId?: string })?.userId;

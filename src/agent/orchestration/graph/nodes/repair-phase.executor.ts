@@ -4,6 +4,7 @@ import {
 } from '../../../utils/decision-log-user-facing.zh.util';
 import type { GuardianType, Itinerary } from '../../../interfaces/trip-plan.interface';
 import type { RepairPhaseHost, RunRepairPhaseParams } from './repair-phase.host';
+import { resolvePersonaClosureAudit } from '../../../utils/persona-closure-repair-skip.util';
 
 /**
  * REPAIR 执行体：消费 VerifyPhaseVerdict.needs_repair 后的 issues/errors，经 Kernel.executeRepair 闭环 Patch。
@@ -29,6 +30,11 @@ export async function runRepairPhase(
       gateResult: state.gate_result as any,
       itinerary: state.itinerary as any,
       alternatives: state.alternatives,
+      personaClosureAudit: resolvePersonaClosureAudit({
+        gateResult: state.gate_result as any,
+        orchestratorMetadata: state.metadata as Record<string, unknown>,
+        systemState: decisionState?.systemState,
+      }),
     };
     const { newState, itinerary, repairApplied } = await host.decisionKernel.executeRepair(
       decisionState,

@@ -60,6 +60,7 @@ function minContext(ledger: DecisionLedgerSnapshot): AgentMemoryContext {
     userId: 'u1',
     tripId: 'trip-orch',
     userProfile: null,
+    userBasics: null,
     travelPreference: null,
     routePartyProfile: null,
     recentDecisions: [],

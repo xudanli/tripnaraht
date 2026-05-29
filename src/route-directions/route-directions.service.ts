@@ -1,6 +1,14 @@
 // @ts-nocheck
 // src/route-directions/route-directions.service.ts
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Optional,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -12,12 +20,24 @@ import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
 import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-country-pack.dto';
 import { DayPlan } from './interfaces/route-direction.interface';
 import { CreateTripFromRouteTemplateDto } from './dto/create-trip-from-template.dto';
+import { HikingTrailDetailService } from '../hiking-demo/services/hiking-trail-detail.service';
+import {
+  mergeRouteDirectionMetadata,
+  stripHikingDetailOverrideFromMetadata,
+} from '../hiking-demo/utils/hiking-detail-override-merge.util';
+import { FitnessAssessmentService } from '../trips/decision/services/fitness-assessment.service';
 
 @Injectable()
 export class RouteDirectionsService {
   private readonly logger = new Logger(RouteDirectionsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly hikingTrailDetail: HikingTrailDetailService,
+    @Optional()
+    @Inject(forwardRef(() => FitnessAssessmentService))
+    private readonly fitnessAssessment?: FitnessAssessmentService,
+  ) {}
 
   /**
    * 创建路线方向
@@ -125,10 +145,26 @@ export class RouteDirectionsService {
     // 注意：这里先不筛选月份，后续在内存中过滤，或者使用原始 SQL
     // 为了简化，暂时移除月份筛选，后续可以优化
 
-    return (this.prisma.routeDirection.findMany as any)({
+    const rows = await (this.prisma.routeDirection.findMany as any)({
       where,
       // templates relation does not exist in Prisma schema
       orderBy: { createdAt: 'desc' },
+    });
+
+    const wantsHikingList =
+      query.tag === '徒步' ||
+      (query.tags && query.tags.includes('徒步')) ||
+      query.include?.split(',').map((s) => s.trim()).includes('hikingList');
+
+    if (!wantsHikingList) return rows;
+
+    return rows.map((rd: any) => {
+      if (!this.hikingTrailDetail.isHikingRoute(rd)) return rd;
+      return {
+        ...rd,
+        routeDirectionName: rd.name,
+        ...this.hikingTrailDetail.buildListCardFields(rd),
+      };
     });
   }
 
@@ -137,6 +173,11 @@ export class RouteDirectionsService {
    */
   async findRouteDirectionById(
     id: number,
+    options?: {
+      includeHikingDetail?: boolean;
+      longestHike?: number;
+      userId?: string;
+    },
   ): Promise<any> {
     const routeDirection = await this.prisma.routeDirection.findUnique({
       where: { id },
@@ -147,7 +188,39 @@ export class RouteDirectionsService {
       throw new NotFoundException(`Route direction with ID ${id} not found`);
     }
 
-    return routeDirection;
+    const base = {
+      ...routeDirection,
+      routeDirectionName: routeDirection.name,
+    };
+
+    const includeDetail = this.hikingTrailDetail.shouldIncludeDetailForRoute(
+      routeDirection,
+      options?.includeHikingDetail,
+    );
+    if (!includeDetail) return base;
+
+    let longestHike = options?.longestHike;
+    if (
+      longestHike == null &&
+      options?.userId &&
+      this.fitnessAssessment
+    ) {
+      const model = await this.fitnessAssessment.loadUserModel(options.userId);
+      if (model?.questionnaireLongestHike != null) {
+        longestHike = model.questionnaireLongestHike;
+      }
+    }
+
+    const hikingDetail = await this.hikingTrailDetail.build(routeDirection, {
+      longestHike,
+    });
+    if (!hikingDetail) return base;
+
+    return {
+      ...base,
+      metadata: stripHikingDetailOverrideFromMetadata(base.metadata),
+      hikingDetail,
+    };
   }
 
   /**
@@ -303,8 +376,12 @@ export class RouteDirectionsService {
       updateData.signaturePois = data.signaturePois as Prisma.InputJsonValue;
     if (data.itinerarySkeleton !== undefined)
       updateData.itinerarySkeleton = data.itinerarySkeleton as Prisma.InputJsonValue;
-    if (data.metadata !== undefined)
-      updateData.metadata = data.metadata as Prisma.InputJsonValue;
+    if (data.metadata !== undefined) {
+      updateData.metadata = mergeRouteDirectionMetadata(
+        existing.metadata as Record<string, unknown>,
+        data.metadata as Record<string, unknown>,
+      ) as Prisma.InputJsonValue;
+    }
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
     
     // 灰度与开关字段

@@ -82,6 +82,7 @@ export class MemorySnapshotPersistenceService {
         ...raw,
         decisionLedger: decisionLedger ?? null,
         ledgerRecomputePlan: raw.ledgerRecomputePlan ?? null,
+        userBasics: raw.userBasics ?? null,
       } as AgentMemoryContext;
     } catch (e: any) {
       this.logger.warn(`MemorySnapshotPersistence: load failed: ${e?.message ?? e}`);

@@ -1,9 +1,14 @@
 // src/agent/agent.controller.ts
-import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Logger, Optional, Headers } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Logger, Optional, Headers, Res, Req } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiOkResponse, ApiExtraModels } from '@nestjs/swagger';
 import { AgentService } from './services/agent.service';
 import { HotspotRegistryService } from '../skills/world/services/hotspot-registry.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from './dto/route-and-run.dto';
+import {
+  RouteAndRunTaskInitResponseDto,
+  RouteAndRunTaskStatusResponseDto,
+} from './dto/route-and-run-task.dto';
 import {
   LedgerHealingMetricsDto,
   LedgerHealingObservabilityDto,
@@ -23,6 +28,7 @@ import {
 } from './dto/conflict-strategy-options.dto';
 import { ActionExecutionService } from './services/action-execution.service';
 import { PhysicalActionPlanEnricherService } from '../domain/spatial/physical-action-plan-enricher.service';
+import { RouteAndRunTaskStreamService } from './services/route-and-run-task-stream.service';
 
 /**
  * Agent Controller
@@ -52,6 +58,7 @@ export class AgentController {
     @Optional() private readonly hotspotRegistry?: HotspotRegistryService,
     @Optional() private readonly actionExecution?: ActionExecutionService,
     @Optional() private readonly physicalActionPlanEnricher?: PhysicalActionPlanEnricherService,
+    @Optional() private readonly routeAndRunTaskStream?: RouteAndRunTaskStreamService,
   ) {}
 
   /**
@@ -236,10 +243,17 @@ export class AgentController {
 - 受预算控制（max_seconds, max_steps）
 - 自动可行性检查（时间窗、日界、午餐、鲁棒时间）
 
+**三人格（System 2 编排）**：
+- **Abu（安全）**：对应 Gatekeeper 硬门与风险聚合；result.payload.orchestrationResult.gate_result.guardian_results.abu 或 explain.guardian_personas.abu
+- **Dr.Dre（节奏）**：疲劳与日程松紧；guardian_results.drdre / explain.guardian_personas.drdre
+- **Neptune（空间/替补）**：路段替换与改线建议；guardian_results.neptune / explain.guardian_personas.neptune
+- 结构化：guardian_results 含 source（如 violation_projection_v1）、is_simulated，以及 evidence_atoms[].violation_code / tag；explain.guardian_personas 与 gate 同源只读
+- System 1 不跑三人格：可在 options.persona_hint 传 abu_strictness / drdre_tolerance / neptune_creativity，写入行程请求供 System 2 参考
+
 **返回结果**：
 - route: 路由决策（route, confidence, reasons, budget）
-- result: 执行结果（status, answer_text, payload）
-- explain: 决策日志（decision_log）
+- result: 执行结果（status, answer_text, payload；编排成功时见 orchestrationResult.gate_result.guardian_results）
+- explain: 决策日志（decision_log；有门控时含 guardian_personas 与 gate 同源）
 - observability: 可观测性指标（latency, cost, tool_calls）
     `.trim(),
   })
@@ -300,6 +314,12 @@ export class AgentController {
     },
   })
   @ApiResponse({
+    status: 202,
+    description:
+      '已委托后台 Durable Task（`options.async_mode=AUTO|FORCE` 且 `async_task.is_async_delegated=true`）；轮询 `GET /agent/task/status/:taskId`',
+    type: RouteAndRunResponseDto,
+  })
+  @ApiResponse({
     status: 400,
     description: '请求参数无效',
   })
@@ -310,6 +330,7 @@ export class AgentController {
   async routeAndRun(
     @Body() request: RouteAndRunRequestDto,
     @Headers('x-client-profile') xClientProfile?: string,
+    @Res({ passthrough: true }) res?: import('express').Response,
   ): Promise<RouteAndRunResponseDto> {
     const headerProfile = xClientProfile?.trim();
     if (headerProfile) {
@@ -326,6 +347,9 @@ export class AgentController {
       });
     }
     const response = await this.agentService.routeAndRun(request);
+    if (response.async_task?.is_async_delegated === true && res) {
+      res.status(HttpStatus.ACCEPTED);
+    }
     await this.maybeAttachActionExecutionPreview(request, response);
 
     const actionPlan =
@@ -379,6 +403,75 @@ export class AgentController {
     }
 
     return response;
+  }
+
+  @Public()
+  @Post('route_and_run/async')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: '智能体统一入口（异步）— 秒回 task_id，后台执行完整编排',
+    description: `
+与同步 \`POST /agent/route_and_run\` 相同请求体，但立即返回 \`task_id\` 与初始进度。
+前端请轮询 \`GET /agent/task/status/:taskId\`（建议 1.5–2s 间隔）；\`status=SUCCESS\` 时 \`data\` 为完整 \`RouteAndRunResponseDto\`。
+
+进度字段：\`current_phase\`（OrchestrationStep）、\`progress_percentage\`、\`message\`。
+    `.trim(),
+  })
+  @ApiBody({ type: RouteAndRunRequestDto })
+  @ApiResponse({ status: 202, type: RouteAndRunTaskInitResponseDto })
+  async routeAndRunAsync(
+    @Body() request: RouteAndRunRequestDto,
+    @Headers('x-client-profile') xClientProfile?: string,
+  ): Promise<RouteAndRunTaskInitResponseDto> {
+    const headerProfile = xClientProfile?.trim();
+    if (headerProfile) {
+      request.meta = { ...(request.meta ?? {}), client_profile: request.meta?.client_profile ?? headerProfile };
+    }
+    return this.agentService.routeAndRunAsync(request);
+  }
+
+  @Public()
+  @Get('task/status/:taskId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '查询 route_and_run 异步任务进度与最终结果',
+    description: '从 Redis/内存读取 `task_progress:{taskId}`；终态 SUCCESS 时 data 含完整编排响应。',
+  })
+  @ApiResponse({ status: 200, type: RouteAndRunTaskStatusResponseDto })
+  @ApiResponse({ status: 404, description: '任务不存在或已过期' })
+  async getRouteAndRunTaskStatus(
+    @Param('taskId') taskId: string,
+  ): Promise<RouteAndRunTaskStatusResponseDto> {
+    return this.agentService.getRouteAndRunTaskStatus(taskId);
+  }
+
+  @Public()
+  @Get('task/stream/:taskId')
+  @ApiOperation({
+    summary: 'route_and_run 异步任务进度（SSE）',
+    description: `
+与 \`GET /agent/task/status/:taskId\` 同源数据；按编排阶段推送 \`event: message\`，终态 \`RESULT\`/\`ERROR\` 后发送 \`event: end\`。
+
+前端用法：\`POST /agent/route_and_run/async\` 取得 \`task_id\` 后 \`new EventSource('/api/agent/task/stream/' + taskId)\`。
+
+与轮询可并存；终态 \`RESULT\` 的 \`data\` 字段与 status 接口一致。
+    `.trim(),
+  })
+  @ApiResponse({ status: 200, description: 'text/event-stream' })
+  @ApiResponse({ status: 404, description: '任务不存在或已过期' })
+  async getRouteAndRunTaskStream(
+    @Param('taskId') taskId: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!this.routeAndRunTaskStream) {
+      res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+        success: false,
+        error: { code: 'SSE_UNAVAILABLE', message: 'Task stream service is not configured' },
+      });
+      return;
+    }
+    await this.routeAndRunTaskStream.streamTask(taskId, req, res);
   }
 
   @Public()

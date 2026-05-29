@@ -42,7 +42,7 @@ export class RouteDirectionPickForIntentSkill implements Skill<RouteDirectionPic
 
   metadata = {
     name: 'routeDirection.pickForIntent',
-    description: '根据国家、季节和用户意图标签选择最合适的路线方向',
+    description: 'routeDirection.pickForIntent：根据国家、季节和用户意图标签选择最合适的路线方向',
     version: '1.0.0',
     category: 'routeDirection' as const,
     inputSchema: {

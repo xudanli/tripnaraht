@@ -1,0 +1,64 @@
+{
+  "fixtureVersion": "decision-closure-golden/v1",
+  "caseId": "iceland-decision-closure-storm-f208-001",
+  "description": "Golden optimizationHints: south storm + F208 closed; CGUS repair wins; RAG world materialization.",
+  "optimizationHints": {
+    "method": "CGUS",
+    "recommendedAlternativeId": "repair-spatial-poi-v2",
+    "metaDecisionAudit": "META_BUDGET(sample=2000,topK=8,H=4,entropy=0.91,ESS=412.1) mcTotal=2000 ragWorld=2 mcRerank=1",
+    "decisionVerdict": {
+      "chosen_plan_id": "repair-spatial-poi-v2",
+      "rejected_plans": [
+        {
+          "id": "base",
+          "status": "infeasible",
+          "hard_violation_count": 2,
+          "rejection_reasons": ["HARD:WORLD_ROAD_CLOSED (F208)", "HARD:WORLD_WEATHER_BLIZZARD"]
+        },
+        {
+          "id": "op-swap-day3",
+          "status": "rejected",
+          "hard_violation_count": 0,
+          "utility_delta_vs_chosen": -0.18,
+          "rejection_reasons": ["lower_expected_utility delta=-0.180"]
+        }
+      ],
+      "monte_carlo_summary": {
+        "used": true,
+        "total_samples": 2000,
+        "samples_per_candidate": {
+          "repair-spatial-poi-v2": 2000,
+          "base": 2000,
+          "op-swap-day3": 2000
+        }
+      },
+      "fallback_chain": [
+        { "step": "mc_rank_authority", "reason": "entropy>0.7" },
+        { "step": "repair_accept", "reason": "WORLD_ROAD_HARD" }
+      ]
+    },
+    "decisionVerdictNarrationZh": "**推荐方案：** `repair-spatial-poi-v2`。已弃选 2 个备选；蒙特卡罗共 2000 次采样。路政物化：F208 封路已计入约束图。",
+    "worldConstraintMaterialization": {
+      "appliedEvents": 2,
+      "roadIds": ["F208", "IS-R1-SOUTH"],
+      "weatherDates": ["2026-01-16"],
+      "storeVersion": 1,
+      "unifiedGraphNodeCount": 14,
+      "unifiedGraphEdgeCount": 22
+    },
+    "alternatives": [
+      {
+        "id": "repair-spatial-poi-v2",
+        "score": 0.82,
+        "expected_utility": 0.82,
+        "feasibility_probability": 0.71
+      },
+      {
+        "id": "base",
+        "score": 0.12,
+        "expected_utility": 0.12,
+        "feasibility_probability": 0.04
+      }
+    ]
+  }
+}

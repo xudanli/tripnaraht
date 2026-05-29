@@ -11,11 +11,10 @@
  */
 
 import { Injectable, Logger, Optional, Inject, forwardRef, NotFoundException, BadRequestException } from '@nestjs/common';
-import { ExecRemindSkill } from '../../skills/exec/exec-remind.skill';
-import { ExecHandleChangeSkill } from '../../skills/exec/exec-handle-change.skill';
-import { ExecFallbackSkill } from '../../skills/exec/exec-fallback.skill';
 import { ExecutionState, Reminder, ChangeHandlingResult, FallbackPlan } from '../../skills/exec/shared/execution-state.types';
 import { PersonaShellService, PersonaShellOutput } from './persona-shell.service';
+import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import type { Skill } from '../../skills/interfaces/skill.interface';
 import { TripsService } from '../../trips/trips.service';
 import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -78,9 +77,7 @@ export class ExecutionAgentService {
   private readonly fallbackPlanCache = new Map<string, FallbackPlan>();
 
   constructor(
-    @Optional() private readonly execRemind?: ExecRemindSkill,
-    @Optional() private readonly execHandleChange?: ExecHandleChangeSkill,
-    @Optional() private readonly execFallback?: ExecFallbackSkill,
+    @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly personaShell?: PersonaShellService,
     @Optional() @Inject(forwardRef(() => TripsService)) private readonly tripsService?: TripsService,
     @Optional() @Inject(forwardRef(() => ItineraryItemsService)) private readonly itineraryItemsService?: ItineraryItemsService,
@@ -88,8 +85,9 @@ export class ExecutionAgentService {
   ) {
     // 添加诊断日志
     this.logger.log(`[ExecutionAgentService] 服务已创建`);
-    this.logger.log(`[ExecutionAgentService] execRemind: ${!!this.execRemind}, execHandleChange: ${!!this.execHandleChange}, execFallback: ${!!this.execFallback}`);
-    this.logger.log(`[ExecutionAgentService] tripsService: ${!!this.tripsService}, itineraryItemsService: ${!!this.itineraryItemsService}, prisma: ${!!this.prisma}`);
+    this.logger.log(
+      `[ExecutionAgentService] skillsRegistry: ${!!this.skillsRegistry}, tripsService: ${!!this.tripsService}, itineraryItemsService: ${!!this.itineraryItemsService}, prisma: ${!!this.prisma}`,
+    );
   }
 
   /**
@@ -114,9 +112,15 @@ export class ExecutionAgentService {
       const uiOutput: ExecutionAgentResponse['uiOutput'] = {};
 
       switch (request.action) {
-        case 'remind':
-          if (this.execRemind) {
-            const remindResult = await this.execRemind.execute({
+        case 'remind': {
+          const skill = this.skillsRegistry?.getSkill('exec.remind') as
+            | Skill<
+                { tripId: string; currentDate: string; reminderTypes?: string[]; advanceHours?: number },
+                { reminders: Reminder[] }
+              >
+            | undefined;
+          if (skill) {
+            const remindResult = await skill.execute({
               tripId: request.tripId,
               currentDate,
               reminderTypes: request.remindParams?.reminderTypes as any,
@@ -126,10 +130,18 @@ export class ExecutionAgentService {
             uiOutput.reminders = remindResult.reminders;
           }
           break;
+        }
 
         case 'handle_change':
-          if (this.execHandleChange && request.changeParams) {
-            const changeResult = await this.execHandleChange.execute({
+          if (request.changeParams) {
+            const skill = this.skillsRegistry?.getSkill('exec.handleChange') as
+              | Skill<
+                  { tripId: string; changeType: string; changeDetails: unknown },
+                  { result: ChangeHandlingResult }
+                >
+              | undefined;
+            if (!skill) break;
+            const changeResult = await skill.execute({
               tripId: request.tripId,
               changeType: request.changeParams.changeType as any,
               changeDetails: request.changeParams.changeDetails,
@@ -175,8 +187,15 @@ export class ExecutionAgentService {
           break;
 
         case 'fallback':
-          if (this.execFallback && request.fallbackParams) {
-            const fallbackResult = await this.execFallback.execute({
+          if (request.fallbackParams) {
+            const skill = this.skillsRegistry?.getSkill('exec.fallback') as
+              | Skill<
+                  { tripId: string; triggerReason: string; originalPlan: unknown },
+                  { fallbackPlan: FallbackPlan }
+                >
+              | undefined;
+            if (!skill) break;
+            const fallbackResult = await skill.execute({
               tripId: request.tripId,
               triggerReason: request.fallbackParams.triggerReason,
               originalPlan: request.fallbackParams.originalPlan,

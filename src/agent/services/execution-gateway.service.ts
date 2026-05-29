@@ -28,10 +28,13 @@ import {
   shouldAttachDedupRuntimeObservability,
 } from '../runtime/dedup-runtime-adapter.util';
 import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.service';
+import { TripOrchestrationLockService } from './trip-orchestration-lock.service';
 import { AgentService } from './agent.service';
 import { runRouteAndRunMainChain } from './execution-gateway.route-and-run.orchestration';
 import { shouldRejectDedupForStaleTraceContract } from './execution-gateway-trace-compatibility.util';
 import { GovernanceHydrationService } from '../../governance/activation/governance-hydration.service';
+import { randomUUID } from 'crypto';
+import { runWithLlmTraceContext } from '../../llm/token-context.storage';
 
 /**
  * Execution Gateway — Stage 2 runtime surface: replay admission + ECPS **before** any engine runs.
@@ -70,13 +73,26 @@ export class ExecutionGatewayService {
     @Optional() private readonly policyVersionRegistry?: ExecutionPolicyVersionRegistryService,
     @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
     @Optional() readonly governanceHydration?: GovernanceHydrationService,
+    @Optional() private readonly tripOrchestrationLock?: TripOrchestrationLockService,
   ) {}
 
   /**
    * Full route_and_run orchestration (stable deadline, dedup replay admission, policy routing, exec modes, recovery).
    */
   async runRouteAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
-    return runRouteAndRunMainChain(this.agent, this, request);
+    const requestId = request.request_id?.trim() || randomUUID();
+    if (!request.request_id?.trim()) {
+      request.request_id = requestId;
+    }
+    const runChain = () => runRouteAndRunMainChain(this.agent, this, request);
+    const runGuarded = this.tripOrchestrationLock
+      ? () => this.tripOrchestrationLock!.runWithTripWriteLockIfNeeded(request, runChain)
+      : runChain;
+
+    return runWithLlmTraceContext(
+      { requestId, stepName: 'INTAKE', subAgent: 'Orchestrator', routePath: 'GATEWAY' },
+      runGuarded,
+    );
   }
 
   /**

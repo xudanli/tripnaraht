@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "7b9bf089-43bd-4fc0-a581-f56ad845bfa9",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "heuristic-fallback-reject",
+  "strategy": {
+    "strategyId": "heuristic-fallback-reject",
+    "philosophy": "局部推断，快速决策",
+    "approach": "检测到DEM缺失时，先尝试从用户输入的季节、地区描述中提取间接证据（如提及‘夏季’、‘高地’）。若仍无法确认，则REJECT，但附带解释说明缺失原因。",
+    "emphasis": "速度与可解释性，在局部信息中最大化决策依据",
+    "risk": "间接推断可能引入误判，且解释可能暴露内部逻辑漏洞"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户计划7月去冰岛高地，符合夏季高地路线条件。但根据规范，DEM Evidence缺失时，Abu必须REJECT。当前无DEM数据，也无法从用户输入中提取间接证据（如具体海拔数据），因此执行REJECT策略，并附带解释。",
+      "action": "REJECT: 无法确认DEM海拔数据，无法通过Abu验证。建议用户提供更详细的地理位置或海拔信息，或查阅官方DEM数据后再申请。",
+      "result": "[完成] REJECT: 无法确认DEM海拔数据，无法通过Abu验证。建议用户提供更详细的地理位置或海拔信息，或查阅官方DEM数据后再申请。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:13:56.926Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:13:56.926Z",
+  "score": 56.92,
+  "evalMode": "fixture"
+}

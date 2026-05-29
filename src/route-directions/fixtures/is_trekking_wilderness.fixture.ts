@@ -135,5 +135,14 @@ export const IS_TREKKING_WILDERNESS: RouteDirection = {
     weaponRequired: false,
     testId: 'IS_TREKKING_WILDERNESS',
     philosophy: IS_TREKKING_WILDERNESS_PHILOSOPHY,
+    laugavegurCorridor: true,
+    demoPolylinePoiIds: [
+      'froad-landmannalaugar',
+      'hut-landmannalaugar',
+      'hut-nyidalur',
+      'froad-thorsmork',
+      'hut-thorsmork',
+    ],
+    demoSupplyPoiIds: ['hut-landmannalaugar', 'hut-nyidalur', 'hut-thorsmork'],
   },
 };

@@ -26,6 +26,7 @@ import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import { buildTravelOntologyStateFromOrchestrator, mergeTravelOntologyState } from '../../decision/kernel/travel-ontology.mapper';
 import { JepaProjectorService } from './jepa-projector.service';
 import { assertDoneResponseCompleteness } from '../guards/done-response-completeness.guard';
+import { normalizeClientDsoVersion } from '../utils/client-dso-version.util';
 import {
   applyConsultationItineraryPayloadHygiene,
   shouldApplyConsultationItineraryPayloadHygiene,
@@ -37,6 +38,7 @@ import { normalizeHardRuleSnapshot } from '../../trips/decision/shared/hard-rule
 import { deriveFactsFromMetadata } from '../../trips/decision/shared/fact-derivation.util';
 import { TradeoffEngineService } from './tradeoff-engine.service';
 import { NegotiationSessionStoreService } from './negotiation-session-store.service';
+import { projectWorldModelGuardsExplain } from '../utils/world-model-guards-projection.util';
 import {
   EVIDENCE_MISSING_BUT_RESULTS_PRESENT,
   VERIFICATION_FAILED_UNSPECIFIED,
@@ -46,6 +48,7 @@ import {
 } from '../constants/failure-reason-codes.constants';
 import { orchestrationStepDisplayZh } from '../constants/orchestration-step-display.constants';
 import type { TaskType } from '../utils/orchestration-signals.util';
+import { shouldExposeSimplifiedExplanationForClient } from '../utils/route-and-run-option-defaults.util';
 import { buildRuntimeExecutionProfileClaudeDynamicAssembly } from '../utils/runtime-execution-profile.builder';
 import { validateRuntimeExecutionProfile } from '../utils/runtime-execution-profile.validation';
 import {
@@ -64,9 +67,25 @@ import {
 } from '../inventory/narrative-integrity-validator.util';
 import type { NarrativeSafetyPayload } from '../inventory/narrative-safety-evaluator.util';
 import { buildConsultationDashboardFallbackFromSuggestedOperations } from '../utils/consultation-dashboard-fallback.util';
+import { buildDecisionVerdictFromHints } from '../../decision/kernel/decision-verdict.util';
+import { formatDecisionVerdictNarrationZh } from '../utils/decision-verdict-narration.zh.util';
 import type { TripConsultationSuggestedOperation } from '../utils/trip-consultation-suggested-operations.util';
 import { buildSafetySurfacePayload } from '../utils/safety-surface-payload.util';
 import { appendBudgetArbitrationEntriesToDecisionLogInPlace } from '../teams/research/research-budget-arbitration-k3-decision-log.util';
+import { buildRecommendationReasoningZhBlock } from '../utils/recommendation-reasoning.util';
+import { attachGuardianPersonaSurface } from '../utils/guardian-persona-surface.util';
+import { resolvePersonaClosureAudit } from '../utils/persona-closure-repair-skip.util';
+import { GuardiansDebateService } from './guardians-debate.service';
+import { rollupVerifyIssuesFromDecisionLog } from '../utils/decision-log-verify-rollup.util';
+import {
+  humanizeFeasibilityMessageForUserZh,
+  humanizeVerifyConflictCodesZh,
+  simplifyDecisionLogLineForUserZh,
+  sanitizeGateResultForClientDisplay,
+  sanitizeDecisionLogForClientDisplay,
+  sanitizeClarificationQuestionsForClientDisplay,
+} from '../utils/feasibility-message-surface.zh.util';
+import { extractSkillsHitFromDecisionLog } from '../utils/itinerary-item-crud-decision-log.util';
 
 @Injectable()
 export class RouteAndRunResponseAssemblerService {
@@ -77,7 +96,61 @@ export class RouteAndRunResponseAssemblerService {
     private readonly tradeoffEngine: TradeoffEngineService,
     @Optional() private readonly poiHydrator?: RouteRunItineraryPoiHydratorService,
     @Optional() private readonly negotiationSessions?: NegotiationSessionStoreService,
+    @Optional() private readonly guardiansDebate?: GuardiansDebateService,
   ) {}
+
+  /** `enable_guardians_debate_llm`：硬门致命时由辩论服务内短路，不发起 LLM。 */
+  private async maybeApplyGuardiansDebateLlm(
+    request: RouteAndRunRequestDto,
+    gate: GateResult | undefined,
+    tripPlanRequest: TripPlanRequest | undefined,
+    orchestratorState?: OrchestratorState,
+  ): Promise<GateResult | undefined> {
+    if (!gate || !request.options?.enable_guardians_debate_llm || !this.guardiansDebate) {
+      return gate;
+    }
+    if (
+      orchestratorState?.metadata?.debate_merged_before_plan_gen === true &&
+      gate.guardian_results?.source === 'llm_debate'
+    ) {
+      return gate;
+    }
+    try {
+      return await this.guardiansDebate.consumeShadowOrMerge(request.request_id, gate, {
+        personaHint: request.options.persona_hint as TripPlanRequest['persona_hint'] | undefined,
+        tripContext: tripPlanRequest,
+        llmProvider: request.options.llm_provider,
+        personaClosureAudit: resolvePersonaClosureAudit({
+          gateResult: gate,
+          orchestratorMetadata: orchestratorState?.metadata as Record<string, unknown> | undefined,
+        }),
+      });
+    } catch (e: any) {
+      this.logger.warn(`[RouteAndRunAssembler] GuardiansDebate LLM skipped: ${e?.message ?? e}`);
+      return gate;
+    }
+  }
+
+  private buildRecommendationReasoningProse(
+    state: OrchestratorState | undefined,
+    itinerary: Itinerary | undefined,
+    orchestrationResult?: OrchestrationResult,
+  ): string | null {
+    const snap = state?.metadata?.travel_preference_snapshot as Record<string, unknown> | undefined;
+    const resultAny = orchestrationResult?.result as
+      | { trip_plan_request?: TripPlanRequest; state?: OrchestratorState }
+      | undefined;
+    const tripPlanRequest =
+      state?.trip_plan_request ??
+      resultAny?.trip_plan_request ??
+      resultAny?.state?.trip_plan_request ??
+      null;
+    return buildRecommendationReasoningZhBlock({
+      travelPreference: snap,
+      itinerary: itinerary ?? null,
+      tripPlanRequest: tripPlanRequest,
+    });
+  }
 
   /**
    * 咨询类（检索/问答）与「生成/修改行程」区分 UI：避免前端成功态一律展示「安排行程成功」。
@@ -118,12 +191,96 @@ export class RouteAndRunResponseAssemblerService {
     orchestrationResult: OrchestrationResult,
     routingTaskType?: TaskType,
   ): boolean {
+    if (this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return false;
     const r = orchestrationResult.result as
       | { lightweightKnowledgeQa?: boolean; routingTaskType?: TaskType }
       | undefined;
     if (r?.lightweightKnowledgeQa) return true;
     const tt = routingTaskType ?? r?.routingTaskType;
     return tt === 'DATA_LOOKUP' || tt === 'GENERIC_QA' || tt === 'RAG_QA';
+  }
+
+  private resolveSuccessUiHintMessage(
+    orchestrationResult: OrchestrationResult,
+    consultationUi: boolean,
+  ): string {
+    if (this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) {
+      return this.isItineraryItemCrudApplied(orchestrationResult) ? '行程已更新' : '未能更新行程';
+    }
+    if (consultationUi) return '咨询已完成';
+    return '处理完成';
+  }
+
+  private getItineraryItemCrudShortCircuitResult(
+    orchestrationResult: OrchestrationResult,
+  ): { applied?: boolean } | undefined {
+    const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+    return (
+      (md?.itinerary_item_update_short_circuit as { applied?: boolean } | undefined) ??
+      (md?.itinerary_item_add_short_circuit as { applied?: boolean } | undefined) ??
+      (md?.itinerary_item_delete_short_circuit as { applied?: boolean } | undefined)
+    );
+  }
+
+  private isItineraryItemCrudApplied(orchestrationResult: OrchestrationResult): boolean {
+    if (!this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return false;
+    return this.getItineraryItemCrudShortCircuitResult(orchestrationResult)?.applied === true;
+  }
+
+  private resolveUiSurfaceForPayload(
+    orchestrationResult: OrchestrationResult,
+    consultationUi: boolean,
+  ): 'consultation' | 'planning' {
+    if (this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return 'planning';
+    return consultationUi ? 'consultation' : 'planning';
+  }
+
+  /** INTAKE 删除/新增 POI 短路：不携带完整 planning 日程块，按轻量 CRUD 回复 */
+  private isItineraryItemCrudIntakeShortCircuit(orchestrationResult: OrchestrationResult): boolean {
+    const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+    return (
+      md?.itinerary_item_delete_intake === true ||
+      md?.itinerary_item_add_intake === true ||
+      md?.itinerary_item_update_intake === true
+    );
+  }
+
+  /**
+   * 空 evidence_bundle 表示「尚未跑完整 RESEARCH·VERIFY」，不应标 FAILED。
+   * INTAKE 澄清与行程单项 CRUD 短路均适用。
+   */
+  private resolveEmptyBundleAuditPendingReason(
+    orchestrationResult: OrchestrationResult,
+    needsUserConfirmation: boolean,
+  ): 'intake_clarification' | 'itinerary_item_crud' | undefined {
+    if (needsUserConfirmation) return 'intake_clarification';
+    if (this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return 'itinerary_item_crud';
+    return undefined;
+  }
+
+  /**
+   * 行程单项 CRUD 未跑 VERIFY、且无 Iron Shield 叙事卡时，不下发 C1 证据包块，避免前端展示「部分验证 · 0 张」。
+   */
+  private shouldSuppressIronShieldUiForCrud(
+    orchestrationResult: OrchestrationResult,
+    state?: OrchestratorState | null,
+  ): boolean {
+    if (!this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return false;
+    return assembleDecisionEvidenceCards(state ?? undefined).length === 0;
+  }
+
+  /** @deprecated use isItineraryItemCrudIntakeShortCircuit */
+  private isItineraryItemDeleteIntakeShortCircuit(orchestrationResult: OrchestrationResult): boolean {
+    return this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult);
+  }
+
+  private resolveClientDsoVersionForResponse(
+    orchestrationResult: OrchestrationResult,
+  ): string | undefined {
+    const raw =
+      orchestrationResult.result?.decisionState?.systemState?.version ??
+      orchestrationResult.result?.state?.plan_version;
+    return normalizeClientDsoVersion(raw);
   }
 
   /**
@@ -251,107 +408,6 @@ export class RouteAndRunResponseAssemblerService {
   }
 
   /**
-   * 规划成功且前端将展示 POI 卡片时：用结构化 itinerary 条目生成「住宿 / 餐饮 / 准备度」摘要，
-   * 避免用户只看到时间轴却看不到吃住与草案完整度说明。
-   * `request` 可选：用于对齐结构化表单日期与草案日历，减少「脱离上下文」的误解。
-   */
-  private buildPlanningTripReadinessFromItinerary(
-    itinerary: Itinerary | null | undefined,
-    request?: RouteAndRunRequestDto,
-  ): string | null {
-    if (!itinerary?.days?.length) return null;
-
-    let acc = 0;
-    let meal = 0;
-    let poi = 0;
-    const perDayLines: string[] = [];
-    for (let di = 0; di < itinerary.days.length; di++) {
-      const d = itinerary.days[di]!;
-      const dateRaw = d.date?.trim() ?? '';
-      const dateShort = dateRaw ? dateRaw.slice(0, 10) : '';
-      let dayAcc = 0;
-      let dayMeal = 0;
-      for (const it of d.items ?? []) {
-        if (it.type === 'ACCOMMODATION') {
-          dayAcc++;
-          acc++;
-        } else if (it.type === 'MEAL') {
-          dayMeal++;
-          meal++;
-        } else if (it.type === 'POI') poi++;
-      }
-      const accLabel = dayAcc > 0 ? `**本日草案已含住宿节点**（${dayAcc} 条）` : '**本日草案未出现住宿（ACCOMMODATION）节点**';
-      const mealBit =
-        dayMeal > 0 ? `；MEAL 用餐节点 ${dayMeal} 条` : '；当日未标注 MEAL 正餐条目';
-      perDayLines.push(
-        `  - 第 ${di + 1} 天${dateShort ? `（${dateShort}）` : ''}：${accLabel}${mealBit}。`,
-      );
-    }
-    const hotelActions =
-      itinerary.action_plan?.filter((a) => a.target_type === 'HOTEL').length ?? 0;
-
-    const firstDayYmd = itinerary.days[0]?.date?.trim().slice(0, 10) ?? '';
-    const lastDayYmd = itinerary.days[itinerary.days.length - 1]?.date?.trim().slice(0, 10) ?? '';
-    const structStart = request?.structured_travel_input?.start_date?.slice(0, 10);
-    const structEnd = request?.structured_travel_input?.end_date?.slice(0, 10);
-    const spanNote =
-      firstDayYmd && lastDayYmd
-        ? `当前草案日历跨度为 **${firstDayYmd}** 至 **${lastDayYmd}**（共 **${itinerary.days.length}** 个日历日），下列「第 N 天」与下方时间轴/卡片日期一致。`
-        : `下列「第 N 天」与下方时间轴/卡片中的日历日一致。`;
-    const structMismatch =
-      structStart &&
-      structEnd &&
-      firstDayYmd &&
-      lastDayYmd &&
-      (structStart !== firstDayYmd || structEnd !== lastDayYmd)
-        ? ` 结构化表单日期为 **${structStart} — ${structEnd}**，若与草案不一致，**以本轮已写回的草案为准**。`
-        : '';
-
-    const lines: string[] = [];
-    lines.push('### 行程整体说明（基于当前草案条目）');
-    lines.push('');
-    lines.push(`- **上下文**：${spanNote}${structMismatch}`);
-    lines.push('');
-    lines.push(
-      '- **逐日是否体现住宿**：下列按「当日行程条目里是否含类型 ACCOMMODATION」判断（仅代表草稿结构；**不等于**您已在外部平台完成付款预订）。',
-    );
-    perDayLines.forEach((l) => lines.push(l));
-    lines.push('');
-    if (acc > 0 || hotelActions > 0) {
-      lines.push(
-        `- **住宿小结**：全行程共 **${acc}** 条住宿类条目${
-          hotelActions ? `；行动计划中与酒店相关的动作 **${hotelActions}** 条。` : '。'
-        }若某日显示「未出现住宿」而实际当晚需要过夜，请在行程编辑中补充过夜城镇或住宿停点。`,
-      );
-    } else {
-      lines.push(
-        '- **住宿小结**：**每一日**草案条目均未含 ACCOMMODATION，行动计划中也未见酒店类动作——过夜安排尚未写入或未在本轮生成；请按晚补充酒店/民宿节点。',
-      );
-    }
-    if (meal > 0) {
-      lines.push(
-        `- **餐饮**：日程中含用餐（MEAL）条目 **${meal}** 项；其余仅为游览（POI **${poi}** 项）时，仍建议在长途日自行预留午餐/晚餐窗口。`,
-      );
-    } else {
-      lines.push(
-        `- **餐饮**：草案中**未标注 MEAL 正餐时段**（当前以游览节点为主）；卡片时间轴**不代表已订餐厅**，请在各停留点自行安排或后续添加用餐停点。`,
-      );
-    }
-    const robust = itinerary.metadata?.robustness_score;
-    let prepZh =
-      '草案可用于对照地图与卡片再做收紧；请自行核对证件、保险、季节装备与租车/路况假设。';
-    if (robust != null) {
-      if (robust >= 0.7) prepZh = `草案衔接相对完整（系统稳健度约 ${robust.toFixed(2)}）。${prepZh}`;
-      else if (robust >= 0.4)
-        prepZh = `草案可用但仍建议压缩强度或增加缓冲（稳健度约 ${robust.toFixed(2)}）。${prepZh}`;
-      else prepZh = `草案偏早期，建议优先核对单日车程与季节窗口（稳健度约 ${robust.toFixed(2)}）。${prepZh}`;
-    }
-    lines.push(`- **准备度小结**：${prepZh}`);
-
-    return lines.join('\n');
-  }
-
-  /**
    * 行程规划类且存在 trip 会话时：用 plan_diff / optimizationHints 摘要「相对现有草稿」的决策信息，
    * 避免用户只看到新日程却看不到与当前行程的关系。
    */
@@ -403,6 +459,23 @@ export class RouteAndRunResponseAssemblerService {
 
     if (hints?.strategyDirection?.trim()) {
       lines.push(`- **策略取向：** ${hints.strategyDirection.trim()}`);
+    }
+
+    const verdictNarration =
+      hints?.decisionVerdictNarrationZh?.trim() ||
+      formatDecisionVerdictNarrationZh(
+        hints?.decisionVerdict ?? buildDecisionVerdictFromHints(hints ?? {}),
+        hints,
+      );
+    if (verdictNarration) {
+      lines.push('\n' + verdictNarration);
+    }
+
+    if (hints?.worldConstraintMaterialization?.appliedEvents) {
+      const wm = hints.worldConstraintMaterialization;
+      lines.push(
+        `- **路政/公告约束已结构化：** ${wm.appliedEvents} 条写入世界约束（道路：${(wm.roadIds ?? []).join('、') || '—'}）。`,
+      );
     }
 
     if (hints?.failSafeAction) {
@@ -542,6 +615,78 @@ export class RouteAndRunResponseAssemblerService {
     };
   }
 
+  /**
+   * NEED_MORE_INFO / INTAKE 澄清短路：与 `route.ui_hint` 对齐，避免 `ui_status=thinking` 导致前端盲等。
+   */
+  private applyNeedMoreInfoUiSurface(response: RouteAndRunResponseDto): void {
+    if (response.result?.status !== 'NEED_MORE_INFO') return;
+
+    const payload = response.result.payload as {
+      clarificationQuestions?: ClarificationQuestion[];
+      clarificationMessage?: string;
+      orchestrationResult?: { state?: OrchestratorState };
+    };
+
+    const sanitized = sanitizeClarificationQuestionsForClientDisplay(
+      payload.clarificationQuestions ??
+        (payload.orchestrationResult?.state?.clarification_questions as ClarificationQuestion[] | undefined),
+    );
+    if (sanitized.length > 0) {
+      payload.clarificationQuestions = sanitized;
+      const st = payload.orchestrationResult?.state;
+      if (st && Array.isArray(st.clarification_questions)) {
+        st.clarification_questions = sanitized as typeof st.clarification_questions;
+      }
+    }
+
+    const lead =
+      sanitized[0]?.question ??
+      humanizeFeasibilityMessageForUserZh(
+        String(payload.clarificationMessage ?? response.result.answer_text ?? ''),
+      );
+    response.result.answer_text = lead;
+    payload.clarificationMessage = lead;
+
+    response.route.ui_hint.status = UIStatus.AWAITING_CONFIRMATION;
+    response.route.ui_hint.message = '需要您的确认';
+
+    response.ui_state = {
+      ...response.ui_state,
+      phase: (response.ui_state?.phase ?? 'INTAKE') as OrchestrationStep,
+      ui_status: 'awaiting_confirmation',
+      progress_percent: 100,
+      message: '需要您确认或补充信息后才能继续规划',
+      requires_user_action: true,
+      estimated_time_remaining_ms: 0,
+      current_step_detail: (payload.orchestrationResult?.state?.metadata as {
+        itinerary_slot_placement_intake_short_circuit?: boolean;
+        peak_season_time_shift_intake_short_circuit?: boolean;
+        froad_2wd_intake_clarification_short_circuit?: boolean;
+        marathon_intake_clarification_short_circuit?: boolean;
+        debate_gate_fusion?: string;
+        itinerary_adjust_intake?: boolean;
+      })?.itinerary_slot_placement_intake_short_circuit
+        ? '请先选择顺路安排的行程日'
+        : payload.orchestrationResult?.state?.metadata?.peak_season_time_shift_intake_short_circuit
+        ? '极昼错峰观鲸场次需确认，请选择下一步'
+        : payload.orchestrationResult?.state?.metadata?.froad_2wd_intake_clarification_short_circuit
+          ? 'F 路车型与涉水合规需确认，请选择下一步'
+          : payload.orchestrationResult?.state?.metadata?.marathon_intake_clarification_short_circuit
+          ? '行程强度与天数需确认，请选择下一步'
+          : payload.orchestrationResult?.state?.metadata?.debate_gate_fusion
+          ? '行程强度与路线取舍需确认，请选择下一步'
+          : payload.orchestrationResult?.state?.metadata?.itinerary_adjust_intake
+            ? '正在按天气与车程约束改排已有行程，请稍候或补充具体调整说明'
+            : (payload.orchestrationResult?.state?.gaps ?? []).some(
+                (g: { type?: string; detail?: string }) =>
+                  g.type === 'MISSING_DESTINATION' &&
+                  /可执行 POI|目的地范围/.test(String(g.detail ?? '')),
+              )
+            ? '当前目的地范围过大或候选景点过少，请补充更具体的区域后继续'
+            : '意图编译发现硬约束冲突，请选择调整方式或补充说明',
+    };
+  }
+
   private buildEvidenceBundle(params: {
     requestId: string;
     decisionLog: DecisionLogEntry[];
@@ -550,10 +695,10 @@ export class RouteAndRunResponseAssemblerService {
     candidateItinerary?: Itinerary | null;
     emergencyConstraints?: RouteAndRunRequestDto['emergency_constraints'];
     /**
-     * NEED_MORE_INFO / INTAKE 澄清短路：尚未跑 RESEARCH·VERIFY，`hard_facts` 与叙事证据卡均为空。
+     * NEED_MORE_INFO / INTAKE 澄清或行程 CRUD 短路：尚未跑 RESEARCH·VERIFY，`hard_facts` 与叙事证据卡均为空。
      * 此时空包表示「尚无审计素材」，应为 PARTIAL，避免误判 FAILED + VERIFICATION_FAILED_UNSPECIFIED（Iron Shield 泛红）。
      */
-    empty_bundle_audit_pending?: boolean;
+    empty_bundle_audit_pending?: 'intake_clarification' | 'itinerary_item_crud';
   }): DecisionCandidateDto['evidence_bundle'] {
     const now = new Date().toISOString();
     const cards = assembleDecisionEvidenceCards(params.state ?? undefined);
@@ -851,13 +996,25 @@ export class RouteAndRunResponseAssemblerService {
 
     const auditPendingNote =
       params.empty_bundle_audit_pending && !hasFacts && !hasCards && verification_status === 'PARTIAL';
+    const auditPendingSourceLabel =
+      params.empty_bundle_audit_pending === 'itinerary_item_crud'
+        ? '行程单项编辑短路，未运行完整 VERIFY（非验证失败）'
+        : '槽位待补全，尚未生成可审计证据链（非验证失败）';
 
     return {
       bundle_id,
       snapshot_id,
       sources: [
         ...(auditPendingNote
-          ? [{ type: 'INTAKE_CLARIFICATION', label: '槽位待补全，尚未生成可审计证据链（非验证失败）' }]
+          ? [
+              {
+                type:
+                  params.empty_bundle_audit_pending === 'itinerary_item_crud'
+                    ? 'ITINERARY_ITEM_CRUD'
+                    : 'INTAKE_CLARIFICATION',
+                label: auditPendingSourceLabel,
+              },
+            ]
           : []),
         ...(hasFacts ? [{ type: 'HARD_RULE_SNAPSHOT', label: 'hard facts snapshot' }] : []),
         ...(hasCards ? [{ type: 'IRON_SHIELD', label: 'evidence cards' }] : []),
@@ -1005,7 +1162,11 @@ export class RouteAndRunResponseAssemblerService {
     decisionLog: DecisionLogEntry[],
     gateResult?: GateResult,
     itinerary?: Itinerary,
+    clientOptions?: RouteAndRunRequestDto['options'],
   ): SimplifiedExplanation | undefined {
+    if (!shouldExposeSimplifiedExplanationForClient(clientOptions)) {
+      return undefined;
+    }
     return this.generateSimplifiedExplanation(decisionLog, gateResult, itinerary);
   }
 
@@ -1053,12 +1214,37 @@ export class RouteAndRunResponseAssemblerService {
       needsUserConfirmation,
     });
     const finalVerdict = rawState?.metadata?.fallback_used === true ? 'ALLOW_WITH_FALLBACK' : verdict;
-    const stateWithVerdict = rawState !== undefined ? { ...rawState, verdict: finalVerdict } : undefined;
+    const stateWithVerdictBase = rawState !== undefined ? { ...rawState, verdict: finalVerdict } : undefined;
+    const gateSurfacedSm = attachGuardianPersonaSurface(
+      orchestrationResult.result?.gate_result as GateResult | undefined,
+    );
+    const tripPlanForDebate =
+      rawState?.trip_plan_request ??
+      (orchestrationResult.result as { trip_plan_request?: TripPlanRequest } | undefined)?.trip_plan_request;
+    const gateForOrchestrationPayload = await this.maybeApplyGuardiansDebateLlm(
+      request,
+      gateSurfacedSm,
+      tripPlanForDebate,
+      rawState,
+    );
+    const gateForClientPayload = gateForOrchestrationPayload
+      ? sanitizeGateResultForClientDisplay(gateForOrchestrationPayload)
+      : undefined;
+    const stateWithVerdict =
+      stateWithVerdictBase && gateForOrchestrationPayload
+        ? {
+            ...stateWithVerdictBase,
+            gate_result: gateForClientPayload ?? gateForOrchestrationPayload,
+          }
+        : stateWithVerdictBase;
 
-    const k3DecisionLog = this.resolveCanonicalDecisionLogForK3(orchestrationResult);
+    const k3DecisionLog = sanitizeDecisionLogForClientDisplay(
+      this.resolveCanonicalDecisionLogForK3(orchestrationResult),
+    );
 
     /** 与前端 `ui_surface === consultation` 对齐：响应体不再携带可渲染的日程块（timeline / itinerary.days / poi_cards）。 */
     const consultationUi = this.isConsultationUiSurface(orchestrationResult, routingTaskType);
+    const uiSurface = this.resolveUiSurfaceForPayload(orchestrationResult, consultationUi);
     const consultationDashboard = this.resolveConsultationDashboardForPayload(
       orchestrationResult,
       consultationUi,
@@ -1075,22 +1261,38 @@ export class RouteAndRunResponseAssemblerService {
           ? ({ request_id: request.request_id, days: [] } as Itinerary)
           : undefined;
 
-    const evidenceBundle = this.buildEvidenceBundle({
-      requestId: request.request_id,
-      decisionLog: k3DecisionLog ?? [],
-      state: stateWithVerdict as any,
-      candidateItinerary: orchestrationResult.result?.itinerary ?? null,
-      emergencyConstraints: request.emergency_constraints,
-      empty_bundle_audit_pending: needsUserConfirmation,
-    });
+    const suppressIronShieldUi = this.shouldSuppressIronShieldUiForCrud(
+      orchestrationResult,
+      stateWithVerdict as OrchestratorState | undefined,
+    );
+
+    const evidenceBundle = suppressIronShieldUi
+      ? undefined
+      : this.buildEvidenceBundle({
+          requestId: request.request_id,
+          decisionLog: k3DecisionLog ?? [],
+          state: stateWithVerdict as any,
+          candidateItinerary: orchestrationResult.result?.itinerary ?? null,
+          emergencyConstraints: request.emergency_constraints,
+          empty_bundle_audit_pending: this.resolveEmptyBundleAuditPendingReason(
+            orchestrationResult,
+            needsUserConfirmation,
+          ),
+        });
+
+    const crudFailed =
+      this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult) &&
+      !this.isItineraryItemCrudApplied(orchestrationResult);
 
     const resultStatus = isTimeout
       ? 'TIMEOUT'
       : needsUserConfirmation
         ? 'NEED_MORE_INFO'
-        : orchestrationResult.success
-          ? 'OK'
-          : 'FAILED';
+        : crudFailed
+          ? 'FAILED'
+          : orchestrationResult.success
+            ? 'OK'
+            : 'FAILED';
 
     const response: RouteAndRunResponseDto = {
       request_id: request.request_id,
@@ -1111,18 +1313,20 @@ export class RouteAndRunResponseAssemblerService {
             ? UIStatus.FAILED
             : needsUserConfirmation
               ? UIStatus.AWAITING_CONFIRMATION
-              : orchestrationResult.success
-                ? UIStatus.DONE
-                : UIStatus.FAILED,
+              : crudFailed
+                ? UIStatus.FAILED
+                : orchestrationResult.success
+                  ? UIStatus.DONE
+                  : UIStatus.FAILED,
           message: isTimeout
             ? '请求超时，请缩小范围或稍后重试。'
             : needsUserConfirmation
               ? '需要您的确认'
-              : orchestrationResult.success
-                ? consultationUi
-                  ? '咨询已完成'
-                  : '处理完成'
-                : '处理失败',
+              : crudFailed
+                ? orchestrationResult.answerText || '未能更新行程'
+                : orchestrationResult.success
+                  ? this.resolveSuccessUiHintMessage(orchestrationResult, consultationUi)
+                  : '处理失败',
         },
       },
       ui_state: uiState,
@@ -1136,8 +1340,14 @@ export class RouteAndRunResponseAssemblerService {
         payload: {
           ...(orchestrationResult.success
             ? {
-                ui_surface: consultationUi ? ('consultation' as const) : ('planning' as const),
-                ...(consultationUi ? { consultation_itinerary_payload_suppressed: true as const } : {}),
+                ui_surface: uiSurface,
+                ...(this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)
+                  ? { itinerary_item_crud: true as const }
+                  : {}),
+                ...(suppressIronShieldUi ? { iron_shield_ui_suppressed: true as const } : {}),
+                ...(uiSurface === 'consultation'
+                  ? { consultation_itinerary_payload_suppressed: true as const }
+                  : {}),
               }
             : {}),
           timeline: itineraryDaysForPayload,
@@ -1159,13 +1369,14 @@ export class RouteAndRunResponseAssemblerService {
             consultationUi
               ? null
               : orchestrationResult.result?.itinerary?.metadata?.robustness_score || null,
-          evidence_bundle: evidenceBundle,
+          ...(evidenceBundle ? { evidence_bundle: evidenceBundle } : {}),
           orchestrationResult:
             orchestrationResult.result && stateWithVerdict
               ? {
                   state: stateWithVerdict,
                   itinerary: itineraryShellForPayload ?? orchestrationResult.result.itinerary,
-                  gate_result: orchestrationResult.result.gate_result,
+                  gate_result:
+                    gateForClientPayload ?? gateForOrchestrationPayload ?? orchestrationResult.result.gate_result,
                   decision_log: k3DecisionLog,
                 }
               : undefined,
@@ -1185,7 +1396,9 @@ export class RouteAndRunResponseAssemblerService {
             itinerary: (orchestrationResult.result?.itinerary as Itinerary | undefined) ?? undefined,
             stepsExecuted: orchestrationResult.stepsExecuted,
           }),
-          ...this.buildIronShieldPayloadBlocks(stateWithVerdict as OrchestratorState | undefined),
+          ...(suppressIronShieldUi
+            ? {}
+            : this.buildIronShieldPayloadBlocks(stateWithVerdict as OrchestratorState | undefined)),
           ...(isTimeout ? { errorType: ErrorType.TIMEOUT_ERROR } : {}),
           ...(needsUserConfirmation
             ? {
@@ -1206,18 +1419,26 @@ export class RouteAndRunResponseAssemblerService {
       },
       explain: {
         decision_log: k3DecisionLog,
-        simplified_explanation: this.generateSimplifiedExplanation(
+        simplified_explanation: this.buildSimplifiedExplanation(
           k3DecisionLog,
-          orchestrationResult.result?.gate_result,
+          gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result,
           orchestrationResult.result?.itinerary,
+          request.options,
         ),
         ai_capability_display: this.generateAICapabilityDisplay(
           orchestrationResult,
-          orchestrationResult.result?.gate_result,
+          gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result,
           stateWithVerdict,
         ),
+        ...(gateForOrchestrationPayload?.guardian_results
+          ? { guardian_personas: gateForOrchestrationPayload.guardian_results }
+          : {}),
         optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
         kernel_explainability: this.buildKernelExplainability(orchestrationResult.result?.decisionState),
+        world_model_guards: this.buildWorldModelGuardsExplain(
+          orchestrationResult.result?.decisionState,
+          stateWithVerdict,
+        ),
       } as any,
       observability: {
         latency_ms: latency,
@@ -1244,13 +1465,25 @@ export class RouteAndRunResponseAssemblerService {
         ...this.resolveNarrativeIntegrityObservability(request, orchestrationResult),
         ...(durableRun?.trip_run_id ? { durable_trip_run_id: durableRun.trip_run_id } : {}),
         ...(durableRun?.checkpoint_loaded ? { durable_checkpoint_loaded: true } : {}),
-        dso_version:
-          orchestrationResult.result?.decisionState?.systemState?.version ??
-          orchestrationResult.result?.state?.plan_version,
+        dso_version: this.resolveClientDsoVersionForResponse(orchestrationResult),
+        ...(this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)
+          ? {
+              itinerary_item_crud: true as const,
+              skills_hit: extractSkillsHitFromDecisionLog(
+                orchestrationResult.decisionLog ??
+                  orchestrationResult.result?.decision_log ??
+                  orchestrationResult.result?.state?.decision_log,
+              ),
+            }
+          : {}),
       } as any,
     };
 
     this.applyRouteProgressSurface(response, orchestrationResult);
+
+    if (needsUserConfirmation && resultStatus === 'NEED_MORE_INFO') {
+      this.applyNeedMoreInfoUiSurface(response);
+    }
 
     // Trade-off negotiation (Layer 3): when physical healing implies user-visible TCO spikes.
     const negotiation = await this.tradeoffEngine.buildNegotiation({
@@ -1304,7 +1537,7 @@ export class RouteAndRunResponseAssemblerService {
       }
     }
 
-    // POI 卡片：按 itinerary 中的 POI 条目批量查 Place 表，供前端卡片渲染（与纯文本 answer_text 并行）
+    // POI：按 itinerary 查 Place 表写入 `poi_cards` + timeline 展示名；`poi_cards_by_day` 不下发以免聊天气泡内嵌按日卡片条。
     const itineraryForPoi =
       orchestrationResult.result?.itinerary ?? (orchestrationResult.result as any)?.state?.itinerary;
     if (
@@ -1320,6 +1553,7 @@ export class RouteAndRunResponseAssemblerService {
         const poiPayload = await this.poiHydrator.hydrateFromItinerary(itineraryForPoi);
         if (poiPayload.poi_cards.length > 0) {
           Object.assign(response.result.payload as any, poiPayload);
+          delete (response.result.payload as any).poi_cards_by_day;
           applyRouteRunPoiDisplayNamesToTimeline(
             (response.result.payload as any).timeline,
             poiPayload.poi_cards,
@@ -1345,11 +1579,18 @@ export class RouteAndRunResponseAssemblerService {
               orchestrationResult,
             });
             const cardHint =
-              '行程已生成并与景点库对齐；时间安排与说明请直接查看下方每日卡片（此处不再重复罗列）。';
-            const readinessLead = this.buildPlanningTripReadinessFromItinerary(itineraryForPoi, request);
-            const proseParts = [readinessLead, feasibilityLead, tripPlanningContrast, cardHint].filter(
-              (p): p is string => typeof p === 'string' && p.length > 0,
+              '行程已生成并与景点库对齐；时间安排与说明请直接查看下方时间轴（此处不再重复罗列）。';
+            const recommendationBlock = this.buildRecommendationReasoningProse(
+              stateWithVerdict as OrchestratorState | undefined,
+              itineraryForPoi,
+              orchestrationResult,
             );
+            const proseParts = [
+              recommendationBlock,
+              feasibilityLead,
+              tripPlanningContrast,
+              cardHint,
+            ].filter((p): p is string => typeof p === 'string' && p.length > 0);
             response.result.answer_text = proseParts.join('\n\n');
           }
         }
@@ -1358,21 +1599,50 @@ export class RouteAndRunResponseAssemblerService {
       }
     }
 
+    if (
+      orchestrationResult.success &&
+      resultStatus === 'OK' &&
+      itineraryForPoi?.days?.length &&
+      !consultationUi &&
+      !isTimeout &&
+      !needsUserConfirmation
+    ) {
+      const proseFriendlyTaskTypes: readonly TaskType[] = ['DATA_LOOKUP', 'RAG_QA', 'GENERIC_QA'];
+      const keepAnswerProse = routingTaskType !== undefined && proseFriendlyTaskTypes.includes(routingTaskType);
+      if (!keepAnswerProse) {
+        const recBlock = this.buildRecommendationReasoningProse(
+          stateWithVerdict as OrchestratorState | undefined,
+          itineraryForPoi,
+          orchestrationResult,
+        );
+        if (recBlock && !String(response.result.answer_text ?? '').includes('【推荐理由】')) {
+          const cur = response.result.answer_text ?? '';
+          response.result.answer_text = cur ? `${recBlock}\n\n${cur}` : recBlock;
+        }
+      }
+    }
+
     // C1 strict: final output must carry evidence bundle; candidates must carry evidence bundle.
     if (this.isC1StrictEvidenceBundle()) {
       const payload: any = response.result?.payload ?? {};
-      if (!payload.evidence_bundle) {
-        throw new Error('C1_STRICT_EVIDENCE_BUNDLE: missing payload.evidence_bundle');
-      }
-      if (String(payload.evidence_bundle?.verification_status ?? '') === 'FAILED') {
-        throw new Error('C1_STRICT_EVIDENCE_BUNDLE: payload evidence_bundle verification_status=FAILED');
-      }
-      const candidates: any[] = Array.isArray(payload.alternatives) ? payload.alternatives : Array.isArray(payload.candidates) ? payload.candidates : [];
-      if (candidates.some((c) => !c?.evidence_bundle)) {
-        throw new Error('C1_STRICT_EVIDENCE_BUNDLE: candidate missing evidence_bundle');
-      }
-      if (candidates.some((c) => String(c?.evidence_bundle?.verification_status ?? '') === 'FAILED')) {
-        throw new Error('C1_STRICT_EVIDENCE_BUNDLE: candidate evidence_bundle verification_status=FAILED');
+      if (payload.iron_shield_ui_suppressed !== true) {
+        if (!payload.evidence_bundle) {
+          throw new Error('C1_STRICT_EVIDENCE_BUNDLE: missing payload.evidence_bundle');
+        }
+        if (String(payload.evidence_bundle?.verification_status ?? '') === 'FAILED') {
+          throw new Error('C1_STRICT_EVIDENCE_BUNDLE: payload evidence_bundle verification_status=FAILED');
+        }
+        const candidates: any[] = Array.isArray(payload.alternatives)
+          ? payload.alternatives
+          : Array.isArray(payload.candidates)
+            ? payload.candidates
+            : [];
+        if (candidates.some((c) => !c?.evidence_bundle)) {
+          throw new Error('C1_STRICT_EVIDENCE_BUNDLE: candidate missing evidence_bundle');
+        }
+        if (candidates.some((c) => String(c?.evidence_bundle?.verification_status ?? '') === 'FAILED')) {
+          throw new Error('C1_STRICT_EVIDENCE_BUNDLE: candidate evidence_bundle verification_status=FAILED');
+        }
       }
     }
 
@@ -1545,11 +1815,12 @@ export class RouteAndRunResponseAssemblerService {
           },
         },
         explain: {
-          decision_log: orchestrationResult.decisionLog || [],
-          simplified_explanation: this.generateSimplifiedExplanation(
+          decision_log: sanitizeDecisionLogForClientDisplay(orchestrationResult.decisionLog || []),
+          simplified_explanation: this.buildSimplifiedExplanation(
             orchestrationResult.decisionLog || [],
             orchestrationResult.result?.gate_result,
             orchestrationResult.result?.itinerary,
+            request.options,
           ),
           ai_capability_display: this.generateAICapabilityDisplay(
             orchestrationResult,
@@ -1557,6 +1828,10 @@ export class RouteAndRunResponseAssemblerService {
             orchestrationResult.result?.state,
           ),
           optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
+          world_model_guards: this.buildWorldModelGuardsExplain(
+            orchestrationResult.result?.decisionState,
+            orchestrationResult.result?.state,
+          ),
         } as any,
         observability: {
           latency_ms: latency,
@@ -1610,17 +1885,31 @@ export class RouteAndRunResponseAssemblerService {
       !orchestrationResult.success && !isTimeout && orchestrationResult.result?.needsUserConfirmation === true;
     const clarificationMessage = orchestrationResult.result?.clarificationMessage || orchestrationResult.answerText;
 
+    const crudFailed =
+      this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult) &&
+      !this.isItineraryItemCrudApplied(orchestrationResult);
+
     const resultStatus = isTimeout
       ? 'TIMEOUT'
       : needsUserConfirmation
         ? 'NEED_MORE_INFO'
-        : orchestrationResult.success
-          ? 'OK'
-          : 'FAILED';
+        : crudFailed
+          ? 'FAILED'
+          : orchestrationResult.success
+            ? 'OK'
+            : 'FAILED';
 
-    const k3DecisionLogClaude = this.resolveCanonicalDecisionLogForK3(orchestrationResult);
+    const k3DecisionLogClaude = sanitizeDecisionLogForClientDisplay(
+      this.resolveCanonicalDecisionLogForK3(orchestrationResult),
+    );
+
+    const suppressIronShieldUiDyn = this.shouldSuppressIronShieldUiForCrud(
+      orchestrationResult,
+      (orchestrationResult.result as any)?.state as OrchestratorState | undefined,
+    );
 
     const consultationUi = this.isConsultationUiSurface(orchestrationResult, routingTaskType);
+    const uiSurface = this.resolveUiSurfaceForPayload(orchestrationResult, consultationUi);
     const consultationDashboard = this.resolveConsultationDashboardForPayload(
       orchestrationResult,
       consultationUi,
@@ -1668,6 +1957,29 @@ export class RouteAndRunResponseAssemblerService {
     });
     const dynValidation = validateRuntimeExecutionProfile(runtimeExecutionProfile);
 
+    const orchStateDyn = (orchestrationResult.result as any)?.state as OrchestratorState | undefined;
+    const gateSurfacedDyn = attachGuardianPersonaSurface(
+      (orchestrationResult.result as any)?.gate_result as GateResult | undefined,
+    );
+    const tripPlanDyn =
+      orchStateDyn?.trip_plan_request ?? (orchestrationResult.result as any)?.trip_plan_request;
+    const gateForOrchestrationPayloadDyn = await this.maybeApplyGuardiansDebateLlm(
+      request,
+      gateSurfacedDyn,
+      tripPlanDyn,
+      orchStateDyn,
+    );
+    const gateForClientPayloadDyn = gateForOrchestrationPayloadDyn
+      ? sanitizeGateResultForClientDisplay(gateForOrchestrationPayloadDyn)
+      : undefined;
+    const stateWithSurfacedGateDyn =
+      orchStateDyn && gateForOrchestrationPayloadDyn
+        ? {
+            ...orchStateDyn,
+            gate_result: gateForClientPayloadDyn ?? gateForOrchestrationPayloadDyn,
+          }
+        : orchStateDyn;
+
     const response: RouteAndRunResponseDto = {
       request_id: request.request_id,
       route: {
@@ -1687,18 +1999,20 @@ export class RouteAndRunResponseAssemblerService {
             ? UIStatus.FAILED
             : needsUserConfirmation
               ? UIStatus.AWAITING_CONFIRMATION
-              : orchestrationResult.success
-                ? UIStatus.DONE
-                : UIStatus.FAILED,
+              : crudFailed
+                ? UIStatus.FAILED
+                : orchestrationResult.success
+                  ? UIStatus.DONE
+                  : UIStatus.FAILED,
           message: isTimeout
             ? '请求超时，请缩小范围或稍后重试。'
             : needsUserConfirmation
               ? '需要您的确认'
-              : orchestrationResult.success
-                ? consultationUi
-                  ? '咨询已完成'
-                  : '处理完成'
-                : '处理失败',
+              : crudFailed
+                ? orchestrationResult.answerText || '未能更新行程'
+                : orchestrationResult.success
+                  ? this.resolveSuccessUiHintMessage(orchestrationResult, consultationUi)
+                  : '处理失败',
         },
       },
       result: {
@@ -1710,8 +2024,14 @@ export class RouteAndRunResponseAssemblerService {
             : {}),
           ...(orchestrationResult.success
             ? {
-                ui_surface: consultationUi ? ('consultation' as const) : ('planning' as const),
-                ...(consultationUi ? { consultation_itinerary_payload_suppressed: true as const } : {}),
+                ui_surface: uiSurface,
+                ...(this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)
+                  ? { itinerary_item_crud: true as const }
+                  : {}),
+                ...(suppressIronShieldUiDyn ? { iron_shield_ui_suppressed: true as const } : {}),
+                ...(uiSurface === 'consultation'
+                  ? { consultation_itinerary_payload_suppressed: true as const }
+                  : {}),
               }
             : {}),
           ...((orchestrationResult.result as any)?.live_sensor_audit?.length
@@ -1858,10 +2178,13 @@ export class RouteAndRunResponseAssemblerService {
           ...(orchestrationResult.result && (orchestrationResult.result as any).state
             ? {
                 orchestrationResult: {
-                  state: (orchestrationResult.result as any).state,
+                  state: stateWithSurfacedGateDyn,
                   itinerary:
                     itineraryShellDyn ?? (orchestrationResult.result as any).itinerary,
-                  gate_result: (orchestrationResult.result as any).gate_result,
+                  gate_result:
+                    gateForClientPayloadDyn ??
+                    gateForOrchestrationPayloadDyn ??
+                    (orchestrationResult.result as any).gate_result,
                   decision_log: k3DecisionLogClaude,
                 },
               }
@@ -1888,23 +2211,35 @@ export class RouteAndRunResponseAssemblerService {
               itineraryShellDyn ?? (orchestrationResult.result?.itinerary as Itinerary | undefined) ?? undefined,
             stepsExecuted: orchestrationResult.stepsExecuted,
           }),
-          ...this.buildIronShieldPayloadBlocks((orchestrationResult.result as any)?.state as OrchestratorState | undefined),
+          ...(suppressIronShieldUiDyn
+            ? {}
+            : this.buildIronShieldPayloadBlocks(
+                (orchestrationResult.result as any)?.state as OrchestratorState | undefined,
+              )),
         } as any,
       },
       explain: {
         decision_log: k3DecisionLogClaude,
-        simplified_explanation: this.generateSimplifiedExplanation(
+        simplified_explanation: this.buildSimplifiedExplanation(
           k3DecisionLogClaude,
-          orchestrationResult.result?.gate_result,
+          gateForOrchestrationPayloadDyn ?? orchestrationResult.result?.gate_result,
           orchestrationResult.result?.itinerary,
+          request.options,
         ),
         ai_capability_display: this.generateAICapabilityDisplay(
           orchestrationResult,
-          orchestrationResult.result?.gate_result,
+          gateForOrchestrationPayloadDyn ?? orchestrationResult.result?.gate_result,
           orchestrationResult.result?.state,
         ),
+        ...(gateForOrchestrationPayloadDyn?.guardian_results
+          ? { guardian_personas: gateForOrchestrationPayloadDyn.guardian_results }
+          : {}),
         optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
         kernel_explainability: this.buildKernelExplainability(orchestrationResult.result?.decisionState),
+        world_model_guards: this.buildWorldModelGuardsExplain(
+          orchestrationResult.result?.decisionState,
+          orchestrationResult.result?.state,
+        ),
       } as any,
       observability: {
         latency_ms: latency,
@@ -1964,13 +2299,25 @@ export class RouteAndRunResponseAssemblerService {
         ...this.resolveReplanLineageObservability(request, orchestrationResult),
         ...this.resolveOrchestrationFailureObservability(orchestrationResult),
         ...this.resolveNarrativeIntegrityObservability(request, orchestrationResult),
-        dso_version:
-          orchestrationResult.result?.decisionState?.systemState?.version ??
-          orchestrationResult.result?.state?.plan_version,
+        dso_version: this.resolveClientDsoVersionForResponse(orchestrationResult),
+        ...(this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)
+          ? {
+              itinerary_item_crud: true as const,
+              skills_hit: extractSkillsHitFromDecisionLog(
+                orchestrationResult.decisionLog ??
+                  orchestrationResult.result?.decision_log ??
+                  orchestrationResult.result?.state?.decision_log,
+              ),
+            }
+          : {}),
       } as any,
     };
 
     this.applyRouteProgressSurface(response, orchestrationResult);
+
+    if (needsUserConfirmation && resultStatus === 'NEED_MORE_INFO') {
+      this.applyNeedMoreInfoUiSurface(response);
+    }
 
     // Trade-off negotiation (Layer 3): when physical healing implies user-visible TCO spikes.
     const negotiation = await this.tradeoffEngine.buildNegotiation({
@@ -2068,14 +2415,32 @@ export class RouteAndRunResponseAssemblerService {
     harness_active_trace_id: string | null;
     harness_trace_export_path: string | null;
     evaluation_run_id: string | null;
+    verify_return_to_research_count?: number;
+    research_scope_invalidation_reason?: string;
   } {
     const ds = orchestrationResult.result?.decisionState as DecisionState | undefined;
     const hr = ds?.harnessRuntime;
-    return {
+    const stMeta = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+    const retryCount = stMeta?.verify_return_to_research_count;
+    const inv = stMeta?.research_scope_invalidation as { reason?: string } | undefined;
+    const out: {
+      harness_active_trace_id: string | null;
+      harness_trace_export_path: string | null;
+      evaluation_run_id: string | null;
+      verify_return_to_research_count?: number;
+      research_scope_invalidation_reason?: string;
+    } = {
       harness_active_trace_id: hr?.activeTraceId ?? null,
       harness_trace_export_path: hr?.traceExportRelativePath ?? null,
       evaluation_run_id: request.meta?.run_id ?? hr?.evaluationRunId ?? null,
     };
+    if (typeof retryCount === 'number' && Number.isFinite(retryCount) && retryCount > 0) {
+      out.verify_return_to_research_count = retryCount;
+    }
+    if (typeof inv?.reason === 'string' && inv.reason.trim()) {
+      out.research_scope_invalidation_reason = inv.reason.trim();
+    }
+    return out;
   }
 
   /** PRD I3：replan 继承字段回显到 observability（网关/客户端/日志聚合） */
@@ -2276,7 +2641,7 @@ export class RouteAndRunResponseAssemblerService {
         }
       | undefined;
     const row: NonNullable<RouteAndRunResponseDto['explain']['kernel_explainability']> = {
-      dso_version: decisionState.systemState?.version,
+      dso_version: normalizeClientDsoVersion(decisionState.systemState?.version),
       last_step: decisionState.systemState?.lastStep,
       current_phase: decisionState.systemState?.currentPhase,
       cursor_step: decisionState.systemState?.cursorStep as string | undefined,
@@ -2285,7 +2650,7 @@ export class RouteAndRunResponseAssemblerService {
       row.constraint_violations = violations.map((v) => ({
         type: v.type,
         severity: v.severity,
-        detail: v.detail,
+        detail: humanizeFeasibilityMessageForUserZh(String(v.detail ?? '')),
         ...(v.constraint ? { constraint: v.constraint } : {}),
       }));
     }
@@ -2343,21 +2708,66 @@ export class RouteAndRunResponseAssemblerService {
     return meaningful ? row : undefined;
   }
 
+  private projectWorldConstraintMaterializationExplain(
+    wm?: NonNullable<DecisionState['optimizationHints']>['worldConstraintMaterialization'],
+  ):
+    | NonNullable<RouteAndRunResponseDto['explain']['optimization']>['world_constraint_materialization']
+    | undefined {
+    if (wm === undefined) return undefined;
+    return {
+      applied_events: wm.appliedEvents ?? 0,
+      road_ids: wm.roadIds ?? [],
+      weather_dates: wm.weatherDates ?? [],
+      store_version: wm.storeVersion,
+      ...(wm.unifiedGraphNodeCount !== undefined
+        ? { unified_graph_node_count: wm.unifiedGraphNodeCount }
+        : {}),
+      ...(wm.unifiedGraphEdgeCount !== undefined
+        ? { unified_graph_edge_count: wm.unifiedGraphEdgeCount }
+        : {}),
+    };
+  }
+
   private buildOptimizationExplain(decisionState?: DecisionState): RouteAndRunResponseDto['explain']['optimization'] {
     const hints = decisionState?.optimizationHints;
     if (!hints) return undefined;
+    const verdict = hints.decisionVerdict ?? buildDecisionVerdictFromHints(hints);
     return {
-      method: (hints as any).method,
-      recommended_alternative_id: (hints as any).recommendedAlternativeId,
-      emergency_mask_audit: (hints as any).emergencyMaskAudit,
-      alternatives: (hints as any).alternatives?.map((a: any) => ({
+      method: hints.method,
+      recommended_alternative_id: hints.recommendedAlternativeId,
+      meta_decision_audit: hints.metaDecisionAudit,
+      emergency_mask_audit: hints.emergencyMaskAudit as any,
+      decision_verdict: verdict
+        ? {
+            chosen_plan_id: verdict.chosen_plan_id,
+            rejected_plans: verdict.rejected_plans,
+            monte_carlo_summary: verdict.monte_carlo_summary,
+            fallback_chain: verdict.fallback_chain,
+          }
+        : undefined,
+      decision_verdict_narration_zh:
+        hints.decisionVerdictNarrationZh ??
+        formatDecisionVerdictNarrationZh(verdict, hints),
+      world_constraint_materialization: this.projectWorldConstraintMaterializationExplain(
+        hints.worldConstraintMaterialization,
+      ),
+      alternatives: hints.alternatives?.map((a) => ({
         id: a.id,
         score: a.score,
         expected_utility: a.expectedUtility,
         feasibility_probability: a.feasibilityProbability,
         confidence_interval: a.confidenceInterval,
+        violations: a.violations,
       })),
-    } as any;
+    };
+  }
+
+  private buildWorldModelGuardsExplain(
+    decisionState?: DecisionState,
+    orchestratorState?: OrchestratorState,
+  ): RouteAndRunResponseDto['explain']['world_model_guards'] {
+    const rd = orchestratorState?.research_data as Record<string, unknown> | undefined;
+    return projectWorldModelGuardsExplain(decisionState, rd);
   }
 
   private mapOrchestrationStepToUIState(
@@ -2382,6 +2792,7 @@ export class RouteAndRunResponseAssemblerService {
     current_step_detail?: string;
   } {
     const stepProgressMap: Record<OrchestrationStep, number> = {
+      INTENT_COMPILE: 5.0,
       INTAKE: 8.0,
       STATE_UPDATE: 10.0,
       RESEARCH: 18.0,
@@ -2402,6 +2813,7 @@ export class RouteAndRunResponseAssemblerService {
     };
 
     const stepMessageMap: Record<OrchestrationStep, string> = {
+      INTENT_COMPILE: '正在编译行程意图...',
       INTAKE: '正在解析请求...',
       STATE_UPDATE: '正在更新决策状态...',
       RESEARCH: '正在收集数据...',
@@ -2422,6 +2834,7 @@ export class RouteAndRunResponseAssemblerService {
     };
 
     const stepEstimatedTimeMap: Record<OrchestrationStep, number> = {
+      INTENT_COMPILE: 1500,
       INTAKE: 2000,
       STATE_UPDATE: 100,
       RESEARCH: 8000,
@@ -2442,6 +2855,7 @@ export class RouteAndRunResponseAssemblerService {
     };
 
     const stepDetailMap: Record<OrchestrationStep, string> = {
+      INTENT_COMPILE: '将自然语言需求编译为结构化行程变更（PlanDelta）',
       INTAKE: '分析您的需求，提取关键信息（目的地、日期、预算等）',
       STATE_UPDATE: '同步 OrchestratorState 到 Decision Kernel',
       RESEARCH: '查询交通、POI、开放时间、DEM地形等数据',
@@ -2552,8 +2966,32 @@ export class RouteAndRunResponseAssemblerService {
       }
     }
 
-    const filteredDecisions = keyDecisions.filter((d) => d.impact === 'HIGH' || d.impact === 'MEDIUM');
+    const filteredDecisionsRaw = keyDecisions.filter((d) => d.impact === 'HIGH' || d.impact === 'MEDIUM');
+    const verifyRollup = rollupVerifyIssuesFromDecisionLog(decisionLog);
+    let filteredDecisions = filteredDecisionsRaw;
+    if (
+      gateResult?.gate_result === 'ALLOW' &&
+      verifyRollup.hasConflict &&
+      filteredDecisionsRaw.length > 0 &&
+      filteredDecisionsRaw[0].step === 'GATE_EVAL'
+    ) {
+      filteredDecisions = filteredDecisionsRaw.map((d, idx) =>
+        idx === 0
+          ? {
+              ...d,
+              decision:
+                '允许继续对话与改稿；当前仍有须优先处理的可执行性冲突（不同于「已全部无风险通过」）。',
+            }
+          : d,
+      );
+    }
     let summary = this.generateDecisionSummary(gateResult, filteredDecisions);
+    if (gateResult?.gate_result === 'ALLOW' && verifyRollup.hasConflict) {
+      const codeHint = verifyRollup.conflictCodes.length
+        ? `（${humanizeVerifyConflictCodesZh(verifyRollup.conflictCodes)}）`
+        : '';
+      summary = `行程门禁已放行，但可执行性验证仍有关键项待解决${codeHint}；共进行 ${filteredDecisions.length} 项关键检查。`;
+    }
     // 轻量问答：decision_log 通常仅有 DONE + outputs_summary（无 GATE/PLAN_GEN），避免误导性「已完成行程规划」
     if (
       !gateResult &&
@@ -2607,16 +3045,7 @@ export class RouteAndRunResponseAssemblerService {
   }
 
   private simplifyDecisionMessage(entry: DecisionLogEntry): string {
-    let message = (entry as any).outputs_summary || (entry as any).inputs_summary || '';
-    message = message.replace(/GATE_EVAL/g, '可行性评估');
-    message = message.replace(/PLAN_GEN/g, '行程生成');
-    message = message.replace(/VERIFY/g, '验证');
-    message = message.replace(/REPAIR/g, '修复');
-    message = message.replace(/INTAKE/g, '需求解析');
-    message = message.replace(/RESEARCH/g, '数据收集');
-    message = message.replace(/NARRATE/g, '说明生成');
-    if (message.length > 100) message = message.substring(0, 97) + '...';
-    return message;
+    return simplifyDecisionLogLineForUserZh(entry as { outputs_summary?: string; inputs_summary?: string });
   }
 
   private assessDecisionImpact(entry: DecisionLogEntry): 'HIGH' | 'MEDIUM' | 'LOW' {
@@ -2646,6 +3075,7 @@ export class RouteAndRunResponseAssemblerService {
     const capabilitiesUsed: Array<{ name: string; description: string; status: 'SUCCESS' | 'PARTIAL' | 'FAILED' }> = [];
 
     const decisionLog = orchestrationResult.decisionLog || [];
+    const verifyRollup = rollupVerifyIssuesFromDecisionLog(decisionLog);
     const skillsUsed = new Set<string>();
     for (const entry of decisionLog) {
       const toolCalls = (entry as any)?.metadata?.tool_calls;
@@ -2657,10 +3087,11 @@ export class RouteAndRunResponseAssemblerService {
     }
 
     if (gateResult) {
+      const gateAllow = gateResult.gate_result === 'ALLOW';
       capabilitiesUsed.push({
         name: '安全评估',
         description: '评估路线安全性和可行性',
-        status: gateResult.gate_result === 'ALLOW' ? 'SUCCESS' : 'PARTIAL',
+        status: gateAllow && !verifyRollup.hasConflict ? 'SUCCESS' : 'PARTIAL',
       });
     }
     if (state?.itinerary) {

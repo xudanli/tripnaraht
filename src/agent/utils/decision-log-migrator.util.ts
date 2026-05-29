@@ -80,6 +80,7 @@ export class DecisionLogMigrator {
    */
   private static normalizeStepToLegacy(step: OrchestrationStep): string {
     const stepMap: Record<OrchestrationStep, string> = {
+      INTENT_COMPILE: 'intent_compile',
       INTAKE: 'intent_analysis',
       STATE_UPDATE: 'state_update',
       RESEARCH: 'research',

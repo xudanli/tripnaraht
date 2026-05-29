@@ -39,6 +39,10 @@ import { DayProfile, PaceConstraints, RollingFatigueIssue } from '../interfaces/
 import { SplitOperation, BufferDayOperation, DrDreOperation } from '../interfaces/dr-dre-operation.interface';
 import { FatigueCalculatorService } from '../services/fatigue-calculator.service';
 import { DrivingSafetyConcernService } from '../services/driving-safety-concern.service';
+import {
+  buildPartyRhythmDecisionLogs,
+  resolveDayPaceWithPartyRhythm,
+} from '../persona/party-rhythm-multiplex.util';
 import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
 import { BookingComIntegrationService } from '../../../mcp/booking-com-integration.service';
 
@@ -80,7 +84,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
     this.logger.debug(`Dr.Dre 评估计划: ${plan.tripId}`);
 
     const pace = this.buildPaceConstraints(world);
-    const dayProfiles = this.buildDayProfiles(plan, pace);
+    const dayProfiles = this.buildDayProfiles(plan, pace, world);
 
     // 0️⃣.5 检查住宿位置对路线节奏的影响（Airbnb 集成）
     if (this.airbnbIntegration && plan.segments.length > 0) {
@@ -206,7 +210,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
       }
     }
 
-    const logs: DecisionLogEntry[] = [];
+    const logs: DecisionLogEntry[] = [...buildPartyRhythmDecisionLogs(world)];
 
     // 0️⃣.7 驾驶安全关注点（驾驶进入危险区、疲劳风险等 → 三人格提醒）
     if (this.drivingSafetyConcern && plan.segments?.length > 0) {
@@ -366,7 +370,7 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
    * 不再使用"魔法参数"，所有阈值都来自人体能力模型
    */
   private buildPaceConstraints(world: WorldModelContext): PaceConstraints {
-    const human = world.human;
+    const human = world.partyAggregation?.effectiveCapability ?? world.human;
     const routeDirection = world.routeDirection;
     const softConstraints = routeDirection.constraints?.soft || {};
 
@@ -412,7 +416,8 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
    */
   private buildDayProfiles(
     plan: RoutePlanDraft,
-    pace: PaceConstraints
+    pace: PaceConstraints,
+    world?: WorldModelContext,
   ): DayProfile[] {
     const daysMap = new Map<number, RouteSegment[]>();
     for (const seg of plan.segments) {
@@ -424,13 +429,15 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
     return Array.from(daysMap.entries())
       .sort(([a], [b]) => a - b)
       .map(([dayIndex, segments]) => {
+        const dayPace = world
+          ? resolveDayPaceWithPartyRhythm(world, pace, { dayIndex })
+          : pace;
         const totalDistanceKm = segments.reduce((s, seg) => s + seg.distanceKm, 0);
         const totalAscentM = segments.reduce((s, seg) => s + seg.ascentM, 0);
         const maxSlopePct = segments.reduce(
           (m, seg) => Math.max(m, seg.slopePct ?? 0),
           0
         );
-        // 粗略估算移动时间
         const estMovingHours = this.fatigueCalculator.estimateMovingHours(
           totalDistanceKm,
           totalAscentM
@@ -443,10 +450,10 @@ export class DrDreStrategy implements DecisionPersonaStrategy {
           totalAscentM,
           maxSlopePct,
           estMovingHours,
-          fatigueIndex: 0, // 先占位，之后统一算
+          fatigueIndex: 0,
         };
 
-        dp.fatigueIndex = this.fatigueCalculator.computeFatigueIndex(dp, pace);
+        dp.fatigueIndex = this.fatigueCalculator.computeFatigueIndex(dp, dayPace);
         return dp;
       });
   }

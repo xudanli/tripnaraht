@@ -29,9 +29,11 @@ export interface DemDecisionEvidence {
   /** 疲劳指数（0-100，归一化） */
   fatigueIndex: number;
   /** 违规类型 */
-  violation: 'HARD' | 'SOFT' | 'NONE';
+  violation: 'HARD' | 'SOFT' | 'NONE' | 'UNKNOWN';
   /** 解释（用于可解释失败） */
   explanation: string;
+  /** 数据源契约（占位符 DEM 不得视为 NONE 违规） */
+  dataProvenance?: 'NONE' | 'LIVE' | 'STATIC_INFERRED' | 'PLACEHOLDER';
   /** 额外元数据 */
   metadata?: {
     /** 连续高海拔天数 */

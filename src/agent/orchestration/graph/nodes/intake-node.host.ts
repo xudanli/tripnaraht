@@ -6,6 +6,7 @@ import type { AgentContext } from '../../../interfaces/claude-orchestration.inte
 import type { OrchestratorState } from '../../../interfaces/trip-plan.interface';
 import type { GraphRunOutcome } from '../orchestration-graph.types';
 import type { IntakePrePlanSegmentInput } from './base.node';
+import type { OrchestrationResult } from '../../../interfaces/claude-orchestration.interface';
 
 /**
  * INTAKE 节点宿主：由 ClaudeOrchestratorService 实现。
@@ -21,6 +22,31 @@ export interface IntakeNodeHost {
   ): Promise<void>;
 
   maybeSnapshot(state: OrchestratorState, trigger: 'AUTO' | 'USER_ACTION' | 'CHECKPOINT'): void;
+
+  buildPrePlanSuccessResult(
+    state: OrchestratorState,
+    startTime: number,
+    decisionState: import('../../../../decision/kernel/decision-state.types').DecisionState | undefined,
+    context: AgentContext,
+  ): OrchestrationResult;
+
+  tryApplyBoundTripItineraryItemDelete?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<import('./intake-itinerary-delete.util').ItineraryItemDeleteApplyResult>;
+
+  tryApplyBoundTripItineraryItemAdd?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<import('./intake-itinerary-add.util').ItineraryItemAddApplyResult>;
+
+  tryApplyBoundTripItineraryItemUpdate?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<import('./intake-itinerary-update.util').ItineraryItemUpdateApplyResult>;
 }
 
 export type IntakePrePlanSegmentResult =

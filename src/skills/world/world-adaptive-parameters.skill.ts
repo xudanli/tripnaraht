@@ -10,6 +10,7 @@ import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { AdaptiveWorldModelService } from './services/adaptive-world-model.service';
 import { AdaptiveParameters } from './interfaces/unified-world-model.interface';
+import { markWorldSkillDegraded } from './utils/world-skill-degraded.util';
 
 export interface WorldAdaptiveParametersInput extends SkillInput {
   /** 路线方向ID（可选） */
@@ -31,11 +32,14 @@ export interface WorldAdaptiveParametersOutput extends SkillOutput {
   
   /** 版本ID（如果有） */
   versionId?: string;
+
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 @SkillDecorator({
   name: 'world.adaptiveParameters',
-  description: '获取自适应世界模型参数（基于用户反馈和学习后的能力）',
+  description: 'world.adaptiveParameters：获取自适应世界模型参数（基于用户反馈和学习后的能力）',
   version: '1.0.0',
   category: 'world',
   toolGroup: 'DOMAIN',
@@ -46,7 +50,7 @@ export class WorldAdaptiveParametersSkill implements Skill<WorldAdaptiveParamete
 
   metadata = {
     name: 'world.adaptiveParameters',
-    description: '获取自适应世界模型参数（基于用户反馈和学习后的能力）',
+    description: 'world.adaptiveParameters：获取自适应世界模型参数（基于用户反馈和学习后的能力）',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,
@@ -82,17 +86,20 @@ export class WorldAdaptiveParametersSkill implements Skill<WorldAdaptiveParamete
         };
       }
 
-      // 降级策略：返回默认参数
+      // 降级策略：返回默认参数（显式 degraded）
       this.logger.warn(`[WorldAdaptiveParametersSkill] AdaptiveWorldModelService不可用，返回默认参数`);
-      return {
-        parameters: {
-          routeDifficultyAdjustment: 1.0,
-          timeEstimateAdjustment: 1.0,
-          riskAssessmentAdjustment: 1.0,
+      return markWorldSkillDegraded(
+        {
+          parameters: {
+            routeDifficultyAdjustment: 1.0,
+            timeEstimateAdjustment: 1.0,
+            riskAssessmentAdjustment: 1.0,
+          },
+          evidence_id: `world_adaptive_parameters_fallback_${Date.now()}`,
+          source: 'fallback',
         },
-        evidence_id: `world_adaptive_parameters_fallback_${Date.now()}`,
-        source: 'fallback',
-      };
+        'AdaptiveWorldModelService unavailable',
+      );
     } catch (error: any) {
       this.logger.error(
         `world.adaptiveParameters 失败: ${error?.message}`,

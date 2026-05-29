@@ -11,6 +11,7 @@ import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { FailureRiskPredictionService } from './services/failure-risk-prediction.service';
 import { WorldWeatherPredictionSkill } from './world-weather-prediction.skill';
 import { FailureRiskPrediction } from './interfaces/unified-world-model.interface';
+import { markWorldSkillDegraded } from './utils/world-skill-degraded.util';
 
 export interface WorldFailureRiskPredictionInput extends SkillInput {
   /** 路线方向ID */
@@ -42,12 +43,15 @@ export interface WorldFailureRiskPredictionInput extends SkillInput {
 export interface WorldFailureRiskPredictionOutput extends SkillOutput {
   /** 失败风险预测 */
   prediction: FailureRiskPrediction;
-  
+
   /** 证据ID */
   evidence_id: string;
-  
+
   /** 数据源 */
   source: string;
+
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 @SkillDecorator({
@@ -139,17 +143,20 @@ export class WorldFailureRiskPredictionSkill implements Skill<WorldFailureRiskPr
         }
       }
 
-      // 3. 最终降级：返回空预测
+      // 3. 最终降级：返回空预测（显式 degraded）
       this.logger.warn(`[WorldFailureRiskPredictionSkill] 无可用服务，返回空预测`);
-      return {
-        prediction: {
-          routeDirectionId: input.routeDirectionId,
-          date: input.dateRange.start,
-          predictions: [],
+      return markWorldSkillDegraded(
+        {
+          prediction: {
+            routeDirectionId: input.routeDirectionId,
+            date: input.dateRange.start,
+            predictions: [],
+          },
+          evidence_id: `world_failure_risk_prediction_fallback_${Date.now()}`,
+          source: 'fallback',
         },
-        evidence_id: `world_failure_risk_prediction_fallback_${Date.now()}`,
-        source: 'fallback',
-      };
+        'FailureRiskPredictionService and WorldWeatherPredictionSkill unavailable',
+      );
     } catch (error: any) {
       this.logger.error(
         `world.failureRiskPrediction 失败: ${error?.message}`,

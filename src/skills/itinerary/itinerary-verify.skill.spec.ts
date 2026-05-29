@@ -33,7 +33,7 @@ describe('ItineraryVerifySkill', () => {
       },
     });
 
-    expect(out.issues.some((i) => i.severity === 'CRITICAL' && i.message.includes('车型-路况仲裁'))).toBe(true);
+    expect(out.issues.some((i) => i.severity === 'CRITICAL' && i.message.includes('F 路'))).toBe(true);
   });
 
   it('TIME_WINDOW_OVERLAP 携带 related_item_id（重叠对中的前项）', async () => {

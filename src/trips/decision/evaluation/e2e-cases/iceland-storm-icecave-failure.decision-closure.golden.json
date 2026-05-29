@@ -1,0 +1,111 @@
+{
+  "fixtureVersion": "decision-closure-golden/v1",
+  "caseId": "iceland-storm-icecave-failure-001",
+  "description": "Captured 2026-05-29T04:53:00.795Z via capture-decision-closure-golden.ts",
+  "optimizationHints": {
+    "method": "CGUS",
+    "recommendedAlternativeId": "plan-relaxed-pace",
+    "metaDecisionAudit": "META_BUDGET(sample=200,cand=5,monteCarlo=1,mcRerank=1,entropy=0.91,mcTotal=180) ragWorld=2",
+    "decisionVerdict": {
+      "chosen_plan_id": "plan-relaxed-pace",
+      "rejected_plans": [
+        {
+          "id": "plan-philosophy-aligned",
+          "status": "infeasible",
+          "hard_violation_count": 2,
+          "soft_penalty_degree": 0,
+          "expected_utility": 0.350755,
+          "feasibility_probability": 1,
+          "utility_delta_vs_chosen": 0.012426499999999785,
+          "rejection_reasons": [
+            "HARD:WORLD_ROAD_CLOSED degree=1",
+            "HARD:WORLD_WEATHER_BLIZZARD degree=1"
+          ]
+        },
+        {
+          "id": "plan-base",
+          "status": "infeasible",
+          "hard_violation_count": 2,
+          "soft_penalty_degree": 0,
+          "expected_utility": 0.35047949999999994,
+          "feasibility_probability": 1,
+          "utility_delta_vs_chosen": 0.012150999999999745,
+          "rejection_reasons": [
+            "HARD:WORLD_ROAD_CLOSED degree=1",
+            "HARD:WORLD_WEATHER_BLIZZARD degree=1"
+          ]
+        },
+        {
+          "id": "plan-budget-safe",
+          "status": "infeasible",
+          "hard_violation_count": 2,
+          "soft_penalty_degree": 0.7,
+          "expected_utility": 0.35013149999999993,
+          "feasibility_probability": 1,
+          "utility_delta_vs_chosen": 0.01180299999999973,
+          "rejection_reasons": [
+            "HARD:WORLD_ROAD_CLOSED degree=1",
+            "HARD:WORLD_WEATHER_BLIZZARD degree=1",
+            "SOFT:BUDGET_SOFT degree=0.7"
+          ]
+        },
+        {
+          "id": "plan-high-density",
+          "status": "infeasible",
+          "hard_violation_count": 2,
+          "soft_penalty_degree": 0.6,
+          "expected_utility": 0.349798,
+          "feasibility_probability": 1,
+          "utility_delta_vs_chosen": 0.0114694999999998,
+          "rejection_reasons": [
+            "HARD:WORLD_ROAD_CLOSED degree=1",
+            "HARD:WORLD_WEATHER_BLIZZARD degree=1",
+            "SOFT:TIME_SLACK_SOFT degree=0.6"
+          ]
+        }
+      ],
+      "monte_carlo_summary": {
+        "used": true,
+        "total_samples": 180,
+        "samples_per_candidate": {
+          "plan-relaxed-pace": 100,
+          "plan-budget-safe": 20,
+          "plan-base": 20,
+          "plan-philosophy-aligned": 20,
+          "plan-high-density": 20
+        }
+      }
+    },
+    "decisionVerdictNarrationZh": "**推荐方案：** `plan-relaxed-pace`\n- 优化方法：CGUS（META_BUDGET(sample=200,cand=5,monteCarlo=1,mcRerank=1,entropy=0.91,mcTotal=180)）\n- 后台已完成约 **180** 次不确定性抽样后再给出排序。\n\n**未采纳方案：**\n- `plan-philosophy-aligned`：不可行 — HARD:WORLD_ROAD_CLOSED degree=1；HARD:WORLD_WEATHER_BLIZZARD degree=1（相对推荐 ΔU≈0.01）\n- `plan-base`：不可行 — HARD:WORLD_ROAD_CLOSED degree=1；HARD:WORLD_WEATHER_BLIZZARD degree=1（相对推荐 ΔU≈0.01）\n- `plan-budget-safe`：不可行 — HARD:WORLD_ROAD_CLOSED degree=1；HARD:WORLD_WEATHER_BLIZZARD degree=1（相对推荐 ΔU≈0.01）\n- `plan-high-density`：不可行 — HARD:WORLD_ROAD_CLOSED degree=1；HARD:WORLD_WEATHER_BLIZZARD degree=1（相对推荐 ΔU≈0.01）",
+    "worldConstraintMaterialization": {
+      "appliedEvents": 2,
+      "roadIds": [
+        "IS-R1-SOUTH"
+      ],
+      "weatherDates": [
+        "2026-01-16"
+      ],
+      "storeVersion": 2
+    },
+    "alternatives": [
+      {
+        "id": "plan-relaxed-pace",
+        "score": 0.3383285000000002,
+        "expected_utility": 0.3383285000000002,
+        "feasibility_probability": 1
+      },
+      {
+        "id": "plan-philosophy-aligned",
+        "score": 0.350755,
+        "expected_utility": 0.350755,
+        "feasibility_probability": 1
+      },
+      {
+        "id": "plan-base",
+        "score": 0.35047949999999994,
+        "expected_utility": 0.35047949999999994,
+        "feasibility_probability": 1
+      }
+    ]
+  }
+}

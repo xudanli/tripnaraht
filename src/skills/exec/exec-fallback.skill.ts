@@ -38,7 +38,7 @@ export class ExecFallbackSkill implements Skill<ExecFallbackInput, ExecFallbackO
 
   metadata = {
     name: 'exec.fallback',
-    description: '生成兜底方案（当原计划无法执行时），保持路线哲学',
+    description: 'exec.fallback：生成兜底方案（当原计划无法执行时），保持路线哲学',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

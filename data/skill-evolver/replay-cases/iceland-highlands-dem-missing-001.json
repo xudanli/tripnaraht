@@ -1,0 +1,46 @@
+{
+  "caseId": "iceland-highlands-dem-missing-001",
+  "description": "[e2e] 冰岛高地路线 - DEM 缺失场景",
+  "source_e2e_case_id": "iceland-highlands-dem-missing-001",
+  "tasks": [
+    {
+      "id": "iceland-highlands-dem-missing-001",
+      "description": "测试当 DEM Evidence 缺失时，Abu 必须 REJECT",
+      "initialObservation": "我想在7月去冰岛高地",
+      "successCriteria": "final allowed=false; Abu REJECT",
+      "optimalSteps": 4
+    }
+  ],
+  "assertions": [
+    {
+      "type": "trajectory_contains",
+      "value": "reject",
+      "weight": 1
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "reject",
+      "weight": 2
+    },
+    {
+      "type": "trajectory_contains",
+      "value": "dem",
+      "weight": 0.5
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "dem",
+      "weight": 1
+    },
+    {
+      "type": "trajectory_contains",
+      "value": "高地",
+      "weight": 0.5
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "is",
+      "weight": 0.5
+    }
+  ]
+}

@@ -53,7 +53,7 @@ export class ContextCompressSkill implements Skill<ContextCompressInput, Context
 
   metadata = {
     name: 'context.compress',
-    description: '上下文压缩：按预算压缩 blocks（递归摘要/剪枝），保留硬门槛、关键决策点、失败尝试',
+    description: 'context.compress：上下文压缩：按预算压缩 blocks（递归摘要/剪枝），保留硬门槛、关键决策点、失败尝试',
     version: '1.0.0',
     category: 'rag' as const,
   };

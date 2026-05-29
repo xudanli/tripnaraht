@@ -1,0 +1,53 @@
+{
+  "trajectoryId": "98f6cebc-b7f0-461a-a4d3-54a62a5bd92c",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "D",
+  "strategy": {
+    "strategyId": "D",
+    "philosophy": "最小变更，贴近技能原文",
+    "approach": "严格按技能步骤顺序执行",
+    "emphasis": "技能遵守度",
+    "risk": "对异常场景反应慢"
+  },
+  "taskIds": [
+    "iceland-highlands-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地，中等强度，7天行程",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "result": "[进行中] 已执行: 处理: 测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:36.303Z"
+    },
+    {
+      "stepIndex": 1,
+      "observation": "[进行中] 已执行: 处理: 测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "result": "[进行中] 已执行: 处理: 测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:36.303Z"
+    },
+    {
+      "stepIndex": 2,
+      "observation": "[进行中] 已执行: 处理: 测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "thought": "按技能默认步骤执行",
+      "action": "处理: 测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "result": "[完成] 处理: 测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T04:54:36.303Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T04:54:36.303Z",
+  "score": 65,
+  "evalMode": "fixture"
+}

@@ -91,7 +91,12 @@ export class AgentEntryResponseFactoryService {
       },
       explain: {
         decision_log: decisionLog,
-        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(decisionLog, undefined),
+        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(
+          decisionLog,
+          undefined,
+          undefined,
+          request.options,
+        ),
       },
       observability: {
         latency_ms: latency,
@@ -181,7 +186,12 @@ export class AgentEntryResponseFactoryService {
       },
       explain: {
         decision_log: decisionLog,
-        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(decisionLog, undefined),
+        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(
+          decisionLog,
+          undefined,
+          undefined,
+          request.options,
+        ),
       },
       observability: {
         latency_ms: latency,
@@ -269,7 +279,12 @@ export class AgentEntryResponseFactoryService {
       },
       explain: {
         decision_log: decisionLog,
-        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(decisionLog, undefined),
+        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(
+          decisionLog,
+          undefined,
+          undefined,
+          request.options,
+        ),
       },
       observability: {
         latency_ms: latency,
@@ -434,7 +449,12 @@ export class AgentEntryResponseFactoryService {
       },
       explain: {
         decision_log: decisionLog,
-        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(decisionLog, undefined),
+        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(
+          decisionLog,
+          undefined,
+          undefined,
+          request.options,
+        ),
       },
       observability: {
         latency_ms: latency,
@@ -511,7 +531,12 @@ export class AgentEntryResponseFactoryService {
       },
       explain: {
         decision_log: decisionLog,
-        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(decisionLog, undefined),
+        simplified_explanation: this.getAssembler().buildSimplifiedExplanation(
+          decisionLog,
+          undefined,
+          undefined,
+          request.options,
+        ),
       },
       observability: {
         latency_ms: latency,

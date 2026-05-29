@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-05-26T07:05:28.107Z",
+  "cases": [
+    {
+      "caseId": "iceland-highlands-001",
+      "source_e2e_case_id": "iceland-highlands-001",
+      "file": "data/skill-evolver/replay-cases/iceland-highlands-001.json"
+    },
+    {
+      "caseId": "iceland-highlands-dem-missing-001",
+      "source_e2e_case_id": "iceland-highlands-dem-missing-001",
+      "file": "data/skill-evolver/replay-cases/iceland-highlands-dem-missing-001.json"
+    },
+    {
+      "caseId": "iceland-ring-road-001",
+      "source_e2e_case_id": "iceland-ring-road-001",
+      "file": "data/skill-evolver/replay-cases/iceland-ring-road-001.json"
+    },
+    {
+      "caseId": "iceland-storm-icecave-failure-001",
+      "source_e2e_case_id": "iceland-storm-icecave-failure-001",
+      "file": "data/skill-evolver/replay-cases/iceland-storm-icecave-failure-001.json"
+    }
+  ]
+}

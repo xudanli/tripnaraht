@@ -52,7 +52,7 @@ export class RouteDirectionListForCountrySkill implements Skill<RouteDirectionLi
 
   metadata = {
     name: 'routeDirection.listForCountry',
-    description: '列出指定国家可用的路线方向，包括基本信息、标签和适合人群',
+    description: 'routeDirection.listForCountry：列出指定国家可用的路线方向，包括基本信息、标签和适合人群',
     version: '1.0.0',
     category: 'routeDirection' as const,
   };

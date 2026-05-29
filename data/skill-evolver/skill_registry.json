@@ -1,0 +1,123 @@
+{
+  "skills": {
+    "api_calling": {
+      "name": "API 调用规范",
+      "currentVersion": 1,
+      "versions": [
+        1
+      ],
+      "artifactType": "markdown_skill",
+      "successRate": null,
+      "lastEvaluated": null,
+      "evolutionCount": 0
+    },
+    "country_pack.IS": {
+      "name": "冰岛 Country Pack 编排规则（弱种子 / 演示用）",
+      "currentVersion": 2,
+      "versions": [
+        1,
+        2
+      ],
+      "artifactType": "country_pack",
+      "countryCode": "IS",
+      "successRate": null,
+      "lastEvaluated": "2026-05-26T07:41:17.910Z",
+      "evolutionCount": 7
+    }
+  },
+  "evolution_history": [
+    {
+      "skill_id": "country_pack.IS",
+      "from_version": 1,
+      "to_version": 2,
+      "timestamp": "2026-05-26T05:20:55.673Z",
+      "score_delta": 43.08,
+      "audit_passed": true,
+      "strategies_tested": [
+        "conservative-evidence-lock",
+        "aggressive-context-inference",
+        "balanced-fallback-reject",
+        "meta-rule-enforcer"
+      ],
+      "eval_mode": "fixture"
+    },
+    {
+      "skill_id": "country_pack.IS",
+      "from_version": 1,
+      "to_version": 2,
+      "timestamp": "2026-05-26T05:22:34.398Z",
+      "score_delta": 43.08,
+      "audit_passed": true,
+      "strategies_tested": [
+        "strict-evidence-gate",
+        "fallback-with-warning",
+        "localized-constraint-propagation",
+        "aggressive-cache-preload"
+      ],
+      "eval_mode": "fixture"
+    },
+    {
+      "skill_id": "country_pack.IS",
+      "from_version": 1,
+      "to_version": 2,
+      "timestamp": "2026-05-26T06:26:55.599Z",
+      "score_delta": 43.08,
+      "audit_passed": true,
+      "strategies_tested": [
+        "strict-reject-fast",
+        "contextual-validate-then-reject",
+        "global-evidence-audit",
+        "conservative-abu-override"
+      ],
+      "eval_mode": "fixture"
+    },
+    {
+      "skill_id": "country_pack.IS",
+      "from_version": 1,
+      "to_version": 2,
+      "timestamp": "2026-05-26T07:06:03.287Z",
+      "score_delta": 17.189999999999998,
+      "audit_passed": true,
+      "strategies_tested": [
+        "decision_replay"
+      ],
+      "eval_mode": "decision_replay"
+    },
+    {
+      "skill_id": "country_pack.IS",
+      "from_version": 1,
+      "to_version": 2,
+      "timestamp": "2026-05-26T07:11:02.364Z",
+      "score_delta": 17.189999999999998,
+      "audit_passed": true,
+      "strategies_tested": [
+        "decision_replay"
+      ],
+      "eval_mode": "decision_replay"
+    },
+    {
+      "skill_id": "country_pack.IS",
+      "from_version": 1,
+      "to_version": 2,
+      "timestamp": "2026-05-26T07:39:01.446Z",
+      "score_delta": 32.459999999999994,
+      "audit_passed": true,
+      "strategies_tested": [
+        "decision_replay"
+      ],
+      "eval_mode": "decision_replay"
+    },
+    {
+      "skill_id": "country_pack.IS",
+      "from_version": 1,
+      "to_version": 2,
+      "timestamp": "2026-05-26T07:41:17.910Z",
+      "score_delta": 32.459999999999994,
+      "audit_passed": true,
+      "strategies_tested": [
+        "decision_replay"
+      ],
+      "eval_mode": "decision_replay"
+    }
+  ]
+}

@@ -32,7 +32,7 @@ export class PlanGateRunThreeGuardiansSkill implements Skill<PlanGateRunThreeGua
 
   metadata = {
     name: 'plan.gate.runThreeGuardians',
-    description: '调用三人格（Abu/Dr.Dre/Neptune）对方案进行完整评审',
+    description: '编排 plan gate 三人格（Abu/Dr.Dre/Neptune）完整评审并输出结构化 gate 结果。在 precheck 后需正式 gate 决策或用户确认方案前调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

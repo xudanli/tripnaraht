@@ -54,7 +54,7 @@ export interface IcelandAlternativeValidatorOutput extends SkillOutput {
 export class IcelandAlternativeValidatorSkill implements Skill<IcelandAlternativeValidatorInput, IcelandAlternativeValidatorOutput> {
   metadata = {
     name: 'iceland.alternativeValidator',
-    description: 'Recursive dual-audit filter for Plan B segments.',
+    description: 'iceland.alternativeValidator：Recursive dual-audit filter for Plan B segments.',
     version: '0.1.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

@@ -199,7 +199,7 @@ function hasSegmentTransportModeReplanningSignal(msg: string, msgLower: string):
  */
 function hasReplanningEditSignalBeforeTransportConsult(msg: string, msgLower: string): boolean {
   if (
-    /(?:修改|调整|重排|替换|改行程|换酒店|换景点|加一天|减一天|删掉|删去|加上|减去|订票|订酒店|插入|更新|移动|新增|去掉|生成行程|做行程|排行程|预订行程|折中方案)/.test(
+    /(?:修改|调整|重排|替换|改行程|换酒店|换景点|加一天|减一天|删掉|删去|删除|移除|加上|减去|订票|订酒店|插入|更新|移动|新增|去掉|生成行程|做行程|排行程|预订行程|折中方案)/.test(
       msg,
     )
   ) {

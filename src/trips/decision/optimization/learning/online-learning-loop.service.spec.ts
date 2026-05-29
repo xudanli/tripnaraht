@@ -21,11 +21,14 @@ jest.mock('./weight-persistence.service', () => ({
   WeightPersistenceService: jest.fn().mockImplementation(() => ({
     saveLearningResult: jest.fn(),
     loadUserWeights: jest.fn(),
+    loadUserProfile: jest.fn().mockResolvedValue(null),
+    saveUserProfile: jest.fn().mockResolvedValue(undefined),
   })),
 }));
 
 import { OnlineLearningLoopService, DecisionOutcome, OnlineLearningConfig } from './online-learning-loop.service';
 import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
+import { DEFAULT_OBJECTIVE_WEIGHTS } from '../objective-function.interface';
 
 interface MockWeightLearner {
   learnFromFeedback: jest.Mock;
@@ -33,6 +36,8 @@ interface MockWeightLearner {
 
 interface MockPersistence {
   saveLearningResult: jest.Mock;
+  loadUserProfile: jest.Mock;
+  saveUserProfile: jest.Mock;
 }
 
 interface MockRegretTracker {
@@ -72,14 +77,20 @@ describe('OnlineLearningLoopService', () => {
   beforeEach(() => {
     mockWeightLearner = {
       learnFromFeedback: jest.fn().mockResolvedValue({
-        newWeights: { timeBudget: 0.3, travelEfficiency: 0.25, variety: 0.2, cost: 0.15, comfort: 0.1 },
+        updatedWeights: { ...DEFAULT_OBJECTIVE_WEIGHTS, safety: 0.3 },
+        weightChanges: { safety: 0.05 },
+        signalStrength: 0.6,
+        samplesUsed: 3,
+        expectedImprovement: 0.1,
         confidence: 0.7,
-        method: 'GRADIENT_DESCENT',
+        analysis: { gradients: { safety: 0.01 }, mainFactors: [], recommendations: [] },
       }),
     };
 
     mockPersistence = {
       saveLearningResult: jest.fn().mockResolvedValue(undefined),
+      loadUserProfile: jest.fn().mockResolvedValue(null),
+      saveUserProfile: jest.fn().mockResolvedValue(undefined),
     };
 
     mockRegretTracker = {
@@ -191,10 +202,55 @@ describe('OnlineLearningLoopService', () => {
       expect(state.totalUpdates).toBeGreaterThanOrEqual(1);
     });
 
+    it('应将 predictionRegret01 与 predictedUtility 传入 learnFromFeedback', async () => {
+      service.configure({ minFeedbackCount: 3 });
+      for (let i = 0; i < 3; i++) {
+        await service.processDecisionOutcome(
+          createOutcome('user-1', {
+            satisfactionScore: 0.72,
+            actualUtility: 0.5,
+            predictedUtility: 0.85,
+          }),
+        );
+      }
+      expect(mockWeightLearner.learnFromFeedback).toHaveBeenCalled();
+      const calls = mockWeightLearner.learnFromFeedback.mock.calls;
+      const lastBatch = calls[calls.length - 1][1] as Array<{ data: { predictedUtility?: number; predictionRegret01?: number } }>;
+      expect(lastBatch.length).toBeGreaterThan(0);
+      expect(lastBatch[0].data.predictedUtility).toBe(0.85);
+      expect(lastBatch[0].data.predictionRegret01).toBeCloseTo(0.35, 5);
+    });
+
     it('should record regret when actualUtility provided', async () => {
       await service.processDecisionOutcome(createOutcome('user-1', { actualUtility: 0.75 }));
 
       expect(mockRegretTracker.recordUtility).toHaveBeenCalled();
+    });
+
+    it('应在同时有 predictedUtility 与 actualUtility 时返回 predictionRegret01 并写入事件日志', async () => {
+      service.configure({ minFeedbackCount: 99 });
+      const result = await service.processDecisionOutcome(
+        createOutcome('user-1', { predictedUtility: 0.9, actualUtility: 0.55 }),
+      );
+      expect(result.predictionRegret01).toBeCloseTo(0.35, 5);
+      const last = service.getEventLog(1)[0];
+      expect(last.eventType).toBe('REGRET_RECORDED');
+      expect(last.details).toMatchObject({
+        kind: 'PREDICTION_REGRET',
+        predictionRegret01: expect.any(Number),
+        predictedUtility: 0.9,
+        actualUtility: 0.55,
+      });
+    });
+
+    it('应在关闭学习时仍返回 predictionRegret01 并记录事件', async () => {
+      service.configure({ enabled: false });
+      const res = await service.processDecisionOutcome(
+        createOutcome('user-1', { predictedUtility: 0.8, actualUtility: 0.3 }),
+      );
+      expect(res.learningTriggered).toBe(false);
+      expect(res.predictionRegret01).toBeCloseTo(0.5, 5);
+      expect(service.getEventLog(5).some((e) => e.eventType === 'REGRET_RECORDED')).toBe(true);
     });
 
     it('should handle multiple users independently', async () => {
@@ -228,6 +284,7 @@ describe('OnlineLearningLoopService', () => {
       await service.processDecisionOutcome(createOutcome('user-1'));
 
       expect(mockPersistence.saveLearningResult).toHaveBeenCalled();
+      expect(mockPersistence.saveUserProfile).toHaveBeenCalled();
     });
   });
 
@@ -362,7 +419,7 @@ describe('OnlineLearningLoopService', () => {
         actualUtility: undefined,
       }));
 
-      expect(result.learningTriggered).toBe(true);
+      expect(result.learningTriggered).toBe(false);
       expect(result.weightsUpdated).toBe(false);
     });
   });
