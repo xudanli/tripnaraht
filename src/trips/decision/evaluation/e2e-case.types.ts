@@ -220,6 +220,8 @@ export interface E2ECaseMetadata {
    * Shape matches kernel `OptimizationHints` (camelCase).
    */
   decisionClosureGolden?: Record<string, unknown>;
+  /** P0：样本 trips DecisionLogEntry[]（unified explain + physical evidence gate） */
+  decisionClosureDecisionLogs?: DecisionLogEntry[];
   counterfactualGroup?: string;
   /** persona closure P0 fixtures（offline replay；不依赖全链路 agent） */
   personaClosureFixture?: boolean;

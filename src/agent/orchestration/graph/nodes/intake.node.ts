@@ -7,17 +7,27 @@ import {
 } from './base.node';
 import type { IntakeNodeHost, IntakePrePlanSegmentResult } from './intake-node.host';
 import {
-  applyItineraryItemDeleteIfRequested,
   shouldTerminalAfterItineraryItemDelete,
 } from './intake-itinerary-delete.util';
 import {
-  applyItineraryItemAddIfRequested,
   shouldTerminalAfterItineraryItemAdd,
 } from './intake-itinerary-add.util';
 import {
-  applyItineraryItemUpdateIfRequested,
+  applyItineraryCrudWithCompoundPlan,
+  hasCompoundDataLookupFollowup,
+} from './intake-itinerary-compound.util';
+import {
   shouldTerminalAfterItineraryItemUpdate,
 } from './intake-itinerary-update.util';
+import {
+  applyItineraryDayReplanIfRequested,
+  shouldTerminalAfterItineraryDayReplan,
+} from './intake-itinerary-day-replan.util';
+import {
+  applyItineraryAdjustDraftIfRequested,
+  shouldTerminalAfterItineraryAdjustDraftApply,
+} from './intake-itinerary-adjust-apply.util';
+import { shouldTerminalAfterWorkbenchPlaceholder } from './intake-workbench-placeholder.util';
 import { segmentOutcomeToNodeResult } from './node-outcome.adapter';
 
 /**
@@ -56,36 +66,53 @@ export async function runIntakePrePlanSegment(
   let decisionState = input.decisionState;
 
   if (!resumeSkipIntake) {
-    await host.executeIntakeStep(request, context, state, llmProvider);
+    await applyItineraryAdjustDraftIfRequested(host, {
+      message: request.message,
+      tripId: request.trip_id,
+      userId: request.user_id,
+      state,
+      request,
+    });
+    if (!shouldTerminalAfterItineraryAdjustDraftApply(state)) {
+      await host.executeIntakeStep(request, context, state, llmProvider);
+    }
   } else {
     host.logger.log('[Claude Orchestrator] Durable resume: 跳过 INTAKE，进入 STATE_UPDATE');
     state.current_step = 'STATE_UPDATE';
     state.metadata.last_updated_at = new Date().toISOString();
-    await applyItineraryItemDeleteIfRequested(host, {
+    await applyItineraryCrudWithCompoundPlan(host, {
       message: request.message,
       tripId: request.trip_id,
       userId: request.user_id,
       state,
     });
-    await applyItineraryItemAddIfRequested(host, {
+    const md = state.metadata as Record<string, unknown>;
+    const tpr = (md.trip_plan_request ?? state.trip_plan_request) as
+      | { date_range?: { start_date?: string; end_date?: string }; start_date?: string; end_date?: string }
+      | undefined;
+    const dateRange =
+      tpr?.date_range ??
+      (tpr?.start_date ? { start_date: tpr.start_date, end_date: tpr.end_date } : undefined);
+    await applyItineraryDayReplanIfRequested(host, {
       message: request.message,
       tripId: request.trip_id,
       userId: request.user_id,
       state,
-    });
-    await applyItineraryItemUpdateIfRequested(host, {
-      message: request.message,
-      tripId: request.trip_id,
-      userId: request.user_id,
-      state,
+      dateRange,
     });
   }
 
   if (
     shouldTerminalAfterItineraryItemDelete(state) ||
     shouldTerminalAfterItineraryItemAdd(state) ||
-    shouldTerminalAfterItineraryItemUpdate(state)
+    shouldTerminalAfterItineraryItemUpdate(state) ||
+    shouldTerminalAfterItineraryAdjustDraftApply(state) ||
+    shouldTerminalAfterItineraryDayReplan(state) ||
+    shouldTerminalAfterWorkbenchPlaceholder(state)
   ) {
+    if (hasCompoundDataLookupFollowup(state) && host.mergeCompoundDataLookupFollowup) {
+      await host.mergeCompoundDataLookupFollowup(state, request, context, input.llmProvider);
+    }
     host.maybeSnapshot(state, 'CHECKPOINT');
     state.current_step = 'DONE';
     state.metadata.last_updated_at = new Date().toISOString();

@@ -6,6 +6,10 @@ import {
   PHYSICAL_CAPABILITY_SYSTEM_HINT_KEY,
   REQUEST_FITNESS_PROFILE_LINES_KEY,
 } from '../../../memory/utils/fitness-travel-preference-prompt.util';
+import {
+  buildIcelandMarketPriorBlockFromTravelPreference,
+  ICELAND_MARKET_PRIOR_SYSTEM_HINT_KEY,
+} from '../../../memory/utils/iceland-market-preference-prompt.util';
 
 /** AgentService / Hydrator 注入；INTAKE 漏斗消费后从 request.options 剥离 */
 export const INTAKE_TRAVEL_PREFERENCE_SNAPSHOT_OPTION = 'intake_travel_preference_snapshot' as const;
@@ -13,6 +17,7 @@ export const INTAKE_TRAVEL_PREFERENCE_SNAPSHOT_OPTION = 'intake_travel_preferenc
 export type IntakeFitnessMaterial = {
   fitnessLinesZh: string[];
   physicalCapabilityHintEn: string;
+  icelandMarketPriorZh: string;
 };
 
 function linesFromUnknown(raw: unknown): string[] {
@@ -39,9 +44,15 @@ export function peekIntakeFitnessMaterial(request: RouteAndRunRequestDto): Intak
     typeof reqAny[PHYSICAL_CAPABILITY_SYSTEM_HINT_KEY] === 'string'
       ? String(reqAny[PHYSICAL_CAPABILITY_SYSTEM_HINT_KEY]).trim()
       : '';
+  const fromSnapshotMarket = buildIcelandMarketPriorBlockFromTravelPreference(snapshot);
+  const legacyMarket =
+    typeof reqAny[ICELAND_MARKET_PRIOR_SYSTEM_HINT_KEY] === 'string'
+      ? String(reqAny[ICELAND_MARKET_PRIOR_SYSTEM_HINT_KEY]).trim()
+      : '';
   return {
     fitnessLinesZh: legacyLines.length > 0 ? legacyLines : (fromSnapshotLines ?? []),
     physicalCapabilityHintEn: legacyPhys || fromSnapshotPhys,
+    icelandMarketPriorZh: legacyMarket || fromSnapshotMarket,
   };
 }
 
@@ -53,6 +64,7 @@ export function consumeIntakeFitnessMaterial(request: RouteAndRunRequestDto): In
   const reqAny = request as unknown as Record<string, unknown>;
   delete reqAny[REQUEST_FITNESS_PROFILE_LINES_KEY];
   delete reqAny[PHYSICAL_CAPABILITY_SYSTEM_HINT_KEY];
+  delete reqAny[ICELAND_MARKET_PRIOR_SYSTEM_HINT_KEY];
   if (request.options) {
     const opts = { ...(request.options as Record<string, unknown>) };
     delete opts[INTAKE_TRAVEL_PREFERENCE_SNAPSHOT_OPTION];
@@ -82,7 +94,21 @@ export function applyIntakeFitnessMaterialToTripPlanMessage(
     message = `${sysHint}\n${message}`.trim();
   }
 
+  if (material.icelandMarketPriorZh) {
+    const sysHint =
+      `[SYSTEM_MESSAGE][ICELAND_MARKET_PRIOR]\n` +
+      `${material.icelandMarketPriorZh}\n` +
+      '以上为客源市场隐式先验（非用户自述国籍）；规划时优先匹配对应路线壳与季节节奏，勿向用户追问「你是哪国人」。\n';
+    message = `${sysHint}\n${message}`.trim();
+  }
+
   return { ...tripPlanRequest, message };
+}
+
+/** 轻量咨询：读取冰岛市场先验块（不经 INTAKE 亦可） */
+export function readIcelandMarketPriorForLightweightQa(request: RouteAndRunRequestDto): string | null {
+  const block = peekIntakeFitnessMaterial(request).icelandMarketPriorZh;
+  return block.length > 0 ? block : null;
 }
 
 /** 轻量咨询路径：与 INTAKE 同源事实源，不剥离 request（可能尚未进入 INTAKE） */

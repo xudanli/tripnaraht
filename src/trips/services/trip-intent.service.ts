@@ -2,6 +2,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto } from '../dto/trip-intent.dto';
+import {
+  LUNCH_STRATEGY_LABELS,
+  normalizeLunchStrategy,
+  resolveLunchStrategyFromTrip,
+} from '../../planning-policy/utils/lunch-strategy.util';
 
 @Injectable()
 export class TripIntentService {
@@ -49,15 +54,25 @@ export class TripIntentService {
       };
     }
 
-    // 更新 metadata（存储偏好、约束、规划策略）
+    // 更新 metadata（存储偏好、约束、规划策略、午餐策略）
     let metadata = trip.metadata as any || {};
-    if (dto.preferences || dto.constraints || dto.planningPolicy) {
+    if (dto.preferences || dto.constraints || dto.planningPolicy || dto.lunch_strategy) {
       metadata = {
         ...metadata,
         preferences: dto.preferences || metadata.preferences,
         constraints: dto.constraints || metadata.constraints,
         planningPolicy: dto.planningPolicy || metadata.planningPolicy,
       };
+      if (dto.lunch_strategy) {
+        const normalized = normalizeLunchStrategy(dto.lunch_strategy);
+        if (normalized) {
+          metadata.lunch_strategy = normalized;
+          metadata.tripParams = {
+            ...(metadata.tripParams ?? {}),
+            lunch_strategy: normalized,
+          };
+        }
+      }
     }
 
     // 更新数据库
@@ -78,11 +93,20 @@ export class TripIntentService {
         pacingConfig: pacingConfig,
         budgetConfig: budgetConfig,
       },
-      metadata: {
-        preferences: metadata.preferences,
-        constraints: metadata.constraints,
-        planningPolicy: metadata.planningPolicy,
-      },
+      metadata: this.buildIntentMetadata(metadata),
+    };
+  }
+
+  private buildIntentMetadata(metadata: Record<string, unknown>) {
+    const lunch_strategy =
+      normalizeLunchStrategy(metadata.lunch_strategy as string) ??
+      normalizeLunchStrategy((metadata.tripParams as Record<string, unknown> | undefined)?.lunch_strategy as string);
+    return {
+      preferences: metadata.preferences as string[] | undefined,
+      constraints: metadata.constraints,
+      planningPolicy: metadata.planningPolicy as string | undefined,
+      lunch_strategy: lunch_strategy ?? undefined,
+      lunch_strategy_label: lunch_strategy ? LUNCH_STRATEGY_LABELS[lunch_strategy] : undefined,
     };
   }
 
@@ -100,16 +124,18 @@ export class TripIntentService {
 
     const pacingConfig = trip.pacingConfig as any || {};
     const budgetConfig = trip.budgetConfig as any || {};
-    const metadata = trip.metadata as any || {};
+    const metadata = (trip.metadata as Record<string, unknown>) || {};
+    const lunch_strategy =
+      normalizeLunchStrategy(metadata.lunch_strategy as string) ?? resolveLunchStrategyFromTrip(trip);
 
     return {
       id: trip.id,
       pacingConfig: pacingConfig,
       budgetConfig: budgetConfig,
       metadata: {
-        preferences: metadata.preferences,
-        constraints: metadata.constraints,
-        planningPolicy: metadata.planningPolicy,
+        ...this.buildIntentMetadata(metadata),
+        lunch_strategy,
+        lunch_strategy_label: LUNCH_STRATEGY_LABELS[lunch_strategy],
       },
     };
   }

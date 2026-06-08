@@ -9,7 +9,15 @@ import {
 describe('itinerary-item-delete.util', () => {
   it('detects delete POI on day phrasing', () => {
     expect(detectItineraryItemDeleteIntent('删除第3天的斯科加瀑布poi')).toBe(true);
+    expect(detectItineraryItemDeleteIntent('帮我把第二天的酒店删了')).toBe(true);
     expect(detectItineraryItemDeleteIntent('冰岛 南部 7天自驾')).toBe(false);
+  });
+
+  it('parses Chinese day and suffix delete phrasing', () => {
+    expect(parseItineraryItemDeleteSpec('帮我把第二天的酒店删了')).toEqual({
+      dayNumber: 2,
+      poiQuery: '酒店',
+    });
   });
 
   it('parses day number and poi query', () => {

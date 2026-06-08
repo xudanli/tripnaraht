@@ -92,6 +92,12 @@ export class ConflictDto {
 
   @ApiPropertyOptional({ description: '建议列表', type: [ConflictSuggestionDto] })
   suggestions?: ConflictSuggestionDto[];
+
+  @ApiPropertyOptional({
+    description: '关联的午餐时间窗策略（仅 LUNCH_WINDOW / LUNCH_MISSING 等餐饮类冲突）',
+    enum: ['staggered', 'rigid', 'route_driven', 'balanced'],
+  })
+  lunchStrategy?: 'staggered' | 'rigid' | 'route_driven' | 'balanced';
 }
 
 /**

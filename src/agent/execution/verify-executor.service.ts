@@ -33,6 +33,7 @@ import {
   buildTerrainFroadUnfitAxiomDecisionMemory,
   pickLastVehicleAcceptedCausalityIds,
 } from '../memory/decision-memory/vehicle-terrain-decision-memory.util';
+import { hydrateOpeningHoursEvidenceForItinerary } from '../utils/opening-hours-evidence-hydration.util';
 
 @Injectable()
 export class VerifyExecutorService implements IVerifyExecutor {
@@ -225,6 +226,31 @@ export class VerifyExecutorService implements IVerifyExecutor {
       // best-effort only
     }
 
+    // 0a. VERIFY 前从 Place DB 补全 opening_hours_evidence（须在 RouteFeasibility / itinerary.verify 之前）
+    if (this.skillsRegistry && ctx.itinerary && ctx.researchData && typeof ctx.researchData === 'object') {
+      const ohSkill = this.skillsRegistry.getSkill('opening_hours.get');
+      if (ohSkill) {
+        try {
+          const hydrated = await hydrateOpeningHoursEvidenceForItinerary({
+            itinerary: ctx.itinerary as Itinerary,
+            researchData: ctx.researchData as Record<string, unknown>,
+            openingHoursSkill: ohSkill as {
+              execute: (input: { poi_ids: string[] }) => Promise<{ opening_hours?: unknown[] }>;
+            },
+          });
+          if (hydrated.fetched > 0) {
+            this.logger.debug(
+              `[VerifyExecutor] opening_hours pre-feasibility hydrate: fetched=${hydrated.fetched} total=${hydrated.merged}`,
+            );
+          }
+        } catch (e: unknown) {
+          this.logger.warn(
+            `[VerifyExecutor] opening_hours pre-feasibility hydrate skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+    }
+
     // 0. RouteFeasibilityEngine（统一聚合：verify + fatigue + terrain + expert rules）
     if (this.routeFeasibility && ctx.itinerary) {
       try {
@@ -300,18 +326,50 @@ export class VerifyExecutorService implements IVerifyExecutor {
     // 1. itinerary.verify Skill
     if (this.skillsRegistry && ctx.itinerary) {
       try {
+        const researchData =
+          ctx.researchData && typeof ctx.researchData === 'object'
+            ? ({ ...(ctx.researchData as Record<string, unknown>) } as Record<string, unknown>)
+            : ({} as Record<string, unknown>);
+        const ohSkill = this.skillsRegistry.getSkill('opening_hours.get');
+        if (ohSkill) {
+          try {
+            const hydrated = await hydrateOpeningHoursEvidenceForItinerary({
+              itinerary: ctx.itinerary as Itinerary,
+              researchData,
+              openingHoursSkill: ohSkill as {
+                execute: (input: { poi_ids: string[] }) => Promise<{ opening_hours?: unknown[] }>;
+              },
+            });
+            if (hydrated.fetched > 0) {
+              this.logger.debug(
+                `[VerifyExecutor] opening_hours hydrated: fetched=${hydrated.fetched} total=${hydrated.merged}`,
+              );
+            }
+          } catch (e: unknown) {
+            this.logger.warn(
+              `[VerifyExecutor] opening_hours pre-hydrate skipped: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+        }
+
         const skill = this.skillsRegistry.getSkill('itinerary.verify');
         if (skill) {
           const result = await skill.execute({
             itinerary: ctx.itinerary as any,
-            research_data: ctx.researchData,
+            research_data: researchData,
             ...(verifyUserQuery ? { user_query: verifyUserQuery } : {}),
             ...(verifyIntentHints ? { intent_hints: verifyIntentHints } : {}),
           });
 
           if (result?.issues && Array.isArray(result.issues)) {
             for (const raw of result.issues) {
-              const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ITINERARY_VERIFY_SKILL' });
+              const text =
+                typeof raw === 'string'
+                  ? raw
+                  : raw && typeof raw === 'object' && typeof (raw as { message?: string }).message === 'string'
+                    ? (raw as { message: string }).message
+                    : '';
+              const v = classifyVerificationIssueFromText({ text, source: 'ITINERARY_VERIFY_SKILL' });
               if (v) issues.push(v);
             }
             confidenceDelta = -0.1 * Math.min(issues.length, 5);

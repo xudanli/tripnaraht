@@ -177,7 +177,7 @@ export class EmbeddedHikingTripSummaryService {
     const segments = parseHikingSegments(trip.metadata);
 
     const planRows = await this.prisma.hikePlan.findMany({
-      where: { tripId, userId },
+      where: { tripId },
       orderBy: { updatedAt: 'desc' },
       select: {
         id: true,

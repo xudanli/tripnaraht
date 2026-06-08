@@ -164,9 +164,21 @@ export class IncrementalItineraryGeneratorService {
       `[分段规划 POC] 启用 Day1→Day2→...→Day${days} 迭代生成, request_id=${requestId}`,
     );
 
+    const isFullTripReplan = researchData?.__itinerary_full_trip_replan === true;
+    const adjustTargetIso =
+      !isFullTripReplan &&
+      typeof researchData?.__itinerary_adjust_target_date_iso === 'string'
+        ? String(researchData.__itinerary_adjust_target_date_iso).slice(0, 10)
+        : undefined;
     const itineraryDays: ItineraryDay[] = [];
-    const itemsPerDay =
+    let itemsPerDay =
       pois.length === 0 ? 0 : Math.max(1, Math.ceil(pois.length / days));
+    if (adjustTargetIso && pois.length > 0) {
+      itemsPerDay = Math.min(4, Math.max(2, pois.length));
+      this.logger.log(
+        `[ITINERARY_ADJUST] corridor day replan target=${adjustTargetIso} pois=${pois.length} itemsPerDay=${itemsPerDay} request_id=${requestId}`,
+      );
+    }
     const globalPoiPlacementCounts = new Map<string, number>();
 
     let prevDayLeadPoiKey: string | null = null;

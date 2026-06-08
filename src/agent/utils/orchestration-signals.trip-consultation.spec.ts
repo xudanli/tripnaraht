@@ -3,6 +3,8 @@ import {
   isLocalClockOrTimezoneFactQuery,
   isTripStatusOverviewQuery,
   isWeatherRoadConditionFocusedQuery,
+  routingSignalsWithResolvedTaskType,
+  shouldRouteBoundTripAsItineraryAdjust,
   signalsFromRequest,
 } from './orchestration-signals.util';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
@@ -96,6 +98,28 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     expect(s.intent_mode_resolved).toBe('DATA_LOOKUP');
   });
 
+  it('有 trip_id + 维克超市能买什么 → DATA_LOOKUP（勿误入 POI 稀疏澄清）', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '维克超市可以买到什么水果',
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.requiresStructuredOutput).toBe(false);
+    expect(s.intent_mode_resolved).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id + 附近能买苹果 → DATA_LOOKUP', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '附近有能买苹果的超市吗',
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+  });
+
   it('有 trip_id + 口语好吃推荐 → DATA_LOOKUP（勿未命中餐饮分流误入 TRIP_PLANNING）', () => {
     const s = signalsFromRequest(
       base({
@@ -165,6 +189,29 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     expect(s.requiresStructuredOutput).toBe(false);
   });
 
+  it('有 trip_id + 全面分析当前行程 → DATA_LOOKUP（勿误入 CGUS 决策驾驶舱）', () => {
+    const msg = '帮我全面分析下当前行程，看下是否存在问题和可以优化的地方';
+    expect(isTripStatusOverviewQuery(msg, msg.toLowerCase())).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.requiresStructuredOutput).toBe(false);
+  });
+
+  it('有 trip_id + 显式改排第 N 天 → TRIP_PLANNING（与分析复盘区分）', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '请将第3天行程优化为更轻松的节奏',
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
+  });
+
   it('有 trip_id + recommend hotels (EN) → DATA_LOOKUP', () => {
     const s = signalsFromRequest(
       base({
@@ -173,6 +220,43 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
       }),
     );
     expect(s.taskType).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id + 第三天轻松点改排 → TRIP_PLANNING（勿被 DATA_LOOKUP profile 误判轻量咨询）', () => {
+    const msg = '第三天的行程可以轻松点吗';
+    expect(shouldRouteBoundTripAsItineraryAdjust('t1', msg)).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.requiresStructuredOutput).toBe(true);
+    expect(s.intent_mode_resolved).toBe('TRIP_PLANNING');
+  });
+
+  it('options.intent_mode=GENERIC_QA + 第三天轻松点 → 钳回 TRIP_PLANNING', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '第三天的行程可以轻松点吗',
+        options: { intent_mode: 'GENERIC_QA' },
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.intent_mode_resolved).toBe('TRIP_PLANNING');
+    expect(s.requiresStructuredOutput).toBe(true);
+  });
+
+  it('intent.recognize 误传 DATA_LOOKUP + 第三天轻松点 → routingSignalsWithResolvedTaskType 钳回 TRIP_PLANNING', () => {
+    const req = base({
+      trip_id: 't1',
+      message: '第三天的行程可以轻松点吗',
+    });
+    const s = routingSignalsWithResolvedTaskType(req, 'DATA_LOOKUP');
+    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.requiresStructuredOutput).toBe(true);
   });
 
   it('有 trip_id + 换酒店（改行程）→ 仍为 TRIP_PLANNING', () => {
@@ -332,6 +416,16 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     );
     expect(s.taskType).toBe('DATA_LOOKUP');
     expect(s.requiresStructuredOutput).toBe(false);
+  });
+
+  it('有 trip_id + 查看第 N 天行程 → DATA_LOOKUP（只读查看，不重规划）', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '查看第三天的行程',
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
   });
 
   it('有 trip_id + 查看行程规划情况 → DATA_LOOKUP（「规划」在规划情况中勿判成重规划）', () => {

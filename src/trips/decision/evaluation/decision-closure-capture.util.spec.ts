@@ -4,8 +4,10 @@ import {
   buildDsoFromE2ECase,
   buildStormStrategyRagChunks,
   enrichStormDsoForCapture,
+  loadCountryRagSeedChunks,
   mergeRagMaterializationIntoHints,
 } from './decision-closure-capture.util';
+import { auDecisionClosureGreatOceanFireCase } from './e2e-cases/au-decision-closure-great-ocean-fire.example';
 import { icelandStormIcecaveFailureCase } from './e2e-cases/iceland-storm-icecave-failure.example';
 import { worldEventsFromRagChunks } from '../../../world/rag-chunks-to-world-events.util';
 
@@ -39,5 +41,18 @@ describe('decision-closure-capture.util', () => {
     const storm = JSON.parse(fs.readFileSync(stormPath, 'utf8'));
     const events = worldEventsFromRagChunks(buildStormStrategyRagChunks(storm));
     expect(events.some((e) => e.kind === 'ROAD' && e.roadId === 'IS-R1-SOUTH')).toBe(true);
+  });
+
+  it('loadCountryRagSeedChunks loads AU B100 seed', () => {
+    const chunks = loadCountryRagSeedChunks('AU');
+    expect(chunks.length).toBeGreaterThan(0);
+    const events = worldEventsFromRagChunks(chunks, { tripDates: ['2026-01-18'] });
+    expect(events.some((e) => e.kind === 'ROAD' && (e as { roadId: string }).roadId === 'B100')).toBe(true);
+  });
+
+  it('buildDsoFromE2ECase uses country destination for AU fixture', () => {
+    const dso = buildDsoFromE2ECase(auDecisionClosureGreatOceanFireCase);
+    expect(dso.userIntent?.destination).toBe('Australia');
+    expect(dso.environmentState?.countryCode).toBe('AU');
   });
 });

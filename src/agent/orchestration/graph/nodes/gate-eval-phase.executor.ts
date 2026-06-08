@@ -5,6 +5,8 @@ import {
   formatGateEvalOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
 import type { GateEvalPhaseHost, RunGateEvalPhaseParams } from './gate-eval-phase.host';
+import { ensureHarnessResearchEvidenceSnapshot } from '../../../utils/harness-research-evidence-snapshot.util';
+import { ensureHarnessPlanningInputsOnDecisionState } from '../../../utils/plan-gen-harness-input.util';
 
 /**
  * GATE_EVAL 执行体：Kernel 路径经 Harness 契约；失败时 Kernel 合成 BLOCK，不调用 gateEvalExecutor。
@@ -14,11 +16,16 @@ export async function runGateEvalPhase(
   params: RunGateEvalPhaseParams,
 ): Promise<import('../../../../decision/kernel/decision-state.types').DecisionState | undefined> {
   const { decisionState, state, request, context, llmProvider } = params;
+  let effectiveDecisionState = ensureHarnessResearchEvidenceSnapshot(
+    decisionState,
+    state.request_id,
+    state.research_data as Record<string, unknown> | undefined,
+  );
 
   if (
     host.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) &&
     host.decisionKernel &&
-    decisionState &&
+    effectiveDecisionState &&
     state.trip_plan_request
   ) {
     const stepStartTime = Date.now();
@@ -29,7 +36,7 @@ export async function runGateEvalPhase(
       tripPlanRequest: state.trip_plan_request,
       researchData: state.research_data,
     };
-    const { newState, gateResult } = await host.decisionKernel.executeGateEval(decisionState, ctx);
+    const { newState, gateResult } = await host.decisionKernel.executeGateEval(effectiveDecisionState, ctx);
     host.syncOrchestratorFromDecisionState(newState, state);
     state.gate_result = {
       gate_result: gateResult.gate_result,
@@ -54,14 +61,26 @@ export async function runGateEvalPhase(
     host.enrichGuardianDebateTripContextAfterGateEval(state);
     host.applyMarathonPipelineSignals(state, request);
     await host.onGateEvalCompleted?.(state, request);
-    return newState;
+    const withSnapshot =
+      ensureHarnessResearchEvidenceSnapshot(
+        newState,
+        state.request_id,
+        state.research_data as Record<string, unknown> | undefined,
+      ) ?? newState;
+    return ensureHarnessPlanningInputsOnDecisionState(withSnapshot, state);
   }
 
-  const gateEvalDecisionState = await host.executePhaseViaKernel(decisionState, state, 'GATE_EVAL', () =>
+  const gateEvalDecisionState = await host.executePhaseViaKernel(effectiveDecisionState, state, 'GATE_EVAL', () =>
     host.executeGateEvalStep(request, context, state, llmProvider),
   );
   host.enrichGuardianDebateTripContextAfterGateEval(state);
   host.applyMarathonPipelineSignals(state, request);
   await host.onGateEvalCompleted?.(state, request);
-  return gateEvalDecisionState;
+  const withSnapshot =
+    ensureHarnessResearchEvidenceSnapshot(
+      gateEvalDecisionState,
+      state.request_id,
+      state.research_data as Record<string, unknown> | undefined,
+    ) ?? gateEvalDecisionState;
+  return ensureHarnessPlanningInputsOnDecisionState(withSnapshot, state);
 }

@@ -1,7 +1,17 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { UserProfileLearningService } from './user-profile-learning.service';
 
-export type PreferenceEvolutionReason = 'NEGOTIATION_CONFIRMED' | 'NEGOTIATION_ROLLED_BACK';
+export type PreferenceEvolutionReason =
+  | 'NEGOTIATION_CONFIRMED'
+  | 'NEGOTIATION_ROLLED_BACK'
+  | 'TREK_VIBE_CONFIRMED'
+  | 'TREK_READINESS_ACK'
+  | 'TREK_POST_RATING_FIVE_STAR'
+  | 'TASK_CHAIN_CONFIRMED'
+  | 'TASK_CHAIN_ROLLED_BACK'
+  | 'TASK_CHAIN_TIMEOUT'
+  | 'TREK_PHYSICAL_FAILURE'
+  | 'SOVEREIGN_FORCE_LOCK';
 
 const DEFAULT_THROTTLE_MS = 60_000;
 

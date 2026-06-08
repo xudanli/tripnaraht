@@ -16,6 +16,11 @@ import { ShadowModeDiffService } from './shadow-mode-diff.service';
 import { calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
 import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
 import { applyRoutePartyFitnessToDecisionParams } from '../utils/route-party-fitness-decision-overlay.util';
+import {
+  applyIcelandMarketPriorToDecisionParams,
+  getIcelandMarketRouteTagScoreMultiplier,
+} from '../../../trips/iceland/market-preference/apply-iceland-market-prior-to-decision-params';
+import { readIcelandMarketSegmentFromTravelPreference } from '../../../trips/iceland/market-preference/iceland-market-preference-memory.util';
 
 @Injectable()
 export class DecisionParamsInjectorService {
@@ -65,6 +70,7 @@ export class DecisionParamsInjectorService {
       }
       const params = useLegacy ? legacy : v2;
       this.applyRoutePartyFitnessOverlay(userId, params);
+      this.applyIcelandMarketPriorOverlay(params);
       this.logger.debug(`Generated default decision params for new user ${userId}`);
       return normalizeDecisionParams(params);
     }
@@ -80,6 +86,7 @@ export class DecisionParamsInjectorService {
     }
     const params = useLegacy ? legacy : v2;
     this.applyRoutePartyFitnessOverlay(userId, params);
+    this.applyIcelandMarketPriorOverlay(params);
 
     this.logger.debug(
       `Generated decision params for user ${userId}: ` +
@@ -87,6 +94,19 @@ export class DecisionParamsInjectorService {
     );
 
     return normalizeDecisionParams(params);
+  }
+
+  /**
+   * `ICELAND_MARKET_PRIOR=1` 时叠加 IS-MPM v1 市场先验（须先有 route_and_run hydrator 写入的快照）。
+   */
+  private applyIcelandMarketPriorOverlay(params: DecisionParams): void {
+    if (process.env.ICELAND_MARKET_PRIOR !== '1') return;
+    const resolution = readIcelandMarketSegmentFromTravelPreference(this.memoryContextStore?.get());
+    if (!resolution) return;
+    applyIcelandMarketPriorToDecisionParams(params, resolution);
+    this.logger.debug(
+      `[DecisionParamsInjector] iceland_market_prior segment=${resolution.segmentId} confidence=${resolution.confidence.toFixed(2)}`,
+    );
   }
 
   /**
@@ -135,6 +155,11 @@ export class DecisionParamsInjectorService {
       }
       if (isStable) {
         adjustedScore *= (1 + decisionParams.routeDirectionBias.stabilityWeight * 0.2);
+      }
+
+      const marketResolution = readIcelandMarketSegmentFromTravelPreference(this.memoryContextStore?.get());
+      if (marketResolution && routeTags.length > 0) {
+        adjustedScore *= getIcelandMarketRouteTagScoreMultiplier(routeTags, marketResolution);
       }
     }
 

@@ -149,6 +149,9 @@ import { ItineraryGenerateSkill } from './itinerary/itinerary-generate.skill';
 import { ItineraryVerifySkill } from './itinerary/itinerary-verify.skill';
 import { RepairApplySkill } from './itinerary/repair-apply.skill';
 import { ItinerarySmartUpdateSkill } from './itinerary/itinerary-smart-update.skill';
+import { ItineraryAdaptiveReplanSkill } from './itinerary/itinerary-adaptive-replan.skill';
+import { ItineraryExperienceAlignSkill } from './itinerary/itinerary-experience-align.skill';
+import { ItineraryExperienceCuratorSkill } from './itinerary/itinerary-experience-curator.skill';
 
 // Plan Skills - Architect
 import { PlanArchitectGenerateSkeletonSkill } from './plan/architect/plan-architect-generate-skeleton.skill';
@@ -491,6 +494,9 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ItineraryVerifySkill,
     RepairApplySkill,
     ItinerarySmartUpdateSkill,
+    ItineraryAdaptiveReplanSkill,
+    ItineraryExperienceAlignSkill,
+    ItineraryExperienceCuratorSkill,
     
     // Plan Skills - Architect
     PlanArchitectGenerateSkeletonSkill,
@@ -607,6 +613,9 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ItineraryVerifySkill,
     RepairApplySkill,
     ItinerarySmartUpdateSkill,
+    ItineraryAdaptiveReplanSkill,
+    ItineraryExperienceAlignSkill,
+    ItineraryExperienceCuratorSkill,
     ...(enableDecisionSkills
       ? [DecisionLogAppendSkill, DecisionStageSkill, DecisionReplaySkill]
       : []),
@@ -702,6 +711,9 @@ export class SkillsModule {
     @Optional() private readonly itineraryVerifySkill?: ItineraryVerifySkill,
     @Optional() private readonly repairApplySkill?: RepairApplySkill,
     @Optional() private readonly itinerarySmartUpdateSkill?: ItinerarySmartUpdateSkill,
+    @Optional() private readonly itineraryAdaptiveReplanSkill?: ItineraryAdaptiveReplanSkill,
+    @Optional() private readonly itineraryExperienceAlignSkill?: ItineraryExperienceAlignSkill,
+    @Optional() private readonly itineraryExperienceCuratorSkill?: ItineraryExperienceCuratorSkill,
     @Optional() private readonly routePackNewSkeletonSkill?: RoutePackNewSkeletonSkill,
     @Optional() private readonly routePackValidateSkill?: RoutePackValidateSkill,
     @Optional() private readonly routePackGenerateRegressionTestsSkill?: RoutePackGenerateRegressionTestsSkill,
@@ -834,6 +846,18 @@ export class SkillsModule {
     if (this.itinerarySmartUpdateSkill) {
       this.skillsRegistry.registerSkill(this.itinerarySmartUpdateSkill);
       this.logger.debug('Registered ItinerarySmartUpdateSkill');
+    }
+    if (this.itineraryAdaptiveReplanSkill) {
+      this.skillsRegistry.registerSkill(this.itineraryAdaptiveReplanSkill);
+      this.logger.debug('Registered ItineraryAdaptiveReplanSkill');
+    }
+    if (this.itineraryExperienceAlignSkill) {
+      this.skillsRegistry.registerSkill(this.itineraryExperienceAlignSkill);
+      this.logger.debug('Registered ItineraryExperienceAlignSkill');
+    }
+    if (this.itineraryExperienceCuratorSkill) {
+      this.skillsRegistry.registerSkill(this.itineraryExperienceCuratorSkill);
+      this.logger.debug('Registered ItineraryExperienceCuratorSkill');
     }
     
     // 手动注册新 RoutePack Skills（没有 token 的）

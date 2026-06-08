@@ -291,6 +291,17 @@ function tripPlanRequestToUserIntent(req: TripPlanRequest): UserIntent {
   if (req.style_tags?.length) {
     intent.styleTags = [...req.style_tags];
   }
+  const preferredUuids = (req.ontology_context as { preferred_route_direction_uuids?: string[] } | undefined)
+    ?.preferred_route_direction_uuids;
+  if (preferredUuids?.length) {
+    intent.preferredRouteDirectionUuids = preferredUuids.filter(
+      (u): u is string => typeof u === 'string' && u.trim().length > 0,
+    );
+  }
+  const odysseyTier = (req.ontology_context as { odyssey_tier?: number } | undefined)?.odyssey_tier;
+  if (odysseyTier === 1 || odysseyTier === 2 || odysseyTier === 3) {
+    intent.odysseyTier = odysseyTier;
+  }
   if (req.constraints?.daily_time_window) {
     intent.availableStartTime = req.constraints.daily_time_window.start;
     intent.availableEndTime = req.constraints.daily_time_window.end;

@@ -2,6 +2,11 @@ import type { Logger } from '@nestjs/common';
 import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
 import type { OrchestratorState } from '../../../interfaces/trip-plan.interface';
 import type { PoiPlanningAdmissionDiagnosticsInput } from '../../../../planning-policy/utils/poi-planning-outcome-metrics.util';
+import type {
+  ItineraryAdjustSpatialConstraints,
+  NeighborAnchorContext,
+  TripDayAnchorRow,
+} from '../../../utils/itinerary-adjust-neighbor-anchors.util';
 
 export type PoiSelectionStepResult = {
   needsClarification: boolean;
@@ -31,6 +36,23 @@ export interface PoiSelectionPhaseHost {
   dedupePois(pois: unknown[]): unknown[];
 
   loadTripPlacePoiEvidenceForAdjust(tripId: string, userId?: string): Promise<unknown[]>;
+
+  resolveItineraryAdjustNeighborContext(
+    tripId: string,
+    targetDateIso: string,
+    userId?: string,
+  ): Promise<{
+    anchors: NeighborAnchorContext;
+    spatial: ItineraryAdjustSpatialConstraints;
+    dayRows?: TripDayAnchorRow[];
+  } | null>;
+
+  /** 走廊内候选不足时 poi.search 沿邻日锚点中点补检 */
+  supplementItineraryAdjustCorridorPois(params: {
+    destinationRaw: string;
+    anchors: NeighborAnchorContext;
+    spatial: ItineraryAdjustSpatialConstraints;
+  }): Promise<{ pois: unknown[]; query?: string; count: number }>;
 
   applyPoiPlanningToResearchPois(
     pois: unknown[],

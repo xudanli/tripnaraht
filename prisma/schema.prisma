@@ -644,6 +644,7 @@ model Trip {
   endDate                DateTime
   budgetConfig           Json?
   pacingConfig           Json?
+  psychographicVector    Unsupported("vector")?   @map("psychographic_vector")
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime
   metadata               Json?
@@ -923,11 +924,12 @@ model RefreshToken {
 }
 
 model UserProfile {
-  preferences Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime
-  userId      String   @id @db.Uuid
-  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferences         Json?
+  psychographicVector Unsupported("vector")? @map("psychographic_vector")
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime
+  userId              String                 @id @db.Uuid
+  User                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -1398,6 +1400,24 @@ model DecisionOutcome {
   @@index([decisionId])
   @@index([decisionCausalityId])
   @@map("decision_outcomes")
+}
+
+/// B 端履约能力画像 — 小规模高精度样本（冰岛 MVP：导游/车辆/路线/应急）
+model FulfillmentCapabilityRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  supplierId      String   @map("supplier_id") @db.VarChar(128)
+  supplierName    String?  @map("supplier_name") @db.VarChar(255)
+  countryCode     String   @map("country_code") @db.VarChar(2)
+  capabilityType  String   @map("capability_type") @db.VarChar(32)
+  capabilityKey   String   @map("capability_key") @db.VarChar(128)
+  metrics         Json
+  evidenceTripIds String[] @map("evidence_trip_ids") @db.Uuid
+  metadata        Json?
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+
+  @@index([countryCode, capabilityType])
+  @@index([supplierId])
+  @@map("fulfillment_capability_records")
 }
 
 model UserTravelProfile {
@@ -3370,6 +3390,28 @@ model OpsRealityAuditSnapshot {
   @@map("ops_reality_audit_snapshots")
 }
 
+/// PRD 3.13 — Match Square 协同飞轮：拼团 decisionBrief（预测）vs 行后 Replay（观测）指纹对撞
+model CollabFlywheelAuditSnapshot {
+  id                    String    @id @default(uuid()) @db.Uuid
+  capturedAt            DateTime  @default(now()) @map("captured_at") @db.Timestamptz(6)
+  recruitmentPostId     String    @map("recruitment_post_id") @db.Uuid
+  applicationId         String    @unique @map("application_id") @db.Uuid
+  tripId                String?   @map("trip_id") @db.Uuid
+  schemaVersion         String    @default("collab-flywheel-audit/v1") @map("schema_version") @db.VarChar(40)
+  predictionFingerprint String    @map("prediction_fingerprint") @db.VarChar(64)
+  prediction            Json
+  outcome               Json?
+  outcomeFingerprint    String?   @map("outcome_fingerprint") @db.VarChar(64)
+  auditMatch            Boolean?  @map("audit_match")
+  outcomeRecordedAt     DateTime? @map("outcome_recorded_at") @db.Timestamptz(6)
+  outcomeSource         String?   @map("outcome_source") @db.VarChar(40)
+
+  @@index([capturedAt(sort: Desc)])
+  @@index([tripId])
+  @@index([recruitmentPostId])
+  @@map("collab_flywheel_audit_snapshots")
+}
+
 /// Append-only governance / execution audit (event sourcing). Application code must not UPDATE rows.
 model GovernanceLedgerEventRecord {
   id                 String   @id @map("id") @db.Text
@@ -3471,4 +3513,386 @@ model HikeTrackPoint {
   @@index([hikePlanId, recordedAt])
   @@index([hikePlanId, clientBatchId])
   @@map("hike_track_point")
+}
+
+/// 智能搭子：盲盒 listing（旅行人格向量 SSOT，无 PII）
+model MatchmakingBlindListing {
+  id                      String   @id @default(uuid()) @db.Uuid
+  userId                  String   @unique @map("user_id") @db.VarChar(255)
+  destinationScope        String?  @map("destination_scope") @db.VarChar(255)
+  personaVector           Json     @map("persona_vector")
+  trustSignals            Json     @default("{}") @map("trust_signals")
+  encryptedPrivateProfile String?  @map("encrypted_private_profile") @db.Text
+  isActive                Boolean  @default(true) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  requestsAsTarget        MatchmakingRequest[]
+
+  @@index([destinationScope])
+  @@index([isActive])
+  @@map("matchmaking_blind_listings")
+}
+
+/// 智能搭子：组队申请 + Privacy Shield 状态机
+model MatchmakingRequest {
+  id                 String    @id @default(uuid()) @db.Uuid
+  requesterUserId    String    @map("requester_user_id") @db.VarChar(255)
+  targetListingId    String    @map("target_listing_id") @db.Uuid
+  targetUserId       String    @map("target_user_id") @db.VarChar(255)
+  status             String    @db.VarChar(30)
+  requesterConsentId String?   @map("requester_consent_id") @db.Uuid
+  targetConsentId    String?   @map("target_consent_id") @db.Uuid
+  coordinationHints  Json?     @map("coordination_hints")
+  revealedAt         DateTime? @map("revealed_at") @db.Timestamptz(6)
+  tripDepartureAt    DateTime? @map("trip_departure_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  targetListing      MatchmakingBlindListing @relation(fields: [targetListingId], references: [id], onDelete: Cascade)
+  escrows            MatchmakingEscrow[]
+
+  @@index([requesterUserId])
+  @@index([targetUserId])
+  @@index([status])
+  @@map("matchmaking_requests")
+}
+
+/// 智能搭子：拼团意向金 escrow（BOOKING_WORKFLOW 对接）
+model MatchmakingEscrow {
+  id              String    @id @default(uuid()) @db.Uuid
+  requestId       String    @map("request_id") @db.Uuid
+  userId          String    @map("user_id") @db.VarChar(255)
+  amountCents     Int       @map("amount_cents")
+  currency        String    @default("cny") @db.VarChar(3)
+  status          String    @db.VarChar(30)
+  paymentIntentId String?   @map("payment_intent_id") @db.VarChar(255)
+  stripeReference String?   @map("stripe_reference") @db.VarChar(255)
+  lockedAt        DateTime? @map("locked_at") @db.Timestamptz(6)
+  releasedAt      DateTime? @map("released_at") @db.Timestamptz(6)
+  forfeitedAt     DateTime? @map("forfeited_at") @db.Timestamptz(6)
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  request         MatchmakingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, userId])
+  @@index([requestId])
+  @@index([status])
+  @@map("matchmaking_escrows")
+}
+
+/// PRD v1.1 — 12 维隐式特征向量 SSOT（Intake / 决策 / 未来搭子合流共用）
+model UserPsychographicVector {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.VarChar(255)
+  tripRunId     String?  @map("trip_run_id") @db.Uuid
+  requestId     String?  @map("request_id") @db.VarChar(255)
+  schemaVersion Int      @default(11) @map("schema_version")
+  dimensionKeys Json     @map("dimension_keys")
+  vector        Json     @map("vector")
+  filledMask    Json     @map("filled_mask")
+  artifact      Json     @map("artifact")
+  embedding     Unsupported("vector")?
+  lockVersion   Int      @default(0) @map("lock_version")
+  intakeRound   Int      @default(0) @map("intake_round")
+  source        String   @db.VarChar(40)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId, requestId])
+  @@index([userId])
+  @@index([tripRunId])
+  @@map("user_psychographic_vectors")
+}
+
+/// PRD v1.1 — Intake 决策闭环样本（X1 口语 / X2 向量+规则标 / Y 选档+支付），供 3 个月后微调与 RAG 训练导出
+model IntakeDecisionClosure {
+  id                     String    @id @default(uuid()) @db.Uuid
+  decisionOsSessionId    String    @unique @map("decision_os_session_id") @db.VarChar(255)
+  userId                 String    @map("user_id") @db.VarChar(255)
+  userMessages           Json      @map("user_messages")
+  roundTexts             Json      @map("round_texts")
+  vectorContext          Json      @map("vector_context")
+  countryCode            String?   @map("country_code") @db.VarChar(12)
+  countryResolveSource   String?   @map("country_resolve_source") @db.VarChar(32)
+  geoParsed              Json?     @map("geo_parsed")
+  destinationScope       String?   @map("destination_scope") @db.VarChar(120)
+  compilerRulesetVersion String    @map("compiler_ruleset_version") @db.VarChar(32)
+  geoRulesetVersion      String    @map("geo_ruleset_version") @db.VarChar(32)
+  paretoRulesetVersion   String    @map("pareto_ruleset_version") @db.VarChar(32)
+  systemInferredTier     Int?      @map("system_inferred_tier")
+  tierAtIntakeComplete   Int?      @map("tier_at_intake_complete")
+  userSelectedTier       Int?      @map("user_selected_tier")
+  tierSelectedAt         DateTime? @map("tier_selected_at") @db.Timestamptz(6)
+  selectedRouteNodeIds   String[]  @default([]) @map("selected_route_node_ids")
+  paretoSolutionsSnapshot Json?    @map("pareto_solutions_snapshot")
+  preferredRouteNodeIds  String[]  @default([]) @map("preferred_route_node_ids")
+  depositPaidAt          DateTime? @map("deposit_paid_at") @db.Timestamptz(6)
+  depositCents           Int?      @map("deposit_cents")
+  orderId                String?   @map("order_id") @db.VarChar(255)
+  intakeCompletedAt      DateTime  @map("intake_completed_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([countryCode])
+  @@index([intakeCompletedAt])
+  @@map("intake_decision_closures")
+}
+
+/// PRD v1.1 — 后置拼团 Saga 状态机（Stripe 补偿步骤持久化）
+model PostBookingCompanionSaga {
+  id                String    @id @default(uuid()) @db.Uuid
+  orderId           String    @unique @map("order_id") @db.VarChar(255)
+  userId            String    @map("user_id") @db.VarChar(255)
+  tripId            String?   @map("trip_id") @db.Uuid
+  phase             String    @db.VarChar(40)
+  depositCents      Int       @map("deposit_cents")
+  totalPaidCents    Int?      @map("total_paid_cents")
+  currency          String    @default("cny") @db.VarChar(3)
+  paymentIntentId   String?   @map("payment_intent_id") @db.VarChar(255)
+  matchRequestId    String?   @map("match_request_id") @db.Uuid
+  refundCents       Int?      @map("refund_cents")
+  stripeRefundId    String?   @map("stripe_refund_id") @db.VarChar(255)
+  forfeitSplit      Json?     @map("forfeit_split")
+  compensationSteps Json?     @map("compensation_steps")
+  lockVersion       Int       @default(0) @map("lock_version")
+  departureAt       DateTime? @map("departure_at") @db.Timestamptz(6)
+  metadata          Json?
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([phase])
+  @@map("post_booking_companion_sagas")
+}
+
+/// B 端领队资产 HITL 三级确权持久化
+model LeaderAssetHitlReview {
+  id              String   @id @default(uuid()) @db.Uuid
+  leaderId        String   @map("leader_id") @db.VarChar(255)
+  assetId         String   @map("asset_id") @db.VarChar(255)
+  level           String   @db.VarChar(40)
+  zone            String   @db.VarChar(40)
+  blockAutoScheduling Boolean @default(false) @map("block_auto_scheduling")
+  notifyLeaderMobile Boolean @default(false) @map("notify_leader_mobile")
+  reason          String   @db.Text
+  extraction      Json
+  status          String   @default("PENDING") @db.VarChar(30)
+  reviewedAt      DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  reviewerId      String?  @map("reviewer_id") @db.VarChar(255)
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([leaderId])
+  @@index([assetId])
+  @@index([level])
+  @@index([status])
+  @@map("leader_asset_hitl_reviews")
+}
+
+/// Match Square P0 — 搭子广场招募帖（结构化 listing，与盲盒 MatchmakingBlindListing 独立）
+model MatchSquareRecruitmentPost {
+  id                     String    @id @default(uuid()) @db.Uuid
+  captainUserId          String    @map("captain_user_id") @db.VarChar(255)
+  status                 String    @default("active") @db.VarChar(30)
+  destination            String    @db.VarChar(255)
+  departureLabel         String?   @map("departure_label") @db.VarChar(255)
+  destinationLat         Float?    @map("destination_lat")
+  destinationLng         Float?    @map("destination_lng")
+  destinationPoiId       String?   @map("destination_poi_id") @db.VarChar(255)
+  startDate              DateTime  @map("start_date") @db.Date
+  endDate                DateTime  @map("end_date") @db.Date
+  itinerarySummary       String    @map("itinerary_summary") @db.VarChar(500)
+  budgetMinCents         Int?      @map("budget_min_cents")
+  budgetMaxCents         Int?      @map("budget_max_cents")
+  slotsNeeded            Int       @map("slots_needed")
+  slotsFilled            Int       @default(0) @map("slots_filled")
+  preferenceNotes        String?   @map("preference_notes") @db.Text
+  tripMoodTag            String?   @map("trip_mood_tag") @db.VarChar(30)
+  planningStyle          String?   @map("planning_style") @db.VarChar(30)
+  travelMode             String?   @map("travel_mode") @db.VarChar(30)
+  vehicleInfo            String?   @map("vehicle_info") @db.VarChar(500)
+  captainMessage         String?   @map("captain_message") @db.VarChar(500)
+  captainMbtiType        String    @map("captain_mbti_type") @db.VarChar(8)
+  captainCardTitle       String    @map("captain_card_title") @db.VarChar(255)
+  captainInteractionMode String    @map("captain_interaction_mode") @db.VarChar(50)
+  captainReputationStars Float?    @map("captain_reputation_stars")
+  captainPersonaSnapshot Json      @map("captain_persona_snapshot")
+  publishedAt            DateTime? @map("published_at") @db.Timestamptz(6)
+  closedAt               DateTime? @map("closed_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([destination])
+  @@index([startDate, endDate])
+  @@index([captainUserId])
+  @@index([captainMbtiType])
+  @@index([captainInteractionMode])
+  @@index([planningStyle])
+  @@map("match_square_recruitment_posts")
+  applications MatchSquareRecruitmentApplication[]
+  reputationCampaigns ReputationSurveyCampaign[]
+  oliveBranchInvitations MatchSquareOliveBranchInvitation[]
+}
+
+/// Match Square P1 — 招募申请（队员视角提交，队长审批）
+model MatchSquareRecruitmentApplication {
+  id                         String   @id @default(uuid()) @db.Uuid
+  postId                     String   @map("post_id") @db.Uuid
+  applicantUserId            String   @map("applicant_user_id") @db.VarChar(255)
+  status                     String   @default("pending") @db.VarChar(30)
+  message                    String   @db.VarChar(200)
+  planningCommitmentAccepted Boolean  @default(false) @map("planning_commitment_accepted")
+  teamworkCommitmentAccepted Boolean  @default(false) @map("teamwork_commitment_accepted")
+  applicantDisplayName       String?  @map("applicant_display_name") @db.VarChar(255)
+  applicantMbtiType          String   @map("applicant_mbti_type") @db.VarChar(8)
+  applicantCardTitle         String   @map("applicant_card_title") @db.VarChar(255)
+  applicantInteractionMode   String   @map("applicant_interaction_mode") @db.VarChar(50)
+  applicantReputationStars   Float?   @map("applicant_reputation_stars")
+  applicantPersonaSnapshot   Json     @map("applicant_persona_snapshot")
+  compatibilityPercent       Int      @map("compatibility_percent")
+  matchHighlights            Json     @default("[]") @map("match_highlights")
+  matchWarnings              Json     @default("[]") @map("match_warnings")
+  targetSlotIndex            Int?     @map("target_slot_index")
+  targetSlotId               String?  @map("target_slot_id") @db.VarChar(64)
+  targetSlotLabel            String?  @map("target_slot_label") @db.VarChar(255)
+  decidedAt                  DateTime? @map("decided_at") @db.Timestamptz(6)
+  createdAt                  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  post                       MatchSquareRecruitmentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([applicantUserId])
+  @@index([status])
+  @@map("match_square_recruitment_applications")
+}
+
+/// Match Square 3.7 — 队员挂起旅行意向（反向撮合信号）
+model MatchSquareTravelIntent {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @map("user_id") @db.VarChar(255)
+  status           String   @default("active") @db.VarChar(30)
+  destinationScope String   @map("destination_scope") @db.VarChar(255)
+  startDate        DateTime @map("start_date") @db.Date
+  endDate          DateTime @map("end_date") @db.Date
+  budgetFlex       String   @default("flexible") @map("budget_flex") @db.VarChar(30)
+  openToCarpool    Boolean  @default(true) @map("open_to_carpool")
+  note             String?  @db.VarChar(500)
+  capabilityTags   Json     @default("[]") @map("capability_tags")
+  personaSnapshot  Json     @map("persona_snapshot")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([destinationScope])
+  @@index([startDate, endDate])
+  @@map("match_square_travel_intents")
+}
+
+/// Match Square 3.7 — 队长投递橄榄枝（反向邀请）
+model MatchSquareOliveBranchInvitation {
+  id                   String   @id @default(uuid()) @db.Uuid
+  postId               String   @map("post_id") @db.Uuid
+  captainUserId        String   @map("captain_user_id") @db.VarChar(255)
+  inviteeUserId        String   @map("invitee_user_id") @db.VarChar(255)
+  status               String   @default("pending") @db.VarChar(30)
+  compatibilityPercent Int      @map("compatibility_percent")
+  inviteMessage        String?  @map("invite_message") @db.VarChar(500)
+  radarHighlights      Json     @default("[]") @map("radar_highlights")
+  respondedAt          DateTime? @map("responded_at") @db.Timestamptz(6)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  post                 MatchSquareRecruitmentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, inviteeUserId])
+  @@index([captainUserId])
+  @@index([inviteeUserId])
+  @@index([status])
+  @@map("match_square_olive_branch_invitations")
+}
+
+/// Reputation OS P2 — 行后 48h 互评活动（按招募帖成行组）
+model ReputationSurveyCampaign {
+  id               String   @id @default(uuid()) @db.Uuid
+  postId           String   @unique @map("post_id") @db.Uuid
+  status           String   @default("active") @db.VarChar(30)
+  participantIds   Json     @map("participant_ids")
+  triggerAt        DateTime @map("trigger_at") @db.Timestamptz(6)
+  destinationLabel String?  @map("destination_label") @db.VarChar(255)
+  tripEndDate      DateTime @map("trip_end_date") @db.Date
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  post             MatchSquareRecruitmentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  submissions      ReputationSurveySubmission[]
+
+  @@index([status])
+  @@index([triggerAt])
+  @@map("reputation_survey_campaigns")
+}
+
+/// Reputation OS P2 — 五星问卷提交（每评价人对被评价人一条）
+model ReputationSurveySubmission {
+  id               String   @id @default(uuid()) @db.Uuid
+  campaignId       String   @map("campaign_id") @db.Uuid
+  reviewerUserId   String   @map("reviewer_user_id") @db.VarChar(255)
+  revieweeUserId   String   @map("reviewee_user_id") @db.VarChar(255)
+  q1Overall        Int      @map("q1_overall")
+  q2PaceSync       Int      @map("q2_pace_sync")
+  q3Communication  Int      @map("q3_communication")
+  q4Spending       Int      @map("q4_spending")
+  q5WouldAgain     Int      @map("q5_would_again")
+  submittedAt      DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  campaign         ReputationSurveyCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, reviewerUserId, revieweeUserId])
+  @@index([revieweeUserId])
+  @@index([reviewerUserId])
+  @@map("reputation_survey_submissions")
+}
+
+/// Reputation OS P2 — 用户信用资产聚合（脱敏展示 SSOT）
+model UserReputationProfile {
+  userId           String   @id @map("user_id") @db.VarChar(255)
+  averageStars     Float    @default(0) @map("average_stars")
+  surveyCount      Int      @default(0) @map("survey_count")
+  tagCloud         Json     @default("[]") @map("tag_cloud")
+  safetyWarning    String?  @map("safety_warning") @db.VarChar(500)
+  internalRiskLevel String  @default("none") @map("internal_risk_level") @db.VarChar(20)
+  severeLowCount   Int      @default(0) @map("severe_low_count")
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_reputation_profiles")
+}
+
+/// Match Learning P3 — 撮合 Soft Weights 当前生效配置（SSOT）
+model MatchingSoftWeightConfig {
+  id          String   @id @default("default") @db.VarChar(40)
+  weights     Json
+  version     Int      @default(1)
+  lastRunAt   DateTime? @map("last_run_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  runs        MatchingSoftWeightRun[]
+
+  @@map("matching_soft_weight_configs")
+}
+
+/// Match Learning P3 — 每周权重迭代审计
+model MatchingSoftWeightRun {
+  id              String   @id @default(uuid()) @db.Uuid
+  configId        String   @default("default") @map("config_id") @db.VarChar(40)
+  weekStart       DateTime @map("week_start") @db.Timestamptz(6)
+  weekEnd         DateTime @map("week_end") @db.Timestamptz(6)
+  positiveSamples Int      @default(0) @map("positive_samples")
+  negativeSamples Int      @default(0) @map("negative_samples")
+  weightBefore    Json     @map("weight_before")
+  weightAfter     Json     @map("weight_after")
+  adjustments     Json
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  config          MatchingSoftWeightConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@index([configId])
+  @@index([createdAt])
+  @@map("matching_soft_weight_runs")
 }

@@ -1,5 +1,6 @@
 import {
   isStructuredClarificationEchoMessage,
+  isWorkbenchAssistantPlaceholderMessage,
   resolveCanonicalIntakeUserMessage,
   rebuildTripPlanMessagePreservingSystemBlocks,
 } from './trip-plan-intake-message.util';
@@ -29,5 +30,12 @@ describe('trip-plan-intake-message.util', () => {
     expect(out).toContain('[SYSTEM_MESSAGE]');
     expect(out).toContain('6月5日');
     expect(out).not.toContain('按您本轮诉求');
+  });
+
+  it('detects workbench assistant placeholder welcome echo', () => {
+    const welcome =
+      '行程助手 Nara  已关联当前行程  在这一页提问、检索攻略或说明想怎么改日程；我会带上当前行程上下文回答。 可选快捷语句：  查攻略 / 实况 检查日程是否合理 餐饮与停留';
+    expect(isWorkbenchAssistantPlaceholderMessage(welcome)).toBe(true);
+    expect(isWorkbenchAssistantPlaceholderMessage('第二天的行程给我推荐酒店')).toBe(false);
   });
 });

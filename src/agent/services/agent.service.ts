@@ -21,7 +21,14 @@ import { DAGOrchestratorService } from '../plan-execute/orchestrator.service';
 import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
-import { TripRunManagerService, type TripRunDsoCheckpointPayload } from './trip-run-manager.service';
+import {
+  TripRunManagerService,
+  type TripRunDsoCheckpointPayload,
+} from './trip-run-manager.service';
+import {
+  buildPendingItineraryAdjustDraft,
+  PENDING_ITINERARY_ADJUST_DRAFT_META_KEY,
+} from '../utils/itinerary-adjust-pending-draft.util';
 import { TripTaskMemoryService } from '../context-engine/services/trip-task-memory.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
@@ -34,6 +41,7 @@ import {
 import {
   signalsFromRequest,
   routingSignalsWithResolvedTaskType,
+  shouldRouteBoundTripAsItineraryAdjust,
   type RoutingSignals,
   type TaskType,
 } from '../utils/orchestration-signals.util';
@@ -61,6 +69,7 @@ import { buildRuntimeExecutionProfileDedupReplay } from '../utils/runtime-execut
 import { replayLifecycleManager } from '../utils/replay-lifecycle.manager';
 import { attachFullResponseReplayArtifactDescriptor } from '../utils/replay-artifact-descriptor.builder';
 import { ExecutionGatewayService } from './execution-gateway.service';
+import { RouteAndRunAsyncDelegationService } from './route-and-run-async-delegation.service';
 import { attachFreshRuntimeMaterialization } from '../runtime/fresh-runtime-adapter.util';
 import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.service';
 import { buildRuntimeExecutionProfileLegacyAssembly } from '../utils/runtime-execution-profile.builder';
@@ -107,11 +116,7 @@ import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
 import { LogDecisionRequestDto } from '../dto/log-decision.dto';
 import { RouteAndRunContextEnricherService } from './route-and-run-context-enricher.service';
 import { UserStandingPreferenceService } from './user-standing-preference.service';
-import {
-  buildRouteAndRunPersistReasonCodes,
-  buildRouteAndRunTripsPersistMetadata,
-  resolveTripsStageForRouteAndRunPersist,
-} from '../utils/route-and-run-decision-persist.util';
+import { mapOrchestrationDecisionLogToTrips } from '../utils/orchestration-to-trips-decision-log.util';
 import {
   toOrchestrationFailureObservability,
   type OrchestratorRobustnessMetadata,
@@ -128,6 +133,7 @@ import {
 } from '../assistants/planning-assistant/services/mcp-agent-executor.service';
 import type { McpAgentExecutorRunResult } from '../assistants/planning-assistant/services/mcp-agent-executor.service';
 import type { OrchestrationPolicyDecision } from '../utils/orchestration-policy.util';
+import { isWorkbenchAssistantPlaceholderMessage } from '../utils/trip-plan-intake-message.util';
 import type { Skill } from '../../skills/interfaces/skill.interface';
 import { SKILL_INTENT_RECOGNIZE } from '../../skills/skills.tokens';
 import {
@@ -148,6 +154,7 @@ import type { ConflictStrategyOptionsResponseDto } from '../dto/conflict-strateg
 import { StrategyConflictOptionsService } from './strategy-conflict-options.service';
 import { MemoryContextAssemblerService } from '../memory/services/memory-context-assembler.service';
 import { RouteRunRequestFitnessHydratorService } from '../memory/services/route-run-request-fitness-hydrator.service';
+import { RouteRunIcelandMarketPriorHydratorService } from '../memory/services/route-run-iceland-market-prior-hydrator.service';
 import type { AgentMemoryContext } from '../memory/interfaces/agent-memory-context.interface';
 import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
 import { MemorySnapshotPersistenceService } from '../memory/persistence/memory-snapshot-persistence.service';
@@ -247,10 +254,12 @@ export class AgentService {
     @Optional() private readonly governanceLedgerStore?: GovernanceLedgerStoreService,
     @Optional() @Inject(SKILL_INTENT_RECOGNIZE) private readonly intentRecognizeSkill?: Skill,
     @Optional() private readonly routeRunRequestFitnessHydrator?: RouteRunRequestFitnessHydratorService,
+    @Optional() private readonly routeRunIcelandMarketPriorHydrator?: RouteRunIcelandMarketPriorHydratorService,
     @Optional() private readonly routeAndRunAsyncService?: import('./route-and-run-async.service').RouteAndRunAsyncService,
     @Optional() private readonly routeAndRunAsyncTaskStore?: import('./route-and-run-async-task.store').RouteAndRunAsyncTaskStore,
     @Optional()
-    private readonly routeAndRunAsyncDelegationService?: import('./route-and-run-async-delegation.service').RouteAndRunAsyncDelegationService,
+    @Inject(forwardRef(() => RouteAndRunAsyncDelegationService))
+    private readonly routeAndRunAsyncDelegationService?: RouteAndRunAsyncDelegationService,
   ) {}
 
   /**
@@ -259,6 +268,9 @@ export class AgentService {
   async hydrateRequestFitnessIfNeeded(request: RouteAndRunRequestDto, memory: AgentMemoryContext): Promise<void> {
     if (this.routeRunRequestFitnessHydrator) {
       await this.routeRunRequestFitnessHydrator.hydrate(request, memory);
+    }
+    if (this.routeRunIcelandMarketPriorHydrator) {
+      this.routeRunIcelandMarketPriorHydrator.hydrate(request, memory);
     }
   }
 
@@ -279,6 +291,16 @@ export class AgentService {
    */
   private async resolveRoutingSignals(request: RouteAndRunRequestDto): Promise<RoutingSignals> {
     const base = signalsFromRequest(request);
+    if (shouldRouteBoundTripAsItineraryAdjust(request.trip_id, request.message ?? '')) {
+      if (base.taskType !== 'TRIP_PLANNING') {
+        this.logger.log(
+          `[AgentService] bound trip ITINERARY_ADJUST → TRIP_PLANNING（规则原为 ${base.taskType}）request_id=${request.request_id}`,
+        );
+      }
+      return base.taskType === 'TRIP_PLANNING'
+        ? base
+        : routingSignalsWithResolvedTaskType(request, 'TRIP_PLANNING');
+    }
     const mode = request.options?.intent_mode;
     if (mode && mode !== 'AUTO') {
       return base;
@@ -807,38 +829,15 @@ export class AgentService {
     return v === '1' || v === 'true';
   }
 
-  private resolveTripsPersonaFromAgentLog(log: DecisionLogEntry): TripsDecisionPersona {
-    const g = String((log.metadata as any)?.guardian ?? '').toUpperCase();
-    if (g === 'ABU' || g === 'DR_DRE' || g === 'NEPTUNE') return g as TripsDecisionPersona;
-    const actor = String(log.actor ?? '');
-    if (actor === 'Gatekeeper') return 'ABU';
-    if (actor === 'LocalInsight') return 'NEPTUNE';
-    if (actor === 'CoreDecision') return 'DR_DRE';
-    return 'USER_ACTION';
-  }
-
   private mapRouteAndRunDecisionLogToTrips(
     entries: DecisionLogEntry[],
     audit?: { tripRunId?: string; planVersion?: number },
   ): TripsDecisionLogEntry[] {
-    const out: TripsDecisionLogEntry[] = [];
-    for (const it of entries ?? []) {
-      if (!it || typeof it !== 'object') continue;
-      const ts = typeof it.timestamp === 'string' ? it.timestamp : new Date().toISOString();
-      const persistMeta = buildRouteAndRunTripsPersistMetadata(it, audit);
-      out.push({
-        persona: this.resolveTripsPersonaFromAgentLog(it),
-        action: 'EVALUATE',
-        explanation: String(it.outputs_summary ?? '').slice(0, 4000),
-        reasonCodes: buildRouteAndRunPersistReasonCodes(it),
-        evidenceRefs: Array.isArray(it.evidence_refs) ? it.evidence_refs.map((x) => String(x)) : [],
-        timestamp: ts,
-        decisionSource: 'HEURISTIC',
-        decisionStage: resolveTripsStageForRouteAndRunPersist(it),
-        metadata: persistMeta,
-      });
-    }
-    return out;
+    return mapOrchestrationDecisionLogToTrips(entries, {
+      forExplain: false,
+      tripRunId: audit?.tripRunId,
+      planVersion: audit?.planVersion,
+    });
   }
 
   private async persistRouteAndRunDecisionLogs(params: {
@@ -965,7 +964,10 @@ export class AgentService {
     const asyncMode = String(request.options?.async_mode ?? 'OFF').trim().toUpperCase();
     if (asyncMode === 'FORCE') {
       if (!this.routeAndRunAsyncDelegationService) {
-        throw new ServiceUnavailableException('RouteAndRunAsyncDelegationService is not configured');
+        this.logger.warn(
+          `[AgentService] async_mode=FORCE 但 RouteAndRunAsyncDelegationService 未注入，回落同步 route_and_run request_id=${request.request_id}`,
+        );
+        return this.executionGateway.runRouteAndRun(request);
       }
       return this.routeAndRunAsyncDelegationService.delegate(request, {
         delegation_reason: 'async_mode=FORCE：入口立即委托后台 Durable Task',
@@ -1274,6 +1276,48 @@ export class AgentService {
       return this.routeAndRunWithClaude(request, startTime, traceInfo, deadline);
     }
 
+    if (
+      request.trip_id?.trim() &&
+      isWorkbenchAssistantPlaceholderMessage(request.message) &&
+      this.claudeOrchestrator
+    ) {
+      this.logger.log(
+        `[AgentService] 工作台占位欢迎语 → 短路（跳过状态机）request_id=${request.request_id}`,
+      );
+      const context: AgentContext = {
+        requestId: request.request_id,
+        userId: request.user_id,
+        tripId: request.trip_id,
+        tripRunId: tripRunId ?? undefined,
+        conversationHistory: this.contextSlidingWindow.slice(
+          'orchestrator_claude',
+          request.conversation_context?.recent_messages,
+        ),
+        abortSignal: orchestrationAbort?.signal,
+        routingTaskType: rt,
+        ...(recoveryInvocation ? { recoveryInvocation } : {}),
+      };
+      const orchestrationResult =
+        await this.claudeOrchestrator.orchestrateWorkbenchAssistantPlaceholder(
+          request,
+          context,
+          startTime,
+        );
+      return this.getResponseAssembler().assembleClaudeStateMachineResponse({
+        request,
+        startTime,
+        traceInfo,
+        orchestrationResult,
+        durableRun:
+          tripRunId || resumedCheckpoint
+            ? {
+                trip_run_id: tripRunId ?? undefined,
+                checkpoint_loaded: !!resumedCheckpoint,
+              }
+            : undefined,
+      });
+    }
+
     // 构建 AgentContext
     const context: AgentContext = {
       requestId: request.request_id,
@@ -1332,6 +1376,20 @@ export class AgentService {
           cursor_step: orchestrationResult.result.state?.current_step,
           saved_at: new Date().toISOString(),
         });
+      }
+
+      if (tripRunId && this.tripRunManager && orchestrationResult.success) {
+        const orchState = orchestrationResult.result?.state as OrchestratorState | undefined;
+        const tripId = request.trip_id?.trim();
+        if (orchState && tripId) {
+          const pending = buildPendingItineraryAdjustDraft(orchState, tripId);
+          if (pending) {
+            await this.tripRunManager.updateTripRun({
+              runId: tripRunId,
+              metadata: { [PENDING_ITINERARY_ADJUST_DRAFT_META_KEY]: pending },
+            });
+          }
+        }
       }
 
       // 调试日志：记录状态机执行结果

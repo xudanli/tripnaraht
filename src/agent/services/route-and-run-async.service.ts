@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import type { RouteAndRunTaskInitResponseDto } from '../dto/route-and-run-task.dto';
 import { AgentService } from './agent.service';
@@ -17,6 +17,7 @@ export class RouteAndRunAsyncService {
   private readonly logger = new Logger(RouteAndRunAsyncService.name);
 
   constructor(
+    @Inject(forwardRef(() => AgentService))
     private readonly agentService: AgentService,
     private readonly taskStore: RouteAndRunAsyncTaskStore,
     @Optional() private readonly progressReporter?: RouteAndRunTaskProgressReporter,

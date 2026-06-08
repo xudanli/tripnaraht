@@ -45,6 +45,7 @@ import {
   type HikingSegment,
 } from '../trips/utils/embedded-hiking-trip-metadata.util';
 import type { CreateHikePlanWithSegmentDto } from './dto/create-hike-plan-with-segment.dto';
+import { canAccessHikePlan } from './hiking-plans-access.util';
 
 @Injectable()
 export class HikingPlansService {
@@ -197,14 +198,16 @@ export class HikingPlansService {
     userId: string,
     filters: { status?: string; routeDirectionId?: number; tripId?: string },
   ) {
-    const where: Record<string, unknown> = { userId };
-    if (filters.status) where.status = filters.status;
-    if (filters.routeDirectionId != null) {
-      where.routeDirectionId = filters.routeDirectionId;
-    }
+    const where: Record<string, unknown> = {};
     if (filters.tripId) {
       await this.assertTripCollaborator(filters.tripId, userId);
       where.tripId = filters.tripId;
+    } else {
+      where.userId = userId;
+    }
+    if (filters.status) where.status = filters.status;
+    if (filters.routeDirectionId != null) {
+      where.routeDirectionId = filters.routeDirectionId;
     }
 
     const rows = await this.prisma.hikePlan.findMany({
@@ -217,13 +220,13 @@ export class HikingPlansService {
 
   async findOne(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
     return this.serializePlan(plan);
   }
 
   async patch(userId: string, id: string, dto: PatchHikePlanDto) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
 
     const updated = await this.prisma.hikePlan.update({
       where: { id },
@@ -239,7 +242,7 @@ export class HikingPlansService {
 
   async start(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
     if (plan.status === 'completed' || plan.status === 'cancelled') {
       throw new BadRequestException(`Cannot start plan in status ${plan.status}`);
     }
@@ -265,7 +268,7 @@ export class HikingPlansService {
 
   async complete(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
 
     const updated = await this.prisma.hikePlan.update({
       where: { id },
@@ -280,7 +283,7 @@ export class HikingPlansService {
 
   async getPrep(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
     let prep = normalizePrepState(plan.prep);
 
     if (prep.checklist.length === 0 && prep.permits.length === 0) {
@@ -296,7 +299,7 @@ export class HikingPlansService {
 
   async patchPrep(userId: string, id: string, patch: Partial<HikePlanPrepState>) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
 
     const current = normalizePrepState(plan.prep);
     const merged: HikePlanPrepState = recomputePrepFlags({
@@ -324,7 +327,7 @@ export class HikingPlansService {
   /** 运营更新路线模板后，用户可主动同步 prep（保留已勾选状态） */
   async refreshPrepTemplate(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
 
     const current = normalizePrepState(plan.prep);
     const fresh = await this.buildDefaultPrep(plan.routeDirectionId);
@@ -339,7 +342,7 @@ export class HikingPlansService {
 
   async getLiveState(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
     const state =
       plan.status === 'in_progress'
         ? await this.refreshRouteDeviationLiveState(plan)
@@ -354,7 +357,7 @@ export class HikingPlansService {
 
   async patchLiveState(userId: string, id: string, patch: Partial<HikePlanLiveState>) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
 
     const merged = normalizeLiveState({
       ...normalizeLiveState(plan.liveState),
@@ -374,7 +377,7 @@ export class HikingPlansService {
     points: HikeTrackPointInput[],
   ) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
     if (!points.length) {
       throw new BadRequestException('points must not be empty');
     }
@@ -413,7 +416,7 @@ export class HikingPlansService {
 
   async getTrack(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
 
     const rows = await this.prisma.hikeTrackPoint.findMany({
       where: { hikePlanId: id },
@@ -433,13 +436,13 @@ export class HikingPlansService {
 
   async getReview(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
     return (plan.review as HikePlanReviewState) ?? {};
   }
 
   async generateReview(userId: string, id: string) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
 
     const { points, summary } = await this.getTrack(userId, id);
     const rd = plan.routeDirection;
@@ -462,7 +465,7 @@ export class HikingPlansService {
 
   async patchReview(userId: string, id: string, patch: Partial<HikePlanReviewState>) {
     const plan = await this.loadPlanOrThrow(id);
-    this.assertOwner(plan, userId);
+    await this.assertCanAccess(plan, userId);
 
     const merged = {
       ...((plan.review as HikePlanReviewState) ?? {}),
@@ -575,8 +578,19 @@ export class HikingPlansService {
     return plan;
   }
 
-  private assertOwner(plan: { userId: string }, userId: string) {
-    if (plan.userId !== userId) {
+  /** 本人创建，或关联 Trip 的协作者（搭子成团后队员可读/可协作准备） */
+  private async assertCanAccess(
+    plan: { userId: string; tripId: string | null },
+    userId: string,
+  ): Promise<void> {
+    let isTripCollaborator = false;
+    if (plan.tripId) {
+      const collaborator = await this.prisma.tripCollaborator.findUnique({
+        where: { tripId_userId: { tripId: plan.tripId, userId } },
+      });
+      isTripCollaborator = Boolean(collaborator);
+    }
+    if (!canAccessHikePlan(plan, userId, isTripCollaborator)) {
       throw new ForbiddenException('Not your hike plan');
     }
   }

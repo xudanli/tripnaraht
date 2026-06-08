@@ -74,6 +74,9 @@ export class PrometheusMetricsService implements OnModuleInit {
   private memoryPipelineWriteSuccessTotal!: Counter;
   private memoryPipelineWriteFailureTotal!: Counter;
   private memoryContractMissingTotal!: Counter;
+  private constraintSinkPatchAppliedTotal!: Counter;
+  private constraintSinkSkippedTotal!: Counter;
+  private constraintSinkHydratedTotal!: Counter;
 
   /** Decision OS Step 4：灰度分流 + A/B Tick 审计 */
   private dosTickTotal!: Counter;
@@ -361,6 +364,22 @@ export class PrometheusMetricsService implements OnModuleInit {
     this.memoryContractMissingTotal = new Counter({
       name: 'tripnara_memory_contract_missing_total',
       help: 'route_and_run response assembled without memory_contract on request',
+      registers: [this.registry],
+    });
+    this.constraintSinkPatchAppliedTotal = new Counter({
+      name: 'tripnara_constraint_sink_patch_applied_total',
+      help: 'Constraint Sink patches written to TripTaskMemory',
+      registers: [this.registry],
+    });
+    this.constraintSinkSkippedTotal = new Counter({
+      name: 'tripnara_constraint_sink_skipped_total',
+      help: 'Constraint Sink extract/write skipped',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    this.constraintSinkHydratedTotal = new Counter({
+      name: 'tripnara_constraint_sink_hydrated_total',
+      help: 'INTAKE hydrate applied Constraint Sink patches into TripPlanRequest',
       registers: [this.registry],
     });
 
@@ -731,6 +750,30 @@ export class PrometheusMetricsService implements OnModuleInit {
   recordMemoryContractMissing(): void {
     try {
       this.memoryContractMissingTotal.inc();
+    } catch {
+      // best-effort
+    }
+  }
+
+  recordConstraintSinkPatchApplied(): void {
+    try {
+      this.constraintSinkPatchAppliedTotal.inc();
+    } catch {
+      // best-effort
+    }
+  }
+
+  recordConstraintSinkSkipped(reason: string): void {
+    try {
+      this.constraintSinkSkippedTotal.inc({ reason: reason || 'unknown' });
+    } catch {
+      // best-effort
+    }
+  }
+
+  recordConstraintSinkHydrated(keyCount: number): void {
+    try {
+      if (keyCount > 0) this.constraintSinkHydratedTotal.inc();
     } catch {
       // best-effort
     }

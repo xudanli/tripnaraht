@@ -43,6 +43,7 @@ import {
   PushNotification,
 } from '../interfaces/journey-assistant.interface';
 import { randomUUID as uuidv4 } from 'crypto';
+import { resolveTripTemporalAnchor } from '../../../utils/trip-temporal-anchor.util';
 
 @Injectable()
 export class JourneyAssistantService {
@@ -973,29 +974,44 @@ What do you need?`,
         });
         if (trip) {
           const now = new Date();
-          const start = trip.startDate ? new Date(trip.startDate) : null;
-          const end = trip.endDate ? new Date(trip.endDate) : null;
+          const startYmd = trip.startDate?.toISOString().slice(0, 10);
+          const endYmd = trip.endDate?.toISOString().slice(0, 10);
           totalDays = trip.TripDay?.length || 1;
 
-          if (trip.status === 'COMPLETED' || (end && now > end)) {
+          if (trip.status === 'COMPLETED') {
             phase = 'POST_TRIP';
             isCompleted = true;
             currentDay = totalDays;
-            const endDate = end || new Date();
-            currentDate = endDate.toISOString().split('T')[0];
-          } else if (trip.status === 'PLANNING' || (start && now < start)) {
-            phase = 'PRE_TRIP';
-            isCompleted = false;
-            currentDay = 1;
-            currentDate = start ? start.toISOString().split('T')[0] : currentDate;
-          } else if (start && end) {
-            phase = now < start ? 'PRE_TRIP' : now > end ? 'POST_TRIP' : 'ON_TRIP';
-            isCompleted = phase === 'POST_TRIP';
-            const dayIndex = trip.TripDay?.findIndex((d) => {
-              const dDate = new Date(d.date).toISOString().split('T')[0];
-              return dDate === now.toISOString().split('T')[0];
+            currentDate = endYmd ?? currentDate;
+          } else {
+            const temporal = resolveTripTemporalAnchor({
+              startDateYmd: startYmd,
+              endDateYmd: endYmd,
+              now,
             });
-            if (dayIndex >= 0) currentDay = dayIndex + 1;
+            if (temporal?.phase === 'POST_TRIP') {
+              phase = 'POST_TRIP';
+              isCompleted = true;
+              currentDay = temporal.currentDayNumber;
+              currentDate = temporal.anchorYmd;
+            } else if (temporal?.phase === 'PRE_TRIP') {
+              phase = 'PRE_TRIP';
+              isCompleted = false;
+              currentDay = 1;
+              currentDate = temporal.anchorYmd;
+            } else if (temporal) {
+              phase = 'ON_TRIP';
+              isCompleted = false;
+              currentDate = temporal.todayYmd;
+              currentDay = temporal.currentDayNumber;
+              const dayIndex = trip.TripDay?.findIndex((d) => {
+                const dDate = new Date(d.date).toISOString().split('T')[0];
+                return dDate === temporal.todayYmd;
+              });
+              if (dayIndex != null && dayIndex >= 0) {
+                currentDay = dayIndex + 1;
+              }
+            }
           }
         }
       } catch (err: any) {

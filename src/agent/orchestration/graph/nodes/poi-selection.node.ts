@@ -7,6 +7,7 @@ import {
 } from './base.node';
 import type { PoiSelectionNodeHost, PoiSelectionPrePlanSegmentResult } from './poi-selection-node.host';
 import { segmentOutcomeToNodeResult } from './node-outcome.adapter';
+import { ensureHarnessResearchEvidenceSnapshot } from '../../../utils/harness-research-evidence-snapshot.util';
 
 /**
  * pre_plan 子图 POI_SELECTION 节点（Phase 4b P0 第四项）。
@@ -78,5 +79,10 @@ export async function runPoiSelectionPrePlanSegment(
   if (stop) {
     return stop;
   }
+  decisionState = ensureHarnessResearchEvidenceSnapshot(
+    decisionState,
+    state.request_id,
+    state.research_data as Record<string, unknown> | undefined,
+  );
   return { kind: 'continue', decisionState };
 }

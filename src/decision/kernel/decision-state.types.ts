@@ -52,6 +52,9 @@ export interface UserIntent {
   /** 节奏（影响日程 buffer 比例） */
   pace?: 'relaxed' | 'normal' | 'dense';
   styleTags?: string[];
+  /** Intake Cafe / Odyssey 帕累托优选 RouteDirection uuid（按优先级排序） */
+  preferredRouteDirectionUuids?: string[];
+  odysseyTier?: 1 | 2 | 3;
 }
 
 /** 行程状态 */

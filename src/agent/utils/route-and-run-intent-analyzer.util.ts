@@ -12,7 +12,7 @@ import { detectPeakSeasonCrowdAvoidanceIntent } from './peak-season-time-shift-i
 import { isFroad2wdComplianceScenario } from './froad-intake-signals.util';
 import { stripSystemMessageBlocksForIntakeNl } from './trip-plan-intake-vehicle.util';
 import { extractGuardianDebateUserIntentAnchors } from './guardian-debate-user-intent-anchor.util';
-import { detectItineraryAdjustIntent } from './itinerary-adjust-intent.util';
+import { detectItineraryAdjustIntent, detectFullTripReplanIntent } from './itinerary-adjust-intent.util';
 
 export type RouteAndRunPrimaryIntent =
   | 'ITINERARY_SLOT_PLACEMENT'
@@ -96,8 +96,26 @@ export function analyzeRouteAndRunIntent(
 
   if (
     hasContext &&
-    opts?.hasTripDays === true &&
-    (detectItineraryAdjustIntent(intake_nl) || sub_signals.marathon_deferred)
+    detectFullTripReplanIntent(intake_nl, {
+      start_date: opts?.trip?.date_range?.start_date,
+      end_date: opts?.trip?.date_range?.end_date,
+    })
+  ) {
+    return {
+      primary: 'GENERAL_PLAN',
+      sub_signals,
+      slot_placement_requested,
+      intake_nl,
+    };
+  }
+
+  if (
+    hasContext &&
+    (detectItineraryAdjustIntent(intake_nl, {
+      start_date: opts?.trip?.date_range?.start_date,
+      end_date: opts?.trip?.date_range?.end_date,
+    }) ||
+      (opts?.hasTripDays === true && sub_signals.marathon_deferred))
   ) {
     return {
       primary: 'ITINERARY_ADJUST',

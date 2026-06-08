@@ -20,20 +20,23 @@ import { icelandStormIcecaveFailureCase } from './iceland-storm-icecave-failure.
 import { icelandStormRecoveryExperienceFirstCase } from './iceland-storm-recovery-experience-first.example';
 import { icelandDecisionClosureStormF208Case } from './iceland-decision-closure-storm-f208.example';
 import { icelandDecisionClosureRingStableCase } from './iceland-decision-closure-ring-stable.example';
+import { nzDecisionClosureMilfordRainCase } from './nz-decision-closure-milford-rain.example';
+import { auDecisionClosureGreatOceanFireCase } from './au-decision-closure-great-ocean-fire.example';
+import { jpDecisionClosureIzuTyphoonCase } from './jp-decision-closure-izu-typhoon.example';
 import {
   PERSONA_CLOSURE_REPLAY_FIXTURES,
 } from './persona-closure.examples';
 import fs from 'fs';
 import path from 'path';
+import { loadE2eClosureGolden, resolveE2eClosureGoldenPath } from './load-e2e-closure-golden.util';
 
 function loadStormDecisionClosureGoldenIfPresent(): E2ECase | undefined {
   try {
-    const goldenPath = path.join(
-      __dirname,
+    const goldenPath = resolveE2eClosureGoldenPath(
       'iceland-storm-icecave-failure.decision-closure.golden.json',
     );
     if (!fs.existsSync(goldenPath)) return undefined;
-    const golden = JSON.parse(fs.readFileSync(goldenPath, 'utf8')) as Record<string, unknown>;
+    const golden = loadE2eClosureGolden('iceland-storm-icecave-failure.decision-closure.golden.json');
     return {
       ...icelandStormIcecaveFailureCase,
       expected: {
@@ -84,6 +87,23 @@ export const ICELAND_DECISION_CLOSURE_FIXTURES: readonly E2ECase[] = [
   icelandDecisionClosureStormF208Case,
   icelandDecisionClosureRingStableCase,
   ...(stormDecisionClosureCase ? [stormDecisionClosureCase] : []),
+];
+
+/** P0：新西兰 decision-closure golden（国家包扩展样板） */
+export const NZ_DECISION_CLOSURE_FIXTURES: readonly E2ECase[] = [nzDecisionClosureMilfordRainCase];
+
+/** P0：澳大利亚 decision-closure golden */
+export const AU_DECISION_CLOSURE_FIXTURES: readonly E2ECase[] = [auDecisionClosureGreatOceanFireCase];
+
+/** P0：日本 decision-closure golden */
+export const JP_DECISION_CLOSURE_FIXTURES: readonly E2ECase[] = [jpDecisionClosureIzuTyphoonCase];
+
+/** P0：全国家 decision-closure 门禁合集 */
+export const COUNTRY_DECISION_CLOSURE_FIXTURES: readonly E2ECase[] = [
+  ...ICELAND_DECISION_CLOSURE_FIXTURES,
+  ...NZ_DECISION_CLOSURE_FIXTURES,
+  ...AU_DECISION_CLOSURE_FIXTURES,
+  ...JP_DECISION_CLOSURE_FIXTURES,
 ];
 
 /** 当前纳入 TD 回放门禁的全部真实 fixture（可随 EVAL 评审追加） */

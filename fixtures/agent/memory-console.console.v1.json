@@ -1,0 +1,47 @@
+{
+  "_comment": "TripNARA staging: GET /api/agent/memory/v1/console?trip_id=trip-iceland-coastal-pivot-staging mock",
+  "revision": "v1",
+  "user_id": "staging-user-coastal-pivot",
+  "l0": {
+    "displayName": "Staging User",
+    "tags": ["iceland"],
+    "dietaryRestrictions": []
+  },
+  "l1": {
+    "pacePreference": "SLOW",
+    "riskTolerance": "MEDIUM",
+    "travelPhilosophy": "SCENIC",
+    "preferredRouteTypes": ["SCENIC"],
+    "confidence": 0.6,
+    "source": "inferred",
+    "updatedAt": "2026-06-04T08:00:00.000Z"
+  },
+  "l2_recent": [
+    {
+      "id": "rd-dec-001",
+      "title": "南岸环线因大风改为内陆高地优先",
+      "decided_at": "2026-06-03T12:00:00.000Z",
+      "trip_id": "trip-iceland-coastal-pivot-staging"
+    }
+  ],
+  "trip_constraints": {
+    "trip_id": "trip-iceland-coastal-pivot-staging",
+    "patches": [
+      {
+        "id": "patch-coastal-pivot-staging-001",
+        "summary_zh": "改去 highlands；避免区域：south_coast；用户表示避免沿海/南岸区域；节奏：relaxed",
+        "at": "2026-06-04T08:00:00.000Z",
+        "confidence": 0.9,
+        "provenance": "rule",
+        "applied_keys": ["destination_pivot", "negative", "pace"]
+      }
+    ]
+  },
+  "meta": {
+    "l2_total_count": 1,
+    "feature_flags": {
+      "constraint_sink": true,
+      "memory_console": true
+    }
+  }
+}

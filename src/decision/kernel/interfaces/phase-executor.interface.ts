@@ -286,6 +286,24 @@ export interface NarrationLike {
   causal_protection_summary_zh?: string;
   /** 结构化因果链（UI / 审计） */
   causal_chain?: import('../../../trips/decision/narration/causal-chain.types').CausalChain;
+  /** unified-explainability@v1（与 explain.unified / decision.explainForHuman 同源） */
+  unified_explainability?: import('../../../trips/decision/explainability/unified-explainability.types').UnifiedExplainabilityEnvelopeV1;
+  /** 客户端 payload：envelope 仅在 explain.unified */
+  unified_explainability_ref?: import('../../../trips/decision/explainability/dedupe-unified-explainability-client-payload.util').UnifiedExplainabilityClientRef;
+  /** 三人格确定性叙事（envelope 投影） */
+  guardian_narrative_zh?: {
+    abu: string;
+    drdre: string;
+    neptune: string;
+  };
+  /** 锚定 reasonCodes / evidenceRefs 的风险摘要 */
+  risk_highlights?: Array<{
+    risk: string;
+    severity: 'high' | 'medium' | 'low';
+    explanation: string;
+    reason_codes?: string[];
+    evidence_refs?: string[];
+  }>;
 }
 
 /** NARRATE 阶段执行器上下文（P3 C：orchestratorState 含 itinerary/gate_result/decision_log） */

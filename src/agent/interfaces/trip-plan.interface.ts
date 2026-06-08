@@ -864,6 +864,22 @@ export interface OrchestratorState {
     visual_hint?: string;
     /** BFF：语音韵律 / TTS 参数建议 */
     audio_prosody?: string;
+    /** unified-explainability@v1（NARRATE 写入；assembler explain.unified 优先复用） */
+    unified_explainability?: import('../../trips/decision/explainability/unified-explainability.types').UnifiedExplainabilityEnvelopeV1;
+    /** 客户端 payload：envelope 仅在 explain.unified；narration 侧为引用 */
+    unified_explainability_ref?: import('../../trips/decision/explainability/dedupe-unified-explainability-client-payload.util').UnifiedExplainabilityClientRef;
+    guardian_narrative_zh?: {
+      abu: string;
+      drdre: string;
+      neptune: string;
+    };
+    risk_highlights?: Array<{
+      risk: string;
+      severity: 'high' | 'medium' | 'low';
+      explanation: string;
+      reason_codes?: string[];
+      evidence_refs?: string[];
+    }>;
   };
   evidence_registry: Map<string, EvidenceRef>; // evidence_id -> EvidenceRef
   decision_log: DecisionLogEntry[];

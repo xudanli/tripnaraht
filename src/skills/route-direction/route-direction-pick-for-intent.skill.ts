@@ -10,7 +10,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { RouteDirectionSelectorService, UserIntent } from '../../route-directions/services/route-direction-selector.service';
 import { RouteDirectionsService } from '../../route-directions/route-directions.service';
-
+import type { TripPlanRequest } from '../../agent/interfaces/trip-plan.interface';
 export interface RouteDirectionPickForIntentInput extends SkillInput {
   /** 国家代码（ISO 3166-1 alpha-2） */
   countryCode: string;
@@ -20,6 +20,10 @@ export interface RouteDirectionPickForIntentInput extends SkillInput {
   userIntentTags: string[];
   /** 其他用户意图参数（可选） */
   userIntent?: Partial<UserIntent>;
+  /** trip_plan_request（含 preferred_route_direction_uuids） */
+  tripPlanRequest?: TripPlanRequest;
+  /** 直接传入优选 RouteDirection uuid（优先级高于 tripPlanRequest） */
+  preferredRouteDirectionUuids?: string[];
 }
 
 export interface RouteDirectionPickForIntentOutput extends SkillOutput {
@@ -79,10 +83,16 @@ export class RouteDirectionPickForIntentSkill implements Skill<RouteDirectionPic
     if (this.routeDirectionSelector) {
       try {
         // 构建 UserIntent
-        const userIntent: UserIntent = {
+        let userIntent: UserIntent = {
           preferences: input.userIntentTags,
           ...input.userIntent,
         };
+        if (input.preferredRouteDirectionUuids?.length) {
+          userIntent = {
+            ...userIntent,
+            preferredRouteDirectionUuids: input.preferredRouteDirectionUuids,
+          };
+        }
 
         // 调用 RouteDirectionSelector
         const recommendations = await this.routeDirectionSelector.pickRouteDirections(

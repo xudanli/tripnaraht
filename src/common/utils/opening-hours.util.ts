@@ -4,6 +4,24 @@ import { DateTime } from 'luxon';
 /** 无法解析或未提供营业时间时返回的占位文案，用于避免 [object Object] 且便于业务层判断 */
 export const OPENING_HOURS_UNKNOWN = '营业时间未知';
 
+/** OSM / 中文 / 英文：自然景点等「全天开放」文案 */
+export function isAlwaysOpenHoursText(hoursStr: unknown): boolean {
+  if (hoursStr == null) return false;
+  const s = String(hoursStr).trim();
+  if (!s) return false;
+  const lower = s.toLowerCase();
+  if (lower === '24 hours' || lower === '24/7' || lower === '24h') return true;
+  if (/24\s*小时|24\s*hours|always\s*open|open\s*24/i.test(lower)) return true;
+  if (/全天开放|全天营业|全天|全天候|全年开放/.test(s)) return true;
+  return false;
+}
+
+/** 校验前归一化：全天类文案 → `24 Hours` */
+export function normalizeOpeningHoursForCheck(hoursStr: string): string {
+  const s = String(hoursStr ?? '').trim();
+  return isAlwaysOpenHoursText(s) ? '24 Hours' : s;
+}
+
 function toHoursString(value: unknown): string {
   if (value == null) return OPENING_HOURS_UNKNOWN;
   if (typeof value === 'string') return value;
@@ -44,9 +62,8 @@ export class OpeningHoursUtil {
     }
     
     if (hoursStr === 'Closed') return false;
-    if (hoursStr === '24 Hours' || hoursStr === '24/7') return true;
-
-    // 1. 获取店铺当地的"当前时间"
+    hoursStr = normalizeOpeningHoursForCheck(hoursStr);
+    if (hoursStr === '24 Hours') return true;
     const now = DateTime.now().setZone(timezone);
     
     // 2. 解析营业时间字符串 (假设格式为 "HH:mm-HH:mm")
@@ -164,7 +181,8 @@ export class OpeningHoursUtil {
     }
     
     if (hoursStr === 'Closed') return false;
-    if (hoursStr === '24 Hours' || hoursStr === '24/7') return true;
+    hoursStr = normalizeOpeningHoursForCheck(hoursStr);
+    if (hoursStr === '24 Hours') return true;
 
     // 1. 将检查时间转换为店铺当地时区
     const checkDateTime = DateTime.fromJSDate(checkDate).setZone(timezone);

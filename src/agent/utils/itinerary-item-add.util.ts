@@ -14,18 +14,71 @@ export interface ItineraryItemAddSpec {
   poiQuery: string;
 }
 
-const ADD_VERB_RE = /(?:新增|添加|加上|加入|插入|加一个)/;
+const ADD_VERB_RE = /(?:新增|添加|加上|加入|插入|增加|(?<![\u4e00-\u9fff增])加一个)/;
+const DAY_ANCHOR_RE = /第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天|D\s*\d+/i;
+
+/** 复合改排 NL 误解析时，拒绝把整段话当作 POI 名 */
+const COMPOUND_POI_QUERY_RE =
+  /主要改动|行程计划|调整我的|顾问建议|请帮我生成|拆分为|移至|项活动|\d+\s*月\s*\d+\s*日.{0,16}\d+\s*月/;
+const MAX_POI_QUERY_LEN = 64;
+
+export function isPlausibleItineraryItemAddPoiQuery(poiQuery: string): boolean {
+  const q = String(poiQuery ?? '').trim();
+  if (q.length < 2 || q.length > MAX_POI_QUERY_LEN) return false;
+  if (COMPOUND_POI_QUERY_RE.test(q)) return false;
+  return true;
+}
+
+const CN_DAY_MAP: Record<string, number> = {
+  一: 1,
+  二: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
+  十: 10,
+};
+
+function parseCnDayToken(token: string): number | undefined {
+  const t = token.trim();
+  if (!t) return undefined;
+  if (/^\d+$/.test(t)) return Number(t);
+  if (CN_DAY_MAP[t] != null) return CN_DAY_MAP[t];
+  if (t.length === 2 && t[0] === '十' && CN_DAY_MAP[t[1]] != null) return 10 + CN_DAY_MAP[t[1]];
+  if (t.length === 2 && CN_DAY_MAP[t[0]] != null && t[1] === '十') return CN_DAY_MAP[t[0]] * 10;
+  return undefined;
+}
+
+/** 从文本解析「第 N 天 / Dn」 */
+export function parseTripDayNumber(text: string): number | undefined {
+  const digit = String(text ?? '').match(/第\s*(\d+)\s*天/);
+  if (digit) {
+    const n = Number(digit[1]);
+    return n > 0 ? n : undefined;
+  }
+  const cn = String(text ?? '').match(/第\s*([一二三四五六七八九十]{1,2})\s*天/);
+  if (cn) return parseCnDayToken(cn[1]);
+  const d = String(text ?? '').match(/\bD\s*(\d+)\b/i);
+  if (d) {
+    const n = Number(d[1]);
+    return n > 0 ? n : undefined;
+  }
+  return undefined;
+}
 
 /** 用户是否在已有行程语境下请求新增某个 POI/活动 */
 export function detectItineraryItemAddIntent(message: string): boolean {
   const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
   if (!t.trim() || !ADD_VERB_RE.test(t)) return false;
   if (/(?:新增|添加|加入).*(?:账户|账号|订单|记录|好友)/.test(t)) return false;
-  const hasDayAnchor = /第\s*\d+\s*天|D\s*\d+/i.test(t);
+  const hasDayAnchor = DAY_ANCHOR_RE.test(t);
   const hasPoiAnchor =
     /(?:poi|景点|活动|瀑布|酒店|餐厅|公园|博物馆|教堂|沙滩|冰川|温泉|国家公园)/i.test(t) ||
     /[\u4e00-\u9fff]{2,}/.test(
-      t.replace(ADD_VERB_RE, '').replace(/第\s*\d+\s*天/g, '').replace(/[，,、]/g, ''),
+      t.replace(ADD_VERB_RE, '').replace(/第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天/g, '').replace(/[，,、]/g, ''),
     );
   return hasDayAnchor || hasPoiAnchor;
 }
@@ -35,25 +88,30 @@ export function parseItineraryItemAddSpec(message: string): ItineraryItemAddSpec
   const t = stripSystemMessageBlocksForIntakeNl(String(message ?? '')).trim();
   if (!t || !ADD_VERB_RE.test(t)) return null;
 
-  const dayMatch = t.match(/第\s*(\d+)\s*天/);
-  const dayNumber = dayMatch ? Number(dayMatch[1]) : undefined;
+  const dayNumber = parseTripDayNumber(t);
 
   let poiPart = t
-    .replace(/^.*?第\s*\d+\s*天(?:[，,、\s]*)?(?:新增|添加|加上|加入|插入)\s*/u, '')
-    .replace(/^.*?(?:新增|添加|加上|加入|插入)\s*第\s*\d+\s*天(?:的|里|中)?\s*/u, '')
-    .replace(/^.*?(?:新增|添加|加上|加入|插入)\s*/u, '')
+    .replace(
+      /^.*?第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天(?:[，,、\s]*(?:我)?想?)?(?:新增|添加|加上|加入|插入|增加)\s*/u,
+      '',
+    )
+    .replace(
+      /^.*?(?:新增|添加|加上|加入|插入|增加)\s*第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天(?:的|里|中)?\s*/u,
+      '',
+    )
+    .replace(/^.*?(?:新增|添加|加上|加入|插入|增加)\s*/u, '')
     .replace(/\s*poi\s*$/iu, '')
     .trim();
 
   if (!poiPart) {
-    const fallback = t.match(/(?:新增|添加|加上|加入|插入)\s*(.+)$/u);
+    const fallback = t.match(/(?:新增|添加|加上|加入|插入|增加)\s*(.+)$/u);
     poiPart = (fallback?.[1] ?? '')
-      .replace(/^第\s*\d+\s*天(?:的|里|中)?\s*/u, '')
+      .replace(/^第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天(?:的|里|中)?\s*/u, '')
       .replace(/\s*poi\s*$/iu, '')
       .trim();
   }
 
-  if (!poiPart || poiPart.length < 2) return null;
+  if (!poiPart || poiPart.length < 2 || !isPlausibleItineraryItemAddPoiQuery(poiPart)) return null;
   return {
     dayNumber: dayNumber && dayNumber > 0 ? dayNumber : undefined,
     poiQuery: poiPart,

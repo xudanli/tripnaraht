@@ -2,6 +2,7 @@
 import { Action, ActionKind, ActionCost, ActionSideEffect } from '../../interfaces/action.interface';
 import { EnhancedVRPTWOptimizerService } from '../../../itinerary-optimization/services/enhanced-vrptw-optimizer.service';
 import { PlanRequest, PlanNode, OptimizationResult } from '../../../itinerary-optimization/interfaces/plan-request.interface';
+import { toAgentLunchBreak } from '../../../planning-policy/utils/lunch-strategy.util';
 
 /**
  * Itinerary Actions
@@ -100,11 +101,8 @@ export function createItineraryActions(
               fixed_buffer_min: 15,
             },
             lifestyle_policy: {
-              lunch_break: trip.lunch_break || {
-                enabled: true,
-                duration_min: 60,
-                window: ['11:30', '13:30'],
-              },
+              lunch_break:
+                trip.lunch_break ?? toAgentLunchBreak(trip.lunch_strategy ?? 'balanced'),
             },
             pacing: trip.pacing || 'normal',
           };

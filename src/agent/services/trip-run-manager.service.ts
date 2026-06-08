@@ -451,6 +451,20 @@ export class TripRunManagerService {
     }
   }
 
+  async getTripRunMetadata(tripRunId: string): Promise<Record<string, unknown> | null> {
+    if (!this.prisma || !this.isValidUUID(tripRunId)) return null;
+    try {
+      const row = await this.prisma.tripRun.findUnique({
+        where: { id: tripRunId },
+        select: { metadata: true },
+      });
+      return (row?.metadata as Record<string, unknown>) ?? null;
+    } catch (error: any) {
+      this.logger.warn(`getTripRunMetadata failed: ${error.message}`);
+      return null;
+    }
+  }
+
   async loadDsoCheckpoint(tripRunId: string): Promise<TripRunDsoCheckpointPayload | null> {
     if (!this.prisma) {
       return null;

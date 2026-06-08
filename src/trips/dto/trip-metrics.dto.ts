@@ -262,6 +262,12 @@ export class AssessTripRequestDto {
     enum: TravelMode,
   })
   travelMode?: TravelMode;
+
+  @ApiPropertyOptional({
+    description: '午餐时间窗策略（临时覆盖）：staggered | rigid | route_driven | balanced',
+    example: 'route_driven',
+  })
+  lunch_strategy?: 'staggered' | 'rigid' | 'route_driven' | 'balanced';
 }
 
 /**

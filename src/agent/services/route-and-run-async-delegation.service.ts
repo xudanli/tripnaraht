@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { RouteAndRunAsyncService } from './route-and-run-async.service';
 import {
@@ -15,7 +15,10 @@ import {
 export class RouteAndRunAsyncDelegationService {
   private readonly logger = new Logger(RouteAndRunAsyncDelegationService.name);
 
-  constructor(private readonly routeAndRunAsyncService: RouteAndRunAsyncService) {}
+  constructor(
+    @Inject(forwardRef(() => RouteAndRunAsyncService))
+    private readonly routeAndRunAsyncService: RouteAndRunAsyncService,
+  ) {}
 
   async delegateIfRequested(
     request: RouteAndRunRequestDto,

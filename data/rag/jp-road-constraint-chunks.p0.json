@@ -1,0 +1,58 @@
+{
+  "schema": "rag-chunk-road-constraint-seed/v1",
+  "countryCode": "JP",
+  "description": "P0 Japan Izu Peninsula Route 134 typhoon road constraint seed.",
+  "chunks": [
+    {
+      "chunk_id": "jp-road-route134-closed-typhoon",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "Izu Peninsula Route 134 is CLOSED due to typhoon rain, landslide risk and rockfall.",
+      "credibility_score": 0.92,
+      "keywords": ["ROUTE134", "Izu", "CLOSED", "typhoon"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "ROUTE134",
+        "countryCode": "JP",
+        "status": "CLOSED",
+        "affected_slot_ids": ["day3-drive-izu"],
+        "valid_from": "2026-09-14T00:00:00Z",
+        "valid_to": "2026-09-17T23:59:59Z",
+        "source": "jma.go.jp",
+        "confidence": 0.92
+      }
+    },
+    {
+      "chunk_id": "jp-road-route134-advisory-wind",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "Route 134 coastal sections: ADVISORY — strong wind and heavy rain from approaching typhoon.",
+      "credibility_score": 0.87,
+      "keywords": ["ROUTE134", "ADVISORY", "typhoon"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "ROUTE134",
+        "countryCode": "JP",
+        "status": "ADVISORY",
+        "source": "mlit.go.jp",
+        "confidence": 0.87
+      }
+    },
+    {
+      "chunk_id": "jp-weather-typhoon-2026-09-15",
+      "type": "RISK_INFO",
+      "category": "RISK_INFO",
+      "content": "Typhoon approaching Izu Peninsula — JMA heavy rain and high wave warnings.",
+      "credibility_score": 0.9,
+      "keywords": ["typhoon", "heavy rain", "Izu"],
+      "metadata": {
+        "category": "RISK_INFO",
+        "countryCode": "JP",
+        "weather_dates": ["2026-09-15"],
+        "date": "2026-09-15",
+        "source": "jma.go.jp",
+        "confidence": 0.9
+      }
+    }
+  ]
+}

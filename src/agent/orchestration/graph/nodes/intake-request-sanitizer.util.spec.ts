@@ -3,6 +3,8 @@ import {
   consumeIntakeFitnessMaterial,
   peekIntakeFitnessMaterial,
   readFitnessProfileLinesForLightweightQa,
+  readIcelandMarketPriorForLightweightQa,
+  applyIntakeFitnessMaterialToTripPlanMessage,
 } from './intake-request-sanitizer.util';
 import {
   PHYSICAL_CAPABILITY_SYSTEM_HINT_KEY,
@@ -57,5 +59,33 @@ describe('intake-request-sanitizer', () => {
 
     const lines = readFitnessProfileLinesForLightweightQa(request);
     expect(lines?.length).toBeGreaterThan(0);
+  });
+
+  it('injects iceland market prior into trip plan message from snapshot', () => {
+    const request = {
+      request_id: 'r3',
+      user_id: 'u1',
+      message: '冰岛7月',
+      options: {
+        intake_travel_preference_snapshot: {
+          iceland_market_segment: {
+            segmentId: 'IS_MARKET_US',
+            confidence: 0.82,
+            promptBlockZh: '[IS_MARKET_PRIOR | segment=IS_MARKET_US]',
+            canonicalRouteId: 'IS-SOUTH-GOLDEN-5-7-LUX',
+          },
+        },
+      },
+    } as RouteAndRunRequestDto;
+
+    const material = peekIntakeFitnessMaterial(request);
+    expect(material.icelandMarketPriorZh).toContain('IS_MARKET_US');
+    const trip = applyIntakeFitnessMaterialToTripPlanMessage(
+      { message: '冰岛7月' },
+      request,
+      material,
+    );
+    expect(trip.message).toContain('[SYSTEM_MESSAGE][ICELAND_MARKET_PRIOR]');
+    expect(readIcelandMarketPriorForLightweightQa(request)).toContain('IS_MARKET_US');
   });
 });

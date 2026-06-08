@@ -7,7 +7,16 @@ import { ICELAND_POI_SLUG_KEYWORDS } from '../regions/iceland-poi-slugs';
 function haystackFromUnknownPoi(poi: unknown): string {
   if (!poi || typeof poi !== 'object') return '';
   const p = poi as Record<string, unknown>;
-  return `${p.name ?? ''} ${p.nameCN ?? ''} ${p.nameEN ?? ''}`;
+  return `${p.name ?? ''} ${p.nameCN ?? ''} ${p.nameEN ?? ''} ${p.category ?? ''}`;
+}
+
+/** 冰岛 POI 库中「Geysir 租车」等与黄金圈间歇泉同名/同词，须排除 */
+export function isGoldenCircleDisqualifiedPoi(poi: unknown): boolean {
+  const hay = haystackFromUnknownPoi(poi).toLowerCase();
+  return (
+    /\b(car\s*rental|rent\s*a\s*car|rental\s*car|car\s*hire)\b/.test(hay) ||
+    /租车|车行|租一辆车|car\s*rent/i.test(hay)
+  );
 }
 
 /** 是否有来自检索/DB 的稳定 id（非纯占位） */
@@ -23,6 +32,7 @@ export function researchPoiHasStableId(poi: unknown): boolean {
  * 黄金圈：用语义较强的 pattern/alias 判断是否命中某锚点 slug（用于 retrieved vs keyword）。
  */
 export function goldenCircleEntityStrongMatch(poi: unknown, slug: string): boolean {
+  if (isGoldenCircleDisqualifiedPoi(poi)) return false;
   const profile = getAnchorRetrievalProfile('golden_circle');
   if (!profile) return false;
   const entry = profile.requiredAnchors.find((a) => a.slug === slug);
@@ -33,6 +43,9 @@ export function goldenCircleEntityStrongMatch(poi: unknown, slug: string): boole
 function anchorEntryMatchesPoi(entry: AnchorRetrievalEntry, hayRaw: string): boolean {
   const hay = hayRaw.toLowerCase();
   if (entry.slug === 'thingvellir' && !thingvellirStrongTokensPresent(hay)) {
+    return false;
+  }
+  if (entry.slug === 'geysir' && geysirLooksLikeCarRentalBrand(hay)) {
     return false;
   }
   for (const pat of entry.dbNamePatterns ?? []) {
@@ -56,6 +69,14 @@ function thingvellirStrongTokensPresent(hayLower: string): boolean {
   );
 }
 
+/** 「Geysir Car Rental / Geysir租车公司」等：含 geysir 但不是间歇泉景区 */
+function geysirLooksLikeCarRentalBrand(hayLower: string): boolean {
+  return (
+    /\b(car\s*rental|rent\s*a\s*car|rental\s*car|car\s*hire)\b/.test(hayLower) ||
+    /租车|车行/.test(hayLower)
+  );
+}
+
 /**
  * 按 region 尝试将 RESEARCH 行归一到锚点 slug（仅黄金圈强规则；其它返回 null）。
  */
@@ -74,6 +95,7 @@ export function matchAnchorSlugFromResearchPoi(poi: unknown, regionId?: string):
 
 /** 关键词兜底（与 merge 旧逻辑一致） */
 export function keywordMatchResearchPoiToSlug(poi: unknown, slug: string): boolean {
+  if (isGoldenCircleDisqualifiedPoi(poi)) return false;
   const kws = ICELAND_POI_SLUG_KEYWORDS[slug];
   if (!kws?.length) return false;
   const hay = haystackFromUnknownPoi(poi).toLowerCase();

@@ -95,6 +95,65 @@ describe('feasibility-message-surface.zh.util', () => {
     expect(gate.violations[0].display_headline_zh).toContain('可执行性');
   });
 
+  it('sanitizeGateResultForClientDisplay can strip verify_synthetic when gate ALLOW', () => {
+    const gate = sanitizeGateResultForClientDisplay(
+      {
+        gate_result: 'ALLOW',
+        violations: [
+          {
+            type: 'SAFETY',
+            severity: 'HARD',
+            detail:
+              '[VERIFY] UNKNOWN: VERIFY requires boundResearchSnapshotId on visible state (RESEARCH freeze).',
+            verify_synthetic: true,
+          },
+        ],
+        required_adjustments: [],
+        confidence: 0.8,
+        evidence_refs: [],
+        guardian_results: {
+          source: 'violation_projection_v1',
+          abu: {
+            verdict: 'REJECT',
+            evidence: ['[VERIFY] UNKNOWN: VERIFY requires boundResearchSnapshotId on visible state (RESEARCH freeze).'],
+          },
+        },
+      },
+      { stripVerifySyntheticWhenAllow: true },
+    );
+    expect(gate.violations).toEqual([]);
+    expect(gate.guardian_results?.abu?.verdict).toBe('ALLOW');
+  });
+
+  it('stripVerifySyntheticForItineraryAdjust removes POI_CLOSED even when gate is not ALLOW', () => {
+    const gate = sanitizeGateResultForClientDisplay(
+      {
+        gate_result: 'ADJUST_REQUIRED',
+        violations: [
+          {
+            type: 'DATA_MISSING',
+            severity: 'SOFT',
+            detail:
+              '[VERIFY] POI_CLOSED [entity:POI:a]: POI "斯卡夫塔山国家公园" 在 2026-06-02 11:00 不在开放时间范围内',
+            verify_synthetic: true,
+          },
+          {
+            type: 'DATA_MISSING',
+            severity: 'SOFT',
+            detail:
+              '[VERIFY] POI_CLOSED [entity:POI:b]: POI "斯科加瀑布" 在 2026-06-02 13:00 不在开放时间范围内',
+            verify_synthetic: true,
+          },
+        ],
+        required_adjustments: [],
+        confidence: 0.8,
+        evidence_refs: [],
+      },
+      { stripVerifySyntheticForItineraryAdjust: true },
+    );
+    expect(gate.violations).toEqual([]);
+  });
+
   it('stripLeadingAuditBracketTags removes internal 【…】 headers', () => {
     expect(stripLeadingAuditBracketTags('【车型-路况仲裁】正文')).toBe('正文');
   });

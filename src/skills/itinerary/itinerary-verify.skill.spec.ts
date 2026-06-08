@@ -36,6 +36,172 @@ describe('ItineraryVerifySkill', () => {
     expect(out.issues.some((i) => i.severity === 'CRITICAL' && i.message.includes('F 路'))).toBe(true);
   });
 
+  it('有 item.metadata.opening_hours 时不报「缺少开放时间数据」', async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ItineraryVerifySkill],
+    }).compile();
+    const verify = module.get(ItineraryVerifySkill);
+
+    const out = await verify.execute({
+      itinerary: {
+        request_id: 'oh-meta',
+        days: [
+          {
+            date: '2026-06-01',
+            items: [
+              {
+                id: 'vik-shop',
+                type: 'POI' as const,
+                start_window: '10:00',
+                end_window: '12:00',
+                location_ref: { place_id: '381073', name: '维克超市' },
+                metadata: { opening_hours: '10:00-22:00', time_source: 'poi_evidence' },
+                evidence_refs: [],
+              },
+            ],
+          },
+        ],
+      } as any,
+      research_data: {
+        opening_hours_evidence: [{ poi_id: '381073', opening_hours: null }],
+      },
+    });
+
+    expect(
+      out.issues.some((i) => i.message.includes('维克超市') && i.message.includes('缺少开放时间')),
+    ).toBe(false);
+  });
+
+  it('夏季行程：Summer/Winter 季节性文案在 11:30 不误报 OPENING_HOURS_CONFLICT', async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ItineraryVerifySkill],
+    }).compile();
+    const verify = module.get(ItineraryVerifySkill);
+
+    const seasonalHours = 'Summer 8:00-18:00, Winter 9:00-17:00';
+    const out = await verify.execute({
+      itinerary: {
+        request_id: 'oh-seasonal',
+        days: [
+          {
+            date: '2026-06-02',
+            items: [
+              {
+                id: 'skaftafell',
+                type: 'POI' as const,
+                start_window: '11:30',
+                end_window: '14:00',
+                location_ref: { place_id: '381041', name: '斯卡夫塔山国家公园' },
+                evidence_refs: [],
+              },
+            ],
+          },
+        ],
+      } as any,
+      research_data: {
+        country_code: 'IS',
+        opening_hours_evidence: [{ poi_id: '381041', opening_hours: seasonalHours }],
+      },
+    });
+
+    expect(
+      out.issues.some(
+        (i) =>
+          i.type === 'OPENING_HOURS_CONFLICT' &&
+          i.severity === 'ERROR' &&
+          i.message.includes('斯卡夫塔山国家公园'),
+      ),
+    ).toBe(false);
+  });
+
+  it('夏季行程：早于 Summer 开门时刻仍报 OPENING_HOURS_CONFLICT', async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ItineraryVerifySkill],
+    }).compile();
+    const verify = module.get(ItineraryVerifySkill);
+
+    const out = await verify.execute({
+      itinerary: {
+        request_id: 'oh-seasonal-early',
+        days: [
+          {
+            date: '2026-06-02',
+            items: [
+              {
+                id: 'skaftafell',
+                type: 'POI' as const,
+                start_window: '07:00',
+                end_window: '09:00',
+                location_ref: { place_id: '381041', name: '斯卡夫塔山国家公园' },
+                evidence_refs: [],
+              },
+            ],
+          },
+        ],
+      } as any,
+      research_data: {
+        country_code: 'IS',
+        opening_hours_evidence: [
+          {
+            poi_id: '381041',
+            opening_hours: { description: 'Summer 8:00-18:00, Winter 9:00-17:00' },
+          },
+        ],
+      },
+    });
+
+    expect(
+      out.issues.some(
+        (i) =>
+          i.type === 'OPENING_HOURS_CONFLICT' &&
+          i.severity === 'ERROR' &&
+          i.message.includes('斯卡夫塔山国家公园') &&
+          i.message.includes('07:00'),
+      ),
+    ).toBe(true);
+  });
+
+  it('全天开放景点在 14:55 不误报 OPENING_HOURS_CONFLICT', async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ItineraryVerifySkill],
+    }).compile();
+    const verify = module.get(ItineraryVerifySkill);
+
+    const out = await verify.execute({
+      itinerary: {
+        request_id: 'oh-24h',
+        days: [
+          {
+            date: '2026-06-03',
+            items: [
+              {
+                id: 'diamond-beach',
+                type: 'POI' as const,
+                start_window: '14:55',
+                end_window: '16:15',
+                location_ref: { place_id: '381099', name: '钻石沙滩' },
+                evidence_refs: [],
+              },
+            ],
+          },
+        ],
+      } as any,
+      research_data: {
+        country_code: 'IS',
+        opening_hours_evidence: [{ poi_id: '381099', opening_hours: '全天开放' }],
+      },
+    });
+
+    expect(
+      out.issues.some(
+        (i) =>
+          i.type === 'OPENING_HOURS_CONFLICT' &&
+          i.severity === 'ERROR' &&
+          i.message.includes('钻石沙滩'),
+      ),
+    ).toBe(false);
+  });
+
   it('TIME_WINDOW_OVERLAP 携带 related_item_id（重叠对中的前项）', async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [ItineraryVerifySkill],

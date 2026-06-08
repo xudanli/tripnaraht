@@ -21,6 +21,9 @@ export function resolvePrePlanNext(from: OrchestrationNodeId): OrchestrationNode
 }
 
 function resolvePrePlanEntry(params: PrePlanGraphRunParams): OrchestrationNodeId {
+  if (params.forcePrePlanIntakeEntry) {
+    return 'intake';
+  }
   if (params.entry) {
     if (params.resumeSkipIntake && params.entry === 'intake') {
       return 'state_update';

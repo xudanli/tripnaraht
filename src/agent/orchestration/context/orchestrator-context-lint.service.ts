@@ -8,6 +8,7 @@ import {
   PHYSICAL_CAPABILITY_SYSTEM_HINT_KEY,
   REQUEST_FITNESS_PROFILE_LINES_KEY,
 } from '../../memory/utils/fitness-travel-preference-prompt.util';
+import { ICELAND_MARKET_PRIOR_SYSTEM_HINT_KEY } from '../../memory/utils/iceland-market-preference-prompt.util';
 import { INTAKE_TRAVEL_PREFERENCE_SNAPSHOT_OPTION } from '../graph/nodes/intake-request-sanitizer.util';
 import type {
   OrchestratorContextLintBeforePhaseOptions,
@@ -46,6 +47,7 @@ export const DSO_TOP_LEVEL_ALLOWLIST = new Set([
 export const FORBIDDEN_TRANSIENT_REQUEST_KEYS = [
   REQUEST_FITNESS_PROFILE_LINES_KEY,
   PHYSICAL_CAPABILITY_SYSTEM_HINT_KEY,
+  ICELAND_MARKET_PRIOR_SYSTEM_HINT_KEY,
 ] as const;
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 100 * 1024;

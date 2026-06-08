@@ -51,6 +51,12 @@ import { Public } from '../auth/decorators/public.decorator';
 import { AssessTripRequestDto } from './dto/trip-metrics.dto';
 import { ConflictSeverity, ResolveConflictsRequestDto } from './dto/trip-conflicts.dto';
 import { UpdateIntentRequestDto } from './dto/trip-intent.dto';
+import {
+  buildLunchStrategyClarificationQuestion,
+  buildTripLunchMetadataFromParams,
+  extractLunchStrategySignalsFromParams,
+  shouldPromptLunchStrategyQuestion,
+} from '../planning-policy/utils/lunch-strategy.util';
 import { ApplyOptimizationRequestDto } from './dto/trip-optimization.dto';
 import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/trip-items.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -2651,6 +2657,7 @@ export class TripsController {
 
     // 🆕 P0修复：优先使用 destinationCode（ISO），避免 params.destination 为「东京」「杭州」等导致创建失败
     const isoDestination = destinationCode || this.extractCountryCode(params.destination) || params.destination;
+    const lunchMeta = buildTripLunchMetadataFromParams(params, isoDestination);
     const createTripDto = {
       destination: isoDestination,
       startDate,
@@ -2660,7 +2667,17 @@ export class TripsController {
       currency,
       pace: tripPace as any,
       preferences: prefTags.length > 0 ? prefTags : undefined,
-      metadata: params.origin ? { origin: params.origin } : undefined,
+      metadata: {
+        ...(params.origin ? { origin: params.origin } : {}),
+        lunch_strategy: lunchMeta.lunch_strategy,
+        tripParams: {
+          ...lunchMeta.tripParams,
+          destination: params.destination,
+          startDate,
+          endDate,
+          totalBudget: params.totalBudget,
+        },
+      },
     } as CreateTripDto;
 
     // 创建行程（TripsService.create 会写入初始 DSO 到 Trip.metadata）
@@ -3265,6 +3282,14 @@ export class TripsController {
       });
     }
     
+    // Phase 3：条件追问午餐时间窗策略（老人/小孩/自驾/无人区等场景）
+    if (
+      questions.length < MAX_SUPPLEMENTARY_QUESTIONS &&
+      shouldPromptLunchStrategyQuestion(extractLunchStrategySignalsFromParams(params, destinationCode))
+    ) {
+      questions.push(buildLunchStrategyClarificationQuestion());
+    }
+
     // 🆕 P1优化：如果已达到限制，不再添加安全问题
     if (questions.length >= MAX_SUPPLEMENTARY_QUESTIONS) {
       return questions;
@@ -6544,7 +6569,8 @@ export class TripsController {
   @Put(':id/intent')
   @ApiOperation({
     summary: '更新行程意图与约束',
-    description: '更新行程的意图与约束，包括节奏配置、偏好设置、约束条件、规划策略等',
+    description:
+      '更新行程的意图与约束，包括节奏配置、偏好设置、约束条件、规划策略、午餐时间窗策略（lunch_strategy）等',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
   @ApiBody({ type: UpdateIntentRequestDto })

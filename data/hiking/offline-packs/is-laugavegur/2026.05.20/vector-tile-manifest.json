@@ -17,5 +17,5 @@
   "vectorTileTemplateUrl": "https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/{z}/{x}/{y}.vector.pbf?access_token={access_token}",
   "accessTokenPlaceholder": "{access_token}",
   "noteZh": "vectorTiles 为空：准备页可用 vectorTileTemplateUrl 拉取 Mapbox .pbf（前端注入 access_token）。生产请预打包并写入 vector-tiles-index.json。",
-  "generatedAt": "2026-05-21T15:38:38.186Z"
+  "generatedAt": "2026-06-08T15:13:30.869Z"
 }

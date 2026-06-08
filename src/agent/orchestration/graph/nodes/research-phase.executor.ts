@@ -7,6 +7,7 @@ import {
 } from '../../../utils/decision-log-user-facing.zh.util';
 import type { ResearchTeamAuditEntry } from '../../../teams/research/research-team.types';
 import { cloneResearchRecord } from '../../../utils/research-asset-scope.util';
+import { ensureHarnessResearchEvidenceSnapshot } from '../../../utils/harness-research-evidence-snapshot.util';
 import { TRANSPORT_SEARCH_SUGGESTED_ACTION_CLARIFY } from '../../../execution/shared/transport-evidence-messages';
 import type { ResearchPhaseHost, RunResearchPhaseParams } from './research-phase.host';
 
@@ -135,6 +136,8 @@ export async function runResearchPhase(
       });
       throw kernelErr;
     }
+    newState =
+      ensureHarnessResearchEvidenceSnapshot(newState, state.request_id, researchData) ?? newState;
     host.syncOrchestratorFromDecisionState(newState, state);
     state.research_data = researchData;
     state.current_step = 'RESEARCH';

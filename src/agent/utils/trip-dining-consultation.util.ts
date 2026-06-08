@@ -3,17 +3,11 @@
  * 以及行程摘要里是否有可引用的入库日程项。
  */
 
-/** 与 orchestration-signals `diningLookupZh` / `diningLookupEn` 语义对齐 */
+import { matchIntentProfiles } from '../intent/intent-profile-registry';
+
+/** 与 orchestration-signals `diningLookupZh` / `diningLookupEn` 语义对齐（委托 Registry） */
 export function isDiningRecommendationQuery(message: string): boolean {
-  const msg = message.trim();
-  if (!msg) return false;
-  const lower = msg.toLowerCase();
-  /** 含「好吃的地方」「推荐点吃的」等口语，避免仅因未出现「餐厅」二字而不走餐饮 RAG */
-  const diningLookupZh =
-    /推荐.*餐厅|推荐.*吃|餐厅推荐|找餐厅|搜餐厅|附近.*餐厅|美食推荐|美食|好吃|吃的地方|去哪吃|吃饭推荐|有没有好吃的|宵夜|早餐店|想吃|吃啥|吃什么|特色小吃/i;
-  const diningLookupEn =
-    /\b(restaurants?|cafes?|dining|food\s+near|where\s+to\s+eat|places?\s+to\s+eat|eat\s+near)\b/i;
-  return diningLookupZh.test(msg) || diningLookupEn.test(lower);
+  return matchIntentProfiles(message).some((m) => m.profile.id === 'consult.dining');
 }
 
 /**

@@ -267,6 +267,37 @@ export class MemoryService {
     });
   }
 
+  /**
+   * 删除单条 L2 路线决策记忆（Memory Console GDPR / 用户主权）
+   */
+  async deleteRouteDirectionDecision(userId: string, decisionId: string): Promise<boolean> {
+    const uid = String(userId).trim();
+    const id = String(decisionId).trim();
+    if (!uid || !id) return false;
+
+    if (this.useDatabase && this.prisma) {
+      try {
+        const result = await this.prisma.routeDirectionDecision.deleteMany({
+          where: { id, userId: uid },
+        });
+        if (result.count > 0) {
+          this.logger.debug(`Deleted route direction decision ${id} for user ${uid}`);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        this.logger.warn(`Failed to delete decision memory from database: ${error}`);
+      }
+    }
+
+    const idx = this.decisionMemories.findIndex(m => m.id === id && m.userId === uid);
+    if (idx >= 0) {
+      this.decisionMemories.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
   // ========== L3: RouteDirectionHealth ==========
 
   /**

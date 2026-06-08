@@ -1,5 +1,5 @@
 // src/route-directions/route-directions.module.ts
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { RouteDirectionsController } from './route-directions.controller';
 import { RouteDirectionsService } from './route-directions.service';
 import { RouteDirectionSelectorService } from './services/route-direction-selector.service';
@@ -16,7 +16,6 @@ import { CompliancePluginService } from './plugins/compliance-plugin.service';
 import { TransportPluginService } from './plugins/transport-plugin.service';
 import { RouteDecisionEngineService } from './services/route-decision-engine.service';
 import { ActionDispatcherService } from './services/action-dispatcher.service';
-import { forwardRef } from '@nestjs/common';
 import { DecisionModule } from '../trips/decision/decision.module';
 import { SharedMemoryModule } from '../agent/memory/shared-memory.module';
 import { PrismaModule } from '../prisma/prisma.module';

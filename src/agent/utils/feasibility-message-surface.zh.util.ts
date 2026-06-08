@@ -9,8 +9,9 @@ import {
   scrubInternalAgentLeakage,
 } from './structured-intake-clarification.util';
 import type { ClarificationQuestion } from '../interfaces/clarification.interface';
-import type { DecisionLogEntry, GateResult } from '../interfaces/trip-plan.interface';
+import type { DecisionLogEntry, GateResult, Itinerary } from '../interfaces/trip-plan.interface';
 import { deriveGuardianPersonaVotes } from './guardian-persona-surface.util';
+import { filterGateViolationsAgainstItinerary } from './filter-stale-verify-violations.util';
 
 const VERIFY_CODE_LABEL_ZH: Record<string, string> = {
   ROUTE_INFEASIBLE: '路线与当前车型或路况条件不匹配（可能含高地 / F 路等限制路段）',
@@ -223,9 +224,45 @@ export function alignGuardianResultsWithGateViolations(gate: GateResult): GateRe
 /**
  * BFF 出站：门控 violations 用户可见副本（剥离 L3-PROOF / VERIFY 英码壳，保留审计用原始 detail 在 state 内）。
  */
-export function sanitizeGateResultForClientDisplay(gate: GateResult): GateResult {
-  const aligned = alignGuardianResultsWithGateViolations(gate);
-  const violations = (aligned.violations ?? []).map((v) => {
+export function sanitizeGateResultForClientDisplay(
+  gate: GateResult,
+  options?: {
+    stripVerifySyntheticWhenAllow?: boolean;
+    /** ITINERARY_ADJUST 草案待确认：不展示 VERIFY 合成 SOFT 卡片（与 ALLOW 无关） */
+    stripVerifySyntheticForItineraryAdjust?: boolean;
+    itinerary?: Itinerary | null;
+    researchData?: Record<string, unknown>;
+  },
+): GateResult {
+  const gateAlignedToItinerary = options?.itinerary
+    ? filterGateViolationsAgainstItinerary(gate, options.itinerary, options.researchData)
+    : gate;
+  const stripHarnessSynthetic =
+    options?.stripVerifySyntheticForItineraryAdjust === true ||
+    (options?.stripVerifySyntheticWhenAllow === true &&
+      gateAlignedToItinerary.gate_result === 'ALLOW');
+  const baseViolations = stripHarnessSynthetic
+    ? (gateAlignedToItinerary.violations ?? []).filter((v) => v.verify_synthetic !== true)
+    : (gateAlignedToItinerary.violations ?? []);
+  const aligned = alignGuardianResultsWithGateViolations({
+    ...gateAlignedToItinerary,
+    violations: baseViolations,
+  });
+  const strippedSynthetic =
+    stripHarnessSynthetic && (gate.violations ?? []).some((v) => v.verify_synthetic === true);
+  const gateAfterSyntheticStrip =
+    strippedSynthetic && baseViolations.length === 0
+      ? {
+          ...aligned,
+          violations: [],
+          guardian_results:
+            aligned.guardian_results?.source === 'llm_debate' &&
+            aligned.guardian_results?.is_simulated === false
+              ? aligned.guardian_results
+              : deriveGuardianPersonaVotes({ ...aligned, violations: [] }),
+        }
+      : aligned;
+  const violations = (gateAfterSyntheticStrip.violations ?? []).map((v) => {
     const raw = String(v.detail ?? '');
     const code = extractVerifyCodeFromGateViolationDetail(raw);
     const humanDetail = humanizeFeasibilityMessageForUserZh(raw);
@@ -235,7 +272,7 @@ export function sanitizeGateResultForClientDisplay(gate: GateResult): GateResult
       ...(code ? { display_headline_zh: humanizeVerifyIssueHeadlineZh(code) } : {}),
     };
   });
-  return { ...aligned, violations };
+  return { ...gateAfterSyntheticStrip, violations };
 }
 
 type DecisionLogish = {

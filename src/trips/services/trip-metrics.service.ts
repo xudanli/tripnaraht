@@ -18,6 +18,13 @@ import {
   TravelMode,
 } from '../dto/trip-metrics.dto';
 import { TripConflictsService } from './trip-conflicts.service';
+import {
+  buildMealsAssessmentCopy,
+  getMinLunchGapMinutes,
+  normalizeLunchStrategy,
+  resolveLunchStrategyFromTrip,
+  type LunchStrategy,
+} from '../../planning-policy/utils/lunch-strategy.util';
 
 @Injectable()
 export class TripMetricsService {
@@ -388,9 +395,12 @@ export class TripMetricsService {
 
     // 获取出行方式，优先级：请求参数 > 行程配置 > 用户偏好 > 默认值
     const travelMode = await this.resolveTravelMode(tripId, trip.pacingConfig, dto.travelMode);
-    
-    // 将出行方式注入到 dto 中，供后续方法使用
-    const enrichedDto = { ...dto, travelMode };
+
+    const lunchStrategy: LunchStrategy =
+      normalizeLunchStrategy(dto.lunch_strategy) ?? resolveLunchStrategyFromTrip(trip);
+
+    // 将出行方式与午餐策略注入到 dto 中，供后续方法使用
+    const enrichedDto = { ...dto, travelMode, lunch_strategy: lunchStrategy };
 
     // 获取 Place 坐标用于地理分析
     const placeIds = trip.TripDay.flatMap(d =>
@@ -544,7 +554,9 @@ export class TripMetricsService {
     dimensions.push(this.assessDensityV2(items, activeDurationMinutes, dto, dayType, travelMode));
 
     // 3. 用餐安排评估（到达日/离开日宽松处理）
-    dimensions.push(this.assessMealsV2(items, day.date, dayType));
+    dimensions.push(
+      this.assessMealsV2(items, day.date, dayType, dto.lunch_strategy ?? 'balanced'),
+    );
 
     // 4. 体力负荷评估
     dimensions.push(this.assessPhysical(items, dto));
@@ -560,6 +572,9 @@ export class TripMetricsService {
 
     // 计算综合得分（加权平均）
     // 权重设计基于用户心智：景点密度和地理分布是核心关注点
+    const mealsDim = dimensions.find((d) => d.dimension === AssessmentDimension.MEALS);
+    const mealsHasIssues = Boolean(mealsDim?.issues && mealsDim.issues.length > 0);
+
     const weights: Record<AssessmentDimension, number> = {
       [AssessmentDimension.TIMING]: 1.5,      // 时间合理性：高优先
       [AssessmentDimension.DENSITY]: 1.5,     // 活动密度：高优先
@@ -567,7 +582,7 @@ export class TripMetricsService {
       [AssessmentDimension.TRANSPORT]: 1.2,   // 交通效率：中高优先
       [AssessmentDimension.BUFFER]: 1.2,      // 缓冲时间：中高优先
       [AssessmentDimension.PHYSICAL]: 1.0,    // 体力负荷：中优先
-      [AssessmentDimension.MEALS]: 0.5,       // 用餐安排：低优先（用户通常"到时候再说"）
+      [AssessmentDimension.MEALS]: mealsHasIssues ? 1.2 : 0.5, // 有缺口时升级为中高优先
     };
 
     let totalWeight = 0;
@@ -884,10 +899,16 @@ export class TripMetricsService {
    * 1. 连续活动跨越午餐时段（11:00-14:00）且中间无空档
    * 2. 连续活动跨越晚餐时段（17:00-20:00）且中间无空档
    */
-  private assessMealsV2(items: any[], date: Date, _dayType: DayType): DimensionAssessmentDto {
+  private assessMealsV2(
+    items: any[],
+    date: Date,
+    _dayType: DayType,
+    lunchStrategy: LunchStrategy = 'balanced',
+  ): DimensionAssessmentDto {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+    const minLunchGap = getMinLunchGapMinutes(lunchStrategy);
 
     // 无活动或活动很少时，不评估用餐
     if (items.length < 2) {
@@ -924,11 +945,15 @@ export class TripMetricsService {
     const lunchEnd = dayStart.set({ hour: 14, minute: 0 });
     const lunchGap = this.findMaxGapInWindow(sortedItems, lunchStart, lunchEnd);
     
-    if (lunchGap < 30) {
-      // 午餐时段空档不足30分钟
-      score -= 15;
-      issues.push(`午餐时段 (11:00-14:00) 空档不足，仅 ${lunchGap} 分钟`);
-      suggestions.push('建议在活动间预留至少 30 分钟用餐时间');
+    if (lunchGap < minLunchGap) {
+      score -= lunchStrategy === 'rigid' ? 25 : 15;
+      const copy = buildMealsAssessmentCopy({
+        strategy: lunchStrategy,
+        lunchGapMinutes: lunchGap,
+        minRequired: minLunchGap,
+      });
+      issues.push(copy.issue);
+      suggestions.push(copy.suggestion);
     }
 
     // 检查晚餐时段空档 (17:00-20:00)

@@ -41,6 +41,10 @@ import { RefineTripRequestDto } from '../dto/v2/refine-trip-request.dto';
 import { TripSuggestionsResponseDto } from '../dto/v2/trip-suggestions-response.dto';
 import { ChatRequestDto } from '../dto/v2/chat-request.dto';
 import { ChatResponseDto } from '../dto/v2/chat-response.dto';
+import {
+  ApplyAccommodationToItineraryRequestDto,
+  ApplyAccommodationToItineraryResponseDto,
+} from '../dto/v2/apply-accommodation-to-itinerary.dto';
 
 @ApiTags('规划助手智能体 V2')
 @ApiBearerAuth() // Swagger 文档：需要 Bearer Token
@@ -155,6 +159,29 @@ export class PlanningAssistantV2Controller {
   @ApiResponse({ status: 400, description: '请求参数错误' })
   async chat(@Body() dto: ChatRequestDto): Promise<ChatResponseDto> {
     return await this.planningAssistantV2Service.chat(dto);
+  }
+
+  /**
+   * 将住宿推荐卡片一键写入行程时间轴
+   */
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @Post('trips/:tripId/accommodations/apply')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '将住宿加入行程',
+    description:
+      '配合 chat 返回的 accommodations[].actions（add_accommodation_to_itinerary）。需 sessionId + accommodationIndex，从会话最近一次酒店搜索结果读取卡片数据。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID（与 context.tripId 一致）' })
+  @ApiResponse({ status: 200, description: '写入成功' })
+  @ApiResponse({ status: 400, description: '参数错误或索引无效' })
+  @ApiResponse({ status: 404, description: '会话不存在' })
+  async applyAccommodationToItinerary(
+    @Param('tripId') tripId: string,
+    @Body() dto: ApplyAccommodationToItineraryRequestDto,
+  ): Promise<ApplyAccommodationToItineraryResponseDto> {
+    return await this.planningAssistantV2Service.applyAccommodationToItinerary(tripId, dto);
   }
 
   // ==================== 业务操作（快捷方式） ====================

@@ -1,14 +1,11 @@
 /**
  * 冰岛决策闭环 — 环岛稳定场景（无路政物化，判决书 + MC 基线）。
  */
-import fs from 'fs';
-import path from 'path';
 import type { E2ECase } from '../e2e-case.types';
-
-const goldenPath = path.join(__dirname, 'iceland-decision-closure-ring-stable.golden.json');
+import { loadE2eClosureGolden } from './load-e2e-closure-golden.util';
 
 function loadClosureGolden(): Record<string, unknown> {
-  return JSON.parse(fs.readFileSync(goldenPath, 'utf8')) as Record<string, unknown>;
+  return loadE2eClosureGolden('iceland-decision-closure-ring-stable.golden.json');
 }
 
 export const icelandDecisionClosureRingStableCase: E2ECase = {

@@ -24,6 +24,12 @@ import {
 } from '../../utils/narrator-ebp-tone.util';
 import { compileCausalNarrative } from '../../../trips/decision/narration/causal-narrative-compiler.service';
 import { polishCausalNarrativeWithLlm } from '../../../trips/decision/narration/polish-causal-narrative-with-llm.util';
+import { buildNarratorUnifiedExplain } from '../../../trips/decision/explainability/build-narrator-unified-explain.util';
+import {
+  projectExplainForHumanFromEnvelope,
+  type ExplainForHumanProjection,
+} from '../../../trips/decision/explainability/project-explain-for-human-from-envelope.util';
+import type { UnifiedExplainabilityEnvelopeV1 } from '../../../trips/decision/explainability/unified-explainability.types';
 import type { CausalNarrativeCompileResult } from '../../../trips/decision/narration/causal-chain.types';
 import type { OptimizationHints } from '../../../decision/kernel/decision-state.types';
 
@@ -151,15 +157,66 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
       // 5. 生成警告
       const warnings = this.generateWarnings(gateResult, decisionLog);
 
+      const unifiedExplain = await this.resolveUnifiedExplainForNarrate(
+        itinerary,
+        decisionLog,
+        _context,
+      );
+
+      let mergedSummary = user_friendly_summary;
+      let mergedTips = causalPolished
+        ? [`[决策保护] ${causalPolished.split('\n')[0]?.trim()}`.slice(0, 500), ...tips]
+        : tips;
+      let mergedWarnings = warnings;
+
+      const md = _context.metadata as Record<string, unknown> | undefined;
+      const routeIntent = md?.route_and_run_intent as { primary?: string } | undefined;
+      const isItineraryAdjust =
+        md?.itinerary_adjust_intake === true || routeIntent?.primary === 'ITINERARY_ADJUST';
+
+      if (unifiedExplain?.human.userFacingNarrative && !isItineraryAdjust) {
+        const g = unifiedExplain.human.userFacingNarrative;
+        const guardianBlock = [g.abuSection, g.drdreSection, g.neptuneSection]
+          .filter((s) => s && !s.startsWith('暂无'))
+          .join('\n\n');
+        if (guardianBlock) {
+          const anchor = g.abuSection.slice(0, Math.min(16, g.abuSection.length));
+          if (!mergedSummary.includes(anchor)) {
+            mergedSummary = `${guardianBlock}\n\n${mergedSummary}`.trim();
+          }
+          mergedTips = [
+            `[Abu] ${g.abuSection}`.slice(0, 400),
+            `[Dr.Dre] ${g.drdreSection}`.slice(0, 400),
+            `[Neptune] ${g.neptuneSection}`.slice(0, 400),
+            ...mergedTips,
+          ];
+        }
+        for (const rh of unifiedExplain.human.riskHighlights.slice(0, 3)) {
+          mergedWarnings = mergedWarnings ?? [];
+          if (!mergedWarnings.some((w) => w.includes(rh.explanation.slice(0, 24)))) {
+            mergedWarnings.push(`[${rh.severity}] ${rh.explanation}`);
+          }
+        }
+      }
+
       return this.applyNegotiationReport(
         {
-          user_friendly_summary,
+          user_friendly_summary: mergedSummary,
           day_by_day_narrative,
           highlights,
-          tips: causalPolished
-            ? [`[决策保护] ${causalPolished.split('\n')[0]?.trim()}`.slice(0, 500), ...tips]
-            : tips,
-          warnings,
+          tips: mergedTips,
+          warnings: mergedWarnings,
+          ...(unifiedExplain
+            ? {
+                unified_explainability: unifiedExplain.envelope,
+                guardian_narrative_zh: {
+                  abu: unifiedExplain.human.userFacingNarrative.abuSection,
+                  drdre: unifiedExplain.human.userFacingNarrative.drdreSection,
+                  neptune: unifiedExplain.human.userFacingNarrative.neptuneSection,
+                },
+                risk_highlights: unifiedExplain.human.riskHighlights,
+              }
+            : {}),
           ...(causalPolished
             ? {
                 causal_protection_summary_zh: causalPolished,
@@ -269,6 +326,57 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
   ): OptimizationHints | undefined {
     return (context as OrchestratorState & { kernel_optimization_hints?: OptimizationHints })
       .kernel_optimization_hints;
+  }
+
+  /**
+   * Phase 3：优先 decision.explainForHuman skill；降级 buildNarratorUnifiedExplain 纯函数。
+   */
+  private async resolveUnifiedExplainForNarrate(
+    itinerary: Itinerary,
+    decisionLog: DecisionLogEntry[],
+    context: OrchestratorState,
+  ): Promise<
+    | {
+        envelope: UnifiedExplainabilityEnvelopeV1;
+        human: ExplainForHumanProjection;
+      }
+    | undefined
+  > {
+    const requestId = itinerary.request_id ?? context.request_id ?? 'narrate';
+    const optimizationHints = this.resolveOptimizationHintsFromContext(context);
+
+    if (this.decisionExplainSkill && decisionLog.length > 0) {
+      try {
+        const out = await this.decisionExplainSkill.execute({
+          orchestrationDecisionLog: decisionLog,
+          optimizationHints,
+          requestId,
+        });
+        if (out.unified) {
+          return {
+            envelope: out.unified,
+            human: {
+              userFacingNarrative: out.userFacingNarrative,
+              riskHighlights: out.riskHighlights,
+              tradeOffs: out.tradeOffs,
+              explanation: out.explanation ?? '',
+              summary: out.summary ?? '',
+              keyPoints: out.keyPoints ?? [],
+            },
+          };
+        }
+      } catch (e: unknown) {
+        this.logger.debug(
+          `[ClaudeNarratorAgent] decision.explainForHuman skipped: ${(e as Error)?.message}`,
+        );
+      }
+    }
+
+    return buildNarratorUnifiedExplain({
+      requestId,
+      orchestrationDecisionLog: decisionLog,
+      optimizationHints,
+    });
   }
 
   /**

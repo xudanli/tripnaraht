@@ -18,11 +18,16 @@ import {
   buildDsoFromE2ECase,
   buildStormStrategyRagChunks,
   enrichStormDsoForCapture,
+  loadCountryRagSeedChunks,
   mergeRagMaterializationIntoHints,
   sanitizeHintsForGolden,
   type StormStrategyDoc,
 } from '../src/trips/decision/evaluation/decision-closure-capture.util';
-import { findTdReplayFixtureById, ICELAND_DECISION_CLOSURE_FIXTURES } from '../src/trips/decision/evaluation/e2e-cases/registry';
+import {
+  findTdReplayFixtureById,
+  COUNTRY_DECISION_CLOSURE_FIXTURES,
+  ICELAND_DECISION_CLOSURE_FIXTURES,
+} from '../src/trips/decision/evaluation/e2e-cases/registry';
 import { icelandStormIcecaveFailureCase } from '../src/trips/decision/evaluation/e2e-cases/iceland-storm-icecave-failure.example';
 import { runDecisionClosureGate } from './lib/decision-closure-gate';
 import type { E2ECase } from '../src/trips/decision/evaluation/e2e-case.types';
@@ -102,7 +107,11 @@ function validateGoldenPathDpoFile(dpoOutPath: string): void {
   }
 }
 
-function resolveCase(caseId: string): { testCase: E2ECase; stormDoc?: StormStrategyDoc } {
+function resolveCase(caseId: string): {
+  testCase: E2ECase;
+  stormDoc?: StormStrategyDoc;
+  ragSeedCountry?: string;
+} {
   if (caseId === icelandStormIcecaveFailureCase.id) {
     const stormPath = path.join(
       __dirname,
@@ -111,8 +120,11 @@ function resolveCase(caseId: string): { testCase: E2ECase; stormDoc?: StormStrat
     const stormDoc = JSON.parse(fs.readFileSync(stormPath, 'utf8')) as StormStrategyDoc;
     return { testCase: icelandStormIcecaveFailureCase, stormDoc };
   }
-  const closure = ICELAND_DECISION_CLOSURE_FIXTURES.find((c) => c.id === caseId);
-  if (closure) return { testCase: closure };
+  const allClosure = [...ICELAND_DECISION_CLOSURE_FIXTURES, ...COUNTRY_DECISION_CLOSURE_FIXTURES];
+  const closure = allClosure.find((c) => c.id === caseId);
+  if (closure) {
+    return { testCase: closure, ragSeedCountry: closure.input.countryCode };
+  }
   const td = findTdReplayFixtureById(caseId);
   if (td) return { testCase: td };
   throw new Error(`Unknown case id: ${caseId}`);
@@ -123,12 +135,26 @@ function defaultOutPath(caseId: string): string {
   if (caseId.includes('storm-icecave')) {
     return path.join(base, 'iceland-storm-icecave-failure.decision-closure.golden.json');
   }
-  const slug = caseId.replace(/-001$/, '').replace(/iceland-/, 'iceland-');
+  const closure = [...ICELAND_DECISION_CLOSURE_FIXTURES, ...COUNTRY_DECISION_CLOSURE_FIXTURES].find(
+    (c) => c.id === caseId,
+  );
+  if (closure?.metadata?.source) {
+    return path.join(base, `${closure.metadata.source}.golden.json`);
+  }
+  const slug = caseId.replace(/-001$/, '');
   return path.join(base, `${slug}.golden.json`);
 }
 
-async function captureHints(testCase: E2ECase, stormDoc?: StormStrategyDoc) {
-  const stubChunks = stormDoc ? buildStormStrategyRagChunks(stormDoc) : [];
+async function captureHints(
+  testCase: E2ECase,
+  stormDoc?: StormStrategyDoc,
+  ragSeedCountry?: string,
+) {
+  const stubChunks = stormDoc
+    ? buildStormStrategyRagChunks(stormDoc)
+    : ragSeedCountry
+      ? loadCountryRagSeedChunks(ragSeedCountry)
+      : [];
   const moduleRef = await Test.createTestingModule({ imports: [CgusReplayModule] }).compile();
   try {
     const adapter = moduleRef.get(OptimizationEngineAdapterService);
@@ -163,7 +189,7 @@ async function main(): Promise<void> {
 
   const { caseId, outPath: outArg, dpoOutPath: dpoOutArg, checkOnly, write, exportDpo } =
     parseArgs(process.argv.slice(2));
-  const { testCase, stormDoc } = resolveCase(caseId);
+  const { testCase, stormDoc, ragSeedCountry } = resolveCase(caseId);
   const outPath = outArg ?? defaultOutPath(caseId);
   const shouldExportDpo = exportDpo || isGoldenPathStormCase(caseId);
   const dpoOutPath =
@@ -190,7 +216,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const hints = await captureHints(testCase, stormDoc);
+  const hints = await captureHints(testCase, stormDoc, ragSeedCountry);
   const doc = {
     fixtureVersion: 'decision-closure-golden/v1',
     caseId,

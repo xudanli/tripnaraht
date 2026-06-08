@@ -1,6 +1,12 @@
 import type { GateResult, OrchestratorState } from '../../interfaces/trip-plan.interface';
 import type { NarratePhaseHost, NarratePhaseResult, RunNarratePhaseParams } from './narrate-phase.host';
 import { applyResearchManifestToNarration } from './narrate-manifest-merge.util';
+import {
+  buildItineraryAdjustAuditMetadata,
+  formatNarrateOutputsAdjustZh,
+  resolveItineraryAdjustRunContext,
+  scopeOrchestratorNarrationToAdjustTarget,
+} from '../../utils/itinerary-adjust-decision-log.util';
 
 /**
  * NARRATE 执行体：Kernel.executeNarrate + NarratorAgent 降级 + Manifest 合并 + decision_log 审计。
@@ -69,7 +75,13 @@ export async function runNarratePhase(
     const audit = applyResearchManifestToNarration(state);
     if (audit) manifestAudit = audit;
 
+    const adjustCtx = resolveItineraryAdjustRunContext(state);
+    if (adjustCtx.active) {
+      scopeOrchestratorNarrationToAdjustTarget(state);
+    }
+
     recordNarrateDecisionLog(host, state, stepStartTime, {
+      adjustCtx,
       narrateEbpReport,
       narrateRealtimeRerollCount,
       manifestAudit,
@@ -143,24 +155,36 @@ function recordNarrateDecisionLog(
   state: OrchestratorState,
   stepStartTime: number,
   meta: {
+    adjustCtx: ReturnType<typeof resolveItineraryAdjustRunContext>;
     narrateEbpReport: ReturnType<NarratePhaseHost['parseResearchConflictReport']>;
     narrateRealtimeRerollCount: number;
     manifestAudit?: NarratePhaseResult['manifestAudit'];
   },
 ): void {
-  const { narrateEbpReport, narrateRealtimeRerollCount, manifestAudit } = meta;
+  const { adjustCtx, narrateEbpReport, narrateRealtimeRerollCount, manifestAudit } = meta;
+  const outputsSummary =
+    adjustCtx.active && adjustCtx.targetDateIso
+      ? formatNarrateOutputsAdjustZh({
+          targetDateIso: adjustCtx.targetDateIso,
+          targetDayNumber: adjustCtx.targetDayNumber,
+        })
+      : state.narration
+        ? `已写出 ${state.narration?.day_by_day_narrative?.length || 0} 天的讲解文案与要点提示`
+        : '未生成叙述（可能缺少 Kernel 或日程为空）';
+
   state.decision_log.push({
     request_id: state.request_id,
     step: 'NARRATE',
     actor: 'Narrator',
     inputs_summary: '把结构化日程转成自然语言说明（不改具体时间安排）',
-    outputs_summary: state.narration
-      ? `已写出 ${state.narration?.day_by_day_narrative?.length || 0} 天的讲解文案与要点提示`
-      : '未生成叙述（可能缺少 Kernel 或日程为空）',
+    outputs_summary: outputsSummary,
     evidence_refs: [],
     timestamp: new Date().toISOString(),
     metadata: {
       duration_ms: Date.now() - stepStartTime,
+      ...(adjustCtx.active
+        ? buildItineraryAdjustAuditMetadata(adjustCtx.metadata)
+        : {}),
       ...(narrateEbpReport
         ? {
             ebp_stance: narrateEbpReport.primary_narrative_stance,

@@ -72,6 +72,10 @@ import { HikingDemoModule } from './hiking-demo/hiking-demo.module';
 import { HikingPlansModule } from './hiking-plans/hiking-plans.module';
 import { HikingTrailBookmarksModule } from './hiking-trail-bookmarks/hiking-trail-bookmarks.module';
 import { HikingRouteShareModule } from './hiking-route-share/hiking-route-share.module';
+import { OdysseyIntakeModule } from './odyssey-intake/odyssey-intake.module';
+import { MatchSquareModule } from './match-square/match-square.module';
+import { ReputationOsModule } from './reputation-os/reputation-os.module';
+import { MatchLearningModule } from './match-learning/match-learning.module';
 
 @Module({
   imports: [
@@ -101,6 +105,10 @@ import { HikingRouteShareModule } from './hiking-route-share/hiking-route-share.
     MonitoringModule, // Prometheus /metrics exporter (global)
     ContactModule, // 联系我们模块
     UsersModule, // 用户画像模块
+    OdysseyIntakeModule, // Decision OS Odyssey Intake（旅行人格冷启动）
+    MatchSquareModule, // Match Square P0（搭子广场招募帖）
+    ReputationOsModule, // Reputation OS P2（行后互评与信用资产）
+    MatchLearningModule, // Match Learning P3（每周 Soft Weights 自迭代）
     CountriesModule, // 国家档案模块
     CitiesModule, // 城市模块
     WeatherModule, // 天气模块

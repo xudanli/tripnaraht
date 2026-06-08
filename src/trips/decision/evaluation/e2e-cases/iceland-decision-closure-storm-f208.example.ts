@@ -2,14 +2,12 @@
  * 冰岛决策闭环 v1 — F208 封路 + storm CGUS 判决书 golden（P0）。
  * @see docs/iceland-decision-closure-v1.md
  */
-import fs from 'fs';
-import path from 'path';
 import type { E2ECase } from '../e2e-case.types';
-
-const goldenPath = path.join(__dirname, 'iceland-decision-closure-storm-f208.golden.json');
+import { ICELAND_F208_DECISION_CLOSURE_LOGS } from './iceland-decision-closure-logs.fixture';
+import { loadE2eClosureGolden } from './load-e2e-closure-golden.util';
 
 function loadClosureGolden(): Record<string, unknown> {
-  return JSON.parse(fs.readFileSync(goldenPath, 'utf8')) as Record<string, unknown>;
+  return loadE2eClosureGolden('iceland-decision-closure-storm-f208.golden.json');
 }
 
 export const icelandDecisionClosureStormF208Case: E2ECase = {
@@ -54,6 +52,7 @@ export const icelandDecisionClosureStormF208Case: E2ECase = {
     source: 'iceland-decision-closure-storm-f208',
     fixtureKind: 'golden',
     decisionClosureGolden: loadClosureGolden(),
+    decisionClosureDecisionLogs: ICELAND_F208_DECISION_CLOSURE_LOGS,
     cgusDsoSnapshotNote: 'Closure gate uses decisionClosureGolden only; cgusDsoSnapshot optional for replay suite.',
     cgusDsoFixtureVersion: 'engine-dso-v1',
     cgusDsoGeneratedAt: '2026-05-22T00:00:00.000Z',

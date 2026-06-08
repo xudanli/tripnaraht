@@ -4,7 +4,9 @@ import type { IntentMode } from '../constants/intent-mode.constants';
 import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 import { isExecutableFlightInventoryQuery } from './flight-inventory-signals.util';
-
+import { matchesAnyDataLookupProfile } from '../intent/intent-profile-registry';
+import { detectItineraryDayViewIntent } from './itinerary-day-view.util';
+import { detectItineraryAdjustIntent, detectFullTripReplanIntent } from './itinerary-adjust-intent.util';
 /**
  * 任务类型
  */
@@ -235,7 +237,8 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
 
   // 推断各项信号（intent_mode 非 AUTO 时覆盖 taskType）
   const inferredTaskType = inferTaskType(req.trip_id, msg, msgLower);
-  let taskType = applyIntentModeToTaskType(intent_mode_requested, inferredTaskType);
+  let taskType = inferredTaskType;
+  taskType = applyIntentModeToTaskType(intent_mode_requested, taskType);
   /** 前端「深度思考」等场景常误传 intent_mode=GENERIC_QA；已绑定 trip 且用户明确改稿时仍须走 TRIP_PLANNING，避免 ui_surface=consultation */
   taskType = clampTaskTypeForBoundTripReplanning(req.trip_id, msg, msgLower, taskType);
   const complexity = inferComplexity(msg, recentCount);
@@ -276,9 +279,22 @@ function applyIntentModeToTaskType(mode: IntentMode, inferred: TaskType): TaskTy
   return 'GENERIC_QA';
 }
 
+/** 已绑定 Trip 且为改排/节奏调整意图 → 须走 TRIP_PLANNING / ITINERARY_ADJUST 全链路 */
+export function shouldRouteBoundTripAsItineraryAdjust(
+  tripId: string | null | undefined,
+  msg: string,
+  dateRange?: { start_date?: string; end_date?: string },
+): boolean {
+  const tid = tripId?.trim();
+  if (!tid) return false;
+  if (detectFullTripReplanIntent(msg, dateRange)) return false;
+  return detectItineraryAdjustIntent(msg, dateRange);
+}
+
 /**
  * 已绑定行程且用户话术中为「改行程/生成草案」等强规划信号时，将误传的 GENERIC_QA / DATA_LOOKUP 钳回 TRIP_PLANNING。
- * 不影响纯咨询（无强规划子串时保持原 taskType）。
+ * 节奏类改排（如「第三天轻松点」）经 `detectItineraryAdjustIntent` 同样钳位。
+ * 不影响纯咨询（无改排信号时保持原 taskType）。
  */
 function clampTaskTypeForBoundTripReplanning(
   tripId: string | null | undefined,
@@ -292,9 +308,16 @@ function clampTaskTypeForBoundTripReplanning(
     return taskType;
   }
   if (taskType === 'TRIP_PLANNING') return taskType;
-  /** 仅用窄信号：全量 hasExplicitTripPlanningIntent 含「规划/安排」，会误伤「行程规划情况」等状态问法 */
-  if (!hasReplanningEditSignalBeforeTransportConsult(msg, msgLower)) return taskType;
-  if (taskType === 'GENERIC_QA' || taskType === 'DATA_LOOKUP') {
+  const hasBoundTripAdjustIntent =
+    detectItineraryAdjustIntent(msg) ||
+    detectFullTripReplanIntent(msg) ||
+    hasReplanningEditSignalBeforeTransportConsult(msg, msgLower);
+  if (!hasBoundTripAdjustIntent) return taskType;
+  if (
+    taskType === 'GENERIC_QA' ||
+    taskType === 'DATA_LOOKUP' ||
+    taskType === 'RAG_QA'
+  ) {
     return 'TRIP_PLANNING';
   }
   return taskType;
@@ -382,12 +405,22 @@ export function isTripStatusOverviewQuery(msg: string, msgLower: string): boolea
     /(?:这趟|本次|当前).{0,14}?(?:行程|计划).{0,18}?(?:进度|情况|汇总|概览|怎么样了)/.test(msg) ||
     /目前安排(?:怎么样|如何|是怎样的)?/.test(msg) ||
     /(?:进度|汇总|概览|怎么样了).{0,12}?(?:行程|计划|日程|草稿)/.test(msg);
+  /** 绑定 Trip 上的「体检/复盘」问法（非改稿）：避免误入 TRIP_PLANNING → CGUS 决策驾驶舱 */
+  const tripItineraryReviewZh =
+    /(?:全面|详细|帮忙?)?分析.{0,32}(?:当前|现有|这份|这条)?(?:行程|日程|计划)/.test(msg) ||
+    /(?:看看|检查|审视|评估|盘点).{0,24}(?:当前|现有)?(?:行程|日程|计划)/.test(msg) ||
+    /(?:行程|日程|计划).{0,32}?(?:有没有|是否存在|有无).{0,16}?(?:问题|风险|不合理|短板|缺口)/.test(msg) ||
+    /(?:行程|日程|计划).{0,16}?(?:体检|健康度|风险盘点)/.test(msg);
   const tripStatusOverviewEn =
     /\b(?:trip|itinerary)\s+(?:status|progress|overview|summary)\b/i.test(msgLower) ||
     /\bhow\s+(?:is|s|'s)\s+(?:my\s+)?(?:trip|itinerary)\b/i.test(msgLower) ||
     /\b(?:status|progress|overview)\s+of\s+(?:my\s+)?(?:trip|itinerary)\b/i.test(msgLower) ||
-    /\b(readiness|preparedness)\b/i.test(msgLower);
-  return tripReadinessZh || tripStatusOverviewZh || tripStatusOverviewEn;
+    /\b(readiness|preparedness)\b/i.test(msgLower) ||
+    /\b(?:analyze|review|assess|audit)\s+(?:my\s+)?(?:current\s+)?(?:trip|itinerary)\b/i.test(
+      msgLower,
+    ) ||
+    /\b(?:trip|itinerary)\s+(?:review|health\s+check|risk\s+assessment)\b/i.test(msgLower);
+  return tripReadinessZh || tripStatusOverviewZh || tripItineraryReviewZh || tripStatusOverviewEn;
 }
 
 /**
@@ -413,6 +446,35 @@ export function isWeatherRoadConditionFocusedQuery(msg: string): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * 用户问「今天/今日」实况天气（非季节气候、非租车+路况复合咨询）。
+ * 用于轻量路径自动拉 Open-Meteo 当前观测。
+ */
+export function isTodayWeatherFactQuery(msg: string): boolean {
+  const m = msg.trim();
+  if (!m) return false;
+  const lower = m.toLowerCase();
+  const carPrimary =
+    /租车|自驾|包车|提车|还车|车型|四驱|SUV|用车|碎石险|车行|驾照|交规/i.test(m) ||
+    /\b(car\s+rental|rent(?:ing)?\s+a\s+car|self[-\s]?drive|rental\s+car)\b/i.test(lower);
+  if (carPrimary) return false;
+
+  const hasWx = /天气|气象|气温|温度|下雨|降雨|刮风|风大|下雪|forecast|\bweather\b/i.test(m);
+  if (!hasWx) return false;
+
+  if (/几月|月份|季节|通常|一般|平均|常年|气候特点|最佳时间|什么时候去|historically/i.test(m)) {
+    return false;
+  }
+
+  const todayCue =
+    /今天|今日|此刻|当前|这会儿|这阵儿|right now|\btoday\b|\bnow\b/i.test(m) ||
+    /(今天|今日).*(天气|气温|温度|下雨|风)/.test(m) ||
+    /(天气|气温|温度|weather).*(今天|今日|today|now)/i.test(m) ||
+    /天气怎么样|天气如何|天气怎样|多少度|几度|下不下雨/i.test(m);
+
+  return todayCue;
 }
 
 /**
@@ -489,6 +551,7 @@ export function shouldEnableLiveWeatherMcpForLightweightRoute(
   const msg = message ?? '';
   if (tools.includes('weather')) return true;
   if (liveFacts && /天气|气温|降雨|刮风|forecast|weather/i.test(msg)) return true;
+  if (isTodayWeatherFactQuery(msg)) return true;
   if (isWeatherRoadConditionFocusedQuery(msg)) return true;
   return false;
 }
@@ -523,38 +586,38 @@ export function isFactualMacroStatQuery(msg: string): boolean {
 }
 
 /**
+ * 用户是否在查看已有 Trip 上某一日的安排（只读，非改稿/重规划）。
+ */
+export function isItineraryDayViewQuery(msg: string): boolean {
+  return detectItineraryDayViewIntent(msg);
+}
+
+/**
  * 在「已有行程会话」(trip_id 存在) 下，识别纯咨询/检索类问题，避免一律走 TRIP_PLANNING 状态机。
  *
  * 规则：命中咨询词且未命中强规划意图 → 视为 DATA_LOOKUP（保留 trip 上下文由上游决定，仅任务类型分流）。
  */
 function isTripScopedConsultationQuery(msg: string, msgLower: string): boolean {
+  if (isItineraryDayViewQuery(msg)) {
+    return true;
+  }
   if (isWestfjordsLegTransportPreferenceConsultation(msg, msgLower)) {
     return true;
+  }
+  /** 改排/节奏调整（如「第三天轻松点」）须在 DATA_LOOKUP profile 之前排除，避免误入轻量咨询 */
+  if (detectItineraryAdjustIntent(msg)) {
+    return false;
   }
   /** 改行程话术里常同时出现「自驾/路况」等，必须在交通咨询分支之前排除（窄信号，避免误伤「规划情况」类问法） */
   if (hasReplanningEditSignalBeforeTransportConsult(msg, msgLower)) {
     return false;
   }
 
-  // 住宿检索/推荐：不等于生成多日行程；有 trip_id 时若不单独分流会误判为 TRIP_PLANNING（用户期望「推荐酒店」不出规划流）
-  const accommodationLookupZh =
-    /推荐酒店|酒店推荐|找酒店|搜酒店|搜索酒店|查酒店|住宿推荐|有空房|哪家酒店|酒店价格|民宿推荐/i;
-  const accommodationLookupEn =
-    /\b(find|search|recommend)\s+(?:me\s+)?(?:some\s+)?(?:a\s+)?(?:hotels?|lodging|accommodation|bnb)\b/i;
-  if (accommodationLookupZh.test(msg) || accommodationLookupEn.test(msgLower)) {
-    return true;
-  }
-
   /**
-   * 餐饮/餐厅检索（非改行程）：与「推荐酒店」并列。
-   * 「推荐黄金圈附近的餐厅」若不命中此处且无下列 QA 词根，会被 inferTaskType 判为 TRIP_PLANNING →
-   * POI 选择与通勤预算门控误判「目的地过大」，并触发错误的全域澄清。
+   * Intent Profile Registry：餐饮/补给/住宿/交通/单日可行性等 DATA_LOOKUP 咨询。
+   * 新增国家/品类时优先扩展 `src/agent/intent/intent-profile-registry.ts`。
    */
-  const diningLookupZh =
-    /推荐.*餐厅|推荐.*吃|餐厅推荐|找餐厅|搜餐厅|附近.*餐厅|美食推荐|美食|好吃|吃的地方|去哪吃|吃饭推荐|有没有好吃的|宵夜|早餐店|想吃|吃啥|吃什么|特色小吃/i;
-  const diningLookupEn =
-    /\b(restaurants?|cafes?|dining|food\s+near|where\s+to\s+eat|places?\s+to\s+eat|eat\s+near)\b/i;
-  if (diningLookupZh.test(msg) || diningLookupEn.test(msgLower)) {
+  if (matchesAnyDataLookupProfile(msg, {})) {
     return true;
   }
 
@@ -572,39 +635,11 @@ function isTripScopedConsultationQuery(msg: string, msgLower: string): boolean {
     return true;
   }
 
-  /** 交通/用车类咨询（非改行程）：与住宿检索同理，避免在有 trip 会话时被误判为 TRIP_PLANNING → 全量 System2 */
-  const transportConsultZh =
-    /租车|自驾|包车|提车|还车|租车行|路况|交规|碎石路|F\s*路|F\d+|环岛|驾照|冰岛开车/i;
-  const transportConsultEn =
-    /\b(car\s+rental|rent(?:ing)?\s+a\s+car|self[- ]drive|driving\s+in|road\s+rules|rental\s+car)\b/i;
-  if (transportConsultZh.test(msg) || transportConsultEn.test(msgLower)) {
-    return true;
-  }
-
   if (isLocalClockOrTimezoneFactQuery(msg)) {
     return true;
   }
 
   if (isFactualMacroStatQuery(msg)) {
-    return true;
-  }
-
-  /**
-   * 单日或具体时段「能不能做某事」——可行性问答，不是「重做整张行程表」。
-   * 若不命中此分流，仅有 trip_id 时会被 inferTaskType 默认判为 TRIP_PLANNING → 状态机整表重排，
-   * 易出现答非所问（用户问 Day1 17:00 后能否徒步，却返回重复占位日程）。
-   */
-  const scopedFeasibilityZh =
-    (/(\d{1,2}\s*点(?:之后|以前|前|后)|晚上|傍晚|下午|早上|凌晨|中午|晚间)/.test(msg) ||
-      /(?:第[一二三四五六七八九十1-7]+天|第一天|第二天|第三天|第四天|第五天|第六天|第七天|当天|这天|首日)/.test(
-        msg,
-      )) &&
-    /(?:可以|能|能否|是否|合适|安全|来得及|赶得上|顺路|绕路|顺不顺|折腾)/.test(msg) &&
-    /(?:吗|么|呢)/.test(msg);
-  const scopedFeasibilityEn =
-    /\b(?:day\s*[1-7]|first\s+day)\b/i.test(msgLower) &&
-    /\b(?:can\s+i|is\s+it\s+ok|possible|feasible|safe)\b/i.test(msgLower);
-  if (scopedFeasibilityZh || scopedFeasibilityEn) {
     return true;
   }
 
@@ -941,7 +976,10 @@ function inferRequiresStructuredOutput(taskType: TaskType, tripId: string | null
     return false;
   }
   if (tripId) return true;
-  return taskType === 'TRIP_PLANNING' || taskType === 'BOOKING_WORKFLOW';
+  return (
+    taskType === 'TRIP_PLANNING' ||
+    taskType === 'BOOKING_WORKFLOW'
+  );
 }
 
 /**
@@ -1036,7 +1074,9 @@ function inferLegacyWellSupported(taskType: TaskType, complexity: ComplexityLeve
   if (taskType === 'RAG_QA' && complexity !== 'COMPLEX') return true;
 
   // Trip/booking typically benefit from skills + gated planning.
-  if (taskType === 'TRIP_PLANNING' || taskType === 'BOOKING_WORKFLOW') return false;
+  if (taskType === 'TRIP_PLANNING' || taskType === 'BOOKING_WORKFLOW') {
+    return false;
+  }
 
   // Default: moderate confidence legacy support
   return complexity === 'SIMPLE';
@@ -1072,7 +1112,8 @@ export function routingSignalsWithResolvedTaskType(
   const recentCount = ctx.recent_messages?.length ?? 0;
   const latencyBudgetMs = clampInt((options.max_seconds ?? DEFAULT_MAX_SECONDS) * 1000, 0, 5 * 60_000);
   const intent_mode_requested = parseIntentMode(options?.intent_mode);
-  const taskType = applyIntentModeToTaskType(intent_mode_requested, resolvedTaskType);
+  let taskType = applyIntentModeToTaskType(intent_mode_requested, resolvedTaskType);
+  taskType = clampTaskTypeForBoundTripReplanning(req.trip_id, msg, msgLower, taskType);
   const complexity = inferComplexity(msg, recentCount);
   const expectsToolCalls = inferExpectsToolCalls(taskType, msg, msgLower, options.allow_webbrowse);
   const requiresStructuredOutput = inferRequiresStructuredOutput(taskType, req.trip_id);

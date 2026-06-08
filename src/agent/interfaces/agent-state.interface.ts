@@ -1,5 +1,7 @@
 // src/agent/interfaces/agent-state.interface.ts
 
+import type { LunchStrategy } from '../../planning-policy/utils/lunch-strategy.util';
+
 /**
  * AgentState（Working Memory）统一结构
  * 
@@ -22,6 +24,8 @@ export interface AgentState {
       duration_min: number;
       window: [string, string];
     };
+    /** 午餐时间窗策略（错峰 / 卡点 / 路性 / 均衡） */
+    lunch_strategy?: LunchStrategy;
     pacing: 'relaxed' | 'normal' | 'tight';
   };
 

@@ -37,7 +37,9 @@ npm install
 
 ### 2. 配置环境变量
 
-创建 `.env` 文件，配置数据库连接和其他服务密钥：
+创建 `.env` 文件，配置数据库连接和其他服务密钥。
+
+Decision OS 生产/预发门禁变量见 [docs/decision-os-env-gates.md](docs/decision-os-env-gates.md)，可将 `.env.decision-os.example` 追加到 `.env`。
 
 ```bash
 DATABASE_URL="postgresql://user:password@localhost:5432/tripnara"

@@ -9,6 +9,8 @@ import type { LocalCaseStoreService } from '../../../cbr/local-case-store.servic
 import type { ItinerarySlotPlacementGapResult } from '../../../assistants/trip-planner/interfaces/itinerary-slot-placement.interface';
 import type { ItinerarySlotCandidate } from '../../../utils/itinerary-slot-placement.util';
 import type { TripDaySnapshotForPlacement } from '../../../utils/route-and-run-intent-analyzer.util';
+import type { TripTaskMemory } from '../../../context-engine/interfaces/trip-task-memory.interface';
+import type { DecisionTelemetryEvent } from '../../../../trips/decision/telemetry/decision-telemetry.types';
 
 export interface RunIntakePhaseParams {
   request: RouteAndRunRequestDto;
@@ -36,6 +38,13 @@ export interface IntakePhaseHost {
     tripPlanRequest: TripPlanRequest,
     state: OrchestratorState,
   ): Promise<void>;
+
+  /** Memory OS P0 — Constraint Sink hydrate（可选） */
+  isConstraintSinkHydrateEnabled?(): boolean;
+
+  getActiveTripStateForConstraintSink?(): TripTaskMemory | null;
+
+  recordConstraintSinkHydrated?(appliedKeys: string[]): void;
 
   kernelCreateInitialOpts(
     request: RouteAndRunRequestDto,
@@ -101,4 +110,28 @@ export interface IntakePhaseHost {
     itemIds?: string[];
     reason?: string;
   }>;
+
+  tryApplyBoundTripItineraryDayReplan?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+    dateRange?: { start_date?: string; end_date?: string },
+  ): Promise<{
+    applied: boolean;
+    deletedCount?: number;
+    addedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }>;
+
+  tryApplyBoundTripItineraryAdjustDraft?(
+    tripId: string,
+    userId: string | undefined,
+    request: import('../../../dto/route-and-run.dto').RouteAndRunRequestDto,
+  ): Promise<import('./intake-itinerary-adjust-apply.util').ItineraryAdjustDraftApplyResult>;
+
+  /** Intelligence-grade 决策埋点（best-effort，不阻塞 INTAKE） */
+  recordIntakeDecisionTelemetry?(event: DecisionTelemetryEvent): Promise<unknown>;
 }

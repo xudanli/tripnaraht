@@ -43,6 +43,7 @@ import {
   tryRecordGovernanceBranchOutcomeWithGrsm,
   tryRecordGovernanceBranchSelectedWithGrsm,
 } from '../../governance/replanning-runtime/record-governance-branch-on-ledger.util';
+import { isTripIndependentRouteAndRunEntry } from '../utils/route-and-run-trip-independent-entry.util';
 import { DecisionRuntimeKernelService } from '../runtime/decision-runtime-kernel.service';
 import type { DecisionRuntimeTickBundle } from '../runtime/decision-runtime-kernel.types';
 
@@ -204,8 +205,9 @@ async function runRouteAndRunTickBody(
       // 0. 规划请求拦截：无 trip_id 的“从零规划”统一重定向到规划工作台
       // 说明：与 contract/spec 对齐（planning-redirect.*），避免进入后续路由/执行链。
       const hasNoTripId = !request.trip_id || request.trip_id === '';
+      const tripIndependentEntry = isTripIndependentRouteAndRunEntry(request);
       const isPlanningReq = $.isPlanningRequest(request);
-      if (isPlanningReq && hasNoTripId) {
+      if (isPlanningReq && hasNoTripId && !tripIndependentEntry) {
         $.logger.debug(
           `[AgentService] 检测到规划请求且缺少 trip_id，重定向到规划工作台: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`,
         );
@@ -215,8 +217,8 @@ async function runRouteAndRunTickBody(
         );
       }
 
-      // 0.1 验证 trip_id（非规划请求且缺少 trip_id 才报错）
-      if (hasNoTripId) {
+      // 0.1 验证 trip_id（行程助手专用；智能搭子 / 撮合入口不要求 trip_id）
+      if (hasNoTripId && !tripIndependentEntry) {
         $.logger.warn(
           `[AgentService] 缺少 trip_id（非规划请求场景）: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`,
         );

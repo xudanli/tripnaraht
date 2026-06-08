@@ -38,9 +38,41 @@ describe('route-and-run-intent-analyzer.util', () => {
     expect(analysis.sub_signals.marathon_deferred).toBe(true);
   });
 
-  it('classifies bound trip weather adjust as ITINERARY_ADJUST when days exist', () => {
+  it('classifies bound trip weather adjust as GENERAL_PLAN full-trip replan when days exist', () => {
     const analysis = analyzeRouteAndRunIntent(WEATHER_ADJUST_MSG, {
       tripId: 'b950dbf2-7583-4b43-b0c6-ddd947719c54',
+      hasTripDays: true,
+      trip: {
+        trip_id: 'b950dbf2-7583-4b43-b0c6-ddd947719c54',
+        date_range: { start_date: '2026-06-01', end_date: '2026-06-07' },
+      } as TripPlanRequest,
+    });
+    expect(analysis.primary).toBe('GENERAL_PLAN');
+  });
+
+  it('classifies bound trip golden circle day replan as ITINERARY_ADJUST when days exist', () => {
+    const msg =
+      '请将我的6月2日行程更新为：上午从雷克雅未克出发，游览黄金圈（辛格维利尔国家公园、盖歇尔间歇泉、黄金瀑布），下午返回雷克雅未克。晚餐推荐为Bæjarins Beztu热狗摊或Messinn餐厅。请生成新的行程草案。';
+    const analysis = analyzeRouteAndRunIntent(msg, {
+      tripId: 'trip-1',
+      hasTripDays: true,
+    });
+    expect(analysis.primary).toBe('ITINERARY_ADJUST');
+  });
+
+  it('classifies bound trip golden circle when tripId present even without day snapshot load', () => {
+    const msg =
+      '请将我的6月2日行程更新为：上午从雷克雅未克出发，游览黄金圈（辛格维利尔国家公园、盖歇尔间歇泉、黄金瀑布），下午返回雷克雅未克。';
+    const analysis = analyzeRouteAndRunIntent(msg, {
+      tripId: 'trip-1',
+      hasTripDays: true,
+    });
+    expect(analysis.primary).toBe('ITINERARY_ADJUST');
+  });
+
+  it('classifies adjust intent on bound trip without requiring marathon signal', () => {
+    const analysis = analyzeRouteAndRunIntent('删除第3天的斯科加瀑布poi', {
+      tripId: 'trip-1',
       hasTripDays: true,
     });
     expect(analysis.primary).toBe('ITINERARY_ADJUST');
@@ -49,6 +81,14 @@ describe('route-and-run-intent-analyzer.util', () => {
   it('classifies bound trip delete POI as ITINERARY_ADJUST when days exist', () => {
     const analysis = analyzeRouteAndRunIntent('删除第3天的斯科加瀑布poi', {
       tripId: 'trip-1',
+      hasTripDays: true,
+    });
+    expect(analysis.primary).toBe('ITINERARY_ADJUST');
+  });
+
+  it('classifies bound trip day replan with 重新规划 as ITINERARY_ADJUST when days exist', () => {
+    const analysis = analyzeRouteAndRunIntent('重新规划一下第二天的行程，现在明显不合理', {
+      tripId: 'b950dbf2-7583-4b43-b0c6-ddd947719c54',
       hasTripDays: true,
     });
     expect(analysis.primary).toBe('ITINERARY_ADJUST');

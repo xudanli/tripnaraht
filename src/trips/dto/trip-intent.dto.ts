@@ -72,6 +72,12 @@ export class UpdateIntentRequestDto {
 
   @ApiPropertyOptional({ description: '总预算' })
   totalBudget?: number;
+
+  @ApiPropertyOptional({
+    description: '午餐时间窗策略：staggered（错峰）| rigid（卡点）| route_driven（路性）| balanced（均衡）',
+    enum: ['staggered', 'rigid', 'route_driven', 'balanced'],
+  })
+  lunch_strategy?: 'staggered' | 'rigid' | 'route_driven' | 'balanced';
 }
 
 /**
@@ -103,6 +109,8 @@ export class IntentResponseDto {
     preferences?: string[];
     constraints?: ConstraintsDto;
     planningPolicy?: string;
+    lunch_strategy?: string;
+    lunch_strategy_label?: string;
   };
 }
 
@@ -121,6 +129,8 @@ export class UpdateIntentResponseDto {
     preferences?: string[];
     constraints?: ConstraintsDto;
     planningPolicy?: string;
+    lunch_strategy?: string;
+    lunch_strategy_label?: string;
   };
 }
 

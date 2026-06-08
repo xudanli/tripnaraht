@@ -22,6 +22,12 @@ import {
 } from '../reality-kernel/reality-execution-gate';
 import { RealityBypassBlockedError } from '../reality-kernel/reality-read-audit';
 import { getBoundDecisionContext } from '../reality-kernel/reality-context.storage';
+import {
+  buildLunchWindowConflictCopy,
+  getMinLunchGapMinutes,
+  resolveLunchStrategyFromTrip,
+  type LunchStrategy,
+} from '../../planning-policy/utils/lunch-strategy.util';
 
 const DEFAULT_BUFFER_MINUTES = Number(process.env.TRIP_CONFLICT_BUFFER_MINUTES) || 15;
 
@@ -77,10 +83,11 @@ export class TripConflictsService {
     }
 
     const conflicts: ConflictDto[] = [];
+    const lunchStrategy = resolveLunchStrategyFromTrip(trip);
 
     // 检测所有日期的冲突
     for (let i = 0; i < trip.TripDay.length; i++) {
-      const dayConflicts = await this.detectDayConflicts(tripId, trip.TripDay[i], i + 1);
+      const dayConflicts = await this.detectDayConflicts(tripId, trip.TripDay[i], i + 1, lunchStrategy);
       conflicts.push(...dayConflicts);
     }
 
@@ -202,15 +209,21 @@ export class TripConflictsService {
     });
     const idx = trip?.TripDay.findIndex((d) => d.id === day.id) ?? -1;
     const dayIndex = idx >= 0 ? idx + 1 : 1;
+    const lunchStrategy = trip ? resolveLunchStrategyFromTrip(trip) : 'balanced';
 
-    return this.detectDayConflicts(tripId, day, dayIndex);
+    return this.detectDayConflicts(tripId, day, dayIndex, lunchStrategy);
   }
 
   /**
    * 检测单日冲突
    * @param dayIndex 1-based 天数索引，用于与证据 ID 关联（ev-place-{id}-day-{dayIndex}-opening-hours）
    */
-  private async detectDayConflicts(tripId: string, day: any, _dayIndex: number): Promise<ConflictDto[]> {
+  private async detectDayConflicts(
+    tripId: string,
+    day: any,
+    _dayIndex: number,
+    lunchStrategy: LunchStrategy = 'balanced',
+  ): Promise<ConflictDto[]> {
     const conflicts: ConflictDto[] = [];
     const items = day.ItineraryItem || [];
     const date = DateTime.fromJSDate(day.date).toISODate() || '';
@@ -427,24 +440,29 @@ export class TripConflictsService {
       }
     }
 
-    // 2. 检测午餐时间窗（若当日已有 ≥60 分钟的午餐/用餐安排，则不报冲突）
+    // 2. 检测午餐时间窗（若当日已有足够午餐/用餐安排，则不报冲突）
+    const minLunchGap = getMinLunchGapMinutes(lunchStrategy);
     const lunchWindow = this.detectLunchWindow(items);
-    if (lunchWindow && lunchWindow.duration < 60 && !this.hasAdequateLunchInWindow(items, day.date)) {
+    if (
+      lunchWindow &&
+      lunchWindow.duration < minLunchGap &&
+      !this.hasAdequateLunchInWindow(items, day.date, minLunchGap)
+    ) {
+      const copy = buildLunchWindowConflictCopy({
+        strategy: lunchStrategy,
+        durationMinutes: lunchWindow.duration,
+        minRequired: minLunchGap,
+      });
       conflicts.push({
         id: `lunch-window-${date}`,
         type: ConflictType.LUNCH_WINDOW,
-        severity: ConflictSeverity.MEDIUM,
-        title: '午餐时间窗过短',
-        description: `午餐时间窗仅 ${lunchWindow.duration} 分钟，建议至少 60 分钟`,
+        severity: lunchStrategy === 'rigid' ? ConflictSeverity.HIGH : ConflictSeverity.MEDIUM,
+        title: copy.title,
+        description: copy.description,
         affectedDays: [date],
         affectedItemIds: lunchWindow.itemIds,
-        suggestions: [
-          {
-            action: '延长午餐时间',
-            description: '调整前后活动时间，为午餐留出更多时间',
-            impact: '确保有足够时间用餐',
-          },
-        ],
+        suggestions: copy.suggestions,
+        lunchStrategy,
       });
     }
 
@@ -555,10 +573,10 @@ export class TripConflictsService {
   }
 
   /**
-   * 判断 11:00-14:00 内是否已有 ≥60 分钟的午餐/用餐活动
+   * 判断 11:00-14:00 内是否已有足够时长的午餐/用餐活动
    * 若有，则不应再报「午餐时间窗过短」
    */
-  private hasAdequateLunchInWindow(items: any[], date: Date): boolean {
+  private hasAdequateLunchInWindow(items: any[], date: Date, minMinutes = 60): boolean {
     const dayStart = DateTime.fromJSDate(date).startOf('day');
     const windowStart = dayStart.set({ hour: 11, minute: 0 });
     const windowEnd = dayStart.set({ hour: 14, minute: 0 });
@@ -574,7 +592,7 @@ export class TripConflictsService {
       const overlapStart = start > windowStart ? start : windowStart;
       const overlapEnd = end < windowEnd ? end : windowEnd;
       const durationMinutes = overlapEnd.diff(overlapStart, 'minutes').minutes;
-      if (durationMinutes >= 60) return true;
+      if (durationMinutes >= minMinutes) return true;
     }
     return false;
   }

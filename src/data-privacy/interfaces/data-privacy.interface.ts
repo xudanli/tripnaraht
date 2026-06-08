@@ -20,7 +20,9 @@ export type DataPurpose =
   | 'BEHAVIORAL_ANALYSIS'
   | 'TRIP_PLANNING'
   | 'PERSONALIZATION'
-  | 'ANALYTICS';
+  | 'ANALYTICS'
+  | 'COMPANION_MATCH_REVEAL'
+  | 'COMPANION_MATCH_ESCROW';
 
 /**
  * 数据使用说明

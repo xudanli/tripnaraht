@@ -3,6 +3,7 @@
  */
 
 import { stripSystemMessageBlocksForIntakeNl } from './trip-plan-intake-vehicle.util';
+import { parseTripDayNumber } from './itinerary-item-add.util';
 
 export interface ItineraryItemDeleteSpec {
   dayNumber?: number;
@@ -31,17 +32,19 @@ export type TripLikeForDelete = {
   days?: TripDayLikeForDelete[];
 };
 
-const DELETE_VERB_RE = /(?:删除|移除|取消|去掉|删掉|删去)/;
+const DELETE_VERB_RE = /(?:删除|移除|取消|去掉|删掉|删去|删了)/;
 
 /** 用户是否在已有行程语境下请求删除某个 POI/活动 */
 export function detectItineraryItemDeleteIntent(message: string): boolean {
   const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
   if (!t.trim() || !DELETE_VERB_RE.test(t)) return false;
   if (/(?:删除|移除).*(?:烦恼|压力|焦虑|账户|账号|订单|记录)/.test(t)) return false;
-  const hasDayAnchor = /第\s*\d+\s*天|D\s*\d+/i.test(t);
+  const hasDayAnchor = parseTripDayNumber(t) != null || /\bD\s*\d+\b/i.test(t);
   const hasPoiAnchor =
     /(?:poi|景点|活动|瀑布|酒店|餐厅|公园|博物馆|教堂|沙滩|冰川|温泉)/i.test(t) ||
-    /[\u4e00-\u9fff]{2,}/.test(t.replace(DELETE_VERB_RE, '').replace(/第\s*\d+\s*天/g, ''));
+    /[\u4e00-\u9fff]{2,}/.test(
+      t.replace(DELETE_VERB_RE, '').replace(/第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天/g, ''),
+    );
   return hasDayAnchor || hasPoiAnchor;
 }
 
@@ -50,19 +53,28 @@ export function parseItineraryItemDeleteSpec(message: string): ItineraryItemDele
   const t = stripSystemMessageBlocksForIntakeNl(String(message ?? '')).trim();
   if (!t || !DELETE_VERB_RE.test(t)) return null;
 
-  const dayMatch = t.match(/第\s*(\d+)\s*天/);
-  const dayNumber = dayMatch ? Number(dayMatch[1]) : undefined;
+  const dayNumber = parseTripDayNumber(t);
+
+  const suffixMatch = t.match(
+    /第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天(?:的|里|中)?\s*(.+?)\s*(?:删了|删掉|删去|删除|移除)$/u,
+  );
+  if (suffixMatch?.[1]) {
+    const poiQuery = suffixMatch[1].replace(/\s*poi\s*$/iu, '').trim();
+    if (poiQuery.length >= 2) {
+      return { dayNumber, poiQuery };
+    }
+  }
 
   let poiPart = t
-    .replace(/^.*?(?:删除|移除|取消|去掉|删掉|删去)\s*/u, '')
-    .replace(/^第\s*\d+\s*天(?:的|里|中)?\s*/u, '')
+    .replace(/^.*?(?:删除|移除|取消|去掉|删掉|删去|删了)\s*/u, '')
+    .replace(/^第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天(?:的|里|中)?\s*/u, '')
     .replace(/\s*poi\s*$/iu, '')
     .trim();
 
   if (!poiPart) {
-    const fallback = t.match(/(?:删除|移除|取消|去掉|删掉|删去)\s*(.+)$/u);
+    const fallback = t.match(/(?:删除|移除|取消|去掉|删掉|删去|删了)\s*(.+)$/u);
     poiPart = (fallback?.[1] ?? '')
-      .replace(/^第\s*\d+\s*天(?:的|里|中)?\s*/u, '')
+      .replace(/^第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天(?:的|里|中)?\s*/u, '')
       .replace(/\s*poi\s*$/iu, '')
       .trim();
   }
@@ -76,7 +88,7 @@ export function parseItineraryItemDeleteSpec(message: string): ItineraryItemDele
 
 function normalizePoiQuery(q: string): string {
   return stripDiacritics(
-    q
+    q.trim()
       .toLowerCase()
       .replace(/\s+/g, '')
       .replace(/poi$/i, '')
@@ -114,6 +126,33 @@ function tripDays(trip: TripLikeForDelete): TripDayLikeForDelete[] {
 function dayItems(day: TripDayLikeForDelete): TripItemLikeForDelete[] {
   if (Array.isArray(day.items) && day.items.length) return day.items;
   return day.ItineraryItem ?? [];
+}
+
+/** 按 POI 名在 Trip 行程项上解析 placeId（改排草案 apply 落库兜底） */
+export function resolvePlaceIdFromTripItems(
+  trip: TripLikeForDelete,
+  poiName: string,
+  targetDateIso?: string,
+): number | undefined {
+  const q = String(poiName ?? '').trim();
+  if (!q) return undefined;
+  const target = targetDateIso?.slice(0, 10);
+  for (const day of tripDays(trip)) {
+    if (target) {
+      const raw = day.date;
+      const dayIso =
+        raw instanceof Date
+          ? raw.toISOString().slice(0, 10)
+          : String(raw ?? '').slice(0, 10);
+      if (dayIso !== target) continue;
+    }
+    for (const item of dayItems(day)) {
+      if (!poiQueryMatchesItem(q, item)) continue;
+      const pid = item.placeId ?? item.Place?.id ?? item.place?.id;
+      if (typeof pid === 'number' && pid > 0) return pid;
+    }
+  }
+  return undefined;
 }
 
 /** 按 dayNumber + POI 名在 Trip 上解析待删 itemId 列表 */

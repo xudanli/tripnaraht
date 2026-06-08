@@ -7,6 +7,7 @@ import {
 } from './base.node';
 import type { ContextBuildNodeHost, ContextBuildPrePlanSegmentResult } from './context-build-node.host';
 import { segmentOutcomeToNodeResult } from './node-outcome.adapter';
+import { ensureHarnessPlanningInputsOnDecisionState } from '../../../utils/plan-gen-harness-input.util';
 
 /**
  * pre_plan 子图 CONTEXT_BUILD 节点（Phase 4b pre_plan 收官）。
@@ -53,5 +54,6 @@ export async function runContextBuildPrePlanSegment(
   if (stop) {
     return stop;
   }
+  decisionState = ensureHarnessPlanningInputsOnDecisionState(decisionState, state);
   return { kind: 'continue', decisionState };
 }

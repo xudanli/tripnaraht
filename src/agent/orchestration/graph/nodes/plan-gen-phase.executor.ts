@@ -5,6 +5,13 @@ import {
   formatPlanGenOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
 import type { PlanGenPhaseHost, RunPlanGenPhaseParams } from './plan-gen-phase.host';
+import { ensureHarnessPlanningInputsOnDecisionState } from '../../../utils/plan-gen-harness-input.util';
+import {
+  buildItineraryAdjustAuditMetadata,
+  extractPoiNamesFromItineraryDay,
+  formatPlanGenOutputsAdjustZh,
+  resolveItineraryAdjustRunContext,
+} from '../../../utils/itinerary-adjust-decision-log.util';
 
 /**
  * PLAN_GEN 执行体：消费 context_build 后的 DSO，经 Kernel.executePlanGen 产出行程草案。
@@ -14,15 +21,16 @@ export async function runPlanGenPhase(
   params: RunPlanGenPhaseParams,
 ): Promise<import('../../../../decision/kernel/decision-state.types').DecisionState | undefined> {
   const { decisionState, state, request, context, llmProvider } = params;
+  const dsoForHarness = ensureHarnessPlanningInputsOnDecisionState(decisionState, state);
 
   if (
     host.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) &&
     host.decisionKernel &&
-    decisionState &&
+    dsoForHarness &&
     state.trip_plan_request
   ) {
     const stepStartTime = Date.now();
-    let dsoForPlan = decisionState;
+    let dsoForPlan = dsoForHarness;
     if (
       dsoForPlan.systemState?.pendingMigrations?.length &&
       (dsoForPlan.tripState?.planDraft as { days?: unknown[] } | undefined)?.days?.length
@@ -56,15 +64,23 @@ export async function runPlanGenPhase(
     }
     state.current_step = 'PLAN_GEN';
     const pgFail = newState.systemState?.planGenTerminalFailure;
+    const adjustCtx = resolveItineraryAdjustRunContext(state);
+    const planGenOutputs =
+      adjustCtx.active && adjustCtx.targetDateIso
+        ? formatPlanGenOutputsAdjustZh({
+            totalDays: itinerary.days.length,
+            targetDateIso: adjustCtx.targetDateIso,
+            targetDayNumber: adjustCtx.targetDayNumber,
+            targetPoiNames: extractPoiNamesFromItineraryDay(state.itinerary, adjustCtx.targetDateIso),
+          })
+        : formatPlanGenOutputsZh(itinerary.days.length, pgFail?.message ?? 'planGenTerminalFailure');
+
     state.decision_log.push({
       request_id: state.request_id,
       step: 'PLAN_GEN',
       actor: 'Planner',
       inputs_summary: formatPlanGenInputsKernelZh(),
-      outputs_summary: formatPlanGenOutputsZh(
-        itinerary.days.length,
-        pgFail?.message ?? 'planGenTerminalFailure',
-      ),
+      outputs_summary: planGenOutputs,
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: {
@@ -75,17 +91,33 @@ export async function runPlanGenPhase(
               planGenTerminalFailure: pgFail,
             }
           : {}),
+        ...(adjustCtx.active && adjustCtx.targetDateIso
+          ? buildItineraryAdjustAuditMetadata(state.metadata as Record<string, unknown>, {
+              plan_gen_target_poi_names: extractPoiNamesFromItineraryDay(
+                state.itinerary,
+                adjustCtx.targetDateIso,
+              ),
+            })
+          : {}),
       },
     });
+    if (adjustCtx.active && host.runAdaptiveReplanAfterPlanGen) {
+      await host.runAdaptiveReplanAfterPlanGen(state);
+    }
+
     state.metadata.last_updated_at = new Date().toISOString();
     await host.generateDecisionStepForStep(state, 'PLAN_GEN', 'Planner');
     host.onPlanGenDraftCaptured?.(state.request_id, state.itinerary as Itinerary);
     await host.collectTrajectoryAfterPlanGen({ request, state });
     return newState;
   }
-  const legacyDso = await host.executePhaseViaKernel(decisionState, state, 'PLAN_GEN', () =>
+  const legacyDso = await host.executePhaseViaKernel(dsoForHarness, state, 'PLAN_GEN', () =>
     host.executePlanGenStep(request, context, state, llmProvider),
   );
+  const legacyAdjustCtx = resolveItineraryAdjustRunContext(state);
+  if (legacyAdjustCtx.active && host.runAdaptiveReplanAfterPlanGen) {
+    await host.runAdaptiveReplanAfterPlanGen(state);
+  }
   if (state.itinerary) {
     host.onPlanGenDraftCaptured?.(state.request_id, state.itinerary as Itinerary);
   }

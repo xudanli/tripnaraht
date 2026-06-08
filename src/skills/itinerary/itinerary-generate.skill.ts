@@ -13,6 +13,7 @@ import { PlanningWorkbenchAgentService } from '../../agent/services/planning-wor
 import { IncrementalItineraryGeneratorService } from '../../agent/context-engine/services/incremental-itinerary-generator.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { applyTripPoiEvidencePatch, loadTripPoiEvidencePatch } from './itinerary-trip-poi-hydration.util';
+import { mergeItineraryAdjustPreserveNonTargetDays } from '../../agent/utils/itinerary-trip-neighbor-anchor-load.util';
 import { injectCorridorDriveLegsIntoDays } from './itinerary-segment-tagger.util';
 import { resolveSparsePoiDayAllocation } from '../../agent/context-engine/utils/sparse-poi-day-allocation.util';
 import { DateTime } from 'luxon';
@@ -150,6 +151,21 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
             executionPolicyHook,
             governance_runtime_state: request.governance_runtime_state,
           });
+          const adjustTargetIso =
+            effectiveResearch?.__itinerary_full_trip_replan === true
+              ? undefined
+              : typeof effectiveResearch?.__itinerary_adjust_target_date_iso === 'string'
+                ? effectiveResearch.__itinerary_adjust_target_date_iso
+                : undefined;
+          if (adjustTargetIso && tripId && this.prisma) {
+            result.governanceApply.days = await mergeItineraryAdjustPreserveNonTargetDays(
+              this.prisma,
+              tripId,
+              adjustTargetIso,
+              result.governanceApply.days,
+              requestId,
+            );
+          }
           return await this.finalizeGovernedOutput({
             request: { ...request, request_id: requestId } as TripPlanRequest,
             requestId,
@@ -161,6 +177,7 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
               total_days: result.governanceApply.days.length,
               mode: result.mode,
               execution_policy_hook_applied: Boolean(executionPolicyHook),
+              ...(adjustTargetIso ? { itinerary_adjust_target_date_iso: adjustTargetIso } : {}),
             },
           });
         }

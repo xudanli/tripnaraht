@@ -2,11 +2,12 @@
  * `route_and_run` 响应中的 **safety_surface**：供前端「痛觉 UI」稳定消费（与 LLM 文案解耦）。
  */
 
-import type { Itinerary } from '../interfaces/trip-plan.interface';
+import type { Itinerary, GateResult } from '../interfaces/trip-plan.interface';
 import {
   humanizeVerifyIssueHeadlineZh,
   surfaceRawVerifyIssueMessageForUserZh,
 } from './feasibility-message-surface.zh.util';
+import { filterSafetyVerifyIssuesAgainstItinerary, filterSafetyIssuesDuplicatingGateViolations } from './filter-stale-verify-violations.util';
 
 export const SAFETY_SURFACE_VERSION = '1.0' as const;
 
@@ -246,12 +247,19 @@ export function buildSafetySurfacePayload(params: {
   research_data?: Record<string, unknown> | null;
   itinerary?: Itinerary | null;
   stepsExecuted?: Array<{ skillName?: string; result?: any; success?: boolean }>;
+  /** 已清洗的 gate；用于剔除与 violations 重复的 verify_issues（避免前端双源各渲染一遍） */
+  gate_result?: GateResult | null;
 }): SafetySurfacePayload {
   const rawAlerts = (params.research_data as { safetravel_alerts?: unknown } | null)?.safetravel_alerts;
   const fromResearch = sanitizeAlerts(rawAlerts);
   const tagged = collectTaggedLegs(params.itinerary ?? undefined);
   const smart = extractSmartUpdate(params.stepsExecuted);
-  const verifyFromStep = extractVerifyIssuesFromSteps(params.stepsExecuted);
+  let verifyFromStep = filterSafetyVerifyIssuesAgainstItinerary(
+    extractVerifyIssuesFromSteps(params.stepsExecuted),
+    params.itinerary ?? undefined,
+    params.research_data ?? undefined,
+  );
+  verifyFromStep = filterSafetyIssuesDuplicatingGateViolations(verifyFromStep, params.gate_result);
 
   return {
     version: SAFETY_SURFACE_VERSION,

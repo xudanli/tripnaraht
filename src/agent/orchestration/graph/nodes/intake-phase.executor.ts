@@ -45,10 +45,26 @@ import {
   type TripDaySnapshotForPlacement,
 } from '../../../utils/route-and-run-intent-analyzer.util';
 import type { IntakeExecutorContext } from '../../../../decision/kernel/interfaces/phase-executor.interface';
-import { appendItineraryAdjustSystemHints } from '../../../utils/itinerary-adjust-intent.util';
+import {
+  appendItineraryAdjustSystemHints,
+  appendFullTripReplanSystemHints,
+  detectFullTripReplanIntent,
+  detectFullTripReplanHotelIntent,
+  extractItineraryAdjustTargetDateFromMessage,
+} from '../../../utils/itinerary-adjust-intent.util';
+import {
+  buildItineraryAdjustAuditMetadata,
+  formatItineraryAdjustIntakeOutputsZh,
+  resolveItineraryAdjustRunContext,
+} from '../../../utils/itinerary-adjust-decision-log.util';
+import {
+  detectAdaptiveReplanTrigger,
+  shouldRequestAdaptiveReplan,
+} from '../../../utils/itinerary-adjust-adaptive-replan.util';
 import { applyItineraryItemDeleteIfRequested } from './intake-itinerary-delete.util';
-import { applyItineraryItemAddIfRequested } from './intake-itinerary-add.util';
-import { applyItineraryItemUpdateIfRequested } from './intake-itinerary-update.util';
+import { applyItineraryCrudWithCompoundPlan } from './intake-itinerary-compound.util';
+import { applyItineraryDayReplanIfRequested } from './intake-itinerary-day-replan.util';
+import { applyWorkbenchPlaceholderShortCircuitIfRequested } from './intake-workbench-placeholder.util';
 import {
   buildItinerarySlotPlacementClarificationQuestion,
   isItinerarySlotPlacementIntakeClarificationPending,
@@ -58,6 +74,11 @@ import {
   consumeIntakeFitnessMaterial,
 } from './intake-request-sanitizer.util';
 import type { IntakePhaseHost, RunIntakePhaseParams } from './intake-phase.host';
+import {
+  hydrateTripPlanFromConstraintSink,
+  mergeConstraintSinkIntoMemoryContractObs,
+} from '../../../memory/constraint-sink/hydrate-trip-plan-from-constraint-sink.util';
+import { emitIntakeClarificationAnswersTelemetry } from './intake-decision-telemetry.util';
 
 /**
  * INTAKE 内核/降级执行体（自 claude-orchestrator 迁出）。
@@ -79,6 +100,37 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
 
       let tripPlanRequest = host.convertToTripPlanRequest(request, state);
       await host.hydrateTripPlanRequestFromTripRecord(request, tripPlanRequest, state);
+
+      if (host.isConstraintSinkHydrateEnabled?.()) {
+        const activeTripState = host.getActiveTripStateForConstraintSink?.() ?? null;
+        const sinkHydrated = hydrateTripPlanFromConstraintSink(tripPlanRequest, activeTripState, request);
+        tripPlanRequest = sinkHydrated.tripPlanRequest;
+        if (sinkHydrated.applied.patch_ids.length > 0) {
+          const reqExt = request as RouteAndRunRequestDto & { __memoryContractObs?: Record<string, unknown> };
+          reqExt.__memoryContractObs = mergeConstraintSinkIntoMemoryContractObs(
+            reqExt.__memoryContractObs,
+            sinkHydrated.applied,
+          );
+        }
+        if (sinkHydrated.applied.keys.length > 0) {
+          host.recordConstraintSinkHydrated?.(sinkHydrated.applied.keys);
+          state.decision_log.push({
+            request_id: state.request_id,
+            step: 'INTAKE',
+            actor: 'Orchestrator',
+            inputs_summary: 'TripTaskMemory.constraint_sink_v1 → TripPlanRequest hydrate',
+            outputs_summary: `constraint_sink_hydrate: applied_keys=[${sinkHydrated.applied.keys.join(',')}]`,
+            evidence_refs: sinkHydrated.applied.patch_ids,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              system_action: 'CONSTRAINT_SINK_HYDRATE',
+              constraint_sink_patch_ids: sinkHydrated.applied.patch_ids,
+              applied_keys: sinkHydrated.applied.keys,
+              overridden_by_request_keys: sinkHydrated.applied.overridden_by_request,
+            },
+          });
+        }
+      }
 
       // Constraint Zone (Temporal hard deadlines): make them explicitly visible to downstream LLM/planning skills.
       // We keep it as a high-weight system hint embedded in TripPlanRequest.message (best-effort, backwards compatible).
@@ -402,6 +454,60 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
             },
           });
         }
+
+        const optionsSnapshotFromLog = (systemAction: string) => {
+          const snap = (state.decision_log ?? [])
+            .slice()
+            .reverse()
+            .find((e) => e?.metadata?.system_action === systemAction)?.metadata?.options_snapshot as
+            | Array<{ value?: string; label?: string }>
+            | undefined;
+          return snap;
+        };
+
+        const topScoredFromSnap = (snap?: Array<{ value?: string; metadata?: { score?: number } }>) => {
+          if (!Array.isArray(snap)) return undefined;
+          const top = snap
+            .filter((o) => o && typeof o === 'object' && typeof o.metadata?.score === 'number')
+            .sort((a, b) => (b.metadata!.score as number) - (a.metadata!.score as number))[0];
+          return top?.value ? String(top.value) : undefined;
+        };
+
+        await emitIntakeClarificationAnswersTelemetry(host.recordIntakeDecisionTelemetry, {
+          request,
+          state,
+          clarificationAnswers,
+          tripPlanRequest: tripPlanRequest,
+          resolveOptionsSnapshot: (questionId) => {
+            if (questionId === 'early_warning_relaxations') {
+              return optionsSnapshotFromLog('EARLY_WARNING_INTERCEPT') as
+                | Array<{ value: string; label: string }>
+                | undefined;
+            }
+            if (questionId === 'plan_gen_empty_draft_relax_constraints') {
+              return optionsSnapshotFromLog('PLAN_GEN_EMPTY_DRAFT_CLARIFICATION') as
+                | Array<{ value: string; label: string }>
+                | undefined;
+            }
+            const q = state.clarification_questions?.find((cq) => cq?.id === questionId);
+            if (q?.options?.length) {
+              return q.options.map((o) => ({
+                value: String((o as { value?: string }).value ?? o),
+                label: String((o as { label?: string }).label ?? (o as { value?: string }).value ?? o),
+              }));
+            }
+            return undefined;
+          },
+          resolveSystemRecommendation: (questionId) => {
+            if (questionId === 'early_warning_relaxations') {
+              return topScoredFromSnap(optionsSnapshotFromLog('EARLY_WARNING_INTERCEPT') as any);
+            }
+            if (questionId === 'plan_gen_empty_draft_relax_constraints') {
+              return topScoredFromSnap(optionsSnapshotFromLog('PLAN_GEN_EMPTY_DRAFT_CLARIFICATION') as any);
+            }
+            return undefined;
+          },
+        });
       }
 
       const priorIntake = (state.metadata as { intake_user_message?: string } | undefined)
@@ -506,37 +612,114 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
       const intentAnalysis = analyzeRouteAndRunIntent(intakeMsg, {
         trip: state.trip_plan_request,
         tripId: tripIdForIntent,
-        hasTripDays: tripDaySnapshots.length > 0,
+        hasTripDays: tripDaySnapshots.length > 0 || Boolean(tripIdForIntent),
       });
       (state.metadata as Record<string, unknown>).route_and_run_intent = intentAnalysis;
+      const tripDateRange = state.trip_plan_request?.date_range;
+      const fullTripReplan =
+        intentAnalysis.primary === 'GENERAL_PLAN' &&
+        Boolean(tripIdForIntent) &&
+        detectFullTripReplanIntent(intakeMsg ?? '', tripDateRange);
+      if (fullTripReplan && state.trip_plan_request) {
+        const replanMeta = state.metadata as Record<string, unknown>;
+        replanMeta.itinerary_full_trip_replan = true;
+        const intakeText = intakeMsg ?? '';
+        if (detectFullTripReplanHotelIntent(intakeText, replanMeta)) {
+          replanMeta.full_trip_replan_hotel_requested = true;
+        }
+        appendFullTripReplanSystemHints(state.trip_plan_request, intakeText);
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'INTAKE',
+          actor: 'Orchestrator',
+          inputs_summary: '识别绑定 Trip 上的整段多日行程重规划意图',
+          outputs_summary: `整段多日重规划（FULL_TRIP_REPLAN）：${tripDateRange?.start_date ?? '?'}→${tripDateRange?.end_date ?? '?'}；走全周 PLAN_GEN，非单日 ITINERARY_ADJUST。`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: { system_action: 'FULL_TRIP_REPLAN_CLASSIFIED' },
+        });
+      }
       if (intentAnalysis.primary === 'ITINERARY_ADJUST' && state.trip_plan_request) {
         appendItineraryAdjustSystemHints(state.trip_plan_request, intakeMsg ?? '');
-        (state.metadata as Record<string, unknown>).itinerary_adjust_intake = true;
+        const adjustMeta = state.metadata as Record<string, unknown>;
+        adjustMeta.itinerary_adjust_intake = true;
+        const targetIso = extractItineraryAdjustTargetDateFromMessage(
+          intakeMsg ?? '',
+          state.trip_plan_request.date_range,
+        );
+        if (targetIso) {
+          adjustMeta.itinerary_adjust_target_date_iso = targetIso;
+        }
+        const adjustCtx = resolveItineraryAdjustRunContext(state);
+        adjustMeta.itinerary_adjust_sub_intent = adjustCtx.subIntent;
+        if (
+          shouldRequestAdaptiveReplan({
+            routePrimary: intentAnalysis.primary,
+            itineraryAdjustIntake: true,
+          })
+        ) {
+          adjustMeta.adaptive_replan_requested = true;
+          adjustMeta.adaptive_replan_trigger = detectAdaptiveReplanTrigger(intakeMsg ?? '');
+        }
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'INTAKE',
+          actor: 'Orchestrator',
+          inputs_summary: '识别绑定 Trip 上的单日行程改排意图',
+          outputs_summary: formatItineraryAdjustIntakeOutputsZh(adjustCtx),
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'ITINERARY_ADJUST_CLASSIFIED',
+            ...buildItineraryAdjustAuditMetadata(adjustMeta),
+          },
+        });
+      }
+
+      if (
+        applyWorkbenchPlaceholderShortCircuitIfRequested({
+          message: intakeMsg,
+          tripId: tripIdForIntent,
+          state,
+        })
+      ) {
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'INTAKE',
+          actor: 'Orchestrator',
+          inputs_summary: '规划工作台助手占位欢迎语',
+          outputs_summary: '已识别为 UI 引导语，跳过 RESEARCH/POI 选择，等待用户真实提问',
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'WORKBENCH_ASSISTANT_PLACEHOLDER_SHORT_CIRCUIT',
+          },
+        });
+        return;
       }
 
       if (tripIdForIntent) {
-        const deleteHandled = await applyItineraryItemDeleteIfRequested(host, {
+        await applyItineraryCrudWithCompoundPlan(host, {
           message: intakeMsg,
           tripId: tripIdForIntent,
           userId: request.user_id,
           state,
+          countryCode:
+            state.trip_plan_request?.ontology_context?.destination?.country_code,
         });
-        if (!deleteHandled) {
-          const updateHandled = await applyItineraryItemUpdateIfRequested(host, {
-            message: intakeMsg,
-            tripId: tripIdForIntent,
-            userId: request.user_id,
-            state,
-          });
-          if (!updateHandled) {
-            await applyItineraryItemAddIfRequested(host, {
-              message: intakeMsg,
-              tripId: tripIdForIntent,
-              userId: request.user_id,
-              state,
-            });
-          }
-        }
+        const tpr = state.trip_plan_request;
+        const dateRange =
+          tpr?.date_range ??
+          (tpr?.start_date
+            ? { start_date: tpr.start_date, end_date: tpr.start_date }
+            : undefined);
+        await applyItineraryDayReplanIfRequested(host, {
+          message: intakeMsg,
+          tripId: tripIdForIntent,
+          userId: request.user_id,
+          state,
+          dateRange,
+        });
       }
 
       if (isFroad2wdIntakeClarificationPending(state.trip_plan_request, intakeMsg, clarAnswers)) {

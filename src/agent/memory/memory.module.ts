@@ -31,6 +31,9 @@ import { LedgerWritebackService } from './decision-ledger/ledger-writeback.servi
 import { LEDGER_LOGIC_CONSTRAINT_VALIDATORS } from './decision-ledger/ledger-logic-constraint-validator.port';
 import { TimelineLedgerLogicConstraintValidator } from './decision-ledger/ledger-timeline-logic-constraint.validator';
 import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incremental-recompute-orchestrator.service';
+import { ConstraintSinkService } from './constraint-sink/constraint-sink.service';
+import { UserMemoryConsoleService } from './console/user-memory-console.service';
+import { MemoryConsoleController } from './console/memory-console.controller';
 
 /**
  * Memory Module
@@ -72,7 +75,10 @@ import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incre
     },
     LedgerWritebackService,
     IncrementalRecomputeOrchestratorService,
+    ConstraintSinkService,
+    UserMemoryConsoleService,
   ],
+  controllers: [MemoryConsoleController],
   exports: [
     MemoryService,
     UserProfileMapperService,
@@ -94,6 +100,8 @@ import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incre
     LedgerPendingAuditStoreService,
     LedgerWritebackService,
     IncrementalRecomputeOrchestratorService,
+    ConstraintSinkService,
+    UserMemoryConsoleService,
   ],
 })
 export class MemoryModule {}

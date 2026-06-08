@@ -1,5 +1,9 @@
 import type { OrchestratorState } from '../../../interfaces/trip-plan.interface';
-import { detectItineraryItemAddIntent } from '../../../utils/itinerary-item-add.util';
+import {
+  detectItineraryItemAddIntent,
+  parseItineraryItemAddSpec,
+} from '../../../utils/itinerary-item-add.util';
+import { detectItineraryAdjustIntent } from '../../../utils/itinerary-adjust-intent.util';
 import {
   appendSkillsHitToOutputsSummary,
   buildCrudSkillsDecisionMetadata,
@@ -32,7 +36,14 @@ export async function applyItineraryItemAddIfRequested(
   },
 ): Promise<boolean> {
   const intakeMsg = String(params.message ?? '').trim();
+  const routePrimary = (
+    (params.state.metadata as Record<string, unknown>)?.route_and_run_intent as
+      | { primary?: string }
+      | undefined
+  )?.primary;
+  if (routePrimary === 'ITINERARY_ADJUST' || detectItineraryAdjustIntent(intakeMsg)) return false;
   if (!detectItineraryItemAddIntent(intakeMsg)) return false;
+  if (!parseItineraryItemAddSpec(intakeMsg)) return false;
 
   const tripId = params.tripId?.trim();
   if (!tripId || !host.tryApplyBoundTripItineraryItemAdd) return false;
@@ -89,7 +100,18 @@ export async function applyItineraryItemAddIfRequested(
 
 export function shouldTerminalAfterItineraryItemAdd(state: OrchestratorState): boolean {
   const addSc = (state.metadata as Record<string, unknown>)?.itinerary_item_add_short_circuit as
-    | { applied?: boolean; answerText?: string }
+    | { applied?: boolean; answerText?: string; reason?: string }
     | undefined;
-  return addSc?.applied === true || Boolean(addSc?.answerText);
+  if (addSc?.applied === true) return true;
+  if (!addSc?.answerText) return false;
+  const routePrimary = (
+    (state.metadata as Record<string, unknown>)?.route_and_run_intent as { primary?: string } | undefined
+  )?.primary;
+  if (
+    routePrimary === 'ITINERARY_ADJUST' &&
+    (addSc.reason === 'place_not_found' || addSc.reason === 'parse_failed')
+  ) {
+    return false;
+  }
+  return true;
 }

@@ -25,6 +25,30 @@ import { ErrorType } from '../interfaces/error-types.interface';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import { buildTravelOntologyStateFromOrchestrator, mergeTravelOntologyState } from '../../decision/kernel/travel-ontology.mapper';
 import { JepaProjectorService } from './jepa-projector.service';
+import { detectItineraryAdjustIntent, extractItineraryAdjustTargetDateFromMessage, detectFullTripReplanIntent, isItineraryFullTripReplanMetadata } from '../utils/itinerary-adjust-intent.util';
+import {
+  enrichRouteRunCardForClientApply,
+} from '../utils/route-run-accommodation-apply.util';
+import type {
+  AccommodationNightGroup,
+  RouteAndRunAccommodationCard,
+} from '../utils/hotel-mcp-route-run.mapper';
+import {
+  buildItineraryAdjustActionExecutionPayload,
+  buildItineraryAdjustAutoApplyLeadMessage,
+} from '../utils/itinerary-adjust-auto-apply.util';
+import {
+  buildItineraryAdjustOptimizationResult,
+  coalesceItineraryAdjustOptimizationResult,
+  type ItineraryAdjustOptimizationResult,
+  type ItineraryAdjustScheduleItem,
+} from '../utils/itinerary-adjust-optimization-summary.util';
+import {
+  extractPoiNamesFromItineraryDay,
+  extractScheduleItemsFromItineraryDay,
+} from '../utils/itinerary-adjust-decision-log.util';
+import { applyPacingRelaxToAdjustTargetState } from '../../skills/itinerary/experience-curator-pacing-relax.util';
+import type { NeighborAnchorContext } from '../utils/itinerary-adjust-neighbor-anchors.util';
 import { assertDoneResponseCompleteness } from '../guards/done-response-completeness.guard';
 import { normalizeClientDsoVersion } from '../utils/client-dso-version.util';
 import {
@@ -36,6 +60,18 @@ import { assembleEvidenceCardUIPropsFromState } from '../utils/evidence-ui-assem
 import { sha256Signature } from '../contracts/decision-contract.types';
 import { normalizeHardRuleSnapshot } from '../../trips/decision/shared/hard-rule-snapshot.types';
 import { deriveFactsFromMetadata } from '../../trips/decision/shared/fact-derivation.util';
+import {
+  resolveUnifiedExplainForRouteAndRunResponse,
+} from '../../trips/decision/explainability/resolve-unified-explain-for-response.util';
+import { dedupeUnifiedExplainabilityInClientOrchestratorState } from '../../trips/decision/explainability/dedupe-unified-explainability-client-payload.util';
+import {
+  assessNarrativeExplainabilityDrift,
+  buildNarrativeDriftObservabilitySlice,
+  emitNarrativeDriftMetricEvent,
+} from '../../trips/decision/explainability/narrative-drift-monitor.util';
+import type { UnifiedExplainabilityEnvelopeV1 } from '../../trips/decision/explainability/unified-explainability.types';
+import type { NarrationLike } from '../../decision/kernel/interfaces/phase-executor.interface';
+import { projectDecisionCockpitFromEnvelope } from '../../trips/decision/explainability/project-decision-cockpit-from-envelope.util';
 import { TradeoffEngineService } from './tradeoff-engine.service';
 import { NegotiationSessionStoreService } from './negotiation-session-store.service';
 import { projectWorldModelGuardsExplain } from '../utils/world-model-guards-projection.util';
@@ -47,13 +83,14 @@ import {
   sortFailureReasonCodes,
 } from '../constants/failure-reason-codes.constants';
 import { orchestrationStepDisplayZh } from '../constants/orchestration-step-display.constants';
-import type { TaskType } from '../utils/orchestration-signals.util';
+import { isTripStatusOverviewQuery, type TaskType } from '../utils/orchestration-signals.util';
 import { shouldExposeSimplifiedExplanationForClient } from '../utils/route-and-run-option-defaults.util';
 import { buildRuntimeExecutionProfileClaudeDynamicAssembly } from '../utils/runtime-execution-profile.builder';
 import { validateRuntimeExecutionProfile } from '../utils/runtime-execution-profile.validation';
 import {
   RouteRunItineraryPoiHydratorService,
   applyRouteRunPoiDisplayNamesToTimeline,
+  type RouteRunPoiCard,
 } from './route-run-itinerary-poi-hydrator.service';
 import {
   toOrchestrationFailureObservability,
@@ -85,7 +122,17 @@ import {
   sanitizeDecisionLogForClientDisplay,
   sanitizeClarificationQuestionsForClientDisplay,
 } from '../utils/feasibility-message-surface.zh.util';
+import { filterGateViolationsToDraftScheduleOnly } from '../utils/filter-stale-verify-violations.util';
+import { filterDecisionLogVerifyToDraftPois } from '../utils/itinerary-adjust-decision-log.util';
 import { extractSkillsHitFromDecisionLog } from '../utils/itinerary-item-crud-decision-log.util';
+import {
+  buildWorkbenchDisplayAlignment,
+  pickItineraryDaysForDisplay,
+  stripGateViolationsFromOrchestratorStateForClient,
+  type WorkbenchDisplayAlignment,
+} from '../utils/workbench-display-alignment.util';
+import { resyncWorkbenchOpeningHoursFeasibility } from '../utils/workbench-feasibility-resync.util';
+import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 
 @Injectable()
 export class RouteAndRunResponseAssemblerService {
@@ -97,6 +144,7 @@ export class RouteAndRunResponseAssemblerService {
     @Optional() private readonly poiHydrator?: RouteRunItineraryPoiHydratorService,
     @Optional() private readonly negotiationSessions?: NegotiationSessionStoreService,
     @Optional() private readonly guardiansDebate?: GuardiansDebateService,
+    @Optional() private readonly skillsRegistry?: SkillsRegistryService,
   ) {}
 
   /** `enable_guardians_debate_llm`：硬门致命时由辩论服务内短路，不发起 LLM。 */
@@ -207,6 +255,9 @@ export class RouteAndRunResponseAssemblerService {
     if (this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) {
       return this.isItineraryItemCrudApplied(orchestrationResult) ? '行程已更新' : '未能更新行程';
     }
+    if (this.isItineraryAdjustSession(orchestrationResult)) {
+      return '行程草案已更新';
+    }
     if (consultationUi) return '咨询已完成';
     return '处理完成';
   }
@@ -216,6 +267,7 @@ export class RouteAndRunResponseAssemblerService {
   ): { applied?: boolean } | undefined {
     const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
     return (
+      (md?.itinerary_day_replan_short_circuit as { applied?: boolean } | undefined) ??
       (md?.itinerary_item_update_short_circuit as { applied?: boolean } | undefined) ??
       (md?.itinerary_item_add_short_circuit as { applied?: boolean } | undefined) ??
       (md?.itinerary_item_delete_short_circuit as { applied?: boolean } | undefined)
@@ -235,10 +287,11 @@ export class RouteAndRunResponseAssemblerService {
     return consultationUi ? 'consultation' : 'planning';
   }
 
-  /** INTAKE 删除/新增 POI 短路：不携带完整 planning 日程块，按轻量 CRUD 回复 */
+  /** INTAKE 删除/新增 POI / 整日重排 短路：不携带完整 planning 日程块，按轻量 CRUD 回复 */
   private isItineraryItemCrudIntakeShortCircuit(orchestrationResult: OrchestrationResult): boolean {
     const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
     return (
+      md?.itinerary_day_replan_intake === true ||
       md?.itinerary_item_delete_intake === true ||
       md?.itinerary_item_add_intake === true ||
       md?.itinerary_item_update_intake === true
@@ -259,14 +312,278 @@ export class RouteAndRunResponseAssemblerService {
   }
 
   /**
-   * 行程单项 CRUD 未跑 VERIFY、且无 Iron Shield 叙事卡时，不下发 C1 证据包块，避免前端展示「部分验证 · 0 张」。
+   * 行程单项 CRUD 未跑 VERIFY、且无 Iron Shield 叙事卡时，不下发 C1 证据包块。
+   * ITINERARY_ADJUST：绑定 trip 改排走完整链，但产品面不展示 Iron Shield / 候选方案等调试块。
    */
+  private shouldSuppressIronShieldUi(
+    orchestrationResult: OrchestrationResult,
+    state?: OrchestratorState | null,
+    request?: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+  ): boolean {
+    if (this.isItineraryAdjustSession(orchestrationResult, request)) return true;
+    if (!this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return false;
+    return assembleDecisionEvidenceCards(state ?? undefined).length === 0;
+  }
+
+  /** @deprecated use shouldSuppressIronShieldUi */
   private shouldSuppressIronShieldUiForCrud(
     orchestrationResult: OrchestrationResult,
     state?: OrchestratorState | null,
   ): boolean {
-    if (!this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return false;
-    return assembleDecisionEvidenceCards(state ?? undefined).length === 0;
+    return this.shouldSuppressIronShieldUi(orchestrationResult, state);
+  }
+
+  /** 绑定 trip 的日程调整（ITINERARY_ADJUST）：走完整规划链但面向用户展示日程草案，非 CGUS 决策驾驶舱 */
+  private isItineraryAdjustSession(
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+  ): boolean {
+    const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+    if (isItineraryFullTripReplanMetadata(md)) return false;
+    if (md?.itinerary_day_replan_intake === true) return false;
+    if (md?.itinerary_adjust_intake === true) return true;
+    const routeIntent = md?.route_and_run_intent as { primary?: string } | undefined;
+    if (routeIntent?.primary === 'ITINERARY_ADJUST') return true;
+    const tripId = request?.trip_id?.trim();
+    const msg =
+      request?.message ??
+      (typeof md?.intake_user_message === 'string' ? md.intake_user_message : undefined);
+    const dateRange =
+      orchestrationResult.result?.state?.trip_plan_request?.date_range;
+    if (tripId && typeof msg === 'string' && detectFullTripReplanIntent(msg, dateRange)) return false;
+    if (tripId && typeof msg === 'string' && detectItineraryAdjustIntent(msg, dateRange)) return true;
+    return false;
+  }
+
+  private resolveItineraryAdjustTargetDate(
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'message' | 'trip_id'>,
+    state?: OrchestratorState | null,
+  ): string | undefined {
+    const md = (state?.metadata ??
+      orchestrationResult.result?.state?.metadata) as Record<string, unknown> | undefined;
+    const anchors = md?.itinerary_adjust_neighbor_anchors as NeighborAnchorContext | undefined;
+    const fromMeta =
+      (typeof md?.itinerary_adjust_target_date_iso === 'string'
+        ? md.itinerary_adjust_target_date_iso.slice(0, 10)
+        : undefined) ?? anchors?.targetDateIso?.slice(0, 10);
+    if (fromMeta) return fromMeta;
+
+    const msg =
+      request?.message ??
+      (typeof md?.intake_user_message === 'string' ? md.intake_user_message : undefined);
+    if (!msg) return undefined;
+    const dateRange =
+      state?.trip_plan_request?.date_range ??
+      orchestrationResult.result?.state?.trip_plan_request?.date_range;
+    return extractItineraryAdjustTargetDateFromMessage(msg, dateRange);
+  }
+
+  private async resolveWorkbenchDisplayContext(
+    request: RouteAndRunRequestDto,
+    orchestrationResult: OrchestrationResult,
+    orchestratorDays: Itinerary['days'],
+    stateMetadata?: Record<string, unknown>,
+  ): Promise<{
+    alignment: WorkbenchDisplayAlignment;
+    displayDays: Itinerary['days'];
+    displayItinerary: Itinerary | undefined;
+  }> {
+    const tripId = request.trip_id?.trim();
+    let tripDays: Itinerary['days'] | null = null;
+    if (tripId && this.poiHydrator) {
+      const tripItin = await this.poiHydrator.loadPersistedTripItinerary(tripId);
+      tripDays = tripItin?.days ?? null;
+    }
+    const alignment = buildWorkbenchDisplayAlignment({
+      tripId,
+      orchestratorDays,
+      tripDays,
+      autoApplyApplied:
+        (stateMetadata?.itinerary_adjust_auto_apply as { applied?: boolean } | undefined)?.applied ===
+        true,
+      entryPoint: request.options?.entry_point,
+      itineraryAdjustDraftPending:
+        this.isItineraryAdjustSession(orchestrationResult, request) &&
+        (stateMetadata?.itinerary_adjust_auto_apply as { applied?: boolean } | undefined)?.applied !== true,
+      fullTripReplanDraftPending:
+        isItineraryFullTripReplanMetadata(stateMetadata) &&
+        (stateMetadata?.itinerary_adjust_auto_apply as { applied?: boolean } | undefined)?.applied !== true &&
+        !this.isItineraryAdjustSession(orchestrationResult, request),
+    });
+    const displayDays = pickItineraryDaysForDisplay(alignment, orchestratorDays, tripDays);
+    const base = orchestrationResult.result?.itinerary;
+    const displayItinerary: Itinerary | undefined = displayDays.length
+      ? base
+        ? { ...base, days: displayDays }
+        : { request_id: request.request_id, days: displayDays }
+      : undefined;
+    if (alignment.drift_detected) {
+      this.logger.debug(
+        `[RouteAndRunAssembler] workbench display drift trip_id=${tripId} source=${alignment.timeline_source}`,
+      );
+    }
+    return { alignment, displayDays, displayItinerary };
+  }
+
+  private sanitizeGateForClientPayload(
+    gate: GateResult | undefined,
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+    displayItinerary?: Itinerary,
+    adjustDraftPoiNames?: string[],
+    researchData?: Record<string, unknown>,
+  ): GateResult | undefined {
+    if (!gate) return undefined;
+    const stripHarnessSynthetic = this.isItineraryAdjustSession(orchestrationResult, request);
+    const itinerary =
+      displayItinerary ??
+      orchestrationResult.result?.state?.itinerary ??
+      orchestrationResult.result?.itinerary;
+    let sanitized = sanitizeGateResultForClientDisplay(gate, {
+      stripVerifySyntheticWhenAllow: stripHarnessSynthetic,
+      stripVerifySyntheticForItineraryAdjust: stripHarnessSynthetic,
+      itinerary: itinerary ?? undefined,
+      researchData,
+    });
+    if (stripHarnessSynthetic && adjustDraftPoiNames?.length && sanitized.violations?.length) {
+      sanitized = {
+        ...sanitized,
+        violations: filterGateViolationsToDraftScheduleOnly(
+          sanitized.violations ?? [],
+          adjustDraftPoiNames,
+        ),
+      };
+    }
+    return sanitized;
+  }
+
+  /** Trip 与编排器漂移或 CRUD 改排后：用展示 itinerary 重算开放时间类 VERIFY，避免 Agent 与时间轴不同步 */
+  private async resyncGateFeasibilityForWorkbench(params: {
+    gate: GateResult | undefined;
+    displayItinerary: Itinerary | undefined;
+    researchData: Record<string, unknown> | undefined;
+    alignment: WorkbenchDisplayAlignment;
+    crudApplied: boolean;
+  }): Promise<GateResult | undefined> {
+    const shouldResync =
+      Boolean(params.displayItinerary?.days?.length) &&
+      (params.alignment.drift_detected || params.crudApplied);
+    if (!shouldResync || !params.gate) return params.gate;
+
+    const ohSkill = this.skillsRegistry?.getSkill('opening_hours.get');
+    return resyncWorkbenchOpeningHoursFeasibility({
+      gate: params.gate,
+      itinerary: params.displayItinerary,
+      researchData: params.researchData,
+      shouldResync: true,
+      openingHoursSkill: ohSkill as
+        | { execute: (input: { poi_ids: string[] }) => Promise<{ opening_hours?: unknown[] }> }
+        | undefined,
+    });
+  }
+
+  private filterItineraryDaysForAdjustScope<
+    T extends {
+      date?: string;
+      day_index?: number;
+      items?: Array<{ location_ref?: { name?: string }; name?: string }>;
+    },
+  >(
+    days: T[],
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'message' | 'trip_id'>,
+  ): T[] {
+    const targetDate = this.resolveItineraryAdjustTargetDate(orchestrationResult, request);
+    if (!targetDate) return days;
+    const matched = days.filter((d) => String(d.date ?? '').slice(0, 10) === targetDate);
+    return matched.length > 0 ? matched : days;
+  }
+
+  /** 改排出站 timeline：目标日以 adaptive_replan 后的 state.itinerary 为准 */
+  private patchAdjustTargetDayFromAuthoritativeItinerary<
+    T extends {
+      date?: string;
+      items?: Array<{
+        location_ref?: { name?: string };
+        name?: string;
+        type?: string;
+        start_window?: string;
+        end_window?: string;
+      }>;
+    },
+  >(days: T[], itinerary: Itinerary | undefined, targetDateIso: string | undefined): T[] {
+    if (!targetDateIso || !itinerary?.days?.length) return days;
+    const target = targetDateIso.slice(0, 10);
+    const authDay = itinerary.days.find((d) => String(d.date ?? '').slice(0, 10) === target);
+    if (!authDay?.items?.length) return days;
+
+    const patchedItems = authDay.items.map((it) => ({
+      location_ref: { name: it.location_ref?.name },
+      name: it.location_ref?.name,
+      type: it.type,
+      start_window: it.start_window,
+      end_window: it.end_window,
+    }));
+
+    if (days.length === 0) {
+      return [{ date: target, items: patchedItems } as T];
+    }
+
+    let replaced = false;
+    const next = days.map((d) => {
+      if (String(d.date ?? '').slice(0, 10) !== target) return d;
+      replaced = true;
+      return { ...d, date: target, items: patchedItems };
+    });
+    return replaced ? next : [...next, { date: target, items: patchedItems } as T];
+  }
+
+  /** ITINERARY_ADJUST：与 timeline 一致，仅保留目标日历日的 POI 卡片（地图/侧栏引脚） */
+  private filterPoiCardsForAdjustScope(
+    cards: RouteRunPoiCard[],
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'message' | 'trip_id'>,
+  ): RouteRunPoiCard[] {
+    const targetDate = this.resolveItineraryAdjustTargetDate(orchestrationResult, request);
+    if (!targetDate || cards.length === 0) return cards;
+    const matched = cards.filter((c) => String(c.date ?? '').slice(0, 10) === targetDate);
+    return matched.length > 0 ? matched : cards;
+  }
+
+  private scopeItineraryForPoiHydration(
+    itinerary: Itinerary | null | undefined,
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'message' | 'trip_id'>,
+  ): Itinerary | null | undefined {
+    if (!itinerary?.days?.length) return itinerary;
+    if (!this.isItineraryAdjustSession(orchestrationResult, request)) return itinerary;
+    const scopedDays = this.filterItineraryDaysForAdjustScope(
+      itinerary.days,
+      orchestrationResult,
+      request,
+    );
+    if (scopedDays.length === itinerary.days.length) return itinerary;
+    return { ...itinerary, days: scopedDays };
+  }
+
+  /** 行程单项 CRUD / 日程调整：不下发 Decision Cockpit 与优化决策长文 */
+  private shouldSuppressDecisionCockpitUi(
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+  ): boolean {
+    return (
+      this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult) ||
+      this.isItineraryAdjustSession(orchestrationResult, request)
+    );
+  }
+
+  /** @deprecated use shouldSuppressDecisionCockpitUi */
+  private shouldSuppressDecisionCockpitForCrud(
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+  ): boolean {
+    return this.shouldSuppressDecisionCockpitUi(orchestrationResult, request);
   }
 
   /** @deprecated use isItineraryItemCrudIntakeShortCircuit */
@@ -296,6 +613,39 @@ export class RouteAndRunResponseAssemblerService {
     if (routingTaskType === 'TRIP_PLANNING') return true;
     const tid = typeof tripId === 'string' ? tripId.trim() : '';
     return tid.length > 0;
+  }
+
+  /** 住宿 MCP enrich 写入 orchestrationResult.result 的卡片块，供 payload 透出 */
+  private resolveHotelAccommodationPayloadBlocks(
+    orchestrationResult: OrchestrationResult,
+  ): Record<string, unknown> {
+    const r = orchestrationResult.result as Record<string, unknown> | undefined;
+    const accommodations = r?.['accommodations'];
+    if (!Array.isArray(accommodations) || accommodations.length === 0) {
+      return {};
+    }
+    const nightGroups = r?.['accommodation_night_groups'] as AccommodationNightGroup[] | undefined;
+    const enrichedAccommodations = accommodations.map((card, i) =>
+      enrichRouteRunCardForClientApply(card as RouteAndRunAccommodationCard, i, nightGroups),
+    );
+    const enrichedNightGroups = nightGroups?.map((group) => ({
+      ...group,
+      cards: group.cards.map((card) => {
+        const idx = enrichedAccommodations.findIndex(
+          (a) => a.id === card.id && a.nightIndex === card.nightIndex,
+        );
+        return idx >= 0
+          ? enrichedAccommodations[idx]
+          : enrichRouteRunCardForClientApply(card, idx, nightGroups);
+      }),
+    }));
+    return {
+      accommodations: enrichedAccommodations,
+      ...(r?.['airbnbListings'] != null ? { airbnbListings: r['airbnbListings'] } : {}),
+      ...(r?.['routing'] != null ? { routing: r['routing'] } : {}),
+      ...(enrichedNightGroups?.length ? { accommodation_night_groups: enrichedNightGroups } : {}),
+      ...(r?.['hotel_search_meta'] != null ? { hotel_search_meta: r['hotel_search_meta'] } : {}),
+    };
   }
 
   /**
@@ -418,8 +768,23 @@ export class RouteAndRunResponseAssemblerService {
     decisionState: DecisionState | undefined;
     orchestrationResult: OrchestrationResult;
   }): string | null {
+    if (this.isItineraryAdjustSession(params.orchestrationResult)) return null;
+
     const tripId = params.request.trip_id?.trim();
     if (!tripId) return null;
+
+    const reviewMsg =
+      params.request.message ??
+      (typeof (params.state?.metadata as Record<string, unknown> | undefined)?.intake_user_message ===
+      'string'
+        ? ((params.state?.metadata as Record<string, unknown>).intake_user_message as string)
+        : undefined);
+    if (
+      reviewMsg &&
+      isTripStatusOverviewQuery(reviewMsg, reviewMsg.toLowerCase())
+    ) {
+      return null;
+    }
 
     const lightweight = (params.orchestrationResult.result as { lightweightKnowledgeQa?: boolean } | undefined)
       ?.lightweightKnowledgeQa;
@@ -510,6 +875,351 @@ export class RouteAndRunResponseAssemblerService {
     }
 
     return lines.join('\n');
+  }
+
+  private looksLikeOptimizationDecisionMeta(text: string): boolean {
+    return /决策说明|CGUS|推荐方案|plan-philosophy|未采纳方案|综合约束优化|monteCarlo|META_BUDGET/i.test(text);
+  }
+
+  private looksLikeGuardianPersonaMeta(text: string): boolean {
+    return /安全守护者 Abu|节奏调节者 Dr\.Dre|路线守护者 Neptune/.test(text);
+  }
+
+  private stripGuardianPersonaProse(text: string): string {
+    return text
+      .split(/\n+/)
+      .filter((line) => {
+        const t = line.trim();
+        if (!t) return true;
+        return (
+          !/^安全守护者 Abu/.test(t) &&
+          !/^节奏调节者 Dr\.Dre/.test(t) &&
+          !/^路线守护者 Neptune/.test(t)
+        );
+      })
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  private stripGenericMultiDayPlanningBoilerplate(text: string): string {
+    return text
+      .replace(
+        /^为您规划了\s*\d+\s*天的行程[，,]?\s*行程已通过安全检查[，,]?[^\n]*\n?/m,
+        '',
+      )
+      .trim();
+  }
+
+  private sanitizeItineraryAdjustProse(text: string): string {
+    let out = this.stripGuardianPersonaProse(text);
+    out = this.stripGenericMultiDayPlanningBoilerplate(out);
+    if (this.looksLikeOptimizationDecisionMeta(out)) return '';
+    return out.trim();
+  }
+
+  private extractScheduleItemsFromTimelineDays(
+    days: Array<{
+      items?: Array<{
+        location_ref?: { name?: string };
+        name?: string;
+        type?: string;
+        start_window?: string;
+        end_window?: string;
+      }>;
+    }>,
+  ): ItineraryAdjustScheduleItem[] {
+    const out: ItineraryAdjustScheduleItem[] = [];
+    for (const day of days) {
+      for (const it of day.items ?? []) {
+        const name = String(it.location_ref?.name ?? (it as { name?: string }).name ?? '').trim();
+        if (!name) continue;
+        out.push({
+          name,
+          type: it.type,
+          start_window: it.start_window,
+          end_window: it.end_window,
+        });
+      }
+    }
+    return out;
+  }
+
+  private extractPoiNamesFromTimelineDays(
+    days: Array<{
+      items?: Array<{ location_ref?: { name?: string }; name?: string; type?: string }>;
+    }>,
+  ): string[] {
+    const names: string[] = [];
+    const seen = new Set<string>();
+    for (const day of days) {
+      for (const it of day.items ?? []) {
+        const t = String(it.type ?? 'POI').toUpperCase();
+        if (t === 'DRIVE' || t === 'TRANSIT' || t === 'WALK' || t === 'REST') continue;
+        const name = String(it.location_ref?.name ?? (it as { name?: string }).name ?? '').trim();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        names.push(name);
+      }
+    }
+    return names;
+  }
+
+  private resolveItineraryAdjustOptimizationResult(
+    orchestrationResult: OrchestrationResult,
+    request: Pick<RouteAndRunRequestDto, 'message' | 'trip_id'> | undefined,
+    timelineDays: Array<{
+      date?: string;
+      items?: Array<{
+        location_ref?: { name?: string };
+        name?: string;
+        type?: string;
+        start_window?: string;
+        end_window?: string;
+      }>;
+    }>,
+    state?: OrchestratorState | null,
+  ): ItineraryAdjustOptimizationResult | undefined {
+    if (!this.isItineraryAdjustSession(orchestrationResult, request)) return undefined;
+
+    const md = (state?.metadata ??
+      orchestrationResult.result?.state?.metadata ??
+      {}) as Record<string, unknown>;
+    const existing = md.itinerary_adjust_result as ItineraryAdjustOptimizationResult | undefined;
+
+    const targetDate =
+      this.resolveItineraryAdjustTargetDate(orchestrationResult, request, state) ??
+      existing?.target_date_iso?.slice(0, 10);
+    if (!targetDate) return undefined;
+
+    const authoritativeItinerary =
+      state?.itinerary ?? orchestrationResult.result?.itinerary ?? undefined;
+
+    let poiNames: string[] = [];
+    let scheduleItems: ItineraryAdjustScheduleItem[] = [];
+    if (authoritativeItinerary) {
+      scheduleItems = extractScheduleItemsFromItineraryDay(authoritativeItinerary, targetDate);
+      poiNames = extractPoiNamesFromItineraryDay(authoritativeItinerary, targetDate);
+    }
+
+    if (!scheduleItems.length) {
+      const scopedDays = timelineDays.filter((d) => String(d.date ?? '').slice(0, 10) === targetDate);
+      const daySlice = scopedDays.length > 0 ? scopedDays : timelineDays;
+      scheduleItems = this.extractScheduleItemsFromTimelineDays(daySlice);
+      poiNames = this.extractPoiNamesFromTimelineDays(daySlice);
+    }
+
+    const anchors = md.itinerary_adjust_neighbor_anchors as NeighborAnchorContext | undefined;
+    const targetDayNumber =
+      anchors?.targetDayNumber ??
+      (typeof md.itinerary_adjust_target_day_number === 'number'
+        ? md.itinerary_adjust_target_day_number
+        : undefined);
+
+    const rebuilt = buildItineraryAdjustOptimizationResult({
+      metadata: md,
+      targetDateIso: targetDate,
+      targetDayNumber,
+      poiNames,
+      scheduleItems,
+    });
+    return coalesceItineraryAdjustOptimizationResult(rebuilt, existing);
+  }
+
+  private buildItineraryAdjustPayloadBlocks(params: {
+    orchestrationResult: OrchestrationResult;
+    request: RouteAndRunRequestDto;
+    timelineDays: Array<{
+      date?: string;
+      items?: Array<{
+        location_ref?: { name?: string };
+        name?: string;
+        type?: string;
+        start_window?: string;
+        end_window?: string;
+      }>;
+    }>;
+    state?: OrchestratorState | null;
+    gateForClient?: GateResult | undefined;
+  }): {
+    itinerary_adjust_result?: ItineraryAdjustOptimizationResult;
+    actionExecution?: Record<string, unknown>;
+    workbench_feasibility?: {
+      violations: GateResult['violations'];
+      verify_synthetic_suppressed: true;
+    };
+  } {
+    if (!this.isItineraryAdjustSession(params.orchestrationResult, params.request)) {
+      return {};
+    }
+    const md = (params.state?.metadata ??
+      params.orchestrationResult.result?.state?.metadata ??
+      {}) as Record<string, unknown>;
+    const itineraryAdjustOptimization = this.resolveItineraryAdjustOptimizationResult(
+      params.orchestrationResult,
+      params.request,
+      params.timelineDays,
+      params.state,
+    );
+    if (itineraryAdjustOptimization && params.state?.metadata) {
+      (params.state.metadata as Record<string, unknown>).itinerary_adjust_result =
+        itineraryAdjustOptimization;
+    } else if (itineraryAdjustOptimization) {
+      md.itinerary_adjust_result = itineraryAdjustOptimization;
+    }
+    return {
+      ...(itineraryAdjustOptimization
+        ? { itinerary_adjust_result: itineraryAdjustOptimization }
+        : {}),
+      actionExecution: buildItineraryAdjustActionExecutionPayload(md),
+      workbench_feasibility: {
+        violations: params.gateForClient?.violations ?? [],
+        verify_synthetic_suppressed: true as const,
+      },
+    };
+  }
+
+  /** ITINERARY_ADJUST：用 NARRATE 逐日叙述 + 走廊优化摘要替代 CGUS/决策对比长文 */
+  private buildItineraryAdjustUserAnswer(
+    state: OrchestratorState | undefined,
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'message' | 'trip_id'>,
+    optimization?: ItineraryAdjustOptimizationResult,
+  ): string {
+    const targetDate = this.resolveItineraryAdjustTargetDate(orchestrationResult, request, state);
+    const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+    const structured =
+      optimization ??
+      (md?.itinerary_adjust_result as ItineraryAdjustOptimizationResult | undefined);
+
+    if (structured?.suppress_chat_lead) {
+      const fromChat = structured.chat_answer_text_zh?.trim();
+      if (fromChat) return fromChat;
+      const bullets = structured.rationale_bullets_zh?.map((b) => b.trim()).filter(Boolean) ?? [];
+      if (bullets.length > 0) return bullets.join('\n');
+      return structured.optimization_summary_zh?.trim() ?? '';
+    }
+
+    const autoLead = buildItineraryAdjustAutoApplyLeadMessage({
+      applied:
+        structured?.applied ??
+        (md?.itinerary_adjust_auto_apply as { applied?: boolean } | undefined)?.applied === true,
+      executionMode:
+        structured?.execution_mode ??
+        (md?.itinerary_adjust_execution_mode as 'AUTO' | 'ADVICE_ONLY' | undefined) ??
+        'ADVICE_ONLY',
+      targetDateIso: targetDate,
+      dayNumber: structured?.target_day_number,
+    });
+
+    if (structured?.optimization_summary_zh?.trim()) {
+      const body = structured.optimization_summary_zh.trim();
+      return autoLead
+        ? `${autoLead}\n\n${body}\n\n时间安排与说明请直接查看下方时间轴。`
+        : `${body}\n\n时间安排与说明请直接查看下方时间轴。`;
+    }
+
+    const narr = state?.narration;
+    const parts: string[] = [];
+
+    const preformattedDays = narr?.day_by_day_text_zh?.trim();
+    if (preformattedDays) {
+      const cleaned = this.sanitizeItineraryAdjustProse(preformattedDays);
+      if (cleaned) parts.push(cleaned);
+    } else {
+      let days = narr?.day_by_day_narrative;
+      if (Array.isArray(days) && days.length > 0) {
+        if (targetDate) {
+          const scoped = days.filter((d) => String(d.date ?? '').slice(0, 10) === targetDate);
+          if (scoped.length > 0) days = scoped;
+        }
+        const dayLines = days
+          .map((d) => {
+            const header =
+              d.day != null
+                ? `第 ${d.day} 天${d.date ? `（${d.date}）` : ''}`
+                : d.date
+                  ? String(d.date)
+                  : '';
+            const body = (d.narrative || '').trim();
+            if (!header && !body) return '';
+            return header ? `${header}\n${body}` : body;
+          })
+          .filter(Boolean);
+        if (dayLines.length > 0) {
+          parts.push(dayLines.join('\n\n'));
+        }
+      }
+    }
+
+    const summary = narr?.user_friendly_summary?.trim();
+    if (summary) {
+      const cleanedSummary = this.sanitizeItineraryAdjustProse(summary);
+      if (cleanedSummary && !parts.some((p) => p.includes(cleanedSummary.slice(0, 24)))) {
+        parts.push(cleanedSummary);
+      }
+    }
+
+    if (parts.length > 0) {
+      const body = `${parts.join('\n\n')}\n\n时间安排与说明请直接查看下方时间轴。`;
+      return autoLead ? `${autoLead}\n\n${body}` : body;
+    }
+
+    const orchestratorAnswer = orchestrationResult.answerText?.trim();
+    if (orchestratorAnswer) {
+      const cleaned = this.sanitizeItineraryAdjustProse(orchestratorAnswer);
+      if (cleaned) return cleaned;
+    }
+
+    const itinerary = orchestrationResult.result?.itinerary;
+    if (itinerary?.days?.length) {
+      const scopedDays = this.filterItineraryDaysForAdjustScope(
+        itinerary.days,
+        orchestrationResult,
+        request,
+      );
+      const dayLines = scopedDays
+        .map((d, idx) => {
+          const header =
+            d.date != null && String(d.date).trim()
+              ? String(d.date).trim()
+              : d.day_index != null
+                ? `第 ${d.day_index} 天`
+                : `第 ${idx + 1} 天`;
+          const names = (d.items ?? [])
+            .map((it) => it.location_ref?.name || (it as { name?: string }).name)
+            .filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+          if (!names.length) return '';
+          return `${header}\n${names.join(' → ')}`;
+        })
+        .filter(Boolean);
+      if (dayLines.length > 0) {
+        return `${dayLines.join('\n\n')}\n\n时间安排与说明请直接查看下方时间轴。`;
+      }
+    }
+
+    if (autoLead) return autoLead;
+    return '已根据您的描述更新行程草案，请在左侧时间轴查看具体安排。';
+  }
+
+  /** ITINERARY_ADJUST：Gate 已 ALLOW 时外显 ok，避免前端将缺失 feasibility 渲染为 UNKNOWN */
+  private resolvePoiPlanningObservabilityForClient(
+    orchestrationResult: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+  ): Record<string, unknown> {
+    if (!this.isItineraryAdjustSession(orchestrationResult, request)) {
+      return this.resolvePoiPlanningObservability(orchestrationResult);
+    }
+    const raw = this.resolvePoiPlanningObservability(orchestrationResult);
+    const existing = (raw.poi_planning ?? {}) as { feasibility?: string };
+    if (existing.feasibility === 'ok' || existing.feasibility === 'tight' || existing.feasibility === 'failed') {
+      return raw;
+    }
+    const gate = orchestrationResult.result?.gate_result?.gate_result;
+    if (gate === 'ALLOW' || gate === 'ALLOW_WITH_FALLBACK') {
+      return { poi_planning: { ...existing, feasibility: 'ok' as const } };
+    }
+    return raw;
   }
 
   private isC1StrictEvidenceBundle(): boolean {
@@ -649,6 +1359,25 @@ export class RouteAndRunResponseAssemblerService {
 
     response.route.ui_hint.status = UIStatus.AWAITING_CONFIRMATION;
     response.route.ui_hint.message = '需要您的确认';
+
+    if (sanitized.length > 0) {
+      const coachDetail =
+        sanitized[0]?.question ??
+        humanizeFeasibilityMessageForUserZh(
+          String(payload.clarificationMessage ?? response.result.answer_text ?? ''),
+        );
+      response.ui_state = {
+        ...response.ui_state,
+        phase: 'INTAKE',
+        ui_status: 'awaiting_confirmation',
+        progress_percent: 100,
+        message: '请补充行程信息以继续',
+        requires_user_action: true,
+        estimated_time_remaining_ms: 0,
+        current_step_detail: coachDetail,
+      };
+      return;
+    }
 
     response.ui_state = {
       ...response.ui_state,
@@ -1227,9 +1956,85 @@ export class RouteAndRunResponseAssemblerService {
       tripPlanForDebate,
       rawState,
     );
-    const gateForClientPayload = gateForOrchestrationPayload
-      ? sanitizeGateResultForClientDisplay(gateForOrchestrationPayload)
+    /** 与前端 `ui_surface === consultation` 对齐：响应体不再携带可渲染的日程块（timeline / itinerary.days / poi_cards）。 */
+    const consultationUi = this.isConsultationUiSurface(orchestrationResult, routingTaskType);
+    const rawOrchestratorItineraryDays =
+      consultationUi || !orchestrationResult.result?.itinerary?.days
+        ? []
+        : orchestrationResult.result.itinerary.days;
+    const workbenchDisplay = await this.resolveWorkbenchDisplayContext(
+      request,
+      orchestrationResult,
+      rawOrchestratorItineraryDays,
+      stateWithVerdictBase?.metadata as Record<string, unknown> | undefined,
+    );
+    const displayDaysBeforeAdjustScope = workbenchDisplay.displayDays;
+    let itineraryDaysForPayload = this.isItineraryAdjustSession(orchestrationResult, request)
+      ? this.filterItineraryDaysForAdjustScope(
+          displayDaysBeforeAdjustScope,
+          orchestrationResult,
+          request,
+        )
+      : displayDaysBeforeAdjustScope;
+    if (this.isItineraryAdjustSession(orchestrationResult, request)) {
+      const adjustTargetDate = this.resolveItineraryAdjustTargetDate(
+        orchestrationResult,
+        request,
+        stateWithVerdictBase ?? undefined,
+      );
+      itineraryDaysForPayload = this.patchAdjustTargetDayFromAuthoritativeItinerary(
+        itineraryDaysForPayload,
+        stateWithVerdictBase?.itinerary ?? orchestrationResult.result?.itinerary,
+        adjustTargetDate,
+      );
+    }
+
+    const adjustDraftPoiNames = this.isItineraryAdjustSession(orchestrationResult, request)
+      ? this.extractPoiNamesFromTimelineDays(itineraryDaysForPayload)
       : undefined;
+
+    if (
+      workbenchDisplay.alignment.drift_detected &&
+      workbenchDisplay.displayItinerary?.days?.length &&
+      stateWithVerdictBase
+    ) {
+      stateWithVerdictBase.itinerary = workbenchDisplay.displayItinerary;
+      (stateWithVerdictBase.metadata as Record<string, unknown> | undefined) = {
+        ...(stateWithVerdictBase.metadata as Record<string, unknown> | undefined),
+        workbench_itinerary_synced_from_trip: true,
+      };
+    }
+
+    let gateForWorkbench = gateForOrchestrationPayload;
+    gateForWorkbench =
+      (await this.resyncGateFeasibilityForWorkbench({
+        gate: gateForWorkbench,
+        displayItinerary: workbenchDisplay.displayItinerary,
+        researchData: stateWithVerdictBase?.research_data as Record<string, unknown> | undefined,
+        alignment: workbenchDisplay.alignment,
+        crudApplied: this.isItineraryItemCrudApplied(orchestrationResult),
+      })) ?? gateForWorkbench;
+
+    if (
+      workbenchDisplay.alignment.drift_detected ||
+      this.isItineraryItemCrudApplied(orchestrationResult)
+    ) {
+      if (stateWithVerdictBase) {
+        stateWithVerdictBase.metadata = {
+          ...(stateWithVerdictBase.metadata as Record<string, unknown> | undefined),
+          workbench_feasibility_resynced: true,
+        };
+      }
+    }
+
+    const gateForClientPayload = this.sanitizeGateForClientPayload(
+      gateForWorkbench,
+      orchestrationResult,
+      request,
+      workbenchDisplay.displayItinerary,
+      adjustDraftPoiNames,
+      stateWithVerdictBase?.research_data as Record<string, unknown> | undefined,
+    );
     const stateWithVerdict =
       stateWithVerdictBase && gateForOrchestrationPayload
         ? {
@@ -1238,22 +2043,48 @@ export class RouteAndRunResponseAssemblerService {
           }
         : stateWithVerdictBase;
 
-    const k3DecisionLog = sanitizeDecisionLogForClientDisplay(
-      this.resolveCanonicalDecisionLogForK3(orchestrationResult),
-    );
+    const k3DecisionLogRaw = this.resolveCanonicalDecisionLogForK3(orchestrationResult);
+    const k3DecisionLogScoped =
+      this.isItineraryAdjustSession(orchestrationResult, request) && adjustDraftPoiNames?.length
+        ? filterDecisionLogVerifyToDraftPois(k3DecisionLogRaw, adjustDraftPoiNames, {
+            filterMetadataIssues: true,
+          })
+        : k3DecisionLogRaw;
+    const k3DecisionLog = sanitizeDecisionLogForClientDisplay(k3DecisionLogScoped);
 
-    /** 与前端 `ui_surface === consultation` 对齐：响应体不再携带可渲染的日程块（timeline / itinerary.days / poi_cards）。 */
-    const consultationUi = this.isConsultationUiSurface(orchestrationResult, routingTaskType);
     const uiSurface = this.resolveUiSurfaceForPayload(orchestrationResult, consultationUi);
+    const spreadUiSurfacePayload = orchestrationResult.success;
     const consultationDashboard = this.resolveConsultationDashboardForPayload(
       orchestrationResult,
       consultationUi,
       { routingTaskType, trip_id: request.trip_id },
     );
-    const itineraryDaysForPayload =
-      consultationUi || !orchestrationResult.result?.itinerary?.days
-        ? []
-        : orchestrationResult.result.itinerary.days;
+    if (
+      this.isItineraryAdjustSession(orchestrationResult, request) &&
+      stateWithVerdict
+    ) {
+      applyPacingRelaxToAdjustTargetState(stateWithVerdict as OrchestratorState);
+      const adjustTargetDate = this.resolveItineraryAdjustTargetDate(
+        orchestrationResult,
+        request,
+        stateWithVerdict as OrchestratorState,
+      );
+      itineraryDaysForPayload = this.patchAdjustTargetDayFromAuthoritativeItinerary(
+        itineraryDaysForPayload,
+        (stateWithVerdict as OrchestratorState).itinerary ??
+          orchestrationResult.result?.itinerary,
+        adjustTargetDate,
+      );
+    }
+
+    const itineraryAdjustPayloadBlocks = this.buildItineraryAdjustPayloadBlocks({
+      orchestrationResult,
+      request,
+      timelineDays: itineraryDaysForPayload,
+      state: stateWithVerdict as OrchestratorState | undefined,
+      gateForClient: gateForClientPayload,
+    });
+    const itineraryAdjustOptimization = itineraryAdjustPayloadBlocks.itinerary_adjust_result;
     const itineraryShellForPayload =
       orchestrationResult.result?.itinerary != null
         ? { ...orchestrationResult.result.itinerary, days: itineraryDaysForPayload }
@@ -1261,10 +2092,14 @@ export class RouteAndRunResponseAssemblerService {
           ? ({ request_id: request.request_id, days: [] } as Itinerary)
           : undefined;
 
-    const suppressIronShieldUi = this.shouldSuppressIronShieldUiForCrud(
+    const suppressIronShieldUi = this.shouldSuppressIronShieldUi(
       orchestrationResult,
       stateWithVerdict as OrchestratorState | undefined,
+      request,
     );
+    const suppressDecisionCockpit = this.shouldSuppressDecisionCockpitUi(orchestrationResult, request);
+    const suppressAdjustTechnicalUi =
+      this.isItineraryAdjustSession(orchestrationResult, request);
 
     const evidenceBundle = suppressIronShieldUi
       ? undefined
@@ -1283,6 +2118,32 @@ export class RouteAndRunResponseAssemblerService {
     const crudFailed =
       this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult) &&
       !this.isItineraryItemCrudApplied(orchestrationResult);
+
+    const explainUnifiedBundle = this.composeExplainUnifiedForClientPayload({
+      requestId: request.request_id,
+      orchestrationDecisionLog: k3DecisionLog,
+      decisionState: orchestrationResult.result?.decisionState,
+      orchestratorState: stateWithVerdict as OrchestratorState | undefined,
+    });
+    const clientOrchestratorStateRaw =
+      explainUnifiedBundle.orchestratorStateForClient ??
+      (stateWithVerdict as OrchestratorState | undefined);
+    const clientOrchestratorState = stripGateViolationsFromOrchestratorStateForClient(
+      clientOrchestratorStateRaw,
+    );
+    const narrativeDriftObs = this.resolveNarrativeDriftObservability(
+      request,
+      orchestrationResult,
+      explainUnifiedBundle.unified,
+    );
+    const decisionCockpit = suppressDecisionCockpit
+      ? undefined
+      : explainUnifiedBundle.unified
+        ? projectDecisionCockpitFromEnvelope({
+            envelope: explainUnifiedBundle.unified,
+            narrativeDrift: narrativeDriftObs.narrative_drift,
+          })
+        : undefined;
 
     const resultStatus = isTimeout
       ? 'TIMEOUT'
@@ -1338,32 +2199,47 @@ export class RouteAndRunResponseAssemblerService {
             ? orchestrationResult.result?.clarificationMessage || orchestrationResult.answerText
             : orchestrationResult.answerText,
         payload: {
-          ...(orchestrationResult.success
+          ...(spreadUiSurfacePayload
             ? {
                 ui_surface: uiSurface,
                 ...(this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)
                   ? { itinerary_item_crud: true as const }
                   : {}),
+                ...(this.isItineraryAdjustSession(orchestrationResult, request)
+                  ? { itinerary_adjust_intake: true as const }
+                  : {}),
                 ...(suppressIronShieldUi ? { iron_shield_ui_suppressed: true as const } : {}),
+                ...(suppressDecisionCockpit ? { decision_cockpit_ui_suppressed: true as const } : {}),
                 ...(uiSurface === 'consultation'
                   ? { consultation_itinerary_payload_suppressed: true as const }
                   : {}),
+                ...(orchestrationResult.success &&
+                (workbenchDisplay.alignment.drift_detected
+                  ? { workbench_display: workbenchDisplay.alignment }
+                  : request.trip_id?.trim()
+                    ? { workbench_display: workbenchDisplay.alignment }
+                    : {})),
               }
             : {}),
+          ...itineraryAdjustPayloadBlocks,
           timeline: itineraryDaysForPayload,
           dropped_items: [],
-          candidates: this.buildDecisionCandidates(orchestrationResult.result?.decisionState, {
-            requestId: request.request_id,
-            decisionLog: k3DecisionLog ?? [],
-            state: stateWithVerdict as any,
-            emergencyConstraints: request.emergency_constraints,
-          }),
-          alternatives: this.buildDecisionCandidates(orchestrationResult.result?.decisionState, {
-            requestId: request.request_id,
-            decisionLog: k3DecisionLog ?? [],
-            state: stateWithVerdict as any,
-            emergencyConstraints: request.emergency_constraints,
-          }),
+          candidates: suppressAdjustTechnicalUi
+            ? []
+            : this.buildDecisionCandidates(orchestrationResult.result?.decisionState, {
+                requestId: request.request_id,
+                decisionLog: k3DecisionLog ?? [],
+                state: stateWithVerdict as any,
+                emergencyConstraints: request.emergency_constraints,
+              }),
+          alternatives: suppressAdjustTechnicalUi
+            ? []
+            : this.buildDecisionCandidates(orchestrationResult.result?.decisionState, {
+                requestId: request.request_id,
+                decisionLog: k3DecisionLog ?? [],
+                state: stateWithVerdict as any,
+                emergencyConstraints: request.emergency_constraints,
+              }),
           evidence: stateWithVerdict?.decision_log || [],
           robustness:
             consultationUi
@@ -1371,9 +2247,9 @@ export class RouteAndRunResponseAssemblerService {
               : orchestrationResult.result?.itinerary?.metadata?.robustness_score || null,
           ...(evidenceBundle ? { evidence_bundle: evidenceBundle } : {}),
           orchestrationResult:
-            orchestrationResult.result && stateWithVerdict
+            orchestrationResult.result && clientOrchestratorState
               ? {
-                  state: stateWithVerdict,
+                  state: clientOrchestratorState,
                   itinerary: itineraryShellForPayload ?? orchestrationResult.result.itinerary,
                   gate_result:
                     gateForClientPayload ?? gateForOrchestrationPayload ?? orchestrationResult.result.gate_result,
@@ -1391,14 +2267,22 @@ export class RouteAndRunResponseAssemblerService {
           poiTrace: orchestrationResult.result?.state?.metadata?.poi_trace,
           gap_behavior_observation: (orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined)
             ?.gap_behavior_observation,
-          safety_surface: buildSafetySurfacePayload({
-            research_data: stateWithVerdict?.research_data as Record<string, unknown> | undefined,
-            itinerary: (orchestrationResult.result?.itinerary as Itinerary | undefined) ?? undefined,
-            stepsExecuted: orchestrationResult.stepsExecuted,
-          }),
+          ...(suppressAdjustTechnicalUi
+            ? {}
+            : {
+                safety_surface: buildSafetySurfacePayload({
+                  research_data: stateWithVerdict?.research_data as Record<string, unknown> | undefined,
+                  itinerary:
+                    workbenchDisplay.displayItinerary ??
+                    (orchestrationResult.result?.itinerary as Itinerary | undefined) ??
+                    undefined,
+                  stepsExecuted: orchestrationResult.stepsExecuted,
+                  gate_result: gateForClientPayload ?? gateForOrchestrationPayload,
+                }),
+              }),
           ...(suppressIronShieldUi
             ? {}
-            : this.buildIronShieldPayloadBlocks(stateWithVerdict as OrchestratorState | undefined)),
+            : this.buildIronShieldPayloadBlocks(clientOrchestratorState)),
           ...(isTimeout ? { errorType: ErrorType.TIMEOUT_ERROR } : {}),
           ...(needsUserConfirmation
             ? {
@@ -1414,31 +2298,48 @@ export class RouteAndRunResponseAssemblerService {
                 errorType: orchestrationResult.result?.errorType,
               }
             : {}),
+          ...this.resolveHotelAccommodationPayloadBlocks(orchestrationResult),
           ...(consultationDashboard ? { consultation_dashboard: consultationDashboard } : {}),
         } as any,
       },
       explain: {
         decision_log: k3DecisionLog,
-        simplified_explanation: this.buildSimplifiedExplanation(
-          k3DecisionLog,
-          gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result,
-          orchestrationResult.result?.itinerary,
-          request.options,
-        ),
-        ai_capability_display: this.generateAICapabilityDisplay(
-          orchestrationResult,
-          gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result,
-          stateWithVerdict,
-        ),
-        ...(gateForOrchestrationPayload?.guardian_results
+        ...(suppressAdjustTechnicalUi
+          ? {}
+          : {
+              simplified_explanation: this.buildSimplifiedExplanation(
+                k3DecisionLog,
+                gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result,
+                orchestrationResult.result?.itinerary,
+                request.options,
+              ),
+              ai_capability_display: this.generateAICapabilityDisplay(
+                orchestrationResult,
+                gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result,
+                clientOrchestratorState,
+              ),
+            }),
+        ...(gateForOrchestrationPayload?.guardian_results && !suppressAdjustTechnicalUi
           ? { guardian_personas: gateForOrchestrationPayload.guardian_results }
           : {}),
-        optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
-        kernel_explainability: this.buildKernelExplainability(orchestrationResult.result?.decisionState),
-        world_model_guards: this.buildWorldModelGuardsExplain(
+        optimization: this.buildOptimizationExplain(
           orchestrationResult.result?.decisionState,
-          stateWithVerdict,
+          orchestrationResult,
+          request,
         ),
+        ...(suppressAdjustTechnicalUi
+          ? {}
+          : {
+              kernel_explainability: this.buildKernelExplainability(
+                orchestrationResult.result?.decisionState,
+              ),
+              world_model_guards: this.buildWorldModelGuardsExplain(
+                orchestrationResult.result?.decisionState,
+                clientOrchestratorState,
+              ),
+            }),
+        unified: suppressAdjustTechnicalUi ? undefined : explainUnifiedBundle.unified,
+        decision_cockpit: suppressDecisionCockpit ? undefined : decisionCockpit,
       } as any,
       observability: {
         latency_ms: latency,
@@ -1458,11 +2359,12 @@ export class RouteAndRunResponseAssemblerService {
         trace: traceInfo,
         ...this.computeP4ObservabilityMetrics(orchestrationResult),
         ...this.resolveHarnessObservability(request, orchestrationResult),
-        ...this.resolvePoiPlanningObservability(orchestrationResult),
+        ...this.resolvePoiPlanningObservabilityForClient(orchestrationResult, request),
         ...this.resolveGapBehaviorObservationObservability(orchestrationResult),
         ...this.resolveReplanLineageObservability(request, orchestrationResult),
         ...this.resolveOrchestrationFailureObservability(orchestrationResult),
         ...this.resolveNarrativeIntegrityObservability(request, orchestrationResult),
+        ...narrativeDriftObs,
         ...(durableRun?.trip_run_id ? { durable_trip_run_id: durableRun.trip_run_id } : {}),
         ...(durableRun?.checkpoint_loaded ? { durable_checkpoint_loaded: true } : {}),
         dso_version: this.resolveClientDsoVersionForResponse(orchestrationResult),
@@ -1538,8 +2440,15 @@ export class RouteAndRunResponseAssemblerService {
     }
 
     // POI：按 itinerary 查 Place 表写入 `poi_cards` + timeline 展示名；`poi_cards_by_day` 不下发以免聊天气泡内嵌按日卡片条。
-    const itineraryForPoi =
-      orchestrationResult.result?.itinerary ?? (orchestrationResult.result as any)?.state?.itinerary;
+    const rawItineraryForPoi =
+      workbenchDisplay.displayItinerary ??
+      orchestrationResult.result?.itinerary ??
+      (orchestrationResult.result as any)?.state?.itinerary;
+    const itineraryForPoi = this.scopeItineraryForPoiHydration(
+      rawItineraryForPoi,
+      orchestrationResult,
+      request,
+    );
     if (
       this.poiHydrator &&
       orchestrationResult.success &&
@@ -1552,46 +2461,65 @@ export class RouteAndRunResponseAssemblerService {
       try {
         const poiPayload = await this.poiHydrator.hydrateFromItinerary(itineraryForPoi);
         if (poiPayload.poi_cards.length > 0) {
-          Object.assign(response.result.payload as any, poiPayload);
+          const adjustScopedCards = this.isItineraryAdjustSession(orchestrationResult, request)
+            ? this.filterPoiCardsForAdjustScope(poiPayload.poi_cards, orchestrationResult, request)
+            : poiPayload.poi_cards;
+          Object.assign(response.result.payload as any, {
+            ...poiPayload,
+            poi_cards: adjustScopedCards,
+          });
           delete (response.result.payload as any).poi_cards_by_day;
           applyRouteRunPoiDisplayNamesToTimeline(
             (response.result.payload as any).timeline,
-            poiPayload.poi_cards,
+            adjustScopedCards,
           );
           /** 咨询/泛问类任务保留 LLM 正文（概览与风险提示），不因 POI 卡片压制长文或覆盖 answer_text */
           const proseFriendlyTaskTypes: readonly TaskType[] = ['DATA_LOOKUP', 'RAG_QA', 'GENERIC_QA'];
           const keepAnswerProse =
             routingTaskType !== undefined && proseFriendlyTaskTypes.includes(routingTaskType);
+          const adjustTargetDate = this.isItineraryAdjustSession(orchestrationResult, request)
+            ? this.resolveItineraryAdjustTargetDate(orchestrationResult, request)
+            : undefined;
           (response.result.payload as any).poi_cards_meta = {
             suppress_answer_prose: !keepAnswerProse,
+            ...(adjustTargetDate ? { itinerary_adjust_poi_scope_date: adjustTargetDate } : {}),
           };
           if (!keepAnswerProse) {
-            const feasibilityLead = this.buildFeasibilityLeadBeforePoiCards({
-              request,
-              decisionState: orchestrationResult.result?.decisionState as DecisionState | undefined,
-              gateResult: orchestrationResult.result?.gate_result,
-            });
-            const tripPlanningContrast = this.buildTripPlanningSessionDecisionContrast({
-              request,
-              routingTaskType,
-              state: stateWithVerdict as OrchestratorState | undefined,
-              decisionState: orchestrationResult.result?.decisionState as DecisionState | undefined,
-              orchestrationResult,
-            });
-            const cardHint =
-              '行程已生成并与景点库对齐；时间安排与说明请直接查看下方时间轴（此处不再重复罗列）。';
-            const recommendationBlock = this.buildRecommendationReasoningProse(
-              stateWithVerdict as OrchestratorState | undefined,
-              itineraryForPoi,
-              orchestrationResult,
-            );
-            const proseParts = [
-              recommendationBlock,
-              feasibilityLead,
-              tripPlanningContrast,
-              cardHint,
-            ].filter((p): p is string => typeof p === 'string' && p.length > 0);
-            response.result.answer_text = proseParts.join('\n\n');
+            if (this.isItineraryAdjustSession(orchestrationResult, request)) {
+              response.result.answer_text = this.buildItineraryAdjustUserAnswer(
+                stateWithVerdict as OrchestratorState | undefined,
+                orchestrationResult,
+                request,
+                itineraryAdjustOptimization,
+              );
+            } else {
+              const feasibilityLead = this.buildFeasibilityLeadBeforePoiCards({
+                request,
+                decisionState: orchestrationResult.result?.decisionState as DecisionState | undefined,
+                gateResult: orchestrationResult.result?.gate_result,
+              });
+              const tripPlanningContrast = this.buildTripPlanningSessionDecisionContrast({
+                request,
+                routingTaskType,
+                state: stateWithVerdict as OrchestratorState | undefined,
+                decisionState: orchestrationResult.result?.decisionState as DecisionState | undefined,
+                orchestrationResult,
+              });
+              const cardHint =
+                '行程已生成并与景点库对齐；时间安排与说明请直接查看下方时间轴（此处不再重复罗列）。';
+              const recommendationBlock = this.buildRecommendationReasoningProse(
+                stateWithVerdict as OrchestratorState | undefined,
+                itineraryForPoi,
+                orchestrationResult,
+              );
+              const proseParts = [
+                recommendationBlock,
+                feasibilityLead,
+                tripPlanningContrast,
+                cardHint,
+              ].filter((p): p is string => typeof p === 'string' && p.length > 0);
+              response.result.answer_text = proseParts.join('\n\n');
+            }
           }
         }
       } catch (e: any) {
@@ -1609,7 +2537,7 @@ export class RouteAndRunResponseAssemblerService {
     ) {
       const proseFriendlyTaskTypes: readonly TaskType[] = ['DATA_LOOKUP', 'RAG_QA', 'GENERIC_QA'];
       const keepAnswerProse = routingTaskType !== undefined && proseFriendlyTaskTypes.includes(routingTaskType);
-      if (!keepAnswerProse) {
+      if (!keepAnswerProse && !this.isItineraryAdjustSession(orchestrationResult, request)) {
         const recBlock = this.buildRecommendationReasoningProse(
           stateWithVerdict as OrchestratorState | undefined,
           itineraryForPoi,
@@ -1655,6 +2583,22 @@ export class RouteAndRunResponseAssemblerService {
     this.attachExplainFailureReasonCodes(response);
     applyConsultationItineraryPayloadHygiene(response);
     await this.maybeAttachPersistedTripPoiCardsForConsultation(request, response);
+
+    if (
+      suppressAdjustTechnicalUi &&
+      orchestrationResult.success &&
+      resultStatus === 'OK' &&
+      !consultationUi &&
+      !isTimeout &&
+      !needsUserConfirmation
+    ) {
+      response.result.answer_text = this.buildItineraryAdjustUserAnswer(
+        stateWithVerdict as OrchestratorState | undefined,
+        orchestrationResult,
+        request,
+        itineraryAdjustOptimization,
+      );
+    }
 
     assertDoneResponseCompleteness(response, {
       stepsExecuted: orchestrationResult.stepsExecuted,
@@ -1781,6 +2725,29 @@ export class RouteAndRunResponseAssemblerService {
         liveToolInvocations,
         heuristicStateMachineRun: false,
       });
+      const explainUnifiedBundle = this.composeExplainUnifiedForClientPayload({
+        requestId: request.request_id,
+        orchestrationDecisionLog: orchestrationResult.decisionLog || [],
+        decisionState: orchestrationResult.result?.decisionState,
+        orchestratorState: orchestrationResult.result?.state as OrchestratorState | undefined,
+      });
+      const clientOrchestratorState =
+        explainUnifiedBundle.orchestratorStateForClient ??
+        (orchestrationResult.result?.state as OrchestratorState | undefined);
+      const narrativeDriftObs = this.resolveNarrativeDriftObservability(
+        request,
+        orchestrationResult,
+        explainUnifiedBundle.unified,
+      );
+      const suppressDecisionCockpitSys1 = this.shouldSuppressDecisionCockpitUi(orchestrationResult);
+      const decisionCockpit = suppressDecisionCockpitSys1
+        ? undefined
+        : explainUnifiedBundle.unified
+          ? projectDecisionCockpitFromEnvelope({
+              envelope: explainUnifiedBundle.unified,
+              narrativeDrift: narrativeDriftObs.narrative_drift,
+            })
+          : undefined;
       const repValidation = validateRuntimeExecutionProfile(runtimeExecutionProfile);
       const resp: RouteAndRunResponseDto = {
         request_id: request.request_id,
@@ -1811,7 +2778,7 @@ export class RouteAndRunResponseAssemblerService {
             candidates: system1Result.result?.candidates || [],
             evidence: system1Result.result?.evidence || [],
             robustness: system1Result.result?.robustness || null,
-            ...this.buildIronShieldPayloadBlocks(orchestrationResult.result?.state as OrchestratorState | undefined),
+            ...this.buildIronShieldPayloadBlocks(clientOrchestratorState),
           },
         },
         explain: {
@@ -1825,13 +2792,19 @@ export class RouteAndRunResponseAssemblerService {
           ai_capability_display: this.generateAICapabilityDisplay(
             orchestrationResult,
             orchestrationResult.result?.gate_result,
-            orchestrationResult.result?.state,
+            clientOrchestratorState,
           ),
-          optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
+          optimization: this.buildOptimizationExplain(
+          orchestrationResult.result?.decisionState,
+          orchestrationResult,
+          request,
+        ),
           world_model_guards: this.buildWorldModelGuardsExplain(
             orchestrationResult.result?.decisionState,
-            orchestrationResult.result?.state,
+            clientOrchestratorState,
           ),
+          unified: explainUnifiedBundle.unified,
+          decision_cockpit: suppressDecisionCockpitSys1 ? undefined : decisionCockpit,
         } as any,
         observability: {
           latency_ms: latency,
@@ -1860,11 +2833,12 @@ export class RouteAndRunResponseAssemblerService {
           trace: traceInfo,
           ...this.computeP4ObservabilityMetrics(orchestrationResult),
           ...this.resolveHarnessObservability(request, orchestrationResult),
-          ...this.resolvePoiPlanningObservability(orchestrationResult),
+          ...this.resolvePoiPlanningObservabilityForClient(orchestrationResult, request),
           ...this.resolveGapBehaviorObservationObservability(orchestrationResult),
           ...this.resolveReplanLineageObservability(request, orchestrationResult),
           ...this.resolveOrchestrationFailureObservability(orchestrationResult),
           ...this.resolveNarrativeIntegrityObservability(request, orchestrationResult),
+          ...narrativeDriftObs,
         } as any,
       };
       this.applyRouteProgressSurface(resp, orchestrationResult);
@@ -1903,10 +2877,16 @@ export class RouteAndRunResponseAssemblerService {
       this.resolveCanonicalDecisionLogForK3(orchestrationResult),
     );
 
-    const suppressIronShieldUiDyn = this.shouldSuppressIronShieldUiForCrud(
+    const orchStateDynEarly = (orchestrationResult.result as any)?.state as OrchestratorState | undefined;
+
+    const suppressIronShieldUiDyn = this.shouldSuppressIronShieldUi(
       orchestrationResult,
-      (orchestrationResult.result as any)?.state as OrchestratorState | undefined,
+      orchStateDynEarly,
+      request,
     );
+    const suppressDecisionCockpitDyn = this.shouldSuppressDecisionCockpitUi(orchestrationResult, request);
+    const suppressAdjustTechnicalUiDyn =
+      this.isItineraryAdjustSession(orchestrationResult, request);
 
     const consultationUi = this.isConsultationUiSurface(orchestrationResult, routingTaskType);
     const uiSurface = this.resolveUiSurfaceForPayload(orchestrationResult, consultationUi);
@@ -1957,7 +2937,7 @@ export class RouteAndRunResponseAssemblerService {
     });
     const dynValidation = validateRuntimeExecutionProfile(runtimeExecutionProfile);
 
-    const orchStateDyn = (orchestrationResult.result as any)?.state as OrchestratorState | undefined;
+    const orchStateDyn = orchStateDynEarly;
     const gateSurfacedDyn = attachGuardianPersonaSurface(
       (orchestrationResult.result as any)?.gate_result as GateResult | undefined,
     );
@@ -1969,9 +2949,14 @@ export class RouteAndRunResponseAssemblerService {
       tripPlanDyn,
       orchStateDyn,
     );
-    const gateForClientPayloadDyn = gateForOrchestrationPayloadDyn
-      ? sanitizeGateResultForClientDisplay(gateForOrchestrationPayloadDyn)
-      : undefined;
+    const gateForClientPayloadDyn = this.sanitizeGateForClientPayload(
+      gateForOrchestrationPayloadDyn,
+      orchestrationResult,
+      request,
+      undefined,
+      undefined,
+      orchStateDyn?.research_data as Record<string, unknown> | undefined,
+    );
     const stateWithSurfacedGateDyn =
       orchStateDyn && gateForOrchestrationPayloadDyn
         ? {
@@ -1979,6 +2964,38 @@ export class RouteAndRunResponseAssemblerService {
             gate_result: gateForClientPayloadDyn ?? gateForOrchestrationPayloadDyn,
           }
         : orchStateDyn;
+
+    const explainUnifiedBundleDyn = this.composeExplainUnifiedForClientPayload({
+      requestId: request.request_id,
+      orchestrationDecisionLog: k3DecisionLogClaude,
+      decisionState: orchestrationResult.result?.decisionState,
+      orchestratorState: stateWithSurfacedGateDyn,
+    });
+    const clientOrchestratorStateDyn = stripGateViolationsFromOrchestratorStateForClient(
+      explainUnifiedBundleDyn.orchestratorStateForClient ?? stateWithSurfacedGateDyn,
+    );
+    const spreadUiSurfacePayloadDyn = orchestrationResult.success;
+    const narrativeDriftObsDyn = this.resolveNarrativeDriftObservability(
+      request,
+      orchestrationResult,
+      explainUnifiedBundleDyn.unified,
+    );
+    const decisionCockpitDyn = suppressDecisionCockpitDyn
+      ? undefined
+      : explainUnifiedBundleDyn.unified
+        ? projectDecisionCockpitFromEnvelope({
+            envelope: explainUnifiedBundleDyn.unified,
+            narrativeDrift: narrativeDriftObsDyn.narrative_drift,
+          })
+        : undefined;
+
+    const itineraryAdjustPayloadBlocksDyn = this.buildItineraryAdjustPayloadBlocks({
+      orchestrationResult,
+      request,
+      timelineDays: itineraryDaysDyn,
+      state: stateWithSurfacedGateDyn,
+      gateForClient: gateForClientPayloadDyn,
+    });
 
     const response: RouteAndRunResponseDto = {
       request_id: request.request_id,
@@ -2022,18 +3039,23 @@ export class RouteAndRunResponseAssemblerService {
           ...((orchestrationResult.result as any)?.agentic_tool_loop
             ? { agentic_tool_loop_trace: (orchestrationResult.result as any).agentic_tool_loop }
             : {}),
-          ...(orchestrationResult.success
+          ...(spreadUiSurfacePayloadDyn
             ? {
                 ui_surface: uiSurface,
                 ...(this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)
                   ? { itinerary_item_crud: true as const }
                   : {}),
+                ...(this.isItineraryAdjustSession(orchestrationResult, request)
+                  ? { itinerary_adjust_intake: true as const }
+                  : {}),
                 ...(suppressIronShieldUiDyn ? { iron_shield_ui_suppressed: true as const } : {}),
+                ...(suppressDecisionCockpitDyn ? { decision_cockpit_ui_suppressed: true as const } : {}),
                 ...(uiSurface === 'consultation'
                   ? { consultation_itinerary_payload_suppressed: true as const }
                   : {}),
               }
             : {}),
+          ...itineraryAdjustPayloadBlocksDyn,
           ...((orchestrationResult.result as any)?.live_sensor_audit?.length
             ? { live_sensor_audit: (orchestrationResult.result as any).live_sensor_audit }
             : {}),
@@ -2153,32 +3175,21 @@ export class RouteAndRunResponseAssemblerService {
             ? { suggested_operations: (orchestrationResult.result as any).suggested_operations }
             : {}),
           ...(consultationDashboard ? { consultation_dashboard: consultationDashboard } : {}),
-          ...((orchestrationResult.result as any)?.accommodations?.length
-            ? {
-                accommodations: (orchestrationResult.result as any).accommodations,
-                airbnbListings: (orchestrationResult.result as any).airbnbListings,
-                routing: (orchestrationResult.result as any).routing,
-                ...((orchestrationResult.result as any)?.accommodation_night_groups?.length
-                  ? {
-                      accommodation_night_groups: (orchestrationResult.result as any)
-                        .accommodation_night_groups,
-                    }
-                  : {}),
-                ...((orchestrationResult.result as any)?.hotel_search_meta
-                  ? { hotel_search_meta: (orchestrationResult.result as any).hotel_search_meta }
-                  : {}),
-              }
-            : {}),
+          ...this.resolveHotelAccommodationPayloadBlocks(orchestrationResult),
           timeline: itineraryDaysDyn,
           dropped_items: [],
-          candidates: this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
-          alternatives: this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
+          candidates: suppressAdjustTechnicalUiDyn
+            ? []
+            : this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
+          alternatives: suppressAdjustTechnicalUiDyn
+            ? []
+            : this.buildDecisionCandidates(orchestrationResult.result?.decisionState),
           evidence: [],
           robustness: null,
           ...(orchestrationResult.result && (orchestrationResult.result as any).state
             ? {
                 orchestrationResult: {
-                  state: stateWithSurfacedGateDyn,
+                  state: clientOrchestratorStateDyn,
                   itinerary:
                     itineraryShellDyn ?? (orchestrationResult.result as any).itinerary,
                   gate_result:
@@ -2205,41 +3216,62 @@ export class RouteAndRunResponseAssemblerService {
                 errorType: orchestrationResult.result?.errorType,
               }
             : {}),
-          safety_surface: buildSafetySurfacePayload({
-            research_data: researchDataForSafetySurface,
-            itinerary:
-              itineraryShellDyn ?? (orchestrationResult.result?.itinerary as Itinerary | undefined) ?? undefined,
-            stepsExecuted: orchestrationResult.stepsExecuted,
-          }),
+          ...(suppressAdjustTechnicalUiDyn
+            ? {}
+            : {
+                safety_surface: buildSafetySurfacePayload({
+                  research_data: researchDataForSafetySurface,
+                  itinerary:
+                    itineraryShellDyn ??
+                    (orchestrationResult.result?.itinerary as Itinerary | undefined) ??
+                    undefined,
+                  stepsExecuted: orchestrationResult.stepsExecuted,
+                  gate_result: gateForClientPayloadDyn ?? gateForOrchestrationPayloadDyn,
+                }),
+              }),
           ...(suppressIronShieldUiDyn
             ? {}
-            : this.buildIronShieldPayloadBlocks(
-                (orchestrationResult.result as any)?.state as OrchestratorState | undefined,
-              )),
+            : this.buildIronShieldPayloadBlocks(clientOrchestratorStateDyn)),
         } as any,
       },
       explain: {
         decision_log: k3DecisionLogClaude,
-        simplified_explanation: this.buildSimplifiedExplanation(
-          k3DecisionLogClaude,
-          gateForOrchestrationPayloadDyn ?? orchestrationResult.result?.gate_result,
-          orchestrationResult.result?.itinerary,
-          request.options,
-        ),
-        ai_capability_display: this.generateAICapabilityDisplay(
-          orchestrationResult,
-          gateForOrchestrationPayloadDyn ?? orchestrationResult.result?.gate_result,
-          orchestrationResult.result?.state,
-        ),
-        ...(gateForOrchestrationPayloadDyn?.guardian_results
+        ...(suppressAdjustTechnicalUiDyn
+          ? {}
+          : {
+              simplified_explanation: this.buildSimplifiedExplanation(
+                k3DecisionLogClaude,
+                gateForOrchestrationPayloadDyn ?? orchestrationResult.result?.gate_result,
+                orchestrationResult.result?.itinerary,
+                request.options,
+              ),
+              ai_capability_display: this.generateAICapabilityDisplay(
+                orchestrationResult,
+                gateForOrchestrationPayloadDyn ?? orchestrationResult.result?.gate_result,
+                clientOrchestratorStateDyn,
+              ),
+            }),
+        ...(gateForOrchestrationPayloadDyn?.guardian_results && !suppressAdjustTechnicalUiDyn
           ? { guardian_personas: gateForOrchestrationPayloadDyn.guardian_results }
           : {}),
-        optimization: this.buildOptimizationExplain(orchestrationResult.result?.decisionState),
-        kernel_explainability: this.buildKernelExplainability(orchestrationResult.result?.decisionState),
-        world_model_guards: this.buildWorldModelGuardsExplain(
+        optimization: this.buildOptimizationExplain(
           orchestrationResult.result?.decisionState,
-          orchestrationResult.result?.state,
+          orchestrationResult,
+          request,
         ),
+        ...(suppressAdjustTechnicalUiDyn
+          ? {}
+          : {
+              kernel_explainability: this.buildKernelExplainability(
+                orchestrationResult.result?.decisionState,
+              ),
+              world_model_guards: this.buildWorldModelGuardsExplain(
+                orchestrationResult.result?.decisionState,
+                clientOrchestratorStateDyn,
+              ),
+            }),
+        unified: suppressAdjustTechnicalUiDyn ? undefined : explainUnifiedBundleDyn.unified,
+        decision_cockpit: suppressDecisionCockpitDyn ? undefined : decisionCockpitDyn,
       } as any,
       observability: {
         latency_ms: latency,
@@ -2294,11 +3326,12 @@ export class RouteAndRunResponseAssemblerService {
         trace: traceInfo,
         ...this.computeP4ObservabilityMetrics(orchestrationResult),
         ...this.resolveHarnessObservability(request, orchestrationResult),
-        ...this.resolvePoiPlanningObservability(orchestrationResult),
+        ...this.resolvePoiPlanningObservabilityForClient(orchestrationResult, request),
         ...this.resolveGapBehaviorObservationObservability(orchestrationResult),
         ...this.resolveReplanLineageObservability(request, orchestrationResult),
         ...this.resolveOrchestrationFailureObservability(orchestrationResult),
         ...this.resolveNarrativeIntegrityObservability(request, orchestrationResult),
+        ...narrativeDriftObsDyn,
         dso_version: this.resolveClientDsoVersionForResponse(orchestrationResult),
         ...(this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)
           ? {
@@ -2497,6 +3530,30 @@ export class RouteAndRunResponseAssemblerService {
     if (hashPrev) out.replan_previous_world_snapshot_hash_preview = hashPrev;
     if (newPv !== undefined) out.replan_new_plan_version = newPv;
     return out;
+  }
+
+  /** Decision OS：unified explainability 叙事-证据漂移监测（observability + 可选 metrics log） */
+  private resolveNarrativeDriftObservability(
+    request: RouteAndRunRequestDto,
+    orchestrationResult: OrchestrationResult,
+    unified?: UnifiedExplainabilityEnvelopeV1,
+  ): { narrative_drift?: ReturnType<typeof buildNarrativeDriftObservabilitySlice> } {
+    if (!unified) return {};
+    const narration = (orchestrationResult.result?.state?.narration ??
+      (orchestrationResult.result as { narration?: NarrationLike } | undefined)?.narration) as
+      | NarrationLike
+      | undefined;
+    const report = assessNarrativeExplainabilityDrift({
+      envelope: unified,
+      narration,
+    });
+    const narrative_drift = buildNarrativeDriftObservabilitySlice(report);
+    emitNarrativeDriftMetricEvent({
+      request_id: request.request_id,
+      trip_id: request.trip_id?.trim() || undefined,
+      slice: narrative_drift,
+    });
+    return { narrative_drift };
   }
 
   /** Gen2.1：叙事完整性信号镜像到 observability（tracing / replay / eval；与 payload 对账） */
@@ -2728,7 +3785,38 @@ export class RouteAndRunResponseAssemblerService {
     };
   }
 
-  private buildOptimizationExplain(decisionState?: DecisionState): RouteAndRunResponseDto['explain']['optimization'] {
+  private composeExplainUnifiedForClientPayload(params: {
+    requestId: string;
+    orchestrationDecisionLog: DecisionLogEntry[];
+    decisionState?: DecisionState;
+    orchestratorState?: OrchestratorState;
+  }): {
+    unified: RouteAndRunResponseDto['explain']['unified'];
+    orchestratorStateForClient?: OrchestratorState;
+  } {
+    const unified = resolveUnifiedExplainForRouteAndRunResponse({
+      requestId: params.requestId,
+      orchestrationDecisionLog: params.orchestrationDecisionLog,
+      decisionState: params.decisionState,
+      narrationFromState: params.orchestratorState?.narration as NarrationLike | undefined,
+    });
+    return {
+      unified,
+      orchestratorStateForClient: dedupeUnifiedExplainabilityInClientOrchestratorState(
+        params.orchestratorState,
+        unified,
+      ),
+    };
+  }
+
+  private buildOptimizationExplain(
+    decisionState?: DecisionState,
+    orchestrationResult?: OrchestrationResult,
+    request?: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+  ): RouteAndRunResponseDto['explain']['optimization'] {
+    if (orchestrationResult && this.isItineraryAdjustSession(orchestrationResult, request)) {
+      return undefined;
+    }
     const hints = decisionState?.optimizationHints;
     if (!hints) return undefined;
     const verdict = hints.decisionVerdict ?? buildDecisionVerdictFromHints(hints);

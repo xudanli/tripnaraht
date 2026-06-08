@@ -110,6 +110,13 @@ import { OptimizationModule } from './optimization/optimization.module';
 // Phase 2: 数据飞轮（Decision → Outcome → Parameter Update → Better Decision）
 import { FlywheelModule } from './flywheel/flywheel.module';
 import { DecisionFlywheelController } from './flywheel/decision-flywheel.controller';
+import { DecisionExplainController } from './controllers/decision-explain.controller';
+import { DecisionTelemetryController } from './telemetry/decision-telemetry.controller';
+import { DecisionTelemetryService } from './telemetry/decision-telemetry.service';
+import { TravelDnaInferenceService } from './telemetry/travel-dna-inference.service';
+import { FulfillmentCapabilityService } from './telemetry/fulfillment-capability.service';
+import { DecisionFeedbackLoopService } from './telemetry/decision-feedback-loop.service';
+import { DecisionTelemetryReplayService } from './telemetry/decision-telemetry-replay.service';
 import { InterventionEngine } from '../../decision/actuator/intervention-engine';
 import { SharedMemoryModule } from '../../agent/memory/shared-memory.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -160,6 +167,8 @@ try {
     FitnessAssessmentController, // Phase 1：体能评估控制器
     FitnessAnalyticsController, // Phase 2：体能数据分析控制器
     DecisionFlywheelController, // Phase 2+: Live preview + risk feedback gateway
+    DecisionExplainController, // unified explainability counterfactual API
+    DecisionTelemetryController, // 决策埋点 + Travel DNA + B 端履约 MVP
   ],
   providers: [
     InterventionEngine,
@@ -224,6 +233,11 @@ try {
     OpsRealityAuditService, // P-OPS-2：reality audit snapshots（需 OPS_REALITY_AUDIT=1 + DB migration）
     OperationalPolicyService, // P-OPS-3：versioned operational policy（OPS_OPERATIONAL_POLICY_JSON）
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
+    DecisionTelemetryService, // 决策埋点四元组统一入口
+    TravelDnaInferenceService, // 行为反推 Travel DNA
+    FulfillmentCapabilityService, // B 端履约能力画像（冰岛 MVP）
+    DecisionFeedbackLoopService, // 偏好 → 履约 → 满意度闭环
+    DecisionTelemetryReplayService, // 反事实决策回放
     DecisionStateManagerService, // 决策状态管理服务
     { provide: DSO_LATEST_STATE_PROVIDER, useClass: DsoLatestStateFromTripProvider },
     ThreeLayerExplanationService, // 三层解释服务
@@ -313,6 +327,11 @@ try {
     // TripFeedbackService,
     DecisionLogStorageService, // 必需：TripsService 需要它
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
+    DecisionTelemetryService, // 决策埋点四元组统一入口
+    TravelDnaInferenceService,
+    FulfillmentCapabilityService,
+    DecisionFeedbackLoopService,
+    DecisionTelemetryReplayService,
     DecisionStateManagerService, // 决策状态管理服务
     ThreeLayerExplanationService, // 三层解释服务
     RhythmMatchingService, // 节奏匹配服务（路线节奏特性提取、用户节奏容量提取、动态节奏调整）

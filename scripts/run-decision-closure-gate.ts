@@ -1,15 +1,15 @@
 #!/usr/bin/env npx ts-node
 /**
- * P0 decision-closure gate (offline golden hints).
+ * P0 decision-closure gate (offline golden hints, all country packs).
  *
- *   npx ts-node --transpile-only scripts/run-decision-closure-gate.ts
  *   npm run decision-closure:gate
+ *   PHYSICAL_EVIDENCE_GATE=error_critical_stages npm run decision-closure:gate
  */
-import { ICELAND_DECISION_CLOSURE_FIXTURES } from '../src/trips/decision/evaluation/e2e-cases/registry';
+import { COUNTRY_DECISION_CLOSURE_FIXTURES } from '../src/trips/decision/evaluation/e2e-cases/registry';
 import { runDecisionClosureGate } from './lib/decision-closure-gate';
 
 function main(): void {
-  const gate = runDecisionClosureGate(ICELAND_DECISION_CLOSURE_FIXTURES);
+  const gate = runDecisionClosureGate(COUNTRY_DECISION_CLOSURE_FIXTURES);
   for (const r of gate.results) {
     if (!r.ok) {
       console.error(`[FAIL] ${r.id}`);
@@ -20,7 +20,9 @@ function main(): void {
       console.log(`[OK] ${r.id}`);
     }
   }
-  console.log(`decision-closure gate: passed=${gate.passed} failed=${gate.failed}`);
+  console.log(
+    `decision-closure gate: passed=${gate.passed} failed=${gate.failed} fixtures=${COUNTRY_DECISION_CLOSURE_FIXTURES.length} PHYSICAL_EVIDENCE_GATE=${process.env.PHYSICAL_EVIDENCE_GATE ?? 'warn'}`,
+  );
   if (gate.failed > 0) {
     process.exit(1);
   }

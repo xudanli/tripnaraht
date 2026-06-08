@@ -1,0 +1,192 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "country_code": "IS",
+    "schema": "tripnara.market_preference_matrix/v1",
+    "last_updated": "2026-06-02",
+    "description": "冰岛客源市场偏好矩阵 — 隐式画像路由与 DecisionParams 先验",
+    "source_notes": ["Guide to Iceland 2026 行业洞察", "TripNARA IS Country Pack"]
+  },
+  "routing_weights": {
+    "residency": 0.35,
+    "locale": 0.25,
+    "season": 0.25,
+    "vehicle": 0.15
+  },
+  "blend_threshold": 0.15,
+  "confidence_apply_full": 0.7,
+  "confidence_apply_partial": 0.4,
+  "season_cross_matrix": {
+    "6-8": { "IS_MARKET_US": 1.0, "IS_MARKET_UK": 0.3, "IS_MARKET_DACH_NORDIC": 1.0, "IS_MARKET_EAST_ASIA": 0.95 },
+    "11-3": { "IS_MARKET_US": 0.4, "IS_MARKET_UK": 1.0, "IS_MARKET_DACH_NORDIC": 0.5, "IS_MARKET_EAST_ASIA": 0.55 },
+    "4-5_9-10": { "IS_MARKET_US": 0.85, "IS_MARKET_UK": 0.7, "IS_MARKET_DACH_NORDIC": 0.9, "IS_MARKET_EAST_ASIA": 0.85 }
+  },
+  "segments": {
+    "IS_MARKET_US": {
+      "label_zh": "美国 — 高效度假与地标深度",
+      "label_en": "USA — efficient luxury iconic",
+      "residency_countries": ["US"],
+      "locale_prefixes": ["en-US"],
+      "canonical_route_id": "IS-SOUTH-GOLDEN-5-7-LUX",
+      "route_direction_name": "IS_MARKET_US_SOUTH_GOLDEN_5_7_LUX",
+      "peak_months": [6, 7, 8],
+      "avoid_months": [11, 12, 1, 2, 3],
+      "route_direction_tags": {
+        "golden-circle": 1.0,
+        "south-coast": 1.0,
+        "glacier-lagoon": 0.95,
+        "iconic": 0.9,
+        "spa": 0.85,
+        "highlands": 0.2,
+        "f-road": 0.15,
+        "aurora": 0.35
+      },
+      "preferred_route_types": ["ROAD_TRIP", "NATURE"],
+      "rental_intent_profile": "peace_of_mind",
+      "vehicle_affinities": {
+        "luxury_suv": 1.0,
+        "private_guide": 0.95,
+        "4x4": 0.5,
+        "2wd": 0.4
+      },
+      "decision_params_delta": {
+        "routeDirectionBias": {
+          "sceneryWeight": 0.15,
+          "stabilityWeight": 0.2,
+          "adventureWeight": -0.1,
+          "difficultyWeight": -0.15
+        },
+        "constraints": { "maxDailyAscentM": 600, "bufferTimeMin": 30 },
+        "strategyPreference": { "abuWeight": 0.08 },
+        "repairPolicy": { "preferRestDay": true }
+      },
+      "world_model_intents": {
+        "iconic_landmarks": 0.9,
+        "spa_wellness": 0.75,
+        "light_outdoor": 0.6,
+        "f_road": 0.1
+      },
+      "prompt_template_zh": "冬季非默认；优先南岸+黄金圈经典地标、精品酒店与舒适节奏；弱化全岛赶路与高地 F-road；租车偏省心全险。"
+    },
+    "IS_MARKET_UK": {
+      "label_zh": "英国 — 冬季极光短途",
+      "label_en": "UK — winter aurora short break",
+      "residency_countries": ["GB", "UK"],
+      "locale_prefixes": ["en-GB"],
+      "canonical_route_id": "IS-WINTER-REYK-AURORA-4-5",
+      "route_direction_name": "IS_MARKET_UK_WINTER_REYK_AURORA_4_5",
+      "peak_months": [11, 12, 1, 2, 3],
+      "avoid_months": [6, 7, 8],
+      "route_direction_tags": {
+        "aurora": 1.0,
+        "ice-cave": 0.95,
+        "reykjavik-hub": 0.9,
+        "snæfellsnes": 0.85,
+        "glass-cabin": 0.85,
+        "hot_springs": 0.8,
+        "ring-road": 0.2,
+        "highlands": 0.25
+      },
+      "preferred_route_types": ["ROAD_TRIP", "NATURE"],
+      "rental_intent_profile": "trusted_default",
+      "vehicle_affinities": { "2wd": 0.7, "4x4": 0.85, "luxury_suv": 0.5, "private_guide": 0.4 },
+      "decision_params_delta": {
+        "routeDirectionBias": {
+          "sceneryWeight": 0.1,
+          "adventureWeight": 0.05,
+          "stabilityWeight": 0.15
+        },
+        "constraints": { "maxDailyAscentM": 500, "bufferTimeMin": 20 },
+        "strategyPreference": { "neptuneWeight": 0.05 },
+        "repairPolicy": { "preferAltRoute": true }
+      },
+      "world_model_intents": {
+        "aurora_hunting": 0.95,
+        "hot_springs": 0.8,
+        "short_break": 0.85,
+        "ring-road_full": 0.15
+      },
+      "prompt_template_zh": "反季节冬季短途：雷克雅未克枢纽+斯奈山/南岸冰洞；极光夜观测与温泉；避免默认 8–10 日全岛环；天气扰动多须预留替代日。"
+    },
+    "IS_MARKET_DACH_NORDIC": {
+      "label_zh": "德北欧 — 高地硬核越野",
+      "label_en": "DACH/Nordics — highlands F-road",
+      "residency_countries": ["DE", "AT", "CH", "NO", "SE", "DK", "FI", "NL", "BE", "LU"],
+      "locale_prefixes": ["de", "no", "nb", "nn", "sv", "da", "fi", "nl"],
+      "canonical_route_id": "IS-HIGHLANDS-WESTFJORDS-10-14",
+      "route_direction_name": "IS_MARKET_DACH_HIGHLANDS_WESTFJORDS_10_14",
+      "peak_months": [6, 7, 8, 9],
+      "avoid_months": [11, 12, 1, 2, 3, 4],
+      "route_direction_tags": {
+        "highlands": 1.0,
+        "f-road": 1.0,
+        "westfjords": 0.95,
+        "landmannalaugar": 0.9,
+        "askja": 0.85,
+        "offbeat": 0.85,
+        "camping": 0.7,
+        "golden-circle": 0.35
+      },
+      "preferred_route_types": ["ROAD_TRIP", "HIKING", "NATURE"],
+      "rental_intent_profile": "f_road_focus",
+      "vehicle_affinities": { "4x4": 1.0, "2wd": 0.2, "luxury_suv": 0.4, "private_guide": 0.3 },
+      "decision_params_delta": {
+        "routeDirectionBias": {
+          "adventureWeight": 0.25,
+          "difficultyWeight": 0.2,
+          "sceneryWeight": 0.05,
+          "stabilityWeight": -0.1
+        },
+        "constraints": { "maxDailyAscentM": 1200, "maxSlopePct": 30 },
+        "strategyPreference": { "abuWeight": 0.12 },
+        "repairPolicy": { "preferAltRoute": true }
+      },
+      "world_model_intents": {
+        "f_road": 0.95,
+        "camping": 0.7,
+        "dem_terrain": 0.85,
+        "crowd_avoidance": 0.8
+      },
+      "prompt_template_zh": "夏季高地/西峡湾硬核自驾：强制 4x4、Landmannalaugar/Askja；Abu 对 DEM 缺失 REJECT；弱化大巴团黄金圈顺序。"
+    },
+    "IS_MARKET_EAST_ASIA": {
+      "label_zh": "东亚 — 电影感摄影环岛",
+      "label_en": "East Asia — cinematic photography ring",
+      "residency_countries": ["CN", "TW", "HK", "MO", "JP", "KR", "SG"],
+      "locale_prefixes": ["zh", "ja", "ko"],
+      "canonical_route_id": "IS-CINEMATIC-RING-9",
+      "route_direction_name": "IS_MARKET_EAST_ASIA_CINEMATIC_RING_9",
+      "peak_months": [6, 7, 8, 9],
+      "avoid_months": [],
+      "route_direction_tags": {
+        "photography": 1.0,
+        "cinematic": 0.95,
+        "vesturhorn": 0.9,
+        "plane-wreck": 0.85,
+        "fjadrargljufur": 0.85,
+        "design-lodge": 0.9,
+        "ring-road": 0.75,
+        "golden-hour": 0.9
+      },
+      "preferred_route_types": ["ROAD_TRIP", "NATURE"],
+      "rental_intent_profile": "trusted_default",
+      "vehicle_affinities": { "4x4": 0.6, "2wd": 0.55, "luxury_suv": 0.7, "private_guide": 0.65 },
+      "decision_params_delta": {
+        "routeDirectionBias": {
+          "sceneryWeight": 0.25,
+          "adventureWeight": 0.05,
+          "stabilityWeight": 0.05
+        },
+        "constraints": { "bufferTimeMin": 25 },
+        "repairPolicy": { "preferSplitDays": false }
+      },
+      "world_model_intents": {
+        "photography": 0.95,
+        "aesthetic_minimal": 0.85,
+        "film_locations": 0.7,
+        "social_shareable": 0.75
+      },
+      "prompt_template_zh": "以出片光窗为日结构锚点：蝙蝠山、羽毛峡谷、飞机残骸、荒野设计民宿；黄金时段权重高；节奏适中勿赶路。"
+    }
+  }
+}

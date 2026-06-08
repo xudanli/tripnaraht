@@ -30,6 +30,14 @@ export interface IntakeNodeHost {
     context: AgentContext,
   ): OrchestrationResult;
 
+  /** CRUD 短路后合并复合句中的 DATA_LOOKUP 轻量回答 */
+  mergeCompoundDataLookupFollowup?(
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<void>;
+
   tryApplyBoundTripItineraryItemDelete?(
     tripId: string,
     userId: string | undefined,
@@ -47,6 +55,19 @@ export interface IntakeNodeHost {
     userId: string | undefined,
     message: string,
   ): Promise<import('./intake-itinerary-update.util').ItineraryItemUpdateApplyResult>;
+
+  tryApplyBoundTripItineraryDayReplan?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+    dateRange?: { start_date?: string; end_date?: string },
+  ): Promise<import('./intake-itinerary-day-replan.util').ItineraryDayReplanApplyResult>;
+
+  tryApplyBoundTripItineraryAdjustDraft?(
+    tripId: string,
+    userId: string | undefined,
+    request: Pick<RouteAndRunRequestDto, 'message' | 'options' | 'trip_id'>,
+  ): Promise<import('./intake-itinerary-adjust-apply.util').ItineraryAdjustDraftApplyResult>;
 }
 
 export type IntakePrePlanSegmentResult =

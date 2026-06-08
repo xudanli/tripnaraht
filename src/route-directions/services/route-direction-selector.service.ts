@@ -22,6 +22,14 @@ import { ExecutionPlanningContextService } from '../../world-facts/execution-pla
 import { RoutePlanningPolicyEngineService } from '../../world-facts/route-planning-policy-engine.service';
 import type { PolicyTraceEntry } from '../../world-facts/policy-dsl.types';
 import { ExecutionTimelineRecorderService } from '../../agent/runtime/execution-timeline-recorder.service';
+function computePreferredRouteDirectionScoreBoost(
+  rdUuid: string,
+  preferredUuids: string[],
+): { boost: number; rank: number } {
+  const rank = preferredUuids.indexOf(rdUuid);
+  if (rank < 0) return { boost: 0, rank: -1 };
+  return { boost: Math.max(0, 30 - rank * 10), rank };
+}
 
 export interface UserIntent {
   preferences?: string[]; // 偏好标签（如 ['徒步', '摄影', '出海']）
@@ -30,6 +38,8 @@ export interface UserIntent {
   durationDays?: number; // 行程天数
   /** P5：用于加载 Trip.metadata 决策执行历史（Execution-Aware Planning） */
   tripId?: string;
+  /** 优选 RouteDirection uuid（按优先级排序） */
+  preferredRouteDirectionUuids?: string[];
   [key: string]: any; // 允许其他意图字段
 }
 
@@ -209,6 +219,18 @@ export class RouteDirectionSelectorService {
     const scored = await Promise.all(routeDirections.map(async rd => {
       const breakdown = this.scoreRouteDirectionWithBreakdown(rd, userIntent, month);
       let finalScore = breakdown.totalScore;
+
+      const preferredUuids = userIntent.preferredRouteDirectionUuids ?? [];
+      if (preferredUuids.length > 0) {
+        const rdUuid = String(rd.uuid ?? rd.id ?? '').trim();
+        const { boost, rank } = computePreferredRouteDirectionScoreBoost(rdUuid, preferredUuids);
+        if (boost > 0) {
+          finalScore = Math.min(100, finalScore + boost);
+          this.logger.debug(
+            `Preferred RD boost: uuid=${rdUuid} rank=${rank} +${boost} → ${finalScore}`,
+          );
+        }
+      }
 
       // 应用决策参数调整（如果可用）
       if (decisionParams && userId && this.decisionParamsInjector) {

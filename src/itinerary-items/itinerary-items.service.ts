@@ -11,6 +11,8 @@ import { PlacesService } from '../places/places.service';
 import { GoogleMapsDirectService } from '../mcp/google-maps-direct.service';
 import { SearchNearbyPoiQueryDto, NearbyPoiResultDto, NearbyPoiCategory } from './dto/search-nearby-poi.dto';
 import { PlaceCategory } from '@prisma/client';
+import { attachDisplaySortIndices } from './utils/itinerary-day-display-order.util';
+import { parseCoordsFromRestNote } from '../agent/utils/accommodation-place.util';
 
 @Injectable()
 export class ItineraryItemsService {
@@ -265,6 +267,10 @@ export class ItineraryItemsService {
         note: noteValue,
         ...(bookingUrlValue != null && { bookingUrl: bookingUrlValue }),
         order: orderValue, // 🆕 设置显示顺序
+        ...(dto.costCategory != null && { costCategory: dto.costCategory }),
+        ...(dto.costNote != null && { costNote: dto.costNote }),
+        ...(dto.estimatedCost != null && { estimatedCost: dto.estimatedCost }),
+        ...(dto.currency != null && { currency: dto.currency }),
         ...(dto.travelFromPreviousDuration != null && { travelFromPreviousDuration: dto.travelFromPreviousDuration }),
         ...(dto.travelFromPreviousDistance != null && { travelFromPreviousDistance: dto.travelFromPreviousDistance }),
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
@@ -512,14 +518,27 @@ export class ItineraryItemsService {
       ? []
       : await this.findCheckoutItemsForDay(currentTripDay);
 
-    // 合并结果，退房项排在最前面
+    // 合并结果；退房项固定置顶（displaySortIndex），其余按 startTime
     const allItems = [...checkoutItems, ...todayItems];
 
     // 添加跨天标记和坐标字段
     const enrichedItems = await Promise.all(
       allItems.map(item => this.enrichItemWithCoordinates(item))
     );
-    return enrichedItems.map(item => this.addCrossDayInfo(item, currentTripDay.date));
+    const withCrossDay = enrichedItems.map(item => this.addCrossDayInfo(item, currentTripDay.date));
+    return attachDisplaySortIndices(withCrossDay);
+  }
+
+  /** 供 Trip 详情等场景：仅取应在指定日期展示的退房项（不含当日常规项） */
+  async findCheckoutDisplayItemsForTripDay(tripDayId: string): Promise<any[]> {
+    const currentTripDay = await this.prisma.tripDay.findUnique({
+      where: { id: tripDayId },
+      include: { Trip: true },
+    });
+    if (!currentTripDay) return [];
+    const checkoutItems = await this.findCheckoutItemsForDay(currentTripDay);
+    const enriched = await Promise.all(checkoutItems.map((item) => this.enrichItemWithCoordinates(item)));
+    return enriched.map((item) => this.addCrossDayInfo(item, currentTripDay.date));
   }
 
   /**
@@ -1260,6 +1279,15 @@ export class ItineraryItemsService {
         longitude: coords?.lng ?? null,
         coordinates: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
       };
+    } else if (item.type === 'REST' && typeof item.note === 'string') {
+      const coords = parseCoordsFromRestNote(item.note);
+      if (coords) {
+        item.lat = coords.lat;
+        item.lng = coords.lng;
+        item.latitude = coords.lat;
+        item.longitude = coords.lng;
+        item.coordinates = coords;
+      }
     }
 
     // 处理 Trail 相关的 Place 对象

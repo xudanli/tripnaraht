@@ -50,7 +50,6 @@ import { GoogleCalendarModule } from '../../../mcp/google-calendar.module';
 import { ItineraryItemsModule } from '../../../itinerary-items/itinerary-items.module';
 import { AgentModule } from '../../agent.module';
 import { TripsModule } from '../../../trips/trips.module';
-
 // 根据环境变量调整限流配置
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const disableThrottler = process.env.DISABLE_THROTTLER === 'true';

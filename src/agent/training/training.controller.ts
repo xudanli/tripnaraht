@@ -2278,6 +2278,7 @@ export class TrainingController {
       evidence_refs: any[];
       model_version: string;
       trace_id: string;
+      unified?: import('../../trips/decision/explainability/unified-explainability.types').UnifiedExplainabilityEnvelopeV1;
     },
   ): Promise<{ success: boolean; data: any }> {
     this.logger.log(`[TrainingController] 生成可解释输出: traceId=${dto.trace_id}`);
@@ -2288,6 +2289,7 @@ export class TrainingController {
         dto.evidence_refs,
         dto.model_version,
         dto.trace_id,
+        dto.unified ? { unifiedEnvelope: dto.unified } : undefined,
       );
 
       // 生成用户友好的解释文本

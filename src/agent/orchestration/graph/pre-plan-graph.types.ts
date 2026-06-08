@@ -3,6 +3,8 @@ import type { GraphRunOutcome } from './orchestration-graph.types';
 
 export interface PrePlanGraphRunParams extends SharedRunContext {
   resumeSkipIntake?: boolean;
+  /** Intake Café：忽略 durable resume，固定从 intake 节点起跑 */
+  forcePrePlanIntakeEntry?: boolean;
   /** Durable / VERIFY 回溯入口；缺省 intake */
   entry?: OrchestrationNodeId;
   /** 仅执行到该节点（图调度逐节点模式） */

@@ -4,6 +4,8 @@
 import type { E2ECase } from './e2e-case.types';
 import type { DecisionState, OptimizationHints } from '../../../decision/kernel/decision-state.types';
 import type { ChunkRetrievalResult } from '../../../rag/services/chunk-retrieval.service';
+import fs from 'fs';
+import path from 'path';
 import { itineraryToRoutePlanDraft } from '../../../decision/kernel/dso-to-trips-converter';
 import { decisionStateToTripWorldState } from '../../../decision/kernel/dso-to-trips-converter';
 import { convertRoutePlanDraftToTripPlan } from '../../decision/tot/plan-converter';
@@ -16,6 +18,47 @@ export type StormStrategyDoc = {
     wind_speed_mps?: number;
   };
 };
+
+const COUNTRY_DESTINATION: Record<string, string> = {
+  IS: 'Iceland',
+  NZ: 'New Zealand',
+  AU: 'Australia',
+  JP: 'Japan',
+};
+
+const COUNTRY_RAG_SEED_FILE: Record<string, string> = {
+  IS: 'iceland-road-constraint-chunks.p0.json',
+  NZ: 'nz-road-constraint-chunks.p0.json',
+  AU: 'au-road-constraint-chunks.p0.json',
+  JP: 'jp-road-constraint-chunks.p0.json',
+};
+
+/** Load P0 country RAG seed chunks for offline capture (no DB). */
+export function loadCountryRagSeedChunks(countryCode: string): ChunkRetrievalResult[] {
+  const file = COUNTRY_RAG_SEED_FILE[countryCode.toUpperCase()];
+  if (!file) return [];
+  const seedPath = path.join(process.cwd(), 'data', 'rag', file);
+  if (!fs.existsSync(seedPath)) return [];
+  const raw = JSON.parse(fs.readFileSync(seedPath, 'utf8')) as {
+    chunks?: Array<{
+      chunk_id: string;
+      category: string;
+      content: string;
+      metadata?: Record<string, unknown>;
+    }>;
+  };
+  return (raw.chunks ?? []).map(
+    (c) =>
+      ({
+        id: c.chunk_id,
+        chunkId: c.chunk_id,
+        category: c.category,
+        content: c.content,
+        score: 0.9,
+        metadata: c.metadata,
+      }) as unknown as ChunkRetrievalResult,
+  );
+}
 
 /** Minimal DSO for CGUS adapter replay (aligned with replay-cgus-real-fixtures). */
 export function buildDsoFromE2ECase(testCase: E2ECase): DecisionState {
@@ -66,7 +109,7 @@ export function buildDsoFromE2ECase(testCase: E2ECase): DecisionState {
     tripState: { planDraft: itinerary },
     constraints: { violations, feasible: violations.filter((v) => v.severity === 'HARD').length === 0 },
     userIntent: {
-      destination: 'Iceland',
+      destination: COUNTRY_DESTINATION[testCase.input?.countryCode ?? 'IS'] ?? 'Iceland',
       countryCode: testCase.input?.countryCode ?? 'IS',
       styleTags: testCase.input?.userProfile?.preferredRouteTypes,
     },

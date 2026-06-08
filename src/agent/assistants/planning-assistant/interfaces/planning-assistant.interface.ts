@@ -1,5 +1,7 @@
 // src/agent/assistants/planning-assistant/interfaces/planning-assistant.interface.ts
 
+import type { AccommodationItemDto } from '../dto/v2/shared/accommodation-item.dto';
+
 /**
  * 规划助手智能体接口定义
  * 
@@ -192,8 +194,15 @@ export interface PlanningConversationState {
   pendingRailSearch?: PendingRailSearch;
   /** 待执行的航班搜索（出发地澄清阶段存储，用户补充出发地后执行） */
   pendingFlightSearch?: PendingFlightSearch;
+  /** 规划工作台：持久化绑定的行程，避免后续轮次未带 context.tripId 时丢失语境 */
+  boundTripId?: string;
+  boundCountryCode?: string;
   /** 最近一次搜索的攻略结果（用于「提取攻略中的景点加入行程」） */
   searchResults?: Array<{ title?: string; url?: string; text?: string; publishedDate?: string }>;
+  /** 最近一次住宿搜索结果（用于卡片「加入行程」） */
+  lastAccommodations?: AccommodationItemDto[];
+  /** 与 lastAccommodations 对应的行程 ID */
+  lastAccommodationTripId?: string;
   messageHistory: ConversationMessage[];
   createdAt: string;
   updatedAt: string;
@@ -271,6 +280,8 @@ export interface PlanningAssistantRequest {
   language?: 'en' | 'zh';
   /** 目标国家代码，用于过滤推荐 (e.g., 'IS' for Iceland, 'JP' for Japan) */
   countryCode?: string;
+  /** 规划工作台已绑定行程 ID；有值时 LLM 须读取库内 TripDay/ItineraryItem 草案 */
+  tripId?: string;
   context?: {
     currentLocation?: { lat: number; lng: number };
     timezone?: string;

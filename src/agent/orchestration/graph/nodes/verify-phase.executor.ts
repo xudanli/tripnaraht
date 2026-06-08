@@ -1,3 +1,4 @@
+import { ensureHarnessResearchEvidenceSnapshot } from '../../../utils/harness-research-evidence-snapshot.util';
 import { mergeVerificationIssuesIntoGateResult } from '../../../utils/merge-verify-issues-into-gate.util';
 import {
   formatVerifyInputsKernelZh,
@@ -6,6 +7,12 @@ import {
 import type { GuardianType } from '../../../interfaces/trip-plan.interface';
 import type { VerifyPhaseHost, RunVerifyPhaseParams } from './verify-phase.host';
 import { appendVerifyTemporalOpeningAuditProof } from './verify-temporal-opening-audit.util';
+import {
+  buildItineraryAdjustAuditMetadata,
+  filterVerifyIssuesToAdjustTarget,
+  formatVerifyOutputsAdjustZh,
+  resolveItineraryAdjustRunContext,
+} from '../../../utils/itinerary-adjust-decision-log.util';
 
 /**
  * VERIFY 执行体：确定性校验 + 证据链对齐；FATAL / L2 路由由 Host 根据 Verdict 处理。
@@ -23,24 +30,39 @@ export async function runVerifyPhase(
     state.itinerary
   ) {
     const stepStartTime = Date.now();
+    const effectiveDecisionState =
+      ensureHarnessResearchEvidenceSnapshot(
+        decisionState,
+        state.request_id,
+        state.research_data as Record<string, unknown> | undefined,
+      ) ?? decisionState;
     const ctx = {
       requestId: state.request_id,
       tripPlanRequest: state.trip_plan_request,
       itinerary: state.itinerary as any,
       researchData: state.research_data,
     };
-    const { newState, issues } = await host.decisionKernel.executeVerify(decisionState, ctx);
+    const { newState, issues } = await host.decisionKernel.executeVerify(effectiveDecisionState, ctx);
     host.syncOrchestratorFromDecisionState(newState, state);
 
-    const fatalIssues = (issues as Array<{ class?: string; message?: string }>).filter(
-      (i) => i?.class === 'FATAL',
-    );
-    const conflictIssues = (issues as Array<{ class?: string }>).filter(
-      (i) => i?.class === 'CONFLICT',
-    );
-    const advisoryIssues = (issues as Array<{ class?: string }>).filter(
-      (i) => i?.class === 'ADVISORY',
-    );
+    const adjustCtx = resolveItineraryAdjustRunContext(state);
+    const targetDay =
+      adjustCtx.active && adjustCtx.targetDateIso
+        ? state.itinerary?.days?.find(
+            (d) => String(d.date ?? '').slice(0, 10) === adjustCtx.targetDateIso!.slice(0, 10),
+          )
+        : undefined;
+    const issuesForLog = adjustCtx.active
+      ? filterVerifyIssuesToAdjustTarget(
+          issues as Array<{ class?: string; day?: string; entityRef?: { id?: string } }>,
+          adjustCtx.targetDateIso,
+          targetDay?.items,
+        )
+      : (issues as Array<{ class?: string; day?: string }>);
+
+    const fatalIssues = issuesForLog.filter((i) => i?.class === 'FATAL');
+    const conflictIssues = issuesForLog.filter((i) => i?.class === 'CONFLICT');
+    const advisoryIssues = issuesForLog.filter((i) => i?.class === 'ADVISORY');
 
     if (issues.length > 0) {
       state.errors.push({
@@ -56,17 +78,33 @@ export async function runVerifyPhase(
       step: 'VERIFY',
       actor: 'Orchestrator',
       inputs_summary: formatVerifyInputsKernelZh(),
-      outputs_summary: formatVerifyOutputsZh({
-        issueCount: issues.length,
-        fatal: fatalIssues.length,
-        conflict: conflictIssues.length,
-        advisory: advisoryIssues.length,
-      }),
+      outputs_summary:
+        adjustCtx.active && adjustCtx.targetDateIso
+          ? formatVerifyOutputsAdjustZh({
+              targetDateIso: adjustCtx.targetDateIso,
+              scopedIssueCount: issuesForLog.length,
+              totalIssueCount: issues.length,
+              fatal: fatalIssues.length,
+              conflict: conflictIssues.length,
+              advisory: advisoryIssues.length,
+            })
+          : formatVerifyOutputsZh({
+              issueCount: issues.length,
+              fatal: fatalIssues.length,
+              conflict: conflictIssues.length,
+              advisory: advisoryIssues.length,
+            }),
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: {
         duration_ms: Date.now() - stepStartTime,
         issues,
+        ...(adjustCtx.active
+          ? {
+              issues_scoped_to_target_day: issuesForLog,
+              ...buildItineraryAdjustAuditMetadata(adjustCtx.metadata),
+            }
+          : {}),
         guardian: 'DR_DRE' as GuardianType,
       },
     });

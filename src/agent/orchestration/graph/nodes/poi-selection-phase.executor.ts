@@ -1,4 +1,5 @@
 import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
+import type { OrchestratorState } from '../../../interfaces/trip-plan.interface';
 import { ICELAND_POI_SLUG_KEYWORDS } from '../../../../planning-policy/regions/iceland-poi-slugs';
 import { POI_PLANNING_SCORE_REASON } from '../../../../planning-policy/constants/poi-planning-score-reasons';
 import type { PoiPlanningAdmissionDiagnosticsInput } from '../../../../planning-policy/utils/poi-planning-outcome-metrics.util';
@@ -17,8 +18,36 @@ import {
 } from '../../../utils/decision-log-user-facing.zh.util';
 import {
   buildDestinationScopeClarificationOptions,
+  extractItineraryAdjustTargetDateFromMessage,
+  isItineraryFullTripReplanMetadata,
   shouldSkipPoiDestinationClarificationForItineraryAdjust,
 } from '../../../utils/itinerary-adjust-intent.util';
+import {
+  corridorScoreBoostForPoi,
+  selectClusteredPoisAlongCorridor,
+} from '../../../utils/itinerary-adjust-corridor-poi.util';
+import type {
+  ItineraryAdjustSpatialConstraints,
+  NeighborAnchorContext,
+  TripDayAnchorRow,
+} from '../../../utils/itinerary-adjust-neighbor-anchors.util';
+import { applyCorridorResearchMarkers } from '../../../utils/itinerary-trip-neighbor-anchor-load.util';
+import { captureItineraryAdjustBaselineSchedule } from '../../../utils/itinerary-adjust-decision-log.util';
+import {
+  collectOccupiedPoiKeysFromItineraryDays,
+  collectOccupiedPoiKeysFromTripDayRows,
+  filterCandidatesExcludingOccupiedPois,
+  mergeOccupiedPoiKeySets,
+} from '../../../utils/itinerary-adjust-cross-day-dedupe.util';
+import {
+  ITINERARY_ADJUST_CORRIDOR_MIN_CANDIDATES_DEFAULT,
+  resolveItineraryAdjustCorridorCandidatePool,
+} from '../../../utils/itinerary-adjust-corridor-fallback.util';
+import {
+  buildItineraryAdjustAuditMetadata,
+  extractPoiNamesFromScoredRows,
+  formatPoiSelectionOutputsAdjustZh,
+} from '../../../utils/itinerary-adjust-decision-log.util';
 import { extractSelectedPlaceIdsFromItinerary } from '../../../../planning-policy/utils/build-poi-search-context.util';
 import { filterPoisByRejectedIds } from '../../../../planning-policy/utils/contextual-poi-search-query.util';
 import {
@@ -37,6 +66,7 @@ import type {
   PoiSelectionStepResult,
   RunPoiSelectionPhaseParams,
 } from './poi-selection-phase.host';
+import { persistSelectedPoisToResearchData } from '../../../utils/harness-research-evidence-snapshot.util';
 
 /**
  * POI_SELECTION 执行体：仅消费 research_data + DSO 空间约束；工作区键在漏斗口熔断。
@@ -85,19 +115,55 @@ async function runPoiSelectionPhaseCore(
     let deduped = host.dedupePois(asArray);
     const routeIntent = (state.metadata as Record<string, unknown>)
       ?.route_and_run_intent as RouteAndRunIntentAnalysis | undefined;
-    const isItineraryAdjust = routeIntent?.primary === 'ITINERARY_ADJUST';
-    let itineraryAdjustTripPoiSeedCount = 0;
-    if (isItineraryAdjust) {
-      const tripId =
-        state.trip_plan_request?.trip_id?.trim() ??
-        state.trip_plan_request?.ontology_context?.trip_id?.trim() ??
-        (state.metadata as { tripId?: string })?.tripId?.trim();
-      const userId = (state.metadata as { userId?: string })?.userId;
-      if (tripId) {
-        const tripPois = await host.loadTripPlacePoiEvidenceForAdjust(tripId, userId);
-        itineraryAdjustTripPoiSeedCount = tripPois.length;
-        if (tripPois.length) {
-          deduped = host.dedupePois([...tripPois, ...deduped]);
+    const metaRecord = state.metadata as Record<string, unknown>;
+    const isFullTripReplan = isItineraryFullTripReplanMetadata(metaRecord);
+    const isItineraryAdjust = routeIntent?.primary === 'ITINERARY_ADJUST' && !isFullTripReplan;
+    const tripId =
+      state.trip_plan_request?.trip_id?.trim() ??
+      state.trip_plan_request?.ontology_context?.trip_id?.trim() ??
+      (state.metadata as { tripId?: string })?.tripId?.trim();
+    const userId = (state.metadata as { userId?: string })?.userId;
+    let adjustTargetDateIso: string | undefined;
+    let adjustNeighborAnchors: NeighborAnchorContext | undefined;
+    let adjustSpatial: ItineraryAdjustSpatialConstraints | undefined;
+    let adjustTripDayRows: TripDayAnchorRow[] | undefined;
+    if (isItineraryAdjust && tripId) {
+      const intakeMsg =
+        (state.metadata as { intake_user_message?: string })?.intake_user_message ??
+        state.trip_plan_request?.message;
+      adjustTargetDateIso = extractItineraryAdjustTargetDateFromMessage(
+        typeof intakeMsg === 'string' ? intakeMsg : '',
+        state.trip_plan_request?.date_range,
+      );
+      if (adjustTargetDateIso) {
+        const neighborCtx = await host.resolveItineraryAdjustNeighborContext(
+          tripId,
+          adjustTargetDateIso,
+          userId,
+        );
+        if (neighborCtx) {
+          adjustNeighborAnchors = neighborCtx.anchors;
+          adjustSpatial = neighborCtx.spatial;
+          adjustTripDayRows = neighborCtx.dayRows;
+          const meta = state.metadata as Record<string, unknown>;
+          meta.itinerary_adjust_neighbor_anchors = neighborCtx.anchors;
+          meta.itinerary_adjust_spatial = neighborCtx.spatial;
+          meta.itinerary_adjust_target_date_iso = adjustTargetDateIso;
+          captureItineraryAdjustBaselineSchedule(meta, adjustTargetDateIso, {
+            tripDayRows: neighborCtx.dayRows,
+            itinerary: state.itinerary,
+          });
+        }
+      }
+    }
+    let boundTripPoiSeedCount = 0;
+    if (tripId) {
+      const tripPois = await host.loadTripPlacePoiEvidenceForAdjust(tripId, userId);
+      boundTripPoiSeedCount = tripPois.length;
+      if (tripPois.length) {
+        deduped = host.dedupePois([...tripPois, ...deduped]);
+        (state.metadata as Record<string, unknown>).bound_trip_poi_seed_count = tripPois.length;
+        if (routeIntent?.primary === 'ITINERARY_ADJUST') {
           (state.metadata as Record<string, unknown>).itinerary_adjust_trip_poi_seed_count =
             tripPois.length;
         }
@@ -114,7 +180,21 @@ async function runPoiSelectionPhaseCore(
       decisionState,
       destinationCountry,
     );
-    const withPlanning = planningAug.pois;
+    let withPlanning = planningAug.pois;
+    if (isItineraryAdjust && adjustTargetDateIso) {
+      const occupied = mergeOccupiedPoiKeySets(
+        adjustTripDayRows
+          ? collectOccupiedPoiKeysFromTripDayRows(adjustTripDayRows, adjustTargetDateIso)
+          : { placeIds: new Set(), names: new Set() },
+        collectOccupiedPoiKeysFromItineraryDays(state.itinerary, adjustTargetDateIso),
+      );
+      const { kept, excludedCount } = filterCandidatesExcludingOccupiedPois(withPlanning, occupied);
+      if (excludedCount > 0) {
+        withPlanning = kept;
+        (state.metadata as Record<string, unknown>).itinerary_adjust_cross_day_excluded_count =
+          excludedCount;
+      }
+    }
     if (planningAug.excludedFilteredCount > 0) {
       (state.metadata as Record<string, unknown>).poiPlanningExcludedFilteredCount =
         planningAug.excludedFilteredCount;
@@ -171,6 +251,7 @@ async function runPoiSelectionPhaseCore(
           }
         }
         const anchorBoost = poi?.poi_planning_anchor_slug ? 3 : 0;
+        const corridorBoost = adjustSpatial ? corridorScoreBoostForPoi(poi, adjustSpatial) : 0;
         return {
           poi,
           idx,
@@ -183,7 +264,8 @@ async function runPoiSelectionPhaseCore(
             openingHoursBonus +
             dataCompletenessBonus +
             optionalBoost +
-            anchorBoost -
+            anchorBoost +
+            corridorBoost -
             riskPenalty -
             idx * 0.01,
         };
@@ -210,19 +292,79 @@ async function runPoiSelectionPhaseCore(
     const skipGeoClusterForDiversity =
       detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
       rankedPois.length >= 3;
-    const skipGeoClusterForAdjust =
-      isItineraryAdjust && itineraryAdjustTripPoiSeedCount >= 2;
-    let scored =
-      skipGeoClusterForDiversity || skipGeoClusterForAdjust
-      ? rankedPois.slice(0, topNLimit)
-      : host.selectClusteredPois(
-          rankedPois,
-          topNLimit,
-          startCoordinates,
+    let adjustSpatialEffective = adjustSpatial;
+    let rankedForCorridor = rankedPois;
+    if (adjustSpatial) {
+      const minCorridorCandidates = ITINERARY_ADJUST_CORRIDOR_MIN_CANDIDATES_DEFAULT;
+      let corridorPool = resolveItineraryAdjustCorridorCandidatePool(
+        rankedPois,
+        adjustSpatial,
+        minCorridorCandidates,
+      );
+      if (
+        corridorPool.candidates.length < minCorridorCandidates &&
+        adjustNeighborAnchors
+      ) {
+        const supplement = await host.supplementItineraryAdjustCorridorPois({
           destinationRaw,
-        );
+          anchors: adjustNeighborAnchors,
+          spatial: corridorPool.spatial,
+        });
+        if (supplement.count > 0) {
+          const mergedRanked = host.dedupePois([
+            ...corridorPool.candidates,
+            ...supplement.pois,
+            ...rankedPois,
+          ]);
+          corridorPool = resolveItineraryAdjustCorridorCandidatePool(
+            mergedRanked,
+            adjustSpatial,
+            minCorridorCandidates,
+          );
+          corridorPool = {
+            ...corridorPool,
+            diagnostics: {
+              ...corridorPool.diagnostics,
+              poiSearchSupplementCount: supplement.count,
+            },
+          };
+          const metaSup = state.metadata as Record<string, unknown>;
+          metaSup.itinerary_adjust_corridor_poi_search = {
+            query: supplement.query,
+            count: supplement.count,
+          };
+        }
+      }
+      rankedForCorridor = corridorPool.candidates;
+      adjustSpatialEffective = corridorPool.spatial;
+      const metaCorridor = state.metadata as Record<string, unknown>;
+      metaCorridor.itinerary_adjust_corridor_fallback = corridorPool.diagnostics;
+      metaCorridor.itinerary_adjust_corridor_fallback_level = corridorPool.fallbackLevel;
+      metaCorridor.itinerary_adjust_spatial_effective = corridorPool.spatial;
+    }
+    let scored: unknown[];
+    if (skipGeoClusterForDiversity) {
+      scored = rankedForCorridor.slice(0, topNLimit);
+    } else if (adjustSpatialEffective) {
+      scored = selectClusteredPoisAlongCorridor(
+        rankedForCorridor,
+        topNLimit,
+        adjustSpatialEffective,
+        {
+        maxLegKm: /冰岛|iceland/i.test(destinationRaw) ? 70 : 45,
+      },
+      );
+      (state.metadata as Record<string, unknown>).itinerary_adjust_corridor_selection = true;
+    } else {
+      scored = host.selectClusteredPois(
+        rankedForCorridor,
+        topNLimit,
+        startCoordinates,
+        destinationRaw,
+      );
+    }
     /** Phase 2.6：最后一跳强制锚点进入 TopN（候选来自 rankedPois；与聚类解耦） */
-    if (destinationCountry === 'IS' && requiredAnchors.length > 0) {
+    if (destinationCountry === 'IS' && requiredAnchors.length > 0 && !adjustSpatialEffective) {
       const beforeLen = scored.length;
       scored = enforceRequiredAnchorsTopN(
         scored,
@@ -334,7 +476,7 @@ async function runPoiSelectionPhaseCore(
     const skipCommuteClarifyForItineraryAdjust =
       shouldSkipPoiDestinationClarificationForItineraryAdjust(
         routeIntent?.primary,
-        itineraryAdjustTripPoiSeedCount,
+        boundTripPoiSeedCount,
       );
     if (
       estimatedCommuteMinutes > commuteBudgetMinutes &&
@@ -376,7 +518,7 @@ async function runPoiSelectionPhaseCore(
     const minPoiRequired = 2;
     const skipSparseForItineraryAdjust = shouldSkipPoiDestinationClarificationForItineraryAdjust(
       routeIntent?.primary,
-      itineraryAdjustTripPoiSeedCount,
+      boundTripPoiSeedCount,
       minPoiRequired,
     );
     if (skipSparseForItineraryAdjust && scored.length < minPoiRequired) {
@@ -457,23 +599,46 @@ async function runPoiSelectionPhaseCore(
       }
     }
 
-    if (state.research_data && rawPoiEvidence) {
-      if (Array.isArray(rawPoiEvidence)) {
-        state.research_data.poi_evidence = scored;
-      } else {
-        state.research_data.poi_evidence = {
-          ...(rawPoiEvidence as Record<string, unknown>),
-          pois: scored,
-        };
-      }
+    persistSelectedPoisToResearchData(state, rawPoiEvidence, scored);
+    if (isFullTripReplan && state.research_data && typeof state.research_data === 'object') {
+      state.research_data = {
+        ...(state.research_data as Record<string, unknown>),
+        __itinerary_full_trip_replan: true,
+      } as OrchestratorState['research_data'];
     }
+    if (
+      adjustTargetDateIso &&
+      adjustNeighborAnchors &&
+      adjustSpatialEffective &&
+      state.research_data &&
+      typeof state.research_data === 'object'
+    ) {
+      state.research_data = applyCorridorResearchMarkers(
+        state.research_data as Record<string, unknown>,
+        adjustTargetDateIso,
+        adjustNeighborAnchors,
+        adjustSpatialEffective,
+        adjustNeighborAnchors.targetDayNumber,
+        scored,
+      ) as OrchestratorState['research_data'];
+    }
+
+    const poiSelectionOutputs = isItineraryAdjust
+      ? formatPoiSelectionOutputsAdjustZh({
+          researchRecallCount: asArray.length,
+          scoringPoolCount: deduped.length,
+          selectedCount: scored.length,
+          selectedNames: extractPoiNamesFromScoredRows(scored),
+          metadata: state.metadata as Record<string, unknown>,
+        })
+      : formatPoiSelectionOutputsZh(asArray.length, scored.length);
 
     state.decision_log.push({
       request_id: state.request_id,
       step: 'POI_SELECTION',
       actor: 'Planner',
       inputs_summary: formatPoiSelectionInputsZh(asArray.length),
-      outputs_summary: formatPoiSelectionOutputsZh(asArray.length, scored.length),
+      outputs_summary: poiSelectionOutputs,
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: {
@@ -483,6 +648,11 @@ async function runPoiSelectionPhaseCore(
         input_count: asArray.length,
         deduped_count: deduped.length,
         selected_count: scored.length,
+        ...(isItineraryAdjust
+          ? buildItineraryAdjustAuditMetadata(state.metadata as Record<string, unknown>, {
+              selected_poi_names: extractPoiNamesFromScoredRows(scored),
+            })
+          : {}),
       },
     });
     state.metadata.last_updated_at = new Date().toISOString();

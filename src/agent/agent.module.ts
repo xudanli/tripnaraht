@@ -120,6 +120,7 @@ import { DecisionOsContextAssemblerService } from './runtime/decision-os-context
 import { DecisionOsExecutionContextStore } from './runtime/decision-os-execution-context.store';
 import { DecisionRuntimeKernelService } from './runtime/decision-runtime-kernel.service';
 import { RouteAndRunTaskProgressReporter } from './runtime/route-and-run-task-progress.reporter';
+import { IntakeStreamingReporter } from './runtime/intake-streaming.reporter';
 import { RouteAndRunAsyncTaskStore } from './services/route-and-run-async-task.store';
 import { RouteAndRunAsyncService } from './services/route-and-run-async.service';
 import { RouteAndRunAsyncDelegationService } from './services/route-and-run-async-delegation.service';
@@ -136,6 +137,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { LlmIntentCompilerService } from './runtime/llm-intent-compiler.service';
 import { DecisionOsGrayRouterService } from './runtime/decision-os-gray-router.service';
 import { RouteRunRequestFitnessHydratorService } from './memory/services/route-run-request-fitness-hydrator.service';
+import { RouteRunIcelandMarketPriorHydratorService } from './memory/services/route-run-iceland-market-prior-hydrator.service';
 import { SkillsModule } from '../skills/skills.module';
 import { GovernanceModule } from '../governance/governance.module';
 // 子 Agent 服务（Claude 编排）
@@ -318,6 +320,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     DecisionOsExecutionContextStore,
     DecisionRuntimeKernelService,
     RouteAndRunTaskProgressReporter,
+    IntakeStreamingReporter,
     RouteAndRunAsyncTaskStore,
     RouteAndRunAsyncService,
     RouteAndRunAsyncDelegationService,
@@ -332,6 +335,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     LlmIntentCompilerService,
     DecisionOsGrayRouterService,
     RouteRunRequestFitnessHydratorService,
+    RouteRunIcelandMarketPriorHydratorService,
     StrategyConflictOptionsService,
     ClarificationHandlerService,
     ResearchPriorSnapshotService,
@@ -359,6 +363,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     ActionGraphSagaCompilerService,
     PhysicalValidatorService,
     SelfHealingService,
+    PreferenceEvolutionService,
+    UserProfileLearningService,
   ],
 })
 export class AgentModule {

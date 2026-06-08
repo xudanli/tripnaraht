@@ -3,8 +3,16 @@
  * 校验对象：`DecisionLogEntry[]` 或同形状的持久化/回放 JSON。
  */
 
+import type { DecisionStage, DecisionAction } from '../shared/decision-result.types';
 import { JEPA_TRACE_CONTRACT_VERSION } from '../shared/decision-trace-jepa.types';
 import { isCriticalDecisionActionValue } from '../shared/decision-log-metadata-prd.types';
+import {
+  getPhysicalEvidenceGateMode,
+  hasPhysicalEvidenceRefs,
+  physicalEvidenceGateErrorMessage,
+  requiresPhysicalEvidenceRefs,
+  type PhysicalEvidenceGateMode,
+} from './physical-evidence-gate.util';
 
 const PERSONAS = new Set(['ABU', 'DR_DRE', 'NEPTUNE', 'EXPECTED_UTILITY', 'USER_ACTION']);
 const SOURCES = new Set(['PHYSICAL', 'HUMAN', 'PHILOSOPHY', 'HEURISTIC', 'UTILITY', 'USER']);
@@ -65,10 +73,19 @@ function validateCandidateSearchAuditMeta(meta: Record<string, unknown>, p: stri
   }
 }
 
+export type AnalyzeDecisionLogTraceabilityOptions = {
+  /** 默认读取 `PHYSICAL_EVIDENCE_GATE` env（warn） */
+  physicalEvidenceGate?: PhysicalEvidenceGateMode;
+};
+
 /**
  * 与 `shared/decision-result.types` 中 DecisionLogEntry 对齐的最小可追踪性检查。
  */
-export function analyzeDecisionLogTraceability(logs: unknown): DecisionLogTraceabilityResult {
+export function analyzeDecisionLogTraceability(
+  logs: unknown,
+  options?: AnalyzeDecisionLogTraceabilityOptions,
+): DecisionLogTraceabilityResult {
+  const physicalEvidenceGate = options?.physicalEvidenceGate ?? getPhysicalEvidenceGateMode();
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -159,12 +176,25 @@ export function analyzeDecisionLogTraceability(logs: unknown): DecisionLogTracea
         warnings,
       );
     }
-    // 建议：物理现实判断尽量带证据引用（不阻断）
+    // PHYSICAL evidenceRefs：分级门禁（TD-04 + PHYSICAL_EVIDENCE_GATE）
     if (
       entry.decisionSource === 'PHYSICAL' &&
-      (!Array.isArray(entry.evidenceRefs) || entry.evidenceRefs.length === 0)
+      !hasPhysicalEvidenceRefs(entry as { evidenceRefs?: string[] })
     ) {
-      warnings.push(`entry ${p}: PHYSICAL decisionSource 建议提供 evidenceRefs（TD-04）`);
+      if (
+        requiresPhysicalEvidenceRefs(
+          {
+            decisionSource: 'PHYSICAL',
+            decisionStage: entry.decisionStage as DecisionStage,
+            action: entry.action as DecisionAction,
+          },
+          physicalEvidenceGate,
+        )
+      ) {
+        errors.push(physicalEvidenceGateErrorMessage(i, physicalEvidenceGate));
+      } else {
+        warnings.push(`entry ${p}: PHYSICAL decisionSource 建议提供 evidenceRefs（TD-04）`);
+      }
     }
   });
 

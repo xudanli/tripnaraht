@@ -60,17 +60,46 @@ import { AmadeusDirectService } from '../../../../mcp/amadeus-direct.service';
 import { BookingComService } from '../../../../mcp/booking-com.service';
 import { ItineraryItemsService } from '../../../../itinerary-items/itinerary-items.service';
 import { ItemType } from '../../../../itinerary-items/dto/create-itinerary-item.dto';
+import {
+  coalesceAccommodationForApply,
+  resolveAccommodationDisplayName,
+} from '../../../utils/accommodation-apply-coalesce.util';
+import {
+  buildAccommodationPlaceMetadata,
+  formatAccommodationCoordsNoteLine,
+  isGooglePlaceId,
+  resolveAccommodationCoordinates,
+} from '../../../utils/accommodation-place.util';
+import { normalizeAccommodationForApply } from '../../../utils/route-run-accommodation-apply.util';
+import { CostCategory } from '../../../../itinerary-items/dto/item-cost.dto';
+import {
+  ApplyAccommodationToItineraryRequestDto,
+  ApplyAccommodationToItineraryResponseDto,
+} from '../dto/v2/apply-accommodation-to-itinerary.dto';
 import { DateTime } from 'luxon';
 import { AgentService } from '../../../services/agent.service';
 import type { RouteAndRunRequestDto } from '../../../dto/route-and-run.dto';
 import { formatPaHistoryForRouteAndRun } from '../utils/pa-bridge.util';
 import { TripSuggestionsService } from '../../../../trips/services/trip-suggestions.service';
 import {
-  parseExplicitStayWindowFromUserMessage,
-  parseExplicitHotelNightScopeIndices,
-  countStayNightsBetweenInclusive,
+  shouldSkipHotelDateClarification,
+  resolveHotelStayDatesForBoundTrip,
+  parseHotelProximityAnchorDayNumber,
   addDaysYmd,
+  formatStayLabelZh,
 } from '../../../utils/hotel-mcp-route-run.mapper';
+import {
+  buildTemplateHotelDecisionSupportZh,
+  type HotelDecisionCardLike,
+  type HotelPartyAndPreferenceContext,
+} from '../../../utils/hotel-decision-support.signals';
+import { extractTripnaraStructuredSlicesFromPreferences } from '../../../utils/tripnara-structured-preferences-context.util';
+import {
+  buildAccommodationDecisionSupportWithStayContext,
+  buildHotelProximityStayContext,
+  scoreAccommodationForProximityStay,
+  type TripDayGeoProfile,
+} from '../../../utils/hotel-proximity-stay-context.util';
 
 @Injectable()
 export class PlanningAssistantV2Service {
@@ -377,6 +406,18 @@ export class PlanningAssistantV2Service {
       `context.countryCode=${dto.context?.countryCode || 'none'}`
     );
 
+    // 规划工作台：先从会话恢复 tripId/countryCode，避免后续轮次前端漏传 context
+    if (dto.sessionId) {
+      try {
+        const existingState = await this.planningAssistantService.getSessionState(dto.sessionId);
+        if (existingState) {
+          this.hydrateWorkbenchChatContext(dto, existingState);
+        }
+      } catch (err: any) {
+        this.logger.debug(`[规划工作台] 会话 context 恢复失败: ${err?.message}`);
+      }
+    }
+
     // 规划工作台：若 tripId 存在但 countryCode 缺失，从行程 destination 推断
     if (dto.context?.tripId && !dto.context?.countryCode && this.prisma) {
       try {
@@ -416,6 +457,10 @@ export class PlanningAssistantV2Service {
           messageCN: '规划工作台场景下，countryCode 是必需参数',
         });
       }
+      if (dto.sessionId && dto.context?.tripId) {
+        await this.ensureSessionExists(dto.sessionId, dto.userId);
+        await this.persistWorkbenchTripBinding(dto.sessionId, dto);
+      }
     }
 
     // 如果启用了自动路由，尝试智能路由
@@ -429,6 +474,15 @@ export class PlanningAssistantV2Service {
           try {
             state = await this.planningAssistantService.getSessionState(dto.sessionId);
             if (state) {
+              this.hydrateWorkbenchChatContext(dto, state);
+              const scopedHotelResolve = await this.tryResolvePendingHotelClarificationWithScopedIntent(
+                dto,
+                state,
+              );
+              if (scopedHotelResolve) {
+                await this.persistWorkbenchTripBinding(dto.sessionId, dto);
+                return scopedHotelResolve;
+              }
               sessionState = {
                 phase: state.phase,
                 preferences: state.preferences,
@@ -610,16 +664,16 @@ export class PlanningAssistantV2Service {
 
               // 日期澄清阶段：用户补充了入住/退房日期或确认建议日期，执行待定的酒店搜索
               if (state.phase === 'CLARIFYING_HOTEL_DATES' && state.pendingHotelSearch && this.mcpToolDispatcher) {
-                const refDate = state.pendingHotelSearch.extractedParams?.checkIn;
-                let dates = this.extractDatesFromMessage(dto.message, refDate);
-                if (!dates.checkIn || !dates.checkOut) {
-                  const nlOnly = parseExplicitStayWindowFromUserMessage(dto.message, {});
-                  if (nlOnly?.checkIn && nlOnly?.checkOut) dates = nlOnly;
-                }
-                // 若用户未提供新日期，但回复了确认且待定搜索中有建议日期，使用建议日期
-                if (!dates.checkIn || !dates.checkOut) {
-                  const suggested = state.pendingHotelSearch.extractedParams?.checkIn && state.pendingHotelSearch.extractedParams?.checkOut;
-                  if (suggested && this.isDateConfirmation(dto.message)) {
+                const pendingParams = {
+                  ...state.pendingHotelSearch.extractedParams,
+                  ...(dto.context?.tripId && { tripId: dto.context.tripId }),
+                };
+                let dates = await this.getHotelDatesFromContext(pendingParams, dto);
+                if ((!dates.checkIn || !dates.checkOut) && this.isDateConfirmation(dto.message)) {
+                  const suggested =
+                    state.pendingHotelSearch.extractedParams?.checkIn &&
+                    state.pendingHotelSearch.extractedParams?.checkOut;
+                  if (suggested) {
                     dates = {
                       checkIn: state.pendingHotelSearch.extractedParams.checkIn,
                       checkOut: state.pendingHotelSearch.extractedParams.checkOut,
@@ -739,16 +793,22 @@ export class PlanningAssistantV2Service {
             if (isHotelTool) {
               const dates = await this.getHotelDatesFromContext(toolParams, dto);
               const hasDates = !!(dates.checkIn && dates.checkOut);
-              const alreadyRecommended = sessionState?.phase === 'RECOMMENDING';
-              if (hasDates && alreadyRecommended) {
+              const tripBounds = await this.resolveTripDateBounds(dto.context?.tripId);
+              const skipDateClarification = this.shouldSkipAccommodationDateClarification(
+                dto,
+                dates,
+                sessionState as RouterSessionState | undefined,
+                tripBounds,
+                state,
+              );
+              if (hasDates) {
                 toolParams = { ...toolParams, checkIn: dates.checkIn, checkOut: dates.checkOut };
                 const guestsFromMsg = this.extractGuestsFromMessage(dto.message);
-                if (guestsFromMsg != null) toolParams = { ...toolParams, adults: guestsFromMsg, guests: guestsFromMsg };
-                this.logger.debug(`[酒店搜索] phase=RECOMMENDING 且已有日期，跳过日期澄清，直接搜索`);
-              } else if (hasDates) {
-                toolParams = { ...toolParams, checkIn: dates.checkIn, checkOut: dates.checkOut };
+                if (guestsFromMsg != null) {
+                  toolParams = { ...toolParams, adults: guestsFromMsg, guests: guestsFromMsg };
+                }
               }
-              if (!hasDates || !alreadyRecommended) {
+              if (!hasDates || !skipDateClarification) {
               const hasSuggestedDates = hasDates;
               const clarificationMsg = hasSuggestedDates
                 ? (isChinese
@@ -783,6 +843,9 @@ export class PlanningAssistantV2Service {
                   params: toolParams as Record<string, any>,
                 },
               };
+              }
+              if (skipDateClarification) {
+                this.logger.debug(`[酒店搜索] 已绑定行程且话术含明确间夜/推荐意图，跳过日期澄清，直接搜索`);
               }
             }
 
@@ -1050,6 +1113,29 @@ export class PlanningAssistantV2Service {
                     hotelParams.checkIn = dates.checkIn;
                     hotelParams.checkOut = dates.checkOut;
                   }
+                  const tripBounds = await this.resolveTripDateBounds(dto.context?.tripId);
+                  const skipClarification = this.shouldSkipAccommodationDateClarification(
+                    dto,
+                    dates,
+                    sessionState as RouterSessionState | undefined,
+                    tripBounds,
+                    state,
+                  );
+                  if (skipClarification && hasSuggestedDates && this.mcpToolDispatcher) {
+                    const toolResult = await this.mcpToolDispatcher.executeTool(
+                      'hotel',
+                      'hotel.search',
+                      hotelParams,
+                    );
+                    return await this.formatToolResult(
+                      { serviceName: 'hotel', toolName: 'hotel.search' },
+                      toolResult,
+                      dto,
+                      routingResult,
+                      isChinese,
+                    );
+                  }
+                  if (skipClarification) break;
                   const clarificationMsg = hasSuggestedDates
                     ? (isChinese
                       ? `您的行程是 ${this.formatDateForDisplay(dates.checkIn!, true)} 至 ${this.formatDateForDisplay(dates.checkOut!, true)}，是否用这几天查酒店？回复「好的」或「可以」确认，或直接说其他日期。`
@@ -1110,6 +1196,15 @@ export class PlanningAssistantV2Service {
                     airbnbParams.checkIn = airbnbDates.checkIn;
                     airbnbParams.checkOut = airbnbDates.checkOut;
                   }
+                  const tripBounds = await this.resolveTripDateBounds(dto.context?.tripId);
+                  const skipClarification = this.shouldSkipAccommodationDateClarification(
+                    dto,
+                    airbnbDates,
+                    sessionState as RouterSessionState | undefined,
+                    tripBounds,
+                    state,
+                  );
+                  if (skipClarification) break;
                   const clarificationMsg = hasSuggestedDates
                     ? (isChinese
                       ? `您的行程是 ${this.formatDateForDisplay(airbnbDates.checkIn!, true)} 至 ${this.formatDateForDisplay(airbnbDates.checkOut!, true)}，是否用这几天查民宿？回复「好的」或「可以」确认，或直接说其他日期。`
@@ -1165,6 +1260,29 @@ export class PlanningAssistantV2Service {
                     accParams.checkIn = accDates.checkIn;
                     accParams.checkOut = accDates.checkOut;
                   }
+                  const tripBounds = await this.resolveTripDateBounds(dto.context?.tripId);
+                  const skipClarification = this.shouldSkipAccommodationDateClarification(
+                    dto,
+                    accDates,
+                    sessionState as RouterSessionState | undefined,
+                    tripBounds,
+                    state,
+                  );
+                  if (skipClarification && hasSuggestedDates && this.mcpToolDispatcher) {
+                    const toolResult = await this.mcpToolDispatcher.executeTool(
+                      'hotel',
+                      'hotel.search',
+                      accParams,
+                    );
+                    return await this.formatToolResult(
+                      { serviceName: 'hotel', toolName: 'hotel.search' },
+                      toolResult,
+                      dto,
+                      routingResult,
+                      isChinese,
+                    );
+                  }
+                  if (skipClarification) break;
                   const clarificationMsg = hasSuggestedDates
                     ? (isChinese
                       ? `您的行程是 ${this.formatDateForDisplay(accDates.checkIn!, true)} 至 ${this.formatDateForDisplay(accDates.checkOut!, true)}，是否用这几天查住宿？回复「好的」或「可以」确认，或直接说其他日期。`
@@ -2003,6 +2121,8 @@ export class PlanningAssistantV2Service {
       userId: dto.userId,
       message: enhancedMessage,
       language: dto.language,
+      countryCode: dto.context?.countryCode,
+      tripId: dto.context?.tripId,
       context: dto.context ? {
         currentLocation: dto.context.currentLocation?.lat !== undefined && dto.context.currentLocation?.lng !== undefined
           ? { lat: dto.context.currentLocation.lat, lng: dto.context.currentLocation.lng }
@@ -2554,6 +2674,12 @@ export class PlanningAssistantV2Service {
     const orchestrationResult = payload?.orchestrationResult;
     const itinerary = orchestrationResult?.itinerary;
     const state = orchestrationResult?.state;
+    const sanitizedGate =
+      (orchestrationResult?.gate_result as unknown as Record<string, unknown> | undefined) ??
+      undefined;
+    const itineraryAdjustResult = (payload as { itinerary_adjust_result?: Record<string, unknown> })
+      ?.itinerary_adjust_result;
+    const actionExecution = (payload as { actionExecution?: Record<string, unknown> })?.actionExecution;
 
     const plans: PlanCandidateDto[] = [];
     if (itinerary || state) {
@@ -2589,13 +2715,29 @@ export class PlanningAssistantV2Service {
         estimated_time_remaining_ms: response.ui_state.estimated_time_remaining_ms,
         current_step_detail: response.ui_state.current_step_detail,
       } : undefined,
-      orchestrationResult: orchestrationResult ? {
-        state: state as unknown as Record<string, unknown>,
-        gate_result: orchestrationResult.gate_result as unknown as Record<string, unknown>,
-        decision_log: orchestrationResult.decision_log as unknown[],
-        itinerary: orchestrationResult.itinerary as { days?: unknown[] },
-        decisionState: (payload as any)?.orchestrationResult?.decisionState as Record<string, unknown> | undefined,
-      } : undefined,
+      orchestrationResult: orchestrationResult
+        ? {
+            state: state as unknown as Record<string, unknown>,
+            gate_result: sanitizedGate,
+            decision_log: orchestrationResult.decision_log as unknown[],
+            itinerary:
+              Array.isArray(payload?.timeline) && payload.timeline.length > 0
+                ? ({ days: payload.timeline } as { days?: unknown[] })
+                : (orchestrationResult.itinerary as { days?: unknown[] }),
+            decisionState: (payload as { orchestrationResult?: { decisionState?: Record<string, unknown> } })
+              ?.orchestrationResult?.decisionState,
+          }
+        : undefined,
+      /** 改排草案确认：优先于 plans / 全周骨架渲染「草案待确认」卡片 */
+      itinerary_adjust_result: itineraryAdjustResult,
+      actionExecution,
+      gate_result: sanitizedGate,
+      workbench_feasibility: (payload as { workbench_feasibility?: Record<string, unknown> })
+        ?.workbench_feasibility,
+      /** 与库内 Trip / 时间轴 / 门控 violations 同源（route_and_run payload） */
+      workbench_display: (payload as { workbench_display?: Record<string, unknown> })?.workbench_display,
+      timeline: payload?.timeline as unknown[] | undefined,
+      safety_surface: (payload as { safety_surface?: Record<string, unknown> })?.safety_surface,
       routing: {
         target: 'generate' as const,
         reason: 'Routed via route_and_run (方案 A)',
@@ -3688,6 +3830,8 @@ export class PlanningAssistantV2Service {
       recommendations?: any[];
       planCandidates?: any[];
       searchResults?: Array<{ title?: string; url?: string; text?: string; publishedDate?: string }>;
+      lastAccommodations?: AccommodationItemDto[];
+      lastAccommodationTripId?: string;
     }
   ): Promise<void> {
     try {
@@ -3771,6 +3915,11 @@ export class PlanningAssistantV2Service {
           text: r.text,
           publishedDate: r.publishedDate,
         }));
+      }
+
+      if (updates.lastAccommodations && updates.lastAccommodations.length > 0) {
+        finalState.lastAccommodations = updates.lastAccommodations;
+        finalState.lastAccommodationTripId = updates.lastAccommodationTripId;
       }
 
       // 保存会话状态
@@ -5032,24 +5181,184 @@ export class PlanningAssistantV2Service {
    * 从参数和行程上下文获取酒店入住/退房日期
    * 优先级：extractedParams > 消息内日历日期 > 话术限定「第 N 晚/第 N 天住」推导间夜 > extractDatesFromMessage > trip 整段
    */
+  /**
+   * 规划工作台：从会话持久化字段 / 待定酒店搜索参数补全 context，避免前端后续轮次漏传 tripId。
+   */
+  private hydrateWorkbenchChatContext(
+    dto: ChatRequestDto,
+    state?: PlanningConversationState | null,
+  ): void {
+    const tripId =
+      dto.context?.tripId ||
+      state?.boundTripId ||
+      state?.pendingHotelSearch?.extractedParams?.tripId;
+    const countryCode =
+      dto.context?.countryCode ||
+      state?.boundCountryCode ||
+      state?.pendingHotelSearch?.extractedParams?.countryCode;
+    if (!tripId && !countryCode) return;
+    dto.context = {
+      ...(dto.context ?? {}),
+      ...(tripId ? { tripId: String(tripId) } : {}),
+      ...(countryCode ? { countryCode: String(countryCode) } : {}),
+    };
+  }
+
+  private async persistWorkbenchTripBinding(
+    sessionId: string,
+    dto: ChatRequestDto,
+  ): Promise<void> {
+    if (!dto.context?.tripId) return;
+    await this.updateSessionState(sessionId, {
+      boundTripId: dto.context.tripId,
+      ...(dto.context.countryCode ? { boundCountryCode: dto.context.countryCode } : {}),
+    });
+  }
+
+  /**
+   * 日期澄清阶段若用户再次表达「第 N 天酒店」等明确间夜，直接执行搜索并清除待定状态。
+   */
+  private async tryResolvePendingHotelClarificationWithScopedIntent(
+    dto: ChatRequestDto,
+    state: PlanningConversationState,
+  ): Promise<ChatResponseDto | null> {
+    if (state.phase !== 'CLARIFYING_HOTEL_DATES' || !state.pendingHotelSearch || !this.mcpToolDispatcher) {
+      return null;
+    }
+    this.hydrateWorkbenchChatContext(dto, state);
+    const pendingParams: Record<string, any> = {
+      ...state.pendingHotelSearch.extractedParams,
+      ...(dto.context?.tripId && { tripId: dto.context.tripId }),
+      ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
+    };
+    const dates = await this.getHotelDatesFromContext(pendingParams, dto);
+    if (!dates.checkIn || !dates.checkOut) return null;
+    const tripBounds = await this.resolveTripDateBounds(
+      dto.context?.tripId || pendingParams.tripId,
+    );
+    const skip = this.shouldSkipAccommodationDateClarification(
+      dto,
+      dates,
+      {
+        phase: state.phase,
+        tripId: dto.context?.tripId,
+        countryCode: dto.context?.countryCode,
+      } as RouterSessionState,
+      tripBounds,
+      state,
+    );
+    if (!skip && !this.isDateConfirmation(dto.message)) return null;
+
+    try {
+      const mergedParams = {
+        ...pendingParams,
+        checkIn: dates.checkIn,
+        checkOut: dates.checkOut,
+        language: pendingParams.language || this.getLanguageForAccommodation(dto),
+      };
+      const toolResult = await this.mcpToolDispatcher.executeTool(
+        'hotel',
+        'hotel.search',
+        mergedParams,
+      );
+      await this.updateSessionState(dto.sessionId, {
+        phase: 'RECOMMENDING',
+        pendingHotelSearch: undefined,
+      });
+      const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+      return await this.formatToolResult(
+        {
+          serviceName: 'hotel',
+          toolName: 'hotel.search',
+          displayName: '搜索酒店',
+          description: '',
+          parameters: [],
+          examples: [],
+          category: 'accommodation',
+          authRequired: false,
+        },
+        toolResult,
+        dto,
+        {
+          target: state.pendingHotelSearch.target,
+          confidence: 0.9,
+          reason: '',
+          reasonCN: '',
+          extractedParams: mergedParams,
+        },
+        isChinese,
+      );
+    } catch (e: any) {
+      this.logger.warn(`[日期澄清] 间夜明确话术直接搜索失败: ${e?.message}`);
+      return null;
+    }
+  }
+
+  private async resolveTripDateBounds(
+    tripId?: string,
+  ): Promise<{ tripStart?: string; tripEnd?: string }> {
+    if (!tripId || !this.prisma) return {};
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { startDate: true, endDate: true },
+      });
+      if (trip?.startDate && trip?.endDate) {
+        return {
+          tripStart: new Date(trip.startDate).toISOString().split('T')[0],
+          tripEnd: new Date(trip.endDate).toISOString().split('T')[0],
+        };
+      }
+    } catch (e: any) {
+      this.logger.debug(`获取行程日期失败: ${e?.message}`);
+    }
+    return {};
+  }
+
+  private shouldSkipAccommodationDateClarification(
+    dto: ChatRequestDto,
+    dates: { checkIn?: string; checkOut?: string },
+    sessionState?: RouterSessionState,
+    tripBounds?: { tripStart?: string; tripEnd?: string },
+    conversationState?: PlanningConversationState | null,
+  ): boolean {
+    return shouldSkipHotelDateClarification({
+      message: dto.message ?? '',
+      tripId:
+        dto.context?.tripId ||
+        sessionState?.tripId ||
+        conversationState?.boundTripId ||
+        conversationState?.pendingHotelSearch?.extractedParams?.tripId,
+      checkIn: dates.checkIn,
+      checkOut: dates.checkOut,
+      tripStartYmd: tripBounds?.tripStart,
+      tripEndYmd: tripBounds?.tripEnd,
+      phaseAlreadyRecommended: sessionState?.phase === 'RECOMMENDING',
+    });
+  }
+
   private async getHotelDatesFromContext(
     params: Record<string, any>,
     dto: ChatRequestDto
   ): Promise<{ checkIn?: string; checkOut?: string }> {
-    const checkIn = params.checkIn || params.checkin;
-    const checkOut = params.checkOut || params.checkout;
-    if (checkIn && checkOut) {
-      return {
-        checkIn: typeof checkIn === 'string' ? checkIn.split('T')[0] : String(checkIn).split('T')[0],
-        checkOut: typeof checkOut === 'string' ? checkOut.split('T')[0] : String(checkOut).split('T')[0],
-      };
-    }
+    const paramsCheckIn = params.checkIn || params.checkin;
+    const paramsCheckOut = params.checkOut || params.checkout;
+    const paramCi =
+      paramsCheckIn != null
+        ? (typeof paramsCheckIn === 'string' ? paramsCheckIn.split('T')[0] : String(paramsCheckIn).split('T')[0])
+        : undefined;
+    const paramCo =
+      paramsCheckOut != null
+        ? (typeof paramsCheckOut === 'string' ? paramsCheckOut.split('T')[0] : String(paramsCheckOut).split('T')[0])
+        : undefined;
+
+    const tripId = dto.context?.tripId || params.tripId;
     let tripStart: string | undefined;
     let tripEnd: string | undefined;
-    if (dto.context?.tripId && this.prisma) {
+    if (tripId && this.prisma) {
       try {
         const trip = await this.prisma.trip.findUnique({
-          where: { id: dto.context.tripId },
+          where: { id: String(tripId) },
           select: { startDate: true, endDate: true },
         });
         if (trip?.startDate && trip?.endDate) {
@@ -5062,46 +5371,26 @@ export class PlanningAssistantV2Service {
     }
 
     const msg = dto.message ?? '';
-    const fromNl = parseExplicitStayWindowFromUserMessage(msg, {
+    const resolved = resolveHotelStayDatesForBoundTrip({
+      message: msg,
+      paramsCheckIn: paramCi,
+      paramsCheckOut: paramCo,
       tripStartYmd: tripStart,
       tripEndYmd: tripEnd,
     });
-    if (fromNl?.checkIn && fromNl?.checkOut) {
-      this.logger.debug(`从用户消息解析入住窗口: checkIn=${fromNl.checkIn}, checkOut=${fromNl.checkOut}`);
-      return { checkIn: fromNl.checkIn, checkOut: fromNl.checkOut };
-    }
-
-    /** 「第1天住哪」「第2晚酒店」等：无具体数字日期时仍应从行程锚点推导该间夜的 checkIn/checkOut，避免澄清卡默认整段行程 */
-    if (tripStart && tripEnd) {
-      const totalNights = countStayNightsBetweenInclusive(tripStart, tripEnd);
-      const scope = parseExplicitHotelNightScopeIndices(msg, totalNights);
-      if (scope && scope.length > 0) {
-        const sorted = [...scope].sort((a, b) => a - b);
-        const contiguous = sorted[sorted.length - 1] - sorted[0] === sorted.length - 1;
-        if (sorted.length === 1 || contiguous) {
-          const minN = sorted[0];
-          const maxN = sorted[sorted.length - 1];
-          const ci = addDaysYmd(tripStart, minN);
-          const co = addDaysYmd(tripStart, maxN + 1);
-          if (co > ci) {
-            this.logger.debug(
-              `从话术限定间夜推导入住窗口: nights=${sorted.map((i) => i + 1).join(',')} -> ${ci} ~ ${co}`,
-            );
-            return { checkIn: ci, checkOut: co };
-          }
-        }
+    if (resolved.checkIn && resolved.checkOut) {
+      if (paramCi && paramCo && (resolved.checkIn !== paramCi || resolved.checkOut !== paramCo)) {
+        this.logger.debug(
+          `住宿日期已由话术收窄: params ${paramCi}~${paramCo} -> ${resolved.checkIn}~${resolved.checkOut}`,
+        );
       }
+      return resolved;
     }
 
     const refForExtract = tripStart || tripEnd;
     const fromLegacy = this.extractDatesFromMessage(msg, refForExtract);
     if (fromLegacy.checkIn && fromLegacy.checkOut) {
       return { checkIn: fromLegacy.checkIn, checkOut: fromLegacy.checkOut };
-    }
-
-    if (tripStart && tripEnd) {
-      this.logger.debug(`从行程获取日期: checkIn=${tripStart}, checkOut=${tripEnd}`);
-      return { checkIn: tripStart, checkOut: tripEnd };
     }
 
     return {};
@@ -5729,12 +6018,55 @@ ${combinedText}`;
     return R * c;
   }
 
+  private async getTripStartYmd(tripId: string): Promise<string | undefined> {
+    if (!this.prisma) return undefined;
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { startDate: true },
+      });
+      if (!trip?.startDate) return undefined;
+      return new Date(trip.startDate).toISOString().split('T')[0];
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** 取指定日历日行程中首个带坐标的 POI 作为距离锚点 */
+  private async getTripDayAnchorGeo(
+    tripId: string,
+    dayYmd: string,
+  ): Promise<{ lat: number; lng: number; nameZh: string } | null> {
+    const places = await this.getItineraryPlacesWithCoords(tripId, dayYmd);
+    if (!places.length) return null;
+    const p = places[0];
+    return { lat: p.lat, lng: p.lng, nameZh: p.placeName };
+  }
+
+  private enrichAccommodationsWithAnchor(
+    accommodations: AccommodationItemDto[],
+    anchor: { lat: number; lng: number; nameZh: string },
+  ): AccommodationItemDto[] {
+    return accommodations.map((acc) => {
+      const loc = acc.location;
+      if (!loc || loc.lat == null || loc.lng == null) return acc;
+      const km = Math.round(this.haversineDistanceKm(loc.lat, loc.lng, anchor.lat, anchor.lng) * 10) / 10;
+      return {
+        ...acc,
+        distanceKm: km,
+        nearestPlaceName: anchor.nameZh,
+        anchor_poi_name_zh: anchor.nameZh,
+        distance_label_zh: `距「${anchor.nameZh}」约 ${km} km`,
+      };
+    });
+  }
+
   /**
-   * 为住宿项补充距最近行程点的距离
+   * 为住宿项补充距最近行程点的距离（多 POI 时取最近）
    */
   private enrichAccommodationsWithDistance(
     accommodations: AccommodationItemDto[],
-    itineraryPlaces: Array<{ lat: number; lng: number; placeName: string }>
+    itineraryPlaces: Array<{ lat: number; lng: number; placeName: string }>,
   ): AccommodationItemDto[] {
     return accommodations.map((acc) => {
       const loc = acc.location;
@@ -5749,10 +6081,557 @@ ${combinedText}`;
         }
       }
       if (minDist < Infinity) {
-        return { ...acc, distanceKm: Math.round(minDist * 10) / 10, nearestPlaceName: nearestName || undefined };
+        const km = Math.round(minDist * 10) / 10;
+        return {
+          ...acc,
+          distanceKm: km,
+          nearestPlaceName: nearestName || undefined,
+          anchor_poi_name_zh: nearestName || undefined,
+          distance_label_zh: nearestName ? `距「${nearestName}」约 ${km} km` : undefined,
+        };
       }
       return acc;
     });
+  }
+
+  /**
+   * 为住宿卡片附加「查看 / 加入行程」操作（前端点击加入行程时调 apply 接口）
+   */
+  private enrichAccommodationsWithActions(
+    accommodations: AccommodationItemDto[],
+  ): AccommodationItemDto[] {
+    return accommodations.map((acc, i) => {
+      const actions: AccommodationItemDto['actions'] = [
+        {
+          action: 'add_accommodation_to_itinerary',
+          label: 'Add to Trip',
+          labelCN: '加入行程',
+          params: { accommodationIndex: i },
+        },
+      ];
+      if (acc.url) {
+        actions.unshift({
+          action: 'view_accommodation',
+          label: 'View',
+          labelCN: '查看',
+          params: { accommodationIndex: i, url: acc.url },
+        });
+      }
+      return { ...acc, actions };
+    });
+  }
+
+  /** 补齐 checkIn/checkOut：优先卡片字段，否则按 nightIndex 或 index 对齐 TripDay */
+  private async resolveAccommodationDatesForApply(
+    tripId: string,
+    accommodation: AccommodationItemDto & { nightIndex?: number },
+    accommodationIndex: number,
+  ): Promise<AccommodationItemDto> {
+    if (accommodation.checkIn?.split('T')[0]) {
+      return accommodation;
+    }
+    if (!this.prisma) return accommodation;
+
+    const nightIndex =
+      accommodation.nightIndex != null && accommodation.nightIndex >= 1
+        ? accommodation.nightIndex
+        : accommodationIndex + 1;
+    const days = await this.prisma.tripDay.findMany({
+      where: { tripId },
+      orderBy: { date: 'asc' },
+      select: { date: true },
+    });
+    const day = days[nightIndex - 1];
+    if (!day?.date) return accommodation;
+
+    const checkIn = day.date.toISOString().slice(0, 10);
+    const nextDay = days[nightIndex];
+    const checkOut = nextDay?.date
+      ? nextDay.date.toISOString().slice(0, 10)
+      : addDaysYmd(checkIn, 1);
+    return { ...accommodation, checkIn, checkOut };
+  }
+
+  /**
+   * 将 route_and_run 住宿卡片写入会话缓存，供 apply 接口按 accommodationIndex 读取。
+   */
+  async persistLastAccommodationsForApply(
+    sessionId: string,
+    tripId: string,
+    accommodations: AccommodationItemDto[],
+    userId?: string,
+  ): Promise<void> {
+    if (!accommodations.length) return;
+    await this.ensureSessionExists(sessionId, userId);
+    const state = await this.planningAssistantService.getSessionState(sessionId);
+    if (!state) {
+      this.logger.warn(`persistLastAccommodationsForApply: session unavailable sessionId=${sessionId}`);
+      return;
+    }
+    const enriched = this.enrichAccommodationsWithActions(
+      accommodations.map((row) => coalesceAccommodationForApply(row)),
+    );
+    await this.planningAssistantService.saveSession({
+      ...state,
+      lastAccommodations: enriched,
+      lastAccommodationTripId: tripId,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * 将推荐住宿写入行程时间轴（入住日 TripDay 上的 REST 项）
+   */
+  async applyAccommodationToItinerary(
+    tripId: string,
+    dto: ApplyAccommodationToItineraryRequestDto,
+  ): Promise<ApplyAccommodationToItineraryResponseDto> {
+    if (!this.itineraryItemsService || !this.prisma) {
+      throw new BadRequestException({
+        message: 'Itinerary service unavailable',
+        messageCN: '行程服务不可用，无法加入住宿',
+      });
+    }
+
+    let sessionItem: AccommodationItemDto | undefined;
+    let sessionState = await this.planningAssistantService.getSessionState(dto.sessionId).catch(() => null);
+    if (!sessionState) {
+      await this.ensureSessionExists(dto.sessionId);
+      sessionState = await this.planningAssistantService.getSessionState(dto.sessionId);
+    }
+    const sessionList = sessionState?.lastAccommodations ?? [];
+    if (
+      sessionState?.lastAccommodationTripId &&
+      sessionState.lastAccommodationTripId !== tripId &&
+      !dto.accommodation &&
+      !dto.accommodationCard
+    ) {
+      throw new BadRequestException({
+        message: 'Accommodation list is for a different trip',
+        messageCN: '当前会话的住宿结果属于其他行程，请在本行程中重新搜索酒店',
+      });
+    }
+    sessionItem = sessionList[dto.accommodationIndex];
+    if (!dto.accommodation && !dto.accommodationCard && !sessionItem) {
+      if (!sessionState) {
+        throw new NotFoundException({
+          message: 'Session not found',
+          messageCN:
+            '会话不存在或已过期；请重新搜索酒店，或在请求体中传入 accommodation / accommodationCard 快照后再试',
+        });
+      }
+      throw new BadRequestException({
+        message: 'Invalid accommodation index',
+        messageCN: '住宿索引无效，请刷新推荐列表后重试',
+      });
+    }
+
+    let accommodation = coalesceAccommodationForApply(
+      dto.accommodationCard ?? null,
+      sessionItem ?? null,
+    );
+    if (dto.accommodation) {
+      accommodation = coalesceAccommodationForApply(dto.accommodation, accommodation);
+    }
+    if (resolveAccommodationDisplayName(accommodation) === 'Listing' && sessionList.length > 0) {
+      const byId = accommodation.id
+        ? sessionList.find((row) => row.id === accommodation.id)
+        : undefined;
+      if (byId) {
+        accommodation = coalesceAccommodationForApply(byId, accommodation);
+      }
+    }
+
+    accommodation = await this.resolveAccommodationDatesForApply(
+      tripId,
+      normalizeAccommodationForApply(
+        accommodation as AccommodationItemDto & { check_in?: string; check_out?: string; nightIndex?: number },
+      ),
+      dto.accommodationIndex,
+    );
+
+    const displayName = resolveAccommodationDisplayName(accommodation);
+    if (displayName === 'Listing') {
+      throw new BadRequestException({
+        message: 'Accommodation name required',
+        messageCN: '缺少住宿名称，请传入 accommodationCard（route_and_run 卡片快照）后重试',
+      });
+    }
+
+    const checkIn = accommodation.checkIn?.split('T')[0];
+    if (!checkIn) {
+      throw new BadRequestException({
+        message: 'checkIn date required on accommodation',
+        messageCN: '缺少入住日期，请重新搜索酒店后再加入行程',
+      });
+    }
+    const checkOut =
+      accommodation.checkOut?.split('T')[0] ?? addDaysYmd(checkIn, 1);
+
+    const tripDay = await this.prisma.tripDay.findFirst({
+      where: {
+        tripId,
+        date: {
+          gte: new Date(`${checkIn}T00:00:00.000Z`),
+          lt: new Date(`${addDaysYmd(checkIn, 1)}T00:00:00.000Z`),
+        },
+      },
+    });
+    if (!tripDay) {
+      throw new BadRequestException({
+        message: `No trip day for check-in ${checkIn}`,
+        messageCN: `行程中找不到入住日 ${checkIn}，请确认日期范围`,
+      });
+    }
+
+    const replaceExisting = dto.replaceExisting !== false;
+    let replacedCount = 0;
+    if (replaceExisting) {
+      const existingRest = await this.prisma.itineraryItem.findMany({
+        where: { tripDayId: tripDay.id, type: 'REST' },
+        select: { id: true },
+      });
+      for (const row of existingRest) {
+        await this.itineraryItemsService.remove(row.id);
+        replacedCount++;
+      }
+    }
+
+    const { startTime, endTime } = this.buildAccommodationStayTimes(checkIn, checkOut);
+    const placeId = await this.resolvePlaceIdForAppliedAccommodation(accommodation, displayName);
+
+    const created = await this.itineraryItemsService.create({
+      tripDayId: tripDay.id,
+      ...(placeId != null ? { placeId } : {}),
+      ...(!placeId
+        ? {
+            placeName: displayName,
+            address: accommodation.address,
+          }
+        : {}),
+      type: ItemType.REST,
+      startTime,
+      endTime,
+      note: this.buildAccommodationItineraryDetailNote(accommodation, checkIn, checkOut),
+      externalUrl: accommodation.url,
+      costCategory: CostCategory.ACCOMMODATION,
+      costNote: accommodation.price,
+      forceCreate: true,
+    });
+
+    const messageCN = `已将「${displayName}」加入 ${checkIn} 行程${replacedCount > 0 ? `（已替换该日原有 ${replacedCount} 处住宿）` : ''}。`;
+    return {
+      success: true,
+      itineraryItemId: created.id,
+      tripDayId: tripDay.id,
+      message: `Added "${displayName}" to the trip on ${checkIn}.`,
+      messageCN,
+      replacedCount,
+    };
+  }
+
+  private buildAccommodationStayTimes(
+    checkIn: string,
+    checkOut: string,
+  ): { startTime: string; endTime: string } {
+    const checkInYmd = checkIn.split('T')[0];
+    const checkOutYmd =
+      checkOut.split('T')[0] > checkInYmd ? checkOut.split('T')[0] : addDaysYmd(checkInYmd, 1);
+    const start = DateTime.fromISO(`${checkInYmd}T20:00:00.000Z`, { zone: 'utc' });
+    let end = DateTime.fromISO(`${checkOutYmd}T11:00:00.000Z`, { zone: 'utc' });
+    if (!end.isValid || end <= start) {
+      end = start.plus({ hours: 15 });
+    }
+    return { startTime: start.toISO()!, endTime: end.toISO()! };
+  }
+
+  /** 住宿详情备注（placeName/address 由 create 接口单独写入 note 首行，此处只写补充信息） */
+  private buildAccommodationItineraryDetailNote(
+    accommodation: AccommodationItemDto,
+    checkIn: string,
+    checkOut: string,
+  ): string {
+    const coords = resolveAccommodationCoordinates(accommodation);
+    const lines = [
+      accommodation.source === 'airbnb' ? 'Airbnb 民宿' : '酒店/住宿',
+      accommodation.roomSpecs,
+      accommodation.rating != null
+        ? `评分: ${accommodation.rating}${accommodation.ratingCount ? `（${accommodation.ratingCount} 条评价）` : ''}`
+        : undefined,
+      accommodation.price ? `参考价: ${accommodation.price}` : undefined,
+      accommodation.distance_label_zh,
+      accommodation.decision_support_zh,
+      accommodation.anchor_poi_name_zh ? `锚点: ${accommodation.anchor_poi_name_zh}` : undefined,
+      coords ? formatAccommodationCoordsNoteLine(coords.lat, coords.lng) : undefined,
+      `入住: ${checkIn}`,
+      `退房: ${checkOut}`,
+    ].filter(Boolean);
+    return lines.join('\n');
+  }
+
+  /** 为 MCP 住宿创建/复用 Place，写入 PostGIS 坐标供地图与交通计算使用 */
+  private async resolvePlaceIdForAppliedAccommodation(
+    accommodation: AccommodationItemDto,
+    displayName: string,
+  ): Promise<number | undefined> {
+    if (!this.prisma) return undefined;
+
+    let coords = resolveAccommodationCoordinates(accommodation);
+    if (!coords && accommodation.address?.trim() && this.googleMapsDirectService) {
+      coords = await this.tryGeocodeAddressForAccommodation(accommodation.address.trim());
+    }
+    if (!coords) return undefined;
+
+    try {
+      const googlePlaceId =
+        accommodation.source === 'hotel' && isGooglePlaceId(accommodation.id)
+          ? accommodation.id.trim()
+          : undefined;
+
+      if (googlePlaceId) {
+        const existing = await this.prisma.place.findUnique({
+          where: { googlePlaceId },
+          select: { id: true },
+        });
+        if (existing) {
+          await this.prisma.$executeRaw`
+            UPDATE "Place"
+            SET location = ST_SetSRID(ST_MakePoint(${coords.lng}, ${coords.lat}), 4326)
+            WHERE id = ${existing.id}
+          `;
+          return existing.id;
+        }
+      }
+
+      const place = await this.prisma.place.create({
+        data: {
+          uuid: randomUUID(),
+          nameCN: displayName,
+          nameEN: accommodation.nameEN ?? accommodation.name,
+          category: 'HOTEL',
+          address: accommodation.address ?? null,
+          googlePlaceId: googlePlaceId ?? null,
+          rating: accommodation.rating ?? 0,
+          metadata: {
+            ...buildAccommodationPlaceMetadata(accommodation),
+            coordinates: [coords.lng, coords.lat],
+          } as any,
+          updatedAt: new Date(),
+        },
+      });
+
+      await this.prisma.$executeRaw`
+        UPDATE "Place"
+        SET location = ST_SetSRID(ST_MakePoint(${coords.lng}, ${coords.lat}), 4326)
+        WHERE id = ${place.id}
+      `;
+
+      return place.id;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`resolvePlaceIdForAppliedAccommodation failed: ${msg}`);
+      return undefined;
+    }
+  }
+
+  private async tryGeocodeAddressForAccommodation(
+    address: string,
+  ): Promise<{ lat: number; lng: number } | null> {
+    try {
+      const geocodeResult = await this.googleMapsDirectService.geocode({
+        address,
+        language: 'en',
+      });
+      if (geocodeResult?.data?.results?.length > 0) {
+        const firstResult = geocodeResult.data.results[0];
+        const lat = firstResult.geometry?.location?.lat;
+        const lng = firstResult.geometry?.location?.lng;
+        if (typeof lat === 'number' && typeof lng === 'number') return { lat, lng };
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`住宿地址地理编码失败: ${msg}`);
+    }
+    return null;
+  }
+
+  private enrichAccommodationsWithTemplateDecisionSupport(
+    accommodations: AccommodationItemDto[],
+    rawResults: unknown[],
+    source: 'hotel' | 'airbnb',
+    ctx: HotelPartyAndPreferenceContext = {},
+    stayCtx?: import('../../../utils/hotel-proximity-stay-context.util').HotelProximityStayContext,
+  ): AccommodationItemDto[] {
+    return accommodations.map((acc, i) => {
+      const card: HotelDecisionCardLike = {
+        id: acc.id,
+        source: acc.source,
+        name: acc.name,
+        rating: acc.rating,
+        priceLabel: acc.price,
+        distance_to_anchor_km: acc.distanceKm,
+        anchor_poi_name_zh: acc.anchor_poi_name_zh ?? acc.nearestPlaceName,
+      };
+      const raw = source === 'airbnb' && i < rawResults.length ? rawResults[i] : undefined;
+      const decision_support_zh = stayCtx
+        ? buildAccommodationDecisionSupportWithStayContext(card, raw, ctx, stayCtx)
+        : buildTemplateHotelDecisionSupportZh(card, raw, ctx);
+      return decision_support_zh ? { ...acc, decision_support_zh } : acc;
+    });
+  }
+
+  /** 绑定行程：团队人数 + 用户结构化住宿偏好 → 决策文案/排序上下文 */
+  private async resolveHotelDecisionContextForTrip(
+    tripId: string,
+    userId?: string,
+  ): Promise<HotelPartyAndPreferenceContext> {
+    const ctx: HotelPartyAndPreferenceContext = {};
+    if (this.prisma && userId) {
+      try {
+        const prof = await this.prisma.userProfile.findUnique({
+          where: { userId },
+          select: { preferences: true },
+        });
+        const slices = extractTripnaraStructuredSlicesFromPreferences(
+          prof?.preferences as Record<string, unknown> | null,
+        );
+        if (slices.standing_hotel_avoid_terms_lower?.length) {
+          ctx.standing_hotel_avoid_terms_lower = slices.standing_hotel_avoid_terms_lower;
+        }
+        if (slices.standing_hotel_style_digest_zh) {
+          ctx.standing_hotel_style_digest_zh = slices.standing_hotel_style_digest_zh;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (!this.prisma) return ctx;
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { budgetConfig: true, pacingConfig: true },
+      });
+      const bc = trip?.budgetConfig as Record<string, unknown> | null | undefined;
+      const travelers = bc?.travelers;
+      if (Array.isArray(travelers) && travelers.length > 0) {
+        let children = 0;
+        let elderly = 0;
+        let adults = 0;
+        for (const t of travelers) {
+          const ty = String((t as Record<string, unknown>)?.type ?? '').toUpperCase();
+          if (ty === 'CHILD') children += 1;
+          else if (ty === 'ELDERLY') elderly += 1;
+          else adults += 1;
+        }
+        const total = adults + children + elderly;
+        ctx.party_total = total > 0 ? total : undefined;
+        ctx.has_children = children > 0;
+        ctx.has_elderly = elderly > 0;
+        const bits: string[] = [];
+        if (adults) bits.push(`${adults} 位成人`);
+        if (children) bits.push(`${children} 位儿童`);
+        if (elderly) bits.push(`${elderly} 位长者`);
+        if (bits.length) ctx.party_summary_zh = bits.join('、');
+      }
+      const pace = (trip?.pacingConfig as Record<string, unknown> | null)?.pacePreference;
+      if (typeof pace === 'string') {
+        if (pace === 'RELAXED') ctx.effort_sensitivity = Math.max(ctx.effort_sensitivity ?? 0.5, 0.62);
+        if (pace === 'INTENSIVE') ctx.effort_sensitivity = Math.min(ctx.effort_sensitivity ?? 0.5, 0.38);
+      }
+    } catch {
+      // ignore
+    }
+    return ctx;
+  }
+
+  /** 加载指定行程日的 POI 动线与强度（供跨天住宿权衡） */
+  private async loadTripDayGeoProfiles(
+    tripId: string,
+    tripStartYmd: string,
+    dayNumbers: number[],
+  ): Promise<Map<number, TripDayGeoProfile>> {
+    const out = new Map<number, TripDayGeoProfile>();
+    if (!this.prisma || dayNumbers.length === 0) return out;
+
+    const uniqueDays = [...new Set(dayNumbers)].filter((d) => d >= 1).sort((a, b) => a - b);
+    for (const dayNum of uniqueDays) {
+      const ymd = addDaysYmd(tripStartYmd, dayNum - 1);
+      const rows = await this.prisma.$queryRaw<
+        Array<{
+          nameEN: string | null;
+          nameCN: string | null;
+          lat: number;
+          lng: number;
+          startTime: Date | null;
+          endTime: Date | null;
+          travelMin: number | null;
+        }>
+      >`
+        SELECT p."nameEN", p."nameCN",
+          ST_Y(p.location::geometry) as lat,
+          ST_X(p.location::geometry) as lng,
+          ii."startTime", ii."endTime",
+          ii."travelFromPreviousDuration" as "travelMin"
+        FROM "ItineraryItem" ii
+        JOIN "TripDay" td ON ii."tripDayId" = td.id
+        JOIN "Place" p ON ii."placeId" = p.id
+        WHERE td."tripId" = ${tripId}
+          AND td.date::date = ${ymd}::date
+          AND p.location IS NOT NULL
+        ORDER BY ii."order" ASC NULLS LAST, ii."startTime" ASC NULLS LAST
+      `;
+
+      const stops = rows
+        .filter((r) => r.lat != null && r.lng != null)
+        .map((r) => {
+          const start = r.startTime ? DateTime.fromJSDate(r.startTime, { zone: 'utc' }) : null;
+          const end = r.endTime ? DateTime.fromJSDate(r.endTime, { zone: 'utc' }) : null;
+          return {
+            lat: Number(r.lat),
+            lng: Number(r.lng),
+            nameZh: (r.nameEN || r.nameCN || '').trim() || '行程点',
+            startHourUtc: start?.isValid ? start.hour : undefined,
+            endHourUtc: end?.isValid ? end.hour : undefined,
+          };
+        });
+
+      const totalTravelMinutes = rows.reduce((s, r) => s + (r.travelMin ?? 0), 0);
+      out.set(dayNum, {
+        dayNumber: dayNum,
+        dateYmd: ymd,
+        itemCount: rows.length,
+        firstStop: stops[0],
+        lastStop: stops.length ? stops[stops.length - 1] : undefined,
+        totalTravelMinutes,
+      });
+    }
+    return out;
+  }
+
+  private buildHotelSearchMessageCN(params: {
+    count: number;
+    checkIn?: string;
+    checkOut?: string;
+    userMessage: string;
+    accommodations: AccommodationItemDto[];
+    proximityDay?: number;
+    multiDayTradeoff?: boolean;
+  }): string {
+    const { count, checkIn, checkOut, accommodations, proximityDay, multiDayTradeoff } = params;
+    if (count <= 0) return '未找到符合条件的住宿。';
+    const stay =
+      checkIn && checkOut ? formatStayLabelZh(checkIn, checkOut) : checkIn ? `入住 ${checkIn}` : '';
+    const anchorName =
+      accommodations.find((a) => a.anchor_poi_name_zh)?.anchor_poi_name_zh ??
+      accommodations.find((a) => a.nearestPlaceName)?.nearestPlaceName;
+    if (proximityDay) {
+      const anchorPart = anchorName ? `（参考第 ${proximityDay} 天行程锚点「${anchorName}」）` : `（参考第 ${proximityDay} 天行程）`;
+      const sortHint = multiDayTradeoff
+        ? '综合第 2–3 天动线、收队强度与是否宜早起等因素排序'
+        : '按距离由近到远排序';
+      return `已按您的要求${anchorPart}筛选${stay ? ` ${stay}` : ''} 的住宿，共 ${count} 处，${sortHint}。每张卡片附有距离与跨天权衡说明，便于对比。`;
+    }
+    return `已为您找到 ${count} 处住宿${stay ? `（${stay}）` : ''}。卡片含与行程点的距离与选房提示，便于对比选择。`;
   }
 
   /**
@@ -5786,22 +6665,121 @@ ${combinedText}`;
       const source = (parsedResult?.source as 'hotel' | 'airbnb') || 'hotel';
       let accommodations = this.mapToAccommodations(results, source);
       const tripId = routingResult?.extractedParams?.tripId ?? dto.context?.tripId;
-      const checkIn = routingResult?.extractedParams?.checkIn ?? routingResult?.extractedParams?.checkin;
-      if (tripId && checkIn && this.prisma && accommodations.length > 0) {
-        const dateStr = typeof checkIn === 'string' ? checkIn.split('T')[0] : String(checkIn).split('T')[0];
-        const itineraryPlaces = await this.getItineraryPlacesWithCoords(tripId, dateStr);
-        if (itineraryPlaces.length > 0) {
-          accommodations = this.enrichAccommodationsWithDistance(accommodations, itineraryPlaces);
+      const checkInRaw =
+        routingResult?.extractedParams?.checkIn ?? routingResult?.extractedParams?.checkin;
+      const checkOutRaw =
+        routingResult?.extractedParams?.checkOut ?? routingResult?.extractedParams?.checkout;
+      const checkIn =
+        checkInRaw != null
+          ? (typeof checkInRaw === 'string' ? checkInRaw.split('T')[0] : String(checkInRaw).split('T')[0])
+          : undefined;
+      const checkOut =
+        checkOutRaw != null
+          ? (typeof checkOutRaw === 'string' ? checkOutRaw.split('T')[0] : String(checkOutRaw).split('T')[0])
+          : undefined;
+      const userMsg = dto.message ?? '';
+      const proximityDay = parseHotelProximityAnchorDayNumber(userMsg);
+
+      if (tripId && this.prisma && accommodations.length > 0) {
+        const partyCtx = await this.resolveHotelDecisionContextForTrip(String(tripId), dto.userId);
+        let anchor: { lat: number; lng: number; nameZh: string } | null = null;
+        let stayCtx: import('../../../utils/hotel-proximity-stay-context.util').HotelProximityStayContext | undefined;
+        const tripStart = await this.getTripStartYmd(String(tripId));
+
+        if (proximityDay && tripStart) {
+          const anchorYmd = addDaysYmd(tripStart, proximityDay - 1);
+          anchor = await this.getTripDayAnchorGeo(String(tripId), anchorYmd);
+
+          const stayDayNum =
+            checkIn != null
+              ? Math.round(
+                  DateTime.fromISO(`${checkIn}T12:00:00.000Z`, { zone: 'utc' }).diff(
+                    DateTime.fromISO(`${tripStart}T12:00:00.000Z`, { zone: 'utc' }),
+                    'days',
+                  ).days,
+                ) + 1
+              : proximityDay > 1
+                ? proximityDay - 1
+                : proximityDay;
+
+          const profiles = await this.loadTripDayGeoProfiles(String(tripId), tripStart, [
+            stayDayNum,
+            proximityDay,
+          ]);
+          const stayProfile = profiles.get(stayDayNum);
+          const anchorProfile = profiles.get(proximityDay);
+          if (stayProfile && anchorProfile) {
+            stayCtx = buildHotelProximityStayContext({
+              stayDay: stayProfile,
+              anchorDay: anchorProfile,
+            });
+          }
+        }
+        if (anchor) {
+          accommodations = this.enrichAccommodationsWithAnchor(accommodations, anchor);
+        } else if (checkIn) {
+          const itineraryPlaces = await this.getItineraryPlacesWithCoords(String(tripId), checkIn);
+          if (itineraryPlaces.length > 0) {
+            accommodations = this.enrichAccommodationsWithDistance(accommodations, itineraryPlaces);
+          }
+        }
+        accommodations = this.enrichAccommodationsWithTemplateDecisionSupport(
+          accommodations,
+          results,
+          source,
+          partyCtx,
+          stayCtx,
+        );
+        if (stayCtx) {
+          accommodations.sort((a, b) => {
+            const cardA: HotelDecisionCardLike = {
+              id: a.id,
+              source: a.source,
+              name: a.name,
+              distance_to_anchor_km: a.distanceKm,
+            };
+            const cardB: HotelDecisionCardLike = {
+              id: b.id,
+              source: b.source,
+              name: b.name,
+              distance_to_anchor_km: b.distanceKm,
+            };
+            return (
+              scoreAccommodationForProximityStay(
+                { ...cardA, location: a.location },
+                stayCtx!,
+              ) - scoreAccommodationForProximityStay({ ...cardB, location: b.location }, stayCtx!)
+            );
+          });
+        } else {
+          accommodations.sort(
+            (a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY),
+          );
+        }
+        for (const acc of accommodations) {
+          if (checkIn) acc.checkIn = checkIn;
+          if (checkOut) acc.checkOut = checkOut;
         }
       }
+
+      accommodations = this.enrichAccommodationsWithActions(accommodations);
+
       const count = accommodations.length;
-      const messageCN = count > 0
-        ? `我为您找到了${count}个住宿选择。`
-        : '未找到符合条件的住宿。';
+      const messageCN = this.buildHotelSearchMessageCN({
+        count,
+        checkIn,
+        checkOut,
+        userMessage: userMsg,
+        accommodations,
+        proximityDay,
+        multiDayTradeoff: !!proximityDay && !!tripId,
+      });
       this.updateSessionAfterBusinessCall(dto.sessionId, {
         message: dto.message,
         response: messageCN,
         phase: 'RECOMMENDING',
+        lastAccommodations: accommodations,
+        lastAccommodationTripId: tripId ? String(tripId) : undefined,
       }).catch(err => this.logger.warn(`更新会话状态失败: ${err.message}`));
       return {
         message: count > 0 ? `Found ${count} accommodation(s).` : 'No accommodations found.',

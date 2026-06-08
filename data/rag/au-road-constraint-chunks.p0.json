@@ -1,0 +1,58 @@
+{
+  "schema": "rag-chunk-road-constraint-seed/v1",
+  "countryCode": "AU",
+  "description": "P0 Australia Great Ocean Road B100 bushfire/smoke road constraint seed.",
+  "chunks": [
+    {
+      "chunk_id": "au-road-b100-closed-bushfire",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "Great Ocean Road B100 segment Lorne to Apollo Bay is CLOSED due to bushfire smoke and falling debris.",
+      "credibility_score": 0.91,
+      "keywords": ["B100", "Great Ocean Road", "CLOSED", "bushfire", "Victoria"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "B100",
+        "countryCode": "AU",
+        "status": "CLOSED",
+        "affected_slot_ids": ["day2-drive-gor"],
+        "valid_from": "2026-01-15T00:00:00Z",
+        "valid_to": "2026-01-22T23:59:59Z",
+        "source": "vicemergency.vic.gov.au",
+        "confidence": 0.91
+      }
+    },
+    {
+      "chunk_id": "au-road-great-ocean-advisory-smoke",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "Great Ocean Road: ADVISORY — reduced visibility from bushfire smoke; check VicEmergency before travel.",
+      "credibility_score": 0.86,
+      "keywords": ["B100", "ADVISORY", "smoke"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "B100",
+        "countryCode": "AU",
+        "status": "ADVISORY",
+        "source": "traffic.vicroads.vic.gov.au",
+        "confidence": 0.86
+      }
+    },
+    {
+      "chunk_id": "au-weather-bushfire-smoke-2026-01-18",
+      "type": "RISK_INFO",
+      "category": "RISK_INFO",
+      "content": "BOM severe WEATHER warning: EXTREME fire danger and heavy smoke for Otways / Great Ocean Road region.",
+      "credibility_score": 0.89,
+      "keywords": ["bushfire", "smoke", "EXTREME"],
+      "metadata": {
+        "category": "RISK_INFO",
+        "countryCode": "AU",
+        "weather_dates": ["2026-01-18"],
+        "date": "2026-01-18",
+        "source": "bom.gov.au",
+        "confidence": 0.89
+      }
+    }
+  ]
+}

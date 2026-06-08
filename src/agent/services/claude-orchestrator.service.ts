@@ -104,9 +104,11 @@ import {
 } from '../utils/trip-plan-intake-vehicle.util';
 import {
   isStructuredClarificationEchoMessage,
+  isWorkbenchAssistantPlaceholderMessage,
   rebuildTripPlanMessagePreservingSystemBlocks,
   resolveCanonicalIntakeUserMessage,
 } from '../utils/trip-plan-intake-message.util';
+import { buildWorkbenchPlaceholderWelcomeText } from '../orchestration/graph/nodes/intake-workbench-placeholder.util';
 import {
   applyFroadHighlandSignalsToTripPlan,
   buildFroadHighlandIntentSignals,
@@ -137,6 +139,48 @@ import {
   shouldSkipPoiDestinationClarificationForItineraryAdjust,
   type TripPlaceRowForPoiEvidence,
 } from '../utils/itinerary-adjust-intent.util';
+import { resolveItineraryAdjustNeighborContext } from '../utils/itinerary-trip-neighbor-anchor-load.util';
+import {
+  buildItineraryAdjustCorridorPoiSearchQuery,
+  corridorSearchLatLng,
+} from '../utils/itinerary-adjust-corridor-fallback.util';
+import {
+  buildItineraryAdjustAutoApplyLeadMessage,
+  classifyItineraryAdjustSubIntent,
+  evaluateItineraryAdjustConfidenceGate,
+  resolveItineraryAdjustExecutionMode,
+} from '../utils/itinerary-adjust-auto-apply.util';
+import { runAdaptiveReplanForAdjustState } from '../utils/itinerary-adjust-adaptive-replan.util';
+import {
+  executeItineraryAdjustDraftApply,
+  buildItineraryAdjustDraftApplyAnswerText,
+} from '../utils/itinerary-adjust-draft-apply.util';
+import {
+  PENDING_ITINERARY_ADJUST_DRAFT_META_KEY,
+  pendingDraftFromRequestSnapshot,
+  readPendingItineraryAdjustDraft,
+} from '../utils/itinerary-adjust-pending-draft.util';
+import { TripRunManagerService } from './trip-run-manager.service';
+import {
+  buildCorridorDayApplyEdits,
+  parseNumericPlaceId,
+  pickTargetDayFromItinerary,
+} from '../utils/itinerary-adjust-corridor-apply.util';
+import { extractItineraryAdjustTargetDateFromMessage } from '../utils/itinerary-adjust-intent.util';
+import {
+  buildCorridorAdjustPoiPlanningSlice,
+  shouldSuppressTripRegionIdForItineraryAdjustPoiPlanning,
+} from '../utils/itinerary-adjust-poi-planning.util';
+import {
+  collectOpeningHoursPoiIdsForHydration,
+  hydrateOpeningHoursEvidenceForItinerary,
+} from '../utils/opening-hours-evidence-hydration.util';
+import type { TripUserEdit } from '../../skills/trip/utils/trip-user-edit.util';
+import type { ItineraryItem } from '../interfaces/trip-plan.interface';
+import type {
+  ItineraryAdjustSpatialConstraints,
+  NeighborAnchorContext,
+} from '../utils/itinerary-adjust-neighbor-anchors.util';
 import {
   buildItineraryItemDeleteAnswerText,
   detectItineraryItemDeleteIntent,
@@ -147,15 +191,51 @@ import {
 import {
   buildItineraryItemAddAnswerText,
   detectItineraryItemAddIntent,
+  isPlausibleItineraryItemAddPoiQuery,
   itemAlreadyOnDay,
   parseItineraryItemAddSpec,
   resolvePlaceIdForAdd,
   resolveTripDayIdForAdd,
 } from '../utils/itinerary-item-add.util';
 import {
+  detectItineraryAdjustIntent,
+  detectFullTripReplanIntent,
+  detectFullTripReplanHotelIntent,
+  isItineraryFullTripReplanMetadata,
+} from '../utils/itinerary-adjust-intent.util';
+import {
+  buildIntentAddAlreadyExistsAnswer,
+  extractDaySearchAnchor,
+  intentAlreadySatisfiedOnDay,
+  isIntentBasedPoiQuery,
+  resolvePlaceIdForIntentAdd,
+  resolvePoiIntentProfile,
+  type IntentPoiCandidate,
+} from '../utils/itinerary-item-add-intent.util';
+import { buildSupplyGapFailureGuidance } from '../intent/intent-supply-failure.util';
+import {
   openingHoursEvidenceToText,
   suggestActivitySlotForDayAdd,
 } from '../utils/itinerary-item-add-slot.util';
+import {
+  buildGoldenCircleDayReplanAnswerText,
+  buildGoldenCircleScheduleSlots,
+  collectActivityItemIdsForDayReplan,
+  detectGoldenCircleDayReplanIntent,
+  goldenCircleSearchQueryForSlug,
+  parseGoldenCircleDayReplanSpec,
+  pickGoldenCirclePlaceFromCandidates,
+  resolveGoldenCirclePlaceIdsFromTrip,
+  resolveTripDayByDate,
+  type GoldenCircleAnchorSlug,
+  type PoiCandidateLike,
+} from '../utils/itinerary-day-replan.util';
+import {
+  buildItineraryDayViewAnswerText,
+  detectItineraryDayViewIntent,
+  parseItineraryDayViewSpec,
+  resolveTripDayIndexFromViewSpec,
+} from '../utils/itinerary-day-view.util';
 import {
   applyExistingItemDurationToUpdateSpec,
   buildItineraryItemUpdateAnswerText,
@@ -192,12 +272,18 @@ import {
   buildMarathonIntakeSignalsFromGaps,
   enrichGateForMarathonDeferredLowerBound,
 } from '../utils/marathon-intake-signals.util';
+import {
+  resolveLiveWeatherLocationFromAnchoredTrip,
+  resolveLiveWeatherLocationFromMessage,
+  type LiveWeatherLocationResolve,
+} from '../utils/resolve-live-weather-location.util';
 import { applyTripPlanningStateMachineOptionDefaults } from '../utils/route-and-run-option-defaults.util';
 import { mergeVerificationIssuesIntoGateResult } from '../utils/merge-verify-issues-into-gate.util';
 import {
   isFactualMacroStatQuery,
   isLocalClockOrTimezoneFactQuery,
   isTripStatusOverviewQuery,
+  isTodayWeatherFactQuery,
   isWeatherRoadConditionFocusedQuery,
   shouldEnableLiveWeatherMcpForLightweightRoute,
   shouldInjectIcelandRentalGuidanceForLightweight,
@@ -241,6 +327,8 @@ import {
   messageHasDiningLocationAnchor,
   tripSummaryIndicatesNonEmptyItineraryDraft,
 } from '../utils/trip-dining-consultation.util';
+import { buildLunchStrategyPromptLines } from '../utils/lunch-strategy-briefing.util';
+import { isPoiSupplyConsultationQuery } from '../utils/trip-supply-consultation.util';
 import {
   estimateLightweightKbTopicRelevanceScore,
   isActivityBookingRagSupplementQuery,
@@ -316,8 +404,11 @@ import {
   attachDistanceToAnchorForCards,
   parseExplicitHotelNightScopeIndices,
   parseExplicitStayWindowFromUserMessage,
+  parseHotelProximityAnchorDayNumber,
   inferNightIndex0FromExplicitStayInTripWindow,
+  messageExpressesMultiNightStayPlanningIntent,
   narrowHotelStayWindowWithNlMessage,
+  pickFullTripReplanNightIndices,
   pickSpreadNightIndices,
   wrapSingleHotelPayload,
   diffCalendarDaysYmd,
@@ -326,6 +417,11 @@ import {
   type HotelRouteRunUiPayload,
   type RouteAndRunAccommodationCard,
 } from '../utils/hotel-mcp-route-run.mapper';
+import {
+  enrichHotelRouteRunUiForClientApply,
+  mapHotelRouteRunUiToAccommodationItems,
+} from '../utils/route-run-accommodation-apply.util';
+import { PlanningAssistantV2Service } from '../assistants/planning-assistant/services/planning-assistant-v2.service';
 import {
   buildTemplateHotelDecisionSupportZh,
   extractHotelDecisionLayers,
@@ -337,6 +433,7 @@ import { resolveRouteRunPartyProfileSnapshot } from '../utils/route-and-run-part
 import { isValidUuidForUserProfile } from './user-standing-preference.service';
 import { HotelDecisionSupportNarratorService } from './hotel-decision-support-narrator.service';
 import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
+import { ConstraintSinkService } from '../memory/constraint-sink/constraint-sink.service';
 import { attachTravelPreferenceSnapshotToOrchestratorState } from '../memory/utils/travel-preference-snapshot.util';
 import { AmadeusDirectService } from '../../mcp/amadeus-direct.service';
 import type { AmadeusDirectFlightOffer } from '../../mcp/amadeus-direct.service';
@@ -400,6 +497,7 @@ import { TripContext, TravelerProfile, ItineraryInfo } from '../../trips/readine
 import type { ReadinessCheckResult } from '../../trips/readiness/types/readiness-findings.types';
 import { DecisionDraftGeneratorService } from '../../decision-draft/services/decision-draft-generator.service';
 import { DecisionReplayService } from './decision-replay.service';
+import { DecisionTelemetryService } from '../../trips/decision/telemetry/decision-telemetry.service';
 import type { DecisionDnaDto } from './user-profile-learning.service';
 // Domain Agents (World Model Layer)
 import { GeoAgentService } from './domain-agents/geo-agent.service';
@@ -486,6 +584,7 @@ import {
   runResearchPhase,
   runStateUpdatePhase,
   readFitnessProfileLinesForLightweightQa,
+  readIcelandMarketPriorForLightweightQa,
   type IntakePhaseHost,
   type IntakeNodeHost,
   type PoiSelectionPhaseHost,
@@ -663,6 +762,7 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly promMetrics?: PrometheusMetricsService,
     /** 有 trip_id 时从 Trip 记录回填目的地/日期，避免「已在行程上下文仍追问目的地」 */
     @Optional() @Inject(forwardRef(() => TripsService)) private readonly tripsService?: TripsService,
+    @Optional() private readonly tripRunManager?: TripRunManagerService,
     /** DATA_LOOKUP 轻量咨询：行前/装备类可合并 practical+risks 知识块检索 */
     @Optional() private readonly chunkRetrieval?: ChunkRetrievalService,
     /** 只读 MCP 传感器（天气等）；由 PlanningAssistantModule 导出 */
@@ -676,6 +776,7 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly hotelDecisionNarrator?: HotelDecisionSupportNarratorService,
     @Optional() private readonly ontologyRoadStatusProvider?: OntologyRoadStatusProviderService,
     @Optional() private readonly agentMemoryContextStore?: AgentMemoryContextStore,
+    @Optional() private readonly constraintSinkService?: ConstraintSinkService,
     @Optional() private readonly decisionOsExecutionContextStore?: DecisionOsExecutionContextStore,
     /** 冰岛租车决策层（与 Booking 租车 MCP 轻量双路合并） */
     @Optional() private readonly icelandRentalGuidanceSkill?: IcelandRentalGuidanceSkill,
@@ -686,6 +787,11 @@ export class ClaudeOrchestratorService {
     /** PA 行程缺口/槽位语义分析（Layer1 选日；失败时回退启发式） */
     @Optional() private readonly contextAnalyzerService?: ContextAnalyzerService,
     @Optional() private readonly itinerarySlotPolisher?: ItinerarySlotPolisherService,
+    @Optional() private readonly decisionTelemetry?: DecisionTelemetryService,
+    /** route_and_run 住宿卡片写入 PA 会话，供 apply 接口按 index 读取 */
+    @Optional()
+    @Inject(forwardRef(() => PlanningAssistantV2Service))
+    private readonly planningAssistantV2Service?: PlanningAssistantV2Service,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -1287,6 +1393,8 @@ export class ClaudeOrchestratorService {
     if (this.isPolarInfrastructureOrEmergencyQuery(msg)) return true;
     /** 餐饮类 DATA_LOOKUP：须走进轻量 RAG，否则「推荐餐厅」等无法命中 POI 知识库 */
     if (isDiningRecommendationQuery(msg)) return true;
+    /** 超市/补给类 DATA_LOOKUP：须检索冰岛超市/物价知识块 */
+    if (isPoiSupplyConsultationQuery(msg)) return true;
     /** 直升机 / 空中观光等活动预订咨询：原正则未含「直升机」，泛问路径下会完全不检索 KB */
     if (isActivityBookingRagSupplementQuery(msg)) return true;
     const m = msg.trim();
@@ -1642,6 +1750,8 @@ export class ClaudeOrchestratorService {
   private static readonly LIVE_TOOL_CAR_RENTAL_MS = 20000;
   /** 多日行程按「每晚上一间」采样检索时的最大分段次数（并行 MCP） */
   private static readonly MAX_HOTEL_NIGHT_SAMPLE_SEGMENTS = 5;
+  /** 整段多日重规划：逐晚住宿 MCP 上限（6 天行程约 5 间夜） */
+  private static readonly MAX_FULL_TRIP_REPLAN_HOTEL_NIGHTS = 6;
   /** 仅检索一间夜时展示更多候选；多段并行时略少以免卡片过多 */
   private static readonly HOTEL_MCP_MAX_LISTINGS_SINGLE_NIGHT_SEGMENT = 3;
   private static readonly HOTEL_MCP_MAX_LISTINGS_PER_MULTI_SEGMENT = 2;
@@ -2351,18 +2461,15 @@ export class ClaudeOrchestratorService {
   private async resolveLiveWeatherLocationForMcp(
     request: RouteAndRunRequestDto,
     effectiveTripId?: string,
-  ): Promise<{ location: string; countryCode?: string } | null> {
+  ): Promise<LiveWeatherLocationResolve | null> {
     const msg = request.message ?? '';
-    const hints: Array<{ re: RegExp; location: string; countryCode?: string }> = [
-      { re: /斯奈山|斯奈费尔|Snæfellsnes|Snaefellsnes/i, location: 'Snæfellsnes Peninsula, Iceland', countryCode: 'IS' },
-      { re: /\b维克\b|Vík\b|Vik\b/i, location: 'Vík í Mýrdal, Iceland', countryCode: 'IS' },
-      { re: /赫本|霍芬|Höfn|Hofn/i, location: 'Höfn, Iceland', countryCode: 'IS' },
-      { re: /雷克雅未克|Reykjavik|Reykjavík/i, location: 'Reykjavik, Iceland', countryCode: 'IS' },
-    ];
-    for (const h of hints) {
-      if (h.re.test(msg)) return { location: h.location, countryCode: h.countryCode };
-    }
+    const fromMsg = resolveLiveWeatherLocationFromMessage(msg);
+    if (fromMsg) return fromMsg;
+
     if (effectiveTripId) {
+      const fromTrip = await resolveLiveWeatherLocationFromAnchoredTrip(this.prisma, effectiveTripId);
+      if (fromTrip) return fromTrip;
+
       try {
         const trip = await this.prisma.trip.findUnique({
           where: { id: effectiveTripId },
@@ -2375,11 +2482,14 @@ export class ClaudeOrchestratorService {
         /* ignore */
       }
     }
-    if (/冰岛|\bIceland\b/i.test(msg)) return { location: 'Iceland', countryCode: 'IS' };
-    return null;
+
+    return resolveLiveWeatherLocationFromMessage(msg);
   }
 
-  private formatLiveWeatherSensorBlock(data: Record<string, unknown>): string {
+  private formatLiveWeatherSensorBlock(
+    data: Record<string, unknown>,
+    opts?: { anchorLabel?: string },
+  ): string {
     const cur = data?.current as Record<string, unknown> | undefined;
     if (!cur) {
       return `【实时天气传感器 MCP】原始响应（截断）：${JSON.stringify(data).slice(0, 1200)}`;
@@ -2389,6 +2499,7 @@ export class ClaudeOrchestratorService {
     return [
       '【实时天气传感器 MCP】以下为 Open-Meteo 当前观测读数（非生成文案）：',
       `- 查询地: ${city} (${country})`,
+      ...(opts?.anchorLabel ? [`- 行程锚点: ${opts.anchorLabel}`] : []),
       `- 观测时间: ${cur.time}`,
       `- 气温: ${cur.temperature}°C（体感 ${cur.apparent_temperature}°C）`,
       `- 状况: ${cur.weather_description}`,
@@ -2530,12 +2641,15 @@ export class ClaudeOrchestratorService {
     return `第${nightOneBased}/${totalNights}晚 · ${md} 入住`;
   }
 
-  /** 与 buildStaySegmentLabelZh 同一锚点：入住当日最后一项行程 POI（需含 geometry） */
-  private async getStayAnchorGeoForNight(
+  /** 与 buildStaySegmentLabelZh 同一锚点：指定日行程 POI（需含 geometry） */
+  private async getStayAnchorGeoForTripDay(
     tripId: string,
-    checkInYmd: string,
+    dayYmd: string,
+    prefer: 'first' | 'last' = 'last',
   ): Promise<{ lat: number; lng: number; nameZh: string } | null> {
     if (!this.prisma) return null;
+    const orderDir = prefer === 'first' ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+    const timeDir = prefer === 'first' ? Prisma.sql`ASC NULLS LAST` : Prisma.sql`DESC NULLS LAST`;
     try {
       const row = await this.prisma.$queryRaw<
         Array<{ nameCN: string; nameEN: string | null; lat: unknown; lng: unknown }>
@@ -2547,9 +2661,9 @@ export class ClaudeOrchestratorService {
         JOIN "TripDay" td ON ii."tripDayId" = td.id
         JOIN "Place" p ON ii."placeId" = p.id
         WHERE td."tripId" = ${tripId}
-          AND td.date::date = ${checkInYmd}::date
+          AND td.date::date = ${dayYmd}::date
           AND p.location IS NOT NULL
-        ORDER BY ii."order" DESC NULLS LAST, ii."startTime" DESC NULLS LAST
+        ORDER BY ii."order" ${orderDir} NULLS LAST, ii."startTime" ${timeDir}
         LIMIT 1
       `;
       const place = row?.[0];
@@ -2563,16 +2677,39 @@ export class ClaudeOrchestratorService {
     }
   }
 
+  /** 入住当日最后一项行程 POI（需含 geometry） */
+  private async getStayAnchorGeoForNight(
+    tripId: string,
+    checkInYmd: string,
+  ): Promise<{ lat: number; lng: number; nameZh: string } | null> {
+    return this.getStayAnchorGeoForTripDay(tripId, checkInYmd, 'last');
+  }
+
   /** 为 MCP 住宿卡片写入相对当日锚点的直线距离（km），供前端与传感器摘要展示 */
   private async enrichHotelRouteRunUiPayloadWithAnchorDistances(
     payload: HotelRouteRunUiPayload,
     tripId: string,
     tripFirstCheckInYmd: string,
+    userMessage?: string,
   ): Promise<void> {
     if (!payload.accommodations?.length) return;
+    const proximityDay = userMessage ? parseHotelProximityAnchorDayNumber(userMessage) : undefined;
+    const proximityYmd =
+      proximityDay != null && proximityDay >= 1
+        ? addDaysYmd(tripFirstCheckInYmd, proximityDay - 1)
+        : undefined;
+    const proximityAnchor =
+      proximityYmd != null
+        ? await this.getStayAnchorGeoForTripDay(tripId, proximityYmd, 'first')
+        : null;
+
     const nights = new Set(payload.accommodations.map((c) => c.nightIndex ?? 1));
     const anchorByNight = new Map<number, { lat: number; lng: number; nameZh: string } | null>();
     for (const n of nights) {
+      if (proximityAnchor) {
+        anchorByNight.set(n, proximityAnchor);
+        continue;
+      }
       const checkInYmd = addDaysYmd(tripFirstCheckInYmd, n - 1);
       anchorByNight.set(n, await this.getStayAnchorGeoForNight(tripId, checkInYmd));
     }
@@ -2869,7 +3006,7 @@ export class ClaudeOrchestratorService {
       });
       return {
         audits,
-        block: this.formatLiveWeatherSensorBlock(data),
+        block: this.formatLiveWeatherSensorBlock(data, { anchorLabel: loc.anchorLabel }),
         snapshotCapturedAtIso: new Date().toISOString(),
       };
     } catch (e: any) {
@@ -2900,6 +3037,7 @@ export class ClaudeOrchestratorService {
     request: RouteAndRunRequestDto,
     context: AgentContext,
     effectiveTripId?: string,
+    opts?: { fullTripReplan?: boolean },
   ): Promise<{
     audits: LiveSensorAuditRow[];
     block: string | null;
@@ -2907,7 +3045,10 @@ export class ClaudeOrchestratorService {
     hotelRouteRunUi?: HotelRouteRunUiPayload;
   }> {
     const audits: LiveSensorAuditRow[] = [];
-    if (!this.shouldAttemptHotelSensor(request, context)) {
+    if (!opts?.fullTripReplan && !this.shouldAttemptHotelSensor(request, context)) {
+      return { audits, block: null };
+    }
+    if (opts?.fullTripReplan && !this.mcpToolDispatcher) {
       return { audits, block: null };
     }
     const baseParams = await this.resolveHotelSearchParamsForMcp(request, effectiveTripId);
@@ -2980,7 +3121,12 @@ export class ClaudeOrchestratorService {
         const hotelRouteRunUi = wrapped ?? undefined;
         if (hotelRouteRunUi) {
           if (tripId) {
-            await this.enrichHotelRouteRunUiPayloadWithAnchorDistances(hotelRouteRunUi, tripId, ci);
+            await this.enrichHotelRouteRunUiPayloadWithAnchorDistances(
+              hotelRouteRunUi,
+              tripId,
+              ci,
+              request.message,
+            );
           }
           await this.enrichHotelRouteRunUiPayloadWithDecisionSupport(hotelRouteRunUi, request, tripId);
           if (tripId) {
@@ -3031,6 +3177,11 @@ export class ClaudeOrchestratorService {
         indices = explicitNightScope;
       } else if (inferredNightIndex0 !== null) {
         indices = [inferredNightIndex0];
+      } else if (opts?.fullTripReplan) {
+        indices = pickFullTripReplanNightIndices(
+          totalNights,
+          ClaudeOrchestratorService.MAX_FULL_TRIP_REPLAN_HOTEL_NIGHTS,
+        );
       } else {
         indices = pickSpreadNightIndices(totalNights, ClaudeOrchestratorService.MAX_HOTEL_NIGHT_SAMPLE_SEGMENTS);
       }
@@ -3099,6 +3250,7 @@ export class ClaudeOrchestratorService {
               itineraryTotalNights: tripSpanNightsWhole,
               sampledNightIndices: segments.map((s) => s.nightIndex),
               userLimitedNightIntent,
+              fullTripReplan: opts?.fullTripReplan === true,
             })
           : null;
 
@@ -3123,7 +3275,7 @@ export class ClaudeOrchestratorService {
         ok: !!merged?.accommodations?.length,
         latency_ms,
         tripId: hotelSearchParams.tripId,
-        mode: 'per_night_sample',
+        mode: opts?.fullTripReplan ? 'per_night_full_trip_replan' : 'per_night_sample',
         segments: segments.length,
         merged_cards: merged?.accommodations?.length ?? 0,
       });
@@ -3132,7 +3284,12 @@ export class ClaudeOrchestratorService {
         return { audits, block: null };
       }
 
-      await this.enrichHotelRouteRunUiPayloadWithAnchorDistances(merged, tripId!, ci);
+      await this.enrichHotelRouteRunUiPayloadWithAnchorDistances(
+        merged,
+        tripId!,
+        ci,
+        request.message,
+      );
 
       await this.enrichHotelRouteRunUiPayloadWithDecisionSupport(merged, request, tripId);
 
@@ -3292,6 +3449,14 @@ export class ClaudeOrchestratorService {
       tripContextLines = tripContextLines.length > 0 ? [...tripContextLines, '', ...fitnessLines] : [...fitnessLines];
     }
 
+    const icelandMarketPrior = readIcelandMarketPriorForLightweightQa(request);
+    if (icelandMarketPrior && !lightweightTriviaFact) {
+      tripContextLines =
+        tripContextLines.length > 0
+          ? [...tripContextLines, '', icelandMarketPrior]
+          : [icelandMarketPrior];
+    }
+
     const hasAnchoredTripFact = tripContextLines.some(
       (l) => l.includes('目的地代码:') || l.includes('开始日期:') || l.includes('行程跨度'),
     );
@@ -3331,6 +3496,7 @@ export class ClaudeOrchestratorService {
       ? []
       : buildOntologyEvidenceDisplayLinesZh({ hits: ontologyHitDefs, roadStatusByOntologyId });
     const weatherRoadFocused = isWeatherRoadConditionFocusedQuery(request.message ?? '');
+    const todayWeatherFocused = isTodayWeatherFactQuery(request.message ?? '');
     const westfjordsAirConsult = isWestfjordsLegTransportPreferenceConsultation(
       request.message ?? '',
       msgLower,
@@ -3339,6 +3505,22 @@ export class ClaudeOrchestratorService {
       Boolean(effectiveTripId) &&
       isTripStatusOverviewQuery(request.message ?? '', msgLower) &&
       !weatherRoadFocused;
+    let lunchStrategyPromptLines: string[] = [];
+    if (tripStatusOverview && effectiveTripId) {
+      try {
+        const tripForLunch = await this.prisma.trip.findUnique({
+          where: { id: effectiveTripId },
+          select: { metadata: true, pacingConfig: true, destination: true },
+        });
+        if (tripForLunch) {
+          lunchStrategyPromptLines = buildLunchStrategyPromptLines(tripForLunch);
+        }
+      } catch (e: any) {
+        this.logger.warn(
+          `[LightweightQA] lunch strategy briefing failed trip_id=${effectiveTripId}: ${e?.message ?? e}`,
+        );
+      }
+    }
     const needsNamedDraftAppendixForLightweight = this.shouldIncludeNamedDraftAppendixForLightweightQa(
       request.message ?? '',
       msgLower,
@@ -3511,6 +3693,12 @@ export class ClaudeOrchestratorService {
             '**不要**套用「行程进度/概览」式结构去展开住宿、餐饮、亮点盘点或长篇租车攻略；除非用户同时明确要求评估行程总体准备度。',
           ]
         : []),
+      ...(todayWeatherFocused && !weatherRoadFocused
+        ? [
+            '【本轮主旨】用户问的是**今日/当前实况天气**。若下文有「实时天气传感器 MCP」摘录，**首段须直接给出**观测地、气温、天气状况与风速；禁止用季节气候常识或「超出预报窗口」话术替代已有实况读数。',
+            '若无传感器摘录，须明确说明拉取失败，并给出 vedur.is 等官方核验入口；勿编造具体温度或降水。',
+          ]
+        : []),
       ...(prepOrHikeNamedPoiConsult
         ? [
             '【本轮主旨】用户关心行前装备、衣物、清单或徒步相关准备。若上文含「草案地点速览」，请在正文中按日或按活动点名与建议相关的具体地点或徒步段（可与「按日骨架」中的类型与数量对照）；勿编造速览中未出现的 POI；若骨架显示无徒步或户外类日程项，须明确说明并仅给目的地与季节级泛化建议。',
@@ -3527,7 +3715,8 @@ export class ClaudeOrchestratorService {
             '请按以下结构组织回答（小标题可用 `-` 或加粗，保持简洁）：',
             '- **当前摘要**：一句话说明行程覆盖的核心区域/城市或路线主轴。',
             '- **住宿**：基于上文摘要与日程草案判断——是否已体现酒店/民宿预订或过夜城镇；若仅有日间景点而无住宿线索，须明确写「当前摘要未显示住宿预订，建议补充」或等价表述；勿编造预订记录。',
-            '- **餐饮**：草案或摘要中是否安排了午餐/晚餐或留出用餐时段；若仅有景点时段而无餐饮安排，须点名缺口并建议（例如在哪些城镇预留正餐时间）；勿编造具体餐厅名除非摘录或日程已给出。',
+            '- **餐饮**：草案或摘要中是否安排了午餐/晚餐或留出用餐时段；若仅有景点时段而无餐饮安排，须点名缺口并建议（例如在哪些城镇预留正餐时间）；勿编造具体餐厅名除非摘录或日程已给出。午餐时间窗是体力回血与情绪复位的隐形安全线——须结合下方【午餐时间窗策略】说明为何重要及如何改。',
+            ...(lunchStrategyPromptLines.length > 0 ? lunchStrategyPromptLines : []),
             '- **亮点介绍**：1–2 点最吸引人的安排（基于上文摘要与已知日程事实，勿编造未出现的 POI）。',
             '- **不合理与风险（须直接可执行）**：若存在过密、绕路、衔接过紧、季节/路况或体力不匹配等问题，请**直接给出改法**；若无明显问题，写「未发现明显硬伤」。',
             '- **准备度小结**：用一句话给出准备度档位（如：高/中/低）并列出 2～4 条最关键的待办（证件、保险、装备、预订缺口等）。',
@@ -4126,6 +4315,236 @@ export class ClaudeOrchestratorService {
   }
 
   /**
+   * 绑定 Trip：工作台 UI 占位欢迎语 → 秒回引导，不跑 RESEARCH/POI_SELECTION。
+   */
+  async orchestrateWorkbenchAssistantPlaceholder(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const tripId = (request.trip_id || context.tripId || '').trim();
+    let destination = '当前';
+    let dateRange: { start_date?: string; end_date?: string } | undefined;
+    if (tripId && this.tripsService) {
+      try {
+        const trip = (await this.tripsService.findOne(tripId, request.user_id)) as {
+          destination?: string | null;
+          startDate?: Date | string | null;
+          endDate?: Date | string | null;
+        };
+        if (trip?.destination) destination = String(trip.destination);
+        if (trip?.startDate && trip?.endDate) {
+          dateRange = {
+            start_date:
+              trip.startDate instanceof Date
+                ? trip.startDate.toISOString().slice(0, 10)
+                : String(trip.startDate).slice(0, 10),
+            end_date:
+              trip.endDate instanceof Date
+                ? trip.endDate.toISOString().slice(0, 10)
+                : String(trip.endDate).slice(0, 10),
+          };
+        }
+      } catch (e: unknown) {
+        this.logger.debug(
+          `[Claude Orchestrator] workbench placeholder trip load skipped: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    const answerText = buildWorkbenchPlaceholderWelcomeText({
+      trip_plan_request: { destination, date_range: dateRange },
+    } as OrchestratorState);
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingTaskType: 'TRIP_PLANNING',
+        workbench_assistant_placeholder: true as const,
+        needsUserConfirmation: false,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.95,
+          reasoning: 'workbench_assistant_placeholder',
+        },
+      },
+      stepsExecuted: [
+        {
+          stepId: 'workbench_placeholder',
+          skillName: 'workbench.placeholder',
+          success: true,
+          duration: Date.now() - startTime,
+        },
+      ],
+      totalDuration: Date.now() - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: '规划工作台助手占位欢迎语',
+          outputs_summary: answerText,
+          evidence_refs: tripId ? [`trip:${tripId}`] : [],
+          timestamp: new Date().toISOString(),
+          metadata: { system_action: 'WORKBENCH_ASSISTANT_PLACEHOLDER_SHORT_CIRCUIT' },
+        },
+      ],
+    };
+  }
+
+  /**
+   * 绑定 Trip：「查看第 N 天行程」→ 读库摘要，跳过规划状态机与目的地澄清。
+   */
+  private async orchestrateItineraryDayViewQuery(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const tripId = (request.trip_id || context.tripId || '').trim();
+    const message = request.message ?? '';
+    const spec = parseItineraryDayViewSpec(message);
+    if (!tripId || !spec) {
+      return {
+        success: false,
+        answerText: '未能理解要查看哪一天，请说明「第几天」或具体日期。',
+        result: {
+          routingTaskType: 'DATA_LOOKUP',
+          lightweightKnowledgeQa: true,
+        },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+    }
+
+    if (!this.tripsService) {
+      return {
+        success: false,
+        answerText: '暂时无法读取行程，请稍后重试。',
+        result: { routingTaskType: 'DATA_LOOKUP', lightweightKnowledgeQa: true },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+    }
+
+    let trip: {
+      destination?: string | null;
+      startDate?: Date | string | null;
+      endDate?: Date | string | null;
+      TripDay?: Array<{
+        id?: string;
+        date?: Date | string | null;
+        ItineraryItem?: Array<Record<string, unknown>>;
+      }>;
+    };
+    try {
+      trip = (await this.tripsService.findOne(tripId, request.user_id)) as typeof trip;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] day view trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        success: false,
+        answerText: '未找到关联行程，请确认工作台已打开正确 Trip。',
+        result: { routingTaskType: 'DATA_LOOKUP', lightweightKnowledgeQa: true },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+    }
+
+    const days = trip.TripDay ?? [];
+    const dateRange =
+      trip.startDate && trip.endDate
+        ? {
+            start_date:
+              trip.startDate instanceof Date
+                ? trip.startDate.toISOString().slice(0, 10)
+                : String(trip.startDate).slice(0, 10),
+            end_date:
+              trip.endDate instanceof Date
+                ? trip.endDate.toISOString().slice(0, 10)
+                : String(trip.endDate).slice(0, 10),
+          }
+        : undefined;
+    const resolvedSpec = parseItineraryDayViewSpec(message, dateRange) ?? spec;
+    const dayIdx = resolveTripDayIndexFromViewSpec(days, resolvedSpec);
+    if (dayIdx == null || !days[dayIdx]) {
+      const n = resolvedSpec.dayNumber;
+      return {
+        success: false,
+        answerText:
+          n != null
+            ? `当前行程共 ${days.length} 天，没有第 ${n} 天。请核对天数或指定具体日期。`
+            : '未能定位到指定日期，请说明第几天或 YYYY-MM-DD。',
+        result: { routingTaskType: 'DATA_LOOKUP', lightweightKnowledgeQa: true },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+    }
+
+    const day = days[dayIdx];
+    const dateIso =
+      day.date instanceof Date
+        ? day.date.toISOString().slice(0, 10)
+        : String(day.date ?? '').slice(0, 10);
+    const answerText = buildItineraryDayViewAnswerText({
+      dayNumber: dayIdx + 1,
+      dateIso: dateIso || undefined,
+      items: (day.ItineraryItem ?? []) as never[],
+      tripTitle: trip.destination ?? undefined,
+    });
+
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingTaskType: 'DATA_LOOKUP',
+        lightweightKnowledgeQa: true,
+        itinerary_day_view_intake: true as const,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.95,
+          reasoning: 'itinerary_day_view_read',
+        },
+        suggested_operations: [
+          {
+            id: 'view_timeline',
+            label: '查看行程时间轴',
+            action: 'OPEN_TRIP_TIMELINE',
+          },
+        ],
+      },
+      stepsExecuted: [
+        {
+          stepId: 'itinerary_day_view',
+          skillName: 'trip.readDay',
+          success: true,
+          duration: Date.now() - startTime,
+        },
+      ],
+      totalDuration: Date.now() - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'LocalInsight' as SubAgentType,
+          inputs_summary: message,
+          outputs_summary: `ITINERARY_DAY_VIEW day=${dayIdx + 1} items=${day.ItineraryItem?.length ?? 0}`,
+          evidence_refs: [`trip:${tripId}:day:${dayIdx + 1}`],
+          timestamp: new Date().toISOString(),
+          metadata: { system_action: 'ITINERARY_DAY_VIEW_READ' },
+        },
+      ],
+    };
+  }
+
+  /**
    * 智能编排主入口（CLAUDE_DYNAMIC 等）。
    *
    * **Harness 内存 trace**：本方法内大量 early `return` 与 `executePlan` 出口**不**经过 `buildSuccessResult` / `buildErrorResult`，
@@ -4146,7 +4565,41 @@ export class ClaudeOrchestratorService {
     this.logger.debug(`[Claude Orchestrator] 使用 LLM 提供商: ${llmProvider}`);
 
     try {
+      const boundTripIdEarly = (request.trip_id || context.tripId || '').trim();
+      if (boundTripIdEarly && detectItineraryDayViewIntent(request.message ?? '')) {
+        this.logger.log(
+          `[Claude Orchestrator] 查看指定日行程 → 读库短路 request_id=${request.request_id}`,
+        );
+        setLlmTraceRoutePath('LIGHTWEIGHT');
+        return await this.orchestrateItineraryDayViewQuery(request, context, startTime);
+      }
+
+      if (boundTripIdEarly && isWorkbenchAssistantPlaceholderMessage(request.message)) {
+        this.logger.log(
+          `[Claude Orchestrator] 工作台助手占位欢迎语 → 短路 request_id=${request.request_id}`,
+        );
+        setLlmTraceRoutePath('LIGHTWEIGHT');
+        return await this.orchestrateWorkbenchAssistantPlaceholder(request, context, startTime);
+      }
+
       const rt = context.routingTaskType;
+      const boundTripItineraryAdjust =
+        !!boundTripIdEarly &&
+        (detectItineraryAdjustIntent(request.message ?? '') ||
+          detectFullTripReplanIntent(request.message ?? ''));
+      if (
+        boundTripItineraryAdjust &&
+        (rt === 'DATA_LOOKUP' || rt === 'GENERIC_QA' || rt === 'RAG_QA')
+      ) {
+        this.logger.log(
+          `[Claude Orchestrator] bound trip 行程改排/整段重规划命中，routingTaskType=${rt} → 改走状态机 request_id=${request.request_id}`,
+        );
+        setLlmTraceRoutePath('STATE_MACHINE');
+        const smDeadline = deadline ?? createDeadline(120_000);
+        const smResult = await this.orchestrateWithStateMachine(request, context, smDeadline, undefined);
+        smResult.totalDuration = Date.now() - startTime;
+        return smResult;
+      }
       if (rt === 'DATA_LOOKUP' || rt === 'GENERIC_QA' || rt === 'RAG_QA') {
         this.logger.log(
           `[Claude Orchestrator] routingTaskType=${rt}，走轻量知识问答路径（跳过 Skill 选择与 itinerary 类校验）`,
@@ -5967,6 +6420,9 @@ ${JSON.stringify(routingDecision, null, 2)}
   /**
    * 裁剪版「意图快照」：为动态计划中的 verify / smart_update 自动补水，无需塞入整条 OrchestratorState。
    */
+  /**
+   * 裁剪版「意图快照」：为动态计划中的 verify / smart_update 自动补水，无需塞入整条 OrchestratorState。
+   */
   private buildSkillInputIntentSnapshot(
     request: RouteAndRunRequestDto,
     context: AgentContext,
@@ -6042,6 +6498,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     
     // 为特定 Skills 提供智能默认值
     if (step.skillName === 'routeDirection.pickForIntent') {
+      const optAny = (request.options ?? {}) as Record<string, unknown>;
       // 确保 userIntentTags 是数组
       if (!Array.isArray(input.userIntentTags)) {
         input.userIntentTags = input.userIntentTags ? [input.userIntentTags] : [];
@@ -6064,6 +6521,11 @@ ${JSON.stringify(routingDecision, null, 2)}
           // 使用当前月份作为默认值
           input.season = new Date().getMonth() + 1;
         }
+      }
+
+      const tpReq = optAny.trip_plan_request as TripPlanRequest | undefined;
+      if (tpReq) {
+        input.tripPlanRequest = tpReq;
       }
     }
     
@@ -6623,6 +7085,14 @@ ${JSON.stringify(routingDecision, null, 2)}
     applyTripPlanningStateMachineOptionDefaults(request);
     setLlmTraceRoutePath('STATE_MACHINE');
     const startTime = Date.now();
+    const boundTripIdEarly = (request.trip_id || context.tripId || '').trim();
+    if (boundTripIdEarly && isWorkbenchAssistantPlaceholderMessage(request.message)) {
+      this.logger.log(
+        `[Claude Orchestrator] 状态机入口：工作台占位欢迎语 → 短路 request_id=${request.request_id}`,
+      );
+      setLlmTraceRoutePath('LIGHTWEIGHT');
+      return await this.orchestrateWorkbenchAssistantPlaceholder(request, context, startTime);
+    }
     this.logger.log(`[Claude Orchestrator] 开始状态机编排: request_id=${request.request_id}`);
     this.logger.log(`[Claude Orchestrator] Deadline: ${deadline?.remainingMs() || 'N/A'}ms`);
 
@@ -6839,13 +7309,27 @@ ${JSON.stringify(routingDecision, null, 2)}
         deadline,
       });
       if (postPlanOutcome.kind === 'terminal') {
-        return postPlanOutcome.result;
+        // post_plan 子图在 HALLUCINATION 节点以 terminal 出口并内嵌 buildSuccessResult；
+        // 须在此仍走整段重规划住宿 enrich，否则会跳过 FULL_TRIP_REPLAN_HOTEL_SENSOR。
+        return await this.enrichOrchestrationResultWithFullTripReplanHotel(
+          request,
+          context,
+          state,
+          postPlanOutcome.result,
+        );
       }
-      return this.buildSuccessResult(
+      await this.maybeAutoApplyItineraryAdjustCorridor(state);
+      const baseResult = this.buildSuccessResult(
         state,
         startTime,
         postPlanOutcome.decisionState,
         context,
+      );
+      return await this.enrichOrchestrationResultWithFullTripReplanHotel(
+        request,
+        context,
+        state,
+        baseResult,
       );
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] 状态机编排失败: ${error?.message}`, error?.stack);
@@ -7371,6 +7855,295 @@ ${JSON.stringify(routingDecision, null, 2)}
     return mapTripPlacesToPoiEvidence(rows);
   }
 
+  /** ITINERARY_ADJUST：邻日锚点 + 走廊空间约束（D(N-1) 尾 → D(N+1) 头） */
+  private async resolveItineraryAdjustNeighborContextForHost(
+    tripId: string,
+    targetDateIso: string,
+    userId?: string,
+  ) {
+    if (!this.prisma) return null;
+    const dest =
+      (
+        await this.prisma.trip.findUnique({
+          where: { id: tripId.trim() },
+          select: { destination: true },
+        })
+      )?.destination ?? '';
+    const maxDetourKm = /冰岛|iceland/i.test(String(dest)) ? 50 : 35;
+    const ctx = await resolveItineraryAdjustNeighborContext(
+      this.prisma,
+      tripId,
+      targetDateIso,
+      userId,
+      maxDetourKm,
+    );
+    if (!ctx) return null;
+    return { anchors: ctx.anchors, spatial: ctx.spatial, dayRows: ctx.dayRows };
+  }
+
+  /** ITINERARY_ADJUST：走廊候选稀疏时沿邻日中点 poi.search 补检 */
+  private async supplementItineraryAdjustCorridorPoisForHost(params: {
+    destinationRaw: string;
+    anchors: NeighborAnchorContext;
+    spatial: ItineraryAdjustSpatialConstraints;
+  }): Promise<{ pois: unknown[]; query?: string; count: number }> {
+    const poiSkill = this.skillsRegistry?.getSkill('poi.search');
+    if (!poiSkill) return { pois: [], count: 0 };
+    const query = buildItineraryAdjustCorridorPoiSearchQuery(
+      params.destinationRaw,
+      params.anchors,
+    );
+    const { lat, lng } = corridorSearchLatLng(params.spatial);
+    try {
+      const result = (await poiSkill.execute({
+        query,
+        limit: 14,
+        lat,
+        lng,
+        category: 'ATTRACTION',
+      })) as { pois?: unknown[] } | unknown[];
+      const pois = Array.isArray(result)
+        ? result
+        : Array.isArray(result?.pois)
+          ? result.pois
+          : [];
+      return { pois, query, count: pois.length };
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary adjust corridor poi.search failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { pois: [], query, count: 0 };
+    }
+  }
+
+  /**
+   * ITINERARY_ADJUST 双闸门：强修改意图 + 走廊高置信 → trip.applyEdit 落库目标日。
+   */
+  private async maybeAutoApplyItineraryAdjustCorridor(state: OrchestratorState): Promise<void> {
+    const routeIntent = (state.metadata as Record<string, unknown>)?.route_and_run_intent as
+      | RouteAndRunIntentAnalysis
+      | undefined;
+    if (routeIntent?.primary !== 'ITINERARY_ADJUST') return;
+    if (state.clarification_questions?.length) return;
+    if (!state.itinerary?.days?.length) return;
+
+    const md = state.metadata as Record<string, unknown>;
+    if (md.itinerary_day_replan_intake === true) return;
+
+    const intakeMsg =
+      (typeof md.intake_user_message === 'string' ? md.intake_user_message : '') ||
+      state.trip_plan_request?.message ||
+      '';
+    const subIntent = classifyItineraryAdjustSubIntent(intakeMsg);
+    md.itinerary_adjust_sub_intent = subIntent;
+
+    const confidence = evaluateItineraryAdjustConfidenceGate(md);
+    md.itinerary_adjust_confidence_gate = confidence;
+
+    const executionMode = resolveItineraryAdjustExecutionMode({
+      subIntent,
+      highConfidence: confidence.highConfidence,
+    });
+    md.itinerary_adjust_execution_mode = executionMode;
+
+    const targetDateIso =
+      (typeof md.itinerary_adjust_target_date_iso === 'string'
+        ? md.itinerary_adjust_target_date_iso
+        : undefined) ??
+      extractItineraryAdjustTargetDateFromMessage(
+        intakeMsg,
+        state.trip_plan_request?.date_range,
+      );
+
+    const dayNumber =
+      typeof md.itinerary_adjust_neighbor_anchors === 'object' &&
+      md.itinerary_adjust_neighbor_anchors != null &&
+      'targetDayNumber' in (md.itinerary_adjust_neighbor_anchors as object)
+        ? Number((md.itinerary_adjust_neighbor_anchors as { targetDayNumber?: number }).targetDayNumber)
+        : undefined;
+
+    if (executionMode !== 'AUTO' || !targetDateIso) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: executionMode !== 'AUTO' ? 'execution_mode_advice_only' : 'missing_target_date',
+        subIntent,
+        confidence,
+        executionMode,
+      };
+      return;
+    }
+
+    const tripId =
+      state.trip_plan_request?.trip_id?.trim() ??
+      state.trip_plan_request?.ontology_context?.trip_id?.trim();
+    const userId = (state.metadata as { userId?: string })?.userId;
+    if (!tripId || !this.tripsService) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: !tripId ? 'missing_trip_id' : 'trips_service_unavailable',
+        executionMode,
+      };
+      return;
+    }
+
+    const targetDay = pickTargetDayFromItinerary(state.itinerary, targetDateIso.slice(0, 10));
+    if (!targetDay?.items?.length) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'empty_target_day_itinerary',
+        executionMode,
+      };
+      return;
+    }
+
+    let trip: TripLikeForDelete;
+    try {
+      trip = (await this.tripsService.findOne(tripId, userId)) as TripLikeForDelete;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary adjust auto-apply trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      md.itinerary_adjust_auto_apply = { applied: false, reason: 'trip_load_failed', executionMode };
+      return;
+    }
+
+    const placeIdCache = new Map<string, number>();
+    const resolvePlaceId = (item: ItineraryItem): number | undefined => {
+      const fromRef = parseNumericPlaceId(item.location_ref?.place_id);
+      if (fromRef != null) return fromRef;
+      const key = String(item.location_ref?.place_id ?? item.location_ref?.name ?? item.id);
+      if (placeIdCache.has(key)) return placeIdCache.get(key);
+      const resolved = this.resolvePlaceIdForItineraryAdjustApply(item, state);
+      if (resolved != null) placeIdCache.set(key, resolved);
+      return resolved;
+    };
+
+    const { edits, deleteIds, addCount, unresolvedItems } = buildCorridorDayApplyEdits({
+      trip,
+      targetDateIso: targetDateIso.slice(0, 10),
+      targetDay,
+      resolvePlaceId,
+    });
+
+    if (addCount === 0 || unresolvedItems.length > 0) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'unresolved_places',
+        executionMode,
+        unresolvedItems,
+        deleteIds,
+        addCount,
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        executionMode,
+      };
+      return;
+    }
+
+    try {
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: edits as TripUserEdit[],
+      })) as { success?: boolean };
+      if (out?.success) {
+        md.itinerary_adjust_auto_apply = {
+          applied: true,
+          executionMode: 'AUTO',
+          subIntent,
+          confidence,
+          targetDateIso: targetDateIso.slice(0, 10),
+          deletedCount: deleteIds.length,
+          addedCount: addCount,
+          skillsHit: ['trip.applyEdit'],
+        };
+        const lead = buildItineraryAdjustAutoApplyLeadMessage({
+          applied: true,
+          executionMode: 'AUTO',
+          targetDateIso: targetDateIso.slice(0, 10),
+          dayNumber: Number.isFinite(dayNumber) ? dayNumber : undefined,
+        });
+        if (lead) {
+          const prior = state.narration;
+          state.narration = {
+            user_friendly_summary: lead,
+            day_by_day_narrative: prior?.day_by_day_narrative ?? [],
+            highlights: prior?.highlights ?? [],
+            tips: prior?.tips ?? [],
+            day_by_day_text_zh: prior?.day_by_day_text_zh,
+            warnings: prior?.warnings,
+            research_ui_hints: prior?.research_ui_hints,
+            voice_tone_modifier: prior?.voice_tone_modifier,
+            visual_hint: prior?.visual_hint,
+            audio_prosody: prior?.audio_prosody,
+          };
+        }
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'REPAIR',
+          actor: 'Planner',
+          inputs_summary: `ITINERARY_ADJUST 走廊自动落库 ${targetDateIso.slice(0, 10)}`,
+          outputs_summary: `已落库：删除 ${deleteIds.length} 项，新增 ${addCount} 项（trip.applyEdit）`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'ITINERARY_ADJUST_AUTO_APPLIED',
+            skills_hit: ['trip.applyEdit'],
+            fallback_level: confidence.fallbackLevel,
+          },
+        });
+        return;
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary adjust auto-apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    md.itinerary_adjust_auto_apply = {
+      applied: false,
+      reason: 'apply_failed',
+      executionMode: 'ADVICE_ONLY',
+    };
+    md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+  }
+
+  private resolvePlaceIdForItineraryAdjustApply(
+    item: ItineraryItem,
+    state: OrchestratorState,
+  ): number | undefined {
+    const rawId = item.location_ref?.place_id;
+    const numeric = parseNumericPlaceId(rawId);
+    if (numeric != null) return numeric;
+
+    const name = String(item.location_ref?.name ?? '').trim();
+    if (!name) return undefined;
+
+    const research = state.research_data as { poi_evidence?: { pois?: unknown[] }; pois?: unknown[] } | undefined;
+    const pools: unknown[][] = [];
+    if (Array.isArray(research?.poi_evidence?.pois)) pools.push(research.poi_evidence.pois);
+    if (Array.isArray(research?.pois)) pools.push(research.pois);
+
+    for (const pool of pools) {
+      for (const row of pool) {
+        const p = row as Record<string, unknown>;
+        const label = String(p.name ?? p.nameCN ?? p.nameEN ?? '');
+        if (!label || (!label.includes(name) && !name.includes(label))) continue;
+        const id = parseNumericPlaceId(p.id ?? p.poi_id ?? p.place_id);
+        if (id != null) return id;
+      }
+    }
+    return undefined;
+  }
+
   /** PA Layer1：完整 TripContext（含 items 时间窗，供 ContextAnalyzer 缺口检测） */
   private async loadTripContextForPaSlotPlacement(
     tripId: string,
@@ -7810,12 +8583,20 @@ ${JSON.stringify(routingDecision, null, 2)}
     if (!detectItineraryItemAddIntent(message)) {
       return { applied: false, reason: 'not_add_intent' };
     }
+    if (detectItineraryAdjustIntent(message)) {
+      return { applied: false, reason: 'not_add_intent' };
+    }
     const spec = parseItineraryItemAddSpec(message);
     if (!spec) {
       return {
         applied: false,
         reason: 'parse_failed',
-        answerText: '未能理解要新增的行程项，请说明第几天以及景点名称。',
+      };
+    }
+    if (!isPlausibleItineraryItemAddPoiQuery(spec.poiQuery)) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
       };
     }
     if (!this.tripsService) {
@@ -7862,7 +8643,19 @@ ${JSON.stringify(routingDecision, null, 2)}
       };
     }
 
-    if (itemAlreadyOnDay(trip, effectiveDay, spec.poiQuery)) {
+    const intentProfile = isIntentBasedPoiQuery(spec.poiQuery)
+      ? resolvePoiIntentProfile(spec.poiQuery)
+      : null;
+
+    if (intentProfile) {
+      if (intentAlreadySatisfiedOnDay(trip, effectiveDay ?? 1, intentProfile)) {
+        return {
+          applied: false,
+          reason: 'already_exists',
+          answerText: buildIntentAddAlreadyExistsAnswer(effectiveDay, intentProfile),
+        };
+      }
+    } else if (itemAlreadyOnDay(trip, effectiveDay, spec.poiQuery)) {
       return {
         applied: false,
         reason: 'already_exists',
@@ -7873,23 +8666,23 @@ ${JSON.stringify(routingDecision, null, 2)}
       };
     }
 
-    const externalCandidates: Array<{
-      id?: number;
-      nameCN?: string | null;
-      nameEN?: string | null;
-      category?: string | null;
-    }> = [];
+    const externalCandidates: IntentPoiCandidate[] = [];
     let resolvedPlaceName = spec.poiQuery;
     let resolvedPlaceCategory: string | null = null;
     const skillsHit: string[] = [];
+    const dayAnchor =
+      intentProfile && effectiveDay ? extractDaySearchAnchor(trip, effectiveDay) : null;
+
     const poiSkill = this.skillsRegistry?.getSkill('poi.search');
     if (poiSkill) {
       skillsHit.push('poi.search');
       try {
         const searchOut = (await poiSkill.execute({
-          query: spec.poiQuery,
-          limit: 8,
-          keyword_only: true,
+          query: intentProfile?.semanticQuery ?? spec.poiQuery,
+          limit: intentProfile ? 12 : 8,
+          lat: dayAnchor?.lat,
+          lng: dayAnchor?.lng,
+          keyword_only: intentProfile ? false : true,
         })) as {
           pois?: Array<{
             poi_id?: string;
@@ -7897,6 +8690,7 @@ ${JSON.stringify(routingDecision, null, 2)}
             nameCN?: string;
             nameEN?: string;
             category?: string;
+            coordinates?: { lat: number; lng: number };
           }>;
         };
         for (const p of searchOut?.pois ?? []) {
@@ -7916,12 +8710,64 @@ ${JSON.stringify(routingDecision, null, 2)}
       }
     }
 
-    const placeId = resolvePlaceIdForAdd(trip, spec, externalCandidates);
+    if (intentProfile && dayAnchor && intentProfile.geoCategories.length > 0) {
+      const geoSkill = this.skillsRegistry?.getSkill('geo.findNearbyPOI');
+      if (geoSkill) {
+        skillsHit.push('geo.findNearbyPOI');
+        try {
+          const geoOut = (await geoSkill.execute({
+            location: dayAnchor,
+            radius: 35000,
+            category: intentProfile.geoCategories,
+            limit: 12,
+          })) as {
+            pois?: Array<{
+              id?: number;
+              poi_id?: string;
+              name?: string;
+              nameCN?: string;
+              category?: string;
+              distance?: number;
+              distance_meters?: number;
+            }>;
+          };
+          for (const p of geoOut?.pois ?? []) {
+            const id = Number(p.id ?? p.poi_id);
+            if (!Number.isFinite(id)) continue;
+            externalCandidates.push({
+              id,
+              nameCN: p.nameCN ?? p.name ?? null,
+              nameEN: null,
+              category: p.category ?? null,
+              distanceMeters: p.distance ?? p.distance_meters,
+            });
+          }
+        } catch (e: unknown) {
+          this.logger.warn(
+            `[Claude Orchestrator] itinerary add geo.findNearbyPOI failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+    }
+
+    const tripDestination = String((trip as { destination?: string | null }).destination ?? '');
+    const countryCode = this.inferCountryFromDestination(tripDestination) ?? 'IS';
+
+    const placeId = intentProfile
+      ? resolvePlaceIdForIntentAdd(trip, effectiveDay ?? 1, externalCandidates, intentProfile)
+      : resolvePlaceIdForAdd(trip, spec, externalCandidates);
     if (!placeId) {
       return {
         applied: false,
-        reason: 'place_not_found',
-        answerText: buildItineraryItemAddAnswerText(spec, 0, { dayNumber: effectiveDay }),
+        reason: intentProfile && !dayAnchor ? 'no_day_anchor' : 'place_not_found',
+        answerText: intentProfile
+          ? buildSupplyGapFailureGuidance(intentProfile, {
+              dayNumber: effectiveDay,
+              anchorMissing: !dayAnchor,
+              searchRadiusKm: 35,
+              countryCode,
+            })
+          : buildItineraryItemAddAnswerText(spec, 0, { dayNumber: effectiveDay }),
       };
     }
 
@@ -8033,6 +8879,329 @@ ${JSON.stringify(routingDecision, null, 2)}
       answerText: buildItineraryItemAddAnswerText(spec, 0, {
         dayNumber: effectiveDay,
         placeName: resolvedPlaceName,
+      }),
+    };
+  }
+
+  private async tryApplyBoundTripItineraryAdjustDraft(
+    tripId: string,
+    userId: string | undefined,
+    request: Pick<import('../dto/route-and-run.dto').RouteAndRunRequestDto, 'message' | 'options' | 'trip_id'>,
+  ): Promise<{
+    applied: boolean;
+    deletedCount?: number;
+    addedCount?: number;
+    answerText?: string;
+    targetDateIso?: string;
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    let pending =
+      pendingDraftFromRequestSnapshot({
+        tripId,
+        snapshot: request.options?.itinerary_adjust_draft_snapshot,
+      }) ?? undefined;
+
+    const durableRunId = request.options?.durable_trip_run_id?.trim();
+    if (!pending && durableRunId && this.tripRunManager) {
+      const meta = await this.tripRunManager.getTripRunMetadata(durableRunId);
+      pending = readPendingItineraryAdjustDraft(meta ?? undefined);
+      if (pending && pending.trip_id !== tripId) pending = undefined;
+    }
+
+    if (!pending) {
+      return {
+        applied: false,
+        reason: 'no_pending_draft',
+        answerText: buildItineraryAdjustDraftApplyAnswerText({
+          applied: false,
+          targetDateIso: '',
+          reason: 'no_pending_draft',
+        }),
+      };
+    }
+
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildItineraryAdjustDraftApplyAnswerText({
+          applied: false,
+          targetDateIso: pending.target_date_iso,
+          dayNumber: pending.target_day_number,
+          reason: 'trips_service_unavailable',
+        }),
+      };
+    }
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        answerText: buildItineraryAdjustDraftApplyAnswerText({
+          applied: false,
+          targetDateIso: pending.target_date_iso,
+          dayNumber: pending.target_day_number,
+          reason: 'trip_apply_edit_unavailable',
+        }),
+      };
+    }
+
+    const tripPois = await this.loadTripPlacePoiEvidenceForAdjust(tripId, userId);
+    const researchState = {
+      research_data: {
+        poi_evidence: { pois: tripPois },
+        pois: tripPois,
+      },
+    } as unknown as OrchestratorState;
+
+    const result = await executeItineraryAdjustDraftApply({
+      tripId,
+      userId,
+      pending,
+      loadTrip: async () =>
+        (await this.tripsService!.findOne(tripId.trim(), userId)) as TripLikeForDelete,
+      resolvePlaceId: (item) =>
+        this.resolvePlaceIdForItineraryAdjustApply(item, researchState),
+      researchPools: [tripPois],
+      applyEditSkill: skill as {
+        execute: (input: {
+          mode: 'db';
+          tripId: string;
+          edits: TripUserEdit[];
+        }) => Promise<{ success?: boolean }>;
+      },
+    });
+
+    if (result.applied && durableRunId && this.tripRunManager) {
+      await this.tripRunManager.updateTripRun({
+        runId: durableRunId,
+        metadata: { [PENDING_ITINERARY_ADJUST_DRAFT_META_KEY]: null },
+      });
+    }
+
+    return result;
+  }
+
+  private async tryApplyBoundTripItineraryDayReplan(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+    dateRange?: { start_date?: string; end_date?: string },
+  ): Promise<{
+    applied: boolean;
+    deletedCount?: number;
+    addedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectGoldenCircleDayReplanIntent(message)) {
+      return { applied: false, reason: 'not_day_replan_intent' };
+    }
+    const spec = parseGoldenCircleDayReplanSpec(message, dateRange);
+    if (!spec) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: '未能理解要重排的行程日，请说明日期与黄金圈景点。',
+      };
+    }
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          targetDateIso: spec.targetDateIso,
+          placeNames: [],
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    let trip: TripLikeForDelete & {
+      TripDay?: Array<{
+        id?: string;
+        date?: Date | string | null;
+        ItineraryItem?: Array<{
+          id: string;
+          type?: string;
+          Place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+          place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+        }>;
+      }>;
+    };
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as typeof trip;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary day replan: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          targetDateIso: spec.targetDateIso,
+          placeNames: [],
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    const dayResolved = resolveTripDayByDate(trip, spec.targetDateIso);
+    if (!dayResolved.tripDayId) {
+      return {
+        applied: false,
+        reason: 'day_not_found',
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          targetDateIso: spec.targetDateIso,
+          placeNames: [],
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    const skillsHit: string[] = [];
+    const placeIds: Partial<Record<GoldenCircleAnchorSlug, number>> = resolveGoldenCirclePlaceIdsFromTrip(trip);
+    const poiSkill = this.skillsRegistry?.getSkill('poi.search');
+    const searchCache = new Map<GoldenCircleAnchorSlug, PoiCandidateLike[]>();
+
+    for (const slug of spec.anchorSlugs) {
+      if (placeIds[slug] != null) continue;
+      if (!poiSkill) continue;
+      skillsHit.push('poi.search');
+      try {
+        const searchOut = (await poiSkill.execute({
+          query: goldenCircleSearchQueryForSlug(slug),
+          limit: 10,
+          keyword_only: true,
+        })) as { pois?: PoiCandidateLike[] };
+        const pois = searchOut?.pois ?? [];
+        searchCache.set(slug, pois);
+        const picked = pickGoldenCirclePlaceFromCandidates(slug, pois);
+        if (picked != null) placeIds[slug] = picked;
+      } catch (e: unknown) {
+        this.logger.warn(
+          `[Claude Orchestrator] day replan poi.search(${slug}) failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    const missing = spec.anchorSlugs.filter((slug) => placeIds[slug] == null);
+    if (missing.length > 0) {
+      return {
+        applied: false,
+        reason: 'place_not_found',
+        skillsHit,
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          dayNumber: dayResolved.dayNumber,
+          targetDateIso: spec.targetDateIso ?? dayResolved.dateIso,
+          placeNames: spec.anchorSlugs.filter((s) => placeIds[s] != null).map((s) => s),
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    const placeNames: string[] = [];
+    for (const slug of spec.anchorSlugs) {
+      const pid = placeIds[slug]!;
+      let label: string = slug;
+      outer: for (const day of trip.TripDay ?? []) {
+        for (const item of day.ItineraryItem ?? []) {
+          const place = item.Place ?? item.place;
+          if (place?.id === pid) {
+            label = String(place.nameCN ?? place.nameEN ?? slug);
+            break outer;
+          }
+        }
+      }
+      if (label === slug) {
+        for (const pois of searchCache.values()) {
+          const hit = pois.find((p) => Number(p.id ?? p.poi_id) === pid);
+          if (hit) {
+            label = String(hit.nameCN ?? hit.nameEN ?? hit.name ?? slug);
+            break;
+          }
+        }
+      }
+      placeNames.push(label);
+    }
+
+    const dayRow = (trip.TripDay ?? []).find((d) => d.id === dayResolved.tripDayId);
+    const schedule = buildGoldenCircleScheduleSlots(dayRow?.date ?? spec.targetDateIso);
+    const deleteIds = collectActivityItemIdsForDayReplan(dayResolved.items);
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        skillsHit,
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          dayNumber: dayResolved.dayNumber,
+          targetDateIso: spec.targetDateIso ?? dayResolved.dateIso,
+          placeNames,
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    const edits = [
+      ...deleteIds.map((itemId) => ({ type: 'delete' as const, itemId })),
+      ...schedule.map((slot) => ({
+        type: 'add' as const,
+        tripDayId: dayResolved.tripDayId!,
+        placeId: placeIds[slot.slug]!,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      })),
+    ];
+
+    try {
+      skillsHit.push('trip.applyEdit');
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits,
+      })) as { success?: boolean };
+      if (out?.success) {
+        return {
+          applied: true,
+          deletedCount: deleteIds.length,
+          addedCount: schedule.length,
+          skillsHit,
+          answerText: buildGoldenCircleDayReplanAnswerText({
+            dayNumber: dayResolved.dayNumber,
+            targetDateIso: spec.targetDateIso ?? dayResolved.dateIso,
+            placeNames,
+            deletedCount: deleteIds.length,
+            addedCount: schedule.length,
+          }),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary day replan apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit,
+      answerText: buildGoldenCircleDayReplanAnswerText({
+        dayNumber: dayResolved.dayNumber,
+        targetDateIso: spec.targetDateIso ?? dayResolved.dateIso,
+        placeNames,
+        deletedCount: 0,
+        addedCount: 0,
       }),
     };
   }
@@ -8178,6 +9347,11 @@ ${JSON.stringify(routingDecision, null, 2)}
       convertToTripPlanRequest: (req, st) => this.convertToTripPlanRequest(req, st),
       hydrateTripPlanRequestFromTripRecord: (req, tp, st) =>
         this.hydrateTripPlanRequestFromTripRecord(req, tp, st),
+      isConstraintSinkHydrateEnabled: () => this.constraintSinkService?.isEnabled() ?? false,
+      getActiveTripStateForConstraintSink: () =>
+        this.agentMemoryContextStore?.get()?.activeTripState ?? null,
+      recordConstraintSinkHydrated: (keys) =>
+        this.promMetrics?.recordConstraintSinkHydrated(keys.length),
       kernelCreateInitialOpts: (req, st) => this.kernelCreateInitialOpts(req, st),
       generateDecisionStepForStep: (st, step, actor) =>
         this.generateDecisionStepForStep(st, step, actor as SubAgentType),
@@ -8192,6 +9366,18 @@ ${JSON.stringify(routingDecision, null, 2)}
         this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
       tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
         this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
+      tryApplyBoundTripItineraryDayReplan: (tripId, userId, message, dateRange) =>
+        this.tryApplyBoundTripItineraryDayReplan(tripId, userId, message, dateRange),
+      tryApplyBoundTripItineraryAdjustDraft: (tripId, userId, req) =>
+        this.tryApplyBoundTripItineraryAdjustDraft(tripId, userId, req),
+      recordIntakeDecisionTelemetry: this.decisionTelemetry
+        ? (event) =>
+            this.decisionTelemetry!.record(event).catch((err: unknown) => {
+              this.logger.warn(
+                `[INTAKE Telemetry] record failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            })
+        : undefined,
     };
   }
 
@@ -8210,7 +9396,54 @@ ${JSON.stringify(routingDecision, null, 2)}
         this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
       tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
         this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
+      tryApplyBoundTripItineraryDayReplan: (tripId, userId, message, dateRange) =>
+        this.tryApplyBoundTripItineraryDayReplan(tripId, userId, message, dateRange),
+      tryApplyBoundTripItineraryAdjustDraft: (tripId, userId, req) =>
+        this.tryApplyBoundTripItineraryAdjustDraft(tripId, userId, req),
+      mergeCompoundDataLookupFollowup: (st, req, ctx, llm) =>
+        this.mergeCompoundDataLookupFollowup(st, req, ctx, llm),
     };
+  }
+
+  /** 复合意图：CRUD 已落库后，用轻量 DATA_LOOKUP 回答同句中的咨询子句。 */
+  private async mergeCompoundDataLookupFollowup(
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<void> {
+    const followup = (state.metadata as Record<string, unknown>)?.compound_data_lookup_followup;
+    const followupText = typeof followup === 'string' ? followup.trim() : '';
+    if (!followupText) return;
+
+    const crudAnswer = String(state.narration?.user_friendly_summary ?? '').trim();
+    try {
+      const lw = await this.orchestrateLightweightKnowledgeQuery(
+        { ...request, message: followupText },
+        context,
+        undefined,
+        llmProvider,
+        Date.now(),
+      );
+      const extra = String(lw.answerText ?? '').trim();
+      if (!extra) return;
+      state.narration = {
+        user_friendly_summary: crudAnswer ? `${crudAnswer}\n\n${extra}` : extra,
+        day_by_day_narrative: state.narration?.day_by_day_narrative ?? [],
+        highlights: state.narration?.highlights ?? [],
+        tips: state.narration?.tips ?? [],
+        day_by_day_text_zh: state.narration?.day_by_day_text_zh,
+        warnings: state.narration?.warnings,
+        research_ui_hints: state.narration?.research_ui_hints,
+        voice_tone_modifier: state.narration?.voice_tone_modifier,
+        visual_hint: state.narration?.visual_hint,
+        audio_prosody: state.narration?.audio_prosody,
+      };
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] compound DATA_LOOKUP followup failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   private stateUpdateOrchestratorNode?: StateUpdateOrchestratorNode;
@@ -8477,6 +9710,10 @@ ${JSON.stringify(routingDecision, null, 2)}
       dedupePois: (pois) => this.dedupePois(pois),
       loadTripPlacePoiEvidenceForAdjust: (tripId, userId) =>
         this.loadTripPlacePoiEvidenceForAdjust(tripId, userId),
+      resolveItineraryAdjustNeighborContext: (tripId, targetDateIso, userId) =>
+        this.resolveItineraryAdjustNeighborContextForHost(tripId, targetDateIso, userId),
+      supplementItineraryAdjustCorridorPois: (params) =>
+        this.supplementItineraryAdjustCorridorPoisForHost(params),
       applyPoiPlanningToResearchPois: (pois, dso, country) =>
         this.applyPoiPlanningToResearchPois(pois, dso, country),
       passesHardPoiGuards: (poi, country, dest) =>
@@ -9317,7 +10554,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           destinationRaw,
         );
     /** Phase 2.6：最后一跳强制锚点进入 TopN（候选来自 rankedPois；与聚类解耦） */
-    if (destinationCountry === 'IS' && requiredAnchors.length > 0) {
+    if (destinationCountry === 'IS' && requiredAnchors.length > 0 && !skipGeoClusterForAdjust) {
       const beforeLen = scored.length;
       scored = enforceRequiredAnchorsTopN(
         scored,
@@ -10376,7 +11613,13 @@ ${JSON.stringify(routingDecision, null, 2)}
         this.executePhaseViaKernel(dso, st, phase, run),
       executePlanGenStep: (req, ctx, st, llm) =>
         this.executePlanGenStep(req, ctx, st, llm),
+      runAdaptiveReplanAfterPlanGen: (st) => this.runAdaptiveReplanAfterPlanGen(st),
     };
+  }
+
+  /** ITINERARY_ADJUST：PLAN_GEN 后用人格+环境约束精炼草案 */
+  private runAdaptiveReplanAfterPlanGen(state: OrchestratorState): Promise<boolean> {
+    return runAdaptiveReplanForAdjustState(state, this.skillsRegistry);
   }
 
   private createVerifyPhaseHost(): VerifyPhaseHost {
@@ -10709,8 +11952,39 @@ ${JSON.stringify(routingDecision, null, 2)}
     const ui = patch.userIntent ?? decisionState.userIntent;
     if (!ui) return;
     const q = (state.metadata as { intake_user_message?: string }).intake_user_message;
+    const routePrimary = (state.metadata as Record<string, unknown>)?.route_and_run_intent as
+      | { primary?: string }
+      | undefined;
+    const isItineraryAdjust = routePrimary?.primary === 'ITINERARY_ADJUST';
+
+    if (
+      isItineraryAdjust &&
+      shouldSuppressTripRegionIdForItineraryAdjustPoiPlanning(typeof q === 'string' ? q : undefined, (text) => {
+        const hit = this.regionAnchorPlanning!.resolveAndBuildSlice({}, text);
+        return {
+          regionIntent: hit?.routeIntent?.regionId
+            ? { regionId: hit.routeIntent.regionId }
+            : undefined,
+          confidence: hit?.routeIntent?.confidence ?? 0,
+        };
+      })
+    ) {
+      const slice = buildCorridorAdjustPoiPlanningSlice({
+        totalBudgetMinutes: ui.totalBudgetMinutes,
+      });
+      patch.poiPlanning = slice;
+      const meta = state.metadata as Record<string, unknown>;
+      meta.poiPlanningFeasibility = slice.schedulePlan?.feasibility;
+      meta.poiPlanningBudgetGateApplied = false;
+      meta.poiPlanningResolution = slice.resolution;
+      this.logger.debug(
+        `[STATE_UPDATE] poiPlanning corridor_adjust anchors=0 excluded=${slice.poiPlan?.excludedPoiIds?.length ?? 0}`,
+      );
+      return;
+    }
+
     const userRoute: Partial<UserRouteIntent> = {
-      regionId: ui.regionId,
+      regionId: isItineraryAdjust ? undefined : ui.regionId,
       mustIncludePoiIds: ui.mustIncludePoiIds,
       excludePoiIds: ui.excludePoiIds,
       totalBudgetMinutes: ui.totalBudgetMinutes,
@@ -11054,18 +12328,11 @@ ${JSON.stringify(routingDecision, null, 2)}
         try {
           const openingHoursSkill = this.skillsRegistry.getSkill('opening_hours.get');
           if (openingHoursSkill && researchData.poi_evidence && !researchData.poi_evidence.missing) {
-            // 提取 POI IDs（兼容新旧格式）
-            let poiIds: string[] = [];
-            if (Array.isArray(researchData.poi_evidence)) {
-              poiIds = researchData.poi_evidence.slice(0, 5).map((poi: any) => 
-                poi.poi_id || poi.id || poi.place_id
-              ).filter(Boolean);
-            } else if (researchData.poi_evidence.pois && Array.isArray(researchData.poi_evidence.pois)) {
-              poiIds = researchData.poi_evidence.pois.slice(0, 5).map((poi: any) => 
-                poi.poi_id || poi.id || poi.place_id
-              ).filter(Boolean);
-            }
-            
+            const poiIds = collectOpeningHoursPoiIdsForHydration(
+              state.itinerary,
+              researchData as Record<string, unknown>,
+            );
+
             if (poiIds.length > 0) {
               const openingHoursResult = await openingHoursSkill.execute({
                 poi_ids: poiIds,
@@ -11810,11 +13077,33 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 调用验证 Skills（itinerary.verify）
       if (this.skillsRegistry && state.itinerary) {
         try {
+          const researchData =
+            state.research_data && typeof state.research_data === 'object'
+              ? ({ ...state.research_data } as Record<string, unknown>)
+              : ({} as Record<string, unknown>);
+          const ohSkill = this.skillsRegistry.getSkill('opening_hours.get');
+          if (ohSkill) {
+            try {
+              await hydrateOpeningHoursEvidenceForItinerary({
+                itinerary: state.itinerary,
+                researchData,
+                openingHoursSkill: ohSkill as {
+                  execute: (input: { poi_ids: string[] }) => Promise<{ opening_hours?: unknown[] }>;
+                },
+              });
+              state.research_data = researchData;
+            } catch (e: unknown) {
+              this.logger.warn(
+                `[Claude Orchestrator] VERIFY opening_hours hydrate skipped: ${e instanceof Error ? e.message : String(e)}`,
+              );
+            }
+          }
+
           const verifySkill = this.skillsRegistry.getSkill('itinerary.verify');
           if (verifySkill) {
             const verifyResult = await verifySkill.execute({
               itinerary: state.itinerary,
-              research_data: state.research_data,
+              research_data: researchData,
               user_query: request.message,
               intent_hints: (() => {
                 const vt = state.trip_plan_request?.constraints?.vehicle_type;
@@ -12156,7 +13445,10 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): Promise<import('../orchestration/graph/orchestration-graph.types').GraphNodeOutcome> {
     const params = ctx as import('../orchestration/graph/pre-plan-graph.types').PrePlanGraphRunParams;
     const entry = params.entry ?? 'intake';
-    if (PRE_PLAN_NODE_ORDER.indexOf(nodeId) < PRE_PLAN_NODE_ORDER.indexOf(entry)) {
+    if (
+      !params.forcePrePlanIntakeEntry &&
+      PRE_PLAN_NODE_ORDER.indexOf(nodeId) < PRE_PLAN_NODE_ORDER.indexOf(entry)
+    ) {
       return { kind: 'continue', decisionState: ctx.decisionState };
     }
     const segment = await this.runPrePlanFullChain({
@@ -12490,6 +13782,11 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
   }
 
+  private resolveClarificationIntroAnswerText(state: OrchestratorState): string {
+    const locale = (state.metadata as { clarification_locale?: string })?.clarification_locale;
+    return clarificationIntroPlain(locale);
+  }
+
   /**
    * 构建成功结果
    * @param decisionState DSO（含 confidence/history/decisionMeta），供 RLHF/分析/前端使用
@@ -12505,6 +13802,121 @@ ${JSON.stringify(routingDecision, null, 2)}
       decisionState,
       answerText,
     });
+  }
+
+  private attachHotelRouteRunUiToOrchestrationResult(
+    result: OrchestrationResult,
+    hotelRouteRunUi: HotelRouteRunUiPayload,
+  ): OrchestrationResult {
+    if (!result.result) return result;
+    return {
+      ...result,
+      result: {
+        ...result.result,
+        accommodations: hotelRouteRunUi.accommodations,
+        airbnbListings: hotelRouteRunUi.airbnbListings,
+        routing: hotelRouteRunUi.routing,
+        ...(hotelRouteRunUi.night_groups?.length
+          ? { accommodation_night_groups: hotelRouteRunUi.night_groups }
+          : {}),
+        ...(hotelRouteRunUi.hotel_search_meta
+          ? { hotel_search_meta: hotelRouteRunUi.hotel_search_meta }
+          : {}),
+      },
+    };
+  }
+
+  private persistRouteRunAccommodationsToClientSession(
+    request: RouteAndRunRequestDto,
+    tripId: string | undefined,
+    hotelRouteRunUi: HotelRouteRunUiPayload,
+  ): void {
+    const sessionId = request.options?.client_session_id?.trim();
+    const tid = tripId?.trim();
+    if (!sessionId || !tid || !this.planningAssistantV2Service) return;
+    const items = mapHotelRouteRunUiToAccommodationItems(hotelRouteRunUi);
+    if (!items.length) return;
+    void this.planningAssistantV2Service
+      .persistLastAccommodationsForApply(sessionId, tid, items, request.user_id)
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(
+          `[Claude Orchestrator] persist route_run accommodations failed sessionId=${sessionId}: ${msg}`,
+        );
+      });
+  }
+
+  /** 整段多日重规划完成后：自动逐晚触发住宿 MCP，写入出站卡片载荷 */
+  private async enrichOrchestrationResultWithFullTripReplanHotel(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    state: OrchestratorState,
+    result: OrchestrationResult,
+  ): Promise<OrchestrationResult> {
+    if (!isItineraryFullTripReplanMetadata(state.metadata as Record<string, unknown> | undefined)) {
+      return result;
+    }
+    const md = state.metadata as Record<string, unknown>;
+    const hasClarification =
+      Array.isArray(state.clarification_questions) && state.clarification_questions.length > 0;
+    if (hasClarification) return result;
+
+    const msg =
+      request.message ??
+      (typeof md.intake_user_message === 'string' ? md.intake_user_message : '');
+    if (!detectFullTripReplanHotelIntent(msg, md)) return result;
+
+    const tripId = request.trip_id?.trim() ?? context.tripId?.trim();
+    if (!this.mcpToolDispatcher) {
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'NARRATE',
+        actor: 'Orchestrator',
+        inputs_summary: '整段多日重规划：绑定 Trip 后自动触发逐晚住宿 MCP',
+        outputs_summary: '住宿 MCP 未配置（mcpToolDispatcher 不可用），已跳过检索',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: {
+          system_action: 'FULL_TRIP_REPLAN_HOTEL_SENSOR',
+          skipped: true,
+          reason: 'mcp_unavailable',
+        },
+      });
+      return result;
+    }
+    try {
+      const hBranch = await this.runLiveHotelSensorBranch(request, context, tripId, {
+        fullTripReplan: true,
+      });
+      (state.metadata as Record<string, unknown>).full_trip_replan_hotel_sensor = {
+        attempted: true,
+        ok: !!hBranch.hotelRouteRunUi?.accommodations?.length,
+        card_count: hBranch.hotelRouteRunUi?.accommodations?.length ?? 0,
+      };
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'NARRATE',
+        actor: 'Orchestrator',
+        inputs_summary: '整段多日重规划：绑定 Trip 后自动触发逐晚住宿 MCP',
+        outputs_summary: hBranch.hotelRouteRunUi?.accommodations?.length
+          ? `住宿 MCP 返回 ${hBranch.hotelRouteRunUi.accommodations.length} 张候选卡片（第 ${(hBranch.hotelRouteRunUi.hotel_search_meta?.sampled_nights ?? []).join('、')} 晚）`
+          : '住宿 MCP 未返回可用候选（不影响行程草案）',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { system_action: 'FULL_TRIP_REPLAN_HOTEL_SENSOR' },
+      });
+      if (!hBranch.hotelRouteRunUi?.accommodations?.length) {
+        return result;
+      }
+      const enrichedUi = enrichHotelRouteRunUiForClientApply(hBranch.hotelRouteRunUi);
+      this.persistRouteRunAccommodationsToClientSession(request, tripId, enrichedUi);
+      return this.attachHotelRouteRunUiToOrchestrationResult(result, enrichedUi);
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] FULL_TRIP_REPLAN hotel sensor failed request_id=${request.request_id}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return result;
+    }
   }
 
   private buildSuccessResult(
@@ -12523,7 +13935,7 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     // 如果有澄清问题，说明需要用户提供更多信息
     const answerText = hasClarificationQuestions
-      ? clarificationIntroPlain((state.metadata as any)?.clarification_locale)
+      ? this.resolveClarificationIntroAnswerText(state)
       : this.buildUserFacingAnswerText(state);
 
     void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
@@ -12724,7 +14136,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'NEED_USER_CONFIRM');
-    const answerText = clarificationIntroPlain((state.metadata as any)?.clarification_locale);
+    const answerText = this.resolveClarificationIntroAnswerText(state);
     void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
       (e: unknown) => {
         const msg = e instanceof Error ? e.message : String(e);

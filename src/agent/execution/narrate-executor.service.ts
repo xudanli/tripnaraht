@@ -98,7 +98,13 @@ export class NarrateExecutorService implements INarrateExecutor {
       )) as NarrationLike;
 
       narration = this.mergeTransportResearchGuidanceIntoNarration(narration, state);
-      narration = mergeOptimizationDecisionNarration(narration, dso.optimizationHints);
+      const md = state.metadata as Record<string, unknown> | undefined;
+      const isItineraryAdjust =
+        md?.itinerary_adjust_intake === true ||
+        (md?.route_and_run_intent as { primary?: string } | undefined)?.primary === 'ITINERARY_ADJUST';
+      if (!isItineraryAdjust) {
+        narration = mergeOptimizationDecisionNarration(narration, dso.optimizationHints);
+      }
       narration = this.mergeCausalProtectionNarration(narration, dso, state);
 
       if (state.metadata && typeof state.metadata === 'object') {

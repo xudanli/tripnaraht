@@ -32,6 +32,8 @@ import type { IntentMode } from '../constants/intent-mode.constants';
 import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 import { RESEARCH_ASSET_SCOPE_VALUES, type ResearchAssetScope } from '../utils/research-asset-scope.util';
 import type { RuntimeExecutionProfile } from '../contracts/runtime-execution-profile.types';
+import type { UnifiedExplainabilityEnvelopeV1 } from '../../trips/decision/explainability/unified-explainability.types';
+import type { DecisionCockpitPayloadV1 } from '../../trips/decision/explainability/project-decision-cockpit-from-envelope.util';
 import type { RuntimeExecutionAnomaly } from '../contracts/runtime-execution-profile.validation.types';
 import type { ReplayProvenance } from '../contracts/replay-provenance.types';
 import type { ReplayArtifactDescriptor } from '../contracts/replay-artifact-descriptor.types';
@@ -110,6 +112,7 @@ export class IntentFlagsDto {
   @IsArray()
   @IsString({ each: true })
   modification_targets?: string[];
+
 }
 
 /** 行程上下文信号（与 NLU INTAKE 对齐） */
@@ -155,6 +158,16 @@ export class PersonaHintDto {
   @IsEnum(['CONSERVATIVE', 'BALANCED', 'EXPLORATORY'])
   neptune_creativity?: 'CONSERVATIVE' | 'BALANCED' | 'EXPLORATORY';
 }
+
+/** route_and_run.options.entry_point 合法值（@IsIn；勿用 @IsEnum 数组，class-validator 会报空枚举） */
+export const ROUTE_AND_RUN_ENTRY_POINTS = [
+  'trip_detail_page',
+  'trip_list_page',
+  'dashboard',
+  'planning_workbench',
+] as const;
+
+export type RouteAndRunEntryPoint = (typeof ROUTE_AND_RUN_ENTRY_POINTS)[number];
 
 export class AgentOptionsDto {
   @ApiPropertyOptional({ 
@@ -346,11 +359,11 @@ export class AgentOptionsDto {
   @ApiPropertyOptional({ 
     description: '入口来源标识（用于权限控制和操作限制）',
     example: 'trip_detail_page',
-    enum: ['trip_detail_page', 'trip_list_page', 'dashboard', 'planning_workbench'],
+    enum: [...ROUTE_AND_RUN_ENTRY_POINTS],
   })
   @IsOptional()
-  @IsEnum(['trip_detail_page', 'trip_list_page', 'dashboard', 'planning_workbench'])
-  entry_point?: 'trip_detail_page' | 'trip_list_page' | 'dashboard' | 'planning_workbench';
+  @IsIn([...ROUTE_AND_RUN_ENTRY_POINTS])
+  entry_point?: RouteAndRunEntryPoint;
 
   @ApiPropertyOptional({ 
     description: '只读模式标志（true 时限制为查询类操作）',
@@ -473,6 +486,35 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsBoolean()
   persist_dso_checkpoint?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'ITINERARY_ADJUST：用户点击「应用到行程」时为 true；INTAKE 短路落库，不再重跑 PLAN_GEN。',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  apply_itinerary_adjust_draft?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'ITINERARY_ADJUST 待确认草案快照（与当轮 payload.timeline 目标日一致）；apply 时优先于 TripRun 缓存。',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  @IsObject()
+  itinerary_adjust_draft_snapshot?: {
+    target_date_iso: string;
+    target_day_number?: number;
+    items?: Array<{
+      type?: string;
+      start_window?: string;
+      end_window?: string;
+      location_ref?: { name?: string; place_id?: string | number };
+      name?: string;
+    }>;
+  };
 
   @ApiPropertyOptional({
     description:
@@ -629,6 +671,15 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsArray()
   agentic_approved_tool_invocations?: Array<string | Record<string, unknown>>;
+
+  @ApiPropertyOptional({
+    description:
+      'Decision OS 全链路统一 session_id（Intake / fed_sse / Pareto / MOCK_PLAZA / Post-Booking Saga）。未传时回落 request_id。',
+    example: '550e8400-e29b-41d4-a716-446655440099',
+  })
+  @IsOptional()
+  @IsString()
+  client_session_id?: string;
 
   @ApiPropertyOptional({
     description: '意图微标志（与 intent_mode / task_type 并行）；用于 live_facts 等细粒度开关',
@@ -802,6 +853,7 @@ export class SuggestedOperationInvokePayloadDto {
   @IsOptional()
   @IsString()
   message?: string;
+
 }
 
 export class PreferenceProfileDto {
@@ -1878,7 +1930,7 @@ export class RouteAndRunResponseDto {
       };
       /** 多日行程「每晚上一间」采样策略说明（中文免责 + 采样晚序号） */
       hotel_search_meta?: {
-        strategy?: 'single_stay' | 'per_night_sample';
+        strategy?: 'single_stay' | 'per_night_sample' | 'per_night_full_trip_replan';
         /** 本次 MCP 检索入住窗（解析后的 checkIn→checkOut）间夜数；用户收窄日期检索时为该窗，非整段 Trip */
         total_nights?: number;
         /** 可选：绑定行程时整段 Trip 间夜数；与卡片「第 M/N 晚」分母 N 对齐 */
@@ -1983,6 +2035,10 @@ export class RouteAndRunResponseDto {
         kind: 'route_and_run_message' | 'client_navigation';
         payload?: Record<string, unknown>;
       }>;
+      /**
+       * 前端渲染面：`planning` 行程工作台；`consultation` 轻量咨询 Dashboard。
+       */
+      ui_surface?: 'planning' | 'consultation';
       /**
        * 咨询类可视化 Dashboard（与 `ui_surface === consultation` 联用）：Hero、评分条、摘要卡、风险、简版每日时间轴、预算、预订提醒、地图线索。
        * 来源：轻量咨询 LLM 的 <<<CONSULTATION_UI_JSON>>>；若模型未输出，可能由后端根据 `suggested_operations`、`live_sensor_audit`、`data_lookup_rag_citations`、`hotel_search_meta` 拼装兜底（见 `dashboard_origin`）。
@@ -2304,6 +2360,13 @@ export class RouteAndRunResponseDto {
       segment_editor_mode?: 'full' | 'slot_timing_only' | 'readonly';
       banner_message_zh?: string;
     };
+    /** unified-explainability@v1 SSOT；narration.unified_explainability_ref 指向此处 */
+    unified?: UnifiedExplainabilityEnvelopeV1;
+    /**
+     * Decision Cockpit UI 只读投影（`decision-cockpit@v1`）；深链 SSOT 仍为 `explain.unified`。
+     * 含 trace 表、risk_factors、counterfactuals、integrity_badges（含 narrative_drift_score）。
+     */
+    decision_cockpit?: DecisionCockpitPayloadV1;
   };
 
   @ApiProperty({ 
@@ -2426,6 +2489,13 @@ export class RouteAndRunResponseDto {
       snapshot_id?: string;
       snapshot_version?: number;
       loaded_at_iso?: string;
+      /** Memory OS P0：INTAKE hydrate 自 Constraint Sink 的可观测摘要 */
+      constraint_sink?: {
+        hydrated: boolean;
+        applied_keys?: string[];
+        patch_ids?: string[];
+        overridden_by_request_keys?: string[];
+      };
     };
     /**
      * 决策账本自愈（增量 reconcile）：供前端进度条 / 信任动画消费（与 GATE_EVAL/EXECUTION 阻塞式调解对齐）。

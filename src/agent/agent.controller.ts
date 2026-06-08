@@ -356,6 +356,7 @@ export class AgentController {
       response.result?.payload?.orchestrationResult?.itinerary?.action_plan || [];
 
     // Action 闭环默认输出：在统一出口补齐，避免侵入 AgentService 的多分支返回逻辑。
+    // ITINERARY_ADJUST 走廊自动落库时由 assembler 预填 actionExecution，此处不覆盖。
     if (!response.result?.payload?.actionExecution) {
       const pendingActions = actionPlan.map((action: any) => ({
         action_id: action.action_id,

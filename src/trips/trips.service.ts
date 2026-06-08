@@ -31,6 +31,7 @@ import {
 } from './dto/evidence.dto';
 import { AttentionItemDto, AttentionQueueResponseDto, GetAttentionQueueQueryDto, AttentionItemType, AttentionSeverity, AttentionStatus } from './dto/attention-queue.dto';
 import { toPlaceResponseDto } from './dto/place-response.dto';
+import { buildSyntheticPlaceForRestItineraryItem } from '../itinerary-items/utils/rest-itinerary-item-display.util';
 import { EvidenceManagementService } from './services/evidence-management.service';
 import { EvidenceFilteringService } from './services/evidence-filtering.service';
 import { EvidenceCompletenessChecker, EvidenceCompletenessResult } from './services/evidence-completeness-checker.service';
@@ -53,10 +54,28 @@ import {
   validateHikingMetadataFields,
   validateHikingSegmentHikePlanRefs,
 } from './utils/embedded-hiking-trip-metadata.util';
+import {
+  isExecutableScheduleReady,
+  isRouteEstablishedForTrip,
+  isTripGeneratingItems,
+  needsGenerationProgressBackfill,
+  resolveEffectiveGenerationProgress,
+  resolveTripContentMode,
+  type TripGenerationProgress,
+} from './utils/match-square-trip-content.util';
+import {
+  buildHikingDayCardsForTrip,
+  readHikingTrailSegments,
+} from './utils/hiking-day-schedule.util';
 import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { DecisionState } from '../decision/kernel/decision-state.types';
 import { reasonCodesDisplayZh } from '../agent/utils/decision-log-user-facing.zh.util';
+import { ItineraryItemsService } from '../itinerary-items/itinerary-items.service';
+import {
+  attachDisplaySortIndices,
+  sortItineraryItemsForDayDisplay,
+} from '../itinerary-items/utils/itinerary-day-display-order.util';
 
 @Injectable()
 export class TripsService {
@@ -190,6 +209,7 @@ export class TripsService {
     private bookingComIntegration?: BookingComIntegrationService,
     @Optional() private routeDirectionsService?: RouteDirectionsService,
     @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private dsoFeedbackPersistence?: IDsoFeedbackPersistence,
+    @Optional() private itineraryItemsService?: ItineraryItemsService,
   ) {}
 
   /**
@@ -1069,9 +1089,17 @@ export class TripsService {
       pendingTasksCount += safetyAlerts.length;
 
       // Pipeline状态（简化版）
-      const hasRoute = trip.metadata && (trip.metadata as any).routeDirectionId;
-      const totalItems = trip.TripDay.reduce((sum: number, day: any) => sum + day.ItineraryItem.length, 0);
-      
+      const tripMetadata = trip.metadata ?? {};
+      const daysWithItems = trip.TripDay.filter((day: any) => day.ItineraryItem.length > 0).length;
+      const totalDays = trip.TripDay.length;
+      const routeEstablished = isRouteEstablishedForTrip(tripMetadata, totalItems);
+      const scheduleReady = isExecutableScheduleReady(
+        tripMetadata,
+        totalItems,
+        daysWithItems,
+        totalDays,
+      );
+
       pipelineStatus = {
         stages: [
           {
@@ -1082,12 +1110,16 @@ export class TripsService {
           {
             id: '2',
             name: '判断路线是否成立',
-            status: hasRoute ? 'completed' : 'in-progress',
+            status: routeEstablished ? 'completed' : 'in-progress',
           },
           {
             id: '3',
             name: '生成可执行日程',
-            status: totalItems > 0 ? 'in-progress' : 'pending',
+            status: scheduleReady
+              ? 'completed'
+              : totalItems > 0
+                ? 'in-progress'
+                : 'pending',
           },
           {
             id: '4',
@@ -1170,37 +1202,66 @@ export class TripsService {
       }
     }
     
-    const transformedTripDays = tripData.TripDay?.map((day: any, index: number) => {
+    const hikingDayCards = buildHikingDayCardsForTrip(tripData.metadata, tripData.TripDay ?? []);
+
+    const transformedTripDays = await Promise.all(
+      (tripData.TripDay ?? []).map(async (day: any, index: number) => {
       const dayNumber = index + 1;
       const theme = dayThemes[dayNumber] || day.theme || null;
-      
+
+      const checkoutItems =
+        this.itineraryItemsService && day.id
+          ? await this.itineraryItemsService.findCheckoutDisplayItemsForTripDay(day.id)
+          : [];
+
+      const mapItem = (item: any) => {
+        const isRequired = item.note?.includes('[必游]') || false;
+        const placeDto = item.Place ? toPlaceResponseDto(item.Place) : null;
+        const syntheticPlace = !placeDto ? buildSyntheticPlaceForRestItineraryItem(item) : null;
+        const resolvedPlace = placeDto ?? syntheticPlace;
+        if (placeDto && typeof placeDto.id === 'number') {
+          const coords = locationMap.get(placeDto.id);
+          if (coords) {
+            (placeDto as any).location = coords;
+            const meta = ((placeDto as any).metadata ?? {}) as Record<string, unknown>;
+            (placeDto as any).metadata = { ...meta, coordinates: coords };
+          }
+        }
+        return {
+          ...item,
+          Place: resolvedPlace,
+          placeName:
+            resolvedPlace?.nameCN ??
+            resolvedPlace?.nameEN ??
+            (typeof item.note === 'string' ? item.note.split('\n')[0]?.trim() : undefined),
+          crossDayInfo: this.calculateCrossDayInfo(item, day.date),
+          isRequired,
+        };
+      };
+
+      const sortedItems = attachDisplaySortIndices(
+        sortItineraryItemsForDayDisplay([
+          ...checkoutItems.map(mapItem),
+          ...(day.ItineraryItem ?? []).map(mapItem),
+        ]),
+      );
+
       return {
         ...day,
-        theme: theme, // 添加主题字段
-        ItineraryItem: day.ItineraryItem?.map((item: any) => {
-          // 从 note 字段解析 isRequired（检查是否包含 [必游] 标记）
-          const isRequired = item.note?.includes('[必游]') || false;
-
-          const placeDto = item.Place ? toPlaceResponseDto(item.Place) : null;
-          if (placeDto && typeof placeDto.id === 'number') {
-            const coords = locationMap.get(placeDto.id);
-            if (coords) {
-              // Attach both `location` and `metadata.coordinates` for downstream compatibility.
-              (placeDto as any).location = coords;
-              const meta = ((placeDto as any).metadata ?? {}) as Record<string, unknown>;
-              (placeDto as any).metadata = { ...meta, coordinates: coords };
-            }
-          }
-          
-          return {
-            ...item,
-            Place: placeDto,
-            crossDayInfo: this.calculateCrossDayInfo(item, day.date),
-            isRequired: isRequired, // 添加 isRequired 字段
-          };
-        }),
+        theme: theme,
+        ItineraryItem: sortedItems,
+        hikingDayCard: hikingDayCards[index] ?? { kind: null },
       };
-    });
+    }),
+    );
+
+    const tripContentMode = resolveTripContentMode(tripData.metadata, totalItems);
+    const generationProgress = resolveEffectiveGenerationProgress(tripData.metadata, totalItems);
+    const generatingItems = isTripGeneratingItems(tripData.metadata, totalItems);
+
+    if (generationProgress && needsGenerationProgressBackfill(tripData.metadata)) {
+      void this.backfillGenerationProgress(trip.id, tripData.metadata, generationProgress);
+    }
 
     return {
       ...tripData,
@@ -1211,6 +1272,10 @@ export class TripsService {
       isLiked,
       isCollected,
       likeCount,
+      tripContentMode,
+      generationProgress,
+      generatingItems,
+      hikingTrailSegments: readHikingTrailSegments(tripData.metadata),
       stats: {
         totalDays: trip.TripDay.length,
         daysWithActivities: daysWithActivities,
@@ -1226,6 +1291,32 @@ export class TripsService {
       activeAlertsCount,
       pendingTasksCount,
     };
+  }
+
+  private async backfillGenerationProgress(
+    tripId: string,
+    metadata: unknown,
+    generationProgress: TripGenerationProgress,
+  ): Promise<void> {
+    try {
+      const prev =
+        metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : {};
+      await this.prisma.trip.update({
+        where: { id: tripId },
+        data: {
+          metadata: {
+            ...prev,
+            generationProgress,
+          } as any,
+          updatedAt: new Date(),
+        },
+      });
+      this.logger.debug(`[Trip] backfilled generationProgress trip=${tripId} stage=${generationProgress.stage}`);
+    } catch (error: any) {
+      this.logger.warn(`[Trip] generationProgress backfill failed trip=${tripId}: ${error?.message}`);
+    }
   }
 
   /**
@@ -1247,7 +1338,10 @@ export class TripsService {
     const crossDays = Math.floor(endDay.diff(startDay, 'days').days);
 
     const isCrossDay = crossDays > 0;
-    const isCheckoutItem = false; // 在 findOne 中不处理退房项，由 findByTripDay 处理
+    const isCheckoutItem =
+      item._isCheckoutItem === true ||
+      item.crossDayInfo?.isCheckoutItem === true ||
+      item.crossDayInfo?.displayMode === 'checkout';
 
     // 时间标签
     const timeLabels = this.getTimeLabelsForType(item.type, isCheckoutItem);
@@ -1256,7 +1350,7 @@ export class TripsService {
       isCrossDay,
       crossDays,
       isCheckoutItem,
-      displayMode: isCrossDay ? 'checkin' : 'normal',
+      displayMode: isCheckoutItem ? 'checkout' : isCrossDay ? 'checkin' : 'normal',
       timeLabels,
     };
   }
@@ -2834,19 +2928,19 @@ export class TripsService {
       completedAt: trip.createdAt?.toISOString(),
     });
 
-    // 阶段3 前置计算（用于阶段2 推断）
     const totalItems = trip.TripDay.reduce((sum, day) => sum + day.ItineraryItem.length, 0);
     const daysWithItems = trip.TripDay.filter(day => day.ItineraryItem.length > 0).length;
     const totalDays = trip.TripDay.length;
-    const stage3Completed = totalDays > 0 && totalItems > 0 && daysWithItems === totalDays;
-
-    // 阶段2: 判断路线是否成立
-    // 方案B：若阶段3已完成（日程已排满），推断路线已成立
     const metadata = (trip.metadata as Record<string, unknown>) || {};
-    const hasRoute = !!(metadata.routeDirectionId ?? metadata.route_direction_id);
-    const decisionState = metadata.decisionState as { completedSteps?: { routeSelection?: boolean } } | undefined;
-    const routeSelected = decisionState?.completedSteps?.routeSelection === true;
-    const stage2Completed = hasRoute || routeSelected || stage3Completed;
+    const stage3Completed = isExecutableScheduleReady(
+      metadata,
+      totalItems,
+      daysWithItems,
+      totalDays,
+    );
+
+    // 阶段2: 判断路线是否成立（含搭子徒步骨架、routeDirectionName）
+    const stage2Completed = isRouteEstablishedForTrip(metadata, totalItems) || stage3Completed;
     stages.push({
       id: '2',
       name: '判断路线是否成立',
@@ -2855,26 +2949,36 @@ export class TripsService {
     });
 
     // 阶段3: 生成可执行日程
-    
     let stage3Status = PipelineStageStatus.PENDING;
     let stage3Summary = '';
-    
-    if (totalItems > 0) {
-      // 已完成：所有天都有活动安排
-      const allDaysScheduled = totalDays > 0 && daysWithItems === totalDays;
-      stage3Status = allDaysScheduled ? PipelineStageStatus.COMPLETED : PipelineStageStatus.IN_PROGRESS;
-      
-      // 检查是否有密集的行程
-      const denseDays = trip.TripDay.filter(day => day.ItineraryItem.length > 8);
-      
-      stage3Summary = `建议驾驶时长：每天 3–5 小时\n`;
-      stage3Summary += `已安排活动：${totalItems} 个（${daysWithItems}/${totalDays} 天）\n`;
-      
-      if (denseDays.length > 0) {
-        stage3Summary += `🚨 第 ${denseDays.map((_, idx) => trip.TripDay.indexOf(denseDays[idx]) + 1).join('、')} 天稍紧张`;
-      } else {
-        stage3Summary += `疲劳指数：中`;
+
+    const contentMode = resolveTripContentMode(metadata, totalItems);
+    const effectiveProgress = resolveEffectiveGenerationProgress(metadata, totalItems);
+
+    if (stage3Completed) {
+      stage3Status = PipelineStageStatus.COMPLETED;
+      if (contentMode === 'hiking_primary' || contentMode === 'mixed') {
+        stage3Summary = effectiveProgress?.message ?? '徒步骨架已就绪';
+      } else if (contentMode === 'skeleton_only') {
+        stage3Summary = effectiveProgress?.message ?? '成团骨架已创建，待补充日程';
+      } else if (totalItems > 0) {
+        const denseDays = trip.TripDay.filter(day => day.ItineraryItem.length > 8);
+        stage3Summary = `建议驾驶时长：每天 3–5 小时\n`;
+        stage3Summary += `已安排活动：${totalItems} 个（${daysWithItems}/${totalDays} 天）\n`;
+        stage3Summary += denseDays.length > 0
+          ? `🚨 第 ${denseDays.map((_, idx) => trip.TripDay.indexOf(denseDays[idx]) + 1).join('、')} 天稍紧张`
+          : `疲劳指数：中`;
       }
+    } else if (totalItems > 0) {
+      stage3Status = PipelineStageStatus.IN_PROGRESS;
+      const denseDays = trip.TripDay.filter(day => day.ItineraryItem.length > 8);
+      stage3Summary = `已安排活动：${totalItems} 个（${daysWithItems}/${totalDays} 天）`;
+      if (denseDays.length > 0) {
+        stage3Summary += `\n🚨 第 ${denseDays.map((_, idx) => trip.TripDay.indexOf(denseDays[idx]) + 1).join('、')} 天稍紧张`;
+      }
+    } else if (isTripGeneratingItems(metadata, totalItems)) {
+      stage3Status = PipelineStageStatus.IN_PROGRESS;
+      stage3Summary = effectiveProgress?.message ?? '正在生成行程项...';
     }
     
     stages.push({

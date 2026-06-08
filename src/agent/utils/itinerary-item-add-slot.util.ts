@@ -3,7 +3,7 @@
  */
 
 import { DateTime } from 'luxon';
-import { OpeningHoursUtil, OPENING_HOURS_UNKNOWN } from '../../common/utils/opening-hours.util';
+import { OpeningHoursUtil, OPENING_HOURS_UNKNOWN, isAlwaysOpenHoursText } from '../../common/utils/opening-hours.util';
 import type { TripItemLikeForDelete } from './itinerary-item-delete.util';
 import { detectPoiKinds } from './itinerary-item-add.util';
 
@@ -43,6 +43,7 @@ function parseHmToMinutes(hm: string): number | null {
 export function resolveSeasonalHoursString(raw: string, tripDayDate: Date, timezone = DEFAULT_TZ): string | null {
   const text = String(raw ?? '').trim();
   if (!text) return null;
+  if (isAlwaysOpenHoursText(text)) return '24 Hours';
 
   const simple = text.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
   if (simple && !/summer|winter|夏季|冬季/i.test(text)) {

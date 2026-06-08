@@ -55,4 +55,7 @@ export interface PlanGenPhaseHost {
     state: OrchestratorState,
     llmProvider: LlmProvider,
   ): Promise<void>;
+
+  /** ITINERARY_ADJUST：PLAN_GEN 产出草案后执行 itinerary.adaptive_replan */
+  runAdaptiveReplanAfterPlanGen?(state: OrchestratorState): Promise<boolean>;
 }

@@ -36,6 +36,7 @@ export class AgentStateService {
           duration_min: 60,
           window: ['11:30', '13:30'],
         },
+        lunch_strategy: 'balanced',
         pacing: 'normal',
       },
       draft: {
