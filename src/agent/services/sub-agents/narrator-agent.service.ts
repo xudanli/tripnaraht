@@ -22,6 +22,7 @@ import {
   extractBudgetAggregateSavingsFromResearchData,
   mapVoiceToneModifierForNegotiationAndBudget,
 } from '../../utils/narrator-ebp-tone.util';
+import { buildEmotionalToneInstructionZh } from '../../utils/apply-emotional-context-to-narration.util';
 import { compileCausalNarrative } from '../../../trips/decision/narration/causal-narrative-compiler.service';
 import { polishCausalNarrativeWithLlm } from '../../../trips/decision/narration/polish-causal-narrative-with-llm.util';
 import { buildNarratorUnifiedExplain } from '../../../trips/decision/explainability/build-narrator-unified-explain.util';
@@ -258,9 +259,11 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
     ).narration_research_conflict;
     const researchData = (context as OrchestratorState & { research_data?: Record<string, unknown> }).research_data;
     const budgetSavingsYuan = extractBudgetAggregateSavingsFromResearchData(researchData);
+    const emotionalContext = (context as OrchestratorState & { emotional_context?: import('../../narrator/types/emotional-context.type').EmotionalContext }).emotional_context;
     const toneZh = buildEbpToneMannerInstructionZh(conflict, { budget_savings_yuan: budgetSavingsYuan });
+    const emotionalZh = buildEmotionalToneInstructionZh(emotionalContext);
     const mm = buildMultimodalPresentationHints(conflict, { budget_savings_yuan: budgetSavingsYuan });
-    const tips = [...(toneZh ? [toneZh] : []), ...(narration.tips ?? [])];
+    const tips = [...(toneZh ? [toneZh] : []), ...(emotionalZh ? [emotionalZh] : []), ...(narration.tips ?? [])];
     const ebpVoice = mapVoiceToneModifierForNegotiationAndBudget(conflict, researchData);
     const curVoice = narration.voice_tone_modifier;
     const voice_tone_modifier =

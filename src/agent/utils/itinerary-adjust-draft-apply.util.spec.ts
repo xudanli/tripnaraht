@@ -39,6 +39,41 @@ describe('itinerary-adjust-draft-apply', () => {
     expect(pending?.itinerary_day.items).toHaveLength(2);
   });
 
+  it('builds multi-day pending draft from client snapshot', () => {
+    const pending = pendingDraftFromRequestSnapshot({
+      tripId: 'trip-1',
+      snapshot: {
+        apply_mode: 'append_sparse_days',
+        days: [
+          {
+            date_iso: '2026-11-03',
+            items: [
+              {
+                type: 'POI',
+                start_window: '09:00',
+                end_window: '12:00',
+                location_ref: { name: '冰河湖', place_id: '401' },
+              },
+            ],
+          },
+          {
+            date_iso: '2026-11-04',
+            items: [
+              {
+                type: 'POI',
+                start_window: '10:00',
+                end_window: '13:00',
+                location_ref: { name: '钻石沙滩', place_id: '402' },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(pending?.apply_mode).toBe('append_sparse_days');
+    expect(pending?.itinerary_days).toHaveLength(2);
+  });
+
   it('success answer mentions timeline sync', () => {
     const text = buildItineraryAdjustDraftApplyAnswerText({
       applied: true,

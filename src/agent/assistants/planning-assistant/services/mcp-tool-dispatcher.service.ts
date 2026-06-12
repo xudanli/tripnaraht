@@ -822,7 +822,8 @@ export class McpToolDispatcherService implements OnModuleInit {
         
         // 构建酒店搜索参数
         const hotelSearchParams: any = {
-          query: params.query,
+          query: params.query ?? params.naturalLanguage,
+          destination: params.destination,
           location: location,
           radius: params.radius || 10000,
           type: params.type || 'lodging',
@@ -832,6 +833,15 @@ export class McpToolDispatcherService implements OnModuleInit {
           checkOut: params.checkOut,
           guests: params.guests,
           language: params.language || 'en',
+          skipQueryRewrite: params.skipQueryRewrite,
+          queryRewriteResult: params.queryRewriteResult,
+          multiRouteSearch: params.multiRouteSearch ?? true,
+          maxRoutesPerLane: params.maxRoutesPerLane ?? 2,
+          rewriteContext: params.rewriteContext ?? {
+            selectedDestination: params.destination,
+            profile: 'user_facing',
+            skipRewrite: Boolean(params.skipQueryRewrite),
+          },
         };
         
         // 如果有 tripId 或 countryCode，记录日志（可用于后续增强）

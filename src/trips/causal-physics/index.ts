@@ -18,6 +18,15 @@ export {
 } from './intervention-engine';
 
 export {
+  evaluateStepStress,
+  isOrganizationalFailure,
+  propagateSocialStressToTemporal,
+  ORGANIZATIONAL_STRESS_THRESHOLD,
+  type RolloutNodeStressInput,
+  type StepStressResult,
+} from './social-stress-engine';
+
+export {
   correctCausalWeights,
   type CausalFeedbackInput,
 } from './causal-feedback';

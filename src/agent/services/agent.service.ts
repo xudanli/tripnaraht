@@ -25,6 +25,7 @@ import {
   TripRunManagerService,
   type TripRunDsoCheckpointPayload,
 } from './trip-run-manager.service';
+import { recordItineraryAdjustFunnel } from '../utils/itinerary-adjust-metrics.util';
 import {
   buildPendingItineraryAdjustDraft,
   PENDING_ITINERARY_ADJUST_DRAFT_META_KEY,
@@ -42,6 +43,7 @@ import {
   signalsFromRequest,
   routingSignalsWithResolvedTaskType,
   shouldRouteBoundTripAsItineraryAdjust,
+  applyBoundTripReviewRouteAndRunOverrideInPlace,
   type RoutingSignals,
   type TaskType,
 } from '../utils/orchestration-signals.util';
@@ -100,6 +102,8 @@ import { TimelineInspectorService } from './timeline-inspector.service';
 import { ItineraryVersionService } from './itinerary-version.service';
 import { ItineraryRevisionTimelineService } from './itinerary-revision-timeline.service';
 import type { RevisionTimelineResponseDto } from '../dto/itinerary-revision-timeline.dto';
+import type { TripRobustnessDashboardResponseDto } from '../dto/trip-robustness-dashboard.dto';
+import { TripRobustnessDashboardService } from './trip-robustness-dashboard.service';
 import { ItineraryRollbackService } from './itinerary-rollback.service';
 import { ItineraryRevisionRegretService } from './itinerary-revision-regret.service';
 import { UserPreferenceLearningService } from './user-preference-learning.service';
@@ -114,6 +118,13 @@ import {
 } from '../axioms/axiom-prometheus.util';
 import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
 import { LogDecisionRequestDto } from '../dto/log-decision.dto';
+import {
+  ApplyBookingCartActionRequestDto,
+  ApplyBookingCartActionResponseDto,
+} from '../dto/booking-cart-checkout.dto';
+import { applyBookingCartAction as runBookingCartAction } from '../utils/booking-cart-checkout.util';
+import type { OptimizedBookingCartUi } from '../utils/booking-cart-optimizer.util';
+import type { BookingCartUiDto } from '../dto/route-and-run.dto';
 import { RouteAndRunContextEnricherService } from './route-and-run-context-enricher.service';
 import { UserStandingPreferenceService } from './user-standing-preference.service';
 import { mapOrchestrationDecisionLogToTrips } from '../utils/orchestration-to-trips-decision-log.util';
@@ -240,6 +251,7 @@ export class AgentService {
     @Optional() private readonly itineraryRevisionTimeline?: ItineraryRevisionTimelineService,
     @Optional() private readonly itineraryRollback?: ItineraryRollbackService,
     @Optional() private readonly itineraryRevisionRegret?: ItineraryRevisionRegretService,
+    @Optional() private readonly tripRobustnessDashboard?: TripRobustnessDashboardService,
     @Optional() private readonly userPreferenceLearning?: UserPreferenceLearningService,
     @Optional() private readonly preferenceEvolution?: PreferenceEvolutionService,
     @Optional() private readonly promMetrics?: PrometheusMetricsService,
@@ -752,6 +764,21 @@ export class AgentService {
     return { success: true, data: { logged: Boolean(storage) } };
   }
 
+  /** 预订购物车 checkout 状态流转（无持久化，客户端回传 cart 快照） */
+  applyBookingCartAction(input: ApplyBookingCartActionRequestDto): ApplyBookingCartActionResponseDto {
+    const result = runBookingCartAction({
+      cart: input.cart as OptimizedBookingCartUi,
+      action: input.action,
+      payload: input.payload,
+    });
+    return {
+      status: result.status,
+      booking_cart: result.booking_cart as BookingCartUiDto,
+      ...(result.checkout ? { checkout: result.checkout } : {}),
+      ...(result.rejection_reason_zh ? { rejection_reason_zh: result.rejection_reason_zh } : {}),
+    };
+  }
+
   /**
    * Read back a persisted negotiation revision (audit vector + patch summary) for UI timeline.
    */
@@ -793,6 +820,24 @@ export class AgentService {
   async getItineraryRevisionTimeline(tripId: string): Promise<RevisionTimelineResponseDto> {
     const revisions = (await this.itineraryRevisionTimeline?.listTimelineForTrip(tripId)) ?? [];
     return { trip_id: tripId, revisions };
+  }
+
+  /** P1-B: Physical + organizational robustness dashboard for trip detail UI. */
+  async getTripRobustnessDashboard(
+    tripId: string,
+    opts?: { forceRecompute?: boolean },
+  ): Promise<TripRobustnessDashboardResponseDto> {
+    if (!this.tripRobustnessDashboard) {
+      return {
+        trip_id: tripId,
+        schema: 'tripnara.trip_robustness_dashboard@v1',
+        status: 'computation_failed',
+        dual_curves: [],
+        alignment: { recent_tuples: [] },
+        computed_at: new Date().toISOString(),
+      };
+    }
+    return this.tripRobustnessDashboard.getTripRobustnessDashboard(tripId, opts);
   }
 
   /** Physical rollback: restore a historical snapshot and append a ROLLBACK revision (causal closure). */
@@ -961,6 +1006,7 @@ export class AgentService {
    *   是否调用带 `tripId` 的世界模型桥接及域 Agent 是否注入。
    */
   async routeAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
+    applyBoundTripReviewRouteAndRunOverrideInPlace(request);
     const asyncMode = String(request.options?.async_mode ?? 'OFF').trim().toUpperCase();
     if (asyncMode === 'FORCE') {
       if (!this.routeAndRunAsyncDelegationService) {
@@ -978,6 +1024,7 @@ export class AgentService {
 
   /** Durable Task Pattern：秒回 task_id，后台执行完整 route_and_run */
   async routeAndRunAsync(request: RouteAndRunRequestDto) {
+    applyBoundTripReviewRouteAndRunOverrideInPlace(request);
     if (!this.routeAndRunAsyncService) {
       throw new ServiceUnavailableException('RouteAndRunAsyncService is not configured');
     }
@@ -1387,6 +1434,15 @@ export class AgentService {
             await this.tripRunManager.updateTripRun({
               runId: tripRunId,
               metadata: { [PENDING_ITINERARY_ADJUST_DRAFT_META_KEY]: pending },
+            });
+            const md = orchState.metadata as Record<string, unknown>;
+            recordItineraryAdjustFunnel(this.promMetrics, {
+              stage: 'draft_created',
+              outcome: 'success',
+              sub_intent: String(md.itinerary_adjust_sub_intent ?? 'unknown'),
+              execution_mode: String(md.itinerary_adjust_execution_mode ?? 'ADVICE_ONLY'),
+              trip_id: tripId,
+              request_id: orchState.request_id,
             });
           }
         }
@@ -2356,10 +2412,14 @@ export class AgentService {
     requestHash: string,
   ): RouteAndRunResponseDto {
     const attached = this.attachObservability(response, obsPayload, request);
+    const withRobustness = this.executionGateway.enrichResponseWithRobustnessRollout(
+      request,
+      attached,
+    );
     try {
-      const contractAck = assertExecutionGatewayPostReturnContract({ request, response: attached });
-      const obs = (attached.observability ?? {}) as Record<string, unknown>;
-      attached.observability = obs as RouteAndRunResponseDto['observability'];
+      const contractAck = assertExecutionGatewayPostReturnContract({ request, response: withRobustness });
+      const obs = (withRobustness.observability ?? {}) as Record<string, unknown>;
+      withRobustness.observability = obs as RouteAndRunResponseDto['observability'];
       if (contractAck.execution_trace_compatibility_v1) {
         obs.execution_trace_compatibility_v1 = contractAck.execution_trace_compatibility_v1;
       }
@@ -2376,7 +2436,7 @@ export class AgentService {
         `[UserStandingPreference] async merge failed: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
-    return this.finalizeSuccessfulFreshExecution(request, attached, requestHash);
+    return this.finalizeSuccessfulFreshExecution(request, withRobustness, requestHash);
   }
 
   private finalizeSuccessfulFreshExecution(

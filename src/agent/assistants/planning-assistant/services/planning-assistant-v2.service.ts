@@ -15,7 +15,7 @@
  * - API_REDESIGN_CODE_TEMPLATES.md - 代码模板
  */
 
-import { Injectable, Logger, NotFoundException, BadRequestException, Optional, Inject, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Optional, Inject, ForbiddenException, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PlanningAssistantService } from './planning-assistant.service';
 import { CoreGatewayService } from '../../../infra/core-gateway.service';
@@ -79,6 +79,7 @@ import {
 import { DateTime } from 'luxon';
 import { AgentService } from '../../../services/agent.service';
 import type { RouteAndRunRequestDto } from '../../../dto/route-and-run.dto';
+import { isBoundTripLightConsultQuery } from '../../../utils/orchestration-signals.util';
 import { formatPaHistoryForRouteAndRun } from '../utils/pa-bridge.util';
 import { TripSuggestionsService } from '../../../../trips/services/trip-suggestions.service';
 import {
@@ -100,6 +101,8 @@ import {
   scoreAccommodationForProximityStay,
   type TripDayGeoProfile,
 } from '../../../utils/hotel-proximity-stay-context.util';
+import { QueryRewritingService } from '../../../services/query-rewriting.service';
+import { applyQueryRewriteToToolParams } from '../../../utils/query-rewriting.util';
 
 @Injectable()
 export class PlanningAssistantV2Service {
@@ -142,8 +145,9 @@ export class PlanningAssistantV2Service {
     @Optional() private readonly transitousDirectService?: TransitousDirectService,
     @Optional() @Inject(BookingComService) private readonly bookingComService?: BookingComService,
     @Optional() private readonly itineraryItemsService?: ItineraryItemsService,
-    @Optional() private readonly agentService?: AgentService,
+    @Optional() @Inject(forwardRef(() => AgentService)) private readonly agentService?: AgentService,
     @Optional() private readonly tripSuggestionsService?: TripSuggestionsService,
+    @Optional() private readonly queryRewritingService?: QueryRewritingService,
   ) {
     // 从配置服务获取值，如果没有配置服务则使用默认值
     this.sessionCacheTTL = this.configService?.get<number>('PLANNING_ASSISTANT.SESSION_CACHE_TTL', 86400) ?? 86400; // 24小时（秒）
@@ -463,6 +467,23 @@ export class PlanningAssistantV2Service {
       }
     }
 
+    // 规划工作台：「全面分析/体检」或「住宿+餐饮方案」→ DATA_LOOKUP 轻量咨询（勿走 generate / TRIP_PLANNING）
+    if (dto.context?.tripId && this.isWorkbenchTripLightConsultMessage(dto.message)) {
+      if (this.agentService) {
+        try {
+          await this.ensureSessionExists(dto.sessionId, dto.userId);
+          const reviewResponse = await this.reviewTripViaRouteAndRun(dto);
+          if (reviewResponse) {
+            return reviewResponse;
+          }
+        } catch (err: any) {
+          this.logger.warn(`[规划工作台] 行程复盘 route_and_run 失败，降级智能路由: ${err?.message ?? err}`);
+        }
+      } else {
+        this.logger.warn('[规划工作台] AgentService 未注入，无法走 route_and_run 轻量咨询');
+      }
+    }
+
     // 如果启用了自动路由，尝试智能路由
     if (dto.options?.autoRoute !== false && this.smartRouter) {
       try {
@@ -683,7 +704,7 @@ export class PlanningAssistantV2Service {
                 }
                 if (dates.checkIn && dates.checkOut) {
                   this.logger.debug(`[日期澄清] 从用户消息解析到日期: checkIn=${dates.checkIn}, checkOut=${dates.checkOut}`);
-                  const mergedParams = {
+                  let mergedParams: Record<string, any> = {
                     ...state.pendingHotelSearch.extractedParams,
                     checkIn: dates.checkIn,
                     checkOut: dates.checkOut,
@@ -691,6 +712,15 @@ export class PlanningAssistantV2Service {
                     ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
                     language: state.pendingHotelSearch.extractedParams?.language || this.getLanguageForAccommodation(dto),
                   };
+                  mergedParams = await this.applyAccommodationQueryRewrite(mergedParams, dto, {
+                    sessionState: sessionState as RouterSessionState | undefined,
+                    state,
+                    queryOverride: String(
+                      state.pendingHotelSearch.extractedParams?.naturalLanguage ??
+                        state.pendingHotelSearch.extractedParams?.query ??
+                        '',
+                    ).trim() || undefined,
+                  });
                   try {
                     const toolResult = await this.mcpToolDispatcher.executeTool('hotel', 'hotel.search', mergedParams);
                     await this.updateSessionState(dto.sessionId, {
@@ -785,6 +815,10 @@ export class PlanningAssistantV2Service {
               routingResult.target === 'hotel' || routingResult.target === 'accommodation' || routingResult.target === 'airbnb';
             if (isAccommodationTool) {
               toolParams.language = this.getLanguageForAccommodation(dto);
+              toolParams = await this.applyAccommodationQueryRewrite(toolParams, dto, {
+                sessionState: sessionState as RouterSessionState | undefined,
+                state,
+              });
             }
 
             // 酒店/住宿搜索：澄清日期；若有行程日期则附带建议。若 phase 已是 RECOMMENDING 且已有日期，则不再重复澄清（避免用户补充人数等后再次弹出）
@@ -883,6 +917,30 @@ export class PlanningAssistantV2Service {
               0
             );
             // 回退到原有逻辑
+          }
+        }
+
+        // 规划工作台轻量咨询：Smart Router 返回 chat 时仍须走 route_and_run DATA_LOOKUP（勿降级 legacy chat 三方案）
+        if (
+          routingResult.target === 'chat' &&
+          dto.context?.tripId &&
+          this.isWorkbenchTripLightConsultMessage(dto.message) &&
+          this.agentService
+        ) {
+          try {
+            await this.ensureSessionExists(dto.sessionId, dto.userId);
+            this.logger.log(
+              `[规划工作台] Smart Router→chat，改走 route_and_run 轻量咨询: trip_id=${dto.context.tripId}`,
+            );
+            const reviewResponse = await this.reviewTripViaRouteAndRun(dto);
+            if (reviewResponse) {
+              return reviewResponse;
+            }
+            this.logger.warn('[规划工作台] route_and_run 轻量咨询无有效响应');
+          } catch (err: any) {
+            this.logger.warn(
+              `[规划工作台] route_and_run 轻量咨询失败: ${err?.message ?? err}`,
+            );
           }
         }
 
@@ -999,6 +1057,12 @@ export class PlanningAssistantV2Service {
               }
 
               case 'generate': {
+                if (dto.context?.tripId && this.isWorkbenchTripLightConsultMessage(dto.message) && this.agentService) {
+                  const reviewResponse = await this.reviewTripViaRouteAndRun(dto);
+                  if (reviewResponse) {
+                    return reviewResponse;
+                  }
+                }
                 // C1：方案生成走 route_and_run 异步 Durable Task，秒回 task_id 供侧栏轮询
                 const genParams: GeneratePlanRequestDto = {
                   sessionId: dto.sessionId,
@@ -1101,12 +1165,16 @@ export class PlanningAssistantV2Service {
                 // 酒店搜索：优先使用 Airbnb，如果 Airbnb 不可用或结果为空，再降级到 HotelDirectService
                 try {
                   // 日期澄清：始终澄清；若有行程日期则附带建议，用户可确认或修改
-                  const hotelParams: Record<string, any> = {
+                  let hotelParams: Record<string, any> = {
                     ...routingResult.extractedParams,
                     ...(dto.context?.tripId && { tripId: dto.context.tripId }),
                     ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
                     language: this.getLanguageForAccommodation(dto),
                   };
+                  hotelParams = await this.applyAccommodationQueryRewrite(hotelParams, dto, {
+                    sessionState: sessionState as RouterSessionState | undefined,
+                    state,
+                  });
                   const dates = await this.getHotelDatesFromContext(hotelParams, dto);
                   const hasSuggestedDates = !!(dates.checkIn && dates.checkOut);
                   if (hasSuggestedDates) {
@@ -1184,12 +1252,16 @@ export class PlanningAssistantV2Service {
 
                 try {
                   // 日期澄清：始终澄清；若有行程日期则附带建议，用户可确认或修改
-                  const airbnbParams: Record<string, any> = {
+                  let airbnbParams: Record<string, any> = {
                     ...routingResult.extractedParams,
                     ...(dto.context?.tripId && { tripId: dto.context.tripId }),
                     ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
                     language: this.getLanguageForAccommodation(dto),
                   };
+                  airbnbParams = await this.applyAccommodationQueryRewrite(airbnbParams, dto, {
+                    sessionState: sessionState as RouterSessionState | undefined,
+                    state,
+                  });
                   const airbnbDates = await this.getHotelDatesFromContext(airbnbParams, dto);
                   const hasSuggestedDates = !!(airbnbDates.checkIn && airbnbDates.checkOut);
                   if (hasSuggestedDates) {
@@ -1248,12 +1320,16 @@ export class PlanningAssistantV2Service {
                 // 🆕 住宿搜索（酒店 + Airbnb）
                 try {
                   // 日期澄清：始终澄清；若有行程日期则附带建议，用户可确认或修改
-                  const accParams: Record<string, any> = {
+                  let accParams: Record<string, any> = {
                     ...routingResult.extractedParams,
                     ...(dto.context?.tripId && { tripId: dto.context.tripId }),
                     ...(dto.context?.countryCode && { countryCode: dto.context.countryCode }),
                     language: this.getLanguageForAccommodation(dto),
                   };
+                  accParams = await this.applyAccommodationQueryRewrite(accParams, dto, {
+                    sessionState: sessionState as RouterSessionState | undefined,
+                    state,
+                  });
                   const accDates = await this.getHotelDatesFromContext(accParams, dto);
                   const hasSuggestedDates = !!(accDates.checkIn && accDates.checkOut);
                   if (hasSuggestedDates) {
@@ -2063,6 +2139,22 @@ export class PlanningAssistantV2Service {
       }
     }
 
+    // 默认：使用对话接口（轻量咨询问法已在上方/route_and_run 处理，此处兜底）
+    if (
+      dto.context?.tripId &&
+      this.isWorkbenchTripLightConsultMessage(dto.message) &&
+      this.agentService
+    ) {
+      try {
+        const reviewResponse = await this.reviewTripViaRouteAndRun(dto);
+        if (reviewResponse) {
+          return reviewResponse;
+        }
+      } catch (err: any) {
+        this.logger.warn(`[规划工作台] 默认路径轻量咨询失败: ${err?.message ?? err}`);
+      }
+    }
+
     // 默认：使用对话接口
     // 获取路由结果和会话状态（如果存在）
     let finalRoutingResult: any = null;
@@ -2566,6 +2658,121 @@ export class PlanningAssistantV2Service {
           task_id: init.task_id,
           poll_path: pollPath,
         },
+      },
+    };
+  }
+
+  private isWorkbenchTripLightConsultMessage(message: string | undefined | null): boolean {
+    const msg = String(message ?? '').trim();
+    if (!msg) return false;
+    return isBoundTripLightConsultQuery(msg, msg.toLowerCase());
+  }
+
+  /**
+   * 规划工作台：绑定 trip 的「全面分析/体检」或「住宿+餐饮方案」→ route_and_run DATA_LOOKUP 轻量问答。
+   */
+  private async reviewTripViaRouteAndRun(dto: ChatRequestDto): Promise<ChatResponseDto | null> {
+    if (!this.agentService || !dto.context?.tripId) return null;
+
+    const routeAndRunRequest = await this.buildRouteAndRunRequestForPaTripReview(
+      dto,
+      dto.message,
+      dto.context.tripId,
+    );
+
+    this.logger.log(
+      `[规划工作台] 行程复盘 route_and_run: request_id=${routeAndRunRequest.request_id}, trip_id=${dto.context.tripId}`,
+    );
+
+    const response = await this.agentService.routeAndRun(routeAndRunRequest);
+    if (response.result?.status === 'REDIRECT_REQUIRED') {
+      this.logger.warn('[规划工作台] 行程复盘 route_and_run 返回 REDIRECT_REQUIRED');
+      return null;
+    }
+
+    const answerText = String(response.result?.answer_text ?? '').trim();
+    const isChinese = dto.language === 'zh' || this.isChineseMessage(dto.message);
+    const payload = response.result?.payload as Record<string, unknown> | undefined;
+    const consultationDashboard = payload?.consultation_dashboard as Record<string, unknown> | undefined;
+
+    const messageCN =
+      answerText ||
+      (consultationDashboard?.headline as string | undefined) ||
+      '已完成当前行程体检；请查看下方分析摘要。';
+    const messageEN = answerText || 'Trip review completed; see the analysis below.';
+
+    if (dto.sessionId) {
+      await this.updateSessionAfterBusinessCall(dto.sessionId, {
+        message: dto.message,
+        response: messageCN,
+        phase: 'RECOMMENDING',
+      });
+    }
+
+    return {
+      message: messageEN,
+      messageCN,
+      reply: isChinese ? messageCN : messageEN,
+      replyCN: messageCN,
+      phase: 'RECOMMENDING',
+      sessionId: dto.sessionId,
+      ui_state: response.ui_state
+        ? {
+            phase: response.ui_state.phase,
+            ui_status: response.ui_state.ui_status,
+            progress_percent: response.ui_state.progress_percent,
+            message: response.ui_state.message,
+            requires_user_action: response.ui_state.requires_user_action,
+          }
+        : undefined,
+      orchestrationResult: payload?.orchestrationResult
+        ? (payload.orchestrationResult as ChatResponseDto['orchestrationResult'])
+        : undefined,
+      workbench_display: payload?.workbench_display as ChatResponseDto['workbench_display'],
+      routing: {
+        target: 'chat' as const,
+        reason: 'Workbench trip review via route_and_run DATA_LOOKUP',
+        params: {
+          intent_mode: 'DATA_LOOKUP',
+          tripId: dto.context.tripId,
+        },
+      },
+    };
+  }
+
+  private async buildRouteAndRunRequestForPaTripReview(
+    dto: ChatRequestDto,
+    userMessage: string,
+    tripId: string,
+  ): Promise<RouteAndRunRequestDto> {
+    const message = userMessage.trim();
+    const requestId = `pa-review-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const state = dto.sessionId
+      ? await this.planningAssistantService.getSessionState(dto.sessionId)
+      : null;
+    const recent_messages = formatPaHistoryForRouteAndRun(state?.messageHistory, {
+      limit: 10,
+      excludeTrailingUserContent: message,
+    });
+
+    return {
+      request_id: requestId,
+      user_id: dto.userId || 'anonymous',
+      trip_id: tripId,
+      message,
+      conversation_context: {
+        locale: dto.language === 'en' ? 'en-US' : 'zh-CN',
+        context_type: 'active_trip_summary' as const,
+        ...(recent_messages.length > 0 ? { recent_messages } : {}),
+      },
+      options: {
+        entry_point: 'planning_workbench' as const,
+        use_claude_orchestration: true,
+        use_state_machine_orchestration: false,
+        max_seconds: 90,
+        max_steps: 6,
+        intent_mode: 'DATA_LOOKUP' as const,
+        async_mode: 'OFF',
       },
     };
   }
@@ -5216,6 +5423,66 @@ export class PlanningAssistantV2Service {
   }
 
   /**
+   * 住宿搜索前统一 Query Rewriting：补全会话上下文、标准化地名/POI、生成可检索 query。
+   */
+  private async applyAccommodationQueryRewrite(
+    toolParams: Record<string, any>,
+    dto: ChatRequestDto,
+    options?: {
+      sessionState?: RouterSessionState;
+      state?: PlanningConversationState | null;
+      queryOverride?: string;
+    },
+  ): Promise<Record<string, any>> {
+    if (!this.queryRewritingService) return toolParams;
+
+    const query = (options?.queryOverride ?? dto.message ?? '').trim();
+    if (!query) return toolParams;
+
+    try {
+      const history = (options?.state?.messageHistory ?? [])
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-6)
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
+
+      const prefs = options?.sessionState?.preferences ?? options?.state?.preferences;
+
+      const rewrite = await this.queryRewritingService.rewrite({
+        query,
+        scene: 'hotel',
+        profile: 'user_facing',
+        session: {
+          selectedDestination:
+            options?.sessionState?.selectedDestination ?? options?.state?.selectedDestination,
+          preferences: prefs ? { ...prefs } : undefined,
+          messageHistory: history,
+        },
+        spatioTemporal: {
+          now: new Date(),
+          locationLabel:
+            options?.sessionState?.selectedDestination ??
+            options?.state?.selectedDestination ??
+            toolParams.destination,
+          countryCode: dto.context?.countryCode ?? options?.sessionState?.countryCode,
+        },
+      });
+
+      const merged = applyQueryRewriteToToolParams(toolParams, rewrite);
+      this.logger.debug(
+        `[QueryRewrite] accommodation: "${query.substring(0, 40)}..." -> query="${String(merged.query ?? '').substring(0, 80)}"`,
+      );
+      return merged;
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[QueryRewrite] 住宿搜索改写失败，使用原始参数: ${msg}`);
+      return toolParams;
+    }
+  }
+
+  /**
    * 日期澄清阶段若用户再次表达「第 N 天酒店」等明确间夜，直接执行搜索并清除待定状态。
    */
   private async tryResolvePendingHotelClarificationWithScopedIntent(
@@ -5250,12 +5517,16 @@ export class PlanningAssistantV2Service {
     if (!skip && !this.isDateConfirmation(dto.message)) return null;
 
     try {
-      const mergedParams = {
+      let mergedParams: Record<string, any> = {
         ...pendingParams,
         checkIn: dates.checkIn,
         checkOut: dates.checkOut,
         language: pendingParams.language || this.getLanguageForAccommodation(dto),
       };
+      mergedParams = await this.applyAccommodationQueryRewrite(mergedParams, dto, {
+        state,
+        queryOverride: String(pendingParams.naturalLanguage ?? pendingParams.query ?? '').trim() || undefined,
+      });
       const toolResult = await this.mcpToolDispatcher.executeTool(
         'hotel',
         'hotel.search',

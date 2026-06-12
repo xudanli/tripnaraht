@@ -2,8 +2,23 @@ import type { AccommodationItemDto } from '../assistants/planning-assistant/dto/
 import type { RouteAndRunAccommodationCard } from './hotel-mcp-route-run.mapper';
 
 type LooseAccommodation = Partial<AccommodationItemDto> &
-  Partial<RouteAndRunAccommodationCard> &
-  Record<string, unknown>;
+  Partial<RouteAndRunAccommodationCard> & {
+    check_in?: string;
+    check_out?: string;
+    name_en?: string;
+    priceLabel?: string;
+    photo_url?: string;
+    listing_lat?: number;
+    listing_lng?: number;
+    title?: string;
+    hotelName?: string;
+  };
+
+/** apply 入参：DTO、route_and_run 卡片或 accommodationCard 快照 */
+export type AccommodationApplyInput =
+  | AccommodationItemDto
+  | LooseAccommodation
+  | Record<string, unknown>;
 
 function pickNonEmptyString(...values: unknown[]): string | undefined {
   for (const v of values) {
@@ -14,10 +29,13 @@ function pickNonEmptyString(...values: unknown[]): string | undefined {
 
 /** 从 route_and_run 卡片 / 会话缓存 / apply 请求体合并出完整 AccommodationItemDto */
 export function coalesceAccommodationForApply(
-  primary?: LooseAccommodation | null,
-  fallback?: LooseAccommodation | null,
+  primary?: AccommodationApplyInput | null,
+  fallback?: AccommodationApplyInput | null,
 ): AccommodationItemDto {
-  const raw: LooseAccommodation = { ...fallback, ...primary };
+  const raw: LooseAccommodation = {
+    ...(fallback ?? {}),
+    ...(primary ?? {}),
+  } as LooseAccommodation;
   const name = resolveAccommodationDisplayName(raw);
   const checkIn = pickNonEmptyString(raw.checkIn, raw.check_in);
   const checkOut = pickNonEmptyString(raw.checkOut, raw.check_out);
@@ -56,15 +74,16 @@ export function coalesceAccommodationForApply(
   };
 }
 
-export function resolveAccommodationDisplayName(raw: LooseAccommodation): string {
+export function resolveAccommodationDisplayName(raw: AccommodationApplyInput): string {
+  const card = raw as LooseAccommodation;
   return (
     pickNonEmptyString(
-      raw.name,
-      raw.nameCN,
-      raw.nameEN,
-      raw.name_en,
-      raw.title,
-      raw.hotelName,
+      card.name,
+      card.nameCN,
+      card.nameEN,
+      card.name_en,
+      card.title,
+      card.hotelName,
     ) ?? 'Listing'
   );
 }

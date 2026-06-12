@@ -217,7 +217,7 @@ describe('ClaudeOrchestratorService — executeVerifyPhase / executeRepairPhase 
     expect(outVerify).toBe(dsoAfterVerify);
     expect(state.errors.some((e) => e.step === 'VERIFY' && e.error_code === 'VERIFICATION_ISSUES')).toBe(true);
     const verifyEntry = state.decision_log.filter(
-      (e) => e.step === 'VERIFY' && e.inputs_summary === '对草案做可执行性检查（开放时间、转乘、可达性等，Kernel）',
+      (e) => e.step === 'VERIFY' && e.inputs_summary === '检查草案的可执行性（开放时间、转乘衔接、可达性等）',
     );
     const lastVerify = verifyEntry[verifyEntry.length - 1];
     expect((lastVerify.metadata as any)?.issues?.length).toBeGreaterThan(0);
@@ -243,7 +243,7 @@ describe('ClaudeOrchestratorService — executeVerifyPhase / executeRepairPhase 
     expect(outRepair).toBe(dsoAfterRepair);
     expect(state.itinerary?.days?.[0]?.items?.[0]?.location_ref?.name).toBe('after-kernel');
     const repairEntry = state.decision_log.filter(
-      (e) => e.step === 'REPAIR' && e.inputs_summary === '在门禁结论允许的前提下尝试局部改行程（Kernel）',
+      (e) => e.step === 'REPAIR' && e.inputs_summary === '根据验证结果尝试自动修复行程（替换景点或改时段等）',
     );
     expect(repairEntry[repairEntry.length - 1].outputs_summary).toContain('已根据验证结果自动调整');
     expect((repairEntry[repairEntry.length - 1].metadata as any)?.repair_applied).toBe(true);

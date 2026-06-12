@@ -4,7 +4,12 @@ import {
   decisionStateToOrchestratorState,
   orchestratorStateToDecisionStatePatch,
 } from '../../../../decision/kernel/orchestrator-state-mapper';
-import { formatStateUpdateOutputsZh } from '../../../utils/decision-log-user-facing.zh.util';
+import {
+  extractDecisionLogTripContext,
+  extractDestinationDisplayZh,
+  formatStateUpdateInputsZh,
+  formatStateUpdateOutputsZh,
+} from '../../../utils/decision-log-user-facing.zh.util';
 import type { StateUpdatePhaseHost, RunStateUpdatePhaseParams } from './state-update-phase.host';
 
 /**
@@ -63,11 +68,26 @@ export async function runStateUpdatePhase(
     const derived = decisionStateToOrchestratorState(updated, state);
     Object.assign(state, derived);
 
+    const intakeUserMessage =
+      (state.metadata as { intake_user_message?: string } | undefined)?.intake_user_message ??
+      state.trip_plan_request?.message;
+    const tripCtx = extractDecisionLogTripContext({
+      tripPlanRequest: state.trip_plan_request,
+      userIntentDestination: patch.userIntent?.destination ?? decisionState.userIntent?.destination,
+      metadata: state.metadata as Record<string, unknown>,
+    });
     state.decision_log.push({
       request_id: state.request_id,
       step: 'STATE_UPDATE' as OrchestrationStep,
       actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: '把本轮对话与约束写入统一决策状态（DSO），一次性提交',
+      inputs_summary: formatStateUpdateInputsZh({
+        userMessage: intakeUserMessage,
+        destination: extractDestinationDisplayZh({
+          userIntentDestination: patch.userIntent?.destination ?? decisionState.userIntent?.destination,
+          tripPlanRequest: state.trip_plan_request,
+        }),
+        ctx: tripCtx,
+      }),
       outputs_summary: formatStateUpdateOutputsZh({
         hasUserIntent: !!patch.userIntent,
         hasConstraints: !!patch.constraints,
@@ -75,6 +95,7 @@ export async function runStateUpdatePhase(
         version: updated.systemState?.version,
         destinationBefore: decisionState.userIntent?.destination as unknown,
         destinationAfter: (patch.userIntent?.destination ?? updated.userIntent?.destination) as unknown,
+        ctx: tripCtx,
       }),
       evidence_refs: [],
       timestamp: new Date().toISOString(),

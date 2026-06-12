@@ -1,8 +1,11 @@
 import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
 import type { OrchestratorState } from '../../../interfaces/trip-plan.interface';
 import {
+  extractDecisionLogTripContext,
+  extractDestinationDisplayZh,
   formatResearchInputsKernelZh,
   formatResearchOutputsZh,
+  formatResearchTeamAuditInputsZh,
   formatResearchTeamAuditOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
 import type { ResearchTeamAuditEntry } from '../../../teams/research/research-team.types';
@@ -166,6 +169,15 @@ export async function runResearchPhase(
         }
       }
     }
+    const destinationLabel = extractDestinationDisplayZh({
+      userIntentDestination: newState.userIntent?.destination,
+      tripPlanRequest: state.trip_plan_request,
+    });
+    const tripCtx = extractDecisionLogTripContext({
+      tripPlanRequest: state.trip_plan_request,
+      userIntentDestination: newState.userIntent?.destination,
+      metadata: state.metadata as Record<string, unknown>,
+    });
     if (teamAuditLog?.length) {
       state.metadata = {
         ...(state.metadata ?? {}),
@@ -180,7 +192,7 @@ export async function runResearchPhase(
         request_id: state.request_id,
         step: 'RESEARCH',
         actor: 'Orchestrator',
-        inputs_summary: 'Research Team 执行审计（Kernel）',
+        inputs_summary: formatResearchTeamAuditInputsZh(tripCtx),
         outputs_summary: formatResearchTeamAuditOutputsZh(teamAuditLog),
         evidence_refs: [],
         timestamp: new Date().toISOString(),
@@ -196,8 +208,8 @@ export async function runResearchPhase(
       request_id: state.request_id,
       step: 'RESEARCH',
       actor: 'Orchestrator',
-      inputs_summary: formatResearchInputsKernelZh(),
-      outputs_summary: formatResearchOutputsZh(Object.keys(researchData)),
+      inputs_summary: formatResearchInputsKernelZh({ destination: destinationLabel, ctx: tripCtx }),
+      outputs_summary: formatResearchOutputsZh(Object.keys(researchData), tripCtx),
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: {

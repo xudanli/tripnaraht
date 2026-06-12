@@ -6,6 +6,7 @@ import type { AgentMemoryContext } from '../interfaces/agent-memory-context.inte
 import type { DecisionLedgerSnapshot, LedgerAnchorsV1 } from '../decision-ledger/decision-ledger.types';
 import { normalizeLedgerAnchorsV1 } from '../decision-ledger/decision-ledger-world-anchor.util';
 import { planLedgerRecomputeOrder } from '../decision-ledger/decision-ledger-invalidation.util';
+import { hydrateAgentMemoryContextFromPersistence } from '../utils/agent-memory-context-hydrate.util';
 
 const KEY_PREFIX = 'agent:mem_snapshot:v1:';
 const TRIP_HEAD_PREFIX = 'agent:mem_snapshot_trip_head:v1:';
@@ -78,8 +79,10 @@ export class MemorySnapshotPersistenceService {
           anchors: normalizeLedgerAnchorsV1(decisionLedger.anchors as Partial<LedgerAnchorsV1> & Pick<LedgerAnchorsV1, 'budget' | 'preference' | 'policy'>),
         };
       }
+      const l3Hydrated = hydrateAgentMemoryContextFromPersistence(raw);
       return {
         ...raw,
+        ...l3Hydrated,
         decisionLedger: decisionLedger ?? null,
         ledgerRecomputePlan: raw.ledgerRecomputePlan ?? null,
         userBasics: raw.userBasics ?? null,

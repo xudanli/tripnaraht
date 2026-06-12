@@ -7,6 +7,7 @@ export type CausalNodeType =
   | 'ROUTE'
   | 'FUEL'
   | 'TEMPORAL'
+  | 'HUMAN'
   | 'AGENT_ACTION';
 
 export type CausalRelation = 'CAUSES' | 'CONSTRAINS' | 'AMPLIFIES';

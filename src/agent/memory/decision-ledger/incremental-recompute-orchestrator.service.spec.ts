@@ -70,6 +70,7 @@ function minContext(ledger: DecisionLedgerSnapshot): AgentMemoryContext {
     activeTripState: null,
     recoveryHistory: [],
     failurePatterns: [],
+    recentTripFeedbacks: [],
     loadedAt: new Date().toISOString(),
     observability: { layers: [] },
   };

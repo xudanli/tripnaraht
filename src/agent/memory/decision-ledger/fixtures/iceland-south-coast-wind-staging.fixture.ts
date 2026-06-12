@@ -165,6 +165,7 @@ export function buildIcelandSouthCoastWindStagingMemoryContext(
     activeTripState,
     recoveryHistory: [],
     failurePatterns: [],
+    recentTripFeedbacks: [],
     loadedAt: new Date().toISOString(),
     observability: { layers: ['fixture:iceland_south_coast_wind_staging'] },
   };

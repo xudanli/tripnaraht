@@ -22,6 +22,7 @@ import { ClarificationAnswer, ClarificationQuestion } from '../interfaces/clarif
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { TravelActionType } from '../constants/action-execution.constants';
 import { EvidenceLineageDto } from './evidence-lineage.dto';
+import { EmotionalContextClientDto, SharedMilestoneUiCardDto } from './emotional-context-client.dto';
 import {
   LedgerHealingMetricsDto,
   LedgerHealingObservabilityDto,
@@ -89,6 +90,47 @@ export class ConversationContextDto {
   @IsOptional()
   @IsString()
   context_type?: string;
+}
+
+/** route_and_run 行中情绪矩阵运行时传感器（写入 metadata.emotional_realtime_signals） */
+export class EmotionalRealtimeSignalsDto {
+  @ApiPropertyOptional({ description: '连续驾驶秒数（疲劳/静默门控）', example: 7200 })
+  @IsOptional()
+  @IsNumber()
+  continuousDrivingSeconds?: number;
+
+  @ApiPropertyOptional({ description: '当前速度 m/s' })
+  @IsOptional()
+  @IsNumber()
+  speedMs?: number;
+
+  @ApiPropertyOptional({ description: '延误分钟数' })
+  @IsOptional()
+  @IsNumber()
+  delayMinutes?: number;
+
+  @ApiPropertyOptional({ description: '目的地本地时间 HH:mm', example: '18:30' })
+  @IsOptional()
+  @IsString()
+  localTime?: string;
+
+  @ApiPropertyOptional({
+    enum: ['PLAN', 'ADJUST', 'EXPLORE', 'EMERGENCY'],
+    description: '客户端感知的决策模式（与 DSO decisionMeta.mode 对齐）',
+  })
+  @IsOptional()
+  @IsIn(['PLAN', 'ADJUST', 'EXPLORE', 'EMERGENCY'])
+  decisionMetaMode?: 'PLAN' | 'ADJUST' | 'EXPLORE' | 'EMERGENCY';
+
+  @ApiPropertyOptional({ description: '大风/封路风控是否激活' })
+  @IsOptional()
+  @IsBoolean()
+  weatherWindLockActive?: boolean;
+
+  @ApiPropertyOptional({ description: '无位移分钟数（P1 静默阈值）' })
+  @IsOptional()
+  @IsNumber()
+  stationaryMinutes?: number;
 }
 
 /** route_and_run.options.intent_flags：与 TaskType 并行，用于微分流（不新增顶层 TaskType） */
@@ -505,14 +547,30 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsObject()
   itinerary_adjust_draft_snapshot?: {
-    target_date_iso: string;
+    target_date_iso?: string;
     target_day_number?: number;
+    /** replace_day（默认单日重排）| append_sparse_days（POI_SLOT_FILL 多稀疏日追加） */
+    apply_mode?: 'replace_day' | 'append_sparse_days';
     items?: Array<{
       type?: string;
       start_window?: string;
       end_window?: string;
       location_ref?: { name?: string; place_id?: string | number };
       name?: string;
+      id?: string;
+    }>;
+    /** POI_SLOT_FILL：多稀疏日草案；优先于单日 items */
+    days?: Array<{
+      date_iso: string;
+      day_number?: number;
+      items?: Array<{
+        type?: string;
+        start_window?: string;
+        end_window?: string;
+        location_ref?: { name?: string; place_id?: string | number };
+        name?: string;
+        id?: string;
+      }>;
     }>;
   };
 
@@ -706,6 +764,21 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsString()
   replay_current_world_state_version?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'D3 INTAKE 注入的多人偏好向量（member_id / pace / risk_tolerance）；供 Robustness Rollout 组织鲁棒性评分。',
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+  })
+  @IsOptional()
+  @IsArray()
+  party_negotiation_member_profiles?: Array<{
+    member_id: string;
+    pace: string;
+    risk_tolerance: string;
+    adventure_weight: number;
+  }>;
 }
 
 /** 与 NL 并行提交：同行规模、体能档位、风险承受（写入 Memory snapshot + TripPlanRequest.party*） */
@@ -998,6 +1071,24 @@ export class RouteAndRunRequestDto {
   conversation_context?: ConversationContextDto;
 
   @ApiPropertyOptional({
+    description:
+      '行中情绪矩阵运行时传感器（疲劳/静止/风速；写入 OrchestratorState.metadata.emotional_realtime_signals）',
+    type: EmotionalRealtimeSignalsDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EmotionalRealtimeSignalsDto)
+  emotional_realtime_signals?: EmotionalRealtimeSignalsDto;
+
+  @ApiPropertyOptional({
+    description: '客户端离线地图已同步（锚定叙事 offlineMapsSynced 分支）',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  offline_maps_synced?: boolean;
+
+  @ApiPropertyOptional({
     description: '请求级元数据（评测 / 回放关联；可选）',
     type: RouteAndRunRequestMetaDto,
   })
@@ -1114,12 +1205,261 @@ export class DecisionEvidenceCardDto {
 }
 
 /** 决策元数据：前端优先读取的稳定装配区（与 orchestrationResult.state.narration 对齐） */
+export class PlanningPhaseIntentSubSignalsDto {
+  @ApiProperty({ example: true })
+  @IsBoolean()
+  scenario_planning_requested!: boolean;
+
+  @ApiProperty({ example: false })
+  @IsBoolean()
+  supply_chain_verification_requested!: boolean;
+
+  @ApiProperty({ example: false })
+  @IsBoolean()
+  party_negotiation_requested!: boolean;
+
+  @ApiProperty({ example: false })
+  @IsBoolean()
+  spatial_intent_capture_requested!: boolean;
+}
+
+export class ContingencyBranchDto {
+  @ApiProperty({ example: "segment_health:seg_day_3 === 'CRITICAL_DISRUPTION'" })
+  @IsString()
+  trigger_condition!: string;
+
+  @ApiProperty({ type: [String], example: ['seg_day_3'] })
+  @IsArray()
+  @IsString({ each: true })
+  impacted_segment_ids!: string[];
+
+  @ApiProperty({ example: 'alt_token_for_seg_day_3_via_fallback_engine' })
+  @IsString()
+  alternative_route_token!: string;
+
+  @ApiProperty({ example: 0.85 })
+  @IsNumber()
+  expected_utility_ratio!: number;
+}
+
+export class SupplyChainSafetyDto {
+  @ApiProperty({ example: false })
+  @IsBoolean()
+  safeToPromise!: boolean;
+
+  @ApiProperty({ enum: ['L0_USER_REPORT', 'L1_HISTORICAL_STAT', 'L2_RECENT_SNAPSHOT', 'L3_DETERMINISTIC'] })
+  @IsString()
+  enforcedLevel!: string;
+
+  @ApiProperty()
+  @IsString()
+  processedResponsePrefix!: string;
+}
+
+export class PartyMemberProfileDto {
+  @ApiProperty({ example: 'member_1' })
+  @IsString()
+  member_id!: string;
+
+  @ApiProperty({ enum: ['intensive', 'relaxed', 'moderate'] })
+  @IsString()
+  pace!: string;
+
+  @ApiProperty({ enum: ['LOW', 'MEDIUM', 'HIGH'] })
+  @IsString()
+  risk_tolerance!: string;
+
+  @ApiProperty({ example: 0.5 })
+  @IsNumber()
+  adventure_weight!: number;
+}
+
+export class PartyBranchPolicyDto {
+  @ApiProperty()
+  @IsString()
+  trigger_condition!: string;
+
+  @ApiProperty()
+  @IsString()
+  hold_route_token!: string;
+
+  @ApiProperty()
+  @IsString()
+  proceed_route_token!: string;
+
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  dissent_member_ids!: string[];
+}
+
+export class PartyNegotiationPayloadDto {
+  @ApiProperty({ example: 4 })
+  @IsNumber()
+  party_size!: number;
+
+  @ApiProperty({ type: [PartyMemberProfileDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PartyMemberProfileDto)
+  member_profiles!: PartyMemberProfileDto[];
+
+  @ApiProperty({ enum: ['intensive', 'relaxed', 'moderate'] })
+  @IsString()
+  aggregated_pace!: string;
+
+  @ApiProperty({ enum: ['LOW', 'MEDIUM', 'HIGH'] })
+  @IsString()
+  aggregated_risk_tolerance!: string;
+
+  @ApiProperty({ example: 0.42 })
+  @IsNumber()
+  regret_upper_bound!: number;
+
+  @ApiPropertyOptional({ type: [PartyBranchPolicyDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PartyBranchPolicyDto)
+  branch_policies?: PartyBranchPolicyDto[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  nash_reorder_hint?: {
+    swap_day_a: number;
+    swap_day_b: number;
+    rationale_zh: string;
+  };
+
+  @ApiProperty({ example: false })
+  @IsBoolean()
+  requires_hitl_clarification!: boolean;
+
+  @ApiPropertyOptional({
+    description: 'INTAKE 阶段组织鲁棒性预演（基于现有 Trip 草案 stub + 多人 latent）',
+  })
+  @IsOptional()
+  @IsObject()
+  organizational_robustness_preview?: {
+    organizational_robustness_score: number;
+    physical_robustness_score: number;
+    combined_robustness_score: number;
+    sample_count: number;
+    peak_social_stress_node_id?: string;
+    peak_social_stress_index?: number;
+    peak_social_stress_day?: string;
+    is_preview: true;
+    source: string;
+  };
+}
+
+export class SpatialIntentConflictDto {
+  @ApiProperty({ enum: ['TIME_WINDOW', 'DRIVE_BUFFER', 'SEASON_ROAD', 'SCHEDULE_TIGHT'] })
+  @IsString()
+  type!: string;
+
+  @ApiProperty({ enum: ['WARN', 'BLOCK'] })
+  @IsString()
+  severity!: string;
+
+  @ApiProperty()
+  @IsString()
+  message_zh!: string;
+}
+
+export class SpatialIntentFeasibilityReportDto {
+  @ApiPropertyOptional({ example: 4 })
+  @IsOptional()
+  @IsNumber()
+  target_day_number?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  anchor_label?: string;
+
+  @ApiPropertyOptional({ enum: ['gpx', 'image', 'text'] })
+  @IsOptional()
+  @IsString()
+  attachment_type?: string;
+
+  @ApiProperty({ example: true })
+  @IsBoolean()
+  feasible!: boolean;
+
+  @ApiProperty({ type: [SpatialIntentConflictDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SpatialIntentConflictDto)
+  conflicts!: SpatialIntentConflictDto[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  suggested_day_number?: number;
+
+  @ApiPropertyOptional({ example: 40 })
+  @IsOptional()
+  @IsNumber()
+  extra_drive_minutes_estimate?: number;
+}
+
+/** INTAKE Layer2：规划期对话意图载荷（metadata.planning_phase_intent） */
+export class PlanningPhaseIntentDto {
+  @ApiProperty({ type: PlanningPhaseIntentSubSignalsDto })
+  @ValidateNested()
+  @Type(() => PlanningPhaseIntentSubSignalsDto)
+  sub_signals!: PlanningPhaseIntentSubSignalsDto;
+
+  @ApiPropertyOptional({ type: [ContingencyBranchDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ContingencyBranchDto)
+  contingency_branches?: ContingencyBranchDto[];
+
+  @ApiPropertyOptional({ enum: ['L0_USER_REPORT', 'L1_HISTORICAL_STAT', 'L2_RECENT_SNAPSHOT', 'L3_DETERMINISTIC'] })
+  @IsOptional()
+  @IsString()
+  evidence_level_required?: string;
+
+  @ApiPropertyOptional({ enum: ['L0_USER_REPORT', 'L1_HISTORICAL_STAT', 'L2_RECENT_SNAPSHOT', 'L3_DETERMINISTIC'] })
+  @IsOptional()
+  @IsString()
+  available_evidence_level?: string;
+
+  @ApiPropertyOptional({ type: SupplyChainSafetyDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SupplyChainSafetyDto)
+  supply_chain_safety?: SupplyChainSafetyDto;
+
+  @ApiPropertyOptional({ type: PartyNegotiationPayloadDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PartyNegotiationPayloadDto)
+  party_negotiation?: PartyNegotiationPayloadDto;
+
+  @ApiPropertyOptional({ type: SpatialIntentFeasibilityReportDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SpatialIntentFeasibilityReportDto)
+  spatial_intent?: SpatialIntentFeasibilityReportDto;
+}
+
 export class DecisionMetadataDto {
   @ApiPropertyOptional({
     type: [DecisionEvidenceCardDto],
     description: 'Iron Shield 物理证据卡片列表（由 narration.warnings 中的 iron_shield_evidence 装配）',
   })
   evidence_cards?: DecisionEvidenceCardDto[];
+
+  @ApiPropertyOptional({
+    type: PlanningPhaseIntentDto,
+    description: 'INTAKE Layer2 规划期对话意图（双轨 contingency / 供应链证据层级）',
+  })
+  planning_phase_intent?: PlanningPhaseIntentDto;
 }
 
 /** Tier 2+：损失时间块（与 EvidenceCardUIProps.impact 对齐） */
@@ -1227,6 +1567,452 @@ export class EvidenceCardUiPropsDto {
   flags?: EvidenceCardUiFlagsDto;
 }
 
+export class DualTrackAxisSegmentUiDto {
+  @ApiProperty({ example: 'seg_day_3' })
+  @IsString()
+  segment_id!: string;
+
+  @ApiPropertyOptional({ example: '2026-09-03' })
+  @IsOptional()
+  @IsString()
+  day_date?: string;
+
+  @ApiPropertyOptional({ example: 3 })
+  @IsOptional()
+  @IsNumber()
+  day_index?: number;
+
+  @ApiProperty({ example: 'Day 3 · 冰川徒步 → 维克' })
+  @IsString()
+  label_zh!: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  item_ids?: string[];
+}
+
+export class DualTrackBranchUiDto {
+  @ApiProperty({ example: 'plan_b_intent_1' })
+  @IsString()
+  branch_id!: string;
+
+  @ApiProperty({ enum: ['B'] })
+  @IsString()
+  axis!: 'B';
+
+  @ApiProperty({
+    enum: ['WEATHER', 'ROAD_CLOSURE', 'ACTIVITY_CANCEL', 'SOCIAL_STRESS', 'PHYSICAL_BLOCK', 'GENERIC_DISRUPTION'],
+  })
+  @IsString()
+  trigger_kind!: string;
+
+  @ApiProperty({ example: '恶劣天气（暴雨/大风/能见度不足）' })
+  @IsString()
+  trigger_label_zh!: string;
+
+  @ApiProperty()
+  @IsString()
+  trigger_condition!: string;
+
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  impacted_segment_ids!: string[];
+
+  @ApiProperty()
+  @IsString()
+  summary_zh!: string;
+
+  @ApiPropertyOptional({ example: 0.85 })
+  @IsOptional()
+  @IsNumber()
+  expected_utility_ratio?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  extra_days_upper_bound?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  extra_km_upper_bound?: number;
+
+  @ApiProperty({ enum: ['auto_on_trigger', 'user_confirm'] })
+  @IsString()
+  activation_mode!: 'auto_on_trigger' | 'user_confirm';
+}
+
+/** 晴/雨双轨拓扑行程单 UI 契约（schema: tripnara.dual_track_itinerary@v1） */
+export class DualTrackItineraryUiDto {
+  @ApiProperty({ example: 'tripnara.dual_track_itinerary@v1' })
+  @IsString()
+  schema!: 'tripnara.dual_track_itinerary@v1';
+
+  @ApiProperty({ enum: ['dual_track', 'single_track'] })
+  @IsString()
+  mode!: 'dual_track' | 'single_track';
+
+  @ApiProperty({ type: [DualTrackAxisSegmentUiDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DualTrackAxisSegmentUiDto)
+  axis_a_segments!: DualTrackAxisSegmentUiDto[];
+
+  @ApiProperty({ type: [DualTrackBranchUiDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DualTrackBranchUiDto)
+  axis_b_branches!: DualTrackBranchUiDto[];
+
+  @ApiPropertyOptional({ example: 0.42 })
+  @IsOptional()
+  @IsNumber()
+  regret_upper_bound?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  headline_zh?: string;
+
+  @ApiProperty()
+  @IsString()
+  computed_at!: string;
+}
+
+export class DeliveryArtifactLinkDto {
+  @ApiProperty({ enum: ['calendar', 'map', 'share', 'pdf', 'text_export'] })
+  @IsString()
+  kind!: string;
+
+  @ApiProperty({ example: '同步到 Google 日历' })
+  @IsString()
+  label_zh!: string;
+
+  @ApiProperty({ example: '/dashboard/trips/trip-1?action=sync_calendar' })
+  @IsString()
+  href!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  api_action?: {
+    method: 'GET' | 'POST';
+    path: string;
+    body_keys?: string[];
+  };
+}
+
+/** 多模态交付 UI 契约（schema: tripnara.delivery_artifacts@v1） */
+export class DeliveryArtifactsUiDto {
+  @ApiProperty({ example: 'tripnara.delivery_artifacts@v1' })
+  @IsString()
+  schema!: 'tripnara.delivery_artifacts@v1';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  trip_id?: string;
+
+  @ApiProperty({ type: [DeliveryArtifactLinkDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DeliveryArtifactLinkDto)
+  links!: DeliveryArtifactLinkDto[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  map_polyline_url?: string;
+
+  @ApiProperty()
+  @IsString()
+  computed_at!: string;
+}
+
+/** 路段证据 UI（schema: tripnara.leg_evidence@v1） */
+export class LegEvidenceCardUiDto {
+  @ApiProperty({ example: 'tripnara.leg_evidence@v1' })
+  @IsString()
+  schema!: 'tripnara.leg_evidence@v1';
+
+  @ApiProperty()
+  @IsString()
+  leg_id!: string;
+
+  @ApiProperty()
+  @IsNumber()
+  day_index!: number;
+
+  @ApiProperty()
+  @IsString()
+  day_date!: string;
+
+  @ApiProperty()
+  @IsString()
+  from_label!: string;
+
+  @ApiProperty()
+  @IsString()
+  to_label!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  eta_minutes?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  distance_meters?: number;
+
+  @ApiPropertyOptional({ enum: ['walk', 'drive', 'transit', 'mixed'] })
+  @IsOptional()
+  @IsString()
+  transport_mode?: string;
+
+  @ApiProperty()
+  @IsString()
+  summary_zh!: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  pitfall_tips_zh?: string[];
+
+  @ApiPropertyOptional({ enum: ['info', 'warn'] })
+  @IsOptional()
+  @IsString()
+  severity?: string;
+}
+
+/** POI 避坑 UI（schema: tripnara.poi_pitfall@v1） */
+export class PoiPitfallCardUiDto {
+  @ApiProperty({ example: 'tripnara.poi_pitfall@v1' })
+  @IsString()
+  schema!: 'tripnara.poi_pitfall@v1';
+
+  @ApiProperty()
+  @IsString()
+  poi_id!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  place_id?: string;
+
+  @ApiProperty()
+  @IsString()
+  label_zh!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  day_index?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  day_date?: string;
+
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  tips_zh!: string[];
+
+  @ApiProperty({ enum: ['heuristic', 'rag_snippet', 'item_notes'] })
+  @IsString()
+  source!: 'heuristic' | 'rag_snippet' | 'item_notes';
+
+  @ApiProperty({ enum: ['HIGH', 'MEDIUM', 'LOW'] })
+  @IsString()
+  confidence!: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+/** 预订购物车条目 UI */
+export class BookingCartItemUiDto {
+  @ApiProperty()
+  @IsString()
+  item_id!: string;
+
+  @ApiProperty({ enum: ['flight', 'hotel', 'car_rental', 'activity'] })
+  @IsString()
+  kind!: 'flight' | 'hotel' | 'car_rental' | 'activity';
+
+  @ApiProperty()
+  @IsString()
+  label_zh!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  price_label?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  date_range?: { start?: string; end?: string };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  href?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  api_action?: { method: 'GET' | 'POST'; path: string };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+}
+
+/** 购物车选品摘要 */
+export class BookingCartSelectionUiDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  selected_item_ids!: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  total_price_numeric?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  within_budget?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  budget_limit?: number;
+}
+
+/** 预算提示 */
+export class BookingCartBudgetUiDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  limit?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  transport_share_hint?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  accommodation_share_hint?: number;
+}
+
+/** 超预算换选建议 */
+export class BookingCartSavingsUiDto {
+  @ApiProperty()
+  @IsString()
+  category!: string;
+
+  @ApiProperty()
+  @IsString()
+  suggestion_zh!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  potential_saving_numeric?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  from_item_id?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  to_item_id?: string;
+}
+
+/** 预订购物车 UI（schema: tripnara.booking_cart@v1） */
+export class BookingCartUiDto {
+  @ApiProperty({ example: 'tripnara.booking_cart@v1' })
+  @IsString()
+  schema!: 'tripnara.booking_cart@v1';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  trip_id?: string;
+
+  @ApiProperty({ type: [BookingCartItemUiDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BookingCartItemUiDto)
+  items!: BookingCartItemUiDto[];
+
+  @ApiProperty()
+  @IsNumber()
+  total_items!: number;
+
+  @ApiProperty()
+  @IsBoolean()
+  quote_only!: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  headline_zh?: string;
+
+  @ApiPropertyOptional({ enum: ['draft', 'optimized', 'over_budget', 'ready_to_checkout', 'checkout_submitted'] })
+  @IsOptional()
+  @IsString()
+  cart_state?: 'draft' | 'optimized' | 'over_budget' | 'ready_to_checkout' | 'checkout_submitted';
+
+  @ApiPropertyOptional({ type: BookingCartSelectionUiDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BookingCartSelectionUiDto)
+  selection?: BookingCartSelectionUiDto;
+
+  @ApiPropertyOptional({ type: BookingCartBudgetUiDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BookingCartBudgetUiDto)
+  budget?: BookingCartBudgetUiDto;
+
+  @ApiPropertyOptional({ type: [BookingCartSavingsUiDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BookingCartSavingsUiDto)
+  savings_opportunities?: BookingCartSavingsUiDto[];
+
+  @ApiProperty()
+  @IsString()
+  computed_at!: string;
+}
+
 /** 纯展示层：与 decision_metadata（逻辑/审计）分离 */
 export class DecisionUiDisplayDto {
   @ApiPropertyOptional({
@@ -1237,6 +2023,73 @@ export class DecisionUiDisplayDto {
   @ValidateNested({ each: true })
   @Type(() => EvidenceCardUiPropsDto)
   evidence_cards_ui?: EvidenceCardUiPropsDto[];
+
+  @ApiPropertyOptional({
+    type: DualTrackItineraryUiDto,
+    description: '晴/雨双轨拓扑行程单（A 轴默认 + B 轴条件激活分支）',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DualTrackItineraryUiDto)
+  dual_track_itinerary?: DualTrackItineraryUiDto;
+
+  @ApiPropertyOptional({
+    type: DeliveryArtifactsUiDto,
+    description: '规划成功后默认附带的多模态交付链接（地图/日历/分享）',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DeliveryArtifactsUiDto)
+  delivery_artifacts?: DeliveryArtifactsUiDto;
+
+  @ApiPropertyOptional({
+    type: [LegEvidenceCardUiDto],
+    description: '路段级证据卡片（坡度/步行/避坑细节）',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => LegEvidenceCardUiDto)
+  leg_evidence_cards?: LegEvidenceCardUiDto[];
+
+  @ApiPropertyOptional({
+    type: [PoiPitfallCardUiDto],
+    description: 'POI 级避坑卡片（入口/排队/预约；schema tripnara.poi_pitfall@v1）',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PoiPitfallCardUiDto)
+  poi_pitfall_cards?: PoiPitfallCardUiDto[];
+
+  @ApiPropertyOptional({
+    type: BookingCartUiDto,
+    description: '预订购物车投影（航班/酒店/租车采样报价；schema tripnara.booking_cart@v1）',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BookingCartUiDto)
+  booking_cart?: BookingCartUiDto;
+
+  @ApiPropertyOptional({
+    type: EmotionalContextClientDto,
+    description:
+      '情绪矩阵 BFF 投影（fatigue/anxiety/proactivityGate/voiceTone；schema tripnara.emotional_context.client@v1）',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EmotionalContextClientDto)
+  emotional_context?: EmotionalContextClientDto;
+
+  @ApiPropertyOptional({
+    type: [SharedMilestoneUiCardDto],
+    description: '跨 Trip 回忆轻卡片（由 sharedMilestones 投影，可直接渲染）',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SharedMilestoneUiCardDto)
+  shared_milestone_cards?: SharedMilestoneUiCardDto[];
 }
 
 export class DecisionCandidateScoreDimensionsDto {
@@ -1633,9 +2486,20 @@ export class ReferenceSourceDto {
   RouteAndRunPartyProfileDto,
   PersonaHintDto,
   DecisionMetadataDto,
+  PlanningPhaseIntentDto,
+  PlanningPhaseIntentSubSignalsDto,
+  ContingencyBranchDto,
+  SupplyChainSafetyDto,
+  PartyNegotiationPayloadDto,
+  PartyMemberProfileDto,
+  PartyBranchPolicyDto,
+  SpatialIntentFeasibilityReportDto,
+  SpatialIntentConflictDto,
   DecisionEvidenceCardDto,
   DecisionEvidenceCardFlagsDto,
   DecisionUiDisplayDto,
+  EmotionalContextClientDto,
+  SharedMilestoneUiCardDto,
   EvidenceCardUiPropsDto,
   EvidenceCardImpactUiDto,
   EvidenceCardSocialProofUiDto,
@@ -1709,8 +2573,10 @@ export class RouteAndRunResponseDto {
     requires_user_action?: boolean;
     /** 🆕 预计剩余时间（毫秒） */
     estimated_time_remaining_ms?: number;
-    /** 🆕 当前步骤详细说明 */
+    /** 🆕 当前步骤详细说明（短文案；完整澄清卡见 current_step_detail_html / result.answer_html） */
     current_step_detail?: string;
+    /** NEED_MORE_INFO 澄清卡正文 HTML（与 result.answer_html 同源） */
+    current_step_detail_html?: string;
     /** 与 `observability.trace.steps` 对齐：由 `stepsExecuted` 镜像，供 OrchestrationProgressCard 无需再读 payload */
     steps?: Array<{
       step_id: string;
@@ -1854,6 +2720,8 @@ export class RouteAndRunResponseDto {
       | 'TIMEOUT'
       | 'REDIRECT_REQUIRED';
     answer_text: string;
+    /** NEED_MORE_INFO 澄清卡：`answer_text` 的安全 HTML（前端优先渲染此字段） */
+    answer_html?: string;
     payload: {
       timeline: ItineraryDay[];
       dropped_items: ItineraryItem[];
@@ -2095,6 +2963,19 @@ export class RouteAndRunResponseDto {
       needsUserConfirmation?: boolean;
       clarificationMessage?: string; // 向后兼容：简单字符串格式
       clarificationQuestions?: ClarificationQuestion[]; // 新增：结构化问题数组
+      /** 澄清正文为 Markdown；前端应优先渲染 `answer_html` / `question_html` / `clarification_display.body_html` */
+      clarification_render_format?: 'markdown';
+      /** 澄清卡展示载荷（结构化选日/合规卡：完整正文在此，勿与聊天气泡重复渲染） */
+      clarification_display?: {
+        format: 'html';
+        body_html: string;
+        body_markdown: string;
+      };
+      /** `suppress_chat_prose`: 聊天气泡仅展示短 `answer_text`；完整 Markdown/HTML 在澄清卡 */
+      clarification_meta?: {
+        suppress_chat_prose?: boolean;
+        card_source?: 'clarificationQuestions';
+      };
       missingServices?: string[];
       solutions?: string[];
       errorType?: ErrorType;
@@ -2215,6 +3096,8 @@ export class RouteAndRunResponseDto {
         indoorishSelectedCount?: number;
         categoryHistogram?: Array<{ category: string; count: number }>;
       };
+      /** 与 observability.robustness_dashboard 镜像；供前端 Dashboard 直接消费 */
+      robustness_dashboard?: Record<string, unknown>;
       /** 结构化决策元数据（证据卡片等），与编排 state 对齐装配 */
       decision_metadata?: DecisionMetadataDto;
       /** 展示层：开箱即用的 UI 块（与 decision_metadata 并行，不参与 DPO 逻辑链） */
@@ -2451,6 +3334,39 @@ export class RouteAndRunResponseDto {
       selectedCount?: number;
       indoorishSelectedCount?: number;
       categoryHistogram?: Array<{ category: string; count: number }>;
+    };
+    /**
+     * Robustness Rollout Dashboard — physical + organizational dual scores (Execution Gateway enrichment).
+     * Schema: `tripnara.robustness_dashboard@v1`
+     */
+    robustness_dashboard?: {
+      schema: 'tripnara.robustness_dashboard@v1';
+      physical_robustness_score: number;
+      organizational_robustness_score: number;
+      combined_robustness_score: number;
+      sample_count: number;
+      bottlenecks: Array<{
+        nodeId: string;
+        primaryRisk: 'PHYSICAL_BLOCK' | 'EMOTIONAL_EXPLOSION' | 'TIME_CRUNCH';
+        triggerEvent: string;
+        description: string;
+      }>;
+      timeline: Array<{
+        timestamp: string;
+        nodeId: string;
+        baseUtility: number;
+        physicsRobustness: number;
+        socialStressIndex: number;
+        activePerturbations: string[];
+      }>;
+      contingency_plans: Array<{
+        trigger_node_id: string;
+        condition: string;
+        mutated_ir_step_delta: number;
+      }>;
+      party_id: string;
+      member_count: number;
+      computed_at: string;
     };
     /** v1.0 Durable：本次请求是否命中 TripRun 上已存的 DSO checkpoint */
     durable_checkpoint_loaded?: boolean;

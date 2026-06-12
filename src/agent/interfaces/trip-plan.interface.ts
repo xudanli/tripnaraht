@@ -818,6 +818,8 @@ export interface OrchestratorState {
    *（避免在叙述层解析 `research_data.__research_conflict_negotiation`）。
    */
   narration_research_conflict?: ResearchConflictNegotiationReport;
+  /** P0：NARRATE 前 EmotionNarratorOrchestrator 只读投影（tripnara.emotional_context@v1） */
+  emotional_context?: import('../narrator/types/emotional-context.type').EmotionalContext;
   gate_result?: GateResult;
   compliance_result?: {
     risk_warnings: Array<{

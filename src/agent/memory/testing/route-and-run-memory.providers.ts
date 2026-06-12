@@ -28,6 +28,7 @@ export const ROUTE_AND_RUN_MEMORY_TEST_PROVIDERS: Provider[] = [
         activeTripState: null,
         recoveryHistory: [],
         failurePatterns: [],
+        recentTripFeedbacks: [],
         loadedAt: new Date().toISOString(),
         observability: { layers: ['mock'] },
       }),

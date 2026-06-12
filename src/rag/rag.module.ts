@@ -60,6 +60,7 @@ import { RetryHelperService } from './services/retry-helper.service';
 import { ParallelExecutorService } from './services/parallel-executor.service';
 import { QueryIntentService } from './services/query-intent.service';
 import { LlmModule } from '../llm/llm.module';
+import { QueryRewritingModule } from '../agent/query-rewriting.module';
 import { RagController } from './rag.controller';
 // RagMetricsController 已删除 - metrics 端点合并到 RagController
 import { RagMetricsService } from './services/rag-metrics.service';
@@ -79,6 +80,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     KnowledgeBaseModule, // 知识库管理模块
     RedisModule, // Redis缓存支持
     LlmModule, // LLM服务（用于Reranking和QueryExpansion）
+    QueryRewritingModule, // 统一 Query Rewriting（RAG 多路拓展）
     forwardRef(() => SkillsModule), // 使用forwardRef避免循环依赖（SkillsModule -> PlacesModule -> RagModule -> SkillsModule）
     forwardRef(() => KPUModule), // KPU模块（知识处理单元，深度融合）
   ],

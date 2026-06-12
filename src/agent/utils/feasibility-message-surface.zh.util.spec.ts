@@ -206,6 +206,22 @@ describe('feasibility-message-surface.zh.util', () => {
     expect(issue?.display_message_zh).toContain('Landmannalaugar');
   });
 
+  it('sanitizeDecisionLogForClientDisplay rewrites legacy inputs_summary for UI', () => {
+    const log = sanitizeDecisionLogForClientDisplay([
+      {
+        request_id: 'r1',
+        step: 'STATE_UPDATE',
+        actor: 'Orchestrator',
+        inputs_summary: '把本轮对话与约束写入统一决策状态（DSO），一次性提交',
+        outputs_summary: 'ok',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+    expect(log[0].inputs_summary).toContain('同步到决策状态');
+    expect(log[0].inputs_summary).not.toContain('DSO');
+  });
+
   it('simplifyDecisionLogLineForUserZh strips L3 and abbreviations', () => {
     const line = simplifyDecisionLogLineForUserZh({
       outputs_summary:

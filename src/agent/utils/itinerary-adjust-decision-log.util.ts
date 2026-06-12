@@ -107,7 +107,14 @@ export function formatItineraryAdjustIntakeOutputsZh(ctx: ItineraryAdjustRunCont
       ? `第 ${ctx.targetDayNumber} 天`
       : ctx.targetDateIso ?? '目标日';
   const sub =
-    ctx.subIntent === 'strong_modification' ? '强修改意图' : '探索/商量意图';
+    ctx.subIntent === 'poi_slot_fill'
+      ? 'POI 空档补全（推荐加入景点）'
+      : ctx.subIntent === 'strong_modification'
+        ? '强修改意图'
+        : '探索/商量意图';
+  if (ctx.subIntent === 'poi_slot_fill') {
+    return `行程景点补全（POI_SLOT_FILL）：向稀疏日程追加推荐景点，只增不删；${day}${ctx.targetDateIso ? `（${ctx.targetDateIso}）` : ''}起优先补档。`;
+  }
   return `单日行程调整（ITINERARY_ADJUST）：${day}${ctx.targetDateIso ? `（${ctx.targetDateIso}）` : ''}；${sub}。全周编排仅重算该日，其余日从 Trip 保留。`;
 }
 
@@ -144,16 +151,20 @@ export function formatPlanGenOutputsAdjustZh(params: {
   targetDateIso: string;
   targetDayNumber?: number;
   targetPoiNames: string[];
+  weekDigest?: ItineraryDayPoiDigest[];
 }): string {
   const dayLabel =
     params.targetDayNumber != null
       ? `第 ${params.targetDayNumber} 天`
       : params.targetDateIso;
+  const dateShort = formatShortDateForDigest(params.targetDateIso.slice(0, 10));
   const pois =
     params.targetPoiNames.length > 0
       ? params.targetPoiNames.join('、')
       : '（见草案时间轴）';
-  return `全周骨架 ${params.totalDays} 天；仅 ${dayLabel}（${params.targetDateIso}）按邻日走廊重算：${pois}。其余日从绑定 Trip 无损保留。`;
+  const head = `全周骨架 ${params.totalDays} 天；${dayLabel}${dateShort ? `（${dateShort}）` : ''}按邻日走廊重算：${pois}。其余日从绑定 Trip 保留。`;
+  const digest = formatItineraryDayPoiDigestZh(params.weekDigest ?? [], { maxDays: 4 });
+  return digest ? `${head}${digest}` : head;
 }
 
 export function formatVerifyOutputsAdjustZh(params: {
@@ -276,6 +287,62 @@ export function extractPoiNamesFromItineraryDay(
     names.push(name);
   }
   return names;
+}
+
+export type ItineraryDayPoiDigest = {
+  dayNumber: number;
+  dateIso?: string;
+  poiNames: string[];
+};
+
+/** 从草案 itinerary 提取「第 N 天 → 景点名」摘要（供决策日志 / 前端展示） */
+export function extractPoiDigestFromItinerary(
+  itinerary: OrchestratorState['itinerary'],
+  options?: { maxDays?: number; maxPoisPerDay?: number },
+): ItineraryDayPoiDigest[] {
+  const days = itinerary?.days ?? [];
+  if (!days.length) return [];
+  const maxDays = options?.maxDays ?? 8;
+  const maxPoisPerDay = options?.maxPoisPerDay ?? 5;
+  const out: ItineraryDayPoiDigest[] = [];
+  for (let i = 0; i < Math.min(days.length, maxDays); i++) {
+    const d = days[i];
+    const dateIso = String(d.date ?? '').slice(0, 10) || undefined;
+    const poiNames = dateIso
+      ? extractPoiNamesFromItineraryDay(itinerary, dateIso).slice(0, maxPoisPerDay)
+      : [];
+    out.push({
+      dayNumber: i + 1,
+      dateIso,
+      poiNames,
+    });
+  }
+  return out;
+}
+
+function formatShortDateForDigest(dateIso: string | undefined): string | undefined {
+  const d = String(dateIso ?? '').slice(0, 10);
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return d || undefined;
+  return `${Number(m[2])}/${Number(m[3])}`;
+}
+
+/** 例：`日程要点：第1天（11/1）冰河湖、钻石沙滩；第2天（11/2）维克` */
+export function formatItineraryDayPoiDigestZh(
+  digest: ItineraryDayPoiDigest[],
+  options?: { maxDays?: number; emptyFallback?: string },
+): string {
+  if (!digest.length) return options?.emptyFallback ?? '';
+  const maxDays = options?.maxDays ?? 6;
+  const segments: string[] = [];
+  for (const row of digest.slice(0, maxDays)) {
+    const datePart = row.dateIso ? `（${formatShortDateForDigest(row.dateIso)}）` : '';
+    const pois =
+      row.poiNames.length > 0 ? row.poiNames.join('、') : '（暂无景点，见时间轴）';
+    segments.push(`第${row.dayNumber}天${datePart}${pois}`);
+  }
+  const omitted = digest.length > maxDays ? `；其余 ${digest.length - maxDays} 天见时间轴` : '';
+  return `日程要点：${segments.join('；')}${omitted}`;
 }
 
 export function filterVerifyIssuesToAdjustTarget<

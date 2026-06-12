@@ -1,6 +1,8 @@
 import { SYSTEM_ORCHESTRATOR_ACTIONS } from '../../../constants/action-execution.constants';
 import type { Itinerary } from '../../../interfaces/trip-plan.interface';
 import {
+  extractDecisionLogTripContext,
+  extractDestinationDisplayZh,
   formatPlanGenInputsKernelZh,
   formatPlanGenOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
@@ -9,6 +11,7 @@ import { ensureHarnessPlanningInputsOnDecisionState } from '../../../utils/plan-
 import {
   buildItineraryAdjustAuditMetadata,
   extractPoiNamesFromItineraryDay,
+  extractPoiDigestFromItinerary,
   formatPlanGenOutputsAdjustZh,
   resolveItineraryAdjustRunContext,
 } from '../../../utils/itinerary-adjust-decision-log.util';
@@ -65,26 +68,44 @@ export async function runPlanGenPhase(
     state.current_step = 'PLAN_GEN';
     const pgFail = newState.systemState?.planGenTerminalFailure;
     const adjustCtx = resolveItineraryAdjustRunContext(state);
-    const planGenOutputs =
+    const dayDigest = extractPoiDigestFromItinerary(state.itinerary);
+    const tripCtx = extractDecisionLogTripContext({
+      tripPlanRequest: state.trip_plan_request,
+      userIntentDestination: dsoForPlan.userIntent?.destination,
+      metadata: state.metadata as Record<string, unknown>,
+      itinerary: state.itinerary,
+    });
+    if (adjustCtx.active && adjustCtx.targetDateIso) {
+      tripCtx.selectedPoiNames = extractPoiNamesFromItineraryDay(state.itinerary, adjustCtx.targetDateIso);
+    }
+
+    const outputsSummary =
       adjustCtx.active && adjustCtx.targetDateIso
         ? formatPlanGenOutputsAdjustZh({
             totalDays: itinerary.days.length,
             targetDateIso: adjustCtx.targetDateIso,
             targetDayNumber: adjustCtx.targetDayNumber,
             targetPoiNames: extractPoiNamesFromItineraryDay(state.itinerary, adjustCtx.targetDateIso),
+            weekDigest: dayDigest,
           })
-        : formatPlanGenOutputsZh(itinerary.days.length, pgFail?.message ?? 'planGenTerminalFailure');
+        : formatPlanGenOutputsZh(
+            itinerary.days.length,
+            pgFail?.message ?? 'planGenTerminalFailure',
+            tripCtx,
+            dayDigest,
+          );
 
     state.decision_log.push({
       request_id: state.request_id,
       step: 'PLAN_GEN',
       actor: 'Planner',
-      inputs_summary: formatPlanGenInputsKernelZh(),
-      outputs_summary: planGenOutputs,
+      inputs_summary: formatPlanGenInputsKernelZh(tripCtx),
+      outputs_summary: outputsSummary,
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: {
         duration_ms: Date.now() - stepStartTime,
+        plan_gen_day_digest: dayDigest,
         ...(pgFail
           ? {
               system_action: SYSTEM_ORCHESTRATOR_ACTIONS.PLAN_GEN_EMPTY_DRAFT_HALT,

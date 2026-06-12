@@ -93,6 +93,7 @@ import { WearableIntegrationService } from './services/wearable-integration.serv
 import { FitnessAnalyticsController } from './controllers/fitness-analytics.controller';
 import { DecisionStateManagerService } from './services/decision-state-manager.service';
 import { EcoIdentityLedgerPersistenceService } from './services/eco-identity-ledger-persistence.service';
+import { AlignmentTier3PersistenceService } from './services/alignment-tier3-persistence.service';
 import { DsoLatestStateFromTripProvider } from './services/dso-latest-state-from-trip.provider';
 import { DSO_LATEST_STATE_PROVIDER } from '../../decision/kernel/dso-latest-state-provider.interface';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -173,6 +174,7 @@ try {
   providers: [
     InterventionEngine,
     EcoIdentityLedgerPersistenceService,
+    AlignmentTier3PersistenceService,
     TrailPlanningAdapter,
     HardTrekTripMetadataService,
     TripDecisionEngineService,
@@ -268,6 +270,7 @@ try {
   ],
   exports: [
     EcoIdentityLedgerPersistenceService,
+    AlignmentTier3PersistenceService,
     TripDecisionEngineService,
     DSO_LATEST_STATE_PROVIDER,
     // 二分法：暂时禁用最后2个服务，测试是否导致阻塞

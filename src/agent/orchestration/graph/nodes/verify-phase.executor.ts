@@ -1,6 +1,7 @@
 import { ensureHarnessResearchEvidenceSnapshot } from '../../../utils/harness-research-evidence-snapshot.util';
 import { mergeVerificationIssuesIntoGateResult } from '../../../utils/merge-verify-issues-into-gate.util';
 import {
+  extractDecisionLogTripContext,
   formatVerifyInputsKernelZh,
   formatVerifyOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
@@ -73,11 +74,17 @@ export async function runVerifyPhase(
       });
     }
     state.current_step = 'VERIFY';
+    const tripCtx = extractDecisionLogTripContext({
+      tripPlanRequest: state.trip_plan_request,
+      userIntentDestination: decisionState.userIntent?.destination,
+      metadata: state.metadata as Record<string, unknown>,
+      itinerary: state.itinerary,
+    });
     state.decision_log.push({
       request_id: state.request_id,
       step: 'VERIFY',
       actor: 'Orchestrator',
-      inputs_summary: formatVerifyInputsKernelZh(),
+      inputs_summary: formatVerifyInputsKernelZh(tripCtx),
       outputs_summary:
         adjustCtx.active && adjustCtx.targetDateIso
           ? formatVerifyOutputsAdjustZh({

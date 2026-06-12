@@ -13,6 +13,7 @@ import type { OrchestrationResult } from '../../../interfaces/claude-orchestrati
  */
 export interface IntakeNodeHost {
   readonly logger: Logger;
+  readonly promMetrics?: import('../../../../monitoring/prometheus-metrics.service').PrometheusMetricsService;
 
   executeIntakeStep(
     request: RouteAndRunRequestDto,

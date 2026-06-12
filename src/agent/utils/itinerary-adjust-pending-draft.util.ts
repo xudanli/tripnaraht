@@ -8,6 +8,8 @@ import { applyPacingRelaxToAdjustTargetState } from '../../skills/itinerary/expe
 
 export const PENDING_ITINERARY_ADJUST_DRAFT_META_KEY = 'pending_itinerary_adjust_draft';
 
+export type ItineraryAdjustDraftApplyMode = 'replace_day' | 'append_sparse_days';
+
 export type PendingItineraryAdjustDraft = {
   trip_id: string;
   target_date_iso: string;
@@ -15,6 +17,9 @@ export type PendingItineraryAdjustDraft = {
   saved_at: string;
   request_id: string;
   itinerary_day: ItineraryDay;
+  /** POI_SLOT_FILL：多稀疏日追加模式 */
+  apply_mode?: ItineraryAdjustDraftApplyMode;
+  itinerary_days?: ItineraryDay[];
   itinerary_adjust_result?: ItineraryAdjustOptimizationResult;
 };
 
@@ -26,6 +31,11 @@ export function buildPendingItineraryAdjustDraft(
   const adjust = md.itinerary_adjust_result as ItineraryAdjustOptimizationResult | undefined;
   const autoApply = md.itinerary_adjust_auto_apply as { applied?: boolean } | undefined;
   if (!adjust || autoApply?.applied === true || adjust.applied === true) return undefined;
+
+  const poiSlotFill = md.itinerary_adjust_poi_slot_fill === true;
+  const sparseTargets = md.itinerary_adjust_poi_slot_fill_targets as
+    | Array<{ dateIso: string; dayNumber?: number }>
+    | undefined;
 
   const targetDateIso = String(
     adjust.target_date_iso ??
@@ -51,6 +61,28 @@ export function buildPendingItineraryAdjustDraft(
   );
   if (!day?.items?.length) return undefined;
 
+  let itineraryDays: ItineraryDay[] | undefined;
+  let applyMode: ItineraryAdjustDraftApplyMode | undefined;
+  if (poiSlotFill && sparseTargets?.length) {
+    applyMode = 'append_sparse_days';
+    itineraryDays = sparseTargets
+      .map((t) => {
+        const sparseDay = working.itinerary!.days.find(
+          (d) => String(d.date ?? '').slice(0, 10) === t.dateIso.slice(0, 10),
+        );
+        if (!sparseDay?.items?.length) return undefined;
+        return {
+          date: t.dateIso.slice(0, 10),
+          items: sparseDay.items.map((it) => ({ ...it })),
+        };
+      })
+      .filter((d): d is ItineraryDay => Boolean(d?.items?.length));
+    if (!itineraryDays.length) {
+      itineraryDays = undefined;
+      applyMode = undefined;
+    }
+  }
+
   return {
     trip_id: tripId,
     target_date_iso: targetDateIso,
@@ -61,6 +93,7 @@ export function buildPendingItineraryAdjustDraft(
       date: targetDateIso,
       items: day.items.map((it) => ({ ...it })),
     },
+    ...(applyMode ? { apply_mode: applyMode, itinerary_days: itineraryDays } : {}),
     itinerary_adjust_result: adjust,
   };
 }
@@ -75,23 +108,73 @@ export function readPendingItineraryAdjustDraft(
   return d;
 }
 
+type DraftSnapshotItem = {
+  type?: string;
+  start_window?: string;
+  end_window?: string;
+  location_ref?: { name?: string; place_id?: string | number };
+  name?: string;
+  id?: string;
+};
+
+function mapSnapshotItems(
+  target: string,
+  items: DraftSnapshotItem[],
+): ItineraryDay['items'] {
+  return items.map((it, idx) => ({
+    id: it.id ?? `draft-snap-${target}-${idx}`,
+    type: (it.type ?? 'POI') as ItineraryDay['items'][0]['type'],
+    start_window: it.start_window ?? '09:00',
+    end_window: it.end_window ?? '12:00',
+    location_ref: {
+      name: it.location_ref?.name ?? it.name ?? '',
+      place_id:
+        it.location_ref?.place_id != null ? String(it.location_ref.place_id) : undefined,
+    },
+    evidence_refs: [],
+    verified: false,
+  }));
+}
+
 export function pendingDraftFromRequestSnapshot(params: {
   tripId: string;
   snapshot?: {
-    target_date_iso: string;
+    target_date_iso?: string;
     target_day_number?: number;
-    items?: Array<{
-      type?: string;
-      start_window?: string;
-      end_window?: string;
-      location_ref?: { name?: string; place_id?: string | number };
-      name?: string;
-      id?: string;
+    apply_mode?: ItineraryAdjustDraftApplyMode;
+    items?: DraftSnapshotItem[];
+    days?: Array<{
+      date_iso: string;
+      day_number?: number;
+      items?: DraftSnapshotItem[];
     }>;
   };
 }): PendingItineraryAdjustDraft | undefined {
   const snap = params.snapshot;
-  if (!snap?.target_date_iso || !snap.items?.length) return undefined;
+  if (!snap) return undefined;
+
+  if (snap.days?.length) {
+    const itineraryDays: ItineraryDay[] = snap.days
+      .filter((d) => d.date_iso && d.items?.length)
+      .map((d) => ({
+        date: d.date_iso.slice(0, 10),
+        items: mapSnapshotItems(d.date_iso.slice(0, 10), d.items!),
+      }));
+    if (!itineraryDays.length) return undefined;
+    const primary = snap.target_date_iso?.slice(0, 10) ?? itineraryDays[0].date;
+    return {
+      trip_id: params.tripId,
+      target_date_iso: primary,
+      target_day_number: snap.target_day_number ?? snap.days[0]?.day_number,
+      saved_at: new Date().toISOString(),
+      request_id: 'client-snapshot',
+      apply_mode: snap.apply_mode ?? 'append_sparse_days',
+      itinerary_days: itineraryDays,
+      itinerary_day: itineraryDays[0],
+    };
+  }
+
+  if (!snap.target_date_iso || !snap.items?.length) return undefined;
   const target = snap.target_date_iso.slice(0, 10);
   return {
     trip_id: params.tripId,
@@ -99,23 +182,10 @@ export function pendingDraftFromRequestSnapshot(params: {
     target_day_number: snap.target_day_number,
     saved_at: new Date().toISOString(),
     request_id: 'client-snapshot',
+    apply_mode: snap.apply_mode ?? 'replace_day',
     itinerary_day: {
       date: target,
-      items: snap.items.map((it, idx) => ({
-        id: it.id ?? `draft-snap-${target}-${idx}`,
-        type: (it.type ?? 'POI') as ItineraryDay['items'][0]['type'],
-        start_window: it.start_window,
-        end_window: it.end_window,
-        location_ref: {
-          name: it.location_ref?.name ?? it.name ?? '',
-          place_id:
-            it.location_ref?.place_id != null
-              ? String(it.location_ref.place_id)
-              : undefined,
-        },
-        evidence_refs: [],
-        verified: false,
-      })),
+      items: mapSnapshotItems(target, snap.items),
     },
   };
 }

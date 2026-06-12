@@ -10,8 +10,11 @@ import {
   computeDecisionEvidenceFingerprint,
 } from '../../../utils/decision-evidence-fingerprint.util';
 import {
+  extractDecisionLogTripContext,
   formatIntakeInputsPreviewZh,
   formatIntakeOutputsZh,
+  formatFullTripReplanIntakeInputsZh,
+  formatItineraryAdjustIntakeInputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
 import {
   generateClarificationQuestions,
@@ -53,6 +56,10 @@ import {
   extractItineraryAdjustTargetDateFromMessage,
 } from '../../../utils/itinerary-adjust-intent.util';
 import {
+  appendPoiSlotFillSystemHints,
+  detectPoiSlotFillIntent,
+} from '../../../utils/itinerary-adjust-poi-slot-fill.util';
+import {
   buildItineraryAdjustAuditMetadata,
   formatItineraryAdjustIntakeOutputsZh,
   resolveItineraryAdjustRunContext,
@@ -67,6 +74,7 @@ import { applyItineraryDayReplanIfRequested } from './intake-itinerary-day-repla
 import { applyWorkbenchPlaceholderShortCircuitIfRequested } from './intake-workbench-placeholder.util';
 import {
   buildItinerarySlotPlacementClarificationQuestion,
+  detectItinerarySlotActivityKind,
   isItinerarySlotPlacementIntakeClarificationPending,
 } from '../../../utils/itinerary-slot-placement.util';
 import {
@@ -79,6 +87,7 @@ import {
   mergeConstraintSinkIntoMemoryContractObs,
 } from '../../../memory/constraint-sink/hydrate-trip-plan-from-constraint-sink.util';
 import { emitIntakeClarificationAnswersTelemetry } from './intake-decision-telemetry.util';
+import { applyPlanningPhaseIntentToIntake } from '../../../utils/planning-intent-intake.util';
 
 /**
  * INTAKE 内核/降级执行体（自 claude-orchestrator 迁出）。
@@ -558,7 +567,14 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
           step: 'INTAKE',
           actor: 'Planner',
           inputs_summary: formatIntakeInputsPreviewZh(request.message, 100),
-          outputs_summary: formatIntakeOutputsZh(result.intent ?? 'PLAN_TRIP', result.gaps.length),
+          outputs_summary: formatIntakeOutputsZh(
+            result.intent ?? 'PLAN_TRIP',
+            result.gaps.length,
+            extractDecisionLogTripContext({
+              tripPlanRequest: state.trip_plan_request,
+              metadata: state.metadata as Record<string, unknown>,
+            }),
+          ),
           evidence_refs: [],
           timestamp: new Date().toISOString(),
           metadata: {
@@ -583,7 +599,14 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
           step: 'INTAKE',
           actor: 'Orchestrator',
           inputs_summary: formatIntakeInputsPreviewZh(request.message, 100),
-          outputs_summary: formatIntakeOutputsZh('PLAN_TRIP', gaps.length),
+          outputs_summary: formatIntakeOutputsZh(
+            'PLAN_TRIP',
+            gaps.length,
+            extractDecisionLogTripContext({
+              tripPlanRequest: state.trip_plan_request,
+              metadata: state.metadata as Record<string, unknown>,
+            }),
+          ),
           evidence_refs: [],
           timestamp: new Date().toISOString(),
           metadata: {
@@ -615,6 +638,15 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
         hasTripDays: tripDaySnapshots.length > 0 || Boolean(tripIdForIntent),
       });
       (state.metadata as Record<string, unknown>).route_and_run_intent = intentAnalysis;
+
+      applyPlanningPhaseIntentToIntake({
+        intakeMsg: intakeMsg ?? '',
+        state,
+        trip: state.trip_plan_request,
+        tripDaySnapshots,
+        request,
+      });
+
       const tripDateRange = state.trip_plan_request?.date_range;
       const fullTripReplan =
         intentAnalysis.primary === 'GENERAL_PLAN' &&
@@ -628,11 +660,15 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
           replanMeta.full_trip_replan_hotel_requested = true;
         }
         appendFullTripReplanSystemHints(state.trip_plan_request, intakeText);
+        const tripCtx = extractDecisionLogTripContext({
+          tripPlanRequest: state.trip_plan_request,
+          metadata: state.metadata as Record<string, unknown>,
+        });
         state.decision_log.push({
           request_id: state.request_id,
           step: 'INTAKE',
           actor: 'Orchestrator',
-          inputs_summary: '识别绑定 Trip 上的整段多日行程重规划意图',
+          inputs_summary: formatFullTripReplanIntakeInputsZh(intakeText, tripDateRange, tripCtx),
           outputs_summary: `整段多日重规划（FULL_TRIP_REPLAN）：${tripDateRange?.start_date ?? '?'}→${tripDateRange?.end_date ?? '?'}；走全周 PLAN_GEN，非单日 ITINERARY_ADJUST。`,
           evidence_refs: [],
           timestamp: new Date().toISOString(),
@@ -640,8 +676,14 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
         });
       }
       if (intentAnalysis.primary === 'ITINERARY_ADJUST' && state.trip_plan_request) {
-        appendItineraryAdjustSystemHints(state.trip_plan_request, intakeMsg ?? '');
         const adjustMeta = state.metadata as Record<string, unknown>;
+        const poiSlotFill = detectPoiSlotFillIntent(intakeMsg ?? '', tripDateRange);
+        if (poiSlotFill) {
+          adjustMeta.itinerary_adjust_poi_slot_fill = true;
+          appendPoiSlotFillSystemHints(state.trip_plan_request, intakeMsg ?? '');
+        } else {
+          appendItineraryAdjustSystemHints(state.trip_plan_request, intakeMsg ?? '');
+        }
         adjustMeta.itinerary_adjust_intake = true;
         const targetIso = extractItineraryAdjustTargetDateFromMessage(
           intakeMsg ?? '',
@@ -652,6 +694,10 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
         }
         const adjustCtx = resolveItineraryAdjustRunContext(state);
         adjustMeta.itinerary_adjust_sub_intent = adjustCtx.subIntent;
+        const tripCtx = extractDecisionLogTripContext({
+          tripPlanRequest: state.trip_plan_request,
+          metadata: adjustMeta,
+        });
         if (
           shouldRequestAdaptiveReplan({
             routePrimary: intentAnalysis.primary,
@@ -665,7 +711,13 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
           request_id: state.request_id,
           step: 'INTAKE',
           actor: 'Orchestrator',
-          inputs_summary: '识别绑定 Trip 上的单日行程改排意图',
+          inputs_summary: formatItineraryAdjustIntakeInputsZh({
+            userMessage: intakeMsg ?? '',
+            subIntent: adjustCtx.subIntent,
+            targetDateIso: adjustCtx.targetDateIso,
+            targetDayNumber: adjustCtx.targetDayNumber,
+            ctx: tripCtx,
+          }),
           outputs_summary: formatItineraryAdjustIntakeOutputsZh(adjustCtx),
           evidence_refs: [],
           timestamp: new Date().toISOString(),
@@ -760,15 +812,37 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
               slotResolved.paAnalysis.fallbackReason;
           }
         }
+        const slotBuildOpts: {
+          paAnalysis?: typeof slotResolved.paAnalysis;
+          paCandidates: typeof slotResolved.candidates;
+          auroraRagSupplementZh?: string | null;
+        } = {
+          paAnalysis: slotResolved.paAnalysis,
+          paCandidates: slotResolved.candidates,
+        };
+        if (
+          detectItinerarySlotActivityKind(intakeMsg ?? '') === 'aurora' &&
+          host.fetchAuroraSlotPlacementRagSupplement
+        ) {
+          const auroraRag = await host.fetchAuroraSlotPlacementRagSupplement(intakeMsg ?? '', {
+            request,
+            tripId: tripIdForIntent ?? undefined,
+          });
+          if (auroraRag.supplementZh) {
+            slotBuildOpts.auroraRagSupplementZh = auroraRag.supplementZh;
+            (state.metadata as Record<string, unknown>).slot_placement_aurora_rag = {
+              citation_count: auroraRag.citationCount,
+              relevant_count: auroraRag.relevantCount,
+              used_static_fallback: auroraRag.usedStaticFallback,
+            };
+          }
+        }
         state.clarification_questions = [
           buildItinerarySlotPlacementClarificationQuestion(
             state.trip_plan_request,
             tripDaySnapshots,
             intakeMsg,
-            {
-              paAnalysis: slotResolved.paAnalysis,
-              paCandidates: slotResolved.candidates,
-            },
+            slotBuildOpts,
           ),
         ];
         (state.metadata as Record<string, unknown>).itinerary_slot_placement_intake_short_circuit =

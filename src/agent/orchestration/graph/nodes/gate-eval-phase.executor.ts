@@ -1,12 +1,26 @@
 import { decisionStateToOrchestratorState } from '../../../../decision/kernel/orchestrator-state-mapper';
 import type { GateResult } from '../../../interfaces/trip-plan.interface';
 import {
+  extractDecisionLogTripContext,
+  extractDestinationDisplayZh,
   formatGateEvalInputsKernelZh,
   formatGateEvalOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
 import type { GateEvalPhaseHost, RunGateEvalPhaseParams } from './gate-eval-phase.host';
 import { ensureHarnessResearchEvidenceSnapshot } from '../../../utils/harness-research-evidence-snapshot.util';
 import { ensureHarnessPlanningInputsOnDecisionState } from '../../../utils/plan-gen-harness-input.util';
+
+function readGuardianVerdictsFromGateEval(gateResult: {
+  guardian_results?: GateResult['guardian_results'];
+}): { abu?: string; drdre?: string; neptune?: string } | undefined {
+  const gr = gateResult.guardian_results;
+  if (!gr) return undefined;
+  return {
+    abu: gr.abu?.verdict,
+    drdre: gr.drdre?.verdict,
+    neptune: gr.neptune?.verdict,
+  };
+}
 
 /**
  * GATE_EVAL 执行体：Kernel 路径经 Harness 契约；失败时 Kernel 合成 BLOCK，不调用 gateEvalExecutor。
@@ -46,12 +60,27 @@ export async function runGateEvalPhase(
       evidence_refs: [],
     };
     state.current_step = 'GATE_EVAL';
+    const destinationLabel = extractDestinationDisplayZh({
+      userIntentDestination: effectiveDecisionState.userIntent?.destination,
+      tripPlanRequest: state.trip_plan_request,
+    });
+    const tripCtx = extractDecisionLogTripContext({
+      tripPlanRequest: state.trip_plan_request,
+      userIntentDestination: effectiveDecisionState.userIntent?.destination,
+      metadata: state.metadata as Record<string, unknown>,
+    });
     state.decision_log.push({
       request_id: state.request_id,
       step: 'GATE_EVAL',
       actor: 'Gatekeeper',
-      inputs_summary: formatGateEvalInputsKernelZh(),
-      outputs_summary: formatGateEvalOutputsZh(gateResult.gate_result, gateResult.violations.length),
+      inputs_summary: formatGateEvalInputsKernelZh({ destination: destinationLabel, ctx: tripCtx }),
+      outputs_summary: formatGateEvalOutputsZh(
+        gateResult.gate_result,
+        gateResult.violations.length,
+        readGuardianVerdictsFromGateEval(
+          gateResult as { guardian_results?: GateResult['guardian_results'] },
+        ),
+      ),
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: { duration_ms: Date.now() - stepStartTime },

@@ -13,6 +13,7 @@ import {
 import {
   runGoldenPathCgusPhase,
   runGoldenPathDeliveryPhase,
+  runGoldenPathEmotionalDeliveryAudit,
   runGoldenPathIncidentPhase,
   runGoldenPathReplanPhase,
 } from './iceland-storm-golden-path.harness';
@@ -125,6 +126,21 @@ describe('Golden Path E2E: Iceland storm → empathy recovery → partial replan
       expect(incident.experienceFlow.tempo).toBe('EMPATHY_RECOVERY');
       expect(replan.scope.estimatedLatencyMs).toBeLessThan(500);
       expect(delivery.logMetadata.narrative_track).toBe('EMPATHY_RECOVERY');
+    });
+
+    it('projects emotional_context for BFF with storm frustration circuit', () => {
+      const audit = runGoldenPathEmotionalDeliveryAudit(incident);
+      expect(audit.clientProjection.schemaVersion).toBe('tripnara.emotional_context.client@v1');
+      expect(audit.emotionalContext.anxietyTriggered).toBe(true);
+      expect(audit.clientProjection.ambienceSignals.weatherWindLockActive).toBe(true);
+      expect(audit.clientProjection.proactivityGate).toBe('ACTIVE');
+    });
+
+    it('emits anchoring presence block under storm anxiety (精神主心骨)', () => {
+      const audit = runGoldenPathEmotionalDeliveryAudit(incident);
+      expect(audit.anchoringBlock).toContain('别慌，有我在');
+      expect(audit.anchoringBlock).toContain('做三件事');
+      expect(audit.anchoringBlock).toContain('风暴/强风约束');
     });
   });
 });

@@ -1,5 +1,6 @@
 import type { RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import type { RouteAndRunTaskPublicStatus } from '../runtime/route-and-run-orchestration-progress.util';
+import type { EmotionalContextClientProjection } from '../narrator/emotional-context-client-projection.util';
 
 /** SSE / 进程内总线：编排任务进度（按 task_id 分 channel）。 */
 export const routeAndRunTaskChannel = (taskId: string): string =>
@@ -24,4 +25,6 @@ export type RouteAndRunTaskProgressPayload = {
     active_layers: string[];
     glow_stream_active: boolean;
   };
+  /** NARRATE 阶段增量：情绪矩阵 BFF 投影（tripnara.emotional_context.client@v1） */
+  emotional_context?: EmotionalContextClientProjection;
 };

@@ -8,6 +8,8 @@ import {
   appendSkillsHitToOutputsSummary,
   buildCrudSkillsDecisionMetadata,
 } from '../../../utils/itinerary-item-crud-decision-log.util';
+import { recordItineraryAdjustFunnel } from '../../../utils/itinerary-adjust-metrics.util';
+import type { PrometheusMetricsService } from '../../../../monitoring/prometheus-metrics.service';
 
 export type ItineraryAdjustDraftApplyResult = {
   applied: boolean;
@@ -16,6 +18,7 @@ export type ItineraryAdjustDraftApplyResult = {
   answerText?: string;
   targetDateIso?: string;
   reason?: string;
+  appliedDays?: string[];
   skillsHit?: string[];
 };
 
@@ -35,6 +38,7 @@ export async function applyItineraryAdjustDraftIfRequested(
     userId?: string;
     state: OrchestratorState;
     request: Pick<RouteAndRunRequestDto, 'message' | 'options' | 'trip_id'>;
+    promMetrics?: PrometheusMetricsService;
   },
 ): Promise<boolean> {
   const intakeMsg = String(params.message ?? '').trim();
@@ -49,6 +53,16 @@ export async function applyItineraryAdjustDraftIfRequested(
   }
   if (!host.tryApplyBoundTripItineraryAdjustDraft) return false;
 
+  const mdPre = params.state.metadata as Record<string, unknown>;
+  recordItineraryAdjustFunnel(params.promMetrics, {
+    stage: 'apply_clicked',
+    outcome: 'success',
+    sub_intent: String(mdPre.itinerary_adjust_sub_intent ?? 'unknown'),
+    execution_mode: String(mdPre.itinerary_adjust_execution_mode ?? 'ADVICE_ONLY'),
+    trip_id: tripId,
+    request_id: params.state.request_id,
+  });
+
   const result = await host.tryApplyBoundTripItineraryAdjustDraft(
     tripId,
     params.userId,
@@ -56,6 +70,27 @@ export async function applyItineraryAdjustDraftIfRequested(
   );
   (params.state.metadata as Record<string, unknown>).itinerary_adjust_draft_apply_short_circuit =
     result;
+  (params.state.metadata as Record<string, unknown>).itinerary_adjust_apply_result = {
+    applied: result.applied,
+    reason: result.reason,
+    added_count: result.addedCount,
+    deleted_count: result.deletedCount,
+    applied_days: result.appliedDays,
+    target_date_iso: result.targetDateIso,
+    answer_text: result.answerText,
+  };
+
+  recordItineraryAdjustFunnel(params.promMetrics, {
+    stage: 'user_apply',
+    outcome: result.applied ? 'success' : 'failure',
+    sub_intent: String(mdPre.itinerary_adjust_sub_intent ?? 'unknown'),
+    execution_mode: 'ADVICE_ONLY',
+    reason: result.reason ?? (result.applied ? 'user_confirmed_draft_apply' : 'apply_failed'),
+    trip_id: tripId,
+    request_id: params.state.request_id,
+    added_count: result.addedCount,
+    applied_days: result.appliedDays?.length,
+  });
 
   if (!result.answerText && !result.applied) return false;
 

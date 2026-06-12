@@ -75,6 +75,17 @@ export interface IntakePhaseHost {
     paAnalysis?: ItinerarySlotPlacementGapResult;
   }>;
 
+  /** 极光选日澄清卡：INTAKE 短路路径下附加 RAG 观测点/实操摘录 */
+  fetchAuroraSlotPlacementRagSupplement?(
+    intakeMsg: string,
+    opts?: { request: RouteAndRunRequestDto; tripId?: string },
+  ): Promise<{
+    supplementZh: string | null;
+    citationCount: number;
+    relevantCount: number;
+    usedStaticFallback: boolean;
+  }>;
+
   tryApplyBoundTripItineraryItemDelete?(
     tripId: string,
     userId: string | undefined,

@@ -1,5 +1,14 @@
 export type { ExecutionWorld, WorldSimulationResult } from './execution-world.types';
 
+export type {
+  MotiveDistribution,
+  PartyMemberLatent,
+  RobustnessPartyContext,
+  TravelLatentState,
+} from './travel-latent-state.types';
+
+export { DEFAULT_TRAVEL_LATENT_STATE } from './travel-latent-state.types';
+
 export { cloneExecutionTruthDAG, mutateDag } from './dag-clone';
 
 export {

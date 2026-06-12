@@ -700,7 +700,8 @@ export class TripsService {
 
   /**
    * 轻量行程摘要（不经 enrichTripData），供咨询类 prompt 注入。
-   * 默认附带各日类型骨架；`include_named_draft_appendix` 为 true 时再附加按日 Place/备注速览（如西峡湾接驳、行前装备/徒步、租车/自驾咨询需结合行程项与 POI）。
+   * 默认附带各日类型骨架；`include_named_draft_appendix` 为 true 时再附加按日 Place/备注速览
+   * （工作台 `active_trip_summary`、住宿+餐饮、进度复盘、路况/装备/徒步/租车等需锚定 POI 的咨询）。
    */
   async getTripPromptSummaryForConsultation(
     id: string,

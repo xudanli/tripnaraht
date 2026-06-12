@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
+import type { RouteAndRunRequestDto, RouteAndRunResponseDto, PlanningPhaseIntentDto } from '../dto/route-and-run.dto';
+import { enrichClientUiDisplay, type ClientUiEnrichmentInput } from '../utils/client-ui-enrichment.util';
 import type { DecisionCandidateDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import type { OrchestrationResult, RoutingDecision } from '../interfaces/claude-orchestration.interface';
@@ -83,7 +84,7 @@ import {
   sortFailureReasonCodes,
 } from '../constants/failure-reason-codes.constants';
 import { orchestrationStepDisplayZh } from '../constants/orchestration-step-display.constants';
-import { isTripStatusOverviewQuery, type TaskType } from '../utils/orchestration-signals.util';
+import { isBoundTripLightConsultQuery, type TaskType } from '../utils/orchestration-signals.util';
 import { shouldExposeSimplifiedExplanationForClient } from '../utils/route-and-run-option-defaults.util';
 import { buildRuntimeExecutionProfileClaudeDynamicAssembly } from '../utils/runtime-execution-profile.builder';
 import { validateRuntimeExecutionProfile } from '../utils/runtime-execution-profile.validation';
@@ -122,6 +123,7 @@ import {
   sanitizeDecisionLogForClientDisplay,
   sanitizeClarificationQuestionsForClientDisplay,
 } from '../utils/feasibility-message-surface.zh.util';
+import { renderClarificationMarkdownToSafeHtml, resolveClarificationShortStepDetail, resolveClarificationChatLead, renderPlainClarificationChatLeadHtml, isStructuredClarificationChoiceCard } from '../utils/user-clarification-markdown.util';
 import { filterGateViolationsToDraftScheduleOnly } from '../utils/filter-stale-verify-violations.util';
 import { filterDecisionLogVerifyToDraftPois } from '../utils/itinerary-adjust-decision-log.util';
 import { extractSkillsHitFromDecisionLog } from '../utils/itinerary-item-crud-decision-log.util';
@@ -277,6 +279,20 @@ export class RouteAndRunResponseAssemblerService {
   private isItineraryItemCrudApplied(orchestrationResult: OrchestrationResult): boolean {
     if (!this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return false;
     return this.getItineraryItemCrudShortCircuitResult(orchestrationResult)?.applied === true;
+  }
+
+  private isItineraryAdjustDraftApplyIntake(
+    orchestrationResult: OrchestrationResult,
+  ): boolean {
+    const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+    return md?.itinerary_adjust_draft_apply_intake === true;
+  }
+
+  private isItineraryAdjustDraftApplySucceeded(orchestrationResult: OrchestrationResult): boolean {
+    if (!this.isItineraryAdjustDraftApplyIntake(orchestrationResult)) return false;
+    const sc = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+    const apply = sc?.itinerary_adjust_apply_result as { applied?: boolean } | undefined;
+    return apply?.applied === true;
   }
 
   private resolveUiSurfaceForPayload(
@@ -648,6 +664,38 @@ export class RouteAndRunResponseAssemblerService {
     };
   }
 
+  /** 航班/酒店/租车快照 → ui_display.booking_cart 投影输入 */
+  private resolveBookingPayloadForUiEnrichment(
+    orchestrationResult: OrchestrationResult,
+  ): ClientUiEnrichmentInput['bookingPayload'] {
+    const r = orchestrationResult.result as Record<string, unknown> | undefined;
+    if (!r) return undefined;
+
+    const hotelBlocks = this.resolveHotelAccommodationPayloadBlocks(orchestrationResult);
+    const flight = r['flight_inventory_snapshot'];
+    const cars = r['car_rentals'];
+
+    const hasHotel =
+      (Array.isArray(hotelBlocks.accommodations) && hotelBlocks.accommodations.length > 0) ||
+      (Array.isArray(hotelBlocks.accommodation_night_groups) &&
+        hotelBlocks.accommodation_night_groups.length > 0);
+    const hasFlight = flight != null && typeof flight === 'object';
+    const hasCars = Array.isArray(cars) && cars.length > 0;
+
+    if (!hasHotel && !hasFlight && !hasCars) return undefined;
+
+    return {
+      ...(hasFlight ? { flight_inventory_snapshot: flight as Record<string, unknown> } : {}),
+      ...(hasCars ? { car_rentals: cars as unknown[] } : {}),
+      ...(Array.isArray(hotelBlocks.accommodations)
+        ? { accommodations: hotelBlocks.accommodations as unknown[] }
+        : {}),
+      ...(Array.isArray(hotelBlocks.accommodation_night_groups)
+        ? { accommodation_night_groups: hotelBlocks.accommodation_night_groups as unknown[] }
+        : {}),
+    };
+  }
+
   /**
    * 咨询 Dashboard：优先编排结果中的模型输出；缺失或无效时由 suggested_operations 生成兜底。
    */
@@ -781,7 +829,7 @@ export class RouteAndRunResponseAssemblerService {
         : undefined);
     if (
       reviewMsg &&
-      isTripStatusOverviewQuery(reviewMsg, reviewMsg.toLowerCase())
+      isBoundTripLightConsultQuery(reviewMsg, reviewMsg.toLowerCase())
     ) {
       return null;
     }
@@ -1043,6 +1091,7 @@ export class RouteAndRunResponseAssemblerService {
     gateForClient?: GateResult | undefined;
   }): {
     itinerary_adjust_result?: ItineraryAdjustOptimizationResult;
+    itinerary_adjust_apply_result?: Record<string, unknown>;
     actionExecution?: Record<string, unknown>;
     workbench_feasibility?: {
       violations: GateResult['violations'];
@@ -1067,10 +1116,12 @@ export class RouteAndRunResponseAssemblerService {
     } else if (itineraryAdjustOptimization) {
       md.itinerary_adjust_result = itineraryAdjustOptimization;
     }
+    const applyResult = md.itinerary_adjust_apply_result as Record<string, unknown> | undefined;
     return {
       ...(itineraryAdjustOptimization
         ? { itinerary_adjust_result: itineraryAdjustOptimization }
         : {}),
+      ...(applyResult ? { itinerary_adjust_apply_result: applyResult } : {}),
       actionExecution: buildItineraryAdjustActionExecutionPayload(md),
       workbench_feasibility: {
         violations: params.gateForClient?.violations ?? [],
@@ -1334,6 +1385,12 @@ export class RouteAndRunResponseAssemblerService {
     const payload = response.result.payload as {
       clarificationQuestions?: ClarificationQuestion[];
       clarificationMessage?: string;
+      clarification_render_format?: 'markdown';
+      clarification_display?: { format: 'html'; body_html: string; body_markdown: string };
+      clarification_meta?: {
+        suppress_chat_prose?: boolean;
+        card_source?: 'clarificationQuestions';
+      };
       orchestrationResult?: { state?: OrchestratorState };
     };
 
@@ -1354,18 +1411,48 @@ export class RouteAndRunResponseAssemblerService {
       humanizeFeasibilityMessageForUserZh(
         String(payload.clarificationMessage ?? response.result.answer_text ?? ''),
       );
-    response.result.answer_text = lead;
-    payload.clarificationMessage = lead;
+    const leadHtml =
+      sanitized[0]?.question_html ?? renderClarificationMarkdownToSafeHtml(lead);
+    const structuredCard = isStructuredClarificationChoiceCard(sanitized[0]);
+
+    if (structuredCard && sanitized[0]) {
+      const chatLead = resolveClarificationChatLead(sanitized[0]);
+      response.result.answer_text = chatLead;
+      (response.result as { answer_html?: string }).answer_html =
+        renderPlainClarificationChatLeadHtml(chatLead) || undefined;
+      payload.clarificationMessage = lead;
+      payload.clarification_render_format = 'markdown';
+      payload.clarification_display = {
+        format: 'html',
+        body_html: leadHtml,
+        body_markdown: lead,
+      };
+      payload.clarification_meta = {
+        suppress_chat_prose: true,
+        card_source: 'clarificationQuestions',
+      };
+    } else {
+      response.result.answer_text = lead;
+      (response.result as { answer_html?: string }).answer_html = leadHtml || undefined;
+      payload.clarificationMessage = lead;
+      payload.clarification_render_format = 'markdown';
+      if (leadHtml) {
+        payload.clarification_display = {
+          format: 'html',
+          body_html: leadHtml,
+          body_markdown: lead,
+        };
+      }
+    }
 
     response.route.ui_hint.status = UIStatus.AWAITING_CONFIRMATION;
     response.route.ui_hint.message = '需要您的确认';
 
     if (sanitized.length > 0) {
-      const coachDetail =
-        sanitized[0]?.question ??
-        humanizeFeasibilityMessageForUserZh(
-          String(payload.clarificationMessage ?? response.result.answer_text ?? ''),
-        );
+      const shortDetail = resolveClarificationShortStepDetail(sanitized[0]);
+      const detailHtml = structuredCard
+        ? renderPlainClarificationChatLeadHtml(resolveClarificationChatLead(sanitized[0]!))
+        : leadHtml || undefined;
       response.ui_state = {
         ...response.ui_state,
         phase: 'INTAKE',
@@ -1374,7 +1461,8 @@ export class RouteAndRunResponseAssemblerService {
         message: '请补充行程信息以继续',
         requires_user_action: true,
         estimated_time_remaining_ms: 0,
-        current_step_detail: coachDetail,
+        current_step_detail: shortDetail,
+        current_step_detail_html: detailHtml || undefined,
       };
       return;
     }
@@ -1799,15 +1887,36 @@ export class RouteAndRunResponseAssemblerService {
   }
 
   /** Iron Shield: API evidence_cards + parallel ui_display.evidence_cards_ui */
-  private buildIronShieldPayloadBlocks(state: OrchestratorState | undefined | null) {
+  private extractPlanningPhaseIntentForDecisionMetadata(
+    state: OrchestratorState | undefined,
+  ): { planning_phase_intent?: PlanningPhaseIntentDto } {
+    const raw = (state?.metadata as Record<string, unknown> | undefined)?.planning_phase_intent;
+    if (!raw || typeof raw !== 'object') return {};
+    return { planning_phase_intent: raw as PlanningPhaseIntentDto };
+  }
+
+  /** Iron Shield: API evidence_cards + parallel ui_display（含双轨行程单 / 交付 artifacts） */
+  private buildIronShieldPayloadBlocks(
+    state: OrchestratorState | undefined | null,
+    uiEnrichment?: Pick<
+      ClientUiEnrichmentInput,
+      'itinerary' | 'request' | 'robustnessDashboard' | 'resultOk' | 'narration' | 'bookingPayload'
+    >,
+  ) {
     const st = state === null ? undefined : state;
     return {
       decision_metadata: {
         evidence_cards: assembleDecisionEvidenceCards(st),
+        ...this.extractPlanningPhaseIntentForDecisionMetadata(st),
       },
-      ui_display: {
-        evidence_cards_ui: assembleEvidenceCardUIPropsFromState(st),
-      },
+      ui_display: enrichClientUiDisplay({
+        existingUiDisplay: {
+          evidence_cards_ui: assembleEvidenceCardUIPropsFromState(st),
+        },
+        state: st,
+        narration: uiEnrichment?.narration ?? (st?.narration as import('../../decision/kernel/interfaces/phase-executor.interface').NarrationLike | undefined),
+        ...uiEnrichment,
+      }),
     };
   }
 
@@ -2118,6 +2227,10 @@ export class RouteAndRunResponseAssemblerService {
     const crudFailed =
       this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult) &&
       !this.isItineraryItemCrudApplied(orchestrationResult);
+    const adjustApplyFailed =
+      this.isItineraryAdjustDraftApplyIntake(orchestrationResult) &&
+      !this.isItineraryAdjustDraftApplySucceeded(orchestrationResult);
+    const actionFailed = crudFailed || adjustApplyFailed;
 
     const explainUnifiedBundle = this.composeExplainUnifiedForClientPayload({
       requestId: request.request_id,
@@ -2149,7 +2262,7 @@ export class RouteAndRunResponseAssemblerService {
       ? 'TIMEOUT'
       : needsUserConfirmation
         ? 'NEED_MORE_INFO'
-        : crudFailed
+        : actionFailed
           ? 'FAILED'
           : orchestrationResult.success
             ? 'OK'
@@ -2174,7 +2287,7 @@ export class RouteAndRunResponseAssemblerService {
             ? UIStatus.FAILED
             : needsUserConfirmation
               ? UIStatus.AWAITING_CONFIRMATION
-              : crudFailed
+              : actionFailed
                 ? UIStatus.FAILED
                 : orchestrationResult.success
                   ? UIStatus.DONE
@@ -2183,7 +2296,7 @@ export class RouteAndRunResponseAssemblerService {
             ? '请求超时，请缩小范围或稍后重试。'
             : needsUserConfirmation
               ? '需要您的确认'
-              : crudFailed
+              : actionFailed
                 ? orchestrationResult.answerText || '未能更新行程'
                 : orchestrationResult.success
                   ? this.resolveSuccessUiHintMessage(orchestrationResult, consultationUi)
@@ -2282,7 +2395,12 @@ export class RouteAndRunResponseAssemblerService {
               }),
           ...(suppressIronShieldUi
             ? {}
-            : this.buildIronShieldPayloadBlocks(clientOrchestratorState)),
+            : this.buildIronShieldPayloadBlocks(clientOrchestratorState, {
+                itinerary: itineraryShellForPayload,
+                request,
+                resultOk: resultStatus === 'OK',
+                bookingPayload: this.resolveBookingPayloadForUiEnrichment(orchestrationResult),
+              })),
           ...(isTimeout ? { errorType: ErrorType.TIMEOUT_ERROR } : {}),
           ...(needsUserConfirmation
             ? {
@@ -2473,10 +2591,15 @@ export class RouteAndRunResponseAssemblerService {
             (response.result.payload as any).timeline,
             adjustScopedCards,
           );
-          /** 咨询/泛问类任务保留 LLM 正文（概览与风险提示），不因 POI 卡片压制长文或覆盖 answer_text */
+          /** 咨询/泛问/行程复盘类任务保留 LLM 正文（概览与风险提示），不因 POI 卡片压制长文或覆盖 answer_text */
           const proseFriendlyTaskTypes: readonly TaskType[] = ['DATA_LOOKUP', 'RAG_QA', 'GENERIC_QA'];
+          const reviewMsg = String(request.message ?? '').trim();
+          const isTripReviewQuery =
+            reviewMsg.length > 0 &&
+            isBoundTripLightConsultQuery(reviewMsg, reviewMsg.toLowerCase());
           const keepAnswerProse =
-            routingTaskType !== undefined && proseFriendlyTaskTypes.includes(routingTaskType);
+            isTripReviewQuery ||
+            (routingTaskType !== undefined && proseFriendlyTaskTypes.includes(routingTaskType));
           const adjustTargetDate = this.isItineraryAdjustSession(orchestrationResult, request)
             ? this.resolveItineraryAdjustTargetDate(orchestrationResult, request)
             : undefined;
@@ -2536,7 +2659,13 @@ export class RouteAndRunResponseAssemblerService {
       !needsUserConfirmation
     ) {
       const proseFriendlyTaskTypes: readonly TaskType[] = ['DATA_LOOKUP', 'RAG_QA', 'GENERIC_QA'];
-      const keepAnswerProse = routingTaskType !== undefined && proseFriendlyTaskTypes.includes(routingTaskType);
+      const reviewMsgOuter = String(request.message ?? '').trim();
+      const isTripReviewQueryOuter =
+        reviewMsgOuter.length > 0 &&
+        isBoundTripLightConsultQuery(reviewMsgOuter, reviewMsgOuter.toLowerCase());
+      const keepAnswerProse =
+        isTripReviewQueryOuter ||
+        (routingTaskType !== undefined && proseFriendlyTaskTypes.includes(routingTaskType));
       if (!keepAnswerProse && !this.isItineraryAdjustSession(orchestrationResult, request)) {
         const recBlock = this.buildRecommendationReasoningProse(
           stateWithVerdict as OrchestratorState | undefined,
@@ -2778,7 +2907,19 @@ export class RouteAndRunResponseAssemblerService {
             candidates: system1Result.result?.candidates || [],
             evidence: system1Result.result?.evidence || [],
             robustness: system1Result.result?.robustness || null,
-            ...this.buildIronShieldPayloadBlocks(clientOrchestratorState),
+            ...this.buildIronShieldPayloadBlocks(clientOrchestratorState, {
+              itinerary:
+                system1Result.result?.timeline?.length
+                  ? {
+                      request_id: request.request_id,
+                      days: system1Result.result.timeline,
+                      metadata: system1Result.result?.itinerary?.metadata,
+                    }
+                  : system1Result.result?.itinerary,
+              request,
+              resultOk: system1Result.success,
+              bookingPayload: this.resolveBookingPayloadForUiEnrichment(orchestrationResult),
+            }),
           },
         },
         explain: {
@@ -2862,12 +3003,16 @@ export class RouteAndRunResponseAssemblerService {
     const crudFailed =
       this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult) &&
       !this.isItineraryItemCrudApplied(orchestrationResult);
+    const adjustApplyFailedDyn =
+      this.isItineraryAdjustDraftApplyIntake(orchestrationResult) &&
+      !this.isItineraryAdjustDraftApplySucceeded(orchestrationResult);
+    const actionFailedDyn = crudFailed || adjustApplyFailedDyn;
 
     const resultStatus = isTimeout
       ? 'TIMEOUT'
       : needsUserConfirmation
         ? 'NEED_MORE_INFO'
-        : crudFailed
+        : actionFailedDyn
           ? 'FAILED'
           : orchestrationResult.success
             ? 'OK'
@@ -3016,7 +3161,7 @@ export class RouteAndRunResponseAssemblerService {
             ? UIStatus.FAILED
             : needsUserConfirmation
               ? UIStatus.AWAITING_CONFIRMATION
-              : crudFailed
+              : actionFailedDyn
                 ? UIStatus.FAILED
                 : orchestrationResult.success
                   ? UIStatus.DONE
@@ -3025,7 +3170,7 @@ export class RouteAndRunResponseAssemblerService {
             ? '请求超时，请缩小范围或稍后重试。'
             : needsUserConfirmation
               ? '需要您的确认'
-              : crudFailed
+              : actionFailedDyn
                 ? orchestrationResult.answerText || '未能更新行程'
                 : orchestrationResult.success
                   ? this.resolveSuccessUiHintMessage(orchestrationResult, consultationUi)
@@ -3231,7 +3376,12 @@ export class RouteAndRunResponseAssemblerService {
               }),
           ...(suppressIronShieldUiDyn
             ? {}
-            : this.buildIronShieldPayloadBlocks(clientOrchestratorStateDyn)),
+            : this.buildIronShieldPayloadBlocks(clientOrchestratorStateDyn, {
+                itinerary: itineraryShellDyn,
+                request,
+                resultOk: resultStatus === 'OK',
+                bookingPayload: this.resolveBookingPayloadForUiEnrichment(orchestrationResult),
+              })),
         } as any,
       },
       explain: {

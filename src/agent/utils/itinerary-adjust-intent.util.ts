@@ -22,10 +22,20 @@ export interface ItineraryAdjustDateRange {
 }
 
 function conflictsWithSlotPlacementIntent(t: string): boolean {
+  const daySelectionRe =
+    /哪一天|哪几天|哪些天|哪天|那几天|哪个行程|哪一程|安排在哪|加在哪|插在|放进|能否在.{0,24}安排|顺路/i;
+  const tripDayAnchorRe = /行程|第\s*\d+\s*天|D\s*\d+/i;
+  const activityPlacementRe =
+    /观鲸|胡萨维克|阿克雷里|极光|北极光|aurora|northern\s+lights|观测日|活动|安排/i;
+  if (
+    /(?:把|将).{0,12}(?:那|哪|几)\s*天.{0,16}(?:定为|设为|当作|作为).{0,16}(?:极光|北极光|观鲸|观测)/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
   return (
-    /哪一天|哪几天|哪个行程|哪一程|安排在哪|加在哪|插在|放进|能否在.{0,24}安排|顺路/i.test(t) &&
-    (/行程|第\s*\d+\s*天|D\s*\d+/i.test(t) ||
-      /观鲸|胡萨维克|阿克雷里|活动|安排/i.test(t))
+    daySelectionRe.test(t) && (tripDayAnchorRe.test(t) || activityPlacementRe.test(t))
   );
 }
 
@@ -89,6 +99,9 @@ export function detectExplicitSingleDayAdjustAnchor(
   const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
   if (!t.trim()) return false;
 
+  // 整段多日重规划（含「第6天改为返程日」「每天12:00午餐」等约束）优先于单日 CRUD/锚点启发式
+  if (hasFullTripReplanScopeSignals(t, dateRange)) return false;
+
   if (/明天|今天|今日|后天|大后天/.test(t)) return true;
 
   if (
@@ -100,7 +113,9 @@ export function detectExplicitSingleDayAdjustAnchor(
   }
 
   const explicitDayNumber = parseTripDayNumber(t);
-  if (explicitDayNumber != null && !/(?:各|每)\s*天/.test(t)) {
+  if (explicitDayNumber != null && !/(?:各|每)\s*(?:天|日)/.test(t)) {
+    // 「第6天改为返程日」等可能是整段重规划里的单日约束，勿误判为仅改该日
+    if (hasFullTripReplanScopeSignals(t, dateRange)) return false;
     return true;
   }
 
@@ -122,17 +137,11 @@ export function detectExplicitSingleDayAdjustAnchor(
   return false;
 }
 
-/**
- * 绑定 Trip 上的整段多日重规划（全周优化、逐日住宿/用餐等），与单日 ITINERARY_ADJUST 区分。
- */
-export function detectFullTripReplanIntent(
-  message: string,
+/** 话术是否指向绑定 Trip 上的整段多日重规划（非单日 ITINERARY_ADJUST） */
+function hasFullTripReplanScopeSignals(
+  t: string,
   dateRange?: ItineraryAdjustDateRange,
 ): boolean {
-  const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
-  if (!t.trim()) return false;
-  if (detectExplicitSingleDayAdjustAnchor(t, dateRange)) return false;
-
   if (detectFullTripLogisticsGapFillIntent(t, dateRange)) {
     return true;
   }
@@ -158,18 +167,38 @@ export function detectFullTripReplanIntent(
     /(?:生成|产出).{0,12}(?:新(?:的)?)?(?:行程|草案|方案)/.test(t);
 
   const hasMultiDayLogistics =
-    /(?:每日|每天|各日|各天|每晚|各晚).{0,16}(?:住宿|午餐|晚餐|用餐|过夜|城镇|行程|餐饮)/.test(t) ||
+    /(?:每日|每天|各日|各天|每晚|各晚).{0,16}(?:住宿|午餐|晚餐|用餐|过夜|城镇|行程|餐饮|车程|驾驶|补给)/.test(t) ||
     /(?:住宿|过夜|餐饮).{0,32}(?:午餐|晚餐|用餐|安排|预订)/.test(t) ||
     /(?:还缺|缺少|补齐|补上).{0,24}(?:住宿|餐饮|用餐)/.test(t) ||
     (/(?:强风|大风|天气)/i.test(t) &&
       /(?:每日|每天).{0,12}(?:车程|驾驶|安排|替换|调整)/.test(t));
 
+  const hasRouteCorridorReplan =
+    /(?:更改|调整|修改|变更|换成|改为).{0,20}(?:路线|目的地|行程线|走向|线路)/.test(t) ||
+    /(?:雷克雅未克|reykjavik).{0,48}(?:vik|维克|vík)|(?:vik|维克|vík).{0,48}(?:雷克雅未克|reykjavik)/i.test(
+      t,
+    );
+
   const hasReplanOrFill =
     hasReplanEdit ||
     hasMultiDayLogistics ||
+    hasRouteCorridorReplan ||
     /(?:帮我|请|麻烦).{0,24}(?:安排|补齐|补充|完善|规划).{0,32}(?:住宿|餐饮|用餐|行程)/.test(t);
 
   return hasReplanOrFill;
+}
+
+/**
+ * 绑定 Trip 上的整段多日重规划（全周优化、逐日住宿/用餐等），与单日 ITINERARY_ADJUST 区分。
+ */
+export function detectFullTripReplanIntent(
+  message: string,
+  dateRange?: ItineraryAdjustDateRange,
+): boolean {
+  const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
+  if (!t.trim()) return false;
+  if (detectExplicitSingleDayAdjustAnchor(t, dateRange)) return false;
+  return hasFullTripReplanScopeSignals(t, dateRange);
 }
 
 function messageDateSpanCoversTrip(
@@ -295,12 +324,13 @@ export function detectItineraryAdjustIntent(
     detectItineraryItemUpdateIntent(t);
 
   const hasExplicitEdit =
-    /(?:修改|调整|重排|替换|改行程|换酒店|换景点|优化|改写|重新安排|重新规划|更新|重写|重新生成|删除|移除|取消|去掉|删掉|删去|新增|添加|加上|加入|插入)/.test(
+    /(?:修改|调整|修正|纠正|修复|重排|替换|改行程|换酒店|换景点|优化|改写|重新安排|重新规划|更新|重写|重新生成|删除|移除|取消|去掉|删掉|删去|新增|添加|加上|加入|插入)/.test(
       t,
     ) ||
     /(?:生成|产出).{0,12}(?:新(?:的)?)?(?:行程|草案|方案)/.test(t) ||
-    /(?:将|把).{0,32}(?:行程|日程).{0,12}(?:更新|改为|调整|重排|替换)/.test(t) ||
-    /(?:根据|按照|依照).{0,24}?(?:刚才|先前|上文|前述|你).{0,40}?(?:分析|结论|建议|风险|预报)/.test(t);
+    /(?:将|把).{0,32}(?:行程|日程).{0,12}(?:更新|改为|调整|重排|替换|修正|修复)/.test(t) ||
+    /(?:根据|按照|依照).{0,24}?(?:刚才|先前|上文|前述|你|顾问).{0,40}?(?:分析|结论|建议|风险|预报)/.test(t) ||
+    /(?:路线|地理坐标|坐标).{0,16}?(?:错误|有误)|不可执行|拆分为.{0,8}天|拆成.{0,8}天/.test(t);
 
   const hasWeatherDrivenEdit =
     /(?:强风|大风|风速|风大|风小|室内(?:活动)?|天气(?:风险|预报)|恶劣天)/i.test(t) &&

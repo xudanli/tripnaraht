@@ -107,6 +107,7 @@ import { RagModule } from '../../rag/rag.module';
   ],
   exports: [
     ReadinessService,
+    CoverageMapService,
     PackStorageService,
     PackValidatorService,
     GeoFactsRiverService,

@@ -31,7 +31,13 @@ import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.se
 import { TripOrchestrationLockService } from './trip-orchestration-lock.service';
 import { AgentService } from './agent.service';
 import { runRouteAndRunMainChain } from './execution-gateway.route-and-run.orchestration';
+import { applyBoundTripReviewRouteAndRunOverrideInPlace } from '../utils/orchestration-signals.util';
 import { shouldRejectDedupForStaleTraceContract } from './execution-gateway-trace-compatibility.util';
+import {
+  attachRobustnessDashboardToResponse,
+  tryBuildRobustnessDashboard,
+} from '../utils/robustness-rollout-gateway.util';
+import { TripRobustnessDashboardService } from './trip-robustness-dashboard.service';
 import { GovernanceHydrationService } from '../../governance/activation/governance-hydration.service';
 import { randomUUID } from 'crypto';
 import { runWithLlmTraceContext } from '../../llm/token-context.storage';
@@ -74,12 +80,18 @@ export class ExecutionGatewayService {
     @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
     @Optional() readonly governanceHydration?: GovernanceHydrationService,
     @Optional() private readonly tripOrchestrationLock?: TripOrchestrationLockService,
+    @Optional() private readonly tripRobustnessDashboard?: TripRobustnessDashboardService,
   ) {}
 
   /**
    * Full route_and_run orchestration (stable deadline, dedup replay admission, policy routing, exec modes, recovery).
    */
   async runRouteAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
+    if (applyBoundTripReviewRouteAndRunOverrideInPlace(request)) {
+      this.logger.log(
+        `[ExecutionGateway] bound trip review → DATA_LOOKUP (skip state machine) request_id=${request.request_id}`,
+      );
+    }
     const requestId = request.request_id?.trim() || randomUUID();
     if (!request.request_id?.trim()) {
       request.request_id = requestId;
@@ -280,5 +292,31 @@ export class ExecutionGatewayService {
         time_remaining_ms: deadline.remainingMs(),
       },
     };
+  }
+
+  /**
+   * Post-orchestration enrichment: dual-dimension Robustness Rollout → observability + payload.
+   * Best-effort; failures are logged and do not fail the gateway response.
+   */
+  enrichResponseWithRobustnessRollout(
+    request: RouteAndRunRequestDto,
+    response: RouteAndRunResponseDto,
+  ): RouteAndRunResponseDto {
+    try {
+      const dashboard = tryBuildRobustnessDashboard(request, response);
+      if (!dashboard) {
+        return response;
+      }
+      this.logger.debug(
+        `[ExecutionGateway] robustness_rollout physical=${Math.round(dashboard.physical_robustness_score * 100)}% org=${Math.round(dashboard.organizational_robustness_score * 100)}% request_id=${request.request_id}`,
+      );
+      this.tripRobustnessDashboard?.scheduleCacheDashboard(request.trip_id, dashboard);
+      return attachRobustnessDashboardToResponse(response, dashboard);
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[ExecutionGateway] robustness_rollout skipped: ${err instanceof Error ? err.message : String(err)} request_id=${request.request_id}`,
+      );
+      return response;
+    }
   }
 }

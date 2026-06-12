@@ -274,6 +274,7 @@ function stubBundle(
     activeTripState: null,
     recoveryHistory: [],
     failurePatterns: [],
+    recentTripFeedbacks: [],
     loadedAt: new Date().toISOString(),
     observability: { layers: [] },
   } satisfies AgentMemoryContext;

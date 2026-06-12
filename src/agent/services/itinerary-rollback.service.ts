@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException, Optional } 
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditRecordService } from './audit-record.service';
+import { AlignmentTier3PersistenceService } from '../../trips/decision/services/alignment-tier3-persistence.service';
 
 function tripMetadataAfterRollback(metadata: unknown): Prisma.InputJsonValue {
   if (metadata == null || typeof metadata !== 'object' || Array.isArray(metadata)) {
@@ -70,6 +71,7 @@ export class ItineraryRollbackService {
   constructor(
     private readonly auditRecord: AuditRecordService,
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly alignmentTier3?: AlignmentTier3PersistenceService,
   ) {}
 
   /** Alias for {@link rollbackToRevision} (product: “Time Machine” one-shot). */
@@ -150,6 +152,15 @@ export class ItineraryRollbackService {
           },
         });
       }
+
+      this.alignmentTier3?.scheduleCapture({
+        tripId,
+        parentSnapshot: head.snapshot,
+        childSnapshot: cleaned,
+        audit,
+        revisionId: created.id,
+        source: 'itinerary-revision-regret',
+      });
 
       return {
         itinerary: cleaned,

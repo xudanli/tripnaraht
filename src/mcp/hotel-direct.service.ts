@@ -6,7 +6,16 @@
  * 支持用户级别的偏好存储和个性化推荐
  */
 
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
+import { QueryRewritingService } from '../agent/services/query-rewriting.service';
+import { QueryRewriteMetricsService } from '../agent/services/query-rewrite-metrics.service';
+import { bindQueryRewriteDownstreamSafe } from '../agent/utils/query-rewrite-metrics-bind.util';
+import { applyQueryRewriteToToolParams } from '../agent/utils/query-rewriting.util';
+import type { QueryRewriteProfile, QueryRewriteResult } from '../agent/utils/query-rewriting.types';
+import {
+  buildMultiRouteSearchQueries,
+  mergeMultiRouteResults,
+} from '../agent/utils/query-rewriting-multi-route.util';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import axios, { AxiosInstance } from 'axios';
@@ -24,6 +33,23 @@ export interface HotelSearchParams {
   checkOut?: string; // 退房日期（YYYY-MM-DD）
   guests?: number; // 入住人数
   language?: string; // 语言代码，默认 'en'
+  destination?: string; // 目的地（改写层补全/约束）
+  /** Query Rewriting 上下文；skipRewrite=true 时透传原 query（Agent 内部子任务控成本） */
+  rewriteContext?: {
+    selectedDestination?: string;
+    messageHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+    profile?: QueryRewriteProfile;
+    skipRewrite?: boolean;
+    tripStartYmd?: string;
+    tripEndYmd?: string;
+  };
+  /** PA / Dispatcher 已改写时跳过，避免重复 LLM 调用 */
+  skipQueryRewrite?: boolean;
+  /** 上游已完成的改写结果（用于多路召回，无需重复 LLM） */
+  queryRewriteResult?: QueryRewriteResult;
+  /** 是否基于 expansion_routes 并行多 query 召回（默认 true） */
+  multiRouteSearch?: boolean;
+  maxRoutesPerLane?: number;
 }
 
 export interface HotelDetails {
@@ -67,6 +93,8 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly queryRewritingService?: QueryRewritingService,
+    @Optional() private readonly queryRewriteMetrics?: QueryRewriteMetricsService,
   ) {
     this.apiKey = 
       this.configService.get<string>('GOOGLE_MAPS_API_KEY') || 
@@ -159,53 +187,85 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const searchParams: any = {
-        key: this.apiKey!,
-        language: params.language || 'en',
-      };
+      let effectiveParams: HotelSearchParams = { ...params };
+      let rewrite: QueryRewriteResult | undefined = params.queryRewriteResult;
 
-      // 构建查询字符串
-      if (params.query) {
-        searchParams.query = params.query;
-      } else {
-        searchParams.query = 'hotel';
+      if (
+        params.query &&
+        !params.skipQueryRewrite &&
+        !params.rewriteContext?.skipRewrite &&
+        this.queryRewritingService
+      ) {
+        try {
+          rewrite = await this.queryRewritingService.rewrite({
+            query: params.query,
+            scene: 'hotel',
+            profile: params.rewriteContext?.profile ?? 'user_facing',
+            session: {
+              selectedDestination:
+                params.rewriteContext?.selectedDestination ?? params.destination,
+              messageHistory: params.rewriteContext?.messageHistory,
+            },
+            spatioTemporal: {
+              tripStartYmd: params.rewriteContext?.tripStartYmd,
+              tripEndYmd: params.rewriteContext?.tripEndYmd,
+            },
+          });
+          effectiveParams = applyQueryRewriteToToolParams(
+            effectiveParams as Record<string, unknown>,
+            rewrite,
+          ) as HotelSearchParams;
+          this.logger.debug(
+            `Query rewrite(hotel): "${params.query.substring(0, 40)}" -> "${String(effectiveParams.query).substring(0, 80)}"`,
+          );
+        } catch (rewriteErr: unknown) {
+          const msg = rewriteErr instanceof Error ? rewriteErr.message : String(rewriteErr);
+          this.logger.warn(`酒店 Query rewrite 失败，透传原 query: ${msg}`);
+        }
       }
 
-      // 添加类型过滤（酒店）
-      searchParams.type = params.type || 'lodging';
+      const multiRouteEnabled = params.multiRouteSearch !== false;
+      const routes =
+        rewrite && multiRouteEnabled
+          ? buildMultiRouteSearchQueries(rewrite, {
+              maxPerRoute: params.maxRoutesPerLane ?? 2,
+            })
+          : [];
 
-      // 位置和半径
-      if (params.location) {
-        searchParams.location = `${params.location.lat},${params.location.lng}`;
-        searchParams.radius = params.radius || 10000; // 酒店搜索半径更大
-      }
-
-      // 使用 Text Search API
-      const response = await this.axiosInstance.get('/textsearch/json', {
-        params: searchParams,
-      });
-
-      if (response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
-        throw new Error(`Google Places API error: ${response.data.status} - ${response.data.error_message || 'Unknown error'}`);
-      }
-
-      let results = (response.data.results || []).map((place: any) => 
-        this.mapPlaceToHotel(place)
-      );
-
-      // 应用过滤条件
-      if (params.priceLevel) {
-        results = results.filter((h: HotelDetails) => 
-          h.priceLevel === params.priceLevel
+      if (routes.length > 1) {
+        const resultsMap = new Map<string, HotelDetails[]>();
+        await Promise.all(
+          routes.map(async (route) => {
+            const batch = await this.executeTextSearch({
+              ...effectiveParams,
+              query: route.query,
+            });
+            resultsMap.set(route.query, batch);
+          }),
         );
-      }
 
-      if (params.minRating) {
-        results = results.filter((h: HotelDetails) => 
-          h.rating && h.rating >= params.minRating!
+        let results = mergeMultiRouteResults(resultsMap, routes, 20, {
+          idFn: (h) => h.placeId,
+          scoreFn: (h) => h.rating ?? 0,
+        });
+        results = this.applyHotelFilters(results, effectiveParams);
+
+        this.logger.debug(
+          `酒店多路召回: routes=${routes.length}, merged=${results.length}`,
         );
+
+        this.bindHotelRewriteDownstream(rewrite, results.length);
+        return {
+          success: true,
+          results,
+          totalResults: results.length,
+        };
       }
 
+      let results = await this.executeTextSearch(effectiveParams);
+      results = this.applyHotelFilters(results, effectiveParams);
+
+      this.bindHotelRewriteDownstream(rewrite, results.length);
       return {
         success: true,
         results,
@@ -215,6 +275,59 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
       this.logger.error('Failed to search hotels:', error.message);
       throw error;
     }
+  }
+
+  private bindHotelRewriteDownstream(
+    rewrite: QueryRewriteResult | undefined,
+    totalResults: number,
+  ): void {
+    bindQueryRewriteDownstreamSafe(
+      this.queryRewriteMetrics,
+      {
+        traceId: rewrite?.pipeline?.trace_id,
+        totalResults,
+        downstreamScene: 'hotel',
+      },
+      this.logger,
+    );
+  }
+
+  /** 单次 Google Places Text Search */
+  private async executeTextSearch(params: HotelSearchParams): Promise<HotelDetails[]> {
+    const searchParams: Record<string, unknown> = {
+      key: this.apiKey!,
+      language: params.language || 'en',
+      query: params.query || 'hotel',
+      type: params.type || 'lodging',
+    };
+
+    if (params.location) {
+      searchParams.location = `${params.location.lat},${params.location.lng}`;
+      searchParams.radius = params.radius || 10000;
+    }
+
+    const response = await this.axiosInstance.get('/textsearch/json', {
+      params: searchParams,
+    });
+
+    if (response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
+      throw new Error(
+        `Google Places API error: ${response.data.status} - ${response.data.error_message || 'Unknown error'}`,
+      );
+    }
+
+    return (response.data.results || []).map((place: any) => this.mapPlaceToHotel(place));
+  }
+
+  private applyHotelFilters(results: HotelDetails[], params: HotelSearchParams): HotelDetails[] {
+    let filtered = results;
+    if (params.priceLevel) {
+      filtered = filtered.filter((h) => h.priceLevel === params.priceLevel);
+    }
+    if (params.minRating) {
+      filtered = filtered.filter((h) => h.rating && h.rating >= params.minRating!);
+    }
+    return filtered;
   }
 
   /**

@@ -1,7 +1,9 @@
 import type { OrchestratorState } from '../interfaces/trip-plan.interface';
 import {
+  extractPoiDigestFromItinerary,
   filterDecisionLogVerifyToDraftPois,
   filterVerifyIssuesToAdjustTarget,
+  formatItineraryDayPoiDigestZh,
   formatPoiSelectionOutputsAdjustZh,
   pruneStaleVerifyDecisionLogForAdjustTarget,
   captureItineraryAdjustBaselineSchedule,
@@ -24,6 +26,37 @@ describe('itinerary-adjust-decision-log', () => {
     expect(ctx.active).toBe(true);
     expect(ctx.targetDateIso).toBe('2026-06-02');
     expect(ctx.subIntent).toBe('strong_modification');
+  });
+
+  it('extractPoiDigestFromItinerary builds day → POI digest', () => {
+    const digest = extractPoiDigestFromItinerary({
+      days: [
+        {
+          date: '2026-11-01',
+          items: [{ type: 'POI', location_ref: { name: '冰河湖' } }],
+        },
+        {
+          date: '2026-11-02',
+          items: [
+            { type: 'POI', location_ref: { name: '钻石沙滩' } },
+            { type: 'DRIVE', location_ref: { name: 'ignore' } },
+          ],
+        },
+      ],
+    } as OrchestratorState['itinerary']);
+    expect(digest).toHaveLength(2);
+    expect(digest[0].poiNames).toEqual(['冰河湖']);
+    expect(digest[1].poiNames).toEqual(['钻石沙滩']);
+  });
+
+  it('formatItineraryDayPoiDigestZh renders concrete day lines', () => {
+    const text = formatItineraryDayPoiDigestZh([
+      { dayNumber: 1, dateIso: '2026-11-01', poiNames: ['冰河湖', '钻石沙滩'] },
+      { dayNumber: 2, dateIso: '2026-11-02', poiNames: ['维克'] },
+    ]);
+    expect(text).toContain('日程要点');
+    expect(text).toContain('第1天（11/1）冰河湖、钻石沙滩');
+    expect(text).toContain('第2天（11/2）维克');
   });
 
   it('formatPoiSelectionOutputsAdjustZh clarifies pool vs recall', () => {

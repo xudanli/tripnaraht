@@ -40,6 +40,13 @@ import {
   runGoldenPathCgusSearch,
   validateGoldenPathExperienceRoutingAudit,
 } from './golden-path-cgus.util';
+import { buildEmotionalContext } from '../../agent/narrator/emotion-narrator-orchestrator.util';
+import {
+  projectEmotionalContextForClient,
+  type EmotionalContextClientProjection,
+} from '../../agent/narrator/emotional-context-client-projection.util';
+import { buildAnchoringPresenceBlockZh } from '../../agent/narrator/anchoring-presence-narration.util';
+import type { EmotionalContext } from '../../agent/narrator/types/emotional-context.type';
 
 export type GoldenPathCgusResult = {
   incident: GoldenPathIncidentResult;
@@ -239,4 +246,33 @@ export function runGoldenPathDeliveryPhase(
   );
 
   return { logMetadata, narratorVoiceTone, ssePayloads };
+}
+
+export type GoldenPathEmotionalDeliveryAudit = {
+  emotionalContext: EmotionalContext;
+  clientProjection: EmotionalContextClientProjection;
+  anchoringBlock?: string;
+};
+
+/** Anchor 3.5 — 情绪矩阵 + 锚定叙事（风暴场景 DPO / BFF 守卫） */
+export function runGoldenPathEmotionalDeliveryAudit(
+  incident: GoldenPathIncidentResult,
+): GoldenPathEmotionalDeliveryAudit {
+  const doc = loadIcelandStormFixtureDoc();
+  const emotionalContext = buildEmotionalContext({
+    userId: 'user-golden-path',
+    tripId: 'trip_iceland_storm_001',
+    userEmotionalAccount: doc.user_emotional_account,
+    experienceFlow: incident.experienceFlow,
+    weatherWindLockActive: true,
+    lastUserMessage: '风暴封路了怎么办',
+  });
+
+  const clientProjection = projectEmotionalContextForClient(emotionalContext)!;
+  const anchoringBlock = buildAnchoringPresenceBlockZh(emotionalContext, {
+    weatherWindLockActive: true,
+    offlineMapsSynced: true,
+  });
+
+  return { emotionalContext, clientProjection, anchoringBlock };
 }

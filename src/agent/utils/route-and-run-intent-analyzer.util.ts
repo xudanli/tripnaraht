@@ -42,14 +42,28 @@ export type TripDaySnapshotForPlacement = {
   textBlob: string;
 };
 
-/** 用户是否在问「已有行程里哪一天/哪一程」 */
+/** 用户是否在问「已有行程里哪一天/哪一程」或要把某类体验落到具体日期 */
 export function detectItinerarySlotPlacementIntent(message: string): boolean {
   const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
   if (!t.trim()) return false;
+
+  const daySelectionRe =
+    /哪一天|哪几天|哪些天|哪天|那几天|哪个行程|哪一程|安排在哪|加在哪|插在|放进|能否在.{0,24}安排|顺路/i;
+  const tripDayAnchorRe = /行程|第\s*\d+\s*天|D\s*\d+/i;
+  const activityPlacementRe =
+    /观鲸|胡萨维克|阿克雷里|极光|北极光|aurora|northern\s+lights|观测日|活动|安排/i;
+
+  // 「我应该把那几天定为极光观测日」类：选日 + 体验类型（非整段 GENERAL_PLAN）
+  if (
+    /(?:把|将).{0,12}(?:那|哪|几)\s*天.{0,16}(?:定为|设为|当作|作为).{0,16}(?:极光|北极光|观鲸|观测)/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+
   return (
-    /哪一天|哪几天|哪个行程|哪一程|安排在哪|加在哪|插在|放进|能否在.{0,24}安排|顺路/i.test(t) &&
-    (/行程|第\s*\d+\s*天|D\s*\d+/i.test(t) ||
-      /观鲸|胡萨维克|阿克雷里|活动|安排/i.test(t))
+    daySelectionRe.test(t) && (tripDayAnchorRe.test(t) || activityPlacementRe.test(t))
   );
 }
 

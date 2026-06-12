@@ -10,8 +10,10 @@ import {
 } from './structured-intake-clarification.util';
 import type { ClarificationQuestion } from '../interfaces/clarification.interface';
 import type { DecisionLogEntry, GateResult, Itinerary } from '../interfaces/trip-plan.interface';
+import { attachClarificationMarkdownHtml } from './user-clarification-markdown.util';
 import { deriveGuardianPersonaVotes } from './guardian-persona-surface.util';
 import { filterGateViolationsAgainstItinerary } from './filter-stale-verify-violations.util';
+import { formatDecisionLogInputsDisplayZh, formatDecisionLogOutputsDisplayZh } from './decision-log-user-facing.zh.util';
 
 const VERIFY_CODE_LABEL_ZH: Record<string, string> = {
   ROUTE_INFEASIBLE: '路线与当前车型或路况条件不匹配（可能含高地 / F 路等限制路段）',
@@ -119,13 +121,23 @@ export function sanitizeVerificationIssueForClientDisplay(
  */
 export function sanitizeDecisionLogForClientDisplay(log: DecisionLogEntry[]): DecisionLogEntry[] {
   return log.map((entry) => {
-    if (entry.step !== 'VERIFY') return entry;
-    const issues = entry.metadata?.issues;
-    if (!Array.isArray(issues) || issues.length === 0) return entry;
+    const inputsDisplay = formatDecisionLogInputsDisplayZh(entry);
+    const outputsDisplay = formatDecisionLogOutputsDisplayZh(entry);
+    let withDisplay = entry;
+    if (inputsDisplay && inputsDisplay !== entry.inputs_summary) {
+      withDisplay = { ...withDisplay, inputs_summary: inputsDisplay };
+    }
+    if (outputsDisplay && outputsDisplay !== entry.outputs_summary) {
+      withDisplay = { ...withDisplay, outputs_summary: outputsDisplay };
+    }
+
+    if (withDisplay.step !== 'VERIFY') return withDisplay;
+    const issues = withDisplay.metadata?.issues;
+    if (!Array.isArray(issues) || issues.length === 0) return withDisplay;
     return {
-      ...entry,
+      ...withDisplay,
       metadata: {
-        ...entry.metadata,
+        ...withDisplay.metadata,
         issues: issues.map((i) =>
           sanitizeVerificationIssueForClientDisplay(
             i && typeof i === 'object' ? (i as Record<string, unknown>) : {},
@@ -317,11 +329,11 @@ export function sanitizeClarificationQuestionForClientDisplay(
   questionZh = dedupeRepeatedClarificationParagraphs(scrubInternalAgentLeakage(questionZh));
   const hintRaw = question.hint ? String(question.hint).trim() : '';
   const hint = hintRaw ? humanizeFeasibilityMessageForUserZh(hintRaw) : question.hint;
-  return {
+  return attachClarificationMarkdownHtml({
     ...question,
     question: questionZh,
     ...(hint ? { hint } : {}),
-  };
+  });
 }
 
 export function sanitizeClarificationQuestionsForClientDisplay(

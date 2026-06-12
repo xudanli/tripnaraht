@@ -1,4 +1,5 @@
 import {
+  extractDecisionLogTripContext,
   formatOptimizeInputsZh,
   formatOptimizeOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
@@ -43,11 +44,21 @@ export async function runOptimizePhase(
     });
   };
 
+  const tripCtx = extractDecisionLogTripContext({
+    tripPlanRequest: state.trip_plan_request,
+    userIntentDestination: decisionState.userIntent?.destination,
+    metadata: state.metadata as Record<string, unknown>,
+    itinerary: planDraft,
+  });
+
   state.decision_log.push({
     request_id: state.request_id,
     step: 'OPTIMIZE' as OrchestrationStep,
     actor: 'Orchestrator' as SubAgentType,
-    inputs_summary: formatOptimizeInputsZh(),
+    inputs_summary: formatOptimizeInputsZh({
+      dayCount: planDraft?.days?.length,
+      ctx: tripCtx,
+    }),
     outputs_summary: summarizeOptimizeOutputs(),
     evidence_refs: [],
     timestamp: new Date().toISOString(),

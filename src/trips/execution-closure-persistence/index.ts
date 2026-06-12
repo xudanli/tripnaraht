@@ -54,6 +54,25 @@ export {
   parseEcoIdentityLedgerFromTripMetadata,
   type EcoIdentityLedgerWireEnvelope,
 } from './eco-identity-ledger-serialization';
+export {
+  ALIGNMENT_TIER3_SCHEMA_V1,
+  ALIGNMENT_TIER3_METADATA_KEY,
+  ALIGNMENT_TIER3_REVISION_KEY,
+  ALIGNMENT_TIER3_MAX_TUPLES,
+  serializeAlignmentTier3ForTripMetadata,
+  parseAlignmentTier3FromTripMetadata,
+  computeRmHintsFromTuples,
+  appendTupleToAlignmentEnvelope,
+  type AlignmentTier3WireEnvelope,
+  type AlignmentTier3RmHints,
+} from './alignment-tier3-serialization';
+export { captureAlignmentTupleFromRevision, listRemovedItemIds } from './capture-alignment-tuple.util';
+export { buildExecutionIRFromSnapshot, snapshotToItineraryLike } from './build-execution-ir-from-itinerary.util';
+export {
+  loadAlignmentTier3Bundle,
+  mergeAlignmentTupleIntoTripMetadata,
+  extractRmHintsFromTripMetadata,
+} from './persist-alignment-tier3';
 export { isEcoLedgerDbPersistenceSkipped } from './eco-ledger-db-policy';
 export { hydrateEcoLedgerIntoTripWorldState } from './hydrate-eco-ledger-into-state';
 export { applyEcoLedgerTripContext } from './apply-eco-ledger-trip-context';

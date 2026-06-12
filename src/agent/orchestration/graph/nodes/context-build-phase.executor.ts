@@ -1,5 +1,6 @@
 import type { OrchestrationStep, SubAgentType } from '../../../interfaces/trip-plan.interface';
 import {
+  extractDecisionLogTripContext,
   formatContextBuildInputsZh,
   formatContextBuildOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
@@ -38,6 +39,12 @@ export async function runContextBuildPhase(
     requestId: decisionState.systemState?.requestId ?? state.request_id,
   };
 
+  const tripCtx = extractDecisionLogTripContext({
+    tripPlanRequest: state.trip_plan_request,
+    userIntentDestination: decisionState.userIntent?.destination,
+    metadata: state.metadata as Record<string, unknown>,
+  });
+
   try {
     const { newState, contextPackage: pkg } = await host.decisionKernel.executeContextBuild(
       decisionState,
@@ -47,7 +54,7 @@ export async function runContextBuildPhase(
       request_id: state.request_id,
       step: 'CONTEXT_BUILD' as OrchestrationStep,
       actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: formatContextBuildInputsZh(),
+      inputs_summary: formatContextBuildInputsZh(request.message, tripCtx),
       outputs_summary: formatContextBuildOutputsZh((pkg as { blocks?: unknown[] })?.blocks?.length ?? 0, !pkg),
       evidence_refs: [],
       timestamp: new Date().toISOString(),
@@ -62,7 +69,7 @@ export async function runContextBuildPhase(
       request_id: state.request_id,
       step: 'CONTEXT_BUILD' as OrchestrationStep,
       actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: formatContextBuildInputsZh(),
+      inputs_summary: formatContextBuildInputsZh(request.message, tripCtx),
       outputs_summary: `上下文包构建失败：${msg || '未知错误'}`,
       evidence_refs: [],
       timestamp: new Date().toISOString(),

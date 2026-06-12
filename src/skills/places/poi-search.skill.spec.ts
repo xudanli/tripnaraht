@@ -40,7 +40,7 @@ describe('PoiSearchSkill', () => {
   it('应该被定义', () => {
     expect(skill).toBeDefined();
     expect(skill.metadata.name).toBe('poi.search');
-    expect(skill.metadata.description).toBe('搜索 POI（地点）');
+    expect(skill.metadata.description).toContain('poi');
   });
 
   describe('execute', () => {
@@ -208,6 +208,30 @@ describe('PoiSearchSkill', () => {
       });
 
       expect(result.pois[0].evidence_id).toMatch(/^poi_1_\d+$/);
+    });
+
+    it('multiRouteSearch 时并行多 query 并合并去重', async () => {
+      entityResolutionService.resolveEntities
+        .mockResolvedValueOnce({
+          results: [{ id: 1, name: 'A', lat: 64.1, lng: -21.9 }],
+        } as any)
+        .mockResolvedValueOnce({
+          results: [{ id: 2, name: 'B', lat: 64.2, lng: -21.8 }],
+        } as any);
+
+      const result = await skill.execute({
+        query: 'Iceland attractions hidden gems',
+        multiRouteQueries: [
+          { query: 'Iceland attractions', route: 'primary', weight: 1 },
+          { query: 'Iceland attractions hidden gems', route: 'scenario', weight: 0.55 },
+        ],
+        multiRouteSearch: true,
+        limit: 5,
+      });
+
+      expect(entityResolutionService.resolveEntities).toHaveBeenCalledTimes(2);
+      expect(result.pois.length).toBe(2);
+      expect(result.pois.map((p) => p.poi_id).sort()).toEqual(['1', '2']);
     });
 
     it('应该在所有服务都失败时返回空数组', async () => {

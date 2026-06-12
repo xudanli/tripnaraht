@@ -123,3 +123,42 @@ export function buildCorridorDayApplyEdits(params: {
 
   return { edits, deleteIds, addCount, unresolvedItems };
 }
+
+/** 只追加 POI，不删除既有行程项（POI_SLOT_FILL / SEMI_AUTO） */
+export function buildAppendOnlyDayApplyEdits(params: {
+  tripDayId: string;
+  tripDayDate: Date | string | null | undefined;
+  items: ItineraryItem[];
+  resolvePlaceId: (item: ItineraryItem) => number | undefined;
+}): {
+  edits: CorridorApplyEdit[];
+  addCount: number;
+  unresolvedItems: string[];
+} {
+  const edits: CorridorApplyEdit[] = [];
+  const unresolvedItems: string[] = [];
+  let addCount = 0;
+
+  for (const item of params.items) {
+    const placeId = params.resolvePlaceId(item);
+    if (placeId == null) {
+      unresolvedItems.push(item.location_ref?.name ?? item.id);
+      continue;
+    }
+    const windows = toIsoVisitWindows(params.tripDayDate, item.start_window, item.end_window);
+    if (!windows) {
+      unresolvedItems.push(`${item.location_ref?.name ?? item.id}:invalid_time`);
+      continue;
+    }
+    edits.push({
+      type: 'add',
+      tripDayId: params.tripDayId,
+      placeId,
+      startTime: windows.startTime,
+      endTime: windows.endTime,
+    });
+    addCount++;
+  }
+
+  return { edits, addCount, unresolvedItems };
+}

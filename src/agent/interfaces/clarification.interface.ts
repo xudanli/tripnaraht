@@ -80,8 +80,10 @@ export interface ConditionalInputField {
 export interface ClarificationQuestion {
   /** 问题 ID（唯一标识） */
   id: string;
-  /** 问题文本（用户看到的问题） */
+  /** 问题文本（用户看到的问题，Markdown） */
   question: string;
+  /** 可选：`question` 的安全 HTML 渲染（前端优先用此字段 v-html 展示） */
+  question_html?: string;
   /** 问题类型 */
   type: ClarificationQuestionType;
   /** 选项列表（用于 single_choice 和 multi_choice），支持 string[] 或 { value, label }[] */

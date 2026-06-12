@@ -20,7 +20,12 @@ import { buildTravelOntologyStateFromOrchestrator } from '../decision/kernel/tra
 import { Public } from '../auth/decorators/public.decorator';
 import { ConfirmNegotiationResponseDto, NegotiationResolutionDto } from './dto/confirm-negotiation.dto';
 import { RevisionTimelineResponseDto } from './dto/itinerary-revision-timeline.dto';
+import { TripRobustnessDashboardResponseDto } from './dto/trip-robustness-dashboard.dto';
 import { ItineraryRollbackRequestDto, ItineraryRollbackResponseDto } from './dto/itinerary-rollback.dto';
+import {
+  ApplyBookingCartActionRequestDto,
+  ApplyBookingCartActionResponseDto,
+} from './dto/booking-cart-checkout.dto';
 import { LogDecisionRequestDto, LogDecisionResponseDto } from './dto/log-decision.dto';
 import {
   ConflictStrategyOptionsRequestDto,
@@ -515,6 +520,29 @@ export class AgentController {
   }
 
   @Public()
+  @Post('booking_cart/apply')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '预订购物车状态流转',
+    description: `
+客户端回传 \`route_and_run\` 产出的 \`ui_display.booking_cart\` 快照，执行：
+- \`update_selection\`：更新选中条目（同 slot 仅一项）
+- \`apply_saving\`：应用 \`savings_opportunities[saving_index]\` 换选
+- \`confirm_ready\`：确认可 checkout（超预算需 \`acknowledge_over_budget\`）
+- \`submit_checkout\`：提交预订意向，返回 deep_links
+
+**注意**：采样报价，TripNara 不代扣款；跳转外部供应商完成支付。
+    `.trim(),
+  })
+  @ApiBody({ type: ApplyBookingCartActionRequestDto })
+  @ApiResponse({ status: 200, type: ApplyBookingCartActionResponseDto })
+  applyBookingCartAction(
+    @Body() input: ApplyBookingCartActionRequestDto,
+  ): ApplyBookingCartActionResponseDto {
+    return this.agentService.applyBookingCartAction(input);
+  }
+
+  @Public()
   @Post('log_decision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -539,6 +567,24 @@ export class AgentController {
   @ApiResponse({ status: 404, description: 'Revision 不存在' })
   async getNegotiationRevision(@Param('revisionId') revisionId: string) {
     return await this.agentService.getNegotiationRevisionSnapshot(revisionId);
+  }
+
+  @Public()
+  @Get('trip/:tripId/robustness_dashboard')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Robustness Dashboard（物理 + 组织双维）',
+    description:
+      '返回 tripnara.trip_robustness_dashboard@v1：rollout 双曲线、bottleneck cards、Alignment Tier-3 因果 tuple 摘要。优先读 Trip.metadata 缓存；?recompute=1 强制重算。',
+  })
+  @ApiResponse({ status: 200, type: TripRobustnessDashboardResponseDto })
+  async getTripRobustnessDashboard(
+    @Param('tripId') tripId: string,
+    @Req() req: Request,
+  ): Promise<TripRobustnessDashboardResponseDto> {
+    const forceRecompute =
+      String((req.query as Record<string, unknown>)?.recompute ?? '') === '1';
+    return await this.agentService.getTripRobustnessDashboard(tripId, { forceRecompute });
   }
 
   @Public()

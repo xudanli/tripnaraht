@@ -4,11 +4,12 @@
 
 import type { CorridorFallbackLevel } from './itinerary-adjust-corridor-fallback.util';
 import type { CorridorFilterStats } from './itinerary-adjust-corridor-fallback.util';
+import { detectPoiSlotFillIntent } from './itinerary-adjust-poi-slot-fill.util';
 import { stripSystemMessageBlocksForIntakeNl } from './trip-plan-intake-vehicle.util';
 
-export type ItineraryAdjustSubIntent = 'exploratory' | 'strong_modification';
+export type ItineraryAdjustSubIntent = 'exploratory' | 'strong_modification' | 'poi_slot_fill';
 
-export type ItineraryAdjustExecutionMode = 'AUTO' | 'ADVICE_ONLY';
+export type ItineraryAdjustExecutionMode = 'AUTO' | 'SEMI_AUTO' | 'ADVICE_ONLY';
 
 export const HIGH_CONFIDENCE_CORRIDOR_FALLBACK_LEVELS: readonly CorridorFallbackLevel[] = [
   'baseline_50km',
@@ -38,6 +39,8 @@ const STRONG_MODIFICATION_PATTERNS: RegExp[] = [
 export function classifyItineraryAdjustSubIntent(message: string): ItineraryAdjustSubIntent {
   const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
   if (!t.trim()) return 'exploratory';
+
+  if (detectPoiSlotFillIntent(t)) return 'poi_slot_fill';
 
   const exploratory = EXPLORATORY_PATTERNS.some((re) => re.test(t));
   const strong = STRONG_MODIFICATION_PATTERNS.some((re) => re.test(t));
@@ -116,7 +119,12 @@ export function evaluateItineraryAdjustConfidenceGate(
 export function resolveItineraryAdjustExecutionMode(params: {
   subIntent: ItineraryAdjustSubIntent;
   highConfidence: boolean;
+  /** POI_SLOT_FILL：全部新增项已绑定 place_id 时可 SEMI_AUTO 追加落库 */
+  poiSlotFillReady?: boolean;
 }): ItineraryAdjustExecutionMode {
+  if (params.subIntent === 'poi_slot_fill' && params.poiSlotFillReady) {
+    return 'SEMI_AUTO';
+  }
   if (params.subIntent === 'strong_modification' && params.highConfidence) {
     return 'AUTO';
   }
@@ -138,6 +146,9 @@ export function buildItineraryAdjustAutoApplyLeadMessage(params: {
   if (params.applied && params.executionMode === 'AUTO') {
     return `已为你重新规划并更新${dayLabel}行程。`;
   }
+  if (params.applied && params.executionMode === 'SEMI_AUTO') {
+    return `已根据你的行程向空档日追加了推荐景点，左侧时间轴已同步。`;
+  }
   if (params.executionMode === 'ADVICE_ONLY') {
     return `已为你生成${dayLabel}的优化草案，确认后可在工作台应用至正式行程。`;
   }
@@ -154,11 +165,18 @@ export function buildItineraryAdjustActionExecutionPayload(metadata: Record<stri
     (metadata.itinerary_adjust_execution_mode as ItineraryAdjustExecutionMode | undefined) ??
     'ADVICE_ONLY';
   const autoApply = metadata.itinerary_adjust_auto_apply as { applied?: boolean } | undefined;
-  const applied = autoApply?.applied === true && mode === 'AUTO';
+  const applied =
+    autoApply?.applied === true && (mode === 'AUTO' || mode === 'SEMI_AUTO');
 
   return {
     mode,
-    status: applied ? 'SUCCEEDED' : mode === 'AUTO' ? 'PENDING_CONFIRM' : 'NOT_STARTED',
+    status: applied
+      ? 'SUCCEEDED'
+      : mode === 'AUTO'
+        ? 'PENDING_CONFIRM'
+        : mode === 'SEMI_AUTO'
+          ? 'PENDING_CONFIRM'
+          : 'NOT_STARTED',
     requires_confirmation_count: applied ? 0 : mode === 'ADVICE_ONLY' ? 0 : 1,
     itinerary_adjust_auto_apply: autoApply,
   };

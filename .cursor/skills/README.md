@@ -25,6 +25,7 @@
 | `/team` | 角色映射与小队提示词 | **`org/decision-platform-roles/SKILL.md`** |
 | `/rl` | 强化学习与 RL 基础设施 | `capabilities/rl/SKILL.md` |
 | `/rag` | RAG / Chunk 检索与索引 | `capabilities/rag/SKILL.md` |
+| `/intent` | route_and_run 意图识别（改排对话可自动挂载；整段 vs 单日） | `capabilities/intent/SKILL.md` |
 | `/org` | 组织与能力体系总纲 | **`org/tripnara-org-capability-system/SKILL.md`** |
 
 完整长文仍在各 **`capabilities/<name>/SKILL.md`**；也可用 **`@`** 引用该文件。

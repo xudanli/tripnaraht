@@ -18,6 +18,7 @@ import { LlmService } from '../../../../llm/services/llm.service';
 import { LlmProvider } from '../../../../llm/dto/llm-request.dto';
 import { McpToolRegistryService, McpToolDefinition } from './mcp-tool-registry.service';
 import { LlmToolSelectorService, ToolSelection } from './llm-tool-selector.service';
+import { isBoundTripLightConsultQuery } from '../../../utils/orchestration-signals.util';
 
 /**
  * 路由目标
@@ -222,6 +223,19 @@ export class SmartRouterService {
     sessionState?: RouterSessionState
   ): Promise<RoutingResult> {
     this.logger.debug(`智能路由分析: message="${message.substring(0, 50)}...", selectedDestination=${sessionState?.selectedDestination || 'none'}, tripId=${sessionState?.tripId || 'none'}`);
+
+    if (
+      sessionState?.tripId &&
+      isBoundTripLightConsultQuery(message, message.toLowerCase())
+    ) {
+      return {
+        target: 'chat',
+        confidence: 0.95,
+        reason: 'Trip light consult (review or lodging+dining plan) in planning workbench',
+        reasonCN: '行程复盘/住宿餐饮方案问法，走咨询分析而非生成方案',
+        extractedParams: { tripId: sessionState.tripId, naturalLanguage: message },
+      };
+    }
 
     try {
       // 方法0: 先进行快速关键词检查（确保具体服务请求优先匹配）

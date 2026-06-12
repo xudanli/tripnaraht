@@ -616,6 +616,34 @@ context: {
 
 后端会把库内 `TripDay` + `Place` 名称注入 LLM；分析/预算须与草案一致。深度分析更推荐走 `route_and_run` 且 `conversation_context.context_type: 'active_trip_summary'`（与编排 VERIFY 同源）。
 
+## 澄清卡 Markdown 渲染（`NEED_MORE_INFO`）
+
+INTAKE 结构化澄清（含极光选日 `itinerary_slot_placement_v1`）**完整正文只在黄色澄清卡**；聊天气泡为一句短 lead，避免重复。
+
+| 字段 | 用途 |
+|------|------|
+| `payload.clarification_meta.suppress_chat_prose` | `true` 时气泡**仅**渲染 `answer_text`（短句），勿再渲染 `clarification_display` |
+| `payload.clarificationQuestions[0].question_html` | **澄清卡正文**（优先 HTML） |
+| `payload.clarification_display.body_html` | 与 `question_html` 同源，供卡片组件 |
+| `result.answer_text` / `answer_html` | 短 lead（如「已识别为极光观测日选日，请在下方卡片中选择合适日期。」） |
+| `ui_state.current_step_detail` | 进度条短提示；`current_step_detail_html` 不再用于卡片正文 |
+
+**前端实现**：
+
+```tsx
+const meta = payload.clarification_meta;
+const cardHtml = payload.clarificationQuestions?.[0]?.question_html
+  ?? payload.clarification_display?.body_html;
+
+// 聊天气泡
+<div dangerouslySetInnerHTML={{ __html: result.answer_html ?? result.answer_text }} />
+
+// 黄色澄清卡（仅一处渲染完整正文）
+{cardHtml && <ClarificationCard html={cardHtml} options={payload.clarificationQuestions?.[0]?.options} />}
+```
+
+选项按钮仍读 `clarificationQuestions[].options`（`PLACE_ON_D3` 等）。
+
 ## 规划工作台：时间轴与智能体「可执行性」对齐
 
 ### 问题现象
@@ -738,11 +766,40 @@ await routeAndRun({
     itinerary_adjust_draft_snapshot: {
       target_date_iso: adjust.target_date_iso,
       target_day_number: adjust.target_day_number,
+      apply_mode: 'replace_day',
       items: payload.timeline.find((d) => d.date === adjust.target_date_iso)?.items,
     },
   },
 });
 // 成功后刷新 Trip 时间轴（GET trip days），并切换到目标日 view
+
+// POI_SLOT_FILL（「推荐适合加入的景点」）：多稀疏日追加模式
+// - SEMI_AUTO 成功时无需点 Apply；失败时读 payload.itinerary_adjust_apply_result
+// - 多日落库请传 days[] + apply_mode: 'append_sparse_days'
+const sparseDays = payload.timeline.filter((d) =>
+  (d.items?.length ?? 0) <= 2, // 与后端稀疏日阈值对齐的 UI 近似
+);
+await routeAndRun({
+  trip_id: tripId,
+  message: '应用到行程',
+  options: {
+    entry_point: 'planning_workbench',
+    apply_itinerary_adjust_draft: true,
+    durable_trip_run_id: lastResponse.durable?.trip_run_id,
+    itinerary_adjust_draft_snapshot: {
+      apply_mode: 'append_sparse_days',
+      target_date_iso: sparseDays[0]?.date ?? adjust.target_date_iso,
+      days: sparseDays.map((d) => ({
+        date_iso: d.date,
+        items: d.items,
+      })),
+    },
+  },
+});
+const applyResult = routeAndRun.result?.payload?.itinerary_adjust_apply_result;
+if (applyResult && !applyResult.applied) {
+  showErrorBanner(applyResult.answer_text ?? applyResult.reason ?? '未能写入行程');
+}
 
 // 工作台正在查看某一天时，只展示该日的可执行性（避免全周 6 条冰河湖重复卡片）
 const selectedDate = workbenchUi.selectedDayDate; // 如 '2026-06-02'

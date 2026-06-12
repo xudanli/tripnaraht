@@ -17,6 +17,7 @@ describe('MemoryContextAssemblerService (L0 userBasics)', () => {
           useValue: {
             getUserTravelProfile: jest.fn().mockResolvedValue(createDefaultUserTravelProfile(userId)),
             getUserRouteDirectionDecisions: jest.fn().mockResolvedValue([]),
+            getUserTripFeedbacksTail: jest.fn().mockResolvedValue([]),
           },
         },
         {

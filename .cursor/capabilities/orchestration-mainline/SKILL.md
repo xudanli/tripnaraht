@@ -45,6 +45,7 @@ description: >-
 
 - 决策内核：`decision-kernel-engineering`
 - VERIFY：`verify-mainline`
+- route_and_run 意图识别：`route-and-run-intent`（**`/intent`**）
 - 优化与搜索：`optimization-candidate-search`（及 `cgus-engineering`）
 - 回放与评估：`replay-evaluation`
 - 角色映射与可复制提示词：`decision-platform-roles`

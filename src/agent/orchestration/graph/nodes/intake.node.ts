@@ -72,6 +72,7 @@ export async function runIntakePrePlanSegment(
       userId: request.user_id,
       state,
       request,
+      promMetrics: host.promMetrics,
     });
     if (!shouldTerminalAfterItineraryAdjustDraftApply(state)) {
       await host.executeIntakeStep(request, context, state, llmProvider);

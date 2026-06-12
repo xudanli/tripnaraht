@@ -7,6 +7,6 @@
 | `orchestration-mainline.md` | INTAKE→…→NARRATE 与编排主线 |
 | `verify-mainline.md` | VERIFY 与可行性 |
 | `replay-evaluation-flow.md` | 回放 / golden / 报告 |
-| `route-and-run-mainline.md` | `route_and_run`、Harness、评测脚本索引 |
+| `route-and-run-mainline.md` | `route_and_run`、意图识别（`/intent`）、Harness、评测脚本索引 |
 
 分层说明：**`.cursor/STRUCTURE.md`**

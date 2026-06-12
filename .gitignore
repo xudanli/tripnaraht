@@ -73,6 +73,7 @@ data/geographic/dem/**/*
 # Misc
 .cache/
 .temp/
+.local/qdrant/
 data/backups/*.dump
 data/backups/*.sql
 

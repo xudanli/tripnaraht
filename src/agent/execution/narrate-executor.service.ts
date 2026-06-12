@@ -26,9 +26,20 @@ import {
 import { ConstraintsEngineService } from '../training/services/constraints-engine.service';
 import { resolveWallHitDistanceMsForConstraints } from '../utils/wall-hit-distance.util';
 import { mergeOptimizationDecisionNarration } from './merge-optimization-decision-narration.util';
+import { mergePlanningPhaseIntentIntoNarration } from '../utils/planning-intent-narrate.util';
+import { mergeLegEvidenceIntoNarration } from '../utils/narrate-leg-evidence.util';
+import { mergePoiPitfallIntoNarration } from '../utils/poi-pitfall-insight.util';
+import { PoiPitfallInsightService } from '../services/poi-pitfall-insight.service';
 import { compileCausalNarrative } from '../../trips/decision/narration/causal-narrative-compiler.service';
 import type { DecisionLogEntry as KernelDecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
 import type { TimeDrift } from '../../trips/decision/temporal/time-drift.types';
+import { EmotionNarratorOrchestrator } from '../narrator/services/emotion-narrator-orchestrator.service';
+import { applyEmotionalContextToNarration } from '../utils/apply-emotional-context-to-narration.util';
+import { mergeAnchoringPresenceIntoNarration } from '../narrator/anchoring-presence-narration.util';
+import { attachAgentMemorySnapshotToOrchestratorState } from '../memory/utils/agent-memory-snapshot.util';
+import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
+import type { EmotionalContext } from '../narrator/types/emotional-context.type';
+import { persistEmotionalContextToOrchestratorMetadata } from '../narrator/emotional-orchestrator-metadata.util';
 
 @Injectable()
 export class NarrateExecutorService implements INarrateExecutor {
@@ -37,6 +48,9 @@ export class NarrateExecutorService implements INarrateExecutor {
   constructor(
     @Optional() private readonly narratorAgent?: ClaudeNarratorAgentService,
     @Optional() private readonly constraintsEngine?: ConstraintsEngineService,
+    @Optional() private readonly poiPitfallInsight?: PoiPitfallInsightService,
+    @Optional() private readonly emotionNarratorOrchestrator?: EmotionNarratorOrchestrator,
+    @Optional() private readonly agentMemoryContextStore?: AgentMemoryContextStore,
   ) {}
 
   async execute(
@@ -82,12 +96,33 @@ export class NarrateExecutorService implements INarrateExecutor {
         partyNoteZh,
       });
 
+      let emotionalContext: EmotionalContext | undefined;
+      if (this.emotionNarratorOrchestrator) {
+        try {
+          attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+          emotionalContext = this.emotionNarratorOrchestrator.buildFromNarrateContext({
+            dso,
+            ctx,
+            state,
+          });
+        } catch (e: unknown) {
+          this.logger.debug(
+            `[NarrateExecutor] emotional context skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
+      if (emotionalContext) {
+        persistEmotionalContextToOrchestratorMetadata(state, emotionalContext);
+      }
+
       const stateForNarrate = {
         ...state,
         ...(escalation ? { kernel_escalation_plan: escalation } : {}),
         ...(ctx.researchConflict ? { narration_research_conflict: ctx.researchConflict } : {}),
         ...(causalCompiled ? { kernel_causal_narrative_compile: causalCompiled } : {}),
         ...(dso.optimizationHints ? { kernel_optimization_hints: dso.optimizationHints } : {}),
+        ...(emotionalContext ? { emotional_context: emotionalContext } : {}),
       } as OrchestratorState;
 
       let narration = (await this.narratorAgent.narrate(
@@ -106,6 +141,32 @@ export class NarrateExecutorService implements INarrateExecutor {
         narration = mergeOptimizationDecisionNarration(narration, dso.optimizationHints);
       }
       narration = this.mergeCausalProtectionNarration(narration, dso, state);
+      narration = mergePlanningPhaseIntentIntoNarration(narration, state);
+      narration = mergeLegEvidenceIntoNarration(narration, state.itinerary, state, dso);
+
+      if (this.poiPitfallInsight) {
+        try {
+          const country =
+            (dso.environmentState?.countryCode as string | undefined) ??
+            (state.trip_plan_request as { destination?: string | { country_code?: string } } | undefined)
+              ?.destination;
+          const countryCode =
+            typeof country === 'string'
+              ? country.slice(0, 2).toUpperCase()
+              : typeof country === 'object' && country?.country_code
+                ? String(country.country_code).slice(0, 2).toUpperCase()
+                : undefined;
+          const pitfallCards = await this.poiPitfallInsight.resolveForItinerary(
+            state.itinerary,
+            countryCode,
+          );
+          narration = mergePoiPitfallIntoNarration(narration, pitfallCards);
+        } catch (e: unknown) {
+          this.logger.debug(
+            `[NarrateExecutor] poi pitfall skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
 
       if (state.metadata && typeof state.metadata === 'object') {
         const m = state.metadata as Record<string, unknown>;
@@ -284,6 +345,22 @@ export class NarrateExecutorService implements INarrateExecutor {
           warnings.unshift(core);
         }
         narration = { ...narration, tips, warnings };
+      }
+
+      if (emotionalContext) {
+        narration = applyEmotionalContextToNarration(
+          narration,
+          emotionalContext,
+          ctx.researchConflict,
+          state.research_data as Record<string, unknown> | undefined,
+        );
+        narration = mergeAnchoringPresenceIntoNarration(narration, emotionalContext, {
+          escalationSnippet: escalation?.userClarificationSnippet,
+          weatherWindLockActive: emotionalContext.ambienceSignals.weatherWindLockActive,
+          offlineMapsSynced: Boolean(
+            (state.metadata as Record<string, unknown> | undefined)?.offline_maps_synced,
+          ),
+        });
       }
 
       const hint = dso.poiPlanning?.narrationHint;

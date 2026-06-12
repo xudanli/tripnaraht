@@ -238,7 +238,7 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
   // 推断各项信号（intent_mode 非 AUTO 时覆盖 taskType）
   const inferredTaskType = inferTaskType(req.trip_id, msg, msgLower);
   let taskType = inferredTaskType;
-  taskType = applyIntentModeToTaskType(intent_mode_requested, taskType);
+  taskType = applyIntentModeToTaskType(intent_mode_requested, taskType, req);
   /** 前端「深度思考」等场景常误传 intent_mode=GENERIC_QA；已绑定 trip 且用户明确改稿时仍须走 TRIP_PLANNING，避免 ui_surface=consultation */
   taskType = clampTaskTypeForBoundTripReplanning(req.trip_id, msg, msgLower, taskType);
   const complexity = inferComplexity(msg, recentCount);
@@ -272,8 +272,22 @@ function parseIntentMode(raw: string | undefined): IntentMode {
 }
 
 /** 显式 intent 覆盖服务端推断（AUTO 保留推断结果） */
-function applyIntentModeToTaskType(mode: IntentMode, inferred: TaskType): TaskType {
+function applyIntentModeToTaskType(
+  mode: IntentMode,
+  inferred: TaskType,
+  req?: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+): TaskType {
   if (mode === 'AUTO') return inferred;
+  const msg = String(req?.message ?? '').trim();
+  const msgLower = msg.toLowerCase();
+  if (
+    shouldForceDataLookupForBoundTripReview({
+      trip_id: req?.trip_id,
+      message: msg,
+    })
+  ) {
+    return 'DATA_LOOKUP';
+  }
   if (mode === 'TRIP_PLANNING') return 'TRIP_PLANNING';
   if (mode === 'DATA_LOOKUP') return 'DATA_LOOKUP';
   return 'GENERIC_QA';
@@ -306,6 +320,16 @@ function clampTaskTypeForBoundTripReplanning(
   if (!tid) return taskType;
   if (isWestfjordsLegTransportPreferenceConsultation(msg, msgLower)) {
     return taskType;
+  }
+  if (isBoundTripLodgingDiningPlanQuery(msg, msgLower) && !detectItineraryAdjustIntent(msg)) {
+    return taskType === 'TRIP_PLANNING' ? 'DATA_LOOKUP' : taskType;
+  }
+  if (
+    isTripStatusOverviewQuery(msg, msgLower) &&
+    !detectItineraryAdjustIntent(msg) &&
+    !detectFullTripReplanIntent(msg)
+  ) {
+    return taskType === 'TRIP_PLANNING' ? 'DATA_LOOKUP' : taskType;
   }
   if (taskType === 'TRIP_PLANNING') return taskType;
   const hasBoundTripAdjustIntent =
@@ -421,6 +445,91 @@ export function isTripStatusOverviewQuery(msg: string, msgLower: string): boolea
     ) ||
     /\b(?:trip|itinerary)\s+(?:review|health\s+check|risk\s+assessment)\b/i.test(msgLower);
   return tripReadinessZh || tripStatusOverviewZh || tripItineraryReviewZh || tripStatusOverviewEn;
+}
+
+/**
+ * 已绑定 trip 的「多日住宿 + 餐饮方案/策略」问法（非改稿、非整段重规划）。
+ * 例：详细6天住宿和餐饮方案，黄金圈南岸到冰河湖，包括酒店推荐和每日用餐策略。
+ */
+export function isBoundTripLodgingDiningPlanQuery(msg: string, msgLower: string): boolean {
+  const lodging =
+    /住宿|酒店|民宿|客栈|过夜|住哪|订房|入住/i.test(msg) ||
+    /\b(lodging|hotels?|accommodation|where to stay|airbnb|bnb)\b/i.test(msgLower);
+  const dining =
+    /餐饮|用餐|吃饭|膳食|餐厅|美食|伙食|早餐|午餐|晚餐|餐馆|吃什么|用餐策略|餐饮策略|餐食/i.test(msg) ||
+    /\b(dining|meals?|restaurants?|food plan|where to eat|eating|meal strategy)\b/i.test(msgLower);
+  const planCue =
+    /方案|策略|计划|规划|推荐|安排|逐日|每天|每日|分天|按天/i.test(msg) ||
+    /\b(detailed|plan|strategy|recommendations?)\b/i.test(msgLower);
+
+  if (lodging && dining && planCue) return true;
+  if (/吃住|食宿|餐饮.*住宿|住宿.*餐饮|酒店.*(?:餐|饭)|(?:餐|饭).*(?:酒店|住宿)/.test(msg)) {
+    return true;
+  }
+  if (
+    planCue &&
+    (/\b(accommodation|lodging|hotels?).{0,48}(dining|meals?|food)\b/i.test(msgLower) ||
+      /\b(dining|meals?|food).{0,48}(accommodation|lodging|hotels?)\b/i.test(msgLower))
+  ) {
+    return true;
+  }
+  const multiDay =
+    /\d+\s*天|逐晚|每晚|各晚/i.test(msg) || /\b(multi[-\s]?day|\d+\s*days?)\b/i.test(msgLower);
+  if (multiDay && lodging && dining) return true;
+
+  return false;
+}
+
+/**
+ * 绑定 trip 的轻量复盘/咨询问法。
+ * 与 `isTripScopedConsultationQuery` 对齐，避免 Plan Studio 内「攻略/指南」类问法误落 TRIP_PLANNING 深度路径。
+ */
+export function isBoundTripLightConsultQuery(msg: string, msgLower?: string): boolean {
+  const lower = msgLower ?? msg.toLowerCase();
+  return isTripScopedConsultationQuery(msg, lower);
+}
+
+/**
+ * 已绑定 trip 的「全面分析 / 体检 / 进度复盘 / 住宿+餐饮方案」问法：须走 DATA_LOOKUP 轻量咨询，
+ * 即使前端或 PA generate 误传 intent_mode=TRIP_PLANNING。
+ */
+export function shouldForceDataLookupForBoundTripReview(
+  req: Pick<RouteAndRunRequestDto, 'trip_id' | 'message'>,
+): boolean {
+  const tid = req.trip_id?.trim();
+  const msg = String(req.message ?? '').trim();
+  if (!tid || !msg) return false;
+  const msgLower = msg.toLowerCase();
+  if (!isBoundTripLightConsultQuery(msg, msgLower)) return false;
+  if (detectItineraryAdjustIntent(msg)) return false;
+  /** 多日住宿+餐饮方案是咨询输出，勿与整段重规划 intent 混淆 */
+  if (isBoundTripLodgingDiningPlanQuery(msg, msgLower)) return true;
+  if (detectFullTripReplanIntent(msg)) return false;
+  return true;
+}
+
+/**
+ * 就地修正 route_and_run 请求：复盘问法强制 DATA_LOOKUP + 跳过状态机。
+ * 供 ExecutionGateway / AgentService 入口在 signals 解析前调用。
+ */
+export function applyBoundTripReviewRouteAndRunOverrideInPlace(request: RouteAndRunRequestDto): boolean {
+  if (!shouldForceDataLookupForBoundTripReview(request)) {
+    return false;
+  }
+  request.options = {
+    ...request.options,
+    intent_mode: 'DATA_LOOKUP',
+    use_state_machine_orchestration: false,
+  };
+  if (request.trip_id?.trim()) {
+    request.conversation_context = {
+      ...(request.conversation_context ?? {}),
+      context_type: request.conversation_context?.context_type ?? 'active_trip_summary',
+    };
+  }
+  (request as RouteAndRunRequestDto & { __trip_review_data_lookup_override?: boolean }).__trip_review_data_lookup_override =
+    true;
+  return true;
 }
 
 /**
@@ -653,6 +762,10 @@ function isTripScopedConsultationQuery(msg: string, msgLower: string): boolean {
   }
 
   if (isTripStatusOverviewQuery(msg, msgLower)) {
+    return true;
+  }
+
+  if (isBoundTripLodgingDiningPlanQuery(msg, msgLower)) {
     return true;
   }
 

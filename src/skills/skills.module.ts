@@ -24,6 +24,7 @@ import { ExaModule } from '../mcp/exa.module';
 import { CacheModule } from '../common/cache/cache.module';
 import { IcelandInfoModule } from '../iceland-info/iceland-info.module';
 import { MemoryModule } from '../agent/memory/memory.module';
+import { QueryRewritingModule } from '../agent/query-rewriting.module';
 import { GovernanceModule } from '../governance/governance.module';
 import { WorldStrategyModule } from '../agent/strategy/world-strategy.module';
 import { CountryConfigService } from './world/services/country-config.service';
@@ -288,6 +289,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     CacheModule, // 导入 CacheModule 以支持 WorldBuildContextSkill 使用缓存
     forwardRef(() => IcelandInfoModule), // SafeTravel / Vedur 等冰岛信息源（SafetravelGetAdvisoriesSkill）
     forwardRef(() => MemoryModule), // WorldDecisionMemory：itinerary.verify 车型仲裁因果写入
+    QueryRewritingModule, // poi.search 下游零结果绑定 QueryRewriteMetricsService
     forwardRef(() => GovernanceModule), // Governance ledger + GRG (re-exports LedgerModule)
     forwardRef(() => WorldStrategyModule), // WorldStrategy：冰岛策略 JSON → 仲裁 strat: 留痕
   ],

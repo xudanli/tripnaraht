@@ -20,6 +20,7 @@ function minimalMemory(): AgentMemoryContext {
     activeTripState: null,
     recoveryHistory: [],
     failurePatterns: [],
+    recentTripFeedbacks: [],
     loadedAt: new Date().toISOString(),
     observability: { layers: [] },
   };

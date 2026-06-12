@@ -567,10 +567,10 @@ export class MemoryService {
         const dbFeedbacks = await this.prisma.tripOutcomeFeedback.findMany({
           where: { userId },
           orderBy: { createdAt: 'desc' },
-          take: 100, // 限制返回数量
+          take: 100,
         });
 
-        return dbFeedbacks.map(f => ({
+        return dbFeedbacks.map((f) => ({
           tripId: f.tripId,
           userId: f.userId,
           overallSuccess: f.overallSuccess,
@@ -586,8 +586,44 @@ export class MemoryService {
       }
     }
 
-    // 内存存储
-    return this.tripFeedbacks.filter(f => f.userId === userId);
+    return this.tripFeedbacks.filter((f) => f.userId === userId);
+  }
+
+  /**
+   * L4 装配专用：最近 N 条非放弃行程反馈（唯一 Assembler 直读入口）。
+   */
+  async getUserTripFeedbacksTail(userId: string, limit = 3): Promise<TripOutcomeFeedback[]> {
+    const cap = Math.max(1, Math.min(limit, 10));
+    if (this.useDatabase && this.prisma) {
+      try {
+        const dbFeedbacks = await this.prisma.tripOutcomeFeedback.findMany({
+          where: { userId, abandoned: false },
+          orderBy: { createdAt: 'desc' },
+          take: cap,
+        });
+
+        return dbFeedbacks.map((f) => ({
+          tripId: f.tripId,
+          userId: f.userId,
+          overallSuccess: f.overallSuccess,
+          fatigueLevel: f.fatigueLevel || undefined,
+          satisfaction: f.satisfaction || undefined,
+          abandoned: f.abandoned,
+          failurePoints: f.failurePoints,
+          notes: f.notes || undefined,
+          createdAt: f.createdAt,
+        }));
+      } catch (error) {
+        this.logger.warn(
+          `Failed to query trip feedback tail from database: ${error}, falling back to memory`,
+        );
+      }
+    }
+
+    return this.tripFeedbacks
+      .filter((f) => f.userId === userId && !f.abandoned)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, cap);
   }
 }
 

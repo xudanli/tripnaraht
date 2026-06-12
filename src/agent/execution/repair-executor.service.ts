@@ -46,9 +46,9 @@ import { evaluateAltPath } from '../utils/terrain-reroute-evaluator.util';
 import type { RepairReason, RepairTrace } from '../services/route-feasibility.types';
 import { buildPoiSearchContext } from '../../planning-policy/utils/build-poi-search-context.util';
 import {
-  buildContextualPoiSearchQuerySuffix,
   filterPoisByRejectedIds,
 } from '../../planning-policy/utils/contextual-poi-search-query.util';
+import { buildPoiSearchPlanFromContext } from '../utils/query-rewriting-poi-context.util';
 import { buildReplacementRetrievalDecisionTrace } from '../../planning-policy/utils/build-retrieval-decision-trace.util';
 import { detectItineraryGapsV1, gapRetrievalIntentQuerySuffix } from '../../planning-policy/utils/detect-itinerary-gaps.util';
 import {
@@ -1548,7 +1548,6 @@ export class RepairExecutorService implements IRepairExecutor {
         itinerary,
         userMessage,
       });
-      const ctxSuffix = buildContextualPoiSearchQuerySuffix(poiSearchCtx);
       const baseQuery = `${destination!.trim()} attraction`;
       const causedByEvent = closedPoiId?.trim()
         ? ({ type: 'POI_CLOSED' as const, poiId: String(closedPoiId).trim().toLowerCase() } as const)
@@ -1561,9 +1560,16 @@ export class RepairExecutorService implements IRepairExecutor {
         closedItemCategoryHint: closedItemCategoryHint,
       });
       const gapSuffix = gapRetrievalIntentQuerySuffix(semanticGaps);
-      const query = `${baseQuery}${ctxSuffix}${gapSuffix}`.replace(/\s+/g, ' ').trim();
+      const poiPlan = buildPoiSearchPlanFromContext({
+        baseQuery,
+        poiSearchCtx,
+        gapSuffix,
+        variant: 'general',
+      });
       const r = await skill.execute({
-        query,
+        query: poiPlan.contextualizedQuery,
+        queryRewriteResult: poiPlan.rewrite,
+        multiRouteSearch: true,
         limit: 10,
         lat: around?.lat,
         lng: around?.lng,
@@ -1578,7 +1584,7 @@ export class RepairExecutorService implements IRepairExecutor {
       const hardRejectedIds = rej.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
       const replTrace = buildReplacementRetrievalDecisionTrace({
         poiSearchCtx,
-        query,
+        query: poiPlan.contextualizedQuery,
         hardRejectedIds,
         mergedPoiCount: pois.length,
         retrievalReason: 'find_alternative_poi_same_category_near_closed_slot',

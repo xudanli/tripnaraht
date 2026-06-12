@@ -13,6 +13,7 @@ import { SearchNearbyPoiQueryDto, NearbyPoiResultDto, NearbyPoiCategory } from '
 import { PlaceCategory } from '@prisma/client';
 import { attachDisplaySortIndices } from './utils/itinerary-day-display-order.util';
 import { parseCoordsFromRestNote } from '../agent/utils/accommodation-place.util';
+import { resolveEffectiveIcelandPlaceCoordinates } from '../places/utils/iceland-canonical-poi-coords.util';
 
 @Injectable()
 export class ItineraryItemsService {
@@ -1344,16 +1345,32 @@ export class ItineraryItemsService {
     if (!placeId) return null;
 
     try {
-      const result = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+      const result = await this.prisma.$queryRaw<
+        Array<{
+          id: number;
+          nameEN: string | null;
+          nameCN: string | null;
+          metadata: unknown;
+          lat: number | null;
+          lng: number | null;
+        }>
+      >`
         SELECT 
+          id,
+          "nameEN",
+          "nameCN",
+          metadata,
           ST_Y(location::geometry) as lat,
           ST_X(location::geometry) as lng
         FROM "Place"
         WHERE id = ${placeId} AND location IS NOT NULL
       `;
 
-      if (result.length > 0 && result[0].lat && result[0].lng) {
-        return { lat: result[0].lat, lng: result[0].lng };
+      if (result.length === 0) return null;
+      const row = result[0];
+      const resolved = resolveEffectiveIcelandPlaceCoordinates(row);
+      if (resolved) {
+        return { lat: resolved.lat, lng: resolved.lng };
       }
     } catch (e) {
       // PostGIS 查询失败，返回 null

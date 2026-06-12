@@ -5,6 +5,11 @@ import {
   isPeakSeasonFollowUpClarificationPending,
 } from './route-and-run-intent-analyzer.util';
 import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
+import {
+  CONSULTANT_FULL_TRIP_REPLAN_MSG,
+  AURORA_DAY_DESIGNATION_MSG,
+  TRIP_RANGE_6D_ICELAND,
+} from './route-and-run-intent.fixtures';
 
 const SLOT_MSG =
   '能否在哪个行程里安排北部的胡萨维克，想观鲸，晚上住阿克雷里，希望避开白天的旅游大巴人潮。';
@@ -16,6 +21,23 @@ const WEATHER_ADJUST_MSG =
   '根据你刚才分析的天气风险，请为我调整2026年6月1日至7日的冰岛行程，如果某天预报有强风，请优先安排室内活动或替换到风小的景点，并确保每日车程不超过4小时。';
 
 describe('route-and-run-intent-analyzer.util', () => {
+  it('classifies bound trip aurora day designation as ITINERARY_SLOT_PLACEMENT (not GENERAL_PLAN deep path)', () => {
+    const analysis = analyzeRouteAndRunIntent(AURORA_DAY_DESIGNATION_MSG, {
+      tripId: 'trip-iceland-6d',
+      hasTripDays: true,
+      trip: {
+        trip_id: 'trip-iceland-6d',
+        date_range: { ...TRIP_RANGE_6D_ICELAND },
+      } as TripPlanRequest,
+    });
+    expect(analysis.primary).toBe('ITINERARY_SLOT_PLACEMENT');
+    expect(analysis.slot_placement_requested).toBe(true);
+  });
+
+  it('detects aurora day designation phrasing for slot placement', () => {
+    expect(detectItinerarySlotPlacementIntent(AURORA_DAY_DESIGNATION_MSG)).toBe(true);
+  });
+
   it('detects itinerary slot placement phrasing', () => {
     expect(detectItinerarySlotPlacementIntent(SLOT_MSG)).toBe(true);
     expect(detectItinerarySlotPlacementIntent(DATED_PEAK_MSG)).toBe(false);
@@ -48,6 +70,19 @@ describe('route-and-run-intent-analyzer.util', () => {
       } as TripPlanRequest,
     });
     expect(analysis.primary).toBe('GENERAL_PLAN');
+  });
+
+  it('classifies consultant-style 6-day replan as GENERAL_PLAN (not ITINERARY_ADJUST on day 6)', () => {
+    const analysis = analyzeRouteAndRunIntent(CONSULTANT_FULL_TRIP_REPLAN_MSG, {
+      tripId: 'trip-iceland-6d',
+      hasTripDays: true,
+      trip: {
+        trip_id: 'trip-iceland-6d',
+        date_range: { ...TRIP_RANGE_6D_ICELAND },
+      } as TripPlanRequest,
+    });
+    expect(analysis.primary).toBe('GENERAL_PLAN');
+    expect(analysis.primary).not.toBe('ITINERARY_ADJUST');
   });
 
   it('classifies bound trip golden circle day replan as ITINERARY_ADJUST when days exist', () => {

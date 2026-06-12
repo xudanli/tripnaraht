@@ -84,6 +84,7 @@ export function buildIcelandCoastalPivotStagingMemoryContext(
     activeTripState,
     recoveryHistory: [],
     failurePatterns: [],
+    recentTripFeedbacks: [],
     loadedAt: new Date().toISOString(),
     observability: { layers: ['fixture:iceland_coastal_pivot_staging'] },
   };

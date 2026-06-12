@@ -314,7 +314,7 @@ export function buildItineraryAdjustUserFacingBullets(
     const mode = metadata.itinerary_adjust_execution_mode as
       | ItineraryAdjustExecutionMode
       | undefined;
-    if (mode === 'AUTO' && applied) {
+    if ((mode === 'AUTO' || mode === 'SEMI_AUTO') && applied) {
       bullets.push('已自动写入左侧正式行程。');
     }
     return bullets.slice(0, 4);
@@ -353,7 +353,7 @@ export function buildItineraryAdjustUserFacingBullets(
   const applied =
     (metadata.itinerary_adjust_auto_apply as { applied?: boolean } | undefined)?.applied === true;
   const mode = metadata.itinerary_adjust_execution_mode as ItineraryAdjustExecutionMode | undefined;
-  if (mode === 'AUTO' && applied) {
+  if ((mode === 'AUTO' || mode === 'SEMI_AUTO') && applied) {
     bullets.push('已自动写入左侧正式行程。');
   }
 
@@ -513,7 +513,7 @@ export function buildItineraryAdjustOptimizationResult(params: {
     'ADVICE_ONLY';
   const applied =
     (metadata.itinerary_adjust_auto_apply as { applied?: boolean } | undefined)?.applied === true &&
-    executionMode === 'AUTO';
+    (executionMode === 'AUTO' || executionMode === 'SEMI_AUTO');
 
   const dayLabel =
     targetDayNumber != null ? `第 ${targetDayNumber} 天` : targetDateIso;

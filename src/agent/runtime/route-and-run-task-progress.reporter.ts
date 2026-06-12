@@ -11,6 +11,8 @@ import {
   type RouteAndRunTaskEventBusPort,
 } from '../ports/route-and-run-task-event-bus.port';
 import { taskRecordToProgressPayload } from '../utils/route-and-run-task-progress-payload.util';
+import { attachEmotionalContextToProgressPayload } from '../narrator/emotional-context-client-projection.util';
+import type { OrchestratorState } from '../interfaces/trip-plan.interface';
 
 /**
  * 在异步 `route_and_run` 后台执行链路内，将编排步骤同步到任务进度存储（Redis/内存）。
@@ -40,6 +42,15 @@ export class RouteAndRunTaskProgressReporter {
   }
 
   async reportOrchestrationStep(step: OrchestrationStep | string, customMessage?: string): Promise<void> {
+    await this.reportOrchestrationStepWithState(step, undefined, customMessage);
+  }
+
+  /** NARRATE 等阶段可附带 OrchestratorState，用于 SSE emotional_context 增量。 */
+  async reportOrchestrationStepWithState(
+    step: OrchestrationStep | string,
+    orchestratorState?: OrchestratorState,
+    customMessage?: string,
+  ): Promise<void> {
     const ctx = this.als.getStore();
     if (!ctx?.taskId || !this.taskStore) return;
     const phase = String(step);
@@ -56,7 +67,11 @@ export class RouteAndRunTaskProgressReporter {
       });
       const record = await this.taskStore.getRecord(ctx.taskId);
       if (record && this.eventBus) {
-        this.eventBus.emitProgress(taskRecordToProgressPayload(record, 'PHASE'));
+        const payload = attachEmotionalContextToProgressPayload(
+          taskRecordToProgressPayload(record, 'PHASE'),
+          orchestratorState,
+        );
+        this.eventBus.emitProgress(payload);
       }
     } catch (e: unknown) {
       this.logger.warn(

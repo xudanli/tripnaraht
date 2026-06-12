@@ -36,6 +36,7 @@ import type { RagSoftWorldScope } from '../../rag/reality-policy/rag-soft-world-
 import { getBoundDecisionContext } from '../../trips/reality-kernel/reality-context.storage';
 import { RetrievalEvidenceMapper } from '../../rag/mappers/retrieval-evidence.mapper';
 import { isKernelCgusRagEvidenceEnabledFromEnv } from './kernel-cgus-rag.constants';
+import { ragRetrievalExpansionParams } from '../../agent/utils/query-rewrite-rag-expansion.util';
 import { StateConsistencyGuardService } from '../../trips/dem/services/state-consistency-guard.service';
 import { PlanFeaturesService } from '../../trips/decision/optimization/plan-features/plan-features.service';
 import { decisionStateToTripWorldState, resolveKernelTripIdHint } from './dso-to-trips-converter';
@@ -506,7 +507,7 @@ export class OptimizationEngineAdapterService {
     }
     try {
       const chunks = await this.chunkRetrieval.retrieve(
-        mergeRagParams({ query: q, limit: 8 }),
+        mergeRagParams({ query: q, limit: 8, ...ragRetrievalExpansionParams() }),
       );
       const confidenceThreshold = ragCfg?.confidenceThreshold ?? 0.25;
       const evidence = RetrievalEvidenceMapper.toEvidence(chunks, { scoreThreshold: confidenceThreshold });

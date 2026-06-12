@@ -259,6 +259,39 @@ describe('hotel-mcp-route-run.mapper', () => {
     expect(cards[0].distance_label_zh).toMatch(/测试餐厅/);
   });
 
+  it('attachDistanceToAnchorForCards omits absurd distance (>250km or off-Iceland coords)', () => {
+    const anchor = { lat: 64.255, lng: -21.129, nameZh: '辛格维利尔国家公园' };
+    const far = attachDistanceToAnchorForCards(
+      [
+        {
+          id: '1',
+          source: 'airbnb',
+          name: 'Far listing',
+          nightIndex: 1,
+          listing_lat: 40.7,
+          listing_lng: -74.0,
+        },
+      ],
+      new Map([[1, anchor]]),
+    );
+    expect(far[0].distance_to_anchor_km).toBeUndefined();
+
+    const wrongSign = attachDistanceToAnchorForCards(
+      [
+        {
+          id: '2',
+          source: 'airbnb',
+          name: 'Wrong lng sign',
+          nightIndex: 1,
+          listing_lat: 64.14,
+          listing_lng: 21.94,
+        },
+      ],
+      new Map([[1, anchor]]),
+    );
+    expect(wrongSign[0].distance_to_anchor_km).toBeUndefined();
+  });
+
   it('parseExplicitStayWindowFromUserMessage reads NL and clamps to trip', () => {
     expect(parseExplicitStayWindowFromUserMessage('就住 2026-06-03 一晚', {})).toEqual({
       checkIn: '2026-06-03',

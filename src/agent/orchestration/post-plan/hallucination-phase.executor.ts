@@ -1,5 +1,6 @@
 import {
   buildHallucinationAuditSampleRowsZh,
+  extractDecisionLogTripContext,
   formatHallucinationInputsZh,
   formatHallucinationOutputsZh,
 } from '../../utils/decision-log-user-facing.zh.util';
@@ -70,11 +71,17 @@ export async function runHallucinationPhase(
       excerptMaxLen: 88,
     });
 
+    const tripCtx = extractDecisionLogTripContext({
+      tripPlanRequest: state.trip_plan_request,
+      metadata: state.metadata as Record<string, unknown>,
+      itinerary: state.itinerary,
+    });
+
     state.decision_log.push({
       request_id: state.request_id,
       step: 'HALLUCINATION_DETECTION',
       actor: 'HallucinationDetection',
-      inputs_summary: formatHallucinationInputsZh(),
+      inputs_summary: formatHallucinationInputsZh(tripCtx),
       outputs_summary: formatHallucinationOutputsZh(
         detectionResult.statistics.totalClaims,
         detectionResult.statistics.verifiedClaims,

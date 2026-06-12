@@ -620,6 +620,14 @@ export {
   buildTemplateHotelDecisionSupportZh,
 } from './hotel-decision-support.signals';
 
+/** 「周边住宿」卡片：直线距锚点超过此值视为坐标/Listing 异常，不展示误导性距离 */
+export const MAX_PLAUSIBLE_HOTEL_ANCHOR_KM = 250;
+
+/** 冰岛行程 Listing 合理范围（过远则多为 MCP 错坐标或错国别） */
+export function isPlausibleIcelandListingCoord(lat: number, lng: number): boolean {
+  return lat >= 63 && lat <= 67.8 && lng >= -24.9 && lng <= -12.5;
+}
+
 /**
  * 为住宿卡片写入相对当日行程锚点（与 segment label /「xxx周边」一致：当日最后一项行程点）的直线距离。
  */
@@ -633,7 +641,11 @@ export function attachDistanceToAnchorForCards(
     const lat = card.listing_lat;
     const lng = card.listing_lng;
     if (!anchor || lat == null || lng == null) return card;
+    if (!isPlausibleIcelandListingCoord(lat, lng) && isPlausibleIcelandListingCoord(anchor.lat, anchor.lng)) {
+      return card;
+    }
     const km = haversineKm(lat, lng, anchor.lat, anchor.lng);
+    if (km > MAX_PLAUSIBLE_HOTEL_ANCHOR_KM) return card;
     const rounded = Math.round(km * 10) / 10;
     return {
       ...card,

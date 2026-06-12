@@ -89,6 +89,15 @@ export class PrometheusMetricsService implements OnModuleInit {
   private narratorCacheTotal!: Counter;
   private narratorUpdatedDaysRatio!: Histogram;
 
+  /** Query Rewriting v1.1 可观测性 */
+  private queryRewriteTotal!: Counter;
+  private queryRewriteDurationMs!: Histogram;
+  private queryRewriteZeroResultTotal!: Counter;
+  private queryRewriteRuleFallbackTotal!: Counter;
+
+  /** ITINERARY_ADJUST / POI_SLOT_FILL 漏斗 */
+  private itineraryAdjustFunnelTotal!: Counter;
+
   constructor() {
     this.registry = new Registry();
     this.initializeMetrics();
@@ -429,6 +438,39 @@ export class PrometheusMetricsService implements OnModuleInit {
       help: 'Ratio of updated narrative days to total trip days per narrate() call',
       labelNames: ['source', 'is_incremental'],
       buckets: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+      registers: [this.registry],
+    });
+
+    this.queryRewriteTotal = new Counter({
+      name: 'tripnara_query_rewrite_total',
+      help: 'Total Query Rewriting pipeline invocations',
+      labelNames: ['scene', 'profile', 'stage1_source', 'stage2_generative'],
+      registers: [this.registry],
+    });
+    this.queryRewriteDurationMs = new Histogram({
+      name: 'tripnara_query_rewrite_duration_ms',
+      help: 'Query Rewriting pipeline duration in milliseconds',
+      labelNames: ['scene', 'profile'],
+      buckets: [5, 20, 50, 100, 250, 500, 1000, 2500, 5000],
+      registers: [this.registry],
+    });
+    this.queryRewriteZeroResultTotal = new Counter({
+      name: 'tripnara_query_rewrite_zero_result_total',
+      help: 'Downstream searches returning zero results after query rewrite',
+      labelNames: ['scene'],
+      registers: [this.registry],
+    });
+    this.queryRewriteRuleFallbackTotal = new Counter({
+      name: 'tripnara_query_rewrite_rule_fallback_total',
+      help: 'Stage 1 rule_fallback occurrences (LLM unavailable or schema parse failed)',
+      labelNames: ['scene'],
+      registers: [this.registry],
+    });
+
+    this.itineraryAdjustFunnelTotal = new Counter({
+      name: 'tripnara_itinerary_adjust_funnel_total',
+      help: 'ITINERARY_ADJUST funnel: draft_created → apply_clicked → auto/user apply outcomes',
+      labelNames: ['stage', 'outcome', 'sub_intent', 'execution_mode', 'reason'],
       registers: [this.registry],
     });
   }
@@ -847,6 +889,60 @@ export class PrometheusMetricsService implements OnModuleInit {
     } catch {
       // best-effort
     }
+  }
+
+  recordQueryRewrite(params: {
+    scene: string;
+    profile: string;
+    stage1_source: 'llm' | 'rule_fallback';
+    stage2_generative: boolean;
+    duration_ms: number;
+    confidence: number;
+    zero_result?: boolean;
+  }) {
+    const stage2 = params.stage2_generative ? 'true' : 'false';
+    this.queryRewriteTotal.inc({
+      scene: params.scene,
+      profile: params.profile,
+      stage1_source: params.stage1_source,
+      stage2_generative: stage2,
+    });
+    this.queryRewriteDurationMs.observe(
+      { scene: params.scene, profile: params.profile },
+      params.duration_ms,
+    );
+    if (params.stage1_source === 'rule_fallback') {
+      this.queryRewriteRuleFallbackTotal.inc({ scene: params.scene });
+    }
+    if (params.zero_result) {
+      this.queryRewriteZeroResultTotal.inc({ scene: params.scene });
+    }
+  }
+
+  recordQueryRewriteDownstream(params: {
+    scene: string;
+    zero_result: boolean;
+    total_results: number;
+  }) {
+    if (params.zero_result) {
+      this.queryRewriteZeroResultTotal.inc({ scene: params.scene });
+    }
+  }
+
+  recordItineraryAdjustFunnel(params: {
+    stage: string;
+    outcome: string;
+    sub_intent: string;
+    execution_mode: string;
+    reason: string;
+  }) {
+    this.itineraryAdjustFunnelTotal.inc({
+      stage: params.stage,
+      outcome: params.outcome,
+      sub_intent: params.sub_intent,
+      execution_mode: params.execution_mode,
+      reason: params.reason,
+    });
   }
 
   // Get metrics for Prometheus scraping

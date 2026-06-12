@@ -18,6 +18,19 @@ describe('itinerary-adjust-auto-apply', () => {
     ).toBe('exploratory');
   });
 
+  it('classifies poi_slot_fill for trip-scoped recommend-add', () => {
+    expect(
+      classifyItineraryAdjustSubIntent('根据我的行程，推荐一些适合加入的景点'),
+    ).toBe('poi_slot_fill');
+    expect(
+      resolveItineraryAdjustExecutionMode({
+        subIntent: 'poi_slot_fill',
+        highConfidence: false,
+        poiSlotFillReady: true,
+      }),
+    ).toBe('SEMI_AUTO');
+  });
+
   it('allows AUTO only when strong intent and L0 corridor', () => {
     const sub = 'strong_modification' as const;
     const conf = evaluateItineraryAdjustConfidenceGate({

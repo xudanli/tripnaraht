@@ -17,10 +17,13 @@ import {
   computeDecisionEvidenceFingerprint,
 } from '../utils/decision-evidence-fingerprint.util';
 import {
+  extractDecisionLogTripContext,
   formatContextBuildInputsZh,
   formatContextBuildOutputsZh,
   formatGateEvalInputsKernelZh,
   formatGateEvalOutputsZh,
+  formatGuardianDebateGateInputsZh,
+  formatGuardianDebateGateOutputsZh,
   formatIntakeInputsPreviewZh,
   formatIntakeOutputsZh,
   formatOptimizeInputsZh,
@@ -141,7 +144,6 @@ import {
 } from '../utils/itinerary-adjust-intent.util';
 import { resolveItineraryAdjustNeighborContext } from '../utils/itinerary-trip-neighbor-anchor-load.util';
 import {
-  buildItineraryAdjustCorridorPoiSearchQuery,
   corridorSearchLatLng,
 } from '../utils/itinerary-adjust-corridor-fallback.util';
 import {
@@ -161,11 +163,21 @@ import {
   readPendingItineraryAdjustDraft,
 } from '../utils/itinerary-adjust-pending-draft.util';
 import { TripRunManagerService } from './trip-run-manager.service';
+import { ItineraryVersionService } from './itinerary-version.service';
 import {
   buildCorridorDayApplyEdits,
   parseNumericPlaceId,
   pickTargetDayFromItinerary,
 } from '../utils/itinerary-adjust-corridor-apply.util';
+import {
+  allNewPoiItemsHavePlaceIds,
+  buildPoiSlotFillAppendEdits,
+  collectResearchPools,
+  collectSparseTripDayTargets,
+  enrichItineraryWithPlaceIdsFromResearch,
+  mergePoiSlotFillOrchestratorItinerary,
+} from '../utils/itinerary-adjust-poi-slot-fill.util';
+import { recordItineraryAdjustFunnel } from '../utils/itinerary-adjust-metrics.util';
 import { extractItineraryAdjustTargetDateFromMessage } from '../utils/itinerary-adjust-intent.util';
 import {
   buildCorridorAdjustPoiPlanningSlice,
@@ -282,6 +294,8 @@ import { mergeVerificationIssuesIntoGateResult } from '../utils/merge-verify-iss
 import {
   isFactualMacroStatQuery,
   isLocalClockOrTimezoneFactQuery,
+  isBoundTripLodgingDiningPlanQuery,
+  isBoundTripLightConsultQuery,
   isTripStatusOverviewQuery,
   isTodayWeatherFactQuery,
   isWeatherRoadConditionFocusedQuery,
@@ -367,6 +381,7 @@ import {
   buildBriefItineraryLinesFromTripDays,
   formatConsultationTripDaySkeletonLines,
   formatTripPromptSummaryForConsultation,
+  shouldIncludeNamedDraftAppendixForLightweightConsultation,
 } from '../../trips/utils/trip-prompt-summary.util';
 import {
   ChunkRetrievalService,
@@ -435,6 +450,8 @@ import { HotelDecisionSupportNarratorService } from './hotel-decision-support-na
 import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
 import { ConstraintSinkService } from '../memory/constraint-sink/constraint-sink.service';
 import { attachTravelPreferenceSnapshotToOrchestratorState } from '../memory/utils/travel-preference-snapshot.util';
+import { attachAgentMemorySnapshotToOrchestratorState } from '../memory/utils/agent-memory-snapshot.util';
+import { mergeEmotionalClientSignalsFromRouteAndRunRequest } from '../narrator/emotional-orchestrator-metadata.util';
 import { AmadeusDirectService } from '../../mcp/amadeus-direct.service';
 import type { AmadeusDirectFlightOffer } from '../../mcp/amadeus-direct.service';
 import { FlightMcpService, isFlightMcpToolResultFailure } from '../../mcp/flight-mcp.service';
@@ -492,9 +509,11 @@ import {
   recordPlanGenDraftSnapshot,
 } from '../training/utils/decision-trajectory-orchestration.hook';
 import { ReadinessService } from '../../trips/readiness/services/readiness.service';
+import { CoverageMapService } from '../../trips/readiness/services/coverage-map.service';
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import { TripContext, TravelerProfile, ItineraryInfo } from '../../trips/readiness/types/trip-context.types';
 import type { ReadinessCheckResult } from '../../trips/readiness/types/readiness-findings.types';
+import type { ReadinessScoreResponse } from '../../trips/readiness/types/coverage-map.types';
 import { DecisionDraftGeneratorService } from '../../decision-draft/services/decision-draft-generator.service';
 import { DecisionReplayService } from './decision-replay.service';
 import { DecisionTelemetryService } from '../../trips/decision/telemetry/decision-telemetry.service';
@@ -549,7 +568,8 @@ import {
 import type { UserRouteIntent } from '../../planning-policy/interfaces/region-intent.types';
 import { RegionAnchorPlanningService } from '../../planning-policy/services/region-anchor-planning.service';
 import { ICELAND_POI_SLUG_KEYWORDS } from '../../planning-policy/regions/iceland-poi-slugs';
-import { GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY } from '../../planning-policy/regions/golden-circle-anchor-retrieval-profile';
+import { buildSpecialRegionSupplementLanes } from '../utils/special-region-supplement.registry';
+import { buildItineraryAdjustCorridorPoiSearchPlan } from '../utils/itinerary-adjust-corridor-poi-search.util';
 import { POI_PLANNING_SCORE_REASON } from '../../planning-policy/constants/poi-planning-score-reasons';
 import {
   computeResumeGraphEntryFromLast,
@@ -641,9 +661,16 @@ import {
   extractSelectedPlaceIdsFromItinerary,
 } from '../../planning-policy/utils/build-poi-search-context.util';
 import {
-  buildContextualPoiSearchQuerySuffix,
   filterPoisByRejectedIds,
 } from '../../planning-policy/utils/contextual-poi-search-query.util';
+import { buildPoiSearchPlanFromContext } from '../utils/query-rewriting-poi-context.util';
+import { ragRetrievalExpansionParams } from '../utils/query-rewrite-rag-expansion.util';
+import {
+  AURORA_SLOT_RAG_POIS_QUERY,
+  AURORA_SLOT_RAG_PRACTICAL_QUERY,
+  buildAuroraSlotPlacementRagSection,
+  mapChunkToAuroraSlotRagEntry,
+} from '../utils/aurora-slot-placement-rag.util';
 import {
   applyDiversityPenaltyToSortedRows,
   applySelectedPoiPenalty,
@@ -735,6 +762,7 @@ export class ClaudeOrchestratorService {
     @Optional() private trajectoryCollection?: TrajectoryCollectionService,
     @Optional() private readonly decisionTrajectoryInterlocutor?: DecisionTrajectoryInterlocutorService,
     @Optional() private readonly readinessService?: ReadinessService,
+    @Optional() private readonly coverageMapService?: CoverageMapService,
     @Optional() private readonly userDecisionService?: UserDecisionService,
     @Optional() private readonly decisionDraftGenerator?: DecisionDraftGeneratorService,
     //领域智能体（世界模型层）
@@ -792,6 +820,7 @@ export class ClaudeOrchestratorService {
     @Optional()
     @Inject(forwardRef(() => PlanningAssistantV2Service))
     private readonly planningAssistantV2Service?: PlanningAssistantV2Service,
+    @Optional() private readonly itineraryVersion?: ItineraryVersionService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -1139,7 +1168,7 @@ export class ClaudeOrchestratorService {
 
   /**
    * 轻量咨询注入行程摘要：优先 TripsService；若可选依赖未注入则回退 Prisma（避免 Optional TripsService 导致永远不加载）。
-   * 默认按日类型骨架；西峡湾接驳、行前装备/徒步、或租车/自驾向问句额外附带「草案地点速览」（Place 名/备注），便于正文结合具体行程项与 POI。
+   * 默认按日类型骨架；绑定工作台或需锚定 POI 的咨询问法额外附带「草案地点速览」（Place 名/备注）。
    */
   private async resolveTripPromptSummaryForLightweightQa(
     effectiveTripId: string,
@@ -1147,10 +1176,11 @@ export class ClaudeOrchestratorService {
   ): Promise<string | null> {
     const tid = effectiveTripId.trim();
     const msgLower = (request.message ?? '').trim().toLowerCase();
-    const includeNamedDraftAppendix = this.shouldIncludeNamedDraftAppendixForLightweightQa(
-      request.message ?? '',
+    const includeNamedDraftAppendix = shouldIncludeNamedDraftAppendixForLightweightConsultation({
+      message: request.message ?? '',
       msgLower,
-    );
+      contextType: request.conversation_context?.context_type,
+    });
     if (this.tripsService) {
       try {
         const s = await this.tripsService.getTripPromptSummaryForConsultation(tid, undefined, {
@@ -1230,23 +1260,6 @@ export class ClaudeOrchestratorService {
     );
   }
 
-  /**
-   * 是否在轻量咨询骨架外附带「草案地点速览」：西峡湾接驳、行前/装备/徒步、租车/自驾、
-   * 天气+路况聚焦问法，以及含路况/封路/天气等影响行程安全的用语时均需结合具体地点与日程项作答，
-   * 便于模型将路段信息与草案 Place 对齐（数据喂齐 + 推理，而非 OWL 硬编码）。
-   */
-  private shouldIncludeNamedDraftAppendixForLightweightQa(message: string, msgLower: string): boolean {
-    const m = (message ?? '').trim();
-    if (!m) return false;
-    if (isWeatherRoadConditionFocusedQuery(m)) return true;
-    /** 路况/气象/封路类：附带具名草案，减轻「对不准」具体行程项 */
-    if (/路况|封路|天气|风速|能开吗|condition|road\s*status/i.test(msgLower)) return true;
-    if (isWestfjordsLegTransportPreferenceConsultation(m, msgLower)) return true;
-    if (this.isPreparationGearTravelQuery(m)) return true;
-    if (this.isCarRentalOrDrivingTravelQuery(m)) return true;
-    return /徒步|登山|爬山|步道|长线|\b(hiking|trekking|trail)\b/i.test(m);
-  }
-
   /** 从 Trip 表行构造 Readiness 用的 TripContext（与 GATE_EVAL 的 trip_plan_request 路径对齐的字段子集）。 */
   private buildTripContextFromTripRowForReadiness(
     trip: { destination: string; startDate: Date; endDate: Date },
@@ -1272,6 +1285,33 @@ export class ClaudeOrchestratorService {
       trip: { startDate: startIso, endDate: endIso },
       itinerary,
     };
+  }
+
+  /** 与工作台左侧「准备度 xx/100」面板同源的分数摘录（CoverageMapService.getReadinessScore）。 */
+  private formatReadinessScoreHeaderForLightweightPrompt(scoreData: ReadinessScoreResponse): string {
+    const lines: string[] = [];
+    const overall = scoreData.score?.overall;
+    if (typeof overall === 'number') {
+      lines.push(`【出发准备度（与工作台左侧面板一致）】${Math.round(overall)}/100`);
+    }
+    const sum = scoreData.summary;
+    if (sum) {
+      lines.push(
+        `阻塞=${sum.blockers}，必做=${sum.must ?? sum.warnings ?? 0}，建议=${sum.should ?? sum.suggestions ?? 0}`,
+      );
+    }
+    const bd = scoreData.score;
+    if (bd) {
+      lines.push(
+        `维度：证据覆盖 ${Math.round(bd.evidenceCoverage)}，时间可行 ${Math.round(bd.scheduleFeasibility)}，交通确定性 ${Math.round(bd.transportCertainty)}，安全 ${Math.round(bd.safetyRisk)}，缓冲 ${Math.round(bd.buffers)}`,
+      );
+    }
+    const blockers = (scoreData.findings ?? []).filter((f) => f.type === 'blocker').slice(0, 5);
+    for (const b of blockers) {
+      const title = (b.message ?? b.id ?? '').toString().replace(/\s+/g, ' ').trim();
+      if (title) lines.push(`- [阻塞] ${title}`.slice(0, 420));
+    }
+    return lines.join('\n');
   }
 
   /** 将 ReadinessCheckResult 压成轻量 prompt 用摘录（条数与总长封顶，避免撑爆上下文）。 */
@@ -1336,7 +1376,22 @@ export class ClaudeOrchestratorService {
       const result = await this.readinessService.checkFromDestination(trip.destination.trim(), tripContext, {
         lang: 'zh',
       });
-      const formatted = this.formatReadinessFindingsForLightweightPrompt(result);
+      let scoreHeader = '';
+      if (this.coverageMapService) {
+        try {
+          const scoreData = await this.coverageMapService.getReadinessScore(tid);
+          scoreHeader = this.formatReadinessScoreHeaderForLightweightPrompt(scoreData);
+          this.logger.debug(
+            `[LightweightQA] Readiness score trip_id=${tid} overall=${scoreData.score?.overall ?? 'n/a'}`,
+          );
+        } catch (scoreErr: any) {
+          this.logger.warn(
+            `[LightweightQA] Readiness score failed trip_id=${tid}: ${scoreErr?.message ?? scoreErr}`,
+          );
+        }
+      }
+      const packFormatted = this.formatReadinessFindingsForLightweightPrompt(result);
+      const formatted = scoreHeader ? `${scoreHeader}\n\n${packFormatted}` : packFormatted;
       this.logger.debug(
         `[LightweightQA] Readiness OK trip_id=${tid} duration_ms=${Date.now() - started} findings=${result.findings?.length ?? 0}`,
       );
@@ -1345,6 +1400,73 @@ export class ClaudeOrchestratorService {
       this.logger.warn(`[LightweightQA] Readiness failed trip_id=${tid}: ${e?.message ?? e}`);
       return null;
     }
+  }
+
+  /** 行程复盘问法：注入 detail.analyzeHealth 体检摘录（时间冲突、节奏、预算等） */
+  private async runLightweightTripHealthSupplement(
+    effectiveTripId: string | undefined,
+  ): Promise<string | null> {
+    const tid = effectiveTripId?.trim();
+    if (!tid || !this.skillsRegistry) return null;
+    const started = Date.now();
+    try {
+      const skill = this.skillsRegistry.getSkill('detail.analyzeHealth') as
+        | {
+            execute: (input: {
+              tripId: string;
+              planState?: null;
+            }) => Promise<{
+              health?: {
+                overall?: string;
+                overallScore?: number;
+                dimensions?: Record<
+                  string,
+                  { score?: number; issues?: string[]; status?: string }
+                >;
+              };
+            }>;
+          }
+        | undefined;
+      if (!skill) return null;
+      const { health } = await skill.execute({ tripId: tid, planState: null });
+      if (!health) return null;
+      const formatted = this.formatTripHealthForLightweightPrompt(health);
+      this.logger.debug(
+        `[LightweightQA] Trip health OK trip_id=${tid} duration_ms=${Date.now() - started} score=${health.overallScore ?? 'n/a'}`,
+      );
+      return formatted;
+    } catch (e: any) {
+      this.logger.warn(`[LightweightQA] Trip health failed trip_id=${tid}: ${e?.message ?? e}`);
+      return null;
+    }
+  }
+
+  private formatTripHealthForLightweightPrompt(health: {
+    overall?: string;
+    overallScore?: number;
+    dimensions?: Record<string, { score?: number; issues?: string[]; status?: string }>;
+  }): string {
+    const dimLabels: Record<string, string> = {
+      schedule: '时间安排',
+      budget: '预算',
+      pace: '节奏',
+      feasibility: '可达性',
+    };
+    const lines: string[] = [];
+    if (typeof health.overallScore === 'number') {
+      lines.push(`总体健康度：${Math.round(health.overallScore)}/100（${health.overall ?? 'unknown'}）`);
+    }
+    for (const [key, label] of Object.entries(dimLabels)) {
+      const dim = health.dimensions?.[key];
+      if (!dim) continue;
+      const issueText =
+        Array.isArray(dim.issues) && dim.issues.length
+          ? dim.issues.slice(0, 5).join('；')
+          : '无明显问题';
+      lines.push(`- ${label}（${dim.score ?? '—'}/100，${dim.status ?? '—'}）：${issueText}`);
+    }
+    const text = lines.join('\n');
+    return text.length > 4000 ? `${text.slice(0, 4000)}\n…(体检摘录已截断)` : text;
   }
 
   /** 租车/自驾类咨询：须触发 RAG（与 isTripScopedConsultationQuery 交通词对齐），否则仅「租车建议」不会命中 isDataLookupRagSupplementQuery 正文关键词 → 无摘录 */
@@ -1585,7 +1707,10 @@ export class ClaudeOrchestratorService {
       return empty;
     }
     const mergeRagParams = (p: ChunkRetrievalParams): ChunkRetrievalParams =>
-      this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, ragScope);
+      this.ragRealityPolicyGate.mergeChunkRetrievalParams(
+        { ...ragRetrievalExpansionParams(), ...p },
+        ragScope,
+      );
     try {
       const q = message.trim();
       const bias = (structuredRagBiasZh ?? '').trim();
@@ -3505,8 +3630,13 @@ export class ClaudeOrchestratorService {
       Boolean(effectiveTripId) &&
       isTripStatusOverviewQuery(request.message ?? '', msgLower) &&
       !weatherRoadFocused;
+    const tripLodgingDiningPlan =
+      Boolean(effectiveTripId) &&
+      isBoundTripLodgingDiningPlanQuery(request.message ?? '', msgLower) &&
+      !tripStatusOverview &&
+      !weatherRoadFocused;
     let lunchStrategyPromptLines: string[] = [];
-    if (tripStatusOverview && effectiveTripId) {
+    if ((tripStatusOverview || tripLodgingDiningPlan) && effectiveTripId) {
       try {
         const tripForLunch = await this.prisma.trip.findUnique({
           where: { id: effectiveTripId },
@@ -3521,10 +3651,12 @@ export class ClaudeOrchestratorService {
         );
       }
     }
-    const needsNamedDraftAppendixForLightweight = this.shouldIncludeNamedDraftAppendixForLightweightQa(
-      request.message ?? '',
-      msgLower,
-    );
+    const needsNamedDraftAppendixForLightweight =
+      shouldIncludeNamedDraftAppendixForLightweightConsultation({
+        message: request.message ?? '',
+        msgLower,
+        contextType: request.conversation_context?.context_type,
+      });
     const msgForNamedPoi = request.message ?? '';
     const prepOrHikeNamedPoiConsult =
       Boolean(effectiveTripId) &&
@@ -3594,6 +3726,10 @@ export class ClaudeOrchestratorService {
           this.runIcelandRentalGuidanceLightweightBranch(request, tripCtxJoined),
           stPullP,
         ]);
+    const tripHealthSupplement =
+      (tripStatusOverview || tripLodgingDiningPlan) && effectiveTripId
+        ? await this.runLightweightTripHealthSupplement(effectiveTripId)
+        : null;
     const liveSensorAudit: LiveSensorAuditRow[] = [
       ...wBranch.audits,
       ...fBranch.audits,
@@ -3719,16 +3855,37 @@ export class ClaudeOrchestratorService {
             ...(lunchStrategyPromptLines.length > 0 ? lunchStrategyPromptLines : []),
             '- **亮点介绍**：1–2 点最吸引人的安排（基于上文摘要与已知日程事实，勿编造未出现的 POI）。',
             '- **不合理与风险（须直接可执行）**：若存在过密、绕路、衔接过紧、季节/路况或体力不匹配等问题，请**直接给出改法**；若无明显问题，写「未发现明显硬伤」。',
-            '- **准备度小结**：用一句话给出准备度档位（如：高/中/低）并列出 2～4 条最关键的待办（证件、保险、装备、预订缺口等）。',
+            '- **行程健康度（analyzeHealth）**：须引用下方「行程健康度体检」摘录；**仅衡量时间轴结构**（冲突/节奏/预算），100 分不代表可出发。',
+            '- **出发准备度（Readiness Pack）**：须引用下方「出发准备度」摘录中的 **xx/100 分数与阻塞项**；与工作台左侧准备度面板口径一致，**禁止用健康度分数替代准备度**。',
+            '- **准备度小结**：基于准备度分数给出档位（高/中/低）并列出 2～4 条最关键的待办（证件、保险、装备、预订缺口等）。',
             '【Dashboard 强约束】此类问法且已绑定行程时：`<<<CONSULTATION_UI_JSON>>>` 块**禁止省略**；`summary_cards` 至少 4 张，语义分别覆盖：**预算区间与口径**、**驾驶或日程强度/松紧**、**核心游览区域或主轴**、**最大风险或优先优化点**（标题可用简短中文；value/hint 与正文一致）。',
+          ]
+        : []),
+      ...(tripLodgingDiningPlan
+        ? [
+            '【住宿+餐饮方案问法】用户要的是**按晚/按日**的住宿与用餐策略（结合当前草稿路线），而非整段重规划或仅复述 Abu 门控结论。',
+            '请按以下结构组织回答（小标题可用 `-` 或加粗，保持简洁）：',
+            '- **路线与分晚主轴**：结合上文摘要说明覆盖区域（如黄金圈→南岸→冰河湖）及各晚建议过夜城镇/锚点。',
+            '- **逐晚住宿建议**：按第 1 晚、第 2 晚…列出推荐城镇与选店思路（预算档、距次日首站距离、是否需提前订）；若下文有「实时住宿 MCP」摘录，须引用其中的区域/价格线索，勿编造未出现的房源名。',
+            '- **每日用餐策略**：按日说明早餐/午餐/晚餐安排思路（城镇正餐 vs 沿途简餐、预订窗口、午餐时间窗与体力）；须结合下方【午餐时间窗策略】（若有）。',
+            '- **与当前草稿对齐**：对照「当前已入库日程草案」与「按日骨架」，点名哪些天已有/缺少住宿、餐饮时段或 **TRANSIT/交通** 衔接；若仅 1 个景点或缺交通段，须明确写为缺口并建议补全。',
+            '- **出发准备度 vs 行程健康度**：须分别引用下方摘录——**准备度 xx/100 + 阻塞项**（与工作台左侧面板一致）与 **健康度 analyzeHealth**（仅结构冲突/节奏）；健康度 100 时若准备度低，须明确写「结构无冲突但尚不可出发」。',
+            '- **优先行动**：列出 2～4 条可执行下一步（订哪几晚、在哪天补交通、哪顿需预约等）。',
+            '【Dashboard 强约束】已绑定行程时：`<<<CONSULTATION_UI_JSON>>>` 块**禁止省略**；`summary_cards` 至少 4 张，语义分别覆盖：**住宿预算与分晚城镇**、**餐饮/午餐策略要点**、**路线主轴或核心区域**、**最大缺口或风险**（与正文一致）。',
           ]
         : []),
       ...tripContextLines,
       ...(hardOntologyAppendixLines.length > 0 ? hardOntologyAppendixLines : []),
       ...(readinessSupplement
         ? [
-            '【目的地准备度规则引擎摘录】来自目的地知识 Pack 的自动检查（仅供参考；个案以官方与实时政策为准）。若与上文「知识库检索摘录」并存，装备/签证类以准备度必做/建议为准组织回答，并注明差异原因。',
+            '【出发准备度摘录（Readiness Pack + 工作台 /score 同源）】衡量能否出发（证据覆盖、交通确定性、阻塞项等）。正文「准备度小结」须引用此处 **xx/100** 与阻塞清单；**禁止**用下方 analyzeHealth 分数替代。',
             readinessSupplement,
+          ]
+        : []),
+      ...(tripHealthSupplement
+        ? [
+            '【行程健康度体检（detail.analyzeHealth）】仅衡量当前时间轴的结构合理性（时间冲突、节奏、预算维度）；100/100 表示无日程冲突，**不代表**住宿/交通/证件已齐。勿将此分数当作「出发准备度」。',
+            tripHealthSupplement,
           ]
         : []),
       ...(effectiveTripId &&
@@ -4583,8 +4740,13 @@ export class ClaudeOrchestratorService {
       }
 
       const rt = context.routingTaskType;
+      const msgLowerEarly = (request.message ?? '').trim().toLowerCase();
+      const boundTripLightConsult =
+        !!boundTripIdEarly &&
+        isBoundTripLightConsultQuery(request.message ?? '', msgLowerEarly);
       const boundTripItineraryAdjust =
         !!boundTripIdEarly &&
+        !boundTripLightConsult &&
         (detectItineraryAdjustIntent(request.message ?? '') ||
           detectFullTripReplanIntent(request.message ?? ''));
       if (
@@ -7138,6 +7300,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         request.options,
       ) as OrchestratorState['metadata'],
     };
+    state.metadata = mergeEmotionalClientSignalsFromRouteAndRunRequest(state.metadata, request);
 
     // Phase 2.1: 初始化 DecisionState (DSO)，与 OrchestratorState 并行维护
     // Phase 2.4: DECISION_KERNEL_ENABLED=false 可回滚到无 Kernel 路径
@@ -7889,14 +8052,18 @@ ${JSON.stringify(routingDecision, null, 2)}
   }): Promise<{ pois: unknown[]; query?: string; count: number }> {
     const poiSkill = this.skillsRegistry?.getSkill('poi.search');
     if (!poiSkill) return { pois: [], count: 0 };
-    const query = buildItineraryAdjustCorridorPoiSearchQuery(
-      params.destinationRaw,
-      params.anchors,
-    );
+    const corridorPlan = buildItineraryAdjustCorridorPoiSearchPlan({
+      destinationRaw: params.destinationRaw,
+      anchors: params.anchors,
+      poiSearchCtx: { destination: params.destinationRaw.trim() || 'Iceland', pacing: 'relaxed' },
+    });
+    const query = corridorPlan.contextualizedQuery;
     const { lat, lng } = corridorSearchLatLng(params.spatial);
     try {
       const result = (await poiSkill.execute({
         query,
+        queryRewriteResult: corridorPlan.rewrite,
+        multiRouteSearch: true,
         limit: 14,
         lat,
         lng,
@@ -7937,6 +8104,11 @@ ${JSON.stringify(routingDecision, null, 2)}
     const subIntent = classifyItineraryAdjustSubIntent(intakeMsg);
     md.itinerary_adjust_sub_intent = subIntent;
 
+    if (subIntent === 'poi_slot_fill') {
+      await this.maybeAutoApplyPoiSlotFill(state, md, intakeMsg, subIntent);
+      return;
+    }
+
     const confidence = evaluateItineraryAdjustConfidenceGate(md);
     md.itinerary_adjust_confidence_gate = confidence;
 
@@ -7970,6 +8142,15 @@ ${JSON.stringify(routingDecision, null, 2)}
         confidence,
         executionMode,
       };
+      recordItineraryAdjustFunnel(this.promMetrics, {
+        stage: 'draft_created',
+        outcome: 'success',
+        sub_intent: subIntent,
+        execution_mode: executionMode,
+        reason:
+          executionMode !== 'AUTO' ? 'execution_mode_advice_only' : 'missing_target_date',
+        request_id: state.request_id,
+      });
       return;
     }
 
@@ -8065,6 +8246,14 @@ ${JSON.stringify(routingDecision, null, 2)}
           addedCount: addCount,
           skillsHit: ['trip.applyEdit'],
         };
+        recordItineraryAdjustFunnel(this.promMetrics, {
+          stage: 'auto_apply',
+          outcome: 'success',
+          sub_intent: subIntent,
+          execution_mode: 'AUTO',
+          request_id: state.request_id,
+          added_count: addCount,
+        });
         const lead = buildItineraryAdjustAutoApplyLeadMessage({
           applied: true,
           executionMode: 'AUTO',
@@ -8111,6 +8300,243 @@ ${JSON.stringify(routingDecision, null, 2)}
     md.itinerary_adjust_auto_apply = {
       applied: false,
       reason: 'apply_failed',
+      executionMode: 'ADVICE_ONLY',
+    };
+    md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+  }
+
+  /** POI_SLOT_FILL：向稀疏日追加推荐景点（只增不删，place_id 齐备时 SEMI_AUTO 落库） */
+  private async maybeAutoApplyPoiSlotFill(
+    state: OrchestratorState,
+    md: Record<string, unknown>,
+    intakeMsg: string,
+    subIntent: 'poi_slot_fill',
+  ): Promise<void> {
+    md.itinerary_adjust_poi_slot_fill = true;
+    if (!state.itinerary?.days?.length) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'empty_itinerary_draft',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const tripId =
+      state.trip_plan_request?.trip_id?.trim() ??
+      state.trip_plan_request?.ontology_context?.trip_id?.trim();
+    const userId = (state.metadata as { userId?: string })?.userId;
+    if (!tripId || !this.tripsService) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: !tripId ? 'missing_trip_id' : 'trips_service_unavailable',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    let trip: TripLikeForDelete;
+    try {
+      trip = (await this.tripsService.findOne(tripId, userId)) as TripLikeForDelete;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] poi slot fill trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'trip_load_failed',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const sparseTargets = collectSparseTripDayTargets(trip);
+    md.itinerary_adjust_poi_slot_fill_targets = sparseTargets;
+    if (!sparseTargets.length) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'no_sparse_days',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const merged = mergePoiSlotFillOrchestratorItinerary({
+      orchestrator: state.itinerary,
+      trip,
+      sparseTargets,
+    });
+    if (merged?.days?.length) {
+      state.itinerary = merged;
+    }
+
+    const researchPools = collectResearchPools(
+      state.research_data as Record<string, unknown> | undefined,
+    );
+    const boundCount = enrichItineraryWithPlaceIdsFromResearch(state.itinerary, researchPools);
+    md.itinerary_adjust_place_id_bound_count = boundCount;
+
+    const poiSlotFillReady = allNewPoiItemsHavePlaceIds(
+      state.itinerary.days ?? [],
+      sparseTargets,
+      trip,
+    );
+    const executionMode = resolveItineraryAdjustExecutionMode({
+      subIntent,
+      highConfidence: false,
+      poiSlotFillReady,
+    });
+    md.itinerary_adjust_execution_mode = executionMode;
+
+    const primaryTarget = sparseTargets[0];
+    if (!md.itinerary_adjust_target_date_iso) {
+      md.itinerary_adjust_target_date_iso = primaryTarget.dateIso;
+      md.itinerary_adjust_target_day_number = primaryTarget.dayNumber;
+    }
+
+    if (executionMode !== 'SEMI_AUTO') {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: poiSlotFillReady ? 'execution_mode_advice_only' : 'unresolved_places',
+        subIntent,
+        executionMode,
+        sparseDayCount: sparseTargets.length,
+        placeIdBoundCount: boundCount,
+      };
+      recordItineraryAdjustFunnel(this.promMetrics, {
+        stage: 'draft_created',
+        outcome: 'success',
+        sub_intent: subIntent,
+        execution_mode: executionMode,
+        reason: poiSlotFillReady ? 'execution_mode_advice_only' : 'unresolved_places',
+        request_id: state.request_id,
+      });
+      return;
+    }
+
+    const placeIdCache = new Map<string, number>();
+    const resolvePlaceId = (item: ItineraryItem): number | undefined => {
+      const fromRef = parseNumericPlaceId(item.location_ref?.place_id);
+      if (fromRef != null) return fromRef;
+      const key = String(item.location_ref?.place_id ?? item.location_ref?.name ?? item.id);
+      if (placeIdCache.has(key)) return placeIdCache.get(key);
+      const resolved = this.resolvePlaceIdForItineraryAdjustApply(item, state);
+      if (resolved != null) placeIdCache.set(key, resolved);
+      return resolved;
+    };
+
+    const { edits, addCount, unresolvedItems, appliedDays } = buildPoiSlotFillAppendEdits({
+      trip,
+      sparseTargets,
+      draftDays: state.itinerary.days ?? [],
+      resolvePlaceId,
+    });
+
+    if (addCount === 0 || unresolvedItems.length > 0) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: addCount === 0 ? 'no_new_pois' : 'unresolved_places',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+        unresolvedItems,
+        addCount,
+        sparseDayCount: sparseTargets.length,
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        subIntent,
+        executionMode,
+      };
+      return;
+    }
+
+    try {
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: edits as TripUserEdit[],
+      })) as { success?: boolean };
+      if (out?.success) {
+        md.itinerary_adjust_auto_apply = {
+          applied: true,
+          executionMode: 'SEMI_AUTO',
+          subIntent,
+          addedCount: addCount,
+          appliedDays,
+          sparseDayCount: sparseTargets.length,
+          skillsHit: ['trip.applyEdit'],
+        };
+        recordItineraryAdjustFunnel(this.promMetrics, {
+          stage: 'auto_apply',
+          outcome: 'success',
+          sub_intent: subIntent,
+          execution_mode: 'SEMI_AUTO',
+          request_id: state.request_id,
+          added_count: addCount,
+          applied_days: appliedDays.length,
+        });
+        const lead = buildItineraryAdjustAutoApplyLeadMessage({
+          applied: true,
+          executionMode: 'SEMI_AUTO',
+          targetDateIso: primaryTarget.dateIso,
+          dayNumber: primaryTarget.dayNumber,
+        });
+        if (lead) {
+          const prior = state.narration;
+          state.narration = {
+            user_friendly_summary: lead,
+            day_by_day_narrative: prior?.day_by_day_narrative ?? [],
+            highlights: prior?.highlights ?? [],
+            tips: prior?.tips ?? [],
+            day_by_day_text_zh: prior?.day_by_day_text_zh,
+            warnings: prior?.warnings,
+            research_ui_hints: prior?.research_ui_hints,
+            voice_tone_modifier: prior?.voice_tone_modifier,
+            visual_hint: prior?.visual_hint,
+            audio_prosody: prior?.audio_prosody,
+          };
+        }
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'REPAIR',
+          actor: 'Planner',
+          inputs_summary: `POI_SLOT_FILL 追加落库 ${appliedDays.join(', ')}`,
+          outputs_summary: `已落库：向 ${appliedDays.length} 个稀疏日新增 ${addCount} 个景点（trip.applyEdit append-only）`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'POI_SLOT_FILL_AUTO_APPLIED',
+            skills_hit: ['trip.applyEdit'],
+            applied_days: appliedDays,
+          },
+        });
+        return;
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] poi slot fill auto-apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    md.itinerary_adjust_auto_apply = {
+      applied: false,
+      reason: 'apply_failed',
+      subIntent,
       executionMode: 'ADVICE_ONLY',
     };
     md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
@@ -8265,6 +8691,118 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
 
     return { candidates: fallback() };
+  }
+
+  /**
+   * 极光槽位选日 INTAKE 澄清卡：拉取 pois/practical 知识库摘录（不走 DATA_LOOKUP 轻量路径）。
+   * `route_and_run` 主链默认无 TLS DecisionContext；Policy 开启时需与轻量咨询一致临时 bind。
+   */
+  async fetchAuroraSlotPlacementRagSupplement(
+    message: string,
+    opts?: { request?: RouteAndRunRequestDto; tripId?: string },
+  ): Promise<{
+    supplementZh: string | null;
+    citationCount: number;
+    relevantCount: number;
+    usedStaticFallback: boolean;
+  }> {
+    const runRetrieval = () => this.retrieveAuroraSlotPlacementRagSupplement(message);
+
+    if (!isRagRealityPolicyGateActive()) {
+      return runRetrieval();
+    }
+    if (getBoundDecisionContext()) {
+      return runRetrieval();
+    }
+    const req = opts?.request;
+    if (req) {
+      const effectiveTripId = opts?.tripId?.trim() || req.trip_id?.trim() || undefined;
+      const decisionCtx = await this.buildLightweightDecisionContextForRealityGate(req, effectiveTripId);
+      return runWithDecisionContextAsync(decisionCtx, runRetrieval);
+    }
+    return runRetrieval();
+  }
+
+  private async retrieveAuroraSlotPlacementRagSupplement(
+    message: string,
+  ): Promise<{
+    supplementZh: string | null;
+    citationCount: number;
+    relevantCount: number;
+    usedStaticFallback: boolean;
+  }> {
+    const empty = {
+      supplementZh: null as string | null,
+      citationCount: 0,
+      relevantCount: 0,
+      usedStaticFallback: false,
+    };
+    if (!this.chunkRetrieval) {
+      this.logger.debug('[INTAKE] Aurora slot RAG skipped: ChunkRetrieval not injected');
+      return empty;
+    }
+    const decisionContext = getBoundDecisionContext();
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      const codes = policy.codes?.length ? policy.codes.join(',') : 'n/a';
+      this.logger.debug(`[INTAKE] Aurora slot RAG skipped: rag_soft_world_blocked codes=${codes}`);
+      return empty;
+    }
+    const mergeRagParams = (p: ChunkRetrievalParams): ChunkRetrievalParams =>
+      this.ragRealityPolicyGate.mergeChunkRetrievalParams(
+        { ...ragRetrievalExpansionParams(), ...p },
+        scope,
+      );
+    const userCtx = String(message ?? '').trim();
+    const poisQuery = userCtx
+      ? `${AURORA_SLOT_RAG_POIS_QUERY} ${userCtx}`.slice(0, 512)
+      : AURORA_SLOT_RAG_POIS_QUERY;
+    try {
+      const [poisPool, practicalPool] = await Promise.all([
+        this.chunkRetrieval.retrieve(
+          mergeRagParams({
+            query: poisQuery,
+            limit: 10,
+            category: 'pois',
+            useHybridSearch: true,
+            credibilityMin: 0.35,
+          }),
+        ),
+        this.chunkRetrieval.retrieve(
+          mergeRagParams({
+            query: AURORA_SLOT_RAG_PRACTICAL_QUERY,
+            limit: 8,
+            category: 'practical',
+            useHybridSearch: true,
+            credibilityMin: 0.35,
+          }),
+        ),
+      ]);
+      const pois = (poisPool ?? []).map((r) =>
+        mapChunkToAuroraSlotRagEntry(String(r.content), this.formatRagDocumentTitle(r)),
+      );
+      const practical = (practicalPool ?? []).map((r) =>
+        mapChunkToAuroraSlotRagEntry(String(r.content), this.formatRagDocumentTitle(r)),
+      );
+      const ragSection = buildAuroraSlotPlacementRagSection(pois, practical);
+      const citationCount = (poisPool?.length ?? 0) + (practicalPool?.length ?? 0);
+      if (ragSection.supplementZh) {
+        this.logger.debug(
+          `[INTAKE] Aurora slot RAG attached raw=${citationCount} relevant=${ragSection.relevantCount} static=${ragSection.usedStaticFallback} msg=${userCtx.slice(0, 48)}`,
+        );
+      }
+      return {
+        supplementZh: ragSection.supplementZh,
+        citationCount,
+        relevantCount: ragSection.relevantCount,
+        usedStaticFallback: ragSection.usedStaticFallback,
+      };
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[INTAKE] Aurora slot RAG failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return empty;
+    }
   }
 
   /**
@@ -8956,6 +9494,8 @@ ${JSON.stringify(routingDecision, null, 2)}
       },
     } as unknown as OrchestratorState;
 
+    const preTrip = await this.tripsService!.findOne(tripId.trim(), userId);
+
     const result = await executeItineraryAdjustDraftApply({
       tripId,
       userId,
@@ -8979,6 +9519,22 @@ ${JSON.stringify(routingDecision, null, 2)}
         runId: durableRunId,
         metadata: { [PENDING_ITINERARY_ADJUST_DRAFT_META_KEY]: null },
       });
+    }
+
+    if (result.applied && this.itineraryVersion) {
+      try {
+        const postTrip = await this.tripsService!.findOne(tripId.trim(), userId);
+        void this.itineraryVersion.persistUserEditRevision({
+          tripId: tripId.trim(),
+          userId,
+          preItinerary: preTrip,
+          postItinerary: postTrip,
+          summary: `ITINERARY_ADJUST apply: ${result.targetDateIso ?? pending.target_date_iso}`,
+          source: 'ITINERARY_ADJUST',
+        });
+      } catch {
+        // best-effort alignment capture
+      }
     }
 
     return result;
@@ -9360,6 +9916,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         this.loadTripDaySnapshotsForSlotPlacement(tripId, userId),
       resolveItinerarySlotCandidatesForIntake: (msg, tp, tripId, userId, snaps) =>
         this.resolveItinerarySlotCandidatesForIntake(msg, tp, tripId, userId, snaps),
+      fetchAuroraSlotPlacementRagSupplement: (msg, opts) =>
+        this.fetchAuroraSlotPlacementRagSupplement(msg, opts),
       tryApplyBoundTripItineraryItemDelete: (tripId, userId, message) =>
         this.tryApplyBoundTripItineraryItemDelete(tripId, userId, message),
       tryApplyBoundTripItineraryItemAdd: (tripId, userId, message) =>
@@ -9385,6 +9943,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     const phaseHost = this.createIntakePhaseHost();
     return {
       logger: this.logger,
+      promMetrics: this.promMetrics,
       executeIntakeStep: (req, ctx, st, llm) =>
         runIntakePhase(phaseHost, { request: req, context: ctx, state: st, llmProvider: llm }),
       maybeSnapshot: (st, trigger) => this.maybeSnapshot(st, trigger),
@@ -11031,14 +11590,28 @@ ${JSON.stringify(routingDecision, null, 2)}
       request_id: state.request_id,
       step: 'GATE_EVAL',
       actor: 'Gatekeeper',
-      inputs_summary: `await shadow debate before PLAN_GEN (budget_ms=${debateBudgetMs})`,
-      outputs_summary: fusion.fused
-        ? `guardian debate ${fusion.reason ?? 'confirm'} → gate ${fusion.gate.gate_result}（编排短路）`
-        : `Abu=${fusion.gate.guardian_results?.abu?.verdict ?? 'n/a'} gate=${fusion.gate.gate_result}`,
+      inputs_summary: formatGuardianDebateGateInputsZh(
+        debateBudgetMs,
+        extractDecisionLogTripContext({
+          tripPlanRequest: state.trip_plan_request,
+          metadata: state.metadata as Record<string, unknown>,
+        }),
+      ),
+      outputs_summary: formatGuardianDebateGateOutputsZh({
+        gateResult: fusion.gate.gate_result,
+        fused: fusion.fused,
+        fusionReason: fusion.reason,
+        guardian: {
+          abu: fusion.gate.guardian_results?.abu?.verdict,
+          drdre: fusion.gate.guardian_results?.drdre?.verdict,
+          neptune: fusion.gate.guardian_results?.neptune?.verdict,
+        },
+      }),
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: {
         duration_ms: Date.now() - stepStart,
+        gate_result: fusion.gate.gate_result,
         debate_source: fusion.gate.guardian_results?.source,
         debate_gate_fusion: fusion.reason,
         abu_verdict: fusion.gate.guardian_results?.abu?.verdict,
@@ -12198,6 +12771,8 @@ ${JSON.stringify(routingDecision, null, 2)}
               decisionState,
               itinerary: state.itinerary,
               userMessage: userMsgForRetrieval,
+              travelPreference: (state.metadata as Record<string, unknown> | undefined)
+                ?.travel_preference_snapshot as Record<string, unknown> | undefined,
             });
             poiSearchCtxForTrace = poiSearchCtx;
             const semanticGapsForQuery = detectItineraryGapsV1({
@@ -12206,28 +12781,34 @@ ${JSON.stringify(routingDecision, null, 2)}
               itinerary: state.itinerary,
             });
             const gapSuffix = gapRetrievalIntentQuerySuffix(semanticGapsForQuery);
-            const ctxSuffix = buildContextualPoiSearchQuerySuffix(poiSearchCtx);
-            const boost =
-              plan.boostedTerms.length > 0 ? ` ${plan.boostedTerms.slice(0, 12).join(' ')}` : '';
-            const scenicQuery = `${destinationQuery} attractions landmark museum sightseeing${boost}${ctxSuffix}${gapSuffix}`
-              .replace(/\s+/g, ' ')
-              .trim();
-            const generalQuery =
-              plan.boostedTerms.length > 0
-                ? `${destinationQuery} ${plan.boostedTerms.slice(0, 8).join(' ')}${ctxSuffix}${gapSuffix}`
-                    .replace(/\s+/g, ' ')
-                    .trim()
-                : `${destinationQuery}${ctxSuffix}${gapSuffix}`.replace(/\s+/g, ' ').trim();
+            const scenicPlan = buildPoiSearchPlanFromContext({
+              baseQuery: destinationQuery,
+              poiSearchCtx,
+              gapSuffix,
+              boostTerms: plan.boostedTerms,
+              variant: 'scenic',
+            });
+            const generalPlan = buildPoiSearchPlanFromContext({
+              baseQuery: destinationQuery,
+              poiSearchCtx,
+              gapSuffix,
+              boostTerms: plan.boostedTerms.length > 0 ? plan.boostedTerms : undefined,
+              variant: 'general',
+            });
 
             const scenicResult = await poiSkill.execute({
-              query: scenicQuery,
+              query: scenicPlan.contextualizedQuery,
+              queryRewriteResult: scenicPlan.rewrite,
+              multiRouteSearch: true,
               limit: 12,
               lat,
               lng,
               category: 'ATTRACTION',
             } as any);
             const generalResult = await poiSkill.execute({
-              query: generalQuery,
+              query: generalPlan.contextualizedQuery,
+              queryRewriteResult: generalPlan.rewrite,
+              multiRouteSearch: true,
               limit: 12,
               lat,
               lng,
@@ -12244,64 +12825,63 @@ ${JSON.stringify(routingDecision, null, 2)}
                 : [];
             let merged = mergeResearchPoiLists(scenicPois, generalPois, 16);
             const extraSubQueries: Record<string, string> = {};
-            if (plan.regionTags.includes('golden_circle') && plan.boostedTerms.length > 0) {
-              const anchorQuery = `Iceland Golden Circle ${plan.boostedTerms.slice(0, 10).join(' ')}`;
-              extraSubQueries.golden_circle_anchor = anchorQuery;
-              const anchorResult = await poiSkill.execute({
-                query: anchorQuery,
-                limit: 12,
+            if (poiSearchCtx.preferOffbeatAttractions) {
+              const offbeatPlan = buildPoiSearchPlanFromContext({
+                baseQuery: destinationQuery,
+                poiSearchCtx,
+                gapSuffix,
+                boostTerms: plan.boostedTerms,
+                variant: 'offbeat',
+              });
+              extraSubQueries.offbeat = offbeatPlan.contextualizedQuery;
+              const offbeatResult = await poiSkill.execute({
+                query: offbeatPlan.contextualizedQuery,
+                queryRewriteResult: offbeatPlan.rewrite,
+                multiRouteSearch: true,
+                limit: 10,
                 lat,
                 lng,
                 category: 'ATTRACTION',
               } as any);
-              const anchorPois = Array.isArray(anchorResult?.pois)
-                ? anchorResult.pois
-                : Array.isArray(anchorResult)
-                  ? anchorResult
+              const offbeatPois = Array.isArray(offbeatResult?.pois)
+                ? offbeatResult.pois
+                : Array.isArray(offbeatResult)
+                  ? offbeatResult
                   : [];
-              merged = mergeResearchPoiLists(anchorPois, merged, 22);
+              merged = mergeResearchPoiLists(offbeatPois, merged, 20);
             }
-            /** Phase 3.2：第四路专补 Geysir / Gullfoss 召回（合并优先） */
-            if (plan.regionTags.includes('golden_circle')) {
-              extraSubQueries.golden_circle_pair = GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY;
-              const pairResult = await poiSkill.execute({
-                query: GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY,
-                limit: 14,
+            const regionSupplementLanes = buildSpecialRegionSupplementLanes(plan.regionTags, {
+              poiSearchCtx,
+              boostedTerms: plan.boostedTerms.length > 0 ? plan.boostedTerms : undefined,
+              gapSuffix,
+            });
+            let supplementMergeCap = 22;
+            for (const lane of regionSupplementLanes) {
+              extraSubQueries[lane.key] = lane.plan.contextualizedQuery;
+              const laneResult = await poiSkill.execute({
+                query: lane.plan.contextualizedQuery,
+                queryRewriteResult: lane.plan.rewrite,
+                multiRouteSearch: true,
+                limit: lane.limit,
                 lat,
                 lng,
                 category: 'ATTRACTION',
               } as any);
-              const pairPois = Array.isArray(pairResult?.pois)
-                ? pairResult.pois
-                : Array.isArray(pairResult)
-                  ? pairResult
+              const lanePois = Array.isArray(laneResult?.pois)
+                ? laneResult.pois
+                : Array.isArray(laneResult)
+                  ? laneResult
                   : [];
-              merged = mergeResearchPoiLists(pairPois, merged, 30);
-            }
-            if (plan.regionTags.includes('westfjords')) {
-              const wfQuery = `Iceland Westfjords scenic viewpoints ${plan.boostedTerms.slice(0, 10).join(' ')}`;
-              extraSubQueries.westfjords = wfQuery;
-              const wfResult = await poiSkill.execute({
-                query: wfQuery,
-                limit: 12,
-                lat,
-                lng,
-                category: 'ATTRACTION',
-              } as any);
-              const wfPois = Array.isArray(wfResult?.pois)
-                ? wfResult.pois
-                : Array.isArray(wfResult)
-                  ? wfResult
-                  : [];
-              merged = mergeResearchPoiLists(wfPois, merged, 26);
+              merged = mergeResearchPoiLists(lanePois, merged, supplementMergeCap);
+              supplementMergeCap = Math.min(34, supplementMergeCap + 4);
             }
             merged = filterPoisByRejectedIds(merged, poiSearchCtx.rejectedPoiIds);
             researchData.poi_evidence = merged;
             const semanticGaps = semanticGapsForQuery;
             researchData.retrieval_decision_trace = buildPlanningRetrievalDecisionTrace({
               poiSearchCtx,
-              scenicQuery,
-              generalQuery,
+              scenicQuery: scenicPlan.contextualizedQuery,
+              generalQuery: generalPlan.contextualizedQuery,
               extraSubQueries: Object.keys(extraSubQueries).length ? extraSubQueries : undefined,
               mergedPoiCount: merged.length,
               semanticGaps,
@@ -13317,6 +13897,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       state,
       decisionState,
     });
+    await this.routeAndRunTaskProgress?.reportOrchestrationStepWithState('NARRATE', state);
   }
 
   private createFeedbackPhaseHost(): FeedbackPhaseHost {
@@ -13927,6 +14508,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     const hasClarificationQuestions = state.clarification_questions && state.clarification_questions.length > 0;
     this.finalizeHarnessTraceFromOrchestration(
       decisionState,
@@ -13985,6 +14567,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'BLOCKED');
     const violations = state.gate_result?.violations || [];
     const answerText = `行程规划被阻止。原因：${violations.map(v => v.detail).join('；')}`;
@@ -14135,6 +14718,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'NEED_USER_CONFIRM');
     const answerText = this.resolveClarificationIntroAnswerText(state);
     void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
@@ -14178,6 +14762,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'FAILED');
     void this.decisionTrajectoryInterlocutor
       ?.markFailed(state.request_id)
@@ -14234,6 +14819,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'FAILED');
 
     const tf = decisionState?.systemState?.planGenTerminalFailure;

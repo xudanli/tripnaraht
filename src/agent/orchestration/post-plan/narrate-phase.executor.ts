@@ -1,6 +1,7 @@
 import type { GateResult, OrchestratorState } from '../../interfaces/trip-plan.interface';
 import type { NarratePhaseHost, NarratePhaseResult, RunNarratePhaseParams } from './narrate-phase.host';
 import { applyResearchManifestToNarration } from './narrate-manifest-merge.util';
+import { formatNarrateInputsZh, extractDecisionLogTripContext } from '../../utils/decision-log-user-facing.zh.util';
 import {
   buildItineraryAdjustAuditMetadata,
   formatNarrateOutputsAdjustZh,
@@ -172,11 +173,17 @@ function recordNarrateDecisionLog(
         ? `已写出 ${state.narration?.day_by_day_narrative?.length || 0} 天的讲解文案与要点提示`
         : '未生成叙述（可能缺少 Kernel 或日程为空）';
 
+  const tripCtx = extractDecisionLogTripContext({
+    tripPlanRequest: state.trip_plan_request,
+    metadata: adjustCtx.metadata,
+    itinerary: state.itinerary,
+  });
+
   state.decision_log.push({
     request_id: state.request_id,
     step: 'NARRATE',
     actor: 'Narrator',
-    inputs_summary: '把结构化日程转成自然语言说明（不改具体时间安排）',
+    inputs_summary: formatNarrateInputsZh(state.narration?.day_by_day_narrative?.length, tripCtx),
     outputs_summary: outputsSummary,
     evidence_refs: [],
     timestamp: new Date().toISOString(),

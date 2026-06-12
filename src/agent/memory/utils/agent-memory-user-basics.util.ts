@@ -29,13 +29,16 @@ export function extractAgentMemoryUserBasicsFromPreferences(
   const tags = asStrArray(p.tags);
   const preferredAttractionTypes = asStrArray(p.preferredAttractionTypes);
   const dietaryRestrictions = asStrArray(p.dietaryRestrictions);
+  const preferOffbeatAttractions =
+    p.preferOffbeatAttractions === true ? true : undefined;
 
   if (
     !nationality &&
     !residencyCountry &&
     !tags &&
     !preferredAttractionTypes &&
-    !dietaryRestrictions
+    !dietaryRestrictions &&
+    preferOffbeatAttractions !== true
   ) {
     return null;
   }
@@ -46,6 +49,7 @@ export function extractAgentMemoryUserBasicsFromPreferences(
     ...(tags ? { tags } : {}),
     ...(preferredAttractionTypes ? { preferredAttractionTypes } : {}),
     ...(dietaryRestrictions ? { dietaryRestrictions } : {}),
+    ...(preferOffbeatAttractions ? { preferOffbeatAttractions } : {}),
     ...(profilePreferencesUpdatedAt ? { profilePreferencesUpdatedAt } : {}),
   }) as AgentMemoryUserBasics;
 }

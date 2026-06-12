@@ -12,16 +12,19 @@ import {
   shouldSkipPoiDestinationClarificationForItineraryAdjust,
 } from './itinerary-adjust-intent.util';
 import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
+import {
+  CONSULTANT_FULL_TRIP_REPLAN_DAILY_ONLY_MSG,
+  CONSULTANT_FULL_TRIP_REPLAN_MSG,
+  FULL_TRIP_REPLAN_WITH_HOTEL_MSG,
+  TRIP_RANGE_6D_ICELAND,
+  WEATHER_FULL_TRIP_REPLAN_MSG,
+} from './route-and-run-intent.fixtures';
 
-const WEATHER_ADJUST_MSG =
-  '根据你刚才分析的天气风险，请为我调整2026年6月1日至7日的冰岛行程，如果某天预报有强风，请优先安排室内活动或替换到风小的景点，并确保每日车程不超过4小时。';
+const WEATHER_ADJUST_MSG = WEATHER_FULL_TRIP_REPLAN_MSG;
 
-const FULL_TRIP_REPLAN_MSG =
-  '请基于当前已确认POI，帮我出一份更合理的6天草案（2026-11-01到11-06），' +
-  '包含雷克雅未克和Vik住宿安排、每日适合自驾途中解决的午餐计划。' +
-  '假设使用4WD租车从雷克雅未克出发，按逆时针方向组织。请输出待确认行程草案。';
+const FULL_TRIP_REPLAN_MSG = FULL_TRIP_REPLAN_WITH_HOTEL_MSG;
 
-const TRIP_RANGE = { start_date: '2026-11-01', end_date: '2026-11-06' };
+const TRIP_RANGE = TRIP_RANGE_6D_ICELAND;
 
 describe('itinerary-adjust-intent.util', () => {
   it('detects weather-driven full trip replan (not single-day adjust)', () => {
@@ -34,6 +37,23 @@ describe('itinerary-adjust-intent.util', () => {
       end_date: '2026-06-07',
     })).toBe(false);
     expect(detectItineraryAdjustIntent('冰岛 南部 7天自驾')).toBe(false);
+  });
+
+  it('detects consultant-style full replan with day-6 return constraint (not single-day adjust)', () => {
+    expect(detectFullTripReplanIntent(CONSULTANT_FULL_TRIP_REPLAN_MSG, TRIP_RANGE)).toBe(true);
+    expect(detectItineraryAdjustIntent(CONSULTANT_FULL_TRIP_REPLAN_MSG, TRIP_RANGE)).toBe(false);
+    expect(detectExplicitSingleDayAdjustAnchor(CONSULTANT_FULL_TRIP_REPLAN_MSG, TRIP_RANGE)).toBe(
+      false,
+    );
+  });
+
+  it('detects consultant-style full replan when only 每日 (not 每天) marks per-day constraints', () => {
+    expect(detectFullTripReplanIntent(CONSULTANT_FULL_TRIP_REPLAN_DAILY_ONLY_MSG, TRIP_RANGE)).toBe(
+      true,
+    );
+    expect(
+      detectExplicitSingleDayAdjustAnchor(CONSULTANT_FULL_TRIP_REPLAN_DAILY_ONLY_MSG, TRIP_RANGE),
+    ).toBe(false);
   });
 
   it('detects 6-day bound trip replan with accommodation and daily lunch', () => {
@@ -122,6 +142,23 @@ describe('itinerary-adjust-intent.util', () => {
     expect(extractMaxDailyDrivingHoursFromMessage(WEATHER_ADJUST_MSG)).toBe(4);
   });
 
+  it('detects route/coordinate fix + day split request (顾问建议修正第1天)', () => {
+    const msg =
+      '请根据顾问建议，立即修正行程第1天（11月1日）的路线错误。当前从辛格维利尔国家公园到塞里雅兰瀑布的距离为1555公里，不可执行。请检查并修正这两个景点的地理坐标，并将该段行程拆分为两天';
+    expect(
+      detectItineraryAdjustIntent(msg, {
+        start_date: '2026-11-01',
+        end_date: '2026-11-06',
+      }),
+    ).toBe(true);
+    expect(
+      extractItineraryAdjustTargetDateFromMessage(msg, {
+        start_date: '2026-11-01',
+        end_date: '2026-11-06',
+      }),
+    ).toBe('2026-11-01');
+  });
+
   it('prefers trip destination over coarse NL country', () => {
     expect(isCoarseCountryOnlyDestination('冰岛')).toBe(true);
     expect(shouldPreferTripDestinationOnHydration('冰岛', '冰岛 南部')).toBe(true);
@@ -153,5 +190,14 @@ describe('itinerary-adjust-intent.util', () => {
     appendItineraryAdjustSystemHints(trip, WEATHER_ADJUST_MSG);
     expect(trip.message).toContain('[ITINERARY_ADJUST]');
     expect(trip.message).toContain('4h');
+  });
+});
+
+describe('poi slot fill intent', () => {
+  it('detects recommend suitable attractions for bound trip', async () => {
+    const { detectPoiSlotFillIntent } = await import('./itinerary-adjust-poi-slot-fill.util');
+    expect(
+      detectPoiSlotFillIntent('根据我的行程，推荐一些适合加入的景点', TRIP_RANGE),
+    ).toBe(true);
   });
 });

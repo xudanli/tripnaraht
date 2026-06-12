@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { MemoryService } from './memory.service';
 import type { UserTravelProfile } from '../interfaces/user-travel-profile.interface';
-import type { AgentMemoryContext } from '../interfaces/agent-memory-context.interface';
+import type { AgentMemoryContext, TripFeedbackSnapshot } from '../interfaces/agent-memory-context.interface';
 import type { RouteAndRunRequestDto } from '../../dto/route-and-run.dto';
 import type { RouteRunPartyProfileSnapshot } from '../interfaces/agent-memory-context.interface';
 import { resolveRouteRunPartyProfileSnapshot } from '../../utils/route-and-run-party-profile.util';
@@ -31,6 +31,19 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import type { AgentMemoryUserBasics } from '../interfaces/agent-memory-context.interface';
 import { extractAgentMemoryUserBasicsFromPreferences } from '../utils/agent-memory-user-basics.util';
 import { buildMergedTravelPreferenceSummary } from '../utils/travel-preference-merge.util';
+import {
+  buildActiveRouteHealthSnapshot,
+  buildFailurePatternsFromRouteHealth,
+  collectL3LookupCandidates,
+  parseRouteDirectionId,
+  resolveCountryCodeForL3Lookup,
+  routeHealthSnapshotKey,
+  type ActiveRouteHealthSnapshot,
+} from '../utils/route-health-memory.util';
+import {
+  L4_TRIP_FEEDBACK_TAIL,
+  projectTripFeedbackSnapshots,
+} from '../utils/trip-feedback-memory.util';
 
 export type MemoryContractObservabilityV1 = {
   revision: 'v1';
@@ -206,6 +219,26 @@ export class MemoryContextAssemblerService {
     }
     const ledgerRecomputePlan = planLedgerRecomputeOrder(drifted.ledger);
 
+    const l3Promise = this.loadL3RouteHealth({
+      request,
+      activeTripState,
+      recentDecisions,
+      travelPreference,
+      loadedAt,
+    });
+    const l4Promise =
+      userId && userId !== 'anonymous'
+        ? this.loadL4TripFeedback(userId)
+        : Promise.resolve({
+            recentTripFeedbacks: [] as TripFeedbackSnapshot[],
+            layers: [] as string[],
+            metadata: {} as Record<string, unknown>,
+          });
+    const [l3, l4] = await Promise.all([l3Promise, l4Promise]);
+    layers.push(...l3.layers, ...l4.layers);
+
+    const mergedMetadata = { ...l3.metadata, ...l4.metadata };
+
     const ctx: AgentMemoryContext = {
       snapshotId,
       snapshotVersion,
@@ -222,9 +255,15 @@ export class MemoryContextAssemblerService {
       recentWorldDecisions,
       activeTripState,
       recoveryHistory,
-      failurePatterns: [],
+      failurePatterns: l3.failurePatterns,
+      activeRouteHealthSnapshot: l3.activeRouteHealthSnapshot,
+      routeHealthByKey: l3.routeHealthByKey,
+      recentTripFeedbacks: l4.recentTripFeedbacks,
       loadedAt,
-      observability: { layers },
+      observability: {
+        layers,
+        ...(Object.keys(mergedMetadata).length > 0 ? { metadata: mergedMetadata } : {}),
+      },
     };
 
     this.logger.debug(
@@ -274,6 +313,132 @@ export class MemoryContextAssemblerService {
     } catch (e: any) {
       this.logger.warn(`MemoryContextAssembler: L0 user basics load failed: ${e?.message ?? e}`);
       return null;
+    }
+  }
+
+  /**
+   * L3：路线健康度装配（唯一 DB 读入口）；结果写入 snapshot，Injector 禁止二次读取。
+   */
+  private async loadL3RouteHealth(input: {
+    request: RouteAndRunRequestDto;
+    activeTripState: AgentMemoryContext['activeTripState'];
+    recentDecisions: AgentMemoryContext['recentDecisions'];
+    travelPreference: Record<string, unknown> | null;
+    loadedAt: string;
+  }): Promise<{
+    failurePatterns: string[];
+    activeRouteHealthSnapshot: ActiveRouteHealthSnapshot | null;
+    routeHealthByKey: Record<string, ActiveRouteHealthSnapshot>;
+    layers: string[];
+    metadata: Record<string, unknown>;
+  }> {
+    const empty = {
+      failurePatterns: [] as string[],
+      activeRouteHealthSnapshot: null as ActiveRouteHealthSnapshot | null,
+      routeHealthByKey: {} as Record<string, ActiveRouteHealthSnapshot>,
+      layers: [] as string[],
+      metadata: {} as Record<string, unknown>,
+    };
+
+    const defaultCountryCode = resolveCountryCodeForL3Lookup({
+      request: input.request,
+      travelPreference: input.travelPreference,
+      recentDecisions: input.recentDecisions,
+    });
+    const candidates = collectL3LookupCandidates({
+      activeTripState: input.activeTripState,
+      recentDecisions: input.recentDecisions,
+      defaultCountryCode,
+    });
+    if (candidates.length === 0) {
+      return empty;
+    }
+
+    const routeHealthByKey: Record<string, ActiveRouteHealthSnapshot> = {};
+    const metadata: Record<string, unknown> = {};
+    const layers: string[] = [];
+
+    for (const candidate of candidates) {
+      try {
+        const health = await this.memoryService.getRouteDirectionHealth(
+          candidate.routeDirectionId,
+          candidate.countryCode,
+        );
+        if (!health) continue;
+        routeHealthByKey[routeHealthSnapshotKey(candidate.routeDirectionId, candidate.countryCode)] =
+          buildActiveRouteHealthSnapshot(health, input.loadedAt);
+      } catch (e: any) {
+        metadata[`L3_load_error_${candidate.routeDirectionId}_${candidate.countryCode}`] =
+          e?.message ?? String(e);
+        this.logger.warn(
+          `MemoryContextAssembler: L3 load failed rd=${candidate.routeDirectionId} cc=${candidate.countryCode}: ${e?.message ?? e}`,
+        );
+      }
+    }
+
+    if (Object.keys(routeHealthByKey).length > 0) {
+      layers.push('L3_route_health');
+    }
+
+    const activeRouteId = parseRouteDirectionId(input.activeTripState?.selectedRouteDirectionId);
+    let activeRouteHealthSnapshot: ActiveRouteHealthSnapshot | null = null;
+    if (activeRouteId != null && defaultCountryCode) {
+      activeRouteHealthSnapshot =
+        routeHealthByKey[routeHealthSnapshotKey(activeRouteId, defaultCountryCode)] ?? null;
+    }
+    if (!activeRouteHealthSnapshot) {
+      const firstKey = Object.keys(routeHealthByKey)[0];
+      activeRouteHealthSnapshot = firstKey ? routeHealthByKey[firstKey] : null;
+    }
+
+    const failurePatterns =
+      activeRouteHealthSnapshot != null
+        ? buildFailurePatternsFromRouteHealth({
+            commonFailureReasons: [...activeRouteHealthSnapshot.commonFailureReasons],
+          })
+        : [];
+
+    return {
+      failurePatterns,
+      activeRouteHealthSnapshot,
+      routeHealthByKey,
+      layers,
+      metadata,
+    };
+  }
+
+  /**
+   * L4：行程反馈 tail 装配（唯一 DB 读入口 via MemoryService）；不写入 L1。
+   */
+  private async loadL4TripFeedback(userId: string): Promise<{
+    recentTripFeedbacks: TripFeedbackSnapshot[];
+    layers: string[];
+    metadata: Record<string, unknown>;
+  }> {
+    const empty = {
+      recentTripFeedbacks: [] as TripFeedbackSnapshot[],
+      layers: [] as string[],
+      metadata: {} as Record<string, unknown>,
+    };
+
+    try {
+      const raw = await this.memoryService.getUserTripFeedbacksTail(userId, L4_TRIP_FEEDBACK_TAIL);
+      const recentTripFeedbacks = projectTripFeedbackSnapshots(raw, L4_TRIP_FEEDBACK_TAIL);
+      if (recentTripFeedbacks.length === 0) {
+        return empty;
+      }
+      return {
+        recentTripFeedbacks,
+        layers: ['L4_trip_feedback'],
+        metadata: {},
+      };
+    } catch (e: any) {
+      const message = e?.message ?? String(e);
+      this.logger.warn(`MemoryContextAssembler: L4 load failed user=${userId}: ${message}`);
+      return {
+        ...empty,
+        metadata: { L4_load_error: message },
+      };
     }
   }
 }

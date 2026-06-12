@@ -121,12 +121,17 @@ export function buildMergedTravelPreferenceSummary(input: {
   const hasExplicitSettings = (basics?.preferredAttractionTypes?.length ?? 0) > 0;
   const constraintStrictness = hasExplicitSettings ? 'high' : 'normal';
   const explorationBias = profile?.riskTolerance === 'HIGH' ? 'high' : 'normal';
+  const preferOffbeatAttractions =
+    basics?.preferOffbeatAttractions === true ||
+    profile?.travelPhilosophy === 'ADVENTURE' ||
+    mergedInterests.some((c) => /OFF_BEATEN|REMOTE|HIDDEN/i.test(c));
 
   const hasAnySignal =
     fromProfile != null ||
     fromRoute != null ||
     mergedInterests.length > 0 ||
     hasExplicitSettings ||
+    preferOffbeatAttractions ||
     !!basics?.nationality ||
     !!basics?.residencyCountry ||
     (basics?.tags?.length ?? 0) > 0 ||
@@ -144,6 +149,7 @@ export function buildMergedTravelPreferenceSummary(input: {
     constraintStrictness,
     explorationBias,
     confidence: profile?.confidence ?? (hasExplicitSettings ? 0.5 : 0.3),
+    ...(preferOffbeatAttractions ? { preferOffbeatAttractions: true } : {}),
     ...(basics?.profilePreferencesUpdatedAt
       ? { l0_preferences_updated_at: basics.profilePreferencesUpdatedAt }
       : {}),

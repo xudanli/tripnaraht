@@ -103,6 +103,7 @@ import { NegotiationSessionStoreService } from './services/negotiation-session-s
 import { NegotiationResolverService } from './services/negotiation-resolver.service';
 import { TimelineInspectorService } from './services/timeline-inspector.service';
 import { ItineraryVersionService } from './services/itinerary-version.service';
+import { TripRobustnessDashboardService } from './services/trip-robustness-dashboard.service';
 import { AuditRecordService } from './services/audit-record.service';
 import { RevisionNarratorService } from './services/revision-narrator.service';
 import { ItineraryRevisionTimelineService } from './services/itinerary-revision-timeline.service';
@@ -311,6 +312,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     PreferenceEvolutionService,
     ItineraryRollbackService,
     ItineraryVersionService,
+    TripRobustnessDashboardService,
     AgentEntryResponseFactoryService,
     PlanningRequestClassifierService,
     DecisionReplayService,

@@ -20,6 +20,7 @@ function minimalMemory(overrides: Partial<AgentMemoryContext> = {}): AgentMemory
     activeTripState: null,
     recoveryHistory: [],
     failurePatterns: [],
+    recentTripFeedbacks: [],
     loadedAt: '2026-05-13T00:00:00.000Z',
     observability: { layers: ['layer_a'] },
     ...overrides,

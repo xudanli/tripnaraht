@@ -50,6 +50,7 @@ import { GoogleCalendarModule } from '../../../mcp/google-calendar.module';
 import { ItineraryItemsModule } from '../../../itinerary-items/itinerary-items.module';
 import { AgentModule } from '../../agent.module';
 import { TripsModule } from '../../../trips/trips.module';
+import { QueryRewritingModule } from '../../query-rewriting.module';
 // 根据环境变量调整限流配置
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const disableThrottler = process.env.DISABLE_THROTTLER === 'true';
@@ -66,6 +67,7 @@ const throttlerConfig = disableThrottler
   imports: [
     ThrottlerModule.forRoot(throttlerConfig),
     LlmModule,
+    QueryRewritingModule,
     PrismaModule, // 提供PrismaService
     SharedAssistantsModule,
     forwardRef(() => AgentModule), // 方案 A: 注入 AgentService 用于 route_and_run 编排

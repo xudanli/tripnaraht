@@ -8,12 +8,15 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionParams, normalizeDecisionParams } from '../interfaces/decision-params.interface';
+import type { AgentMemoryContext } from '../interfaces/agent-memory-context.interface';
 import { MemoryService } from './memory.service';
 import { AgentMemoryContextStore } from '../context/agent-memory-context.store';
 import { UserProfileMapperService } from './user-profile-mapper.service';
 import { DecisionParamsMappingV2Service } from './decision-params-mapping-v2.service';
 import { ShadowModeDiffService } from './shadow-mode-diff.service';
 import { calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
+import { resolveRouteHealthFromContext } from '../utils/route-health-memory.util';
+import { applyTripFeedbackOverlayToDecisionParams } from '../utils/trip-feedback-memory.util';
 import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
 import { applyRoutePartyFitnessToDecisionParams } from '../utils/route-party-fitness-decision-overlay.util';
 import {
@@ -71,6 +74,7 @@ export class DecisionParamsInjectorService {
       const params = useLegacy ? legacy : v2;
       this.applyRoutePartyFitnessOverlay(userId, params);
       this.applyIcelandMarketPriorOverlay(params);
+      this.applyTripFeedbackOverlay(userId, params);
       this.logger.debug(`Generated default decision params for new user ${userId}`);
       return normalizeDecisionParams(params);
     }
@@ -87,6 +91,7 @@ export class DecisionParamsInjectorService {
     const params = useLegacy ? legacy : v2;
     this.applyRoutePartyFitnessOverlay(userId, params);
     this.applyIcelandMarketPriorOverlay(params);
+    this.applyTripFeedbackOverlay(userId, params);
 
     this.logger.debug(
       `Generated decision params for user ${userId}: ` +
@@ -109,9 +114,6 @@ export class DecisionParamsInjectorService {
     );
   }
 
-  /**
-   * 当冻结 Memory 中存在本请求的 routePartyProfile.fitness_level 时，收紧/放宽 constraints（与 L1 画像叠加后再 normalize）。
-   */
   private applyRoutePartyFitnessOverlay(userId: string, params: DecisionParams): void {
     const snap = this.memoryContextStore?.get();
     const fl = snap?.routePartyProfile?.fitness_level;
@@ -119,6 +121,34 @@ export class DecisionParamsInjectorService {
     if (snap.userId != null && snap.userId !== userId) return;
     applyRoutePartyFitnessToDecisionParams(params, fl);
     this.logger.debug(`[DecisionParamsInjector] route_party fitness=${fl} merged into decision constraints`);
+  }
+
+  /**
+   * L4：基于冻结 snapshot 的 recentTripFeedbacks 微调 constraints / repairPolicy（只读，不调 DB）。
+   */
+  private applyTripFeedbackOverlay(userId: string, params: DecisionParams): void {
+    const snap = this.memoryContextStore?.get();
+    if (!snap || snap.userId !== userId) return;
+    const beforeBuffer = params.constraints.bufferTimeMin;
+    applyTripFeedbackOverlayToDecisionParams(params, snap.recentTripFeedbacks ?? []);
+    if (params.constraints.bufferTimeMin !== beforeBuffer || params.repairPolicy.preferRestDay) {
+      this.logger.debug(
+        `[DecisionParamsInjector] L4 trip_feedback overlay tail=${snap.recentTripFeedbacks?.length ?? 0}`,
+      );
+    }
+  }
+
+  /**
+   * 快照驱动 L4 微调（供单测 / replay harness 直接调用）。
+   */
+  applyDecisionParamsByTripFeedbackSnapshot(
+    context: Pick<AgentMemoryContext, 'recentTripFeedbacks'>,
+    params: DecisionParams,
+  ): DecisionParams {
+    return applyTripFeedbackOverlayToDecisionParams(
+      params,
+      context.recentTripFeedbacks ?? [],
+    );
   }
 
   /**
@@ -163,12 +193,21 @@ export class DecisionParamsInjectorService {
       }
     }
 
-    // 2. 应用路线健康度
-    const health = await this.memoryService.getRouteDirectionHealth(routeDirectionId, countryCode);
-    if (health) {
-      const healthScore = calculateRouteDirectionHealthScore(health);
-      // 健康度影响：健康度低的路线下调分数
-      adjustedScore *= (0.5 + healthScore * 0.5); // 健康度在 0.5~1.0 之间影响
+    // 2. 应用路线健康度（优先读冻结 snapshot，禁止 ALS 存在时二次 DB 读）
+    const ctx = this.memoryContextStore?.get();
+    const healthSnap = resolveRouteHealthFromContext(ctx, routeDirectionId, countryCode);
+    if (healthSnap) {
+      adjustedScore *= 0.5 + healthSnap.healthScore * 0.5;
+    } else if (ctx === undefined) {
+      const health = await this.memoryService.getRouteDirectionHealth(routeDirectionId, countryCode);
+      if (health) {
+        const healthScore = calculateRouteDirectionHealthScore(health);
+        adjustedScore *= 0.5 + healthScore * 0.5;
+      }
+    } else {
+      this.logger.debug(
+        `[DecisionParamsInjector] L3 snapshot miss rd=${routeDirectionId} cc=${countryCode}; skip DB (neutral)`,
+      );
     }
 
     return Math.max(0, Math.min(100, adjustedScore));

@@ -13,6 +13,7 @@ import {
 import { buildGapBehaviorObservation } from '../../../../planning-policy/utils/build-gap-behavior-observation.util';
 import type { RetrievalDecisionTrace } from '../../../../planning-policy/types/retrieval-decision-trace.types';
 import {
+  extractDecisionLogTripContext,
   formatPoiSelectionInputsZh,
   formatPoiSelectionOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
@@ -48,7 +49,11 @@ import {
   extractPoiNamesFromScoredRows,
   formatPoiSelectionOutputsAdjustZh,
 } from '../../../utils/itinerary-adjust-decision-log.util';
-import { extractSelectedPlaceIdsFromItinerary } from '../../../../planning-policy/utils/build-poi-search-context.util';
+import { extractSelectedPlaceIdsFromItinerary, buildPoiSearchContext } from '../../../../planning-policy/utils/build-poi-search-context.util';
+import {
+  applyOffBeatBoostToScoreRows,
+  enforceOffBeatQuotaInTopN,
+} from '../../../../planning-policy/utils/poi-selection-offbeat.util';
 import { filterPoisByRejectedIds } from '../../../../planning-policy/utils/contextual-poi-search-query.util';
 import {
   applyDiversityPenaltyToSortedRows,
@@ -276,6 +281,22 @@ async function runPoiSelectionPhaseCore(
     );
     scoredRows = sortPoiScoreRowsDesc(scoredRows);
     scoredRows = applyDiversityPenaltyToSortedRows(scoredRows);
+    const planningTextForDiversity = [
+      (state.metadata as { intake_user_message?: string })?.intake_user_message,
+      state.trip_plan_request?.message,
+    ]
+      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+      .join('\n');
+    const poiSearchCtx = buildPoiSearchContext({
+      destination: destinationRaw,
+      decisionState,
+      itinerary: state.itinerary,
+      userMessage: planningTextForDiversity,
+      travelPreference: (state.metadata as Record<string, unknown> | undefined)
+        ?.travel_preference_snapshot as Record<string, unknown> | undefined,
+    });
+    const preferOffbeat = poiSearchCtx.preferOffbeatAttractions === true;
+    scoredRows = applyOffBeatBoostToScoreRows(scoredRows, preferOffbeat);
     scoredRows = sortPoiScoreRowsDesc(scoredRows);
     const startCoordinates = host.tryExtractStartCoordinates(
       state.trip_plan_request?.origin,
@@ -283,12 +304,6 @@ async function runPoiSelectionPhaseCore(
     const rankedPois = scoredRows.map((x) => x.poi);
     const requiredAnchors = poiPlanSlice?.poiPlan?.requiredAnchorPoiIds ?? [];
     const topNLimit = 8;
-    const planningTextForDiversity = [
-      (state.metadata as { intake_user_message?: string })?.intake_user_message,
-      state.trip_plan_request?.message,
-    ]
-      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
-      .join('\n');
     const skipGeoClusterForDiversity =
       detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
       rankedPois.length >= 3;
@@ -379,6 +394,11 @@ async function runPoiSelectionPhaseCore(
       host.logger.debug(
         `[POI_PLANNING_ADMISSION] required=${JSON.stringify(requiredAnchors)} clustered_len=${beforeLen} final_len=${scored.length}`,
       );
+    }
+
+    if (preferOffbeat) {
+      scored = enforceOffBeatQuotaInTopN(scored, rankedForCorridor, topNLimit);
+      (state.metadata as Record<string, unknown>).poi_offbeat_quota_applied = true;
     }
 
     const admissionDiag: PoiPlanningAdmissionDiagnosticsInput | undefined =
@@ -623,6 +643,14 @@ async function runPoiSelectionPhaseCore(
       ) as OrchestratorState['research_data'];
     }
 
+    const tripCtx = extractDecisionLogTripContext({
+      tripPlanRequest: state.trip_plan_request,
+      metadata: state.metadata as Record<string, unknown>,
+    });
+    if (isItineraryAdjust) {
+      tripCtx.selectedPoiNames = extractPoiNamesFromScoredRows(scored);
+    }
+
     const poiSelectionOutputs = isItineraryAdjust
       ? formatPoiSelectionOutputsAdjustZh({
           researchRecallCount: asArray.length,
@@ -631,13 +659,13 @@ async function runPoiSelectionPhaseCore(
           selectedNames: extractPoiNamesFromScoredRows(scored),
           metadata: state.metadata as Record<string, unknown>,
         })
-      : formatPoiSelectionOutputsZh(asArray.length, scored.length);
+      : formatPoiSelectionOutputsZh(asArray.length, scored.length, tripCtx);
 
     state.decision_log.push({
       request_id: state.request_id,
       step: 'POI_SELECTION',
       actor: 'Planner',
-      inputs_summary: formatPoiSelectionInputsZh(asArray.length),
+      inputs_summary: formatPoiSelectionInputsZh(asArray.length, tripCtx),
       outputs_summary: poiSelectionOutputs,
       evidence_refs: [],
       timestamp: new Date().toISOString(),

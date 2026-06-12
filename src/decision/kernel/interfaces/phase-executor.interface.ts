@@ -304,6 +304,33 @@ export interface NarrationLike {
     reason_codes?: string[];
     evidence_refs?: string[];
   }>;
+  /** 路段级证据卡片（坡度/步行/避坑；schema tripnara.leg_evidence@v1） */
+  leg_evidence_cards?: Array<{
+    schema: 'tripnara.leg_evidence@v1';
+    leg_id: string;
+    day_index: number;
+    day_date: string;
+    from_label: string;
+    to_label: string;
+    eta_minutes?: number;
+    distance_meters?: number;
+    transport_mode?: 'walk' | 'drive' | 'transit' | 'mixed';
+    summary_zh: string;
+    pitfall_tips_zh?: string[];
+    severity?: 'info' | 'warn';
+  }>;
+  /** POI 级避坑卡片（入口/排队/预约；schema tripnara.poi_pitfall@v1） */
+  poi_pitfall_cards?: Array<{
+    schema: 'tripnara.poi_pitfall@v1';
+    poi_id: string;
+    place_id?: string;
+    label_zh: string;
+    day_index?: number;
+    day_date?: string;
+    tips_zh: string[];
+    source: 'heuristic' | 'rag_snippet' | 'item_notes';
+    confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  }>;
 }
 
 /** NARRATE 阶段执行器上下文（P3 C：orchestratorState 含 itinerary/gate_result/decision_log） */
