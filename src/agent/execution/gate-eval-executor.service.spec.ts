@@ -268,3 +268,46 @@ describe('GateEvalExecutorService — conflict matrix from DB', () => {
     expect(result.gateResult.violations.some((v) => String(v.detail).includes('db_froad_visibility_block_v1'))).toBe(true);
   });
 });
+
+describe('GateEvalExecutorService — vehicle party constraints', () => {
+  let service: GateEvalExecutorService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [GateEvalExecutorService, TripContextExtractorService],
+    }).compile();
+    service = module.get<GateEvalExecutorService>(GateEvalExecutorService);
+  });
+
+  it('长辈 + 多行李 + 紧凑型租车应 HARD 拒绝', async () => {
+    const result = await service.execute({} as any, {
+      requestId: 'r-vehicle-party',
+      tripPlanRequest: {
+        destination: 'Iceland',
+        party: { count: 4, has_elderly: true },
+        ontology_context: { party: { luggage_count: 4 } },
+        date_range: { start_date: '2026-06-01', end_date: '2026-06-05' },
+      },
+      researchData: {
+        car_rentals: [{ vehicle_name: 'Toyota Yaris Compact', car_class: 'COMPACT' }],
+      },
+    });
+    expect(result.gateResult.violations.some((v) => v.type === 'VEHICLE_SPACE_INSUFFICIENT')).toBe(true);
+    expect(result.gateResult.violations.some((v) => v.severity === 'HARD' && v.detail.includes('紧凑型'))).toBe(true);
+  });
+
+  it('无空间压力时不应触发 VEHICLE_SPACE_INSUFFICIENT', async () => {
+    const result = await service.execute({} as any, {
+      requestId: 'r-vehicle-ok',
+      tripPlanRequest: {
+        destination: 'Iceland',
+        party: { count: 2 },
+        date_range: { start_date: '2026-06-01', end_date: '2026-06-05' },
+      },
+      researchData: {
+        car_rentals: [{ vehicle_name: 'Toyota Yaris Compact', car_class: 'COMPACT' }],
+      },
+    });
+    expect(result.gateResult.violations.some((v) => v.type === 'VEHICLE_SPACE_INSUFFICIENT')).toBe(false);
+  });
+});

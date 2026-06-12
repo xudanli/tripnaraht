@@ -1,9 +1,13 @@
 /**
- * 特殊区域 POI 补检注册表 — Golden Circle / Westfjords / 未来 Svalbard 等。
+ * 特殊区域 POI 补检注册表 — Golden Circle / Westfjords / Greenland / Svalbard 等。
  */
 
 import type { PoiSearchContext } from '../../planning-policy/types/poi-search-context.types';
 import { buildGoldenCircleSupplementPlans } from './golden-circle-poi-supplement.util';
+import {
+  buildGreenlandSupplementLanes,
+  buildSvalbardSupplementLanes,
+} from './polar-sparse-region-supplement.util';
 import type { PoiSearchPlan } from './query-rewriting-poi-context.util';
 import { buildWestfjordsSupplementLanes } from './westfjords-poi-supplement.util';
 
@@ -49,9 +53,33 @@ const westfjordsHandler: SpecialRegionSupplementHandler = {
   },
 };
 
+const greenlandHandler: SpecialRegionSupplementHandler = {
+  regionTag: 'greenland',
+  buildLanes(input) {
+    return buildGreenlandSupplementLanes(input).map((lane) => ({
+      key: lane.key,
+      plan: lane.plan,
+      limit: lane.limit,
+    }));
+  },
+};
+
+const svalbardHandler: SpecialRegionSupplementHandler = {
+  regionTag: 'svalbard',
+  buildLanes(input) {
+    return buildSvalbardSupplementLanes(input).map((lane) => ({
+      key: lane.key,
+      plan: lane.plan,
+      limit: lane.limit,
+    }));
+  },
+};
+
 export const SPECIAL_REGION_SUPPLEMENT_REGISTRY: Record<string, SpecialRegionSupplementHandler> = {
   golden_circle: goldenCircleHandler,
   westfjords: westfjordsHandler,
+  greenland: greenlandHandler,
+  svalbard: svalbardHandler,
 };
 
 /** 按 regionTags 顺序构建补检车道（去重） */

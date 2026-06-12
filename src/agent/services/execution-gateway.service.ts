@@ -31,7 +31,7 @@ import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.se
 import { TripOrchestrationLockService } from './trip-orchestration-lock.service';
 import { AgentService } from './agent.service';
 import { runRouteAndRunMainChain } from './execution-gateway.route-and-run.orchestration';
-import { applyBoundTripReviewRouteAndRunOverrideInPlace } from '../utils/orchestration-signals.util';
+import { applyRouteAndRunEntryRoutingInPlace } from '../routing/route-and-run-route-class-fork.util';
 import { shouldRejectDedupForStaleTraceContract } from './execution-gateway-trace-compatibility.util';
 import {
   attachRobustnessDashboardToResponse,
@@ -87,9 +87,10 @@ export class ExecutionGatewayService {
    * Full route_and_run orchestration (stable deadline, dedup replay admission, policy routing, exec modes, recovery).
    */
   async runRouteAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
-    if (applyBoundTripReviewRouteAndRunOverrideInPlace(request)) {
+    const routeClassFork = applyRouteAndRunEntryRoutingInPlace(request);
+    if (routeClassFork) {
       this.logger.log(
-        `[ExecutionGateway] bound trip review → DATA_LOOKUP (skip state machine) request_id=${request.request_id}`,
+        `[ExecutionGateway] route_class_fork=${routeClassFork.routeClass} depth=${routeClassFork.orchestrationDepth} actions=${routeClassFork.forkActions.join(',')} request_id=${request.request_id}`,
       );
     }
     const requestId = request.request_id?.trim() || randomUUID();

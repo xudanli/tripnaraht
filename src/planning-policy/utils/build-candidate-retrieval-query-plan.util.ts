@@ -55,6 +55,22 @@ export function buildCandidateRetrievalQueryPlan(
     );
   }
 
+  const polarGreenlandIntent =
+    /\bGL\b|格陵兰|greenland|\bnuuk\b|\bdisko\b|ilulissat|伊卢利萨特/i.test(combinedLower) ||
+    regionId === 'greenland';
+  if (polarGreenlandIntent) {
+    regionTags.push('greenland');
+    boostedTerms.push('Greenland Nuuk', 'Disko Bay', 'Arctic expedition', 'Ilulissat iceberg');
+  }
+
+  const polarSvalbardIntent =
+    /\bSJ\b|斯瓦尔巴|svalbard|longyearbyen|朗伊尔/i.test(combinedLower) ||
+    regionId === 'svalbard';
+  if (polarSvalbardIntent) {
+    regionTags.push('svalbard');
+    boostedTerms.push('Svalbard Longyearbyen', 'polar bear safety', 'Arctic guide', 'aurora window');
+  }
+
   const seen = new Set<string>();
   const unique = boostedTerms
     .map((t) => t.trim())

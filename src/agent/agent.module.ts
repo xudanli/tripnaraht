@@ -86,6 +86,8 @@ import { AgentActionLogService } from './services/agent-action-log.service';
 import { ClarificationHandlerService } from './services/clarification-handler.service';
 import { ResearchPriorSnapshotService } from './services/research-prior-snapshot.service';
 import { ShadowConflictScannerService } from './services/shadow-conflict-scanner.service';
+import { ShadowRoutingEvaluatorService } from './services/shadow-routing-evaluator.service';
+import { ShadowRouteClassEvaluatorService } from './services/shadow-route-class-evaluator.service';
 import { LocalCaseStoreService } from './cbr/local-case-store.service';
 import { CbrRepository } from './cbr/cbr.repository';
 import { CbrAggregatorService } from './cbr/cbr-aggregator.service';
@@ -125,6 +127,7 @@ import { IntakeStreamingReporter } from './runtime/intake-streaming.reporter';
 import { RouteAndRunAsyncTaskStore } from './services/route-and-run-async-task.store';
 import { RouteAndRunAsyncService } from './services/route-and-run-async.service';
 import { RouteAndRunAsyncDelegationService } from './services/route-and-run-async-delegation.service';
+import { RouteAndRunAsyncTaskLeaseService } from './services/route-and-run-async-task-lease.service';
 import { LocalRouteAndRunTaskEventBus } from './services/local-route-and-run-task-event.bus';
 import { RouteAndRunTaskStreamService } from './services/route-and-run-task-stream.service';
 import { RouteAndRunTaskStreamRegistry } from './services/route-and-run-task-stream.registry';
@@ -163,6 +166,7 @@ import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
 import { ChainOfWorkModule } from '../chain-of-work/chain-of-work.module';
 import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
 import { AmadeusDirectModule } from '../mcp/amadeus-direct.module';
+import { BookingComModule } from '../mcp/booking-com.module';
 import { FlightMcpModule } from '../mcp/flight-mcp.module';
 import { RedisModule } from '../redis/redis.module';
 import { AgentContextModule } from './context/agent-context.module';
@@ -214,6 +218,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     forwardRef(() => ChainOfWorkModule), // Phase B+：ExecutionIntegrationService（编排恢复闭环）
     PostgreSQLMcpModule, // PostgreSQL MCP 模块（用于 Admin 批量操作）
     AmadeusDirectModule, // Amadeus REST（轻量 path：航班库存 sensor）
+    BookingComModule, // checkout Bundle 租车锁价重采样
     FlightMcpModule, // Flight MCP（Smithery/Kiwi，与 Amadeus 二选一或回退）
     RedisModule, // research prior 快照（可选 Redis；MCP 模式下为内存 cache）
     AgentContextModule, // P1-a：recent_messages 滑动窗口适配器（消费端迁移见 P1-b）
@@ -326,6 +331,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     RouteAndRunAsyncTaskStore,
     RouteAndRunAsyncService,
     RouteAndRunAsyncDelegationService,
+    RouteAndRunAsyncTaskLeaseService,
     ...routeAndRunRedisPubSubProviders,
     LocalRouteAndRunTaskEventBus,
     RedisPubSubRouteAndRunTaskEventBus,
@@ -342,6 +348,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     ClarificationHandlerService,
     ResearchPriorSnapshotService,
     ShadowConflictScannerService,
+    ShadowRoutingEvaluatorService,
+    ShadowRouteClassEvaluatorService,
     CbrRepository,
     CbrAggregatorService,
     LocalCaseStoreService,

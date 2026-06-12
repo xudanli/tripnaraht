@@ -75,6 +75,14 @@ import {
   normalizeSkillsPlanCoalesceVerifyRepair,
 } from './claude-orchestrator-smart-update-normalize.util';
 import {
+  buildDestinationSupplementForTriage,
+  buildOrchestrationTriagePrompt,
+  isOrchestrationTriageEnabled,
+  normalizeOrchestrationTriageResult,
+  ORCHESTRATION_TRIAGE_JSON_SCHEMA,
+} from '../utils/orchestration-triage.util';
+import { resolveDestinationLlmPromptSupplement } from '../utils/destination-llm-prompt-supplement.util';
+import {
   collectRepairAlternativesFromStepResults,
   mergeRepairAlternativesBundles,
 } from '../utils/collect-repair-alternatives-from-step-results.util';
@@ -702,6 +710,14 @@ import {
 } from '../utils/clarification-question-generator.util';
 import { TRANSPORT_SEARCH_UNRESOLVED_COORDS_MARKER } from '../../skills/transport/transport-search.skill';
 import { detectRhythmOrDiningPlanningIntent } from '../context-engine/utils/sparse-poi-day-allocation.util';
+import { applySparseRegionPoiGate, attachSparseRegionMetadata } from '../../planning-policy/open-world/sparse-poi-gate.util';
+import { resolveSparseRegionProfile } from '../../planning-policy/profiles/sparse-region.profile';
+import {
+  mergeDiscoveryStubsIntoPoiEvidence,
+  runOpenWorldDiscoveryBuffer,
+} from '../../planning-policy/open-world/discovery-buffer.util';
+import { runOpenWorldDiscoveryPipeline } from '../utils/open-world-discovery-pipeline.util';
+import { openWorldStubsToPoiEvidence } from '../../planning-policy/open-world/open-world-poi-stub.util';
 import {
   hydrateTripPlanTransportEndpoints,
   normalizeTransportEndpointsForSkill,
@@ -4841,17 +4857,45 @@ export class ClaudeOrchestratorService {
 
       setLlmTraceRoutePath('CLAUDE_DYNAMIC');
 
-      // 1. 使用 LLM 分析用户意图（原有流程，作为fallback）
-      this.logger.debug(`[Claude Orchestrator] 步骤 1/6: 分析用户意图...`);
-      const intentAnalysis = await this.analyzeIntent(request, context, llmProvider);
-      this.logger.log(`[Claude Orchestrator] ✅ 意图分析完成: ${intentAnalysis.intentType}, 复杂度: ${intentAnalysis.complexity}`);
+      let intentAnalysis: IntentAnalysis | undefined;
+      let routingDecision: RoutingDecision | undefined;
+      let skillsPlan: SkillsPlan | undefined;
 
-      // 2. 使用 LLM 选择路由策略
-      this.logger.debug(`[Claude Orchestrator] 步骤 2/6: 选择路由策略...`);
-      const routingDecision = await this.decideRouting(intentAnalysis, llmProvider, request.request_id);
-      this.logger.log(
-        `[Claude Orchestrator] ✅ 路由决策完成: ${routingDecision.route}, 置信度: ${routingDecision.confidence}`,
-      );
+      if (isOrchestrationTriageEnabled()) {
+        this.logger.debug(`[Claude Orchestrator] 步骤 1–4/6: 编排分流（Intent+Route+Skills 合并）...`);
+        const triage = await this.runOrchestrationTriage(
+          request,
+          context,
+          llmProvider,
+          request.emergency_constraints,
+        );
+        if (triage) {
+          intentAnalysis = triage.intentAnalysis;
+          routingDecision = triage.routingDecision;
+          skillsPlan = triage.skillsPlan;
+          this.logger.log(
+            `[Claude Orchestrator] ✅ Triage: ${intentAnalysis.intentType} → ${routingDecision.route}, skills=${skillsPlan.selectedSkills.length}`,
+          );
+        } else {
+          this.logger.warn('[Claude Orchestrator] Triage 失败，回退分步 Intent→Route→Skills');
+        }
+      }
+
+      if (!intentAnalysis) {
+        this.logger.debug(`[Claude Orchestrator] 步骤 1/6: 分析用户意图...`);
+        intentAnalysis = await this.analyzeIntent(request, context, llmProvider);
+        this.logger.log(
+          `[Claude Orchestrator] ✅ 意图分析完成: ${intentAnalysis.intentType}, 复杂度: ${intentAnalysis.complexity}`,
+        );
+      }
+
+      if (!routingDecision) {
+        this.logger.debug(`[Claude Orchestrator] 步骤 2/6: 选择路由策略...`);
+        routingDecision = await this.decideRouting(intentAnalysis, llmProvider, request.request_id);
+        this.logger.log(
+          `[Claude Orchestrator] ✅ 路由决策完成: ${routingDecision.route}, 置信度: ${routingDecision.confidence}`,
+        );
+      }
 
       // 3. 根据路由决策选择执行路径
       if (routingDecision.route?.startsWith('SYSTEM1')) {
@@ -4891,15 +4935,21 @@ export class ClaudeOrchestratorService {
 
 
       // 4. System 2 路径：使用 LLM 选择 Skills
-      this.logger.debug(`[Claude Orchestrator] 步骤 4/6: 选择 Skills...`);
-      const skillsPlan = await this.selectSkills(
-        intentAnalysis,
-        routingDecision,
-        context,
-        llmProvider,
-        request.request_id,
-        request.emergency_constraints,
-      );
+      if (!skillsPlan) {
+        this.logger.debug(`[Claude Orchestrator] 步骤 4/6: 选择 Skills...`);
+        skillsPlan = await this.selectSkills(
+          intentAnalysis,
+          routingDecision,
+          context,
+          llmProvider,
+          request.request_id,
+          request.emergency_constraints,
+        );
+      } else {
+        this.logger.debug(
+          `[Claude Orchestrator] 步骤 4/6: Skills 已由 Triage 预选 (${skillsPlan.selectedSkills.length})`,
+        );
+      }
       this.logger.log(`[Claude Orchestrator] ✅ Skills 选择完成: ${skillsPlan.selectedSkills.length} 个 Skills`);
       if (skillsPlan.selectedSkills.length > 0) {
         this.logger.debug(`[Claude Orchestrator] 选择的 Skills: ${skillsPlan.selectedSkills.map(s => s.skillName).join(', ')}`);
@@ -5116,6 +5166,57 @@ export class ClaudeOrchestratorService {
           },
         ],
       };
+    }
+  }
+
+  /**
+   * 合并 Intent + Route + Skills 单次 LLM（ORCHESTRATION_TRIAGE_LLM=1，默认开启）
+   */
+  private async runOrchestrationTriage(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    provider: LlmProvider,
+    emergencyConstraints?: RouteAndRunRequestDto['emergency_constraints'],
+  ): Promise<{
+    intentAnalysis: IntentAnalysis;
+    routingDecision: RoutingDecision;
+    skillsPlan: SkillsPlan;
+  } | null> {
+    const availableSkills = this.getAvailableSkills(emergencyConstraints);
+    const destinationSupplement = buildDestinationSupplementForTriage(
+      request.message ?? '',
+      request.trip_id ?? undefined,
+    );
+    const prompt = buildOrchestrationTriagePrompt({
+      userMessage: request.message ?? '',
+      userId: context.userId,
+      tripId: context.tripId ?? undefined,
+      conversationHistory: context.conversationHistory,
+      availableSkills,
+      destinationSupplement,
+    });
+    const tokenContext = request.request_id
+      ? {
+          request_id: request.request_id,
+          state_machine_step: 'INTAKE' as OrchestrationStep,
+          sub_agent: 'Orchestrator' as SubAgentType,
+        }
+      : undefined;
+    try {
+      const response = await this.callLlmWithFallback(
+        provider,
+        prompt,
+        ORCHESTRATION_TRIAGE_JSON_SCHEMA as unknown as Record<string, unknown>,
+        '编排分流',
+        tokenContext,
+      );
+      const parsed = this.extractJSONFromResponse(response);
+      return normalizeOrchestrationTriageResult(parsed);
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] runOrchestrationTriage 失败: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return null;
     }
   }
 
@@ -6473,6 +6574,11 @@ export class ClaudeOrchestratorService {
     request: RouteAndRunRequestDto,
     context: AgentContext,
   ): string {
+    const destSupplement = resolveDestinationLlmPromptSupplement({
+      userMessage: request.message,
+      destinationHint: request.message,
+    });
+    const destBlock = destSupplement ? `\n[目的地特化规则]\n${destSupplement}\n` : '';
     return `
 ${INTENT_ANALYSIS_PROMPT}
 
@@ -6483,7 +6589,7 @@ ${request.message}
 - 用户 ID: ${context.userId}
 - 行程 ID: ${context.tripId || '无'}
 - 对话历史: ${context.conversationHistory?.join('\n') || '无'}
-
+${destBlock}
 请分析用户意图。
 `.trim();
   }
@@ -10263,6 +10369,7 @@ ${JSON.stringify(routingDecision, null, 2)}
   private createPoiSelectionPhaseHost(): PoiSelectionPhaseHost {
     return {
       logger: this.logger,
+      llmService: this.llmService,
       resolvePoiPolicy: (explicit, require) => this.resolvePoiPolicy(explicit, require),
       inferCountryFromDestination: (dest) => this.inferCountryFromDestination(dest),
       normalizeText: (s) => this.normalizeText(s),
@@ -11099,8 +11206,12 @@ ${JSON.stringify(routingDecision, null, 2)}
       .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
       .join('\n');
     const skipGeoClusterForDiversity =
-      detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
-      rankedPois.length >= 3;
+      resolveSparseRegionProfile({
+        countryCode: destinationCountry,
+        destinationHint: destinationRaw,
+      })?.defaultDayAllocation === 'intentional_slack' ||
+      (detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
+        rankedPois.length >= 3);
     const skipGeoClusterForAdjust =
       isItineraryAdjust && itineraryAdjustTripPoiSeedCount >= 2;
     let scored =
@@ -11128,6 +11239,42 @@ ${JSON.stringify(routingDecision, null, 2)}
       this.logger.debug(
         `[POI_PLANNING_ADMISSION] required=${JSON.stringify(requiredAnchors)} clustered_len=${beforeLen} final_len=${scored.length}`,
       );
+    }
+
+    const sparsePoiGate = applySparseRegionPoiGate({
+      scored: scored as Record<string, unknown>[],
+      destinationCountry,
+      destinationHint: destinationRaw,
+      dedupe: (pois) => this.dedupePois(pois),
+    });
+    scored = sparsePoiGate.scored;
+    attachSparseRegionMetadata(state.metadata as Record<string, unknown>, sparsePoiGate);
+
+    const sparseProfile = sparsePoiGate.sparseProfile;
+    if (sparseProfile && planningTextForDiversity.trim()) {
+      const existingDiscovery = (state.research_data as Record<string, unknown> | undefined)
+        ?.open_world_discovery;
+      const discovery =
+        existingDiscovery && typeof existingDiscovery === 'object'
+          ? (existingDiscovery as ReturnType<typeof runOpenWorldDiscoveryBuffer>)
+          : runOpenWorldDiscoveryBuffer({
+              userMessage: planningTextForDiversity,
+              countryCode: destinationCountry,
+              destinationHint: destinationRaw,
+              regionTags: [sparseProfile.regionTag],
+              existingPoiEvidence: scored as unknown[],
+              existingStubIds: (sparsePoiGate.openWorldStubs ?? []).map((s) => s.stubId),
+            });
+      if (discovery.stubs.length > 0) {
+        scored = this.dedupePois([
+          ...(scored as unknown[]),
+          ...openWorldStubsToPoiEvidence(discovery.stubs),
+        ]);
+        const meta = state.metadata as Record<string, unknown>;
+        meta.open_world_discovery = discovery;
+        meta.open_world_discovery_applied_at = new Date().toISOString();
+        meta.open_world_stubs = [...(sparsePoiGate.openWorldStubs ?? []), ...discovery.stubs];
+      }
     }
 
     const admissionDiag: PoiPlanningAdmissionDiagnosticsInput | undefined =
@@ -11264,11 +11411,11 @@ ${JSON.stringify(routingDecision, null, 2)}
       };
     }
 
-    const minPoiRequired = 2;
+    const minPoiRequired = sparsePoiGate.minPoiRequired;
     const skipSparseForItineraryAdjust = shouldSkipPoiDestinationClarificationForItineraryAdjust(
       routeIntent?.primary,
       itineraryAdjustTripPoiSeedCount,
-      minPoiRequired,
+      minPoiRequired > 0 ? minPoiRequired : 2,
     );
     if (skipSparseForItineraryAdjust && scored.length < minPoiRequired) {
       scored = rankedPois.slice(0, Math.max(minPoiRequired, scored.length));
@@ -11307,6 +11454,9 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
 
     if (destinationCountry && scored.length === 0) {
+      if (sparsePoiGate.sparseProfile) {
+        (state.metadata as Record<string, unknown>).sparse_region_no_poi_fallback = true;
+      } else {
       const destinationExample = destinationRaw ? `${destinationRaw} ${this.countryDisplayName(destinationCountry)}` : 'Tokyo, Japan';
       const fallbackDecision = {
         verdict: 'ALLOW_WITH_FALLBACK',
@@ -11345,6 +11495,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           needsClarification: true,
           allowWithFallback: false,
         };
+      }
       }
     }
 
@@ -11800,11 +11951,18 @@ ${JSON.stringify(routingDecision, null, 2)}
   private inferCountryFromDestination(destination: string): string | undefined {
     const d = this.normalizeText(destination);
     if (!d) return undefined;
+    if (/^gl$/i.test(d.trim()) || /格陵兰|greenland|nuuk|ilulissat|伊卢利萨特|迪斯科|disko/.test(d)) {
+      return 'GL';
+    }
+    if (/^sj$/i.test(d.trim()) || /斯瓦尔巴|svalbard|longyearbyen|朗伊尔/.test(d)) {
+      return 'SJ';
+    }
     if (/东京|大阪|京都|日本|tokyo|osaka|kyoto|japan/.test(d)) return 'JP';
     if (/首尔|韩国|seoul|korea/.test(d)) return 'KR';
     if (/上海|北京|广州|深圳|杭州|成都|重庆|中国|china/.test(d)) return 'CN';
     /** 冰岛：POI_SELECTION / poiPlanning 冰岛分支依赖 ISO 国家码 IS */
-    if (/冰岛|iceland|reykjav[ií]k|雷克雅未克/.test(d)) return 'IS';
+    if (/^is$/i.test(d.trim()) || /冰岛|iceland|reykjav[ií]k|雷克雅未克/.test(d)) return 'IS';
+    if (/^[a-z]{2}$/i.test(d.trim())) return d.trim().toUpperCase();
     return undefined;
   }
 
@@ -11851,6 +12009,9 @@ ${JSON.stringify(routingDecision, null, 2)}
       DE: '德国',
       IT: '意大利',
       ES: '西班牙',
+      IS: '冰岛',
+      GL: '格陵兰',
+      SJ: '斯瓦尔巴',
     };
     return map[code] ?? code;
   }
@@ -12876,6 +13037,26 @@ ${JSON.stringify(routingDecision, null, 2)}
               supplementMergeCap = Math.min(34, supplementMergeCap + 4);
             }
             merged = filterPoisByRejectedIds(merged, poiSearchCtx.rejectedPoiIds);
+            const countryCodeResearch =
+              typeof tripRequest.destination === 'string' &&
+              /^[A-Za-z]{2}$/.test(tripRequest.destination.trim())
+                ? tripRequest.destination.trim().toUpperCase()
+                : undefined;
+            const discovery = await runOpenWorldDiscoveryPipeline(
+              {
+                userMessage: userMsgForRetrieval,
+                countryCode: countryCodeResearch,
+                destinationHint: destinationRaw,
+                regionTags: plan.regionTags,
+                existingPoiEvidence: merged,
+              },
+              { llmService: this.llmService },
+            );
+            if (discovery.stubs.length > 0) {
+              merged = mergeDiscoveryStubsIntoPoiEvidence(merged, discovery.stubs);
+              researchData.open_world_discovery = discovery;
+              researchData.open_world_discovery_applied_at = new Date().toISOString();
+            }
             researchData.poi_evidence = merged;
             const semanticGaps = semanticGapsForQuery;
             researchData.retrieval_decision_trace = buildPlanningRetrievalDecisionTrace({

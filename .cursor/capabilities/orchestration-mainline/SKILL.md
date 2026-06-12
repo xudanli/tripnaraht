@@ -12,6 +12,8 @@ description: >-
 
 **快捷唤起**：在 Agent 中输入 **`/orchestration`**（`.cursor/capabilities/orchestration/`）。
 
+**GATE/VERIFY/REPAIR 治理矩阵**：`src/agent/orchestration/ORCHESTRATION_GOVERNANCE_MATRIX.md` · 常量 `orchestration-governance-matrix.constants.ts`
+
 ## 说明
 
 本仓库**未**预置按产品线的固定编制；下列为**建议小队**（可兼职），覆盖编排与执行闭环。

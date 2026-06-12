@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto, PlanningPhaseIntentDto } from '../dto/route-and-run.dto';
 import { enrichClientUiDisplay, type ClientUiEnrichmentInput } from '../utils/client-ui-enrichment.util';
+import { buildFlawedDraftDescriptorV1 } from '../utils/build-flawed-draft-descriptor.util';
 import type { DecisionCandidateDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import type { OrchestrationResult, RoutingDecision } from '../interfaces/claude-orchestration.interface';
@@ -2258,6 +2259,13 @@ export class RouteAndRunResponseAssemblerService {
           })
         : undefined;
 
+    const flawedDraftV1 = buildFlawedDraftDescriptorV1({
+      orchestrationResult,
+      gateResult: gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result,
+      decisionState: orchestrationResult.result?.decisionState,
+      state: stateWithVerdict as OrchestratorState | undefined,
+    });
+
     const resultStatus = isTimeout
       ? 'TIMEOUT'
       : needsUserConfirmation
@@ -2418,6 +2426,7 @@ export class RouteAndRunResponseAssemblerService {
             : {}),
           ...this.resolveHotelAccommodationPayloadBlocks(orchestrationResult),
           ...(consultationDashboard ? { consultation_dashboard: consultationDashboard } : {}),
+          ...(flawedDraftV1 ? { flawed_draft_v1: flawedDraftV1 } : {}),
         } as any,
       },
       explain: {
@@ -2458,6 +2467,7 @@ export class RouteAndRunResponseAssemblerService {
             }),
         unified: suppressAdjustTechnicalUi ? undefined : explainUnifiedBundle.unified,
         decision_cockpit: suppressDecisionCockpit ? undefined : decisionCockpit,
+        ...(flawedDraftV1 ? { flawed_draft_v1: flawedDraftV1 } : {}),
       } as any,
       observability: {
         latency_ms: latency,

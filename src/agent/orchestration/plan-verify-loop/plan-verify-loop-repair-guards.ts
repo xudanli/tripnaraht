@@ -35,7 +35,7 @@ export async function applyUtilityDecayAfterRepairIfNeeded(
   host: PlanVerifyLoopRepairGuardHost,
   params: RepairGuardParams,
 ): Promise<{ terminal: OrchestrationResult | null; loop: PlanVerifyTransientLoopState; decisionState: DecisionState | undefined }> {
-  const { state, context, startTime, euBefore } = params;
+  const { state, context, startTime, euBefore, request } = params;
   let decisionState = params.decisionState;
   let loop = params.loop;
 
@@ -67,6 +67,21 @@ export async function applyUtilityDecayAfterRepairIfNeeded(
     loop = consumeUtilityDecline(loop, decline);
     const { maxUtilityDeclines } = loop.config;
     if (maxUtilityDeclines > 0 && nextDeclines >= maxUtilityDeclines) {
+      if (request.options?.allow_flawed_draft_narrate === true) {
+        const now = new Date().toISOString();
+        state.metadata = {
+          ...(state.metadata ?? {}),
+          started_at: state.metadata?.started_at ?? now,
+          last_updated_at: now,
+          flawed_draft_narrate: true,
+          flawed_draft_reason: 'UTILITY_DECAY_BYPASSED',
+          consecutive_utility_declines: nextDeclines,
+        };
+        host.logger.log(
+          `[PlanVerifyLoop] Utility decay budget exceeded (${nextDeclines}/${maxUtilityDeclines}) → allow_flawed_draft_narrate`,
+        );
+        return { terminal: null, loop, decisionState };
+      }
       state.clarification_questions = [
         {
           id: 'utility_decay_halt_confirmation',
@@ -100,10 +115,25 @@ export function checkRepairCountExceededIfNeeded(
   host: PlanVerifyLoopRepairGuardHost,
   params: RepairGuardParams,
 ): OrchestrationResult | null {
-  const { state, context, startTime, decisionState, loop } = params;
+  const { state, context, startTime, decisionState, loop, request } = params;
   const repairCount = decisionState?.systemState?.repairCount ?? 0;
   const { maxRepairs } = loop.config;
   if (maxRepairs > 0 && repairCount >= maxRepairs) {
+    if (request.options?.allow_flawed_draft_narrate === true) {
+      const now = new Date().toISOString();
+      state.metadata = {
+        ...(state.metadata ?? {}),
+        started_at: state.metadata?.started_at ?? now,
+        last_updated_at: now,
+        flawed_draft_narrate: true,
+        flawed_draft_reason: 'REPAIR_BUDGET_EXCEEDED',
+        repair_count: repairCount,
+      };
+      host.logger.log(
+        `[PlanVerifyLoop] REPAIR budget exceeded (${repairCount}/${maxRepairs}) → allow_flawed_draft_narrate, continue to NARRATE`,
+      );
+      return null;
+    }
     state.clarification_questions = [
       {
         id: 'repair_halt_confirmation',

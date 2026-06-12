@@ -2,6 +2,11 @@
  * 预订购物车 checkout 状态流转（tripnara.booking_cart@v1 actions）
  */
 
+import type { BookingCheckoutBundle } from '../delivery/types/booking-checkout-bundle.type';
+import {
+  lockBookingCheckoutBundle,
+  type LockBookingCheckoutBundleInput,
+} from '../delivery/utils/booking-cart-bundle-lock.util';
 import type { BookingCartItemUi } from './booking-cart-ui.util';
 import {
   buildSavingsOpportunities,
@@ -30,6 +35,8 @@ export interface BookingCartCheckoutResultUi {
   status: 'ready' | 'submitted';
   deep_links: BookingCartCheckoutLineUi[];
   disclaimer_zh: string;
+  /** submit_checkout 锁价后的 Bundle 结算单 */
+  bundle?: BookingCheckoutBundle;
 }
 
 export interface ApplyBookingCartActionInput {
@@ -40,6 +47,9 @@ export interface ApplyBookingCartActionInput {
     saving_index?: number;
     acknowledge_over_budget?: boolean;
   };
+  /** submit_checkout：租车 MCP 重采样（由 AgentService 注入） */
+  refreshCarRentalById?: LockBookingCheckoutBundleInput['refreshCarRentalById'];
+  tripId?: string;
 }
 
 export interface ApplyBookingCartActionResult {
@@ -150,7 +160,9 @@ function buildCheckoutLines(cart: OptimizedBookingCartUi): BookingCartCheckoutLi
     }));
 }
 
-export function applyBookingCartAction(input: ApplyBookingCartActionInput): ApplyBookingCartActionResult {
+export async function applyBookingCartAction(
+  input: ApplyBookingCartActionInput,
+): Promise<ApplyBookingCartActionResult> {
   const { cart, action, payload } = input;
   const selectedIds = [...(cart.selection?.selected_item_ids ?? [])];
 
@@ -215,12 +227,38 @@ export function applyBookingCartAction(input: ApplyBookingCartActionInput): Appl
         rejection_reason_zh: '请先 confirm_ready 再提交 checkout',
       };
     }
-    const lines = buildCheckoutLines(cart);
+    const bundle = await lockBookingCheckoutBundle({
+      cart,
+      tripId: input.tripId ?? cart.trip_id,
+      refreshCarRentalById: input.refreshCarRentalById,
+    });
+    const lines = buildCheckoutLines(cart).map((line) => {
+      const locked = bundle.lines.find((l) => l.item_id === line.item_id);
+      if (!locked) return line;
+      return {
+        ...line,
+        price_label:
+          locked.locked_price_numeric > 0
+            ? `¥${Math.round(locked.locked_price_numeric)}`
+            : line.price_label,
+        ...(locked.href ? { href: locked.href } : {}),
+        ...(locked.api_action ? { api_action: locked.api_action } : {}),
+      };
+    });
     const submittedCart: OptimizedBookingCartUi = {
       ...cart,
       cart_state: 'checkout_submitted',
-      headline_zh: `已提交 ${lines.length} 项预订意向（请在外部站点完成支付）`,
+      quote_only: bundle.quote_only,
+      headline_zh: bundle.quote_only
+        ? `已提交 ${lines.length} 项预订 Bundle（部分仍为采样报价，请核对后支付）`
+        : `已锁定 ${lines.length} 项 Bundle 结算单，总价约 ¥${Math.round(bundle.total_locked_price_numeric)}`,
       computed_at: new Date().toISOString(),
+      selection: {
+        ...cart.selection,
+        selected_item_ids: cart.selection?.selected_item_ids ?? [],
+        total_price_numeric: bundle.total_locked_price_numeric,
+        ...(bundle.currency ? { currency: bundle.currency } : {}),
+      },
     };
     return {
       status: 'OK',
@@ -228,8 +266,8 @@ export function applyBookingCartAction(input: ApplyBookingCartActionInput): Appl
       checkout: {
         status: 'submitted',
         deep_links: lines,
-        disclaimer_zh:
-          'TripNara 不代扣款；请通过 deep_links 跳转供应商完成预订。采样报价可能与实价有偏差。',
+        disclaimer_zh: bundle.disclaimer_zh,
+        bundle,
       },
     };
   }

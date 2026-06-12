@@ -1,5 +1,7 @@
 import { BOOKING_CART_SCHEMA, buildBookingCartUi } from './booking-cart-ui.util';
 import {
+  cartOptimizationItemsFromUi,
+  optimizeBookingCartGlobal,
   optimizeBookingCartUi,
   parseBookingPriceLabel,
 } from './booking-cart-optimizer.util';
@@ -91,10 +93,55 @@ describe('booking-cart-optimizer.util', () => {
       ],
     })!;
 
-    const out = optimizeBookingCartUi(cart, { total: 2000 });
+    const out = optimizeBookingCartUi(cart, {
+      budget: { total: 2000 },
+      useGlobalOptimization: false,
+    });
     expect(out.selection?.selected_item_ids).toEqual(['h1b', 'h2b']);
     expect(out.selection?.total_price_numeric).toBe(1100);
     expect(out.cart_state).toBe('optimized');
+  });
+
+  it('optimizeBookingCartGlobal 锁定高光锚点并平替其余槽位', () => {
+    const cart = buildBookingCartUi({
+      accommodationNightGroups: [
+        {
+          night_index: 1,
+          cards: [
+            { id: 'h1budget', name: 'Night1 Budget', price_label: '¥400' },
+            { id: 'h1mid', name: 'Night1 Mid', price_label: '¥700' },
+          ],
+        },
+        {
+          night_index: 2,
+          cards: [
+            { id: 'h2budget', name: 'Night2 Budget', price_label: '¥400' },
+            { id: 'h2mid', name: 'Night2 Mid', price_label: '¥700' },
+          ],
+        },
+        {
+          night_index: 4,
+          cards: [
+            {
+              id: 'h4lux',
+              name: '温泉酒店',
+              price_label: '¥2800',
+              metadata: { is_luxury_anchor: true, night_index: 4 },
+            },
+            { id: 'h4std', name: 'Night4 Standard', price_label: '¥900' },
+          ],
+        },
+      ],
+    })!;
+
+    const out = optimizeBookingCartUi(cart, {
+      budget: { total: 4000 },
+      globalPreferences: { preferHighlightAnchor: true, luxuryAnchorNightIndices: [4] },
+    });
+
+    expect(out.selection?.selected_item_ids).toContain('h4lux');
+    expect(out.selection?.within_budget).toBe(true);
+    expect(out.trade_off_narrative).toContain('高光');
   });
 });
 

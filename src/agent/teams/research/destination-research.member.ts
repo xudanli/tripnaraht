@@ -7,6 +7,11 @@ import {
   buildCandidateRetrievalQueryPlan,
   mergeResearchPoiLists,
 } from '../../../planning-policy/utils/build-candidate-retrieval-query-plan.util';
+import {
+  mergeDiscoveryStubsIntoPoiEvidence,
+} from '../../../planning-policy/open-world/discovery-buffer.util';
+import { runOpenWorldDiscoveryPipeline } from '../../utils/open-world-discovery-pipeline.util';
+import { LlmService } from '../../../llm/services/llm.service';
 import { buildPoiSearchContext } from '../../../planning-policy/utils/build-poi-search-context.util';
 import {
   filterPoisByRejectedIds,
@@ -41,6 +46,7 @@ export class DestinationResearchMember implements OnModuleInit, OnModuleDestroy 
     private readonly predictionCollector: PredictionCollectorService,
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly researchTeamBus?: ResearchTeamBusService,
+    @Optional() private readonly llmService?: LlmService,
   ) {}
 
   onModuleInit(): void {
@@ -247,6 +253,27 @@ export class DestinationResearchMember implements OnModuleInit, OnModuleDestroy 
         supplementMergeCap = Math.min(34, supplementMergeCap + 4);
       }
       merged = filterPoisByRejectedIds(merged, poiSearchCtx.rejectedPoiIds);
+
+      const countryCode =
+        typeof tripRequest.destination === 'string' && /^[A-Za-z]{2}$/.test(tripRequest.destination.trim())
+          ? tripRequest.destination.trim().toUpperCase()
+          : undefined;
+      const discovery = await runOpenWorldDiscoveryPipeline(
+        {
+          userMessage: userMsgForRetrieval,
+          countryCode,
+          destinationHint: destRaw,
+          regionTags: plan.regionTags,
+          existingPoiEvidence: merged,
+        },
+        { llmService: this.llmService },
+      );
+      if (discovery.stubs.length > 0) {
+        merged = mergeDiscoveryStubsIntoPoiEvidence(merged, discovery.stubs);
+        researchData.open_world_discovery = discovery;
+        researchData.open_world_discovery_applied_at = new Date().toISOString();
+      }
+
       researchData.poi_evidence = merged;
       const semanticGaps = semanticGapsForQuery;
       researchData.retrieval_decision_trace = buildPlanningRetrievalDecisionTrace({

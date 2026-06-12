@@ -32,6 +32,7 @@ import type {
   PhaseExecutorContext,
   ItineraryLike,
 } from '../../decision/kernel/interfaces/phase-executor.interface';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
 import { applyPostRepairRoutingMetricsSync } from '../axioms/post-repair-routing-sync.util';
@@ -57,13 +58,23 @@ import {
   resolvePersonaClosureAudit,
   shouldSkipRepairNeptuneReplace,
 } from '../utils/persona-closure-repair-skip.util';
-import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
+import {
+  shouldSkipAggressivePoiRepairForSparseContext,
+  isSparseIntentionalSlackActive,
+} from '../../planning-policy/open-world/sparse-repair-guard.util';
+import {
+  buildPseudoOrchestratorForDecisionContext,
+  syncDecisionContextToDecisionState,
+} from '../../planning-policy/open-world/decision-context-sync.util';
+import {
+  REPAIR_OSCILLATION_MOVE_THRESHOLD,
+} from '../orchestration/orchestration-governance-matrix.constants';
 
 @Injectable()
 export class RepairExecutorService implements IRepairExecutor {
   private readonly logger = new Logger(RepairExecutorService.name);
 
-  private static readonly OSCILLATION_MOVE_THRESHOLD = 3; // >2 times
+  private static readonly OSCILLATION_MOVE_THRESHOLD = REPAIR_OSCILLATION_MOVE_THRESHOLD;
 
   constructor(
     private readonly contextSlidingWindow: ContextSlidingWindowAdapter,
@@ -113,6 +124,21 @@ export class RepairExecutorService implements IRepairExecutor {
   }> {
     this.logger.debug(`[RepairExecutor] 执行 REPAIR 阶段 requestId=${ctx.requestId}`);
 
+    const hydrated = syncDecisionContextToDecisionState(
+      dso,
+      buildPseudoOrchestratorForDecisionContext(
+        {
+          requestId: ctx.requestId,
+          researchData: ctx.researchData,
+          tripPlanRequest: ctx.tripPlanRequest,
+          itinerary: ctx.itinerary,
+          gateResult: ctx.gateResult,
+        },
+        dso,
+      ),
+    );
+    dso.constraints = hydrated.constraints;
+
     let repairApplied = false;
     let itinerary = ctx.itinerary;
     let escalationPlan: RepairEscalationPlan | undefined;
@@ -133,6 +159,10 @@ export class RepairExecutorService implements IRepairExecutor {
       gateResult: ctx.gateResult as GateResult,
     });
     const skipNeptuneSpatialReplace = shouldSkipRepairNeptuneReplace(personaClosureAudit, dso);
+    const skipSparseSlackRepair = isSparseIntentionalSlackActive(dso);
+    if (skipSparseSlackRepair) {
+      this.logger.debug('[RepairExecutor] SPARSE_REGION intentional slack — 跳过惩罚性 POI 替换/Neptune 空间改写');
+    }
     if (skipNeptuneSpatialReplace) {
       repairTraces.push(buildPersonaClosureSkipRepairTrace());
       this.logger.debug(
@@ -376,7 +406,7 @@ export class RepairExecutorService implements IRepairExecutor {
     let alternatives = ctx.alternatives;
     // 当 Kernel 指示“低预算/补证据”时，跳过替代方案生成以节省链路与 token（repair.apply 只需执行 required_adjustments）。
     // persona closure 已收敛（ABU_RECHECK_PASS）时跳过，避免重复 Neptune 空间替换。
-    if (this.localInsightAgent && ctx.gateResult && !hasLowBudgetDirective && !skipNeptuneSpatialReplace) {
+    if (this.localInsightAgent && ctx.gateResult && !hasLowBudgetDirective && !skipNeptuneSpatialReplace && !skipSparseSlackRepair) {
       try {
         const alt = await this.localInsightAgent.suggestAlternatives(
           req,
@@ -1210,6 +1240,26 @@ export class RepairExecutorService implements IRepairExecutor {
     itinerary: ItineraryLike,
     ctx: PhaseExecutorContext,
   ): Promise<{ ok: boolean; itinerary?: ItineraryLike; postRepairAdvisories?: VerificationIssue[] }> {
+    const closedPoiIdEarly = String(_issue.entityRef?.id ?? '').trim();
+    if (shouldSkipAggressivePoiRepairForSparseContext(_dso, closedPoiIdEarly)) {
+      return {
+        ok: false,
+        postRepairAdvisories: [
+          {
+            code: 'ADVISORY' as VerificationIssueCode,
+            class: 'ADVISORY',
+            message:
+              '稀疏区 intentional slack：跳过闭馆/弹性占位 POI 的惩罚性替换，保留天气窗与安全缓冲。',
+            source: 'OTHER',
+            at: new Date().toISOString(),
+            suggestedActions: [
+              { action: 'RELAX', detail: '保留留白或等待核实开放世界节点' },
+            ],
+          },
+        ],
+      };
+    }
+
     const radiusMeters = Number(process.env.DECISION_REPAIR_REPLACEMENT_RADIUS_M ?? 3000);
     const dest =
       typeof ctx.tripPlanRequest?.destination === 'string'

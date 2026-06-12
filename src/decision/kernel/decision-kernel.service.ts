@@ -49,6 +49,10 @@ import {
   evaluateTravelOntologyConstraints,
   mergeOntologyViolationsIntoGateResult,
 } from './travel-ontology-constraints';
+import {
+  attachDecisionContextToConstraintReport,
+  buildPseudoOrchestratorForDecisionContext,
+} from '../../planning-policy/open-world/decision-context-sync.util';
 import { buildWorldStateSummaryFromDso } from './world-state-summary.types';
 import { applyTopologyLockedOptimizePersist } from './optimize-topology-persist.util';
 import type { OrchestratorState } from '../../agent/interfaces/trip-plan.interface';
@@ -1345,6 +1349,22 @@ export class DecisionKernelService {
         `[Kernel] travelOntology constraints merged: +${ontologyViolations.length} violation(s), gate=${gateResult.gate_result}`,
       );
     }
+
+    constraints = attachDecisionContextToConstraintReport(
+      constraints,
+      dso,
+      buildPseudoOrchestratorForDecisionContext(
+        {
+          requestId: ctx.requestId,
+          researchData: ctx.researchData,
+          tripPlanRequest: ctx.tripPlanRequest,
+          itinerary: ctx.itinerary,
+          gateResult,
+        },
+        dso,
+      ),
+    );
+
     const tripStatePatch: Partial<TripState> =
       gateResult.gate_result === 'BLOCK'
         ? { orchestratorAlternatives: normalizeBlockAlternativesForDso(gateResult, alternatives) }

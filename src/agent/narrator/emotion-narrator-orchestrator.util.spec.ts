@@ -49,6 +49,17 @@ describe('emotion-narrator-orchestrator.util', () => {
     expect(stance.toneModifier).toBe('empathetic_reassurance');
   });
 
+  it('行程硬冲突路由 empathetic_reassurance（优先于 anxietyTriggered）', () => {
+    const stance = routeEmotionalVoiceStance({
+      isEmergencyMode: false,
+      anxietyTriggered: true,
+      fatigueIndex: 0.2,
+      hasMajorItineraryConflict: true,
+    });
+    expect(stance.toneModifier).toBe('empathetic_reassurance');
+    expect(stance.audioProsodyPreference.speedFactor).toBe(0.85);
+  });
+
   it('anxietyTriggered 对齐 FRUSTRATION_CIRCUIT_BREAKER_THRESHOLD', () => {
     const level = deriveAnxietyLevel({
       frustrationScore: FRUSTRATION_CIRCUIT_BREAKER_THRESHOLD,

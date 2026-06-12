@@ -33,6 +33,7 @@ import {
 import type { UnifiedExplainabilityEnvelopeV1 } from '../../../trips/decision/explainability/unified-explainability.types';
 import type { CausalNarrativeCompileResult } from '../../../trips/decision/narration/causal-chain.types';
 import type { OptimizationHints } from '../../../decision/kernel/decision-state.types';
+import { shouldSkipGuardianProseInNarration } from '../../narrator/utils/narrator-persona-ssot.util';
 
 /**
  * 决策故事输出
@@ -177,10 +178,11 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
 
       if (unifiedExplain?.human.userFacingNarrative && !isItineraryAdjust) {
         const g = unifiedExplain.human.userFacingNarrative;
+        const skipGuardianProse = shouldSkipGuardianProseInNarration(_context);
         const guardianBlock = [g.abuSection, g.drdreSection, g.neptuneSection]
           .filter((s) => s && !s.startsWith('暂无'))
           .join('\n\n');
-        if (guardianBlock) {
+        if (guardianBlock && !skipGuardianProse) {
           const anchor = g.abuSection.slice(0, Math.min(16, g.abuSection.length));
           if (!mergedSummary.includes(anchor)) {
             mergedSummary = `${guardianBlock}\n\n${mergedSummary}`.trim();

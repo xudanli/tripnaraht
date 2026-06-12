@@ -20,6 +20,7 @@ export interface BookingCartItemUi {
   api_action?: {
     method: 'GET' | 'POST';
     path: string;
+    body_keys?: string[];
   };
   metadata?: Record<string, unknown>;
 }
@@ -116,6 +117,12 @@ export function buildBookingCartUi(input: {
       metadata: {
         night_index: c.nightIndex ?? c.night_index,
         source: c.source,
+        ...(c.metadata && typeof c.metadata === 'object' ? (c.metadata as Record<string, unknown>) : {}),
+        ...(c.is_luxury_anchor != null ? { is_luxury_anchor: c.is_luxury_anchor } : {}),
+        ...(c.is_highlight != null ? { is_highlight: c.is_highlight } : {}),
+        ...(c.rating != null ? { rating: c.rating } : {}),
+        ...(c.review_score != null ? { review_score: c.review_score } : {}),
+        ...(c.stars != null ? { stars: c.stars } : {}),
       },
     });
   }

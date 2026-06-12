@@ -26,6 +26,10 @@ import {
   ApplyBookingCartActionRequestDto,
   ApplyBookingCartActionResponseDto,
 } from './dto/booking-cart-checkout.dto';
+import {
+  ApplyOpenWorldVerificationRequestDto,
+  ApplyOpenWorldVerificationResponseDto,
+} from './dto/open-world-verification.dto';
 import { LogDecisionRequestDto, LogDecisionResponseDto } from './dto/log-decision.dto';
 import {
   ConflictStrategyOptionsRequestDto,
@@ -452,6 +456,20 @@ export class AgentController {
   }
 
   @Public()
+  @Post('task/resume/:taskId')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'P2：显式触发异步任务 Worker 续跑',
+    description:
+      '当 `task_lease_v1.lease_status=STALE` 且仍有 resume 预算时，用 `durable_trip_run_id` + request_snapshot 重新入队。轮询 status 也会在 STALE 时自动尝试 resume。',
+  })
+  @ApiResponse({ status: 202, description: '已调度续跑' })
+  @ApiResponse({ status: 404, description: '任务不存在' })
+  async resumeRouteAndRunTask(@Param('taskId') taskId: string) {
+    return this.agentService.resumeRouteAndRunTask(taskId);
+  }
+
+  @Public()
   @Get('task/stream/:taskId')
   @ApiOperation({
     summary: 'route_and_run 异步任务进度（SSE）',
@@ -536,10 +554,31 @@ export class AgentController {
   })
   @ApiBody({ type: ApplyBookingCartActionRequestDto })
   @ApiResponse({ status: 200, type: ApplyBookingCartActionResponseDto })
-  applyBookingCartAction(
+  async applyBookingCartAction(
     @Body() input: ApplyBookingCartActionRequestDto,
-  ): ApplyBookingCartActionResponseDto {
+  ): Promise<ApplyBookingCartActionResponseDto> {
     return this.agentService.applyBookingCartAction(input);
+  }
+
+  @Public()
+  @Post('open_world_verification/apply')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '开放世界 POI 核实任务状态流转',
+    description: `
+客户端回传 \`route_and_run\` 产出的 \`ui_display.open_world_discovery\` 快照，执行：
+- \`mark_verified\`：标记 stub 已核实（可选 \`promoted_place_id\` 绑定真实 POI）
+- \`discard_stub\`：丢弃 provisional 节点
+
+**注意**：无服务端持久化；客户端需用返回的 \`open_world_discovery\` 更新本地快照 / trip metadata。
+    `.trim(),
+  })
+  @ApiBody({ type: ApplyOpenWorldVerificationRequestDto })
+  @ApiResponse({ status: 200, type: ApplyOpenWorldVerificationResponseDto })
+  applyOpenWorldVerificationAction(
+    @Body() input: ApplyOpenWorldVerificationRequestDto,
+  ): ApplyOpenWorldVerificationResponseDto {
+    return this.agentService.applyOpenWorldVerificationAction(input);
   }
 
   @Public()

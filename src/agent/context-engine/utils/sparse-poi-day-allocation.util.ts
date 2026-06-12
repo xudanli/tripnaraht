@@ -15,11 +15,13 @@ export function detectRhythmOrDiningPlanningIntent(
   return t.length > 0 && RHYTHM_OR_DINING_PLANNING_RE.test(t);
 }
 
-export type SparsePoiDayAllocation = 'block' | 'round_robin';
+export type SparsePoiDayAllocation = 'block' | 'round_robin' | 'intentional_slack';
 
 export function resolveSparsePoiDayAllocation(
   text: string | null | undefined,
+  forced?: SparsePoiDayAllocation,
 ): SparsePoiDayAllocation {
+  if (forced === 'intentional_slack') return 'intentional_slack';
   const t = String(text ?? '').trim();
   if (t && RING_ROAD_SPARSE_RE.test(t)) return 'block';
   return detectRhythmOrDiningPlanningIntent(text) ? 'round_robin' : 'block';

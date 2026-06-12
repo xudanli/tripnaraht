@@ -8,6 +8,7 @@ import {
   orchestrationStepProgressMessageZh,
   orchestrationStepProgressPercent,
 } from '../runtime/route-and-run-orchestration-progress.util';
+import { parseTaskMaxResume } from '../runtime/route-and-run-task-lease.constants';
 
 /**
  * Durable Task Pattern：`POST /agent/route_and_run/async` 秒回 task_id，后台跑完整编排链。
@@ -43,24 +44,73 @@ export class RouteAndRunAsyncService {
     return init;
   }
 
+  /**
+   * P2：Worker lease 过期或显式 resume — 用 request_snapshot + durable_trip_run_id 断点续跑。
+   */
+  async resumeStaleTask(taskId: string, opts?: { explicit?: boolean }): Promise<void> {
+    const record = await this.taskStore.getRecord(taskId);
+    if (!record?.request_snapshot) {
+      this.logger.warn(`[route_and_run/async] resume 跳过：无 request_snapshot task=${taskId}`);
+      return;
+    }
+    const maxResume = parseTaskMaxResume();
+    if ((record.resume_count ?? 0) >= maxResume && !opts?.explicit) {
+      await this.taskStore.markFailed(taskId, `Worker lease stale; max resume ${maxResume} reached`);
+      return;
+    }
+    const nextResume = (record.resume_count ?? 0) + 1;
+    await this.taskStore.markResuming(taskId, {
+      resume_count: nextResume,
+      message: `Worker 续跑 (${nextResume}/${maxResume})，从 ${record.current_phase} 快照恢复…`,
+    });
+
+    const request: RouteAndRunRequestDto = {
+      ...record.request_snapshot,
+      request_id: record.request_snapshot.request_id,
+      options: {
+        ...(record.request_snapshot.options ?? {}),
+        ...(record.durable_trip_run_id?.trim()
+          ? { durable_trip_run_id: record.durable_trip_run_id.trim() }
+          : {}),
+      },
+    };
+    const destinationHint = this.inferDestinationHint(request);
+
+    setImmediate(() => {
+      void this.executeInBackground(taskId, request, destinationHint, { isResume: true })
+        .catch(async (err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.error(`[route_and_run/async] resume 失败 task=${taskId}: ${msg}`);
+          await this.taskStore.markFailed(taskId, msg);
+        });
+    });
+  }
+
   private async executeInBackground(
     taskId: string,
     request: RouteAndRunRequestDto,
     destinationHint: string | undefined,
+    opts?: { isResume?: boolean },
   ): Promise<void> {
     const run = async (): Promise<void> => {
       try {
         const response = await this.agentService.routeAndRun(request);
+        const obs = response.observability as { durable_trip_run_id?: string } | undefined;
+        if (obs?.durable_trip_run_id) {
+          await this.taskStore.patchDurableTripRunId(taskId, obs.durable_trip_run_id);
+        }
 
         await this.progressReporter?.reportOrchestrationStep('DONE');
         await this.taskStore.markSuccess(taskId, response);
+        await this.taskStore.clearResuming(taskId);
         this.logger.log(
-          `[route_and_run/async] 完成 task=${taskId} request_id=${request.request_id} status=${response.result?.status}`,
+          `[route_and_run/async] 完成 task=${taskId} request_id=${request.request_id} status=${response.result?.status} resume=${opts?.isResume === true}`,
         );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         await this.progressReporter?.reportOrchestrationStep('FAILED', msg);
         await this.taskStore.markFailed(taskId, msg);
+        await this.taskStore.clearResuming(taskId);
         this.logger.warn(`[route_and_run/async] 失败 task=${taskId}: ${msg}`);
       }
     };

@@ -1,7 +1,4 @@
-import {
-  parseMaxVerifyResearchRetries,
-  runVerifyReturnToResearchRetryLoop,
-} from './verify-return-to-research-retry.runner';
+import { parseMaxVerifyResearchRetriesFromEnv, runVerifyReturnToResearchRetryLoop } from './verify-return-to-research-retry.runner';
 import type { PlanVerifyLoopOutcome } from './plan-verify-loop.types';
 import type { OrchestratorState } from '../../interfaces/trip-plan.interface';
 
@@ -27,7 +24,7 @@ describe('runVerifyReturnToResearchRetryLoop', () => {
   it('parseMaxVerifyResearchRetries reads env', () => {
     const prev = process.env.DECISION_MAX_VERIFY_RESEARCH_RETRIES;
     process.env.DECISION_MAX_VERIFY_RESEARCH_RETRIES = '2';
-    expect(parseMaxVerifyResearchRetries()).toBe(2);
+    expect(parseMaxVerifyResearchRetriesFromEnv()).toBe(2);
     if (prev === undefined) delete process.env.DECISION_MAX_VERIFY_RESEARCH_RETRIES;
     else process.env.DECISION_MAX_VERIFY_RESEARCH_RETRIES = prev;
   });

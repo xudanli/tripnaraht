@@ -15,6 +15,7 @@ import type { RepairTrace } from '../../agent/services/route-feasibility.types';
 import type { TripAction } from '../../trips/road/trip-action.types';
 import type { RouteTopologyLockRecord } from './route-topology-lock.util';
 import type { PersonaClosureAudit } from '../../trips/decision/shared/persona-closure.types';
+import type { DecisionContextSlice } from '../../planning-policy/types/open-world-poi.types';
 
 /** 用户意图（从 INTAKE 提取） */
 export interface UserIntent {
@@ -319,6 +320,8 @@ export interface ConstraintReport {
    * 当为 `NEED_USER_CONFIRM` 时，仅用 `feasible`/`violations` 无法与 `ADJUST_REQUIRED` 区分，往返映射时必须显式携带。
    */
   gateOutcome?: 'ALLOW' | 'ADJUST_REQUIRED' | 'BLOCK' | 'NEED_USER_CONFIRM';
+  /** Decision OS v2：稀疏区 / 开放世界 / 留白 SSOT（Narrator + Repair 只读） */
+  decisionContext?: DecisionContextSlice;
 }
 
 /**

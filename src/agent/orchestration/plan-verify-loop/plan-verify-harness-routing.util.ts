@@ -1,6 +1,7 @@
 import type { DecisionState } from '../../../decision/kernel/decision-state.types';
 import type { HarnessSuggestedAction } from '../../../harness/failures/failure-event.types';
 import { inferHarnessActionFromFailureEvent } from '../graph/edges/harness-orchestration-edge.registry';
+import { isVerifyReturnToResearchEnabled } from '../orchestration-governance-matrix.constants';
 
 /** 从 DSO 读取 VERIFY 步 Harness 失败后的建议动作（边表注册表统一推断） */
 export function pickVerifyHarnessSuggestedAction(
@@ -15,6 +16,5 @@ export function pickVerifyHarnessSuggestedAction(
 }
 
 export function isReturnToResearchEnabled(): boolean {
-  const v = process.env.DECISION_VERIFY_RETURN_TO_RESEARCH ?? 'true';
-  return v === 'true' || v === '1';
+  return isVerifyReturnToResearchEnabled();
 }

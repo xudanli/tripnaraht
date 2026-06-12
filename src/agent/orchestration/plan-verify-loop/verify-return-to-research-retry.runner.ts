@@ -2,10 +2,10 @@ import type { OrchestrationResult } from '../../interfaces/claude-orchestration.
 import type { OrchestratorState } from '../../interfaces/trip-plan.interface';
 import type { DecisionState } from '../../../decision/kernel/decision-state.types';
 import type { PlanVerifyLoopOutcome } from './plan-verify-loop.types';
+import { parseMaxVerifyResearchRetries } from '../orchestration-governance-matrix.constants';
 
-export function parseMaxVerifyResearchRetries(): number {
-  const n = parseInt(process.env.DECISION_MAX_VERIFY_RESEARCH_RETRIES ?? '1', 10);
-  return Number.isFinite(n) && n >= 0 ? n : 1;
+export function parseMaxVerifyResearchRetriesFromEnv(): number {
+  return parseMaxVerifyResearchRetries();
 }
 
 export interface VerifyReturnToResearchRetryAttempt {
@@ -44,7 +44,7 @@ export async function runVerifyReturnToResearchRetryLoop(
   params: VerifyReturnToResearchRetryParams,
 ): Promise<VerifyReturnToResearchRetryResult> {
   let { planVerifyOutcome, decisionState, state } = params;
-  const maxRetries = params.maxRetries ?? parseMaxVerifyResearchRetries();
+  const maxRetries = params.maxRetries ?? parseMaxVerifyResearchRetriesFromEnv();
   let verifyResearchRetries = Number(
     (state.metadata as Record<string, unknown>)?.verify_return_to_research_count ?? 0,
   );

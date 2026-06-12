@@ -9,6 +9,7 @@ import {
   scrubInternalAgentLeakage,
 } from './structured-intake-clarification.util';
 import type { ClarificationQuestion } from '../interfaces/clarification.interface';
+import { parseClarificationQuestionsForClient } from '../validation/clarification-question.schema';
 import type { DecisionLogEntry, GateResult, Itinerary } from '../interfaces/trip-plan.interface';
 import { attachClarificationMarkdownHtml } from './user-clarification-markdown.util';
 import { deriveGuardianPersonaVotes } from './guardian-persona-surface.util';
@@ -339,6 +340,7 @@ export function sanitizeClarificationQuestionForClientDisplay(
 export function sanitizeClarificationQuestionsForClientDisplay(
   questions: ClarificationQuestion[] | undefined,
 ): ClarificationQuestion[] {
-  if (!Array.isArray(questions) || questions.length === 0) return [];
-  return questions.map(sanitizeClarificationQuestionForClientDisplay);
+  const parsed = parseClarificationQuestionsForClient(questions);
+  if (parsed.length === 0) return [];
+  return parsed.map(sanitizeClarificationQuestionForClientDisplay);
 }

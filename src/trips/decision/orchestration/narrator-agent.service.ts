@@ -18,6 +18,10 @@ import { ContextEngineerService } from '../../../agent/context-engine/services/c
 import { buildContextForNode, writeBackFromNode, buildPromptFromContextPackage, mapPhaseToTripTaskPhase } from '../../../agent/context-engine/utils/langgraph-context-integration';
 import { isResearchConflictNegotiationReport } from '../../../agent/teams/research/research-conflict-negotiation.util';
 import { buildEbpLlmSystemPromptAppendixZh } from '../../../agent/utils/narrator-ebp-tone.util';
+import {
+  buildNarratorSsotPersonaInstructionZh,
+  isNarratorPersonaSsotEnabled,
+} from '../../../agent/narrator/utils/narrator-persona-ssot.util';
 
 @Injectable()
 export class NarratorAgentService implements INarratorAgent {
@@ -162,6 +166,13 @@ export class NarratorAgentService implements INarratorAgent {
     const ebpZh =
       isResearchConflictNegotiationReport(rawEbp) ? buildEbpLlmSystemPromptAppendixZh(rawEbp).trim() : '';
     const ebpAppendix = ebpZh ? `\n\n${ebpZh}\n` : '';
+    const ssotPersonaAppendix = isNarratorPersonaSsotEnabled()
+      ? `\n\n${buildNarratorSsotPersonaInstructionZh()}\n`
+      : '';
+
+    const personaSummaryRule = isNarratorPersonaSsotEnabled()
+      ? '2. 若路线通过，用 1 句概括结果即可；三人格细节已在结构化 gate 中，勿逐条复述 Abu/Dr.Dre/Neptune'
+      : '2. 如果路线通过，要总结决策过程（Abu（北极熊 🐻‍❄️）的安全检查、Dr.Dre（牧羊犬 🐕）的节奏调整、Neptune（海獭 🦦）的空间修复）';
 
     const prompt = `你是一个旅行规划助手，负责将技术性的决策结果转化为友好、易懂的自然语言解释。
 
@@ -173,11 +184,11 @@ export class NarratorAgentService implements INarratorAgent {
 决策日志：
 ${JSON.stringify(personaLogs, null, 2)}
 
-${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, null, 2)}` : ''}${contextPrompt}${precedentsPrompt}${ebpAppendix}
+${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, null, 2)}` : ''}${contextPrompt}${precedentsPrompt}${ebpAppendix}${ssotPersonaAppendix}
 
 请生成一段友好、易懂的中文解释，要求：
 1. 如果路线被拒绝，要说明原因并给出建议
-2. 如果路线通过，要总结决策过程（Abu（北极熊 🐻‍❄️）的安全检查、Dr.Dre（牧羊犬 🐕）的节奏调整、Neptune（海獭 🦦）的空间修复）
+${personaSummaryRule}
 3. 语言要友好、专业，但不过于技术化
 4. 如果有合规要求，要明确提示
 5. 长度控制在 200 字以内
@@ -242,11 +253,13 @@ ${complianceResult ? `合规检查结果：${JSON.stringify(complianceResult, nu
       }
     }
 
-    // 添加决策动作说明
-    if (output.action === 'ADJUST') {
-      parts.push('\n💡 Dr.Dre（牧羊犬 🐕）已为您调整了行程节奏，让每一天刚刚好，确保整体可持续。');
-    } else if (output.action === 'REPLACE') {
-      parts.push('\n💡 Neptune（海獭 🦦）已为您替换了不可用路段，提供了刚刚好的替代方案，保持了路线精神。');
+    // 添加决策动作说明（SSOT 模式下省略人格散文，由 gate / explain 承载）
+    if (!isNarratorPersonaSsotEnabled()) {
+      if (output.action === 'ADJUST') {
+        parts.push('\n💡 Dr.Dre（牧羊犬 🐕）已为您调整了行程节奏，让每一天刚刚好，确保整体可持续。');
+      } else if (output.action === 'REPLACE') {
+        parts.push('\n💡 Neptune（海獭 🦦）已为您替换了不可用路段，提供了刚刚好的替代方案，保持了路线精神。');
+      }
     }
 
     return parts.join('\n\n');

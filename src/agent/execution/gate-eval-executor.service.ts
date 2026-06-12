@@ -250,6 +250,8 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       });
     }
 
+    this.evaluateVehiclePartyConstraints(tripRequest, researchData, out);
+
     // --- 空间类：must_include_poi_ids vs days（近似容量判断） ---
     const must = Array.isArray((tripRequest as any)?.must_include_poi_ids)
       ? ((tripRequest as any).must_include_poi_ids as string[])
@@ -396,6 +398,96 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     }
 
     return out;
+  }
+
+  /**
+   * 同行人/行李物理约束：长辈、多儿童或大件行李时拒绝紧凑型租车召回。
+   */
+  private evaluateVehiclePartyConstraints(
+    tripRequest: PhaseExecutorContext['tripPlanRequest'] | undefined,
+    researchData: Record<string, any>,
+    out: GateResultLike['violations'],
+  ): void {
+    if (!tripRequest) return;
+
+    const party = (tripRequest as any)?.party as
+      | { has_elderly?: boolean; has_children?: boolean; count?: number }
+      | undefined;
+    const ontology = (tripRequest as any)?.ontology_context as
+      | { party?: { luggage_count?: number }; user?: { luggage_count?: number } }
+      | undefined;
+    const profile = researchData?.userTravelProfile ?? researchData?.user_travel_profile;
+    const profileParty = profile?.party as { hasElderly?: boolean; childCount?: number } | undefined;
+
+    const luggageCount =
+      Number(ontology?.party?.luggage_count ?? ontology?.user?.luggage_count ?? profile?.luggageCount ?? 0) || 0;
+    const hasElderly = party?.has_elderly === true || profileParty?.hasElderly === true;
+    const childCount =
+      typeof profileParty?.childCount === 'number' && Number.isFinite(profileParty.childCount)
+        ? profileParty.childCount
+        : party?.has_children
+          ? 2
+          : 0;
+
+    if (!party && !profileParty && luggageCount === 0) return;
+
+    const requiresSpaciousVehicle = hasElderly || childCount > 1 || luggageCount >= 3;
+    if (!requiresSpaciousVehicle) return;
+
+    const vehicleClass = this.resolveSelectedVehicleClass(tripRequest, researchData);
+    if (!this.isCompactVehicleClass(vehicleClass)) return;
+
+    const partyDetail = hasElderly
+      ? '同行人包含长辈'
+      : childCount > 1
+        ? '多名儿童'
+        : '同行团队';
+    out.push({
+      type: 'VEHICLE_SPACE_INSUFFICIENT',
+      severity: 'HARD',
+      detail: `${partyDetail}且携带了 ${luggageCount} 件行李，紧凑型轿车空间严重不足。系统已自动过滤该车型，并为您锁定 MPV / 中大型 SUV。`,
+    });
+  }
+
+  private resolveSelectedVehicleClass(
+    tripRequest: PhaseExecutorContext['tripPlanRequest'] | undefined,
+    researchData: Record<string, any>,
+  ): string {
+    const vehicleConfig =
+      researchData?.currentVehicleConfig ??
+      researchData?.current_vehicle_config ??
+      researchData?.selected_vehicle;
+    const fromConfig = vehicleConfig?.type ?? vehicleConfig?.car_class ?? vehicleConfig?.vehicle_class;
+    if (typeof fromConfig === 'string' && fromConfig.trim()) return fromConfig.trim();
+
+    const cars = researchData?.car_rentals ?? researchData?.carRentals;
+    if (Array.isArray(cars) && cars.length > 0) {
+      const first = cars[0] as Record<string, unknown>;
+      const fromCar =
+        first?.vehicle_type ??
+        first?.vehicleType ??
+        first?.car_class ??
+        first?.carClass ??
+        first?.vehicle_name;
+      if (typeof fromCar === 'string' && fromCar.trim()) return fromCar.trim();
+    }
+
+    const constraints = (tripRequest as any)?.constraints as { rental_vehicle_class?: string } | undefined;
+    if (constraints?.rental_vehicle_class?.trim()) return constraints.rental_vehicle_class.trim();
+
+    return '';
+  }
+
+  private isCompactVehicleClass(raw: string): boolean {
+    const t = raw.toUpperCase();
+    if (!t) return false;
+    return (
+      t.includes('COMPACT') ||
+      t.includes('SEDAN_MINI') ||
+      t.includes('ECONOMY') ||
+      t.includes('MINI') ||
+      (t.includes('SMALL') && !t.includes('SUV'))
+    );
   }
 
   private async loadConflictMatrixRules(): Promise<ConflictMatrixRule[]> {

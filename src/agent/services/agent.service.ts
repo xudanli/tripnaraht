@@ -43,10 +43,11 @@ import {
   signalsFromRequest,
   routingSignalsWithResolvedTaskType,
   shouldRouteBoundTripAsItineraryAdjust,
-  applyBoundTripReviewRouteAndRunOverrideInPlace,
   type RoutingSignals,
   type TaskType,
 } from '../utils/orchestration-signals.util';
+import { applyRouteAndRunEntryRoutingInPlace } from '../routing/route-and-run-route-class-fork.util';
+import { applyRouteObservabilityMirror } from '../routing/mirror-route-and-run-observability.util';
 import {
   OrchestrationStep,
   SubAgentType,
@@ -123,6 +124,13 @@ import {
   ApplyBookingCartActionResponseDto,
 } from '../dto/booking-cart-checkout.dto';
 import { applyBookingCartAction as runBookingCartAction } from '../utils/booking-cart-checkout.util';
+import {
+  ApplyOpenWorldVerificationRequestDto,
+  ApplyOpenWorldVerificationResponseDto,
+} from '../dto/open-world-verification.dto';
+import { applyOpenWorldVerificationAction as runOpenWorldVerificationAction } from '../utils/open-world-verification-checkout.util';
+import type { OpenWorldDiscoveryUi } from '../delivery/utils/open-world-discovery-ui.builder.util';
+import { BookingComService } from '../../mcp/booking-com.service';
 import type { OptimizedBookingCartUi } from '../utils/booking-cart-optimizer.util';
 import type { BookingCartUiDto } from '../dto/route-and-run.dto';
 import { RouteAndRunContextEnricherService } from './route-and-run-context-enricher.service';
@@ -270,8 +278,16 @@ export class AgentService {
     @Optional() private readonly routeAndRunAsyncService?: import('./route-and-run-async.service').RouteAndRunAsyncService,
     @Optional() private readonly routeAndRunAsyncTaskStore?: import('./route-and-run-async-task.store').RouteAndRunAsyncTaskStore,
     @Optional()
+    private readonly routeAndRunTaskProgress?: import('../runtime/route-and-run-task-progress.reporter').RouteAndRunTaskProgressReporter,
+    @Optional()
+    private readonly routeAndRunAsyncTaskLease?: import('./route-and-run-async-task-lease.service').RouteAndRunAsyncTaskLeaseService,
+    @Optional()
     @Inject(forwardRef(() => RouteAndRunAsyncDelegationService))
     private readonly routeAndRunAsyncDelegationService?: RouteAndRunAsyncDelegationService,
+    @Optional() private readonly bookingComService?: BookingComService,
+    @Optional() private readonly shadowRoutingEvaluator?: import('./shadow-routing-evaluator.service').ShadowRoutingEvaluatorService,
+    @Optional()
+    private readonly shadowRouteClassEvaluator?: import('./shadow-route-class-evaluator.service').ShadowRouteClassEvaluatorService,
   ) {}
 
   /**
@@ -765,17 +781,100 @@ export class AgentService {
   }
 
   /** 预订购物车 checkout 状态流转（无持久化，客户端回传 cart 快照） */
-  applyBookingCartAction(input: ApplyBookingCartActionRequestDto): ApplyBookingCartActionResponseDto {
-    const result = runBookingCartAction({
-      cart: input.cart as OptimizedBookingCartUi,
+  async applyBookingCartAction(
+    input: ApplyBookingCartActionRequestDto,
+  ): Promise<ApplyBookingCartActionResponseDto> {
+    const cart = input.cart as OptimizedBookingCartUi;
+    const refreshCarRentalById =
+      this.bookingComService?.isAvailable()
+        ? async (rentalId: string) => {
+            const carItem = cart.items.find(
+              (i) =>
+                i.kind === 'car_rental' &&
+                (i.item_id === rentalId ||
+                  String(i.metadata?.id ?? '') === rentalId ||
+                  String(i.metadata?.offer_id ?? '') === rentalId),
+            );
+            const meta = carItem?.metadata ?? {};
+            const pickLat = Number(meta.pickup_lat ?? meta.pick_up_latitude);
+            const pickLng = Number(meta.pickup_lng ?? meta.pick_up_longitude);
+            if (!Number.isFinite(pickLat) || !Number.isFinite(pickLng)) return null;
+            const pickUp = String(
+              carItem?.date_range?.start ?? meta.pick_up_date ?? meta.pickup_date ?? '',
+            ).slice(0, 10);
+            const dropOff = String(
+              carItem?.date_range?.end ?? meta.drop_off_date ?? meta.dropoff_date ?? '',
+            ).slice(0, 10);
+            if (!pickUp || !dropOff) return null;
+            try {
+              const res = await this.bookingComService!.searchCarRentals({
+                pick_up_latitude: pickLat,
+                pick_up_longitude: pickLng,
+                drop_off_latitude: pickLat,
+                drop_off_longitude: pickLng,
+                pick_up_time: `${pickUp}T10:00:00`,
+                drop_off_time: `${dropOff}T10:00:00`,
+                driver_age: 30,
+              });
+              const row = (res.data ?? []).find(
+                (r: { id?: string }) => String(r.id ?? '') === rentalId || String(r.id ?? '').includes(rentalId),
+              ) as
+                | {
+                    id?: string;
+                    price?: { amount?: number; currency?: string };
+                    vehicle_type?: string;
+                    pickup_location?: { lat?: number; lng?: number; address?: string };
+                    dropoff_location?: { lat?: number; lng?: number; address?: string };
+                  }
+                | undefined;
+              if (!row?.price?.amount) return null;
+              return {
+                id: String(row.id ?? rentalId),
+                price_numeric: Number(row.price.amount),
+                currency: row.price.currency,
+                vehicle_type: row.vehicle_type,
+                pickup_location: row.pickup_location,
+                dropoff_location: row.dropoff_location,
+              };
+            } catch (e: unknown) {
+              this.logger.warn(
+                `[applyBookingCartAction] car rental refresh failed: ${e instanceof Error ? e.message : String(e)}`,
+              );
+              return null;
+            }
+          }
+        : undefined;
+
+    const result = await runBookingCartAction({
+      cart,
       action: input.action,
       payload: input.payload,
+      tripId: input.trip_id,
+      refreshCarRentalById,
     });
     return {
       status: result.status,
       booking_cart: result.booking_cart as BookingCartUiDto,
       ...(result.checkout ? { checkout: result.checkout } : {}),
       ...(result.rejection_reason_zh ? { rejection_reason_zh: result.rejection_reason_zh } : {}),
+    };
+  }
+
+  /** 开放世界核实任务状态流转（无持久化，客户端回传 open_world_discovery 快照） */
+  applyOpenWorldVerificationAction(
+    input: ApplyOpenWorldVerificationRequestDto,
+  ): ApplyOpenWorldVerificationResponseDto {
+    const discovery = input.open_world_discovery as unknown as OpenWorldDiscoveryUi;
+    const result = runOpenWorldVerificationAction({
+      discovery,
+      action: input.action,
+      payload: input.payload,
+    });
+    return {
+      status: result.status,
+      open_world_discovery: result.open_world_discovery as unknown as ApplyOpenWorldVerificationResponseDto['open_world_discovery'],
+      ...(result.rejection_reason_zh ? { rejection_reason_zh: result.rejection_reason_zh } : {}),
+      ...(result.updated_stub ? { updated_stub: result.updated_stub as unknown as Record<string, unknown> } : {}),
     };
   }
 
@@ -1006,7 +1105,7 @@ export class AgentService {
    *   是否调用带 `tripId` 的世界模型桥接及域 Agent 是否注入。
    */
   async routeAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
-    applyBoundTripReviewRouteAndRunOverrideInPlace(request);
+    applyRouteAndRunEntryRoutingInPlace(request);
     const asyncMode = String(request.options?.async_mode ?? 'OFF').trim().toUpperCase();
     if (asyncMode === 'FORCE') {
       if (!this.routeAndRunAsyncDelegationService) {
@@ -1024,7 +1123,7 @@ export class AgentService {
 
   /** Durable Task Pattern：秒回 task_id，后台执行完整 route_and_run */
   async routeAndRunAsync(request: RouteAndRunRequestDto) {
-    applyBoundTripReviewRouteAndRunOverrideInPlace(request);
+    applyRouteAndRunEntryRoutingInPlace(request);
     if (!this.routeAndRunAsyncService) {
       throw new ServiceUnavailableException('RouteAndRunAsyncService is not configured');
     }
@@ -1035,11 +1134,20 @@ export class AgentService {
     if (!this.routeAndRunAsyncTaskStore) {
       throw new ServiceUnavailableException('RouteAndRunAsyncTaskStore is not configured');
     }
+    await this.routeAndRunAsyncTaskLease?.maybeResumeStaleTask(taskId);
     const status = await this.routeAndRunAsyncTaskStore.getStatus(taskId);
     if (!status) {
       throw new NotFoundException(`Task not found: ${taskId}`);
     }
     return status;
+  }
+
+  async resumeRouteAndRunTask(taskId: string): Promise<{ task_id: string; resumed: boolean }> {
+    if (!this.routeAndRunAsyncTaskLease) {
+      throw new ServiceUnavailableException('RouteAndRunAsyncTaskLeaseService is not configured');
+    }
+    await this.routeAndRunAsyncTaskLease.resumeTaskExplicit(taskId);
+    return { task_id: taskId, resumed: true };
   }
 
   /**
@@ -2583,13 +2691,10 @@ export class AgentService {
     /** Dedup 命中以稳定化层 `obs.mode_final` 为准；缓存体可能仍带上一轮的 `orchestration_mode_final`。 */
     (resp.observability as RouteAndRunResponseDto['observability']).is_replayed =
       obs?.mode_final === 'DEDUP' || omfReplay === 'DEDUP';
-    if (
-      resp.observability &&
-      receivedRouteDirectionId &&
-      !('received_route_direction_id' in resp.observability)
-    ) {
+    if (resp.observability && receivedRouteDirectionId && !('received_route_direction_id' in resp.observability)) {
       (resp.observability as any).received_route_direction_id = receivedRouteDirectionId;
     }
+    applyRouteObservabilityMirror(resp.observability as Record<string, unknown>);
     // 与 CLI `--show-poi-trace` 对齐：把稳定化层证据同步进 payload.poiTrace
     const omf =
       (resp.observability as any).orchestration_mode_final ?? obs?.mode_final;

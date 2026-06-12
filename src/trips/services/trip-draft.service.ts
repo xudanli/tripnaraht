@@ -39,6 +39,14 @@ import { GlobalPolicyWeightsService } from './global-policy-weights.service';
 import { RegionAnchorPlanningService } from '../../planning-policy/services/region-anchor-planning.service';
 import type { UserRouteIntent } from '../../planning-policy/interfaces/region-intent.types';
 import type { PoiPlanningDecisionSlice } from '../../decision/kernel/decision-state.types';
+import { resolveSparseRegionProfile } from '../../planning-policy/profiles/sparse-region.profile';
+import type { SparseRegionProfile } from '../../planning-policy/types/open-world-poi.types';
+import { buildDefaultPolarRegionStubs } from '../../planning-policy/open-world/polar-region-stubs.util';
+import { runOpenWorldDiscoveryBuffer } from '../../planning-policy/open-world/discovery-buffer.util';
+import {
+  isElasticCandidate,
+  openWorldStubsToCandidatePlaces,
+} from '../../planning-policy/open-world/open-world-poi-stub.util';
 import { isOpeningHoursCoveringWindow } from '../utils/time-validator';
 import { assembleExperienceDraftPrompt } from '../draft-synthesis/prompt-runtime';
 import {
@@ -335,10 +343,39 @@ export class TripDraftService {
       ...poiPlanningOpts,
     });
 
+    const sparseRegionProfile = resolveSparseRegionProfile({
+      countryCode,
+      destinationHint: dto.userInput ?? dto.destination,
+    });
+
     // 🆕 Deterministic stable sort：消除 DB/索引导致的输入顺序噪声（像素级复现基础）
-    const stableCandidates = [...candidates].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
-    
-    if (stableCandidates.length < 20) {
+    let stableCandidates = [...candidates].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+
+    if (sparseRegionProfile) {
+      const stubsFromRegistry = buildDefaultPolarRegionStubs(
+        sparseRegionProfile.regionTag,
+        dto.userInput ?? dto.destination,
+      );
+      const discovery = runOpenWorldDiscoveryBuffer({
+        userMessage: dto.userInput ?? '',
+        countryCode,
+        destinationHint: dto.userInput ?? dto.destination,
+        regionTags: [sparseRegionProfile.regionTag],
+        existingPoiEvidence: candidates,
+        existingStubIds: stubsFromRegistry.map((s) => s.stubId),
+      });
+      const allStubs = [...stubsFromRegistry, ...discovery.stubs];
+      stableCandidates = [
+        ...stableCandidates,
+        ...openWorldStubsToCandidatePlaces(allStubs),
+      ].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+      this.logger.log(
+        `[SPARSE_REGION] profile=${sparseRegionProfile.profileId} db=${candidates.length} stubs=${allStubs.length} discovery=${discovery.stubs.length} total=${stableCandidates.length}`,
+      );
+    }
+
+    const minCandidateThreshold = sparseRegionProfile?.minDbCandidatesThreshold ?? 20;
+    if (stableCandidates.length < minCandidateThreshold && !sparseRegionProfile) {
       throw new BadRequestException(
         `候选地点不足（${stableCandidates.length} 个）。系统暂不支持该目的地，或该国家尚未导入足够的地点数据。`
       );
@@ -520,6 +557,7 @@ export class TripDraftService {
       seed: dto.seed,
       timezone,
       repairAggressiveness: executionPolicy.repairAggressiveness,
+      sparseRegionProfile,
       audit: { failureReasonCodes, failureDecisionTraces },
     });
 
@@ -1021,6 +1059,8 @@ export class TripDraftService {
       timezone?: string;
       /** Policy Engine：LOW 时跳过餐饮重复上限松弛，减少自动改写 */
       repairAggressiveness?: 'LOW' | 'MEDIUM' | 'HIGH';
+      /** SPARSE_REGION_PROFILE：极地/稀疏供给 — 冻结 fillMissingSlots、elastic 跳过 openingHours */
+      sparseRegionProfile?: SparseRegionProfile | null;
       audit?: {
         failureReasonCodes: Set<string>;
         failureDecisionTraces: Array<{
@@ -1134,17 +1174,20 @@ export class TripDraftService {
       const filtered = candidates.filter((c) => {
         if (requireRestaurant && c.category !== 'RESTAURANT') return false;
         if (forbidRestaurant && c.category === 'RESTAURANT') return false;
+        const elasticNode =
+          options?.sparseRegionProfile?.allowElasticNodes === true && isElasticCandidate(c);
         if (dayPlaceIds.has(c.id)) return false;
         const g = globalPlaceIds.get(c.id) ?? 0;
         const limit = repetitionLimitFor(c);
-        if (g >= limit) return false;
+        if (g >= limit && !elasticNode) return false;
         if (args.extraFilter && !args.extraFilter(c)) return false;
+        const elasticSkipHours = elasticNode;
         // openingHours hard gate（若能判断 Closed）
-        if (args.date) {
+        if (args.date && !elasticSkipHours) {
           const hoursStr = this.getOpeningHoursForDate((c as any).openingHours, args.date, args.timezone);
           if (hoursStr === 'Closed') return false;
         }
-        if (args.date && args.visitWindow) {
+        if (args.date && args.visitWindow && !elasticSkipHours) {
           if (!this.openingHoursContainWindowTz((c as any).openingHours, args.date, args.visitWindow.start, args.visitWindow.end, args.timezone)) {
             return false;
           }
@@ -1810,8 +1853,14 @@ export class TripDraftService {
       // 🆕 检查去重后某天是否缺少行程项，如果缺少则尝试填充
       const slotCount = Object.keys(slots).length;
       if (slotCount < 3) {
+        if (options?.sparseRegionProfile?.freezeFillMissingSlots) {
+          warnings.push(
+            `第 ${dayData.day} 天 SPARSE_REGION：保留 intentional slack（${slotCount} 项），跳过 fillMissingSlots`,
+          );
+        } else {
         warnings.push(`第 ${dayData.day} 天去重后只有 ${slotCount} 个行程项，尝试从候选列表填充`);
-        await this.fillMissingSlots(dayData, slots, candidates, dayPlaceIds, dayRestaurantIds, globalPlaceIds, warnings, tz);
+        await this.fillMissingSlots(dayData, slots, candidates, dayPlaceIds, dayRestaurantIds, globalPlaceIds, warnings, tz, options?.sparseRegionProfile);
+        }
       }
 
       // 🆕 Sleep Anchor（20:00 后分级 + 22:00-07:00 禁行区）
@@ -2222,7 +2271,8 @@ export class TripDraftService {
     dayRestaurantIds: Set<number>,
     globalPlaceIds: Map<number, number>,
     warnings: string[],
-    timezone?: string
+    timezone?: string,
+    sparseRegionProfile?: SparseRegionProfile | null,
   ): Promise<void> {
     const tz = timezone || 'UTC';
     const requiredSlots: TimeSlot[] = [TimeSlot.MORNING, TimeSlot.LUNCH, TimeSlot.AFTERNOON, TimeSlot.DINNER];
@@ -2286,8 +2336,12 @@ export class TripDraftService {
       const startDateTime = DateTime.fromISO(dayData.date, { zone: tz }).set({ hour: st.hour, minute: st.minute, second: 0, millisecond: 0 });
       const endDateTime = DateTime.fromISO(dayData.date, { zone: tz }).set({ hour: et.hour, minute: et.minute, second: 0, millisecond: 0 });
 
-      // 🆕 fillMissingSlots 也必须遵守 openingHours window gate（否则会“补回”不可执行的闭馆点）
-      const ok = this.openingHoursContainWindowTz((bestCandidate as any).openingHours, dayData.date, startDateTime, endDateTime, tz);
+      // 🆕 fillMissingSlots 也必须遵守 openingHours window gate（elastic stub 除外）
+      const skipHoursGate =
+        sparseRegionProfile?.allowElasticNodes === true && isElasticCandidate(bestCandidate);
+      const ok =
+        skipHoursGate ||
+        this.openingHoursContainWindowTz((bestCandidate as any).openingHours, dayData.date, startDateTime, endDateTime, tz);
       if (!ok) {
         warnings.push(`第 ${dayData.day} 天 ${slot} 时段自动填充候选不覆盖营业时间窗口，已跳过：${bestCandidate.nameCN}`);
         continue;

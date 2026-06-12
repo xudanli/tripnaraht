@@ -1,4 +1,9 @@
 import type { DecisionState } from '../../../decision/kernel/decision-state.types';
+import {
+  parseMaxPlanVerifyGraphSteps,
+  parseMaxRepairCount,
+  parseMaxRepairUtilityDeclines,
+} from '../orchestration-governance-matrix.constants';
 
 /** 子图调度瞬态预算（每次 runPlanVerifyOptimizeRepairLoop 独立实例，禁止写回类成员） */
 export type PlanVerifyLoopBudgetConfig = {
@@ -18,14 +23,13 @@ export type PlanVerifyTransientLoopState = {
 };
 
 export function parsePlanVerifyLoopBudgetConfig(): PlanVerifyLoopBudgetConfig {
-  const maxRepairs = parseInt(process.env.DECISION_MAX_REPAIR_COUNT ?? '3', 10);
-  const maxGraphSteps = parseInt(process.env.DECISION_PLAN_VERIFY_MAX_GRAPH_STEPS ?? '8', 10);
-  const maxUtilityDeclines = parseInt(process.env.DECISION_REPAIR_UTILITY_DECAY_MAX ?? '2', 10);
+  const maxRepairs = parseMaxRepairCount();
+  const maxGraphSteps = parseMaxPlanVerifyGraphSteps();
+  const maxUtilityDeclines = parseMaxRepairUtilityDeclines();
   return {
-    maxRepairs: Number.isFinite(maxRepairs) && maxRepairs >= 0 ? maxRepairs : 3,
-    maxGraphSteps: Number.isFinite(maxGraphSteps) && maxGraphSteps > 0 ? maxGraphSteps : 8,
-    maxUtilityDeclines:
-      Number.isFinite(maxUtilityDeclines) && maxUtilityDeclines >= 0 ? maxUtilityDeclines : 2,
+    maxRepairs,
+    maxGraphSteps,
+    maxUtilityDeclines,
   };
 }
 

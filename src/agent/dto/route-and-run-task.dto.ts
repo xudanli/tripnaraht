@@ -66,4 +66,19 @@ export class RouteAndRunTaskStatusResponseDto {
 
   @ApiProperty()
   updated_at!: string;
+
+  @ApiPropertyOptional({
+    description: 'P2 Worker Lease 心跳与续跑状态（`tripnara.route_and_run_task_lease@v1`）',
+  })
+  task_lease_v1?: {
+    schemaId: 'tripnara.route_and_run_task_lease@v1';
+    version: 1;
+    lease_status: 'ACTIVE' | 'STALE' | 'RESUMING' | 'EXHAUSTED';
+    heartbeat_at: string;
+    lease_ttl_sec: number;
+    resume_count: number;
+    max_resume: number;
+    durable_trip_run_id?: string | null;
+    worker_instance_id?: string;
+  };
 }

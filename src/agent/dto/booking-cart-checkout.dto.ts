@@ -89,6 +89,102 @@ export class BookingCartCheckoutLineDto {
   price_label?: string;
 }
 
+export class BookingCheckoutBundleLineDto {
+  @ApiProperty()
+  @IsString()
+  item_id!: string;
+
+  @ApiProperty()
+  @IsString()
+  kind!: string;
+
+  @ApiProperty()
+  @IsString()
+  label_zh!: string;
+
+  @ApiProperty()
+  @IsString()
+  lock_id!: string;
+
+  @ApiProperty({ enum: ['LOCKED', 'QUOTE_ONLY', 'LOCK_FAILED'] })
+  @IsString()
+  lock_status!: 'LOCKED' | 'QUOTE_ONLY' | 'LOCK_FAILED';
+
+  @ApiProperty()
+  @IsString()
+  lock_expires_at!: string;
+
+  @ApiProperty()
+  @IsNumber()
+  locked_price_numeric!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  href?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  api_action?: { method: 'GET' | 'POST'; path: string; body_keys?: string[] };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  lock_detail_zh?: string;
+}
+
+export class BookingCheckoutBundleDto {
+  @ApiProperty({ example: 'tripnara.booking_checkout_bundle@v1' })
+  @IsString()
+  schema!: 'tripnara.booking_checkout_bundle@v1';
+
+  @ApiProperty()
+  @IsString()
+  bundle_id!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  trip_id?: string;
+
+  @ApiProperty()
+  @IsString()
+  locked_at!: string;
+
+  @ApiProperty()
+  @IsString()
+  expires_at!: string;
+
+  @ApiProperty({ type: [BookingCheckoutBundleLineDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BookingCheckoutBundleLineDto)
+  lines!: BookingCheckoutBundleLineDto[];
+
+  @ApiProperty()
+  @IsNumber()
+  total_locked_price_numeric!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @ApiProperty()
+  @IsBoolean()
+  quote_only!: boolean;
+
+  @ApiProperty()
+  @IsString()
+  disclaimer_zh!: string;
+}
+
 export class BookingCartCheckoutResultDto {
   @ApiProperty({ enum: ['ready', 'submitted'] })
   @IsString()
@@ -103,6 +199,15 @@ export class BookingCartCheckoutResultDto {
   @ApiProperty()
   @IsString()
   disclaimer_zh!: string;
+
+  @ApiPropertyOptional({
+    type: BookingCheckoutBundleDto,
+    description: 'submit_checkout 产出的 Bundle 锁价结算单（tripnara.booking_checkout_bundle@v1）',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BookingCheckoutBundleDto)
+  bundle?: BookingCheckoutBundleDto;
 }
 
 export class ApplyBookingCartActionResponseDto {

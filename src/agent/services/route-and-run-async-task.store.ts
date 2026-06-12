@@ -14,6 +14,8 @@ import {
   type RouteAndRunTaskEventBusPort,
 } from '../ports/route-and-run-task-event-bus.port';
 import { taskRecordToProgressPayload } from '../utils/route-and-run-task-progress-payload.util';
+import { buildWorkerInstanceId } from '../runtime/route-and-run-task-lease.constants';
+import { buildTaskLeaseEchoV1 } from '../runtime/route-and-run-task-lease.util';
 
 export type RouteAndRunTaskRecord = {
   task_id: string;
@@ -27,6 +29,18 @@ export type RouteAndRunTaskRecord = {
   estimated_time_remaining_sec?: number;
   updated_at: string;
   created_at: string;
+  /** P2 lease：最近心跳（每次 updateProgress / persist PROCESSING 刷新） */
+  heartbeat_at: string;
+  /** 续跑次数（Worker 挂起后 resumeStaleTask +1） */
+  resume_count: number;
+  /** 当前 worker 实例 id */
+  worker_instance_id: string;
+  /** 断点续跑锚点（来自 observability / options） */
+  durable_trip_run_id?: string | null;
+  /** 续跑进行中的互斥标记 */
+  lease_resuming?: boolean;
+  /** 用于 resume 的原始请求快照（不含 secrets） */
+  request_snapshot?: RouteAndRunRequestDto;
 };
 
 const TASK_PROGRESS_PREFIX = 'task_progress';
@@ -66,6 +80,11 @@ export class RouteAndRunAsyncTaskStore {
       data: null,
       updated_at: now,
       created_at: now,
+      heartbeat_at: now,
+      resume_count: 0,
+      worker_instance_id: buildWorkerInstanceId(),
+      durable_trip_run_id: request.options?.durable_trip_run_id?.trim() ?? null,
+      request_snapshot: this.sanitizeRequestSnapshot(request),
     };
     await this.persist(record);
     this.emitSse(record, 'PHASE');
@@ -77,20 +96,62 @@ export class RouteAndRunAsyncTaskStore {
     patch: Partial<
       Pick<
         RouteAndRunTaskRecord,
-        'current_phase' | 'progress_percentage' | 'message' | 'status' | 'estimated_time_remaining_sec'
+        | 'current_phase'
+        | 'progress_percentage'
+        | 'message'
+        | 'status'
+        | 'estimated_time_remaining_sec'
+        | 'durable_trip_run_id'
+        | 'lease_resuming'
       >
     >,
   ): Promise<void> {
     const prev = await this.getRecordInternal(taskId);
     if (!prev) return;
     if (isTerminalTaskPublicStatus(prev.status)) return;
+    const now = new Date().toISOString();
     const next: RouteAndRunTaskRecord = {
       ...prev,
       ...patch,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
+      heartbeat_at: now,
       status: patch.status ?? prev.status,
     };
     await this.persist(next);
+  }
+
+  async markResuming(taskId: string, patch: { resume_count: number; message?: string }): Promise<void> {
+    const prev = await this.getRecordInternal(taskId);
+    if (!prev) return;
+    const now = new Date().toISOString();
+    await this.persist({
+      ...prev,
+      resume_count: patch.resume_count,
+      lease_resuming: true,
+      worker_instance_id: buildWorkerInstanceId(),
+      heartbeat_at: now,
+      updated_at: now,
+      message: patch.message ?? prev.message,
+      status: 'PROCESSING',
+    });
+  }
+
+  async clearResuming(taskId: string): Promise<void> {
+    const prev = await this.getRecordInternal(taskId);
+    if (!prev) return;
+    await this.persist({ ...prev, lease_resuming: false, updated_at: new Date().toISOString() });
+  }
+
+  async patchDurableTripRunId(taskId: string, durableTripRunId: string | null | undefined): Promise<void> {
+    if (!durableTripRunId?.trim()) return;
+    const prev = await this.getRecordInternal(taskId);
+    if (!prev) return;
+    await this.persist({
+      ...prev,
+      durable_trip_run_id: durableTripRunId.trim(),
+      heartbeat_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
   }
 
   async markSuccess(taskId: string, response: RouteAndRunResponseDto): Promise<void> {
@@ -128,6 +189,21 @@ export class RouteAndRunAsyncTaskStore {
   /** 供进度上报与 SSE snapshot 读取（与轮询 store 同源）。 */
   async getRecord(taskId: string): Promise<RouteAndRunTaskRecord | null> {
     return this.getRecordInternal(taskId);
+  }
+
+  /** 同进程内按 request_id 找最新非终态任务（TripRun 锚点 patch 兜底）。 */
+  findActiveTaskIdForRequest(requestId: string): string | null {
+    const rid = requestId?.trim();
+    if (!rid) return null;
+    let best: RouteAndRunTaskRecord | null = null;
+    for (const record of this.memory.values()) {
+      if (record.request_id !== rid) continue;
+      if (isTerminalTaskPublicStatus(record.status)) continue;
+      if (!best || Date.parse(record.created_at) >= Date.parse(best.created_at)) {
+        best = record;
+      }
+    }
+    return best?.task_id ?? null;
   }
 
   /**
@@ -211,6 +287,7 @@ export class RouteAndRunAsyncTaskStore {
   }
 
   private toStatusDto(record: RouteAndRunTaskRecord): RouteAndRunTaskStatusResponseDto {
+    const lease = buildTaskLeaseEchoV1(record);
     return {
       task_id: record.task_id,
       status: record.status,
@@ -223,6 +300,21 @@ export class RouteAndRunAsyncTaskStore {
         ? { estimated_time_remaining_sec: record.estimated_time_remaining_sec }
         : {}),
       updated_at: record.updated_at,
+      task_lease_v1: lease,
+    };
+  }
+
+  private sanitizeRequestSnapshot(request: RouteAndRunRequestDto): RouteAndRunRequestDto {
+    return {
+      request_id: request.request_id,
+      user_id: request.user_id,
+      trip_id: request.trip_id,
+      message: request.message,
+      options: request.options ? { ...request.options } : undefined,
+      conversation_context: request.conversation_context,
+      meta: request.meta,
+      party_profile: request.party_profile,
+      emergency_constraints: request.emergency_constraints,
     };
   }
 }

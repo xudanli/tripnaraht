@@ -46,6 +46,13 @@ import {
 import { isTripIndependentRouteAndRunEntry } from '../utils/route-and-run-trip-independent-entry.util';
 import { DecisionRuntimeKernelService } from '../runtime/decision-runtime-kernel.service';
 import type { DecisionRuntimeTickBundle } from '../runtime/decision-runtime-kernel.types';
+import { buildOrchestrationGovernanceLimitsEcho } from '../orchestration/orchestration-governance-matrix.constants';
+import {
+  applyRouteClassForkInPlace,
+  applyRouteClassForkPolicyOverrides,
+  readRouteClassForkFromRequest,
+} from '../routing/route-and-run-route-class-fork.util';
+import { buildRouteObservabilityRoutingEcho } from '../routing/mirror-route-and-run-observability.util';
 
 export async function runRouteAndRunMainChain(
   agent: AgentService,
@@ -77,6 +84,17 @@ async function runRouteAndRunTickBody(
 
   mergeTripIdAliasesIntoRouteAndRunRequest(request);
   const canonicalTripIdEarly = canonicalTripIdForRouteAndRunRequest(request);
+
+  let routeClassFork: import('../routing/route-and-run-route-class-fork.util').RouteClassForkV1 | null =
+    readRouteClassForkFromRequest(request);
+  if (!routeClassFork) {
+    routeClassFork = applyRouteClassForkInPlace(request);
+  }
+  if (routeClassFork) {
+    $.logger.log(
+      `[AgentService] route_class_fork=${routeClassFork.routeClass} depth=${routeClassFork.orchestrationDepth} request_id=${request.request_id}`,
+    );
+  }
 
   const replayStrictSeal = request.options?.orchestration_replay_strict_seal === true;
   await kernel.hydrateGovernanceAndDos(agent, gateway, request, bundle, replayStrictSeal);
@@ -148,6 +166,12 @@ async function runRouteAndRunTickBody(
         });
         if (tripRunId) {
           $.logger.debug(`Created TripRun: ${tripRunId} for request ${request.request_id}`);
+        }
+        const activeAsyncTaskId =
+          $.routeAndRunTaskProgress?.getActiveTaskId?.() ??
+          $.routeAndRunAsyncTaskStore?.findActiveTaskIdForRequest?.(request.request_id);
+        if (activeAsyncTaskId && tripRunId && $.routeAndRunAsyncTaskStore) {
+          void $.routeAndRunAsyncTaskStore.patchDurableTripRunId(activeAsyncTaskId, tripRunId);
         }
       } catch (error: any) {
         $.logger.warn(`Failed to create TripRun: ${error.message}`);
@@ -345,7 +369,7 @@ async function runRouteAndRunTickBody(
       }
 
       // 2. 基于 Feature Flags 和信号进行策略决策（集成 ModeLock 和 Circuit Breaker）
-      const decision = routePolicy(
+      let decision = routePolicy(
         process.env,
         request.options,
         signals,
@@ -357,6 +381,48 @@ async function runRouteAndRunTickBody(
           legacy: $.breakerLegacy,
         },
       );
+      decision = applyRouteClassForkPolicyOverrides(decision, routeClassFork);
+
+      const modeLockActive = Boolean(stabilityCtx && $.modeLock?.get(stabilityCtx));
+      let shadowRoutingEval: import('../routing/routing-classifier-eval.types').ShadowRoutingEvalV1 | undefined;
+      if ($.shadowRoutingEvaluator?.isEnabled()) {
+        shadowRoutingEval = $.shadowRoutingEvaluator.evaluateSync({
+          traceId: request.request_id,
+          request,
+          signals,
+          decision,
+          modeLockActive,
+        });
+        $.shadowRoutingEvaluator.scheduleAsyncEvaluation({
+          traceId: request.request_id,
+          request,
+          signals,
+          decision,
+          modeLockActive,
+        });
+      }
+      let shadowRouteClassEval:
+        | import('../routing/route-and-run-routing-protocol.types').ShadowRouteClassEvalV1
+        | undefined;
+      if ($.shadowRouteClassEvaluator?.isEnabled()) {
+        shadowRouteClassEval = $.shadowRouteClassEvaluator.evaluateSync({
+          traceId: request.request_id,
+          request,
+          signals,
+          decision,
+        });
+        $.shadowRouteClassEvaluator.scheduleAsyncEvaluation({
+          traceId: request.request_id,
+          request,
+          signals,
+          decision,
+        });
+      }
+      const routeObservabilityEcho = buildRouteObservabilityRoutingEcho({
+        routeClassFork,
+        routeClassEval: shadowRouteClassEval,
+        shadowRoutingEval,
+      });
       
       // 调试日志：记录路由决策
       $.logger.log(`[AgentService] 路由决策: mode=${decision.mode}, reason=${decision.reason}`);
@@ -416,6 +482,7 @@ async function runRouteAndRunTickBody(
             },
             ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
             ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+            ...routeObservabilityEcho,
           } as any,
           requestHash,
         );
@@ -444,6 +511,7 @@ async function runRouteAndRunTickBody(
             },
             ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
             ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+            ...routeObservabilityEcho,
           } as any,
           requestHash,
         );
@@ -575,6 +643,16 @@ async function runRouteAndRunTickBody(
       };
 
       const traceInfoAny = traceInfo as Record<string, unknown>;
+      traceInfoAny.orchestration_governance_limits_v1 = buildOrchestrationGovernanceLimitsEcho();
+      if (routeClassFork) {
+        traceInfoAny.route_class_fork_v1 = routeClassFork;
+      }
+      if (shadowRoutingEval) {
+        traceInfoAny.shadow_routing_eval_v1 = shadowRoutingEval;
+      }
+      if (shadowRouteClassEval) {
+        traceInfoAny.route_class_eval_v1 = shadowRouteClassEval;
+      }
       const fp = traceInfoAny.execution_semantic_fingerprint_v1;
       if (typeof fp === 'string') {
         $.logger.debug(`[ExecutionOS] execution_semantic_fingerprint_v1=${fp.slice(0, 16)}…`);
@@ -720,6 +798,7 @@ async function runRouteAndRunTickBody(
               agentic_tool_loop: true,
               ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
               ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+              ...routeObservabilityEcho,
             } as any,
             requestHash,
           );
@@ -765,6 +844,7 @@ async function runRouteAndRunTickBody(
             },
             ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
             ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+            ...routeObservabilityEcho,
           },
           requestHash,
         );
@@ -820,6 +900,7 @@ async function runRouteAndRunTickBody(
               },
               ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
               ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+              ...routeObservabilityEcho,
             },
             requestHash,
           );
@@ -925,6 +1006,7 @@ async function runRouteAndRunTickBody(
               },
               ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
               ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+              ...routeObservabilityEcho,
             }, requestHash);
           } else {
             workingErr = backoffOutcome.lastError;
@@ -1017,6 +1099,7 @@ async function runRouteAndRunTickBody(
                 },
                 ...(tripRunId ? { durable_trip_run_id: tripRunId } : {}),
                 ...(resumedCheckpoint ? { durable_checkpoint_loaded: true } : {}),
+                ...routeObservabilityEcho,
               },
               requestHash,
             );

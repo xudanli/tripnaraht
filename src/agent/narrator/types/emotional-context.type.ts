@@ -85,4 +85,8 @@ export interface EmotionNarratorBuildInputs {
   decisionMetaMode?: DecisionMetaMode;
   weatherWindLockActive?: boolean;
   isRomancePacingActive?: boolean;
+  /** 住宿锚距异常 / 漏订等可修复行程冲突 → 优先 empathetic_reassurance */
+  hasMajorItineraryConflict?: boolean;
+  /** 稀疏区 intentional slack → 优先 empathetic 叙事 */
+  hasSparseIntentionalSlack?: boolean;
 }

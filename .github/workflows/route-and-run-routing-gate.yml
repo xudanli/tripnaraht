@@ -1,0 +1,79 @@
+name: Route and Run Routing Gate
+
+on:
+  pull_request:
+    paths:
+      - "src/agent/routing/**"
+      - "src/agent/utils/orchestration-signals.util.ts"
+      - "src/agent/utils/orchestration-signals.trip-consultation.spec.ts"
+      - "src/agent/utils/orchestration-policy.util.ts"
+      - "src/agent/services/shadow-route-class-evaluator.service.ts"
+      - "src/agent/services/execution-gateway.route-and-run.orchestration.ts"
+      - "src/agent/services/execution-gateway.service.ts"
+      - "src/agent/services/agent.service.ts"
+      - "scripts/ci/route-and-run-routing-gate.lib.ts"
+      - "scripts/ci/assert-route-and-run-routing-gate.ts"
+      - "scripts/export-route-and-run-golden-eval.ts"
+      - "scripts/export-route-class-drift-report.ts"
+      - "src/agent/routing/routing-ground-truth-overlay.util.ts"
+      - "src/agent/routing/routing-classifier-eval-export.util.ts"
+      - "scripts/ci/assert-routing-classifier-eval-gate.ts"
+      - "scripts/export-routing-classifier-eval-corpus.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/route-and-run-routing-gate.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "src/agent/routing/**"
+      - "src/agent/utils/orchestration-signals.util.ts"
+      - "src/agent/utils/orchestration-policy.util.ts"
+      - "scripts/ci/route-and-run-routing-gate.lib.ts"
+      - "scripts/ci/assert-route-and-run-routing-gate.ts"
+      - "scripts/ci/assert-routing-classifier-eval-gate.ts"
+      - "scripts/export-routing-classifier-eval-corpus.ts"
+      - "scripts/export-route-class-drift-report.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/route-and-run-routing-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  route-and-run-routing-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Route and run routing gate (jest + golden + drift)
+        env:
+          ROUTE_CLASS_FORK: "1"
+          ROUTE_CLASS_SHADOW_EVAL: "1"
+        run: npm run ci:route-and-run-routing
+
+      - name: P0-4 routing classifier eval (ground_truth overlay)
+        run: npm run ci:routing-classifier-eval
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: route_and_run_routing_gate
+          path: |
+            artifacts/route-and-run-routing-gate.json
+            artifacts/routing-classifier-eval-export.json

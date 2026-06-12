@@ -1,4 +1,5 @@
 import type { Logger } from '@nestjs/common';
+import type { LlmService } from '../../../../llm/services/llm.service';
 import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
 import type { OrchestratorState } from '../../../interfaces/trip-plan.interface';
 import type { PoiPlanningAdmissionDiagnosticsInput } from '../../../../planning-policy/utils/poi-planning-outcome-metrics.util';
@@ -23,6 +24,8 @@ export interface RunPoiSelectionPhaseParams {
  */
 export interface PoiSelectionPhaseHost {
   readonly logger: Logger;
+  /** 稀疏区 open-world LLM mention 抽取（OPEN_WORLD_DISCOVERY_LLM=1 时生效） */
+  readonly llmService?: LlmService;
 
   resolvePoiPolicy(
     explicitPolicy: unknown,

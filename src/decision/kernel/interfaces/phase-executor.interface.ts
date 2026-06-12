@@ -286,6 +286,13 @@ export interface NarrationLike {
   causal_protection_summary_zh?: string;
   /** 结构化因果链（UI / 审计） */
   causal_chain?: import('../../../trips/decision/narration/causal-chain.types').CausalChain;
+  /** Decision OS v2：稀疏区 / 开放世界 / 留白叙事摘要 */
+  decision_context_summary?: {
+    sparse_profile_id?: string;
+    intentional_slack_count?: number;
+    open_world_stub_count?: number;
+    mention_count?: number;
+  };
   /** unified-explainability@v1（与 explain.unified / decision.explainForHuman 同源） */
   unified_explainability?: import('../../../trips/decision/explainability/unified-explainability.types').UnifiedExplainabilityEnvelopeV1;
   /** 客户端 payload：envelope 仅在 explain.unified */
@@ -331,6 +338,41 @@ export interface NarrationLike {
     source: 'heuristic' | 'rag_snippet' | 'item_notes';
     confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   }>;
+  /** 订票优先级清单（schema tripnara.booking_priority_list@v1；与 ui_display 同源） */
+  booking_priority_list?: {
+    schema: 'tripnara.booking_priority_list@v1';
+    tripId: string;
+    generatedAt: string;
+    items: Array<{
+      id: string;
+      category: string;
+      title: string;
+      associatedDayNumber: number;
+      urgencyLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+      timing: {
+        bookByDate: string;
+        opensAtLocal?: string;
+        countdownSeconds: number;
+      };
+      actionPayload: {
+        officialBookingUrl: string;
+        bookingGuideHtml?: string;
+        calendarReminderDeeplink: string;
+      };
+    }>;
+  };
+  /** TTS 口语叙事（schema tripnara.voice_payload@v1） */
+  voice_payload?: {
+    schema: 'tripnara.voice_payload@v1';
+    text: string;
+    tone_modifier: string;
+    audio_config: {
+      voice_id?: string;
+      speed_factor: number;
+      pitch_setting: 'low' | 'medium' | 'high';
+      emotions: string[];
+    };
+  };
 }
 
 /** NARRATE 阶段执行器上下文（P3 C：orchestratorState 含 itinerary/gate_result/decision_log） */

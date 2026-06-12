@@ -8,6 +8,8 @@
 #   READINESS_P1_SKIP_TD_REPLAY=1 — 仅跑 test:td-p0-core，跳过 npm run test:td-replay（TD-05；仅本地应急）
 #   READINESS_P1_SKIP_EXECUTION_OS_STABILITY=1 — 跳过 npm run ci:execution-os-stability（SSC v1；仅本地应急；CI 不应设置）
 #   READINESS_P1_SKIP_CID_V1=1 — 跳过 npm run ci:cid-v1（仅本地应急；CI 不应设置）
+#   READINESS_P1_SKIP_ROUTE_ROUTING_GATE=1 — 跳过 npm run ci:route-and-run-routing（仅本地应急；CI 不应设置）
+#   READINESS_P1_SKIP_ROUTING_CLASSIFIER_EVAL=1 — 跳过 npm run ci:routing-classifier-eval（P0-4；仅本地应急）
 #   READINESS_P1_SKIP_PRESSURE=1 — 不跑三场压力合并（缩短本地 / CI 时间；不改变 exit code）
 #   READINESS_P1_SKIP_TYPECHECK_TRIPS=1 — 跳过 npm run typecheck:trips（src/trips 闭包 + 依赖图；仅本地应急；CI 发布前不应跳过）
 #   P-CI-2：可在报告 JSON 顶层加入可选 runtimeSignals: { ecoDriftRate, identityRejectRate, closureRetryRate } ∈ [0,1]（merge 时写入 fused 物理应力；缺省则仅静态 TS 应力）
@@ -108,6 +110,24 @@ else
   npm run ci:cid-v1 || cid_v1=1
 fi
 
+route_routing_gate=0
+route_routing_gate_skipped="false"
+if [ "${READINESS_P1_SKIP_ROUTE_ROUTING_GATE:-}" = "1" ]; then
+  route_routing_gate_skipped="true"
+  echo "readiness:p1 — SKIP ci:route-and-run-routing (READINESS_P1_SKIP_ROUTE_ROUTING_GATE=1)"
+else
+  npm run ci:route-and-run-routing || route_routing_gate=1
+fi
+
+routing_classifier_eval=0
+routing_classifier_eval_skipped="false"
+if [ "${READINESS_P1_SKIP_ROUTING_CLASSIFIER_EVAL:-}" = "1" ]; then
+  routing_classifier_eval_skipped="true"
+  echo "readiness:p1 — SKIP ci:routing-classifier-eval (READINESS_P1_SKIP_ROUTING_CLASSIFIER_EVAL=1)"
+else
+  npm run ci:routing-classifier-eval || routing_classifier_eval=1
+fi
+
 overall=0
 if [ "$lint_skipped" = "false" ] && [ "$lint" -ne 0 ]; then
   overall=1
@@ -131,6 +151,12 @@ if [ "$execution_os_stability_skipped" != "true" ] && [ "$execution_os_stability
   overall=1
 fi
 if [ "$cid_v1_skipped" != "true" ] && [ "$cid_v1" -ne 0 ]; then
+  overall=1
+fi
+if [ "$route_routing_gate_skipped" != "true" ] && [ "$route_routing_gate" -ne 0 ]; then
+  overall=1
+fi
+if [ "$routing_classifier_eval_skipped" != "true" ] && [ "$routing_classifier_eval" -ne 0 ]; then
   overall=1
 fi
 if [ "$roll_skipped" = "false" ] && [ "$roll_exit" = "1" ]; then
@@ -177,6 +203,18 @@ else
   cid_block='"ci_cid_v1": { "skipped": false, "exitCode": '"$cid_v1"' }'
 fi
 
+if [ "$route_routing_gate_skipped" = "true" ]; then
+  route_routing_block='"ci_route_and_run_routing": { "skipped": true, "exitCode": null }'
+else
+  route_routing_block='"ci_route_and_run_routing": { "skipped": false, "exitCode": '"$route_routing_gate"' }'
+fi
+
+if [ "$routing_classifier_eval_skipped" = "true" ]; then
+  routing_classifier_block='"ci_routing_classifier_eval": { "skipped": true, "exitCode": null }'
+else
+  routing_classifier_block='"ci_routing_classifier_eval": { "skipped": false, "exitCode": '"$routing_classifier_eval"' }'
+fi
+
 printf '%s\n' "{
   \"schema\": \"readiness-p1/v2\",
   \"timestamp\": \"$TS\",
@@ -198,7 +236,9 @@ printf '%s\n' "{
     $td_replay_block,
     \"test_ao_p1_contract\": { \"exitCode\": $ao_p1 },
     $execution_os_block,
-    $cid_block
+    $cid_block,
+    $route_routing_block,
+    $routing_classifier_block
   },
   \"related\": {
     \"rollWorkflow\": \".github/workflows/roll-readiness-check.yml\"

@@ -756,3 +756,56 @@ describe('isWeatherRoadConditionFocusedQuery', () => {
     expect(isWeatherRoadConditionFocusedQuery('租车自驾天气路况要注意什么')).toBe(false);
   });
 });
+
+describe('signalsFromRequest — route class golden 对齐', () => {
+  const base = (overrides: Partial<RouteAndRunRequestDto>): RouteAndRunRequestDto => ({
+    request_id: 'r-golden',
+    user_id: 'u1',
+    message: '',
+    ...overrides,
+  });
+
+  it('无 trip 显式规划 → TRIP_PLANNING', () => {
+    expect(
+      signalsFromRequest(base({ message: '帮我规划东京 5 天亲子游，要浅草寺和迪士尼' })).taskType,
+    ).toBe('TRIP_PLANNING');
+  });
+
+  it('英文 plan a N-day trip → TRIP_PLANNING', () => {
+    expect(
+      signalsFromRequest(
+        base({ message: 'Plan a minimal 2-day trip to Reykjavik for one traveler.' }),
+      ).taskType,
+    ).toBe('TRIP_PLANNING');
+  });
+
+  it('绑定 trip 开放时间 → DATA_LOOKUP', () => {
+    expect(
+      signalsFromRequest(
+        base({
+          trip_id: '00000000-0000-4000-8000-000000000003',
+          message: 'Dynjandi 瀑布周二开放吗',
+        }),
+      ).taskType,
+    ).toBe('DATA_LOOKUP');
+  });
+
+  it('退款+支付凭证 → HIGH risk', () => {
+    const s = signalsFromRequest(
+      base({ message: '我要退款并投诉供应商，涉及支付凭证' }),
+    );
+    expect(s.taskType).toBe('CUSTOMER_SUPPORT');
+    expect(s.risk).toBe('HIGH');
+  });
+
+  it('绑定 trip 不要改 → TRIP_PLANNING（非咨询）', () => {
+    expect(
+      signalsFromRequest(
+        base({
+          trip_id: '00000000-0000-4000-8000-000000000004',
+          message: '暴风雪天仍按原计划走F路高地，不要改',
+        }),
+      ).taskType,
+    ).toBe('TRIP_PLANNING');
+  });
+});

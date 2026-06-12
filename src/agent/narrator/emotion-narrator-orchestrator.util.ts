@@ -118,8 +118,22 @@ export function routeEmotionalVoiceStance(params: {
   fatigueIndex: number;
   experienceFlow?: ExperienceFlowModel | null;
   stationaryMinutes?: number;
+  hasMajorItineraryConflict?: boolean;
+  hasSparseIntentionalSlack?: boolean;
 }): EmotionalContext['recommendedVoiceStance'] {
-  if (params.isEmergencyMode || params.anxietyTriggered) {
+  if (params.isEmergencyMode) {
+    return {
+      toneModifier: 'professional_authoritative',
+      audioProsodyPreference: { pitch: 'low', speedFactor: 0.9 },
+    };
+  }
+  if (params.hasMajorItineraryConflict || params.hasSparseIntentionalSlack) {
+    return {
+      toneModifier: 'empathetic_reassurance',
+      audioProsodyPreference: { pitch: 'low', speedFactor: 0.85 },
+    };
+  }
+  if (params.anxietyTriggered) {
     return {
       toneModifier: 'professional_authoritative',
       audioProsodyPreference: { pitch: 'low', speedFactor: 0.9 },
@@ -200,6 +214,8 @@ export function buildEmotionalContext(inputs: EmotionNarratorBuildInputs): Emoti
     fatigueIndex,
     experienceFlow: inputs.experienceFlow,
     stationaryMinutes: inputs.realtimeState?.stationaryMinutes,
+    hasMajorItineraryConflict: inputs.hasMajorItineraryConflict === true,
+    hasSparseIntentionalSlack: inputs.hasSparseIntentionalSlack === true,
   });
 
   const proactivityGate = resolveProactivityGate({
@@ -315,6 +331,11 @@ export function extractEmotionNarratorBuildInputs(params: {
     party?.romance === true ||
     experienceFlow?.narrativeTone === 'balanced_warm';
 
+  const travelDiagnostic = md?.travel_diagnostic as { hasMajorItineraryConflict?: boolean } | undefined;
+  const decisionCtx = dso.constraints?.decisionContext;
+  const hasSparseIntentionalSlack =
+    (decisionCtx?.intentionalSlack?.length ?? 0) > 0 || Boolean(decisionCtx?.sparseProfileId);
+
   return {
     userId,
     tripId,
@@ -326,5 +347,7 @@ export function extractEmotionNarratorBuildInputs(params: {
     decisionMetaMode: dso.decisionMeta?.mode,
     weatherWindLockActive: detectWeatherWindLockFromDecisionLog(state),
     isRomancePacingActive,
+    hasMajorItineraryConflict: travelDiagnostic?.hasMajorItineraryConflict === true,
+    hasSparseIntentionalSlack,
   };
 }

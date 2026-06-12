@@ -1,0 +1,23 @@
+{
+  "schemaId": "tripnara.routing_ground_truth_overlay@v1",
+  "version": 1,
+  "description": "P0-4 人工标注：覆盖 auto-gold production tier。4 条 OVER_ROUTING 来自 webbrowse requireConsent 误投影 SYSTEM2_CONSENT。",
+  "overlays": {
+    "iceland-trip-planning": {
+      "targetRouting": "SYSTEM2_REASONING",
+      "annotatorNotes": "P0-4: 多日规划非支付 consent；production requireConsent→SYSTEM2_CONSENT 为 OVER_ROUTING"
+    },
+    "itinerary-adjust": {
+      "targetRouting": "SYSTEM2_REASONING",
+      "annotatorNotes": "P0-4: bound trip 局部改节奏；非 webbrowse consent 场景"
+    },
+    "e2e-iceland-reykjavik-plan": {
+      "targetRouting": "SYSTEM2_REASONING",
+      "annotatorNotes": "P0-4: 短规划 E2E；requireConsent 不应升格 CONSENT tier"
+    },
+    "e2e-itinerary-adjust-pace": {
+      "targetRouting": "SYSTEM2_REASONING",
+      "annotatorNotes": "P0-4: bound trip 节奏改排 E2E"
+    }
+  }
+}

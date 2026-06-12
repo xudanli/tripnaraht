@@ -350,7 +350,16 @@ export class AgentOptionsDto {
   allow_partial?: boolean;
 
   @ApiPropertyOptional({
-    description: 'POI 策略：strict=必须命中，fallback=可降级，explore=自动探索',
+    description:
+      'REPAIR/效用预算耗尽时仍进入 NARRATE 并附带 `flawed_draft_v1`（默认 false → 澄清终端）。与 `tripnara.flawed_draft@v1` 契约对齐。',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  allow_flawed_draft_narrate?: boolean;
+
+  @ApiPropertyOptional({
     example: 'fallback',
     enum: ['strict', 'fallback', 'explore'],
     default: 'fallback',
@@ -1832,6 +1841,187 @@ export class PoiPitfallCardUiDto {
   confidence!: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
+/** 订票优先级清单时序面 */
+export class BookingPriorityItemTimingDto {
+  @ApiProperty()
+  @IsString()
+  bookByDate!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  opensAtLocal?: string;
+
+  @ApiProperty()
+  @IsNumber()
+  countdownSeconds!: number;
+}
+
+/** 订票优先级清单交付动作 */
+export class BookingPriorityActionPayloadDto {
+  @ApiProperty()
+  @IsString()
+  officialBookingUrl!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  bookingGuideHtml?: string;
+
+  @ApiProperty()
+  @IsString()
+  calendarReminderDeeplink!: string;
+}
+
+/** 订票优先级清单条目 */
+export class BookingPriorityItemDto {
+  @ApiProperty()
+  @IsString()
+  id!: string;
+
+  @ApiProperty({ enum: ['ATTRACTION_TICKET', 'TRANSPORT_FLIGHT', 'SPECIAL_EXPERIENCE'] })
+  @IsString()
+  category!: 'ATTRACTION_TICKET' | 'TRANSPORT_FLIGHT' | 'SPECIAL_EXPERIENCE';
+
+  @ApiProperty()
+  @IsString()
+  title!: string;
+
+  @ApiProperty()
+  @IsNumber()
+  associatedDayNumber!: number;
+
+  @ApiProperty({ enum: ['CRITICAL', 'HIGH', 'MEDIUM'] })
+  @IsString()
+  urgencyLevel!: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+
+  @ApiProperty({ type: BookingPriorityItemTimingDto })
+  @ValidateNested()
+  @Type(() => BookingPriorityItemTimingDto)
+  timing!: BookingPriorityItemTimingDto;
+
+  @ApiProperty({ type: BookingPriorityActionPayloadDto })
+  @ValidateNested()
+  @Type(() => BookingPriorityActionPayloadDto)
+  actionPayload!: BookingPriorityActionPayloadDto;
+}
+
+/** 订票优先级清单（schema tripnara.booking_priority_list@v1） */
+export class BookingPriorityListDto {
+  @ApiProperty({ example: 'tripnara.booking_priority_list@v1' })
+  @IsString()
+  schema!: 'tripnara.booking_priority_list@v1';
+
+  @ApiProperty()
+  @IsString()
+  tripId!: string;
+
+  @ApiProperty()
+  @IsString()
+  generatedAt!: string;
+
+  @ApiProperty({ type: [BookingPriorityItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BookingPriorityItemDto)
+  items!: BookingPriorityItemDto[];
+}
+
+/** 统一地图图层点 */
+export class UnifiedMapLayerPointDto {
+  @ApiProperty()
+  @IsString()
+  id!: string;
+
+  @ApiProperty({ enum: ['poi', 'hotel_depot', 'car_pickup', 'car_dropoff', 'transfer', 'day_start'] })
+  @IsString()
+  kind!: string;
+
+  @ApiProperty()
+  @IsString()
+  label_zh!: string;
+
+  @ApiProperty()
+  @IsNumber()
+  lat!: number;
+
+  @ApiProperty()
+  @IsNumber()
+  lng!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  day_number?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  night_index?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  icon_hint?: string;
+}
+
+/** 统一地图图层路段 */
+export class UnifiedMapLayerLegDto {
+  @ApiProperty()
+  @IsString()
+  id!: string;
+
+  @ApiProperty({ enum: ['drive', 'walk', 'transit', 'flight', 'ferry'] })
+  @IsString()
+  kind!: string;
+
+  @ApiProperty()
+  @IsString()
+  from_point_id!: string;
+
+  @ApiProperty()
+  @IsString()
+  to_point_id!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  label_zh?: string;
+}
+
+/** 统一多模态地图图层（schema tripnara.unified_map_layer@v1） */
+export class UnifiedMapLayerDto {
+  @ApiProperty({ example: 'tripnara.unified_map_layer@v1' })
+  @IsString()
+  schema!: 'tripnara.unified_map_layer@v1';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  trip_id?: string;
+
+  @ApiProperty({ type: [UnifiedMapLayerPointDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UnifiedMapLayerPointDto)
+  points!: UnifiedMapLayerPointDto[];
+
+  @ApiProperty({ type: [UnifiedMapLayerLegDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UnifiedMapLayerLegDto)
+  legs!: UnifiedMapLayerLegDto[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  overview_directions_url?: string;
+
+  @ApiProperty()
+  @IsString()
+  computed_at!: string;
+}
+
 /** 预订购物车条目 UI */
 export class BookingCartItemUiDto {
   @ApiProperty()
@@ -2008,6 +2198,13 @@ export class BookingCartUiDto {
   @Type(() => BookingCartSavingsUiDto)
   savings_opportunities?: BookingCartSavingsUiDto[];
 
+  @ApiPropertyOptional({
+    description: '全局预算 tradeoff 叙事（如平替前两晚换高光温泉酒店）',
+  })
+  @IsOptional()
+  @IsString()
+  trade_off_narrative?: string;
+
   @ApiProperty()
   @IsString()
   computed_at!: string;
@@ -2072,6 +2269,25 @@ export class DecisionUiDisplayDto {
   booking_cart?: BookingCartUiDto;
 
   @ApiPropertyOptional({
+    type: BookingPriorityListDto,
+    description: '订票优先级清单（hard_booking + 交通提醒；schema tripnara.booking_priority_list@v1）',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BookingPriorityListDto)
+  booking_priority_list?: BookingPriorityListDto;
+
+  @ApiPropertyOptional({
+    type: UnifiedMapLayerDto,
+    description:
+      '全要素地图图层（POI / 酒店 depot / 取还车；schema tripnara.unified_map_layer@v1）',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UnifiedMapLayerDto)
+  unified_map_layer?: UnifiedMapLayerDto;
+
+  @ApiPropertyOptional({
     type: EmotionalContextClientDto,
     description:
       '情绪矩阵 BFF 投影（fatigue/anxiety/proactivityGate/voiceTone；schema tripnara.emotional_context.client@v1）',
@@ -2090,6 +2306,67 @@ export class DecisionUiDisplayDto {
   @ValidateNested({ each: true })
   @Type(() => SharedMilestoneUiCardDto)
   shared_milestone_cards?: SharedMilestoneUiCardDto[];
+
+  @ApiPropertyOptional({
+    description: 'TTS 口语叙事 + 调音参数（schema tripnara.voice_payload@v1）',
+  })
+  @IsOptional()
+  @IsObject()
+  voice_payload?: {
+    schema: 'tripnara.voice_payload@v1';
+    text: string;
+    tone_modifier: string;
+    audio_config: {
+      voice_id?: string;
+      speed_factor: number;
+      pitch_setting: 'low' | 'medium' | 'high';
+      emotions: string[];
+    };
+  };
+
+  @ApiPropertyOptional({
+    description: '住宿健康度进度条（schema tripnara.accommodation_health@v1）',
+  })
+  @IsOptional()
+  @IsObject()
+  accommodation_health?: {
+    schema: 'tripnara.accommodation_health@v1';
+    total_nights: number;
+    nights: Array<{
+      night_index: number;
+      status: 'booked' | 'missing' | 'warning' | 'critical';
+      label_zh: string;
+      warning_badge_zh?: string;
+      driving_time_label_zh?: string;
+      cta_label_zh?: string;
+    }>;
+    summary_zh: string;
+  };
+
+  @ApiPropertyOptional({
+    description:
+      '开放世界 Discovery + 核实任务（schema tripnara.open_world_discovery@v1；极地/稀疏区 provisional stub）',
+  })
+  @IsOptional()
+  @IsObject()
+  open_world_discovery?: {
+    schema: 'tripnara.open_world_discovery@v1';
+    sparse_profile_id?: string;
+    mention_count: number;
+    stub_count: number;
+    verification_tasks: Array<{
+      task_id: string;
+      stub_id: string;
+      title_zh: string;
+      description_zh: string;
+      priority: 'P0' | 'P1';
+      constraint_tags: string[];
+      status: 'pending' | 'in_progress' | 'done';
+      cta_label_zh: string;
+    }>;
+    intentional_slack_summary_zh?: string;
+    computed_at: string;
+  };
 }
 
 export class DecisionCandidateScoreDimensionsDto {
@@ -2498,6 +2775,13 @@ export class ReferenceSourceDto {
   DecisionEvidenceCardDto,
   DecisionEvidenceCardFlagsDto,
   DecisionUiDisplayDto,
+  BookingPriorityListDto,
+  BookingPriorityItemDto,
+  BookingPriorityItemTimingDto,
+  BookingPriorityActionPayloadDto,
+  UnifiedMapLayerDto,
+  UnifiedMapLayerPointDto,
+  UnifiedMapLayerLegDto,
   EmotionalContextClientDto,
   SharedMilestoneUiCardDto,
   EvidenceCardUiPropsDto,
@@ -3104,6 +3388,20 @@ export class RouteAndRunResponseDto {
       ui_display?: DecisionUiDisplayDto;
       /** Human-centric negotiation payload when trade-offs exceed thresholds */
       negotiation_payload?: NegotiationPayloadDto;
+      /** 瑕疵草案契约：`tripnara.flawed_draft@v1` — SUCCESS 但未完全收敛时必显式标注 */
+      flawed_draft_v1?: {
+        schemaId: 'tripnara.flawed_draft@v1';
+        version: 1;
+        is_flawed: boolean;
+        reasons: Array<{ code: string; detail_zh?: string; detail_en?: string }>;
+        repair_count?: number;
+        max_repair_count?: number;
+        gate_status?: string;
+        unresolved_verification_codes?: string[];
+        user_action_recommended: boolean;
+        headline_zh?: string;
+        headline_en?: string;
+      };
     };
   };
 
@@ -3250,6 +3548,15 @@ export class RouteAndRunResponseDto {
      * 含 trace 表、risk_factors、counterfactuals、integrity_badges（含 narrative_drift_score）。
      */
     decision_cockpit?: DecisionCockpitPayloadV1;
+    /** 与 `result.payload.flawed_draft_v1` 同源只读镜像，供 explain 面板消费 */
+    flawed_draft_v1?: {
+      schemaId: 'tripnara.flawed_draft@v1';
+      version: 1;
+      is_flawed: boolean;
+      reasons: Array<{ code: string; detail_zh?: string; detail_en?: string }>;
+      user_action_recommended: boolean;
+      headline_zh?: string;
+    };
   };
 
   @ApiProperty({ 
@@ -3537,6 +3844,48 @@ export class RouteAndRunResponseDto {
     rag_sources?: ReferenceSourceDto[];
     /** 与 `reference_sources` 同义 */
     sources?: ReferenceSourceDto[];
+    /** 产品路由类真分支 — 与 `observability.trace.route_class_fork_v1` 同源镜像 */
+    route_class_fork_v1?: {
+      schemaId: 'tripnara.route_class_fork@v1';
+      version: 1;
+      enabled: true;
+      routeClass: string;
+      matchedRule: string;
+      orchestrationDepth: string;
+      deepResearchV71: string;
+      asyncEligible: boolean;
+      forkActions: string[];
+    };
+    /** 产品路由类 shadow drift — 与 `observability.trace.route_class_eval_v1` 同源镜像 */
+    route_class_eval_v1?: {
+      schemaId: 'tripnara.route_class_eval@v1';
+      version: 1;
+      traceId: string;
+      isMatch: boolean;
+      mismatchType: string;
+      protocolRouteClass: string;
+      productionRouteClass: string;
+      protocolMatchedRule: string;
+      productionMatchedRule: string;
+      protocolDepth: number;
+      productionDepth: number;
+      deepResearchV71: string;
+      taskType: string;
+      orchestrationMode: string;
+      latencyMs: number;
+    };
+    /** System 1/2 tier shadow — 与 `observability.trace.shadow_routing_eval_v1` 同源镜像 */
+    shadow_routing_eval_v1?: {
+      schemaId: 'tripnara.shadow_routing_eval@v1';
+      version: 1;
+      traceId: string;
+      isMatch: boolean;
+      mismatchType: string;
+      productionRouting: string;
+      shadowRouting: string;
+      productionOrchestrationMode: string;
+      latencyMs: number;
+    };
     trace?: {
       /** 与 options.intent_mode、最终 taskType 对齐的决策摘要 */
       route_decision?: {
@@ -3616,6 +3965,9 @@ export class RouteAndRunResponseDto {
         type: string;
         timestamp: string;
       }>;
+      route_class_fork_v1?: RouteAndRunResponseDto['observability']['route_class_fork_v1'];
+      route_class_eval_v1?: RouteAndRunResponseDto['observability']['route_class_eval_v1'];
+      shadow_routing_eval_v1?: RouteAndRunResponseDto['observability']['shadow_routing_eval_v1'];
     };
   };
 }

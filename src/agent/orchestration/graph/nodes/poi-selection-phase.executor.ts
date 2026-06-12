@@ -62,6 +62,13 @@ import {
 } from '../../../../planning-policy/utils/poi-selection-diversity.util';
 import type { RouteAndRunIntentAnalysis } from '../../../utils/route-and-run-intent-analyzer.util';
 import { detectRhythmOrDiningPlanningIntent } from '../../../context-engine/utils/sparse-poi-day-allocation.util';
+import { applySparseRegionPoiGate, attachSparseRegionMetadata } from '../../../../planning-policy/open-world/sparse-poi-gate.util';
+import { resolveSparseRegionProfile } from '../../../../planning-policy/profiles/sparse-region.profile';
+import {
+  mergeDiscoveryStubsIntoPoiEvidence,
+} from '../../../../planning-policy/open-world/discovery-buffer.util';
+import { runOpenWorldDiscoveryPipeline } from '../../../utils/open-world-discovery-pipeline.util';
+import { syncDecisionContextToDecisionState } from '../../../../planning-policy/open-world/decision-context-sync.util';
 import {
   sanitizeOrchestratorStateAfterPoiSelection,
   sanitizeOrchestratorStateBeforePoiSelection,
@@ -304,9 +311,14 @@ async function runPoiSelectionPhaseCore(
     const rankedPois = scoredRows.map((x) => x.poi);
     const requiredAnchors = poiPlanSlice?.poiPlan?.requiredAnchorPoiIds ?? [];
     const topNLimit = 8;
+    const sparseProfileEarly = resolveSparseRegionProfile({
+      countryCode: destinationCountry,
+      destinationHint: destinationRaw,
+    });
     const skipGeoClusterForDiversity =
-      detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
-      rankedPois.length >= 3;
+      sparseProfileEarly?.defaultDayAllocation === 'intentional_slack' ||
+      (detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
+        rankedPois.length >= 3);
     let adjustSpatialEffective = adjustSpatial;
     let rankedForCorridor = rankedPois;
     if (adjustSpatial) {
@@ -399,6 +411,43 @@ async function runPoiSelectionPhaseCore(
     if (preferOffbeat) {
       scored = enforceOffBeatQuotaInTopN(scored, rankedForCorridor, topNLimit);
       (state.metadata as Record<string, unknown>).poi_offbeat_quota_applied = true;
+    }
+
+    const sparsePoiGate = applySparseRegionPoiGate({
+      scored: scored as Record<string, unknown>[],
+      destinationCountry,
+      destinationHint: destinationRaw,
+      dedupe: (pois) => host.dedupePois(pois) as Record<string, unknown>[],
+    });
+    scored = sparsePoiGate.scored;
+    attachSparseRegionMetadata(state.metadata as Record<string, unknown>, sparsePoiGate);
+
+    const sparseProfile = sparsePoiGate.sparseProfile;
+    if (sparseProfile && planningTextForDiversity.trim()) {
+      const discovery = await runOpenWorldDiscoveryPipeline(
+        {
+          userMessage: planningTextForDiversity,
+          countryCode: destinationCountry,
+          destinationHint: destinationRaw,
+          regionTags: [sparseProfile.regionTag],
+          existingPoiEvidence: scored as unknown[],
+          existingStubIds: (sparsePoiGate.openWorldStubs ?? []).map((s) => s.stubId),
+        },
+        { llmService: host.llmService },
+      );
+      if (discovery.stubs.length > 0) {
+        scored = host.dedupePois(
+          mergeDiscoveryStubsIntoPoiEvidence(scored as unknown[], discovery.stubs),
+        );
+        const meta = state.metadata as Record<string, unknown>;
+        meta.open_world_discovery = discovery;
+        meta.open_world_discovery_applied_at = new Date().toISOString();
+        meta.open_world_stubs = [...(sparsePoiGate.openWorldStubs ?? []), ...discovery.stubs];
+      } else if (discovery.mentions.length > 0) {
+        const meta = state.metadata as Record<string, unknown>;
+        meta.open_world_discovery = discovery;
+        meta.open_world_discovery_applied_at = new Date().toISOString();
+      }
     }
 
     const admissionDiag: PoiPlanningAdmissionDiagnosticsInput | undefined =
@@ -535,11 +584,11 @@ async function runPoiSelectionPhaseCore(
       };
     }
 
-    const minPoiRequired = 2;
+    const minPoiRequired = sparsePoiGate.minPoiRequired;
     const skipSparseForItineraryAdjust = shouldSkipPoiDestinationClarificationForItineraryAdjust(
       routeIntent?.primary,
       boundTripPoiSeedCount,
-      minPoiRequired,
+      minPoiRequired > 0 ? minPoiRequired : 2,
     );
     if (skipSparseForItineraryAdjust && scored.length < minPoiRequired) {
       scored = rankedPois.slice(0, Math.max(minPoiRequired, scored.length));
@@ -578,6 +627,9 @@ async function runPoiSelectionPhaseCore(
     }
 
     if (destinationCountry && scored.length === 0) {
+      if (sparsePoiGate.sparseProfile) {
+        (state.metadata as Record<string, unknown>).sparse_region_no_poi_fallback = true;
+      } else {
       const destinationExample = destinationRaw ? `${destinationRaw} ${host.countryDisplayName(destinationCountry)}` : 'Tokyo, Japan';
       const fallbackDecision = {
         verdict: 'ALLOW_WITH_FALLBACK',
@@ -617,9 +669,14 @@ async function runPoiSelectionPhaseCore(
           allowWithFallback: false,
         };
       }
+      }
     }
 
     persistSelectedPoisToResearchData(state, rawPoiEvidence, scored);
+    if (decisionState) {
+      const hydrated = syncDecisionContextToDecisionState(decisionState, state);
+      decisionState.constraints = hydrated.constraints;
+    }
     if (isFullTripReplan && state.research_data && typeof state.research_data === 'object') {
       state.research_data = {
         ...(state.research_data as Record<string, unknown>),

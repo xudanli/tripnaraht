@@ -29,6 +29,8 @@ import { mergeOptimizationDecisionNarration } from './merge-optimization-decisio
 import { mergePlanningPhaseIntentIntoNarration } from '../utils/planning-intent-narrate.util';
 import { mergeLegEvidenceIntoNarration } from '../utils/narrate-leg-evidence.util';
 import { mergePoiPitfallIntoNarration } from '../utils/poi-pitfall-insight.util';
+import { mergeBookingPriorityIntoNarration } from '../utils/merge-booking-priority-narration.util';
+import { buildBookingPriorityList } from '../delivery/utils/booking-priority-list.builder.util';
 import { PoiPitfallInsightService } from '../services/poi-pitfall-insight.service';
 import { compileCausalNarrative } from '../../trips/decision/narration/causal-narrative-compiler.service';
 import type { DecisionLogEntry as KernelDecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
@@ -40,6 +42,11 @@ import { attachAgentMemorySnapshotToOrchestratorState } from '../memory/utils/ag
 import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
 import type { EmotionalContext } from '../narrator/types/emotional-context.type';
 import { persistEmotionalContextToOrchestratorMetadata } from '../narrator/emotional-orchestrator-metadata.util';
+import { collectTravelDiagnostic } from '../narrator/utils/travel-diagnostic-collector.util';
+import { buildVoicePayloadForDiagnostic } from '../narrator/services/voice-evidence-translator.util';
+import type { TravelDiagnosticReport } from '../narrator/utils/travel-diagnostic-collector.util';
+import { syncDecisionContextToDecisionState } from '../../planning-policy/open-world/decision-context-sync.util';
+import { mergeDecisionContextIntoNarration } from '../narrator/utils/merge-decision-context-narration.util';
 
 @Injectable()
 export class NarrateExecutorService implements INarrateExecutor {
@@ -96,12 +103,19 @@ export class NarrateExecutorService implements INarrateExecutor {
         partyNoteZh,
       });
 
+      const travelDiagnostic = this.collectTravelDiagnosticForNarrate(state, dso);
+      if (state.metadata && typeof state.metadata === 'object') {
+        (state.metadata as Record<string, unknown>).travel_diagnostic = travelDiagnostic;
+      }
+
+      const dsoWithContext = syncDecisionContextToDecisionState(dso, state);
+
       let emotionalContext: EmotionalContext | undefined;
       if (this.emotionNarratorOrchestrator) {
         try {
           attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
           emotionalContext = this.emotionNarratorOrchestrator.buildFromNarrateContext({
-            dso,
+            dso: dsoWithContext,
             ctx,
             state,
           });
@@ -121,7 +135,10 @@ export class NarrateExecutorService implements INarrateExecutor {
         ...(escalation ? { kernel_escalation_plan: escalation } : {}),
         ...(ctx.researchConflict ? { narration_research_conflict: ctx.researchConflict } : {}),
         ...(causalCompiled ? { kernel_causal_narrative_compile: causalCompiled } : {}),
-        ...(dso.optimizationHints ? { kernel_optimization_hints: dso.optimizationHints } : {}),
+        ...(dsoWithContext.optimizationHints ? { kernel_optimization_hints: dsoWithContext.optimizationHints } : {}),
+        ...(dsoWithContext.constraints?.decisionContext
+          ? { kernel_decision_context: dsoWithContext.constraints.decisionContext }
+          : {}),
         ...(emotionalContext ? { emotional_context: emotionalContext } : {}),
       } as OrchestratorState;
 
@@ -138,11 +155,12 @@ export class NarrateExecutorService implements INarrateExecutor {
         md?.itinerary_adjust_intake === true ||
         (md?.route_and_run_intent as { primary?: string } | undefined)?.primary === 'ITINERARY_ADJUST';
       if (!isItineraryAdjust) {
-        narration = mergeOptimizationDecisionNarration(narration, dso.optimizationHints);
+        narration = mergeOptimizationDecisionNarration(narration, dsoWithContext.optimizationHints);
       }
-      narration = this.mergeCausalProtectionNarration(narration, dso, state);
+      narration = this.mergeCausalProtectionNarration(narration, dsoWithContext, state);
       narration = mergePlanningPhaseIntentIntoNarration(narration, state);
-      narration = mergeLegEvidenceIntoNarration(narration, state.itinerary, state, dso);
+      narration = mergeLegEvidenceIntoNarration(narration, state.itinerary, state, dsoWithContext);
+      narration = mergeDecisionContextIntoNarration(narration, dsoWithContext.constraints);
 
       if (this.poiPitfallInsight) {
         try {
@@ -164,6 +182,31 @@ export class NarrateExecutorService implements INarrateExecutor {
         } catch (e: unknown) {
           this.logger.debug(
             `[NarrateExecutor] poi pitfall skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
+      const tripIdForBooking =
+        ctx.tripPlanRequest?.trip_id?.trim() ??
+        (state.trip_plan_request as { trip_id?: string } | undefined)?.trip_id?.trim() ??
+        (state.metadata as Record<string, unknown> | undefined)?.trip_id?.toString?.().trim();
+      if (tripIdForBooking) {
+        try {
+          const researchData = (state.research_data ?? state.metadata) as
+            | Record<string, unknown>
+            | undefined;
+          const priorityList = buildBookingPriorityList({
+            tripId: tripIdForBooking,
+            itinerary: state.itinerary,
+            researchData,
+            poiPitfallCards: narration.poi_pitfall_cards as
+              | import('../utils/poi-pitfall-insight.util').PoiPitfallCard[]
+              | undefined,
+          });
+          narration = mergeBookingPriorityIntoNarration(narration, priorityList);
+        } catch (e: unknown) {
+          this.logger.debug(
+            `[NarrateExecutor] booking priority skipped: ${e instanceof Error ? e.message : String(e)}`,
           );
         }
       }
@@ -369,8 +412,26 @@ export class NarrateExecutorService implements INarrateExecutor {
         if (!tips.some((t) => t.includes(hint.slice(0, 20)))) {
           tips.unshift(hint);
         }
-        return { narration: { ...narration, tips } };
+        narration = { ...narration, tips };
       }
+
+      const voicePayload = buildVoicePayloadForDiagnostic(
+        travelDiagnostic,
+        emotionalContext?.recommendedVoiceStance.toneModifier ?? 'empathetic_reassurance',
+      );
+      if (voicePayload) {
+        narration = {
+          ...narration,
+          voice_payload: voicePayload,
+          ...(travelDiagnostic.hasMajorItineraryConflict &&
+          !(narration.user_friendly_summary ?? '').includes('旅行管家')
+            ? {
+                user_friendly_summary: `${voicePayload.text.slice(0, 280)}…\n\n${(narration.user_friendly_summary ?? '').trim()}`.trim(),
+              }
+            : {}),
+        };
+      }
+
       return { narration };
     } catch (e: unknown) {
       this.logger.warn(`[NarrateExecutor] NarratorAgent 失败: ${(e as Error)?.message}`);
@@ -383,6 +444,36 @@ export class NarrateExecutorService implements INarrateExecutor {
         },
       };
     }
+  }
+
+  /** 将 RESEARCH 产出的交通降级指引 / 区域一致性提示并入叙事 tips（不修改行程硬字段） */
+  private collectTravelDiagnosticForNarrate(
+    state: OrchestratorState,
+    dso: DecisionState,
+  ): TravelDiagnosticReport {
+    const rd = state.research_data as Record<string, unknown> | undefined;
+    const meta = state.metadata as Record<string, unknown> | undefined;
+    const payload = (meta?.route_and_run_payload ?? meta?.result_payload ?? rd) as
+      | Record<string, unknown>
+      | undefined;
+
+    const selfHealApplied = (state.decision_log ?? []).some((entry) => {
+      const code = String(
+        (entry as { reason_code?: string; reasonCode?: string }).reason_code ??
+          (entry as { reasonCode?: string }).reasonCode ??
+          '',
+      );
+      return /REPAIR|SELF_HEAL|HEAL|REROUTE/i.test(code);
+    });
+
+    return collectTravelDiagnostic({
+      itinerary: state.itinerary,
+      accommodations: (payload?.accommodations ?? rd?.accommodations) as unknown[] | null,
+      accommodationNightGroups: (payload?.accommodation_night_groups ??
+        rd?.accommodation_night_groups) as unknown[] | null,
+      gateViolations: state.gate_result?.violations,
+      selfHealApplied,
+    });
   }
 
   /** 将 RESEARCH 产出的交通降级指引 / 区域一致性提示并入叙事 tips（不修改行程硬字段） */

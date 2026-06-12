@@ -1,6 +1,6 @@
 # 前端改造指南：`route_and_run` 异步编排 + SSE
 
-配合 [route-and-run-sse-rollout.md](./route-and-run-sse-rollout.md) 使用。本仓库无前端工程，以下为 **API 契约驱动的集成说明**。
+配合 [route-and-run-sse-rollout.md](./route-and-run-sse-rollout.md) 使用。能力总览见 [AGENT_UNIFIED_INTERFACE_SCOPE.md](../../src/agent/delivery/AGENT_UNIFIED_INTERFACE_SCOPE.md)。本仓库无前端工程，以下为 **API 契约驱动的集成说明**。
 
 ---
 
@@ -410,6 +410,23 @@ const request: RouteAndRunRequestDto = {
 - [ ] 路由离开 / 组件卸载：`EventSource.close()` 或 `AbortController.abort()`
 - [ ] 断网：fallback 轮询仍能拿到终态
 - [ ] （若已上 JWT）fetch SSE 带 Bearer，不用裸 EventSource
+- [ ] 轮询 `task/status` 读取 `task_lease_v1`；`STALE`/`RESUMING` 展示恢复态而非硬失败
+
+---
+
+## 9.1 P2 Worker Lease（poll 必读）
+
+SSE **不含** `task_lease_v1`；lease 仅出现在 **`GET /api/agent/task/status/:taskId`**。
+
+| `task_lease_v1.lease_status` | 前端 |
+|------------------------------|------|
+| `ACTIVE` | 正常 |
+| `STALE` / `RESUMING` | 展示「正在恢复…」；status 轮询会触发后端 auto-resume |
+| `EXHAUSTED` | 停止 poll，提示重新发起 async |
+
+显式续跑：`POST /api/agent/task/resume/:taskId` → 202。
+
+完整契约见 [FRONTEND_ASYNC_TASK_LEASE.md](../../src/agent/delivery/FRONTEND_ASYNC_TASK_LEASE.md)。
 
 ---
 

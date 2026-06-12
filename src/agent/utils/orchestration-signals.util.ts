@@ -118,10 +118,22 @@ const EXPLICIT_TRIP_PLANNING_VERBS_EN: readonly string[] = [
 ];
 
 function hasExplicitTripPlanningIntent(msg: string, msgLower: string): boolean {
-  return (
+  if (
     EXPLICIT_TRIP_PLANNING_VERBS_ZH.some((v) => msg.includes(v)) ||
     EXPLICIT_TRIP_PLANNING_VERBS_EN.some((v) => msgLower.includes(v))
-  );
+  ) {
+    return true;
+  }
+  if (/plan\s+a\s+(?:\d|\w+\s+day|\w+\s+minimal|\w+\s+short)/i.test(msgLower)) {
+    return true;
+  }
+  if (/\d+\s*[- ]?\s*day\s+trip/i.test(msgLower)) {
+    return true;
+  }
+  if (/天游|环岛/.test(msg)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -213,6 +225,9 @@ function hasReplanningEditSignalBeforeTransportConsult(msg: string, msgLower: st
   if (hasSegmentTransportModeReplanningSignal(msg, msgLower)) {
     return true;
   }
+  if (/不要改|仍按原|坚持.{0,8}(?:计划|方案)|按原计划/i.test(msg)) {
+    return true;
+  }
   return EXPLICIT_TRIP_PLANNING_VERBS_EN.some((v) => msgLower.includes(v));
 }
 
@@ -279,7 +294,8 @@ function applyIntentModeToTaskType(
 ): TaskType {
   if (mode === 'AUTO') return inferred;
   const msg = String(req?.message ?? '').trim();
-  const msgLower = msg.toLowerCase();
+  if (mode === 'TRIP_PLANNING') return 'TRIP_PLANNING';
+  if (mode === 'DATA_LOOKUP') return 'DATA_LOOKUP';
   if (
     shouldForceDataLookupForBoundTripReview({
       trip_id: req?.trip_id,
@@ -288,8 +304,6 @@ function applyIntentModeToTaskType(
   ) {
     return 'DATA_LOOKUP';
   }
-  if (mode === 'TRIP_PLANNING') return 'TRIP_PLANNING';
-  if (mode === 'DATA_LOOKUP') return 'DATA_LOOKUP';
   return 'GENERIC_QA';
 }
 
@@ -717,6 +731,18 @@ function isTripScopedConsultationQuery(msg: string, msgLower: string): boolean {
   if (detectItineraryAdjustIntent(msg)) {
     return false;
   }
+  /** 用户拒绝改线/坚持原计划 → 非咨询，走规划/协商 */
+  if (/不要改|仍按原|坚持.{0,8}(?:计划|方案)|按原计划/i.test(msg)) {
+    return false;
+  }
+  /** 景点开放/营业时间事实问（绑定 trip 仍走快答） */
+  if (
+    /(?:开放|营业|开馆|闭馆|关门).{0,12}(?:吗|么|呢)|周[一二三四五六日天].{0,16}(?:开放|营业|开吗)/.test(
+      msg,
+    )
+  ) {
+    return true;
+  }
   /** 改行程话术里常同时出现「自驾/路况」等，必须在交通咨询分支之前排除（窄信号，避免误伤「规划情况」类问法） */
   if (hasReplanningEditSignalBeforeTransportConsult(msg, msgLower)) {
     return false;
@@ -1033,6 +1059,10 @@ function inferTaskType(tripId: string | null | undefined, msg: string, msgLower:
     return 'BOOKING_WORKFLOW';
   }
 
+  if (hasExplicitTripPlanningIntent(msg, msgLower)) {
+    return 'TRIP_PLANNING';
+  }
+
   // Default
   return 'GENERIC_QA';
 }
@@ -1152,7 +1182,11 @@ function inferRisk(taskType: TaskType, msg: string, msgLower: string): RiskLevel
   if (payment) {
     return 'CRITICAL';
   }
-  
+
+  if (/退款|refund|chargeback/i.test(msg) && /支付|payment|凭证|投诉/i.test(msg)) {
+    return 'HIGH';
+  }
+
   if (piiAction) {
     return 'CRITICAL'; // 明确的 PII 操作总是 CRITICAL
   }
