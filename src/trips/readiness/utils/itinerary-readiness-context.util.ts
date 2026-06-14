@@ -13,6 +13,10 @@ export interface TripPlaceRef {
 
 const CT = (s?: string) => (s || '').toUpperCase();
 
+function placeLabels(name: string, nameCN?: string): string {
+  return `${name} ${nameCN ?? ''}`.trim();
+}
+
 function matchesTerrain(ct: string, name: string): boolean {
   const n = name.toLowerCase();
   return (
@@ -53,12 +57,72 @@ function matchesRemote(ct: string, category: string, name: string): boolean {
   );
 }
 
+function matchesRoadHazard(ct: string, category: string, name: string): boolean {
+  const n = name.toLowerCase();
+  const c = category.toLowerCase();
+
+  if (
+    ct.includes('RESTAURANT') ||
+    ct.includes('CAFE') ||
+    ct.includes('SPA') ||
+    ct.includes('HOTEL') ||
+    ct.includes('SHOP') ||
+    ct.includes('MUSEUM') ||
+    c.includes('restaurant') ||
+    c.includes('accommodation')
+  ) {
+    return false;
+  }
+
+  const roadRemoteTypes = [
+    'HIGHLAND',
+    'F_ROAD',
+    'FROAD',
+    'GLACIER',
+    'TRAILHEAD',
+    'CAMPING',
+    'REMOTE',
+    'MOUNTAIN_PASS',
+    'MOUNTAIN',
+  ];
+  if (roadRemoteTypes.some((t) => ct.includes(t))) return true;
+  if (matchesTerrain(ct, name)) return true;
+
+  if (ct.includes('NATIONAL_PARK') || ct.includes('NATURE_RESERVE')) {
+    return /highland|内陆|斯卡夫|skaftafell|瓦特纳|vatnaj[oö]kull|snæfell|snaefell|westfjord|fjord|高地|荒原|remote/i.test(n);
+  }
+
+  if (/f[\s.-]?road|f路|高地|山口|pass|内陆/i.test(n)) return true;
+
+  return false;
+}
+
+function isRoadHazardType(hazardType: string): boolean {
+  const t = hazardType.toLowerCase();
+  return (
+    t === 'road' ||
+    t.includes('road_closure') ||
+    t.includes('winter_road') ||
+    t.includes('driving_conditions') ||
+    t.includes('driving_ice_road') ||
+    (t.includes('driving') && t.includes('road'))
+  );
+}
+
 /** 无 Pack 自带 affectedPois 时，按风险类型推断行程中的相关地点 id */
 export function inferPlaceIdsForHazardType(hazardType: string, places: TripPlaceRef[]): number[] {
   if (places.length === 0) return [];
   const t = hazardType.toLowerCase();
   const capped = (ids: number[]) => (ids.length > 0 ? ids.slice(0, 18) : []);
 
+  if (isRoadHazardType(hazardType)) {
+    const ids = places
+      .filter((p) =>
+        matchesRoadHazard(CT(p.canonicalType), p.category || '', placeLabels(p.name, p.nameCN)),
+      )
+      .map((p) => p.placeId);
+    return capped(ids);
+  }
   if (
     t.includes('weather') ||
     t === 'weather_extreme' ||
@@ -91,7 +155,139 @@ export function inferPlaceIdsForHazardType(hazardType: string, places: TripPlace
     return capped(ids.length > 0 ? ids : places.map((p) => p.placeId));
   }
 
+  if (isVolcanicHazardType(hazardType)) {
+    const ids = places
+      .filter((p) =>
+        matchesVolcanic(CT(p.canonicalType), placeLabels(p.name, p.nameCN)),
+      )
+      .map((p) => p.placeId);
+    return capped(ids);
+  }
+
+  if (isColdHazardType(hazardType)) {
+    const ids = places
+      .filter((p) =>
+        matchesColdExposure(CT(p.canonicalType), p.category || '', placeLabels(p.name, p.nameCN)),
+      )
+      .map((p) => p.placeId);
+    return capped(ids);
+  }
+
+  if (isSupplyShortageType(hazardType)) {
+    const ids = places
+      .filter((p) =>
+        matchesRemote(CT(p.canonicalType), p.category || '', placeLabels(p.name, p.nameCN)),
+      )
+      .map((p) => p.placeId);
+    return capped(ids.length > 0 ? ids : []);
+  }
+
   return capped(places.map((p) => p.placeId));
+}
+
+/** 正文下方已有 affectedPois 时，去掉括号内的 POI 列表 */
+export function stripItineraryPlaceSuffix(text: string): string {
+  if (!text?.trim()) return '';
+  return splitMustTripInvolvesMessage(text).lead;
+}
+
+export function isItineraryPlaceOnlyMessage(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  const { lead, involves } = splitMustTripInvolvesMessage(t);
+  return !lead && !!involves;
+}
+
+function splitMustTripInvolvesMessage(message: string): { lead: string; involves?: string } {
+  const m = message.trim();
+  if (!m) return { lead: '' };
+
+  const tripContextMarkers = [
+    '本行程涉及',
+    '本行程相关地点',
+    'This itinerary involves',
+    'Places on this itinerary',
+    'Trip-related places',
+    'Trip involves',
+  ];
+
+  for (const marker of tripContextMarkers) {
+    const markerIdx = m.indexOf(marker);
+    if (markerIdx === -1) continue;
+
+    const openParenIdx = Math.max(m.lastIndexOf('（', markerIdx), m.lastIndexOf('(', markerIdx));
+    if (openParenIdx === -1) continue;
+
+    const closeParenIdx = Math.max(m.lastIndexOf('）'), m.lastIndexOf(')'));
+    if (closeParenIdx <= openParenIdx) continue;
+
+    const lead = m.slice(0, openParenIdx).trim();
+    let involves = m.slice(openParenIdx + 1, closeParenIdx).trim();
+    involves = involves
+      .replace(/^本行程涉及[：:]\s*/, '')
+      .replace(/^本行程相关地点[：:]\s*/, '')
+      .replace(/^(?:This itinerary involves|Places on this itinerary|Trip-related places|Trip involves)[^:]*:\s*/i, '')
+      .trim();
+
+    if (lead) {
+      return { lead, involves: involves || undefined };
+    }
+    if (involves) {
+      return { lead: '', involves };
+    }
+  }
+
+  return { lead: m };
+}
+
+function matchesVolcanic(ct: string, name: string): boolean {
+  const n = placeLabels(name, '').toLowerCase();
+  return (
+    ct.includes('VOLCANO') ||
+    ct.includes('GEOTHERMAL') ||
+    ct.includes('GEYSER') ||
+    ct.includes('HOT_SPRING') ||
+    /火山|地热|间歇泉|geyser|volcano|geothermal|kerid|krýsuvík|krysuvik/i.test(n)
+  );
+}
+
+function matchesColdExposure(ct: string, category: string, name: string): boolean {
+  const n = placeLabels(name, '').toLowerCase();
+  const c = category.toLowerCase();
+  if (
+    ct.includes('RESTAURANT') ||
+    ct.includes('CAFE') ||
+    ct.includes('SPA') ||
+    ct.includes('HOTEL') ||
+    c.includes('restaurant') ||
+    c.includes('accommodation')
+  ) {
+    return false;
+  }
+  return (
+    matchesTerrain(ct, name) ||
+    ct.includes('NATIONAL_PARK') ||
+    ct.includes('WATERFALL') ||
+    ct.includes('BEACH') ||
+    ct.includes('GLACIER') ||
+    /瀑布|海滩|冰川|国家公园|高地|峡谷/i.test(n) ||
+    /nature|outdoor|hiking/i.test(c)
+  );
+}
+
+function isSupplyShortageType(hazardType: string): boolean {
+  const t = hazardType.toLowerCase();
+  return t.includes('supply_shortage') || t.includes('supply') && t.includes('short');
+}
+
+function isVolcanicHazardType(hazardType: string): boolean {
+  const t = hazardType.toLowerCase();
+  return t === 'volcanic' || t.includes('volcano') || t.includes('geothermal');
+}
+
+function isColdHazardType(hazardType: string): boolean {
+  const t = hazardType.toLowerCase();
+  return t === 'cold' || t.includes('cold') || t === 'heat' || t.includes('heat') || t === 'uv';
 }
 
 /**
@@ -101,16 +297,26 @@ export function getTripPlacesOrdered(places: TripPlaceRef[]): TripPlaceRef[] {
   return [...places].sort((a, b) => a.day - b.day || a.placeId - b.placeId);
 }
 
+export function placeDisplayName(ref: TripPlaceRef, lang: 'en' | 'zh'): string {
+  if (lang === 'zh') {
+    return ref.nameCN?.trim() || ref.name;
+  }
+  return ref.name || ref.nameCN?.trim() || `POI ${ref.placeId}`;
+}
+
 export function formatItineraryRiskSuffix(
-  enrichedPois: Array<{ id?: string; name?: string; day?: number }>,
+  enrichedPois: Array<{ id?: string; name?: string; nameCN?: string; day?: number }>,
   lang: 'en' | 'zh',
 ): string {
   if (!enrichedPois?.length) return '';
   const parts = enrichedPois
-    .filter((p) => p.day != null && (p.name || p.id))
+    .filter((p) => p.day != null && (p.name || p.nameCN || p.id))
     .slice(0, 10)
     .map((p) => {
-      const label = p.name || `POI ${p.id}`;
+      const label =
+        lang === 'zh'
+          ? p.nameCN?.trim() || p.name || `POI ${p.id}`
+          : p.name || p.nameCN?.trim() || `POI ${p.id}`;
       return lang === 'zh' ? `第${p.day}天 · ${label}` : `Day ${p.day}: ${label}`;
     });
   if (parts.length === 0) return '';
@@ -127,14 +333,15 @@ export function formatItineraryRiskSuffix(
 export function formatMustItinerarySuffix(
   places: TripPlaceRef[],
   lang: 'en' | 'zh',
-  maxShown = 15,
+  maxShown = 4,
 ): string {
   if (places.length === 0) return '';
   const sorted = getTripPlacesOrdered(places);
   const shown = sorted.slice(0, maxShown);
-  const parts = shown.map((p) =>
-    lang === 'zh' ? `第${p.day}天 · ${p.name}` : `Day ${p.day}: ${p.name}`,
-  );
+  const parts = shown.map((p) => {
+    const label = placeDisplayName(p, lang);
+    return lang === 'zh' ? `第${p.day}天 · ${label}` : `Day ${p.day}: ${label}`;
+  });
   const overflow =
     sorted.length > maxShown
       ? lang === 'zh'

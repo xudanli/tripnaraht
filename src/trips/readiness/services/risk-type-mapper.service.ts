@@ -1,6 +1,10 @@
 // src/trips/readiness/services/risk-type-mapper.service.ts
 import { Injectable } from '@nestjs/common';
 import { HazardType } from '../types/readiness-pack.types';
+import {
+  isItineraryPlaceOnlyMessage,
+  stripItineraryPlaceSuffix,
+} from '../utils/itinerary-readiness-context.util';
 
 /**
  * 风险类型映射服务
@@ -48,6 +52,13 @@ export class RiskTypeMapperService {
       icon: '⚠️',
       description: '其他类型的风险',
     },
+    'ROAD': {
+      zh: '道路风险',
+      en: 'Road Risk',
+      category: 'logistics',
+      icon: '🛣️',
+      description: '山路、长途或季节性封路可能影响通行，请出发前查询路况',
+    },
     // 标准风险类型
     'weather_extreme': {
       zh: '极端天气',
@@ -55,6 +66,13 @@ export class RiskTypeMapperService {
       category: 'weather',
       icon: '🌨️',
       description: '可能遭遇极端天气条件，如暴风雪、强风、低温等',
+    },
+    'driving_conditions': {
+      zh: '道路风险',
+      en: 'Road Risk',
+      category: 'logistics',
+      icon: '🛣️',
+      description: '道路状况、车型要求或驾驶环境存在挑战',
     },
     'terrain': {
       zh: '地形风险',
@@ -105,6 +123,76 @@ export class RiskTypeMapperService {
       icon: '📋',
       description: '涉及法规要求，如许可证、保险、签证等',
     },
+    'road_closure': {
+      zh: '道路风险',
+      en: 'Road Risk',
+      category: 'logistics',
+      icon: '🛣️',
+      description: '可能存在道路封闭或冬季限行，请出发前查询路况',
+    },
+    'winter_road_condition': {
+      zh: '道路风险',
+      en: 'Road Risk',
+      category: 'logistics',
+      icon: '🛣️',
+      description: '冬季山区或长途路段路况可能恶化，请注意行车安全',
+    },
+    'COLD': {
+      zh: '低温风险',
+      en: 'Cold Exposure',
+      category: 'weather',
+      icon: '🥶',
+      description: '低温、风寒或冬季户外暴露可能带来健康与行车安全影响',
+    },
+    'cold': {
+      zh: '低温风险',
+      en: 'Cold Exposure',
+      category: 'weather',
+      icon: '🥶',
+      description: '低温、风寒或冬季户外暴露可能带来健康与行车安全影响',
+    },
+    'HEAT': {
+      zh: '高温风险',
+      en: 'Heat Exposure',
+      category: 'weather',
+      icon: '🌡️',
+      description: '高温或强日照可能影响户外活动和行车舒适度',
+    },
+    'heat': {
+      zh: '高温风险',
+      en: 'Heat Exposure',
+      category: 'weather',
+      icon: '🌡️',
+      description: '高温或强日照可能影响户外活动和行车舒适度',
+    },
+    'VOLCANIC': {
+      zh: '火山/地热风险',
+      en: 'Volcanic & Geothermal',
+      category: 'terrain',
+      icon: '🌋',
+      description: '火山活动或地热区域存在烫伤、气体和地面不稳定等风险',
+    },
+    'volcanic': {
+      zh: '火山/地热风险',
+      en: 'Volcanic & Geothermal',
+      category: 'terrain',
+      icon: '🌋',
+      description: '火山活动或地热区域存在烫伤、气体和地面不稳定等风险',
+    },
+    'supply_shortage': {
+      zh: '补给短缺',
+      en: 'Supply Shortage',
+      category: 'logistics',
+      icon: '⛽',
+      description: '补给点稀少，可能导致燃料、食物或用水短缺',
+    },
+    'altitude_sickness': {
+      zh: '高反风险',
+      en: 'Altitude Sickness',
+      category: 'safety',
+      icon: '⛰️',
+      description: '海拔升高可能引发高原反应，需循序渐进并关注身体信号',
+    },
   };
 
   /**
@@ -143,6 +231,10 @@ export class RiskTypeMapperService {
       'LOGISTICS': 'logistics_remote',
       'HEALTHCARE': 'healthcare_gap',
       'REGULATORY': 'regulatory',
+      'ROAD': 'road_closure',
+      'COLD': 'cold',
+      'HEAT': 'heat',
+      'VOLCANIC': 'volcanic',
     };
     return typeMap[upperType] || null;
   }
@@ -198,8 +290,9 @@ export class RiskTypeMapperService {
     message?: string;
     summary?: string;
     mitigation?: string[];
+    mitigations?: string[];
     affectedPois?: any[];
-    sources?: any[]; // 🆕 官方来源
+    sources?: any[];
   }, lang: 'en' | 'zh' = 'zh'): any {
     // 获取类型信息（支持大小写不敏感匹配）
     let typeInfo = this.TYPE_LABELS[risk.type];
@@ -225,37 +318,45 @@ export class RiskTypeMapperService {
       };
     }
     
-    // 如果 message 和 summary 都为空，使用 typeDescription 作为默认描述
-    const message = risk.message || risk.summary || typeInfo.description || '';
+    const mitigations =
+      risk.mitigation?.length ? risk.mitigation : risk.mitigations?.length ? risk.mitigations : [];
+
+    let rawMessage = (risk.message || risk.summary || '').trim();
+    if (risk.affectedPois?.length) {
+      rawMessage = stripItineraryPlaceSuffix(rawMessage);
+      if (isItineraryPlaceOnlyMessage(rawMessage)) {
+        rawMessage = '';
+      }
+    }
+    const typeDescription = typeInfo.description || '';
+    const message =
+      rawMessage ||
+      (mitigations[0] ? String(mitigations[0]) : '') ||
+      typeDescription ||
+      '';
     const severity = (risk.severity === 'high' || risk.severity === 'medium' || risk.severity === 'low') 
       ? risk.severity 
       : 'medium' as 'high' | 'medium' | 'low';
+    const impact = this.generateImpactDescription(risk, lang);
     
     return {
       ...risk,
-      // 类型信息
       typeLabel: typeInfo[lang] || risk.type,
       typeLabelEn: typeInfo.en || risk.type,
       category: typeInfo.category || 'other',
       typeIcon: typeInfo.icon || '⚠️',
-      typeDescription: typeInfo.description || '',
-      
-      // 严重程度
+      typeDescription,
       severityLabel: this.getSeverityLabel(severity, lang),
       severityLabelEn: this.getSeverityLabel(severity, 'en'),
-      
-      // 描述信息（如果原始message/summary为空，使用typeDescription）
-      message: message || typeInfo.description || '',
-      summary: risk.summary || typeInfo.description || '', // 保留summary字段
-      description: message || typeInfo.description || '', // 详细说明
-      impact: this.generateImpactDescription(risk, lang),
-      
-      // 缓解建议
-      mitigation: risk.mitigation || [],
-      
-      // 🆕 保留官方来源（如果存在）
+      message,
+      summary: risk.summary || message,
+      description: message,
+      impact: impact || undefined,
+      mitigation: mitigations,
+      mitigations,
       sources: risk.sources || undefined,
-      mitigationDetails: this.generateMitigationDetails(risk.mitigation || [], lang),
+      mitigationDetails: this.generateMitigationDetails(mitigations, lang),
+      isGenericTemplate: !rawMessage && !mitigations.length && !!typeDescription,
     };
   }
 
@@ -265,10 +366,10 @@ export class RiskTypeMapperService {
   private generateImpactDescription(risk: any, lang: 'en' | 'zh'): string {
     if (risk.affectedPois && risk.affectedPois.length > 0) {
       return lang === 'zh' 
-        ? `影响 ${risk.affectedPois.length} 个POI`
-        : `Affects ${risk.affectedPois.length} POIs`;
+        ? `影响 ${risk.affectedPois.length} 个行程点`
+        : `Affects ${risk.affectedPois.length} itinerary stops`;
     }
-    return lang === 'zh' ? '可能影响行程执行' : 'May affect trip execution';
+    return '';
   }
 
   /**

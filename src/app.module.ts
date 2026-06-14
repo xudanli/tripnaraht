@@ -68,6 +68,7 @@ import { SafetyModule } from './safety/safety.module';
 import { WorldModelSchedulerModule } from './trips/decision/world-model-scheduler.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { RoadIsModule } from './infrastructure/external/road-is/road-is.module';
+import { MatchSquareModule } from './match-square/match-square.module';
 
 @Module({
   imports: [
@@ -157,6 +158,7 @@ import { RoadIsModule } from './infrastructure/external/road-is/road-is.module';
     AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
     SafetyModule, // 安全预警模块（地缘政治风险评估、旅行警告、安全通知）
     WorldModelSchedulerModule, // 专利实施例：世界模型异步推送调度（WeatherAgent → pushEnvironmentDelta）
+    MatchSquareModule, // 搭子广场 P0（招募帖 + 申请流）
   ],
   providers: [
     {

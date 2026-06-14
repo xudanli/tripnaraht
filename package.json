@@ -206,6 +206,7 @@
     "test:evidence-apis": "npx tsx scripts/test-evidence-apis.ts",
     "test:evidence-apis:http": "npx tsx scripts/test-evidence-apis-http.ts",
     "test:readiness-unified": "npx tsx scripts/test-readiness-unified-apis.ts",
+    "test:readiness-alignment": "jest --testPathPatterns='readiness-alignment|readiness-repair|trip-decision-repair|trip-plan-persistence|coverage-map.service.spec|trip-readiness'",
     "test:constraint-consistency-baseline": "npx tsx scripts/constraint-consistency-baseline.ts",
     "test:constraint-consistency-baseline:quick": "npx tsx scripts/constraint-consistency-baseline.ts --quick",
     "test:rollback-drill": "npx tsx scripts/verify-rollback-drill.ts",

@@ -207,6 +207,41 @@ describe('ClaudeOrchestratorService — poiPlanning outcome guardrail (Phase 2.1
     expect(fin.metrics.anchorCoverage.rate).toBe(1);
   });
 
+  it('does not ask destination-scope clarification for existing-trip route order optimization', async () => {
+    const orch = await createOrchestrator();
+    const state = minimalOrchestratorState({
+      trip_plan_request: {
+        request_id: rid,
+        trip_id: 'trip-1',
+        message: '帮我优化第5天的路线顺序，减少交通时间',
+        origin: '冰岛',
+        destination: '冰岛',
+      } as any,
+      research_data: {
+        poi_evidence: [{ id: 1, name: 'Only existing nearby POI', category: 'ATTRACTION' }],
+      },
+      metadata: {
+        started_at: new Date().toISOString(),
+        last_updated_at: new Date().toISOString(),
+        tripId: 'trip-1',
+        intake_user_message: '帮我优化第5天的路线顺序，减少交通时间',
+      },
+    });
+
+    const result = await (orch as any).executePoiSelectionStep(state);
+
+    expect(result.needsClarification).toBe(false);
+    expect(state.clarification_questions ?? []).toEqual([]);
+    expect(
+      state.gaps?.some((g) => g.type === 'MISSING_DESTINATION' && /候选点不足|目的地范围/.test(g.detail)),
+    ).not.toBe(true);
+    expect(state.metadata.poi_selection_destination_scope_clarification_bypassed).toMatchObject({
+      reason: 'EXISTING_TRIP_ROUTE_ORDER_OPTIMIZATION',
+      min_poi_required: 2,
+    });
+    expect(state.metadata.poi_selection_destination_scope_clarification_bypassed.selected_count).toBeLessThan(2);
+  });
+
   it('D: assembleClaudeStateMachineResponse 中 observability.poi_planning.outcome 与 metadata 对齐', async () => {
     const orch = await createOrchestrator();
     const assembler = await createAssembler();

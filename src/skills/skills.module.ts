@@ -50,6 +50,9 @@ import { RouteDirectionListForCountrySkill } from './route-direction/route-direc
 import { ReadinessGenerateChecklistSkill } from './readiness/readiness-generate-checklist.skill';
 import { ReadinessSummarizeRisksSkill } from './readiness/readiness-summarize-risks.skill';
 import { ReadinessCheckVisaWindowSkill } from './readiness/readiness-check-visa-window.skill';
+import { ReadinessGuardianNegotiationGetSkill } from './readiness/readiness-guardian-negotiation-get.skill';
+import { ReadinessCascadeImpactGetSkill } from './readiness/readiness-cascade-impact-get.skill';
+import { ReadinessApplyRepairSkill } from './readiness/readiness-apply-repair.skill';
 
 // Trip Skills
 import { TripQuickEvaluateSkill } from './trip/trip-quick-evaluate.skill';
@@ -97,6 +100,7 @@ import { IcelandAlternativeValidatorSkill } from './world/iceland-alternative-va
 
 // Decision Skills (additional)
 import { DecisionRunThreeGuardiansSkill } from './decision/decision-run-three-guardians.skill';
+import { DecisionGuardianNegotiateSkill } from './decision/decision-guardian-negotiate.skill';
 import { DecisionExplainForHumanSkill } from './decision/decision-explain-for-human.skill';
 
 // CountryPack Skills
@@ -238,10 +242,14 @@ import {
   SKILL_DECISION_DRDRE_PACE,
   SKILL_DECISION_NEPTUNE_REPAIR,
   SKILL_DECISION_RUN_THREE_GUARDIANS,
+  SKILL_DECISION_GUARDIAN_NEGOTIATE,
   SKILL_DECISION_EXPLAIN_FOR_HUMAN,
   SKILL_DEM_GET_PROFILE,
   SKILL_READINESS_GENERATE_CHECKLIST,
   SKILL_READINESS_SUMMARIZE_RISKS,
+  SKILL_READINESS_GUARDIAN_NEGOTIATION_GET,
+  SKILL_READINESS_CASCADE_IMPACT_GET,
+  SKILL_READINESS_APPLY_REPAIR,
   SKILL_ROUTE_DIRECTION_PICK_FOR_INTENT,
   SKILL_ROUTE_DIRECTION_LIST_FOR_COUNTRY,
   SKILL_WORLD_BUILD_CONTEXT,
@@ -367,6 +375,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
           DecisionDrdrePaceSkill,
           DecisionNeptuneRepairSkill,
           DecisionRunThreeGuardiansSkill,
+          DecisionGuardianNegotiateSkill,
           DecisionExplainForHumanSkill,
         ]
       : []),
@@ -376,6 +385,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
           { provide: SKILL_DECISION_DRDRE_PACE, useExisting: DecisionDrdrePaceSkill },
           { provide: SKILL_DECISION_NEPTUNE_REPAIR, useExisting: DecisionNeptuneRepairSkill },
           { provide: SKILL_DECISION_RUN_THREE_GUARDIANS, useExisting: DecisionRunThreeGuardiansSkill },
+          { provide: SKILL_DECISION_GUARDIAN_NEGOTIATE, useExisting: DecisionGuardianNegotiateSkill },
           { provide: SKILL_DECISION_EXPLAIN_FOR_HUMAN, useExisting: DecisionExplainForHumanSkill },
         ]
       : []),
@@ -388,13 +398,16 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     
     // Readiness Skills（依赖 ReadinessModule 和 DecisionModule）
     ...(enableReadinessChecklistSkill && enableReadinessModule
-      ? [ReadinessGenerateChecklistSkill, ReadinessSummarizeRisksSkill, ReadinessCheckVisaWindowSkill]
+      ? [ReadinessGenerateChecklistSkill, ReadinessSummarizeRisksSkill, ReadinessCheckVisaWindowSkill, ReadinessGuardianNegotiationGetSkill, ReadinessCascadeImpactGetSkill, ReadinessApplyRepairSkill]
       : []),
     ...(enableReadinessChecklistSkill && enableReadinessModule
       ? [
           { provide: SKILL_READINESS_GENERATE_CHECKLIST, useExisting: ReadinessGenerateChecklistSkill },
           { provide: SKILL_READINESS_SUMMARIZE_RISKS, useExisting: ReadinessSummarizeRisksSkill },
           { provide: SKILL_READINESS_CHECK_VISA_WINDOW, useExisting: ReadinessCheckVisaWindowSkill },
+          { provide: SKILL_READINESS_GUARDIAN_NEGOTIATION_GET, useExisting: ReadinessGuardianNegotiationGetSkill },
+          { provide: SKILL_READINESS_CASCADE_IMPACT_GET, useExisting: ReadinessCascadeImpactGetSkill },
+          { provide: SKILL_READINESS_APPLY_REPAIR, useExisting: ReadinessApplyRepairSkill },
         ]
       : []),
     
@@ -567,13 +580,20 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
           DecisionDrdrePaceSkill,
           DecisionNeptuneRepairSkill,
           DecisionRunThreeGuardiansSkill,
+          DecisionGuardianNegotiateSkill,
           DecisionExplainForHumanSkill,
         ]
       : []),
     RouteDirectionPickForIntentSkill,
     RouteDirectionListForCountrySkill,
     ...(enableReadinessChecklistSkill && enableReadinessModule
-      ? [ReadinessGenerateChecklistSkill, ReadinessSummarizeRisksSkill, ReadinessCheckVisaWindowSkill]
+      ? [
+          ReadinessGenerateChecklistSkill,
+          ReadinessSummarizeRisksSkill,
+          ReadinessCheckVisaWindowSkill,
+          ReadinessGuardianNegotiationGetSkill,
+          ReadinessApplyRepairSkill,
+        ]
       : []),
     ...(enableTripsModule ? [TripQuickEvaluateSkill] : []),
     CountryPackNewSkeletonSkill,

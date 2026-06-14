@@ -191,7 +191,8 @@ export const SKILLS_SELECTION_PROMPT = `
 - decision.abuCheck: 安全检查（物理现实、合规）
 - decision.drdrePace: 节奏调整（人体能力模型）
 - decision.neptuneRepair: 空间修复（路线哲学保持）
-- decision.runThreeGuardians: 三人格编排
+- decision.runThreeGuardians: 三人格**顺序编排**（Abu Gate → Dre 节奏 → Neptune 修复）
+- decision.guardianNegotiate: 三人格**博弈协商**（辩论 + 投票 + 共识度 + 人类决策点；与 runThreeGuardians 不同）
 
 **数据收集类 Skills（Research 阶段）**：
 - transport.search: 交通可达性 + 班次证据
@@ -230,6 +231,9 @@ export const SKILLS_SELECTION_PROMPT = `
 - readiness.generateChecklist: 行前清单生成
 - readiness.summarizeRisks: 风险总结
 - readiness.checkVisaWindow: 签证窗口检查
+- readiness.guardianNegotiation.get: 读取已持久化的三人格博弈快照（trip.metadata）
+- readiness.cascadeImpact.get: 读取已持久化的级联影响预分析（trip.metadata.readinessCausalPreAnalysis）
+- readiness.applyRepair: 应用准备度修复（含 pre/post 博弈 + Neptune 写回；低共识 REJECT 可 deferred）
 
 **路线类 Skills**：
 - routeDirection.pickForIntent: 根据意图选择路线

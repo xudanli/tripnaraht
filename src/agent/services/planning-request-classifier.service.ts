@@ -11,9 +11,18 @@ export class PlanningRequestClassifierService {
   isPlanningRequest(request: RouteAndRunRequestDto): boolean {
     const message = request.message.toLowerCase().trim();
     const hasNoTripId = !request.trip_id || request.trip_id === '';
+    const intentMode = request.options?.intent_mode;
 
     // 如果已有 trip_id，肯定不是规划请求（可能是查询已有行程的规划）
     if (!hasNoTripId) {
+      return false;
+    }
+
+    if (intentMode === 'TRIP_PLANNING') {
+      return true;
+    }
+
+    if (intentMode === 'DATA_LOOKUP' || intentMode === 'GENERIC_QA') {
       return false;
     }
 
@@ -78,4 +87,3 @@ export class PlanningRequestClassifierService {
     );
   }
 }
-

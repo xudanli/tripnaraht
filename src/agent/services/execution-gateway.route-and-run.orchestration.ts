@@ -59,6 +59,8 @@ import {
   tryRecordGovernanceBranchOutcomeWithGrsm,
   tryRecordGovernanceBranchSelectedWithGrsm,
 } from '../../governance/replanning-runtime/record-governance-branch-on-ledger.util';
+import { TripInsightService } from '../../trips/services/trip-insight.service';
+import { TripMetricsService } from '../../trips/services/trip-metrics.service';
 
 export async function runRouteAndRunMainChain(
   agent: AgentService,
@@ -430,6 +432,11 @@ export async function runRouteAndRunMainChain(
         await $.routeContextEnricher?.maybeInjectUserStandingSummary(request);
       }
 
+      const activeTripAnalysis = await tryBuildActiveTripAnalysisFastPath($, request, startTime);
+      if (activeTripAnalysis) {
+        return activeTripAnalysis;
+      }
+
       // === 稳定化层：检查 Deadline ===
       if (deadline.isExpired()) {
         throw new Error('TIMEOUT:AGENT_DEADLINE_EXPIRED');
@@ -503,6 +510,8 @@ export async function runRouteAndRunMainChain(
         orchestration_mode_resolved: decision.mode, // 实际执行的模式
         orchestration_mode_recommended: decision.recommendations?.useStateMachine ? 'CLAUDE_SM' : decision.mode, // 建议的模式
         task_type: signals.taskType,
+        capability: signals.capability,
+        action_kind: signals.actionKind,
         risk: signals.risk,
         requires_consent: decision.recommendations?.requireConsent ?? false,
         needs_audit: decision.recommendations?.enableAudit ?? false,
@@ -601,6 +610,8 @@ export async function runRouteAndRunMainChain(
       const traceInfo = {
         route_decision: {
           task_type: signals.taskType,
+          capability: signals.capability,
+          action_kind: signals.actionKind,
           route_policy: decision.mode,
           intent_mode_requested: signals.intent_mode_requested,
           intent_mode_resolved: signals.intent_mode_resolved,
@@ -622,6 +633,8 @@ export async function runRouteAndRunMainChain(
           // 信号和标志位
           signals: {
             taskType: signals.taskType,
+            capability: signals.capability,
+            actionKind: signals.actionKind,
             risk: signals.risk,
             complexity: signals.complexity,
             needsAudit: signals.needsAudit,
@@ -1235,4 +1248,137 @@ export async function runRouteAndRunMainChain(
       });
     });
   });
+}
+
+async function tryBuildActiveTripAnalysisFastPath(
+  agent: any,
+  request: RouteAndRunRequestDto,
+  startTime: number,
+): Promise<RouteAndRunResponseDto | null> {
+  const contextType = request.conversation_context?.context_type?.trim();
+  const tripId = request.trip_id?.trim();
+  const message = request.message ?? '';
+  if (contextType !== 'active_trip_summary' || !tripId) {
+    return null;
+  }
+  if (!/(全面分析|分析当前行程|看看.*问题|优化.*行程|行程.*优化|还有什么问题)/i.test(message)) {
+    return null;
+  }
+  const intentMode = request.options?.intent_mode;
+  const explicitlyLightweight = intentMode === 'DATA_LOOKUP' || intentMode === 'GENERIC_QA';
+  const wantsGuardianGate =
+    request.options?.enable_guardians_debate_llm === true ||
+    intentMode === 'TRIP_PLANNING' ||
+    request.options?.use_claude_orchestration === true;
+  if (!explicitlyLightweight || wantsGuardianGate) {
+    return null;
+  }
+
+  const insightService = agent.moduleRef?.get?.(TripInsightService, { strict: false }) as TripInsightService | undefined;
+  const metricsService = agent.moduleRef?.get?.(TripMetricsService, { strict: false }) as TripMetricsService | undefined;
+  if (!insightService || !metricsService) {
+    return null;
+  }
+
+  try {
+    const [insight, metrics] = await Promise.all([
+      insightService.getInsight(tripId),
+      metricsService.getTripMetrics(tripId, undefined, { includeConflicts: false }),
+    ]);
+    const answerText = buildActiveTripAnalysisAnswer(insight, metrics);
+    const latencyMs = Date.now() - startTime;
+    return {
+      request_id: request.request_id,
+      route: {
+        route: 'SYSTEM1_API',
+        confidence: 0.95,
+        reasons: ['ACTIVE_TRIP_SUMMARY_FAST_PATH', 'READINESS_AND_METRICS_AVAILABLE'],
+        required_capabilities: ['trip_insight', 'trip_metrics'],
+        consent_required: false,
+        budget: {
+          max_seconds: 5,
+          max_steps: 0,
+          max_browser_steps: 0,
+        },
+        ui_hint: {
+          mode: 'fast',
+          status: 'done',
+          message: '已基于行程准备度和指标完成分析。',
+        },
+      },
+      result: {
+        status: 'OK',
+        answer_text: answerText,
+        payload: {
+          trip_id: tripId,
+          insight,
+          metrics_summary: metrics.summary,
+          day_metrics: metrics.days.map((day) => ({
+            date: day.date,
+            metrics: day.metrics,
+          })),
+        },
+      },
+      explain: {
+        decision_log: [
+          {
+            request_id: request.request_id,
+            step: 'DONE',
+            actor: 'Orchestrator',
+            inputs_summary: 'active_trip_summary 行程分析请求',
+            outputs_summary: `readiness=${insight.readiness.status}, blockers=${insight.readiness.blockers}, totalDrive=${metrics.summary.totalDrive}`,
+            evidence_refs: ['trip_insight', 'trip_metrics'],
+            timestamp: new Date().toISOString(),
+          } as DecisionLogEntry,
+        ],
+      },
+      observability: {
+        latency_ms: latencyMs,
+        router_ms: 0,
+        system_mode: 'SYSTEM1',
+        tool_calls: 2,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        orchestration_mode_final: 'ACTIVE_TRIP_SUMMARY_FAST_PATH',
+      },
+    } as unknown as RouteAndRunResponseDto;
+  } catch (error: any) {
+    agent.logger?.warn?.(`[ActiveTripAnalysisFastPath] failed: ${error?.message ?? error}`);
+    return null;
+  }
+}
+
+function buildActiveTripAnalysisAnswer(insight: any, metrics: any): string {
+  const summary = insight.tripSummary ?? {};
+  const readiness = insight.readiness ?? {};
+  const metricSummary = metrics.summary ?? {};
+  const lines: string[] = [];
+
+  lines.push(`我看了当前 ${summary.destination ?? '目的地'} ${summary.days ?? ''} 天行程，整体状态不是“良好”，而是需要优先处理。`);
+  lines.push('');
+  lines.push(`准备度：${readiness.status ?? 'unknown'}，阻塞项 ${readiness.blockers ?? 0} 个，必须处理项 ${readiness.must ?? 0} 个。`);
+  lines.push(`交通强度：总驾驶约 ${metricSummary.totalDrive ?? 0} 分钟，日均约 ${metricSummary.averageDrivePerDay ?? 0} 分钟；总缓冲约 ${metricSummary.totalBuffer ?? 0} 分钟。`);
+
+  const findings = (insight.findings ?? []).filter((finding: any) => finding.type !== 'positive');
+  if (findings.length > 0) {
+    lines.push('');
+    lines.push('优先问题：');
+    for (const finding of findings.slice(0, 4)) {
+      lines.push(`- ${finding.title}：${finding.message}`);
+    }
+  }
+
+  const heavyDays = (metrics.days ?? [])
+    .filter((day: any) => Number(day.metrics?.drive ?? 0) >= 180)
+    .map((day: any) => `${day.date} 约 ${day.metrics.drive} 分钟`);
+  if (heavyDays.length > 0) {
+    lines.push('');
+    lines.push(`驾驶压力较高的日期：${heavyDays.join('；')}。`);
+  }
+
+  lines.push('');
+  lines.push('建议先处理 readiness blockers，再做路线微调；当前最重要的不是增加景点，而是确认道路/交通可达性、天气风险和关键活动时间窗。');
+  return lines.join('\n');
 }

@@ -154,7 +154,7 @@ export class NarratorAgentService implements INarratorAgent {
 
     const researchData =
       state && typeof (state as { research_data?: unknown }).research_data === 'object'
-        ? ((state as { research_data: Record<string, unknown> }).research_data as Record<string, unknown>)
+        ? ((state as unknown as { research_data: Record<string, unknown> }).research_data)
         : undefined;
     const rawEbp = researchData?.__research_conflict_negotiation;
     const ebpZh =

@@ -25,6 +25,10 @@ import {
 } from '../utils/narrator-l3-persuasion.util';
 import { ConstraintsEngineService } from '../training/services/constraints-engine.service';
 import { resolveWallHitDistanceMsForConstraints } from '../utils/wall-hit-distance.util';
+import {
+  buildProactiveUxHints,
+  mergeProactiveUxHintsIntoNarration,
+} from './proactive-ux-hints';
 
 @Injectable()
 export class NarrateExecutorService implements INarrateExecutor {
@@ -80,6 +84,19 @@ export class NarrateExecutorService implements INarrateExecutor {
       )) as NarrationLike;
 
       narration = this.mergeTransportResearchGuidanceIntoNarration(narration, state);
+      narration = mergeProactiveUxHintsIntoNarration(
+        narration,
+        buildProactiveUxHints({
+          dso,
+          ctx: {
+            requestId: ctx.requestId,
+            tripPlanRequest: ctx.tripPlanRequest,
+            itinerary: state.itinerary as any,
+            researchData: state.research_data,
+            user_profile: ctx.user_profile,
+          },
+        }),
+      );
 
       if (state.metadata && typeof state.metadata === 'object') {
         const m = state.metadata as Record<string, unknown>;

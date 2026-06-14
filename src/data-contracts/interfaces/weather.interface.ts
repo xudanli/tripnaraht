@@ -85,6 +85,35 @@ export interface WeatherQuery {
 }
 
 /**
+ * 逐日天气预报查询
+ */
+export interface WeatherForecastQuery {
+  lat: number;
+  lng: number;
+  /** YYYY-MM-DD */
+  startDate: string;
+  /** YYYY-MM-DD */
+  endDate: string;
+  timezone?: string;
+}
+
+/**
+ * 单日天气预报（标准格式）
+ */
+export interface WeatherDailyForecast {
+  date: string;
+  temperatureMin?: number;
+  temperatureMax?: number;
+  windSpeedMax?: number;
+  windGustMax?: number;
+  precipitationSum?: number;
+  weatherCode?: number;
+  condition: string;
+  alerts?: WeatherAlert[];
+  source: string;
+}
+
+/**
  * 扩展的天气数据（包含冰岛特定信息）
  */
 export interface ExtendedWeatherData extends WeatherData {

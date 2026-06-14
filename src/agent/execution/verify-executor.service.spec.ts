@@ -51,6 +51,67 @@ describe('VerifyExecutorService', () => {
     expect(result.issues).toEqual([]);
   });
 
+  it('过期研究证据应产出 CONFIDENCE_DEGRADED 并写入 itinerary metadata', async () => {
+    mockSkillsRegistry.getSkill.mockReturnValue(undefined);
+    const itinerary = { request_id: 'r1', days: [{ date: '2026-06-14', items: [] }], metadata: {} };
+    const result = await service.execute(
+      {} as any,
+      {
+        requestId: 'r1',
+        itinerary,
+        researchData: {
+          __data_reliability_evidence: [
+            {
+              id: 'transport_old',
+              factType: 'TRANSPORT_TIME',
+              entityRef: { type: 'SEGMENT', id: 'a-b' },
+              value: { duration_minutes: 45 },
+              source: { provider: 'transport.search', sourceType: 'COMMERCIAL' },
+              observedAt: '2026-06-13T00:00:00.000Z',
+              confidence: 0.9,
+              freshnessTtlSec: 60,
+            },
+          ],
+        },
+      } as any,
+    );
+
+    expect(result.issues.some((i) => i.code === 'CONFIDENCE_DEGRADED')).toBe(true);
+    expect(result.confidenceDelta).toBeLessThan(0);
+    expect((itinerary.metadata as any).__data_reliability.finding_count).toBeGreaterThan(0);
+  });
+
+  it('结构化风险事件应进入 VERIFY issue 并写入 risk audit', async () => {
+    mockSkillsRegistry.getSkill.mockReturnValue(undefined);
+    const itinerary = { request_id: 'r1', days: [{ date: '2026-06-14', items: [] }], metadata: {} };
+    const result = await service.execute(
+      {} as any,
+      {
+        requestId: 'r1',
+        itinerary,
+        researchData: {
+          __risk_events: [
+            {
+              id: 'road-closed-1',
+              category: 'ROAD_ACCESS',
+              urgency: 5,
+              entityRef: { type: 'ROAD', id: 'F208' },
+              message: 'F208 临时关闭。',
+              source: { provider: 'road-authority', sourceType: 'OFFICIAL' },
+              observedAt: '2026-06-14T08:00:00.000Z',
+              confidence: 0.9,
+              suggestedAction: 'REPLACE',
+            },
+          ],
+        },
+      } as any,
+    );
+
+    expect(result.issues.some((i) => i.code === 'ROUTE_INFEASIBLE' && i.message.includes('ROAD_ACCESS'))).toBe(true);
+    expect(result.confidenceDelta).toBeLessThan(0);
+    expect((itinerary.metadata as any).__risk_audit.criticalRisks).toContain('road-closed-1');
+  });
+
   it('skill 返回 issues 应正确聚合', async () => {
     mockRouteFeasibility.evaluate.mockResolvedValueOnce(null as any).mockResolvedValue({
       issues: [],

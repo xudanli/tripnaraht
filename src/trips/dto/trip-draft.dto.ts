@@ -204,6 +204,17 @@ export class CreateTripDraftDto {
   @IsOptional()
   mustHavePois?: string[];
 
+  /** 活动偏好（来自自然语言澄清，如 glacier_hiking、adventure_activities），用于候选 POI 召回和加权 */
+  @ApiPropertyOptional({
+    description: '活动偏好列表，用于候选 POI 召回和加权',
+    type: [String],
+    example: ['glacier_hiking', 'adventure_activities'],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  activityPreferences?: string[];
+
   /** 按天的城市分配（如杭州2天、千岛湖1天），编排时按天分配城市 */
   @ApiPropertyOptional({
     description: '城市天数分配',

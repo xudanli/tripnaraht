@@ -25,6 +25,7 @@ import { CacheService } from '../../common/cache/cache.service';
 import { CountryConfigService } from './services/country-config.service';
 import * as crypto from 'crypto';
 import { EvidenceCacheService } from './services/evidence-cache.service';
+import { mapCountryPhysicalData } from './utils/country-physical-data.mapper';
 
 /**
  * 错误严重级别
@@ -492,6 +493,43 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
         countryCode,
         month: season,
       };
+
+      // 4.1.5 从 CountryConfig 静态 JSON 注入道路/渡轮/季节性（多国家抽象）
+      if (this.countryConfigService) {
+        try {
+          const [roadJson, weatherJson, ferryJson] = await Promise.all([
+            this.countryConfigService.loadRoadStatusData(countryCode),
+            this.countryConfigService.loadWeatherWindowsData(countryCode),
+            this.countryConfigService.loadFerrySchedulesData(countryCode),
+          ]);
+          const patch = mapCountryPhysicalData({
+            roadStatusJson: roadJson,
+            weatherWindowsJson: weatherJson,
+            ferrySchedulesJson: ferryJson,
+            countryCode,
+            month: season,
+          });
+          if (patch.roadStates.length > 0) {
+            physical.roadStates.push(...patch.roadStates);
+            this.logger.debug(
+              `[WorldBuild] CountryConfig 注入 ${patch.roadStates.length} 条道路状态 (${countryCode})`,
+            );
+          }
+          if (patch.hazardZones.length > 0) {
+            physical.hazardZones.push(...patch.hazardZones);
+          }
+          if (patch.ferryStates.length > 0) {
+            physical.ferryStates.push(...patch.ferryStates);
+          }
+          if (patch.climateSeasonality) {
+            physical.climateSeasonality = patch.climateSeasonality;
+          }
+        } catch (e: any) {
+          this.logger.warn(
+            `[WorldBuild] CountryConfig 静态数据注入失败: ${e?.message ?? String(e)}`,
+          );
+        }
+      }
 
       /**
        * RouteDirection Admin metadata injection (segment_facts_v1).

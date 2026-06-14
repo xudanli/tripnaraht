@@ -3315,3 +3315,68 @@ model GovernanceLedgerEventRecord {
   @@index([routeRegion])
   @@map("governance_ledger_events")
 }
+
+/// Decision OS · Match Square P0 — 搭子广场招募帖
+model MatchSquarePost {
+  id                     String   @id @default(uuid()) @db.Uuid
+  captainUserId          String   @map("captain_user_id") @db.Uuid
+  status                 String   @default("active") @db.VarChar(16)
+  destination            String
+  departureLabel         String?  @map("departure_label")
+  startDate              DateTime @map("start_date") @db.Date
+  endDate                DateTime @map("end_date") @db.Date
+  itinerarySummary       String   @default("") @map("itinerary_summary")
+  captainMessage         String   @default("") @map("captain_message")
+  recruitmentVision      String?  @map("recruitment_vision")
+  budgetMinCents         Int?     @map("budget_min_cents")
+  budgetMaxCents         Int?     @map("budget_max_cents")
+  slotsNeeded            Int      @default(1) @map("slots_needed")
+  planningStyle          String?  @map("planning_style") @db.VarChar(32)
+  tripMoodTag            String?  @map("trip_mood_tag") @db.VarChar(16)
+  travelMode             String?  @map("travel_mode") @db.VarChar(32)
+  vehicleInfo            String?  @map("vehicle_info")
+  preferenceNotes        String?  @map("preference_notes")
+  captainMbtiType        String?  @map("captain_mbti_type") @db.VarChar(8)
+  captainCardTitle       String?  @map("captain_card_title")
+  captainInteractionMode String?  @map("captain_interaction_mode") @db.VarChar(32)
+  destinationLat         Float?   @map("destination_lat")
+  destinationLng         Float?   @map("destination_lng")
+  vibeSnapshot           Json?    @map("vibe_snapshot")
+  routeDirectionId       Int?     @map("route_direction_id")
+  routeDirectionName     String?  @map("route_direction_name")
+  publishedAt            DateTime? @map("published_at")
+  closedAt               DateTime? @map("closed_at")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  applications           MatchSquareApplication[]
+
+  @@index([status, startDate])
+  @@index([captainUserId])
+  @@map("match_square_posts")
+}
+
+/// Decision OS · Match Square P0 — 招募申请
+model MatchSquareApplication {
+  id                         String    @id @default(uuid()) @db.Uuid
+  postId                     String    @map("post_id") @db.Uuid
+  applicantUserId            String    @map("applicant_user_id") @db.Uuid
+  status                     String    @default("pending") @db.VarChar(16)
+  message                    String    @default("")
+  planningCommitmentAccepted Boolean   @default(false) @map("planning_commitment_accepted")
+  teamworkCommitmentAccepted Boolean   @default(false) @map("teamwork_commitment_accepted")
+  targetSlotIndex            Int?      @map("target_slot_index")
+  targetSlotId               String?   @map("target_slot_id")
+  targetSlotLabel            String?   @map("target_slot_label")
+  applicantMbtiType          String?   @map("applicant_mbti_type") @db.VarChar(8)
+  applicantCardTitle         String?   @map("applicant_card_title")
+  applicantInteractionMode   String?   @map("applicant_interaction_mode") @db.VarChar(32)
+  decidedAt                  DateTime? @map("decided_at")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+  post                       MatchSquarePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, applicantUserId])
+  @@index([postId, status])
+  @@index([applicantUserId])
+  @@map("match_square_applications")
+}

@@ -17,6 +17,7 @@ import {
   HttpStatus,
   Logger,
   NotFoundException,
+  BadRequestException,
   Delete,
   Put,
 } from '@nestjs/common';
@@ -58,7 +59,12 @@ import { ReadinessAIService } from './services/readiness-ai.service';
 import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags.service';
 import { CapabilityPackChecklistService, AddFromCapabilityPackRequest } from './services/capability-pack-checklist.service';
 import { RiskTypeMapperService } from './services/risk-type-mapper.service';
+import { TripReadinessWeatherForecastService } from './services/trip-readiness-weather-forecast.service';
+import { TripDependencyImpactService } from './services/trip-dependency-impact.service';
+import { ReadinessCausalPreanalysisService } from './services/readiness-causal-preanalysis.service';
+import { buildReadinessCascadeUiHints } from './utils/readiness-causal-preanalysis.util';
 import { CoverageMapService } from './services/coverage-map.service';
+import { ReadinessRepairService } from './services/readiness-repair.service';
 import { UpdateChecklistStatusDto } from './dto/checklist-status.dto';
 import {
   MarkNotApplicableDto,
@@ -82,10 +88,16 @@ import { EcoIdentityLedgerPersistenceService } from '../decision/services/eco-id
 import { applyPrismaTripIdToWorldState } from '../execution-closure-persistence/apply-prisma-trip-id-to-world-state';
 import {
   inferPlaceIdsForHazardType,
-  formatItineraryRiskSuffix,
   formatMustItinerarySuffix,
   type TripPlaceRef,
 } from './utils/itinerary-readiness-context.util';
+import {
+  buildTripPlaceRefsFromPrismaTrip,
+  enrichFindingsRisksForTrip,
+  resolveRiskFieldsForApi,
+} from './utils/trip-risk-enrichment.util';
+import { getLocalizedText } from './utils/i18n.utils';
+import { filterRisksForTripPhase, isActionableLiveRisk, getTripReadinessPhase, getDaysUntilTripStart, ACTIONABLE_READINESS_HORIZON_DAYS, type RelevanceFilterableRisk } from './utils/trip-readiness-relevance.util';
 
 class TravelerDto {
   @IsOptional()
@@ -303,7 +315,11 @@ export class ReadinessController {
     private readonly userDecisionService: UserDecisionService,
     private readonly constraintsCompiler: ReadinessToConstraintsCompiler,
     private readonly coverageMapService: CoverageMapService,
+    private readonly readinessRepairService: ReadinessRepairService,
     private readonly riskTypeMapperService: RiskTypeMapperService,
+    private readonly tripReadinessWeatherForecastService: TripReadinessWeatherForecastService,
+    private readonly tripDependencyImpactService: TripDependencyImpactService,
+    private readonly causalPreanalysisService: ReadinessCausalPreanalysisService,
     private readonly moduleRef: ModuleRef,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
@@ -637,16 +653,19 @@ export class ReadinessController {
                     const md = (item.Place.metadata as Record<string, unknown>) || {};
                     const canonicalType =
                       typeof md.canonicalType === 'string' ? md.canonicalType : undefined;
+                    const nameEN = item.Place.nameEN || undefined;
+                    const nameCN = item.Place.nameCN ?? undefined;
+                    const name = nameEN || nameCN || `POI ${placeId}`;
                     poiMap.set(placeId, {
-                      name: item.Place.nameEN || item.Place.nameCN || `POI ${placeId}`,
-                      nameCN: item.Place.nameCN ?? undefined,
+                      name,
+                      nameCN,
                       day: dayIndex + 1,
                     });
                     tripPlaceRefs.push({
                       placeId,
                       day: dayIndex + 1,
-                      name: item.Place.nameEN || item.Place.nameCN || `POI ${placeId}`,
-                      nameCN: item.Place.nameCN ?? undefined,
+                      name,
+                      nameCN,
                       canonicalType,
                       category: item.Place.category || '',
                     });
@@ -700,18 +719,7 @@ export class ReadinessController {
                   };
                 }),
               };
-              const enhanced = this.riskTypeMapperService.enhanceRisk(baseRisk, effectiveLang);
-              const suffix = formatItineraryRiskSuffix(enhanced.affectedPois || [], effectiveLang);
-              if (suffix) {
-                enhanced.summary = [enhanced.summary, suffix].filter(Boolean).join('\n');
-                enhanced.description = [enhanced.description, suffix].filter(Boolean).join('\n');
-                enhanced.message = [enhanced.message, suffix].filter(Boolean).join('\n');
-                enhanced.impact =
-                  effectiveLang === 'zh'
-                    ? `与本行程中上述地点相关`
-                    : `Related to the itinerary locations listed above`;
-              }
-              return enhanced;
+              return this.riskTypeMapperService.enhanceRisk(baseRisk, effectiveLang);
             });
           }
 
@@ -747,7 +755,70 @@ export class ReadinessController {
         result,
       );
 
-      return successResponse(result);
+      // 与 /score、/insight 对齐：卡片可展示覆盖地图分数与行程级 must/blockers
+      let coverage: Awaited<ReturnType<CoverageMapService['getReadinessScore']>> | undefined;
+      try {
+        coverage = await this.coverageMapService.getReadinessScore(tripId);
+      } catch (scoreError) {
+        this.logger.warn(
+          `getTripReadiness: coverage score skipped: ${(scoreError as Error).message}`,
+        );
+      }
+
+      const coverageSummary = coverage?.summary;
+      const coverageScore = coverage?.score;
+      let tripReadinessStatus: 'block' | 'warn' | 'pass' = 'pass';
+      if ((coverageSummary?.blockers ?? 0) > 0) {
+        tripReadinessStatus = 'block';
+      } else if ((coverageSummary?.must ?? 0) > 0 || (coverageScore?.overall ?? 100) < 70) {
+        tripReadinessStatus = 'warn';
+      }
+
+      const readinessPhase = getTripReadinessPhase(trip.startDate);
+      const daysUntilStart = getDaysUntilTripStart(trip.startDate);
+      let deferredLiveRiskCount = 0;
+
+      if (readinessPhase === 'planning' && result.findings?.length) {
+        result.findings = result.findings.map((finding: any) => {
+          if (!finding.risks?.length) return finding;
+          const before = finding.risks.length;
+          const risks = finding.risks.filter((r: RelevanceFilterableRisk) => !isActionableLiveRisk(r));
+          deferredLiveRiskCount += before - risks.length;
+          return { ...finding, risks };
+        });
+      }
+
+      let coverageRisks = coverage?.risks;
+      if (readinessPhase === 'planning' && coverageRisks?.length) {
+        const before = coverageRisks.length;
+        coverageRisks = coverageRisks.filter((r) => !isActionableLiveRisk(r));
+        deferredLiveRiskCount += before - coverageRisks.length;
+      }
+
+      const phaseHint =
+        readinessPhase === 'planning'
+          ? (lang === 'en'
+              ? `Trip starts in ${daysUntilStart} days. Live road and weather alerts appear within ${ACTIONABLE_READINESS_HORIZON_DAYS} days of departure.`
+              : `行程尚早（${daysUntilStart} 天后出发）。实时路况与逐日天气将在出发前 ${ACTIONABLE_READINESS_HORIZON_DAYS} 天内显示。`)
+          : undefined;
+
+      return successResponse({
+        ...result,
+        tripReadinessStatus,
+        readinessPhase,
+        daysUntilStart,
+        deferredLiveRiskCount: deferredLiveRiskCount || undefined,
+        phaseHint,
+        coverage: coverage
+          ? {
+              score: coverage.score,
+              summary: coverage.summary,
+              findings: coverage.findings,
+              risks: coverageRisks,
+              calculatedAt: coverage.calculatedAt,
+            }
+          : undefined,
+      });
     } catch (error) {
       const err = error as Error;
       if (err instanceof NotFoundException) {
@@ -982,44 +1053,49 @@ export class ReadinessController {
     switch (pack.type) {
       case 'high_altitude':
         if (context.geo?.mountains?.mountainElevationAvg) {
-          reasons.push(`平均海拔 ${context.geo.mountains.mountainElevationAvg}m`);
+          reasons.push(`平均海拔约 ${context.geo.mountains.mountainElevationAvg} 米`);
         }
         break;
-      case 'sparse_supply':
-        if (context.geo?.roads?.roadDensityScore !== undefined) {
-          reasons.push(`道路密度 ${(context.geo.roads.roadDensityScore * 100).toFixed(0)}%`);
-        }
-        if (context.geo?.pois?.supplyDensity !== undefined) {
-          reasons.push(`补给点密度 ${(context.geo.pois.supplyDensity * 100).toFixed(0)}%`);
-        }
+      case 'sparse_supply': {
         if (context.itinerary.routeLength) {
-          reasons.push(`路线长度 ${context.itinerary.routeLength}km`);
+          reasons.push(`全程约 ${context.itinerary.routeLength} 公里`);
+        }
+        const sparseParts: string[] = [];
+        if (context.geo?.pois?.supplyDensity !== undefined && context.geo.pois.supplyDensity < 0.3) {
+          sparseParts.push('沿途加油站/超市较少');
+        }
+        if (context.geo?.roads?.roadDensityScore !== undefined && context.geo.roads.roadDensityScore < 0.4) {
+          sparseParts.push('部分路段较偏远');
+        }
+        if (sparseParts.length > 0) {
+          reasons.push(sparseParts.join('，'));
         }
         break;
+      }
       case 'seasonal_road':
-        if (context.geo?.mountains?.inMountain) {
-          reasons.push('山区路线');
-        }
         if (context.itinerary.season === 'winter') {
-          reasons.push('冬季出行');
+          reasons.push('冬季自驾');
+        }
+        if (context.geo?.mountains?.inMountain) {
+          reasons.push('途经山区/高地');
         }
         break;
       case 'permit_checkpoint':
         if (context.geo?.pois?.hasCheckpoint) {
-          reasons.push('存在检查站');
+          reasons.push('途经检查站或许可区域');
         }
         break;
       case 'emergency':
         if (context.geo?.roads?.roadDensityScore !== undefined && context.geo.roads.roadDensityScore < 0.2) {
-          reasons.push('偏远地区');
+          reasons.push('路线较偏远');
         }
         if (context.geo?.pois?.safety?.hasHospital === false) {
-          reasons.push('附近无医院');
+          reasons.push('附近医疗点较远');
         }
         break;
     }
     
-    return reasons.length > 0 ? reasons.join('、') : '满足触发条件';
+    return reasons.length > 0 ? reasons.join('；') : '符合本行程特征';
   }
 
   // ==================== P0: 能力包规则同步到准备清单 ====================
@@ -1347,6 +1423,75 @@ export class ReadinessController {
   }
 
   @Public()
+  @Get('trip/:tripId/weather-forecast')
+  @ApiOperation({
+    summary: '行程逐日天气预报',
+    description: '基于行程 POI 坐标调用 Open-Meteo 逐日预报（最多 16 天窗口）',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({ name: 'lang', required: false, enum: ['en', 'zh'] })
+  async getTripWeatherForecast(
+    @Param('tripId') tripId: string,
+    @Query('lang') lang?: 'en' | 'zh',
+  ): Promise<any> {
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        include: {
+          TripDay: {
+            include: {
+              ItineraryItem: {
+                include: {
+                  Place: {
+                    select: {
+                      id: true,
+                      metadata: true,
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: { date: 'asc' },
+          },
+        },
+      });
+
+      if (!trip) {
+        throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+      }
+
+      const effectiveLang = lang || 'zh';
+      const bundle = await this.tripReadinessWeatherForecastService.buildForecastRisksForTrip(
+        trip,
+        effectiveLang,
+      );
+
+      return successResponse({
+        tripId,
+        summary: bundle.summary,
+        forecastDays: bundle.risks[0]?.forecastDays || [],
+        risk: bundle.risks[0]
+          ? this.riskTypeMapperService.enhanceRisk(
+              {
+                ...bundle.risks[0],
+                mitigation: bundle.risks[0].mitigations,
+                affectedPois: [],
+              },
+              effectiveLang,
+            )
+          : null,
+      });
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        throw err;
+      }
+      this.logger.error(`Failed to get trip weather forecast: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
   @Get('risk-warnings')
   @ApiOperation({
     summary: '行程潜在风险预警（故事6.2）',
@@ -1386,6 +1531,7 @@ export class ReadinessController {
                       nameCN: true,
                       nameEN: true,
                       category: true,
+                      metadata: true,
                     },
                   },
                 },
@@ -1427,7 +1573,7 @@ export class ReadinessController {
             },
           },
           {
-            lang: lang || 'en',
+            lang: lang || 'zh',
           },
         );
       } catch (readinessError) {
@@ -1482,6 +1628,19 @@ export class ReadinessController {
         }
       }
 
+      // 与 GET /readiness/trip/:id 对齐：Pack 风险附着行程 POI + 真实 hazard 文案
+      const effectiveLang = lang || 'zh';
+      const { poiMap, tripPlaceRefs } = buildTripPlaceRefsFromPrismaTrip(trip);
+      if (baseResult.findings?.length) {
+        baseResult.findings = enrichFindingsRisksForTrip(
+          baseResult.findings as any,
+          poiMap,
+          tripPlaceRefs,
+          effectiveLang,
+          this.riskTypeMapperService,
+        ) as any;
+      }
+
       // 构建风险映射
       const severityMap = new Map<string, string>();
       const mitigationMap = new Map<string, string[]>();
@@ -1505,11 +1664,22 @@ export class ReadinessController {
       const risks = (baseResult.findings || []).flatMap((f) =>
         (f.risks || []).map((r) => {
           const riskId = `${f.destinationId || 'unknown'}-${f.packId || 'unknown'}-risk-${riskIndex++}`;
-          const enhancedSeverity = severityMap.get(riskId) || r.severity || 'medium';
-          const enhancedMitigations = mitigationMap.get(riskId) || r.mitigations || [];
-          const enhancedContacts = emergencyContactsMap.get(riskId) || [];
+          const alreadyEnhanced = !!(r as any).typeLabel;
+          if (alreadyEnhanced) {
+            return {
+              ...(r as any),
+              id: (r as any).id || riskId,
+              emergencyContacts: emergencyContactsMap.get(riskId) || [],
+            };
+          }
 
-          // 🆕 收集风险关联的 sources（如果存在）
+          const resolved = resolveRiskFieldsForApi(r as any, effectiveLang);
+          const enhancedSeverity = severityMap.get(riskId) || r.severity || 'medium';
+          const enhancedMitigations =
+            mitigationMap.get(riskId) || resolved.mitigations.length > 0
+              ? mitigationMap.get(riskId) || resolved.mitigations
+              : r.mitigations || [];
+          const enhancedContacts = emergencyContactsMap.get(riskId) || [];
           const riskSources = (r as any).sources || [];
           riskSources.forEach((source: any) => {
             if (source.sourceId && !packSourcesMap.has(source.sourceId)) {
@@ -1522,12 +1692,12 @@ export class ReadinessController {
             type: r.type || 'unknown',
             severity: enhancedSeverity,
             originalSeverity: r.severity || 'medium',
-            message: r.summary || '',
-            summary: r.summary || '', // 保留summary字段以兼容
-            mitigation: enhancedMitigations.length > 0 ? enhancedMitigations : r.mitigations || [],
+            message: resolved.message,
+            summary: resolved.summary,
+            mitigation: enhancedMitigations,
+            mitigations: enhancedMitigations,
             emergencyContacts: enhancedContacts,
             affectedPois: [],
-            // 🆕 保留 sources（如果有）
             sources: riskSources.length > 0 ? riskSources : undefined,
           };
         }),
@@ -1593,8 +1763,9 @@ export class ReadinessController {
                 type: h.type as any,
                 severity: h.severity as 'high' | 'medium' | 'low',
                 originalSeverity: h.severity as 'high' | 'medium' | 'low',
-                message: typeof h.summary === 'string' ? h.summary : (h.summary as any)?.en || h.summary,
-                mitigation: h.mitigations || [],
+                message: getLocalizedText(h.summary as any, effectiveLang),
+                summary: getLocalizedText(h.summary as any, effectiveLang),
+                mitigation: (h.mitigations || []).map((m: any) => getLocalizedText(m, effectiveLang)),
                 emergencyContacts: [] as any[],
                 // P1 新增：标记来源
                 sourceType: 'capability_pack' as const,
@@ -1610,40 +1781,16 @@ export class ReadinessController {
         }
       }
 
-      // 🆕 构建POI映射（用于增强风险信息）
-      const poiMap = new Map<number, { name: string; nameCN?: string; day: number }>();
-      try {
-        if (trip.TripDay) {
-          trip.TripDay.forEach((day, dayIndex) => {
-            day.ItineraryItem?.forEach((item) => {
-              if (item.Place) {
-                const placeId = item.Place.id;
-                if (!poiMap.has(placeId)) {
-                  poiMap.set(placeId, {
-                    name: item.Place.nameEN || item.Place.nameCN || `POI ${placeId}`,
-                    nameCN: item.Place.nameCN,
-                    day: dayIndex + 1,
-                  });
-                }
-              }
-            });
-          });
+      // 能力包/冲突等未走路程 enrich 的项，再做一次增强
+      const enhancedRisks = risks.map((r) => {
+        if ((r as any).typeLabel) {
+          return r;
         }
-      } catch (poiError) {
-        this.logger.warn(`构建POI映射失败，风险信息将不包含POI详情: ${(poiError as Error).message}`);
-        // 继续执行，但不包含POI信息
-      }
-
-      // 🆕 使用 RiskTypeMapperService 增强风险信息
-      const enhancedRisks = risks.map(r => {
         const riskAny = r as any;
-        const baseRisk: any = {
-          ...r,
-          sourceType: riskAny.sourceType || 'readiness',
-          severity: (riskAny.severity || r.severity) as 'high' | 'medium' | 'low',
-          // 🆕 增强影响的POI信息
-          affectedPois: (riskAny.affectedPois || []).map((poiId: any) => {
-            const poiIdNum = typeof poiId === 'string' ? parseInt(poiId, 10) : poiId;
+        let affectedPois = riskAny.affectedPois || [];
+        if (!affectedPois.length && r.type) {
+          const poiIds = inferPlaceIdsForHazardType(String(r.type), tripPlaceRefs);
+          affectedPois = poiIds.map((poiIdNum) => {
             const poiInfo = poiMap.get(poiIdNum);
             if (poiInfo) {
               return {
@@ -1653,32 +1800,78 @@ export class ReadinessController {
                 day: poiInfo.day,
               };
             }
-            return {
-              id: poiIdNum.toString(),
-              name: `POI ${poiIdNum}`,
-              day: undefined,
-            };
+            return { id: String(poiIdNum), name: `POI ${poiIdNum}`, day: undefined };
+          });
+        }
+        const baseRisk: any = {
+          ...r,
+          sourceType: riskAny.sourceType || 'readiness',
+          severity: (riskAny.severity || r.severity) as 'high' | 'medium' | 'low',
+          affectedPois: affectedPois.map((poi: any) => {
+            if (poi && typeof poi === 'object' && poi.name) return poi;
+            const poiIdNum = typeof poi === 'string' ? parseInt(poi, 10) : poi;
+            const poiInfo = poiMap.get(poiIdNum);
+            if (poiInfo) {
+              return {
+                id: poiIdNum.toString(),
+                name: poiInfo.name,
+                nameCN: poiInfo.nameCN,
+                day: poiInfo.day,
+              };
+            }
+            return { id: String(poiIdNum), name: `POI ${poiIdNum}`, day: undefined };
           }),
         };
-        return this.riskTypeMapperService.enhanceRisk(baseRisk, lang || 'zh');
+        return this.riskTypeMapperService.enhanceRisk(baseRisk, effectiveLang);
       });
 
+      // Open-Meteo 逐日预报：替换 Pack 占位天气风险
+      const forecastBundle = await this.tripReadinessWeatherForecastService.buildForecastRisksForTrip(
+        trip,
+        effectiveLang,
+      );
+      const forecastEnhanced = forecastBundle.risks.map((r) =>
+        this.riskTypeMapperService.enhanceRisk(
+          {
+            ...r,
+            mitigation: r.mitigations,
+            affectedPois: [],
+          } as Parameters<RiskTypeMapperService['enhanceRisk']>[0],
+          effectiveLang,
+        ),
+      );
+      const mergedRisks = this.tripReadinessWeatherForecastService.mergeForecastIntoRisks(
+        enhancedRisks,
+        forecastEnhanced,
+      );
+
+      const { risks: phaseFilteredRisks, phaseInfo } = filterRisksForTripPhase(
+        mergedRisks,
+        trip.startDate,
+      );
+      const effectiveLangForHint = effectiveLang === 'zh' ? 'zh' : 'en';
+
       // 🆕 按分类分组风险
-      const risksByCategory = this.riskTypeMapperService.groupRisksByCategory(enhancedRisks);
+      const risksByCategory = this.riskTypeMapperService.groupRisksByCategory(phaseFilteredRisks);
 
       // 🆕 提取 Pack 级别的官方来源（所有风险共享）
       const packSources = Array.from(packSourcesMap.values());
 
       return successResponse({
         tripId,
-        risks: enhancedRisks,
+        risks: phaseFilteredRisks,
         risksByCategory, // 🆕 按分类分组
         packSources, // 🆕 Pack 级别的官方来源
+        weatherForecast: forecastBundle.summary,
+        readinessPhase: phaseInfo.phase,
+        daysUntilStart: phaseInfo.daysUntilStart,
+        deferredLiveRiskCount: phaseInfo.deferredLiveRiskCount,
+        phaseHint: phaseInfo.phaseHint[effectiveLangForHint] || phaseInfo.phaseHint.zh,
         summary: {
-          totalRisks: risks.length,
-          highSeverity: risks.filter((r) => r.severity === 'high').length,
-          mediumSeverity: risks.filter((r) => r.severity === 'medium').length,
-          lowSeverity: risks.filter((r) => r.severity === 'low').length,
+          totalRisks: phaseFilteredRisks.length,
+          highSeverity: phaseFilteredRisks.filter((r: { severity?: string }) => r.severity === 'high').length,
+          mediumSeverity: phaseFilteredRisks.filter((r: { severity?: string }) => r.severity === 'medium').length,
+          lowSeverity: phaseFilteredRisks.filter((r: { severity?: string }) => r.severity === 'low').length,
           byCategory: { // 🆕 按分类统计
             weather: risksByCategory.weather?.length || 0,
             terrain: risksByCategory.terrain?.length || 0,
@@ -1840,6 +2033,51 @@ export class ReadinessController {
   }
 
   @Public()
+  @Post('trip/:tripId/dependency-impact/analyze')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '分析事实变化的级联影响（非交易型重规划）',
+    description:
+      '基于 EvidenceEnvelope（FLIGHT_STATUS / ROAD / WEATHER 等）与行程依赖链输出影响节点与调整建议；不执行预订/改签。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID (UUID)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        trigger: { type: 'object', description: 'EvidenceEnvelope（推荐）' },
+        flightEvidence: { type: 'object', description: 'EvidenceEnvelope<FlightStatusValue>（兼容旧字段）' },
+        locale: { type: 'string', enum: ['zh', 'en'] },
+      },
+    },
+  })
+  async analyzeDependencyImpact(
+    @Param('tripId') tripId: string,
+    @Body()
+    body: {
+      trigger?: Record<string, unknown>;
+      flightEvidence?: Record<string, unknown>;
+      locale?: 'zh' | 'en';
+    },
+  ): Promise<any> {
+    try {
+      const result = await this.tripDependencyImpactService.analyzeForTrip(tripId, {
+        trigger: body.trigger as any,
+        flightEvidence: body.flightEvidence as any,
+        locale: body.locale,
+      });
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to analyze dependency impact: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
   @Post('repair-options')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -1904,6 +2142,188 @@ export class ReadinessController {
         return errorResponse(ErrorCode.NOT_FOUND, err.message);
       }
       this.logger.error(`Failed to get repair options: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Post('apply-repair')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '应用阻塞项修复',
+    description: '根据 repair-options 返回的 optionId 执行修复（本地标记、刷新分数、或 executeDecision 时调用决策引擎）',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tripId', 'blockerId', 'optionId'],
+      properties: {
+        tripId: { type: 'string' },
+        blockerId: { type: 'string' },
+        optionId: { type: 'string' },
+        reason: { type: 'string' },
+        executeDecision: {
+          type: 'boolean',
+          description: '计划类修复是否直接调用 /api/decision-engine/v1/repair-plan',
+        },
+        persistDecision: {
+          type: 'boolean',
+          description: 'executeDecision=true 时是否写回 ItineraryItem，默认 true',
+        },
+        runGuardianNegotiation: {
+          type: 'boolean',
+          description: '是否运行三人格 pre/post 博弈，默认 true',
+        },
+        forceDecisionRepair: {
+          type: 'boolean',
+          description: '跳过 pre_repair 低共识 REJECT 门控',
+        },
+      },
+    },
+  })
+  async applyRepair(
+    @Body()
+    body: {
+      tripId: string;
+      blockerId: string;
+      optionId: string;
+      reason?: string;
+      executeDecision?: boolean;
+      persistDecision?: boolean;
+      runGuardianNegotiation?: boolean;
+      forceDecisionRepair?: boolean;
+    },
+  ): Promise<any> {
+    try {
+      const result = await this.readinessRepairService.applyRepair(body);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      if (err instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, err.message);
+      }
+      this.logger.error(`Failed to apply repair: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Post('auto-repair')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '自动修复阻塞项',
+    description: '为指定 blocker 自动选择修复选项；executeDecision=true 时优先走决策引擎',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tripId', 'blockerId'],
+      properties: {
+        tripId: { type: 'string' },
+        blockerId: { type: 'string' },
+        executeDecision: { type: 'boolean' },
+        persistDecision: { type: 'boolean' },
+      },
+    },
+  })
+  async autoRepair(
+    @Body()
+    body: {
+      tripId: string;
+      blockerId: string;
+      executeDecision?: boolean;
+      persistDecision?: boolean;
+    },
+  ): Promise<any> {
+    try {
+      const result = await this.readinessRepairService.autoRepair(body);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      if (err instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, err.message);
+      }
+      this.logger.error(`Failed to auto repair: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('trip/:tripId/cascade-impact')
+  @ApiOperation({
+    summary: '获取级联影响预分析快照',
+    description: '读取 trip.metadata.readinessCausalPreAnalysis（repair-options / apply-repair / score 刷新后写入）',
+  })
+  async getCascadeImpact(@Param('tripId') tripId: string): Promise<any> {
+    try {
+      const snapshot = await this.causalPreanalysisService.loadSnapshot(tripId);
+      const causalPreAnalysis = snapshot?.latest;
+      return successResponse({
+        tripId,
+        causalPreAnalysis,
+        cascadeUiHints: buildReadinessCascadeUiHints(causalPreAnalysis),
+        updatedAt: snapshot?.updatedAt,
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get cascade impact: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Get('trip/:tripId/guardian-negotiation')
+  @ApiOperation({
+    summary: '获取三人格博弈快照',
+    description: '读取 trip.metadata.readinessGuardianNegotiation（apply-repair / 决策修复后写入）',
+  })
+  @ApiResponse({ status: 200, description: '返回 pre/post 协商快照；无记录时 snapshot 为 null' })
+  async getGuardianNegotiation(@Param('tripId') tripId: string): Promise<any> {
+    try {
+      const snapshot = await this.readinessRepairService.getGuardianNegotiation(tripId);
+      return successResponse({ tripId, snapshot });
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to get guardian negotiation: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
+  @Post('refresh-evidence')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '刷新准备度证据',
+    description: '重新计算准备度分数与覆盖地图摘要（等价于刷新 /score 与 /coverage-map 数据）',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tripId'],
+      properties: {
+        tripId: { type: 'string' },
+      },
+    },
+  })
+  async refreshEvidence(@Body() body: { tripId: string }): Promise<any> {
+    try {
+      const result = await this.readinessRepairService.refreshEvidence(body.tripId);
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      this.logger.error(`Failed to refresh evidence: ${err.message}`, err.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
     }
   }

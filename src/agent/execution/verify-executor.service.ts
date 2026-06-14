@@ -31,6 +31,14 @@ import {
   buildTerrainFroadUnfitAxiomDecisionMemory,
   pickLastVehicleAcceptedCausalityIds,
 } from '../memory/decision-memory/vehicle-terrain-decision-memory.util';
+import {
+  dataReliabilityFindingsToVerificationIssues,
+  evaluateDataReliability,
+} from './data-reliability-gate';
+import {
+  evaluateRiskEvents,
+  riskEventsToVerificationIssues,
+} from './risk-event-gate';
 
 @Injectable()
 export class VerifyExecutorService implements IVerifyExecutor {
@@ -150,6 +158,36 @@ export class VerifyExecutorService implements IVerifyExecutor {
 
     const issues: VerificationIssue[] = [];
     let confidenceDelta = 0;
+
+    const reliability = evaluateDataReliability(dso, ctx);
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = {
+        ...(ctx.itinerary.metadata ?? {}),
+        __data_reliability: {
+          evidence_count: reliability.evidence.length,
+          finding_count: reliability.findings.length,
+          confidence_delta: reliability.confidenceDelta,
+          disclosure: reliability.disclosure,
+          findings: reliability.findings,
+        },
+      };
+    }
+    if (reliability.findings.length > 0) {
+      issues.push(...dataReliabilityFindingsToVerificationIssues(reliability.findings));
+      confidenceDelta += reliability.confidenceDelta;
+    }
+
+    const riskGate = evaluateRiskEvents(dso, ctx);
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = {
+        ...(ctx.itinerary.metadata ?? {}),
+        __risk_audit: riskGate.audit,
+      };
+    }
+    if (riskGate.events.length > 0) {
+      issues.push(...riskEventsToVerificationIssues(riskGate.events));
+      confidenceDelta += riskGate.confidenceDelta;
+    }
 
     const verifyUserQuery = (() => {
       const m = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
@@ -302,7 +340,7 @@ export class VerifyExecutorService implements IVerifyExecutor {
               const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ITINERARY_VERIFY_SKILL' });
               if (v) issues.push(v);
             }
-            confidenceDelta = -0.1 * Math.min(issues.length, 5);
+            confidenceDelta += -0.1 * Math.min(result.issues.length, 5);
           }
         }
       } catch (e: any) {
@@ -314,7 +352,7 @@ export class VerifyExecutorService implements IVerifyExecutor {
           source: 'ITINERARY_VERIFY_SKILL',
           at: new Date().toISOString(),
         });
-        confidenceDelta = -0.2;
+        confidenceDelta += -0.2;
       }
     }
 

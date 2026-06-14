@@ -110,8 +110,13 @@ export class WeatherDecisionEvidenceService {
         'WeatherDecisionEvidenceService.generateDayEvidence',
         'live weather read',
       );
-      const raw = await this.dataSourceRouter.getWeather(query);
-      const weather = raw as ExtendedWeatherData;
+      const raw = await this.dataSourceRouter.getWeatherEvidence(query);
+      if (!raw.freshness.strongJudgmentAllowed) {
+        this.logger.warn(
+          `天气证据已过期或 stale day=${day.date} status=${raw.freshness.status}`,
+        );
+      }
+      const weather = raw.value as ExtendedWeatherData;
       const normalized = this.normalizeWeather(weather);
 
       const obs: NormalizedObservationInput = {
@@ -129,10 +134,20 @@ export class WeatherDecisionEvidenceService {
         normalized.windGust ?? 0,
       );
 
-      const explanation =
+      let violation = derived.violation;
+      let executionState = derived.executionState;
+      let explanation =
         derived.explanationParts.length > 0
           ? derived.explanationParts.join('；')
           : '天气条件在安全范围内';
+
+      if (!raw.freshness.strongJudgmentAllowed) {
+        if (violation === 'HARD') {
+          violation = 'SOFT';
+          executionState = 'DEGRADED';
+        }
+        explanation = `${explanation}；观测数据已过期或超出强判断时效（${raw.freshness.status}），结论仅供参考`;
+      }
 
       return {
         segmentId: `day_${day.day}_${day.date}`,
@@ -144,16 +159,25 @@ export class WeatherDecisionEvidenceService {
         temperatureDrop: normalized.temperatureDrop,
         crosswindRisk: derived.crosswindRisk,
         hazards: derived.hazards,
-        executionState: derived.executionState,
+        executionState,
         executionQuality: derived.executionQuality,
-        violation: derived.violation,
+        violation,
         explanation,
-        suggestedAction: this.suggestActionFromDerivation(derived),
+        suggestedAction: this.suggestActionFromDerivation({
+          ...derived,
+          violation,
+          executionState,
+        }),
         metadata: {
           weatherWindowAvailable: effectiveWindMs < (rules?.maxWindSpeed ?? 15),
-          forecastReliability: 'MEDIUM',
+          forecastReliability: raw.freshness.strongJudgmentAllowed ? 'MEDIUM' : 'LOW',
           historicalRiskLevel: 'MEDIUM',
           weatherSource: normalized.source,
+          evidenceObservedAt: raw.observedAt,
+          evidenceValidUntil: raw.validUntil,
+          evidenceConfidence: raw.confidence,
+          evidenceFreshnessStatus: raw.freshness.status,
+          strongJudgmentAllowed: raw.freshness.strongJudgmentAllowed,
           resolvedLat: point.lat,
           resolvedLng: point.lng,
           windGustMs: normalized.windGust,
@@ -301,14 +325,14 @@ export class WeatherDecisionEvidenceService {
   }
 
   /**
-   * apis.is（冰岛）能见度为米；DefaultWeatherAdapter 将 OpenWeather 转为 km 存入 visibility。
+   * 冰岛官方源 Vedur.is 能见度按米进入标准契约；DefaultWeatherAdapter 将 OpenWeather 转为 km 存入 visibility。
    */
   private visibilityToKm(visibility: number | undefined, source: string): number | undefined {
     if (visibility === undefined || Number.isNaN(visibility)) {
       return undefined;
     }
     const s = source.toLowerCase();
-    if (s.includes('apis.is') || s.includes('iceland')) {
+    if (s.includes('vedur.is') || s.includes('apis.is') || s.includes('iceland')) {
       return visibility / 1000;
     }
     if (s.includes('openweather')) {

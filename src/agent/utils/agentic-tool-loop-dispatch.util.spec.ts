@@ -9,6 +9,8 @@ import type { RoutingSignals } from './orchestration-signals.util';
 function baseSignals(over: Partial<RoutingSignals>): RoutingSignals {
   return {
     taskType: 'DATA_LOOKUP',
+    capability: 'FAST_QA',
+    actionKind: 'TRIP_SCOPED_CONSULTATION',
     risk: 'LOW',
     needsAudit: false,
     latencyBudgetMs: 30_000,

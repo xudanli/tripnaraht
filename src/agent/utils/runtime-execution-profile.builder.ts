@@ -4,6 +4,7 @@ import type {
   DeterminismClass,
   LatencyClass,
   RuntimeExecutionProfile,
+  ThinkingModeResolved,
   ToolDepth,
   UserFacingObservabilityMode,
 } from '../contracts/runtime-execution-profile.types';
@@ -187,4 +188,40 @@ export function buildRuntimeExecutionProfileLegacyAssembly(params: {
       orchestration_mode_hint: 'LEGACY',
     },
   };
+}
+
+export function resolveThinkingModeFromRuntimeProfile(
+  profile: RuntimeExecutionProfile | undefined,
+  fallback?: {
+    uiMode?: string;
+    orchestrationMode?: string;
+    systemMode?: string;
+  },
+): ThinkingModeResolved {
+  if (profile?.runtime.reusePolicy === 'DEDUP_REPLAY') return 'fast';
+
+  const engine = profile?.execution.engine;
+  const userFacing = profile?.observability.userFacingMode;
+  const depth = profile?.cognition.depth;
+
+  if (
+    engine === 'STATE_MACHINE' ||
+    userFacing === 'PLANNING_PIPELINE' ||
+    depth === 'PLANNING' ||
+    fallback?.orchestrationMode === 'CLAUDE_SM'
+  ) {
+    return 'deep';
+  }
+
+  if (
+    engine === 'SYSTEM1_EXECUTOR' ||
+    engine === 'LIGHTWEIGHT_QA' ||
+    userFacing === 'FAST_PATH' ||
+    fallback?.systemMode === 'SYSTEM1' ||
+    fallback?.uiMode === 'fast'
+  ) {
+    return 'fast';
+  }
+
+  return 'balanced';
 }

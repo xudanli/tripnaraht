@@ -75,6 +75,35 @@ const DIVERSITY_RATIOS = {
   random: 0.1,
 };
 
+const ACTIVITY_PREFERENCE_SCORE_REASON = 'activity_preference_boost';
+
+type ActivityPreferenceRetrievalProfile = {
+  keywords: string[];
+  canonicalTypes: string[];
+  tags: string[];
+};
+
+const ACTIVITY_PREFERENCE_PROFILES: Record<string, ActivityPreferenceRetrievalProfile> = {
+  glacier_hiking: {
+    keywords: ['冰川', '冰洞', 'glacier', 'ice cave', 'glacier walk'],
+    canonicalTypes: [
+      'GLACIER_WALK',
+      'ICE_CAVE',
+      'ATTRACTION_NATURE_GLACIER',
+      'ATTRACTION_NATURE_GLACIER_LAGOON',
+    ],
+    tags: ['冰川', '冰洞', 'glacier', 'ice_cave', 'glacier_walk', 'adventure'],
+  },
+  adventure_activities: {
+    keywords: ['火山', '峡谷', '漂流', 'volcano', 'canyon', 'rafting'],
+    canonicalTypes: [
+      'ATTRACTION_NATURE_VOLCANO',
+      'ATTRACTION_NATURE_CANYON',
+    ],
+    tags: ['火山', '峡谷', '漂流', 'volcano', 'canyon', 'rafting', 'adventure'],
+  },
+};
+
 @Injectable()
 export class CandidateRetrievalEngine {
   private readonly logger = new Logger(CandidateRetrievalEngine.name);
@@ -129,6 +158,29 @@ export class CandidateRetrievalEngine {
         bucketed = this.mergeSignaturePlaces(bucketed, mustHavePlaces);
         this.logger.log(`mustHavePois: 合并 ${mustHavePlaces.length} 个必含景点`);
       }
+    }
+
+    // Step 2a.5: 活动偏好召回/加权 - 用户表达兴趣时倾向纳入相关 POI，但不作为硬性必去
+    const activityProfile = this.buildActivityPreferenceProfile(dto.activityPreferences);
+    if (activityProfile) {
+      const activityPlaces = await this.fetchMustHavePois(countryCode, activityProfile.keywords);
+      if (activityPlaces.length > 0) {
+        bucketed = this.mergeSignaturePlaces(
+          bucketed,
+          activityPlaces.map((place) => ({
+            ...place,
+            compositeScore: 8.5,
+            poiPlanningScoreReasons: [
+              ...(place.poiPlanningScoreReasons ?? []),
+              ACTIVITY_PREFERENCE_SCORE_REASON,
+            ],
+          })),
+        );
+      }
+      bucketed = this.applyActivityPreferenceBoost(bucketed, activityProfile);
+      this.logger.log(
+        `activityPreferences: 偏好=${dto.activityPreferences?.join(',') ?? ''}, 召回=${activityPlaces.length}`,
+      );
     }
 
     // Step 2b: RouteDirection 偏好检索（Phase 4）- 合并 signature/RouteTemplate Place，提升 compositeScore
@@ -310,6 +362,68 @@ export class CandidateRetrievalEngine {
       }
     }
     return [...byId.values()];
+  }
+
+  private buildActivityPreferenceProfile(
+    activityPreferences?: string[],
+  ): ActivityPreferenceRetrievalProfile | null {
+    if (!activityPreferences?.length) return null;
+    const merged: ActivityPreferenceRetrievalProfile = {
+      keywords: [],
+      canonicalTypes: [],
+      tags: [],
+    };
+    for (const pref of activityPreferences) {
+      const profile = ACTIVITY_PREFERENCE_PROFILES[pref];
+      if (!profile) continue;
+      merged.keywords.push(...profile.keywords);
+      merged.canonicalTypes.push(...profile.canonicalTypes);
+      merged.tags.push(...profile.tags);
+    }
+    merged.keywords = [...new Set(merged.keywords)];
+    merged.canonicalTypes = [...new Set(merged.canonicalTypes)];
+    merged.tags = [...new Set(merged.tags.map((tag) => tag.toLowerCase()))];
+    return merged.keywords.length || merged.canonicalTypes.length || merged.tags.length ? merged : null;
+  }
+
+  private applyActivityPreferenceBoost(
+    bucketed: Array<CandidatePlace & { compositeScore: number }>,
+    profile: ActivityPreferenceRetrievalProfile,
+  ): Array<CandidatePlace & { compositeScore: number }> {
+    const canonicalTypes = new Set(profile.canonicalTypes.map((type) => type.toLowerCase()));
+    const tags = new Set(profile.tags.map((tag) => tag.toLowerCase()));
+    const keywords = profile.keywords.map((keyword) => keyword.toLowerCase());
+
+    for (const place of bucketed) {
+      const canonicalType = place.canonicalType?.toLowerCase();
+      const placeTags = (place.tags ?? []).map((tag) => String(tag).toLowerCase());
+      const haystack = [
+        place.nameCN,
+        place.nameEN,
+        place.category,
+        place.canonicalType,
+        ...placeTags,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const matched =
+        (canonicalType ? canonicalTypes.has(canonicalType) : false) ||
+        placeTags.some((tag) => tags.has(tag)) ||
+        keywords.some((keyword) => haystack.includes(keyword));
+
+      if (!matched) continue;
+      place.compositeScore = Math.max(place.compositeScore + 2.5, 8.5);
+      place.poiPlanningScoreReasons = [
+        ...new Set([
+          ...(place.poiPlanningScoreReasons ?? []),
+          ACTIVITY_PREFERENCE_SCORE_REASON,
+        ]),
+      ];
+    }
+
+    return bucketed;
   }
 
   /**

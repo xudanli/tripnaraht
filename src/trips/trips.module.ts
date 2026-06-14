@@ -52,6 +52,7 @@ import { BookingComModule } from '../mcp/booking-com.module';
 import { DecisionKernelModule } from '../decision/decision-kernel.module';
 import { TransportModule } from '../transport/transport.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
+import { ReadinessModule } from './readiness/readiness.module';
 import { DsoFeedbackPersistenceModule } from './decision/dso-feedback-persistence.module';
 import { PlanningPolicyModule } from '../planning-policy/planning-policy.module';
 import { SolverService } from './solver/solver.service';
@@ -70,7 +71,7 @@ import { CityDigitalTwinService } from './services/city-digital-twin.service';
 import { StubRealityApiService } from './services/stub-reality-api.service';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule, PlanningPolicyModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 

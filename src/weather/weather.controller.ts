@@ -20,7 +20,7 @@ export class WeatherController {
   @Get('current')
   @ApiOperation({
     summary: '获取当前天气',
-    description: '根据经纬度获取当前天气数据。系统会自动选择合适的数据源适配器（冰岛使用 apis.is，其他国家使用 WeatherAPI.com 或 OpenWeather）。',
+    description: '根据经纬度获取当前天气数据。系统会自动选择合适的数据源适配器（冰岛使用 Vedur.is 官方天气源，其他国家使用 WeatherAPI.com 或 OpenWeather）。',
   })
   @ApiQuery({ name: 'lat', description: '纬度', example: 64.1466, type: Number, required: true })
   @ApiQuery({ name: 'lng', description: '经度', example: -21.9426, type: Number, required: true })
@@ -45,7 +45,7 @@ export class WeatherController {
             visibility: { type: 'number', example: 10000 },
             alerts: { type: 'array' },
             lastUpdated: { type: 'string', example: '2026-01-28T12:00:00Z' },
-            source: { type: 'string', example: 'apis.is' },
+            source: { type: 'string', example: 'vedur.is' },
             metadata: { type: 'object' },
           },
         },
@@ -113,6 +113,48 @@ export class WeatherController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         `获取天气数据失败: ${error.message}`,
+      );
+    }
+  }
+
+  @Public()
+  @Get('current/evidence')
+  @ApiOperation({
+    summary: '获取当前天气证据信封',
+    description:
+      '返回 EvidenceEnvelope 包装的 WeatherData，含 observedAt、validUntil、confidence 与 freshness 评估。',
+  })
+  @ApiQuery({ name: 'lat', description: '纬度', example: 64.1466, type: Number, required: true })
+  @ApiQuery({ name: 'lng', description: '经度', example: -21.9426, type: Number, required: true })
+  @ApiQuery({ name: 'includeWindDetails', description: '是否包含详细风速信息（冰岛特定）', example: false, type: Boolean, required: false })
+  @ApiQuery({ name: 'includeAuroraInfo', description: '是否包含极光信息（冰岛特定）', example: false, type: Boolean, required: false })
+  async getCurrentWeatherEvidence(
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+    @Query('includeWindDetails') includeWindDetails?: string,
+    @Query('includeAuroraInfo') includeAuroraInfo?: string,
+  ) {
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+
+    if (isNaN(latNum) || isNaN(lngNum)) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, '经纬度必须是有效数字');
+    }
+
+    try {
+      const query: WeatherQuery = {
+        lat: latNum,
+        lng: lngNum,
+        includeWindDetails: includeWindDetails === 'true',
+        includeAuroraInfo: includeAuroraInfo === 'true',
+      };
+
+      const envelope = await this.dataSourceRouter.getWeatherEvidence(query);
+      return successResponse(envelope);
+    } catch (error: any) {
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        `获取天气证据失败: ${error.message}`,
       );
     }
   }

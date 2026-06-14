@@ -170,6 +170,40 @@ export function buildDecisionRunThreeGuardiansSchema() {
   };
 }
 
+export function buildDecisionGuardianNegotiateSchema() {
+  return {
+    tripId: z.string().optional().describe('行程 ID；与 plan+world 二选一'),
+    plan: z.record(z.any()).optional().describe('RoutePlanDraft（与 world 成对）'),
+    world: z.record(z.any()).optional().describe('WorldModelContext（与 plan 成对）'),
+    persistToTrip: z.boolean().optional().describe('是否写入 trip.metadata.readinessGuardianNegotiation.latest'),
+  };
+}
+
+export function buildReadinessGuardianNegotiationGetSchema() {
+  return {
+    tripId: z.string().describe('行程 ID'),
+  };
+}
+
+export function buildReadinessCascadeImpactGetSchema() {
+  return {
+    tripId: z.string().describe('行程 ID'),
+  };
+}
+
+export function buildReadinessApplyRepairSchema() {
+  return {
+    tripId: z.string().describe('行程 ID'),
+    blockerId: z.string().describe('阻塞项 ID'),
+    optionId: z.string().describe('修复选项 ID（来自 repair-options）'),
+    reason: z.string().optional(),
+    executeDecision: z.boolean().optional().describe('是否调用 Neptune repair-plan，默认 true'),
+    persistDecision: z.boolean().optional().describe('是否写回 ItineraryItem，默认 true'),
+    runGuardianNegotiation: z.boolean().optional().describe('是否运行 pre/post 三人格博弈，默认 true'),
+    forceDecisionRepair: z.boolean().optional().describe('跳过 pre_repair 低共识 REJECT 门控'),
+  };
+}
+
 export function buildDecisionExplainForHumanSchema() {
   return {
     tripId: z.string().optional().describe('行程 ID（如果有）'),
@@ -685,6 +719,7 @@ export function getSchemaForSkill(skillName: string): any {
     'decision.drdrePace': buildDecisionDrdrePaceSchema,
     'decision.neptuneRepair': buildDecisionNeptuneRepairSchema,
     'decision.runThreeGuardians': buildDecisionRunThreeGuardiansSchema,
+    'decision.guardianNegotiate': buildDecisionGuardianNegotiateSchema,
     'decision.explainForHuman': buildDecisionExplainForHumanSchema,
     'decision.requestApproval': buildDecisionRequestApprovalSchema,
     'decision.checkApproval': buildDecisionCheckApprovalSchema,
@@ -705,6 +740,9 @@ export function getSchemaForSkill(skillName: string): any {
     'readiness.generateChecklist': buildReadinessGenerateChecklistSchema,
     'readiness.summarizeRisks': buildReadinessSummarizeRisksSchema,
     'readiness.checkVisaWindow': buildReadinessCheckVisaWindowSchema,
+    'readiness.guardianNegotiation.get': buildReadinessGuardianNegotiationGetSchema,
+    'readiness.cascadeImpact.get': buildReadinessCascadeImpactGetSchema,
+    'readiness.applyRepair': buildReadinessApplyRepairSchema,
     'world.buildContext': buildWorldBuildContextSchema,
     'worldState.summarize': buildWorldStateSummarizeSchema,
     'readiness.assess': buildReadinessAssessSchema,

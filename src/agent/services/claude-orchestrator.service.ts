@@ -104,6 +104,7 @@ import {
   isExecutableFlightInventoryQuery,
   resolveFlightInventoryLegs,
 } from '../utils/flight-inventory-signals.util';
+import { normalizeLiveTools } from '../utils/live-tools.util';
 import { buildInventorySnapshotsMeta } from '../inventory/lightweight-live-inventory.registry';
 import {
   buildNarrativeSafetyPromptLines,
@@ -1480,7 +1481,7 @@ export class ClaudeOrchestratorService {
     if (!this.mcpToolDispatcher) return false;
     const rt = context.routingTaskType;
     if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-    const tools = request.options?.enable_live_tools ?? [];
+    const tools = normalizeLiveTools(request.options?.enable_live_tools);
     const msg = request.message ?? '';
     if (tools.includes('hotel')) return true;
     /** 可执行航班库存 intent：勿自动旁路到住宿（除非用户显式 enable_live_tools hotel） */
@@ -1505,7 +1506,7 @@ export class ClaudeOrchestratorService {
     if (!this.amadeusDirect?.isAvailable && !this.flightMcp?.isAvailable) return false;
     const rt = context.routingTaskType;
     if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-    const tools = request.options?.enable_live_tools ?? [];
+    const tools = normalizeLiveTools(request.options?.enable_live_tools);
     const msg = request.message ?? '';
     if (tools.includes('flight')) return true;
     return isExecutableFlightInventoryQuery(msg);
@@ -1521,7 +1522,7 @@ export class ClaudeOrchestratorService {
     if (!this.mcpToolDispatcher) return false;
     const rt = context.routingTaskType;
     if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-    const tools = request.options?.enable_live_tools ?? [];
+    const tools = normalizeLiveTools(request.options?.enable_live_tools);
     const msg = request.message ?? '';
     if (tools.includes('car_rental')) return true;
     if (
@@ -8933,7 +8934,9 @@ ${JSON.stringify(routingDecision, null, 2)}
       state.trip_plan_request?.mode as any,
       startCoordinates,
     );
-    if (estimatedCommuteMinutes > commuteBudgetMinutes) {
+    const existingTripRouteOrderOptimization =
+      this.isExistingTripRouteOrderOptimizationRequest(state);
+    if (estimatedCommuteMinutes > commuteBudgetMinutes && !existingTripRouteOrderOptimization) {
       const destinationExample = destinationRaw || '雷克雅未克';
       state.gaps = [
         ...(state.gaps || []),
@@ -8973,7 +8976,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
 
     const minPoiRequired = 2;
-    if (scored.length > 0 && scored.length < minPoiRequired) {
+    if (scored.length > 0 && scored.length < minPoiRequired && !existingTripRouteOrderOptimization) {
       const destinationExample = destinationRaw || '雷克雅未克';
       state.gaps = [
         ...(state.gaps || []),
@@ -9010,8 +9013,20 @@ ${JSON.stringify(routingDecision, null, 2)}
         allowWithFallback: false,
       };
     }
+    if (existingTripRouteOrderOptimization && (estimatedCommuteMinutes > commuteBudgetMinutes || scored.length < minPoiRequired)) {
+      state.metadata = {
+        ...(state.metadata ?? {}),
+        poi_selection_destination_scope_clarification_bypassed: {
+          reason: 'EXISTING_TRIP_ROUTE_ORDER_OPTIMIZATION',
+          selected_count: scored.length,
+          min_poi_required: minPoiRequired,
+          estimated_commute_minutes: estimatedCommuteMinutes,
+          commute_budget_minutes: commuteBudgetMinutes,
+        },
+      } as any;
+    }
 
-    if (destinationCountry && scored.length === 0) {
+    if (destinationCountry && scored.length === 0 && !existingTripRouteOrderOptimization) {
       const destinationExample = destinationRaw ? `${destinationRaw} ${this.countryDisplayName(destinationCountry)}` : 'Tokyo, Japan';
       const fallbackDecision = {
         verdict: 'ALLOW_WITH_FALLBACK',
@@ -9088,6 +9103,18 @@ ${JSON.stringify(routingDecision, null, 2)}
       needsClarification: false,
       allowWithFallback,
     };
+  }
+
+  private isExistingTripRouteOrderOptimizationRequest(state: OrchestratorState): boolean {
+    const tripId = state.trip_plan_request?.trip_id ?? state.metadata?.tripId;
+    if (!tripId) return false;
+    const message = [
+      state.trip_plan_request?.message,
+      state.metadata?.intake_user_message,
+    ]
+      .map((x) => (typeof x === 'string' ? x : ''))
+      .join('\n');
+    return /(?:优化|调整|重排|重新排序|reorder|optimi[sz]e).{0,24}(?:路线顺序|路线|交通时间|通勤|route\s*order|travel\s*time)|(?:路线顺序|交通时间|通勤|route\s*order|travel\s*time).{0,24}(?:优化|调整|重排|重新排序|reorder|optimi[sz]e)/i.test(message);
   }
 
   /** Phase 2.0：DSO slice 摘要，写入 metadata 与 observability，便于无 DSO 回放对齐 */

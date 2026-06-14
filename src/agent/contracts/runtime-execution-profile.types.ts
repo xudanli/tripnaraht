@@ -30,6 +30,16 @@ export type LatencyClass = 'FAST' | 'INTERACTIVE' | 'LONG_RUNNING';
 /** 用户侧 / 仪表盘聚合用语，不与 SYSTEM1_EXECUTOR 混淆 */
 export type UserFacingObservabilityMode = 'FAST_PATH' | 'DEEP_REASONING' | 'PLANNING_PIPELINE';
 
+/**
+ * Product-facing cognitive lane for route_and_run.
+ *
+ * This is intentionally coarser than RuntimeExecutionProfile:
+ * - fast: user-facing quick answer / System 1 / lightweight QA / replay
+ * - balanced: interactive reasoning that is not the full planning pipeline
+ * - deep: state-machine or planning pipeline work
+ */
+export type ThinkingModeResolved = 'fast' | 'balanced' | 'deep';
+
 export interface RuntimeExecutionProfile {
   cognition: {
     depth: CognitionDepth;

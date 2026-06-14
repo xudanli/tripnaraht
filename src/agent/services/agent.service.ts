@@ -56,13 +56,16 @@ import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import { buildTravelOntologyStateFromOrchestrator, mergeTravelOntologyState } from '../../decision/kernel/travel-ontology.mapper';
 import { RouteAndRunResponseAssemblerService } from './route-and-run-response-assembler.service';
 import type { ReplayProvenance } from '../contracts/replay-provenance.types';
-import { buildRuntimeExecutionProfileDedupReplay } from '../utils/runtime-execution-profile.builder';
+import {
+  buildRuntimeExecutionProfileDedupReplay,
+  buildRuntimeExecutionProfileLegacyAssembly,
+  resolveThinkingModeFromRuntimeProfile,
+} from '../utils/runtime-execution-profile.builder';
 import { replayLifecycleManager } from '../utils/replay-lifecycle.manager';
 import { attachFullResponseReplayArtifactDescriptor } from '../utils/replay-artifact-descriptor.builder';
 import { ExecutionGatewayService } from './execution-gateway.service';
 import { attachFreshRuntimeMaterialization } from '../runtime/fresh-runtime-adapter.util';
 import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.service';
-import { buildRuntimeExecutionProfileLegacyAssembly } from '../utils/runtime-execution-profile.builder';
 import { mergeRuntimeExecutionAnomaliesByCode } from '../utils/runtime-execution-profile.validation';
 import type { RuntimeExecutionProfile } from '../contracts/runtime-execution-profile.types';
 import type { RuntimeExecutionAnomaly } from '../contracts/runtime-execution-profile.validation.types';
@@ -2278,6 +2281,15 @@ export class AgentService {
       });
       obs.runtime_execution_profile = profile;
     }
+    obs.thinking_mode_resolved = resolveThinkingModeFromRuntimeProfile(profile, {
+      uiMode: response.route?.ui_hint?.mode,
+      orchestrationMode: String(
+        (response.observability as { orchestration_mode_final?: unknown })?.orchestration_mode_final ??
+          (response.observability as { mode_final?: unknown })?.mode_final ??
+          '',
+      ),
+      systemMode: response.observability?.system_mode,
+    });
     const validation = replayLifecycleManager.validateReplay(profile);
     if (validation.anomalies.length > 0) {
       obs.runtime_execution_anomalies = mergeRuntimeExecutionAnomaliesByCode(
@@ -2353,8 +2365,14 @@ export class AgentService {
       const obsAny = resp.observability as {
         runtime_execution_profile?: unknown;
         runtime_execution_anomalies?: unknown;
+        thinking_mode_resolved?: unknown;
       };
       obsAny.runtime_execution_profile = dedupProfile;
+      obsAny.thinking_mode_resolved = resolveThinkingModeFromRuntimeProfile(dedupProfile, {
+        uiMode: resp.route?.ui_hint?.mode,
+        orchestrationMode: 'DEDUP',
+        systemMode: resp.observability?.system_mode,
+      });
       if (dedupVal.anomalies.length) {
         obsAny.runtime_execution_anomalies = dedupVal.anomalies;
       }
@@ -2399,4 +2417,3 @@ export class AgentService {
 
   // AI 能力展示已迁入 ResponseAssembler（AgentService 不再直接生成）
 }
-

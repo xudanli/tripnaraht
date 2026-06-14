@@ -57,6 +57,10 @@ export class CountryConfigService {
   /** 国家配置缓存 */
   private readonly countryConfigCache = new Map<string, CountryConfig>();
 
+  /** JSON 文件内存缓存（P3 性能优化） */
+  private readonly jsonFileCache = new Map<string, { data: unknown; timestamp: number }>();
+  private readonly jsonCacheTtlMs = 60 * 60 * 1000;
+
   constructor(
     @Optional() private readonly icelandRoadStatusAdapter?: IcelandRoadStatusAdapter,
     @Optional() private readonly defaultRoadStatusAdapter?: DefaultRoadStatusAdapter,
@@ -181,61 +185,45 @@ export class CountryConfigService {
   }
 
   /**
-   * 加载道路状态数据
+   * 加载道路状态数据（带 1h 内存缓存）
    */
   async loadRoadStatusData(countryCode: string): Promise<any> {
-    const filePath = this.getRoadStatusPath(countryCode);
-    
-    if (!fs.existsSync(filePath)) {
-      this.logger.warn(`道路状态数据文件不存在: ${filePath}`);
-      return null;
-    }
-
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(content);
-    } catch (error: any) {
-      this.logger.error(`加载道路状态数据失败: ${filePath}`, error);
-      return null;
-    }
+    return this.loadJsonFileCached(this.getRoadStatusPath(countryCode), 'road-status');
   }
 
   /**
-   * 加载天气窗口数据
+   * 加载天气窗口数据（带 1h 内存缓存）
    */
   async loadWeatherWindowsData(countryCode: string): Promise<any> {
-    const filePath = this.getWeatherWindowsPath(countryCode);
-    
-    if (!fs.existsSync(filePath)) {
-      this.logger.warn(`天气窗口数据文件不存在: ${filePath}`);
-      return null;
-    }
-
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(content);
-    } catch (error: any) {
-      this.logger.error(`加载天气窗口数据失败: ${filePath}`, error);
-      return null;
-    }
+    return this.loadJsonFileCached(this.getWeatherWindowsPath(countryCode), 'weather-windows');
   }
 
   /**
-   * 加载渡轮时刻表数据
+   * 加载渡轮时刻表数据（带 1h 内存缓存）
    */
   async loadFerrySchedulesData(countryCode: string): Promise<any> {
-    const filePath = this.getFerrySchedulesPath(countryCode);
-    
+    return this.loadJsonFileCached(this.getFerrySchedulesPath(countryCode), 'ferry-schedules');
+  }
+
+  private async loadJsonFileCached(filePath: string, label: string): Promise<any> {
+    const cacheKey = filePath;
+    const cached = this.jsonFileCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.jsonCacheTtlMs) {
+      return cached.data;
+    }
+
     if (!fs.existsSync(filePath)) {
-      this.logger.warn(`渡轮时刻表数据文件不存在: ${filePath}`);
+      this.logger.warn(`${label} 数据文件不存在: ${filePath}`);
       return null;
     }
 
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(content);
+      const data = JSON.parse(content);
+      this.jsonFileCache.set(cacheKey, { data, timestamp: Date.now() });
+      return data;
     } catch (error: any) {
-      this.logger.error(`加载渡轮时刻表数据失败: ${filePath}`, error);
+      this.logger.error(`加载 ${label} 数据失败: ${filePath}`, error);
       return null;
     }
   }

@@ -89,6 +89,8 @@ export interface PlanDay {
 export interface TripPlan {
   version: string;               // semantic version of your planner
   createdAt: string;
+  /** Prisma trip id when plan is materialized from stored itinerary */
+  tripId?: string;
   days: PlanDay[];
 
   /** Temporal propagation v0：天气等产生的 TimeDrift + timeline 依赖边 */

@@ -286,11 +286,30 @@ export class AssessTripResponseDto {
   @ApiProperty({ description: '待规划天数（UNPLANNED 状态）' })
   unplannedDays!: number;
 
-  @ApiProperty({ description: '整体合理率 (0-100%)，仅计算已规划的日期' })
+  @ApiProperty({ description: '休息日天数（仅 REST，不计入合理率分子/分母）' })
+  restDays!: number;
+
+  @ApiProperty({ description: '有效规划天数（排除未规划日与纯休息日）' })
+  plannedDays!: number;
+
+  @ApiProperty({
+    description: '整体合理率 (0-100)，为有效规划日综合得分的平均值，与每日分数一致',
+  })
   overallReasonableRate!: number;
+
+  @ApiProperty({ description: '有效规划日综合得分平均值 (0-100)，与 overallReasonableRate 相同' })
+  overallAverageScore!: number;
+
+  @ApiProperty({
+    description: '天数达标率 (0-100%)：status=REASONABLE 的有效规划日占比（辅助指标）',
+  })
+  daysPassRate!: number;
 
   @ApiProperty({ description: '整体评估等级', enum: AssessmentGrade })
   overallGrade!: AssessmentGrade;
+
+  @ApiProperty({ description: '本次评估实际使用的出行方式', enum: TravelMode })
+  effectiveTravelMode!: TravelMode;
 
   @ApiProperty({ description: '每日评估结果', type: [DayAssessmentDto] })
   days!: DayAssessmentDto[];

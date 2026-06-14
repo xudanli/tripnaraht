@@ -70,6 +70,16 @@ export interface WeatherDecisionEvidence {
     windGustMs?: number;
     /** hazard 推导使用的车型 */
     vehicleClass?: VehicleClass;
+    /** EvidenceEnvelope 观测时间（ISO 8601） */
+    evidenceObservedAt?: string;
+    /** EvidenceEnvelope 失效时间（ISO 8601） */
+    evidenceValidUntil?: string;
+    /** EvidenceEnvelope 置信度 0..1 */
+    evidenceConfidence?: number;
+    /** freshness 评估状态 */
+    evidenceFreshnessStatus?: string;
+    /** 是否仍可用于强判断（blocker 级） */
+    strongJudgmentAllowed?: boolean;
   };
 }
 

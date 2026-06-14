@@ -600,3 +600,73 @@ describe('isWeatherRoadConditionFocusedQuery', () => {
     expect(isWeatherRoadConditionFocusedQuery('租车自驾天气路况要注意什么')).toBe(false);
   });
 });
+
+describe('Route-and-Run capability matrix', () => {
+  const base = (overrides: Partial<RouteAndRunRequestDto>): RouteAndRunRequestDto => ({
+    request_id: 'cap-matrix',
+    user_id: 'u1',
+    message: '',
+    ...overrides,
+  });
+
+  it.each([
+    {
+      name: '局部路线优化：已有行程第 N 天路线顺序',
+      req: base({ trip_id: 't1', message: '帮我优化第5天的路线顺序，减少交通时间' }),
+      taskType: 'TRIP_PLANNING',
+      capability: 'PLANNING_AND_REVISION',
+      actionKind: 'EXISTING_TRIP_ROUTE_OPTIMIZATION',
+      structured: true,
+    },
+    {
+      name: '咨询快答：绑定行程的门票事实',
+      req: base({ trip_id: 't1', message: '蓝湖门票需要多久提前订' }),
+      taskType: 'DATA_LOOKUP',
+      capability: 'FAST_QA',
+      actionKind: 'TRIP_SCOPED_CONSULTATION',
+      structured: false,
+    },
+    {
+      name: '行程小改：删除已有景点',
+      req: base({ trip_id: 't1', message: '删除第3天的蓝湖景点' }),
+      taskType: 'TRIP_PLANNING',
+      capability: 'CRUD_EDIT',
+      actionKind: 'LOCAL_ITINERARY_EDIT',
+      structured: true,
+    },
+    {
+      name: '安全节奏协商：三人格评估',
+      req: base({ trip_id: 't1', message: '让 Abu、Dr.Dre、Neptune 看看这段行程有没有风险和节奏问题' }),
+      taskType: 'TRIP_PLANNING',
+      capability: 'SAFETY_NEGOTIATION',
+      actionKind: 'SAFETY_OR_TRADEOFF_REVIEW',
+      structured: true,
+    },
+    {
+      name: '成功后交付：日历/PDF/分享',
+      req: base({ trip_id: 't1', message: '把当前行程导出 PDF，并生成日历和分享链接' }),
+      taskType: 'TRIP_PLANNING',
+      capability: 'DELIVERY',
+      actionKind: 'BOOKING_OR_DELIVERY_HANDOFF',
+      structured: true,
+    },
+    {
+      name: '缺信息澄清：用户提交澄清答案',
+      req: base({
+        trip_id: 't1',
+        message: '选择冰岛南部',
+        clarification_answers: [{ questionId: 'destination_scope_too_sparse', value: '冰岛 南部' }],
+      }),
+      taskType: 'TRIP_PLANNING',
+      capability: 'CLARIFICATION',
+      actionKind: 'CLARIFICATION_RESPONSE',
+      structured: true,
+    },
+  ])('$name', ({ req, taskType, capability, actionKind, structured }) => {
+    const s = signalsFromRequest(req);
+    expect(s.taskType).toBe(taskType);
+    expect(s.capability).toBe(capability);
+    expect(s.actionKind).toBe(actionKind);
+    expect(s.requiresStructuredOutput).toBe(structured);
+  });
+});

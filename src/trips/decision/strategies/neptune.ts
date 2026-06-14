@@ -46,6 +46,8 @@ import {
 } from '../../execution-simulation';
 import { routeDecisionContext } from './neptune-decision-router';
 import { collectPhysicsFirstTriggers } from './neptune-physics-triggers';
+import { formatGuardianHintExplanation } from '../repair/guardian-repair-hints.util';
+import { applyGuardianRepairInstructions } from '../repair/guardian-repair-applier.util';
 import { assertOverlayIsNonAuthoritative } from '../../execution-overlay/overlay-decision-guard';
 import {
   assertDagIsNonDecisionSource,
@@ -271,6 +273,8 @@ export interface NeptuneRepairResult {
   executionProof?: ExecutionProof;
   /** P-Next 5：对 {@link executionProof} 的哈希重算 + 默认不变式套件结果。 */
   invariantCheckResult?: ExecutionProofVerificationResult;
+  /** Guardian 辩论指令实际应用的 repair id 列表 */
+  guardianAppliedRepairIds?: string[];
 }
 
 /** P8-3：Neptune 仅接受显式 **ExecutionIR**（禁止从语义层隐式构造）。 */
@@ -469,7 +473,19 @@ export function neptuneRepairPlan(input: NeptuneRepairInput): NeptuneRepairResul
     return { ...day, timeSlots: newSlots };
   });
 
-  const repaired: TripPlan = { ...plan, days: newDays };
+  let repaired: TripPlan = { ...plan, days: newDays };
+
+  const guardianApply = applyGuardianRepairInstructions(
+    repaired,
+    state,
+    state.signals.repairEvaluation?.repairs,
+  );
+  repaired = guardianApply.plan;
+  for (const slotId of guardianApply.changedSlotIds) {
+    if (!changedSlotIds.includes(slotId)) {
+      changedSlotIds.push(slotId);
+    }
+  }
 
   const simNote =
     simulation?.diff.bestVariantId != null
@@ -487,9 +503,16 @@ export function neptuneRepairPlan(input: NeptuneRepairInput): NeptuneRepairResul
   const observerNote = observeOnlyVm
     ? ` observerVm=1 irTriggersLogged=${irTriggers.length}`
     : '';
-  const explanation = triggers.length
+  const guardianNote = formatGuardianHintExplanation(state.signals.guardianRepairHints);
+  const guardianAppliedNote =
+    guardianApply.appliedRepairIds.length > 0
+      ? ` guardianApplied=${guardianApply.appliedRepairIds.length}`
+      : '';
+  const explanation = (triggers.length
     ? `Neptune (P9 VM).${modeNote}${observerNote} Violations=${triggers.length}, changedSlots=${changedSlotIds.length}, pathCost=${irRun.pathCost.toFixed(1)}, irOk=${irRun.ok}, traceSteps=${outcome.trace.length}${simNote}${policyNote}`
-    : `No repair needed.${modeNote}${observerNote} (pathCost=${irRun.pathCost.toFixed(1)}, traceSteps=${outcome.trace.length})${simNote}${policyNote}`;
+    : `No repair needed.${modeNote}${observerNote} (pathCost=${irRun.pathCost.toFixed(1)}, traceSteps=${outcome.trace.length})${simNote}${policyNote}`) +
+    guardianAppliedNote +
+    (guardianNote ? ` | ${guardianNote}` : '');
 
   if (changedSlotIds.length > 0) {
     const repairTs = nextMemTs();
@@ -570,6 +593,9 @@ export function neptuneRepairPlan(input: NeptuneRepairInput): NeptuneRepairResul
       : {}),
     ...(executionProof && invariantCheckResult
       ? { executionProof, invariantCheckResult }
+      : {}),
+    ...(guardianApply.appliedRepairIds.length
+      ? { guardianAppliedRepairIds: guardianApply.appliedRepairIds }
       : {}),
   };
 }

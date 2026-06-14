@@ -37,6 +37,10 @@ import { normalizeHardRuleSnapshot } from '../../trips/decision/shared/hard-rule
 import { deriveFactsFromMetadata } from '../../trips/decision/shared/fact-derivation.util';
 import { TradeoffEngineService } from './tradeoff-engine.service';
 import { NegotiationSessionStoreService } from './negotiation-session-store.service';
+import { buildCoverageDisclosureFromRouteAndRunEvidence } from '../../travel-cognition';
+import { buildDependencyImpactFromEvidence } from '../../travel-cognition';
+import type { TripItineraryItemLike } from '../../travel-cognition';
+import { buildReadinessCascadeUiHints } from '../../trips/readiness/utils/readiness-causal-preanalysis.util';
 import {
   EVIDENCE_MISSING_BUT_RESULTS_PRESENT,
   VERIFICATION_FAILED_UNSPECIFIED,
@@ -46,7 +50,10 @@ import {
 } from '../constants/failure-reason-codes.constants';
 import { orchestrationStepDisplayZh } from '../constants/orchestration-step-display.constants';
 import type { TaskType } from '../utils/orchestration-signals.util';
-import { buildRuntimeExecutionProfileClaudeDynamicAssembly } from '../utils/runtime-execution-profile.builder';
+import {
+  buildRuntimeExecutionProfileClaudeDynamicAssembly,
+  resolveThinkingModeFromRuntimeProfile,
+} from '../utils/runtime-execution-profile.builder';
 import { validateRuntimeExecutionProfile } from '../utils/runtime-execution-profile.validation';
 import {
   RouteRunItineraryPoiHydratorService,
@@ -509,6 +516,102 @@ export class RouteAndRunResponseAssemblerService {
       failure_reason_codes: merged,
       failure_reason_labels_zh: failureReasonCodeLabelsZh(merged),
     } as RouteAndRunResponseDto['explain'];
+  }
+
+  /** 附加非交易型覆盖声明到 explain.coverage_disclosure */
+  private attachCoverageDisclosure(response: RouteAndRunResponseDto): void {
+    const payload = response.result?.payload as Record<string, unknown> | undefined;
+    const directBundle = payload?.evidence_bundle as
+      | { sources?: Array<{ type?: string; label?: string }>; hard_facts?: Array<{ rule_id?: string }> }
+      | undefined;
+    const candidates = Array.isArray(payload?.candidates) ? payload!.candidates : [];
+    const candidateBundle = (candidates[0] as { evidence_bundle?: typeof directBundle } | undefined)
+      ?.evidence_bundle;
+    const bundle = directBundle ?? candidateBundle ?? null;
+
+    response.explain = {
+      ...(response.explain ?? {}),
+      coverage_disclosure: buildCoverageDisclosureFromRouteAndRunEvidence({ evidenceBundle: bundle }),
+    } as RouteAndRunResponseDto['explain'];
+  }
+
+  private extractItineraryItemsForDependency(
+    payload: Record<string, unknown> | undefined,
+    orchState?: OrchestratorState | null,
+  ): TripItineraryItemLike[] {
+    const itinerary =
+      (payload?.itinerary as { days?: Array<Record<string, unknown>> } | undefined) ??
+      ((orchState as unknown as { itinerary?: { days?: Array<Record<string, unknown>> } } | undefined)
+        ?.itinerary) ??
+      ((Array.isArray(payload?.candidates) ? payload!.candidates[0] : null) as { itinerary?: { days?: unknown[] } } | null)
+        ?.itinerary;
+    const days = (itinerary as { days?: Array<Record<string, unknown>> } | undefined)?.days;
+    if (!Array.isArray(days)) return [];
+
+    const items: TripItineraryItemLike[] = [];
+    for (const day of days) {
+      const dayDate = String(day.date ?? day.dayDate ?? '');
+      const slots = (day.items ?? day.timeSlots ?? []) as Array<Record<string, unknown>>;
+      for (const item of slots) {
+        const name = item.name as { zh?: string; en?: string } | string | undefined;
+        items.push({
+          id: String(item.id ?? item.slotId ?? `${dayDate}-${items.length}`),
+          type: String(item.type ?? 'ACTIVITY'),
+          startTime: (item.startTime ?? item.start) as string | Date | undefined,
+          endTime: (item.endTime ?? item.end) as string | Date | undefined,
+          note: item.note != null ? String(item.note) : undefined,
+          metadata: item.metadata,
+          dayDate: dayDate || undefined,
+          placeName:
+            typeof name === 'string'
+              ? name
+              : name?.zh ?? name?.en ?? (item.title != null ? String(item.title) : undefined),
+          placeId: (item.placeId ?? item.poi_id) as string | number | undefined,
+        });
+      }
+    }
+    return items;
+  }
+
+  /** 有证据时附加级联影响分析到 explain.dependency_impact */
+  private attachDependencyImpact(
+    response: RouteAndRunResponseDto,
+    ctx?: { request?: RouteAndRunRequestDto; orchestrationResult?: OrchestrationResult },
+  ): void {
+    const payload = response.result?.payload as Record<string, unknown> | undefined;
+    const orchState =
+      (payload?.orchestrationResult as { state?: OrchestratorState } | undefined)?.state ??
+      ctx?.orchestrationResult?.result?.state;
+
+    const prefetchedEvidence: unknown[] =
+      ((orchState as any)?.research_data?.world?.physical?.prefetched_evidence as unknown[]) ??
+      ((orchState as any)?.research_data?.worldModel?.physical?.prefetched_evidence as unknown[]) ??
+      ((orchState as any)?.research_data?.world_build_context?.world?.physical?.prefetched_evidence as unknown[]) ??
+      [];
+
+    const directBundle = payload?.evidence_bundle as
+      | { hard_facts?: Array<{ rule_id?: string; is_violated?: boolean }> }
+      | undefined;
+    const candidates = Array.isArray(payload?.candidates) ? payload!.candidates : [];
+    const candidateBundle = (candidates[0] as { evidence_bundle?: typeof directBundle } | undefined)
+      ?.evidence_bundle;
+    const bundle = directBundle ?? candidateBundle;
+
+    const impact = buildDependencyImpactFromEvidence({
+      tripId: ctx?.request?.trip_id?.trim() || undefined,
+      prefetchedEvidence,
+      hardFacts: bundle?.hard_facts,
+      itineraryItems: this.extractItineraryItemsForDependency(payload, orchState),
+      locale: resolveClarificationLocale(ctx?.request?.conversation_context?.locale),
+    });
+
+    if (!impact) return;
+
+    response.explain = {
+      ...(response.explain ?? {}),
+      dependency_impact: impact,
+      cascade_ui_hints: buildReadinessCascadeUiHints(impact),
+    } as unknown as RouteAndRunResponseDto['explain'];
   }
 
   /** `route.selected_path` + `ui_state.steps`（及缺失时的完整 ui_state） */
@@ -1223,6 +1326,7 @@ export class RouteAndRunResponseAssemblerService {
         latency_ms: latency,
         router_ms: 0,
         system_mode: 'SYSTEM2',
+        thinking_mode_resolved: 'deep',
         tool_calls: orchestrationResult.stepsExecuted?.length || 0,
         browser_steps: 0,
         tokens_est: 0,
@@ -1383,6 +1487,8 @@ export class RouteAndRunResponseAssemblerService {
     }
 
     this.attachExplainFailureReasonCodes(response);
+    this.attachCoverageDisclosure(response);
+    this.attachDependencyImpact(response, { request, orchestrationResult });
     applyConsultationItineraryPayloadHygiene(response);
     await this.maybeAttachPersistedTripPoiCardsForConsultation(request, response);
 
@@ -1562,6 +1668,11 @@ export class RouteAndRunResponseAssemblerService {
           latency_ms: latency,
           router_ms: 0,
           system_mode: 'SYSTEM1',
+          thinking_mode_resolved: resolveThinkingModeFromRuntimeProfile(runtimeExecutionProfile, {
+            uiMode: 'fast',
+            orchestrationMode: 'CLAUDE_DYNAMIC',
+            systemMode: 'SYSTEM1',
+          }),
           runtime_execution_profile: runtimeExecutionProfile,
           ...(repValidation.anomalies.length
             ? { runtime_execution_anomalies: repValidation.anomalies }
@@ -1594,6 +1705,8 @@ export class RouteAndRunResponseAssemblerService {
       };
       this.applyRouteProgressSurface(resp, orchestrationResult);
       this.attachExplainFailureReasonCodes(resp, { gaps: orchestrationResult.result?.state?.gaps });
+      this.attachCoverageDisclosure(resp);
+      this.attachDependencyImpact(resp, { request, orchestrationResult });
       return resp;
     }
 
@@ -1912,6 +2025,11 @@ export class RouteAndRunResponseAssemblerService {
         // 与 `route.route` 一致：轻量问答仍是 SYSTEM2_REASONING，勿标成 SYSTEM1（否则前端用 system_mode 控制「决策日志」展示时会永远不出现）。
         // 快路径语义见 `runtime_execution_profile.observability.userFacingMode` 与 `route.ui_hint.mode`。
         system_mode: isSystem1 ? 'SYSTEM1' : 'SYSTEM2',
+        thinking_mode_resolved: resolveThinkingModeFromRuntimeProfile(runtimeExecutionProfile, {
+          uiMode: isSystem1 || lightweightKnowledgeQa ? 'fast' : 'slow',
+          orchestrationMode: 'CLAUDE_DYNAMIC',
+          systemMode: isSystem1 ? 'SYSTEM1' : 'SYSTEM2',
+        }),
         ...(lightweightKnowledgeQa && orchestrationResult.success
           ? {
               routing_task_type: routingTaskType,
@@ -2014,6 +2132,8 @@ export class RouteAndRunResponseAssemblerService {
     }
 
     this.attachExplainFailureReasonCodes(response);
+    this.attachCoverageDisclosure(response);
+    this.attachDependencyImpact(response, { request, orchestrationResult });
 
     applyConsultationItineraryPayloadHygiene(response);
     await this.maybeAttachPersistedTripPoiCardsForConsultation(request, response);
@@ -2736,4 +2856,3 @@ export class RouteAndRunResponseAssemblerService {
     };
   }
 }
-

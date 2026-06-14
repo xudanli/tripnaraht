@@ -4,6 +4,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 import { buildBriefItineraryLinesFromTripDays } from '../../trips/utils/trip-prompt-summary.util';
 import { UserStandingPreferenceService } from './user-standing-preference.service';
+import { TripInsightService } from '../../trips/services/trip-insight.service';
+import { TripMetricsService } from '../../trips/services/trip-metrics.service';
 
 /**
  * Enriches `route_and_run` conversation context before orchestration (e.g. active trip summary).
@@ -15,6 +17,8 @@ export class RouteAndRunContextEnricherService {
   constructor(
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly userStandingPreference?: UserStandingPreferenceService,
+    @Optional() private readonly tripInsightService?: TripInsightService,
+    @Optional() private readonly tripMetricsService?: TripMetricsService,
   ) {}
 
   /**
@@ -76,6 +80,7 @@ export class RouteAndRunContextEnricherService {
       if (trip.startDate) lines.push(`开始: ${trip.startDate.toISOString().slice(0, 10)}`);
       if (trip.endDate) lines.push(`结束: ${trip.endDate.toISOString().slice(0, 10)}`);
 
+      lines.push(...await this.buildTripRiskAndMetricLines(tripId));
       lines.push(...buildBriefItineraryLinesFromTripDays(trip.TripDay));
 
       const block = lines.join('\n');
@@ -88,6 +93,61 @@ export class RouteAndRunContextEnricherService {
     } catch (e: any) {
       this.logger.warn(`[ContextEnricher] active_trip_summary failed: ${e?.message ?? e}`);
     }
+  }
+
+  private async buildTripRiskAndMetricLines(tripId: string): Promise<string[]> {
+    const lines: string[] = [];
+    if (this.tripInsightService) {
+      try {
+        const insight = await this.tripInsightService.getInsight(tripId);
+        lines.push(
+          `准备度: status=${insight.readiness.status}, blockers=${insight.readiness.blockers}, must=${insight.readiness.must}, should=${insight.readiness.should}, overall=${insight.overallStatus}`,
+        );
+        const priorityFindings = (insight.findings ?? [])
+          .filter((finding) => finding.type !== 'positive')
+          .slice(0, 3)
+          .map((finding) => `${finding.title}: ${finding.message}`);
+        if (priorityFindings.length > 0) {
+          lines.push('关键发现:');
+          for (const finding of priorityFindings) {
+            lines.push(`- ${finding}`);
+          }
+        }
+      } catch (e: any) {
+        this.logger.debug(`[ContextEnricher] trip insight summary skipped: ${e?.message ?? e}`);
+      }
+    }
+
+    if (this.tripMetricsService) {
+      try {
+        const metrics = await this.tripMetricsService.getTripMetrics(tripId, undefined, {
+          includeConflicts: false,
+        });
+        lines.push(
+          `行程指标: 总驾驶约${metrics.summary.totalDrive}分钟, 日均驾驶约${metrics.summary.averageDrivePerDay}分钟, 总缓冲约${metrics.summary.totalBuffer}分钟, 预算估算=${metrics.summary.totalCost}`,
+        );
+        const conflicts = (metrics.days ?? [])
+          .flatMap((day) =>
+            (day.conflicts ?? []).map((conflict: any) => ({
+              date: day.date,
+              severity: conflict.severity,
+              title: conflict.title,
+              description: conflict.description,
+            })),
+          )
+          .slice(0, 5);
+        if (conflicts.length > 0) {
+          lines.push('日程冲突:');
+          for (const conflict of conflicts) {
+            lines.push(`- ${conflict.date} [${conflict.severity}] ${conflict.title}: ${conflict.description}`);
+          }
+        }
+      } catch (e: any) {
+        this.logger.debug(`[ContextEnricher] trip metrics summary skipped: ${e?.message ?? e}`);
+      }
+    }
+
+    return lines;
   }
 
   /**

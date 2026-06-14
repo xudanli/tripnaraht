@@ -190,6 +190,8 @@ export interface ExternalSignalsState {
   proposedCorridorMigrations?: import('./migration/proposed-corridor-migration.types').ProposedCorridorMigration[];
   /** Progressive micro-repair 建议（非全量 replan） */
   repairEvaluation?: import('./repair/repair-action.types').RepairEvaluationResult;
+  /** Readiness 三人格辩论条件 — Neptune repair 上下文（非权威决策源） */
+  guardianRepairHints?: import('./repair/guardian-repair-hints.types').GuardianRepairHints;
   /**
    * **Ingestion spec**（P8）：合并路由/天气/时间漂移后的逐 leg 输入，用于 **构建** `ExecutionTruthDAG`。
    * P-Next 3：`finalExecutionState` / reliability 由 PhysicsFieldIndex 物化后为 **执行痕迹**，不作为独立决策源。

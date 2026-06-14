@@ -1,6 +1,11 @@
 // src/data-contracts/adapters/weather.adapter.interface.ts
 
-import { WeatherData, WeatherQuery } from '../interfaces/weather.interface';
+import {
+  WeatherDailyForecast,
+  WeatherData,
+  WeatherForecastQuery,
+  WeatherQuery,
+} from '../interfaces/weather.interface';
 
 /**
  * 天气适配器接口
@@ -15,6 +20,9 @@ export interface WeatherAdapter {
    * @returns 天气数据
    */
   getWeather(query: WeatherQuery): Promise<WeatherData>;
+
+  /** 逐日预报（可选；Open-Meteo 等适配器实现） */
+  getDailyForecast?(query: WeatherForecastQuery): Promise<WeatherDailyForecast[]>;
   
   /**
    * 获取适配器支持的国家代码列表

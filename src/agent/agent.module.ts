@@ -55,6 +55,9 @@ import { createWebBrowseActions } from './services/actions/webbrowse.actions';
 import { createRailPassActions } from '../railpass/actions/railpass-agent-actions';
 import { createReadinessActions } from './services/actions/readiness.actions';
 import { ReadinessService } from '../trips/readiness/services/readiness.service';
+import { ReadinessGuardianNegotiationService } from '../trips/readiness/services/readiness-guardian-negotiation.service';
+import { ReadinessCausalPreanalysisService } from '../trips/readiness/services/readiness-causal-preanalysis.service';
+import { ReadinessRepairService } from '../trips/readiness/services/readiness-repair.service';
 import { createPlanningActions } from './services/actions/planning.actions';
 import { createExecutionActions } from './services/actions/execution.actions';
 import { createTripDetailActions } from './services/actions/trip-detail.actions';
@@ -324,6 +327,9 @@ export class AgentModule {
     private feasibilityService?: FeasibilityService,
     private railPassService?: RailPassService,
     private readinessService?: ReadinessService,
+    @Optional() private guardianNegotiationService?: ReadinessGuardianNegotiationService,
+    @Optional() private causalPreanalysisService?: ReadinessCausalPreanalysisService,
+    @Optional() private readinessRepairService?: ReadinessRepairService,
     @Optional() private planningWorkbenchAgent?: PlanningWorkbenchAgentService,
     @Optional() private executionAgent?: ExecutionAgentService,
     @Optional() private tripDetailAgent?: TripDetailAgentService,
@@ -382,7 +388,12 @@ export class AgentModule {
 
     // 注册 Readiness Actions
     if (this.readinessService) {
-      const readinessActions = createReadinessActions(this.readinessService);
+      const readinessActions = createReadinessActions({
+        readinessService: this.readinessService,
+        guardianNegotiationService: this.guardianNegotiationService,
+        causalPreanalysisService: this.causalPreanalysisService,
+        readinessRepairService: this.readinessRepairService,
+      });
       this.actionRegistry.registerMany(readinessActions);
     }
     

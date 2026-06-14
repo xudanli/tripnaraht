@@ -3,6 +3,7 @@ import {
   buildRuntimeExecutionProfileClaudeDynamicAssembly,
   buildRuntimeExecutionProfileDedupReplay,
   buildRuntimeExecutionProfileLegacyAssembly,
+  resolveThinkingModeFromRuntimeProfile,
 } from './runtime-execution-profile.builder';
 
 describe('runtime-execution-profile.builder', () => {
@@ -61,5 +62,41 @@ describe('runtime-execution-profile.builder', () => {
     });
     expect(p.execution.engine).toBe('REACT_ORCHESTRATOR');
     expect(p.observability.orchestration_mode_hint).toBe('LEGACY');
+  });
+
+  it('thinking mode: replay and lightweight QA resolve to fast', () => {
+    const replay = buildRuntimeExecutionProfileDedupReplay('SYSTEM2_REASONING');
+    expect(resolveThinkingModeFromRuntimeProfile(replay)).toBe('fast');
+
+    const qa = buildRuntimeExecutionProfileClaudeDynamicAssembly({
+      compatibilityRoute: RouteType.SYSTEM2_REASONING,
+      lightweightKnowledgeQa: true,
+      isSystem1ExecutorPath: false,
+      routingTaskType: 'DATA_LOOKUP',
+      stepsExecutedLength: 1,
+      heuristicStateMachineRun: false,
+    });
+    expect(resolveThinkingModeFromRuntimeProfile(qa)).toBe('fast');
+  });
+
+  it('thinking mode: planning pipeline resolves to deep', () => {
+    const planning = buildRuntimeExecutionProfileClaudeDynamicAssembly({
+      compatibilityRoute: RouteType.SYSTEM2_REASONING,
+      lightweightKnowledgeQa: false,
+      isSystem1ExecutorPath: false,
+      routingTaskType: 'TRIP_PLANNING',
+      stepsExecutedLength: 4,
+      heuristicStateMachineRun: true,
+    });
+    expect(resolveThinkingModeFromRuntimeProfile(planning)).toBe('deep');
+  });
+
+  it('thinking mode: non-planning System2 reasoning resolves to balanced', () => {
+    const profile = buildRuntimeExecutionProfileLegacyAssembly({
+      compatibilityRoute: RouteType.SYSTEM2_REASONING,
+      toolCalls: 2,
+      browserSteps: 0,
+    });
+    expect(resolveThinkingModeFromRuntimeProfile(profile)).toBe('balanced');
   });
 });

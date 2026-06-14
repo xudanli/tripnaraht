@@ -4,6 +4,7 @@ import type { IntentMode } from '../constants/intent-mode.constants';
 import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 import { isExecutableFlightInventoryQuery } from './flight-inventory-signals.util';
+import { normalizeLiveTools } from './live-tools.util';
 
 /**
  * 任务类型
@@ -28,10 +29,33 @@ export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type ComplexityLevel = 'SIMPLE' | 'MODERATE' | 'COMPLEX';
 
 /**
+ * route_and_run 产品能力面：用于 eval 固定“用户想做哪类事”，不要只看 taskType。
+ */
+export type RouteRunCapability =
+  | 'PLANNING_AND_REVISION'
+  | 'FAST_QA'
+  | 'CRUD_EDIT'
+  | 'SAFETY_NEGOTIATION'
+  | 'DELIVERY'
+  | 'CLARIFICATION';
+
+export type RouteRunActionKind =
+  | 'FULL_TRIP_PLANNING'
+  | 'EXISTING_TRIP_ROUTE_OPTIMIZATION'
+  | 'LOCAL_ITINERARY_EDIT'
+  | 'TRIP_SCOPED_CONSULTATION'
+  | 'BOOKING_OR_DELIVERY_HANDOFF'
+  | 'SAFETY_OR_TRADEOFF_REVIEW'
+  | 'CLARIFICATION_RESPONSE'
+  | 'GENERIC';
+
+/**
  * 路由信号（从请求中提取的信号）
  */
 export interface RoutingSignals {
   taskType: TaskType;
+  capability: RouteRunCapability;
+  actionKind: RouteRunActionKind;
   risk: RiskLevel;
   needsAudit: boolean;
   latencyBudgetMs: number;
@@ -243,12 +267,15 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
   const requiresStructuredOutput = inferRequiresStructuredOutput(taskType, req.trip_id);
   const needsAudit = inferNeedsAudit(taskType, requiresStructuredOutput, options);
   const risk = inferRisk(taskType, msg, msgLower);
+  const { capability, actionKind } = inferRouteRunCapability(req, taskType, msg, msgLower);
 
   const legacyWellSupported = inferLegacyWellSupported(taskType, complexity);
   const intent_mode_resolved = taskTypeToIntentBucket(taskType);
 
   return {
     taskType,
+    capability,
+    actionKind,
     risk,
     needsAudit,
     latencyBudgetMs,
@@ -298,6 +325,69 @@ function clampTaskTypeForBoundTripReplanning(
     return 'TRIP_PLANNING';
   }
   return taskType;
+}
+
+export function isExistingTripRouteOrderOptimizationQuery(
+  tripId: string | null | undefined,
+  msg: string,
+  msgLower = msg.toLowerCase(),
+): boolean {
+  if (!tripId?.trim()) return false;
+  return /(?:优化|调整|重排|重新排序|reorder|optimi[sz]e).{0,24}(?:路线顺序|路线|交通时间|通勤|route\s*order|travel\s*time)|(?:路线顺序|交通时间|通勤|route\s*order|travel\s*time).{0,24}(?:优化|调整|重排|重新排序|reorder|optimi[sz]e)/i.test(
+    `${msg}\n${msgLower}`,
+  );
+}
+
+function isLocalItineraryEditQuery(tripId: string | null | undefined, msg: string, msgLower: string): boolean {
+  if (!tripId?.trim()) return false;
+  return (
+    /(?:删除|删掉|删去|去掉|添加|新增|加上|加入|插入|移动|挪到|放到|换成|替换|改时间|改到).{0,24}(?:景点|地点|POI|行程项|第\s*\d+\s*天|day\s*\d+|酒店|餐厅)/i.test(msg) ||
+    /(?:remove|delete|add|insert|move|replace|change).{0,24}(?:poi|place|stop|item|day\s*\d+|hotel|restaurant)/i.test(msgLower)
+  );
+}
+
+function isSafetyOrTradeoffQuery(msg: string, msgLower: string): boolean {
+  return (
+    /(?:安全|风险|阻断|太赶|疲劳|节奏|协商|权衡|折中|Abu|Dr\.?\s*Dre|Neptune|三人格)/i.test(msg) ||
+    /\b(?:risk|safety|fatigue|trade-?off|negotiate|blocked|too tight)\b/i.test(msgLower)
+  );
+}
+
+function isDeliveryOrBookingHandoffQuery(msg: string, msgLower: string): boolean {
+  return (
+    /(?:地图|日历|PDF|分享|语音|解说|购物车|预订优先级|跳转订|订票链接|deep link|晴雨方案|避坑|住宿健康度)/i.test(msg) ||
+    /\b(?:map|calendar|pdf|share|voice|cart|booking link|deep link|handoff)\b/i.test(msgLower)
+  );
+}
+
+function inferRouteRunCapability(
+  req: RouteAndRunRequestDto,
+  taskType: TaskType,
+  msg: string,
+  msgLower: string,
+): { capability: RouteRunCapability; actionKind: RouteRunActionKind } {
+  if (req.clarification_answers?.length) {
+    return { capability: 'CLARIFICATION', actionKind: 'CLARIFICATION_RESPONSE' };
+  }
+  if (isExistingTripRouteOrderOptimizationQuery(req.trip_id, msg, msgLower)) {
+    return { capability: 'PLANNING_AND_REVISION', actionKind: 'EXISTING_TRIP_ROUTE_OPTIMIZATION' };
+  }
+  if (isLocalItineraryEditQuery(req.trip_id, msg, msgLower) || taskType === 'CRUD') {
+    return { capability: 'CRUD_EDIT', actionKind: 'LOCAL_ITINERARY_EDIT' };
+  }
+  if (isSafetyOrTradeoffQuery(msg, msgLower)) {
+    return { capability: 'SAFETY_NEGOTIATION', actionKind: 'SAFETY_OR_TRADEOFF_REVIEW' };
+  }
+  if (isDeliveryOrBookingHandoffQuery(msg, msgLower) || taskType === 'BOOKING_WORKFLOW') {
+    return { capability: 'DELIVERY', actionKind: 'BOOKING_OR_DELIVERY_HANDOFF' };
+  }
+  if (taskType === 'DATA_LOOKUP' || taskType === 'GENERIC_QA' || taskType === 'RAG_QA') {
+    return { capability: 'FAST_QA', actionKind: 'TRIP_SCOPED_CONSULTATION' };
+  }
+  if (taskType === 'TRIP_PLANNING') {
+    return { capability: 'PLANNING_AND_REVISION', actionKind: 'FULL_TRIP_PLANNING' };
+  }
+  return { capability: 'FAST_QA', actionKind: 'GENERIC' };
 }
 
 /** 与前端 RouteDecision / options.intent_mode 三档对齐 */
@@ -484,7 +574,7 @@ export function shouldEnableLiveWeatherMcpForLightweightRoute(
 ): boolean {
   const rt = routingTaskType;
   if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-  const tools = options?.enable_live_tools ?? [];
+  const tools = normalizeLiveTools(options?.enable_live_tools);
   const liveFacts = options?.intent_flags?.live_facts === true;
   const msg = message ?? '';
   if (tools.includes('weather')) return true;
@@ -1078,10 +1168,13 @@ export function routingSignalsWithResolvedTaskType(
   const requiresStructuredOutput = inferRequiresStructuredOutput(taskType, req.trip_id);
   const needsAudit = inferNeedsAudit(taskType, requiresStructuredOutput, options);
   const risk = inferRisk(taskType, msg, msgLower);
+  const { capability, actionKind } = inferRouteRunCapability(req, taskType, msg, msgLower);
   const legacyWellSupported = inferLegacyWellSupported(taskType, complexity);
   const intent_mode_resolved = taskTypeToIntentBucket(taskType);
   return {
     taskType,
+    capability,
+    actionKind,
     risk,
     needsAudit,
     latencyBudgetMs,

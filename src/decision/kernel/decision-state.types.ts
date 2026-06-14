@@ -425,6 +425,16 @@ export interface OptimizationHints {
   feasibilityProbability?: number;
   /** Phase 2：不确定性概要，用于信念状态判断 */
   uncertaintyProfile?: UncertaintyProfile;
+  /** Monte Carlo / world-model rollout 诊断：说明是否启用、采样预算与跳过原因 */
+  monteCarloDiagnostics?: {
+    enabled: boolean;
+    sampleSize: number;
+    useWorldModelRollout: boolean;
+    rolloutHorizonSteps?: number;
+    reasons: string[];
+    skippedReason?: string;
+    policySource: 'MetaPolicy' | 'Default';
+  };
   /**
    * Kernel fail-safe：当元决策预算不足以支撑高风险优化时，明确给出降级动作。
    * - BLOCK: 禁止继续推进优化（需要用户/外部系统干预）

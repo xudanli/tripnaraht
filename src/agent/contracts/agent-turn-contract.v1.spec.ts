@@ -87,6 +87,20 @@ describe('buildAgentTurnContract', () => {
     expect(c.input.trip_id).toBe('from-camel');
   });
 
+  it('normalizes boolean enable_live_tools to the default live tool set', () => {
+    const request = {
+      request_id: 'r',
+      user_id: 'u',
+      trip_id: 't1',
+      message: '查一下天气和航班',
+      options: { enable_live_tools: true },
+    } as unknown as RouteAndRunRequestDto;
+
+    const c = buildAgentTurnContract({ request, memory: minimalMemory() });
+
+    expect(c.scope.enable_live_tools).toEqual(['weather', 'flight', 'hotel', 'car_rental']);
+  });
+
   it('maps meta client_profile and readonly_mode to tool_policy_tags', () => {
     const request = {
       request_id: 'r',

@@ -18,6 +18,13 @@ import {
   TravelMode,
 } from '../dto/trip-metrics.dto';
 import { TripConflictsService } from './trip-conflicts.service';
+import {
+  aggregateTripAssessmentDays,
+  collectTopSuggestions,
+  pickActionableTopSuggestion,
+  scoreToAssessmentGrade,
+} from '../utils/trip-assessment-aggregate.util';
+import { assessTimingForDay } from '../utils/trip-assessment-timing.util';
 
 @Injectable()
 export class TripMetricsService {
@@ -74,7 +81,11 @@ export class TripMetricsService {
   /**
    * 批量获取多日指标
    */
-  async getTripMetrics(tripId: string, dates?: string[]): Promise<TripMetricsResponseDto> {
+  async getTripMetrics(
+    tripId: string,
+    dates?: string[],
+    options?: { includeConflicts?: boolean },
+  ): Promise<TripMetricsResponseDto> {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
@@ -108,16 +119,22 @@ export class TripMetricsService {
     }
 
     const days: DayMetricsResponseDto[] = [];
+    let previousDayLastItem: any | null = null;
     for (const day of trip.TripDay) {
       const date = DateTime.fromJSDate(day.date).toISODate() || '';
-      const metrics = await this.calculateDayMetrics(day);
-      const conflicts = await this.conflictsService.getDayConflicts(tripId, day.id);
+      const metrics = await this.calculateDayMetrics(day, previousDayLastItem);
+      const conflicts = options?.includeConflicts === false
+        ? []
+        : await this.conflictsService.getDayConflicts(tripId, day.id);
       
       days.push({
         date,
         metrics,
         conflicts: conflicts as any, // ConflictDto 类型兼容，但包含更多字段
       });
+
+      const items = day.ItineraryItem || [];
+      previousDayLastItem = items.length > 0 ? items[items.length - 1] : previousDayLastItem;
     }
 
     const summary = this.calculateSummary(days);
@@ -132,8 +149,12 @@ export class TripMetricsService {
   /**
    * 计算每日指标
    */
-  private async calculateDayMetrics(day: any): Promise<DayMetricsResponseDto['metrics']> {
+  private async calculateDayMetrics(
+    day: any,
+    previousDayLastItem?: any | null,
+  ): Promise<DayMetricsResponseDto['metrics']> {
     const items = day.ItineraryItem || [];
+    const coordinateMap = await this.getPlaceCoordinateMap([previousDayLastItem, ...items]);
     
     let totalWalk = 0; // 公里
     let totalDrive = 0; // 分钟 (兼容旧字段)
@@ -156,14 +177,28 @@ export class TripMetricsService {
       taxi: 0,
     };
 
-    // 使用新的交通信息字段计算
+    // 使用新的交通信息字段计算；字段缺失时用 POI 坐标兜底估算。
+    const travelPairs: Array<{ prev: any; current: any }> = [];
+    if (previousDayLastItem && items.length > 0) {
+      travelPairs.push({ prev: previousDayLastItem, current: items[0] });
+    }
     for (let i = 1; i < items.length; i++) {
-      const current = items[i];
-      const prev = items[i - 1];
+      travelPairs.push({ prev: items[i - 1], current: items[i] });
+    }
 
-      const distance = current.travelFromPreviousDistance || 0; // 米
-      const duration = current.travelFromPreviousDuration || 0; // 分钟
+    for (const pair of travelPairs) {
+      const { prev, current } = pair;
+
+      let distance = current.travelFromPreviousDistance || 0; // 米
       const travelMode = (current.travelMode || 'DRIVING').toUpperCase();
+      if (!distance) {
+        distance = this.estimateDistanceMeters(prev, current, coordinateMap);
+      }
+
+      let duration = current.travelFromPreviousDuration || 0; // 分钟
+      if (!duration && distance > 0) {
+        duration = this.estimateTravelDurationMinutes(distance, travelMode);
+      }
 
       totalDistance += distance;
       totalTravelTime += duration;
@@ -279,6 +314,87 @@ export class TripMetricsService {
       averageWalkPerDay: Math.round((totalWalk / dayCount) * 100) / 100,
       averageDrivePerDay: Math.round(totalDrive / dayCount),
     };
+  }
+
+  private async getPlaceCoordinateMap(items: Array<any | null | undefined>): Promise<Map<number, { lat: number; lng: number }>> {
+    const placeIds = Array.from(
+      new Set(
+        items
+          .map((item) => Number(item?.placeId))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    );
+    if (placeIds.length === 0) {
+      return new Map();
+    }
+
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ id: number; lat: number; lng: number }>>`
+        SELECT id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+        FROM "Place"
+        WHERE id = ANY(${placeIds}::int[]) AND location IS NOT NULL
+      `;
+      return new Map(rows.map((row) => [row.id, { lat: Number(row.lat), lng: Number(row.lng) }]));
+    } catch (error) {
+      this.logger.debug(`Failed to fetch place coordinates for metrics fallback: ${error}`);
+      return new Map();
+    }
+  }
+
+  private estimateDistanceMeters(
+    prev: any,
+    current: any,
+    coordinateMap: Map<number, { lat: number; lng: number }>,
+  ): number {
+    const prevCoords = this.resolveItemCoordinates(prev, coordinateMap);
+    const currentCoords = this.resolveItemCoordinates(current, coordinateMap);
+    if (!prevCoords || !currentCoords) {
+      return 0;
+    }
+    return Math.round(
+      this.haversineDistance(prevCoords.lat, prevCoords.lng, currentCoords.lat, currentCoords.lng) * 1000,
+    );
+  }
+
+  private resolveItemCoordinates(
+    item: any,
+    coordinateMap: Map<number, { lat: number; lng: number }>,
+  ): { lat: number; lng: number } | null {
+    if (!item) {
+      return null;
+    }
+    const placeId = Number(item.placeId);
+    if (Number.isInteger(placeId) && coordinateMap.has(placeId)) {
+      return coordinateMap.get(placeId)!;
+    }
+    const metadata = item.Place?.metadata as any;
+    const candidates = [
+      item.coordinates,
+      metadata?.coordinates,
+      metadata?.location,
+      item.Place?.coordinates,
+    ];
+    for (const candidate of candidates) {
+      const lat = Number(candidate?.lat ?? candidate?.latitude);
+      const lng = Number(candidate?.lng ?? candidate?.lon ?? candidate?.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { lat, lng };
+      }
+    }
+    return null;
+  }
+
+  private estimateTravelDurationMinutes(distanceMeters: number, travelMode: string): number {
+    const distanceKm = distanceMeters / 1000;
+    const speedKmh =
+      travelMode === 'WALKING' ? 4.5 :
+      travelMode === 'BICYCLE' ? 15 :
+      travelMode === 'TRAIN' ? 80 :
+      travelMode === 'FLIGHT' ? 500 :
+      travelMode === 'FERRY' ? 35 :
+      travelMode === 'TRANSIT' ? 35 :
+      60;
+    return Math.max(1, Math.round((distanceKm / speedKmh) * 60));
   }
 
   /**
@@ -399,71 +515,45 @@ export class TripMetricsService {
     const coordsMap = await this.getPlaceCoordinatesMap(placeIds as number[]);
 
     const days: DayAssessmentDto[] = [];
-    let reasonableDays = 0;
-    let needsAttentionDays = 0;
-    let hasIssuesDays = 0;
-    let unplannedDays = 0;
-
     const totalTripDays = trip.TripDay.length;
 
     for (let i = 0; i < trip.TripDay.length; i++) {
       const day = trip.TripDay[i];
       const isFirstDay = i === 0;
       const isLastDay = i === totalTripDays - 1;
-      
+
       const assessment = await this.assessDay(day, enrichedDto, coordsMap, isFirstDay, isLastDay);
       days.push(assessment);
-
-      switch (assessment.status) {
-        case AssessmentStatus.REASONABLE:
-          reasonableDays++;
-          break;
-        case AssessmentStatus.NEEDS_ATTENTION:
-          needsAttentionDays++;
-          break;
-        case AssessmentStatus.HAS_ISSUES:
-          hasIssuesDays++;
-          break;
-        case AssessmentStatus.UNPLANNED:
-          unplannedDays++;
-          break;
-      }
     }
 
-    const totalDays = days.length;
-    // 合理率仅计算已规划的日期
-    const plannedDays = totalDays - unplannedDays;
-    const overallReasonableRate = plannedDays > 0
-      ? Math.round((reasonableDays / plannedDays) * 100)
-      : 100;
-
-    // 计算平均分（仅计算有分数的日期）
-    const scoredDays = days.filter(d => d.overallScore !== null);
-    const avgScore = scoredDays.length > 0
-      ? scoredDays.reduce((sum, d) => sum + (d.overallScore || 0), 0) / scoredDays.length
-      : 100;
-    const overallGrade = this.scoreToGrade(avgScore);
-
-    // 收集所有问题和建议
-    const allSuggestions: string[] = [];
-    for (const day of days) {
-      if (day.topSuggestion && !allSuggestions.includes(day.topSuggestion)) {
-        allSuggestions.push(day.topSuggestion);
-      }
-    }
+    const aggregate = aggregateTripAssessmentDays(days);
+    const overallGrade = scoreToAssessmentGrade(aggregate.overallAverageScore);
 
     return {
       tripId,
-      totalDays,
-      reasonableDays,
-      needsAttentionDays,
-      hasIssuesDays,
-      unplannedDays,
-      overallReasonableRate,
+      totalDays: days.length,
+      reasonableDays: aggregate.reasonableDays,
+      needsAttentionDays: aggregate.needsAttentionDays,
+      hasIssuesDays: aggregate.hasIssuesDays,
+      unplannedDays: aggregate.unplannedDays,
+      restDays: aggregate.restDays,
+      plannedDays: aggregate.plannedDays,
+      overallReasonableRate: aggregate.overallReasonableRate,
+      overallAverageScore: aggregate.overallAverageScore,
+      daysPassRate: aggregate.daysPassRate,
       overallGrade,
+      effectiveTravelMode: travelMode,
       days,
-      summary: this.generateTripSummaryV2(days, reasonableDays, needsAttentionDays, hasIssuesDays, unplannedDays),
-      topSuggestions: allSuggestions.slice(0, 5),
+      summary: this.generateTripSummaryV2(
+        days,
+        aggregate.reasonableDays,
+        aggregate.needsAttentionDays,
+        aggregate.hasIssuesDays,
+        aggregate.unplannedDays,
+        aggregate.restDays,
+        aggregate.plannedDays,
+      ),
+      topSuggestions: collectTopSuggestions(days),
     };
   }
 
@@ -534,8 +624,8 @@ export class TripMetricsService {
 
     const dimensions: DimensionAssessmentDto[] = [];
 
-    // 1. 时间安排评估
-    dimensions.push(this.assessTiming(items, dto));
+    // 1. 时间安排评估（到达/离开日宽松阈值）
+    dimensions.push(assessTimingForDay(items, dto, dayType));
 
     // 获取出行方式，默认公共交通
     const travelMode = dto.travelMode || TravelMode.PUBLIC_TRANSIT;
@@ -588,9 +678,13 @@ export class TripMetricsService {
     const criticalIssueCount = dimensions.filter(d => d.grade === AssessmentGrade.BAD).length;
     const warningCount = dimensions.filter(d => d.grade === AssessmentGrade.POOR || d.grade === AssessmentGrade.FAIR).length;
 
-    // 找出最需要改进的维度
     const worstDimension = [...dimensions].sort((a, b) => a.score - b.score)[0];
-    const topSuggestion = worstDimension?.suggestions?.[0];
+    const topSuggestion = pickActionableTopSuggestion({
+      overallScore,
+      status,
+      worstDimensionScore: worstDimension?.score ?? 100,
+      suggestion: worstDimension?.suggestions?.[0],
+    });
 
     return {
       date,
@@ -670,89 +764,6 @@ export class TripMetricsService {
     if (score >= 75) return AssessmentStatus.REASONABLE;
     if (score >= 50) return AssessmentStatus.NEEDS_ATTENTION;
     return AssessmentStatus.HAS_ISSUES;
-  }
-
-  /**
-   * 评估时间安排
-   */
-  private assessTiming(items: any[], dto: AssessTripRequestDto): DimensionAssessmentDto {
-    const issues: string[] = [];
-    const suggestions: string[] = [];
-    let score = 100;
-
-    if (items.length === 0) {
-      return {
-        dimension: AssessmentDimension.TIMING,
-        name: '时间安排',
-        score: 100,
-        grade: AssessmentGrade.EXCELLENT,
-        passed: true,
-        description: '当天无活动安排',
-      };
-    }
-
-    // 获取第一个和最后一个活动的时间
-    const firstItem = items.find((i: any) => i.startTime);
-    const lastItem = [...items].reverse().find((i: any) => i.endTime);
-
-    if (firstItem?.startTime) {
-      const startHour = DateTime.fromJSDate(firstItem.startTime).hour;
-      
-      // 根据偏好调整阈值
-      const earlyThreshold = dto.pacingPreference === 'intensive' ? 6 : 7;
-      
-      if (startHour < earlyThreshold) {
-        score -= 20;
-        issues.push(`第一个活动开始过早 (${startHour}:00)`);
-        suggestions.push('建议将第一个活动推迟到 8:00 后');
-      } else if (startHour < 8) {
-        score -= 10;
-        issues.push(`第一个活动开始较早 (${startHour}:00)`);
-      }
-    }
-
-    if (lastItem?.endTime) {
-      const endHour = DateTime.fromJSDate(lastItem.endTime).hour;
-      const endMinute = DateTime.fromJSDate(lastItem.endTime).minute;
-      
-      // 根据偏好调整阈值
-      const lateThreshold = dto.pacingPreference === 'relaxed' ? 21 : 22;
-      
-      if (endHour >= 23 || (endHour === 22 && endMinute > 30)) {
-        score -= 25;
-        issues.push(`最后活动结束过晚 (${endHour}:${endMinute.toString().padStart(2, '0')})`);
-        suggestions.push('建议将最后活动提前，确保 22:00 前结束');
-      } else if (endHour >= lateThreshold) {
-        score -= 10;
-        issues.push(`最后活动结束较晚 (${endHour}:${endMinute.toString().padStart(2, '0')})`);
-      }
-    }
-
-    // 检查活动时间跨度
-    if (firstItem?.startTime && lastItem?.endTime) {
-      const start = DateTime.fromJSDate(firstItem.startTime);
-      const end = DateTime.fromJSDate(lastItem.endTime);
-      const spanHours = end.diff(start, 'hours').hours;
-
-      const maxSpan = dto.pacingPreference === 'relaxed' ? 10 : (dto.pacingPreference === 'intensive' ? 14 : 12);
-      
-      if (spanHours > maxSpan) {
-        score -= 15;
-        issues.push(`活动时间跨度过长 (${Math.round(spanHours)} 小时)`);
-        suggestions.push(`建议控制每日活动时间跨度在 ${maxSpan} 小时内`);
-      }
-    }
-
-    return {
-      dimension: AssessmentDimension.TIMING,
-      name: '时间安排',
-      score: Math.max(0, score),
-      grade: this.scoreToGrade(Math.max(0, score)),
-      passed: score >= 60,
-      description: issues.length === 0 ? '时间安排合理' : `发现 ${issues.length} 个时间问题`,
-      issues: issues.length > 0 ? issues : undefined,
-      suggestions: suggestions.length > 0 ? suggestions : undefined,
-    };
   }
 
   /**
@@ -1063,7 +1074,9 @@ export class TripMetricsService {
     reasonableDays: number,
     needsAttentionDays: number,
     hasIssuesDays: number,
-    unplannedDays: number
+    unplannedDays: number,
+    restDays: number,
+    plannedDays: number,
   ): string {
     const totalDays = days.length;
 
@@ -1071,12 +1084,20 @@ export class TripMetricsService {
       return '行程尚未开始规划，请为每天添加活动。';
     }
 
+    if (plannedDays === 0) {
+      return restDays > 0
+        ? `当前 ${restDays} 天为休息日，尚未安排有效游览活动。`
+        : '行程尚未开始规划，请为每天添加活动。';
+    }
+
     if (unplannedDays > 0) {
-      return `还有 ${unplannedDays} 天尚未规划，已规划的 ${totalDays - unplannedDays} 天中 ${reasonableDays} 天安排合理。`;
+      const restHint = restDays > 0 ? `（另有 ${restDays} 天为休息日）` : '';
+      return `还有 ${unplannedDays} 天尚未规划，已有效规划的 ${plannedDays} 天中 ${reasonableDays} 天安排合理${restHint}。`;
     }
 
     if (hasIssuesDays === 0 && needsAttentionDays === 0) {
-      return '行程整体安排合理，每日活动都经过了良好的规划。';
+      const restHint = restDays > 0 ? `（含 ${restDays} 天休息日）` : '';
+      return `行程整体安排合理，有效规划日都经过了良好的评估${restHint}。`;
     }
 
     if (hasIssuesDays === 0) {
@@ -1525,4 +1546,3 @@ export class TripMetricsService {
   }
 
 }
-

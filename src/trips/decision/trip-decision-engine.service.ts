@@ -163,6 +163,7 @@ import { buildUnifiedConstraintGraph } from './constraint-graph/build-unified-co
 import { reduceSemanticRuntimeView } from './execution/semantic-runtime-reducer';
 import type { WorldConstraintStoreSnapshot } from '../../world/world-snapshot';
 import { evaluateMinimalRepairs } from './repair/repair-evaluator';
+import { mapGuardianRepairsToChosenActions } from './repair/guardian-repair-applier.util';
 import type { AuroraNightObservationSignal } from './signals/aurora-night-signals.types';
 import {
   buildAuroraNightObservationSignal,
@@ -2751,11 +2752,17 @@ export class TripDecisionEngineService {
         slotId: t.slotId,
         details: t.details,
       })),
-      chosenActions: repaired.changedSlotIds.map(id => ({
-        actionType: 'swap',
-        reasonCodes: ['MIN_EDIT_REPAIR'],
-        payload: { slotId: id },
-      })),
+      chosenActions: [
+        ...mapGuardianRepairsToChosenActions(
+          state.signals.repairEvaluation?.repairs,
+          repaired.guardianAppliedRepairIds ?? [],
+        ),
+        ...repaired.changedSlotIds.map((id) => ({
+          actionType: 'swap' as const,
+          reasonCodes: ['MIN_EDIT_REPAIR'],
+          payload: { slotId: id },
+        })),
+      ],
       diff: {
         changedSlots: repaired.changedSlotIds.length,
         movedSlots: 0,
@@ -2787,6 +2794,9 @@ export class TripDecisionEngineService {
       } : undefined,
       ...(state.signals.opsOperationalGovernance
         ? { opsOperationalGovernance: state.signals.opsOperationalGovernance }
+        : {}),
+      ...(state.signals.guardianRepairHints
+        ? { guardianRepairHints: state.signals.guardianRepairHints }
         : {}),
     };
 

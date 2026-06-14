@@ -86,6 +86,9 @@ fi
 ao_p1=0
 npm run test:ao-p1-contract || ao_p1=1
 
+readiness_health=0
+npm run test:readiness-alignment || readiness_health=1
+
 execution_os_stability=0
 execution_os_stability_skipped="false"
 if [ "${READINESS_P1_SKIP_EXECUTION_OS_STABILITY:-}" = "1" ]; then
@@ -117,7 +120,7 @@ fi
 if [ "${READINESS_P1_SKIP_TYPECHECK_TRIPS:-}" != "1" ] && [ "$typecheck_trips" -ne 0 ]; then
   overall=1
 fi
-if [ "$build" -ne 0 ] || [ "$ao_p0" -ne 0 ] || [ "$decision_os" -ne 0 ] || [ "$td_p0" -ne 0 ] || [ "$ao_p1" -ne 0 ]; then
+if [ "$build" -ne 0 ] || [ "$ao_p0" -ne 0 ] || [ "$decision_os" -ne 0 ] || [ "$td_p0" -ne 0 ] || [ "$ao_p1" -ne 0 ] || [ "$readiness_health" -ne 0 ]; then
   overall=1
 fi
 if [ "$execution_os_stability_skipped" != "true" ] && [ "$execution_os_stability" -ne 0 ]; then
@@ -189,6 +192,7 @@ printf '%s\n' "{
     \"test_td_p0\": { \"exitCode\": $td_p0 },
     $td_replay_block,
     \"test_ao_p1_contract\": { \"exitCode\": $ao_p1 },
+    \"test_readiness_alignment\": { \"exitCode\": $readiness_health },
     $execution_os_block,
     $cid_block
   },

@@ -15,6 +15,8 @@ export type DecisionTrigger =
   | 'initial_generate'
   | 'user_edit'
   | 'signal_update'        // weather / alerts update
+  | 'weather_update'       // readiness repair: explicit weather refresh
+  | 'traffic_change'       // readiness repair: road / route change
   | 'availability_update'  // opening hours / inventory change
   | 'time_overrun'
   | 'budget_overrun'
@@ -266,5 +268,8 @@ export interface DecisionRunLog {
     };
     violations?: Array<{ code: string; severity: string; message: string }>;
   };
+
+  /** Readiness 修复：三人格辩论条件快照（审计 / UI） */
+  guardianRepairHints?: import('./repair/guardian-repair-hints.types').GuardianRepairHints;
 }
 
