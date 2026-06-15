@@ -31,6 +31,7 @@ export enum TrajectorySegment {
 /** Canonical travel event type names (Phase 2 foundation). */
 export enum TravelEventType {
   TRIP_LIFECYCLE_STATE_CHANGED = 'trip.lifecycle.state_changed',
+  TRIP_LIFECYCLE_TRANSITION_REJECTED = 'trip.lifecycle.transition_rejected',
 }
 
 /** Event source namespace for persisted travel events. */

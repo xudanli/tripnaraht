@@ -81,6 +81,42 @@ describe('TravelEventSubscriberService', () => {
     persistenceService.persist.mockRejectedValueOnce(new Error('persist failed'));
 
     await expect(
+      subscriber.handleTripTransitionRejected({
+        type: DecisionEventType.TRIP_TRANSITION_REJECTED,
+        timestamp: new Date().toISOString(),
+        tripId: 'trip-123',
+        currentStatus: 'CANCELLED',
+        attemptedStatus: 'PLANNING',
+        reason: '不允许从 CANCELLED 转换到 PLANNING',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('persists TRIP_TRANSITION_REJECTED via subscriber', async () => {
+    eventEmitter.tripTransitionRejected(
+      'trip-123',
+      'CANCELLED',
+      'PLANNING',
+      '不允许从 CANCELLED 转换到 PLANNING',
+      ['计划确认'],
+      'user-1',
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(persistenceService.persist).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: TravelEventType.TRIP_LIFECYCLE_TRANSITION_REJECTED,
+        segment: TrajectorySegment.STATE,
+        metadata: expect.objectContaining({ verification: 'verified' }),
+      }),
+    );
+  });
+
+  it('fail-open when state-changed persistence throws', async () => {
+    persistenceService.persist.mockRejectedValueOnce(new Error('persist failed'));
+
+    await expect(
       subscriber.handleTripStateChanged({
         type: DecisionEventType.TRIP_STATE_CHANGED,
         timestamp: new Date().toISOString(),

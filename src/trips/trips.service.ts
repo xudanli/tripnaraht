@@ -745,14 +745,17 @@ export class TripsService {
    * @throws BadRequestException 如果状态转换不合法
    */
   private validateStatusTransition(
+    tripId: string,
     currentStatus: string | null,
     newStatus: TripStatus,
     context?: any,
+    userId?: string,
   ): void {
     this.tripLifecycleValidator.validateTransitionOrThrow(
       currentStatus,
       newStatus,
       context,
+      { tripId, userId },
     );
   }
 
@@ -823,7 +826,13 @@ export class TripsService {
       });
 
       // 验证状态转换
-      this.validateStatusTransition(existingTrip.status, dto.status, tripContext);
+      this.validateStatusTransition(
+        id,
+        existingTrip.status,
+        dto.status,
+        tripContext,
+        userId,
+      );
 
       // 归一化当前状态和新状态，用于比较实际变化
       const normalizedCurrent = normalizeTripStatus(existingTrip.status);

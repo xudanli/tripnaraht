@@ -1,6 +1,7 @@
 import {
   DecisionEventType,
   type TripStateChangedEvent,
+  type TripTransitionRejectedEvent,
 } from '../decision/optimization/events/decision-events';
 import {
   TravelEventSource,
@@ -11,6 +12,7 @@ import {
 } from './types/travel-event.types';
 import {
   buildTripStateChangedIdempotencyKey,
+  buildTripTransitionRejectedIdempotencyKey,
   eventIdFromIdempotencyKey,
 } from './travel-event-idempotency.util';
 
@@ -57,6 +59,40 @@ export function buildTripStateChangedEnvelope(
     timestamp: event.timestamp,
     metadata: {
       decisionEventType: DecisionEventType.TRIP_STATE_CHANGED,
+    },
+    idempotencyKey,
+  });
+}
+
+/**
+ * Map an in-process TRIP_TRANSITION_REJECTED decision event to a durable travel event envelope.
+ */
+export function buildTripTransitionRejectedEnvelope(
+  event: TripTransitionRejectedEvent,
+): TravelEventEnvelope {
+  const idempotencyKey = buildTripTransitionRejectedIdempotencyKey(event);
+  const payload: Record<string, unknown> = {
+    currentStatus: event.currentStatus,
+    attemptedStatus: event.attemptedStatus,
+    reason: event.reason,
+  };
+
+  if (event.missingConditions && event.missingConditions.length > 0) {
+    payload.missingConditions = event.missingConditions;
+  }
+
+  return buildTravelEventEnvelope({
+    tripId: event.tripId,
+    segment: TrajectorySegment.STATE,
+    eventType: TravelEventType.TRIP_LIFECYCLE_TRANSITION_REJECTED,
+    source: TravelEventSource.TRIP_LIFECYCLE,
+    payload,
+    userId: event.userId,
+    requestId: event.requestId,
+    timestamp: event.timestamp,
+    metadata: {
+      decisionEventType: DecisionEventType.TRIP_TRANSITION_REJECTED,
+      verification: 'verified',
     },
     idempotencyKey,
   });

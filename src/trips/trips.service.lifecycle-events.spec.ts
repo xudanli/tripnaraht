@@ -45,7 +45,7 @@ describe('TripsService lifecycle event integration', () => {
       {} as any,
       {} as any,
       {} as any,
-      new TripLifecycleValidatorService(),
+      new TripLifecycleValidatorService(eventEmitter),
       eventEmitter,
     );
 

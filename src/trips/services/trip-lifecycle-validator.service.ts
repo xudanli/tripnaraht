@@ -10,9 +10,10 @@
  * - 可扩展：支持未来添加更多状态和转换规则
  */
 
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { TripStatus, normalizeTripStatus } from '../dto/trip-status.dto';
 import { Trip } from '@prisma/client';
+import { DecisionEventEmitter } from '../decision/optimization/events/decision-events';
 
 /**
  * 状态转换验证结果
@@ -61,6 +62,14 @@ export interface TripContext {
 }
 
 /**
+ * Context required to emit lifecycle rejection events.
+ */
+export interface TransitionRejectionContext {
+  tripId: string;
+  userId?: string;
+}
+
+/**
  * 从 Trip 实体提取上下文
  */
 export function extractTripContext(trip: Trip): TripContext {
@@ -83,6 +92,10 @@ export function extractTripContext(trip: Trip): TripContext {
 @Injectable()
 export class TripLifecycleValidatorService {
   private readonly logger = new Logger(TripLifecycleValidatorService.name);
+
+  constructor(
+    @Optional() private readonly decisionEventEmitter?: DecisionEventEmitter,
+  ) {}
 
   /**
    * 验证状态转换
@@ -436,12 +449,49 @@ export class TripLifecycleValidatorService {
     currentStatus: string | null,
     newStatus: TripStatus,
     context?: TripContext,
+    rejectionContext?: TransitionRejectionContext,
   ): void {
     const result = this.validateTransition(currentStatus, newStatus, context);
 
     if (!result.allowed) {
+      this.emitTransitionRejected(
+        result,
+        currentStatus,
+        newStatus,
+        rejectionContext,
+      );
       throw new BadRequestException(
         result.reason || '状态转换不被允许',
+      );
+    }
+  }
+
+  private emitTransitionRejected(
+    result: TransitionValidationResult,
+    currentStatus: string | null,
+    newStatus: TripStatus,
+    rejectionContext?: TransitionRejectionContext,
+  ): void {
+    if (!this.decisionEventEmitter || !rejectionContext?.tripId) {
+      return;
+    }
+
+    const normalizedCurrent = normalizeTripStatus(currentStatus);
+    const normalizedAttempted = normalizeTripStatus(newStatus);
+
+    try {
+      this.decisionEventEmitter.tripTransitionRejected(
+        rejectionContext.tripId,
+        normalizedCurrent,
+        normalizedAttempted,
+        result.reason || '状态转换不被允许',
+        result.missingConditions,
+        rejectionContext.userId,
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `[TripLifecycle] Failed to emit TRIP_TRANSITION_REJECTED for trip ${rejectionContext.tripId}: ${message}`,
       );
     }
   }
