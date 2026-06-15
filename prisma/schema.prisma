@@ -652,8 +652,32 @@ model Trip {
   TripFindingMark        TripFindingMark[]
   TripPackingListItem    TripPackingListItem[]
   TripSuggestionState    TripSuggestionState[]
+  TravelEvent            TravelEvent[]
 
   @@index([status])
+}
+
+/// Append-only travel trajectory event store (Phase 2 foundation).
+model TravelEvent {
+  id             String   @id @db.Text
+  tripId         String   @map("trip_id") @db.Text
+  eventType      String   @map("event_type") @db.Text
+  segment        String   @db.Text
+  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
+  recordedAt     DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  actorUserId    String?  @map("actor_user_id") @db.Text
+  requestId      String?  @map("request_id") @db.Text
+  source         String   @default("trip.lifecycle") @db.Text
+  schemaVersion  Int      @default(1) @map("schema_version")
+  payload        Json
+  metadata       Json?
+  idempotencyKey String   @unique @map("idempotency_key") @db.Text
+  Trip           Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, occurredAt(sort: Desc)])
+  @@index([tripId, eventType, occurredAt(sort: Desc)])
+  @@index([segment, occurredAt(sort: Desc)])
+  @@map("travel_events")
 }
 
 /// 持久化建议状态（用于 AssistantCenter 建议列表/角标）

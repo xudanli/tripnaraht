@@ -4793,9 +4793,13 @@ export class TripsController {
     description: '请求参数错误（统一响应格式）',
     type: ApiErrorResponseDto,
   })
-  async update(@Param('id') id: string, @Body() dto: UpdateTripDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTripDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
     try {
-      const trip = await this.tripsService.update(id, dto);
+      const trip = await this.tripsService.update(id, dto, user?.userId);
       return successResponse(trip);
     } catch (error: any) {
       if (error instanceof NotFoundException) {

@@ -18,7 +18,10 @@ export enum DecisionEventType {
   DECISION_STARTED = 'decision.started',
   DECISION_COMPLETED = 'decision.completed',
   DECISION_FAILED = 'decision.failed',
-  
+
+  // Trip 生命周期事件
+  TRIP_STATE_CHANGED = 'trip.state.changed',
+
   // DSO 状态
   DSO_CREATED = 'dso.created',
   DSO_UPDATED = 'dso.updated',
@@ -78,6 +81,14 @@ export interface DecisionFailedEvent extends BaseEvent {
   type: DecisionEventType.DECISION_FAILED;
   error: string;
   errorCode?: string;
+}
+
+export interface TripStateChangedEvent extends BaseEvent {
+  type: DecisionEventType.TRIP_STATE_CHANGED;
+  tripId: string;
+  previousStatus: string;
+  newStatus: string;
+  userId?: string;
 }
 
 export interface DSOSnapshotEvent extends BaseEvent {
@@ -150,6 +161,7 @@ export type DecisionEvent =
   | DecisionStartedEvent
   | DecisionCompletedEvent
   | DecisionFailedEvent
+  | TripStateChangedEvent
   | DSOSnapshotEvent
   | FeedbackReceivedEvent
   | LearningTriggeredEvent
@@ -329,6 +341,17 @@ export class DecisionEventEmitter {
       userId,
       error,
       errorCode,
+    });
+  }
+
+  tripStateChanged(tripId: string, previousStatus: string, newStatus: string, userId?: string): void {
+    this.eventBus.emit<TripStateChangedEvent>({
+      type: DecisionEventType.TRIP_STATE_CHANGED,
+      timestamp: new Date().toISOString(),
+      tripId,
+      previousStatus,
+      newStatus,
+      userId,
     });
   }
 

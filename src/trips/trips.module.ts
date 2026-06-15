@@ -69,9 +69,13 @@ import { RealWorldExecutionService } from './services/real-world-execution.servi
 import { RealityGovernanceService } from './services/reality-governance.service';
 import { CityDigitalTwinService } from './services/city-digital-twin.service';
 import { StubRealityApiService } from './services/stub-reality-api.service';
+import { TripLifecycleValidatorService } from './services/trip-lifecycle-validator.service';
+import { DecisionOSModule } from './decision/optimization/decision-os.module';
+import { TravelEventPersistenceService } from './event-store/travel-event-persistence.service';
+import { TravelEventSubscriberService } from './event-store/travel-event-subscriber.service';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, DecisionOSModule.forFeature({ enableEventSourcing: true })], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
@@ -123,6 +127,9 @@ import { StubRealityApiService } from './services/stub-reality-api.service';
     EvidenceFetchTaskService,
     NLConversationContextService,
     SolverService,
+    TripLifecycleValidatorService,
+    TravelEventPersistenceService,
+    TravelEventSubscriberService,
   ],
   exports: [
     WorldKernelService,

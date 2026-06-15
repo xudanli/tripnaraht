@@ -3,7 +3,7 @@ import { Injectable, BadRequestException, NotFoundException, ForbiddenException,
 import { PrismaService } from '../prisma/prisma.service';
 import { Place } from '@prisma/client';
 import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
-import { TripStatus } from './dto/trip-status.dto';
+import { TripStatus, normalizeTripStatus } from './dto/trip-status.dto';
 import { DateTime } from 'luxon';
 import { PacingCalculator } from './utils/pacing-calculator.util';
 import { FlightPriceService } from './services/flight-price.service';
@@ -51,6 +51,8 @@ import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persis
 import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { DecisionState } from '../decision/kernel/decision-state.types';
 import { reasonCodesDisplayZh } from '../agent/utils/decision-log-user-facing.zh.util';
+import { TripLifecycleValidatorService, extractTripContext } from './services/trip-lifecycle-validator.service';
+import { DecisionEventEmitter } from './decision/optimization/events/decision-events';
 
 @Injectable()
 export class TripsService {
@@ -181,6 +183,8 @@ export class TripsService {
     private evidenceFiltering: EvidenceFilteringService,
     private evidenceCompletenessChecker: EvidenceCompletenessChecker,
     private evidenceTrigger: EvidenceTriggerService,
+    private tripLifecycleValidator: TripLifecycleValidatorService,
+    private decisionEventEmitter: DecisionEventEmitter,
     private bookingComIntegration?: BookingComIntegrationService,
     @Optional() private routeDirectionsService?: RouteDirectionsService,
     @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private dsoFeedbackPersistence?: IDsoFeedbackPersistence,
@@ -732,36 +736,24 @@ export class TripsService {
 
   /**
    * 验证状态转换是否合法
-   * 
+   *
+   * 使用 TripLifecycleValidatorService 进行正向验证
+   *
    * @param currentStatus 当前状态
    * @param newStatus 新状态
+   * @param context Trip 上下文（可选）
    * @throws BadRequestException 如果状态转换不合法
    */
-  private validateStatusTransition(currentStatus: string | null, newStatus: TripStatus): void {
-    // 如果当前状态为空，允许设置为任何状态
-    if (!currentStatus) {
-      return;
-    }
-
-    // 已取消的行程不能改回其他状态
-    if (currentStatus === TripStatus.CANCELLED) {
-      throw new BadRequestException('已取消的行程不能修改状态');
-    }
-
-    // 已完成的行程不能改回规划中或进行中
-    if (currentStatus === TripStatus.COMPLETED && 
-        (newStatus === TripStatus.PLANNING || newStatus === TripStatus.IN_PROGRESS)) {
-      throw new BadRequestException('已完成的行程不能改回规划中或进行中状态');
-    }
-
-    // 进行中的行程不能改回规划中
-    // 决策：禁止 IN_PROGRESS → PLANNING，避免数据混乱
-    // 参考：.claude/product-decisions/trip-detail-page-key-decisions.md
-    if (currentStatus === TripStatus.IN_PROGRESS && newStatus === TripStatus.PLANNING) {
-      throw new BadRequestException('进行中的行程不能改回规划中状态。如需重新规划，请使用规划工作台功能');
-    }
-
-    // 其他状态转换都是允许的
+  private validateStatusTransition(
+    currentStatus: string | null,
+    newStatus: TripStatus,
+    context?: any,
+  ): void {
+    this.tripLifecycleValidator.validateTransitionOrThrow(
+      currentStatus,
+      newStatus,
+      context,
+    );
   }
 
   /**
@@ -771,7 +763,7 @@ export class TripsService {
    * @param dto 更新数据（部分字段）
    * @returns 更新后的行程
    */
-  async update(id: string, dto: Partial<CreateTripDto>) {
+  async update(id: string, dto: Partial<CreateTripDto>, userId?: string) {
     // 验证行程存在
     const existingTrip = await this.prisma.trip.findUnique({
       where: { id },
@@ -819,9 +811,27 @@ export class TripsService {
     }
 
     // 处理状态更新
+    let statusChanged = false;
+    let previousStatus: string | null = null;
+    let newStatus: string | null = null;
+
     if (dto.status !== undefined) {
+      // 使用合并后的 Trip 上下文，允许同一次更新补齐条件并推进状态
+      const tripContext = extractTripContext({
+        ...existingTrip,
+        ...updateData,
+      });
+
       // 验证状态转换
-      this.validateStatusTransition(existingTrip.status, dto.status);
+      this.validateStatusTransition(existingTrip.status, dto.status, tripContext);
+
+      // 归一化当前状态和新状态，用于比较实际变化
+      const normalizedCurrent = normalizeTripStatus(existingTrip.status);
+      const normalizedNew = normalizeTripStatus(dto.status);
+
+      statusChanged = normalizedCurrent !== normalizedNew;
+      previousStatus = existingTrip.status || TripStatus.DRAFT;
+      newStatus = dto.status;
       updateData.status = dto.status;
     }
 
@@ -920,6 +930,21 @@ export class TripsService {
 
       return tripWithDays;
     });
+
+    if (statusChanged && previousStatus && newStatus) {
+      try {
+        this.decisionEventEmitter.tripStateChanged(
+          id,
+          previousStatus,
+          newStatus,
+          userId,
+        );
+      } catch (eventError) {
+        this.logger.warn(
+          `[TripLifecycle] Failed to emit TRIP_STATE_CHANGED event for trip ${id}: ${eventError}`,
+        );
+      }
+    }
 
     return await this.enrichTripData(updatedTrip);
   }
