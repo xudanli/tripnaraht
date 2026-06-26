@@ -5,14 +5,15 @@
  * 规划工作台 API 接口
  */
 
-import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery, ApiExtraModels, getSchemaPath } from '@nestjs/swagger';
 import { PlanningWorkbenchAgentService, PlanningWorkbenchRequest } from './services/planning-workbench-agent.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { BudgetEvaluationService } from '../trips/services/budget-evaluation.service';
 import { TripBudgetService, BudgetConstraint } from '../trips/services/trip-budget.service';
+import type { BudgetStructure, TripBudgetIntent } from '../trips/budget-os/types/trip-budget-os.types';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataSourceRouterService } from '../data-contracts/services/data-source-router.service';
@@ -22,8 +23,13 @@ import { PlacesService } from '../places/places.service';
 import { EvidenceFetchTaskService } from '../trips/services/evidence-fetch-task.service';
 import { PlanningWorkbenchTaskService } from './services/planning-workbench-task.service';
 import { TripSuggestionsService } from '../trips/services/trip-suggestions.service';
+import { TripWishService } from '../trips/wishlist/services/trip-wish.service';
+import { TripDomainInfluenceService } from '../trips/domain-influence/services/trip-domain-influence.service';
+import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
+import { PersonaShellOutputDto, GuardianPersonaPresentationDto } from './dto/guardian-persona.dto';
 
 @ApiTags('planning-workbench')
+@ApiExtraModels(PersonaShellOutputDto, GuardianPersonaPresentationDto)
 @Controller('planning-workbench')
 export class PlanningWorkbenchController {
   private readonly logger = new Logger(PlanningWorkbenchController.name);
@@ -39,6 +45,8 @@ export class PlanningWorkbenchController {
     @Optional() private readonly evidenceFetchTaskService?: EvidenceFetchTaskService,
     @Optional() private readonly planningWorkbenchTaskService?: PlanningWorkbenchTaskService,
     @Optional() private readonly tripSuggestionsService?: TripSuggestionsService,
+    @Optional() private readonly tripWishService?: TripWishService,
+    @Optional() private readonly tripDomainInfluenceService?: TripDomainInfluenceService,
   ) {}
 
   /**
@@ -113,13 +121,10 @@ export class PlanningWorkbenchController {
             uiOutput: {
               type: 'object',
               properties: {
-                personas: {
-                  type: 'object',
-                  properties: {
-                    abu: { type: 'object' },
-                    drdre: { type: 'object' },
-                    neptune: { type: 'object' },
-                  },
+                personas: { $ref: getSchemaPath(PersonaShellOutputDto) },
+                presentation: {
+                  description: '单主角表达别名 — 与 uiOutput.personas.presentation 相同',
+                  allOf: [{ $ref: getSchemaPath(GuardianPersonaPresentationDto) }],
                 },
                 consolidatedDecision: {
                   type: 'object',
@@ -211,6 +216,58 @@ export class PlanningWorkbenchController {
     try {
       const result = await this.planningWorkbenchAgent.getTripWorkbench(tripId);
       return successResponse(result);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 愿望单摘要（工作台「私密想法」徽标 + 各天影响计数）
+   */
+  @Public()
+  @Get('trips/:tripId/wish-summary')
+  @ApiOperation({
+    summary: '获取行程愿望单摘要',
+    description: '供规划工作台展示私密愿望数量与各天偏好影响计数',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  async getTripWishSummary(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      if (!this.tripWishService) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'TripWishService 未注入');
+      }
+      const userId = this.resolveWishUserId(user);
+      const summary = await this.tripWishService.getWishSummary(tripId, userId);
+      return successResponse(summary);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 行程领域分解（右侧栏：认领状态 + 影响力权重）
+   */
+  @Public()
+  @Get('trips/:tripId/domain-breakdown')
+  @ApiOperation({
+    summary: '获取行程领域影响力分解',
+    description: '供规划工作台右侧栏展示领域认领、团队认可度与决策权重',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  async getTripDomainBreakdown(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      if (!this.tripDomainInfluenceService) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'TripDomainInfluenceService 未注入');
+      }
+      const userId = this.resolveWishUserId(user);
+      const sidebar = await this.tripDomainInfluenceService.getWorkbenchSidebar(tripId, userId);
+      return successResponse(sidebar);
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
@@ -523,8 +580,11 @@ export class PlanningWorkbenchController {
       food: number;
       activities: number;
       other: number;
+      experience?: number;
     };
     budgetConstraint: BudgetConstraint;
+    budgetIntent?: TripBudgetIntent;
+    budgetStructure?: BudgetStructure;
   }) {
     try {
       const result = await this.budgetEvaluationService.evaluateBudget({
@@ -533,6 +593,8 @@ export class PlanningWorkbenchController {
         estimatedCost: body.estimatedCost,
         categoryBreakdown: body.categoryBreakdown,
         budgetConstraint: body.budgetConstraint,
+        budgetIntent: body.budgetIntent,
+        budgetStructure: body.budgetStructure,
       });
       return successResponse(result);
     } catch (error: any) {
@@ -2032,5 +2094,15 @@ export class PlanningWorkbenchController {
       // 不重新抛出错误，因为这是异步任务，错误已经在 catch 中处理
       // throw error;
     }
+  }
+
+  private resolveWishUserId(user?: CurrentUserPayload): string {
+    if (user?.userId) {
+      return user.userId;
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      return 'anonymous-dev-user';
+    }
+    throw new UnauthorizedException('未认证或 token 无效');
   }
 }

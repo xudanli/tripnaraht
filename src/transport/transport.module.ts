@@ -9,6 +9,7 @@ import { LocationDetectorService } from './services/location-detector.service';
 import { SmartRoutesService } from './services/smart-routes.service';
 import { RouteCacheService } from './services/route-cache.service';
 import { TravelTimeEstimatorService } from './services/travel-time-estimator.service';
+import { SelfHostedRoutingService } from './services/self-hosted-routing.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisService } from '../redis/redis.service';
@@ -52,6 +53,7 @@ class MockRedisService {
     AmapRoutesService,
     LocationDetectorService,
     SmartRoutesService,
+    SelfHostedRoutingService,
     RouteCacheService,
     TravelTimeEstimatorService,
   ],
@@ -59,9 +61,10 @@ class MockRedisService {
     TransportDecisionService,
     TransportRoutingService,
     SmartRoutesService, // 导出智能路由服务
+    GoogleRoutesService,
+    SelfHostedRoutingService,
     RouteCacheService, // 导出路线缓存服务
     TravelTimeEstimatorService, // 统一交通时间估算（与 getDayTravelInfo 对齐）
   ],
 })
 export class TransportModule {}
-

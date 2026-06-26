@@ -8,6 +8,12 @@ import { TransitSegment } from '../interfaces/transit-segment.interface';
 import { DefaultCostModelInstance } from './cost-model.service';
 import { HpSimulatorService } from './hp-simulator.service';
 import {
+  shiftScheduleEarlier as shiftScheduleEarlierUtil,
+  swapWithNeighborPoi as swapWithNeighborPoiUtil,
+} from '../utils/what-if-schedule-transform.util';
+import { expandWhatIfTransforms } from './what-if-transformers';
+import { enrichWhatIfReport } from '../../trips/causal-runtime/what-if-intervention.builder';
+import {
   withinTimeWindowForEvaluation,
   getEntryDeadlineInfoForEvaluation,
   DayOfWeek,
@@ -173,7 +179,9 @@ export type OptimizationSuggestion =
       reason: string;
     }
   | { type: 'REORDER_AVOID_WAIT'; poiId: string; reason: string }
-  | { type: 'UPGRADE_TRANSIT'; poiId: string; reason: string };
+  | { type: 'UPGRADE_TRANSIT'; poiId: string; reason: string }
+  | { type: 'REMOVE_OPTIONAL'; poiId: string; reason: string }
+  | { type: 'ADD_BUFFER'; poiId: string; minutes: number; reason: string };
 
 /**
  * What-If 候选方案
@@ -231,6 +239,10 @@ export interface WhatIfCandidate {
   >;
   /** V2 预埋：候选操作类型 */
   action?: WhatIfAction;
+  /** P1: 标准化干预对象（Causal Travel Runtime） */
+  intervention?: import('../../trips/causal-runtime/trip-intervention.types').TripIntervention;
+  /** P1: 因果变量投影（用于 trust-surface / 审计） */
+  causalProjection?: import('../../trips/causal-runtime/what-if-intervention.types').WhatIfCausalProjection;
 }
 
 /**
@@ -240,6 +252,8 @@ export type WhatIfAction =
   | { type: 'SHIFT_EARLIER'; poiId: string; minutes: number }
   | { type: 'SWAP_NEIGHBOR'; poiId: string; direction: 'PREV' | 'NEXT' }
   | { type: 'UPGRADE_TRANSIT'; segmentId: string; mode: 'TAXI' | 'EXPRESS' }
+  | { type: 'REMOVE_ITEM'; poiId: string }
+  | { type: 'ADD_BUFFER'; poiId: string; minutes: number }
   | {
       type: 'AUTO_REPLAN';
       trigger: 'MISS' | 'EXCESSIVE_WAIT';
@@ -323,6 +337,20 @@ export interface WhatIfReport {
   };
   /** 评估元数据（预算策略、seed 等） */
   meta: WhatIfReportMeta;
+  /** P1: 推荐干预（winner 的标准化表示） */
+  recommendedIntervention?: import('../../trips/causal-runtime/trip-intervention.types').TripIntervention;
+  /** P1: 顶层因果假设摘要 */
+  causalHypothesis?: {
+    failureMode: string;
+    causalChain: string[];
+    baseMissProb: number;
+    projectedMissProb: number;
+    missDeltaPp?: number;
+  };
+  /** P2: 冰岛 domain 因果评估（当 region=IS 且提供上下文时） */
+  icelandAssessment?: import('../../trips/causal-runtime/domains/iceland-self-drive-causal.types').IcelandSelfDriveCausalOutput;
+  /** P2: 用户可读结论（优先冰岛 narrative） */
+  userFacingAssessment?: string;
 }
 
 /**
@@ -1060,6 +1088,15 @@ export class RobustnessEvaluatorService {
           reason: `入场裕量偏紧（P90=${slack.slackP90Min.toFixed(0)}min），主要受${dtText}约束`,
         });
 
+        if (minutes >= 20 && minutes <= 50) {
+          suggestions.push({
+            type: 'ADD_BUFFER',
+            poiId: slack.poiId,
+            minutes: Math.min(30, minutes),
+            reason: `在关键活动前增加缓冲以吸收交通/天气波动`,
+          });
+        }
+
         // 若要提前太多（比如 > 60），提示考虑升级交通
         if (minutes >= 60) {
           suggestions.push({
@@ -1109,72 +1146,17 @@ export class RobustnessEvaluatorService {
   private shiftScheduleEarlier(
     schedule: DayScheduleResult,
     poiId: string,
-    minutes: number
+    minutes: number,
   ): DayScheduleResult {
-    const delta = Math.max(0, Math.floor(minutes));
-
-    if (delta === 0) return schedule;
-
-    // 找到 poi 在 stops 中的位置
-    const idx = schedule.stops.findIndex(
-      (s) => s.kind === 'POI' && s.id === poiId
-    );
-
-    if (idx < 0) return schedule;
-
-    // 从 idx 开始所有 stop 的 start/end 前移 delta（不动之前前缀）
-    const stops = schedule.stops.map((s, i) => {
-      if (i < idx) return s;
-
-      return {
-        ...s,
-        startMin: Math.max(0, s.startMin - delta),
-        endMin: Math.max(0, s.endMin - delta),
-        // transitIn 通常表示"到该 stop 的段"，它会跟着 stop 时间移动，不必改 duration
-        // 若你有"绝对时刻"字段（如 departAt），也同步前移
-      };
-    });
-
-    return { ...schedule, stops };
+    return shiftScheduleEarlierUtil(schedule, poiId, minutes);
   }
 
-  /**
-   * 和相邻一个 POI 换序（用于降低 WAIT）
-   * 
-   * 适合处理 WAIT 概率高（分段营业）的建议
-   * 
-   * V1 交换的是 stop 节点，不重建时间轴，评估结果用于方向性对比。
-   */
   private swapWithNeighborPoi(
     schedule: DayScheduleResult,
     poiId: string,
-    direction: 'PREV' | 'NEXT'
+    direction: 'PREV' | 'NEXT',
   ): DayScheduleResult {
-    const stops = [...schedule.stops];
-
-    const idx = stops.findIndex((s) => s.kind === 'POI' && s.id === poiId);
-
-    if (idx < 0) return schedule;
-
-    // 找相邻的 POI（跨过 REST/MEAL/TRANSFER 也可以；V1 只找最近的 POI）
-    const step = direction === 'PREV' ? -1 : 1;
-    let j = idx + step;
-
-    while (j >= 0 && j < stops.length && stops[j].kind !== 'POI') {
-      j += step;
-    }
-
-    if (j < 0 || j >= stops.length) return schedule;
-
-    // 交换两个 stop 的位置（保持其他 stop 不变）
-    const tmp = stops[idx];
-    stops[idx] = stops[j];
-    stops[j] = tmp;
-
-    // ⚠️ 交换后 start/end 时刻可能不再"连续"，V1 处理：保留原 start/end（最小扰动）
-    // 更严谨做法是重建时间轴（V2 做）
-
-    return { ...schedule, stops };
+    return swapWithNeighborPoiUtil(schedule, poiId, direction);
   }
 
   /**
@@ -1549,6 +1531,8 @@ export class RobustnessEvaluatorService {
       candidateSamples?: number;
       confirmSamples?: number;
     };
+    /** P2: 冰岛 wind→P90→miss 因果上下文（可选） */
+    icelandAssessment?: import('../../trips/causal-runtime/domains/iceland-self-drive-causal.types').IcelandSelfDriveCausalOutput;
   }): Promise<WhatIfReport> {
     const {
       policy,
@@ -1629,139 +1613,58 @@ export class RobustnessEvaluatorService {
       score: number;
     }> = [];
 
-    for (const s of top) {
-      if (s.type === 'SHIFT_EARLIER') {
-        const schedule2 = this.shiftScheduleEarlier(
-          baseSchedule,
-          s.poiId,
-          s.minutes
-        );
+    const transforms = expandWhatIfTransforms(baseSchedule, top);
 
-        const structureSig = this.getScheduleStructureSignature(schedule2);
-        if (seenStructureSigs.has(structureSig)) continue; // 结构去重
+    for (const transform of transforms) {
+      const schedule2 = transform.schedule;
+      const structureSig = this.getScheduleStructureSignature(schedule2);
+      if (seenStructureSigs.has(structureSig)) continue;
 
-        // 有效性筛选
-        const valid = this.isValidCandidate(schedule2, baseSchedule);
-        if (!valid.valid) continue; // 跳过无效候选
+      const valid = this.isValidCandidate(schedule2, baseSchedule);
+      if (!valid.valid && transform.action.type !== 'SWAP_NEIGHBOR') continue;
 
-        const candidateId = `SHIFT:${s.poiId}:${s.minutes}`;
-        const candidateSeed = this.getSeedForCandidate(baseSeed, candidateId);
+      const candidateSeed = this.getSeedForCandidate(baseSeed, transform.candidateId);
 
-        const metrics2 = this.evaluateDayRobustness({
-          policy,
-          schedule: schedule2,
-          dayEndMin,
-          dateISO,
-          dayOfWeek,
-          poiLookup,
-          config: {
-            samples: candidateSamples, // ✅ 同预算
-            seed: candidateSeed, // ✅ 派生 seed
-          },
-        });
+      const metrics2 = this.evaluateDayRobustness({
+        policy,
+        schedule: schedule2,
+        dayEndMin,
+        dateISO,
+        dayOfWeek,
+        poiLookup,
+        config: {
+          samples: candidateSamples,
+          seed: candidateSeed,
+        },
+      });
 
-        const deltaSummary = this.calculateDeltaSummary(metrics2, baseMetrics);
-        const action: WhatIfAction = {
-          type: 'SHIFT_EARLIER',
-          poiId: s.poiId,
-          minutes: s.minutes,
-        };
-        const impactCost = this.calculateImpactCost(schedule2, baseSchedule, action);
-        const confidence = this.calculateConfidence(deltaSummary);
-        const explainTopDrivers = this.calculateExplainTopDrivers(deltaSummary);
+      const deltaSummary = this.calculateDeltaSummary(metrics2, baseMetrics);
+      const action = transform.action;
+      const impactCost = this.calculateImpactCost(schedule2, baseSchedule, action);
+      const confidence = this.calculateConfidence(deltaSummary);
+      const explainTopDrivers = this.calculateExplainTopDrivers(deltaSummary);
 
-        const candidate: WhatIfCandidate = {
-          id: candidateId,
-          title: `提前 ${s.minutes} 分钟`,
-          description: `${s.poiId} 前移 ${s.minutes} 分钟（最小扰动）${valid.reason ? `（${valid.reason}）` : ''}`,
-          schedule: schedule2,
-          metrics: metrics2,
-          deltaSummary,
-          scheduleWarnings: valid.warnings,
-          impactCost,
-          confidence,
-          explainTopDrivers,
-          action,
-        };
+      const candidate: WhatIfCandidate = {
+        id: transform.candidateId,
+        title: transform.title,
+        description: `${transform.description}${valid.reason ? `（${valid.reason}）` : ''}`,
+        schedule: schedule2,
+        metrics: metrics2,
+        deltaSummary,
+        scheduleWarnings: valid.warnings,
+        impactCost,
+        confidence,
+        explainTopDrivers,
+        action,
+      };
 
-        seenStructureSigs.add(structureSig);
-        candidatePool.push({
-          candidate,
-          action,
-          signature: structureSig,
-          score: 0, // 后续计算
-        });
-      }
-
-      if (s.type === 'REORDER_AVOID_WAIT') {
-        // V1 做两个：和前一个 POI 换 / 和后一个换
-        const prev = this.swapWithNeighborPoi(baseSchedule, s.poiId, 'PREV');
-        const next = this.swapWithNeighborPoi(baseSchedule, s.poiId, 'NEXT');
-
-        const swaps = [
-          { schedule: prev, direction: 'PREV' as const },
-          { schedule: next, direction: 'NEXT' as const },
-        ];
-
-        for (const swap of swaps) {
-          const structureSig = this.getScheduleStructureSignature(swap.schedule);
-          if (seenStructureSigs.has(structureSig)) continue; // 结构去重
-
-          // 有效性筛选（SWAP 可能时间轴不连续，但仍可评估）
-          const valid = this.isValidCandidate(swap.schedule, baseSchedule);
-
-          const candidateId = `SWAP_${swap.direction}:${s.poiId}`;
-          const candidateSeed = this.getSeedForCandidate(baseSeed, candidateId);
-
-          const metrics2 = this.evaluateDayRobustness({
-            policy,
-            schedule: swap.schedule,
-            dayEndMin,
-            dateISO,
-            dayOfWeek,
-            poiLookup,
-            config: {
-              samples: candidateSamples, // ✅ 同预算
-              seed: candidateSeed, // ✅ 派生 seed
-            },
-          });
-
-          const deltaSummary = this.calculateDeltaSummary(metrics2, baseMetrics);
-          const action: WhatIfAction = {
-            type: 'SWAP_NEIGHBOR',
-            poiId: s.poiId,
-            direction: swap.direction,
-          };
-          const impactCost = this.calculateImpactCost(swap.schedule, baseSchedule, action);
-          const confidence = this.calculateConfidence(deltaSummary);
-          const explainTopDrivers = this.calculateExplainTopDrivers(deltaSummary);
-
-          const candidate: WhatIfCandidate = {
-            id: candidateId,
-            title:
-              swap.direction === 'PREV'
-                ? '换序（与前一个 POI 交换）'
-                : '换序（与后一个 POI 交换）',
-            description: `尝试通过换序降低等待风险（分段营业/午休）${valid.reason ? `（${valid.reason}）` : ''}`,
-            schedule: swap.schedule,
-            metrics: metrics2,
-            deltaSummary,
-            scheduleWarnings: valid.warnings,
-            impactCost,
-            confidence,
-            explainTopDrivers,
-            action,
-          };
-
-          seenStructureSigs.add(structureSig);
-          candidatePool.push({
-            candidate,
-            action,
-            signature: structureSig,
-            score: 0,
-          });
-        }
-      }
+      seenStructureSigs.add(structureSig);
+      candidatePool.push({
+        candidate,
+        action,
+        signature: structureSig,
+        score: 0,
+      });
     }
 
     // 计算评分
@@ -1887,13 +1790,16 @@ export class RobustnessEvaluatorService {
     }
 
     // ===== 10) Output report =====
-    return {
-      base,
-      candidates,
-      winnerId: winner?.id,
-      riskWarning,
-      meta, // ✅ 使用已计算的 meta
-    };
+    return enrichWhatIfReport(
+      {
+        base,
+        candidates,
+        winnerId: winner?.id,
+        riskWarning,
+        meta,
+      },
+      { icelandAssessment: args.icelandAssessment },
+    );
   }
 
   /**

@@ -13,6 +13,28 @@ describe('trip-readiness-relevance', () => {
     expect(getTripReadinessPhase(start)).toBe('planning');
   });
 
+  it('classifies TRAVELING status as in_trip regardless of calendar', () => {
+    const start = new Date();
+    start.setDate(start.getDate() + 30);
+    expect(getTripReadinessPhase(start, { status: 'TRAVELING' })).toBe('in_trip');
+  });
+
+  it('classifies mid-trip calendar window as in_trip', () => {
+    const start = new Date();
+    start.setDate(start.getDate() - 2);
+    const end = new Date();
+    end.setDate(end.getDate() + 3);
+    expect(getTripReadinessPhase(start, { endDate: end })).toBe('in_trip');
+  });
+
+  it('classifies after trip end as past', () => {
+    const start = new Date();
+    start.setDate(start.getDate() - 10);
+    const end = new Date();
+    end.setDate(end.getDate() - 2);
+    expect(getTripReadinessPhase(start, { endDate: end })).toBe('past');
+  });
+
   it('treats departure-day road checks as live-only risks', () => {
     expect(
       isActionableLiveRisk({

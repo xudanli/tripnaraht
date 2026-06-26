@@ -1,11 +1,13 @@
-# Phase 3: Multi-Agent Negotiation + Learnable Weights
+# Phase 3: Negotiation + Learnable Weights
 
 ## 概述
 
-Phase 3 实现 TripNARA 的**物种跃迁**：
+Phase 3 在 **Decision Runtime 责任席位** 之上提供两类能力（详见 [`docs/guardian-persona-architecture.md`](../guardian-persona-architecture.md)）：
 
-1. **多智能体协商系统**：Abu/Dre/Neptune 从"策略模块"升级为"推理人格"，可以辩论、协商、投票
-2. **可学习权重**：目标函数权重从固定配置升级为从用户反馈自动学习
+1. **价值协商（Mode 2）**：Abu / Dr.Dre / Neptune 对**软约束与价值取舍**给出立场；**硬约束不可投票**（`guardian-decision-policy.util.ts`）
+2. **可学习权重**：目标函数权重从用户反馈学习
+
+> **注意**：默认路径是 Mode 1 **顺序编排**（`StrategyOrchestratorService`），不是每次「三人开会」。协商仅用于无唯一正确答案的取舍问题。
 
 ## 系统架构
 

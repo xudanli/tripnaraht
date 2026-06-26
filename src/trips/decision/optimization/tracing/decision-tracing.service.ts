@@ -9,7 +9,7 @@
  * - 错误追踪
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 
 // ========== 类型定义 ==========
 
@@ -99,7 +99,7 @@ export class DecisionTracingService {
   private readonly config: TracerConfig;
   private readonly exportBuffer: Span[] = [];
 
-  constructor(config?: Partial<TracerConfig>) {
+  constructor(@Optional() config?: Partial<TracerConfig>) {
     this.config = {
       serviceName: config?.serviceName ?? 'decision-os',
       serviceVersion: config?.serviceVersion ?? '2.0.0',

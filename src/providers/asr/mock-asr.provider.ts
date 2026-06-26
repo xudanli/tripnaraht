@@ -5,26 +5,29 @@ import { AsrProvider, AsrResult } from './asr.provider.interface';
 
 /**
  * Mock ASR Provider（用于开发和测试）
+ * 可通过 WISH_MOCK_STT_TRANSCRIPT 覆盖默认转写文本（愿望单语音联调）
  */
 @Injectable()
 export class MockAsrProvider implements AsrProvider {
   async transcribe(
     audioBuffer: Buffer,
-    options?: { language?: string; format?: string }
+    options?: { language?: string; format?: string },
   ): Promise<AsrResult> {
-    // 模拟转写延迟
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
-    // 返回模拟结果
+    const transcript =
+      process.env.WISH_MOCK_STT_TRANSCRIPT?.trim() ||
+      '想住一晚玻璃屋看极光，行程不要太赶。';
+
     return {
-      transcript: '下一站是哪里？',
-      words: [
-        { word: '下一站', start: 0.0, end: 0.5 },
-        { word: '是', start: 0.5, end: 0.7 },
-        { word: '哪里', start: 0.7, end: 1.2 },
-      ],
+      transcript,
+      words: transcript.split(/\s+/).map((word, index) => ({
+        word,
+        start: index * 0.4,
+        end: (index + 1) * 0.4,
+      })),
       language: options?.language || 'zh-CN',
-      confidence: 0.95,
+      confidence: 0.9,
     };
   }
 }

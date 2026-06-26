@@ -2,9 +2,12 @@ import {
   applyCausalPreAnalysisToWorldState,
   buildReadinessCausalPreanalysis,
   buildReadinessCascadeUiHints,
+  buildCausalPreanalysisForTopBlocker,
   inferTriggerFromBlocker,
   mergeCausalPreAnalysisSnapshot,
+  resolveCausalPreanalysisTrigger,
 } from './readiness-causal-preanalysis.util';
+import { ViolationCode } from '../../../domain/ontology/validator/physical-validator.constants';
 import type { ReadinessScoreFinding } from '../types/coverage-map.types';
 
 describe('readiness-causal-preanalysis', () => {
@@ -38,6 +41,68 @@ describe('readiness-causal-preanalysis', () => {
     const trigger = inferTriggerFromBlocker(transportBlocker);
     expect(trigger?.factType).toBe('ROAD');
     expect((trigger?.value as any)?.metadata?.isFroad).toBe(true);
+  });
+
+  it('prefers physical violation bridge over blocker text heuristic', () => {
+    const trigger = resolveCausalPreanalysisTrigger({
+      physicalViolations: [
+        {
+          code: ViolationCode.SEGMENT_ROAD_CLOSED,
+          severity: 'BLOCK',
+          detail: 'F-road F208 closed',
+        },
+      ],
+      physicalContext: { evaluatedAt: '2026-07-01T09:00:00.000Z', segmentId: 'seg-f208' },
+      blocker: {
+        id: 'generic-blocker',
+        type: 'blocker',
+        category: 'schedule',
+        message: 'schedule too tight',
+        severity: 'medium',
+      },
+    });
+
+    expect(trigger?.factType).toBe('ROAD');
+    expect(trigger?.source).toBe('physical_validator');
+    expect(trigger?.entityRef.id).toBe('seg-f208');
+  });
+
+  it('builds preanalysis from physical violations without blocker text', () => {
+    const result = buildReadinessCausalPreanalysis({
+      tripId: 'trip-1',
+      physicalViolations: [
+        {
+          code: ViolationCode.SEGMENT_SEASONALLY_CLOSED,
+          severity: 'BLOCK',
+          detail: 'F-road F208 seasonal closure',
+        },
+      ],
+      physicalContext: { evaluatedAt: '2026-07-01T09:00:00.000Z' },
+      itineraryItems,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.trigger.source).toBe('physical_validator');
+    expect(result!.impact.affected.length).toBeGreaterThan(0);
+    expect(result!.impact.affected[0].cascadeConfidence).toBeDefined();
+  });
+
+  it('buildCausalPreanalysisForTopBlocker works with physical snapshot only', () => {
+    const result = buildCausalPreanalysisForTopBlocker({
+      tripId: 'trip-1',
+      findings: [],
+      itineraryItems,
+      physicalViolations: [
+        {
+          code: ViolationCode.SEGMENT_ROAD_CLOSED,
+          severity: 'BLOCK',
+          detail: 'F-road F208 closed',
+        },
+      ],
+      physicalContext: { segmentId: 'seg-f208', evaluatedAt: '2026-07-01T09:00:00.000Z' },
+    });
+    expect(result).not.toBeNull();
+    expect(result!.trigger.source).toBe('physical_validator');
   });
 
   it('builds preanalysis with downstream affected nodes', () => {
@@ -75,6 +140,10 @@ describe('readiness-causal-preanalysis', () => {
     const hints = buildReadinessCascadeUiHints(result);
     expect(hints.length).toBeGreaterThan(0);
     expect(hints[0].riskLevel).toBeDefined();
+    expect(hints[0].triggerFactType).toBe('ROAD');
+    expect(hints[0].triggerSource).toBe('readiness_blocker');
+    expect(hints[0].cascadeConfidence).toBeGreaterThan(0);
+    expect(hints[0].propagationHop).toBeGreaterThanOrEqual(0);
   });
 
   it('applies alerts to world state signals', () => {

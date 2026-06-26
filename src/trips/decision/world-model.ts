@@ -288,11 +288,19 @@ export interface ExternalSignalsState {
   /**
    * Policy → Plan → Execution 因果骨架（append-only；每元素一次 generate_plan / repair_plan tick）。
    */
-  decisionCausalityChain?: import('../reality-kernel/decision-causality.types').DecisionCausalityRecordV0[];
+  decisionCausalityChain?: import('../causal-runtime/decision-causality-v1.types').DecisionCausalityRecord[];
   /** 当前 tick 草稿 — gate 通过后写入，返回计划前冲刷入 `decisionCausalityChain` */
   _decisionCausalityDraft?: import('../reality-kernel/decision-causality.types').DecisionCausalityDraftPayload;
   /** 最近一次写入因果链的 `causality_id`（供 outcome / telemetry 关联） */
   lastDecisionCausalityId?: string;
+  /** P2: 冰岛自驾因果评估（wind → P90 → miss prob + 用户可读结论） */
+  icelandSelfDriveCausalAssessment?: import('../causal-runtime/domains/iceland-self-drive-causal.types').IcelandSelfDriveCausalOutput;
+  /** P3: 三人格共享因果投影（Abu / Dr.Dre / Neptune 叙事唯一来源） */
+  causalPersonaProjection?: import('../causal-runtime/persona/causal-persona-projection.types').CausalPersonaProjection;
+  /** P5: Iceland wind→miss online calibration from observed outcomes */
+  icelandCausalCalibration?: import('../causal-runtime/domains/iceland-causal-calibration.types').IcelandCausalCalibration;
+  /** P5: Latest counterfactual closure report (observe → revise seed) */
+  causalCounterfactualSnapshot?: import('../causal-runtime/counterfactual/causal-counterfactual.types').CausalCounterfactualSnapshot;
   alerts?: Array<{ code: string; severity: 'info'|'warn'|'critical'; message: string }>;
   lastUpdatedAt: ISODatetime;
 }

@@ -1,13 +1,20 @@
 // src/trips/services/trip-extended.service.ts
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTripShareDto, SharePermission } from '../dto/trip-share.dto';
 import { AddCollaboratorDto } from '../dto/trip-collaborator.dto';
 import { randomUUID } from 'crypto';
+import { TripStatus } from '../dto/trip-status.dto';
+import { InTripMorningPackService } from '../in-trip-execution/services/in-trip-morning-pack.service';
+import { ProjectMembershipService } from '../../identity-governance/services/project-membership.service';
 
 @Injectable()
 export class TripExtendedService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private readonly inTripMorningPack?: InTripMorningPackService,
+    @Optional() private readonly projectMembership?: ProjectMembershipService,
+  ) {}
 
   /**
    * 创建行程分享
@@ -30,6 +37,7 @@ export class TripExtendedService {
         shareToken,
         permission: dto.permission || SharePermission.VIEW,
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        updatedAt: new Date(),
       } as any,
     });
 
@@ -60,6 +68,7 @@ export class TripExtendedService {
     // 通过邮箱查找用户
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
+      select: { id: true, email: true, displayName: true },
     });
 
     if (!user) {
@@ -87,13 +96,27 @@ export class TripExtendedService {
         tripId: tripId as any,
         userId: user.id,
         role: dto.role,
+        updatedAt: new Date(),
       } as any,
     });
+
+    // PDI-4: 成员加入后初始化决策画像调查状态
+    await this.prisma.tripDecisionProfilingStatus.upsert({
+      where: { tripId_userId: { tripId, userId: user.id } },
+      create: { tripId, userId: user.id },
+      update: {},
+    });
+
+    if (this.projectMembership) {
+      await this.projectMembership.syncFromCollaborator(tripId, user.id, dto.role);
+    }
 
     return {
       id: collaborator.id,
       tripId: collaborator.tripId,
       userId: collaborator.userId,
+      email: user.email ?? null,
+      displayName: user.displayName ?? null,
       role: collaborator.role,
       createdAt: collaborator.createdAt,
     };
@@ -271,13 +294,28 @@ export class TripExtendedService {
       orderBy: { createdAt: 'asc' },
     });
 
-    return collaborators.map(c => ({
-      id: c.id,
-      tripId: c.tripId,
-      userId: c.userId,
-      role: c.role,
-      createdAt: c.createdAt,
-    }));
+    const userIds = [...new Set(collaborators.map((c) => c.userId))];
+    const users =
+      userIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, email: true, displayName: true },
+          })
+        : [];
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    return collaborators.map((c) => {
+      const user = userById.get(c.userId);
+      return {
+        id: c.id,
+        tripId: c.tripId,
+        userId: c.userId,
+        email: user?.email ?? null,
+        displayName: user?.displayName ?? null,
+        role: c.role,
+        createdAt: c.createdAt,
+      };
+    });
   }
 
   /**
@@ -504,7 +542,7 @@ export class TripExtendedService {
     }
 
     // 构建离线数据包
-    const offlinePack = {
+    const offlinePack: Record<string, unknown> = {
       trip: {
         id: trip.id,
         destination: trip.destination,
@@ -535,6 +573,13 @@ export class TripExtendedService {
       })),
       exportedAt: new Date().toISOString(),
     };
+
+    if (trip.status === TripStatus.TRAVELING && this.inTripMorningPack) {
+      const inTripMorning = await this.inTripMorningPack.buildForTrip(tripId);
+      if (inTripMorning) {
+        offlinePack.inTripMorning = inTripMorning;
+      }
+    }
 
     // 保存或更新离线数据包
     const pack = await this.prisma.tripOfflinePack.upsert({

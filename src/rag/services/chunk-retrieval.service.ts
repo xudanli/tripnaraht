@@ -9,6 +9,7 @@ import { QueryExpansionService } from './query-expansion.service';
 import { QueryIntentService } from './query-intent.service';
 import { RedisService } from '../../redis/redis.service';
 import { ParallelExecutorService } from './parallel-executor.service';
+import { HybridSearchConfigService } from './hybrid-search-config.service';
 import { expandChunkCategoryForRetrievalFilter } from '../../knowledge-base/chunk-category-derive';
 
 function parseChunkUpdatedAt(v: Date | string | null | undefined): Date | undefined {
@@ -149,16 +150,22 @@ export class ChunkRetrievalService {
   private readonly resultCache = new Map<string, {
     results: ChunkRetrievalResult[];
     timestamp: number;
+    version: number; // 缓存版本号，用于一致性检查
   }>();
   private readonly l1CacheTtl = 5 * 60 * 1000; // 5分钟
   private readonly l2CacheTtl = 15 * 60 * 1000; // 15分钟
   private readonly cacheKeyPrefix = 'rag_result:';
+  private cacheVersion = 0; // 全局缓存版本，用于批量失效
 
   /**
    * Phase 1.2 优化: In-Flight Request Deduplication
    * 避免并发请求重复检索
    */
-  private readonly inFlightRetrievals = new Map<string, Promise<ChunkRetrievalResult[]>>();
+  private readonly inFlightRetrievals = new Map<string, {
+    promise: Promise<ChunkRetrievalResult[]>;
+    timestamp: number;
+  }>();
+  private readonly inFlightTimeout = 30 * 1000; // 30秒超时清理
 
   constructor(
     private readonly prisma: PrismaService,
@@ -169,15 +176,22 @@ export class ChunkRetrievalService {
     @Optional() private readonly queryIntentService?: QueryIntentService,
     @Optional() private readonly redisService?: RedisService,
     @Optional() private readonly parallelExecutor?: ParallelExecutorService,
+    @Optional() private readonly hybridSearchConfig?: HybridSearchConfigService,
   ) {
     if (this.redisService) {
       this.logger.log('✅ RAG 结果缓存已启用（Redis）');
     } else {
       this.logger.log('⚠️ RAG 结果缓存使用内存缓存（Redis 不可用）');
     }
-    
+
     if (this.parallelExecutor) {
       this.logger.log('✅ 批量检索优化已启用');
+    }
+
+    if (this.hybridSearchConfig) {
+      this.logger.log('✅ Hybrid Search 动态权重配置已启用');
+    } else {
+      this.logger.log('⚠️ Hybrid Search 使用默认权重');
     }
   }
 
@@ -195,15 +209,16 @@ export class ChunkRetrievalService {
    */
   async retrieve(params: ChunkRetrievalParams): Promise<ChunkRetrievalResult[]> {
     const cacheKey = this.buildCacheKey(params);
-    
-    // Phase 1.2 优化: In-Flight Request Deduplication
-    const inFlightRetrieval = this.inFlightRetrievals.get(cacheKey);
-    if (inFlightRetrieval) {
+
+    // Phase 1.2 优化: In-Flight Request Deduplication（带超时清理）
+    this.cleanExpiredInFlightRetrievals();
+    const inFlightEntry = this.inFlightRetrievals.get(cacheKey);
+    if (inFlightEntry) {
       this.logger.debug(`🔄 复用正在进行的 RAG 检索: ${cacheKey}`);
-      return inFlightRetrieval;
+      return inFlightEntry.promise;
     }
 
-    // Phase 1.2 优化: 检查缓存
+    // Phase 1.2 优化: 检查缓存（带版本一致性检查）
     const cached = await this.getCachedResult(cacheKey);
     if (cached) {
       this.logger.debug(`✅ RAG 缓存命中: ${cacheKey}`);
@@ -212,18 +227,98 @@ export class ChunkRetrievalService {
 
     // 创建新的检索任务
     const retrievalPromise = this.doRetrieve(params, cacheKey);
-    this.inFlightRetrievals.set(cacheKey, retrievalPromise);
+    this.inFlightRetrievals.set(cacheKey, {
+      promise: retrievalPromise,
+      timestamp: Date.now(),
+    });
 
     try {
       const results = await retrievalPromise;
-      
-      // 写入缓存
+
+      // 写入缓存（带版本号）
       await this.writeToCache(cacheKey, results);
-      
+
       return results;
     } finally {
       // 完成后从 In-Flight 映射中移除
       this.inFlightRetrievals.delete(cacheKey);
+    }
+  }
+
+  /**
+   * 清理过期的 In-Flight 检索（防止内存泄漏）
+   */
+  private cleanExpiredInFlightRetrievals(): void {
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+
+    for (const [key, entry] of this.inFlightRetrievals.entries()) {
+      if (now - entry.timestamp > this.inFlightTimeout) {
+        expiredKeys.push(key);
+      }
+    }
+
+    for (const key of expiredKeys) {
+      this.inFlightRetrievals.delete(key);
+      this.logger.debug(`清理过期的 In-Flight 检索: ${key}`);
+    }
+  }
+
+  /**
+   * 批量失效缓存（用于知识库更新后）
+   */
+  invalidateCache(pattern?: string): void {
+    this.cacheVersion++; // 递增全局版本号
+    if (pattern) {
+      // 按模式失效
+      const keysToDelete: string[] = [];
+      for (const key of this.resultCache.keys()) {
+        if (key.includes(pattern)) {
+          keysToDelete.push(key);
+        }
+      }
+      for (const key of keysToDelete) {
+        this.resultCache.delete(key);
+      }
+      this.logger.debug(`按模式失效缓存: ${pattern}, 清理了 ${keysToDelete.length} 个条目`);
+    } else {
+      // 全部失效
+      this.resultCache.clear();
+      this.logger.debug('全部失效 L1 缓存');
+    }
+
+    // 异步清理 Redis 缓存
+    if (this.redisService) {
+      this.invalidateRedisCache(pattern).catch((error) => {
+        this.logger.warn(`清理 Redis 缓存失败: ${error.message}`);
+      });
+    }
+  }
+
+  /**
+   * 失效 Redis 缓存
+   * 注意：由于 RedisService 不支持 scan，这里使用简化的失效策略
+   * 实际生产环境建议使用 Redis SCAN 或维护一个 key 列表
+   */
+  private async invalidateRedisCache(pattern?: string): Promise<void> {
+    if (!this.redisService) return;
+
+    try {
+      // 简化策略：只支持全部失效
+      // 如果需要按模式失效，建议在 Redis 中维护一个 key 列表
+      if (pattern) {
+        this.logger.warn(`按模式失效 Redis 缓存暂不支持（pattern=${pattern}），跳过`);
+        return;
+      }
+
+      // 清理所有 RAG 缓存：由于无法 scan，这里只能记录日志
+      // 实际生产环境建议：
+      // 1. 使用 Redis SCAN 命令
+      // 2. 维护一个 key 列表（SET）
+      // 3. 使用 Redis 的 EXPIRE 机制自动失效
+      this.logger.debug('Redis 缓存失效：依赖 TTL 自动清理');
+    } catch (error: any) {
+      this.logger.error(`清理 Redis 缓存失败: ${error.message}`);
     }
   }
 
@@ -238,9 +333,8 @@ export class ChunkRetrievalService {
     const {
       limit = 10,
       useHybridSearch = true, // 默认启用混合检索（推荐，对中文查询更有效）
-      // 优化: 提升Sparse权重以增强关键词匹配（中文查询效果更好）
-      denseWeight = 0.6, // 从0.7降低，减少对Embedding语义的依赖
-      sparseWeight = 0.4, // 从0.3提升，增强关键词匹配（"环岛"→"ring-road"）
+      denseWeight: paramDenseWeight,
+      sparseWeight: paramSparseWeight,
       useReranking = false, // 默认不启用重排序（因为会增加延迟）
       rerankTopK = 20,
       useQueryExpansion = false, // 默认不启用查询扩展（因为会增加延迟和成本）
@@ -248,6 +342,19 @@ export class ChunkRetrievalService {
       useIntentClassification = false, // 是否启用意图分类
     } = params;
     let chunkCategory = params.chunkCategory; // 可能被意图分类覆盖
+
+    // 动态权重配置：根据查询类型调整权重
+    let denseWeight = paramDenseWeight;
+    let sparseWeight = paramSparseWeight;
+    if (this.hybridSearchConfig && (denseWeight === undefined || sparseWeight === undefined)) {
+      const dynamicWeights = this.hybridSearchConfig.getWeightsForQuery(query);
+      denseWeight = denseWeight ?? dynamicWeights.denseWeight;
+      sparseWeight = sparseWeight ?? dynamicWeights.sparseWeight;
+    } else {
+      // 使用传入的权重或默认值
+      denseWeight = denseWeight ?? 0.6;
+      sparseWeight = sparseWeight ?? 0.4;
+    }
 
     // 0. 意图分类（如果启用且未手动指定chunkCategory）
     let intentInfo: string | undefined;
@@ -269,7 +376,7 @@ export class ChunkRetrievalService {
     }
 
     this.logger.debug(
-      `Chunk 检索: query="${query.substring(0, 50)}...", hybrid=${useHybridSearch}, rerank=${useReranking}, expansion=${useQueryExpansion}${intentInfo ? `, intent=${intentInfo}` : ''}`
+      `Chunk 检索: query="${query.substring(0, 50)}...", hybrid=${useHybridSearch}, denseWeight=${denseWeight}, sparseWeight=${sparseWeight}, rerank=${useReranking}, expansion=${useQueryExpansion}${intentInfo ? `, intent=${intentInfo}` : ''}`
     );
 
     const startTime = Date.now();
@@ -673,7 +780,7 @@ export class ChunkRetrievalService {
 
     // 构建关键词匹配分数计算
     const scoreParts: string[] = [];
-    keywords.forEach((kw, idx) => {
+    keywords.forEach((_kw, idx) => {
       const paramIdx = idx + 1;
       scoreParts.push(`
         (
@@ -684,7 +791,7 @@ export class ChunkRetrievalService {
         )
       `);
     });
-    const scoreCalculation = scoreParts.length > 0 
+    const scoreCalculation = scoreParts.length > 0
       ? `(${scoreParts.join(' + ')})::float / GREATEST(LENGTH(c.content), 1) * 100`
       : '0';
 
@@ -1127,25 +1234,37 @@ export class ChunkRetrievalService {
     // L1: 检查内存缓存
     const memoryCached = this.resultCache.get(cacheKey);
     if (memoryCached && Date.now() - memoryCached.timestamp < this.l1CacheTtl) {
-      this.logger.debug(`✅ L1缓存命中: ${cacheKey}`);
-      return memoryCached.results;
+      // 检查版本一致性
+      if (memoryCached.version === this.cacheVersion) {
+        this.logger.debug(`✅ L1缓存命中: ${cacheKey}`);
+        return memoryCached.results;
+      } else {
+        // 版本不匹配，删除旧缓存
+        this.resultCache.delete(cacheKey);
+        this.logger.debug(`L1缓存版本不匹配，已删除: ${cacheKey}`);
+      }
     }
 
     // L2: 检查 Redis 缓存
     if (this.redisService) {
       try {
         const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
-        const cached = await this.redisService.get<ChunkRetrievalResult[]>(redisKey);
-        if (cached) {
+        const cached = await this.redisService.get<{ results: ChunkRetrievalResult[]; version: number }>(redisKey);
+        if (cached && cached.version === this.cacheVersion) {
           this.logger.debug(`✅ L2缓存命中: ${cacheKey}`);
-          
+
           // 回填 L1 缓存
           this.resultCache.set(cacheKey, {
-            results: cached,
+            results: cached.results,
             timestamp: Date.now(),
+            version: cached.version,
           });
-          
-          return cached;
+
+          return cached.results;
+        } else if (cached) {
+          // 版本不匹配，删除 Redis 缓存
+          await this.redisService.del(redisKey);
+          this.logger.debug(`L2缓存版本不匹配，已删除: ${cacheKey}`);
         }
       } catch (error: any) {
         this.logger.warn(`从 L2 Redis 获取缓存失败: ${error.message}`);
@@ -1166,6 +1285,7 @@ export class ChunkRetrievalService {
     this.resultCache.set(cacheKey, {
       results,
       timestamp: Date.now(),
+      version: this.cacheVersion,
     });
 
     // 清理过期内存缓存
@@ -1176,7 +1296,11 @@ export class ChunkRetrievalService {
       try {
         const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
         const ttlSeconds = Math.floor(this.l2CacheTtl / 1000);
-        await this.redisService.set(redisKey, results, ttlSeconds);
+        await this.redisService.set(
+          redisKey,
+          { results, version: this.cacheVersion },
+          ttlSeconds,
+        );
         this.logger.debug(`✅ RAG 结果已存入 L2 Redis: ${cacheKey} (TTL: ${ttlSeconds}s)`);
       } catch (error: any) {
         this.logger.warn(`存入 L2 Redis 失败: ${error.message}`);

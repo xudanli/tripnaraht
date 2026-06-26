@@ -54,6 +54,14 @@ export interface RiskImpactAssessment {
   severity: 'LOW' | 'MEDIUM' | 'HIGH';
   recommendedActions: Array<'ADD_BUFFER' | 'REORDER' | 'REPLACE' | 'ASK_USER' | 'DELAY'>;
   summaryZh: string;
+  /** 事件原始置信度 */
+  rootConfidence: number;
+  /** 传播最大深度 */
+  propagationDepth: number;
+  /** 衰减后有效置信度（取受影响项最低值） */
+  cascadeConfidence: number;
+  /** 各行程项的衰减后置信度 */
+  affectedItemConfidences?: Record<string, number>;
 }
 
 export interface RiskGateResult {

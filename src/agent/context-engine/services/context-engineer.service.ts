@@ -8,7 +8,7 @@
  * 输出：Context Package（分块、带优先级、带来源、可裁剪）+ 私有状态对象
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   ContextPackage,
@@ -44,6 +44,13 @@ import { DEFAULT_OBJECTIVE_WEIGHTS } from '../../../trips/decision/optimization/
 import {
   DEFAULT_DAILY_UTILITY_WEIGHTS,
 } from '../../../trips/decision/optimization/daily-utility';
+import { buildWishlistContextBlocks } from '../../../trips/wishlist/utils/wish-context-blocks.util';
+import { mapTripWishRow } from '../../../trips/wishlist/utils/trip-wish.mapper.util';
+import { partitionWishItemsForAgentContext } from '../../../trips/wishlist/utils/wish-agent-partition.util';
+import { TripDomainInfluenceService } from '../../../trips/domain-influence/services/trip-domain-influence.service';
+import { buildDomainInfluenceContextBlocks } from '../../../trips/domain-influence/utils/domain-influence-context-blocks.util';
+import { buildTripIntentContextBlocks } from '../../../agent/memory/utils/trip-intent-context-blocks.util';
+import { TripIntentDigestService } from '../../../agent/memory/services/trip-intent-digest.service';
 
 @Injectable()
 export class ContextEngineerService {
@@ -97,10 +104,12 @@ export class ContextEngineerService {
 
   constructor(
     private readonly memoryService: MemoryService,
+    private readonly prisma: PrismaService,
     @Optional() private readonly agentMemoryContextStore?: AgentMemoryContextStore,
     @Optional() private readonly agentExecutionContextStore?: AgentExecutionContextStore,
-    @Inject('PrismaService') @Optional() private readonly prisma?: PrismaService,
-    @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
+    @Inject(forwardRef(() => SkillsRegistryService))
+    @Optional()
+    private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly redisService?: RedisService,
     @Optional() private readonly metricsService?: ContextMetricsService,
     @Optional() private readonly prometheusMetrics?: ContextPrometheusMetricsService,
@@ -114,6 +123,8 @@ export class ContextEngineerService {
     @Optional() private readonly contextCompressor?: ContextCompressorService,
     @Optional() private readonly contextBudgetManager?: ContextBudgetManagerService,
     @Optional() private readonly contextCache?: ContextCacheService,
+    @Optional() private readonly tripDomainInfluence?: TripDomainInfluenceService,
+    @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
   ) {
     // ContextEngineerService 可以通过 SkillsRegistryService 获取其他 skills
     // 如果 RedisService 可用，使用持久化缓存；否则使用内存缓存
@@ -566,6 +577,35 @@ export class ContextEngineerService {
       blocks.push(...constraintBlocks);
     }
 
+    // 5.5 愿望单上下文（私密 + 团队）
+    if (options.tripId) {
+      const wishlistBlocks = await this.buildWishlistBlocks(
+        options.tripId,
+        options.userId,
+        options.includePrivate ?? false,
+      );
+      blocks.push(...wishlistBlocks);
+    }
+
+    // 5.6 领域影响力（团队治理 + 负责人私密约束）
+    if (options.tripId && options.userId) {
+      const domainBlocks = await this.buildDomainInfluenceBlocks(
+        options.tripId,
+        options.userId,
+        options.includePrivate ?? false,
+      );
+      blocks.push(...domainBlocks);
+    }
+
+    // 5.7 行程意图摘要（决策风格 / 私密清单 / 协商结果 — 来自冻结 Memory 或实时加载）
+    if (options.tripId) {
+      const intentBlocks = await this.buildTripIntentDigestBlocks(
+        options.tripId,
+        options.userId,
+      );
+      blocks.push(...intentBlocks);
+    }
+
     const tripWdArchive = this.buildTripWorldDecisionArchiveBlock();
     if (tripWdArchive) blocks.push(tripWdArchive);
 
@@ -651,11 +691,13 @@ export class ContextEngineerService {
    * - tokenBudget
    * - userQuery hash（前100字符的hash，用于区分不同查询）
    * - includePrivate（是否包含私有块）
+   * - userId（私密块与领域影响力按用户裁剪）
    */
   private buildCacheKey(options: ContextPackageOptions): string {
     const topics = options.requiredTopics?.sort().join(',') || '';
     const excludeTopics = options.excludeTopics?.sort().join(',') || '';
     const includePrivate = options.includePrivate ? 'true' : 'false';
+    const userId = options.userId?.trim() || 'none';
     const destCode = options.destinationCountryCode || 'none';
     
     // 计算 userQuery hash（前100字符）
@@ -666,7 +708,7 @@ export class ContextEngineerService {
       queryHash = this.simpleHash(queryText);
     }
     
-    return `tripId:${options.tripId || 'none'}:dest:${destCode}:phase:${options.phase}:agent:${options.agent}:topics:${topics}:excludeTopics:${excludeTopics}:budget:${options.tokenBudget || 3600}:includePrivate:${includePrivate}:queryHash:${queryHash}`;
+    return `tripId:${options.tripId || 'none'}:dest:${destCode}:userId:${userId}:phase:${options.phase}:agent:${options.agent}:topics:${topics}:excludeTopics:${excludeTopics}:budget:${options.tokenBudget || 3600}:includePrivate:${includePrivate}:queryHash:${queryHash}`;
   }
 
   /**
@@ -1429,6 +1471,109 @@ export class ContextEngineerService {
     }
 
     return blocks;
+  }
+
+  /**
+   * 构建愿望单上下文块（私密 + 团队可见）
+   */
+  private async buildWishlistBlocks(
+    tripId: string,
+    userId: string | undefined,
+    includePrivate: boolean,
+  ): Promise<ContextBlock[]> {
+    if (!this.prisma) {
+      return [];
+    }
+
+    try {
+      const rows = await this.prisma.tripWishItem.findMany({
+        where: { tripId, status: 'active' },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (rows.length === 0) {
+        return [];
+      }
+
+      const allItems = rows.map(mapTripWishRow);
+      const { minePrivate, othersPrivate, team } = partitionWishItemsForAgentContext(
+        allItems,
+        userId,
+      );
+
+      if (!includePrivate && team.length === 0) {
+        return [];
+      }
+
+      return buildWishlistContextBlocks({
+        tripId,
+        userId: userId ?? 'unknown',
+        userItems: minePrivate,
+        othersPrivateItems: includePrivate ? othersPrivate : [],
+        teamItems: team,
+        includePrivate,
+      });
+    } catch (error) {
+      this.logger.warn(`构建愿望单块失败: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * 构建领域影响力上下文块（团队治理摘要 + 可选负责人私密约束）
+   */
+  private async buildDomainInfluenceBlocks(
+    tripId: string,
+    userId: string,
+    includePrivate: boolean,
+  ): Promise<ContextBlock[]> {
+    if (!this.tripDomainInfluence) {
+      return [];
+    }
+
+    try {
+      const payload = await this.tripDomainInfluence.getAgentContextPayload(
+        tripId,
+        userId,
+        includePrivate,
+      );
+      return buildDomainInfluenceContextBlocks(payload);
+    } catch (error) {
+      this.logger.warn(`构建领域影响力块失败: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * 决策风格 / 私密清单 / 协商结果 — 优先读冻结 Memory snapshot，否则实时加载 digest。
+   */
+  private async buildTripIntentDigestBlocks(
+    tripId: string,
+    userId?: string,
+  ): Promise<ContextBlock[]> {
+    const mem = this.agentMemoryContextStore?.get();
+    const bundle =
+      mem?.tripId === tripId
+        ? {
+            domainInfluenceDigest: mem.domainInfluenceDigest,
+            wishConstraintDigest: mem.wishConstraintDigest,
+            privateWishDigest: mem.privateWishDigest,
+            decisionProfilingDigest: mem.decisionProfilingDigest,
+            negotiationDigest: mem.negotiationDigest,
+          }
+        : this.tripIntentDigest
+          ? await this.tripIntentDigest.loadForMemoryContext(tripId, userId ?? null)
+          : null;
+
+    if (!bundle) {
+      return [];
+    }
+
+    try {
+      return buildTripIntentContextBlocks(bundle, tripId, userId ?? null);
+    } catch (error) {
+      this.logger.warn(`构建行程意图 digest 块失败: ${error}`);
+      return [];
+    }
   }
 
   /**

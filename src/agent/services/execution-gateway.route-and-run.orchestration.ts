@@ -61,6 +61,21 @@ import {
 } from '../../governance/replanning-runtime/record-governance-branch-on-ledger.util';
 import { TripInsightService } from '../../trips/services/trip-insight.service';
 import { TripMetricsService } from '../../trips/services/trip-metrics.service';
+import {
+  filterScheduleFocusedInsightFindings,
+  isAgentTripComprehensiveAnalysisMessage,
+  shouldSkipAgentReadinessPackCheck,
+} from '../utils/agent-readiness-phase.util';
+import { PrismaService } from '../../prisma/prisma.service';
+import { normalizeRouteAndRunRequestMessage, resolveRouteAndRunUserMessage } from '../utils/resolve-route-and-run-message.util';
+import {
+  buildProcessFairnessSuggestedOperations,
+  buildTeamStructuredDiscussionAnswer,
+  isTeamStructuredDiscussionQuery,
+  primaryDecisionNodeFromMessage,
+} from '../utils/team-structured-discussion.util';
+import type { ProcessFairnessOrchestrationHint } from '../../trips/process-fairness/types/process-fairness-orchestration.types';
+import { PreferenceRoundOrchestratorService } from '../../trips/process-fairness/services/preference-round-orchestrator.service';
 
 export async function runRouteAndRunMainChain(
   agent: AgentService,
@@ -219,6 +234,7 @@ export async function runRouteAndRunMainChain(
         const runBody = async (): Promise<RouteAndRunResponseDto> => {
 
     mergeTripIdAliasesIntoRouteAndRunRequest(request);
+    normalizeRouteAndRunRequestMessage(request);
 
     const canonicalTripIdEarly = canonicalTripIdForRouteAndRunRequest(request);
     let governanceRuntime: HydratedGovernanceRuntimeContext | undefined;
@@ -395,8 +411,9 @@ export async function runRouteAndRunMainChain(
       const hasNoTripId = !request.trip_id || request.trip_id === '';
       const isPlanningReq = $.isPlanningRequest(request);
       if (isPlanningReq && hasNoTripId) {
+        const msgPreview = resolveRouteAndRunUserMessage(request).slice(0, 50);
         $.logger.debug(
-          `[AgentService] 检测到规划请求且缺少 trip_id，重定向到规划工作台: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`,
+          `[AgentService] 检测到规划请求且缺少 trip_id，重定向到规划工作台: request_id=${request.request_id}, message=${msgPreview}...`,
         );
         return $.getEntryResponses().createRedirectToPlanningWorkbenchResponse(
           request,
@@ -406,8 +423,9 @@ export async function runRouteAndRunMainChain(
 
       // 0.1 验证 trip_id（非规划请求且缺少 trip_id 才报错）
       if (hasNoTripId) {
+        const msgPreview = resolveRouteAndRunUserMessage(request).slice(0, 50);
         $.logger.warn(
-          `[AgentService] 缺少 trip_id（非规划请求场景）: request_id=${request.request_id}, message=${request.message.substring(0, 50)}...`,
+          `[AgentService] 缺少 trip_id（非规划请求场景）: request_id=${request.request_id}, message=${msgPreview}...`,
         );
         return $.getEntryResponses().createMissingTripIdErrorResponse(
           request,
@@ -429,12 +447,23 @@ export async function runRouteAndRunMainChain(
 
       if (!replayStrictSeal) {
         await $.routeContextEnricher?.maybeInjectActiveTripSummary(request);
+        await $.routeContextEnricher?.maybeInjectTripWishlistContext(request);
+        await $.routeContextEnricher?.maybeInjectTripIntentDigestContext(request);
         await $.routeContextEnricher?.maybeInjectUserStandingSummary(request);
       }
 
       const activeTripAnalysis = await tryBuildActiveTripAnalysisFastPath($, request, startTime);
       if (activeTripAnalysis) {
         return activeTripAnalysis;
+      }
+
+      const teamStructuredDiscussion = await tryBuildTeamStructuredDiscussionFastPath(
+        $,
+        request,
+        startTime,
+      );
+      if (teamStructuredDiscussion) {
+        return teamStructuredDiscussion;
       }
 
       // === 稳定化层：检查 Deadline ===
@@ -522,6 +551,15 @@ export async function runRouteAndRunMainChain(
         matched_rules: decision.matchedRules,
       };
       $.logger.log(logFields, `[AgentService] 编排策略决策`);
+
+      const teamDiscussionLatePath = await tryBuildTeamStructuredDiscussionFastPath(
+        $,
+        request,
+        startTime,
+      );
+      if (teamDiscussionLatePath) {
+        return teamDiscussionLatePath;
+      }
 
       const dryRunLedger = request.options?.dry_run === true;
       await tryRecordGovernanceBranchSelectedWithGrsm($.governanceLedgerStore, {
@@ -1250,29 +1288,193 @@ export async function runRouteAndRunMainChain(
   });
 }
 
+export async function tryBuildTeamStructuredDiscussionFastPath(
+  agent: any,
+  request: RouteAndRunRequestDto,
+  startTime: number,
+): Promise<RouteAndRunResponseDto | null> {
+  const tripId = request.trip_id?.trim();
+  const message = resolveRouteAndRunUserMessage(request);
+  if (!tripId || !isTeamStructuredDiscussionQuery(message)) {
+    return null;
+  }
+  if (request.options?.enable_guardians_debate_llm === true) {
+    return null;
+  }
+
+  const orchestrator =
+    agent.preferenceRoundOrchestrator ??
+    (agent.moduleRef?.get?.(PreferenceRoundOrchestratorService, {
+      strict: false,
+    }) as PreferenceRoundOrchestratorService | undefined);
+
+  const prisma = agent.prisma ?? agent.moduleRef?.get?.(PrismaService, { strict: false });
+  let tripName: string | null = null;
+  if (prisma) {
+    try {
+      const row = await prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { name: true },
+      });
+      tripName = row?.name ?? null;
+    } catch {
+      tripName = null;
+    }
+  }
+
+  const userId = request.user_id?.trim() ?? '';
+  let memberCount = 1;
+  let hint: ProcessFairnessOrchestrationHint = {
+    triggered: false,
+    status: 'SCAFFOLD',
+    decisionNode: primaryDecisionNodeFromMessage(message),
+    roundId: null,
+    round: null,
+    agentIntroZh: null,
+    clientNavigation: null,
+    skippedReason: !userId
+      ? 'missing_user_id'
+      : !orchestrator
+        ? 'orchestrator_unavailable'
+        : undefined,
+  };
+
+  if (orchestrator && userId) {
+    try {
+      memberCount = await orchestrator.countTripMembers(tripId);
+      hint = await orchestrator.tryAutoStartForRequest({
+        tripId,
+        userId,
+        message,
+      });
+    } catch (error: any) {
+      agent.logger?.warn?.(
+        `[TeamStructuredDiscussionFastPath] orchestrator failed: ${error?.message ?? error}`,
+      );
+      hint = {
+        ...hint,
+        skippedReason: hint.skippedReason ?? 'orchestrator_error',
+      };
+    }
+  } else if (!orchestrator) {
+    agent.logger?.warn?.(
+      '[TeamStructuredDiscussionFastPath] PreferenceRoundOrchestrator unavailable; returning scaffold only',
+    );
+  }
+
+  const answerText = buildTeamStructuredDiscussionAnswer({
+    message,
+    tripName,
+    memberCount,
+    hint,
+  });
+  const suggestedOperations = buildProcessFairnessSuggestedOperations(hint);
+  const latencyMs = Date.now() - startTime;
+  return {
+    request_id: request.request_id,
+    route: {
+      route: 'SYSTEM1_API',
+      confidence: 0.92,
+      reasons: ['TEAM_STRUCTURED_DISCUSSION_FAST_PATH', 'PROCESS_FAIRNESS'],
+      required_capabilities: ['process_fairness'],
+      consent_required: false,
+      budget: {
+        max_seconds: 8,
+        max_steps: 0,
+        max_browser_steps: 0,
+      },
+      ui_hint: {
+        mode: 'fast',
+        status: 'done',
+        message: hint.triggered
+          ? '已开启结构化偏好分享轮次。'
+          : '已生成团队结构化讨论框架。',
+      },
+    },
+    result: {
+      status: 'OK',
+      answer_text: answerText,
+      payload: {
+        trip_id: tripId,
+        ui_surface: 'consultation',
+        process_fairness: hint,
+      },
+      ...(suggestedOperations.length ? { suggested_operations: suggestedOperations } : {}),
+    },
+    ui_state: {
+      phase: 'DONE',
+      ui_status: 'done',
+      active_skill: null,
+      pending_question: null,
+    },
+    explain: {
+      decision_log: [
+        {
+          request_id: request.request_id,
+          step: 'GATE_EVAL',
+          actor: 'Orchestrator',
+          inputs_summary: 'team_structured_discussion 快速路径',
+          outputs_summary: hint.triggered
+            ? `process_fairness round_id=${hint.roundId}`
+            : `process_fairness skipped=${hint.skippedReason ?? 'n/a'}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: hint.triggered
+              ? 'PROCESS_FAIRNESS_ROUND_STARTED'
+              : 'PROCESS_FAIRNESS_DISCUSSION_SCAFFOLD',
+            decision_node: hint.decisionNode,
+            round_id: hint.roundId,
+            client_navigation: hint.clientNavigation,
+          },
+        } as DecisionLogEntry,
+      ],
+    },
+    observability: {
+      latency_ms: latencyMs,
+      router_ms: 0,
+      system_mode: 'SYSTEM1',
+      tool_calls: 0,
+      browser_steps: 0,
+      tokens_est: 0,
+      cost_est_usd: 0,
+      fallback_used: false,
+      orchestration_mode_final: 'TEAM_STRUCTURED_DISCUSSION_FAST_PATH',
+    },
+  } as unknown as RouteAndRunResponseDto;
+}
+
 async function tryBuildActiveTripAnalysisFastPath(
   agent: any,
   request: RouteAndRunRequestDto,
   startTime: number,
 ): Promise<RouteAndRunResponseDto | null> {
-  const contextType = request.conversation_context?.context_type?.trim();
   const tripId = request.trip_id?.trim();
   const message = request.message ?? '';
-  if (contextType !== 'active_trip_summary' || !tripId) {
+  if (!tripId) {
     return null;
   }
-  if (!/(全面分析|分析当前行程|看看.*问题|优化.*行程|行程.*优化|还有什么问题)/i.test(message)) {
+  if (!isAgentTripComprehensiveAnalysisMessage(message)) {
     return null;
   }
-  const intentMode = request.options?.intent_mode;
-  const explicitlyLightweight = intentMode === 'DATA_LOOKUP' || intentMode === 'GENERIC_QA';
-  const wantsGuardianGate =
-    request.options?.enable_guardians_debate_llm === true ||
-    intentMode === 'TRIP_PLANNING' ||
-    request.options?.use_claude_orchestration === true;
-  if (!explicitlyLightweight || wantsGuardianGate) {
+  if (request.options?.enable_guardians_debate_llm === true) {
     return null;
   }
+
+  const prisma = agent.prisma ?? agent.moduleRef?.get?.(PrismaService, { strict: false });
+  let tripStartDate: Date | undefined;
+  if (prisma) {
+    try {
+      const row = await prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { startDate: true },
+      });
+      tripStartDate = row?.startDate ?? undefined;
+    } catch {
+      tripStartDate = undefined;
+    }
+  }
+  const skipReadinessPack = shouldSkipAgentReadinessPackCheck(request, tripStartDate, message);
 
   const insightService = agent.moduleRef?.get?.(TripInsightService, { strict: false }) as TripInsightService | undefined;
   const metricsService = agent.moduleRef?.get?.(TripMetricsService, { strict: false }) as TripMetricsService | undefined;
@@ -1282,17 +1484,19 @@ async function tryBuildActiveTripAnalysisFastPath(
 
   try {
     const [insight, metrics] = await Promise.all([
-      insightService.getInsight(tripId),
+      insightService.getInsight(tripId, { skipReadinessPack }),
       metricsService.getTripMetrics(tripId, undefined, { includeConflicts: false }),
     ]);
-    const answerText = buildActiveTripAnalysisAnswer(insight, metrics);
+    const answerText = buildActiveTripAnalysisAnswer(insight, metrics, skipReadinessPack);
     const latencyMs = Date.now() - startTime;
     return {
       request_id: request.request_id,
       route: {
         route: 'SYSTEM1_API',
         confidence: 0.95,
-        reasons: ['ACTIVE_TRIP_SUMMARY_FAST_PATH', 'READINESS_AND_METRICS_AVAILABLE'],
+        reasons: skipReadinessPack
+          ? ['ACTIVE_TRIP_SUMMARY_FAST_PATH', 'TRIP_METRICS_AND_SCHEDULE_FOCUS']
+          : ['ACTIVE_TRIP_SUMMARY_FAST_PATH', 'READINESS_AND_METRICS_AVAILABLE'],
         required_capabilities: ['trip_insight', 'trip_metrics'],
         consent_required: false,
         budget: {
@@ -1303,7 +1507,9 @@ async function tryBuildActiveTripAnalysisFastPath(
         ui_hint: {
           mode: 'fast',
           status: 'done',
-          message: '已基于行程准备度和指标完成分析。',
+          message: skipReadinessPack
+            ? '已基于日程强度与交通指标完成分析（规划阶段未运行 Readiness Pack）。'
+            : '已基于行程准备度和指标完成分析。',
         },
       },
       result: {
@@ -1326,7 +1532,9 @@ async function tryBuildActiveTripAnalysisFastPath(
             step: 'DONE',
             actor: 'Orchestrator',
             inputs_summary: 'active_trip_summary 行程分析请求',
-            outputs_summary: `readiness=${insight.readiness.status}, blockers=${insight.readiness.blockers}, totalDrive=${metrics.summary.totalDrive}`,
+            outputs_summary: skipReadinessPack
+              ? `schedule_focus=true, totalDrive=${metrics.summary.totalDrive}`
+              : `readiness=${insight.readiness?.status ?? 'n/a'}, blockers=${insight.readiness?.blockers ?? 0}, totalDrive=${metrics.summary.totalDrive}`,
             evidence_refs: ['trip_insight', 'trip_metrics'],
             timestamp: new Date().toISOString(),
           } as DecisionLogEntry,
@@ -1350,18 +1558,33 @@ async function tryBuildActiveTripAnalysisFastPath(
   }
 }
 
-function buildActiveTripAnalysisAnswer(insight: any, metrics: any): string {
+function buildActiveTripAnalysisAnswer(
+  insight: any,
+  metrics: any,
+  skipReadinessPack = false,
+): string {
   const summary = insight.tripSummary ?? {};
   const readiness = insight.readiness ?? {};
   const metricSummary = metrics.summary ?? {};
   const lines: string[] = [];
 
-  lines.push(`我看了当前 ${summary.destination ?? '目的地'} ${summary.days ?? ''} 天行程，整体状态不是“良好”，而是需要优先处理。`);
+  lines.push(
+    `我看了当前 ${summary.destination ?? '目的地'} ${summary.days ?? ''} 天行程草稿，下面按规划阶段重点（日程、交通${skipReadinessPack ? '' : '、准备度'}）汇总。`,
+  );
   lines.push('');
-  lines.push(`准备度：${readiness.status ?? 'unknown'}，阻塞项 ${readiness.blockers ?? 0} 个，必须处理项 ${readiness.must ?? 0} 个。`);
-  lines.push(`交通强度：总驾驶约 ${metricSummary.totalDrive ?? 0} 分钟，日均约 ${metricSummary.averageDrivePerDay ?? 0} 分钟；总缓冲约 ${metricSummary.totalBuffer ?? 0} 分钟。`);
+  if (!skipReadinessPack) {
+    lines.push(
+      `准备度：${readiness.status ?? 'unknown'}，阻塞项 ${readiness.blockers ?? 0} 个，必须处理项 ${readiness.must ?? 0} 个。`,
+    );
+  }
+  lines.push(
+    `交通强度：总驾驶约 ${metricSummary.totalDrive ?? 0} 分钟，日均约 ${metricSummary.averageDrivePerDay ?? 0} 分钟；总缓冲约 ${metricSummary.totalBuffer ?? 0} 分钟。`,
+  );
 
-  const findings = (insight.findings ?? []).filter((finding: any) => finding.type !== 'positive');
+  const rawFindings = insight.findings ?? [];
+  const findings = skipReadinessPack
+    ? filterScheduleFocusedInsightFindings(rawFindings)
+    : rawFindings.filter((finding: any) => finding.type !== 'positive');
   if (findings.length > 0) {
     lines.push('');
     lines.push('优先问题：');
@@ -1379,6 +1602,14 @@ function buildActiveTripAnalysisAnswer(insight: any, metrics: any): string {
   }
 
   lines.push('');
-  lines.push('建议先处理 readiness blockers，再做路线微调；当前最重要的不是增加景点，而是确认道路/交通可达性、天气风险和关键活动时间窗。');
+  if (skipReadinessPack) {
+    lines.push(
+      '建议优先核对日程密度、单日驾驶强度与预算/预订缺口；打包清单与行前任务可在工作台维护。Readiness Pack 规则检查将在临行前窗口自动启用。',
+    );
+  } else {
+    lines.push(
+      '建议先处理 readiness blockers，再做路线微调；当前最重要的不是增加景点，而是确认道路/交通可达性、天气风险和关键活动时间窗。',
+    );
+  }
   return lines.join('\n');
 }

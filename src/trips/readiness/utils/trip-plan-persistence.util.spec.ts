@@ -108,6 +108,58 @@ describe('trip-plan-persistence.util', () => {
     expect(resolveSlotTimes(plan.days[0], plan.days[0].timeSlots[1]).endTime).toBeTruthy();
   });
 
+  it('updates moved slots instead of deleting then re-updating', () => {
+    const plan: TripPlan = {
+      version: '1.0.0',
+      createdAt: new Date().toISOString(),
+      days: [
+        {
+          day: 1,
+          date: '2026-06-01',
+          timeSlots: [
+            {
+              id: 'item-1',
+              time: '09:00',
+              title: 'A',
+              type: 'sightseeing',
+              poiId: '10',
+            },
+          ],
+        },
+        {
+          day: 2,
+          date: '2026-06-02',
+          timeSlots: [
+            {
+              id: 'item-2',
+              time: '14:00',
+              title: 'B',
+              type: 'sightseeing',
+              poiId: '11',
+            },
+            {
+              id: 'item-3',
+              time: '16:00',
+              title: 'C',
+              type: 'sightseeing',
+              poiId: '12',
+            },
+          ],
+        },
+      ],
+    };
+
+    const ops = buildTripPlanPersistenceOps({
+      plan,
+      tripDays,
+      existingItems,
+    });
+
+    expect(ops.deletes).toEqual([]);
+    expect(ops.creates).toEqual([]);
+    expect(ops.updates.find((u) => u.id === 'item-2')?.tripDayId).toBe('day-2');
+  });
+
   it('summarizes whether persistence changed anything', () => {
     const summary = summarizePersistenceResult({
       updates: [{ id: 'item-1' }],

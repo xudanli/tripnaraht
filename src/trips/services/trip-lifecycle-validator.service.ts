@@ -14,6 +14,8 @@ import { Injectable, BadRequestException, Logger, Optional } from '@nestjs/commo
 import { TripStatus, normalizeTripStatus } from '../dto/trip-status.dto';
 import { Trip } from '@prisma/client';
 import { DecisionEventEmitter } from '../decision/optimization/events/decision-events';
+import { AttributionEnrichmentService } from '../attribution/services/attribution-enrichment.service';
+import { AttributionContext } from '../attribution/types/decision-attribution.types';
 
 /**
  * 状态转换验证结果
@@ -95,6 +97,7 @@ export class TripLifecycleValidatorService {
 
   constructor(
     @Optional() private readonly decisionEventEmitter?: DecisionEventEmitter,
+    @Optional() private readonly attributionEnrichmentService?: AttributionEnrichmentService,
   ) {}
 
   /**
@@ -480,6 +483,24 @@ export class TripLifecycleValidatorService {
     const normalizedAttempted = normalizeTripStatus(newStatus);
 
     try {
+      // Build attribution context from rejection reason
+      const attributionContext: AttributionContext = {
+        tripState: {
+          status: normalizedCurrent,
+        },
+      };
+
+      // Add signal-specific context based on rejection reason
+      if (result.reason?.includes('预算') || result.missingConditions?.some(c => c.includes('预算'))) {
+        attributionContext.tripState = { ...attributionContext.tripState };
+      }
+      if (result.reason?.includes('时间') || result.missingConditions?.some(c => c.includes('时间') || c.includes('日期'))) {
+        attributionContext.tripState = { ...attributionContext.tripState };
+      }
+      if (result.reason?.includes('成员') || result.missingConditions?.some(c => c.includes('成员'))) {
+        attributionContext.tripState = { ...attributionContext.tripState, memberCount: 0 };
+      }
+
       this.decisionEventEmitter.tripTransitionRejected(
         rejectionContext.tripId,
         normalizedCurrent,
@@ -487,6 +508,10 @@ export class TripLifecycleValidatorService {
         result.reason || '状态转换不被允许',
         result.missingConditions,
         rejectionContext.userId,
+      );
+
+      this.logger.debug(
+        `Emitted TRIP_TRANSITION_REJECTED for trip ${rejectionContext.tripId} with attribution context`,
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

@@ -2,6 +2,11 @@
  * Readiness 修复前的级联影响预分析 — 桥接 travel-cognition 与 Neptune 修复。
  */
 
+import type { PhysicalViolationItem } from '../../../domain/ontology/validator/physical-validator.types';
+import {
+  resolveCascadeTriggerFromPhysicalViolations,
+  type PhysicalViolationEvidenceContext,
+} from '../../../domain/ontology/bridge/physical-violation-to-evidence.mapper';
 import type { EvidenceEnvelope } from '../../../travel-cognition';
 import {
   buildNonTransactionalReplanResult,
@@ -25,6 +30,23 @@ const CAUSAL_PREANALYSIS_CATEGORIES = new Set([
   'schedule',
   'evidence',
 ]);
+
+export function resolveCausalPreanalysisTrigger(input: {
+  trigger?: EvidenceEnvelope;
+  physicalViolations?: PhysicalViolationItem[];
+  physicalContext?: PhysicalViolationEvidenceContext;
+  blocker?: ReadinessScoreFinding;
+}): EvidenceEnvelope | null {
+  if (input.trigger) return input.trigger;
+  if (input.physicalViolations?.length) {
+    const fromPhysical = resolveCascadeTriggerFromPhysicalViolations(
+      input.physicalViolations,
+      input.physicalContext,
+    );
+    if (fromPhysical) return fromPhysical;
+  }
+  return inferTriggerFromBlocker(input.blocker);
+}
 
 function inferTriggerFromBlocker(
   blocker: ReadinessScoreFinding | undefined,
@@ -106,8 +128,15 @@ export function buildReadinessCausalPreanalysis(input: {
   itineraryItems: TripItineraryItemLike[];
   locale?: 'zh' | 'en';
   trigger?: EvidenceEnvelope;
+  physicalViolations?: PhysicalViolationItem[];
+  physicalContext?: PhysicalViolationEvidenceContext;
 }): NonTransactionalReplanResult | null {
-  const trigger = input.trigger ?? inferTriggerFromBlocker(input.blocker);
+  const trigger = resolveCausalPreanalysisTrigger({
+    trigger: input.trigger,
+    physicalViolations: input.physicalViolations,
+    physicalContext: input.physicalContext,
+    blocker: input.blocker,
+  });
   if (!trigger) return null;
 
   const chain = extractFullTripDependencyChain(input.itineraryItems);
@@ -203,25 +232,35 @@ export function buildReadinessCascadeUiHints(
     entityKind: node.entityRef.kind,
     entityLabel: node.entityRef.label ?? node.entityRef.id,
     userConfirmationRequired: node.userConfirmationRequired,
+    ...(node.netImpactMinutes !== undefined ? { netImpactMinutes: node.netImpactMinutes } : {}),
+    ...(node.absorbedMinutes !== undefined ? { absorbedMinutes: node.absorbedMinutes } : {}),
+    ...(node.cascadeConfidence !== undefined ? { cascadeConfidence: node.cascadeConfidence } : {}),
+    ...(node.propagationHop !== undefined ? { propagationHop: node.propagationHop } : {}),
+    triggerFactType: preanalysis.trigger.factType,
+    triggerSource: preanalysis.trigger.source,
   }));
 }
 
-/** 为 top blocker 自动计算级联预分析（score 页刷新用） */
+/** 为 top blocker 或 L2 物理违规快照自动计算级联预分析（score 页刷新用） */
 export function buildCausalPreanalysisForTopBlocker(input: {
   tripId: string;
   findings: ReadinessScoreFinding[];
   itineraryItems: TripItineraryItemLike[];
+  physicalViolations?: PhysicalViolationItem[];
+  physicalContext?: PhysicalViolationEvidenceContext;
 }): NonTransactionalReplanResult | null {
   const blocker =
     input.findings.find((f) => f.type === 'blocker' && f.severity === 'high') ??
     input.findings.find((f) => f.type === 'blocker') ??
     input.findings.find((f) => f.severity === 'high');
 
-  if (!blocker) return null;
+  if (!blocker && !(input.physicalViolations?.length ?? 0)) return null;
 
   return buildReadinessCausalPreanalysis({
     tripId: input.tripId,
     blocker,
     itineraryItems: input.itineraryItems,
+    physicalViolations: input.physicalViolations,
+    physicalContext: input.physicalContext,
   });
 }

@@ -48,5 +48,9 @@ describe('trip-impact-graph', () => {
     expect(impacts[0].affectedItems).toEqual(expect.arrayContaining(['flight-1', 'transfer-1']));
     expect(impacts[0].affectedDays).toContain('2026-06-14');
     expect(impacts[0].recommendedActions).toEqual(expect.arrayContaining(['ADD_BUFFER', 'REORDER', 'ASK_USER']));
+    expect(impacts[0].rootConfidence).toBe(0.9);
+    expect(impacts[0].propagationDepth).toBeGreaterThan(0);
+    expect(impacts[0].cascadeConfidence).toBeLessThanOrEqual(0.9);
+    expect(impacts[0].affectedItemConfidences?.['poi-1']).toBeLessThan(0.9);
   });
 });

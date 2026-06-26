@@ -1,6 +1,6 @@
 // src/chain-of-work/mapping/skill/skill-mapping.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { OrchestratorState } from '../../../agent/interfaces/trip-plan.interface';
 import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';
 import { Skill } from '../../../skills/interfaces/skill.interface';
@@ -15,6 +15,7 @@ export class SkillMappingService {
   private readonly cache = new Map<string, SkillMapping[]>();
 
   constructor(
+    @Inject(forwardRef(() => SkillsRegistryService))
     private readonly skillsRegistry: SkillsRegistryService,
   ) {}
 

@@ -23,7 +23,9 @@ import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
 import { TripRunManagerService, type TripRunDsoCheckpointPayload } from './trip-run-manager.service';
 import { TripTaskMemoryService } from '../context-engine/services/trip-task-memory.service';
+import { PreferenceRoundOrchestratorService } from '../../trips/process-fairness/services/preference-round-orchestrator.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
+import { tryBuildTeamStructuredDiscussionFastPath } from './execution-gateway.route-and-run.orchestration';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import {
   AgentContext,
@@ -78,6 +80,7 @@ import { AccessTrackerService } from '../../skills/world/services/access-tracker
 import type { TravelTimeEvidenceLineageDto } from '../dto/evidence-lineage.dto';
 import { NegotiationSessionStoreService } from './negotiation-session-store.service';
 import { NegotiationResolverService } from './negotiation-resolver.service';
+import { resolveRouteAndRunUserMessage } from '../utils/resolve-route-and-run-message.util';
 import type { ConfirmNegotiationResponseDto, NegotiationResolutionDto } from '../dto/confirm-negotiation.dto';
 import { AgentEntryResponseFactoryService } from './agent-entry-response-factory.service';
 import { GovernanceLedgerStoreService } from '../ledger/governance-ledger.store.service';
@@ -210,6 +213,7 @@ export class AgentService {
     @Optional() private entryResponses?: AgentEntryResponseFactoryService,
     @Optional() private planningRequestClassifier?: PlanningRequestClassifierService,
     @Optional() private readonly moduleRef?: ModuleRef,
+    @Optional() private readonly preferenceRoundOrchestrator?: PreferenceRoundOrchestratorService,
     @Optional() private negotiationSessions?: NegotiationSessionStoreService,
     @Optional() private negotiationResolver?: NegotiationResolverService,
     @Optional() private evidenceCache?: EvidenceCacheService,
@@ -900,7 +904,7 @@ export class AgentService {
     // 保持稳定：message + trip + options 中影响结果的字段
     const stable = {
       trip_id: request.trip_id ?? null,
-      message: request.message ?? '',
+      message: resolveRouteAndRunUserMessage(request),
       conversation_context_type: request.conversation_context?.context_type ?? null,
       options: {
         entry_point: request?.options?.entry_point,
@@ -1201,6 +1205,15 @@ export class AgentService {
     routingTaskType?: TaskType,
   ): Promise<RouteAndRunResponseDto> {
     this.logger.log(`[AgentService] 使用 Claude 状态机编排: request_id=${request.request_id}`);
+
+    const teamDiscussionFastPath = await tryBuildTeamStructuredDiscussionFastPath(
+      this,
+      request,
+      startTime,
+    );
+    if (teamDiscussionFastPath) {
+      return teamDiscussionFastPath;
+    }
 
     if (!this.claudeOrchestrator) {
       throw new Error('ClaudeOrchestratorService 未注入');
@@ -1531,8 +1544,10 @@ export class AgentService {
 
       const route = orchestrationResult.result?.routingDecision?.route || RouteType.SYSTEM2_REASONING;
       const isSystem1 = route.startsWith('SYSTEM1');
+      const teamStructuredDiscussionBypass =
+        orchestrationResult.result?.teamStructuredDiscussionBypass === true;
       let system1Result: { success: boolean; answerText?: string; result?: any } | undefined;
-      if (isSystem1 && orchestrationResult.success) {
+      if (isSystem1 && orchestrationResult.success && !teamStructuredDiscussionBypass) {
         this.logger.debug(`[AgentService] Claude 编排返回 System 1 路径: ${route}`);
         const tempState = this.stateService.createInitialState(
           request.message,

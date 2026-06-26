@@ -18,6 +18,12 @@ export interface RealTimeRiskInfo {
   confidence?: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
+interface ParsedSearchResult {
+  title?: string;
+  text: string;
+  url?: string;
+}
+
 export interface RealTimeDestinationInfo {
   isOpen: boolean;
   status?: string;
@@ -189,8 +195,9 @@ export class ExaIntegrationService {
   ): string {
     const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
     const monthName = monthNames[month - 1];
-    
-    return `${countryCode} ${routeName} ${year}年${monthName} 封闭 风险 安全 禁止通行`;
+
+    const countryName = this.getCountrySearchName(countryCode);
+    return `"${countryName}" "${routeName}" ${year} ${monthName} road closure safety closed blocked`;
   }
 
   /**
@@ -198,8 +205,8 @@ export class ExaIntegrationService {
    */
   private parseRiskSearchResult(
     result: any,
-    _countryCode: string,
-    _routeName: string,
+    countryCode: string,
+    routeName: string,
     _month: number,
   ): RealTimeRiskInfo {
     if (!result || !result.content || !result.content[0]) {
@@ -211,20 +218,11 @@ export class ExaIntegrationService {
       return { hasRisk: false };
     }
 
-    let text: string;
-    try {
-      const parsed = JSON.parse(content.text);
-      if (parsed.results && parsed.results.length > 0) {
-        text = parsed.results.map((r: any) => r.text || r.title || '').join(' ');
-      } else {
-        text = content.text;
-      }
-    } catch {
-      text = content.text;
+    const results = this.parseSearchResultItems(content.text);
+    if (results.length === 0) {
+      return { hasRisk: false };
     }
 
-    const lowerText = text.toLowerCase();
-    
     // 检查风险关键词
     const riskKeywords = {
       ROAD_CLOSED: ['封闭', '关闭', '禁止通行', '封路', 'closed', 'blocked'],
@@ -234,18 +232,83 @@ export class ExaIntegrationService {
       TRANSPORT: ['维修', '事故', '中断', 'maintenance', 'accident'],
     };
 
-    for (const [riskType, keywords] of Object.entries(riskKeywords)) {
-      if (keywords.some(keyword => lowerText.includes(keyword))) {
-        return {
-          hasRisk: true,
-          riskType: riskType as RealTimeRiskInfo['riskType'],
-          riskDescription: this.extractRiskDescription(text, keywords),
-          confidence: 'MEDIUM',
-        };
+    for (const item of results) {
+      const searchableText = `${item.title || ''} ${item.text} ${item.url || ''}`;
+      if (!this.isRiskResultRelevantToRoute(searchableText, countryCode, routeName)) {
+        continue;
+      }
+
+      const lowerText = searchableText.toLowerCase();
+      for (const [riskType, keywords] of Object.entries(riskKeywords)) {
+        if (keywords.some(keyword => lowerText.includes(keyword))) {
+          return {
+            hasRisk: true,
+            riskType: riskType as RealTimeRiskInfo['riskType'],
+            riskDescription: this.extractRiskDescription(item.text || item.title || searchableText, keywords),
+            source: item.url,
+            confidence: this.resultMentionsRoute(searchableText, routeName) ? 'HIGH' : 'MEDIUM',
+          };
+        }
       }
     }
 
     return { hasRisk: false };
+  }
+
+  private parseSearchResultItems(rawText: string): ParsedSearchResult[] {
+    try {
+      const parsed = JSON.parse(rawText);
+      if (Array.isArray(parsed.results)) {
+        return parsed.results
+          .map((r: any) => ({
+            title: typeof r.title === 'string' ? r.title : undefined,
+            text: typeof r.text === 'string' ? r.text : typeof r.title === 'string' ? r.title : '',
+            url: typeof r.url === 'string' ? r.url : undefined,
+          }))
+          .filter((r: ParsedSearchResult) => r.text || r.title || r.url);
+      }
+    } catch {
+      // Fall through to raw text handling.
+    }
+    return rawText ? [{ text: rawText }] : [];
+  }
+
+  private isRiskResultRelevantToRoute(text: string, countryCode: string, routeName: string): boolean {
+    const normalized = text.toLowerCase();
+    const countryAliases = this.getCountryAliases(countryCode);
+    const hasCountrySignal = countryAliases.some(alias => normalized.includes(alias.toLowerCase()));
+    const hasRouteSignal = this.resultMentionsRoute(text, routeName);
+
+    // For country-level advisories, country signal is enough. Otherwise require the route to be named.
+    return hasCountrySignal || hasRouteSignal;
+  }
+
+  private resultMentionsRoute(text: string, routeName: string): boolean {
+    const normalized = text.toLowerCase();
+    const tokens = routeName
+      .split(/[\s,，、/|·\-–—()（）]+/)
+      .map(token => token.trim())
+      .filter(token => token.length >= 3);
+    return tokens.some(token => normalized.includes(token.toLowerCase()));
+  }
+
+  private getCountrySearchName(countryCode: string): string {
+    return this.getCountryAliases(countryCode)[0] || countryCode.toUpperCase();
+  }
+
+  private getCountryAliases(countryCode: string): string[] {
+    const code = countryCode.toUpperCase();
+    const aliases: Record<string, string[]> = {
+      IS: ['Iceland', '冰岛', 'Ísland', '.is'],
+      CN: ['China', '中国', '中华人民共和国', '.cn'],
+      JP: ['Japan', '日本', '.jp'],
+      US: ['United States', 'USA', '美国', '.us'],
+      FR: ['France', '法国', '.fr'],
+      IT: ['Italy', '意大利', '.it'],
+      CH: ['Switzerland', 'Swiss', '瑞士', '.ch'],
+      NP: ['Nepal', '尼泊尔', '.np'],
+    };
+    return aliases[code] || [code];
   }
 
   /**

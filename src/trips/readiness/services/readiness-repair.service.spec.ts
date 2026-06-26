@@ -30,6 +30,7 @@ describe('ReadinessRepairService', () => {
 
   const decisionRepairBridge = {
     executeDecisionRepair: jest.fn(),
+    loadCurrentTripPlan: jest.fn(),
   } as unknown as ReadinessDecisionRepairBridgeService;
 
   const tripPlanPersistence = {
@@ -198,6 +199,60 @@ describe('ReadinessRepairService', () => {
     });
 
     expect(result.persisted).toBe(false);
+    expect(tripPlanPersistence.persistRepairPlan).not.toHaveBeenCalled();
+  });
+
+  it('previewRepair runs decision engine dry-run without persisting', async () => {
+    (coverageMapService.getRepairOptions as jest.Mock).mockResolvedValue({
+      blockerId: 'finding-2',
+      blockerMessage: '时间冲突',
+      options: [
+        {
+          id: 'adjust_time',
+          title: '顺延',
+          description: '调整时间',
+          impact: 'high',
+          actionType: 'adjust_time',
+        },
+      ],
+    });
+    (coverageMapService.getReadinessScore as jest.Mock).mockResolvedValue({
+      tripId: 'trip-1',
+      score: { overall: 65 },
+    });
+    (decisionRepairBridge.loadCurrentTripPlan as jest.Mock).mockResolvedValue({
+      days: [
+        {
+          day: 1,
+          date: '2026-06-01',
+          timeSlots: [{ id: 'item-1', time: '09:00', title: 'A', type: 'sightseeing' }],
+        },
+      ],
+    });
+    (decisionRepairBridge.executeDecisionRepair as jest.Mock).mockResolvedValue({
+      plan: {
+        days: [
+          {
+            day: 1,
+            date: '2026-06-01',
+            timeSlots: [{ id: 'item-1', time: '11:00', title: 'A', type: 'sightseeing' }],
+          },
+        ],
+      },
+      log: { trigger: 'manual_repair' },
+    });
+
+    const result = await service.previewRepair({
+      tripId: 'trip-1',
+      blockerId: 'finding-2',
+      optionId: 'adjust_time',
+      affectedDayNumber: 1,
+    });
+
+    expect(result.previewMode).toBe('decision_engine_dry_run');
+    expect(result.status).toBe('preview');
+    expect(result.itineraryDiff.some((d) => d.changeType === 'time_changed')).toBe(true);
+    expect(result.decisionPlan).toBeTruthy();
     expect(tripPlanPersistence.persistRepairPlan).not.toHaveBeenCalled();
   });
 

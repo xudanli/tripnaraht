@@ -139,3 +139,45 @@ export async function replaceNodes(params: {
     body: JSON.stringify(params),
   });
 }
+
+/** P-OPS-2：回填实况 outcome（Agent / 前端；state 可由服务端会话自动补齐） */
+export async function recordOpsRealityOutcome(params: {
+  snapshotId: string;
+  outcome: Record<string, unknown>;
+  tripId?: string;
+  causality_id?: string;
+  state?: Record<string, unknown>;
+  source?: string;
+  trip_run_id?: string;
+  execution_trace_id?: string;
+}): Promise<
+  ApiResponse<{
+    success: boolean;
+    snapshotId: string;
+    stateAutoFilled?: boolean;
+    causalityAutoFilled?: boolean;
+    causalCounterfactualClosed?: boolean;
+  }>
+> {
+  const { snapshotId, ...body } = params;
+  return request(`/ops-reality-audit/${encodeURIComponent(snapshotId)}/outcome`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** P5：显式反事实闭环 */
+export async function recordCausalOutcome(params: {
+  state: Record<string, unknown>;
+  causality_id: string;
+  tripId?: string;
+  requestId?: string;
+  metrics: Record<string, number>;
+  missed_appointment?: boolean;
+  narrative?: string;
+}): Promise<ApiResponse<{ report: unknown; travelEventPersisted?: boolean }>> {
+  return request('/causal-outcome', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}

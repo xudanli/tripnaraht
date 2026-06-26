@@ -27,7 +27,8 @@ export class ReplanCoordinatorService implements IReplanTrigger {
     @Optional() @Inject(REPLAN_FLIGHT_SEARCH) private readonly flightSearch?: IReplanFlightSearch,
   ) {}
 
-  async triggerReplan(tripRunIdOrTripId: string, reason: string): Promise<void> {
+  /** Kernel 全链路重规划（供 ContingencyOrchestrator KERNEL_REPLAN 路径调用） */
+  async runKernelReplan(tripRunIdOrTripId: string, reason: string): Promise<void> {
     this.logger.log(`[ReplanCoordinator] 开始重规划: tripRunId=${tripRunIdOrTripId}, reason=${reason}`);
 
     if (!this.feedbackPersistence) {
@@ -99,6 +100,11 @@ export class ReplanCoordinatorService implements IReplanTrigger {
       this.decisionKernel.finalizeHarnessTraceIfRecorded(dso, 'FAILED');
       throw e;
     }
+  }
+
+  /** @deprecated 直接调用请改用 ContingencyOrchestrator；保留供测试与渐进迁移 */
+  async triggerReplan(tripRunIdOrTripId: string, reason: string): Promise<void> {
+    return this.runKernelReplan(tripRunIdOrTripId, reason);
   }
 
   /** 当 reason 为 flight_cancelled 时，搜索替代航班并更新 DSO.environmentState.flights */

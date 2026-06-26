@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# 专利 6.5 对齐 — 当前 shell 会话环境变量
+# 用法: source scripts/setup-patent-6.5-env.sh
+
+export DECISION_KERNEL_ENABLED=true
+export KERNEL_NATIVE_EXECUTION=true
+export KERNEL_NATIVE_EXECUTION_GRAY_PERCENT=100
+
+export DECISION_OS_PATENT_PARTICLES_VIEW=1
+export DECISION_OS_PATENT_PLAN_GEN_CANDIDATES=1
+export DECISION_OS_PATENT_INTAKE_NORMALIZER=1
+export DECISION_OS_PATENT_GATE_CONSTRAINTS=1
+export DECISION_OS_PATENT_FEEDBACK_LEARNING=1
+
+echo "[patent-6.5] DECISION_OS_PATENT_* flags enabled for this shell"

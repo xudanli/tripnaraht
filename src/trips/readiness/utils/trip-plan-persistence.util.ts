@@ -90,6 +90,9 @@ export function buildTripPlanPersistenceOps(input: {
 } {
   const existingById = new Map(input.existingItems.map((item) => [item.id, item]));
   const locked = input.lockedSlotIds ?? new Set<string>();
+  const allPlanSlotIds = new Set(
+    input.plan.days.flatMap((day) => day.timeSlots.map((slot) => slot.id)),
+  );
   const updates: Array<{
     id: string;
     tripDayId: string;
@@ -121,6 +124,8 @@ export function buildTripPlanPersistenceOps(input: {
     for (const item of input.existingItems) {
       if (item.tripDayId !== tripDayId) continue;
       if (daySlotIds.has(item.id)) continue;
+      // Still on another plan day → cross-day move; persist via update, not delete+recreate.
+      if (allPlanSlotIds.has(item.id)) continue;
       if (locked.has(item.id)) {
         skippedLockedItemIds.push(item.id);
         retainedIds.add(item.id);

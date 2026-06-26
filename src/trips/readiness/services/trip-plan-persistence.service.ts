@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import type { TripPlan } from '../../decision/plan-model';
+import { TripRevisionBumpService } from '../../services/trip-revision-bump.service';
 import {
   buildTripPlanPersistenceOps,
   summarizePersistenceResult,
@@ -15,7 +16,10 @@ const UUID_RE =
 export class TripPlanPersistenceService {
   private readonly logger = new Logger(TripPlanPersistenceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tripRevisionBump: TripRevisionBumpService,
+  ) {}
 
   async persistRepairPlan(tripId: string, plan: TripPlan): Promise<TripPlanPersistenceResult> {
     const trip = await this.prisma.trip.findUnique({
@@ -55,15 +59,25 @@ export class TripPlanPersistenceService {
       lockedSlotIds,
     });
 
-    if (ops.updates.length === 0 && ops.creates.length === 0 && ops.deletes.length === 0) {
-      return summarizePersistenceResult(ops);
+    const existingIds = new Set(
+      trip.TripDay.flatMap((day) => day.ItineraryItem.map((item) => item.id)),
+    );
+    const updatingIds = new Set(ops.updates.map((update) => update.id));
+    const deletes = ops.deletes.filter((id) => !updatingIds.has(id));
+
+    for (const update of ops.updates) {
+      if (!existingIds.has(update.id)) {
+        throw new BadRequestException(
+          `REPAIR_ITEM_NOT_FOUND: itinerary item ${update.id} does not exist on trip ${tripId}`,
+        );
+      }
+    }
+
+    if (ops.updates.length === 0 && ops.creates.length === 0 && deletes.length === 0) {
+      return summarizePersistenceResult({ ...ops, deletes });
     }
 
     await this.prisma.$transaction(async (tx) => {
-      for (const itemId of ops.deletes) {
-        await tx.itineraryItem.delete({ where: { id: itemId } });
-      }
-
       for (const update of ops.updates) {
         await tx.itineraryItem.update({
           where: { id: update.id },
@@ -93,13 +107,19 @@ export class TripPlanPersistenceService {
         });
       }
 
+      for (const itemId of deletes) {
+        await tx.itineraryItem.delete({ where: { id: itemId } });
+      }
+
       await tx.trip.update({
         where: { id: tripId },
         data: { updatedAt: new Date() },
       });
     });
 
-    const summary = summarizePersistenceResult(ops);
+    await this.tripRevisionBump.bump(tripId);
+
+    const summary = summarizePersistenceResult({ ...ops, deletes });
     this.logger.log(
       `persistRepairPlan trip=${tripId} updated=${summary.updatedItemIds.length} created=${summary.createdItemIds.length} removed=${summary.removedItemIds.length}`,
     );

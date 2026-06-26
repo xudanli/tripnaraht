@@ -6,13 +6,11 @@
  * 2. 护城河扩展能力（实时状态、预测数据、自适应参数、学习后的能力）
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, forwardRef } from '@nestjs/common';
 import { WorldBuildContextSkill } from '../world-build-context.skill';
 import { UnifiedWorldModel, UnifiedWorldModelRequest } from '../interfaces/unified-world-model.interface';
 import { WorldModelContext } from '../../../trips/decision/shared/world-model.types';
 import { executeWithConditionalFallback } from '../utils/fallback-helper';
-
-// 护城河扩展服务
 import { RealtimeWeatherService } from './realtime-weather.service';
 import { RealtimeRoadStatusService } from './realtime-road-status.service';
 import { WeatherPredictionService } from './weather-prediction.service';
@@ -20,7 +18,6 @@ import { FailureRiskPredictionService } from './failure-risk-prediction.service'
 import { AdaptiveWorldModelService } from './adaptive-world-model.service';
 import { UserCapabilityLearningService } from './user-capability-learning.service';
 import { MultimodalWorldPerceptionService } from './multimodal-world-perception.service';
-// 使用Skills替代直接服务调用
 import { WorldRealtimeWeatherSkill } from '../world-realtime-weather.skill';
 import { WorldWeatherPredictionSkill } from '../world-weather-prediction.skill';
 import { WorldFailureRiskPredictionSkill } from '../world-failure-risk-prediction.skill';
@@ -28,8 +25,6 @@ import { WorldAdaptiveParametersSkill } from '../world-adaptive-parameters.skill
 import { WorldMultimodalPerceptionSkill } from '../world-multimodal-perception.skill';
 import { WorldCollaborativeDataSkill } from '../world-collaborative-data.skill';
 import { SkillsRegistryService } from '../../services/skills-registry.service';
-import { SKILLS_REGISTRY_TOKEN } from '../../services/skills-registry.token';
-import { Inject } from '@nestjs/common';
 import { CollaborativeWorldModelService } from './collaborative-world-model.service';
 import { CountryConfigService } from './country-config.service';
 import { CausalReasoningService } from './causal-reasoning.service';
@@ -47,7 +42,9 @@ export class UnifiedWorldModelService {
     private worldBuildContextSkill: WorldBuildContextSkill,
     
     // Skills Registry（用于获取Skills）
-    @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private skillsRegistry?: SkillsRegistryService,
+    @Inject(forwardRef(() => SkillsRegistryService))
+    @Optional()
+    private skillsRegistry?: SkillsRegistryService,
     
     // 护城河扩展服务（保留作为降级策略）
     @Optional() private realtimeWeatherService?: RealtimeWeatherService,

@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { TripStatus, normalizeTripStatus } from '../../dto/trip-status.dto';
 
 /** 临行前窗口：此天数内才展示路况/实时天气等「现在就要查」的提醒 */
 export const ACTIONABLE_READINESS_HORIZON_DAYS = 14;
@@ -57,11 +58,60 @@ export function getDaysUntilTripStart(startDate: Date): number {
   return Math.ceil(start.diff(today, 'days').days);
 }
 
-export function getTripReadinessPhase(startDate: Date): TripReadinessPhase {
-  const days = getDaysUntilTripStart(startDate);
-  if (days < 0) return 'past';
-  if (days === 0) return 'in_trip';
-  if (days <= ACTIONABLE_READINESS_HORIZON_DAYS) return 'pre_departure';
+export function getDaysUntilTripEnd(endDate: Date): number {
+  const end = DateTime.fromJSDate(endDate).startOf('day');
+  const today = DateTime.now().startOf('day');
+  return Math.ceil(end.diff(today, 'days').days);
+}
+
+export interface TripReadinessPhaseOptions {
+  endDate?: Date;
+  status?: string | null;
+}
+
+/** 日历上是否处于行程窗口 [startDate, endDate]（含首尾） */
+export function isCalendarInTripWindow(startDate: Date, endDate: Date): boolean {
+  const daysUntilStart = getDaysUntilTripStart(startDate);
+  const daysUntilEnd = getDaysUntilTripEnd(endDate);
+  return daysUntilStart <= 0 && daysUntilEnd >= 0;
+}
+
+export function getTripReadinessPhase(
+  startDate: Date,
+  options?: TripReadinessPhaseOptions,
+): TripReadinessPhase {
+  const status = options?.status ? normalizeTripStatus(options.status) : undefined;
+  const endDate = options?.endDate;
+
+  if (status === TripStatus.COMPLETED || status === TripStatus.CANCELLED) {
+    return 'past';
+  }
+
+  if (status === TripStatus.TRAVELING) {
+    return 'in_trip';
+  }
+
+  const daysUntilStart = getDaysUntilTripStart(startDate);
+
+  if (endDate && isCalendarInTripWindow(startDate, endDate)) {
+    return 'in_trip';
+  }
+
+  if (daysUntilStart < 0) {
+    if (endDate && getDaysUntilTripEnd(endDate) >= 0) {
+      return 'in_trip';
+    }
+    return 'past';
+  }
+
+  if (daysUntilStart === 0) {
+    return 'in_trip';
+  }
+
+  if (daysUntilStart <= ACTIONABLE_READINESS_HORIZON_DAYS) {
+    return 'pre_departure';
+  }
+
   return 'planning';
 }
 
@@ -136,13 +186,16 @@ export function filterSegmentHazardsForTripPhase<T extends SegmentHazardLike>(
   return hazards.filter((hazard) => !isActionableLiveRisk(hazard));
 }
 
-export function buildCoveragePhaseMeta(startDate: Date): {
+export function buildCoveragePhaseMeta(
+  startDate: Date,
+  options?: TripReadinessPhaseOptions,
+): {
   readinessPhase: TripReadinessPhase;
   daysUntilStart: number;
   phaseHint: { zh: string; en: string };
 } {
   const daysUntilStart = getDaysUntilTripStart(startDate);
-  const phase = getTripReadinessPhase(startDate);
+  const phase = getTripReadinessPhase(startDate, options);
   return {
     readinessPhase: phase,
     daysUntilStart,
@@ -150,11 +203,15 @@ export function buildCoveragePhaseMeta(startDate: Date): {
       zh:
         phase === 'planning'
           ? `行程尚早（${daysUntilStart} 天后出发）。路段路况与冬季驾驶提醒将在出发前 ${ACTIONABLE_READINESS_HORIZON_DAYS} 天内显示。`
-          : '',
+          : phase === 'in_trip'
+            ? '行中展示「今日就绪」，整趟行前准备度已归档至准备度页。'
+            : '',
       en:
         phase === 'planning'
           ? `Trip starts in ${daysUntilStart} days. Segment road and winter driving alerts appear within ${ACTIONABLE_READINESS_HORIZON_DAYS} days of departure.`
-          : '',
+          : phase === 'in_trip'
+            ? 'In-trip shows today execution readiness; full pre-departure checklist lives under Readiness.'
+            : '',
     },
   };
 }

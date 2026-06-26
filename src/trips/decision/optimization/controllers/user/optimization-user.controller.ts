@@ -22,6 +22,8 @@ import { WeightPersistenceService } from '../../learning/weight-persistence.serv
 import { NegotiateContextLoaderService } from '../../collaboration/negotiate-context-loader.service';
 import { RoutePlanDraft, WorldModelContext } from '../../../shared/world-model.types';
 import { PrismaService } from '../../../../../prisma/prisma.service';
+import { mapNegotiationResultToApiSummary } from '../../utils/guardian-negotiation-api.mapper';
+import { GuardianChooseService } from '../../services/guardian-choose.service';
 
 // ========== Request DTOs ==========
 
@@ -142,8 +144,10 @@ export interface NegotiationSummary {
   keyTradeoffs: string[];
   /** 附加条件 */
   conditions?: string[];
-  /** 需人类决策的点 */
+  /** 需人类决策的点（仅 NEEDS_HUMAN 且非硬约束） */
   humanDecisionPoints?: string[];
+  /** 硬约束 BLOCK；为 true 时前端禁用 CHOOSE */
+  hardConstraintBlocked?: boolean;
   /** 三守护者评估摘要 */
   evaluationSummary: {
     abuUtility: number;
@@ -194,6 +198,7 @@ export class OptimizationUserController {
     private readonly weightPersistence: WeightPersistenceService,
     private readonly negotiateLoader: NegotiateContextLoaderService,
     private readonly prisma: PrismaService,
+    private readonly guardianChoose: GuardianChooseService,
   ) {}
 
   // ========== 计划评估 ==========
@@ -344,6 +349,21 @@ export class OptimizationUserController {
     if (result.summary && Number.isNaN(result.summary.finalUtility)) {
       result.summary.finalUtility = 0;
     }
+
+    const tripIdForPersist = tripIdStr || plan.tripId?.trim() || '';
+    if (
+      tripIdForPersist &&
+      result.humanDecisionPointsFlat?.length &&
+      !result.hardConstraintBlocked
+    ) {
+      await this.guardianChoose.persistChooseContext(tripIdForPersist, {
+        source: 'optimize_judgment',
+        decisionPoints: result.humanDecisionPointsFlat,
+        hardConstraintBlocked: false,
+        correlationId: `opt-${Date.now()}`,
+      });
+    }
+
     return result;
   }
 
@@ -449,6 +469,14 @@ export class OptimizationUserController {
   @ApiResponse({ status: 200, description: '返回协商摘要' })
   @ApiResponse({ status: 400, description: '请求参数错误' })
   async getNegotiationSummary(@Body() dto: NegotiatePlanDto, @Req() req: { body?: Record<string, unknown> }): Promise<NegotiationSummary> {
+    const { plan, world, tripIdStr } = await this.resolveNegotiationPlanWorld(dto, req);
+    return this.runNegotiationAndMap(plan, world, tripIdStr || plan.tripId);
+  }
+
+  private async resolveNegotiationPlanWorld(
+    dto: NegotiatePlanDto,
+    req: { body?: Record<string, unknown> },
+  ): Promise<{ plan: RoutePlanDraft; world: WorldModelContext; tripIdStr: string }> {
     const raw = req?.body ?? {};
     const tripIdStr = (
       (typeof dto?.tripId === 'string' ? dto.tripId : null) ??
@@ -480,63 +508,35 @@ export class OptimizationUserController {
     if (!plan.tripId) {
       throw new BadRequestException('请求错误: plan.tripId 不能为空。plan 对象必须包含 tripId 字段');
     }
+    return { plan, world, tripIdStr };
+  }
+
+  private async runNegotiationAndMap(
+    plan: RoutePlanDraft,
+    world: WorldModelContext,
+    persistTripId?: string,
+  ): Promise<NegotiationSummary> {
     await this.enrichRouteDirectionName(world);
+    const baseEvaluation = this.objectiveFunction.evaluate(plan, world);
     const result = await this.guardianDebate.negotiate(plan, world, DEFAULT_NEGOTIATION_CONFIG);
-    
-    const abuEval = result.evaluations.find(e => e.persona === 'ABU');
-    const dreEval = result.evaluations.find(e => e.persona === 'DRE');
-    const neptuneEval = result.evaluations.find(e => e.persona === 'NEPTUNE');
-    
-    // 人格 → 维度标签（对应评估维度：安全守护者/节奏守护者/修复守护者）
-    const PERSONA_DIMENSION: Record<string, { dimension: string; dimensionLabel: string }> = {
-      ABU: { dimension: 'safety', dimensionLabel: '安全' },
-      DRE: { dimension: 'rhythm', dimensionLabel: '节奏' },
-      NEPTUNE: { dimension: 'philosophy', dimensionLabel: '修复' },
-    };
-    // 合并各角色关注点与建议，去重，用户可读（无 [ABU] 等前缀），用于展示「具体问题」
-    const seen = new Set<string>();
-    const criticalConcerns: string[] = [];
-    const suggestionsWithDimension: Array<{ text: string; dimension: string; dimensionLabel: string }> = [];
-    for (const evaluation of result.evaluations) {
-      const dim = PERSONA_DIMENSION[evaluation.persona] ?? { dimension: 'general', dimensionLabel: '综合' };
-      const items = [
-        ...(evaluation.primaryConcerns || []),
-        ...(evaluation.suggestedAdjustments || []),
-      ];
-      for (const text of items) {
-        const t = String(text).trim();
-        if (t && !seen.has(t)) {
-          seen.add(t);
-          criticalConcerns.push(t);
-          suggestionsWithDimension.push({ text: t, dimension: dim.dimension, dimensionLabel: dim.dimensionLabel });
-        }
-      }
+    const summary = mapNegotiationResultToApiSummary(result, baseEvaluation);
+
+    const tripId = persistTripId?.trim();
+    if (
+      tripId &&
+      summary.decision === 'NEEDS_HUMAN' &&
+      summary.humanDecisionPoints?.length &&
+      !summary.hardConstraintBlocked
+    ) {
+      await this.guardianChoose.persistChooseContext(tripId, {
+        source: 'negotiation',
+        decisionPoints: summary.humanDecisionPoints,
+        hardConstraintBlocked: false,
+        correlationId: `neg-${Date.now()}`,
+      });
     }
 
-    const decision = result.decision === 'CONDITIONAL_APPROVE' ? 'APPROVE_WITH_CONDITIONS'
-      : result.decision === 'REQUIRES_HUMAN' ? 'NEEDS_HUMAN'
-      : result.decision;
-    
-    return {
-      decision,
-      consensusLevel: result.consensusLevel ?? 0,
-      keyTradeoffs: Array.isArray(result.keyTradeoffs) ? result.keyTradeoffs : [],
-      conditions: Array.isArray(result.conditions) ? result.conditions : [],
-      humanDecisionPoints: Array.isArray(result.humanDecisionPoints) ? result.humanDecisionPoints : [],
-      evaluationSummary: {
-        abuUtility: abuEval?.utility ?? 0,
-        dreUtility: dreEval?.utility ?? 0,
-        neptuneUtility: neptuneEval?.utility ?? 0,
-        criticalConcerns,
-        suggestionsWithDimension,
-      },
-      votingResult: {
-        approve: Math.max(0, result.votes.filter(v => v.vote === 'APPROVE').length),
-        reject: Math.max(0, result.votes.filter(v => v.vote === 'REJECT').length),
-        abstain: Math.max(0, result.votes.filter(v => v.vote === 'ABSTAIN').length),
-      },
-      fatiguePrediction: result.fatiguePrediction,
-    };
+    return summary;
   }
 
   /**
@@ -579,7 +579,8 @@ export class OptimizationUserController {
   @ApiResponse({ status: 400, description: '请求参数错误' })
   async testGetNegotiationSummary(@Body() dto: NegotiatePlanDto, @Req() req: { body?: Record<string, unknown> }): Promise<NegotiationSummary> {
     this.logger.log('[Test] 测试协商端点');
-    return this.getNegotiationSummary(dto, req);
+    const { plan, world, tripIdStr } = await this.resolveNegotiationPlanWorld(dto, req);
+    return this.runNegotiationAndMap(plan, world, tripIdStr || plan.tripId);
   }
 
   @Public()

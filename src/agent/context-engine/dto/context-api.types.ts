@@ -98,6 +98,8 @@ export interface ContextPackage {
  */
 export interface BuildContextPackageRequest {
   tripId?: string;
+  /** 当前用户 ID — 私密愿望 / 领域影响力块需要 */
+  userId?: string;
   phase: string;
   agent: string;
   userQuery: string;

@@ -13,7 +13,7 @@ import {
   Matches,
   IsObject,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiExtraModels, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
 import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef, SimplifiedExplanation, AICapabilityDisplay, OrchestrationStep, JepaPayload } from '../interfaces/trip-plan.interface';
@@ -49,7 +49,20 @@ import type {
   NarrativeIntegrityObservabilitySlice,
   NarrativeIntegrityReport,
 } from '../inventory/narrative-integrity-validator.util';
+import {
+  CascadeUiHintDto,
+  SchemaOrgDiscoveryEntityDto,
+  SchemaOrgDiscoveryPayloadDto,
+  TravelEntityRefDto,
+  TravelRuntimeEdgeDto,
+  TravelRuntimeGraphDto,
+  TravelRuntimeNodeDto,
+} from '../../travel-cognition/dto/travel-runtime-api.dto';
+import type { TravelRuntimeGraph } from '../../travel-cognition/types/travel-runtime-graph.types';
+import type { SchemaOrgDiscoveryPayload } from '../../travel-cognition/adapters/schema-org-discovery.mapper';
+import { extractLatestUserMessageFromRecent } from '../utils/resolve-route-and-run-message.util';
 
+export type { CascadeUiHintDto, SchemaOrgDiscoveryPayloadDto, TravelRuntimeGraphDto };
 export type { IntentMode } from '../constants/intent-mode.constants';
 export { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 
@@ -806,11 +819,21 @@ export class RouteAndRunRequestDto {
   @IsString()
   route_direction_id?: string | null;
 
-  @ApiProperty({ 
-    description: '用户输入消息',
+  @ApiProperty({
+    description:
+      '用户输入消息。Plan Studio 等客户端可省略本字段，改由 conversation_context.recent_messages 末条用户话术自动补齐。',
     example: '推荐新宿拉面',
   })
+  @Transform(({ value, obj }) => {
+    const direct = typeof value === 'string' ? value.trim() : '';
+    if (direct) return direct;
+    return extractLatestUserMessageFromRecent(obj?.conversation_context?.recent_messages) ?? '';
+  })
   @IsString()
+  @MinLength(1, {
+    message:
+      'message 不能为空；请传 message 或在 conversation_context.recent_messages 中提供用户话术',
+  })
   message!: string;
 
   @ApiPropertyOptional({
@@ -1530,6 +1553,13 @@ export class ReferenceSourceDto {
   EvidenceLineageDto,
   ReferenceSourceDto,
   CoverageDisclosureDto,
+  CascadeUiHintDto,
+  TravelRuntimeGraphDto,
+  TravelRuntimeNodeDto,
+  TravelRuntimeEdgeDto,
+  TravelEntityRefDto,
+  SchemaOrgDiscoveryPayloadDto,
+  SchemaOrgDiscoveryEntityDto,
 )
 export class RouteAndRunResponseDto {
   @ApiProperty({ 
@@ -1925,6 +1955,8 @@ export class RouteAndRunResponseDto {
       };
       /** DSO 旅行本体子状态投影（与 Kernel STATE_UPDATE 对齐；无 Kernel 时由编排 state 推导） */
       travelOntologyState?: DecisionState['travelOntologyState'];
+      /** Schema.org 发现层（SEO / 外部摄入；非 Runtime 语义） */
+      schema_org_discovery?: SchemaOrgDiscoveryPayload;
       // 重定向信息（仅在 REDIRECT_REQUIRED 时存在）
       redirectInfo?: {
         redirect_to: string;
@@ -2147,15 +2179,9 @@ export class RouteAndRunResponseDto {
     /** 级联影响分析（封路/天气/航班等；有证据且可行动时附带） */
     dependency_impact?: Record<string, unknown>;
     /** 级联影响 UI 卡片（与 Readiness cascadeUiHints 同形） */
-    cascade_ui_hints?: Array<{
-      id: string;
-      riskLevel: string;
-      message: string;
-      recommendation: string;
-      entityKind?: string;
-      entityLabel?: string;
-      userConfirmationRequired?: string[];
-    }>;
+    cascade_ui_hints?: CascadeUiHintDto[];
+    /** L3 Travel Runtime Graph（执行态图，非知识图谱） */
+    travel_runtime_graph?: TravelRuntimeGraph;
   };
 
   @ApiProperty({ 

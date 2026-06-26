@@ -13,9 +13,15 @@ import { AgentMemoryContextStore } from '../context/agent-memory-context.store';
 import { UserProfileMapperService } from './user-profile-mapper.service';
 import { DecisionParamsMappingV2Service } from './decision-params-mapping-v2.service';
 import { ShadowModeDiffService } from './shadow-mode-diff.service';
+import { MemoryStateDecisionParamsService } from './memory-state-decision-params.service';
 import { calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
 import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
 import { applyRoutePartyFitnessToDecisionParams } from '../utils/route-party-fitness-decision-overlay.util';
+import { DecisionOsSloService } from '../../../decision/slo/decision-os-slo.service';
+
+function cloneDecisionParams(params: DecisionParams): DecisionParams {
+  return JSON.parse(JSON.stringify(params)) as DecisionParams;
+}
 
 @Injectable()
 export class DecisionParamsInjectorService {
@@ -26,6 +32,8 @@ export class DecisionParamsInjectorService {
     private readonly profileMapper: UserProfileMapperService,
     private readonly mappingV2: DecisionParamsMappingV2Service,
     private readonly shadowDiff: ShadowModeDiffService,
+    @Optional() private readonly memoryStateParams?: MemoryStateDecisionParamsService,
+    @Optional() private readonly slo?: DecisionOsSloService,
     @Optional() private readonly memoryContextStore?: AgentMemoryContextStore,
   ) {}
 
@@ -65,6 +73,7 @@ export class DecisionParamsInjectorService {
       }
       const params = useLegacy ? legacy : v2;
       this.applyRoutePartyFitnessOverlay(userId, params);
+      await this.applyMemoryStateV1Overlay(userId, params);
       this.logger.debug(`Generated default decision params for new user ${userId}`);
       return normalizeDecisionParams(params);
     }
@@ -80,6 +89,7 @@ export class DecisionParamsInjectorService {
     }
     const params = useLegacy ? legacy : v2;
     this.applyRoutePartyFitnessOverlay(userId, params);
+    await this.applyMemoryStateV1Overlay(userId, params);
 
     this.logger.debug(
       `Generated decision params for user ${userId}: ` +
@@ -89,9 +99,6 @@ export class DecisionParamsInjectorService {
     return normalizeDecisionParams(params);
   }
 
-  /**
-   * 当冻结 Memory 中存在本请求的 routePartyProfile.fitness_level 时，收紧/放宽 constraints（与 L1 画像叠加后再 normalize）。
-   */
   private applyRoutePartyFitnessOverlay(userId: string, params: DecisionParams): void {
     const snap = this.memoryContextStore?.get();
     const fl = snap?.routePartyProfile?.fitness_level;
@@ -99,6 +106,34 @@ export class DecisionParamsInjectorService {
     if (snap.userId != null && snap.userId !== userId) return;
     applyRoutePartyFitnessToDecisionParams(params, fl);
     this.logger.debug(`[DecisionParamsInjector] route_party fitness=${fl} merged into decision constraints`);
+  }
+
+  /** MemoryState v1 overlay；V1=1 生效，SHADOW=1 仅记录 diff 到 SLO */
+  private async applyMemoryStateV1Overlay(userId: string, params: DecisionParams): Promise<void> {
+    if (!this.memoryStateParams) return;
+    const apply = process.env.DECISION_PARAMS_MEMORY_STATE_V1 === '1';
+    const shadow = process.env.DECISION_PARAMS_MEMORY_STATE_SHADOW === '1';
+    if (!apply && !shadow) return;
+
+    const before = cloneDecisionParams(params);
+    const { audit } = await this.memoryStateParams.overlayForUser(userId, params);
+
+    if (shadow && this.slo) {
+      const diff = this.shadowDiff.diff(before, params);
+      this.slo.recordMemoryStateShadow({
+        userId,
+        overlayApplied: apply,
+        changedKeys: diff.changedKeys,
+      });
+    }
+
+    if (!apply) {
+      Object.assign(params, before);
+    } else if (audit.length > 0) {
+      this.logger.debug(
+        `[DecisionParamsInjector] memory_state_v1 overlay user=${userId} knobs=${audit.map((a) => a.reason).join(',')}`,
+      );
+    }
   }
 
   /**

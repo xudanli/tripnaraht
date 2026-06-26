@@ -35,13 +35,21 @@ describe('proactive-ux-hints', () => {
       dependencyImpact: {
         impact: {
           affected: [
-            { riskLevel: 'HIGH', message: 'F-road 封路影响高地 POI', recommendation: 'ASK_USER' },
+            {
+              riskLevel: 'HIGH',
+              message: 'F-road 封路影响高地 POI',
+              recommendation: 'ASK_USER',
+              cascadeConfidence: 0.76,
+              netImpactMinutes: 30,
+            },
           ],
         },
       },
     });
     expect(hints).toHaveLength(1);
     expect(hints[0].messageZh).toMatch(/级联影响/);
+    expect(hints[0].messageZh).toMatch(/净影响约 30 分钟/);
+    expect(hints[0].messageZh).toMatch(/级联置信度 76%/);
     expect(hints[0].messageZh).not.toMatch(/自动执行/);
   });
 

@@ -27,6 +27,9 @@ import { PlanGateRunThreeGuardiansSkill } from '../../skills/plan/gate/plan-gate
 import { PlanConstraintsDetectConflictsSkill } from '../../skills/plan/constraints/plan-constraints-detect-conflicts.skill';
 import { PlanLogAppendDecisionSkill } from '../../skills/plan/log/plan-log-append-decision.skill';
 import { PersonaShellService, PersonaShellOutput } from './persona-shell.service';
+import { GuardianChooseService } from '../../trips/decision/optimization/services/guardian-choose.service';
+import { PlanningWorkbenchKernelBridgeService } from './planning-workbench-kernel-bridge.service';
+import type { PlanningWorkbenchKernelMode } from './planning-workbench-kernel-bridge.types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StateStoreService } from '../../agent/infra/state-store.service';
 import { DEMEffortMetadataService } from '../../trips/dem/services/dem-effort-metadata.service';
@@ -79,6 +82,12 @@ export interface PlanningWorkbenchResponse {
     
     /** 三人格输出（面向用户） */
     personas?: PersonaShellOutput;
+
+    /** P3/P4: 因果内核投影（与 personas.causalPersonaProjection 相同，便于 UI 直接读取） */
+    causalPersonaProjection?: PersonaShellOutput['causalPersonaProjection'];
+
+    /** P1 单主角表达别名 — 与 personas.presentation 相同 */
+    presentation?: PersonaShellOutput['presentation'];
     
     /** 健康度（隐藏，仅内部使用） */
     health?: {
@@ -115,6 +124,7 @@ export class PlanningWorkbenchAgentService {
     @Optional() private readonly constraintsDetectConflicts?: PlanConstraintsDetectConflictsSkill,
     @Optional() private readonly logAppendDecision?: PlanLogAppendDecisionSkill,
     @Optional() private readonly personaShell?: PersonaShellService,
+    @Optional() private readonly kernelBridge?: PlanningWorkbenchKernelBridgeService,
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly stateStore?: StateStoreService,
     @Optional() private readonly tripRunManager?: TripRunManagerService,
@@ -130,6 +140,7 @@ export class PlanningWorkbenchAgentService {
     @Optional() private readonly geoCheckHazardZonesSkill?: GeoCheckHazardZonesSkill,
     @Optional()
     private readonly multiAgentCollaboration?: MultiAgentCollaborationService,
+    @Optional() private readonly guardianChoose?: GuardianChooseService,
   ) {}
 
   /**
@@ -191,12 +202,15 @@ export class PlanningWorkbenchAgentService {
         this.logger.debug('构建世界模型上下文...');
         updateProgress?.(5, '正在构建世界模型上下文...');
         try {
+          const workbenchUserId = await this.resolveWorkbenchUserId(request.tripId);
           const contextPromise = this.contextBuild.execute({
             tripId: request.tripId,
             phase: 'PLANNING',
             agent: 'PlanningWorkbench',
             userQuery: `规划工作台: ${request.context.destination.city || request.context.destination.country}`,
             tokenBudget: 3000,
+            includePrivate: true,
+            userId: workbenchUserId ?? undefined,
           });
           const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error('构建上下文超时（10秒）')), 10000);
@@ -496,19 +510,52 @@ export class PlanningWorkbenchAgentService {
                   context: request.context,
                 });
 
+                let comparison = compareResult.comparison;
+
+                // 2b. P3: 对每个 skeleton option 并行 Kernel GATE_EVAL
+                if (this.kernelBridge?.isActive()) {
+                  const kernelMode = this.kernelBridge.resolveMode();
+                  const kernelCompare = await this.kernelBridge.runCompareGateEvalForOptions({
+                    request,
+                    planState,
+                    options: skeletonSet.options,
+                    tripRunId,
+                    llmRecommendedOptionId: comparison.recommendation?.optionId,
+                  });
+                  if (kernelCompare) {
+                    comparison = this.kernelBridge.enrichComparisonWithGateDeltas(
+                      comparison,
+                      kernelCompare,
+                      { overrideRecommendation: kernelMode === 'native' },
+                    );
+                    if (kernelCompare.divergesFromLlmRecommendation) {
+                      planState.metadata = {
+                        ...planState.metadata,
+                        kernelCompareGateMismatch: {
+                          llmRecommended: kernelCompare.llmRecommendedOptionId,
+                          gateRecommended: kernelCompare.recommendedByGate,
+                        },
+                      };
+                    }
+                    this.logger.debug(
+                      `[PlanningWorkbench/compare] Kernel gate eval: recommendedByGate=${kernelCompare.recommendedByGate} diverges=${kernelCompare.divergesFromLlmRecommendation}`,
+                    );
+                  }
+                }
+
                 // 3. 存储对比结果
-                uiOutput.comparison = compareResult.comparison;
+                uiOutput.comparison = comparison;
                 
                 // 4. 更新 planState 的推荐方案（如果对比结果有推荐）
-                if (compareResult.comparison.recommendation) {
+                if (comparison.recommendation) {
                   planState.metadata = {
                     ...planState.metadata,
-                    comparison: compareResult.comparison,
-                    recommendedOptionId: compareResult.comparison.recommendation.optionId,
+                    comparison,
+                    recommendedOptionId: comparison.recommendation.optionId,
                   };
                   
                   // 如果当前 segments 不是推荐方案，可以选择更新（但这里不自动更新，让用户决定）
-                  this.logger.debug(`对比完成，推荐方案: ${compareResult.comparison.recommendation.optionId}`);
+                  this.logger.debug(`对比完成，推荐方案: ${comparison.recommendation.optionId}`);
                 }
 
                 // === 更新 TripAttempt 为 COMPLETED ===
@@ -520,7 +567,8 @@ export class PlanningWorkbenchAgentService {
                       {
                         comparison: {
                           optionCount: skeletonSet.options.length,
-                          recommendation: compareResult.comparison.recommendation,
+                          recommendation: comparison.recommendation,
+                          kernelGateEval: comparison.kernelGateEval,
                         },
                       },
                     );
@@ -931,15 +979,51 @@ export class PlanningWorkbenchAgentService {
         }
       }
 
-      // 4. System 2 深度评审（如果需要）
-      if (planState.gate.status === 'NEED_CONFIRM' && this.gateRunThreeGuardians) {
-        const guardiansResult = await this.gateRunThreeGuardians.execute({
+      // 4. System 2 深度评审 / Decision Kernel 桥接
+      const kernelMode: PlanningWorkbenchKernelMode =
+        this.kernelBridge?.resolveMode() ?? 'legacy';
+
+      if (kernelMode === 'native' && this.kernelBridge?.isActive()) {
+        this.logger.debug('[PlanningWorkbench] Kernel native gate pipeline');
+        const kernelOutcome = await this.kernelBridge.runNativeGatePipeline({
+          request,
           planState,
-          tripId: request.tripId,
+          tripRunId,
         });
-        planState.gate = guardiansResult.gateStatus;
-        if (guardiansResult.gateStatus.requiredUserConfirmations) {
-          uiOutput.confirmations = guardiansResult.gateStatus.requiredUserConfirmations;
+        planState.gate = kernelOutcome.gateStatus;
+        if (kernelOutcome.confirmations?.length) {
+          uiOutput.confirmations = kernelOutcome.confirmations;
+        }
+        planState.metadata = {
+          ...planState.metadata,
+          kernelBridge: kernelOutcome.metadata,
+        };
+      } else {
+        let legacyGuardianTriggered = false;
+
+        if (planState.gate.status === 'NEED_CONFIRM' && this.gateRunThreeGuardians) {
+          legacyGuardianTriggered = true;
+          const guardiansResult = await this.gateRunThreeGuardians.execute({
+            planState,
+            tripId: request.tripId,
+          });
+          planState.gate = guardiansResult.gateStatus;
+          if (guardiansResult.gateStatus.requiredUserConfirmations) {
+            uiOutput.confirmations = guardiansResult.gateStatus.requiredUserConfirmations;
+          }
+        }
+
+        if (kernelMode === 'shadow' && this.kernelBridge?.isActive()) {
+          this.logger.debug('[PlanningWorkbench] Kernel shadow comparison');
+          const shadowMeta = await this.kernelBridge.runShadowComparison(
+            { request, planState, tripRunId },
+            planState.gate,
+            legacyGuardianTriggered,
+          );
+          planState.metadata = {
+            ...planState.metadata,
+            kernelBridge: shadowMeta,
+          };
         }
       }
 
@@ -950,6 +1034,24 @@ export class PlanningWorkbenchAgentService {
       if (this.personaShell) {
         this.logger.debug('包装为三人格输出...');
         uiOutput.personas = await this.personaShell.wrapAsPersonas(planState);
+        uiOutput.causalPersonaProjection = uiOutput.personas?.causalPersonaProjection;
+        if (kernelMode !== 'legacy' && this.kernelBridge) {
+          uiOutput.personas =
+            (await this.kernelBridge.enrichPersonasFromKernelLogs(
+              uiOutput.personas,
+              planState,
+            )) ?? uiOutput.personas;
+        }
+        if (uiOutput.personas?.presentation) {
+          uiOutput.presentation = uiOutput.personas.presentation;
+        }
+        if (request.tripId && uiOutput.presentation && this.guardianChoose) {
+          await this.guardianChoose.persistLastPresentation(
+            request.tripId,
+            uiOutput.presentation,
+            uiOutput.personas?.consolidatedDecision?.nextSteps,
+          );
+        }
         this.logger.debug('三人格输出完成');
       } else {
         this.logger.warn('PersonaShellService 未注入，跳过三人格输出');
@@ -1538,6 +1640,34 @@ export class PlanningWorkbenchAgentService {
     };
 
     return countryCodeMap[country] || null;
+  }
+
+  /** 解析规划工作台上下文用户（OWNER > metadata.userId > 首位协作者） */
+  private async resolveWorkbenchUserId(tripId: string): Promise<string | null> {
+    if (!this.prisma) {
+      return null;
+    }
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        include: { TripCollaborator: true },
+      });
+      if (!trip) {
+        return null;
+      }
+      const owner = trip.TripCollaborator.find((c) => c.role === 'OWNER');
+      if (owner) {
+        return owner.userId;
+      }
+      const metadataUserId = (trip.metadata as { userId?: string } | null)?.userId;
+      if (metadataUserId) {
+        return metadataUserId;
+      }
+      return trip.TripCollaborator[0]?.userId ?? null;
+    } catch (e: any) {
+      this.logger.debug(`resolveWorkbenchUserId failed: ${e?.message}`);
+      return null;
+    }
   }
 
   /**

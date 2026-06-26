@@ -88,7 +88,7 @@ describe('RouteAndRunContextEnricherService', () => {
     expect(msgs[1]).toBe('用户: 可以吗');
   });
 
-  it('adds readiness and metric signals when services are available', async () => {
+  it('active_trip_summary 规划上下文不注入 Readiness Pack，仍注入指标与日程发现', async () => {
     const day = new Date('2026-06-01T00:00:00.000Z');
     const findUnique = jest.fn().mockResolvedValue({
       name: '冰岛自驾',
@@ -150,13 +150,13 @@ describe('RouteAndRunContextEnricherService', () => {
     await svc.maybeInjectActiveTripSummary(req);
 
     const injected = req.conversation_context?.recent_messages?.[0] ?? '';
-    expect(insightService.getInsight).toHaveBeenCalledWith('trip-uuid-1');
+    expect(insightService.getInsight).toHaveBeenCalledWith('trip-uuid-1', { skipReadinessPack: true });
     expect(metricsService.getTripMetrics).toHaveBeenCalledWith('trip-uuid-1', undefined, {
       includeConflicts: false,
     });
-    expect(injected).toContain('准备度: status=block, blockers=4, must=24');
-    expect(injected).toContain('关键发现:');
-    expect(injected).toContain('存在 4 个阻塞项');
+    expect(injected).not.toContain('准备度: status=');
+    expect(injected).not.toContain('关键发现:');
+    expect(injected).not.toContain('存在 4 个阻塞项');
     expect(injected).toContain('行程指标: 总驾驶约678分钟');
     expect(injected).toContain('日程冲突:');
     expect(injected).toContain('闭园风险');
@@ -191,5 +191,34 @@ describe('RouteAndRunContextEnricherService', () => {
     req.conversation_context = { context_type: 'active_trip_summary', recent_messages: ['x'] };
     await expect(svc.maybeInjectActiveTripSummary(req)).resolves.toBeUndefined();
     expect(req.conversation_context?.recent_messages).toEqual(['x']);
+  });
+
+  it('injects private wishlist when trip_id and user_id are set', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'w1',
+        tripId: 'trip-uuid-1',
+        userId: 'user-1',
+        category: 'activities',
+        text: '极光 — 玻璃屋',
+        importance: 5,
+        inputMode: 'free_text',
+        sourceRef: null,
+        visibility: 'private',
+        agentEligible: true,
+        structuredHints: { must_do: ['aurora'] },
+        status: 'active',
+        createdAt: new Date('2026-06-01'),
+        updatedAt: new Date('2026-06-01'),
+      },
+    ]);
+    const prisma = { tripWishItem: { findMany } } as any;
+    const svc = new RouteAndRunContextEnricherService(prisma);
+    const req = baseReq();
+    req.user_id = 'user-1';
+    await svc.maybeInjectTripWishlistContext(req);
+    const injected = req.conversation_context?.recent_messages?.[0] ?? '';
+    expect(injected).toContain('极光');
+    expect(injected).toContain('系统注入·行程愿望单');
   });
 });

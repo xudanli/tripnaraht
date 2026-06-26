@@ -13,6 +13,7 @@ import { createOpenAIHttp } from '../utils/openai-http.factory';
 import { retryWithBackoff } from '../utils/retry-with-backoff';
 import { CircuitBreaker } from '../utils/circuit-breaker';
 import { extractTokenUsage } from '../utils/token-extractor.util';
+import { parseJsonFromLlmText, stripLlmJsonMarkdown } from '../utils/parse-llm-json.util';
 import type { OrchestrationStep, SubAgentType } from '../../agent/interfaces/trip-plan.interface';
 import { TokenStatsService } from '../../agent/services/token-stats.service';
 import type {
@@ -186,20 +187,7 @@ export class LlmService {
    * 处理可能包含 markdown 代码块标记的情况（如 ```json ... ```）
    */
   private extractJSON(response: string): any {
-    let cleaned = response.trim();
-    
-    // 移除 markdown 代码块标记
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, ''); // 移除开头的 ```json 或 ```
-    cleaned = cleaned.replace(/\s*```$/i, ''); // 移除结尾的 ```
-    cleaned = cleaned.trim();
-    
-    // 尝试提取 JSON 对象（如果响应中包含其他文本）
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleaned = jsonMatch[0];
-    }
-    
-    return JSON.parse(cleaned);
+    return parseJsonFromLlmText(response);
   }
 
   async naturalLanguageToTripParams(dto: NaturalLanguageToParamsDto): Promise<{
@@ -558,7 +546,7 @@ export class LlmService {
           success: true,
         });
       }
-      return result.content;
+      return schema ? stripLlmJsonMarkdown(result.content) : result.content;
     } catch (error: any) {
       const durationMs = Date.now() - startTime;
       if (tokenContext && this.tokenStatsService) {

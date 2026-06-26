@@ -44,10 +44,11 @@ async function bootstrap() {
       bodyParser: false, // 禁用默认 body parser，以便使用更大的 limit
     });
     
+    const bootstrapTimeoutMs = Number(process.env.NEST_BOOTSTRAP_TIMEOUT_MS ?? 180000);
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
-        reject(new Error(`NestFactory.create() 超时（60秒）。当前模块初始化可能未完成。请检查是否有模块的 onModuleInit 或异步初始化操作卡住。`));
-      }, 60000);
+        reject(new Error(`NestFactory.create() 超时（${bootstrapTimeoutMs / 1000}秒）。当前模块初始化可能未完成。请检查是否有模块的 onModuleInit 或异步初始化操作卡住。`));
+      }, bootstrapTimeoutMs);
     });
     
     console.log('⏳ [Bootstrap] 等待 NestFactory.create() 完成...');
@@ -423,6 +424,15 @@ async function bootstrap() {
     .addTag('exa', 'Exa 搜索服务接口（实时信息、风险检查、政策更新）')
     .addTag('airbnb', 'Airbnb 住宿服务接口（可用性检查、价格估算、偏好匹配）')
     .addTag('world-model-evidence', '世界模型证据接口（DEM证据、道路状态、天气窗口、路线哲学、失败画像）')
+    .addTag('match-square', '搭子广场接口（招募帖、申请流、匹配校准）')
+    .addTag('identity-governance', '账号身份治理（验证、上下文、发布权限、Professional/Agency）')
+    .addTag('project-fit', '项目准入、Project Fit、团队影响与申请审核')
+    .addTag('trusted-projects', '可信旅行项目（发布、审核、申请加入）')
+    .addTag('gate1', 'Gate 1 Human-Assisted Concierge 验证实验')
+    .addTag('gate1-participant', 'Gate 1 成员门户（邀请、同意、偏好）')
+    .addTag('gate1-advisor', 'Gate 1 顾问工作台')
+    .addTag('gate1-ops', 'Gate 1 运营控制台')
+    .addTag('gate1-metrics', 'Gate 1 实验看板指标')
     .addServer('http://47.253.148.159', '生产环境')
     .addCookieAuth('refresh_token')
     .addBearerAuth()

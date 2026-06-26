@@ -1,0 +1,115 @@
+name: Gate1 Decision Runtime CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/decision-runtime/**'
+      - 'src/gate1/**'
+      - 'src/trips/event-store/**'
+      - 'scripts/**gate1-runtime**'
+      - 'scripts/ci/gate1-runtime-reconcile-check.ts'
+      - 'docs/decision-runtime-m0-mapping.md'
+      - '.github/workflows/gate1-runtime-ci.yml'
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'src/decision-runtime/**'
+      - 'src/gate1/**'
+      - 'src/trips/event-store/**'
+      - 'scripts/**gate1-runtime**'
+      - 'scripts/ci/gate1-runtime-reconcile-check.ts'
+
+concurrency:
+  group: gate1-runtime-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Decision Runtime unit tests
+        run: npm run test:decision-runtime
+
+  staging-reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'workflow_dispatch'
+    needs: unit
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tripnara
+          POSTGRES_PASSWORD: tripnara
+          POSTGRES_DB: tripnara_staging
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tripnara -d tripnara_staging"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: postgresql://tripnara:tripnara@localhost:5432/tripnara_staging
+        run: npx prisma migrate deploy
+
+      - name: Seed Gate1 mock order
+        env:
+          DATABASE_URL: postgresql://tripnara:tripnara@localhost:5432/tripnara_staging
+          TRAVEL_EVENT_STORE_ENABLED: 'true'
+        run: npm run gate1:seed
+
+      - name: Backfill runtime events
+        env:
+          DATABASE_URL: postgresql://tripnara:tripnara@localhost:5432/tripnara_staging
+          TRAVEL_EVENT_STORE_ENABLED: 'true'
+        run: npm run gate1:backfill
+
+      - name: Reconcile Gate1 vs Event Store
+        env:
+          DATABASE_URL: postgresql://tripnara:tripnara@localhost:5432/tripnara_staging
+        run: npm run ci:gate1-runtime-reconcile
+
+      - name: M2 acceptance gate
+        env:
+          DATABASE_URL: postgresql://tripnara:tripnara@localhost:5432/tripnara_staging
+          TRAVEL_EVENT_STORE_ENABLED: 'true'
+        run: npm run gate1:acceptance
+
+      - name: M3 gray-read smoke
+        env:
+          DATABASE_URL: postgresql://tripnara:tripnara@localhost:5432/tripnara_staging
+          DECISION_RUNTIME_READ_FROM_PROJECTION: 'true'
+          RUNTIME_REPLAY_VALIDATION: 'true'
+        run: npm run gate1:gray-read-smoke

@@ -138,6 +138,8 @@ export function mapReadinessActionToDecisionTrigger(actionType: string): Decisio
     case 'reorder_pois':
     case 'move_to_day':
     case 'remove_pois':
+    case 'adjust_time':
+    case 'replace_poi':
     case 'book_transport':
       return 'manual_repair';
     default:
@@ -146,3 +148,24 @@ export function mapReadinessActionToDecisionTrigger(actionType: string): Decisio
 }
 
 export const READINESS_DECISION_ENGINE_PATH = '/api/decision-engine/v1/repair-plan';
+
+/** Readiness / feasibility Plan B 修复动作 — 必须经 TripDecisionEngine.repairPlan 执行 */
+export const DECISION_ENGINE_REPAIR_ACTIONS = new Set([
+  'reorder_pois',
+  'move_to_day',
+  'remove_pois',
+  'book_transport',
+  'find_alternative_route',
+  'contact_guide',
+  'change_hotel',
+  'search_nearby',
+  'change_destination',
+  'buy_insurance',
+  'adjust_time',
+  'replace_poi',
+]);
+
+export function isDecisionEngineRepairAction(actionType: string | undefined | null): boolean {
+  if (!actionType) return false;
+  return DECISION_ENGINE_REPAIR_ACTIONS.has(actionType);
+}

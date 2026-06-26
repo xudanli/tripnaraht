@@ -5,6 +5,7 @@
 import type { TripWorldState } from '../decision/world-model';
 import type { DecisionRunLog } from '../decision/decision-log';
 import type { TripPlan } from '../decision/plan-model';
+import type { DecisionCausalityRecord } from '../causal-runtime/decision-causality-v1.types';
 import {
   DECISION_CAUSALITY_SCHEMA_V0,
   type DecisionCausalityDraftPayload,
@@ -18,7 +19,7 @@ export type {
   DecisionOutcomeLinkV0,
 } from './decision-causality.types';
 
-export function appendDecisionCausality(state: TripWorldState, record: DecisionCausalityRecordV0): void {
+export function appendDecisionCausality(state: TripWorldState, record: DecisionCausalityRecord): void {
   if (!state.signals.decisionCausalityChain) {
     state.signals.decisionCausalityChain = [];
   }
@@ -63,6 +64,13 @@ export function buildBlockedAtGateCausalityRecord(input: {
 
 /** Successful or constraint-rejected tick — merges draft + plan/log */
 /** Merge outcome onto an existing chain row (same process / TripWorldState). */
+export function findCausalityRecord(
+  state: TripWorldState,
+  causalityId: string,
+): DecisionCausalityRecord | undefined {
+  return state.signals.decisionCausalityChain?.find((r) => r.causality_id === causalityId);
+}
+
 export function attachOutcomeToCausalityRecord(
   state: TripWorldState,
   causalityId: string,

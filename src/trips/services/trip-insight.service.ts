@@ -38,8 +38,12 @@ export class TripInsightService {
 
   /**
    * 获取行程洞察摘要
+   * @param opts.skipReadinessPack 规划阶段跳过 Coverage/Readiness Pack，仅保留日程/交通类 findings
    */
-  async getInsight(tripId: string): Promise<TripInsightResponseDto> {
+  async getInsight(
+    tripId: string,
+    opts?: { skipReadinessPack?: boolean },
+  ): Promise<TripInsightResponseDto> {
     // 1. 获取行程数据
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
@@ -65,8 +69,10 @@ export class TripInsightService {
     // 2. 构建行程摘要
     const tripSummary = this.buildTripSummary(trip);
 
-    // 3. 生成 AI 发现
-    const readiness = await this.getReadinessSummary(tripId, trip);
+    // 3. 生成 AI 发现（规划阶段可跳过 Readiness Pack）
+    const readiness = opts?.skipReadinessPack
+      ? undefined
+      : await this.getReadinessSummary(tripId, trip);
 
     const findings = await this.generateFindings(trip, readiness);
 
@@ -547,17 +553,24 @@ export class TripInsightService {
    */
   private calculateOverallStatus(
     findings: FindingDto[],
-    readiness: ReadinessSummaryDto
+    readiness?: ReadinessSummaryDto,
   ): OverallStatus {
-    // 如果有阻塞项，状态为 has_issues
-    if (readiness.status === ReadinessStatus.BLOCK || readiness.blockers > 0) {
-      return OverallStatus.HAS_ISSUES;
-    }
+    if (readiness) {
+      // 如果有阻塞项，状态为 has_issues
+      if (readiness.status === ReadinessStatus.BLOCK || readiness.blockers > 0) {
+        return OverallStatus.HAS_ISSUES;
+      }
 
-    // 如果有警告类型的发现或准备度警告，状态为 needs_attention
-    const hasWarningFinding = findings.some(f => f.type === FindingType.WARNING);
-    if (hasWarningFinding || readiness.status === ReadinessStatus.WARN || readiness.must > 0) {
-      return OverallStatus.NEEDS_ATTENTION;
+      // 如果有警告类型的发现或准备度警告，状态为 needs_attention
+      const hasWarningFinding = findings.some((f) => f.type === FindingType.WARNING);
+      if (hasWarningFinding || readiness.status === ReadinessStatus.WARN || readiness.must > 0) {
+        return OverallStatus.NEEDS_ATTENTION;
+      }
+    } else {
+      const hasWarningFinding = findings.some((f) => f.type === FindingType.WARNING);
+      if (hasWarningFinding) {
+        return OverallStatus.NEEDS_ATTENTION;
+      }
     }
 
     // 否则状态为 good

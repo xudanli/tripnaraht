@@ -14,6 +14,7 @@
 
 // Guardian 人格接口
 export * from './guardian-persona.interface';
+export * from './guardian-decision-policy.util';
 
 // Guardian 辩论服务
 export { GuardianDebateService } from './guardian-debate.service';

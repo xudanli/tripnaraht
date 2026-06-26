@@ -1,6 +1,16 @@
 // src/route-directions/dto/query-route-direction.dto.ts
 import { IsString, IsOptional, IsBoolean, IsInt, IsArray } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+
+function parseBooleanQuery(value: unknown): boolean | unknown {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return value;
+}
 
 export class QueryRouteDirectionDto {
   @IsOptional()
@@ -18,7 +28,7 @@ export class QueryRouteDirectionDto {
 
   @IsOptional()
   @IsBoolean()
-  @Type(() => Boolean)
+  @Transform(({ value }) => parseBooleanQuery(value))
   isActive?: boolean;
 
   @IsOptional()
@@ -26,4 +36,3 @@ export class QueryRouteDirectionDto {
   @Type(() => Number)
   month?: number; // 用于季节性筛选（1-12）
 }
-

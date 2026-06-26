@@ -1,5 +1,9 @@
 import type { PhaseExecutorContext } from '../../decision/kernel/interfaces/phase-executor.interface';
 import { normalizeItem } from '../../decision/kernel/itinerary.types';
+import {
+  DEFAULT_CASCADE_PROPAGATION_DEPTH_LIMIT,
+  propagateWithConfidence,
+} from '../../travel-cognition/utils/cascade-confidence.util';
 import type { RiskImpactAssessment, RiskImpactEdge, TravelRiskEvent } from './risk-event.types';
 
 interface ImpactNode {
@@ -72,21 +76,18 @@ function seedAffectedNodes(event: TravelRiskEvent, nodes: ImpactNode[]): Set<str
   return out;
 }
 
-function propagate(seed: Set<string>, edges: RiskImpactEdge[], limit = 2): Set<string> {
-  const affected = new Set(seed);
-  let frontier = new Set(seed);
-  for (let depth = 0; depth < limit; depth++) {
-    const next = new Set<string>();
-    for (const edge of edges) {
-      if (frontier.has(edge.from) && !affected.has(edge.to)) {
-        affected.add(edge.to);
-        next.add(edge.to);
-      }
-    }
-    frontier = next;
-    if (frontier.size === 0) break;
-  }
-  return affected;
+function propagateWithEventConfidence(
+  seed: Set<string>,
+  edges: RiskImpactEdge[],
+  rootConfidence: number,
+  limit = DEFAULT_CASCADE_PROPAGATION_DEPTH_LIMIT,
+) {
+  return propagateWithConfidence(
+    seed,
+    edges.map((e) => ({ from: e.from, to: e.to })),
+    rootConfidence,
+    limit,
+  );
 }
 
 function recommendedActions(event: TravelRiskEvent): RiskImpactAssessment['recommendedActions'] {
@@ -102,20 +103,38 @@ export function assessRiskImpacts(events: TravelRiskEvent[], ctx: PhaseExecutorC
   const edges = buildTripImpactEdges(ctx);
   return events.map((event) => {
     const seed = seedAffectedNodes(event, nodes);
-    const affected = propagate(seed, edges);
-    const affectedItems = Array.from(affected);
-    const affectedDays = Array.from(new Set(nodes.filter((n) => affected.has(n.id)).map((n) => n.day)));
-    const severity = event.urgency >= 5 || affectedItems.length >= 4 ? 'HIGH' : event.urgency >= 4 || affectedItems.length >= 2 ? 'MEDIUM' : 'LOW';
+    const propagation = propagateWithEventConfidence(seed, edges, event.confidence);
+    const allAffected = Array.from(propagation.keys());
+    const affectedDays = Array.from(new Set(nodes.filter((n) => propagation.has(n.id)).map((n) => n.day)));
+    const confidences = Object.fromEntries(
+      [...propagation.entries()].map(([id, state]) => [id, state.confidence]),
+    );
+    const cascadeConfidence = allAffected.length
+      ? Math.min(...allAffected.map((id) => confidences[id] ?? event.confidence))
+      : event.confidence;
+    const propagationDepth = allAffected.length
+      ? Math.max(...allAffected.map((id) => propagation.get(id)?.depth ?? 0))
+      : 0;
+    const severity =
+      event.urgency >= 5 || allAffected.length >= 4
+        ? 'HIGH'
+        : event.urgency >= 4 || allAffected.length >= 2
+          ? 'MEDIUM'
+          : 'LOW';
     return {
       eventId: event.id,
-      affectedItems,
+      affectedItems: allAffected,
       affectedDays,
       severity,
       recommendedActions: recommendedActions(event),
+      rootConfidence: event.confidence,
+      propagationDepth,
+      cascadeConfidence,
+      affectedItemConfidences: confidences,
       summaryZh:
-        affectedItems.length === 0
+        allAffected.length === 0
           ? '未能在当前行程结构中定位直接受影响项目。'
-          : `该风险可能影响 ${affectedDays.length} 天、${affectedItems.length} 个行程项，建议先处理受影响链路再推进原计划。`,
+          : `该风险可能影响 ${affectedDays.length} 天、${allAffected.length} 个行程项（级联置信度 ${(cascadeConfidence * 100).toFixed(0)}%），建议先处理受影响链路再推进原计划。`,
     };
   });
 }

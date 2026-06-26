@@ -74,6 +74,8 @@ export function buildProactiveUxHintsFromCascadeImpact(params: {
         riskLevel?: string;
         message?: string;
         recommendation?: string;
+        cascadeConfidence?: number;
+        netImpactMinutes?: number;
       }>;
     };
   } | null;
@@ -89,14 +91,26 @@ export function buildProactiveUxHintsFromCascadeImpact(params: {
     return 'LOW';
   };
 
-  return affected.slice(0, 4).map((node, index) => ({
-    id: `cascade_impact_${index}`,
-    stage,
-    priority: rank(node.riskLevel),
-    surface: 'GLANCEABLE' as const,
-    messageZh: `级联影响：${String(node.message ?? '下游行程节点可能受影响')}（建议：${node.recommendation ?? 'ADJUST'}，需您自行确认）`,
-    reason: 'SAFETY' as const,
-  }));
+  return affected.slice(0, 4).map((node, index) => {
+    const confidenceNote =
+      typeof node.cascadeConfidence === 'number'
+        ? `（级联置信度 ${Math.round(node.cascadeConfidence * 100)}%）`
+        : '';
+    const impactNote =
+      typeof node.netImpactMinutes === 'number' && node.netImpactMinutes > 0
+        ? `净影响约 ${node.netImpactMinutes} 分钟`
+        : '';
+    const suffix = [impactNote, confidenceNote].filter(Boolean).join('，');
+
+    return {
+      id: `cascade_impact_${index}`,
+      stage,
+      priority: rank(node.riskLevel),
+      surface: 'GLANCEABLE' as const,
+      messageZh: `级联影响：${String(node.message ?? '下游行程节点可能受影响')}${suffix ? `，${suffix}` : ''}（建议：${node.recommendation ?? 'ADJUST'}，需您自行确认）`,
+      reason: 'SAFETY' as const,
+    };
+  });
 }
 
 export function buildProactiveUxHints(params: {

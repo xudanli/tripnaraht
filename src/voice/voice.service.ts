@@ -1,6 +1,6 @@
 // src/voice/voice.service.ts
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { DayScheduleResult } from '../planning-policy/interfaces/scheduler.interface';
 import { AssistantSuggestion } from '../assist/dto/action.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
@@ -11,6 +11,7 @@ import {
 } from '../common/utils/suggestion-id.util';
 import { LlmVoiceParserService } from './services/llm-voice-parser.service';
 import { AsrProvider } from '../providers/asr/asr.provider.interface';
+import { ASR_PROVIDER } from '../providers/asr/asr.provider.token';
 import { TtsProvider } from '../providers/tts/tts.provider.interface';
 import { MockAsrProvider } from '../providers/asr/mock-asr.provider';
 import { MockTtsProvider } from '../providers/tts/mock-tts.provider';
@@ -26,17 +27,15 @@ export class VoiceService {
   private readonly logger = new Logger(VoiceService.name);
   constructor(
     @Optional() private readonly llmParser?: LlmVoiceParserService,
-    @Optional() private readonly asrProvider?: AsrProvider,
-    @Optional() private readonly ttsProvider?: TtsProvider
+    @Optional() @Inject(ASR_PROVIDER) asrProvider?: AsrProvider,
+    @Optional() ttsProvider?: TtsProvider,
   ) {
-    // 如果没有注入 provider，使用 Mock Provider
-    if (!this.asrProvider) {
-      this.asrProvider = new MockAsrProvider();
-    }
-    if (!this.ttsProvider) {
-      this.ttsProvider = new MockTtsProvider();
-    }
+    this.asrProvider = asrProvider ?? new MockAsrProvider();
+    this.ttsProvider = ttsProvider ?? new MockTtsProvider();
   }
+
+  private readonly asrProvider: AsrProvider;
+  private readonly ttsProvider: TtsProvider;
 
   /**
    * 解析语音文本，返回动作建议

@@ -33,6 +33,11 @@ import {
   DRE_VALUES,
   NEPTUNE_VALUES,
 } from './guardian-persona.interface';
+import {
+  buildHardConstraintVetoSummary,
+  countHardViolations,
+  resolveHardConstraintVeto,
+} from './guardian-decision-policy.util';
 
 @Injectable()
 export class GuardianDebateService {
@@ -75,6 +80,15 @@ export class GuardianDebateService {
 
     // 2. 各人格独立评估
     const evaluations = this.evaluateWithAllPersonas(plan, world, baseEvaluation);
+
+    // 2.5 硬约束 / Abu BLOCK：不可进入投票或多数决
+    const hardVeto = resolveHardConstraintVeto(evaluations, baseEvaluation);
+    if (hardVeto === 'REJECT') {
+      this.logger.warn(
+        `[GuardianDebate] 硬约束否决: ${buildHardConstraintVetoSummary(baseEvaluation)}`,
+      );
+      return this.buildHardConstraintVetoResult(evaluations, baseEvaluation);
+    }
     
     // 3. 检测分歧
     const initialConsensus = this.calculateConsensus(evaluations);
@@ -82,7 +96,7 @@ export class GuardianDebateService {
     
     // 如果初始共识高，跳过辩论
     if (initialConsensus >= config.consensusThreshold) {
-      return this.buildQuickConsensusResult(evaluations, initialConsensus);
+      return this.buildQuickConsensusResult(evaluations, initialConsensus, baseEvaluation);
     }
     
     // 4. 多轮辩论
@@ -104,7 +118,13 @@ export class GuardianDebateService {
     
     // 6. 汇总结果
     const finalConsensus = this.calculateFinalConsensus(evaluations, debateRounds);
-    const decision = this.determineDecision(votes, finalConsensus, config);
+    const decision = this.determineDecision(
+      votes,
+      finalConsensus,
+      config,
+      evaluations,
+      baseEvaluation,
+    );
     
     return this.buildNegotiationResult(
       evaluations,
@@ -156,8 +176,11 @@ export class GuardianDebateService {
     // 4. 生成建议
     const suggestions = this.generatePersonaSuggestions(values, baseEvaluation, world);
     
-    // 5. 确定立场
-    const stance = this.determineStance(personalUtility, concerns.length);
+    // 5. 确定立场（Abu + 硬约束 → STRONG_OPPOSE，不可被投票稀释）
+    let stance = this.determineStance(personalUtility, concerns.length);
+    if (values.persona === 'ABU' && countHardViolations(baseEvaluation) > 0) {
+      stance = 'STRONG_OPPOSE';
+    }
     
     // 6. 生成推理过程
     const reasoning = this.generateReasoning(values, baseEvaluation, personalUtility);
@@ -684,12 +707,43 @@ export class GuardianDebateService {
   /**
    * 快速共识结果
    */
+  private buildHardConstraintVetoResult(
+    evaluations: PersonaEvaluation[],
+    baseEvaluation: ObjectiveEvaluationResult,
+  ): NegotiationResult {
+    return {
+      decision: 'REJECT',
+      evaluations,
+      debateRounds: [],
+      votes: evaluations.map((e) => ({
+        persona: e.persona,
+        vote:
+          e.persona === 'ABU' || e.stance === 'STRONG_OPPOSE'
+            ? 'REJECT'
+            : e.stance === 'CONCERN'
+              ? 'ABSTAIN'
+              : 'APPROVE',
+        weight: e.persona === 'ABU' ? 2 : 1,
+        rationale: e.reasoning,
+      })),
+      consensusLevel: 0,
+      keyTradeoffs: [],
+      summary: buildHardConstraintVetoSummary(baseEvaluation),
+    };
+  }
+
   private buildQuickConsensusResult(
     evaluations: PersonaEvaluation[],
-    consensus: number
+    consensus: number,
+    baseEvaluation: ObjectiveEvaluationResult,
   ): NegotiationResult {
+    const hardVeto = resolveHardConstraintVeto(evaluations, baseEvaluation);
+    if (hardVeto === 'REJECT') {
+      return this.buildHardConstraintVetoResult(evaluations, baseEvaluation);
+    }
+
     const avgUtility = evaluations.reduce((sum, e) => sum + e.utility, 0) / evaluations.length;
-    
+
     return {
       decision: avgUtility >= 0.6 ? 'APPROVE' : 'CONDITIONAL_APPROVE',
       evaluations,
@@ -934,8 +988,20 @@ export class GuardianDebateService {
   private determineDecision(
     votes: VoteResult[],
     consensus: number,
-    config: NegotiationConfig
+    config: NegotiationConfig,
+    evaluations: PersonaEvaluation[],
+    baseEvaluation: ObjectiveEvaluationResult,
   ): NegotiationResult['decision'] {
+    const hardVeto = resolveHardConstraintVeto(evaluations, baseEvaluation);
+    if (hardVeto === 'REJECT') {
+      return 'REJECT';
+    }
+
+    const abuReject = votes.find((v) => v.persona === 'ABU' && v.vote === 'REJECT');
+    if (abuReject && countHardViolations(baseEvaluation) > 0) {
+      return 'REJECT';
+    }
+
     const totalWeight = votes.reduce((sum, v) => sum + v.weight, 0);
     const approveWeight = votes
       .filter(v => v.vote === 'APPROVE')
@@ -995,12 +1061,11 @@ export class GuardianDebateService {
       .flatMap(r => r.keyDisagreements)
       .filter((t, i, arr) => arr.indexOf(t) === i);
     
-    // 需要人类判断的问题
-    const humanPoints = decision === 'REQUIRES_HUMAN'
-      ? evaluations
-          .filter(e => e.stance === 'CONCERN' || e.stance === 'STRONG_OPPOSE')
-          .map(e => `${e.persona}: ${e.primaryConcerns.join('; ')}`)
-      : undefined;
+    // 需要人类判断的问题（仅软约束 NEEDS_HUMAN）
+    const humanPoints =
+      decision === 'REQUIRES_HUMAN'
+        ? this.buildHumanDecisionPointStrings(evaluations, tradeoffs)
+        : undefined;
     
     // 生成摘要
     const decisionText = {
@@ -1043,6 +1108,24 @@ export class GuardianDebateService {
   /**
    * 获取协商摘要（用于 UI 展示）
    */
+  private buildHumanDecisionPointStrings(
+    evaluations: PersonaEvaluation[],
+    tradeoffs: string[],
+  ): string[] {
+    const options: string[] = [];
+    for (const evaluation of evaluations) {
+      for (const adj of evaluation.suggestedAdjustments ?? []) {
+        const t = String(adj).trim();
+        if (t) options.push(t);
+      }
+    }
+    for (const tradeoff of tradeoffs) {
+      const t = String(tradeoff).trim();
+      if (t) options.push(t);
+    }
+    return [...new Set(options)].slice(0, 8);
+  }
+
   getSummaryForDisplay(result: NegotiationResult): {
     decision: string;
     decisionEmoji: string;

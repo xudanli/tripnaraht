@@ -51,6 +51,7 @@ export class RouteOptimizationEngine {
     const results: OptimizedDayResult[] = [];
     const usedPlaceIds = new Map<number, number>(); // placeId -> count
     const usedRestaurantIdsPerDay = new Map<number, Set<number>>(); // day -> Set<placeId>
+    const totalDays = days.length; // 🆕 用于动态去重上限
 
     for (const dayData of days) {
       const daySlots = await this.optimizeDay(
@@ -59,6 +60,7 @@ export class RouteOptimizationEngine {
         usedPlaceIds,
         usedRestaurantIdsPerDay.get(dayData.day) ?? new Set(),
         dto,
+        totalDays,
       );
       results.push({ day: dayData.day, slots: daySlots });
 
@@ -86,6 +88,7 @@ export class RouteOptimizationEngine {
     usedPlaceIds: Map<number, number>,
     dayRestaurantIds: Set<number>,
     dto?: CreateTripDraftDto,
+    totalDays?: number,
   ): Promise<Record<string, { placeId: number; reason: string; alternatives?: number[] }>> {
     const slots: Record<
       string,
@@ -152,7 +155,7 @@ export class RouteOptimizationEngine {
       fromPlaceId?: number,
     ): Promise<CandidatePlace | null> => {
       let filtered = pool.filter((c) => !avoidIds.has(c.id));
-      // 🆕 多样性约束（Decision OS）：F&B（餐饮/咖啡）全程最多 1 次；其它默认 2 次
+      // 🆕 多样性约束（Decision OS）：F&B（餐饮/咖啡）全程最多 1 次；其它根据行程天数动态调整
       const isFoodAndBeverage = (c: CandidatePlace): boolean => {
         if (c.category === 'RESTAURANT') return true;
         const ct = String((c as any).canonicalType ?? '').toUpperCase();
@@ -161,7 +164,11 @@ export class RouteOptimizationEngine {
         const t = tags.join(' ').toLowerCase();
         return t.includes('cafe') || t.includes('coffee') || t.includes('咖啡') || t.includes('bar');
       };
-      const repetitionLimitFor = (c: CandidatePlace): number => (isFoodAndBeverage(c) ? 1 : 2);
+      const repetitionLimitFor = (c: CandidatePlace): number => {
+        if (isFoodAndBeverage(c)) return 1;
+        // 对于多天行程（>3天），非餐饮类最多1次；短行程（≤3天）最多2次
+        return (totalDays ?? 3) > 3 ? 1 : 2;
+      };
       filtered = filtered.filter((c) => (usedPlaceIds.get(c.id) ?? 0) < repetitionLimitFor(c));
       if (category) {
         filtered = filtered.filter((c) => c.category === category);
@@ -191,10 +198,13 @@ export class RouteOptimizationEngine {
         let distEff = 1;
         const walkTimeMin = walkTimeMap.get(c.id);
         if (walkTimeMin != null) {
-          distEff = 1 / (1 + walkTimeMin / 15);
+          // 🆕 更严格的距离衰减：15分钟内线性衰减，超过则指数衰减
+          distEff = walkTimeMin < 15 ? 1 - (walkTimeMin / 30) : Math.exp(-(walkTimeMin - 15) / 10);
         } else if (near) {
           const km = this.haversineKm(c.lat, c.lng, near.lat, near.lng);
-          distEff = km < 0.1 ? 1 : 1 / (1 + km);
+          // 🆕 步行模式下更严格：1km内线性衰减，超过则指数衰减
+          const threshold = dto?.transport === 'car' ? 3 : dto?.transport === 'transit' ? 2 : 1;
+          distEff = km < threshold ? 1 - (km / (threshold * 2)) : Math.exp(-(km - threshold) / 2);
         }
         let timingScore = 1;
         if (slot) {
@@ -211,7 +221,8 @@ export class RouteOptimizationEngine {
         const usedCount = usedPlaceIds.get(c.id) ?? 0;
         const diversityFactor =
           usedCount >= 2 ? 0 : usedCount === 1 ? (c.category === 'RESTAURANT' ? 0.6 : 0.35) : 1;
-        return ((0.35 * experience + 0.2 * popularity + 0.2 * distEff) * timingScore) * districtBonus * diversityFactor;
+        // 🆕 调整权重：距离 35%，体验 30%，热度 20%，时间匹配 15%
+        return ((0.3 * experience + 0.2 * popularity + 0.35 * distEff) * timingScore) * districtBonus * diversityFactor;
       };
 
       filtered.sort((a, b) => score(b) - score(a));

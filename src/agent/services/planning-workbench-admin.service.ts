@@ -7,12 +7,16 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TripClosedLoopService } from '../../trips/decision/closed-loop';
 
 @Injectable()
 export class PlanningWorkbenchAdminService {
   private readonly logger = new Logger(PlanningWorkbenchAdminService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tripClosedLoopService: TripClosedLoopService,
+  ) {}
 
   /**
    * 分页查询规划会话（通过 PlanningPlan 关联 Trip）
@@ -374,22 +378,31 @@ export class PlanningWorkbenchAdminService {
       throw error;
     }
 
-    const items = plans.map(plan => ({
-      id: plan.id,
-      tripId: plan.tripId,
-      planVersion: plan.planVersion,
-      status: plan.status,
-      summary: plan.summary || {},
-      createdAt: plan.createdAt.toISOString(),
-      updatedAt: plan.updatedAt.toISOString(),
-      createdBy: plan.createdBy,
-      trip: {
-        id: plan.Trip.id,
-        destination: plan.Trip.destination,
-        startDate: plan.Trip.startDate.toISOString(),
-        endDate: plan.Trip.endDate.toISOString(),
-      },
-    }));
+    const items = plans.map(plan => {
+      const summary = plan.summary || {};
+      const closedLoopUiHints = this.buildClosedLoopUiHintsFromPlan(plan);
+
+      return {
+        id: plan.id,
+        sessionId: plan.id,
+        tripId: plan.tripId,
+        userId: plan.createdBy,
+        version: plan.planVersion,
+        planVersion: plan.planVersion,
+        status: plan.status,
+        summary,
+        closedLoopUiHints,
+        createdAt: plan.createdAt.toISOString(),
+        updatedAt: plan.updatedAt.toISOString(),
+        createdBy: plan.createdBy,
+        trip: {
+          id: plan.Trip.id,
+          destination: plan.Trip.destination,
+          startDate: plan.Trip.startDate.toISOString(),
+          endDate: plan.Trip.endDate.toISOString(),
+        },
+      };
+    });
 
     return {
       items,
@@ -439,12 +452,23 @@ export class PlanningWorkbenchAdminService {
 
     return {
       id: plan.id,
+      sessionId: plan.id,
       tripId: plan.tripId,
+      userId: plan.createdBy,
+      version: plan.planVersion,
       planVersion: plan.planVersion,
       status: plan.status,
+      planData: this.extractTripPlan(plan) ?? plan.planState ?? {},
+      metadata: {
+        status: plan.status,
+        summary: plan.summary || {},
+        uiOutput: plan.uiOutput || {},
+        closedLoopUiHints: this.buildClosedLoopUiHintsFromPlan(plan),
+      },
       planState: plan.planState,
       uiOutput: plan.uiOutput || {},
       summary: plan.summary || {},
+      closedLoopUiHints: this.buildClosedLoopUiHintsFromPlan(plan),
       createdAt: plan.createdAt.toISOString(),
       updatedAt: plan.updatedAt.toISOString(),
       createdBy: plan.createdBy,
@@ -457,5 +481,37 @@ export class PlanningWorkbenchAdminService {
         collaborators: plan.Trip.TripCollaborator,
       },
     };
+  }
+
+  private buildClosedLoopUiHintsFromPlan(plan: any) {
+    const tripPlan = this.extractTripPlan(plan);
+    if (!tripPlan) return null;
+
+    try {
+      return this.tripClosedLoopService.buildUiHints(this.tripClosedLoopService.evaluate(tripPlan));
+    } catch (error: any) {
+      this.logger.warn(`规划方案 ${plan.id} 闭环摘要生成失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  private extractTripPlan(plan: any): any | null {
+    const candidates = [
+      plan?.planState,
+      plan?.uiOutput,
+      plan?.summary,
+      plan?.planState?.plan,
+      plan?.planState?.tripPlan,
+      plan?.planState?.itineraryPlan,
+      plan?.planState?.currentPlan,
+      plan?.uiOutput?.plan,
+      plan?.uiOutput?.tripPlan,
+      plan?.uiOutput?.itineraryPlan,
+      plan?.summary?.plan,
+      plan?.summary?.tripPlan,
+      plan?.summary?.itineraryPlan,
+    ];
+
+    return candidates.find(candidate => candidate && typeof candidate === 'object' && Array.isArray(candidate.days)) ?? null;
   }
 }

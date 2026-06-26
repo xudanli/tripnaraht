@@ -32,6 +32,51 @@ function formatIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function routeTemplateFieldsFromSnapshot(snapshot: unknown) {
+  const root = objectRecord(snapshot);
+  if (!root) return {};
+  const binding = objectRecord(root.routeTemplateBinding ?? root.route_template_binding);
+  const routeTemplateCatalogId =
+    stringValue(root.routeTemplateCatalogId ?? root.route_template_catalog_id) ??
+    stringValue(binding?.catalogId ?? binding?.catalog_id);
+  const routeTemplateIdRaw =
+    root.routeTemplateId ?? root.route_template_id ?? binding?.routeTemplateId ?? binding?.route_template_id;
+  const routeTemplateId =
+    typeof routeTemplateIdRaw === 'number'
+      ? routeTemplateIdRaw
+      : typeof routeTemplateIdRaw === 'string' && routeTemplateIdRaw.trim()
+        ? Number(routeTemplateIdRaw)
+        : undefined;
+  const titleZh =
+    stringValue(binding?.titleZh ?? binding?.title_zh) ??
+    stringValue(root.templateName ?? root.template_name) ??
+    routeTemplateCatalogId;
+
+  return {
+    routeTemplateCatalogId: routeTemplateCatalogId ?? undefined,
+    routeTemplateId: Number.isFinite(routeTemplateId) ? routeTemplateId : undefined,
+    routeTemplateBinding:
+      routeTemplateCatalogId && Number.isFinite(routeTemplateId)
+        ? {
+            catalogId: routeTemplateCatalogId,
+            routeTemplateId,
+            titleZh: titleZh ?? routeTemplateCatalogId,
+          }
+        : undefined,
+    routeTemplateMatch: root.routeTemplateMatch ?? root.route_template_match ?? undefined,
+  };
+}
+
 function approvedCount(applications: ApplicationRow[]): number {
   return applications.filter((row) => row.status === 'approved').length;
 }
@@ -106,6 +151,7 @@ export function mapPostCard(
     post.captainUserId,
     options.viewerUserId,
   );
+  const routeTemplateFields = routeTemplateFieldsFromSnapshot(post.vibeSnapshot);
 
   return {
     id: post.id,
@@ -152,6 +198,7 @@ export function mapPostCard(
     publishedAt: formatIso(post.publishedAt),
     routeDirectionId: post.routeDirectionId,
     routeDirectionName: post.routeDirectionName,
+    ...routeTemplateFields,
     vibeLlm: post.vibeSnapshot ?? null,
     isCaptain: options.viewerUserId === post.captainUserId,
     teamworkMatchBlocked: false,

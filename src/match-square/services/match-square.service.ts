@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -22,28 +23,29 @@ import {
   mapApplicationCard,
   mapPostCard,
 } from '../utils/match-square-card.mapper';
+import { RecruitingRuntimeService } from './recruiting-runtime.service';
+import { PublishingPermissionService } from '../../identity-governance/services/publishing-permission.service';
+import {
+  assertMatchSquareLegacyWritesFrozen,
+  assertMatchSquareNotFrozen,
+  resolveMatchSquareAccess,
+} from '../utils/match-square-access.util';
 
 @Injectable()
 export class MatchSquareService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly publishingPermission: PublishingPermissionService,
+    @Optional() private readonly recruitingRuntime?: RecruitingRuntimeService,
+  ) {}
 
   async getAccess(userId?: string) {
-    if (!userId) {
-      return {
-        canBrowse: true,
-        canPost: false,
-        canApply: false,
-        quizComplete: false,
-      };
-    }
-
-    const persona = await this.loadPersona(userId);
-    return {
-      canBrowse: true,
-      canPost: persona.quizComplete,
-      canApply: persona.quizComplete,
-      quizComplete: persona.quizComplete,
-    };
+    const persona = userId ? await this.loadPersona(userId) : null;
+    return resolveMatchSquareAccess(
+      this.publishingPermission,
+      userId,
+      persona?.quizComplete ?? false,
+    );
   }
 
   getFilterOptions() {
@@ -157,6 +159,9 @@ export class MatchSquareService {
   }
 
   async createPost(userId: string, dto: CreatePostDto) {
+    assertMatchSquareLegacyWritesFrozen();
+    const access = await this.getAccess(userId);
+    assertMatchSquareNotFrozen(access);
     await this.assertQuizComplete(userId);
     const persona = await this.loadPersona(userId);
 
@@ -195,6 +200,7 @@ export class MatchSquareService {
   }
 
   async updatePostStatus(userId: string, postId: string, dto: UpdatePostStatusDto) {
+    assertMatchSquareLegacyWritesFrozen();
     const post = await this.requireCaptainPost(userId, postId);
     const updated = await this.prisma.matchSquarePost.update({
       where: { id: post.id },
@@ -294,6 +300,9 @@ export class MatchSquareService {
     postId: string,
     dto: SubmitApplicationDto,
   ) {
+    assertMatchSquareLegacyWritesFrozen();
+    const access = await this.getAccess(userId);
+    assertMatchSquareNotFrozen(access);
     await this.assertQuizComplete(userId);
     const post = await this.requirePost(postId);
     if (post.captainUserId === userId) {
@@ -346,6 +355,7 @@ export class MatchSquareService {
     applicationId: string,
     dto: ReviewApplicationDto,
   ) {
+    assertMatchSquareLegacyWritesFrozen();
     const post = await this.requireCaptainPost(userId, postId);
     const application = await this.prisma.matchSquareApplication.findFirst({
       where: { id: applicationId, postId },
@@ -354,13 +364,40 @@ export class MatchSquareService {
       throw new NotFoundException('申请不存在');
     }
 
+    const decision = dto.action === 'approve' ? 'approved' : 'rejected';
+
     const updated = await this.prisma.matchSquareApplication.update({
       where: { id: application.id },
       data: {
-        status: dto.action === 'approve' ? 'approved' : 'rejected',
+        status: decision,
         decidedAt: new Date(),
       },
     });
+
+    // 触发招募归因分析
+    if (this.recruitingRuntime) {
+      try {
+        await this.recruitingRuntime.reviewApplication(applicationId, decision, {
+          captainUserId: userId,
+          applicantUserId: application.applicantUserId,
+          compatibilityScore: dto.compatibilityScore,
+          mbtiCompatibility: dto.mbtiCompatibility,
+          requiredSkills: dto.requiredSkills,
+          applicantSkills: dto.applicantSkills,
+          scheduleConflict: dto.scheduleConflict,
+          timeAvailability: dto.timeAvailability,
+          budgetFit: dto.budgetFit,
+          captainPreference: dto.captainPreference,
+          slotRequirement: dto.slotRequirement,
+          teamBalance: dto.teamBalance,
+          pastCollaboration: dto.pastCollaboration,
+          governanceFlags: dto.governanceFlags,
+        });
+      } catch (attributionError) {
+        // 归因失败不应阻塞主流程
+        console.error(`[RecruitingRuntime] Attribution failed for application ${applicationId}:`, attributionError);
+      }
+    }
 
     const applications = await this.prisma.matchSquareApplication.findMany({
       where: { postId },

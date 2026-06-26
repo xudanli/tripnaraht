@@ -6,8 +6,13 @@ import {
   READINESS_GUARDIAN_NEGOTIATION_METADATA_KEY,
   shouldDeferRepairByPreNegotiation,
   buildGuardianDeferMessage,
+  buildPresentationFromReadinessNegotiationSummary,
+  buildReadinessDeferredChooseFields,
   GUARDIAN_LOW_CONSENSUS_DEFER_THRESHOLD,
   buildGuardianRepairHintsFromSummary,
+  mapRepairOptionsGuardianConsensus,
+  mapSummaryToRepairOptionsGuardianNegotiation,
+  pickGuardianSummaryForBlocker,
 } from './readiness-guardian-negotiation.util';
 import type { NegotiationResult } from '../../decision/optimization/learning/guardian-persona.interface';
 
@@ -134,5 +139,89 @@ describe('readiness-guardian-negotiation.util', () => {
     const hints = buildGuardianRepairHintsFromSummary(summary);
     expect(hints?.decision).toBe('REQUIRES_HUMAN');
     expect(hints?.items.some((item) => item.text.includes('F-road'))).toBe(true);
+  });
+
+  it('maps summary to repair-options guardianNegotiation view', () => {
+    const summary = mapNegotiationResultToSummary(baseResult, {
+      phase: 'pre_repair',
+      tripId: 'trip-1',
+      blockerId: 'blocker-1',
+    });
+
+    const view = mapSummaryToRepairOptionsGuardianNegotiation(summary);
+    expect(view.consensus).toBe('SPLIT');
+    expect(view.summary).toContain('分歧');
+    expect(view.personas).toHaveLength(3);
+    expect(view.personas[0]).toMatchObject({
+      persona: 'ABU',
+      stance: 'CAUTION',
+      message: 'F-road 风险',
+    });
+    expect(view.personas[1].persona).toBe('DR_DRE');
+    expect(view.userActionRequired).toEqual(
+      expect.arrayContaining(['是否接受第3天高强度驾驶？', '确认 F-road 许可']),
+    );
+    expect(view.analyzedAt).toBeTruthy();
+  });
+
+  it('builds deferred choose fields with presentation', () => {
+    const summary = mapNegotiationResultToSummary(baseResult, {
+      phase: 'pre_repair',
+      tripId: 'trip-1',
+    });
+    const deferred = buildReadinessDeferredChooseFields(summary);
+    expect(deferred.humanDecisionPointsFlat).toEqual(['是否接受第3天高强度驾驶？']);
+    expect(deferred.presentation.actions.user).toBe('CHOOSE');
+    expect(deferred.presentation.leadSpeaker).toBeDefined();
+  });
+
+  it('buildPresentationFromReadinessNegotiationSummary blocks CHOOSE on low-consensus REJECT', () => {
+    const summary = mapNegotiationResultToSummary(
+      { ...baseResult, decision: 'REJECT', consensusLevel: 0.2 },
+      { phase: 'pre_repair', tripId: 'trip-1' },
+    );
+    const presentation = buildPresentationFromReadinessNegotiationSummary(summary);
+    expect(presentation.hardConstraintBlocked).toBe(true);
+    expect(presentation.actions.user).toBeUndefined();
+  });
+
+  it('maps repair-options consensus levels', () => {
+    const split = mapNegotiationResultToSummary(baseResult, {
+      phase: 'pre_repair',
+      tripId: 'trip-1',
+    });
+    expect(mapRepairOptionsGuardianConsensus(split)).toBe('SPLIT');
+
+    const blocked = mapNegotiationResultToSummary(
+      { ...baseResult, decision: 'REJECT', consensusLevel: 0.3 },
+      { phase: 'pre_repair', tripId: 'trip-1' },
+    );
+    expect(mapRepairOptionsGuardianConsensus(blocked)).toBe('BLOCKED');
+
+    const aligned = mapNegotiationResultToSummary(
+      { ...baseResult, decision: 'APPROVE', consensusLevel: 0.82 },
+      { phase: 'pre_repair', tripId: 'trip-1' },
+    );
+    expect(mapRepairOptionsGuardianConsensus(aligned)).toBe('ALIGNED');
+  });
+
+  it('picks cached guardian summary by blocker id', () => {
+    const preRepair = mapNegotiationResultToSummary(baseResult, {
+      phase: 'pre_repair',
+      tripId: 'trip-1',
+      blockerId: 'blocker-a',
+    });
+    const latest = mapNegotiationResultToSummary(baseResult, {
+      phase: 'post_repair',
+      tripId: 'trip-1',
+      blockerId: 'blocker-b',
+    });
+
+    expect(
+      pickGuardianSummaryForBlocker({ preRepair, latest }, 'blocker-a')?.phase,
+    ).toBe('pre_repair');
+    expect(
+      pickGuardianSummaryForBlocker({ preRepair, latest }, 'blocker-c')?.phase,
+    ).toBe('pre_repair');
   });
 });

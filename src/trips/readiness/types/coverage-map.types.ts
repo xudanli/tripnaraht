@@ -9,6 +9,7 @@
 import type { ReadinessTripFindingScope } from './readiness-findings.types';
 import type { CoverageDisclosure } from '../../../travel-cognition';
 import type { NonTransactionalReplanResult } from '../../../travel-cognition';
+import type { GuardianPersonaPresentation } from '../../decision/shared/guardian-presentation.types';
 
 // ==================== 准备度分数类型 ====================
 
@@ -42,6 +43,11 @@ export interface ReadinessScoreFinding {
   severity: 'high' | 'medium' | 'low';
   affectedDays?: number[];
   actionRequired?: string;
+  fromItemId?: string;
+  toItemId?: string;
+  issueKind?: string;
+  anchors?: Record<string, unknown>;
+  uiHints?: Record<string, unknown>;
   /** 与树形 findings 对齐：覆盖缺口时的行程定位 */
   tripScope?: ReadinessTripFindingScope;
 }
@@ -117,6 +123,14 @@ export interface ReadinessCascadeUiHint {
   entityKind?: string;
   entityLabel?: string;
   userConfirmationRequired?: string[];
+  /** Impact Algebra：净时间影响（分钟） */
+  netImpactMinutes?: number;
+  absorbedMinutes?: number;
+  /** 级联传播置信度 0..1 */
+  cascadeConfidence?: number;
+  propagationHop?: number;
+  triggerFactType?: string;
+  triggerSource?: string;
 }
 
 /** trip.metadata.readinessCausalPreAnalysis 快照 */
@@ -170,6 +184,29 @@ export interface ReadinessGuardianNegotiationSnapshot {
   latest?: ReadinessGuardianNegotiationSummary;
 }
 
+/** repair-options 抽屉 Guardian 面板 — 与前端契约对齐 */
+export type RepairOptionsGuardianConsensus = 'ALIGNED' | 'SPLIT' | 'BLOCKED';
+
+export type RepairOptionsGuardianPersonaCode = 'ABU' | 'DR_DRE' | 'NEPTUNE';
+
+export type RepairOptionsGuardianStance = 'SUPPORT' | 'CAUTION' | 'OPPOSE' | 'NEUTRAL';
+
+export interface RepairOptionsGuardianPersonaView {
+  persona: RepairOptionsGuardianPersonaCode;
+  stance: RepairOptionsGuardianStance;
+  message: string;
+  suggestion?: string;
+  highlights?: string[];
+}
+
+export interface RepairOptionsGuardianNegotiationView {
+  consensus?: RepairOptionsGuardianConsensus;
+  summary?: string;
+  personas: RepairOptionsGuardianPersonaView[];
+  userActionRequired?: string[];
+  analyzedAt?: string;
+}
+
 // ==================== 修复选项类型 ====================
 
 /**
@@ -191,6 +228,7 @@ export interface RepairOption {
   impact: 'high' | 'medium' | 'low';
   timeEstimate?: string;
   actionType?: string;
+  payload?: Record<string, unknown>;
   metadata?: Record<string, any>;
 }
 
@@ -198,6 +236,8 @@ export interface RepairOption {
  * 修复选项响应
  */
 export interface RepairOptionsResponse {
+  /** feasibility 路径参数 issueId（与 issues[].id 对齐） */
+  issueId?: string;
   blockerId: string;
   blockerMessage?: string;
   options: RepairOption[];
@@ -206,6 +246,8 @@ export interface RepairOptionsResponse {
   causalPreAnalysis?: NonTransactionalReplanResult;
   /** 供 repair-options 弹层直接渲染 */
   cascadeUiHints?: ReadinessCascadeUiHint[];
+  /** 修复前三人格协商预览（repair-options 抽屉 Guardian 面板） */
+  guardianNegotiation?: RepairOptionsGuardianNegotiationView;
 }
 
 /**
@@ -258,6 +300,76 @@ export interface ApplyRepairResponse {
   };
   /** 修复前后的三人格博弈结果（executeDecision + runGuardianNegotiation 时） */
   guardianNegotiation?: ReadinessGuardianNegotiationSnapshot;
+  /** status=deferred 时扁平 CHOOSE 选项（source: readiness_repair） */
+  humanDecisionPointsFlat?: string[];
+  /** deferred 时可选单主角表达（与 guardian/choose presentation 同构） */
+  presentation?: GuardianPersonaPresentation;
+}
+
+export type RepairPreviewMode = 'heuristic' | 'decision_engine_dry_run';
+
+export type PreviewRepairStatus = 'preview' | 'would_defer';
+
+/**
+ * 修复预览请求（feasibility preview-repair / readiness 共用）
+ */
+export interface PreviewRepairRequest {
+  tripId: string;
+  blockerId: string;
+  optionId: string;
+  /** feasibility issue id（审计/UI 用，可选） */
+  issueId?: string;
+  /** 受影响日序号（feasibility issue.affectedDays[0]） */
+  affectedDayNumber?: number;
+  runGuardianNegotiation?: boolean;
+  forceDecisionRepair?: boolean;
+}
+
+/**
+ * 修复预览响应 — decision_engine_dry_run 与 apply-repair 同路径但不写库
+ */
+export interface PreviewRepairResponse {
+  tripId: string;
+  blockerId: string;
+  issueId?: string;
+  optionId: string;
+  actionType: string;
+  previewMode: RepairPreviewMode;
+  status: PreviewRepairStatus;
+  message: string;
+  before: {
+    dayNumber: number;
+    itemCount: number;
+    totalItemCount: number;
+    highlights: string[];
+  };
+  after: {
+    dayNumber: number;
+    itemCount: number;
+    totalItemCount: number;
+    highlights: string[];
+  };
+  itineraryDiff: Array<{
+    slotId: string;
+    changeType: string;
+    dayNumber: number;
+    before?: Record<string, unknown>;
+    after?: Record<string, unknown>;
+  }>;
+  impact: {
+    feasibilityScoreBefore: number;
+    feasibilityScoreAfter?: number;
+    estimated: boolean;
+  };
+  wouldDefer?: boolean;
+  guardianNegotiation?: ReadinessGuardianNegotiationSnapshot;
+  /** status=would_defer 时扁平 CHOOSE 选项 */
+  humanDecisionPointsFlat?: string[];
+  /** would_defer 时可选单主角表达 */
+  presentation?: GuardianPersonaPresentation;
+  decisionPlan?: Record<string, unknown>;
+  decisionLog?: Record<string, unknown>;
+  option: RepairOption;
 }
 
 /**
@@ -333,10 +445,13 @@ export interface SegmentHazard {
  */
 export interface PoiCoverage {
   id: string;
+  itemId?: string;
   day: number;
   order: number;
   name: string;
   type: string;
+  startTime?: string;
+  endTime?: string;
   coordinates: Coordinates;
   coverageStatus: PoiCoverageStatus;
   evidenceCount: number;

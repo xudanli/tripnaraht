@@ -31,6 +31,8 @@ import {
   ApiBody,
   ApiQuery,
   ApiParam,
+  ApiExtraModels,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { ReadinessService } from './services/readiness.service';
 import { CapabilityPackEvaluatorService } from './services/capability-pack-evaluator.service';
@@ -63,6 +65,7 @@ import { TripReadinessWeatherForecastService } from './services/trip-readiness-w
 import { TripDependencyImpactService } from './services/trip-dependency-impact.service';
 import { ReadinessCausalPreanalysisService } from './services/readiness-causal-preanalysis.service';
 import { buildReadinessCascadeUiHints } from './utils/readiness-causal-preanalysis.util';
+import { CascadeUiHintDto } from '../../travel-cognition/dto/travel-runtime-api.dto';
 import { CoverageMapService } from './services/coverage-map.service';
 import { ReadinessRepairService } from './services/readiness-repair.service';
 import { UpdateChecklistStatusDto } from './dto/checklist-status.dto';
@@ -292,6 +295,7 @@ export class CheckReadinessDto {
 }
 
 @ApiTags('readiness')
+@ApiExtraModels(CascadeUiHintDto)
 @Controller('readiness')
 export class ReadinessController {
   private readonly logger = new Logger(ReadinessController.name);
@@ -774,7 +778,10 @@ export class ReadinessController {
         tripReadinessStatus = 'warn';
       }
 
-      const readinessPhase = getTripReadinessPhase(trip.startDate);
+      const readinessPhase = getTripReadinessPhase(trip.startDate, {
+        endDate: trip.endDate,
+        status: trip.status,
+      });
       const daysUntilStart = getDaysUntilTripStart(trip.startDate);
       let deferredLiveRiskCount = 0;
 
@@ -800,7 +807,11 @@ export class ReadinessController {
           ? (lang === 'en'
               ? `Trip starts in ${daysUntilStart} days. Live road and weather alerts appear within ${ACTIONABLE_READINESS_HORIZON_DAYS} days of departure.`
               : `行程尚早（${daysUntilStart} 天后出发）。实时路况与逐日天气将在出发前 ${ACTIONABLE_READINESS_HORIZON_DAYS} 天内显示。`)
-          : undefined;
+          : readinessPhase === 'in_trip'
+            ? (lang === 'en'
+                ? 'In-trip: use GET /api/trips/:id/in-trip/readiness/today for day-scoped execution readiness.'
+                : '行中请使用 GET /api/trips/:id/in-trip/readiness/today 查看「今日就绪」。')
+            : undefined;
 
       return successResponse({
         ...result,
@@ -1965,7 +1976,9 @@ export class ReadinessController {
   @Get('trip/:tripId/score')
   @ApiOperation({
     summary: '获取行程准备度分数',
-    description: '获取行程的准备度分数分解，包含证据覆盖、时间可行性、交通确定性、安全风险、缓冲时间等维度',
+    description:
+      '【C 端已弃用】请改用 GET /api/trips/:tripId/feasibility-report。B 端/Agent 仍可使用本接口。',
+    deprecated: true,
   })
   @ApiParam({ name: 'tripId', description: '行程 ID (UUID)', example: 'ed69d9c5-660f-4549-bf03-85654e972403' })
   @ApiResponse({
@@ -2007,6 +2020,15 @@ export class ReadinessController {
               },
             },
             calculatedAt: { type: 'string' },
+            causalPreAnalysis: {
+              type: 'object',
+              description: '级联影响预分析（NonTransactionalReplanResult）',
+            },
+            cascadeUiHints: {
+              type: 'array',
+              description: '级联影响 UI 卡片（含 netImpactMinutes / cascadeConfidence 等）',
+              items: { $ref: getSchemaPath(CascadeUiHintDto) },
+            },
           },
         },
       },
@@ -2082,7 +2104,9 @@ export class ReadinessController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '获取阻塞项修复选项',
-    description: '根据准备度检查的阻塞项ID，获取可用的修复选项列表',
+    description:
+      '【C 端已弃用】请改用 GET /api/trips/:tripId/feasibility-report/issues/:issueId/repair-options。Agent/B 端仍可使用 blockerId 调用本接口。',
+    deprecated: true,
   })
   @ApiBody({
     schema: {
@@ -2119,6 +2143,19 @@ export class ReadinessController {
                   timeEstimate: { type: 'string', example: '2分钟' },
                 },
               },
+            },
+            dependencyImpact: {
+              type: 'object',
+              description: '级联影响分析（与 causalPreAnalysis 同形）',
+            },
+            causalPreAnalysis: {
+              type: 'object',
+              description: '级联影响预分析（NonTransactionalReplanResult）',
+            },
+            cascadeUiHints: {
+              type: 'array',
+              description: '级联影响 UI 卡片',
+              items: { $ref: getSchemaPath(CascadeUiHintDto) },
             },
           },
         },
@@ -2215,7 +2252,9 @@ export class ReadinessController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '自动修复阻塞项',
-    description: '为指定 blocker 自动选择修复选项；executeDecision=true 时优先走决策引擎',
+    description:
+      '【C 端已弃用】请改用 POST /api/trips/:tripId/feasibility-report/issues/:issueId/apply-repair。Agent 仍可使用。',
+    deprecated: true,
   })
   @ApiBody({
     schema: {
@@ -2260,6 +2299,29 @@ export class ReadinessController {
     summary: '获取级联影响预分析快照',
     description: '读取 trip.metadata.readinessCausalPreAnalysis（repair-options / apply-repair / score 刷新后写入）',
   })
+  @ApiParam({ name: 'tripId', description: '行程 ID (UUID)' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回级联影响快照与 UI 卡片',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        data: {
+          type: 'object',
+          properties: {
+            tripId: { type: 'string' },
+            causalPreAnalysis: { type: 'object', description: 'NonTransactionalReplanResult' },
+            cascadeUiHints: {
+              type: 'array',
+              items: { $ref: getSchemaPath(CascadeUiHintDto) },
+            },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+      },
+    },
+  })
   async getCascadeImpact(@Param('tripId') tripId: string): Promise<any> {
     try {
       const snapshot = await this.causalPreanalysisService.loadSnapshot(tripId);
@@ -2303,7 +2365,9 @@ export class ReadinessController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '刷新准备度证据',
-    description: '重新计算准备度分数与覆盖地图摘要（等价于刷新 /score 与 /coverage-map 数据）',
+    description:
+      '【C 端已弃用】请改用 POST /api/trips/:tripId/feasibility-report/validate。Agent 仍可使用。',
+    deprecated: true,
   })
   @ApiBody({
     schema: {

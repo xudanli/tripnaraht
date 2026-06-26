@@ -7,7 +7,7 @@
  * 支持用户对决策步骤进行接受/拒绝、调整权重、手动改写等操作
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { DecisionDraft, DecisionStep, DecisionStepStatus, DecisionType } from '../interfaces/decision-draft.interface';
 import { DecisionDraftGeneratorService } from './decision-draft-generator.service';
 import { DecisionDebugCollectorService } from './decision-debug-collector.service';
@@ -54,7 +54,9 @@ export class DecisionDraftEditorService {
   private readonly logger = new Logger(DecisionDraftEditorService.name);
 
   constructor(
+    @Inject(forwardRef(() => DecisionDraftGeneratorService))
     private readonly decisionDraftGenerator: DecisionDraftGeneratorService,
+    @Inject(forwardRef(() => ChainOfWorkService))
     private readonly chainOfWorkService: ChainOfWorkService,
     private readonly storageService: DecisionDraftStorageService,
     private readonly decisionTypeMapper: DecisionTypeToStepDraftMapper,

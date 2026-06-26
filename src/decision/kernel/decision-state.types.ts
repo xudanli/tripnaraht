@@ -12,6 +12,7 @@ import type { ContextPackage } from '../../agent/context-engine/types/context-pa
 import type { WorldStateSummary } from './world-state-summary.types';
 import type { HarnessStepName } from '../../harness/contracts/harness-step.types';
 import type { RepairTrace } from '../../agent/services/route-feasibility.types';
+import type { ExperienceFulfillmentState } from '../../trips/experience-fulfillment/types/experience-fulfillment-state.types';
 
 /** 用户意图（从 INTAKE 提取） */
 export interface UserIntent {
@@ -476,6 +477,8 @@ export interface OptimizationHints {
   }>;
   /** 推荐候选 id（若已计算） */
   recommendedAlternativeId?: string;
+  /** 专利 6.5 OPTIMIZE 输出：选中方案 id（与 recommendedAlternativeId 同义，审计/答辩字段） */
+  selectedPlanId?: string;
 
   /**
    * 元决策预算审计摘要（人读/可截图）
@@ -796,6 +799,11 @@ export interface DecisionState {
   poiPlanning?: PoiPlanningDecisionSlice;
 
   /**
+   * 体验兑现协议切片（Round 3：VerificationResult + RepairContract + Intent）
+   */
+  experienceFulfillment?: ExperienceFulfillmentState;
+
+  /**
    * VERIFY 结构化结果（Phase 3）
    * - 以结构化 issue 取代纯 string[]，用于：是否可修复、是否阻塞 DONE、Explain / Guardrails
    */
@@ -951,6 +959,11 @@ export interface UncertaintyProfile {
    * - 当前作为可审计预算字段；具体解释由各优化器自行映射
    */
   planningDepth?: number;
+  /**
+   * 专利 6.5 / 步骤 5：Exploration 系数 β（U'(a)=U(a)+β·IG(a)）
+   * - 由 entropy/不确定性信号推导，供 CGUS / PLAN_GEN 候选池审计
+   */
+  explorationBeta?: number;
 }
 
 /**

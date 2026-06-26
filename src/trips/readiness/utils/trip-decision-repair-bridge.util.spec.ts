@@ -1,6 +1,7 @@
 import {
   buildTripPlanFromPrismaTrip,
   buildTripWorldStateFromPrismaTrip,
+  isDecisionEngineRepairAction,
   mapReadinessActionToDecisionTrigger,
   READINESS_DECISION_ENGINE_PATH,
   type PrismaTripWithDays,
@@ -56,7 +57,15 @@ describe('trip-decision-repair-bridge.util', () => {
   it('maps readiness actions to decision triggers', () => {
     expect(mapReadinessActionToDecisionTrigger('fetch_weather')).toBe('weather_update');
     expect(mapReadinessActionToDecisionTrigger('remove_pois')).toBe('manual_repair');
+    expect(mapReadinessActionToDecisionTrigger('adjust_time')).toBe('manual_repair');
+    expect(mapReadinessActionToDecisionTrigger('replace_poi')).toBe('manual_repair');
     expect(mapReadinessActionToDecisionTrigger('refresh')).toBe('signal_update');
+  });
+
+  it('recognizes feasibility Plan B actions as decision-engine repairs', () => {
+    expect(isDecisionEngineRepairAction('adjust_time')).toBe(true);
+    expect(isDecisionEngineRepairAction('replace_poi')).toBe(true);
+    expect(isDecisionEngineRepairAction('refresh')).toBe(false);
   });
 
   it('exports canonical decision engine repair path', () => {

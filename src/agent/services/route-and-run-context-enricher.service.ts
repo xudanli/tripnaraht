@@ -6,6 +6,13 @@ import { buildBriefItineraryLinesFromTripDays } from '../../trips/utils/trip-pro
 import { UserStandingPreferenceService } from './user-standing-preference.service';
 import { TripInsightService } from '../../trips/services/trip-insight.service';
 import { TripMetricsService } from '../../trips/services/trip-metrics.service';
+import {
+  filterScheduleFocusedInsightFindings,
+  shouldSkipAgentReadinessPackCheck,
+} from '../utils/agent-readiness-phase.util';
+import { loadWishlistPromptInjectionForAgent } from '../../trips/wishlist/utils/wish-prompt-injection.util';
+import { TripIntentDigestService } from '../memory/services/trip-intent-digest.service';
+import { formatTripIntentDigestPromptInjection } from '../memory/utils/trip-intent-context-blocks.util';
 
 /**
  * Enriches `route_and_run` conversation context before orchestration (e.g. active trip summary).
@@ -19,6 +26,7 @@ export class RouteAndRunContextEnricherService {
     @Optional() private readonly userStandingPreference?: UserStandingPreferenceService,
     @Optional() private readonly tripInsightService?: TripInsightService,
     @Optional() private readonly tripMetricsService?: TripMetricsService,
+    @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
   ) {}
 
   /**
@@ -80,7 +88,9 @@ export class RouteAndRunContextEnricherService {
       if (trip.startDate) lines.push(`开始: ${trip.startDate.toISOString().slice(0, 10)}`);
       if (trip.endDate) lines.push(`结束: ${trip.endDate.toISOString().slice(0, 10)}`);
 
-      lines.push(...await this.buildTripRiskAndMetricLines(tripId));
+      lines.push(
+        ...await this.buildTripRiskAndMetricLines(request, tripId, trip.startDate ?? undefined),
+      );
       lines.push(...buildBriefItineraryLinesFromTripDays(trip.TripDay));
 
       const block = lines.join('\n');
@@ -95,22 +105,30 @@ export class RouteAndRunContextEnricherService {
     }
   }
 
-  private async buildTripRiskAndMetricLines(tripId: string): Promise<string[]> {
+  private async buildTripRiskAndMetricLines(
+    request: RouteAndRunRequestDto,
+    tripId: string,
+    tripStartDate?: Date,
+  ): Promise<string[]> {
     const lines: string[] = [];
+    const skipReadinessPack = shouldSkipAgentReadinessPackCheck(
+      request,
+      tripStartDate,
+      request.message,
+    );
     if (this.tripInsightService) {
       try {
-        const insight = await this.tripInsightService.getInsight(tripId);
-        lines.push(
-          `准备度: status=${insight.readiness.status}, blockers=${insight.readiness.blockers}, must=${insight.readiness.must}, should=${insight.readiness.should}, overall=${insight.overallStatus}`,
-        );
-        const priorityFindings = (insight.findings ?? [])
-          .filter((finding) => finding.type !== 'positive')
-          .slice(0, 3)
-          .map((finding) => `${finding.title}: ${finding.message}`);
+        const insight = await this.tripInsightService.getInsight(tripId, { skipReadinessPack });
+        if (!skipReadinessPack && insight.readiness) {
+          lines.push(
+            `准备度: status=${insight.readiness.status}, blockers=${insight.readiness.blockers}, must=${insight.readiness.must}, should=${insight.readiness.should}, overall=${insight.overallStatus}`,
+          );
+        }
+        const priorityFindings = filterScheduleFocusedInsightFindings(insight.findings ?? []).slice(0, 3);
         if (priorityFindings.length > 0) {
           lines.push('关键发现:');
           for (const finding of priorityFindings) {
-            lines.push(`- ${finding}`);
+            lines.push(`- ${finding.title}: ${finding.message}`);
           }
         }
       } catch (e: any) {
@@ -148,6 +166,63 @@ export class RouteAndRunContextEnricherService {
     }
 
     return lines;
+  }
+
+  /**
+   * 绑定 trip_id 时注入私密 + 团队愿望单（供推荐活动/规划类问法使用）。
+   */
+  async maybeInjectTripWishlistContext(request: RouteAndRunRequestDto): Promise<void> {
+    const tripId = request.trip_id?.trim();
+    const userId = request.user_id?.trim();
+    if (!tripId || !userId || !this.prisma) {
+      return;
+    }
+
+    try {
+      const block = await loadWishlistPromptInjectionForAgent(this.prisma, tripId, userId);
+      if (!block) {
+        return;
+      }
+      const prev = request.conversation_context?.recent_messages ?? [];
+      request.conversation_context = {
+        ...request.conversation_context,
+        recent_messages: [block, ...prev],
+      };
+      this.logger.debug(
+        `[ContextEnricher] wishlist injected trip_id=${tripId} user_id=${userId} chars=${block.length}`,
+      );
+    } catch (e: any) {
+      this.logger.warn(`[ContextEnricher] trip wishlist inject failed: ${e?.message ?? e}`);
+    }
+  }
+
+  /**
+   * 注入决策风格、私密清单、协商结果摘要（与 Memory digest / Context Engine 对齐）。
+   */
+  async maybeInjectTripIntentDigestContext(request: RouteAndRunRequestDto): Promise<void> {
+    const tripId = request.trip_id?.trim();
+    const userId = request.user_id?.trim();
+    if (!tripId || !userId || userId === 'anonymous' || !this.tripIntentDigest) {
+      return;
+    }
+
+    try {
+      const bundle = await this.tripIntentDigest.loadForMemoryContext(tripId, userId);
+      const block = formatTripIntentDigestPromptInjection(bundle);
+      if (!block) {
+        return;
+      }
+      const prev = request.conversation_context?.recent_messages ?? [];
+      request.conversation_context = {
+        ...request.conversation_context,
+        recent_messages: [block, ...prev],
+      };
+      this.logger.debug(
+        `[ContextEnricher] trip intent digest injected trip_id=${tripId} user_id=${userId} chars=${block.length}`,
+      );
+    } catch (e: any) {
+      this.logger.warn(`[ContextEnricher] trip intent digest inject failed: ${e?.message ?? e}`);
+    }
   }
 
   /**

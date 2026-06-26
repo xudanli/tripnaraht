@@ -2,6 +2,8 @@
  * PhysicalValidator output — PREVIEW/COMMIT shared envelope (audit + QA Workbench).
  */
 
+import type { ExperienceFulfillmentState } from '../../../trips/experience-fulfillment/types/experience-fulfillment-state.types';
+
 export type PhysicalViolationSeverity = 'BLOCK' | 'WARN';
 
 export interface PhysicalViolationItem {
@@ -25,7 +27,10 @@ export interface PhysicalValidationSnapshot {
   blocking: boolean;
 }
 
-export interface PhysicalEvaluationResult extends PhysicalValidationSnapshot {}
+export interface PhysicalEvaluationResult extends PhysicalValidationSnapshot {
+  /** Round 3：体验兑现协议切片（VerificationResult + RepairContract） */
+  experience_fulfillment?: ExperienceFulfillmentState;
+}
 
 /** Optional client-supplied spatial fact for segment feasibility (action_input.physical_domain). */
 export interface PhysicalDomainFactInput {

@@ -8,6 +8,7 @@
 
 import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { OptimizationModule } from '../decision/optimization/optimization.module';
 import { ReadinessService } from './services/readiness.service';
 import { ReadinessChecker } from './engine/readiness-checker';
 import { FactsToReadinessCompiler } from './compilers/facts-to-readiness.compiler';
@@ -66,6 +67,7 @@ import { RagModule } from '../../rag/rag.module';
     LlmModule, // 导入 LlmModule 以使用 LLM 服务
     RedisModule, // 导入 RedisModule 以使用 Redis 服务
     forwardRef(() => RagModule), // 使用 forwardRef 避免循环依赖（ReadinessModule -> RagModule -> SkillsModule -> ReadinessModule）
+    forwardRef(() => OptimizationModule),
     // forwardRef(() => TripsModule), // 暂时禁用，验证懒加载方案是否能解决问题
   ],
   controllers: [ReadinessController],

@@ -1,14 +1,13 @@
 /**
  * 修复路线模板与 POI 的关联
- * 
- * 功能：
- * 1. 从 dayPlans 的 highlights、requiredNodes、activities 等字段中提取 POI 名称
- * 2. 通过名称在 Place 表中查找匹配的 POI
- * 3. 将找到的 POI 信息添加到 dayPlans 的 pois 数组中
- * 4. 更新 RouteDirection 的 signaturePois.examples
+ *
+ * 1. 为已有 pois 但缺少 id/uuid 的条目按 nameEN/nameCN 回填地点库 id
+ * 2. 从 highlights、requiredNodes 等字段提取 POI 名称并写入 pois 数组
+ * 3. 更新 RouteDirection.signaturePois.examples
  */
 
 import { PrismaClient, Prisma } from '@prisma/client';
+import { findPlaceByTemplatePoiNames } from '../src/route-directions/utils/template-poi-place-match.util';
 
 const prisma = new PrismaClient();
 
@@ -32,62 +31,39 @@ interface DayPlan {
 }
 
 /**
- * 通过名称查找 Place
+ * 通过名称查找 Place（脚本用，与 API 侧 findPlaceByTemplatePoiNames 对齐）
  */
 async function findPlaceByName(
   name: string,
   countryCode?: string
 ): Promise<{ id: number; uuid: string; nameCN: string; nameEN: string | null; category: string } | null> {
-  // 先尝试精确匹配
-  let place = await prisma.place.findFirst({
-    where: {
-      OR: [
-        { nameCN: name },
-        { nameEN: name },
-      ],
-      ...(countryCode ? {
-        City: {
-          countryCode: countryCode,
-        },
-      } : {}),
-    },
-    select: {
-      id: true,
-      uuid: true,
-      nameCN: true,
-      nameEN: true,
-      category: true,
-    },
-  });
+  return findPlaceByTemplatePoiNames(prisma, { nameEN: name, nameCN: name }, countryCode);
+}
 
-  // 如果精确匹配失败，尝试包含匹配
-  if (!place) {
-    place = await prisma.place.findFirst({
-      where: {
-        OR: [
-          { nameCN: { contains: name, mode: 'insensitive' } },
-          { nameEN: { contains: name, mode: 'insensitive' } },
-        ],
-        ...(countryCode ? {
-          City: {
-            countryCode: countryCode,
-          },
-        } : {}),
-      },
-      select: {
-        id: true,
-        uuid: true,
-        nameCN: true,
-        nameEN: true,
-        category: true,
-      },
-      orderBy: {
-        rating: 'desc',
-      },
-    });
-  }
+async function backfillPoiIds(
+  pois: DayPlan['pois'],
+  countryCode: string,
+): Promise<{ pois: DayPlan['pois']; matched: number }> {
+  if (!pois?.length) return { pois, matched: 0 };
 
-  return place;
+  let matched = 0;
+  const updated = await Promise.all(
+    pois.map(async poi => {
+      if (poi.id || poi.uuid) return poi;
+      const place = await findPlaceByTemplatePoiNames(prisma, poi, countryCode);
+      if (!place) return poi;
+      matched++;
+      return {
+        ...poi,
+        id: place.id,
+        uuid: place.uuid,
+        nameCN: place.nameCN,
+        nameEN: place.nameEN || poi.nameEN,
+        category: place.category || poi.category,
+      };
+    }),
+  );
+  return { pois: updated, matched };
 }
 
 /**
@@ -188,9 +164,18 @@ async function fixRouteTemplate(templateId: number, countryCode: string): Promis
 
   // 处理每个 dayPlan
   const updatedDayPlans = await Promise.all(
-    dayPlans.map(async (dayPlan, dayIndex) => {
-      // 如果已经有 pois 数组，跳过
+    dayPlans.map(async (dayPlan) => {
+      // 已有 pois：回填缺失的地点库 id
       if (dayPlan.pois && Array.isArray(dayPlan.pois) && dayPlan.pois.length > 0) {
+        const { pois: backfilledPois, matched } = await backfillPoiIds(dayPlan.pois, countryCode);
+        totalPoisMatched += matched;
+        for (const poi of backfilledPois ?? []) {
+          if (poi.id) signaturePoiIds.add(poi.id);
+        }
+        if (matched > 0) {
+          totalPoisAdded += matched;
+          return { ...dayPlan, pois: backfilledPois };
+        }
         return dayPlan;
       }
 
@@ -281,8 +266,8 @@ async function fixRouteTemplate(templateId: number, countryCode: string): Promis
     })
   );
 
-  // 如果有更新，保存到数据库
-  if (totalPoisAdded > 0) {
+  // 有回填或新增 POI 时保存
+  if (totalPoisAdded > 0 || totalPoisMatched > 0) {
     await prisma.routeTemplate.update({
       where: { id: templateId },
       data: {
@@ -312,7 +297,7 @@ async function fixRouteTemplate(templateId: number, countryCode: string): Promis
   }
 
   return {
-    updated: totalPoisAdded > 0,
+    updated: totalPoisAdded > 0 || totalPoisMatched > 0,
     poisAdded: totalPoisAdded,
     poisMatched: totalPoisMatched,
   };

@@ -40,6 +40,7 @@ Context API 提供了 TripNARA 上下文编译器的 HTTP 接口，用于构建�
 | 参数名 | 类型 | 必填 | 默认值 | 说明 |
 |--------|------|------|--------|------|
 | tripId | string | 否 | - | Trip ID |
+| userId | string | 否 | - | 当前用户 ID；`includePrivate: true` 时注入私密愿望与领域负责人约束块所必需 |
 | phase | string | 是 | - | 规划阶段（如：`planning`, `execution`, `review`） |
 | agent | string | 是 | - | 当前 Agent（如：`PLANNER`, `GATEKEEPER`, `CORE_DECISION`） |
 | userQuery | string | 是 | - | 用户请求文本 |
@@ -54,10 +55,12 @@ Context API 提供了 TripNARA 上下文编译器的 HTTP 接口，用于构建�
 ```json
 {
   "tripId": "trip-123",
+  "userId": "user-456",
   "phase": "planning",
   "agent": "PLANNER",
   "userQuery": "帮我规划冰岛7天行程",
   "tokenBudget": 3600,
+  "includePrivate": true,
   "requiredTopics": ["VISA", "ROAD_RULES", "SAFETY"],
   "useCache": true
 }

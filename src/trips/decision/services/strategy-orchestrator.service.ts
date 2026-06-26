@@ -1,11 +1,13 @@
 // src/trips/decision/services/strategy-orchestrator.service.ts
 /**
  * Strategy Orchestrator Service
- * 
- * 策略编排服务：按顺序执行三人格策略
- * 
- * 调用顺序：
- * Abu → Dr.Dre → Neptune → Finalize
+ *
+ * 三人格责任席位顺序编排（Mode 1 默认路径）：
+ *
+ * Abu（存在性）→ Dr.Dre（代价）→ Neptune（意图守恒修复）
+ *   → [若 Neptune 改 plan] Abu 复核 → Dr.Dre 再平衡 → Finalize
+ *
+ * Neptune 修复后的 Plan B 必须重新过 Abu/Dre，不能作为流程最后一棒。
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -17,7 +19,11 @@ import {
   WorldModelContext,
   RoutePlanDraft,
 } from '../shared/world-model.types';
-import { DecisionLogEntry } from '../shared/decision-result.types';
+import type { DecisionLogEntry } from '../shared/decision-result.types';
+import {
+  enrichOrchestrationLogsWithGuardianMetadata,
+  mergeGuardianMetadataIntoLog,
+} from '../shared/guardian-decision-metadata.util';
 import { mergeTriggeredAssertions, type HardRuleFact, normalizeHardRuleSnapshot } from '../shared/hard-rule-snapshot.types';
 import { DecisionLogStorageService } from './decision-log-storage.service';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
@@ -60,9 +66,10 @@ export class StrategyOrchestratorService {
    * 运行策略编排
    * 
    * 按顺序执行：
-   * 1. Abu（安全否决者）- 检查硬违规
-   * 2. Dr.Dre（结构修复者）- 调整节奏
-   * 3. Neptune（空间修复者）- 替换不可用路段
+   * 1. Abu（存在性判断）- 硬约束否决
+   * 2. Dr.Dre（代价判断）- 节奏与缓冲
+   * 3. Neptune（意图守恒修复）- 替代结构
+   * 4. 若 Neptune 修改 plan：Abu 复核 → Dr.Dre 再平衡
    * 
    * @param world 世界模型上下文
    * @param plan 路线计划草案
@@ -175,21 +182,64 @@ export class StrategyOrchestratorService {
     allLogs.push(...nepResult.logs);
 
     // 如果 Neptune 替换了计划，使用替换后的计划
+    const nepPlanChanged =
+      nepResult.updatedPlan != null || nepResult.action === 'REPLACE';
     if (nepResult.updatedPlan) {
       currentPlan = nepResult.updatedPlan;
       this.logger.debug(`Neptune 替换了计划: ${nepResult.action}`);
     }
 
-    // 4️⃣ 确定最终动作
+    let finalAbuAction = abuResult.action;
+    let finalDreAction = dreResult.action;
+    let expectedUtility = dreResult.expectedUtility;
+    let expectedUtilityWeights = dreResult.expectedUtilityWeights;
+
+    // 4️⃣ Neptune 修复后：Abu 复核 → Dr.Dre 再平衡（不可跳过）
+    if (nepPlanChanged) {
+      this.logger.debug('Neptune 修复后进入 Abu/Dre 复核闭环...');
+
+      const abuRevalidate = await this.abu.evaluate(world, currentPlan);
+      allLogs.push(...this.tagPostNeptuneRevalidationLogs(abuRevalidate.logs));
+      finalAbuAction = abuRevalidate.action;
+
+      if (!abuRevalidate.allowed) {
+        this.logger.warn(
+          `Neptune 修复后 Abu 复核拒绝: ${abuRevalidate.logs[0]?.explanation ?? 'hard block'}`,
+        );
+        this.saveLogs(allLogs, world, plan).catch((error) => {
+          this.logger.warn(`Failed to save decision logs: ${error}`);
+        });
+        return {
+          plan: null,
+          logs: allLogs,
+          allowed: false,
+          finalAction: 'REJECT',
+        };
+      }
+
+      const dreRebalance = await this.dre.evaluate(world, currentPlan);
+      allLogs.push(...this.tagPostNeptuneRevalidationLogs(dreRebalance.logs));
+      finalDreAction = dreRebalance.action;
+      expectedUtility = dreRebalance.expectedUtility ?? expectedUtility;
+      expectedUtilityWeights =
+        dreRebalance.expectedUtilityWeights ?? expectedUtilityWeights;
+
+      if (dreRebalance.updatedPlan) {
+        currentPlan = dreRebalance.updatedPlan;
+        this.logger.debug(`Neptune 修复后 Dr.Dre 再平衡: ${dreRebalance.action}`);
+      }
+    }
+
+    // 5️⃣ 确定最终动作
     const finalAction = this.determineFinalAction(
-      abuResult.action,
-      dreResult.action,
-      nepResult.action
+      finalAbuAction,
+      finalDreAction,
+      nepResult.action,
     );
 
     this.logger.debug(`策略编排完成: ${finalAction}, 日志数: ${allLogs.length}`);
 
-    // 5️⃣ 保存决策日志到数据库（使用 decision.logAppend skill，如果可用）
+    // 6️⃣ 保存决策日志到数据库（使用 decision.logAppend skill，如果可用）
     this.saveLogs(allLogs, world, plan).catch(error => {
       this.logger.warn(`Failed to save decision logs: ${error}`);
     });
@@ -199,9 +249,19 @@ export class StrategyOrchestratorService {
       logs: allLogs,
       allowed: true,
       finalAction,
-      expectedUtility: dreResult.expectedUtility,
-      expectedUtilityWeights: dreResult.expectedUtilityWeights,
+      expectedUtility,
+      expectedUtilityWeights,
     };
+  }
+
+  private tagPostNeptuneRevalidationLogs(logs: DecisionLogEntry[]): DecisionLogEntry[] {
+    return logs.map((log) => ({
+      ...log,
+      metadata: mergeGuardianMetadataIntoLog(
+        log.metadata as Record<string, unknown> | undefined,
+        { revalidationPass: 'POST_NEPTUNE_REPAIR' },
+      ),
+    }));
   }
 
   /**
@@ -265,6 +325,8 @@ export class StrategyOrchestratorService {
       return { ...log, metadata: { ...meta, ...merged } };
     });
 
+    const enrichedLogs = enrichOrchestrationLogsWithGuardianMetadata(withFacts);
+
     // 优先使用 decision.logAppend skill（如果可用）
     const skillsRegistry = this.getSkillsRegistry();
     if (skillsRegistry) {
@@ -275,7 +337,7 @@ export class StrategyOrchestratorService {
             tripId: plan.tripId,
             countryCode: world.physical.countryCode,
             routeDirectionId: plan.routeDirectionId,
-            entries: withFacts.map((log) => ({
+            entries: enrichedLogs.map((log) => ({
               persona: log.persona,
               action: log.action,
               reasonCodes: log.reasonCodes,
@@ -300,7 +362,7 @@ export class StrategyOrchestratorService {
     }
 
     // 回退到直接调用 DecisionLogStorageService
-    await this.logStorage.saveLogEntries(withFacts, {
+    await this.logStorage.saveLogEntries(enrichedLogs, {
       tripId: plan.tripId,
       countryCode: world.physical.countryCode,
       routeDirectionId: plan.routeDirectionId,

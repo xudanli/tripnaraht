@@ -3,7 +3,9 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { GuardianChooseService } from '../../decision/optimization/services/guardian-choose.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CoverageMapService } from './coverage-map.service';
 import { FindingMarksService } from './finding-marks.service';
@@ -16,33 +18,37 @@ import { READINESS_DECISION_ENGINE_PATH } from '../utils/trip-decision-repair-br
 import {
   buildGuardianDeferMessage,
   buildGuardianRepairHintsFromSummary,
+  buildReadinessDeferredChooseFields,
   shouldDeferRepairByPreNegotiation,
 } from '../utils/readiness-guardian-negotiation.util';
+import {
+  DECISION_ENGINE_REPAIR_ACTIONS,
+  isDecisionEngineRepairAction,
+} from '../utils/trip-decision-repair-bridge.util';
 import type {
   ApplyRepairRequest,
   ApplyRepairResponse,
   AutoRepairRequest,
+  PreviewRepairRequest,
+  PreviewRepairResponse,
   RefreshEvidenceResponse,
   RepairOption,
   ReadinessGuardianNegotiationSnapshot,
 } from '../types/coverage-map.types';
+import {
+  buildTripPlanItineraryDiff,
+  applyStructuralRepairToPlan,
+  countTripPlanSlots,
+  countTripPlanSlotsForDay,
+  itineraryDiffToHighlights,
+} from '../utils/trip-plan-repair-preview.util';
+import { isRoadClassStructuralRepairOption } from '../../trip-constraint-solver/utils/road-class-repair-options.util';
 
 const MARK_NOT_APPLICABLE_ACTIONS = new Set(['manual_confirm', 'mark_resolved']);
 const ADD_TO_LATER_ACTIONS = new Set(['ignore']);
 const REFRESH_ONLY_ACTIONS = new Set(['refresh']);
 const WEATHER_FETCH_ACTIONS = new Set(['fetch_weather']);
-const DECISION_ENGINE_ACTIONS = new Set([
-  'reorder_pois',
-  'move_to_day',
-  'remove_pois',
-  'book_transport',
-  'find_alternative_route',
-  'contact_guide',
-  'change_hotel',
-  'search_nearby',
-  'change_destination',
-  'buy_insurance',
-]);
+const DECISION_ENGINE_ACTIONS = DECISION_ENGINE_REPAIR_ACTIONS;
 
 const IMPACT_RANK: Record<string, number> = {
   high: 3,
@@ -63,6 +69,7 @@ export class ReadinessRepairService {
     private readonly tripPlanPersistence: TripPlanPersistenceService,
     private readonly guardianNegotiationService: ReadinessGuardianNegotiationService,
     private readonly causalPreanalysisService: ReadinessCausalPreanalysisService,
+    @Optional() private readonly guardianChoose?: GuardianChooseService,
   ) {}
 
   async applyRepair(request: ApplyRepairRequest): Promise<ApplyRepairResponse> {
@@ -139,6 +146,32 @@ export class ReadinessRepairService {
       };
     }
 
+    if (isRoadClassStructuralRepairOption(option)) {
+      const beforePlan = await this.decisionRepairBridge.loadCurrentTripPlan(tripId);
+      const afterPlan = applyStructuralRepairToPlan(beforePlan, {
+        actionType,
+        payload: (option.payload ?? {}) as Record<string, unknown>,
+      });
+      const shouldPersist = persistDecision !== false;
+      const persistence = shouldPersist
+        ? await this.tripPlanPersistence.persistRepairPlan(tripId, afterPlan)
+        : undefined;
+      const readinessScore = await this.coverageMapService.getReadinessScore(tripId);
+      return {
+        tripId,
+        blockerId,
+        optionId,
+        actionType,
+        status: 'applied',
+        message: `已应用拆段方案：${option.title}`,
+        readinessScore,
+        metadata: {
+          structuralRepair: true,
+          persisted: Boolean(persistence?.applied),
+        },
+      };
+    }
+
     if (DECISION_ENGINE_ACTIONS.has(actionType)) {
       if (executeDecision) {
         const negotiationContext = {
@@ -166,6 +199,8 @@ export class ReadinessRepairService {
           const guardianNegotiation = { preRepair, latest: preRepair };
           await this.guardianNegotiationService.persistSnapshot(tripId, guardianNegotiation);
           const readinessScore = await this.coverageMapService.getReadinessScore(tripId);
+          const deferredChoose = buildReadinessDeferredChooseFields(preRepair);
+          await this.persistDeferredChooseContext(tripId, deferredChoose.humanDecisionPointsFlat);
           return {
             tripId,
             blockerId,
@@ -175,6 +210,8 @@ export class ReadinessRepairService {
             message: buildGuardianDeferMessage(preRepair),
             readinessScore,
             guardianNegotiation,
+            humanDecisionPointsFlat: deferredChoose.humanDecisionPointsFlat,
+            presentation: deferredChoose.presentation,
             metadata: {
               suggestedAction: actionType,
               blockerMessage: repairOptions.blockerMessage,
@@ -279,6 +316,154 @@ export class ReadinessRepairService {
     };
   }
 
+  /**
+   * P0：与 apply-repair 同决策路径的 dry-run 预览（persistDecision=false，不写库）。
+   */
+  async previewRepair(request: PreviewRepairRequest): Promise<PreviewRepairResponse> {
+    const { tripId, blockerId, optionId, issueId } = request;
+    const repairOptions = await this.coverageMapService.getRepairOptions(tripId, blockerId);
+    const option = repairOptions.options.find((item) => item.id === optionId);
+
+    if (!option) {
+      throw new BadRequestException(
+        `选项 ${optionId} 不属于阻塞项 ${blockerId} 的修复列表`,
+      );
+    }
+
+    const actionType = option.actionType || 'unknown';
+    const scoreResponse = await this.coverageMapService.getReadinessScore(tripId);
+    const scoreBefore = scoreResponse.score.overall;
+    const dayNumber =
+      request.affectedDayNumber ??
+      this.inferPreviewDayNumber(repairOptions, issueId);
+
+    if (isRoadClassStructuralRepairOption(option)) {
+      return this.buildStructuralPlanPreview({
+        tripId,
+        blockerId,
+        issueId,
+        optionId,
+        actionType,
+        option,
+        dayNumber,
+        scoreBefore,
+        blockerMessage: repairOptions.blockerMessage,
+      });
+    }
+
+    if (!isDecisionEngineRepairAction(actionType)) {
+      return this.buildHeuristicPreview({
+        tripId,
+        blockerId,
+        issueId,
+        optionId,
+        actionType,
+        option,
+        dayNumber,
+        scoreBefore,
+        blockerMessage: repairOptions.blockerMessage,
+      });
+    }
+
+    const beforePlan = await this.decisionRepairBridge.loadCurrentTripPlan(tripId);
+    const negotiationContext = { tripId, repairActionType: actionType, blockerId };
+    const shouldRunNegotiation = request.runGuardianNegotiation !== false;
+    let preRepair;
+
+    if (shouldRunNegotiation && this.guardianNegotiationService.isEnabled()) {
+      preRepair = await this.guardianNegotiationService.negotiateForTrip(
+        tripId,
+        'pre_repair',
+        negotiationContext,
+      );
+    }
+
+    if (
+      preRepair &&
+      !request.forceDecisionRepair &&
+      shouldDeferRepairByPreNegotiation(preRepair)
+    ) {
+      const deferredChoose = buildReadinessDeferredChooseFields(preRepair);
+      await this.persistDeferredChooseContext(tripId, deferredChoose.humanDecisionPointsFlat);
+      return {
+        tripId,
+        blockerId,
+        issueId,
+        optionId,
+        actionType,
+        previewMode: 'decision_engine_dry_run',
+        status: 'would_defer',
+        message: buildGuardianDeferMessage(preRepair),
+        wouldDefer: true,
+        before: this.buildPreviewDaySnapshot(beforePlan, dayNumber, [repairOptions.blockerMessage]),
+        after: this.buildPreviewDaySnapshot(beforePlan, dayNumber, ['应用时将需您确认后再修复']),
+        itineraryDiff: [],
+        impact: {
+          feasibilityScoreBefore: scoreBefore,
+          estimated: true,
+        },
+        guardianNegotiation: { preRepair, latest: preRepair },
+        humanDecisionPointsFlat: deferredChoose.humanDecisionPointsFlat,
+        presentation: deferredChoose.presentation,
+        option,
+      };
+    }
+
+    const causalPreAnalysis =
+      (repairOptions.causalPreAnalysis ?? repairOptions.dependencyImpact) ?? null;
+
+    const decisionResult = await this.decisionRepairBridge.executeDecisionRepair({
+      tripId,
+      actionType,
+      blockerMessage: repairOptions.blockerMessage,
+      guardianRepairHints: buildGuardianRepairHintsFromSummary(preRepair),
+      causalPreAnalysis,
+    });
+
+    const afterPlan = decisionResult.plan;
+    const diff = buildTripPlanItineraryDiff(beforePlan, afterPlan);
+    const highlights = itineraryDiffToHighlights(diff);
+
+    return {
+      tripId,
+      blockerId,
+      issueId,
+      optionId,
+      actionType,
+      previewMode: 'decision_engine_dry_run',
+      status: 'preview',
+      message:
+        diff.length > 0
+          ? `决策引擎预览：${diff.length} 处行程变更（未写库）`
+          : '决策引擎预览：计划结构无变化（未写库）',
+      before: this.buildPreviewDaySnapshot(
+        beforePlan,
+        dayNumber,
+        highlights.length ? [] : [repairOptions.blockerMessage],
+      ),
+      after: this.buildPreviewDaySnapshot(
+        afterPlan,
+        dayNumber,
+        highlights.length ? highlights : [option.title],
+      ),
+      itineraryDiff: diff.map((entry) => ({
+        slotId: entry.slotId,
+        changeType: entry.changeType,
+        dayNumber: entry.dayNumber,
+        before: entry.before as unknown as Record<string, unknown>,
+        after: entry.after as unknown as Record<string, unknown>,
+      })),
+      impact: {
+        feasibilityScoreBefore: scoreBefore,
+        estimated: true,
+      },
+      guardianNegotiation: preRepair ? { preRepair, latest: preRepair } : undefined,
+      decisionPlan: afterPlan as unknown as Record<string, unknown>,
+      decisionLog: decisionResult.log as unknown as Record<string, unknown>,
+      option,
+    };
+  }
+
   async autoRepair(request: AutoRepairRequest): Promise<ApplyRepairResponse> {
     const repairOptions = await this.coverageMapService.getRepairOptions(
       request.tripId,
@@ -348,6 +533,147 @@ export class ReadinessRepairService {
     );
   }
 
+  private inferPreviewDayNumber(
+    repairOptions: Awaited<ReturnType<CoverageMapService['getRepairOptions']>>,
+    issueId?: string,
+  ): number {
+    const anchorDay = repairOptions.options[0]?.payload?.anchors as
+      | { toDayNumber?: number; fromDayNumber?: number }
+      | undefined;
+    if (typeof anchorDay?.toDayNumber === 'number') return anchorDay.toDayNumber;
+    if (typeof anchorDay?.fromDayNumber === 'number') return anchorDay.fromDayNumber;
+    const dayMatch = issueId?.match(/day[-_]?(\d+)/i);
+    if (dayMatch) return Number(dayMatch[1]);
+    return 1;
+  }
+
+  private buildPreviewDaySnapshot(
+    plan: import('../../decision/plan-model').TripPlan,
+    dayNumber: number,
+    highlights: string[],
+  ): PreviewRepairResponse['before'] {
+    return {
+      dayNumber,
+      itemCount: countTripPlanSlotsForDay(plan, dayNumber),
+      totalItemCount: countTripPlanSlots(plan),
+      highlights,
+    };
+  }
+
+  private async buildStructuralPlanPreview(input: {
+    tripId: string;
+    blockerId: string;
+    issueId?: string;
+    optionId: string;
+    actionType: string;
+    option: RepairOption;
+    dayNumber: number;
+    scoreBefore: number;
+    blockerMessage?: string;
+  }): Promise<PreviewRepairResponse> {
+    const beforePlan = await this.decisionRepairBridge.loadCurrentTripPlan(input.tripId);
+    const afterPlan = applyStructuralRepairToPlan(beforePlan, {
+      actionType: input.actionType,
+      payload: (input.option.payload ?? {}) as Record<string, unknown>,
+    });
+    const diff = buildTripPlanItineraryDiff(beforePlan, afterPlan);
+    const highlights = itineraryDiffToHighlights(diff);
+
+    return {
+      tripId: input.tripId,
+      blockerId: input.blockerId,
+      issueId: input.issueId,
+      optionId: input.optionId,
+      actionType: input.actionType,
+      previewMode: 'decision_engine_dry_run',
+      status: 'preview',
+      message:
+        diff.length > 0
+          ? `拆段方案预览：${diff.length} 处行程变更（未写库）`
+          : '拆段方案预览：未能定位可变更的行程项（请检查 anchors.itemId）',
+      before: this.buildPreviewDaySnapshot(
+        beforePlan,
+        input.dayNumber,
+        highlights.length ? [] : input.blockerMessage ? [input.blockerMessage] : [],
+      ),
+      after: this.buildPreviewDaySnapshot(
+        afterPlan,
+        input.dayNumber,
+        highlights.length ? highlights : [input.option.title],
+      ),
+      itineraryDiff: diff.map((entry) => ({
+        slotId: entry.slotId,
+        changeType: entry.changeType,
+        dayNumber: entry.dayNumber,
+        before: entry.before as unknown as Record<string, unknown>,
+        after: entry.after as unknown as Record<string, unknown>,
+      })),
+      impact: {
+        feasibilityScoreBefore: input.scoreBefore,
+        feasibilityScoreAfter: Math.min(100, input.scoreBefore + 12),
+        estimated: true,
+      },
+      decisionPlan: afterPlan as unknown as Record<string, unknown>,
+      option: input.option,
+    };
+  }
+
+  private async buildHeuristicPreview(input: {
+    tripId: string;
+    blockerId: string;
+    issueId?: string;
+    optionId: string;
+    actionType: string;
+    option: RepairOption;
+    dayNumber: number;
+    scoreBefore: number;
+    blockerMessage?: string;
+  }): Promise<PreviewRepairResponse> {
+    const impactRank =
+      input.option.impact === 'high' ? 18 : input.option.impact === 'medium' ? 10 : 5;
+
+    let daySnapshot: PreviewRepairResponse['before'] = {
+      dayNumber: input.dayNumber,
+      itemCount: 0,
+      totalItemCount: 0,
+      highlights: input.blockerMessage ? [input.blockerMessage] : [],
+    };
+
+    try {
+      const plan = await this.decisionRepairBridge.loadCurrentTripPlan(input.tripId);
+      daySnapshot = this.buildPreviewDaySnapshot(
+        plan,
+        input.dayNumber,
+        input.blockerMessage ? [input.blockerMessage] : [],
+      );
+    } catch {
+      // keep zeros when trip cannot be loaded
+    }
+
+    return {
+      tripId: input.tripId,
+      blockerId: input.blockerId,
+      issueId: input.issueId,
+      optionId: input.optionId,
+      actionType: input.actionType,
+      previewMode: 'heuristic',
+      status: 'preview',
+      message: '启发式预览（非计划类修复；应用后行为可能与预览不同）',
+      before: daySnapshot,
+      after: {
+        ...daySnapshot,
+        highlights: [input.option.title],
+      },
+      itineraryDiff: [],
+      impact: {
+        feasibilityScoreBefore: input.scoreBefore,
+        feasibilityScoreAfter: Math.min(100, input.scoreBefore + impactRank),
+        estimated: true,
+      },
+      option: input.option,
+    };
+  }
+
   private async fetchWeatherMetadata(tripId: string): Promise<Record<string, unknown>> {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
@@ -378,5 +704,18 @@ export class ReadinessRepairService {
       forecastDayCount: bundle.risks[0]?.forecastDays?.length ?? 0,
       source: bundle.summary.source,
     };
+  }
+
+  private async persistDeferredChooseContext(
+    tripId: string,
+    decisionPoints: string[],
+  ): Promise<void> {
+    if (!this.guardianChoose || !decisionPoints.length) return;
+    await this.guardianChoose.persistChooseContext(tripId, {
+      source: 'readiness_repair',
+      decisionPoints,
+      hardConstraintBlocked: false,
+      correlationId: `readiness-defer-${Date.now()}`,
+    });
   }
 }

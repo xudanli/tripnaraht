@@ -10,6 +10,7 @@ import { RouteDifficultyService } from './services/route-difficulty.service';
 import { UnsplashService } from './services/unsplash.service';
 import { CreatePlaceDto } from './dto/create-place.dto';
 import { UpdatePlaceDto } from './dto/update-place.dto';
+import { UpsertPlacePlanningProfileDto } from './dto/upsert-place-planning-profile.dto';
 import { HotelRecommendationDto } from './dto/hotel-recommendation.dto';
 import { RouteDifficultyRequestDto } from './dto/route-difficulty.dto';
 import { GetPlacesAdminQueryDto } from './dto/admin-place.dto';
@@ -148,6 +149,49 @@ export class PlacesController {
       }
       throw error;
     }
+  }
+
+  @Put(':id/planning-profile')
+  @ApiOperation({
+    summary: '更新 POI 规划画像',
+    description: '把用于行程规划选点的结构化标签写入 Place.metadata.planningProfile。',
+  })
+  @ApiParam({ name: 'id', description: '地点ID', type: Number })
+  @ApiBody({ type: UpsertPlacePlanningProfileDto })
+  async upsertPlanningProfile(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpsertPlacePlanningProfileDto,
+  ) {
+    const place = await this.prisma.place.findUnique({ where: { id } });
+    if (!place) {
+      return errorResponse(ErrorCode.NOT_FOUND, `地点 ID ${id} 不存在`);
+    }
+
+    const metadata = ((place.metadata as Record<string, any>) || {}) as Record<string, any>;
+    const currentProfile = ((metadata.planningProfile as Record<string, any>) || {}) as Record<string, any>;
+    const { extra, ...profileFields } = body;
+    const planningProfile = {
+      ...currentProfile,
+      ...profileFields,
+      ...(extra || {}),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updated = await this.prisma.place.update({
+      where: { id },
+      data: {
+        metadata: {
+          ...metadata,
+          planningProfile,
+        } as any,
+        updatedAt: new Date(),
+      },
+    });
+
+    return successResponse({
+      placeId: updated.id,
+      planningProfile: (updated.metadata as any)?.planningProfile,
+    });
   }
 
   @Public()
@@ -1082,15 +1126,9 @@ export class PlacesController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, 'limit 参数必须在 1-100 之间');
       }
 
-      // 过滤只允许的类别
-      const allowedCategories = ['ATTRACTION', 'RESTAURANT', 'SHOPPING', 'HOTEL'] as const;
-      const validCategory = category && allowedCategories.includes(category as any)
-        ? (category as 'ATTRACTION' | 'RESTAURANT' | 'SHOPPING' | 'HOTEL')
-        : undefined;
-
       const places = await this.placesService.getRecommendedActivities(
         countryCode,
-        validCategory,
+        category,
         limitNum,
       );
 
@@ -1747,4 +1785,3 @@ export class PlacesController {
     };
   }
 }
-

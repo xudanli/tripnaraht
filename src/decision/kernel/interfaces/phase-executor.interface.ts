@@ -60,6 +60,10 @@ export interface PhaseExecutorContext {
   };
   /** 与 route_and_run `conversation_context.recent_messages` 对齐，供 RESEARCH 指代消解 / 坐标回溯 */
   recent_messages?: string[];
+  /** Validation Gateway：action preview 物理门输入（Sprint 2） */
+  actionInput?: Record<string, unknown>;
+  /** Trip 锚点（物理门 / SLO） */
+  tripId?: string;
   /**
    * `transport_only`：澄清起终点后仅重跑 transport.search，并合并 `priorResearchData`（避免整段 RESEARCH 重跑）。
    * `scoped_partial`：合并 `priorResearchData` 后，仅对 `researchScopesToRecompute` 列出的资产域重跑对应子管线（2.0 局部回溯）。
@@ -82,7 +86,13 @@ export interface PhaseExecutorContext {
 /** GateResult 兼容结构（避免直接依赖 trip-plan.interface） */
 export interface GateResultLike {
   gate_result: 'ALLOW' | 'ADJUST_REQUIRED' | 'BLOCK' | 'NEED_USER_CONFIRM';
-  violations: Array<{ type: string; severity: 'HARD' | 'SOFT'; detail: string }>;
+  violations: Array<{
+    type: string;
+    severity: 'HARD' | 'SOFT';
+    detail: string;
+    constraint?: string;
+    degree?: number;
+  }>;
   required_adjustments: Array<{ action: string; why: string }>;
   confidence: number;
 }

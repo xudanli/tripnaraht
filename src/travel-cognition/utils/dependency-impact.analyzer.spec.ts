@@ -81,6 +81,9 @@ describe('dependency-impact analyzer', () => {
     expect(impact.affected.some((n) => n.entityRef.kind === 'SEGMENT')).toBe(true);
     expect(impact.affected.some((n) => n.userConfirmationRequired?.length)).toBe(true);
     expect(impact.affected.every((n) => n.recommendation !== undefined)).toBe(true);
+    expect(impact.rootConfidence).toBe(0.9);
+    expect(impact.affected[0].propagationHop).toBe(1);
+    expect(impact.affected[0].cascadeConfidence).toBeCloseTo(0.9 * 0.85);
   });
 
   it('marks all downstream CRITICAL when flight cancelled', () => {

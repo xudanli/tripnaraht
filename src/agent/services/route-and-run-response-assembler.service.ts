@@ -24,6 +24,10 @@ import { deriveExternalVerdict, shouldIntakeClarifyShortCircuit, type PolicyActi
 import { ErrorType } from '../interfaces/error-types.interface';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import { buildTravelOntologyStateFromOrchestrator, mergeTravelOntologyState } from '../../decision/kernel/travel-ontology.mapper';
+import {
+  buildTravelRuntimeGraphFromReplan,
+  travelOntologyNounsToSchemaOrgDiscovery,
+} from '../../travel-cognition';
 import { JepaProjectorService } from './jepa-projector.service';
 import { assertDoneResponseCompleteness } from '../guards/done-response-completeness.guard';
 import {
@@ -129,6 +133,10 @@ export class RouteAndRunResponseAssemblerService {
       | { lightweightKnowledgeQa?: boolean; routingTaskType?: TaskType }
       | undefined;
     if (r?.lightweightKnowledgeQa) return true;
+    if ((orchestrationResult.result as { teamStructuredDiscussionBypass?: boolean } | undefined)
+      ?.teamStructuredDiscussionBypass) {
+      return true;
+    }
     const tt = routingTaskType ?? r?.routingTaskType;
     return tt === 'DATA_LOOKUP' || tt === 'GENERIC_QA' || tt === 'RAG_QA';
   }
@@ -159,6 +167,13 @@ export class RouteAndRunResponseAssemblerService {
     if (!consultationUi || !orchestrationResult.success) return undefined;
     const r = orchestrationResult.result as Record<string, unknown> | undefined;
     if (!r) return undefined;
+    if (r['teamStructuredDiscussionBypass'] === true) {
+      return undefined;
+    }
+    const pf = r['process_fairness'] as { triggered?: boolean; round?: unknown } | undefined;
+    if (pf?.triggered && pf?.round) {
+      return undefined;
+    }
     const raw = r['consultation_dashboard'] as ConsultationDashboardV1 | undefined;
     if (raw && typeof raw === 'object' && raw.version === 1) {
       return raw;
@@ -353,7 +368,7 @@ export class RouteAndRunResponseAssemblerService {
         prepZh = `草案可用但仍建议压缩强度或增加缓冲（稳健度约 ${robust.toFixed(2)}）。${prepZh}`;
       else prepZh = `草案偏早期，建议优先核对单日车程与季节窗口（稳健度约 ${robust.toFixed(2)}）。${prepZh}`;
     }
-    lines.push(`- **准备度小结**：${prepZh}`);
+    lines.push(`- **草案完整度**：${prepZh}`);
 
     return lines.join('\n');
   }
@@ -610,6 +625,7 @@ export class RouteAndRunResponseAssemblerService {
     response.explain = {
       ...(response.explain ?? {}),
       dependency_impact: impact,
+      travel_runtime_graph: buildTravelRuntimeGraphFromReplan(impact),
       cascade_ui_hints: buildReadinessCascadeUiHints(impact),
     } as unknown as RouteAndRunResponseDto['explain'];
   }
@@ -1273,6 +1289,7 @@ export class RouteAndRunResponseAssemblerService {
                 }
               : undefined,
           travelOntologyState: this.resolveTravelOntologyForPayload(orchestrationResult.result),
+          schema_org_discovery: this.resolveSchemaOrgDiscoveryForPayload(orchestrationResult.result),
           jepa: this.jepaProjector.buildJePaPayload(orchestrationResult.result?.decisionState, stateWithVerdict),
           fallbackPlan: orchestrationResult.result?.state?.metadata?.fallback_plan,
           fallbackExplain: orchestrationResult.result?.state?.metadata?.fallback_explain,
@@ -1283,6 +1300,14 @@ export class RouteAndRunResponseAssemblerService {
           poiTrace: orchestrationResult.result?.state?.metadata?.poi_trace,
           gap_behavior_observation: (orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined)
             ?.gap_behavior_observation,
+          process_fairness:
+            (orchestrationResult.result as Record<string, unknown> | undefined)?.process_fairness ??
+            (orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined)
+              ?.process_fairness,
+          decision_profiling:
+            (orchestrationResult.result as Record<string, unknown> | undefined)?.decision_profiling ??
+            (orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined)
+              ?.decision_profiling,
           safety_surface: buildSafetySurfacePayload({
             research_data: stateWithVerdict?.research_data as Record<string, unknown> | undefined,
             itinerary: (orchestrationResult.result?.itinerary as Itinerary | undefined) ?? undefined,
@@ -1764,6 +1789,10 @@ export class RouteAndRunResponseAssemblerService {
       (orchestrationResult.result as { lightweightKnowledgeQa?: boolean } | undefined)
         ?.lightweightKnowledgeQa,
     );
+    const teamStructuredDiscussionBypass = Boolean(
+      (orchestrationResult.result as { teamStructuredDiscussionBypass?: boolean } | undefined)
+        ?.teamStructuredDiscussionBypass,
+    );
 
     const repStepsDyn = orchestrationResult.stepsExecuted?.length ?? 0;
     const liveAuditDyn = (orchestrationResult.result as any)?.live_sensor_audit;
@@ -1781,12 +1810,21 @@ export class RouteAndRunResponseAssemblerService {
     });
     const dynValidation = validateRuntimeExecutionProfile(runtimeExecutionProfile);
 
+    const pfPayload = (orchestrationResult.result as any)?.process_fairness;
+    const suppressProcessFairnessNavOps =
+      teamStructuredDiscussionBypass || (pfPayload?.triggered && pfPayload?.round);
+    const suggestedOpsForPayload = suppressProcessFairnessNavOps
+      ? []
+      : ((orchestrationResult.result as any)?.suggested_operations ?? []);
+
     const response: RouteAndRunResponseDto = {
       request_id: request.request_id,
       route: {
         route: route as any,
         confidence: orchestrationResult.result?.routingDecision?.confidence || 0.8,
-        reasons: [RouterReason.LLM_DECISION],
+        reasons: teamStructuredDiscussionBypass
+          ? (['TEAM_STRUCTURED_DISCUSSION_FAST_PATH', 'PROCESS_FAIRNESS'] as any)
+          : [RouterReason.LLM_DECISION],
         required_capabilities: orchestrationResult.result?.routingDecision?.requiredCapabilities || [],
         consent_required: orchestrationResult.result?.routingDecision?.consentRequired || false,
         budget: orchestrationResult.result?.routingDecision?.budget || {
@@ -1795,7 +1833,7 @@ export class RouteAndRunResponseAssemblerService {
           max_browser_steps: 0,
         },
         ui_hint: {
-          mode: isSystem1 || lightweightKnowledgeQa ? 'fast' : 'slow',
+          mode: isSystem1 || lightweightKnowledgeQa || teamStructuredDiscussionBypass ? 'fast' : 'slow',
           status: isTimeout
             ? UIStatus.FAILED
             : needsUserConfirmation
@@ -1808,9 +1846,11 @@ export class RouteAndRunResponseAssemblerService {
             : needsUserConfirmation
               ? '需要您的确认'
               : orchestrationResult.success
-                ? consultationUi
-                  ? '咨询已完成'
-                  : '处理完成'
+                ? teamStructuredDiscussionBypass
+                  ? '已开启结构化偏好分享轮次。'
+                  : consultationUi
+                    ? '咨询已完成'
+                    : '处理完成'
                 : '处理失败',
         },
       },
@@ -1942,8 +1982,11 @@ export class RouteAndRunResponseAssemblerService {
                   .narrative_integrity_report,
               }
             : {}),
-          ...((orchestrationResult.result as any)?.suggested_operations?.length
-            ? { suggested_operations: (orchestrationResult.result as any).suggested_operations }
+          ...(suggestedOpsForPayload.length
+            ? { suggested_operations: suggestedOpsForPayload }
+            : {}),
+          ...((orchestrationResult.result as any)?.process_fairness
+            ? { process_fairness: (orchestrationResult.result as any).process_fairness }
             : {}),
           ...(consultationDashboard ? { consultation_dashboard: consultationDashboard } : {}),
           ...((orchestrationResult.result as any)?.accommodations?.length
@@ -1980,6 +2023,7 @@ export class RouteAndRunResponseAssemblerService {
               }
             : {}),
           travelOntologyState: this.resolveTravelOntologyForPayload(orchestrationResult.result),
+          schema_org_discovery: this.resolveSchemaOrgDiscoveryForPayload(orchestrationResult.result),
           ...(isTimeout ? { errorType: ErrorType.TIMEOUT_ERROR } : {}),
           ...(needsUserConfirmation
             ? {
@@ -2294,6 +2338,13 @@ export class RouteAndRunResponseAssemblerService {
     if (!fromDso) return fromOs;
     if (!fromOs) return fromDso;
     return mergeTravelOntologyState(fromDso, fromOs) ?? fromDso;
+  }
+
+  /** Schema.org 发现层（非 Runtime 语义；供 SEO / 外部摄入） */
+  private resolveSchemaOrgDiscoveryForPayload(result: unknown) {
+    const travelOntology = this.resolveTravelOntologyForPayload(result);
+    if (!travelOntology?.nouns) return undefined;
+    return travelOntologyNounsToSchemaOrgDiscovery(travelOntology.nouns, travelOntology.tripId);
   }
 
   private computeP4ObservabilityMetrics(orchestrationResult: OrchestrationResult): {

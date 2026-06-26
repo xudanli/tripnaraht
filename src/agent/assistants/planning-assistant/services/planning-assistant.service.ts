@@ -25,8 +25,9 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LlmService } from '../../../../llm/services/llm.service';
 import { LlmProvider } from '../../../../llm/dto/llm-request.dto';
-import { PlanningWorkbenchAgentService, PlanningWorkbenchResponse } from '../../../services/planning-workbench-agent.service';
+import { PlanningWorkbenchAgentService, PlanningWorkbenchResponse, PlanningWorkbenchRequest } from '../../../services/planning-workbench-agent.service';
 import { PersonaShellService, PersonaShellOutput } from '../../../services/persona-shell.service';
+import { buildPersonaPresentation } from '../../../services/persona-lead-speaker.util';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { PersonaLanguageService, PersonaContext } from '../../shared/services/persona-language.service';
 import { RecommendationEngineService } from '../../shared/services/recommendation-engine.service';
@@ -82,6 +83,7 @@ export class PlanningAssistantService {
     try {
       // 1. 加载或创建会话状态
       let state = await this.loadOrCreateSession(request.sessionId, request.userId);
+      this.bootstrapWorkbenchContext(state, request);
       
       // 2. 记录用户消息
       state = this.addMessage(state, {
@@ -92,7 +94,7 @@ export class PlanningAssistantService {
       });
 
       // 3. 分析用户意图（使用 LLM）
-      const intent = await this.analyzeIntentWithLLM(request.message, state);
+      const intent = await this.analyzeIntentWithLLM(request.message, state, request);
       this.logger.debug(`[规划助手] 意图分析: ${intent}`);
 
       // 4. 根据意图处理
@@ -186,7 +188,10 @@ export class PlanningAssistantService {
   /**
    * 使用 LLM 分析用户意图
    */
-  private async analyzeIntentWithLLM(message: string, state: PlanningConversationState): Promise<PlanningIntent> {
+  private async analyzeIntentWithLLM(message: string, state: PlanningConversationState, request?: PlanningAssistantRequest): Promise<PlanningIntent> {
+    if (request && this.shouldForceGeneratePlan(message, request, state)) {
+      return 'GENERATE_PLAN';
+    }
     // 如果没有 LLM 服务，回退到关键词分析
     if (!this.llmService) {
       return this.analyzeIntentByKeywords(message, state);
@@ -245,6 +250,7 @@ export class PlanningAssistantService {
     // 生成方案
     if (lowerMessage.includes('规划') || lowerMessage.includes('安排') ||
         lowerMessage.includes('行程') || lowerMessage.includes('计划') ||
+        lowerMessage.includes('生成') || lowerMessage.includes('方案') ||
         lowerMessage.includes('plan') || lowerMessage.includes('itinerary')) {
       return 'GENERATE_PLAN';
     }
@@ -438,6 +444,8 @@ export class PlanningAssistantService {
    * V2.1 架构：通过 CoreGateway 触发核心动作，不直接调用 PlanningWorkbench
    */
   private async handleGeneratePlanWithWorkbench(state: PlanningConversationState, request: PlanningAssistantRequest): Promise<PlanningAssistantResponse> {
+    this.bootstrapWorkbenchContext(state, request);
+
     // 提取用户选择的目的地
     const destination = this.extractDestination(request.message, state);
     if (destination) {
@@ -525,9 +533,7 @@ export class PlanningAssistantService {
           }
 
           // 获取三人格评估（核心层已处理）
-          if (workbenchResponse.uiOutput?.personas) {
-            personaEvaluation = workbenchResponse.uiOutput.personas;
-          }
+          personaEvaluation = this.extractPersonaEvaluation(workbenchResponse) ?? personaEvaluation;
         }
 
         this.logger.debug(`[规划助手] CoreGateway 返回 ${planCandidates.length} 个方案 (traceId=${coreResult.meta?.traceId})`);
@@ -536,31 +542,12 @@ export class PlanningAssistantService {
       }
     }
     // 降级：如果 CoreGateway 不可用，尝试直接调用 PlanningWorkbench（向后兼容）
-    else if (this.planningWorkbench && state.selectedDestination) {
+    else if (this.planningWorkbench && (state.selectedDestination || state.confirmedTripId)) {
       this.logger.warn(`[规划助手] CoreGateway 不可用，降级使用直接调用`);
       try {
-        const startDate = state.preferences.dateRange?.startDate || this.getDefaultStartDate();
-        const endDate = state.preferences.dateRange?.endDate || this.getDefaultEndDate();
-        const days = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) || 10;
-        
-        const workbenchResponse = await this.planningWorkbench.execute({
-          context: {
-            destination: {
-              country: state.selectedDestination,
-              city: state.selectedDestination,
-            },
-            days,
-            constraints: {
-              time: { days, startDate, endDate },
-              budget: {
-                total: state.preferences.budget?.total || 5000,
-                currency: state.preferences.budget?.currency || 'USD',
-              },
-              companions: { count: state.preferences.travelers?.adults || 2 },
-            },
-          },
-          userAction: 'generate',
-        });
+        const workbenchParams = this.buildWorkbenchGenerateParams(state, request);
+        const workbenchResponse = await this.planningWorkbench.execute(workbenchParams);
+        const days = workbenchParams.context.days ?? 10;
 
         if (workbenchResponse.uiOutput.skeletonOptions?.options) {
           planCandidates = workbenchResponse.uiOutput.skeletonOptions.options.map((opt, index) => ({
@@ -581,13 +568,24 @@ export class PlanningAssistantService {
           }));
         }
 
-        if (workbenchResponse.uiOutput.personas) {
-          personaEvaluation = workbenchResponse.uiOutput.personas;
-        } else if (this.personaShell && workbenchResponse.planState) {
+        personaEvaluation = this.extractPersonaEvaluation(workbenchResponse) ?? personaEvaluation;
+        if (!personaEvaluation && this.personaShell && workbenchResponse.planState) {
           personaEvaluation = await this.personaShell.wrapAsPersonas(workbenchResponse.planState);
         }
       } catch (error: any) {
         this.logger.warn(`[规划助手] 降级调用也失败: ${error.message}`);
+      }
+    }
+
+    // 规划工作台：CoreGateway 有方案但未带 presentation 时，用 tripId 回填
+    if (!this.hasPersonaPresentation(personaEvaluation) && state.confirmedTripId && this.planningWorkbench) {
+      try {
+        const workbenchResponse = await this.planningWorkbench.execute(
+          this.buildWorkbenchGenerateParams(state, request),
+        );
+        personaEvaluation = this.extractPersonaEvaluation(workbenchResponse) ?? personaEvaluation;
+      } catch (error: any) {
+        this.logger.warn(`[规划助手] 回填 personaEvaluation 失败: ${error.message}`);
       }
     }
 
@@ -641,14 +639,31 @@ export class PlanningAssistantService {
         };
 
         const statements = await this.personaLanguage.generateAllPersonaStatements(context);
-        
-        personaText = `\n\n🐻‍❄️ **Abu**: ${statements.abu.message}`;
-        personaText += `\n🐕 **Dr.Dre**: ${statements.drdre.message}`;
-        personaText += `\n🦦 **Neptune**: ${statements.neptune.message}`;
-        
-        personaTextCN = `\n\n🐻‍❄️ **Abu 说**: ${statements.abu.messageCN}`;
-        personaTextCN += `\n🐕 **Dr.Dre 说**: ${statements.drdre.messageCN}`;
-        personaTextCN += `\n🦦 **Neptune 说**: ${statements.neptune.messageCN}`;
+        const presentation = buildPersonaPresentation({
+          abu: {
+            persona: 'ABU',
+            icon: '🐻‍❄️',
+            name: 'Abu',
+            verdict: 'ALLOW',
+            explanation: statements.abu.messageCN,
+          },
+          drdre: {
+            persona: 'DR_DRE',
+            icon: '🐕',
+            name: 'Dr.Dre',
+            verdict: 'ALLOW',
+            explanation: statements.drdre.messageCN,
+          },
+          neptune: {
+            persona: 'NEPTUNE',
+            icon: '🦦',
+            name: 'Neptune',
+            verdict: 'ALLOW',
+            explanation: statements.neptune.messageCN,
+          },
+        });
+        personaText = `\n\n${presentation.narrative}`;
+        personaTextCN = personaText;
         
         this.logger.debug(`[规划助手] 人格语言服务生成评价成功`);
       } catch (error: any) {
@@ -656,19 +671,43 @@ export class PlanningAssistantService {
       }
     }
     
-    // 回退：使用 PersonaShell 的评估
+    // 回退：使用 PersonaShell 的评估（单主角 presentation）
     if (!personaText && personaEvaluation) {
-      if (personaEvaluation.personas.abu) {
-        personaText += `\n\n🐻‍❄️ **Abu**: ${personaEvaluation.personas.abu.explanation}`;
-        personaTextCN += `\n\n🐻‍❄️ **Abu 说**: ${personaEvaluation.personas.abu.explanation}`;
-      }
-      if (personaEvaluation.personas.drdre) {
-        personaText += `\n🐕 **Dr.Dre**: ${personaEvaluation.personas.drdre.explanation}`;
-        personaTextCN += `\n🐕 **Dr.Dre 说**: ${personaEvaluation.personas.drdre.explanation}`;
-      }
-      if (personaEvaluation.personas.neptune) {
-        personaText += `\n🦦 **Neptune**: ${personaEvaluation.personas.neptune.explanation}`;
-        personaTextCN += `\n🦦 **Neptune 说**: ${personaEvaluation.personas.neptune.explanation}`;
+      if (personaEvaluation.presentation?.narrative) {
+        personaText = `\n\n${personaEvaluation.presentation.narrative}`;
+        personaTextCN = personaText;
+      } else {
+        const fallback = buildPersonaPresentation({
+          abu: personaEvaluation.personas.abu
+            ? {
+                persona: 'ABU',
+                icon: personaEvaluation.personas.abu.icon,
+                name: 'Abu',
+                verdict: personaEvaluation.personas.abu.verdict,
+                explanation: personaEvaluation.personas.abu.explanation,
+              }
+            : null,
+          drdre: personaEvaluation.personas.drdre
+            ? {
+                persona: 'DR_DRE',
+                icon: personaEvaluation.personas.drdre.icon,
+                name: 'Dr.Dre',
+                verdict: personaEvaluation.personas.drdre.verdict,
+                explanation: personaEvaluation.personas.drdre.explanation,
+              }
+            : null,
+          neptune: personaEvaluation.personas.neptune
+            ? {
+                persona: 'NEPTUNE',
+                icon: personaEvaluation.personas.neptune.icon,
+                name: 'Neptune',
+                verdict: personaEvaluation.personas.neptune.verdict,
+                explanation: personaEvaluation.personas.neptune.explanation,
+              }
+            : null,
+        });
+        personaText = `\n\n${fallback.narrative}`;
+        personaTextCN = personaText;
       }
     }
 
@@ -679,6 +718,7 @@ export class PlanningAssistantService {
       messageCN: `我为你的${state.selectedDestination}之旅创建了 ${planCandidates.length} 个方案：\n\n${planText}${personaTextCN}\n\n想详细了解哪个方案？`,
       phase: 'PLANNING',
       planCandidates,
+      personaEvaluation,
       suggestedActions: planCandidates.map(p => ({
         action: `view_${p.id}`,
         label: `View ${p.name}`,
@@ -1194,8 +1234,148 @@ To give you the best recommendations, I'd like to know a bit more:
     return translations[pace] || pace;
   }
 
+  private bootstrapWorkbenchContext(state: PlanningConversationState, request: PlanningAssistantRequest): void {
+    const tripId = request.context?.tripId;
+    const countryCode = request.countryCode ?? request.context?.countryCode;
+    if (tripId) {
+      state.confirmedTripId = tripId;
+    }
+    if (countryCode && !state.selectedDestination) {
+      state.selectedDestination = this.countryCodeToDestinationName(countryCode);
+    }
+    const tagged = request.message.match(/\[已选定目的地:\s*([^\]]+)\]/);
+    if (tagged?.[1]) {
+      state.selectedDestination = tagged[1].trim();
+    }
+    const days = this.extractDaysFromMessage(request.message);
+    if (days) {
+      const startDate = state.preferences.dateRange?.startDate || this.getDefaultStartDate();
+      const end = new Date(startDate);
+      end.setDate(end.getDate() + days - 1);
+      state.preferences = {
+        ...state.preferences,
+        dateRange: {
+          ...state.preferences.dateRange,
+          startDate,
+          endDate: end.toISOString().split('T')[0],
+        },
+      };
+    }
+  }
+
+  private shouldForceGeneratePlan(
+    message: string,
+    request: PlanningAssistantRequest,
+    state: PlanningConversationState,
+  ): boolean {
+    const hasWorkbenchContext = !!(
+      request.context?.tripId && (request.countryCode || request.context?.countryCode)
+    );
+    if (!hasWorkbenchContext) {
+      return false;
+    }
+    const lower = message.toLowerCase();
+    return (
+      lower.includes('行程') ||
+      lower.includes('规划') ||
+      lower.includes('生成') ||
+      lower.includes('方案') ||
+      lower.includes('plan') ||
+      lower.includes('itinerary') ||
+      !!state.confirmedTripId
+    );
+  }
+
+  private countryCodeToDestinationName(countryCode: string): string {
+    const map: Record<string, string> = {
+      IS: '冰岛',
+      JP: '日本',
+      NZ: '新西兰',
+      CN: '中国',
+    };
+    return map[countryCode.toUpperCase()] ?? countryCode;
+  }
+
+  private resolveWorkbenchCountryCode(request: PlanningAssistantRequest, state: PlanningConversationState): string {
+    const fromRequest = request.countryCode ?? request.context?.countryCode;
+    if (fromRequest) {
+      return fromRequest.toUpperCase();
+    }
+    const dest = (state.selectedDestination ?? '').toLowerCase();
+    const byName: Record<string, string> = {
+      iceland: 'IS',
+      '冰岛': 'IS',
+      japan: 'JP',
+      '日本': 'JP',
+      newzealand: 'NZ',
+      '新西兰': 'NZ',
+    };
+    return byName[dest] ?? (dest.length === 2 ? dest.toUpperCase() : 'IS');
+  }
+
+  private extractDaysFromMessage(message: string): number | undefined {
+    const match = message.match(/(\d+)\s*天/);
+    if (match) {
+      const days = parseInt(match[1], 10);
+      return Number.isFinite(days) && days > 0 ? days : undefined;
+    }
+    return undefined;
+  }
+
+  private buildWorkbenchGenerateParams(
+    state: PlanningConversationState,
+    request: PlanningAssistantRequest,
+  ): PlanningWorkbenchRequest {
+    const startDate = state.preferences.dateRange?.startDate || this.getDefaultStartDate();
+    const endDate = state.preferences.dateRange?.endDate || this.getDefaultEndDate();
+    const days =
+      this.extractDaysFromMessage(request.message) ??
+      (Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) || 10);
+    const countryCode = this.resolveWorkbenchCountryCode(request, state);
+    const region = request.message.includes('南部') ? 'South Iceland' : undefined;
+    return {
+      tripId: state.confirmedTripId,
+      context: {
+        destination: {
+          country: countryCode,
+          region,
+        },
+        days,
+        travelMode: request.message.includes('自驾') ? 'self_drive' : undefined,
+        constraints: {
+          time: { days, startDate, endDate },
+          budget: {
+            total: state.preferences.budget?.total || 5000,
+            currency: state.preferences.budget?.currency || 'USD',
+          },
+          companions: { count: state.preferences.travelers?.adults || 2 },
+        },
+      },
+      userAction: 'generate',
+    };
+  }
+
+  private hasPersonaPresentation(personaEvaluation?: PersonaShellOutput): boolean {
+    return !!personaEvaluation?.presentation;
+  }
+
+  private extractPersonaEvaluation(
+    workbenchResponse: PlanningWorkbenchResponse,
+  ): PersonaShellOutput | undefined {
+    if (workbenchResponse.uiOutput?.personas) {
+      return workbenchResponse.uiOutput.personas;
+    }
+    if (workbenchResponse.uiOutput?.presentation) {
+      return {
+        personas: workbenchResponse.uiOutput.personas?.personas ?? {},
+        presentation: workbenchResponse.uiOutput.presentation,
+        consolidatedDecision: workbenchResponse.uiOutput.personas?.consolidatedDecision,
+      } as PersonaShellOutput;
+    }
+    return undefined;
+  }
+
   private extractDestination(message: string, state: PlanningConversationState): string | undefined {
-    // 从消息中提取目的地
     const destinations = ['iceland', 'japan', 'newzealand', '冰岛', '日本', '新西兰'];
     for (const dest of destinations) {
       if (message.toLowerCase().includes(dest.toLowerCase())) {

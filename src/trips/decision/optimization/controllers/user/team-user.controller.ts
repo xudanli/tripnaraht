@@ -5,14 +5,16 @@
  * 提供多用户（家庭/团队）协同决策功能
  */
 
-import { Controller, Post, Get, Delete, Body, Param, Req, Logger, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Patch, Body, Param, Req, Logger, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Request } from 'express';
 import { IsOptional, IsString, IsObject, IsArray, IsNumber, ValidateNested } from 'class-validator';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 
 import { TeamCollaborationService } from '../../collaboration/team-collaboration.service';
+import { mapTeamNegotiationToApiResponse, type TeamNegotiationApiResponse } from '../../utils/guardian-negotiation-api.mapper';
 import { TeamInviteService } from '../../collaboration/team-invite.service';
 import { NegotiateContextLoaderService } from '../../collaboration/negotiate-context-loader.service';
+import { GuardianChooseService } from '../../services/guardian-choose.service';
 import { CurrentUser, CurrentUserPayload } from '../../../../../auth/decorators/current-user.decorator';
 import {
   TeamConfig,
@@ -85,6 +87,30 @@ export class TeamMemberInput {
 
 export class AddMemberDto extends TeamMemberInput {}
 
+export class UpdateMemberDto {
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+  @IsOptional()
+  @IsString()
+  role?: 'LEADER' | 'MEMBER' | 'OBSERVER';
+  @IsOptional()
+  @IsNumber()
+  decisionWeight?: number;
+  @IsOptional()
+  @IsString()
+  fitnessLevel?: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'EXPERT';
+  @IsOptional()
+  @IsString()
+  experienceLevel?: 'NOVICE' | 'SOME_EXPERIENCE' | 'EXPERIENCED' | 'EXPERT';
+  @IsOptional()
+  @IsObject()
+  personalWeights?: ObjectiveFunctionWeights;
+  @IsOptional()
+  @IsObject()
+  specialConstraints?: TeamMemberInput['specialConstraints'];
+}
+
 export class CreateInviteDto {
   @IsOptional()
   @IsNumber()
@@ -148,6 +174,7 @@ export class TeamUserController {
     private readonly teamService: TeamCollaborationService,
     private readonly inviteService: TeamInviteService,
     private readonly negotiateLoader: NegotiateContextLoaderService,
+    private readonly guardianChoose: GuardianChooseService,
   ) {}
 
   // ========== 团队管理 ==========
@@ -325,6 +352,52 @@ export class TeamUserController {
     return this.teamService.removeMember(teamId, userId);
   }
 
+  @Patch(':teamId/members/:userId')
+  @ApiOperation({
+    summary: '更新成员',
+    description: '更新团队成员角色、权重、能力等级、偏好权重或特殊约束',
+  })
+  @ApiParam({ name: 'teamId', description: '团队 ID' })
+  @ApiParam({ name: 'userId', description: '用户 ID' })
+  @ApiResponse({ status: 200, description: '返回更新后的团队' })
+  async updateMember(
+    @Param('teamId') teamId: string,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateMemberDto,
+    @Req() req: Request,
+  ): Promise<TeamConfig> {
+    const raw = (req.body ?? {}) as Record<string, unknown>;
+    const patch: Partial<Omit<TeamMember, 'userId' | 'joinedAt'>> = {};
+
+    const displayName = dto.displayName ?? raw.displayName ?? raw.display_name;
+    if (typeof displayName === 'string') patch.displayName = displayName;
+
+    const role = dto.role ?? raw.role;
+    if (typeof role === 'string') patch.role = role as TeamMember['role'];
+
+    const decisionWeight = dto.decisionWeight ?? raw.decisionWeight ?? raw.decision_weight;
+    if (decisionWeight !== undefined) patch.decisionWeight = Number(decisionWeight);
+
+    const fitnessLevel = dto.fitnessLevel ?? raw.fitnessLevel ?? raw.fitness_level;
+    if (typeof fitnessLevel === 'string') patch.fitnessLevel = fitnessLevel as TeamMember['fitnessLevel'];
+
+    const experienceLevel = dto.experienceLevel ?? raw.experienceLevel ?? raw.experience_level;
+    if (typeof experienceLevel === 'string') patch.experienceLevel = experienceLevel as TeamMember['experienceLevel'];
+
+    const personalWeights = dto.personalWeights ?? raw.personalWeights ?? raw.personal_weights;
+    if (personalWeights && typeof personalWeights === 'object') {
+      patch.personalWeights = personalWeights as ObjectiveFunctionWeights;
+    }
+
+    const specialConstraints = dto.specialConstraints ?? raw.specialConstraints ?? raw.special_constraints;
+    if (specialConstraints === null || (specialConstraints && typeof specialConstraints === 'object')) {
+      patch.specialConstraints = specialConstraints as TeamMember['specialConstraints'];
+    }
+
+    this.logger.log(`[User] 更新成员: ${userId} -> ${teamId}`);
+    return this.teamService.updateMember(teamId, userId, patch);
+  }
+
   // ========== 团队决策 ==========
 
   @Post(':teamId/negotiate')
@@ -338,7 +411,7 @@ export class TeamUserController {
     @Param('teamId') teamId: string,
     @Body() dto: TeamNegotiateDto,
     @Req() req: Request,
-  ): Promise<TeamNegotiationResult> {
+  ): Promise<TeamNegotiationApiResponse> {
     this.logger.log(`[User] 团队协商: ${teamId}`);
 
     let plan: RoutePlanDraft;
@@ -364,7 +437,26 @@ export class TeamUserController {
       throw new BadRequestException('请求体缺少 world（世界模型上下文）；或仅传 tripId 由后端加载');
     }
 
-    return this.teamService.negotiateAsTeam(teamId, plan, world);
+    const tripIdForPersist = tripIdStr || plan.tripId?.trim() || '';
+    const response = mapTeamNegotiationToApiResponse(
+      await this.teamService.negotiateAsTeam(teamId, plan, world),
+    );
+
+    if (
+      tripIdForPersist &&
+      response.decision === 'REQUIRES_DISCUSSION' &&
+      response.humanDecisionPointsFlat?.length &&
+      !response.hardConstraintBlocked
+    ) {
+      await this.guardianChoose.persistChooseContext(tripIdForPersist, {
+        source: 'team_negotiation',
+        decisionPoints: response.humanDecisionPointsFlat,
+        hardConstraintBlocked: false,
+        correlationId: `team-${teamId}-${Date.now()}`,
+      });
+    }
+
+    return response;
   }
 
   @Get(':teamId/weights')

@@ -31,6 +31,9 @@ import { LedgerWritebackService } from './decision-ledger/ledger-writeback.servi
 import { LEDGER_LOGIC_CONSTRAINT_VALIDATORS } from './decision-ledger/ledger-logic-constraint-validator.port';
 import { TimelineLedgerLogicConstraintValidator } from './decision-ledger/ledger-timeline-logic-constraint.validator';
 import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incremental-recompute-orchestrator.service';
+import { TripDomainInfluenceModule } from '../../trips/domain-influence/trip-domain-influence.module';
+import { MemoryStateDecisionParamsService } from './services/memory-state-decision-params.service';
+import { TripIntentDigestService } from './services/trip-intent-digest.service';
 
 /**
  * Memory Module
@@ -42,7 +45,7 @@ import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incre
  * - L4: 行为反馈记忆
  */
 @Module({
-  imports: [PrismaModule, FlywheelModule, EventEmitterModule, forwardRef(() => RedisModule)],
+  imports: [PrismaModule, FlywheelModule, EventEmitterModule, forwardRef(() => RedisModule), TripDomainInfluenceModule],
   providers: [
     MemoryService,
     UserProfileMapperService,
@@ -72,6 +75,8 @@ import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incre
     },
     LedgerWritebackService,
     IncrementalRecomputeOrchestratorService,
+    TripIntentDigestService,
+    MemoryStateDecisionParamsService,
   ],
   exports: [
     MemoryService,
@@ -94,6 +99,8 @@ import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incre
     LedgerPendingAuditStoreService,
     LedgerWritebackService,
     IncrementalRecomputeOrchestratorService,
+    TripIntentDigestService,
+    MemoryStateDecisionParamsService,
   ],
 })
 export class MemoryModule {}

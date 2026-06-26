@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+import { resolveRouteAndRunUserMessage } from '../utils/resolve-route-and-run-message.util';
 
 @Injectable()
 export class PlanningRequestClassifierService {
@@ -9,7 +10,7 @@ export class PlanningRequestClassifierService {
    * 核心原则：只拦截从零开始的行程规划请求，不拦截已创建行程的查询/修改请求。
    */
   isPlanningRequest(request: RouteAndRunRequestDto): boolean {
-    const message = request.message.toLowerCase().trim();
+    const message = resolveRouteAndRunUserMessage(request).toLowerCase().trim();
     const hasNoTripId = !request.trip_id || request.trip_id === '';
     const intentMode = request.options?.intent_mode;
 

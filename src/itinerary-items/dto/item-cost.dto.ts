@@ -80,6 +80,23 @@ export class ItemCostDto {
   @IsString()
   @IsOptional()
   paidBy?: string;
+
+  @ApiPropertyOptional({
+    description: '参与分摊的用户 ID 列表（L3 Travel Wallet）',
+    type: [String],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  splitAmongUserIds?: string[];
+
+  @ApiPropertyOptional({
+    description: '是否自动写入旅行钱包账本（默认 true）',
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  autoLedger?: boolean;
 }
 
 /**

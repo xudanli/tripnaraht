@@ -28,6 +28,7 @@ import {
   buildTravelOntologyStateFromOrchestrator,
   mergeTravelOntologyState,
 } from './travel-ontology.mapper';
+import { applyPatentIntakeNormalizer } from './patent/patent-intake-normalizer.util';
 
 function isPlaceholderDestination(value: unknown): boolean {
   if (value === undefined || value === null) return true;
@@ -85,6 +86,10 @@ export function orchestratorStateToDecisionStatePatch(
 
   if (os.trip_plan_request) {
     patch.userIntent = tripPlanRequestToUserIntent(os.trip_plan_request);
+    patch.userIntent = applyPatentIntakeNormalizer(patch.userIntent!, {
+      message: (os.metadata as { intake_user_message?: string } | undefined)?.intake_user_message,
+      tripPlanRequest: os.trip_plan_request as unknown as Record<string, unknown>,
+    });
     patch.userIntent!.gaps = os.gaps;
   }
 

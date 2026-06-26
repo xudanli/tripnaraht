@@ -8,6 +8,13 @@ import {
   FLIGHT_CASCADE_GRAPH_VERSION,
   FLIGHT_CASCADE_RELATIONS_V0,
 } from '../graphs/flight-cascade-graph.v0';
+import { withCascadeHop } from './cascade-confidence.util';
+import {
+  computeReachabilityImpact,
+  computeTimeImpact,
+  computeTransferSlipImpact,
+  maxImpactRisk,
+} from './impact-algebra.util';
 import type { EvidenceEnvelope } from '../types/evidence-envelope.types';
 import type {
   ImpactRecommendationKind,
@@ -98,14 +105,24 @@ function buildImpactNode(params: {
   message: string;
   recommendation: ImpactRecommendationKind;
   userConfirmationRequired?: string[];
+  rootConfidence: number;
+  hopDepth: number;
+  netImpactMinutes?: number;
+  absorbedMinutes?: number;
 }) {
-  return {
-    entityRef: params.entityRef,
-    riskLevel: params.riskLevel,
-    message: params.message,
-    recommendation: params.recommendation,
-    userConfirmationRequired: params.userConfirmationRequired,
-  };
+  return withCascadeHop(
+    {
+      entityRef: params.entityRef,
+      riskLevel: params.riskLevel,
+      message: params.message,
+      recommendation: params.recommendation,
+      userConfirmationRequired: params.userConfirmationRequired,
+      ...(params.netImpactMinutes !== undefined ? { netImpactMinutes: params.netImpactMinutes } : {}),
+      ...(params.absorbedMinutes !== undefined ? { absorbedMinutes: params.absorbedMinutes } : {}),
+    },
+    params.rootConfidence,
+    params.hopDepth,
+  );
 }
 
 /**
@@ -125,6 +142,9 @@ export function analyzeFlightDelayCascade(
   const { arrivalMs, delayMinutes, cancelled } = resolveEffectiveArrivalMs(flightValue, plannedFlightMs);
 
   const freshness = assessEvidenceFreshness(input.trigger, input.nowMs);
+  const rootConfidence = freshness.strongJudgmentAllowed
+    ? input.trigger.confidence
+    : input.trigger.confidence * 0.7;
   const staleNote = !freshness.strongJudgmentAllowed
     ? locale === 'zh'
       ? '（航班状态数据可能已过期，以下影响仅供参考）'
@@ -136,7 +156,9 @@ export function analyzeFlightDelayCascade(
   let cascadeRisk: ImpactRiskLevel = cancelled ? 'CRITICAL' : delayMinutes >= 120 ? 'HIGH' : delayMinutes >= 45 ? 'MEDIUM' : 'LOW';
 
   if (cancelled) {
-    for (const node of input.chain.filter((n) => n.role !== 'flight')) {
+    const downstream = input.chain.filter((n) => n.role !== 'flight');
+    for (let i = 0; i < downstream.length; i++) {
+      const node = downstream[i];
       affected.push(
         buildImpactNode({
           entityRef: node.entityRef,
@@ -150,6 +172,8 @@ export function analyzeFlightDelayCascade(
             locale === 'zh'
               ? ['请自行确认改签/退票', '请自行联系酒店延迟入住']
               : ['Confirm rebooking/cancellation yourself', 'Contact hotel for late check-in yourself'],
+          rootConfidence,
+          hopDepth: i + 1,
         }),
       );
     }
@@ -158,6 +182,7 @@ export function analyzeFlightDelayCascade(
       rootEntity,
       rootFactType: 'FLIGHT_STATUS',
       affected,
+      rootConfidence,
       coverageHint: DEFAULT_NON_TRANSACTION_DISCLOSURE_ZH,
     };
   }
@@ -167,6 +192,7 @@ export function analyzeFlightDelayCascade(
       rootEntity,
       rootFactType: 'FLIGHT_STATUS',
       affected: [],
+      rootConfidence,
       coverageHint: DEFAULT_NON_TRANSACTION_DISCLOSURE_ZH,
     };
   }
@@ -174,22 +200,33 @@ export function analyzeFlightDelayCascade(
   const transferNode = input.chain.find((n) => n.role === 'transfer');
   if (transferNode) {
     const plannedTransferMs = parseMs(transferNode.plannedTime)!;
-    const missByMin = Math.round((projectedMs - plannedTransferMs) / 60_000);
-    let risk: ImpactRiskLevel = missByMin > 0 ? (missByMin >= 30 ? 'HIGH' : 'MEDIUM') : 'LOW';
-    cascadeRisk = maxRisk(cascadeRisk, risk);
+    const missByMin = Math.max(0, Math.round((projectedMs - plannedTransferMs) / 60_000));
+    const transferImpact =
+      missByMin > 0
+        ? computeTransferSlipImpact({
+            missByMinutes: missByMin,
+            transferSlackMinutes: transferSlack,
+          })
+        : null;
 
-    if (missByMin > 0) {
+    if (transferImpact) {
+      const risk = transferImpact.riskLevel;
+      cascadeRisk = maxRisk(cascadeRisk, risk);
       affected.push(
         buildImpactNode({
           entityRef: transferNode.entityRef,
           riskLevel: risk,
           message:
             locale === 'zh'
-              ? `航班延误 ${delayMinutes} 分钟，预计落地后 ${debarkBuffer} 分钟才能出发，可能错过接驳（约 ${missByMin} 分钟）${staleNote}`
-              : `Flight delayed ${delayMinutes}m; ground transfer may be missed by ~${missByMin}m${staleNote}`,
+              ? `航班延误 ${delayMinutes} 分钟，接驳净影响约 ${transferImpact.netImpactMinutes} 分钟（buffer 已吸收 ${transferImpact.absorbedMinutes} 分钟）${staleNote}`
+              : `Flight delayed ${delayMinutes}m; transfer net impact ~${transferImpact.netImpactMinutes}m (buffer absorbed ${transferImpact.absorbedMinutes}m)${staleNote}`,
           recommendation: recommendationForRisk(risk, false),
           userConfirmationRequired:
             locale === 'zh' ? ['请自行确认接驳/用车是否可改期'] : ['Confirm ground transfer changes yourself'],
+          rootConfidence,
+          hopDepth: 1,
+          netImpactMinutes: transferImpact.netImpactMinutes,
+          absorbedMinutes: transferImpact.absorbedMinutes,
         }),
       );
     }
@@ -201,10 +238,20 @@ export function analyzeFlightDelayCascade(
   const checkInNode = input.chain.find((n) => n.role === 'check_in');
   if (checkInNode) {
     const plannedCheckInMs = parseMs(checkInNode.plannedTime)!;
-    const lateByMin = Math.round((projectedMs - plannedCheckInMs) / 60_000);
-    let risk: ImpactRiskLevel =
-      lateByMin > 60 ? 'HIGH' : lateByMin > 15 ? 'MEDIUM' : lateByMin > 0 ? 'LOW' : 'LOW';
-    if (lateByMin > 0) {
+    const reachability = computeReachabilityImpact({
+      detourMinutes: 0,
+      deadlineMs: plannedCheckInMs,
+      projectedArrivalMs: projectedMs,
+    });
+    const lateImpact = !reachability.reachable
+      ? computeTimeImpact({
+          disturbanceMinutes: reachability.netImpactMinutes,
+          bufferMinutes: 15,
+        })
+      : null;
+
+    if (lateImpact && !lateImpact.fullyAbsorbed) {
+      const risk = maxImpactRisk(lateImpact.riskLevel, reachability.riskLevel);
       cascadeRisk = maxRisk(cascadeRisk, risk);
       affected.push(
         buildImpactNode({
@@ -212,15 +259,19 @@ export function analyzeFlightDelayCascade(
           riskLevel: risk,
           message:
             locale === 'zh'
-              ? `预计 ${lateByMin > 0 ? `晚 ${lateByMin} 分钟` : '按时'} 抵达入住点${staleNote}`
-              : `Estimated hotel arrival ${lateByMin > 0 ? `${lateByMin}m late` : 'on time'}${staleNote}`,
-          recommendation: lateByMin > 15 ? 'ASK_USER' : 'DELAY',
+              ? `预计晚 ${lateImpact.netImpactMinutes} 分钟抵达入住点（15 分钟容忍已计入）${staleNote}`
+              : `Estimated ${lateImpact.netImpactMinutes}m late for check-in (15m grace applied)${staleNote}`,
+          recommendation: lateImpact.netImpactMinutes > 15 ? 'ASK_USER' : 'DELAY',
           userConfirmationRequired:
-            lateByMin > 15
+            lateImpact.netImpactMinutes > 15
               ? locale === 'zh'
                 ? ['请自行联系酒店确认延迟入住']
                 : ['Contact hotel to confirm late check-in yourself']
               : undefined,
+          rootConfidence,
+          hopDepth: 2,
+          netImpactMinutes: lateImpact.netImpactMinutes,
+          absorbedMinutes: lateImpact.absorbedMinutes,
         }),
       );
     }
@@ -230,9 +281,17 @@ export function analyzeFlightDelayCascade(
   const dayPlanNode = input.chain.find((n) => n.role === 'day_plan');
   if (dayPlanNode) {
     const plannedActivityMs = parseMs(dayPlanNode.plannedTime)!;
-    const lateByMin = Math.round((projectedMs - plannedActivityMs) / 60_000);
-    if (lateByMin > 0) {
-      const risk: ImpactRiskLevel = lateByMin >= 90 ? 'HIGH' : lateByMin >= 30 ? 'MEDIUM' : 'LOW';
+    const dayReach = computeReachabilityImpact({
+      detourMinutes: 0,
+      deadlineMs: plannedActivityMs,
+      projectedArrivalMs: projectedMs,
+    });
+    const dayImpact = !dayReach.reachable
+      ? computeTimeImpact({ disturbanceMinutes: dayReach.netImpactMinutes, bufferMinutes: 0 })
+      : null;
+
+    if (dayImpact && dayImpact.netImpactMinutes > 0) {
+      const risk = maxImpactRisk(dayImpact.riskLevel, dayReach.riskLevel);
       cascadeRisk = maxRisk(cascadeRisk, risk);
       affected.push(
         buildImpactNode({
@@ -240,9 +299,12 @@ export function analyzeFlightDelayCascade(
           riskLevel: risk,
           message:
             locale === 'zh'
-              ? `当日首项活动可能推迟约 ${lateByMin} 分钟，建议压缩或调整顺序${staleNote}`
-              : `First activity may start ~${lateByMin}m late; consider reordering${staleNote}`,
+              ? `当日首项活动可能推迟约 ${dayImpact.netImpactMinutes} 分钟，建议压缩或调整顺序${staleNote}`
+              : `First activity may start ~${dayImpact.netImpactMinutes}m late; consider reordering${staleNote}`,
           recommendation: risk === 'HIGH' ? 'REPLACE' : 'ADJUST',
+          rootConfidence,
+          hopDepth: 3,
+          netImpactMinutes: dayImpact.netImpactMinutes,
         }),
       );
     }
@@ -258,6 +320,8 @@ export function analyzeFlightDelayCascade(
             ? `航班延误 ${delayMinutes} 分钟，当前行程链未检测到明显下游冲突${staleNote}`
             : `Flight delayed ${delayMinutes}m; no downstream conflicts detected in chain${staleNote}`,
         recommendation: 'DELAY',
+        rootConfidence,
+        hopDepth: 0,
       }),
     );
   }
@@ -266,6 +330,7 @@ export function analyzeFlightDelayCascade(
     rootEntity,
     rootFactType: 'FLIGHT_STATUS',
     affected,
+    rootConfidence,
     coverageHint: DEFAULT_NON_TRANSACTION_DISCLOSURE_ZH,
   };
 }

@@ -20,6 +20,14 @@ export class BuildContextPackageDto {
   @IsString()
   tripId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      '当前用户 ID（愿望单私密块、领域影响力认领/负责人私密约束需要；与 includePrivate 配合使用）',
+  })
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
   @ApiProperty({ description: '规划阶段', example: 'planning' })
   @IsString()
   phase!: string;

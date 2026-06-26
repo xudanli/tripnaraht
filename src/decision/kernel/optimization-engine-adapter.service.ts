@@ -647,6 +647,7 @@ export class OptimizationEngineAdapterService {
       method: 'CGUS',
       strategyDirection: `CGUS(${candidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}`,
       recommendedAlternativeId: result.recommended?.id ?? top?.candidate.id,
+      selectedPlanId: result.recommended?.id ?? top?.candidate.id,
       monteCarloDiagnostics: {
         ...mcPolicy,
         enabled: mcPolicy.enabled && result.usedMonteCarlo === true,

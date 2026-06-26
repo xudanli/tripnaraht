@@ -367,14 +367,14 @@ export class GoogleRoutesService implements OnModuleInit {
 
     for (const route of data.routes) {
       const leg = route.legs?.[0];
-      if (!leg) continue;
 
-      // 计算总时长（秒转分钟）
-      const durationSeconds = leg.duration?.value || 0;
+      // Routes API v2 returns duration as "123s" on route/leg; older shapes may expose { value }.
+      const durationSeconds = this.parseDurationSeconds(route.duration ?? leg?.duration);
       const durationMinutes = Math.round(durationSeconds / 60);
+      if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) continue;
 
       // 计算步行距离（米）
-      const walkDistance = leg.steps
+      const walkDistance = leg?.steps
         ?.filter((step: any) => step.travelMode === 'WALK')
         .reduce((sum: number, step: any) => sum + (step.distance?.value || 0), 0) || 0;
 
@@ -407,6 +407,21 @@ export class GoogleRoutesService implements OnModuleInit {
     }
 
     return options;
+  }
+
+  private parseDurationSeconds(value: any): number {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const match = value.trim().match(/^(\d+(?:\.\d+)?)s$/);
+      if (match) return Number(match[1]);
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : 0;
+    }
+    if (value && typeof value === 'object') {
+      const nested = Number(value.value ?? value.seconds ?? 0);
+      return Number.isFinite(nested) ? nested : 0;
+    }
+    return 0;
   }
 
   /**
@@ -448,4 +463,3 @@ export class GoogleRoutesService implements OnModuleInit {
     }
   }
 }
-

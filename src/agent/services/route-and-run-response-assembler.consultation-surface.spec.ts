@@ -230,6 +230,68 @@ describe('RouteAndRunResponseAssemblerService — consultation surface strips it
     expect(orch?.itinerary?.days?.length ?? 0).toBe(0);
   });
 
+  it('assembleClaudeDynamicResponse: team structured discussion bypass stays OK with process_fairness', async () => {
+    const assembler = await createAssembler();
+    const request = {
+      request_id: 'team-discuss-1',
+      trip_id: 'trip-1',
+      message: '住宿选公寓还是木屋？帮团队结构化讨论一下',
+    } as RouteAndRunRequestDto;
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: '我们进入住宿的结构化偏好分享轮次（正在进行）。当前轮到：Danny。',
+      stepsExecuted: [],
+      totalDuration: 1,
+      result: {
+        routingDecision: {
+          route: 'SYSTEM2_REASONING',
+          confidence: 0.92,
+          reasoning: 'team_structured_discussion_bypass',
+          requiredCapabilities: ['process_fairness'],
+          consentRequired: false,
+          budget: { max_seconds: 8, max_steps: 0, max_browser_steps: 0 },
+          selected_path: 'TEAM_STRUCTURED_DISCUSSION',
+        },
+        trip_id: 'trip-1',
+        ui_surface: 'consultation',
+        process_fairness: {
+          triggered: true,
+          roundId: 'round-1',
+          decisionNode: 'accommodation',
+          round: { id: 'round-1', currentSpeakerDisplayName: 'Danny' },
+        },
+        suggested_operations: [
+          {
+            id: 'nav_process_fairness_accommodation',
+            label: '进入结构化协商',
+            kind: 'client_navigation',
+            payload: { route: 'structured_negotiation', trip_id: 'trip-1', roundId: 'round-1' },
+          },
+        ],
+        teamStructuredDiscussionBypass: true,
+        routingTaskType: 'DATA_LOOKUP',
+      },
+    };
+
+    const resp = await assembler.assembleClaudeDynamicResponse({
+      request,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'DATA_LOOKUP',
+    });
+
+    expect(resp.result?.status).toBe('OK');
+    expect(resp.result?.answer_text).toContain('结构化偏好分享轮次');
+    expect(resp.result?.answer_text).not.toContain('添加地点');
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.ui_surface).toBe('consultation');
+    expect(payload?.process_fairness).toMatchObject({ roundId: 'round-1' });
+    expect(payload?.suggested_operations ?? []).toHaveLength(0);
+    expect(payload?.consultation_dashboard).toBeUndefined();
+    expect(resp.route?.ui_hint?.status).toBe('done');
+  });
+
   it('assembleClaudeDynamicResponse: lightweight includes safety_surface from iceland.lightweight_fast_fail step', async () => {
     const assembler = await createAssembler();
     const request = { request_id: 'c2-ss', message: '问一句' } as RouteAndRunRequestDto;

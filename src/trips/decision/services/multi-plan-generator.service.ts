@@ -6,7 +6,7 @@
  * 并行生成多个方案（不同权衡策略），支持软约束加权评分和权衡分析
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { TripWorldState } from '../world-model';
 import { TripPlan } from '../plan-model';
 import { ConstraintDSL } from '../constraints/constraint-dsl.types';
@@ -52,7 +52,9 @@ export class MultiPlanGenerator {
   private readonly logger = new Logger(MultiPlanGenerator.name);
 
   constructor(
-    @Optional() private readonly decisionEngine?: TripDecisionEngineService,
+    @Inject(forwardRef(() => TripDecisionEngineService))
+    @Optional()
+    private readonly decisionEngine?: TripDecisionEngineService,
     @Optional() private readonly constraintChecker?: ConstraintChecker,
     @Optional() private readonly constraintEngine?: ConstraintEngineService,
     @Optional() private readonly dailyUtilityCalculator?: DailyUtilityCalculatorService

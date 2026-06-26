@@ -24,6 +24,9 @@ import { POIModule } from '../poi/poi.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisService } from '../redis/redis.service';
 import { WorldFactsModule } from '../world-facts/world-facts.module';
+import { TransportModule } from '../transport/transport.module';
+import { MatchSquareModule } from '../match-square/match-square.module';
+import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
 
 // 检查是否在 MCP 模式下
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
@@ -55,6 +58,9 @@ class MockRedisService {
         })(),
     POIModule,
     WorldFactsModule,
+    MatchSquareModule,
+    TransportModule,
+    IdentityGovernanceModule,
     forwardRef(() => DecisionModule), // 用于RhythmMatchingService和ThreeLayerExplanationService - 使用 forwardRef 避免循环依赖
     SharedMemoryModule,
   ],
@@ -97,4 +103,3 @@ class MockRedisService {
   ],
 })
 export class RouteDirectionsModule {}
-

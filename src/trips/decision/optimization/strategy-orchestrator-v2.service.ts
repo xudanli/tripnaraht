@@ -19,6 +19,7 @@ import { DreOptimizerService, DreOptimizationResult } from './dre-optimizer.serv
 import { NeptuneStrategy } from '../strategies/neptune-strategy.service';
 import { ObjectiveEvaluationResult, CandidateComparisonResult } from './objective-function.interface';
 import { ContextEngineerService } from '../../../agent/context-engine/services/context-engineer.service';
+import { enrichOptimizeResultChooseFields } from '../shared/guardian-choose-options.util';
 
 /**
  * V2 编排结果
@@ -75,6 +76,15 @@ export interface StrategyOrchestrationResultV2 {
     options: string[];
     recommendation: string;
   }>;
+
+  /** 扁平 CHOOSE 选项 — 与 negotiation humanDecisionPoints 对齐 */
+  humanDecisionPointsFlat?: string[];
+
+  /** 是否需要用户 CHOOSE */
+  chooseRequired?: boolean;
+
+  /** 硬约束 BLOCK — 禁用 CHOOSE */
+  hardConstraintBlocked?: boolean;
 }
 
 /**
@@ -171,7 +181,7 @@ export class StrategyOrchestratorV2Service {
           // 重新评估
           const repairEvaluation = this.objectiveFunction.evaluate(currentPlan, world);
           
-          return {
+          return this.enrichResult({
             plan: currentPlan,
             allowed: repairEvaluation.isFeasible,
             finalAction: 'REPLACE',
@@ -181,11 +191,11 @@ export class StrategyOrchestratorV2Service {
             dreResult: null as any, // Dre 未执行
             neptuneResult,
             summary: this.buildSummary(originalEvaluation, repairEvaluation, abuResult, null),
-          };
+          });
         }
       }
       
-      return {
+      return this.enrichResult({
         plan: null,
         allowed: false,
         finalAction: 'REJECT',
@@ -195,7 +205,7 @@ export class StrategyOrchestratorV2Service {
         dreResult: null as any,
         neptuneResult,
         summary: this.buildSummary(originalEvaluation, abuResult.objectiveEvaluation, abuResult, null),
-      };
+      });
     }
 
     // 2. Dre 时序优化
@@ -256,7 +266,7 @@ export class StrategyOrchestratorV2Service {
       currentPlan !== plan
     );
 
-    return {
+    return this.enrichResult({
       plan: currentPlan,
       allowed: true,
       finalAction,
@@ -266,7 +276,11 @@ export class StrategyOrchestratorV2Service {
       dreResult,
       summary: this.buildSummary(originalEvaluation, finalEvaluation, abuResult, dreResult),
       userJudgmentPoints,
-    };
+    });
+  }
+
+  private enrichResult(result: StrategyOrchestrationResultV2): StrategyOrchestrationResultV2 {
+    return enrichOptimizeResultChooseFields(result);
   }
 
   /**

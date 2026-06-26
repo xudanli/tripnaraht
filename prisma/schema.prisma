@@ -653,8 +653,221 @@ model Trip {
   TripPackingListItem    TripPackingListItem[]
   TripSuggestionState    TripSuggestionState[]
   TravelEvent            TravelEvent[]
+  LoopRun                LoopRun[]
+  TravelOutcome          TravelOutcome[]
+  TripWalletRule         TripWalletRule?
+  TripWalletLedgerEntry  TripWalletLedgerEntry[]
+  TripValueFeedback      TripValueFeedback[]
+  TripBudgetDecisionLog  TripBudgetDecisionLog[]
+  TripWishItem           TripWishItem[]
+  TripSilentVote         TripSilentVote[]
+  TripDomainClaim        TripDomainClaim[]
+  TripDomainEndorsement  TripDomainEndorsement[]
+  TripDomainWeightOverride TripDomainWeightOverride[]
+  TripPreferenceRound      TripPreferenceRound[]
+  TripMemberParticipation TripMemberParticipation[]
+  TripDecisionProfilingStatus TripDecisionProfilingStatus[]
+  TripFrictionSnapshot    TripFrictionSnapshot?
+  TripSplitMechanismConsensus TripSplitMechanismConsensus?
+  TripInTripAnchorSnapshot TripInTripAnchorSnapshot?
+  TripMoodCheck           TripMoodCheck[]
+  TripInTripOfflineQueueEntry TripInTripOfflineQueueEntry[]
+  TripEnvironmentEvent        TripEnvironmentEvent[]
+  TripDayVulnerabilityScore   TripDayVulnerabilityScore[]
+  TripSmartTransaction        TripSmartTransaction[]
+  TripBudgetRebalanceSuggestion TripBudgetRebalanceSuggestion[]
+  TripMemberRealtimeState     TripMemberRealtimeState[]
+  TripTeamThermometerSnapshot TripTeamThermometerSnapshot[]
+  TripSplitPartySession       TripSplitPartySession[]
+  TripProtectiveIntervention  TripProtectiveIntervention[]
+  TripExperiencePulse         TripExperiencePulse[]
 
   @@index([status])
+}
+
+/// Private / team wishlist items for planning workbench context
+model TripWishItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripId          String   @map("trip_id")
+  userId          String   @map("user_id") @db.Text
+  category        String   @db.VarChar(32)
+  text            String   @db.Text
+  importance      Int      @default(3)
+  inputMode       String   @map("input_mode") @db.VarChar(16)
+  sourceRef       Json?    @map("source_ref")
+  visibility      String   @default("private") @db.VarChar(16)
+  agentEligible   Boolean  @default(true) @map("agent_eligible")
+  structuredHints Json?    @map("structured_hints")
+  status          String   @default("active") @db.VarChar(16)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, userId, status])
+  @@index([tripId, visibility, status])
+  @@map("trip_wish_items")
+}
+
+/// Anonymous group preference vote (Silent Vote) — aggregated results only exposed via API.
+model TripSilentVote {
+  id        String    @id @default(uuid()) @db.Uuid
+  tripId    String    @map("trip_id")
+  createdBy String    @map("created_by") @db.Text
+  title     String    @db.Text
+  question  String?   @db.Text
+  status    String    @default("draft") @db.VarChar(16)
+  options   Json
+  closesAt  DateTime? @map("closes_at") @db.Timestamptz(6)
+  closedAt  DateTime? @map("closed_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip      Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  ballots   TripSilentVoteBallot[]
+
+  @@index([tripId, status])
+  @@map("trip_silent_votes")
+}
+
+model TripSilentVoteBallot {
+  id          String         @id @default(uuid()) @db.Uuid
+  voteId      String         @map("vote_id") @db.Uuid
+  userId      String         @map("user_id") @db.Text
+  optionId    String         @map("option_id") @db.Text
+  intensity   Int
+  submittedAt DateTime       @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  vote        TripSilentVote @relation(fields: [voteId], references: [id], onDelete: Cascade)
+
+  @@unique([voteId, userId])
+  @@index([voteId])
+  @@map("trip_silent_vote_ballots")
+}
+
+/// Domain expert claims for collaborative planning (F2.1)
+model TripDomainClaim {
+  id           String   @id @default(uuid()) @db.Uuid
+  tripId       String   @map("trip_id")
+  domain       String   @db.VarChar(32)
+  userId       String   @map("user_id") @db.Text
+  claimSource  String   @default("explicit") @map("claim_source") @db.VarChar(16)
+  selfScore    Int      @default(50) @map("self_score")
+  note         String?  @db.Text
+  status       String   @default("active") @db.VarChar(16)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip         Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  endorsements TripDomainEndorsement[]
+
+  @@unique([tripId, domain, userId], map: "trip_domain_claims_trip_domain_user_key")
+  @@index([tripId, domain])
+  @@map("trip_domain_claims")
+}
+
+/// Team recognition of a member's domain claim
+model TripDomainEndorsement {
+  id          String           @id @default(uuid()) @db.Uuid
+  tripId      String           @map("trip_id")
+  domain      String           @db.VarChar(32)
+  claimUserId String           @map("claim_user_id") @db.Text
+  endorserId  String           @map("endorser_id") @db.Text
+  claimId     String?          @map("claim_id") @db.Uuid
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  claim       TripDomainClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  Trip        Trip             @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, domain, claimUserId, endorserId], map: "trip_domain_endorsements_unique")
+  @@index([tripId, domain])
+  @@map("trip_domain_endorsements")
+}
+
+/// Post-negotiation manual weight overrides (F2.2)
+model TripDomainWeightOverride {
+  id        String   @id @default(uuid()) @db.Uuid
+  tripId    String   @map("trip_id")
+  domain    String   @db.VarChar(32)
+  userId    String   @map("user_id") @db.Text
+  weight    Float
+  source    String   @default("negotiation") @db.VarChar(16)
+  setBy     String   @map("set_by") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, domain, userId], map: "trip_domain_weight_overrides_unique")
+  @@index([tripId, domain])
+  @@map("trip_domain_weight_overrides")
+}
+
+/// Structured preference sharing round (F3.1 — Round Robin / Voice Effect)
+model TripPreferenceRound {
+  id            String   @id @default(uuid()) @db.Uuid
+  tripId        String   @map("trip_id")
+  domain        String   @db.VarChar(32)
+  decisionNode  String   @map("decision_node") @db.VarChar(32)
+  status        String   @default("collecting") @db.VarChar(16)
+  turnOrder     Json     @map("turn_order")
+  currentTurn   Int      @default(0) @map("current_turn")
+  closesAt      DateTime? @map("closes_at") @db.Timestamptz(6)
+  closedAt      DateTime? @map("closed_at") @db.Timestamptz(6)
+  createdBy     String   @map("created_by") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  utterances    TripPreferenceUtterance[]
+  heardVotes    TripPreferenceHeardVote[]
+
+  @@index([tripId, domain, status])
+  @@map("trip_preference_rounds")
+}
+
+model TripPreferenceUtterance {
+  id        String   @id @default(uuid()) @db.Uuid
+  roundId   String   @map("round_id") @db.Uuid
+  userId    String   @map("user_id") @db.Text
+  turnIndex Int      @map("turn_index")
+  modality  String   @default("text") @db.VarChar(16)
+  content   String   @db.Text
+  reason    String?  @db.Text
+  viaProxy  Boolean  @default(false) @map("via_proxy")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  round     TripPreferenceRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, userId])
+  @@index([roundId])
+  @@map("trip_preference_utterances")
+}
+
+/// Anonymous per-target "were you heard?" votes (F3.1)
+model TripPreferenceHeardVote {
+  id           String   @id @default(uuid()) @db.Uuid
+  roundId      String   @map("round_id") @db.Uuid
+  voterId      String   @map("voter_id") @db.Text
+  targetUserId String   @map("target_user_id") @db.Text
+  heard        Boolean
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  round        TripPreferenceRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, voterId, targetUserId])
+  @@index([roundId, targetUserId])
+  @@map("trip_preference_heard_votes")
+}
+
+/// Member participation snapshot for Voice Guard (F3.3 foundation)
+model TripMemberParticipation {
+  id                      String    @id @default(uuid()) @db.Uuid
+  tripId                  String    @map("trip_id")
+  userId                  String    @map("user_id") @db.Text
+  preferenceSubmits       Int       @default(0) @map("preference_submits")
+  voteParticipations      Int       @default(0) @map("vote_participations")
+  discussionUtterances    Int       @default(0) @map("discussion_utterances")
+  consecutiveSilentRounds Int       @default(0) @map("consecutive_silent_rounds")
+  lastSpokeAt             DateTime? @map("last_spoke_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip                    Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@map("trip_member_participations")
 }
 
 /// Append-only travel trajectory event store (Phase 2 foundation).
@@ -672,12 +885,123 @@ model TravelEvent {
   payload        Json
   metadata       Json?
   idempotencyKey String   @unique @map("idempotency_key") @db.Text
+  attribution    Json?    @map("attribution") // Decision attribution data
   Trip           Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@index([tripId, occurredAt(sort: Desc)])
   @@index([tripId, eventType, occurredAt(sort: Desc)])
   @@index([segment, occurredAt(sort: Desc)])
   @@map("travel_events")
+}
+
+/// Decision Runtime — durable outbox before travel_events publish (Tier 1.2).
+model RuntimeEventOutbox {
+  id              String    @id @default(uuid()) @db.Uuid
+  tripId          String    @map("trip_id") @db.Text
+  gate1ProjectId  String?   @map("gate1_project_id") @db.Uuid
+  eventType       String    @map("event_type") @db.Text
+  idempotencyKey  String    @unique @map("idempotency_key") @db.Text
+  envelope        Json
+  status          String    @default("PENDING") @db.VarChar(16)
+  publishAttempts Int       @default(0) @map("publish_attempts")
+  lastError       String?   @map("last_error") @db.Text
+  travelEventId   String?   @map("travel_event_id") @db.Text
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@index([tripId, createdAt])
+  @@map("runtime_event_outbox")
+}
+
+/// Loop Engineering Phase 1 — persistent loop run (cross-request state machine).
+model LoopRun {
+  id               String          @id @db.Text
+  tripId           String          @map("trip_id") @db.Text
+  loopType         String          @map("loop_type") @db.Text
+  status           String          @db.Text
+  triggerEventId   String?         @map("trigger_event_id") @db.Text
+  currentIteration Int             @default(0) @map("current_iteration")
+  tokenBudget      Int?            @map("token_budget")
+  costBudgetUsd    Float?          @map("cost_budget_usd")
+  timeBudgetMs     Int?            @map("time_budget_ms")
+  startedAt        DateTime        @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt      DateTime?       @map("completed_at") @db.Timestamptz(6)
+  finalOutcome     Json?           @map("final_outcome")
+  metadata         Json?
+  Trip             Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  LoopIteration    LoopIteration[]
+
+  @@index([tripId, startedAt(sort: Desc)])
+  @@index([tripId, loopType, status])
+  @@map("loop_runs")
+}
+
+/// Single observe → diagnose → propose → validate iteration within a loop run.
+model LoopIteration {
+  id               String   @id @db.Text
+  loopRunId        String   @map("loop_run_id") @db.Text
+  sequence         Int
+  observedState    Json     @map("observed_state")
+  diagnosis        Json
+  proposedAction   Json     @map("proposed_action")
+  validationResult Json     @map("validation_result")
+  decision         String   @db.Text
+  modelUsage       Json?    @map("model_usage")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  LoopRun          LoopRun  @relation(fields: [loopRunId], references: [id], onDelete: Cascade)
+
+  @@unique([loopRunId, sequence])
+  @@index([loopRunId, sequence])
+  @@map("loop_iterations")
+}
+
+/// Travel outcome evaluation - answers "how good was the trip?"
+model TravelOutcome {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tripId                String   @map("trip_id") @db.Text
+  success               String   @db.Text // excellent, good, acceptable, poor, failed
+  satisfaction          Float // 0-10
+  budgetPerformance     String   @map("budget_performance") @db.Text // under_budget, on_budget, slightly_over, significantly_over
+  plannedBudget         Float    @map("planned_budget")
+  actualSpent           Float    @map("actual_spent")
+  budgetDeviation       Float    @map("budget_deviation")
+  completionRate        String   @map("completion_rate") @db.Text // full, high, moderate, low
+  plannedActivities     Int      @map("planned_activities")
+  completedActivities   Int      @map("completed_activities")
+  completionPercentage  Float    @map("completion_percentage")
+  companionSatisfaction String   @map("companion_satisfaction") @db.Text // excellent, good, mixed, poor
+  companionMatchScore   Float    @map("companion_match_score") // 0-1
+  companionCount        Int      @map("companion_count")
+  satisfiedCompanions   Int      @map("satisfied_companions")
+  overallScore          Float    @map("overall_score") // 0-1
+  metrics               Json? // Detailed outcome metrics
+  factors               Json? // Factors that influenced outcome
+  recommendations       Json? // Array of recommendation strings
+  computedAt            DateTime @map("computed_at") @db.Timestamptz(6)
+  dataQuality           Float    @map("data_quality") // 0-1
+  confidence            Float // 0-1
+  /// Round 3: Self-evolution architecture fields
+  expectationGap        Float?   @map("expectation_gap") // 期望差距：实际 vs 预期
+  companionSatisfactionDetailed Json? @map("companion_satisfaction_detailed") // 搭子满意度细分
+  stressEventCount      Int?     @map("stress_event_count") // 压力事件计数
+  groupAggregationStrategy String? @map("group_aggregation_strategy") // 群组聚合策略
+  shapleyAttribution    Json?    @map("shapley_attribution") // Shapley 归因结果
+  memorySnapshot        Json?    @map("memory_snapshot") // 记忆快照
+  /// 6维评分分量
+  overallSatisfactionWeight  Float? @default(0.25) @map("overall_satisfaction_weight")
+  companionSatisfactionWeight Float? @default(0.20) @map("companion_satisfaction_weight")
+  budgetAccuracyWeight       Float? @default(0.15) @map("budget_accuracy_weight")
+  completionQualityWeight    Float? @default(0.15) @map("completion_quality_weight")
+  safetyWeight              Float? @default(0.15) @map("safety_weight")
+  repurchaseWeight           Float? @default(0.10) @map("repurchase_weight")
+  Trip                  Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@index([success])
+  @@index([overallScore])
+  @@map("travel_outcomes")
 }
 
 /// 持久化建议状态（用于 AssistantCenter 建议列表/角标）
@@ -755,12 +1079,455 @@ model TripCollaborator {
   userId    String
   role      String
   createdAt DateTime @default(now())
-  updatedAt DateTime
+  updatedAt DateTime @updatedAt
   Trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@unique([tripId, userId])
   @@index([tripId])
   @@index([userId])
+}
+
+/// L3 Travel Wallet — payment rule per trip
+model TripWalletRule {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripId          String   @unique @map("trip_id")
+  mode            String   @db.VarChar(32)
+  defaultPayerId  String?  @map("default_payer_id") @db.Text
+  splitBase       Int      @default(1) @map("split_base")
+  categoryRules   Json?    @map("category_rules")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("trip_wallet_rules")
+}
+
+/// L3 Travel Wallet — split ledger entries
+model TripWalletLedgerEntry {
+  id                String    @id @default(uuid()) @db.Uuid
+  tripId            String    @map("trip_id")
+  sourceType        String    @map("source_type") @db.VarChar(32)
+  sourceId          String    @map("source_id") @db.Text
+  title             String    @db.Text
+  category          String    @db.VarChar(64)
+  amount            Float
+  currency          String    @default("CNY") @db.VarChar(8)
+  paidByUserId      String    @map("paid_by_user_id") @db.Text
+  splitAmongUserIds Json      @map("split_among_user_ids")
+  sharePerPerson    Float     @map("share_per_person")
+  settled           Boolean   @default(false)
+  settledAt         DateTime? @map("settled_at") @db.Timestamptz(6)
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip              Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, sourceType, sourceId])
+  @@index([tripId, settled])
+  @@map("trip_wallet_ledger_entries")
+}
+
+/// L4 Value feedback — per expense / itinerary item satisfaction
+model TripValueFeedback {
+  id           String   @id @default(uuid()) @db.Uuid
+  tripId       String   @map("trip_id")
+  sourceType   String   @map("source_type") @db.VarChar(32)
+  sourceId     String   @map("source_id") @db.Text
+  amount       Float
+  category     String   @db.VarChar(64)
+  currency     String   @default("CNY") @db.VarChar(8)
+  satisfaction Int
+  note         String?  @db.Text
+  createdBy    String   @map("created_by") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip         Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, sourceType, sourceId, createdBy])
+  @@index([tripId])
+  @@index([createdBy])
+  @@map("trip_value_feedback")
+}
+
+/// Budget gate evaluation audit trail (planning workbench decision-log)
+model TripBudgetDecisionLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  tripId           String   @map("trip_id")
+  planId           String   @map("plan_id") @db.VarChar(256)
+  verdict          String   @db.VarChar(32)
+  estimatedCost    Float    @map("estimated_cost")
+  reason           String   @db.Text
+  budgetConstraint Json     @map("budget_constraint")
+  budgetViolations Json?    @map("budget_violations")
+  evidenceRefs     Json     @default("[]") @map("evidence_refs")
+  persona          String?  @db.VarChar(16)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  Trip             Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, planId, createdAt(sort: Desc)])
+  @@map("trip_budget_decision_logs")
+}
+
+/// L4 Money DNA — cross-trip spending preference vector (per user)
+model UserMoneyDna {
+  userId                   String   @id @map("user_id") @db.Uuid
+  experienceSensitivity    Float    @default(0.5) @map("experience_sensitivity")
+  accommodationSensitivity Float    @default(0.5) @map("accommodation_sensitivity")
+  efficiencySensitivity    Float    @default(0.5) @map("efficiency_sensitivity")
+  frugalityIndex           Float    @default(0.5) @map("frugality_index")
+  dominantPersona          String   @default("balanced") @map("dominant_persona") @db.VarChar(32)
+  tripCount                Int      @default(0) @map("trip_count")
+  confidence               Float    @default(0)
+  lastUpdatedAt            DateTime @map("last_updated_at") @db.Timestamptz(6)
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_money_dna")
+}
+
+/// PDI-4 F4.1 — Travel Style Quiz result card (per user)
+model UserTravelStyleCard {
+  userId              String   @id @map("user_id") @db.Uuid
+  styleType           String   @map("style_type") @db.VarChar(32)
+  styleLabel          String   @map("style_label") @db.VarChar(64)
+  coreDrivers         Json     @default("[]") @map("core_drivers")
+  teamRole            String   @map("team_role") @db.Text
+  compatibilityHints  Json     @default("[]") @map("compatibility_hints")
+  userNote            String?  @map("user_note") @db.Text
+  quizAnswers         Json     @default("[]") @map("quiz_answers")
+  styleScores         Json     @default("{}") @map("style_scores")
+  source              String   @default("quiz") @db.VarChar(16)
+  confidence          Float    @default(0)
+  completedAt         DateTime @map("completed_at") @db.Timestamptz(6)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_travel_style_cards")
+}
+
+/// PDI-4 F4.2 — Money DNA Quiz vector (per user, quiz-based intake)
+model UserMoneyDnaQuiz {
+  userId                  String   @id @map("user_id") @db.Uuid
+  experienceTendency      Float    @default(0.5) @map("experience_tendency")
+  qualityTendency         Float    @default(0.5) @map("quality_tendency")
+  timeValueTendency       Float    @default(0.5) @map("time_value_tendency")
+  socialScarcityTendency  Float    @default(0.5) @map("social_scarcity_tendency")
+  budgetRangeMin          Float?   @map("budget_range_min")
+  budgetRangeMax          Float?   @map("budget_range_max")
+  consumptionPace         String   @default("balanced") @map("consumption_pace") @db.VarChar(16)
+  userNote                String?  @map("user_note") @db.Text
+  quizAnswers             Json     @default("[]") @map("quiz_answers")
+  source                  String   @default("quiz") @db.VarChar(16)
+  confidence              Float    @default(0)
+  completedAt             DateTime @map("completed_at") @db.Timestamptz(6)
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_money_dna_quiz")
+}
+
+/// P0 — cross-trip reusable decision profiling profile (quiz snapshot)
+model UserDecisionProfilingProfile {
+  userId                  String    @id @map("user_id") @db.Uuid
+  travelStyleAnswers      Json      @default("[]") @map("travel_style_answers")
+  travelStyleCard         Json      @default("{}") @map("travel_style_card")
+  moneyDnaAnswers         Json      @default("[]") @map("money_dna_answers")
+  moneyDnaCard            Json      @default("{}") @map("money_dna_card")
+  lastCompletedTripId     String?   @map("last_completed_trip_id")
+  lastCompletedAt         DateTime? @map("last_completed_at") @db.Timestamptz(6)
+  quizVersion             String    @default("ts-md-v1") @map("quiz_version") @db.VarChar(32)
+  lastCompletedTripLabel  String?   @map("last_completed_trip_label") @db.VarChar(200)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([lastCompletedAt(sort: Desc)])
+  @@map("user_decision_profiling_profile")
+}
+
+/// PDI-4 — per-trip quiz completion tracking
+model TripDecisionProfilingStatus {
+  id                    String    @id @default(uuid()) @db.Uuid
+  tripId                String    @map("trip_id")
+  userId                String    @map("user_id") @db.Text
+  travelStyleCompleted  Boolean   @default(false) @map("travel_style_completed")
+  moneyDnaCompleted     Boolean   @default(false) @map("money_dna_completed")
+  quizCompleted         Boolean   @default(false) @map("quiz_completed")
+  travelStyleSource     String?   @map("travel_style_source") @db.VarChar(16)
+  moneyDnaSource        String?   @map("money_dna_source") @db.VarChar(16)
+  reusedFromTripId      String?   @map("reused_from_trip_id")
+  reusedAt              DateTime? @map("reused_at") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip                  Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@map("trip_decision_profiling_status")
+}
+
+/// PDI-4 F4.3 — cached friction radar snapshot per trip
+model TripFrictionSnapshot {
+  tripId           String   @id @map("trip_id")
+  frictionMatrix   Json     @default("[]") @map("friction_matrix")
+  highRiskAlerts   Json     @default("[]") @map("high_risk_alerts")
+  compatibility    Json     @default("{}") @map("compatibility")
+  completionRate   Int      @default(0) @map("completion_rate")
+  computedAt       DateTime @map("computed_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip             Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("trip_friction_snapshots")
+}
+
+/// PDI-4 F4.4 — split mechanism team consensus
+model TripSplitMechanismConsensus {
+  tripId            String    @id @map("trip_id")
+  recommendedMode   String    @map("recommended_mode") @db.VarChar(32)
+  selectedMode      String?   @map("selected_mode") @db.VarChar(32)
+  simulationInput   Json?     @map("simulation_input")
+  confirmations     Json      @default("{}") @map("confirmations")
+  lockedAt          DateTime? @map("locked_at") @db.Timestamptz(6)
+  lockedMode        String?   @map("locked_mode") @db.VarChar(32)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip              Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("trip_split_mechanism_consensus")
+}
+
+/// M7: 行前→行中锚点快照（行程锁定移交）
+model TripInTripAnchorSnapshot {
+  tripId         String   @id @map("trip_id")
+  schemaVersion  Int      @default(1) @map("schema_version")
+  snapshot       Json
+  materializedAt DateTime @map("materialized_at") @db.Timestamptz(6)
+  materializedBy String?  @map("materialized_by") @db.Text
+  Trip           Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("trip_in_trip_anchor_snapshots")
+}
+
+/// M7: 行中每日 Mood Check
+model TripMoodCheck {
+  id         String   @id @default(uuid()) @db.Uuid
+  tripId     String   @map("trip_id")
+  userId     String   @map("user_id") @db.Text
+  dayNumber  Int      @map("day_number")
+  score      Int
+  source     String   @default("mood_check") @db.VarChar(16)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  Trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId, dayNumber, source])
+  @@index([tripId, dayNumber])
+  @@map("trip_mood_checks")
+}
+
+/// M7: 行中离线写操作队列
+model TripInTripOfflineQueueEntry {
+  id             String    @id @default(uuid()) @db.Uuid
+  tripId         String    @map("trip_id")
+  userId         String    @map("user_id") @db.Text
+  operationType  String    @map("operation_type") @db.VarChar(32)
+  payload        Json
+  clientSeq      BigInt    @map("client_seq")
+  recordedAt     DateTime  @map("recorded_at") @db.Timestamptz(6)
+  syncedAt       DateTime? @map("synced_at") @db.Timestamptz(6)
+  conflictStatus String?   @map("conflict_status") @db.VarChar(16)
+  Trip           Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, syncedAt])
+  @@map("trip_in_trip_offline_queue")
+}
+
+/// M8: 行中环境突变事件
+model TripEnvironmentEvent {
+  id               String    @id @default(uuid()) @db.Uuid
+  tripId           String    @map("trip_id")
+  type             String    @db.VarChar(16)
+  severity         String    @db.VarChar(8)
+  description      String    @db.Text
+  affectedItems    Json      @default("[]") @map("affected_items")
+  alternativePlans Json      @default("[]") @map("alternative_plans")
+  cascadeImpact    Json      @default("[]") @map("cascade_impact")
+  runtimeGraph     Json?     @map("runtime_graph")
+  resolution       Json?
+  silentVoteId     String?   @map("silent_vote_id") @db.Uuid
+  detectedAt       DateTime  @map("detected_at") @db.Timestamptz(6)
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+  status           String    @default("open") @db.VarChar(16)
+  sourceObservedAt DateTime? @map("source_observed_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip             Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, status, severity])
+  @@map("trip_environment_events")
+}
+
+/// M8: 行程日脆弱度评分
+model TripDayVulnerabilityScore {
+  id             String   @id @default(uuid()) @db.Uuid
+  tripId         String   @map("trip_id")
+  dayNumber      Int      @map("day_number")
+  date           DateTime @db.Date
+  stabilityScore Float    @map("stability_score")
+  severity       String   @db.VarChar(8)
+  factors        Json     @default("[]")
+  computedAt     DateTime @map("computed_at") @db.Timestamptz(6)
+  Trip           Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, dayNumber])
+  @@index([tripId, dayNumber])
+  @@map("trip_day_vulnerability_scores")
+}
+
+/// M9: 行中智能记账（心理账户 + 助推）
+model TripSmartTransaction {
+  id               String   @id @default(uuid()) @db.Uuid
+  tripId           String   @map("trip_id")
+  memberId         String   @map("member_id") @db.Text
+  ledgerEntryId    String?  @map("ledger_entry_id") @db.Uuid
+  amountLocal      Float    @map("amount_local")
+  currencyLocal    String   @map("currency_local") @db.VarChar(8)
+  amountCny        Float    @map("amount_cny")
+  exchangeRate     Float    @map("exchange_rate")
+  category         String   @db.VarChar(16)
+  merchant         String?  @db.VarChar(256)
+  description      String?  @db.Text
+  captureMethod    String   @map("capture_method") @db.VarChar(16)
+  splitGroupId     String?  @map("split_group_id") @db.Uuid
+  splitRule        String   @default("split_aa") @map("split_rule") @db.VarChar(16)
+  splitDetails     Json     @default("[]") @map("split_details")
+  bucketAssignment String   @map("bucket_assignment") @db.VarChar(16)
+  spendRationality String?  @map("spend_rationality") @db.VarChar(16)
+  nudgesTriggered  Json     @default("[]") @map("nudges_triggered")
+  recordedAt       DateTime @map("recorded_at") @db.Timestamptz(6)
+  Trip             Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, recordedAt])
+  @@index([tripId, memberId])
+  @@map("trip_smart_transactions")
+}
+
+/// M9: 预算动态再平衡建议
+model TripBudgetRebalanceSuggestion {
+  id           String    @id @default(uuid()) @db.Uuid
+  tripId       String    @map("trip_id")
+  scenario     String    @db.VarChar(16)
+  message      String    @db.Text
+  proposal     Json
+  status       String    @default("pending") @db.VarChar(16)
+  userResponse String?   @map("user_response") @db.VarChar(16)
+  respondedBy  String?   @map("responded_by") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  respondedAt  DateTime? @map("responded_at") @db.Timestamptz(6)
+  Trip         Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, status])
+  @@map("trip_budget_rebalance_suggestions")
+}
+
+/// M10: 成员行中实时状态向量
+model TripMemberRealtimeState {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripId          String   @map("trip_id")
+  userId          String   @map("user_id") @db.Text
+  dayNumber       Int      @map("day_number")
+  physicalLevel   String   @map("physical_level") @db.VarChar(16)
+  emotionalLevel  String   @map("emotional_level") @db.VarChar(16)
+  spendingLevel   String   @map("spending_level") @db.VarChar(16)
+  socialLevel     String   @map("social_level") @db.VarChar(16)
+  decisionFatigue String   @map("decision_fatigue") @db.VarChar(16)
+  confidenceScore Float    @map("confidence_score")
+  signals         Json     @default("{}")
+  computedAt      DateTime @map("computed_at") @db.Timestamptz(6)
+  Trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId, dayNumber])
+  @@index([tripId, dayNumber])
+  @@map("trip_member_realtime_states")
+}
+
+/// M10: 团队温度计按日快照
+model TripTeamThermometerSnapshot {
+  id         String   @id @default(uuid()) @db.Uuid
+  tripId     String   @map("trip_id")
+  dayNumber  Int      @map("day_number")
+  level      String   @db.VarChar(8)
+  score      Float
+  factors    Json     @default("[]")
+  computedAt DateTime @map("computed_at") @db.Timestamptz(6)
+  Trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, dayNumber])
+  @@index([tripId, dayNumber])
+  @@map("trip_team_thermometer_snapshots")
+}
+
+/// M10: 拆队/分组活动 session
+model TripSplitPartySession {
+  id                String    @id @default(uuid()) @db.Uuid
+  tripId            String    @map("trip_id")
+  dayNumber         Int       @map("day_number")
+  triggerReason     String    @map("trigger_reason") @db.VarChar(32)
+  status            String    @default("proposed") @db.VarChar(16)
+  groups            Json      @default("[]")
+  sharedNodes       Json      @default("[]") @map("shared_nodes")
+  costRouting       Json      @default("{}") @map("cost_routing")
+  experienceSharing Json      @default("[]") @map("experience_sharing")
+  reunion           Json?
+  satisfaction      Json?
+  proposedAt        DateTime  @map("proposed_at") @db.Timestamptz(6)
+  executedAt        DateTime? @map("executed_at") @db.Timestamptz(6)
+  Trip              Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, dayNumber, status])
+  @@map("trip_split_party_sessions")
+}
+
+/// M10: 保护性干预卡片
+model TripProtectiveIntervention {
+  id               String    @id @default(uuid()) @db.Uuid
+  tripId           String    @map("trip_id")
+  dayNumber        Int       @map("day_number")
+  ruleId           String    @map("rule_id") @db.VarChar(32)
+  level            Int
+  messageZh        String    @map("message_zh") @db.Text
+  actions          Json      @default("[]")
+  status           String    @default("pending") @db.VarChar(16)
+  splitSessionId   String?   @map("split_session_id") @db.Uuid
+  acknowledgedBy   String?   @map("acknowledged_by") @db.Text
+  acknowledgedAt   DateTime? @map("acknowledged_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  Trip             Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, status])
+  @@map("trip_protective_interventions")
+}
+
+/// M11: 行中体验微调查
+model TripExperiencePulse {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tripId                  String   @map("trip_id")
+  memberId                String   @map("member_id") @db.Text
+  triggerType             String   @map("trigger_type") @db.VarChar(16)
+  activityName            String?  @map("activity_name") @db.VarChar(256)
+  expectationConfirmation Int?     @map("expectation_confirmation")
+  emotionalValueScore     Int?     @map("emotional_value_score")
+  senseOfControl          Int?     @map("sense_of_control")
+  spendWorthIt            Int?     @map("spend_worth_it")
+  teamAtmosphere          Int?     @map("team_atmosphere")
+  freeText                String?  @map("free_text") @db.Text
+  emotionPolarity         Float?   @map("emotion_polarity")
+  weightAdjustmentApplied Json?    @map("weight_adjustment_applied")
+  submittedAt             DateTime @map("submitted_at") @db.Timestamptz(6)
+  Trip                    Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, memberId, submittedAt])
+  @@index([tripId, triggerType, submittedAt])
+  @@map("trip_experience_pulses")
 }
 
 model TripCollection {
@@ -813,7 +1580,7 @@ model TripShare {
   permission String    @default("VIEW")
   expiresAt  DateTime?
   createdAt  DateTime  @default(now())
-  updatedAt  DateTime
+  updatedAt  DateTime  @updatedAt
   Trip       Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@index([shareToken])
@@ -914,12 +1681,538 @@ model User {
   restaurantPreferences RestaurantPreferences?
   stripeConnection      StripeConnection?
   translationSettings   TranslationSettings?
-  featureFlags          UserFeatureFlag[]
+  featureFlags              UserFeatureFlag[]
+  userVerifications         UserVerification[]
+  ownedOrganizations        Organization[]         @relation("OrganizationOwner")
+  organizationMemberships   OrganizationMember[]
+  projectMemberships        ProjectMembership[]
+  accountContexts           UserAccountContext[]
+  professionalProfile       ProfessionalProfile?
+  professionalCertifications ProfessionalCertification[]
 
   @@index([googleSub])
   @@index([email])
   @@index([platformRole])
   @@map("users")
+}
+
+/// Identity governance — personal verification records (PRD §7.3)
+model UserVerification {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  verificationType String    @map("verification_type") @db.VarChar(64)
+  status           String    @default("NOT_STARTED") @db.VarChar(32)
+  provider         String?   @db.VarChar(64)
+  evidence         Json?
+  verifiedAt       DateTime? @map("verified_at") @db.Timestamptz(6)
+  expiresAt        DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  User             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, verificationType])
+  @@index([userId, status])
+  @@map("user_verifications")
+}
+
+/// Identity governance — agency workspace (PRD §10)
+model Organization {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  slug               String?                @unique @db.VarChar(64)
+  displayName        String                 @map("display_name") @db.VarChar(200)
+  legalName          String?                @map("legal_name") @db.VarChar(300)
+  verificationStatus String                 @default("DRAFT") @map("verification_status") @db.VarChar(32)
+  ownerId            String                 @map("owner_id") @db.Uuid
+  metadata           Json?
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Owner              User                   @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members            OrganizationMember[]
+  agencyCertifications AgencyCertification[]
+
+  @@index([ownerId])
+  @@index([verificationStatus])
+  @@map("organizations")
+}
+
+/// Identity governance — organization membership (PRD §10.3)
+model OrganizationMember {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  roles          String[]     @default([])
+  status         String       @default("INVITED") @db.VarChar(32)
+  invitedAt      DateTime     @default(now()) @map("invited_at") @db.Timestamptz(6)
+  acceptedAt     DateTime?    @map("accepted_at") @db.Timestamptz(6)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  User           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+  @@map("organization_members")
+}
+
+/// Identity governance — trip-scoped roles (PRD §5.1, complements TripCollaborator)
+model ProjectMembership {
+  id        String   @id @default(uuid()) @db.Uuid
+  tripId    String   @map("trip_id") @db.Text
+  userId    String   @map("user_id") @db.Uuid
+  roles     String[] @default([])
+  status    String   @default("ACTIVE") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([userId, status])
+  @@map("project_memberships")
+}
+
+/// Identity governance — subscription entitlements decoupled from certification (PRD §11)
+model Subscription {
+  id           String    @id @default(uuid()) @db.Uuid
+  accountScope String    @map("account_scope") @db.VarChar(32)
+  accountId    String    @map("account_id") @db.Uuid
+  plan         String    @default("FREE") @db.VarChar(64)
+  status       String    @default("ACTIVE") @db.VarChar(32)
+  entitlements Json?
+  validFrom    DateTime  @default(now()) @map("valid_from") @db.Timestamptz(6)
+  validUntil   DateTime? @map("valid_until") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([accountScope, accountId, status])
+  @@map("subscriptions")
+}
+
+/// Identity governance — publishing permission levels (PRD §12.1)
+model PublishingPermission {
+  id          String    @id @default(uuid()) @db.Uuid
+  subjectType String    @map("subject_type") @db.VarChar(32)
+  subjectId   String    @map("subject_id") @db.Uuid
+  level       String    @default("PRIVATE_ONLY") @db.VarChar(32)
+  status      String    @default("ACTIVE") @db.VarChar(32)
+  reason      String?   @db.Text
+  grantedById String?   @map("granted_by_id") @db.Uuid
+  grantedAt   DateTime  @default(now()) @map("granted_at") @db.Timestamptz(6)
+  suspendedAt DateTime? @map("suspended_at") @db.Timestamptz(6)
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([subjectType, subjectId, status])
+  @@map("publishing_permissions")
+}
+
+/// Publishing permission upgrade applications (PRD §12 — separate from certification)
+model PublishingPermissionApplication {
+  id              String    @id @default(uuid()) @db.Uuid
+  subjectType     String    @map("subject_type") @db.VarChar(32)
+  subjectId       String    @map("subject_id") @db.Uuid
+  applicantUserId String    @map("applicant_user_id") @db.Uuid
+  requestedLevel  String    @map("requested_level") @db.VarChar(32)
+  status          String    @default("PENDING") @db.VarChar(32)
+  reason          String?   @db.Text
+  reviewNotes     String?   @map("review_notes") @db.Text
+  reviewedById    String?   @map("reviewed_by_id") @db.Uuid
+  submittedAt     DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, submittedAt(sort: Asc)])
+  @@index([subjectType, subjectId])
+  @@index([applicantUserId])
+  @@map("publishing_permission_applications")
+}
+
+/// Agency enterprise certification (PRD §10, §16.2)
+model AgencyCertification {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  status         String       @default("DRAFT") @db.VarChar(32)
+  materials      Json?
+  reviewNotes    String?      @map("review_notes") @db.Text
+  submittedAt    DateTime?    @map("submitted_at") @db.Timestamptz(6)
+  verifiedAt     DateTime?    @map("verified_at") @db.Timestamptz(6)
+  expiresAt      DateTime?    @map("expires_at") @db.Timestamptz(6)
+  reviewedById   String?      @map("reviewed_by_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([status, updatedAt(sort: Desc)])
+  @@map("agency_certifications")
+}
+
+/// Trusted travel project listing (PRD §12 — per-project review)
+model TrustedProjectListing {
+  id                   String                      @id @default(uuid()) @db.Uuid
+  publisherSubjectType String                      @map("publisher_subject_type") @db.VarChar(32)
+  publisherSubjectId   String                      @map("publisher_subject_id") @db.Uuid
+  createdByUserId      String                      @map("created_by_user_id") @db.Uuid
+  responsibleUserId    String                      @map("responsible_user_id") @db.Uuid
+  organizationId       String?                     @map("organization_id") @db.Uuid
+  commercialType       String                      @map("commercial_type") @db.VarChar(32)
+  reviewStatus         String                      @default("DRAFT") @map("review_status") @db.VarChar(32)
+  listingStatus        String                      @default("draft") @map("listing_status") @db.VarChar(32)
+  title                String                      @db.VarChar(300)
+  destination          String
+  startDate            DateTime                    @map("start_date") @db.Date
+  endDate              DateTime                    @map("end_date") @db.Date
+  summary              String                      @db.Text
+  slotsTotal           Int                         @default(1) @map("slots_total")
+  slotsFilled          Int                         @default(0) @map("slots_filled")
+  budgetMinCents       Int?                        @map("budget_min_cents")
+  budgetMaxCents       Int?                        @map("budget_max_cents")
+  riskDisclosure       String?                     @map("risk_disclosure") @db.Text
+  refundPolicy         String?                     @map("refund_policy") @db.Text
+  reviewNotes          String?                     @map("review_notes") @db.Text
+  reviewedById         String?                     @map("reviewed_by_id") @db.Uuid
+  submittedAt          DateTime?                   @map("submitted_at") @db.Timestamptz(6)
+  publishedAt          DateTime?                   @map("published_at") @db.Timestamptz(6)
+  closedAt             DateTime?                   @map("closed_at") @db.Timestamptz(6)
+  tripId               String?                     @map("trip_id") @db.Text
+  gate1ProjectId       String?                     @map("gate1_project_id") @db.Uuid
+  metadata             Json?
+  createdAt            DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  applications         TrustedProjectApplication[]
+  eligibilityRules     ProjectEligibilityRule[]
+  fitAssessments       ProjectFitAssessment[]
+
+  @@index([listingStatus, startDate])
+  @@index([publisherSubjectType, publisherSubjectId])
+  @@index([reviewStatus, submittedAt(sort: Asc)])
+  @@map("trusted_project_listings")
+}
+
+/// Application to join a trusted project listing
+model TrustedProjectApplication {
+  id                     String                @id @default(uuid()) @db.Uuid
+  listingId              String                @map("listing_id") @db.Uuid
+  applicantUserId        String                @map("applicant_user_id") @db.Uuid
+  status                 String                @default("DRAFT") @db.VarChar(32)
+  message                String?               @db.Text
+  fitAssessmentId        String?               @map("fit_assessment_id") @db.Uuid
+  leaderDecision         String?               @map("leader_decision") @db.VarChar(32)
+  structuredRejectReason String?               @map("structured_reject_reason") @db.VarChar(64)
+  leaderNotes            String?               @map("leader_notes") @db.Text
+  userConfirmedAt        DateTime?             @map("user_confirmed_at") @db.Timestamptz(6)
+  decidedAt              DateTime?             @map("decided_at") @db.Timestamptz(6)
+  submittedAt            DateTime?             @map("submitted_at") @db.Timestamptz(6)
+  commitmentStatus       String?               @map("commitment_status") @db.VarChar(32)
+  depositAmountCents     Int?                  @map("deposit_amount_cents")
+  gate1ParticipantId     String?               @map("gate1_participant_id") @db.Uuid
+  createdAt              DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  listing                TrustedProjectListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  fitAssessment          ProjectFitAssessment? @relation(fields: [fitAssessmentId], references: [id], onDelete: SetNull)
+
+  @@unique([listingId, applicantUserId])
+  @@index([listingId, status])
+  @@index([applicantUserId])
+  @@index([fitAssessmentId])
+  @@map("trusted_project_applications")
+}
+
+/// Project hard eligibility rules (PRD §8, §23.1)
+model ProjectEligibilityRule {
+  id                  String              @id @default(uuid()) @db.Uuid
+  listingId           String              @map("listing_id") @db.Uuid
+  templateId          String?             @map("template_id") @db.Uuid
+  ruleType            String              @map("rule_type") @db.VarChar(32)
+  conditionKey        String              @map("condition_key") @db.VarChar(64)
+  operator            String              @db.VarChar(32)
+  value               Json
+  severity            String              @db.VarChar(32)
+  evidenceRequirement String              @map("evidence_requirement") @db.VarChar(32)
+  waiverPolicy        String              @map("waiver_policy") @db.VarChar(32)
+  explanationTemplate String?             @map("explanation_template") @db.Text
+  version             Int                 @default(1)
+  effectiveAt         DateTime            @default(now()) @map("effective_at") @db.Timestamptz(6)
+  expiresAt           DateTime?           @map("expires_at") @db.Timestamptz(6)
+  isActive            Boolean             @default(true) @map("is_active")
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  listing             TrustedProjectListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, isActive, version])
+  @@index([conditionKey, ruleType])
+  @@index([templateId])
+  @@map("project_eligibility_rules")
+}
+
+/// Reusable eligibility rule packs for agencies / platform (PRD §24 R2)
+model ProjectEligibilityRuleTemplate {
+  id               String   @id @default(uuid()) @db.Uuid
+  ownerSubjectType String   @map("owner_subject_type") @db.VarChar(32)
+  ownerSubjectId   String   @map("owner_subject_id") @db.Uuid
+  name             String   @db.VarChar(200)
+  description      String?  @db.Text
+  destinationTag   String?  @map("destination_tag") @db.VarChar(64)
+  commercialType   String?  @map("commercial_type") @db.VarChar(32)
+  rules            Json
+  fitConfig        Json?    @map("fit_config")
+  status           String   @default("ACTIVE") @db.VarChar(32)
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerSubjectType, ownerSubjectId, status])
+  @@index([destinationTag, commercialType])
+  @@map("project_eligibility_rule_templates")
+}
+
+/// Project Fit assessment snapshot (PRD §12, §23.2)
+model ProjectFitAssessment {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  listingId             String                    @map("listing_id") @db.Uuid
+  userId                String                    @map("user_id") @db.Uuid
+  ruleSnapshotVersion   Int                       @map("rule_snapshot_version")
+  status                String                    @default("NOT_STARTED") @db.VarChar(32)
+  overallResult         String?                   @map("overall_result") @db.VarChar(32)
+  hardResults           Json?                     @map("hard_results")
+  dimensionResults      Json?                     @map("dimension_results")
+  teamImpactResult      Json?                     @map("team_impact_result")
+  requiredConfirmations Json?                     @map("required_confirmations")
+  explanationBundle     Json?                     @map("explanation_bundle")
+  expiresAt             DateTime?                 @map("expires_at") @db.Timestamptz(6)
+  evaluatedAt           DateTime?                 @map("evaluated_at") @db.Timestamptz(6)
+  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  listing               TrustedProjectListing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  answers               FitAnswer[]
+  applications          TrustedProjectApplication[]
+  documents             ProjectFitDocument[]
+
+  @@index([listingId, userId, status])
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("project_fit_assessments")
+}
+
+/// Fit questionnaire answers (PRD §23.3)
+model FitAnswer {
+  id               String               @id @default(uuid()) @db.Uuid
+  assessmentId     String               @map("assessment_id") @db.Uuid
+  questionKey      String               @map("question_key") @db.VarChar(64)
+  answer           Json
+  sensitivityLevel String               @default("LOW") @map("sensitivity_level") @db.VarChar(16)
+  consentScope     Json?                @map("consent_scope")
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  assessment       ProjectFitAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, questionKey])
+  @@index([assessmentId])
+  @@map("fit_answers")
+}
+
+/// Uploaded credential / evidence documents for Project Fit (PRD §8, §24)
+model ProjectFitDocument {
+  id                String               @id @default(uuid()) @db.Uuid
+  assessmentId      String               @map("assessment_id") @db.Uuid
+  userId            String               @map("user_id") @db.Uuid
+  documentType      String               @map("document_type") @db.VarChar(32)
+  fileName          String               @map("file_name") @db.VarChar(512)
+  mimeType          String               @map("mime_type") @db.VarChar(128)
+  storageKey        String               @map("storage_key") @db.Text
+  fileUrl           String?              @map("file_url") @db.Text
+  fileSize          Int                  @map("file_size")
+  ocrStatus         String               @default("PENDING") @map("ocr_status") @db.VarChar(32)
+  ocrResult         Json?                @map("ocr_result")
+  extractedFields   Json?                @map("extracted_fields")
+  linkedQuestionKey String?              @map("linked_question_key") @db.VarChar(64)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  assessment        ProjectFitAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+  @@index([userId, documentType])
+  @@map("project_fit_documents")
+}
+
+/// Appeal case for eligibility/reputation corrections (PRD §19)
+model ProjectFitAppeal {
+  id           String    @id @default(uuid()) @db.Uuid
+  submitterId  String    @map("submitter_id") @db.Uuid
+  targetType   String    @map("target_type") @db.VarChar(64)
+  targetId     String    @map("target_id") @db.Text
+  reason       String    @db.Text
+  status       String    @default("SUBMITTED") @db.VarChar(32)
+  resolution   String?   @db.Text
+  resolvedById String?   @map("resolved_by_id") @db.Uuid
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(6)
+  metadata     Json?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([submitterId, status])
+  @@index([targetType, targetId])
+  @@map("project_fit_appeals")
+}
+
+/// Identity governance — audit trail for verification and permission changes (PRD §19.3)
+model IdentityAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String   @db.VarChar(128)
+  targetType String   @map("target_type") @db.VarChar(64)
+  targetId   String   @map("target_id") @db.Text
+  before     Json?
+  after      Json?
+  sourceIp   String?  @map("source_ip") @db.VarChar(64)
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([targetType, targetId])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@map("identity_audit_logs")
+}
+
+/// Identity governance — active account context (PRD ACC-004)
+model UserAccountContext {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  contextType String   @map("context_type") @db.VarChar(32)
+  contextId   String?  @map("context_id") @db.Uuid
+  isActive    Boolean  @default(false) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@map("user_account_contexts")
+}
+
+/// Professional Leader profile (PRD §9)
+model ProfessionalProfile {
+  userId            String   @id @map("user_id") @db.Uuid
+  bio               String?  @db.Text
+  destinations      String[] @default([])
+  yearsOfExperience Int?     @map("years_of_experience")
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  User              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("professional_profiles")
+}
+
+/// Professional Leader certification application (PRD §9.3, §16.1)
+model ProfessionalCertification {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  status       String    @default("NOT_STARTED") @db.VarChar(32)
+  materials    Json?
+  reviewNotes  String?   @map("review_notes") @db.Text
+  submittedAt  DateTime? @map("submitted_at") @db.Timestamptz(6)
+  verifiedAt   DateTime? @map("verified_at") @db.Timestamptz(6)
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
+  reviewedById String?   @map("reviewed_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  User         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, updatedAt(sort: Desc)])
+  @@map("professional_certifications")
+}
+
+/// Professional / activity qualifications (PRD §8, §17)
+model Qualification {
+  id                String    @id @default(uuid()) @db.Uuid
+  subjectType       String    @map("subject_type") @db.VarChar(32)
+  subjectId         String    @map("subject_id") @db.Uuid
+  qualificationType String    @map("qualification_type") @db.VarChar(64)
+  issuer            String?   @db.VarChar(200)
+  certificateNumber String?   @map("certificate_number") @db.VarChar(128)
+  status            String    @default("PENDING") @db.VarChar(32)
+  evidence          Json?
+  validFrom         DateTime? @map("valid_from") @db.Timestamptz(6)
+  validUntil        DateTime? @map("valid_until") @db.Timestamptz(6)
+  verifiedAt        DateTime? @map("verified_at") @db.Timestamptz(6)
+  verifiedById      String?   @map("verified_by_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([subjectType, subjectId, status])
+  @@index([qualificationType, status])
+  @@map("qualifications")
+}
+
+/// Verifiable reputation facts from real projects (PRD §13.3)
+model ReputationEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  subjectType    String   @map("subject_type") @db.VarChar(32)
+  subjectId      String   @map("subject_id") @db.Uuid
+  projectId      String?  @map("project_id") @db.Text
+  listingId      String?  @map("listing_id") @db.Uuid
+  eventType      String   @map("event_type") @db.VarChar(64)
+  eventResult    String?  @map("event_result") @db.VarChar(64)
+  evidenceSource String   @map("evidence_source") @db.VarChar(64)
+  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
+  recordedById   String?  @map("recorded_by_id") @db.Uuid
+  metadata       Json?
+  idempotencyKey String?  @unique @map("idempotency_key") @db.VarChar(128)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  disputes       ReputationEventDispute[]
+
+  @@index([subjectType, subjectId, occurredAt(sort: Desc)])
+  @@index([eventType, occurredAt(sort: Desc)])
+  @@index([listingId])
+  @@index([projectId])
+  @@map("reputation_events")
+}
+
+/// Dispute on a recorded reputation fact (PRD §19, §22.3)
+model ReputationEventDispute {
+  id           String          @id @default(uuid()) @db.Uuid
+  eventId      String          @map("event_id") @db.Uuid
+  submitterId  String          @map("submitter_id") @db.Uuid
+  reason       String          @db.Text
+  status       String          @default("SUBMITTED") @db.VarChar(32)
+  resolution   String?         @db.Text
+  resolvedById String?         @map("resolved_by_id") @db.Uuid
+  resolvedAt   DateTime?       @map("resolved_at") @db.Timestamptz(6)
+  metadata     Json?
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  event        ReputationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([submitterId, status])
+  @@index([status, createdAt(sort: Asc)])
+  @@map("reputation_event_disputes")
+}
+
+/// Fact-based institutional endorsements (PRD §13 — not social credit)
+model IdentityEndorsement {
+  id                  String    @id @default(uuid()) @db.Uuid
+  endorserSubjectType String    @map("endorser_subject_type") @db.VarChar(32)
+  endorserSubjectId   String    @map("endorser_subject_id") @db.Uuid
+  subjectType         String    @map("subject_type") @db.VarChar(32)
+  subjectId           String    @map("subject_id") @db.Uuid
+  endorsementType     String    @map("endorsement_type") @db.VarChar(64)
+  factStatement       String    @map("fact_statement") @db.Text
+  status              String    @default("PENDING") @db.VarChar(32)
+  evidence            Json?
+  relatedListingId    String?   @map("related_listing_id") @db.Uuid
+  relatedTripId       String?   @map("related_trip_id") @db.Text
+  issuedAt            DateTime? @map("issued_at") @db.Timestamptz(6)
+  expiresAt           DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdByUserId     String    @map("created_by_user_id") @db.Uuid
+  verifiedById        String?   @map("verified_by_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([subjectType, subjectId, status])
+  @@index([endorserSubjectType, endorserSubjectId, status])
+  @@index([relatedListingId])
+  @@map("identity_endorsements")
 }
 
 model RefreshToken {
@@ -1405,7 +2698,9 @@ model DecisionOutcome {
   userSatisfaction    Float?      @map("user_satisfaction")
   userFeedback        String?     @map("user_feedback")
   learningSignals     Json        @map("learning_signals")
-  /** Join key to `DecisionCausalityRecordV0.causality_id` (Policy→Plan→Execution spine) */
+  /**
+   * Join key to `DecisionCausalityRecordV0.causality_id` (Policy→Plan→Execution spine)
+   */
   decisionCausalityId String?     @map("decision_causality_id") @db.VarChar(128)
   createdAt           DateTime    @default(now()) @map("created_at")
   DecisionLog         DecisionLog @relation(fields: [decisionId], references: [id], onDelete: Cascade)
@@ -3295,17 +4590,17 @@ model PolicySelectionLog {
 
 /// P-OPS-2：预测 overlay（决策时快照）vs 后续实况 outcome —— Reality Audit / Replay 底座（append-only prediction + optional outcome 回填）
 model OpsRealityAuditSnapshot {
-  id                   String    @id @default(uuid()) @db.Uuid
-  capturedAt           DateTime  @default(now()) @map("captured_at") @db.Timestamptz(6)
-  tripId               String?   @map("trip_id") @db.VarChar(128)
-  requestId            String?   @map("request_id") @db.VarChar(120)
-  decisionRunId        String?   @map("decision_run_id") @db.VarChar(80)
-  schemaVersion        String    @default("p-ops-2/v1") @map("schema_version") @db.VarChar(40)
-  predictionFingerprint String   @map("prediction_fingerprint") @db.VarChar(64)
-  prediction           Json
-  outcome              Json?     @map("outcome")
-  outcomeRecordedAt    DateTime? @map("outcome_recorded_at") @db.Timestamptz(6)
-  outcomeSource        String?   @map("outcome_source") @db.VarChar(40)
+  id                    String    @id @default(uuid()) @db.Uuid
+  capturedAt            DateTime  @default(now()) @map("captured_at") @db.Timestamptz(6)
+  tripId                String?   @map("trip_id") @db.VarChar(128)
+  requestId             String?   @map("request_id") @db.VarChar(120)
+  decisionRunId         String?   @map("decision_run_id") @db.VarChar(80)
+  schemaVersion         String    @default("p-ops-2/v1") @map("schema_version") @db.VarChar(40)
+  predictionFingerprint String    @map("prediction_fingerprint") @db.VarChar(64)
+  prediction            Json
+  outcome               Json?     @map("outcome")
+  outcomeRecordedAt     DateTime? @map("outcome_recorded_at") @db.Timestamptz(6)
+  outcomeSource         String?   @map("outcome_source") @db.VarChar(40)
 
   @@index([capturedAt(sort: Desc)])
   @@index([tripId])
@@ -3342,65 +4637,763 @@ model GovernanceLedgerEventRecord {
 
 /// Decision OS · Match Square P0 — 搭子广场招募帖
 model MatchSquarePost {
-  id                     String   @id @default(uuid()) @db.Uuid
-  captainUserId          String   @map("captain_user_id") @db.Uuid
-  status                 String   @default("active") @db.VarChar(16)
+  id                     String                   @id @default(uuid()) @db.Uuid
+  captainUserId          String                   @map("captain_user_id") @db.Uuid
+  status                 String                   @default("active") @db.VarChar(16)
   destination            String
-  departureLabel         String?  @map("departure_label")
-  startDate              DateTime @map("start_date") @db.Date
-  endDate                DateTime @map("end_date") @db.Date
-  itinerarySummary       String   @default("") @map("itinerary_summary")
-  captainMessage         String   @default("") @map("captain_message")
-  recruitmentVision      String?  @map("recruitment_vision")
-  budgetMinCents         Int?     @map("budget_min_cents")
-  budgetMaxCents         Int?     @map("budget_max_cents")
-  slotsNeeded            Int      @default(1) @map("slots_needed")
-  planningStyle          String?  @map("planning_style") @db.VarChar(32)
-  tripMoodTag            String?  @map("trip_mood_tag") @db.VarChar(16)
-  travelMode             String?  @map("travel_mode") @db.VarChar(32)
-  vehicleInfo            String?  @map("vehicle_info")
-  preferenceNotes        String?  @map("preference_notes")
-  captainMbtiType        String?  @map("captain_mbti_type") @db.VarChar(8)
-  captainCardTitle       String?  @map("captain_card_title")
-  captainInteractionMode String?  @map("captain_interaction_mode") @db.VarChar(32)
-  destinationLat         Float?   @map("destination_lat")
-  destinationLng         Float?   @map("destination_lng")
-  vibeSnapshot           Json?    @map("vibe_snapshot")
-  routeDirectionId       Int?     @map("route_direction_id")
-  routeDirectionName     String?  @map("route_direction_name")
-  publishedAt            DateTime? @map("published_at")
-  closedAt               DateTime? @map("closed_at")
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
+  departureLabel         String?                  @map("departure_label")
+  startDate              DateTime                 @map("start_date") @db.Date
+  endDate                DateTime                 @map("end_date") @db.Date
+  itinerarySummary       String                   @default("") @map("itinerary_summary")
+  captainMessage         String                   @default("") @map("captain_message")
+  recruitmentVision      String?                  @map("recruitment_vision")
+  budgetMinCents         Int?                     @map("budget_min_cents")
+  budgetMaxCents         Int?                     @map("budget_max_cents")
+  slotsNeeded            Int                      @default(1) @map("slots_needed")
+  planningStyle          String?                  @map("planning_style") @db.VarChar(32)
+  tripMoodTag            String?                  @map("trip_mood_tag") @db.VarChar(16)
+  travelMode             String?                  @map("travel_mode") @db.VarChar(32)
+  vehicleInfo            String?                  @map("vehicle_info")
+  preferenceNotes        String?                  @map("preference_notes")
+  captainMbtiType        String?                  @map("captain_mbti_type") @db.VarChar(8)
+  captainCardTitle       String?                  @map("captain_card_title")
+  captainInteractionMode String?                  @map("captain_interaction_mode") @db.VarChar(32)
+  destinationLat         Float?                   @map("destination_lat")
+  destinationLng         Float?                   @map("destination_lng")
+  vibeSnapshot           Json?                    @map("vibe_snapshot")
+  routeDirectionId       Int?                     @map("route_direction_id")
+  routeDirectionName     String?                  @map("route_direction_name")
+  publishedAt            DateTime?                @map("published_at")
+  closedAt               DateTime?                @map("closed_at")
+  outcome                Json?                    @map("outcome")
+  tripId                 String?                  @map("trip_id") @db.Text
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
   applications           MatchSquareApplication[]
 
   @@index([status, startDate])
   @@index([captainUserId])
+  @@index([tripId])
   @@map("match_square_posts")
 }
 
 /// Decision OS · Match Square P0 — 招募申请
 model MatchSquareApplication {
-  id                         String    @id @default(uuid()) @db.Uuid
-  postId                     String    @map("post_id") @db.Uuid
-  applicantUserId            String    @map("applicant_user_id") @db.Uuid
-  status                     String    @default("pending") @db.VarChar(16)
-  message                    String    @default("")
-  planningCommitmentAccepted Boolean   @default(false) @map("planning_commitment_accepted")
-  teamworkCommitmentAccepted Boolean   @default(false) @map("teamwork_commitment_accepted")
-  targetSlotIndex            Int?      @map("target_slot_index")
-  targetSlotId               String?   @map("target_slot_id")
-  targetSlotLabel            String?   @map("target_slot_label")
-  applicantMbtiType          String?   @map("applicant_mbti_type") @db.VarChar(8)
-  applicantCardTitle         String?   @map("applicant_card_title")
-  applicantInteractionMode   String?   @map("applicant_interaction_mode") @db.VarChar(32)
-  decidedAt                  DateTime? @map("decided_at")
-  createdAt                  DateTime  @default(now()) @map("created_at")
-  updatedAt                  DateTime  @updatedAt @map("updated_at")
+  id                         String          @id @default(uuid()) @db.Uuid
+  postId                     String          @map("post_id") @db.Uuid
+  applicantUserId            String          @map("applicant_user_id") @db.Uuid
+  status                     String          @default("pending") @db.VarChar(16)
+  message                    String          @default("")
+  planningCommitmentAccepted Boolean         @default(false) @map("planning_commitment_accepted")
+  teamworkCommitmentAccepted Boolean         @default(false) @map("teamwork_commitment_accepted")
+  targetSlotIndex            Int?            @map("target_slot_index")
+  targetSlotId               String?         @map("target_slot_id")
+  targetSlotLabel            String?         @map("target_slot_label")
+  applicantMbtiType          String?         @map("applicant_mbti_type") @db.VarChar(8)
+  applicantCardTitle         String?         @map("applicant_card_title")
+  applicantInteractionMode   String?         @map("applicant_interaction_mode") @db.VarChar(32)
+  decidedAt                  DateTime?       @map("decided_at")
+  attribution                Json?           @map("attribution")
+  createdAt                  DateTime        @default(now()) @map("created_at")
+  updatedAt                  DateTime        @updatedAt @map("updated_at")
   post                       MatchSquarePost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([postId, applicantUserId])
   @@index([postId, status])
   @@index([applicantUserId])
   @@map("match_square_applications")
+}
+
+/// Round 3: Companion calibration - pre-trip prediction vs post-trip satisfaction
+model CompanionCalibration {
+  id                  String   @id @default(uuid()) @db.Uuid
+  postId              String   @map("post_id") @db.Uuid
+  applicationId       String   @map("application_id") @db.Uuid
+  preTripPrediction   Float    @map("pre_trip_prediction") // 0-1
+  postTripSatisfaction Float   @map("post_trip_satisfaction") // 0-1
+  calibrationCurve    Json?    @map("calibration_curve")
+  dimensionScores     Json?    @map("dimension_scores") // 10维各自校准
+  calibrationAccuracy Float?   @map("calibration_accuracy")
+  needsRetraining     Boolean  @default(false) @map("needs_retraining")
+  tripId              String?  @map("trip_id") @db.Text
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([postId])
+  @@index([applicationId])
+  @@index([tripId])
+  @@index([createdAt(sort: Desc)])
+  @@map("companion_calibrations")
+}
+
+/// Round 3: Decision memory - episodic and semantic memory for self-evolution
+model DecisionMemory {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  tripId              String?  @map("trip_id") @db.Text
+  memoryType          String   @map("memory_type") @db.VarChar(16) // episodic, semantic
+  content             String   @db.Text // Natural language summary
+  embedding           Unsupported("vector")?
+  activationScore     Float    @default(1.0) @map("activation_score") // ACT-R activation
+  lastAccessedAt      DateTime @default(now()) @map("last_accessed_at") @db.Timestamptz(6)
+  accessHistory       Json?    @map("access_history") // Array of access timestamps
+  seasonalityFactor   Json?    @map("seasonality_factor") // Seasonal activation
+  socialCorrection    Json?    @map("social_correction") // Social relationship correction
+  confidence          Float    @default(0.5)
+  sourceMemoryIds     String[] @default([]) @map("source_memory_ids") // For semantic memory
+  metadata            Json?
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([tripId])
+  @@index([memoryType])
+  @@index([activationScore(sort: Desc)])
+  @@index([lastAccessedAt(sort: Desc)])
+  @@map("decision_memories")
+}
+
+/// Round 3: Historical fairness counter for sequential group fairness
+model GroupFairnessCounter {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @unique @map("user_id") @db.Uuid
+  satisfactionCount   Int      @default(0) @map("satisfaction_count")
+  totalTrips          Int      @default(0) @map("total_trips")
+  lastSatisfiedAt     DateTime? @map("last_satisfied_at") @db.Timestamptz(6)
+  fairnessWeight      Float    @default(1.0) @map("fairness_weight")
+  metadata            Json?
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([fairnessWeight(sort: Desc)])
+  @@map("group_fairness_counters")
+}
+
+// ─── Gate 1 Human-Assisted Concierge (validation experiment) ───
+
+model Gate1Project {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String?  @map("organization_id") @db.Uuid
+  advisorUserId      String   @map("advisor_user_id") @db.VarChar(255)
+  projectManagerId   String?  @map("project_manager_id") @db.VarChar(255)
+  linkedTripId       String?  @map("linked_trip_id") @db.Text
+  title              String   @db.VarChar(255)
+  destination        String?  @db.VarChar(128)
+  cohort             String   @db.VarChar(32)
+  experimentStatus   String   @default("DRAFT") @map("experiment_status") @db.VarChar(32)
+  participantCount   Int?     @map("participant_count")
+  startDate          DateTime? @map("start_date") @db.Date
+  endDate            DateTime? @map("end_date") @db.Date
+  metadata           Json?
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  baselines           Gate1ExperimentBaseline[]
+  participants        Gate1Participant[]
+  privacyAssignments  Gate1PrivacyAnalystAssignment[]
+  sanitizedConstraints Gate1SanitizedConstraint[]
+  conflictReports     Gate1ConflictReport[]
+  candidateStrategies Gate1CandidateStrategy[]
+  decisions           Gate1AdvisorDecision[]
+  manualWorkLogs      Gate1ManualWorkLog[]
+  analyticsEvents     Gate1AnalyticsEvent[]
+  accessAuditLogs     Gate1AccessAuditLog[]
+  readinessReports    Gate1ReadinessReport[]
+  planBs              Gate1PlanB[]
+  travelEvents        Gate1TravelEvent[]
+  outcome             Gate1ProjectOutcome?
+  participantFeedbacks Gate1ParticipantFeedback[]
+  proposalFeedbacks   Gate1ProposalFeedback[]
+  participantTasks    Gate1ParticipantTask[]
+  changeNotices       Gate1ChangeNotice[]
+  notificationOutbox  Gate1NotificationOutbox[]
+
+  @@index([organizationId])
+  @@index([advisorUserId])
+  @@index([cohort, experimentStatus])
+  @@map("gate1_projects")
+}
+
+model Gate1ExperimentBaseline {
+  id                    String   @id @default(uuid()) @db.Uuid
+  projectId             String   @map("project_id") @db.Uuid
+  version               Int      @default(1)
+  submittedBy           String   @map("submitted_by") @db.VarChar(255)
+  submittedAt           DateTime? @map("submitted_at") @db.Timestamptz(6)
+  isConfirmed           Boolean  @default(false) @map("is_confirmed")
+  participantCount      Int?     @map("participant_count")
+  startDate             DateTime? @map("start_date") @db.Date
+  endDate               DateTime? @map("end_date") @db.Date
+  destination           String?  @db.VarChar(128)
+  customerType          String?  @map("customer_type") @db.VarChar(64)
+  budgetRange           String?  @map("budget_range") @db.VarChar(128)
+  currentStage          String?  @map("current_stage") @db.VarChar(64)
+  expectedFirstDraftHours Float? @map("expected_first_draft_hours")
+  expectedTotalHours    Float?   @map("expected_total_hours")
+  expectedRevisionRounds Int?    @map("expected_revision_rounds")
+  difficultyLevel       Int?     @map("difficulty_level")
+  knownConstraints      Json?    @map("known_constraints")
+  knownConflicts        Json?    @map("known_conflicts")
+  knownRisks            Json?    @map("known_risks")
+  pendingConfirmations  Json?    @map("pending_confirmations")
+  mightRejectWithoutTripnara String? @map("might_reject_without_tripnara") @db.VarChar(16)
+  rejectReason          String?  @map("reject_reason") @db.Text
+  estimatedGmvCents     Int?     @map("estimated_gmv_cents")
+  originalPlanSummary   String?  @map("original_plan_summary") @db.Text
+  attachments           Json?
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, version])
+  @@index([projectId, isConfirmed])
+  @@map("gate1_experiment_baselines")
+}
+
+model Gate1Participant {
+  id              String    @id @default(uuid()) @db.Uuid
+  projectId       String    @map("project_id") @db.Uuid
+  userId          String?   @map("user_id") @db.VarChar(255)
+  role            String    @default("PARTICIPANT") @db.VarChar(32)
+  displayName     String    @map("display_name") @db.VarChar(255)
+  contactHint     String?   @map("contact_hint") @db.VarChar(255)
+  inviteToken     String    @unique @map("invite_token") @db.VarChar(64)
+  inviteExpiresAt DateTime? @map("invite_expires_at") @db.Timestamptz(6)
+  inviteRevokedAt DateTime? @map("invite_revoked_at") @db.Timestamptz(6)
+  status          String    @default("INVITED") @db.VarChar(32)
+  invitedAt       DateTime  @default(now()) @map("invited_at") @db.Timestamptz(6)
+  openedAt        DateTime? @map("opened_at") @db.Timestamptz(6)
+  acceptedAt      DateTime? @map("accepted_at") @db.Timestamptz(6)
+  consentedAt     DateTime? @map("consented_at") @db.Timestamptz(6)
+  formStartedAt   DateTime? @map("form_started_at") @db.Timestamptz(6)
+  submittedAt     DateTime? @map("submitted_at") @db.Timestamptz(6)
+  declinedAt      DateTime? @map("declined_at") @db.Timestamptz(6)
+  withdrawnAt     DateTime? @map("withdrawn_at") @db.Timestamptz(6)
+  declineReason   String?   @map("decline_reason") @db.Text
+  reminderCount   Int       @default(0) @map("reminder_count")
+  trustedApplicationId String? @map("trusted_application_id") @db.Uuid
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project            Gate1Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  consentRecords     Gate1ConsentRecord[]
+  preferenceResponses Gate1PreferenceResponse[]
+  privateConstraints Gate1PrivateConstraint[]
+  feedback           Gate1ParticipantFeedback?
+  proposalFeedbacks  Gate1ProposalFeedback[]
+  participantTasks   Gate1ParticipantTask[]
+  changeNoticeAcks   Gate1ChangeNoticeAck[]
+
+  @@index([projectId, status])
+  @@index([userId])
+  @@unique([trustedApplicationId])
+  @@map("gate1_participants")
+}
+
+model Gate1ConsentRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  participantId  String    @map("participant_id") @db.Uuid
+  consentType    String?   @map("consent_type") @db.VarChar(32)
+  consentVersion String    @map("consent_version") @db.VarChar(32)
+  consentText    String    @map("consent_text") @db.Text
+  scope          Json?
+  status         String    @default("PENDING") @db.VarChar(32)
+  grantedAt      DateTime? @map("granted_at") @db.Timestamptz(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  participant Gate1Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId, status])
+  @@map("gate1_consent_records")
+}
+
+model Gate1PreferenceResponse {
+  id            String    @id @default(uuid()) @db.Uuid
+  participantId String    @map("participant_id") @db.Uuid
+  version       Int       @default(1)
+  publicPrefs   Json      @map("public_prefs")
+  status        String    @default("DRAFT") @db.VarChar(16)
+  submittedAt   DateTime? @map("submitted_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  participant Gate1Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, version])
+  @@map("gate1_preference_responses")
+}
+
+model Gate1PrivateConstraint {
+  id                  String   @id @default(uuid()) @db.Uuid
+  participantId       String   @map("participant_id") @db.Uuid
+  fieldKey            String   @map("field_key") @db.VarChar(64)
+  encryptedValue      String   @map("encrypted_value") @db.Text
+  authorizationLevel  String   @map("authorization_level") @db.VarChar(32)
+  version             Int      @default(1)
+  status              String   @default("ACTIVE") @db.VarChar(16)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  participant Gate1Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId, status])
+  @@map("gate1_private_constraints")
+}
+
+model Gate1PrivacyAnalystAssignment {
+  id         String    @id @default(uuid()) @db.Uuid
+  projectId  String    @map("project_id") @db.Uuid
+  analystId  String    @map("analyst_id") @db.VarChar(255)
+  grantedBy  String    @map("granted_by") @db.VarChar(255)
+  startsAt   DateTime  @map("starts_at") @db.Timestamptz(6)
+  endsAt     DateTime  @map("ends_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, analystId])
+  @@map("gate1_privacy_analyst_assignments")
+}
+
+model Gate1SanitizedConstraint {
+  id              String    @id @default(uuid()) @db.Uuid
+  projectId       String    @map("project_id") @db.Uuid
+  participantId   String?   @map("participant_id") @db.Uuid
+  explanation     String    @db.Text
+  impactSummary   String?   @map("impact_summary") @db.Text
+  reviewStatus    String    @default("PENDING") @map("review_status") @db.VarChar(32)
+  reviewedBy      String?   @map("reviewed_by") @db.VarChar(255)
+  reviewedAt      DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  createdBy       String    @map("created_by") @db.VarChar(255)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, reviewStatus])
+  @@map("gate1_sanitized_constraints")
+}
+
+model Gate1ConflictReport {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @map("project_id") @db.Uuid
+  version       Int       @default(1)
+  status        String    @default("DRAFT") @db.VarChar(32)
+  sourceType    String    @default("HUMAN_ASSISTED") @map("source_type") @db.VarChar(32)
+  humanMinutes  Int?      @map("human_minutes")
+  createdBy     String    @map("created_by") @db.VarChar(255)
+  reviewedBy    String?   @map("reviewed_by") @db.VarChar(255)
+  publishedBy   String?   @map("published_by") @db.VarChar(255)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project  Gate1Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  findings Gate1ConflictFinding[]
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+  @@map("gate1_conflict_reports")
+}
+
+model Gate1ConflictFinding {
+  id                   String  @id @default(uuid()) @db.Uuid
+  reportId             String  @map("report_id") @db.Uuid
+  conflictType         String  @map("conflict_type") @db.VarChar(32)
+  severity             String  @db.VarChar(16)
+  confidence           String  @db.VarChar(16)
+  source               String  @db.VarChar(32)
+  baselineStatus       String  @map("baseline_status") @db.VarChar(32)
+  privacyLevel         String  @default("SANITIZED") @map("privacy_level") @db.VarChar(16)
+  title                String  @db.VarChar(255)
+  description          String  @db.Text
+  evidence             Json?
+  resolutionDirection  String? @map("resolution_direction") @db.VarChar(64)
+  isBlocker            Boolean @default(false) @map("is_blocker")
+  advisorFeedback      String? @map("advisor_feedback") @db.VarChar(32)
+  advisorFeedbackNote  String? @map("advisor_feedback_note") @db.Text
+  sortOrder            Int     @default(0) @map("sort_order")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  report Gate1ConflictReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("gate1_conflict_findings")
+}
+
+model Gate1CandidateStrategy {
+  id                 String    @id @default(uuid()) @db.Uuid
+  projectId          String    @map("project_id") @db.Uuid
+  version            Int       @default(1)
+  label              String    @db.VarChar(128)
+  status             String    @default("DRAFT") @db.VarChar(32)
+  sourceType         String    @default("HUMAN_ASSISTED") @map("source_type") @db.VarChar(32)
+  humanMinutes       Int?      @map("human_minutes")
+  strategySummary    String    @map("strategy_summary") @db.Text
+  constraintSatisfaction Json?   @map("constraint_satisfaction")
+  tradeoffs          Json?
+  risks              Json?
+  budgetSummary      String?   @map("budget_summary") @db.Text
+  createdBy          String    @map("created_by") @db.VarChar(255)
+  reviewedBy         String?   @map("reviewed_by") @db.VarChar(255)
+  publishedBy        String?   @map("published_by") @db.VarChar(255)
+  publishedAt        DateTime? @map("published_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project           Gate1Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  decisions         Gate1AdvisorDecision[]
+  proposalFeedbacks Gate1ProposalFeedback[]
+
+  @@unique([projectId, version, label])
+  @@index([projectId, status])
+  @@map("gate1_candidate_strategies")
+}
+
+model Gate1AdvisorDecision {
+  id                      String   @id @default(uuid()) @db.Uuid
+  projectId               String   @map("project_id") @db.Uuid
+  selectedCandidateId     String?  @map("selected_candidate_id") @db.Uuid
+  conflictReportVersion   Int?     @map("conflict_report_version")
+  adoptedNone             Boolean  @default(false) @map("adopted_none")
+  modificationSummary     String?  @map("modification_summary") @db.Text
+  reasonCodes             Json?    @map("reason_codes")
+  reasonText              String?  @map("reason_text") @db.Text
+  materialChange          Boolean  @default(false) @map("material_change")
+  changeTypes             Json?    @map("change_types")
+  changeEvidence          String?  @map("change_evidence") @db.Text
+  valuableButNotAdopted   Boolean  @default(false) @map("valuable_but_not_adopted")
+  rejectionReason         String?  @map("rejection_reason") @db.VarChar(64)
+  submittedBy             String   @map("submitted_by") @db.VarChar(255)
+  submittedAt             DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  secondOrderIntent       String?  @map("second_order_intent") @db.VarChar(32)
+  outcomeNotes            String?  @map("outcome_notes") @db.Text
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project           Gate1Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  selectedCandidate Gate1CandidateStrategy? @relation(fields: [selectedCandidateId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@map("gate1_advisor_decisions")
+}
+
+model Gate1ManualWorkLog {
+  id          String    @id @default(uuid()) @db.Uuid
+  projectId   String    @map("project_id") @db.Uuid
+  taskType    String    @map("task_type") @db.VarChar(64)
+  assigneeId  String    @map("assignee_id") @db.VarChar(255)
+  artifactRef String?   @map("artifact_ref") @db.VarChar(128)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz(6)
+  minutes     Int?
+  status      String    @default("LOGGED") @db.VarChar(32)
+  notes       String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, taskType])
+  @@map("gate1_manual_work_logs")
+}
+
+model Gate1AccessAuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  projectId    String   @map("project_id") @db.Uuid
+  actorId      String   @map("actor_id") @db.VarChar(255)
+  action       String   @db.VarChar(64)
+  resourceType String   @map("resource_type") @db.VarChar(64)
+  resourceId   String?  @map("resource_id") @db.VarChar(128)
+  fieldKey     String?  @map("field_key") @db.VarChar(64)
+  reason       String?  @db.Text
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, actorId])
+  @@index([createdAt(sort: Desc)])
+  @@map("gate1_access_audit_logs")
+}
+
+model Gate1AnalyticsEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  projectId  String   @map("project_id") @db.Uuid
+  cohort     String   @db.VarChar(32)
+  eventName  String   @map("event_name") @db.VarChar(64)
+  actorId    String?  @map("actor_id") @db.VarChar(255)
+  participantId String? @map("participant_id") @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  properties Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, eventName])
+  @@index([cohort, eventName])
+  @@map("gate1_analytics_events")
+}
+
+model Gate1ReadinessReport {
+  id           String    @id @default(uuid()) @db.Uuid
+  projectId    String    @map("project_id") @db.Uuid
+  version      Int       @default(1)
+  status       String    @default("DRAFT") @db.VarChar(32)
+  sourceType   String    @default("HUMAN_ASSISTED") @map("source_type") @db.VarChar(32)
+  humanMinutes Int?      @map("human_minutes")
+  createdBy    String    @map("created_by") @db.VarChar(255)
+  reviewedBy   String?   @map("reviewed_by") @db.VarChar(255)
+  publishedBy  String?   @map("published_by") @db.VarChar(255)
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project  Gate1Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  findings Gate1ReadinessFinding[]
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+  @@map("gate1_readiness_reports")
+}
+
+model Gate1ReadinessFinding {
+  id                String    @id @default(uuid()) @db.Uuid
+  reportId          String    @map("report_id") @db.Uuid
+  dimension         String    @db.VarChar(32)
+  status            String    @db.VarChar(16)
+  title             String    @db.VarChar(255)
+  description       String    @db.Text
+  evidence          Json?
+  responsibleParty  String?   @map("responsible_party") @db.VarChar(128)
+  dueAt             DateTime? @map("due_at") @db.Timestamptz(6)
+  isIncremental     Boolean   @default(true) @map("is_incremental")
+  advisorFeedback   String?   @map("advisor_feedback") @db.VarChar(32)
+  advisorFeedbackNote String? @map("advisor_feedback_note") @db.Text
+  closedAt          DateTime? @map("closed_at") @db.Timestamptz(6)
+  sortOrder         Int       @default(0) @map("sort_order")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  report Gate1ReadinessReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("gate1_readiness_findings")
+}
+
+model Gate1PlanB {
+  id                    String    @id @default(uuid()) @db.Uuid
+  projectId             String    @map("project_id") @db.Uuid
+  version               Int       @default(1)
+  label                 String    @db.VarChar(128)
+  status                String    @default("DRAFT") @db.VarChar(32)
+  sourceType            String    @default("HUMAN_ASSISTED") @map("source_type") @db.VarChar(32)
+  humanMinutes          Int?      @map("human_minutes")
+  riskTitle             String    @map("risk_title") @db.VarChar(255)
+  riskDescription       String?   @map("risk_description") @db.Text
+  triggerCondition      String    @map("trigger_condition") @db.Text
+  latestDecisionAt      DateTime? @map("latest_decision_at") @db.Timestamptz(6)
+  alternativeSummary    String    @map("alternative_summary") @db.Text
+  costSummary           String?   @map("cost_summary") @db.Text
+  impactSummary         String?   @map("impact_summary") @db.Text
+  advisorPreDecision    String    @default("PENDING") @map("advisor_pre_decision") @db.VarChar(16)
+  advisorPreDecisionReason String? @map("advisor_pre_decision_reason") @db.Text
+  triggered             Boolean   @default(false)
+  triggeredAt           DateTime? @map("triggered_at") @db.Timestamptz(6)
+  adopted               Boolean?  @map("adopted")
+  adoptedAt             DateTime? @map("adopted_at") @db.Timestamptz(6)
+  outcomeSummary        String?   @map("outcome_summary") @db.Text
+  createdBy             String    @map("created_by") @db.VarChar(255)
+  reviewedBy            String?   @map("reviewed_by") @db.VarChar(255)
+  publishedBy           String?   @map("published_by") @db.VarChar(255)
+  publishedAt           DateTime? @map("published_at") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  travelEvents Gate1TravelEvent[]
+  changeNotices Gate1ChangeNotice[]
+
+  @@unique([projectId, version, label])
+  @@index([projectId, status])
+  @@map("gate1_plan_b")
+}
+
+model Gate1TravelEvent {
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @map("project_id") @db.Uuid
+  title            String    @db.VarChar(255)
+  description      String?   @db.Text
+  eventType        String    @default("INCIDENT") @map("event_type") @db.VarChar(32)
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  handler          String?   @db.VarChar(128)
+  result           String?   @db.Text
+  responsibleParty String?   @map("responsible_party") @db.VarChar(128)
+  planBId          String?   @map("plan_b_id") @db.Uuid
+  metadata         Json?
+  createdBy        String    @map("created_by") @db.VarChar(255)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  planB   Gate1PlanB?   @relation(fields: [planBId], references: [id], onDelete: SetNull)
+  changeNotices Gate1ChangeNotice[]
+
+  @@index([projectId, occurredAt])
+  @@map("gate1_travel_events")
+}
+
+model Gate1ProjectOutcome {
+  id                     String    @id @default(uuid()) @db.Uuid
+  projectId              String    @unique @map("project_id") @db.Uuid
+  valueRating            Int?      @map("value_rating")
+  valueNotes             String?   @map("value_notes") @db.Text
+  secondOrderIntent      String?   @map("second_order_intent") @db.VarChar(32)
+  secondOrderProvided    Boolean   @default(false) @map("second_order_provided")
+  paymentCommitmentCents Int?      @map("payment_commitment_cents")
+  paymentCommitmentType  String?   @map("payment_commitment_type") @db.VarChar(32)
+  paymentNotes           String?   @map("payment_notes") @db.Text
+  clientRevisionRounds   Int?      @map("client_revision_rounds")
+  advisorActualHours     Float?    @map("advisor_actual_hours")
+  exceptionCostCents     Int?      @map("exception_cost_cents")
+  submittedBy            String    @map("submitted_by") @db.VarChar(255)
+  submittedAt            DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project Gate1Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("gate1_project_outcomes")
+}
+
+model Gate1ParticipantFeedback {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @map("project_id") @db.Uuid
+  participantId   String   @map("participant_id") @db.Uuid
+  rating          Int?
+  wouldRecommend  Boolean? @map("would_recommend")
+  comment         String?  @db.Text
+  submittedAt     DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+
+  project     Gate1Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  participant Gate1Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId])
+  @@index([projectId])
+  @@map("gate1_participant_feedbacks")
+}
+
+model Gate1ProposalFeedback {
+  id                  String    @id @default(uuid()) @db.Uuid
+  projectId           String    @map("project_id") @db.Uuid
+  participantId       String    @map("participant_id") @db.Uuid
+  candidateStrategyId String    @map("candidate_strategy_id") @db.Uuid
+  candidateVersion    Int       @map("candidate_version")
+  response            String    @db.VarChar(32)
+  reasonType          String?   @map("reason_type") @db.VarChar(64)
+  note                String?   @db.Text
+  privateNote         String?   @map("private_note") @db.Text
+  status              String    @default("SUBMITTED") @db.VarChar(16)
+  invalidatedAt       DateTime? @map("invalidated_at") @db.Timestamptz(6)
+  submittedAt         DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+
+  project           Gate1Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  participant       Gate1Participant       @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  candidateStrategy Gate1CandidateStrategy @relation(fields: [candidateStrategyId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, candidateStrategyId])
+  @@index([projectId, status])
+  @@map("gate1_proposal_feedbacks")
+}
+
+model Gate1ParticipantTask {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @map("project_id") @db.Uuid
+  participantId String    @map("participant_id") @db.Uuid
+  taskType      String    @default("READINESS") @map("task_type") @db.VarChar(32)
+  category      String    @db.VarChar(32)
+  title         String    @db.VarChar(255)
+  description   String?   @db.Text
+  priority      String    @default("P1") @db.VarChar(8)
+  blocking      Boolean   @default(false)
+  mandatory     Boolean   @default(true)
+  dueAt         DateTime? @map("due_at") @db.Timestamptz(6)
+  status        String    @default("NOT_STARTED") @db.VarChar(16)
+  evidence      Json?
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(6)
+  waivedAt      DateTime? @map("waived_at") @db.Timestamptz(6)
+  waivedBy      String?   @map("waived_by") @db.VarChar(255)
+  waiveReason   String?   @map("waive_reason") @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project     Gate1Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  participant Gate1Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId, status])
+  @@index([projectId])
+  @@map("gate1_participant_tasks")
+}
+
+model Gate1ChangeNotice {
+  id             String    @id @default(uuid()) @db.Uuid
+  projectId      String    @map("project_id") @db.Uuid
+  severity       String    @default("MEDIUM") @db.VarChar(16)
+  title          String    @db.VarChar(255)
+  whatHappened   String    @map("what_happened") @db.Text
+  impactSummary  String?   @map("impact_summary") @db.Text
+  actionRequired String?   @map("action_required") @db.Text
+  deadline       DateTime? @db.Timestamptz(6)
+  planBId        String?   @map("plan_b_id") @db.Uuid
+  travelEventId  String?   @map("travel_event_id") @db.Uuid
+  requiresAck    Boolean   @default(true) @map("requires_ack")
+  publishedAt    DateTime  @default(now()) @map("published_at") @db.Timestamptz(6)
+  createdBy      String    @map("created_by") @db.VarChar(255)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project      Gate1Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  planB        Gate1PlanB?           @relation(fields: [planBId], references: [id], onDelete: SetNull)
+  travelEvent  Gate1TravelEvent?     @relation(fields: [travelEventId], references: [id], onDelete: SetNull)
+  acks         Gate1ChangeNoticeAck[]
+
+  @@index([projectId])
+  @@map("gate1_change_notices")
+}
+
+model Gate1ChangeNoticeAck {
+  id             String   @id @default(uuid()) @db.Uuid
+  changeNoticeId String   @map("change_notice_id") @db.Uuid
+  participantId  String   @map("participant_id") @db.Uuid
+  acknowledgedAt DateTime @default(now()) @map("acknowledged_at") @db.Timestamptz(6)
+  helpRequested  Boolean  @default(false) @map("help_requested")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  changeNotice Gate1ChangeNotice @relation(fields: [changeNoticeId], references: [id], onDelete: Cascade)
+  participant  Gate1Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([changeNoticeId, participantId])
+  @@map("gate1_change_notice_acks")
+}
+
+model Gate1NotificationOutbox {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String?   @map("project_id") @db.Uuid
+  participantId String?   @map("participant_id") @db.Uuid
+  userId        String?   @map("user_id") @db.VarChar(255)
+  channel       String    @default("EMAIL") @db.VarChar(16)
+  eventType     String    @map("event_type") @db.VarChar(64)
+  dedupeKey     String    @map("dedupe_key") @db.VarChar(128)
+  title         String    @db.VarChar(255)
+  body          String    @db.Text
+  recipient     String?   @db.VarChar(255)
+  status        String    @default("QUEUED") @db.VarChar(16)
+  error         String?   @db.Text
+  sentAt        DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project Gate1Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@unique([eventType, dedupeKey])
+  @@index([status, createdAt])
+  @@map("gate1_notification_outbox")
 }

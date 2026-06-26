@@ -1,5 +1,7 @@
 // src/agent/assistants/planning-assistant/interfaces/planning-assistant.interface.ts
 
+import type { PersonaShellOutput } from '../../../services/persona-shell.service';
+
 /**
  * 规划助手智能体接口定义
  * 
@@ -259,6 +261,9 @@ export interface PlanningAssistantResponse {
     label: string;
     labelCN: string;
   }[];
+
+  /** 三人格评估（含 presentation 单主角表达） */
+  personaEvaluation?: PersonaShellOutput;
 }
 
 /**
@@ -274,5 +279,9 @@ export interface PlanningAssistantRequest {
   context?: {
     currentLocation?: { lat: number; lng: number };
     timezone?: string;
+    /** 规划工作台：已有行程 ID */
+    tripId?: string;
+    /** 规划工作台：ISO 3166-1 alpha-2 国家代码 */
+    countryCode?: string;
   };
 }

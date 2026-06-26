@@ -34,6 +34,7 @@ export function buildTravelEventEnvelope(
     timestamp: options.timestamp ?? new Date().toISOString(),
     requestId: options.requestId,
     metadata: options.metadata,
+    attribution: options.attribution,
   };
 }
 

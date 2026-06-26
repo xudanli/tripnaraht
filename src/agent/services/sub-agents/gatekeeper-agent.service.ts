@@ -10,6 +10,8 @@ import { WeatherAlertSkill } from '../../../skills/world/weather-alert.skill';
 import { AvalancheRiskAssessmentSkill } from '../../../skills/world/avalanche-risk-assessment.skill';
 import { SafetravelGetAdvisoriesSkill } from '../../../skills/world/safetravel-get-advisories.skill';
 import { AlertSeverity } from '../../../iceland-info/dto/safetravel.dto';
+import { PlanState, GateStatus } from '../../../skills/plan/shared/plan-state.types';
+import { RoutePlanDraft } from '../../../trips/decision/shared/world-model.types';
 
 /**
  * Gatekeeper Agent Service (Claude Orchestration)
@@ -408,16 +410,54 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
 
       // 2. 如果有 gatePrecheck，执行快速预检查
       if (this.gatePrecheck) {
-        // TODO: 将 request 转换为 PlanState 格式
-        // const precheckResult = await this.gatePrecheck.execute({ planState, tripId: context.request_id });
-        // 如果预检查失败，直接返回
+        try {
+          const planState = this.convertToPlanState(request, researchData, _context);
+          const precheckResult = await this.gatePrecheck.execute({ planState, tripId: request.trip_id });
+
+          // 如果预检查失败，直接返回
+          if (precheckResult.gateStatus.status === 'REJECT' || precheckResult.gateStatus.status === 'SUGGEST_REPLACE') {
+            this.logger.warn(`[GatekeeperAgent] 预检查失败: ${precheckResult.gateStatus.reasons.join(', ')}`);
+            return this.convertGateStatusToGateResult(precheckResult.gateStatus);
+          }
+
+          // 如果预检查有建议，记录到 researchData
+          if (precheckResult.gateStatus.missingEvidence && precheckResult.gateStatus.missingEvidence.length > 0) {
+            researchData.precheck_missing_evidence = precheckResult.gateStatus.missingEvidence;
+          }
+        } catch (precheckError: any) {
+          this.logger.warn(`[GatekeeperAgent] 预检查出错 (降级处理): ${precheckError?.message}`);
+          researchData.precheck_failed = true;
+          researchData.precheck_error = precheckError?.message;
+        }
       }
 
       // 3. 如果有 gateRunThreeGuardians，执行三人格评审
       if (this.gateRunThreeGuardians) {
-        // TODO: 将 request 转换为 PlanState 格式
-        // const guardiansResult = await this.gateRunThreeGuardians.execute({ planState, tripId: context.request_id });
-        // 将 GateStatus 转换为 GateResult
+        try {
+          const planState = this.convertToPlanState(request, researchData, _context);
+          const guardiansResult = await this.gateRunThreeGuardians.execute({ planState, tripId: request.trip_id });
+
+          // 将 GateStatus 转换为 GateResult
+          const guardianGateResult = this.convertGateStatusToGateResult(guardiansResult.gateStatus);
+
+          // 如果三人格拒绝，直接返回
+          if (guardianGateResult.gate_result === 'BLOCK') {
+            this.logger.warn(`[GatekeeperAgent] 三人格评审拒绝: ${guardianGateResult.violations.map(v => v.detail).join(', ')}`);
+            return guardianGateResult;
+          }
+
+          // 如果三人格有调整建议，合并到软检查结果
+          if (guardianGateResult.required_adjustments && guardianGateResult.required_adjustments.length > 0) {
+            researchData.guardian_adjustments = guardianGateResult.required_adjustments;
+          }
+
+          // 记录三人格结果到 researchData
+          researchData.guardian_results = guardiansResult.gateStatus.guardianResults;
+        } catch (guardiansError: any) {
+          this.logger.warn(`[GatekeeperAgent] 三人格评审出错 (降级处理): ${guardiansError?.message}`);
+          researchData.guardians_failed = true;
+          researchData.guardians_error = guardiansError?.message;
+        }
       }
 
       // 4. 软评分检查（基于 researchData）
@@ -749,5 +789,181 @@ export class ClaudeGatekeeperAgentService implements GatekeeperAgent {
     }
 
     return { ...ICE, name: field === 'origin' ? 'origin' : 'destination' };
+  }
+
+  /**
+   * 将 TripPlanRequest 转换为 PlanState（用于三人格评审）
+   *
+   * 注意：这是一个最小化转换，主要用于 Gate 阶段的三人格评审
+   * 完整的 PlanState 应该由 Planner Agent 在规划阶段构建
+   */
+  private convertToPlanState(
+    request: TripPlanRequest,
+    researchData: Record<string, any>,
+    context: OrchestratorState,
+  ): PlanState {
+    // 提取日期范围
+    let startDate: string;
+    let endDate: string;
+    let days: number;
+
+    if (request.date_range) {
+      startDate = request.date_range.start_date;
+      endDate = request.date_range.end_date;
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    } else if (request.start_date) {
+      startDate = request.start_date;
+      days = request.days || 7;
+      const start = new Date(startDate);
+      const end = new Date(start.getTime() + (days - 1) * 24 * 60 * 60 * 1000);
+      endDate = end.toISOString().split('T')[0];
+    } else {
+      // 默认值
+      const now = new Date();
+      startDate = now.toISOString().split('T')[0];
+      days = 7;
+      const end = new Date(now.getTime() + 6 * 24 * 60 * 60 * 1000);
+      endDate = end.toISOString().split('T')[0];
+    }
+
+    // 构建约束
+    const constraints = {
+      time: {
+        days,
+        startDate,
+        endDate,
+        availableHoursPerDay: request.constraints?.daily_time_window
+          ? (parseInt(request.constraints.daily_time_window.end) - parseInt(request.constraints.daily_time_window.start))
+          : 10,
+      },
+      budget: {
+        total: request.constraints?.budget?.total,
+        currency: request.constraints?.budget?.currency || 'USD',
+      },
+      fitness: {
+        level: request.party?.fitness_level || request.party_profile?.fitness || 'medium',
+        maxDailyAscentM: request.constraints?.max_ascent_m,
+        maxDailyDistanceKm: request.constraints?.max_walk_km,
+      },
+      travelMode: (request.mode === 'drive' ? 'self_drive' : request.mode === 'transit' ? 'public_transit' : 'mixed') as 'mixed' | 'self_drive' | 'public_transit' | 'walking',
+    };
+
+    // 构建最小化的 RoutePlanDraft（用于三人格评审）
+    const itinerary: RoutePlanDraft = {
+      tripId: request.trip_id || context.request_id,
+      routeDirectionId: 'default', // 默认路线方向，实际应该从 researchData 或 request 推断
+      segments: [],
+      // 如果有 researchData 中的路线信息，可以构建更完整的 segments
+      // 这里使用最小化结构，三人格主要检查硬规则
+    };
+
+    // 构建移动性信息
+    const mobility = {
+      transferSegments: [],
+      transferGraph: researchData.transfer_graph,
+    };
+
+    // 构建预算信息
+    const budget = {
+      breakdown: researchData.budget_breakdown,
+      overrun: researchData.overrun_detection,
+    };
+
+    // 构建节奏信息
+    const pace = {
+      timeWindows: researchData.time_windows,
+      fatigueScore: researchData.fatigue_estimate,
+      restPoints: researchData.rest_points,
+    };
+
+    // 初始门控状态
+    const gate: GateStatus = {
+      status: 'NEED_CONFIRM',
+      reasons: ['等待三人格评审'],
+      missingEvidence: [],
+    };
+
+    // 构建证据引用
+    const evidence_refs: any[] = [];
+    if (researchData.transport_evidence) {
+      evidence_refs.push(...researchData.transport_evidence);
+    }
+    if (researchData.poi_evidence) {
+      evidence_refs.push(...researchData.poi_evidence);
+    }
+
+    return {
+      plan_id: request.trip_id || context.request_id,
+      plan_version: 1,
+      constraints,
+      itinerary,
+      mobility,
+      budget,
+      pace,
+      gate,
+      evidence_refs,
+      decision_log_refs: [],
+      status: 'DRAFT',
+      metadata: {
+        request_id: request.request_id,
+        original_request: request,
+      },
+    };
+  }
+
+  /**
+   * 将 GateStatus 转换为 GateResult
+   */
+  private convertGateStatusToGateResult(gateStatus: GateStatus): GateResult {
+    const violations: GateResult['violations'] = [];
+    const adjustments: GateResult['required_adjustments'] = [];
+
+    // 从 reasons 构建 violations
+    if (gateStatus.reasons) {
+      for (const reason of gateStatus.reasons) {
+        violations.push({
+          type: 'SAFETY' as const,
+          severity: 'HARD' as const,
+          detail: reason,
+        });
+      }
+    }
+
+    // 从 guardianResults 提取调整建议
+    if (gateStatus.guardianResults) {
+      if (gateStatus.guardianResults.drdre.verdict === 'ADJUST') {
+        // Dr.Dre 的节奏调整建议映射到 SHORTEN_DAY
+        adjustments.push({
+          action: 'SHORTEN_DAY' as const,
+          why: gateStatus.guardianResults.drdre.evidence.join(', '),
+        });
+      }
+      if (gateStatus.guardianResults.neptune.verdict === 'REPLACE') {
+        adjustments.push({
+          action: 'REPLACE_SEGMENT' as const,
+          why: gateStatus.guardianResults.neptune.evidence.join(', '),
+        });
+      }
+    }
+
+    // 确定最终 gate_result
+    let gateResult: 'ALLOW' | 'BLOCK' | 'ADJUST_REQUIRED' | 'NEED_USER_CONFIRM';
+    if (gateStatus.status === 'REJECT' || gateStatus.status === 'SUGGEST_REPLACE') {
+      gateResult = 'BLOCK';
+    } else if (gateStatus.status === 'NEED_CONFIRM') {
+      gateResult = adjustments.length > 0 ? 'ADJUST_REQUIRED' : 'NEED_USER_CONFIRM';
+    } else {
+      gateResult = 'ALLOW';
+    }
+
+    return {
+      gate_result: gateResult,
+      violations,
+      required_adjustments: adjustments,
+      confidence: gateStatus.status === 'ALLOW' ? 0.9 : 0.7,
+      evidence_refs: [],
+    };
   }
 }

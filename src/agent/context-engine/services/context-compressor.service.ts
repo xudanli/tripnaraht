@@ -7,7 +7,7 @@
  * 参考: docs/CONTEXT_ENGINE_INDUSTRIALIZATION_PLAN.md
  */
 
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { ContextBlock } from '../types/context-package.types';
 import {
   ContextCompressorInput,
@@ -25,7 +25,9 @@ export class ContextCompressorService implements IContextCompressor {
 
   constructor(
     @Optional() private readonly compressionLearning?: CompressionLearningService,
-    @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
+    @Inject(forwardRef(() => SkillsRegistryService))
+    @Optional()
+    private readonly skillsRegistry?: SkillsRegistryService,
   ) {}
 
   async compress(input: ContextCompressorInput): Promise<ContextCompressorOutput> {

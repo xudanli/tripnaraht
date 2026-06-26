@@ -17,6 +17,7 @@ import type {
 import type { TravelEntityRef } from '../types/travel-entity-ref.types';
 import { DEFAULT_NON_TRANSACTION_DISCLOSURE_ZH } from '../types/coverage-disclosure.types';
 import type { TripDependencyChainNode } from './trip-dependency-chain.util';
+import { withCascadeHop } from './cascade-confidence.util';
 
 /** 与 data-contracts RoadStatus 对齐的最小值形状 */
 export interface RoadStatusValue {
@@ -57,14 +58,20 @@ function buildImpactNode(params: {
   message: string;
   recommendation: ImpactRecommendationKind;
   userConfirmationRequired?: string[];
+  rootConfidence: number;
+  hopDepth: number;
 }) {
-  return {
-    entityRef: params.entityRef,
-    riskLevel: params.riskLevel,
-    message: params.message,
-    recommendation: params.recommendation,
-    userConfirmationRequired: params.userConfirmationRequired,
-  };
+  return withCascadeHop(
+    {
+      entityRef: params.entityRef,
+      riskLevel: params.riskLevel,
+      message: params.message,
+      recommendation: params.recommendation,
+      userConfirmationRequired: params.userConfirmationRequired,
+    },
+    params.rootConfidence,
+    params.hopDepth,
+  );
 }
 
 function recommendationForRisk(risk: ImpactRiskLevel, forceAsk = false): ImpactRecommendationKind {
@@ -130,6 +137,9 @@ export function analyzeRoadClosureCascade(
   const road = (input.trigger.value ?? {}) as RoadStatusValue;
   const rootEntity = input.trigger.entityRef;
   const freshness = assessEvidenceFreshness(input.trigger, input.nowMs);
+  const rootConfidence = freshness.strongJudgmentAllowed
+    ? input.trigger.confidence
+    : input.trigger.confidence * 0.7;
   const note = staleNote(freshness, locale);
   const froad = isFroadRoadStatus(road);
   const blocking = isRoadClosureBlocking(road);
@@ -139,6 +149,7 @@ export function analyzeRoadClosureCascade(
       rootEntity,
       rootFactType: 'ROAD',
       affected: [],
+      rootConfidence,
       coverageHint: DEFAULT_NON_TRANSACTION_DISCLOSURE_ZH,
     };
   }
@@ -169,6 +180,8 @@ export function analyzeRoadClosureCascade(
               : locale === 'zh'
                 ? ['请自行确认绕行路线是否可行']
                 : ['Confirm alternate route yourself'],
+        rootConfidence,
+        hopDepth: 1,
       }),
     );
   }
@@ -187,6 +200,8 @@ export function analyzeRoadClosureCascade(
             ? `上游路段受阻，POI「${poi.label ?? poi.entityRef.label}」可能无法按计划抵达${note}`
             : `Upstream road blocked; POI may be unreachable${note}`,
         recommendation: recommendationForRisk(risk),
+        rootConfidence,
+        hopDepth: 2,
       }),
     );
   }
@@ -202,6 +217,8 @@ export function analyzeRoadClosureCascade(
             ? `当日路线「${day.label ?? day.dayDate}」需整体调整顺序或改期${note}`
             : `Day plan may require reordering or rescheduling${note}`,
         recommendation: froad ? 'ASK_USER' : 'ADJUST',
+        rootConfidence,
+        hopDepth: 3,
       }),
     );
   }
@@ -216,6 +233,8 @@ export function analyzeRoadClosureCascade(
             ? `${froad ? 'F-road' : '道路'}状态异常（${reasonLabel}），当前行程链未匹配到具体驾车段${note}`
             : `Road status abnormal; no matching drive segments in chain${note}`,
         recommendation: recommendationForRisk(baseRisk, froad),
+        rootConfidence,
+        hopDepth: 0,
       }),
     );
   }
@@ -224,6 +243,7 @@ export function analyzeRoadClosureCascade(
     rootEntity,
     rootFactType: 'ROAD',
     affected,
+    rootConfidence,
     coverageHint: DEFAULT_NON_TRANSACTION_DISCLOSURE_ZH,
   };
 }
@@ -241,6 +261,9 @@ export function analyzeWeatherWindowCascade(
   const weather = (input.trigger.value ?? {}) as WeatherWindowValue;
   const rootEntity = input.trigger.entityRef;
   const freshness = assessEvidenceFreshness(input.trigger, input.nowMs);
+  const rootConfidence = freshness.strongJudgmentAllowed
+    ? input.trigger.confidence
+    : input.trigger.confidence * 0.7;
   const note = staleNote(freshness, locale);
 
   if (!isWeatherWindowBlocking(weather)) {
@@ -248,6 +271,7 @@ export function analyzeWeatherWindowCascade(
       rootEntity,
       rootFactType: 'WEATHER',
       affected: [],
+      rootConfidence,
       coverageHint: DEFAULT_NON_TRANSACTION_DISCLOSURE_ZH,
     };
   }
@@ -277,6 +301,8 @@ export function analyzeWeatherWindowCascade(
               ? ['请自行确认是否取消或改期户外活动']
               : ['Confirm cancelling or rescheduling outdoor activities yourself']
             : undefined,
+        rootConfidence,
+        hopDepth: 1,
       }),
     );
   }
@@ -294,6 +320,8 @@ export function analyzeWeatherWindowCascade(
             ? `当日「${day.label ?? day.dayDate}」含户外项，建议压缩或 indoor 替代${note}`
             : `Day includes outdoor items; consider compression or indoor alternatives${note}`,
         recommendation: 'ADJUST',
+        rootConfidence,
+        hopDepth: 2,
       }),
     );
   }
@@ -308,6 +336,8 @@ export function analyzeWeatherWindowCascade(
             ? `天气条件不利（风速约 ${Math.round(wind)} m/s），当前行程链未检测到户外 POI${note}`
             : `Adverse weather; no outdoor POIs detected in chain${note}`,
         recommendation: 'DELAY',
+        rootConfidence,
+        hopDepth: 0,
       }),
     );
   }
@@ -316,6 +346,7 @@ export function analyzeWeatherWindowCascade(
     rootEntity,
     rootFactType: 'WEATHER',
     affected,
+    rootConfidence,
     coverageHint: DEFAULT_NON_TRANSACTION_DISCLOSURE_ZH,
   };
 }

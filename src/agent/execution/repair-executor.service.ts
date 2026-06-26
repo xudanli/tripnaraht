@@ -48,6 +48,11 @@ import {
   filterPoisByRejectedIds,
 } from '../../planning-policy/utils/contextual-poi-search-query.util';
 import { buildReplacementRetrievalDecisionTrace } from '../../planning-policy/utils/build-retrieval-decision-trace.util';
+import {
+  extractPreserveGoalsFromState,
+  findViolatedMustPreserveGoals,
+  buildPreserveViolationFatalMessage,
+} from '../../trips/experience-fulfillment/utils/repair-preserve-guard.util';
 import { detectItineraryGapsV1, gapRetrievalIntentQuerySuffix } from '../../planning-policy/utils/detect-itinerary-gaps.util';
 
 @Injectable()
@@ -1823,6 +1828,22 @@ export class RepairExecutorService implements IRepairExecutor {
       const removedScore = pool[0]!.score;
       const removed = items.splice(insertIdx, 1)[0];
       day.items = items;
+
+      const preserveGoals = extractPreserveGoalsFromState(dso);
+      const violated = findViolatedMustPreserveGoals(removed as Record<string, unknown>, preserveGoals);
+      if (violated.length > 0) {
+        return {
+          ok: false,
+          producedFatal: {
+            code: 'UNKNOWN',
+            class: 'FATAL',
+            message: buildPreserveViolationFatalMessage(violated),
+            source: 'OTHER',
+            at: new Date().toISOString(),
+            suggestedActions: [{ action: 'ASK_USER', detail: 'must_preserve experience intent blocked removal' }],
+          },
+        };
+      }
 
       const removedId = String(removed?.location_ref?.place_id ?? removed?.poi_id ?? removed?.id ?? removed?.place_id ?? '');
       if (removedId && anchors.has(removedId)) {

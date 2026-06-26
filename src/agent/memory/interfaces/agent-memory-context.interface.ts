@@ -4,6 +4,7 @@ import type { RouteDirectionDecisionMemory } from './route-direction-decision-me
 import type { TripTaskMemory, TripTaskRecoveryAuditLine } from '../../context-engine/interfaces/trip-task-memory.interface';
 import type { DecisionMemory } from '../decision-memory/decision-memory.types';
 import type { DecisionLedgerSnapshot, LedgerRecomputePlanV1 } from '../decision-ledger/decision-ledger.types';
+import type { DomainInfluenceDigestV1, WishConstraintDigestV1, PrivateWishDigestV1, DecisionProfilingDigestV1, NegotiationDigestV1 } from './trip-intent-digest.types';
 
 /** 单请求 route_and_run 显式提交的同行/体能（不写入 L1 DB；供本链路 Memory / TripPlanRequest 只读消费） */
 export interface RouteRunPartyProfileSnapshot {
@@ -55,6 +56,25 @@ export interface AgentMemoryContext {
   recoveryHistory: TripTaskRecoveryAuditLine[];
   /** L3/L4 演化占位：当前仅占位，避免各服务私拉字段 */
   failurePatterns: string[];
+
+  /**
+   * Trip 域投影：领域影响力治理摘要（主导者/权重/规则确认），供 replay 审计；不含私密愿望正文。
+   * SoT 仍为 trip_domain_* 表；非 L1–L4 持久记忆。
+   */
+  domainInfluenceDigest: DomainInfluenceDigestV1 | null;
+  /**
+   * Trip 域投影：愿望单结构化约束聚合（must_do/must_avoid 等），不含愿望正文。
+   */
+  wishConstraintDigest: WishConstraintDigestV1 | null;
+
+  /** 当前用户私密愿望清单摘要（仅本人条目正文，供决策参考）。 */
+  privateWishDigest: PrivateWishDigestV1 | null;
+
+  /** PDI-4 决策风格画像摘要（Travel Style / Money DNA / 摩擦预警）。 */
+  decisionProfilingDigest: DecisionProfilingDigestV1 | null;
+
+  /** 领域协商任务 + 三人格博弈 + 分摊共识摘要。 */
+  negotiationDigest: NegotiationDigestV1 | null;
 
   loadedAt: string;
   observability: {

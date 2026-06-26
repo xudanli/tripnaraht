@@ -1,7 +1,15 @@
 // src/trips/services/trip-budget.service.ts
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
+import { TripBudgetIntentService } from '../budget-os/services/trip-budget-intent.service';
+import {
+  parseBudgetConfig,
+  resolveBudgetIntent,
+  resolveBudgetStructure,
+} from '../budget-os/utils/budget-config.util';
+import { experienceToActivitiesAlias } from '../budget-os/utils/budget-structure.util';
+import { toInputJsonValue } from '../budget-os/utils/prisma-json.util';
 
 export interface BudgetSummary {
   totalBudget: number;
@@ -98,10 +106,14 @@ export class TripBudgetService {
   private readonly logger = new Logger(TripBudgetService.name);
   private readonly SUPPORTED_CURRENCIES = ['CNY', 'USD', 'EUR', 'JPY'];
   private readonly MIN_BUDGET = 100;
-  private readonly MAX_BUDGET = 1000000;
+  private readonly MAX_BUDGET = 10000000;
   private readonly DEFAULT_ALERT_THRESHOLD = 0.8;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => TripBudgetIntentService))
+    private readonly budgetIntentService: TripBudgetIntentService,
+  ) {}
 
   /**
    * 获取行程预算摘要
@@ -431,79 +443,34 @@ export class TripBudgetService {
       alertThreshold?: number;
     }
   ): Promise<BudgetConstraint> {
-    const trip = await this.prisma.trip.findUnique({
-      where: { id: tripId },
-    });
-
-    if (!trip) {
-      throw new NotFoundException(`行程 ${tripId} 不存在`);
-    }
-
-    // 验证总预算
-    if (constraint.total !== undefined) {
-      if (constraint.total < this.MIN_BUDGET || constraint.total > this.MAX_BUDGET) {
-        throw new BadRequestException(
-          `预算范围必须在 ${this.MIN_BUDGET} - ${this.MAX_BUDGET} ${constraint.currency || 'CNY'} 之间`
-        );
-      }
-    }
-
-    // 验证货币单位
-    const currency = constraint.currency || 'CNY';
-    if (!this.SUPPORTED_CURRENCIES.includes(currency)) {
+    if (constraint.categoryLimits && Object.keys(constraint.categoryLimits).length > 0) {
       throw new BadRequestException(
-        `不支持的货币单位: ${currency}。支持的货币: ${this.SUPPORTED_CURRENCIES.join(', ')}`
+        'categoryLimits 已废弃，请使用 PUT /trips/:tripId/budget/structure 设置 L2 预算结构',
       );
     }
 
-    // 计算每日预算
-    const start = DateTime.fromJSDate(trip.startDate);
-    const end = DateTime.fromJSDate(trip.endDate);
-    const durationDays = Math.floor(end.diff(start, 'days').days) + 1;
-    const totalBudget = constraint.total || 0;
-    const dailyBudget = constraint.dailyBudget || (durationDays > 0 ? totalBudget / durationDays : 0);
-
-    // 验证分类预算总和不超过总预算
-    if (constraint.categoryLimits && totalBudget > 0) {
-      const categorySum = Object.values(constraint.categoryLimits).reduce((sum, val) => sum + (val || 0), 0);
-      if (categorySum > totalBudget) {
-        throw new BadRequestException('分类预算总和不能超过总预算');
-      }
+    if (constraint.total === undefined) {
+      throw new BadRequestException('total 为必填字段');
     }
 
-    // 更新预算配置
-    const existingConfig = (trip.budgetConfig as any) || {};
-    const budgetConfig: any = {
-      ...existingConfig,
-      totalBudget: totalBudget || existingConfig.totalBudget || existingConfig.total || 0,
-      total: totalBudget || existingConfig.totalBudget || existingConfig.total || 0,
-      currency: currency || existingConfig.currency || 'CNY',
-      dailyBudget: dailyBudget || existingConfig.dailyBudget,
-      alertThreshold: constraint.alertThreshold ?? existingConfig.alertThreshold ?? this.DEFAULT_ALERT_THRESHOLD,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (constraint.categoryLimits) {
-      budgetConfig.categoryLimits = constraint.categoryLimits;
-    }
-
-    if (!existingConfig.createdAt) {
-      budgetConfig.createdAt = new Date().toISOString();
-    }
-
-    await this.prisma.trip.update({
-      where: { id: tripId },
-      data: { budgetConfig },
+    const intent = await this.budgetIntentService.upsertFromLegacyConstraint(tripId, {
+      total: constraint.total,
+      currency: constraint.currency,
+      dailyBudget: constraint.dailyBudget,
+      alertThreshold: constraint.alertThreshold,
     });
 
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    const config = parseBudgetConfig(trip?.budgetConfig);
+
     return {
-      total: budgetConfig.totalBudget || budgetConfig.total,
-      currency: budgetConfig.currency,
-      dailyBudget: budgetConfig.dailyBudget,
-      categoryLimits: budgetConfig.categoryLimits,
-      alertThreshold: budgetConfig.alertThreshold,
-      createdAt: budgetConfig.createdAt,
-      updatedAt: budgetConfig.updatedAt,
+      total: intent.total,
+      currency: intent.currency,
+      dailyBudget: intent.dailyBudget,
+      categoryLimits: this.deprecatedCategoryLimitsFromConfig(config),
+      alertThreshold: config.alertThreshold ?? this.DEFAULT_ALERT_THRESHOLD,
+      createdAt: config.createdAt,
+      updatedAt: config.updatedAt,
     };
   }
 
@@ -526,14 +493,13 @@ export class TripBudgetService {
       throw new NotFoundException(`行程 ${tripId} 不存在`);
     }
 
-    const budgetConfig = (trip.budgetConfig as any) || {};
-    if (!budgetConfig.totalBudget && !budgetConfig.total) {
-      // 🆕 如果没有设置预算约束，尝试从准备度接口获取 budgetLevel 并提供默认建议
+    const budgetConfig = parseBudgetConfig(trip.budgetConfig);
+    const intent = resolveBudgetIntent(budgetConfig);
+    if (!intent) {
       const recommendedBudget = await this.getRecommendedBudgetFromReadiness(tripId, trip, userId);
       if (recommendedBudget) {
         return {
           ...recommendedBudget,
-          // 标记为推荐预算（非用户设置）
           _isRecommended: true,
         } as any;
       }
@@ -541,14 +507,32 @@ export class TripBudgetService {
     }
 
     return {
-      total: budgetConfig.totalBudget || budgetConfig.total,
-      currency: budgetConfig.currency || 'CNY',
-      dailyBudget: budgetConfig.dailyBudget,
-      categoryLimits: budgetConfig.categoryLimits,
+      total: intent.total,
+      currency: intent.currency,
+      dailyBudget: intent.dailyBudget,
+      categoryLimits: this.deprecatedCategoryLimitsFromConfig(budgetConfig),
       alertThreshold: budgetConfig.alertThreshold ?? this.DEFAULT_ALERT_THRESHOLD,
       createdAt: budgetConfig.createdAt,
       updatedAt: budgetConfig.updatedAt,
     };
+  }
+
+  /** @deprecated read shim — maps L2 allocations to legacy categoryLimits shape */
+  private deprecatedCategoryLimitsFromConfig(
+    config: ReturnType<typeof parseBudgetConfig>,
+  ): BudgetConstraint['categoryLimits'] | undefined {
+    const structure = resolveBudgetStructure(config, resolveBudgetIntent(config));
+    if (structure) {
+      const aliased = experienceToActivitiesAlias(structure.allocations);
+      return {
+        accommodation: aliased.accommodation,
+        transportation: aliased.transportation,
+        food: aliased.food,
+        activities: aliased.activities,
+        other: aliased.other,
+      };
+    }
+    return config.categoryLimits ?? undefined;
   }
 
   /**
@@ -644,20 +628,23 @@ export class TripBudgetService {
       throw new NotFoundException(`行程 ${tripId} 不存在`);
     }
 
-    // 保留历史数据，只清除预算限制
-    const budgetConfig = (trip.budgetConfig as any) || {};
+    const budgetConfig = parseBudgetConfig(trip.budgetConfig);
     const updatedConfig = {
       ...budgetConfig,
+      budgetIntent: undefined,
+      budgetStructure: undefined,
       totalBudget: null,
       total: null,
       dailyBudget: null,
       categoryLimits: null,
+      gateStatus: undefined,
       deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     await this.prisma.trip.update({
       where: { id: tripId },
-      data: { budgetConfig: updatedConfig },
+      data: { budgetConfig: toInputJsonValue(updatedConfig) },
     });
   }
 

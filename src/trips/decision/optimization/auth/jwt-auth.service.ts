@@ -8,7 +8,7 @@
  * - 权限控制
  */
 
-import { Injectable, Logger, CanActivate, ExecutionContext, UnauthorizedException, SetMetadata } from '@nestjs/common';
+import { Injectable, Logger, CanActivate, ExecutionContext, UnauthorizedException, SetMetadata, Optional } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import * as crypto from 'crypto';
@@ -103,7 +103,7 @@ export class JwtAuthService {
   private readonly logger = new Logger(JwtAuthService.name);
   private readonly config: JwtConfig;
 
-  constructor(config?: Partial<JwtConfig>) {
+  constructor(@Optional() config?: Partial<JwtConfig>) {
     this.config = {
       secret: config?.secret ?? process.env.JWT_SECRET ?? 'decision-os-default-secret-change-me',
       issuer: config?.issuer ?? 'decision-os',
@@ -232,7 +232,7 @@ export class ApiKeyAuthService {
   private readonly keys: Map<string, ApiKeyInfo>;
   private readonly headerName: string;
 
-  constructor(config?: Partial<ApiKeyConfig>) {
+  constructor(@Optional() config?: Partial<ApiKeyConfig>) {
     this.keys = config?.keys ?? new Map();
     this.headerName = config?.headerName ?? 'x-api-key';
 

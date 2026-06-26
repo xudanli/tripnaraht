@@ -34,6 +34,9 @@ export interface ContextBuildInput extends SkillInput {
   
   /** 是否包含私有块 */
   includePrivate?: boolean;
+
+  /** 用户 ID（愿望单私密块 / 画像） */
+  userId?: string;
   
   /** 需要包含的主题块 */
   requiredTopics?: string[];
@@ -97,6 +100,7 @@ export class ContextBuildSkill implements Skill<ContextBuildInput, ContextBuildO
     try {
       const options: ContextPackageOptions = {
         tripId: input.tripId,
+        userId: input.userId,
         phase: input.phase,
         agent: input.agent,
         userQuery: input.userQuery,

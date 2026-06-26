@@ -1,5 +1,7 @@
 import {
+  IsArray,
   IsBoolean,
+  IsDateString,
   IsEnum,
   IsInt,
   IsObject,
@@ -9,8 +11,19 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+const emptyQueryValueToUndefined = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === '' || trimmed === 'undefined' || trimmed === 'null'
+    ? undefined
+    : trimmed;
+};
 
 export class ListPostsQueryDto {
   @ApiPropertyOptional()
@@ -19,13 +32,15 @@ export class ListPostsQueryDto {
   destination?: string;
 
   @ApiPropertyOptional()
+  @Transform(emptyQueryValueToUndefined)
   @IsOptional()
-  @IsString()
+  @IsDateString()
   dateFrom?: string;
 
   @ApiPropertyOptional()
+  @Transform(emptyQueryValueToUndefined)
   @IsOptional()
-  @IsString()
+  @IsDateString()
   dateTo?: string;
 
   @ApiPropertyOptional({ description: 'Comma-separated MBTI types' })
@@ -75,11 +90,11 @@ export class CreatePostDto {
   departureLabel?: string;
 
   @ApiProperty()
-  @IsString()
+  @IsDateString()
   startDate!: string;
 
   @ApiProperty()
-  @IsString()
+  @IsDateString()
   endDate!: string;
 
   @ApiPropertyOptional()
@@ -204,6 +219,75 @@ export class ReviewApplicationDto {
   @ApiProperty({ enum: ['approve', 'reject'] })
   @IsEnum(['approve', 'reject'])
   action!: 'approve' | 'reject';
+
+  // Attribution context fields (optional)
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  @Max(1)
+  compatibilityScore?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEnum(['high', 'medium', 'low'])
+  mbtiCompatibility?: 'high' | 'medium' | 'low';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  requiredSkills?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  applicantSkills?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  scheduleConflict?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEnum(['excellent', 'good', 'poor'])
+  timeAvailability?: 'excellent' | 'good' | 'poor';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEnum(['perfect', 'acceptable', 'poor'])
+  budgetFit?: 'perfect' | 'acceptable' | 'poor';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  captainPreference?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  slotRequirement?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  teamBalance?: {
+    genderBalance?: number;
+    ageBalance?: number;
+    roleBalance?: number;
+  };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  pastCollaboration?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString({ each: true })
+  governanceFlags?: string[];
 }
 
 export class ListApplicationsQueryDto {

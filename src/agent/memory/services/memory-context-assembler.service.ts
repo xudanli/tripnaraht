@@ -27,6 +27,7 @@ import { invalidateLedgerByAnchorDrift, planLedgerRecomputeOrder } from '../deci
 import { mergePendingWorldAnchorsIntoLedger } from '../decision-ledger/ledger-pending-audit.merge.util';
 import type { DecisionLedgerSnapshot } from '../decision-ledger/decision-ledger.types';
 import { LedgerPendingAuditStoreService } from '../decision-ledger/ledger-pending-audit.store.service';
+import { TripIntentDigestService } from './trip-intent-digest.service';
 
 export type MemoryContractObservabilityV1 = {
   revision: 'v1';
@@ -56,6 +57,7 @@ export class MemoryContextAssemblerService {
     @Inject(WORLD_DECISION_MEMORY_ARCHIVE)
     private readonly wdArchive?: WorldDecisionMemoryArchivePort,
     @Optional() private readonly ledgerPendingAudit?: LedgerPendingAuditStoreService,
+    @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
   ) {}
 
   /**
@@ -174,6 +176,39 @@ export class MemoryContextAssemblerService {
     }
     const ledgerRecomputePlan = planLedgerRecomputeOrder(drifted.ledger);
 
+    let domainInfluenceDigest: AgentMemoryContext['domainInfluenceDigest'] = null;
+    let wishConstraintDigest: AgentMemoryContext['wishConstraintDigest'] = null;
+    let privateWishDigest: AgentMemoryContext['privateWishDigest'] = null;
+    let decisionProfilingDigest: AgentMemoryContext['decisionProfilingDigest'] = null;
+    let negotiationDigest: AgentMemoryContext['negotiationDigest'] = null;
+    if (tripId && this.tripIntentDigest) {
+      try {
+        const digests = await this.tripIntentDigest.loadForMemoryContext(tripId, userId);
+        domainInfluenceDigest = digests.domainInfluenceDigest;
+        wishConstraintDigest = digests.wishConstraintDigest;
+        privateWishDigest = digests.privateWishDigest;
+        decisionProfilingDigest = digests.decisionProfilingDigest;
+        negotiationDigest = digests.negotiationDigest;
+        if (domainInfluenceDigest) {
+          layers.push('trip_domain_influence_digest');
+        }
+        if (wishConstraintDigest) {
+          layers.push('trip_wish_constraint_digest');
+        }
+        if (privateWishDigest) {
+          layers.push('trip_private_wish_digest');
+        }
+        if (decisionProfilingDigest) {
+          layers.push('trip_decision_profiling_digest');
+        }
+        if (negotiationDigest) {
+          layers.push('trip_negotiation_digest');
+        }
+      } catch (e: any) {
+        this.logger.warn(`MemoryContextAssembler: trip intent digest failed: ${e?.message ?? e}`);
+      }
+    }
+
     const ctx: AgentMemoryContext = {
       snapshotId,
       snapshotVersion,
@@ -190,6 +225,11 @@ export class MemoryContextAssemblerService {
       activeTripState,
       recoveryHistory,
       failurePatterns: [],
+      domainInfluenceDigest,
+      wishConstraintDigest,
+      privateWishDigest,
+      decisionProfilingDigest,
+      negotiationDigest,
       loadedAt,
       observability: { layers },
     };

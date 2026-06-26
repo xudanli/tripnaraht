@@ -1,6 +1,7 @@
 import {
   assessEvidenceFreshness,
   buildDefaultCoverageDisclosure,
+  resolveEvidenceWorldTimes,
   travelEntityRefFromPlace,
   TRIPNARA_PRODUCT_BOUNDARY,
 } from './index';
@@ -46,6 +47,32 @@ describe('travel-cognition', () => {
     );
     expect(result.strongJudgmentAllowed).toBe(true);
     expect(result.status).toBe('FRESH');
+  });
+
+  it('honors bi-temporal expiredAt for transaction-time invalidation', () => {
+    const now = Date.parse('2026-06-14T12:00:00.000Z');
+    const result = assessEvidenceFreshness(
+      {
+        factType: 'ROAD',
+        observedAt: '2026-06-14T11:00:00.000Z',
+        validAt: '2026-06-14T11:00:00.000Z',
+        expiredAt: '2026-06-14T11:30:00.000Z',
+      },
+      now,
+    );
+    expect(result.strongJudgmentAllowed).toBe(false);
+    expect(result.status).toBe('EXPIRED');
+    expect(result.reason).toMatch(/expiredAt/);
+  });
+
+  it('resolves world-time aliases from validAt/invalidAt', () => {
+    const times = resolveEvidenceWorldTimes({
+      observedAt: '2026-06-14T10:00:00.000Z',
+      validAt: '2026-06-14T09:00:00.000Z',
+      invalidAt: '2026-06-14T18:00:00.000Z',
+    });
+    expect(times.validFrom).toBe('2026-06-14T09:00:00.000Z');
+    expect(times.validTo).toBe('2026-06-14T18:00:00.000Z');
   });
 
   it('builds default coverage disclosure without inventory/booking', () => {

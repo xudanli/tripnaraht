@@ -1,0 +1,53 @@
+# Iceland self-hosted routing: OSRM + GraphHopper
+#
+# First-time setup (download + preprocess):
+#   ./scripts/setup-iceland-routing.sh
+#
+# Start services:
+#   docker compose -f docker/docker-compose.routing.yml up -d
+#
+# OSRM:        http://localhost:5001  (5000 is often taken by macOS AirPlay)
+# GraphHopper: http://localhost:8989
+
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: tripnara-osrm-iceland
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    volumes:
+      - ../data/routing:/data
+    command: osrm-routed --algorithm mld /data/iceland-latest.osrm
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 'http://localhost:5000/route/v1/driving/-21.9,64.1;-21.8,64.2?overview=false' | grep -q routes"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  graphhopper:
+    image: israelhikingmap/graphhopper:latest
+    container_name: tripnara-graphhopper-iceland
+    restart: unless-stopped
+    ports:
+      - "8989:8989"
+    environment:
+      JAVA_OPTS: "-Xmx4g -Xms2g"
+    volumes:
+      - ../data/routing:/data
+    command:
+      - --host
+      - "0.0.0.0"
+      - --url
+      - "file:///data/iceland-latest.osm.pbf"
+      - --graph-cache
+      - "/data/graphhopper-iceland"
+    profiles:
+      - graphhopper
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 'http://localhost:8989/health' | grep -q OK"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s

@@ -55,12 +55,15 @@ export class PlanningAssistantController {
       userId: dto.userId,
       message: dto.message,
       language: dto.language,
+      countryCode: dto.context?.countryCode,
       context: dto.context ? {
         currentLocation: dto.context.currentLocation ? {
           lat: dto.context.currentLocation.lat!,
           lng: dto.context.currentLocation.lng!,
         } : undefined,
         timezone: dto.context.timezone,
+        tripId: dto.context.tripId,
+        countryCode: dto.context.countryCode,
       } : undefined,
     });
   }

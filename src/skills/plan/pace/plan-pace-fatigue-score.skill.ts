@@ -81,6 +81,21 @@ export class PlanPaceFatigueScoreSkill implements Skill<PlanPaceFatigueScoreInpu
         // 可以调用 skill dem.get_profile（Registry）获取爬升数据
         // 这里简化
       }
+
+      // 4. 检查徒步/高体力活动。当前 PlanState 不一定有 DEM/GPX，
+      // 先从骨架主题、锚点活动和 POI 元数据做保守启发式，避免徒步行程被评为 0。
+      const activeDays = this.detectActiveOutdoorDays(input.planState.itinerary);
+      if (activeDays.length > 0) {
+        const fitnessLevel = input.planState.constraints.fitness?.level || 'medium';
+        const multiplier = fitnessLevel === 'low' ? 1.25 : fitnessLevel === 'high' ? 0.75 : 1;
+        const severity = Math.min(Math.round((activeDays.length * 18 + Math.max(0, activeDays.length - 2) * 8) * multiplier), 100);
+        fatigueDrivers.push({
+          type: 'long_walk',
+          severity,
+          description: `${activeDays.length} 天包含徒步或高体力户外活动`,
+        });
+        totalScore += severity * 0.35;
+      }
       
       // 计算最终评分（0-100，越高越疲劳）
       const paceScore = Math.min(totalScore, 100);
@@ -107,5 +122,48 @@ export class PlanPaceFatigueScoreSkill implements Skill<PlanPaceFatigueScoreInpu
       this.logger.error(`计算疲劳评分失败: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  private detectActiveOutdoorDays(itinerary: any): number[] {
+    const activeKeywords = [
+      'hike',
+      'hiking',
+      'trek',
+      'trekking',
+      'trail',
+      'volcano',
+      'glacier',
+      '徒步',
+      '火山',
+      '冰川',
+      '登山',
+      '步道',
+      '穿越',
+    ];
+    const days = new Set<number>();
+    const scan = (value: unknown, fallbackDay?: number) => {
+      if (value == null) return;
+      if (Array.isArray(value)) {
+        value.forEach(item => scan(item, fallbackDay));
+        return;
+      }
+      if (typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+        const day = typeof obj.day === 'number' ? obj.day : fallbackDay;
+        const text = Object.values(obj)
+          .filter(v => typeof v === 'string')
+          .join(' ')
+          .toLowerCase();
+        if (day && activeKeywords.some(k => text.includes(k.toLowerCase()))) {
+          days.add(day);
+        }
+        for (const child of Object.values(obj)) {
+          if (typeof child === 'object') scan(child, day);
+        }
+      }
+    };
+
+    scan(itinerary);
+    return [...days].sort((a, b) => a - b);
   }
 }

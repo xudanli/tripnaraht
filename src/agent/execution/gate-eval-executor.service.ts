@@ -25,6 +25,7 @@ import { driveSafetyWindThresholdMps } from '../../trips/ontology/environment/we
 import { evaluateConflictMatrix, type ConflictMatrixRule } from '../../trips/decision/shared/conflict-matrix.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getWeatherForTime } from '../../trips/ontology/environment/environment-domain.util';
+import { enrichPatentGateConstraintExtensions } from '../../decision/kernel/patent/patent-gate-constraints.util';
 
 @Injectable()
 export class GateEvalExecutorService implements IGateEvalExecutor {
@@ -117,7 +118,11 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       };
       const hasFailureRisk = readinessBlockers.some((b: any) => b?.type === 'FAILURE_RISK');
       return {
-        constraints: { feasible: false, violations: gateResult.violations, gateOutcome: 'BLOCK' },
+        constraints: this.finalizePatentConstraints(dso, {
+          feasible: false,
+          violations: gateResult.violations,
+          gateOutcome: 'BLOCK',
+        }),
         gateResult,
         alternatives: this.alternativesForBlockedGate(gateResult, hasFailureRisk ? 'failure_risk' : 'readiness'),
       };
@@ -132,7 +137,11 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         confidence: 0.8,
       };
       return {
-        constraints: { feasible: false, violations: [], gateOutcome: 'NEED_USER_CONFIRM' },
+        constraints: this.finalizePatentConstraints(dso, {
+          feasible: false,
+          violations: [],
+          gateOutcome: 'NEED_USER_CONFIRM',
+        }),
         gateResult,
       };
     }
@@ -178,7 +187,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         confidence: gateResult.confidence ?? 0.8,
       };
       return {
-        constraints,
+        constraints: this.finalizePatentConstraints(dso, constraints),
         gateResult: gateResultLike,
         alternatives:
           gateResultLike.gate_result === 'BLOCK'
@@ -206,14 +215,18 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       confidence: 0.8,
     };
     return {
-      constraints: {
+      constraints: this.finalizePatentConstraints(dso, {
         feasible: gateResult.gate_result === 'ALLOW',
         violations: gateResult.violations,
         feasibleActions: [],
         gateOutcome: gateResult.gate_result,
-      },
+      }),
       gateResult,
     };
+  }
+
+  private finalizePatentConstraints(dso: DecisionState, constraints: ConstraintReport): ConstraintReport {
+    return enrichPatentGateConstraintExtensions(dso, constraints);
   }
 
   private async evaluateAdmissionAndSpatialAtoms(

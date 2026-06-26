@@ -78,6 +78,12 @@ export class ReadinessDecisionRepairBridgeService {
     return engine.repairPlan(state, plan, trigger);
   }
 
+  /** 当前 Prisma 行程投影为 TripPlan（preview diff 的 before 基准） */
+  async loadCurrentTripPlan(tripId: string): Promise<TripPlan> {
+    const trip = await this.loadTrip(tripId);
+    return buildTripPlanFromPrismaTrip(trip);
+  }
+
   private getDecisionEngine(): TripDecisionEngineService | null {
     if (this.decisionEngine) {
       return this.decisionEngine;

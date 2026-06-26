@@ -13,6 +13,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  HttpCode,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { RouteDirectionsService } from './route-directions.service';
@@ -30,6 +31,7 @@ import { ScoreBreakdown } from './interfaces/route-direction-explanation.interfa
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
 import { CreateTripFromRouteTemplateDto } from './dto/create-trip-from-template.dto';
+import { LaunchRecruitmentFromTemplateDto } from './dto/launch-recruitment-from-template.dto';
 import { AddPoiToTemplateDto } from './dto/add-poi-to-template.dto';
 import { RemovePoiFromTemplateDto } from './dto/remove-poi-from-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
@@ -44,6 +46,42 @@ import { DecisionActionExecutorService } from '../world-facts/decision-action-ex
 import { ActionDispatcherService } from './services/action-dispatcher.service';
 import { RouteDecisionEngineService } from './services/route-decision-engine.service';
 import { DecisionExecutionReconciliationService } from '../world-facts/decision-execution-reconciliation.service';
+import { MatchSquareService } from '../match-square/services/match-square.service';
+
+function parseBooleanQueryParam(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return undefined;
+}
+
+function buildTemplateItinerarySummary(dayPlans: any[] | undefined): string {
+  if (!Array.isArray(dayPlans) || dayPlans.length === 0) return '';
+  return dayPlans
+    .slice(0, 6)
+    .map(day => {
+      const dayNo = day?.day ?? '';
+      const theme = typeof day?.theme === 'string' ? day.theme.trim() : '';
+      return theme ? `D${dayNo} ${theme}` : `D${dayNo}`;
+    })
+    .join(' · ');
+}
+
+function resolveRouteTemplateCatalogId(template: any, body: LaunchRecruitmentFromTemplateDto): string {
+  const metadata = template?.metadata && typeof template.metadata === 'object' ? template.metadata : {};
+  const fromBody = body.routeTemplateCatalogId?.trim();
+  const fromMetadata =
+    typeof metadata.catalogId === 'string'
+      ? metadata.catalogId
+      : typeof metadata.routeTemplateCatalogId === 'string'
+        ? metadata.routeTemplateCatalogId
+        : undefined;
+  return fromBody || fromMetadata || `route_template_${template.id}`;
+}
 
 @ApiTags('route-directions')
 @Controller('route-directions')
@@ -61,6 +99,7 @@ export class RouteDirectionsController {
     private readonly actionDispatcher: ActionDispatcherService,
     private readonly routeDecisionEngine: RouteDecisionEngineService,
     private readonly executionReconciliation: DecisionExecutionReconciliationService,
+    private readonly matchSquareService: MatchSquareService,
   ) {}
 
   @Public()
@@ -90,9 +129,15 @@ export class RouteDirectionsController {
   @ApiQuery({ name: 'isActive', required: false, description: '是否激活', type: Boolean })
   @ApiQuery({ name: 'month', required: false, description: '月份（1-12）', type: Number })
   @ApiResponse({ status: 200, description: '成功返回路线方向列表' })
-  async findRouteDirections(@Query() query: QueryRouteDirectionDto) {
+  async findRouteDirections(
+    @Query() query: QueryRouteDirectionDto,
+    @Query('isActive') rawIsActive?: string,
+  ) {
     try {
-      const results = await this.routeDirectionsService.findRouteDirections(query);
+      const results = await this.routeDirectionsService.findRouteDirections({
+        ...query,
+        isActive: parseBooleanQueryParam(rawIsActive) ?? query.isActive,
+      });
       return successResponse(results);
     } catch (error: any) {
       this.logger.error('Failed to find route directions', error);
@@ -113,12 +158,13 @@ export class RouteDirectionsController {
   @ApiResponse({ status: 200, description: '成功返回路线模板列表' })
   async getRouteTemplates(
     @Query() query: QueryRouteTemplateDto,
+    @Query('isActive') rawIsActive?: string,
   ) {
     try {
       const result = await this.routeDirectionsService.findRouteTemplates({
         routeDirectionId: query.routeDirectionId,
         durationDays: query.durationDays,
-        isActive: query.isActive,
+        isActive: parseBooleanQueryParam(rawIsActive) ?? query.isActive,
         limit: query.limit,
         offset: query.offset,
       });
@@ -712,6 +758,107 @@ export class RouteDirectionsController {
     }
   }
 
+  @Post('templates/:id/launch-recruitment')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: '从路线模板发起搭子广场招募',
+    description: '强绑定路线模板，创建真实招募帖并返回广场详情路径',
+  })
+  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
+  @ApiBody({ type: LaunchRecruitmentFromTemplateDto })
+  @ApiResponse({ status: 200, description: '成功创建招募帖' })
+  async launchRecruitmentFromTemplate(
+    @Param('id', ParseIntPipe) templateId: number,
+    @Body() dto: LaunchRecruitmentFromTemplateDto,
+    @CurrentUser() user: any,
+  ) {
+    try {
+      const userId = user?.userId;
+      const template = await this.routeDirectionsService.findRouteTemplateById(templateId);
+      const routeDirection = template.routeDirection;
+      const titleZh =
+        dto.routeTemplateTitleZh?.trim() ||
+        template.nameCN ||
+        template.name ||
+        routeDirection?.nameCN ||
+        `路线模板 #${template.id}`;
+      const catalogId = resolveRouteTemplateCatalogId(template, dto);
+      const itinerarySummary = buildTemplateItinerarySummary(template.dayPlans);
+      const destination = routeDirection?.nameCN || template.nameCN || template.name || titleZh;
+      const routeTemplateBinding = {
+        catalogId,
+        routeTemplateId: template.id,
+        titleZh,
+      };
+      const routeTemplateMatch = {
+        version: 'route_template_intent_v1',
+        associationHint: `🗺️ 已绑定路线模板：《${titleZh}》`,
+        primaryMatch: {
+          catalogId,
+          routeDirectionName: routeDirection?.nameCN || template.nameCN || titleZh,
+          durationDays: template.durationDays,
+          titleZh,
+          matchPercent: 95,
+          confidence: 'highlight',
+          launchRecruitmentAction: 'confirm_template',
+          slotAugmentations: [],
+        },
+        suggestions: [],
+      };
+
+      const captainMessage =
+        dto.captainMessage?.trim() ||
+        `以路线模板《${titleZh}》发起招募，计划 ${template.durationDays} 天同行。`;
+      const vision = `${captainMessage}${itinerarySummary ? ` 日计划：${itinerarySummary}` : ''}`;
+
+      const post = await this.matchSquareService.createPost(userId, {
+        destination,
+        departureLabel: dto.departureLabel?.trim() || routeDirection?.entryHubs?.[0] || undefined,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        itinerarySummary: itinerarySummary || captainMessage,
+        budgetMinCents: dto.budgetMinCents,
+        budgetMaxCents: dto.budgetMaxCents,
+        slotsNeeded: dto.slotsNeeded,
+        planningStyle: dto.planningStyle,
+        captainMessage,
+        vibeFreeText: vision,
+        routeDirectionId: template.routeDirectionId,
+        routeDirectionName: routeDirection?.nameCN || routeDirection?.name || undefined,
+        vibeParse: {
+          source: 'route_template_launch',
+          routeTemplateCatalogId: catalogId,
+          routeTemplateId: template.id,
+          routeTemplateBinding,
+          routeTemplateMatch,
+          templateName: template.nameCN || template.name,
+          durationDays: template.durationDays,
+        },
+      });
+
+      return successResponse({
+        recruitmentPostId: post.id,
+        matchSquarePath: `/dashboard/tripnara/plaza/${post.id}`,
+        post,
+        routeTemplateMatch,
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(
+          ErrorCode.NOT_FOUND,
+          error.message,
+          { statusCode: 404 }
+        );
+      }
+      this.logger.error('Failed to launch recruitment from route template', error);
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        error instanceof Error ? error.message : 'Failed to launch recruitment from route template',
+        { originalError: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
+
   @Public()
   @Get('by-country/:countryCode')
   @ApiOperation({
@@ -1149,4 +1296,3 @@ export class RouteDirectionsController {
     return reasons.join('。') + '。';
   }
 }
-

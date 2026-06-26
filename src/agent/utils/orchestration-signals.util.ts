@@ -5,6 +5,9 @@ import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 import { isExecutableFlightInventoryQuery } from './flight-inventory-signals.util';
 import { normalizeLiveTools } from './live-tools.util';
+import { isAgentTripComprehensiveAnalysisMessage } from './agent-readiness-phase.util';
+import { isTeamStructuredDiscussionQuery } from './team-structured-discussion.util';
+import { resolveRouteAndRunUserMessage } from './resolve-route-and-run-message.util';
 
 /**
  * 任务类型
@@ -46,6 +49,7 @@ export type RouteRunActionKind =
   | 'TRIP_SCOPED_CONSULTATION'
   | 'BOOKING_OR_DELIVERY_HANDOFF'
   | 'SAFETY_OR_TRADEOFF_REVIEW'
+  | 'TEAM_STRUCTURED_DISCUSSION'
   | 'CLARIFICATION_RESPONSE'
   | 'GENERIC';
 
@@ -245,7 +249,7 @@ function hasReplanningEditSignalBeforeTransportConsult(msg: string, msgLower: st
  * @returns 路由信号
  */
 export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
-  const msg = (req.message ?? '').trim();
+  const msg = resolveRouteAndRunUserMessage(req);
   const msgLower = msg.toLowerCase();
 
   const options = req.options ?? {};
@@ -259,7 +263,10 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
 
   // 推断各项信号（intent_mode 非 AUTO 时覆盖 taskType）
   const inferredTaskType = inferTaskType(req.trip_id, msg, msgLower);
-  let taskType = applyIntentModeToTaskType(intent_mode_requested, inferredTaskType);
+  const teamStructuredDiscussion = isTeamStructuredDiscussionQuery(msg);
+  let taskType = teamStructuredDiscussion
+    ? 'DATA_LOOKUP'
+    : applyIntentModeToTaskType(intent_mode_requested, inferredTaskType);
   /** 前端「深度思考」等场景常误传 intent_mode=GENERIC_QA；已绑定 trip 且用户明确改稿时仍须走 TRIP_PLANNING，避免 ui_surface=consultation */
   taskType = clampTaskTypeForBoundTripReplanning(req.trip_id, msg, msgLower, taskType);
   const complexity = inferComplexity(msg, recentCount);
@@ -315,6 +322,9 @@ function clampTaskTypeForBoundTripReplanning(
 ): TaskType {
   const tid = tripId?.trim();
   if (!tid) return taskType;
+  if (isTeamStructuredDiscussionQuery(msg)) {
+    return taskType === 'TRIP_PLANNING' ? 'DATA_LOOKUP' : taskType;
+  }
   if (isWestfjordsLegTransportPreferenceConsultation(msg, msgLower)) {
     return taskType;
   }
@@ -374,6 +384,9 @@ function inferRouteRunCapability(
   }
   if (isLocalItineraryEditQuery(req.trip_id, msg, msgLower) || taskType === 'CRUD') {
     return { capability: 'CRUD_EDIT', actionKind: 'LOCAL_ITINERARY_EDIT' };
+  }
+  if (isTeamStructuredDiscussionQuery(msg)) {
+    return { capability: 'SAFETY_NEGOTIATION', actionKind: 'TEAM_STRUCTURED_DISCUSSION' };
   }
   if (isSafetyOrTradeoffQuery(msg, msgLower)) {
     return { capability: 'SAFETY_NEGOTIATION', actionKind: 'SAFETY_OR_TRADEOFF_REVIEW' };
@@ -460,6 +473,9 @@ export function isMetaChatQuery(msg: string, msgLower: string): boolean {
  * 供轻量问答 Prompt 与路由共用。
  */
 export function isTripStatusOverviewQuery(msg: string, msgLower: string): boolean {
+  if (isAgentTripComprehensiveAnalysisMessage(msg)) {
+    return true;
+  }
   /** 含「规划」但实为看草稿状态：须在 isTripScopedConsultationQuery 里早于「规划」动词黑名单判断 */
   const tripReadinessZh =
     /规划情况|规划如何|规划得怎么样|查看.{0,12}行程.{0,14}(?:规划|情况)|行程.{0,16}(?:规划情况|说明|总结|解读)|准备度|合理不合理|是否合理|有没有不合理|有没有订酒店|酒店.{0,10}(?:订了|定了|有没有)|用餐安排|中晚餐|(?:午餐|晚餐).{0,10}(?:安排|有没有|订)|伙食|吃住怎么|吃喝怎么安排/.test(
@@ -854,6 +870,9 @@ function inferTaskType(tripId: string | null | undefined, msg: string, msgLower:
 
   // 有 trip_id：默认行程规划，但允许咨询类请求降级为 DATA_LOOKUP（见 isTripScopedConsultationQuery）
   if (tripId) {
+    if (isTeamStructuredDiscussionQuery(msg)) {
+      return 'DATA_LOOKUP';
+    }
     if (isTripScopedConsultationQuery(msg, msgLower)) {
       return 'DATA_LOOKUP';
     }

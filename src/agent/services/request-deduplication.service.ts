@@ -2,6 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
+import { resolveRouteAndRunUserMessage } from '../utils/resolve-route-and-run-message.util';
 
 /**
  * 去重缓存项
@@ -48,7 +49,7 @@ export class RequestDeduplicationService {
     // 生成去重键：基于关键字段（message, user_id, trip_id, options）
     // 注意：不包含 request_id，因为每次请求的 request_id 都不同
     const keyData = {
-      message: request.message,
+      message: resolveRouteAndRunUserMessage(request),
       user_id: request.user_id,
       trip_id: request.trip_id,
       // 只包含关键的 options，忽略时间相关的选项

@@ -48,6 +48,11 @@ import {
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import { budgetCapFromUserIntent, scaleTravelOntologyNounsToBudgetCap } from '../../decision/kernel/travel-ontology-constraints';
 import { ontologyContextToNouns } from '../../decision/kernel/travel-ontology.mapper';
+import {
+  buildTripPhysicalValidationSnapshot,
+  mergeTripPhysicalValidationSnapshot,
+} from '../../domain/ontology/bridge/physical-violation-snapshot.util';
+import { ContingencyOrchestratorService } from '../../decision/contingency/contingency-orchestrator.service';
 
 class MissingRequiredEvidenceError extends Error {
   constructor(
@@ -106,6 +111,7 @@ export class ActionExecutionService {
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly physicalValidator?: PhysicalValidatorService,
     @Optional() private readonly selfHealing?: SelfHealingService,
+    @Optional() private readonly contingencyOrchestrator?: ContingencyOrchestratorService,
   ) {
     // v1 bootstrap: register built-in side effects when registry is available.
     this.sideEffectRegistry?.register(FinancialHoldSideEffect);
@@ -271,6 +277,7 @@ export class ActionExecutionService {
                 gateInput = healed.actionInput;
                 healingPreviewMeta = { is_auto_healed: true, healing_summary: healed.healing_summary };
                 routeSeverity = this.determineActionSeverity(physicalResult.violations);
+                await this.recordSilentHealContingency(request.trip_id, healed.healing_summary);
               } else {
                 routeSeverity = 'INTERRUPT';
               }
@@ -602,7 +609,11 @@ export class ActionExecutionService {
         continue;
       }
 
-      const physicalAtCommit = await this.runPhysicalGate(request.trip_id, action.action_input as Record<string, unknown>);
+      const physicalAtCommit = await this.runPhysicalGate(
+        request.trip_id,
+        action.action_input as Record<string, unknown>,
+        'action_commit',
+      );
       const physicalSnapCommit = toPhysicalValidationSignable(physicalAtCommit);
       const echoedPv =
         String((action as any).physical_validator_version ?? '').trim() ||
@@ -1714,6 +1725,7 @@ export class ActionExecutionService {
   private async runPhysicalGate(
     tripId: string,
     actionInput?: Record<string, unknown> | null,
+    source: 'action_preview' | 'action_commit' = 'action_preview',
   ): Promise<PhysicalEvaluationResult> {
     if (!this.physicalValidator) {
       const evaluated_at = new Date().toISOString();
@@ -1725,7 +1737,36 @@ export class ActionExecutionService {
         blocking: false,
       };
     }
-    return this.physicalValidator.evaluate({ tripId, actionInput: actionInput ?? null });
+    const result = await this.physicalValidator.evaluate({ tripId, actionInput: actionInput ?? null });
+    void this.persistPhysicalValidationSnapshot(tripId, result, actionInput, source);
+    return result;
+  }
+
+  private async persistPhysicalValidationSnapshot(
+    tripId: string,
+    physical: PhysicalEvaluationResult,
+    actionInput?: Record<string, unknown> | null,
+    source: 'action_preview' | 'action_commit' = 'action_preview',
+  ): Promise<void> {
+    if (!tripId?.trim() || !this.prisma) return;
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { metadata: true },
+      });
+      if (!trip) return;
+      const snapshot = buildTripPhysicalValidationSnapshot(physical, { actionInput, source });
+      await this.prisma.trip.update({
+        where: { id: tripId },
+        data: {
+          metadata: mergeTripPhysicalValidationSnapshot(trip.metadata, snapshot),
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[ActionExecution] physical validation snapshot persist failed trip=${tripId}: ${(error as Error).message}`,
+      );
+    }
   }
 
   private userIntentFromPreviewActionInput(ai: Record<string, unknown>): DecisionState['userIntent'] | undefined {
@@ -1832,6 +1873,22 @@ export class ActionExecutionService {
 
     this.logger.log(`[ActionExecution] preview is_auto_healed=true healing_summary=${summary}`);
     return { physical: nextPhysical, actionInput: nextInput, healing_summary: summary };
+  }
+
+  private async recordSilentHealContingency(tripId: string, healingSummary: string): Promise<void> {
+    if (!this.contingencyOrchestrator) return;
+    try {
+      await this.contingencyOrchestrator.trigger({
+        tripId,
+        reason: 'silent_heal:budget_drift',
+        pathId: 'SILENT_HEAL',
+        metadata: { success: true, healing_summary: healingSummary },
+      });
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[ActionExecution] silent heal contingency SLO skipped: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   private computePhysicalGateFingerprint(physical: PhysicalEvaluationResult): string {

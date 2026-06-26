@@ -158,6 +158,7 @@ import { ItineraryGenerateSkill } from './itinerary/itinerary-generate.skill';
 import { ItineraryVerifySkill } from './itinerary/itinerary-verify.skill';
 import { RepairApplySkill } from './itinerary/repair-apply.skill';
 import { ItinerarySmartUpdateSkill } from './itinerary/itinerary-smart-update.skill';
+import { ItineraryTemporalOptimizeSkill } from './itinerary/temporal-constraint-optimizer.skill';
 
 // Plan Skills - Architect
 import { PlanArchitectGenerateSkeletonSkill } from './plan/architect/plan-architect-generate-skeleton.skill';
@@ -513,6 +514,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ItineraryVerifySkill,
     RepairApplySkill,
     ItinerarySmartUpdateSkill,
+    ItineraryTemporalOptimizeSkill,
     
     // Plan Skills - Architect
     PlanArchitectGenerateSkeletonSkill,
@@ -736,6 +738,7 @@ export class SkillsModule {
     @Optional() private readonly itineraryVerifySkill?: ItineraryVerifySkill,
     @Optional() private readonly repairApplySkill?: RepairApplySkill,
     @Optional() private readonly itinerarySmartUpdateSkill?: ItinerarySmartUpdateSkill,
+    @Optional() private readonly itineraryTemporalOptimizeSkill?: ItineraryTemporalOptimizeSkill,
     @Optional() private readonly routePackNewSkeletonSkill?: RoutePackNewSkeletonSkill,
     @Optional() private readonly routePackValidateSkill?: RoutePackValidateSkill,
     @Optional() private readonly routePackGenerateRegressionTestsSkill?: RoutePackGenerateRegressionTestsSkill,
@@ -839,6 +842,10 @@ export class SkillsModule {
     if (this.itinerarySmartUpdateSkill) {
       this.skillsRegistry.registerSkill(this.itinerarySmartUpdateSkill);
       this.logger.debug('Registered ItinerarySmartUpdateSkill');
+    }
+    if (this.itineraryTemporalOptimizeSkill) {
+      this.skillsRegistry.registerSkill(this.itineraryTemporalOptimizeSkill);
+      this.logger.debug('Registered ItineraryTemporalOptimizeSkill');
     }
     
     // 手动注册新 RoutePack Skills（没有 token 的）

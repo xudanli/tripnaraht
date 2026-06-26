@@ -637,10 +637,10 @@ describe('Route-and-Run capability matrix', () => {
     {
       name: '安全节奏协商：三人格评估',
       req: base({ trip_id: 't1', message: '让 Abu、Dr.Dre、Neptune 看看这段行程有没有风险和节奏问题' }),
-      taskType: 'TRIP_PLANNING',
+      taskType: 'DATA_LOOKUP',
       capability: 'SAFETY_NEGOTIATION',
       actionKind: 'SAFETY_OR_TRADEOFF_REVIEW',
-      structured: true,
+      structured: false,
     },
     {
       name: '成功后交付：日历/PDF/分享',
@@ -668,5 +668,20 @@ describe('Route-and-Run capability matrix', () => {
     expect(s.capability).toBe(capability);
     expect(s.actionKind).toBe(actionKind);
     expect(s.requiresStructuredOutput).toBe(structured);
+  });
+
+  it('Plan Studio intent_mode=TRIP_PLANNING + 团队结构化讨论 → DATA_LOOKUP / TEAM_STRUCTURED_DISCUSSION', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: '492ff5d0-8461-461a-b975-3f65474e8108',
+        conversation_context: {
+          recent_messages: ['用户: 住宿选公寓还是木屋？帮团队结构化讨论一下'],
+        },
+        options: { intent_mode: 'TRIP_PLANNING' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.actionKind).toBe('TEAM_STRUCTURED_DISCUSSION');
+    expect(s.capability).toBe('SAFETY_NEGOTIATION');
   });
 });

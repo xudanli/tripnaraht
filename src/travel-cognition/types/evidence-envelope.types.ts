@@ -19,10 +19,19 @@ export interface EvidenceEnvelope<T = unknown> {
   value: T;
   /** 数据源标识（adapter 名、dataset、provider） */
   source: string;
-  /** ISO 8601 — 观测/抓取时间 */
+  /** ISO 8601 — 观测/抓取时间（兼容字段；优先使用 validAt） */
   observedAt: string;
-  /** ISO 8601 — 事实失效时间（可选；预报/路况类通常必填） */
+  /** ISO 8601 — 事实失效时间（兼容字段；优先使用 invalidAt） */
   validUntil?: string;
+  /**
+   * 双时态扩展（Zep/Graphiti 对齐）：
+   * - createdAt / expiredAt：系统事务时间（何时写入 / 何时被 supersede）
+   * - validAt / invalidAt：世界时间（事实何时成立 / 何时失效）
+   */
+  createdAt?: string;
+  expiredAt?: string;
+  validAt?: string;
+  invalidAt?: string;
   /** 0..1 */
   confidence: number;
 }
@@ -51,31 +60,57 @@ export const DEFAULT_STRONG_JUDGMENT_TTL_MS: Record<TravelFactType, number> = {
  * 校验证据是否仍可用于强判断。
  * 过期事实只能用于弱提示，不能支撑 blocker 级结论。
  */
+export function resolveEvidenceWorldTimes(
+  envelope: Pick<EvidenceEnvelope, 'observedAt' | 'validUntil' | 'validAt' | 'invalidAt' | 'expiredAt'>,
+): { validFrom: string; validTo?: string; transactionExpiredAt?: string } {
+  return {
+    validFrom: envelope.validAt ?? envelope.observedAt,
+    validTo: envelope.invalidAt ?? envelope.validUntil,
+    transactionExpiredAt: envelope.expiredAt,
+  };
+}
+
 export function assessEvidenceFreshness(
-  envelope: Pick<EvidenceEnvelope, 'observedAt' | 'validUntil' | 'factType'>,
+  envelope: Pick<
+    EvidenceEnvelope,
+    'observedAt' | 'validUntil' | 'validAt' | 'invalidAt' | 'expiredAt' | 'factType'
+  >,
   nowMs = Date.now(),
   ttlMs?: number,
 ): EvidenceFreshnessResult {
-  const observedMs = Date.parse(envelope.observedAt);
+  const { validFrom, validTo, transactionExpiredAt } = resolveEvidenceWorldTimes(envelope);
+  const observedMs = Date.parse(validFrom);
   if (Number.isNaN(observedMs)) {
     return {
       status: 'UNKNOWN',
       strongJudgmentAllowed: false,
       ageMs: Infinity,
-      reason: 'invalid observedAt',
+      reason: 'invalid validAt/observedAt',
     };
   }
 
   const ageMs = Math.max(0, nowMs - observedMs);
 
-  if (envelope.validUntil) {
-    const validUntilMs = Date.parse(envelope.validUntil);
+  if (transactionExpiredAt) {
+    const expiredMs = Date.parse(transactionExpiredAt);
+    if (!Number.isNaN(expiredMs) && expiredMs < nowMs) {
+      return {
+        status: 'EXPIRED',
+        strongJudgmentAllowed: false,
+        ageMs,
+        reason: 'expiredAt passed (superseded in system)',
+      };
+    }
+  }
+
+  if (validTo) {
+    const validUntilMs = Date.parse(validTo);
     if (!Number.isNaN(validUntilMs) && validUntilMs < nowMs) {
       return {
         status: 'EXPIRED',
         strongJudgmentAllowed: false,
         ageMs,
-        reason: 'validUntil passed',
+        reason: 'invalidAt/validUntil passed',
       };
     }
   }

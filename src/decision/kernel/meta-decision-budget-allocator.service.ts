@@ -97,6 +97,8 @@ export class MetaDecisionBudgetAllocatorService {
 
     const rolloutTopK = Math.round(2 + 6 * entropySignal); // [2,8]
     const planningDepth = entropySignal >= 0.75 ? 4 : entropySignal >= 0.5 ? 3 : entropySignal >= 0.25 ? 2 : 1;
+    const explorationBeta =
+      entropySignal >= 0.85 ? 0.4 : entropySignal >= 0.6 ? 0.25 : entropySignal >= 0.3 ? 0.15 : 0;
 
     return {
       hasUncertainty: true,
@@ -106,6 +108,7 @@ export class MetaDecisionBudgetAllocatorService {
       suggestedSampleSize,
       rolloutTopK,
       planningDepth,
+      explorationBeta,
     };
   }
 

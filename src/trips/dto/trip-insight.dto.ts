@@ -196,11 +196,11 @@ export class TripInsightResponseDto {
   })
   findings!: FindingDto[];
 
-  @ApiProperty({ 
-    description: '准备度摘要',
+  @ApiPropertyOptional({ 
+    description: '准备度摘要（规划阶段 skipReadinessPack 时不返回）',
     type: ReadinessSummaryDto
   })
-  readiness!: ReadinessSummaryDto;
+  readiness?: ReadinessSummaryDto;
 
   @ApiProperty({ 
     description: '整体状态',
