@@ -30,6 +30,15 @@ import {
 } from '../../planning-policy/utils/lunch-strategy.util';
 
 const DEFAULT_BUFFER_MINUTES = Number(process.env.TRIP_CONFLICT_BUFFER_MINUTES) || 15;
+const START_TOO_EARLY_THRESHOLD_MINUTES =
+  Number(process.env.TRIP_CONFLICT_START_TOO_EARLY_THRESHOLD_MINUTES) || 5;
+const TIGHT_TRAVEL_GAP_MINUTES = Number(process.env.TRIP_CONFLICT_TIGHT_TRAVEL_GAP_MINUTES) || 30;
+
+interface TravelSegmentEstimate {
+  travelMinutes: number;
+  travelDistanceMeters: number;
+  travelMode: 'DRIVING' | 'WALKING' | 'TRANSIT';
+}
 
 @Injectable()
 export class TripConflictsService {
@@ -89,6 +98,10 @@ export class TripConflictsService {
     for (let i = 0; i < trip.TripDay.length; i++) {
       const dayConflicts = await this.detectDayConflicts(tripId, trip.TripDay[i], i + 1, lunchStrategy);
       conflicts.push(...dayConflicts);
+    }
+
+    if (!date) {
+      conflicts.push(...await this.detectInterDayTravelConflicts(trip.TripDay));
     }
 
     // 跨日重复检测：同一地点（placeId 或 place 名称）在行程中多天出现
@@ -342,12 +355,12 @@ export class TripConflictsService {
       }
     }
 
-    // 1.5 🆕 检测交通时间不足（可用时间 < 交通时间 + 缓冲）
+    // 1.5 检测交通衔接：按 A→B 路段耗时验算抵达时刻，不使用日程空档冒充交通时长。
     for (let i = 0; i < items.length - 1; i++) {
       const current = items[i];
       const next = items[i + 1];
 
-      if (!current.endTime || !next.startTime || current.type === 'REST' || next.type === 'REST') {
+      if (current.type === 'REST' || next.type === 'REST') {
         continue;
       }
 
@@ -355,89 +368,73 @@ export class TripConflictsService {
       const toCoords = next.placeId ? coordsMap.get(next.placeId) : null;
       if (!fromCoords || !toCoords) continue;
 
-      const currentEnd = DateTime.fromJSDate(current.endTime);
-      const nextStart = DateTime.fromJSDate(next.startTime);
-      const availableMinutes = nextStart.diff(currentEnd, 'minutes').minutes;
+      const estimate = await this.estimateTravelSegment(fromCoords, toCoords, next.travelMode);
+      const currentEnd = current.endTime ? DateTime.fromJSDate(current.endTime) : null;
+      const nextStart = next.startTime ? DateTime.fromJSDate(next.startTime) : null;
+      const fromName = this.getItemPlaceLabel(current);
+      const toName = this.getItemPlaceLabel(next);
+      const distanceKm = Math.round((estimate.travelDistanceMeters / 1000) * 10) / 10;
 
-      // 已有时间重叠则跳过（TIME_CONFLICT 已覆盖）
-      if (availableMinutes <= 0) continue;
-
-      const distanceKm = this.calculateHaversineDistance(
-        fromCoords.lat, fromCoords.lng,
-        toCoords.lat, toCoords.lng
-      );
-      // 优先使用行程项存储的实际交通时间；若无则调用路线 API（与 getDayTravelInfo 一致）；最后回退到统一估算
-      let travelTimeMinutes =
-        next.travelFromPreviousDuration != null && next.travelFromPreviousDuration > 0
-          ? next.travelFromPreviousDuration
-          : null;
-      if (travelTimeMinutes == null) {
-        // 与 getDayTravelInfo 保持一致：优先用 item.travelMode，否则按距离推断
-        const travelMode =
-          (next.travelMode && ['WALKING', 'DRIVING', 'TRANSIT'].includes(next.travelMode))
-            ? next.travelMode
-            : this.travelTimeEstimator.inferTravelMode(distanceKm);
-        if (requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext())) {
-          travelTimeMinutes = this.travelTimeEstimator.estimateDurationMinutes(
-            distanceKm,
-            travelMode,
-          );
-        } else {
-          try {
-            assertRealityWorldReadAllowed(
-              this.logger,
-              'TripConflictsService.getRoutes',
-              'route provider read',
-            );
-            const routes = await this.smartRoutesService.getRoutes(
-              fromCoords.lat, fromCoords.lng,
-              toCoords.lat, toCoords.lng,
-              travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING'
-            );
-            if (routes.length > 0 && routes[0].durationMinutes) {
-              travelTimeMinutes = routes[0].durationMinutes;
-            }
-          } catch (e) {
-            if (e instanceof RealityBypassBlockedError || e instanceof RealityExecutionBlockedError) {
-              throw e;
-            }
-            this.logger.debug(`路线 API 调用失败，使用统一估算: ${(e as Error)?.message}`);
-          }
-          if (travelTimeMinutes == null) {
-            travelTimeMinutes = this.travelTimeEstimator.estimateDurationMinutes(
-              distanceKm,
-              travelMode,
-            );
-          }
-        }
-      }
-      const requiredMinutes = travelTimeMinutes + DEFAULT_BUFFER_MINUTES;
-
-      if (availableMinutes < requiredMinutes) {
-        const shortfallMinutes = Math.ceil(requiredMinutes - availableMinutes);
+      if (!currentEnd || !nextStart) {
         transportInsufficientPairs.add(`${current.id}-${next.id}`);
-
-        conflicts.push({
-          id: `transport-insufficient-${current.id}-${next.id}`,
-          type: ConflictType.TRANSPORT_INSUFFICIENT,
-          severity: ConflictSeverity.HIGH,
-          title: '交通时间不足',
-          description: `从「${current.Place?.nameCN || current.Place?.nameEN || '未知'}」到「${next.Place?.nameCN || next.Place?.nameEN || '未知'}」需要约 ${travelTimeMinutes} 分钟，但仅预留了 ${Math.round(availableMinutes)} 分钟（差 ${shortfallMinutes} 分钟）`,
-          affectedDays: [date],
-          affectedItemIds: [current.id, next.id],
-          travelTimeMinutes,
-          availableMinutes: Math.round(availableMinutes),
-          shortfallMinutes,
-          distanceKm: Math.round(distanceKm * 10) / 10,
-          suggestions: [
-            {
-              action: '调整时间',
-              description: `将下一活动开始时间延后至少 ${shortfallMinutes} 分钟`,
-              impact: '确保有足够时间完成交通',
-            },
-          ],
-        });
+        conflicts.push(this.buildTravelTimingConflict({
+          id: `same-day-travel-${current.id}-${next.id}`,
+          issueKind: 'same_day_travel',
+          title: '交通时间待确认',
+          fromItem: current,
+          toItem: next,
+          fromName,
+          toName,
+          fromDayNumber: _dayIndex,
+          toDayNumber: _dayIndex,
+          affectedDays: [String(_dayIndex)],
+          estimate,
+          distanceKm,
+          priority: 'pending_confirm',
+          severity: ConflictSeverity.LOW,
+          timingSource: 'missing_times',
+        }));
+        continue;
       }
+
+      const availableMinutes = nextStart.diff(currentEnd, 'minutes').minutes;
+      const arriveAt = currentEnd.plus({ minutes: estimate.travelMinutes });
+      const gapMinutes = nextStart.diff(arriveAt, 'minutes').minutes;
+      const isStartTooEarly = gapMinutes < -START_TOO_EARLY_THRESHOLD_MINUTES;
+      const shortfallMinutes = Math.max(0, Math.ceil(-gapMinutes));
+
+      if (!isStartTooEarly && gapMinutes > TIGHT_TRAVEL_GAP_MINUTES) continue;
+
+      const priority = isStartTooEarly ? 'must_handle' : 'suggest_adjust';
+      const severity = isStartTooEarly ? ConflictSeverity.HIGH : ConflictSeverity.MEDIUM;
+      const suggestedTime = arriveAt.plus({ minutes: START_TOO_EARLY_THRESHOLD_MINUTES });
+      transportInsufficientPairs.add(`${current.id}-${next.id}`);
+
+      conflicts.push(this.buildTravelTimingConflict({
+        id: `same-day-travel-${current.id}-${next.id}`,
+        issueKind: 'same_day_travel',
+        title: isStartTooEarly ? '交通时间不足' : '交通缓冲偏紧',
+        fromItem: current,
+        toItem: next,
+        fromName,
+        toName,
+        fromDayNumber: _dayIndex,
+        toDayNumber: _dayIndex,
+        affectedDays: [String(_dayIndex)],
+        estimate,
+        distanceKm,
+        departAt: currentEnd,
+        arriveAt,
+        activityStartAt: nextStart,
+        availableMinutes,
+        gapMinutes,
+        shortfallMinutes,
+        suggestedTime,
+        priority,
+        severity,
+        isStartTooEarly,
+        timingSource: 'computed',
+      }));
     }
 
     // 2. 检测午餐时间窗（若当日已有足够午餐/用餐安排，则不报冲突）
@@ -572,6 +569,99 @@ export class TripConflictsService {
     return conflicts;
   }
 
+  private async detectInterDayTravelConflicts(days: any[]): Promise<ConflictDto[]> {
+    const conflicts: ConflictDto[] = [];
+    if (!days || days.length < 2) return conflicts;
+
+    const placeIds = days
+      .flatMap((day) => day.ItineraryItem ?? [])
+      .map((item: any) => item.placeId)
+      .filter((id: any) => id != null) as number[];
+    const coordsMap = await this.getPlaceCoordinatesMap([...new Set(placeIds)]);
+
+    for (let i = 0; i < days.length - 1; i++) {
+      const prevItems = [...(days[i].ItineraryItem ?? [])].filter((item: any) => item.placeId);
+      const nextItems = [...(days[i + 1].ItineraryItem ?? [])].filter(
+        (item: any) => item.placeId && item.type !== 'REST',
+      );
+      const fromItem = prevItems[prevItems.length - 1];
+      const toItem = nextItems[0];
+      if (!fromItem || !toItem) continue;
+
+      const fromCoords = coordsMap.get(fromItem.placeId);
+      const toCoords = coordsMap.get(toItem.placeId);
+      if (!fromCoords || !toCoords) continue;
+
+      const estimate = await this.estimateTravelSegment(fromCoords, toCoords, toItem.travelMode);
+      const fromEnd = fromItem.endTime ? DateTime.fromJSDate(fromItem.endTime) : null;
+      const toStart = toItem.startTime ? DateTime.fromJSDate(toItem.startTime) : null;
+      const fromName = this.getItemPlaceLabel(fromItem);
+      const toName = this.getItemPlaceLabel(toItem);
+      const distanceKm = Math.round((estimate.travelDistanceMeters / 1000) * 10) / 10;
+
+      if (!fromEnd || !toStart) {
+        conflicts.push(this.buildTravelTimingConflict({
+          id: `inter-day-travel-${fromItem.id}-${toItem.id}`,
+          issueKind: 'inter_day_travel',
+          title: '跨天交通时间待确认',
+          fromItem,
+          toItem,
+          fromName,
+          toName,
+          fromDayNumber: i + 1,
+          toDayNumber: i + 2,
+          affectedDays: [String(i + 1), String(i + 2)],
+          estimate,
+          distanceKm,
+          priority: 'pending_confirm',
+          severity: ConflictSeverity.LOW,
+          timingSource: 'missing_times',
+        }));
+        continue;
+      }
+
+      const availableMinutes = toStart.diff(fromEnd, 'minutes').minutes;
+      const arriveAt = fromEnd.plus({ minutes: estimate.travelMinutes });
+      const gapMinutes = toStart.diff(arriveAt, 'minutes').minutes;
+      const isStartTooEarly = gapMinutes < -START_TOO_EARLY_THRESHOLD_MINUTES;
+      const shortfallMinutes = Math.max(0, Math.ceil(-gapMinutes));
+
+      if (!isStartTooEarly && gapMinutes > TIGHT_TRAVEL_GAP_MINUTES) continue;
+
+      const priority = isStartTooEarly ? 'must_handle' : 'suggest_adjust';
+      const severity = isStartTooEarly ? ConflictSeverity.HIGH : ConflictSeverity.MEDIUM;
+      const suggestedTime = arriveAt.plus({ minutes: START_TOO_EARLY_THRESHOLD_MINUTES });
+
+      conflicts.push(this.buildTravelTimingConflict({
+        id: `inter-day-travel-${fromItem.id}-${toItem.id}`,
+        issueKind: 'inter_day_travel',
+        title: isStartTooEarly ? '跨天交通时间不足' : '跨天交通缓冲偏紧',
+        fromItem,
+        toItem,
+        fromName,
+        toName,
+        fromDayNumber: i + 1,
+        toDayNumber: i + 2,
+        affectedDays: [String(i + 1), String(i + 2)],
+        estimate,
+        distanceKm,
+        departAt: fromEnd,
+        arriveAt,
+        activityStartAt: toStart,
+        availableMinutes,
+        gapMinutes,
+        shortfallMinutes,
+        suggestedTime,
+        priority,
+        severity,
+        isStartTooEarly,
+        timingSource: 'computed',
+      }));
+    }
+
+    return conflicts;
+  }
+
   /**
    * 判断 11:00-14:00 内是否已有足够时长的午餐/用餐活动
    * 若有，则不应再报「午餐时间窗过短」
@@ -670,6 +760,191 @@ export class TripConflictsService {
     const duration = Math.max(0, maxGap);
     const itemIds = overlapping.map((o) => o.id);
     return { duration, itemIds };
+  }
+
+  private getItemPlaceLabel(item: any): string {
+    return item?.Place?.nameCN || item?.Place?.nameEN || item?.title || item?.name || '未知地点';
+  }
+
+  private formatTravelMinutes(minutes: number): string {
+    const rounded = Math.max(0, Math.round(minutes));
+    const hours = Math.floor(rounded / 60);
+    const mins = rounded % 60;
+    if (hours > 0 && mins > 0) return `${hours} 小时 ${mins} 分钟`;
+    if (hours > 0) return `${hours} 小时`;
+    return `${mins} 分钟`;
+  }
+
+  private async estimateTravelSegment(
+    fromCoords: { lat: number; lng: number },
+    toCoords: { lat: number; lng: number },
+    preferredMode?: string | null,
+  ): Promise<TravelSegmentEstimate> {
+    const distanceKm = this.calculateHaversineDistance(
+      fromCoords.lat,
+      fromCoords.lng,
+      toCoords.lat,
+      toCoords.lng,
+    );
+    const travelMode = (
+      preferredMode && ['WALKING', 'DRIVING', 'TRANSIT'].includes(preferredMode)
+        ? preferredMode
+        : this.travelTimeEstimator.inferTravelMode(distanceKm)
+    ) as 'DRIVING' | 'WALKING' | 'TRANSIT';
+    const fallbackDistanceKm = this.estimateRouteDistanceKm(distanceKm, travelMode);
+
+    let travelMinutes: number | null = null;
+    let travelDistanceMeters: number | null = null;
+
+    if (requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext())) {
+      travelMinutes = this.travelTimeEstimator.estimateDurationMinutes(fallbackDistanceKm, travelMode);
+      travelDistanceMeters = Math.round(fallbackDistanceKm * 1000);
+    } else {
+      try {
+        assertRealityWorldReadAllowed(
+          this.logger,
+          'TripConflictsService.getRoutes',
+          'route provider read',
+        );
+        const routes = await this.smartRoutesService.getRoutes(
+          fromCoords.lat,
+          fromCoords.lng,
+          toCoords.lat,
+          toCoords.lng,
+          travelMode,
+        );
+        const route = routes[0] as any;
+        if (route?.durationMinutes) {
+          travelMinutes = route.durationMinutes;
+          travelDistanceMeters =
+            route.distanceMeters != null
+              ? Math.round(route.distanceMeters)
+              : route.distanceKm != null
+                ? Math.round(route.distanceKm * 1000)
+                : Math.round(distanceKm * 1000);
+        }
+      } catch (e) {
+        if (e instanceof RealityBypassBlockedError || e instanceof RealityExecutionBlockedError) {
+          throw e;
+        }
+        this.logger.debug(`路线 API 调用失败，使用统一估算: ${(e as Error)?.message}`);
+      }
+
+      if (travelMinutes == null || travelDistanceMeters == null) {
+        travelMinutes = this.travelTimeEstimator.estimateDurationMinutes(fallbackDistanceKm, travelMode);
+        travelDistanceMeters = Math.round(fallbackDistanceKm * 1000);
+      }
+    }
+
+    return {
+      travelMinutes: Math.max(1, Math.round(travelMinutes)),
+      travelDistanceMeters: Math.max(0, Math.round(travelDistanceMeters)),
+      travelMode,
+    };
+  }
+
+  private estimateRouteDistanceKm(straightDistanceKm: number, travelMode: string): number {
+    if (travelMode === 'DRIVING' && straightDistanceKm >= 50) {
+      return straightDistanceKm * 1.2;
+    }
+    return straightDistanceKm;
+  }
+
+  private buildTravelTimingConflict(input: {
+    id: string;
+    issueKind: 'same_day_travel' | 'inter_day_travel';
+    title: string;
+    fromItem: any;
+    toItem: any;
+    fromName: string;
+    toName: string;
+    fromDayNumber: number;
+    toDayNumber: number;
+    affectedDays: string[];
+    estimate: TravelSegmentEstimate;
+    distanceKm: number;
+    departAt?: DateTime;
+    arriveAt?: DateTime;
+    activityStartAt?: DateTime;
+    availableMinutes?: number;
+    gapMinutes?: number;
+    shortfallMinutes?: number;
+    suggestedTime?: DateTime;
+    priority: NonNullable<ConflictDto['priority']>;
+    severity: ConflictSeverity;
+    isStartTooEarly?: boolean;
+    timingSource: NonNullable<ConflictDto['timingSource']>;
+  }): ConflictDto {
+    const travelText = this.formatTravelMinutes(input.estimate.travelMinutes);
+    const suffix =
+      input.timingSource === 'missing_times'
+        ? '缺少出发或开始时间，需确认交通衔接'
+        : input.isStartTooEarly
+          ? '首项开始时间偏早'
+          : '抵达后缓冲偏紧';
+    const description = `第${input.toDayNumber}天 · ${input.fromName} → ${input.toName}（约 ${input.distanceKm} km）：路上约需 ${travelText}，${suffix}`;
+    const suggestedIso = input.suggestedTime?.toISO() ?? undefined;
+
+    return {
+      id: input.id,
+      type: ConflictType.TRANSPORT_INSUFFICIENT,
+      severity: input.severity,
+      title: input.title,
+      description,
+      affectedDays: input.affectedDays,
+      affectedItemIds: [input.fromItem.id, input.toItem.id],
+      fromItemId: input.fromItem.id,
+      toItemId: input.toItem.id,
+      fromDayNumber: input.fromDayNumber,
+      toDayNumber: input.toDayNumber,
+      fromPlaceLabel: input.fromName,
+      toPlaceLabel: input.toName,
+      fromTime: input.departAt?.toISO() ?? undefined,
+      toTime: input.activityStartAt?.toISO() ?? undefined,
+      departAt: input.departAt?.toISO() ?? undefined,
+      arriveAt: input.arriveAt?.toISO() ?? undefined,
+      activityStartAt: input.activityStartAt?.toISO() ?? undefined,
+      issueKind: input.issueKind,
+      priority: input.priority,
+      travelMode: input.estimate.travelMode,
+      travelMinutes: input.estimate.travelMinutes,
+      travelTimeMinutes: input.estimate.travelMinutes,
+      travelDistanceMeters: input.estimate.travelDistanceMeters,
+      availableMinutes: input.availableMinutes != null ? Math.round(input.availableMinutes) : undefined,
+      gapMinutes: input.gapMinutes != null ? Math.round(input.gapMinutes) : undefined,
+      shortfallMinutes: input.shortfallMinutes != null ? Math.round(input.shortfallMinutes) : undefined,
+      suggestedTime: suggestedIso,
+      distanceKm: input.distanceKm,
+      isStartTooEarly: input.isStartTooEarly,
+      timingSource: input.timingSource,
+      suggestions: [
+        {
+          action: 'adjust_time',
+          description: suggestedIso
+            ? `将「${input.toName}」开始时间调整到 ${suggestedIso}`
+            : `确认「${input.fromName}」和「${input.toName}」的时间锚点`,
+          impact: input.isStartTooEarly ? '消除交通时间不足' : '补足交通衔接缓冲',
+          payload: {
+            suggestedValue: suggestedIso,
+            itemId: input.toItem.id,
+            field: 'startTime',
+          },
+        },
+        ...(input.issueKind === 'inter_day_travel'
+          ? [
+              {
+                action: 'move_to_day',
+                description: `将「${input.toName}」移动到更宽松的一天`,
+                impact: '避免跨天首段交通压缩出发窗口',
+                payload: {
+                  suggestedValue: { dayNumber: input.toDayNumber + 1 },
+                  itemId: input.toItem.id,
+                },
+              },
+            ]
+          : []),
+      ],
+    };
   }
 
   /**
@@ -1354,4 +1629,3 @@ export class TripConflictsService {
   }
 
 }
-

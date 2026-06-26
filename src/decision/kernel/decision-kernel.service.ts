@@ -33,6 +33,7 @@ import { OptimizationEngineAdapterService } from './optimization-engine-adapter.
 import { ContextEngineAdapterService, ContextPackageOverrides } from './context-engine-adapter.service';
 import { FeedbackEngineAdapterService } from './feedback-engine-adapter.service';
 import { inferDecisionMeta } from './decision-meta-inference';
+import { buildExperienceFulfillmentFromVerificationReport } from '../../trips/experience-fulfillment/services/experience-fulfillment.orchestrator';
 import { orchestratorStateToDecisionStatePatch, buildHistoryDeltasFromPatch } from './orchestrator-state-mapper';
 import { MetaDecisionBudgetAllocatorService } from './meta-decision-budget-allocator.service';
 import { refineBeliefWithPomdpIfAvailable } from './research-belief-pomdp-bridge';
@@ -115,6 +116,15 @@ import {
   resolveRoutePlanDraftForPartyCoordination,
   shouldRunPartyCoordination,
 } from './party-coordination-bridge.util';
+import {
+  attachPatentParticlesViewToEnvironment,
+  mapDsoToPatentEnvironmentParticles,
+} from './patent/patent-environment-particles.mapper';
+import {
+  buildPatentPlanCandidatePool,
+  patentCandidatesToDsoField,
+} from './patent/plan-gen-candidate-pool.util';
+import { applyPatentFeedbackLearning } from './patent/patent-feedback-learning.util';
 
 @Injectable()
 export class DecisionKernelService {
@@ -772,7 +782,14 @@ export class DecisionKernelService {
     current: DecisionState,
     patch: DecisionStatePatch,
   ): Promise<{ newState: DecisionState }> {
-    const synced = this.updateState(current, patch);
+    let synced = this.updateState(current, patch);
+    const { patch: learnPatch, historyDelta } = applyPatentFeedbackLearning(synced);
+    if (Object.keys(learnPatch).length > 0) {
+      synced = this.updateState(synced, learnPatch);
+    }
+    if (historyDelta) {
+      synced = this.appendHistoryDelta(synced, historyDelta);
+    }
     this.recordDecisionLog(synced, 'NARRATE_DONE').catch((e: unknown) => {
       this.logger.warn(`[Kernel] executeFeedback recordDecisionLog 失败: ${(e as Error)?.message}`);
     });
@@ -1046,10 +1063,20 @@ export class DecisionKernelService {
         beliefSamples,
       });
 
+      if (process.env.DECISION_OS_PATENT_PARTICLES_VIEW === '1') {
+        const patentView = mapDsoToPatentEnvironmentParticles(newState);
+        newState = this.stateManager.merge(newState, {
+          environmentState: attachPatentParticlesViewToEnvironment(
+            newState.environmentState ?? {},
+            patentView,
+          ),
+        });
+      }
+
       // 专利证据：把元决策预算写入 DSO.history（可追溯审计）
       const metaBudgetDelta: StateHistoryDelta = {
         type: 'meta_budget',
-        summary: `RESEARCH_META_BUDGET(sample=${uncertaintyProfile.suggestedSampleSize ?? 0},topK=${uncertaintyProfile.rolloutTopK ?? 'n/a'},H=${uncertaintyProfile.planningDepth ?? 'n/a'},entropy=${(uncertaintyProfile.entropy01 ?? 0).toFixed(3)},ESS=${(uncertaintyProfile.effectiveParticleCount ?? 0).toFixed(1)})`,
+        summary: `RESEARCH_META_BUDGET(sample=${uncertaintyProfile.suggestedSampleSize ?? 0},topK=${uncertaintyProfile.rolloutTopK ?? 'n/a'},H=${uncertaintyProfile.planningDepth ?? 'n/a'},beta=${uncertaintyProfile.explorationBeta ?? 'n/a'},entropy=${(uncertaintyProfile.entropy01 ?? 0).toFixed(3)},ESS=${(uncertaintyProfile.effectiveParticleCount ?? 0).toFixed(1)})`,
         at: new Date().toISOString(),
         payload: {
           phase: 'RESEARCH',
@@ -1511,10 +1538,19 @@ export class DecisionKernelService {
     } else {
       (sysPatch as any).planGenTerminalFailure = undefined;
     }
-    const newState = this.stateManager.merge(dso, {
+    let newState = this.stateManager.merge(dso, {
       tripState: { planDraft: finalItinerary },
       systemState: sysPatch as any,
     });
+    if (process.env.DECISION_OS_PATENT_PLAN_GEN_CANDIDATES === '1' && dayCount > 0) {
+      const pool = buildPatentPlanCandidatePool(newState, finalItinerary, {
+        topK: newState.uncertaintyProfile?.rolloutTopK ?? 2,
+        explorationBeta: newState.uncertaintyProfile?.explorationBeta ?? 0.4,
+      });
+      newState = this.stateManager.merge(newState, {
+        candidates: patentCandidatesToDsoField(pool),
+      });
+    }
     return { newState, itinerary: finalItinerary };
   }
 
@@ -1680,9 +1716,20 @@ export class DecisionKernelService {
       verifiedAt,
       assertions_triggered: this.deriveVerifyTriggeredAssertions(issues, locked, verifiedAt),
     };
+    const userMessage = String(
+      (locked.userIntent as { message?: string })?.message ??
+        ctx.tripPlanRequest?.message ??
+        '',
+    ).trim();
+    const experienceFulfillment = buildExperienceFulfillmentFromVerificationReport(report, {
+      userMessage,
+      scope: 'TRIP',
+      verificationRunId: `vr-kernel-${verifiedAt}`,
+    });
     const newState = this.stateManager.merge(locked, {
       confidence: Math.max(0.1, (dso.confidence ?? 0.9) + confidenceDelta),
       verification: report,
+      experienceFulfillment,
       systemState: { requestId: ctx.requestId, currentPhase: 'VERIFY', lastUpdatedAt: new Date().toISOString() },
     });
     this.refreshOperationalNegativeOverlayAfterVerifyPhase();

@@ -1,23 +1,77 @@
 // src/transport/services/travel-time-estimator.service.ts
 import { Injectable } from '@nestjs/common';
+import { haversineDistanceKm } from '../utils/geo-distance.util';
+import { estimateIcelandCoordinateTravelTime } from '../utils/iceland-coordinate-travel-time.util';
+
+export type PoiTravelMode = 'WALKING' | 'DRIVING' | 'TRANSIT';
+
+export interface PoiTravelEstimate {
+  distanceKm: number;
+  durationMinutes: number;
+  travelMode: PoiTravelMode;
+}
 
 /**
  * 统一交通时间估算服务
  *
- * 供 getDayTravelInfo（行程交通信息）与 getConflicts（冲突检测）共用，
- * 确保两处展示的交通时间、交通方式、缓冲逻辑一致。
+ * 供 getDayTravelInfo（行程交通信息）、getConflicts（冲突检测）、
+ * 路线模板排程与 transport.search POI 跳点降级共用。
  *
- * 估算公式（与 ItineraryItemsService 保持一致）：
+ * 估算公式：
  * - WALKING: 5 km/h
  * - DRIVING: 60 km/h
  * - TRANSIT: 80 km/h（公交/长途）
  */
 @Injectable()
 export class TravelTimeEstimatorService {
+  haversineDistanceKm(
+    from: { lat: number; lng: number },
+    to: { lat: number; lng: number },
+  ): number {
+    return haversineDistanceKm(from, to);
+  }
+
   /**
-   * 根据直线距离推断交通方式
+   * POI 间交通估算（直线距离 + 模式推断）。
+   * 默认按自驾/包车场景：>1 km 一律 DRIVING，避免 >50 km 误判为城际公交。
    */
-  inferTravelMode(distanceKm: number): 'WALKING' | 'DRIVING' | 'TRANSIT' {
+  estimatePoiTravelMinutes(
+    from: { lat: number; lng: number },
+    to: { lat: number; lng: number },
+    options?: { travelMode?: PoiTravelMode; defaultDriving?: boolean; countryCode?: string; travelDate?: Date },
+  ): PoiTravelEstimate {
+    const distanceKm = this.haversineDistanceKm(from, to);
+    const defaultDriving = options?.defaultDriving !== false;
+    const travelMode =
+      options?.travelMode ??
+      (distanceKm < 1
+        ? 'WALKING'
+        : defaultDriving
+          ? 'DRIVING'
+          : this.inferTravelMode(distanceKm));
+
+    if (travelMode === 'DRIVING' && (!options?.countryCode || options.countryCode.toUpperCase() === 'IS')) {
+      const icelandEstimate = estimateIcelandCoordinateTravelTime(from, to, { travelDate: options?.travelDate });
+      if (icelandEstimate.applies) {
+        return {
+          distanceKm: icelandEstimate.distanceKm,
+          durationMinutes: icelandEstimate.durationMinutes,
+          travelMode,
+        };
+      }
+    }
+
+    return {
+      distanceKm,
+      durationMinutes: this.estimateDurationMinutes(distanceKm, travelMode),
+      travelMode,
+    };
+  }
+
+  /**
+   * 根据直线距离推断交通方式（通用场景，含公交偏好）
+   */
+  inferTravelMode(distanceKm: number): PoiTravelMode {
     if (distanceKm < 2) return 'WALKING';
     if (distanceKm < 50) return 'DRIVING';
     return 'TRANSIT';

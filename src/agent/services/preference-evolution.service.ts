@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { UserProfileLearningService } from './user-profile-learning.service';
+import { DecisionDnaComplianceService } from '../memory/governance/decision-dna-compliance.service';
 
 export type PreferenceEvolutionReason =
   | 'NEGOTIATION_CONFIRMED'
@@ -24,6 +25,7 @@ function key(userId: string, tripId: string | null | undefined): string {
  * - never blocks API responses
  * - throttled per (user, trip)
  * - singleflight per user to avoid concurrent writes clobbering JSON preferences
+ * - PIPL: implicit signals gated by DecisionDnaComplianceService
  */
 @Injectable()
 export class PreferenceEvolutionService {
@@ -31,7 +33,10 @@ export class PreferenceEvolutionService {
   private readonly lastRunMs = new Map<string, number>();
   private readonly inFlightByUser = new Map<string, Promise<void>>();
 
-  constructor(@Optional() private readonly learner?: UserProfileLearningService) {}
+  constructor(
+    @Optional() private readonly learner?: UserProfileLearningService,
+    @Optional() private readonly compliance?: DecisionDnaComplianceService,
+  ) {}
 
   scheduleDecisionDnaSync(params: {
     userId: string | null | undefined;
@@ -48,7 +53,6 @@ export class PreferenceEvolutionService {
     const last = this.lastRunMs.get(k) ?? 0;
     if (now - last < throttle) return;
 
-    // Update last-run immediately to suppress bursts; if the task fails we’ll try again later on next trigger.
     this.lastRunMs.set(k, now);
 
     setImmediate(() => {
@@ -62,7 +66,25 @@ export class PreferenceEvolutionService {
 
     const p = (async () => {
       try {
-        await this.learner!.syncPreferenceToProfile({ userId });
+        if (this.compliance) {
+          const gate = await this.compliance.evaluateSync({ userId, reason });
+          this.compliance.recordAudit({
+            userId,
+            reason,
+            signalSource: gate.signalSource,
+            tier: gate.tier,
+            allowed: gate.allowed,
+            blockedReason: gate.blockedReason,
+          });
+          if (!gate.allowed) {
+            this.logger.debug(
+              `Decision DNA sync skipped (${reason}): ${gate.blockedReason ?? 'blocked'}`,
+            );
+            return;
+          }
+        }
+
+        await this.learner!.syncPreferenceToProfile({ userId, reason });
       } catch (e) {
         this.logger.warn(`Decision DNA sync failed (${reason}): ${(e as Error)?.message ?? e}`);
       } finally {
@@ -74,4 +96,3 @@ export class PreferenceEvolutionService {
     return p;
   }
 }
-

@@ -12,6 +12,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { DateTime } from 'luxon';
 import { CreateRouteDirectionDto } from './dto/create-route-direction.dto';
 import { UpdateRouteDirectionDto } from './dto/update-route-direction.dto';
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
@@ -26,6 +27,45 @@ import {
   stripHikingDetailOverrideFromMetadata,
 } from '../hiking-demo/utils/hiking-detail-override-merge.util';
 import { FitnessAssessmentService } from '../trips/decision/services/fitness-assessment.service';
+import { findPlaceByTemplatePoiNames } from './utils/template-poi-place-match.util';
+import { TravelTimeEstimatorService } from '../transport/services/travel-time-estimator.service';
+import { ProjectMembershipService } from '../identity-governance/services/project-membership.service';
+
+function normalizeBooleanQuery(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return undefined;
+}
+
+function timezoneForDestination(countryCode: string | undefined | null): string {
+  const code = (countryCode || '').toUpperCase().trim();
+  const map: Record<string, string> = {
+    IS: 'Atlantic/Reykjavik',
+    GL: 'America/Godthab',
+    SJ: 'Arctic/Longyearbyen',
+    NO: 'Europe/Oslo',
+    FI: 'Europe/Helsinki',
+    SE: 'Europe/Stockholm',
+    DK: 'Europe/Copenhagen',
+    JP: 'Asia/Tokyo',
+    CN: 'Asia/Shanghai',
+    GB: 'Europe/London',
+    FR: 'Europe/Paris',
+    DE: 'Europe/Berlin',
+    IT: 'Europe/Rome',
+    ES: 'Europe/Madrid',
+    US: 'America/New_York',
+    CA: 'America/Toronto',
+    AU: 'Australia/Sydney',
+    NZ: 'Pacific/Auckland',
+  };
+  return map[code] || 'UTC';
+}
 
 @Injectable()
 export class RouteDirectionsService {
@@ -37,6 +77,8 @@ export class RouteDirectionsService {
     @Optional()
     @Inject(forwardRef(() => FitnessAssessmentService))
     private readonly fitnessAssessment?: FitnessAssessmentService,
+    private travelTimeEstimator: TravelTimeEstimatorService,
+    @Optional() private readonly projectMembership?: ProjectMembershipService,
   ) {}
 
   /**
@@ -743,11 +785,12 @@ export class RouteDirectionsService {
   async findRouteTemplates(options?: {
     routeDirectionId?: number;
     durationDays?: number;
-    isActive?: boolean;
+    isActive?: boolean | string;
     limit?: number;
     offset?: number;
   }): Promise<any[]> {
     const where: any = {};
+    const isActive = normalizeBooleanQuery(options?.isActive);
 
     if (options?.routeDirectionId !== undefined) {
       where.routeDirectionId = options.routeDirectionId;
@@ -757,8 +800,14 @@ export class RouteDirectionsService {
       where.durationDays = options.durationDays;
     }
 
-    if (options?.isActive !== undefined) {
-      where.isActive = options.isActive;
+    if (isActive !== undefined) {
+      where.isActive = isActive;
+      if (isActive === true) {
+        where.routeDirection = {
+          isActive: true,
+          OR: [{ status: 'active' }, { status: null }],
+        };
+      }
     }
 
     const query: any = {
@@ -1552,6 +1601,7 @@ export class RouteDirectionsService {
           metadata: {
             createdFromTemplate: templateId,
             templateName: template.nameCN || template.name,
+            timezone: timezoneForDestination(countryCode),
           } as any,
           updatedAt: new Date(),
         } as any,
@@ -1570,6 +1620,9 @@ export class RouteDirectionsService {
               updatedAt: new Date(),
             } as any,
           });
+          if (this.projectMembership) {
+            await this.projectMembership.syncFromCollaborator(trip.id, userId, 'OWNER', tx);
+          }
           this.logger.debug(`Created TripCollaborator for trip ${trip.id} with userId ${userId}`);
         } catch (error: any) {
           // 如果用户不存在或其他错误，记录警告但不阻止行程创建
@@ -1729,13 +1782,11 @@ export class RouteDirectionsService {
               if (startMatch && endMatch) {
                 const [, startHour, startMin] = startMatch.map(Number);
                 const [, endHour, endMin] = endMatch.map(Number);
-                startTime = new Date(dayDate);
-                startTime.setHours(startHour, startMin, 0, 0);
-                endTime = new Date(dayDate);
-                endTime.setHours(endHour, endMin, 0, 0);
+                startTime = this.createDestinationDateTime(dayDate, startHour, startMin, countryCode);
+                endTime = this.createDestinationDateTime(dayDate, endHour, endMin, countryCode);
               } else {
                 // 解析失败，使用默认计算逻辑
-                const slotDefaultTime = this.calculateSlotTime(dayDate, slot);
+                const slotDefaultTime = this.calculateSlotTime(dayDate, slot, countryCode);
                 startTime = slotDefaultTime.startTime;
                 endTime = slotDefaultTime.endTime;
               }
@@ -1766,7 +1817,7 @@ export class RouteDirectionsService {
             }
           } else {
             // 模板中没有提供时间，使用计算逻辑（考虑交通时间）
-            const slotDefaultTime = this.calculateSlotTime(dayDate, slot);
+            const slotDefaultTime = this.calculateSlotTime(dayDate, slot, countryCode);
             const currentPlaceCoords = candidateCoordsMap.get(slotData.placeId);
             
             if (previousItemEndTime && previousPlaceCoords && currentPlaceCoords) {
@@ -1913,6 +1964,8 @@ export class RouteDirectionsService {
     const poisFromTemplate: Array<{
       id?: number;
       uuid?: string;
+      nameCN?: string;
+      nameEN?: string;
       required?: boolean;
     }> = [];
     const poisIdSet = new Set<number>();
@@ -1938,8 +1991,17 @@ export class RouteDirectionsService {
               required: poi.required || false,
             });
             this.logger.debug(`Added POI: uuid=${poi.uuid}, required=${poi.required || false}`);
+          } else if (poi.nameCN || poi.nameEN) {
+            poisFromTemplate.push({
+              nameCN: poi.nameCN,
+              nameEN: poi.nameEN,
+              required: poi.required || poi.priority === 'MUST_SEE' || false,
+            });
+            this.logger.debug(
+              `Added POI by name fallback: nameCN=${poi.nameCN}, nameEN=${poi.nameEN}`,
+            );
           } else {
-            this.logger.warn(`POI in day ${plan.day} has neither id nor uuid:`, JSON.stringify(poi));
+            this.logger.warn(`POI in day ${plan.day} has no id, uuid, or name:`, JSON.stringify(poi));
           }
         }
       } else {
@@ -1989,14 +2051,81 @@ export class RouteDirectionsService {
           )
       `;
       
-      this.logger.debug(`Found ${places.length} places in database (expected ${poisFromTemplate.length})`);
-      if (places.length < poisFromTemplate.length) {
-        const foundIds = new Set(places.map(p => p.id));
-        const foundUuids = new Set(places.map(p => p.uuid));
+      const templateRefsByPlaceId = new Map<number, Array<{
+        id?: number;
+        uuid?: string;
+        nameCN?: string;
+        nameEN?: string;
+        required?: boolean;
+      }>>();
+      const addTemplateRef = (
+        placeId: number,
+        ref: { id?: number; uuid?: string; nameCN?: string; nameEN?: string; required?: boolean },
+      ) => {
+        const refs = templateRefsByPlaceId.get(placeId) || [];
+        refs.push(ref);
+        templateRefsByPlaceId.set(placeId, refs);
+      };
+
+      for (const place of places) {
+        for (const ref of poisFromTemplate) {
+          if (ref.id && ref.id === place.id) addTemplateRef(place.id, ref);
+          if (ref.uuid && ref.uuid === place.uuid) addTemplateRef(place.id, ref);
+        }
+      }
+
+      let resolvedPlaces = [...places];
+      const foundIds = new Set(places.map(p => p.id));
+      const foundUuids = new Set(places.map(p => p.uuid));
+
+      const nameOnlyRefs = poisFromTemplate.filter(
+        poi => !poi.id && !poi.uuid && (poi.nameCN || poi.nameEN),
+      );
+      for (const ref of nameOnlyRefs) {
+        const matched = await findPlaceByTemplatePoiNames(this.prisma, ref, countryCode);
+        if (matched && !foundIds.has(matched.id)) {
+          const coords = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+            SELECT
+              ST_Y(location::geometry) as lat,
+              ST_X(location::geometry) as lng
+            FROM "Place"
+            WHERE id = ${matched.id} AND location IS NOT NULL
+          `;
+          if (coords.length > 0) {
+            resolvedPlaces.push({
+              id: matched.id,
+              uuid: matched.uuid,
+              nameCN: matched.nameCN,
+              nameEN: matched.nameEN,
+              category: matched.category,
+              lat: coords[0].lat,
+              lng: coords[0].lng,
+            });
+            foundIds.add(matched.id);
+            foundUuids.add(matched.uuid);
+            addTemplateRef(matched.id, ref);
+            this.logger.debug(
+              `Name fallback matched ${ref.nameEN || ref.nameCN} → id=${matched.id}`,
+            );
+          }
+        } else if (matched) {
+          addTemplateRef(matched.id, ref);
+        }
+      }
+
+      this.logger.debug(
+        `Found ${resolvedPlaces.length} places in database (expected ${poisFromTemplate.length})`,
+      );
+      if (resolvedPlaces.length < poisFromTemplate.length) {
+        const resolvedNameKeys = new Set(
+          resolvedPlaces.flatMap(p => [p.nameCN, p.nameEN].filter(Boolean)),
+        );
         const missingPois = poisFromTemplate.filter(poi => {
           if (poi.id) return !foundIds.has(poi.id);
           if (poi.uuid) return !foundUuids.has(poi.uuid);
-          return true;
+          if (poi.nameCN && resolvedNameKeys.has(poi.nameCN)) return false;
+          if (poi.nameEN && resolvedNameKeys.has(poi.nameEN)) return false;
+          return !!(poi.nameCN || poi.nameEN);
         });
         this.logger.warn(`Missing ${missingPois.length} POIs in database:`, JSON.stringify(missingPois, null, 2));
       }
@@ -2006,11 +2135,13 @@ export class RouteDirectionsService {
       poisFromTemplate.forEach(poi => {
         if (poi.id) requiredMap.set(poi.id, poi.required || false);
         if (poi.uuid) requiredMap.set(poi.uuid, poi.required || false);
+        if (poi.nameCN) requiredMap.set(poi.nameCN, poi.required || false);
+        if (poi.nameEN) requiredMap.set(poi.nameEN, poi.required || false);
       });
-      
-      const foundPlaceIds = new Set(places.map(p => p.id));
-      const foundPlaceUuids = new Set(places.map(p => p.uuid));
-      
+
+      const foundPlaceIds = new Set(resolvedPlaces.map(p => p.id));
+      const foundPlaceUuids = new Set(resolvedPlaces.map(p => p.uuid));
+
       // 查询其他候选地点（排除已找到的 POI，使用原始SQL以支持PostGIS location字段）
       const otherPlaces = foundPlaceIds.size > 0 || foundPlaceUuids.size > 0
         ? await this.prisma.$queryRaw<Array<{
@@ -2038,13 +2169,20 @@ export class RouteDirectionsService {
               ${foundPlaceIds.size > 0 ? Prisma.sql`AND p.id != ALL(${Array.from(foundPlaceIds)}::int[])` : Prisma.sql``}
               ${foundPlaceUuids.size > 0 ? Prisma.sql`AND p.uuid != ALL(${Array.from(foundPlaceUuids)}::text[])` : Prisma.sql``}
             ORDER BY p.rating DESC NULLS LAST, p."nameCN" ASC
-            LIMIT ${Math.max(0, 200 - places.length)}
+            LIMIT ${Math.max(0, 200 - resolvedPlaces.length)}
           `
         : [];
-      
+
+      const isRequiredPlace = (place: { id: number; uuid: string; nameCN: string; nameEN: string | null }) =>
+        requiredMap.get(place.id) ||
+        requiredMap.get(place.uuid) ||
+        requiredMap.get(place.nameCN) ||
+        requiredMap.get(place.nameEN || '') ||
+        false;
+
       // 合并结果：模板中的 POI 在前，并标记 isRequired
       return [
-        ...places.map(place => ({
+        ...resolvedPlaces.map(place => ({
           id: place.id,
           uuid: place.uuid,
           nameCN: place.nameCN,
@@ -2052,7 +2190,8 @@ export class RouteDirectionsService {
           category: place.category,
           lat: place.lat,
           lng: place.lng,
-          isRequired: requiredMap.get(place.id) || requiredMap.get(place.uuid) || false,
+          isRequired: isRequiredPlace(place),
+          templateRefs: templateRefsByPlaceId.get(place.id) || [],
         })),
         ...otherPlaces.map(place => ({
           id: place.id,
@@ -2286,7 +2425,15 @@ export class RouteDirectionsService {
    */
   private mockLLMOrchestration(
     template: any,
-    candidates: Array<{ id: number; nameCN: string; nameEN?: string; category: string; uuid?: string; isRequired?: boolean }>,
+    candidates: Array<{
+      id: number;
+      nameCN: string;
+      nameEN?: string;
+      category: string;
+      uuid?: string;
+      isRequired?: boolean;
+      templateRefs?: Array<{ id?: number; uuid?: string; nameCN?: string; nameEN?: string; required?: boolean }>;
+    }>,
     durationDays: number
   ): any {
     const days = [];
@@ -2298,6 +2445,37 @@ export class RouteDirectionsService {
     // 按类别分组候选POI
     const restaurants = candidates.filter(c => c.category === 'RESTAURANT');
     const attractions = candidates.filter(c => c.category === 'ATTRACTION');
+
+    const normalizeTemplatePoiName = (value?: string | null) =>
+      (value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s（）()\-—–·.,，。:：]/g, '');
+
+    const findCandidateForTemplatePoi = (poi: any) => {
+      const nameCN = normalizeTemplatePoiName(poi.nameCN);
+      const nameEN = normalizeTemplatePoiName(poi.nameEN);
+
+      return candidates.find(candidate => {
+        if (poi.id && candidate.id === poi.id) return true;
+        if (poi.uuid && candidate.uuid === poi.uuid) return true;
+
+        const candidateNameCN = normalizeTemplatePoiName(candidate.nameCN);
+        const candidateNameEN = normalizeTemplatePoiName(candidate.nameEN);
+        if (nameCN && candidateNameCN === nameCN) return true;
+        if (nameEN && candidateNameEN === nameEN) return true;
+
+        return (candidate.templateRefs || []).some(ref => {
+          const refNameCN = normalizeTemplatePoiName(ref.nameCN);
+          const refNameEN = normalizeTemplatePoiName(ref.nameEN);
+          if (poi.id && ref.id === poi.id) return true;
+          if (poi.uuid && ref.uuid === poi.uuid) return true;
+          if (nameCN && refNameCN === nameCN) return true;
+          if (nameEN && refNameEN === nameEN) return true;
+          return false;
+        });
+      });
+    };
     
     // 🆕 获取模板中定义的POI（按 startTime 排序，如果没有则按数组顺序）
     const getTemplatePOIs = (dayPlan: DayPlan | undefined): Array<{ 
@@ -2319,20 +2497,19 @@ export class RouteDirectionsService {
         durationMinutes?: number;
       }> = [];
       for (const poi of dayPlan.pois) {
-        if (poi.id) {
-          // 验证POI在候选列表中
-          const candidate = candidates.find(c => c.id === poi.id || c.uuid === poi.uuid);
-          if (candidate) {
-            templatePois.push({
-              id: candidate.id,
-              required: poi.required || false,
-              startTime: poi.startTime,
-              endTime: poi.endTime,
-              durationMinutes: poi.durationMinutes,
-            });
-          } else {
-            this.logger.warn(`Template POI ${poi.id} (${poi.uuid || 'no uuid'}) not found in candidates for day ${dayPlan.day}`);
-          }
+        const candidate = findCandidateForTemplatePoi(poi);
+        if (candidate) {
+          templatePois.push({
+            id: candidate.id,
+            required: poi.required || candidate.isRequired || false,
+            startTime: poi.startTime,
+            endTime: poi.endTime,
+            durationMinutes: poi.durationMinutes,
+          });
+        } else {
+          this.logger.warn(
+            `Template POI ${poi.id || poi.uuid || poi.nameCN || poi.nameEN || 'unknown'} not found in candidates for day ${dayPlan.day}`,
+          );
         }
       }
       
@@ -2362,13 +2539,14 @@ export class RouteDirectionsService {
     // 获取未使用的POI（优先从preferred列表中选择）
     const getUnusedPOI = (pool: typeof candidates, preferred?: typeof candidates): number | null => {
       // 优先使用preferred中的POI
-      if (preferred && preferred.length > 0) {
+      if (preferred) {
         for (const poi of preferred) {
           if (!usedPlaceIds.has(poi.id)) {
             usedPlaceIds.add(poi.id);
             return poi.id;
           }
         }
+        return null;
       }
       
       // 从pool中选择未使用的
@@ -2673,10 +2851,16 @@ ${candidates.map(c => `- ID: ${c.id}, 名称: ${c.nameCN}${c.nameEN ? ` (${c.nam
     const { sunriseHour, sunsetHour } = this.getDaylightBoundaries(dayDate, countryCode);
     const sunsetMinutes = Math.floor(sunsetHour) * 60 + Math.round((sunsetHour % 1) * 60);
     const sunriseMinutes = Math.floor(sunriseHour) * 60 + Math.round((sunriseHour % 1) * 60);
-    const dayStart = new Date(dayDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const sunsetTime = new Date(dayStart.getTime() + sunsetMinutes * 60 * 1000);
-    const sunriseTime = new Date(dayStart.getTime() + sunriseMinutes * 60 * 1000);
+    const timezone = timezoneForDestination(countryCode);
+    const dayIso = this.destinationDateIso(dayDate);
+    const sunsetTime = DateTime.fromISO(dayIso, { zone: timezone })
+      .startOf('day')
+      .plus({ minutes: sunsetMinutes })
+      .toJSDate();
+    const sunriseTime = DateTime.fromISO(dayIso, { zone: timezone })
+      .startOf('day')
+      .plus({ minutes: sunriseMinutes })
+      .toJSDate();
     if (startTime >= sunsetTime) {
       const durationMs = endTime.getTime() - startTime.getTime();
       const newEnd = new Date(sunsetTime.getTime());
@@ -2698,10 +2882,11 @@ ${candidates.map(c => `- ID: ${c.id}, 名称: ${c.nameCN}${c.nameEN ? ` (${c.nam
   /**
    * 计算时段时间
    */
-  private calculateSlotTime(dayDate: Date, slot: string): { startTime: Date; endTime: Date } {
-    const date = new Date(dayDate);
-    date.setHours(0, 0, 0, 0);
-
+  private calculateSlotTime(
+    dayDate: Date,
+    slot: string,
+    countryCode?: string,
+  ): { startTime: Date; endTime: Date } {
     const slotTimes: Record<string, { start: number; end: number }> = {
       morning: { start: 9 * 60, end: 12 * 60 },      // 9:00 - 12:00
       lunch: { start: 12 * 60, end: 14 * 60 },        // 12:00 - 14:00
@@ -2712,13 +2897,44 @@ ${candidates.map(c => `- ID: ${c.id}, 名称: ${c.nameCN}${c.nameEN ? ` (${c.nam
 
     const times = slotTimes[slot] || { start: 9 * 60, end: 12 * 60 };
 
-    const startTime = new Date(date);
-    startTime.setMinutes(times.start);
-
-    const endTime = new Date(date);
-    endTime.setMinutes(times.end);
+    const startTime = this.createDestinationDateTime(
+      dayDate,
+      Math.floor(times.start / 60),
+      times.start % 60,
+      countryCode,
+    );
+    const endTime = this.createDestinationDateTime(
+      dayDate,
+      Math.floor(times.end / 60),
+      times.end % 60,
+      countryCode,
+    );
 
     return { startTime, endTime };
+  }
+
+  private destinationDateIso(dayDate: Date): string {
+    return DateTime.fromJSDate(dayDate, { zone: 'utc' }).toISODate() || dayDate.toISOString().slice(0, 10);
+  }
+
+  private createDestinationDateTime(
+    dayDate: Date,
+    hour: number,
+    minute: number,
+    countryCode?: string,
+  ): Date {
+    const timezone = timezoneForDestination(countryCode);
+    const dayIso = this.destinationDateIso(dayDate);
+    return DateTime.fromObject(
+      {
+        year: Number(dayIso.slice(0, 4)),
+        month: Number(dayIso.slice(5, 7)),
+        day: Number(dayIso.slice(8, 10)),
+        hour,
+        minute,
+      },
+      { zone: timezone },
+    ).toJSDate();
   }
 
   /**
@@ -2738,36 +2954,18 @@ ${candidates.map(c => `- ID: ${c.id}, 名称: ${c.nameCN}${c.nameEN ? ` (${c.nam
   }
 
   /**
-   * 🆕 计算两个地点之间的交通时间（分钟）
-   * 使用Haversine公式计算直线距离，然后估算交通时间
+   * 计算两个 POI/地点之间的交通时间（分钟）
+   * 与 itinerary getDayTravelInfo / transport.search 降级逻辑对齐
    */
   private calculateTravelTimeBetweenPlaces(
     from: { lat: number; lng: number },
     to: { lat: number; lng: number }
   ): number {
-    // 计算直线距离（公里）
-    const distanceKm = this.calculateHaversineDistance(
-      from.lat,
-      from.lng,
-      to.lat,
-      to.lng
-    );
-
-    // 根据距离估算交通时间
-    if (distanceKm < 1) {
-      // 步行：约 12 分钟/km
-      return Math.ceil(distanceKm * 12);
-    } else if (distanceKm < 50) {
-      // 驾车：约 2 分钟/km（考虑市区交通）
-      return Math.ceil(distanceKm * 2);
-    } else {
-      // 长途：约 1 分钟/km
-      return Math.ceil(distanceKm * 1);
-    }
+    return this.travelTimeEstimator.estimatePoiTravelMinutes(from, to).durationMinutes;
   }
 
   /**
-   * 🆕 使用Haversine公式计算两点间距离（公里）
+   * @deprecated 请使用 TravelTimeEstimatorService.haversineDistanceKm
    */
   private calculateHaversineDistance(
     lat1: number,
@@ -2844,4 +3042,3 @@ ${candidates.map(c => `- ID: ${c.id}, 名称: ${c.nameCN}${c.nameEN ? ` (${c.nam
     return getDestinationName(countryCode);
   }
 }
-

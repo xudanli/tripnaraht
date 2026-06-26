@@ -1,17 +1,33 @@
 // src/agent/services/persona-shell.service.ts
 /**
- * PersonaShellService
- * 
- * 人格外壳服务：将底层能力模块的结果包装成三人格的输出
- * 
- * 设计原则：
- * - 面向用户只显示"三人格"（Abu/Dr.Dre/Neptune）作为可解释与信任的"人格外壳"
- * - 其他角色（预算/交通/节奏/总规划师）都隐藏成能力模块
- * - 所有决策都以"Abu 说"、"Dr.Dre 说"、"Neptune 说"的形式呈现
+ * PersonaShellService — Persona Expression Layer
+ *
+ * 将 Decision Runtime 已验证的结论转译为可解释的用户叙事。
+ * 三人格是责任席位，不是三个平行 Planner；默认单主角输出，多人格仅作支撑证据。
  */
 
 import { Injectable, Logger } from '@nestjs/common';
 import { PlanState } from '../../skills/plan/shared/plan-state.types';
+import {
+  mapPersonaVerdictToGuardianAction,
+  type GuardianAction,
+} from '../../trips/decision/shared/guardian-action.types';
+import {
+  buildPersonaPresentation,
+  type PersonaPresentation,
+} from './persona-lead-speaker.util';
+import {
+  inferGuardianExpressionPhase,
+  resolveAbuExistenceFromPlanState,
+  resolveDreCostFromPlanState,
+} from '../../trips/decision/shared/guardian-decision-metadata.util';
+import {
+  buildCausalPersonaProjection,
+  readCausalPersonaFromPlanState,
+  attachCausalPersonaToPlanState,
+} from '../../trips/causal-runtime/persona/build-causal-persona-projection';
+import { isCausalPersonaKernelEnabled } from '../../trips/causal-runtime/persona/causal-persona-kernel.config';
+import { mergePersonaWithCausalSlice } from '../../trips/causal-runtime/persona/apply-causal-persona-to-shell.util';
 
 export type PersonaName = 'ABU' | 'DR_DRE' | 'NEPTUNE';
 
@@ -44,9 +60,15 @@ export interface PersonaStatement {
     reason: string;
     impact: string;
   }>;
-  
+
   /** 需要用户确认的点（如果有） */
   confirmations?: string[];
+
+  /** 责任动作（BLOCK / ADJUST / REPAIR；CHOOSE 见 userChoiceRequired） */
+  guardianAction?: GuardianAction;
+
+  /** 需要用户价值取舍（软约束） */
+  userChoiceRequired?: boolean;
 }
 
 export interface PersonaShellOutput {
@@ -64,6 +86,12 @@ export interface PersonaShellOutput {
     nextSteps: string[];
   };
   
+  /** 单主角表达（默认 UI 应优先展示此项） */
+  presentation: PersonaPresentation;
+
+  /** P3/P4: 共享因果内核投影（前端因果链 / 审计展开） */
+  causalPersonaProjection?: import('../../trips/causal-runtime/persona/causal-persona-projection.types').CausalPersonaProjection;
+
   /** 决策时间戳 */
   timestamp: string;
 }
@@ -74,22 +102,97 @@ export class PersonaShellService {
 
   /**
    * 将 PlanState 转换为三人格输出
+   * @param expressionPhase 可选；缺省时从 planState.metadata 推断 planning | in_trip
    */
-  async wrapAsPersonas(planState: PlanState): Promise<PersonaShellOutput> {
+  async wrapAsPersonas(
+    planState: PlanState,
+    options?: { expressionPhase?: 'planning' | 'in_trip' },
+  ): Promise<PersonaShellOutput> {
     this.logger.debug(`包装 PlanState 为三人格输出: planId=${planState.plan_id}`);
 
-    const personas = {
-      abu: this.buildAbuStatement(planState),
-      drdre: this.buildDrdreStatement(planState),
-      neptune: this.buildNeptuneStatement(planState),
+    let projection = readCausalPersonaFromPlanState(planState);
+    if (!projection && isCausalPersonaKernelEnabled()) {
+      projection = buildCausalPersonaProjection({ planState }) ?? undefined;
+      if (projection) attachCausalPersonaToPlanState(planState, projection);
+    }
+    const kernelAuthoritative = projection?.kernelAuthoritative === true;
+
+    const legacyAbu = this.buildAbuStatement(planState);
+    const legacyDrdre = this.buildDrdreStatement(planState);
+    const legacyNeptune = this.buildNeptuneStatement(planState);
+
+    const rawPersonas = {
+      abu: kernelAuthoritative && projection?.abu
+        ? mergePersonaWithCausalSlice(legacyAbu, projection.abu)
+        : legacyAbu,
+      drdre: kernelAuthoritative && projection?.drdre
+        ? mergePersonaWithCausalSlice(legacyDrdre, projection.drdre)
+        : legacyDrdre,
+      neptune: kernelAuthoritative && projection?.neptune
+        ? mergePersonaWithCausalSlice(legacyNeptune, projection.neptune)
+        : legacyNeptune,
     };
 
-    const consolidatedDecision = this.buildConsolidatedDecision(planState, personas);
+    const personas = {
+      abu: rawPersonas.abu ? this.attachGuardianAction(rawPersonas.abu) : null,
+      drdre: rawPersonas.drdre ? this.attachGuardianAction(rawPersonas.drdre) : null,
+      neptune: rawPersonas.neptune ? this.attachGuardianAction(rawPersonas.neptune) : null,
+    };
+
+    const expressionPhase =
+      options?.expressionPhase ?? inferGuardianExpressionPhase(planState);
+
+    const presentation = buildPersonaPresentation(
+      {
+        abu: this.toPresentationSlice(personas.abu, 'Abu'),
+        drdre: this.toPresentationSlice(personas.drdre, 'Dr.Dre'),
+        neptune: this.toPresentationSlice(personas.neptune, 'Neptune'),
+      },
+      {
+        expressionPhase,
+        abuExistence: resolveAbuExistenceFromPlanState(planState),
+        dreCost: resolveDreCostFromPlanState(planState),
+      },
+    );
+
+    const consolidatedDecision = this.buildConsolidatedDecision(
+      planState,
+      personas,
+      presentation,
+    );
 
     return {
       personas,
+      presentation,
       consolidatedDecision,
+      causalPersonaProjection: projection,
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  private toPresentationSlice(
+    statement: PersonaStatement | null,
+    name: string,
+  ) {
+    if (!statement) return null;
+    return {
+      persona: statement.persona,
+      icon: statement.icon,
+      name,
+      verdict: statement.verdict,
+      explanation: statement.explanation,
+    };
+  }
+
+  private attachGuardianAction(statement: PersonaStatement): PersonaStatement {
+    const guardianAction = mapPersonaVerdictToGuardianAction(
+      statement.persona,
+      statement.verdict,
+    ) ?? undefined;
+    return {
+      ...statement,
+      guardianAction,
+      userChoiceRequired: statement.verdict === 'NEED_CONFIRM',
     };
   }
 
@@ -181,7 +284,7 @@ export class PersonaShellService {
       return {
         persona: 'ABU',
         icon: '🐻‍❄️',
-        slogan: '我负责：这条路，真的能走吗？',
+        slogan: '世界允不允许？我负责判断。',
         verdict: 'ALLOW',
         explanation: '经过安全检查，当前方案在物理现实和合规性方面没有问题。我负责把你带去安全地带，这条路可以走。',
         evidence: [],
@@ -215,10 +318,10 @@ export class PersonaShellService {
     if (planState.pace.fatigueScore) {
       const score = planState.pace.fatigueScore.paceScore;
       if (score > 85) {
-        statements.push(`当前节奏的疲劳评分是 ${score}/100，明显过高。原本的节奏会让你在行程中后期明显疲劳。`);
+        statements.push(`当前节奏的疲劳负荷指数是 ${score}/100，明显过高。原本的节奏会让你在行程中后期明显疲劳。`);
         recommendations.push({
           action: '插入休息日或减少每日活动',
-          reason: '疲劳评分过高',
+          reason: '疲劳负荷过高',
           impact: '让每一天刚刚好，体验更稳定',
         });
         
@@ -231,14 +334,14 @@ export class PersonaShellService {
           });
         }
       } else if (score > 70) {
-        statements.push(`当前节奏的疲劳评分是 ${score}/100，略高。建议适当调整，让每一天刚刚好。`);
+        statements.push(`当前节奏的疲劳负荷指数是 ${score}/100，略高。建议适当调整，让每一天刚刚好。`);
         recommendations.push({
           action: '优化时间分配或减少部分活动',
-          reason: '疲劳评分略高',
+          reason: '疲劳负荷略高',
           impact: '提升整体体验稳定性',
         });
       } else {
-        statements.push(`当前节奏的疲劳评分是 ${score}/100，节奏合理。`);
+        statements.push(`当前节奏的疲劳负荷指数是 ${score}/100，节奏合理。`);
       }
 
       // 建议休息点
@@ -286,7 +389,7 @@ export class PersonaShellService {
       return {
         persona: 'DR_DRE',
         icon: '🐕',
-        slogan: '别太累，我会让每一天刚刚好。',
+        slogan: '人承不承受？我负责把代价说清楚。',
         verdict: 'ALLOW',
         explanation: '当前节奏合理，每一天都刚刚好，体验稳定。',
         evidence: [],
@@ -367,7 +470,7 @@ export class PersonaShellService {
       return {
         persona: 'NEPTUNE',
         icon: '🦦',
-        slogan: '如果行不通，我会给你一个刚刚好的替代。',
+        slogan: '体验能不能保住？我负责守住意义。',
         verdict: 'ALLOW',
         explanation: '当前方案在空间和路线哲学方面没有问题，所有路段都可行。',
         evidence: [],
@@ -389,8 +492,9 @@ export class PersonaShellService {
    * 构建综合决策结果
    */
   private buildConsolidatedDecision(
-    planState: PlanState,
-    personas: PersonaShellOutput['personas']
+    _planState: PlanState,
+    personas: PersonaShellOutput['personas'],
+    presentation: PersonaPresentation,
   ): PersonaShellOutput['consolidatedDecision'] {
     const allVerdicts = [
       personas.abu?.verdict,
@@ -398,51 +502,69 @@ export class PersonaShellService {
       personas.neptune?.verdict,
     ].filter(Boolean) as string[];
 
-    // 如果有 REJECT，综合决策是 REJECT
     if (allVerdicts.includes('REJECT')) {
       return {
         status: 'REJECT',
-        summary: 'Abu 发现硬违规，方案无法通过安全检查。',
-        nextSteps: [
-          '查看 Abu 的详细说明',
+        summary: presentation.headline,
+        nextSteps: this.collectChooseOptions(personas, presentation, [
           '调整约束条件或选择其他方案',
-        ],
+        ]),
       };
     }
 
-    // 如果有 ADJUST 或 REPLACE，综合决策是 NEED_CONFIRM
-    if (allVerdicts.some(v => v === 'ADJUST' || v === 'REPLACE' || v === 'NEED_CONFIRM')) {
-      const summaries: string[] = [];
-      const nextSteps: string[] = [];
-
-      if (personas.abu?.verdict === 'NEED_CONFIRM') {
-        summaries.push('Abu 需要进一步确认');
-        nextSteps.push('查看 Abu 的确认点');
+    if (allVerdicts.some((v) => v === 'ADJUST' || v === 'REPLACE' || v === 'NEED_CONFIRM')) {
+      const nextSteps = this.collectChooseOptions(personas, presentation, []);
+      if (nextSteps.length === 0) {
+        nextSteps.push(presentation.narrative);
       }
-      if (personas.drdre?.verdict === 'ADJUST') {
-        summaries.push('Dr.Dre 建议调整节奏');
-        nextSteps.push('查看 Dr.Dre 的节奏建议');
-      }
-      if (personas.neptune?.verdict === 'REPLACE') {
-        summaries.push('Neptune 建议替换部分路段');
-        nextSteps.push('查看 Neptune 的替代方案');
-      }
-
       return {
         status: 'NEED_CONFIRM',
-        summary: summaries.join('；') || '需要进一步确认',
+        summary: presentation.headline,
         nextSteps,
       };
     }
 
-    // 否则是 ALLOW
     return {
       status: 'ALLOW',
-      summary: '三人格一致通过，方案可行。',
-      nextSteps: [
-        '查看完整的行程详情',
-        '确认并锁定方案',
-      ],
+      summary: presentation.headline,
+      nextSteps: [presentation.narrative, '确认并锁定方案'],
     };
+  }
+
+  /** CHOOSE 可选项 — 对齐前端 consolidatedDecision.nextSteps */
+  private collectChooseOptions(
+    personas: PersonaShellOutput['personas'],
+    presentation: PersonaPresentation,
+    fallback: string[],
+  ): string[] {
+    if (presentation.hardConstraintBlocked || presentation.actions.abu === 'BLOCK') {
+      return fallback.length ? fallback : [presentation.narrative];
+    }
+
+    if (presentation.actions.user !== 'CHOOSE') {
+      return fallback.length ? fallback : [presentation.narrative];
+    }
+
+    const options: string[] = [];
+    const push = (items?: Array<{ action: string }> | string[]) => {
+      if (!items) return;
+      for (const item of items) {
+        const text = typeof item === 'string' ? item : item.action;
+        const t = String(text).trim();
+        if (t && !options.includes(t)) options.push(t);
+      }
+    };
+
+    push(personas.abu?.recommendations);
+    push(personas.drdre?.recommendations);
+    push(personas.neptune?.recommendations);
+    push(personas.abu?.confirmations);
+    push(presentation.supportingLines.map((l) => l.text));
+
+    if (options.length === 0 && fallback.length) return fallback;
+    if (presentation.actions.user === 'CHOOSE' && options.length === 0) {
+      options.push('确认你的价值取舍');
+    }
+    return options.slice(0, 8);
   }
 }

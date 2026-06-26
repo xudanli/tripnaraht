@@ -34,6 +34,9 @@ import { IncrementalRecomputeOrchestratorService } from './decision-ledger/incre
 import { ConstraintSinkService } from './constraint-sink/constraint-sink.service';
 import { UserMemoryConsoleService } from './console/user-memory-console.service';
 import { MemoryConsoleController } from './console/memory-console.controller';
+import { TripDomainInfluenceModule } from '../../trips/domain-influence/trip-domain-influence.module';
+import { MemoryStateDecisionParamsService } from './services/memory-state-decision-params.service';
+import { TripIntentDigestService } from './services/trip-intent-digest.service';
 
 /**
  * Memory Module
@@ -45,7 +48,7 @@ import { MemoryConsoleController } from './console/memory-console.controller';
  * - L4: 行为反馈记忆
  */
 @Module({
-  imports: [PrismaModule, FlywheelModule, EventEmitterModule, forwardRef(() => RedisModule)],
+  imports: [PrismaModule, FlywheelModule, EventEmitterModule, forwardRef(() => RedisModule), TripDomainInfluenceModule],
   providers: [
     MemoryService,
     UserProfileMapperService,
@@ -77,6 +80,8 @@ import { MemoryConsoleController } from './console/memory-console.controller';
     IncrementalRecomputeOrchestratorService,
     ConstraintSinkService,
     UserMemoryConsoleService,
+    TripIntentDigestService,
+    MemoryStateDecisionParamsService,
   ],
   controllers: [MemoryConsoleController],
   exports: [
@@ -102,6 +107,8 @@ import { MemoryConsoleController } from './console/memory-console.controller';
     IncrementalRecomputeOrchestratorService,
     ConstraintSinkService,
     UserMemoryConsoleService,
+    TripIntentDigestService,
+    MemoryStateDecisionParamsService,
   ],
 })
 export class MemoryModule {}

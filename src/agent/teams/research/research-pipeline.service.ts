@@ -22,7 +22,14 @@ import { calculateEnvironmentRisk, getWeatherForTime } from '../../../trips/onto
 import { ResearchMemberRegistry } from './research-member.registry';
 import type { LeaderResearchWorkspace } from './research-scoped-workspace.types';
 import type { ResearchTopologyPlan } from './research-topology.types';
-import { ResearchContextManager, createSuturePatchFromPrior, deepCloneResearchData, computeResearchPatchFromIsolation } from './research-context-manager';
+import {
+  ResearchContextManager,
+  ResearchPatchScopeViolationError,
+  createSuturePatchFromPrior,
+  deepCloneResearchData,
+  computeResearchPatchFromIsolation,
+  partitionResearchPatchByScope,
+} from './research-context-manager';
 import { ResearchTeamBusService, ResearchTeamBusTimeoutError } from './research-team-bus.service';
 import {
   RESEARCH_PARALLEL_ASSIGNMENT_OP,
@@ -37,7 +44,7 @@ import type {
   ResearchBudgetBucketsMap,
   ResearchFinancials,
 } from './research-team-bus.types';
-import type { ResearchContextPhase } from './research-context.types';
+import type { ResearchContextPhase, ResearchMergeAttribution } from './research-context.types';
 import type { FinancialFeedbackLine } from './research-team-budget-ledger.util';
 import { accumulateResearchFinancialReport } from './research-team-budget-ledger.util';
 import { buildResearchFinancialsFromHotelLiveRefresh } from './research-member-hotel-financials.util';
@@ -427,11 +434,14 @@ export class ResearchPipelineService implements IResearchExecutor {
             if (o.financials) {
               financialScratch.push({ slot_id: o.job.slotId, financials: o.financials });
             }
-            mgr.applyResearchPatch({
+            this.applyMemberPatchOrSuture({
+              mgr,
               patch: o.patch,
               source: o.job.source,
               phase: 'parallel',
-              attribution: 'MEMBER_PATCH',
+              memberKind: o.job.memberKind,
+              ctx,
+              slotId: o.job.slotId,
             });
           } else {
             this.tryApplySutureFromPrior(mgr, o.job.memberKind, ctx, 'parallel');
@@ -720,12 +730,7 @@ export class ResearchPipelineService implements IResearchExecutor {
       isolatedEvidenceRefs: er,
       scope: 'hotel',
     });
-    mgr.applyResearchPatch({
-      patch,
-      source: 'BUDGET_ARBITRATOR_ROLLBACK',
-      phase: 'parallel',
-      attribution: 'BUDGET_ARBITRATOR_ROLLBACK',
-    });
+    this.applyScopedResearchPatch(mgr, patch, 'BUDGET_ARBITRATOR_ROLLBACK', 'parallel', 'BUDGET_ARBITRATOR_ROLLBACK');
 
     const newHotel = buildResearchFinancialsFromHotelLiveRefresh(ws.researchData as Record<string, unknown>);
     const priorHotelLine = financialScratch.find((f) => f.financials.scope === 'hotel');
@@ -788,6 +793,55 @@ export class ResearchPipelineService implements IResearchExecutor {
     });
   }
 
+  private applyScopedResearchPatch(
+    mgr: ResearchContextManager,
+    patch: ScopedResearchPatch,
+    source: string,
+    phase: ResearchContextPhase,
+    attribution: ResearchMergeAttribution,
+  ): void {
+    const { scopedPartial, outOfScopePartial } = partitionResearchPatchByScope(patch);
+    if (Object.keys(scopedPartial).length > 0 || patch.evidenceRefsAppended.length > 0) {
+      mgr.applyResearchPatch({
+        patch: { ...patch, researchDataPartial: scopedPartial },
+        source,
+        phase,
+        attribution,
+      });
+    }
+    if (Object.keys(outOfScopePartial).length > 0) {
+      mgr.mergeResearchDataKeys({
+        keys: outOfScopePartial,
+        source,
+        phase,
+        attribution,
+      });
+    }
+  }
+
+  private applyMemberPatchOrSuture(input: {
+    mgr: ResearchContextManager;
+    patch: ScopedResearchPatch;
+    source: string;
+    phase: ResearchContextPhase;
+    memberKind: ResearchScopedPatchScope;
+    ctx: PhaseExecutorContext;
+    slotId: string;
+  }): void {
+    const { mgr, patch, source, phase, memberKind, ctx, slotId } = input;
+    try {
+      this.applyScopedResearchPatch(mgr, patch, source, phase, 'MEMBER_PATCH');
+    } catch (e) {
+      if (!(e instanceof ResearchPatchScopeViolationError)) {
+        throw e;
+      }
+      this.logger.warn(
+        `[ResearchPipeline] member patch scope violation slot=${slotId} memberKind=${memberKind} key=${e.key} patchScope=${e.patchScope} inferredScope=${e.inferredScope}; applying prior suture`,
+      );
+      this.tryApplySutureFromPrior(mgr, memberKind, ctx, phase);
+    }
+  }
+
   private async runSequentialBusAssignment(
     mgr: ResearchContextManager,
     requestId: string,
@@ -841,7 +895,15 @@ export class ResearchPipelineService implements IResearchExecutor {
     if (completion.financials && financialScratch) {
       financialScratch.push({ slot_id: slotId, financials: completion.financials });
     }
-    mgr.applyResearchPatch({ patch: completion.patch, source, phase, attribution: 'MEMBER_PATCH' });
+    this.applyMemberPatchOrSuture({
+      mgr,
+      patch: completion.patch,
+      source,
+      phase,
+      memberKind,
+      ctx,
+      slotId,
+    });
   }
 
   /**

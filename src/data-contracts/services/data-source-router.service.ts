@@ -6,9 +6,19 @@ import { WeatherAdapter } from '../adapters/weather.adapter.interface';
 import { TransportAdapter } from '../adapters/transport.adapter.interface';
 import { FerryAdapter } from '../adapters/ferry.adapter.interface';
 import { RoadStatusQuery, RoadStatus } from '../interfaces/road-status.interface';
-import { WeatherQuery, WeatherData } from '../interfaces/weather.interface';
+import { WeatherQuery, WeatherData, WeatherForecastQuery, WeatherDailyForecast } from '../interfaces/weather.interface';
 import { TransportQuery, TransportSchedule } from '../interfaces/transport-schedule.interface';
 import { FerryQuery, FerrySchedule } from '../interfaces/ferry-schedule.interface';
+import type { TravelEntityRef } from '../../travel-cognition';
+import {
+  type EvidenceEnvelopeWithFreshness,
+  travelEntityRefFromCoordinates,
+  travelEntityRefFromRoadSegment,
+  withFreshnessAssessment,
+  wrapRoadStatusAsEnvelope,
+  wrapWeatherDailyForecastAsEnvelope,
+  wrapWeatherDataAsEnvelope,
+} from '../mappers/evidence-envelope.mapper';
 
 /**
  * 数据源路由器服务
@@ -74,6 +84,20 @@ export class DataSourceRouterService implements OnModuleInit {
     return adapter.getRoadStatus(query);
   }
 
+  /** 路况 → EvidenceEnvelope（含 freshness 评估） */
+  async getRoadStatusEvidence(
+    query: RoadStatusQuery,
+    options?: { entityRef?: TravelEntityRef },
+  ): Promise<EvidenceEnvelopeWithFreshness<RoadStatus>> {
+    const road = await this.getRoadStatus(query);
+    const entityRef =
+      options?.entityRef ??
+      (query.segments?.[0]
+        ? travelEntityRefFromRoadSegment(query.segments[0].from, query.segments[0].to)
+        : travelEntityRefFromCoordinates(query.lat, query.lng, 'ROAD'));
+    return withFreshnessAssessment(wrapRoadStatusAsEnvelope(road, entityRef));
+  }
+
   /**
    * 批量获取路况状态
    */
@@ -81,6 +105,22 @@ export class DataSourceRouterService implements OnModuleInit {
     const countryCode = await this.getCountryCode(query.lat, query.lng);
     const adapter = this.selectRoadStatusAdapter(countryCode);
     return adapter.getRoadStatuses(query);
+  }
+
+  /** 批量路况 → EvidenceEnvelope 列表 */
+  async getRoadStatusesEvidence(
+    query: RoadStatusQuery,
+  ): Promise<EvidenceEnvelopeWithFreshness<RoadStatus>[]> {
+    const statuses = await this.getRoadStatuses(query);
+    const segments = query.segments ?? [];
+
+    return statuses.map((road, index) => {
+      const segment = segments[index];
+      const entityRef = segment
+        ? travelEntityRefFromRoadSegment(segment.from, segment.to)
+        : travelEntityRefFromCoordinates(query.lat, query.lng, 'ROAD');
+      return withFreshnessAssessment(wrapRoadStatusAsEnvelope(road, entityRef));
+    });
   }
 
   /**
@@ -122,6 +162,46 @@ export class DataSourceRouterService implements OnModuleInit {
     
     // 所有适配器都失败了
     throw new Error(`所有天气适配器都失败。最后错误: ${lastError?.message || 'Unknown error'}`);
+  }
+
+  /** 当前天气 → EvidenceEnvelope（含 freshness 评估） */
+  async getWeatherEvidence(
+    query: WeatherQuery,
+    options?: { entityRef?: TravelEntityRef },
+  ): Promise<EvidenceEnvelopeWithFreshness<WeatherData>> {
+    const weather = await this.getWeather(query);
+    const entityRef =
+      options?.entityRef ?? travelEntityRefFromCoordinates(query.lat, query.lng);
+    return withFreshnessAssessment(wrapWeatherDataAsEnvelope(weather, entityRef));
+  }
+
+  /**
+   * 获取逐日天气预报（Open-Meteo 等支持 daily 的适配器）
+   */
+  async getDailyWeatherForecast(query: WeatherForecastQuery): Promise<WeatherDailyForecast[]> {
+    const adapter = this.weatherAdapters.find(
+      (candidate) => typeof candidate.getDailyForecast === 'function',
+    );
+
+    if (!adapter?.getDailyForecast) {
+      throw new Error('没有可用的逐日天气预报适配器');
+    }
+
+    return adapter.getDailyForecast(query);
+  }
+
+  /** 逐日预报 → EvidenceEnvelope 列表 */
+  async getDailyWeatherForecastEvidence(
+    query: WeatherForecastQuery,
+    options?: { entityRef?: TravelEntityRef },
+  ): Promise<EvidenceEnvelopeWithFreshness<WeatherDailyForecast>[]> {
+    const daily = await this.getDailyWeatherForecast(query);
+    const entityRef =
+      options?.entityRef ?? travelEntityRefFromCoordinates(query.lat, query.lng);
+    const observedAt = new Date().toISOString();
+    return daily.map((row) =>
+      withFreshnessAssessment(wrapWeatherDailyForecastAsEnvelope(row, entityRef, observedAt)),
+    );
   }
 
   /**

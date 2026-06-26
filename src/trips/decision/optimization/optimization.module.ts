@@ -76,6 +76,7 @@ import { DecisionOSFacadeService } from './decision-os-facade.service';
 import { TeamCollaborationService } from './collaboration/team-collaboration.service';
 import { TeamInviteService } from './collaboration/team-invite.service';
 import { NegotiateContextLoaderService } from './collaboration/negotiate-context-loader.service';
+import { GuardianChooseService } from './services/guardian-choose.service';
 
 // 中期：实时状态更新
 import { RealtimeWorldStateService } from './realtime/realtime-world-state.service';
@@ -93,6 +94,7 @@ import { TeamInvitePublicController } from './controllers/team-invite-public.con
 // 用户端控制器
 import { OptimizationUserController } from './controllers/user/optimization-user.controller';
 import { TeamUserController } from './controllers/user/team-user.controller';
+import { GuardianTripController } from './controllers/user/guardian-trip.controller';
 import { RealtimeUserController } from './controllers/user/realtime-user.controller';
 
 // 管理端控制器
@@ -132,6 +134,7 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
     OptimizationUserController,
     TeamUserController,
     RealtimeUserController,
+    GuardianTripController,
     
     // 管理端（/api/v2/admin/...）
     OptimizationAdminController,
@@ -202,6 +205,7 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
     TeamCollaborationService,
     TeamInviteService,
     NegotiateContextLoaderService,
+    GuardianChooseService,
     
     // 中期：实时状态更新
     RealtimeWorldStateService,
@@ -272,6 +276,8 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
     // 中期
     TeamCollaborationService,
     TeamInviteService,
+    NegotiateContextLoaderService,
+    GuardianChooseService,
     RealtimeWorldStateService,
     ABTestingService,
     

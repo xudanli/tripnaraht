@@ -22,7 +22,7 @@ describe('TransportSearchSkill', () => {
 
   beforeEach(async () => {
     const mockTransportRoutingService = {
-      planRoute: jest.fn(),
+      planPoiHopRoute: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -69,7 +69,7 @@ describe('TransportSearchSkill', () => {
         ],
       };
 
-      transportRoutingService.planRoute.mockResolvedValue(
+      transportRoutingService.planPoiHopRoute.mockResolvedValue(
         mockRecommendation as any,
       );
 
@@ -79,20 +79,12 @@ describe('TransportSearchSkill', () => {
         mode: 'mixed',
       });
 
-      expect(transportRoutingService.planRoute).toHaveBeenCalledWith(
+      expect(transportRoutingService.planPoiHopRoute).toHaveBeenCalledWith(
         64.1,
         -21.9,
         64.2,
         -21.8,
-        {
-          budgetSensitivity: 'MEDIUM',
-          timeSensitivity: 'MEDIUM',
-          hasLuggage: false,
-          hasElderly: false,
-          isMovingDay: false,
-          isRaining: false,
-          hasLimitedMobility: false,
-        },
+        'mixed',
       );
       expect(result.options).toHaveLength(2);
       expect(result.options[0].mode).toBe('drive');
@@ -102,19 +94,19 @@ describe('TransportSearchSkill', () => {
     });
 
     it('应该通过冰岛地名锚点解析字符串 origin / destination', async () => {
-      transportRoutingService.planRoute.mockResolvedValue(mockRoutingOk as any);
+      transportRoutingService.planPoiHopRoute.mockResolvedValue(mockRoutingOk as any);
 
       await skill.execute({
         origin: 'Reykjavik',
         destination: 'Akureyri',
       });
 
-      expect(transportRoutingService.planRoute).toHaveBeenCalledWith(
+      expect(transportRoutingService.planPoiHopRoute).toHaveBeenCalledWith(
         64.1466,
         -21.9426,
         65.6835,
         -18.1262,
-        expect.any(Object),
+        'drive',
       );
     });
 
@@ -140,14 +132,14 @@ describe('TransportSearchSkill', () => {
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           TransportSearchSkill,
-          { provide: TransportRoutingService, useValue: { planRoute: jest.fn() } },
+          { provide: TransportRoutingService, useValue: { planPoiHopRoute: jest.fn() } },
           { provide: EntityResolutionService, useValue: { resolveEntities } },
         ],
       }).compile();
 
       const s = module.get<TransportSearchSkill>(TransportSearchSkill);
       const routing = module.get(TransportRoutingService) as jest.Mocked<TransportRoutingService>;
-      routing.planRoute.mockResolvedValue(mockRoutingOk as any);
+      routing.planPoiHopRoute.mockResolvedValue(mockRoutingOk as any);
 
       await s.execute({
         origin: '杭州西湖风景区',
@@ -155,12 +147,12 @@ describe('TransportSearchSkill', () => {
       });
 
       expect(resolveEntities).toHaveBeenCalled();
-      expect(routing.planRoute).toHaveBeenCalledWith(
+      expect(routing.planPoiHopRoute).toHaveBeenCalledWith(
         30.2427,
         120.1487,
         30.25,
         120.15,
-        expect.any(Object),
+        'drive',
       );
     });
 
@@ -174,7 +166,7 @@ describe('TransportSearchSkill', () => {
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           TransportSearchSkill,
-          { provide: TransportRoutingService, useValue: { planRoute: jest.fn() } },
+          { provide: TransportRoutingService, useValue: { planPoiHopRoute: jest.fn() } },
           { provide: EntityResolutionService, useValue: { resolveEntities } },
         ],
       }).compile();
@@ -218,7 +210,7 @@ describe('TransportSearchSkill', () => {
         ],
       };
 
-      transportRoutingService.planRoute.mockResolvedValue(
+      transportRoutingService.planPoiHopRoute.mockResolvedValue(
         mockRecommendation as any,
       );
 
@@ -241,7 +233,7 @@ describe('TransportSearchSkill', () => {
         ],
       };
 
-      transportRoutingService.planRoute.mockResolvedValue(
+      transportRoutingService.planPoiHopRoute.mockResolvedValue(
         mockRecommendation as any,
       );
 

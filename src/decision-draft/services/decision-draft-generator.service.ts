@@ -7,7 +7,7 @@
  * 融合 Chain-of-Work 的步骤草案生成（技术层）
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { ChainOfWorkService } from '../../chain-of-work/services/chain-of-work.service';
@@ -36,6 +36,7 @@ export class DecisionDraftGeneratorService {
 
   constructor(
     private readonly llmService: LlmService,
+    @Inject(forwardRef(() => ChainOfWorkService))
     private readonly chainOfWorkService: ChainOfWorkService,
     private readonly decisionTypeMapper: DecisionTypeToStepDraftMapper,
     @Optional() private readonly observability?: DecisionDraftObservabilityService,

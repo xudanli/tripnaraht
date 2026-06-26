@@ -65,6 +65,7 @@ import { RagController } from './rag.controller';
 // RagMetricsController 已删除 - metrics 端点合并到 RagController
 import { RagMetricsService } from './services/rag-metrics.service';
 import { RagRealityPolicyGateService } from './services/rag-reality-policy-gate.service';
+import { HybridSearchConfigService } from './services/hybrid-search-config.service';
 import { SkillsModule } from '../skills/skills.module';
 import { KPUModule } from '../kpu/kpu.module';
 import { AuthModule } from '../auth/auth.module';
@@ -111,6 +112,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     ParallelExecutorService, // 并行执行服务（Phase 5.2）- 并发控制
     RagMetricsService, // Prometheus监控指标服务（Phase 5.5）
     RagRealityPolicyGateService,
+    HybridSearchConfigService, // Hybrid Search 动态权重配置服务
     AdminStrictAuthGuard,
   ],
   exports: [
@@ -138,6 +140,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     ParallelExecutorService, // 导出并行执行服务
     RagMetricsService, // 导出监控指标服务
     RagRealityPolicyGateService,
+    HybridSearchConfigService, // 导出 Hybrid Search 动态权重配置服务
   ],
 })
 export class RagModule {}

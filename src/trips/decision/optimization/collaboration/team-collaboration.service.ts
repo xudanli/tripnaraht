@@ -184,6 +184,54 @@ export class TeamCollaborationService implements ITeamCollaborationService {
   }
 
   /**
+   * 更新成员（持久化）
+   */
+  async updateMember(
+    teamId: string,
+    userId: string,
+    patch: Partial<Omit<TeamMember, 'userId' | 'joinedAt'>>,
+  ): Promise<TeamConfig> {
+    const team = await this.getTeam(teamId);
+    if (!team) {
+      throw new Error(`团队不存在: ${teamId}`);
+    }
+
+    const memberIndex = team.members.findIndex((m) => m.userId === userId);
+    if (memberIndex < 0) {
+      throw new Error(`团队成员不存在: ${userId}`);
+    }
+
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.displayName !== undefined) dbPatch.displayName = patch.displayName;
+    if (patch.role !== undefined) dbPatch.role = patch.role;
+    if (patch.decisionWeight !== undefined) dbPatch.decisionWeight = patch.decisionWeight;
+    if (patch.fitnessLevel !== undefined) dbPatch.fitnessLevel = patch.fitnessLevel;
+    if (patch.experienceLevel !== undefined) dbPatch.experienceLevel = patch.experienceLevel;
+    if (patch.personalWeights !== undefined) dbPatch.personalWeights = patch.personalWeights as object;
+    if ('specialConstraints' in patch) {
+      dbPatch.specialConstraints = patch.specialConstraints === null ? undefined : patch.specialConstraints as object | undefined;
+    }
+
+    await this.prisma.collaborationTeamMember.update({
+      where: { teamId_userId: { teamId, userId } },
+      data: dbPatch,
+    });
+    await this.prisma.collaborationTeam.update({
+      where: { id: teamId },
+      data: { updatedAt: new Date() },
+    });
+
+    team.members[memberIndex] = {
+      ...team.members[memberIndex],
+      ...patch,
+    };
+    team.updatedAt = new Date().toISOString();
+    this.normalizeDecisionWeights(team);
+    this.teams.set(teamId, team);
+    return team;
+  }
+
+  /**
    * 获取团队（先缓存后数据库）
    */
   async getTeam(teamId: string): Promise<TeamConfig | undefined> {

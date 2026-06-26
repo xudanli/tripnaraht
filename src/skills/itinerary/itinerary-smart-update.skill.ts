@@ -11,6 +11,7 @@ import type { Itinerary, RequiredAdjustment } from '../../agent/interfaces/trip-
 import type { WorldModelContext, RoutePlanDraft } from '../../trips/decision/shared/world-model.types';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { ItineraryVerifySkill, type ItineraryVerifyOutput } from './itinerary-verify.skill';
+import { ItineraryTemporalOptimizeSkill } from './temporal-constraint-optimizer.skill';
 import type { IcelandVehicleIntentHints } from './iceland-vehicle-terrain-arbitrator.util';
 import { RepairApplySkill } from './repair-apply.skill';
 import { DecisionNeptuneRepairSkill } from '../decision/decision-neptune-repair.skill';
@@ -59,6 +60,17 @@ export interface ItinerarySmartUpdateInput extends SkillInput {
   user_change_intent?: string;
   /** 与 TripPlanRequest.constraints.vehicle_type 对齐；无 Booking 行时参与冰岛虚拟租车仲裁 */
   intent_hints?: IcelandVehicleIntentHints;
+  /** 时间优化上下文（时区、睡眠锁定期覆盖等） */
+  environment_context?: {
+    timezone?: string;
+    sleep_lock_start_min?: number;
+    sleep_lock_end_min?: number;
+  };
+  party_profile?: {
+    has_elderly?: boolean;
+    has_children?: boolean;
+    low_stamina?: boolean;
+  };
 }
 
 export interface ItinerarySmartUpdatePhaseTelemetry {
@@ -93,6 +105,9 @@ export interface ItinerarySmartUpdateOutput extends SkillOutput {
   };
   /** 内嵌 verify 的 issues（与独立 `itinerary.verify` 同形），供结构化面板消费 */
   verify_issues?: ItineraryVerifyOutput['issues'];
+  /** 时间优化 changelog（itinerary.temporalOptimize） */
+  temporal_changelog?: Array<{ action: string; item_id: string; day?: string; detail: string }>;
+  needs_regeneration?: { reason: string; suggested_extra_days?: number };
   compensation?: {
     apply_failed: boolean;
     restored_to_post_verify_snapshot: boolean;
@@ -114,7 +129,7 @@ export class ItinerarySmartUpdateSkill implements Skill<ItinerarySmartUpdateInpu
   metadata: SkillMetadata = {
     name: 'itinerary.smart_update',
     description:
-      'itinerary.smart_update：一键改行程：itinerary.verify →（可选）decision.neptuneRepair → 推导 adjustments → repair.apply；支持部分失败回退与分阶段观测。',
+      'itinerary.smart_update：一键改行程：itinerary.temporalOptimize → itinerary.verify →（可选）decision.neptuneRepair → 推导 adjustments → repair.apply；支持部分失败回退与分阶段观测。',
     version: '1.0.0',
     category: 'trip',
     toolGroup: 'DOMAIN',
@@ -134,6 +149,7 @@ export class ItinerarySmartUpdateSkill implements Skill<ItinerarySmartUpdateInpu
   constructor(
     private readonly itineraryVerify: ItineraryVerifySkill,
     private readonly repairApply: RepairApplySkill,
+    @Optional() private readonly temporalOptimize?: ItineraryTemporalOptimizeSkill,
     @Optional() private readonly neptuneRepair?: DecisionNeptuneRepairSkill,
   ) {
     this.logger.log('[ItinerarySmartUpdateSkill] initialized');
@@ -142,7 +158,25 @@ export class ItinerarySmartUpdateSkill implements Skill<ItinerarySmartUpdateInpu
   async execute(input: ItinerarySmartUpdateInput): Promise<ItinerarySmartUpdateOutput> {
     const t0 = Date.now();
     const intentBullets = decomposeUserChangeIntentLite(input.user_change_intent);
-    const working = cloneItinerary(input.itinerary);
+    let working = cloneItinerary(input.itinerary);
+
+    let temporalChangelog: ItinerarySmartUpdateOutput['temporal_changelog'];
+    let needsRegeneration: ItinerarySmartUpdateOutput['needs_regeneration'];
+    if (this.temporalOptimize) {
+      try {
+        const temporal = await this.temporalOptimize.execute({
+          itinerary: working,
+          party_profile: input.party_profile,
+          environment_context: input.environment_context,
+          tokenContext: input.tokenContext,
+        });
+        working = temporal.itinerary;
+        temporalChangelog = temporal.changelog;
+        needsRegeneration = temporal.needs_regeneration;
+      } catch (e: any) {
+        this.logger.warn(`itinerary.smart_update: temporalOptimize failed: ${e?.message ?? e}`);
+      }
+    }
 
     const verifyTelemetry: ItinerarySmartUpdatePhaseTelemetry = { ok: false, duration_ms: 0 };
     const applyTelemetry: ItinerarySmartUpdatePhaseTelemetry = { ok: false, duration_ms: 0 };
@@ -293,6 +327,8 @@ export class ItinerarySmartUpdateSkill implements Skill<ItinerarySmartUpdateInpu
         intent_bullet_count: intentBullets.length,
       },
       ...(applyFailed ? { compensation: { apply_failed: true, restored_to_post_verify_snapshot: restored } } : {}),
+      ...(temporalChangelog?.length ? { temporal_changelog: temporalChangelog } : {}),
+      ...(needsRegeneration ? { needs_regeneration: needsRegeneration } : {}),
     };
   }
 }

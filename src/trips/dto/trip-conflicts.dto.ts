@@ -1,5 +1,6 @@
 // src/trips/dto/trip-conflicts.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { FeasibilityIssuePriority } from '../trip-constraint-solver/types/trip-constraint-solver.types';
 
 /**
  * 冲突类型
@@ -43,6 +44,9 @@ export class ConflictSuggestionDto {
 
   @ApiProperty({ description: '影响说明' })
   impact!: string;
+
+  @ApiPropertyOptional({ description: '建议操作负载' })
+  payload?: Record<string, unknown>;
 }
 
 /**
@@ -70,6 +74,39 @@ export class ConflictDto {
   @ApiProperty({ description: '受影响的行程项 ID 数组' })
   affectedItemIds!: string[];
 
+  @ApiPropertyOptional({ description: '跨项/跨天交通起点行程项 ID' })
+  fromItemId?: string;
+
+  @ApiPropertyOptional({ description: '跨项/跨天交通终点行程项 ID' })
+  toItemId?: string;
+
+  @ApiPropertyOptional({ description: '起点时间 ISO 字符串' })
+  fromTime?: string;
+
+  @ApiPropertyOptional({ description: '终点时间 ISO 字符串' })
+  toTime?: string;
+
+  @ApiPropertyOptional({ description: '问题类型，用于聚合到可执行性 report issues[].issueKind' })
+  issueKind?: string;
+
+  @ApiPropertyOptional({ description: '聚合到可执行性 report 的优先级' })
+  priority?: FeasibilityIssuePriority;
+
+  @ApiPropertyOptional({ description: '起点所在第几天' })
+  fromDayNumber?: number;
+
+  @ApiPropertyOptional({ description: '终点所在第几天' })
+  toDayNumber?: number;
+
+  @ApiPropertyOptional({ description: '起点地点名称' })
+  fromPlaceLabel?: string;
+
+  @ApiPropertyOptional({ description: '终点地点名称' })
+  toPlaceLabel?: string;
+
+  @ApiPropertyOptional({ description: '交通方式' })
+  travelMode?: string;
+
   /** 关联的证据 ID 列表，用于前端将冲突与证据列表对应展示（如 CLOSURE_RISK 对应营业时间证据） */
   @ApiPropertyOptional({ description: '关联的证据 ID 列表', type: [String] })
   evidenceIds?: string[];
@@ -81,11 +118,38 @@ export class ConflictDto {
   @ApiPropertyOptional({ description: '预计交通时间（分钟）' })
   travelTimeMinutes?: number;
 
+  @ApiPropertyOptional({ description: 'A→B 路段预计交通时间（分钟）' })
+  travelMinutes?: number;
+
+  @ApiPropertyOptional({ description: 'A→B 路段距离（米）' })
+  travelDistanceMeters?: number;
+
+  @ApiPropertyOptional({ description: '出发锚点 ISO 字符串' })
+  departAt?: string;
+
+  @ApiPropertyOptional({ description: '预计抵达 ISO 字符串' })
+  arriveAt?: string;
+
+  @ApiPropertyOptional({ description: '活动开始 ISO 字符串' })
+  activityStartAt?: string;
+
   @ApiPropertyOptional({ description: '可用时间（分钟）' })
   availableMinutes?: number;
 
+  @ApiPropertyOptional({ description: '抵达后距离活动开始的余量（分钟）' })
+  gapMinutes?: number;
+
   @ApiPropertyOptional({ description: '缺口（分钟）' })
   shortfallMinutes?: number;
+
+  @ApiPropertyOptional({ description: '下一项开始时间是否偏早' })
+  isStartTooEarly?: boolean;
+
+  @ApiPropertyOptional({ description: '时刻来源' })
+  timingSource?: 'computed' | 'missing_times' | 'user_confirmed';
+
+  @ApiPropertyOptional({ description: '建议的新时间 ISO 字符串' })
+  suggestedTime?: string;
 
   @ApiPropertyOptional({ description: '直线距离（公里）' })
   distanceKm?: number;
@@ -235,4 +299,3 @@ export class ResolveConflictsResponseDto {
   @ApiPropertyOptional({ description: '剩余未解决的冲突', type: [ConflictDto] })
   remainingConflicts?: ConflictDto[];
 }
-

@@ -3,12 +3,15 @@
  * 准备度状态字段统一后API测试脚本
  * 
  * 测试统一后的字段命名（must/should替代warnings/suggestions）
+ * 并校验 /score 与 /insight 准备度字段一致性
  * 
  * 使用方法:
  *   npm run test:readiness-unified
  *   或
  *   READINESS_TEST_BASE_URL=http://localhost:3000 npm run test:readiness-unified <tripId>
  */
+
+import { assertReadinessScoreInsightAlignment } from '../src/trips/readiness/utils/readiness-alignment.util';
 
 const READINESS_TEST_BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
@@ -59,6 +62,64 @@ async function findReadinessTestTripId(): Promise<string | null> {
     // 忽略错误，返回null
   }
   return null;
+}
+
+async function testScoreInsightAlignment(tripId: string): Promise<TestResult> {
+  try {
+    const [scoreResult, insightResult] = await Promise.all([
+      readinessHttpRequest('GET', `${READINESS_TEST_BASE_URL}/api/readiness/trip/${tripId}/score`),
+      readinessHttpRequest('GET', `${READINESS_TEST_BASE_URL}/api/trips/${tripId}/insight`),
+    ]);
+
+    const scoreSummary = scoreResult.data?.summary || {};
+    const scoreBreakdown = scoreResult.data?.score || {};
+    const readiness = insightResult.data?.readiness || {};
+
+    const alignment = assertReadinessScoreInsightAlignment(
+      {
+        overall: scoreBreakdown.overall,
+        blockers: scoreSummary.blockers,
+        must: scoreSummary.must,
+        should: scoreSummary.should,
+      },
+      {
+        overall: readiness.overall,
+        blockers: readiness.blockers,
+        must: readiness.must,
+        should: readiness.should,
+        status: readiness.status,
+      },
+    );
+
+    return {
+      name: 'Score 与 Insight 准备度对齐',
+      success: alignment.aligned,
+      error: alignment.aligned ? undefined : alignment.mismatches.join('; '),
+      data: {
+        aligned: alignment.aligned,
+        mismatches: alignment.mismatches,
+        score: {
+          overall: scoreBreakdown.overall,
+          blockers: scoreSummary.blockers,
+          must: scoreSummary.must,
+          should: scoreSummary.should,
+        },
+        insight: {
+          overall: readiness.overall,
+          blockers: readiness.blockers,
+          must: readiness.must,
+          should: readiness.should,
+          status: readiness.status,
+        },
+      },
+    };
+  } catch (error: any) {
+    return {
+      name: 'Score 与 Insight 准备度对齐',
+      success: false,
+      error: error.message,
+    };
+  }
 }
 
 async function testReadinessScore(tripId: string): Promise<TestResult> {
@@ -311,6 +372,7 @@ async function readinessMain() {
   console.log('='.repeat(60));
 
   results.push(await testReadinessScore(tripId));
+  results.push(await testScoreInsightAlignment(tripId));
   results.push(await testPersonalizedChecklist(tripId));
   results.push(await testTripInsight(tripId));
   results.push(await testReadinessCheck(tripId));

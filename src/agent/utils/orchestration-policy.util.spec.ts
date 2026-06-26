@@ -170,6 +170,8 @@ describe('routePolicy - 决策真值表测试', () => {
       // 构建完整的 signals
       const fullSignals: RoutingSignals = {
         taskType: testCase.signals.taskType || 'GENERIC_QA',
+        capability: testCase.signals.capability || 'FAST_QA',
+        actionKind: testCase.signals.actionKind || 'GENERIC',
         risk: testCase.signals.risk || 'LOW',
         complexity: testCase.signals.complexity || 'SIMPLE',
         needsAudit: testCase.signals.needsAudit ?? false,

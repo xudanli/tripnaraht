@@ -1,6 +1,10 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GLOBAL_ROLLBACK_BIAS_EFFORT } from './user-preference-learning.service';
+import type { DecisionDnaEvolutionReason } from '../memory/governance/decision-dna-compliance.types';
+import { mapDecisionDnaToMemoryPatch } from '../memory/utils/decision-dna-memory.mapper';
+import type { MemoryStateV1 } from '../memory/schemas/memory-state.schema.v1';
+import { MEMORY_STATE_SCHEMA_VERSION } from '../memory/schemas/memory-state.schema.v1';
 
 export type DecisionDnaDto = {
   version: 1;
@@ -37,7 +41,11 @@ export class UserProfileLearningService {
    * - aggregates last N rollback records (userId-scoped)
    * - writes bias_map + confidence + traits
    */
-  async syncPreferenceToProfile(params: { userId: string | null | undefined; now?: Date }): Promise<DecisionDnaDto | null> {
+  async syncPreferenceToProfile(params: {
+    userId: string | null | undefined;
+    now?: Date;
+    reason?: DecisionDnaEvolutionReason;
+  }): Promise<DecisionDnaDto | null> {
     const uid = params.userId != null ? String(params.userId).trim() : '';
     if (!uid || !this.prisma) return null;
 
@@ -102,6 +110,29 @@ export class UserProfileLearningService {
     });
     const prefs = (existing?.preferences as any) || {};
     prefs.decision_dna = dna;
+
+    if (params.reason) {
+      const patch = mapDecisionDnaToMemoryPatch({
+        userId: uid,
+        dna,
+        reason: params.reason,
+        now,
+      });
+      const prev = (prefs.memory_state_v1 as MemoryStateV1 | undefined) ?? {
+        schemaVersion: MEMORY_STATE_SCHEMA_VERSION,
+        userId: uid,
+        longTerm: {},
+        updatedAt: patch.updatedAt,
+      };
+      prefs.memory_state_v1 = {
+        ...prev,
+        schemaVersion: MEMORY_STATE_SCHEMA_VERSION,
+        userId: uid,
+        longTerm: { ...prev.longTerm, ...(patch.longTermPatch ?? {}) },
+        decisionDnaRef: patch.decisionDnaRef,
+        updatedAt: patch.updatedAt,
+      };
+    }
 
     await this.prisma.userProfile.upsert({
       where: { userId: uid },

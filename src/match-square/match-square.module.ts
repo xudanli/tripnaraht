@@ -6,6 +6,7 @@ import { LlmModule } from '../llm/llm.module';
 import { HikingPlansModule } from '../hiking-plans/hiking-plans.module';
 import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
 import { AgentModule } from '../agent/agent.module';
+import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
 import { MatchSquareController } from './match-square.controller';
 import { MatchSquareService } from './match-square.service';
 import { VibeLlmService } from './vibe-llm.service';
@@ -25,6 +26,9 @@ import { TrekkingFitnessBaselineService } from './trekking-fitness-baseline.serv
 import { TrekkingFitnessBackflowService } from './trekking-fitness-backflow.service';
 import { SovereignForceLockService } from './sovereign-force-lock.service';
 import { CollabFlywheelAuditService } from './observability/collaborative-flywheel-audit.service';
+import { RecruitingRuntimeModule } from './recruiting-runtime.module';
+import { CalibrationLoopService } from './services/calibration-loop.service';
+import { CalibrationController } from './controllers/calibration.controller';
 
 @Module({
   imports: [
@@ -37,8 +41,10 @@ import { CollabFlywheelAuditService } from './observability/collaborative-flywhe
     forwardRef(() => AgentModule),
     forwardRef(() => DecisionModule),
     RouteDirectionsModule,
+    RecruitingRuntimeModule,
+    IdentityGovernanceModule,
   ],
-  controllers: [MatchSquareController, CollaborativeTaskFlywheelController],
+  controllers: [MatchSquareController, CollaborativeTaskFlywheelController, CalibrationController],
   providers: [
     MatchSquareService,
     VibeLlmService,
@@ -55,6 +61,7 @@ import { CollabFlywheelAuditService } from './observability/collaborative-flywhe
     TrekkingFitnessBackflowService,
     SovereignForceLockService,
     CollabFlywheelAuditService,
+    CalibrationLoopService,
   ],
   exports: [
     MatchSquareService,
@@ -71,6 +78,7 @@ import { CollabFlywheelAuditService } from './observability/collaborative-flywhe
     TrekkingFitnessBackflowService,
     SovereignForceLockService,
     CollabFlywheelAuditService,
+    CalibrationLoopService,
   ],
 })
 export class MatchSquareModule {}

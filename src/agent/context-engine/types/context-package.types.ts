@@ -67,6 +67,11 @@ export type BlockType =
   | 'TOOL_OUTPUT'        // 工具输出摘要
   | 'USER_PROFILE'       // 用户画像
   | 'CONSTRAINTS'        // 约束条件
+  | 'WISHLIST_PRIVATE'   // 当前用户私密愿望（仅 includePrivate 时注入）
+  | 'WISHLIST_TRIP_PRIVATE' // 其他成员私密愿望（匿名 · 仅 agentEligible · 仅规划参考）
+  | 'WISHLIST_TEAM'      // 团队可见愿望（匿名/署名）
+  | 'DOMAIN_INFLUENCE_TEAM'    // 领域影响力：团队可见治理摘要
+  | 'DOMAIN_INFLUENCE_PRIVATE' // 领域负责人视角私密约束（memberSlot，仅 includePrivate）
   | 'METADATA'           // 元数据
   | 'API_DOCUMENTATION'  // API 接口文档
   | 'SYSTEM_CAPABILITY'; // 系统能力说明

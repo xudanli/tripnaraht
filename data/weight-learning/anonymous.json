@@ -1,0 +1,44 @@
+{
+  "profile": {
+    "userId": "anonymous",
+    "currentWeights": {
+      "safety": 0.25,
+      "experienceDensity": 0.2,
+      "philosophyAlignment": 0.15,
+      "timeSlack": 0.1,
+      "fatigueRisk": 0.15,
+      "weatherRisk": 0.05,
+      "budgetOverrun": 0.05,
+      "pacingVariance": 0.05
+    },
+    "weightHistory": [],
+    "totalFeedback": 0,
+    "learningConfidence": 0.5,
+    "lastUpdated": "2026-06-26T06:43:11.427Z"
+  },
+  "feedbackHistory": [
+    {
+      "id": "guardian_choose_1782456191426",
+      "userId": "anonymous",
+      "tripId": "c7201f41-bb9f-4961-9512-1c98d9d301e2",
+      "type": "PREFERENCE_UPDATE",
+      "timestamp": "2026-06-26T06:43:11.427Z",
+      "data": {
+        "modificationType": "OTHER",
+        "modificationReason": "[presentation] choice=0:接受当前方案; points=[\"接受当前方案\",\"调整节奏\",\"重新规划\"]"
+      },
+      "weightsAtTime": {
+        "safety": 0.25,
+        "experienceDensity": 0.2,
+        "philosophyAlignment": 0.15,
+        "timeSlack": 0.1,
+        "fatigueRisk": 0.15,
+        "weatherRisk": 0.05,
+        "budgetOverrun": 0.05,
+        "pacingVariance": 0.05
+      },
+      "utilityAtTime": 0
+    }
+  ],
+  "learningHistory": []
+}

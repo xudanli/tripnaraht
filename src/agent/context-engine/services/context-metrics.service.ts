@@ -8,7 +8,7 @@
  * - 缓存命中率、构建耗时
  */
 
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ContextPackage } from '../types/context-package.types';
 import { SkillsRegistryService } from '../../../skills/services/skills-registry.service';
@@ -132,7 +132,9 @@ export class ContextMetricsService {
 
   constructor(
     @Inject('PrismaService') @Optional() private readonly prisma?: PrismaService,
-    @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
+    @Inject(forwardRef(() => SkillsRegistryService))
+    @Optional()
+    private readonly skillsRegistry?: SkillsRegistryService,
   ) {}
 
   /**

@@ -16,6 +16,11 @@
     "recoveryHistory": [],
     "failurePatterns": [],
     "recentTripFeedbacks": [],
+    "domainInfluenceDigest": null,
+    "wishConstraintDigest": null,
+    "privateWishDigest": null,
+    "decisionProfilingDigest": null,
+    "negotiationDigest": null,
     "loadedAt": "2026-05-11T00:00:00.000Z",
     "observability": {
       "layers": ["fixture"]

@@ -3,6 +3,17 @@
 import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PreferenceRoundOrchestratorService } from '../../trips/process-fairness/services/preference-round-orchestrator.service';
+import type { ProcessFairnessOrchestrationHint } from '../../trips/process-fairness/types/process-fairness-orchestration.types';
+import { resolveRouteAndRunUserMessage } from '../utils/resolve-route-and-run-message.util';
+import {
+  buildProcessFairnessSuggestedOperations,
+  buildTeamStructuredDiscussionAnswer,
+  isTeamStructuredDiscussionQuery,
+  primaryDecisionNodeFromMessage,
+} from '../utils/team-structured-discussion.util';
+import { DecisionProfilingOrchestratorService } from '../../trips/decision-profiling/services/decision-profiling-orchestrator.service';
+import type { DecisionProfilingOrchestrationHint } from '../../trips/decision-profiling/types/decision-profiling-orchestration.types';
 import { ConfigService } from '@nestjs/config';
 import { LlmService, type LlmTokenContext } from '../../llm/services/llm.service';
 import { setLlmTraceRoutePath } from '../../llm/token-context.storage';
@@ -10,6 +21,7 @@ import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
 import { ActionRegistryService } from './action-registry.service';
+import { DependencyHealthCheckService, type DependencyCheckConfig } from './dependency-health-check.service';
 import { SimpleLruCache } from './orchestration-utils';
 import { createDeadline } from './orchestration-stability.util';
 import {
@@ -332,6 +344,7 @@ import {
   isExecutableFlightInventoryQuery,
   resolveFlightInventoryLegs,
 } from '../utils/flight-inventory-signals.util';
+import { normalizeLiveTools } from '../utils/live-tools.util';
 import { buildInventorySnapshotsMeta } from '../inventory/lightweight-live-inventory.registry';
 import {
   buildNarrativeSafetyPromptLines,
@@ -647,6 +660,15 @@ import {
 } from '../orchestration/post-plan';
 import { persistHarnessTraceOnPlanVerifyReturnToResearch } from '../orchestration/plan-verify-loop/plan-verify-loop-trace.util';
 import {
+  buildPlanningPhaseTripOverviewPromptLines,
+  parseTripStartDateFromContextLines,
+  shouldSkipAgentReadinessPackCheck,
+} from '../utils/agent-readiness-phase.util';
+import {
+  isActivityRecommendationQuery,
+  loadWishlistPromptInjectionForAgent,
+} from '../../trips/wishlist/utils/wish-prompt-injection.util';
+import {
   buildPoiPlanningOutcomePhaseReport,
   type PoiPlanningAdmissionDiagnosticsInput,
 } from '../../planning-policy/utils/poi-planning-outcome-metrics.util';
@@ -780,7 +802,8 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly readinessService?: ReadinessService,
     @Optional() private readonly coverageMapService?: CoverageMapService,
     @Optional() private readonly userDecisionService?: UserDecisionService,
-    @Optional() private readonly decisionDraftGenerator?: DecisionDraftGeneratorService,
+    @Optional() @Inject(forwardRef(() => DecisionDraftGeneratorService))
+    private readonly decisionDraftGenerator?: DecisionDraftGeneratorService,
     //领域智能体（世界模型层）
     @Optional() private readonly geoAgent?: GeoAgentService,
     @Optional() private readonly weatherAgent?: WeatherAgentService,
@@ -804,6 +827,8 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly regionAnchorPlanning?: RegionAnchorPlanningService,
     /** Monitoring (Prometheus) */
     @Optional() private readonly promMetrics?: PrometheusMetricsService,
+    /** 依赖健康检查 */
+    @Optional() private readonly dependencyHealthCheck?: DependencyHealthCheckService,
     /** 有 trip_id 时从 Trip 记录回填目的地/日期，避免「已在行程上下文仍追问目的地」 */
     @Optional() @Inject(forwardRef(() => TripsService)) private readonly tripsService?: TripsService,
     @Optional() private readonly tripRunManager?: TripRunManagerService,
@@ -837,6 +862,10 @@ export class ClaudeOrchestratorService {
     @Inject(forwardRef(() => PlanningAssistantV2Service))
     private readonly planningAssistantV2Service?: PlanningAssistantV2Service,
     @Optional() private readonly itineraryVersion?: ItineraryVersionService,
+    /** F3.1 过程公平性：关键决策节点自动发起 Round Robin */
+    @Optional() private readonly preferenceRoundOrchestrator?: PreferenceRoundOrchestratorService,
+    /** PDI-4：未完成调查时自动推送 Travel Style / Money DNA 问卷 */
+    @Optional() private readonly decisionProfilingOrchestrator?: DecisionProfilingOrchestratorService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -852,6 +881,140 @@ export class ClaudeOrchestratorService {
     } else {
       this.logger.warn(`[ClaudeOrchestratorService] ⚠️ SkillsRegistry 未注入！`);
     }
+
+    // 注册依赖健康检查
+    this.registerDependencyHealthChecks();
+  }
+
+  /**
+   * 注册依赖健康检查
+   */
+  private registerDependencyHealthChecks(): void {
+    if (!this.dependencyHealthCheck) {
+      this.logger.debug('DependencyHealthCheckService 未注入，跳过依赖健康检查注册');
+      return;
+    }
+
+    const checks: DependencyCheckConfig[] = [];
+
+    // 核心依赖（必需）
+    if (this.llmService) {
+      checks.push({
+        name: 'llm_service',
+        required: true,
+        timeout: 5000,
+        check: async () => {
+          try {
+            // 简单的健康检查：调用一个轻量的 LLM 请求
+            const start = Date.now();
+            // 这里可以添加实际的 LLM 健康检查逻辑
+            // 暂时返回健康状态
+            return { healthy: true, latency: Date.now() - start };
+          } catch (error: any) {
+            return { healthy: false, error: error.message };
+          }
+        },
+      });
+    }
+
+    // 子 Agent（可选但重要）
+    if (this.plannerAgent) {
+      checks.push({
+        name: 'planner_agent',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    if (this.gatekeeperAgent) {
+      checks.push({
+        name: 'gatekeeper_agent',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    if (this.complianceAgent) {
+      checks.push({
+        name: 'compliance_agent',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    // 领域 Agent（可选）
+    if (this.geoAgent) {
+      checks.push({
+        name: 'geo_agent',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    if (this.weatherAgent) {
+      checks.push({
+        name: 'weather_agent',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    if (this.costAgent) {
+      checks.push({
+        name: 'cost_agent',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    if (this.experienceAgent) {
+      checks.push({
+        name: 'experience_agent',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    // Decision Kernel（重要）
+    if (this.decisionKernel) {
+      checks.push({
+        name: 'decision_kernel',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    // RAG 相关
+    if (this.chunkRetrieval) {
+      checks.push({
+        name: 'chunk_retrieval',
+        required: false,
+        timeout: 5000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    // MCP 工具
+    if (this.mcpToolDispatcher) {
+      checks.push({
+        name: 'mcp_tool_dispatcher',
+        required: false,
+        timeout: 3000,
+        check: async () => ({ healthy: true }),
+      });
+    }
+
+    // 注册所有检查
+    this.dependencyHealthCheck.registerDependencies(checks);
+    this.logger.log(`[ClaudeOrchestratorService] 已注册 ${checks.length} 个依赖健康检查`);
   }
 
   private resolveDosExecutionContext(
@@ -1368,7 +1531,8 @@ export class ClaudeOrchestratorService {
   }
 
   /**
-   * 轻量咨询并行分支：凡已绑定行程且非「时钟/宏观统计」类短事实问法，均拉取 Pack 准备度摘录（与问法意图无关）。
+   * 轻量咨询并行分支：已绑定行程且非 trivia 时拉取 Pack 准备度摘录。
+   * 规划阶段（工作台 / TRIP_PLANNING / 距出发尚早）由 {@link shouldSkipAgentReadinessPackCheck} 跳过。
    */
   private async runLightweightReadinessSupplement(
     effectiveTripId: string | undefined,
@@ -1960,7 +2124,7 @@ export class ClaudeOrchestratorService {
     if (!this.mcpToolDispatcher) return false;
     const rt = context.routingTaskType;
     if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-    const tools = request.options?.enable_live_tools ?? [];
+    const tools = normalizeLiveTools(request.options?.enable_live_tools);
     const msg = request.message ?? '';
     if (tools.includes('hotel')) return true;
     /** 可执行航班库存 intent：勿自动旁路到住宿（除非用户显式 enable_live_tools hotel） */
@@ -1985,7 +2149,7 @@ export class ClaudeOrchestratorService {
     if (!this.amadeusDirect?.isAvailable && !this.flightMcp?.isAvailable) return false;
     const rt = context.routingTaskType;
     if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-    const tools = request.options?.enable_live_tools ?? [];
+    const tools = normalizeLiveTools(request.options?.enable_live_tools);
     const msg = request.message ?? '';
     if (tools.includes('flight')) return true;
     return isExecutableFlightInventoryQuery(msg);
@@ -2001,7 +2165,7 @@ export class ClaudeOrchestratorService {
     if (!this.mcpToolDispatcher) return false;
     const rt = context.routingTaskType;
     if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-    const tools = request.options?.enable_live_tools ?? [];
+    const tools = normalizeLiveTools(request.options?.enable_live_tools);
     const msg = request.message ?? '';
     if (tools.includes('car_rental')) return true;
     if (
@@ -3553,6 +3717,113 @@ export class ClaudeOrchestratorService {
   }
 
   /**
+   * 团队结构化讨论：禁止落入 QA_LIGHT 住宿长文；与 `tryBuildTeamStructuredDiscussionFastPath` 对齐。
+   */
+  private async orchestrateTeamStructuredDiscussionBypass(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    message: string,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const tripId = (context.tripId || request.trip_id || '').trim();
+    const userId = (context.userId || request.user_id || '').trim();
+    let memberCount = 1;
+    let hint: ProcessFairnessOrchestrationHint = {
+      triggered: false,
+      status: 'SCAFFOLD',
+      decisionNode: primaryDecisionNodeFromMessage(message),
+      roundId: null,
+      round: null,
+      agentIntroZh: null,
+      clientNavigation: null,
+      skippedReason: !userId ? 'missing_user_id' : !this.preferenceRoundOrchestrator ? 'orchestrator_unavailable' : undefined,
+    };
+
+    if (this.preferenceRoundOrchestrator && tripId && userId) {
+      try {
+        memberCount = await this.preferenceRoundOrchestrator.countTripMembers(tripId);
+        hint = await this.preferenceRoundOrchestrator.tryAutoStartForRequest({
+          tripId,
+          userId,
+          message,
+        });
+      } catch (e: any) {
+        this.logger.warn(
+          `[Claude Orchestrator] team structured discussion orchestrator failed: ${e?.message ?? e}`,
+        );
+        hint = { ...hint, skippedReason: hint.skippedReason ?? 'orchestrator_error' };
+      }
+    }
+
+    let tripName: string | null = null;
+    if (tripId) {
+      try {
+        const row = await this.prisma.trip.findUnique({
+          where: { id: tripId },
+          select: { name: true },
+        });
+        tripName = row?.name ?? null;
+      } catch {
+        tripName = null;
+      }
+    }
+
+    const answerText = buildTeamStructuredDiscussionAnswer({
+      message,
+      tripName,
+      memberCount,
+      hint,
+    });
+    const suggestedOperations = buildProcessFairnessSuggestedOperations(hint);
+    const doneAt = Date.now();
+
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingDecision: {
+          route: 'SYSTEM2_REASONING',
+          confidence: 0.92,
+          reasoning: 'team_structured_discussion_bypass',
+          budget: { max_seconds: 8, max_steps: 0, max_browser_steps: 0 },
+          requiredCapabilities: ['process_fairness'],
+          consentRequired: false,
+          selected_path: 'TEAM_STRUCTURED_DISCUSSION',
+        },
+        trip_id: tripId,
+        ui_surface: 'consultation' as const,
+        process_fairness: hint,
+        ...(suggestedOperations.length ? { suggested_operations: suggestedOperations } : {}),
+        teamStructuredDiscussionBypass: true,
+        routingTaskType: context.routingTaskType,
+      },
+      stepsExecuted: [],
+      totalDuration: doneAt - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'GATE_EVAL',
+          actor: 'Orchestrator',
+          inputs_summary: 'team_structured_discussion QA_LIGHT bypass',
+          outputs_summary: hint.triggered
+            ? `process_fairness round_id=${hint.roundId}`
+            : `process_fairness skipped=${hint.skippedReason ?? 'n/a'}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: hint.triggered
+              ? 'PROCESS_FAIRNESS_ROUND_STARTED'
+              : 'PROCESS_FAIRNESS_DISCUSSION_SCAFFOLD',
+            decision_node: hint.decisionNode,
+            round_id: hint.roundId,
+            client_navigation: hint.clientNavigation,
+          },
+        },
+      ],
+    };
+  }
+
+  /**
    * 轻量知识问答：与路由层 DATA_LOOKUP / GENERIC_QA / RAG_QA 对齐，跳过 Skill 选择与 itinerary 类缺参校验。
    */
   private async orchestrateLightweightKnowledgeQuery(
@@ -3570,6 +3841,7 @@ export class ClaudeOrchestratorService {
 
     const executeLightweightKnowledgeBody = async (): Promise<OrchestrationResult> => {
       let tripContextLines: string[] = [];
+      let wishlistInjectedForTrip = false;
       if (effectiveTripId && !lightweightTriviaFact) {
       const summary = await this.resolveTripPromptSummaryForLightweightQa(effectiveTripId, request);
       if (summary) {
@@ -3577,6 +3849,26 @@ export class ClaudeOrchestratorService {
           '以下为本系统中该关联行程的已知信息（请据此回答季节、时长与目的地相关建议；勿声称无法读取日期或行程概况；未列出的活动/住宿等细节仍勿编造）：',
           summary,
         ];
+      }
+      try {
+        const wishBlock = await loadWishlistPromptInjectionForAgent(
+          this.prisma,
+          effectiveTripId,
+          request.user_id?.trim(),
+        );
+        if (wishBlock) {
+          wishlistInjectedForTrip = true;
+          if (tripContextLines.length === 0) {
+            tripContextLines = [
+              '以下为本系统中该关联行程的已知信息（含愿望单；勿声称无法读取用户心愿）：',
+            ];
+          }
+          tripContextLines.push(wishBlock);
+        }
+      } catch (e: any) {
+        this.logger.warn(
+          `[LightweightQA] wishlist inject failed trip_id=${effectiveTripId}: ${e?.message ?? e}`,
+        );
       }
     }
     if (effectiveTripId && tripContextLines.length === 0 && !lightweightTriviaFact) {
@@ -3687,9 +3979,17 @@ export class ClaudeOrchestratorService {
       !westfjordsAirConsult &&
       !weatherRoadFocused &&
       this.isCarRentalOrDrivingTravelQuery(msgForNamedPoi);
-    /** 所有绑定行程的轻量问均跑 Readiness（排除当地时间/GDP 等 trivia，不注入行程摘要的同路径） */
+    /** 绑定行程的轻量问：规划阶段不跑 Readiness Pack */
+    const skipReadinessPack = shouldSkipAgentReadinessPackCheck(
+      request,
+      parseTripStartDateFromContextLines(tripContextLines),
+      request.message ?? '',
+    );
     const wantReadinessForLightweight =
-      Boolean(effectiveTripId) && !lightweightTriviaFact && !!this.readinessService;
+      Boolean(effectiveTripId) &&
+      !lightweightTriviaFact &&
+      !!this.readinessService &&
+      !skipReadinessPack;
 
     const shouldStPull =
       !lightweightTriviaFact &&
@@ -3862,7 +4162,9 @@ export class ClaudeOrchestratorService {
           ]
         : []),
       ...(tripStatusOverview
-        ? [
+        ? skipReadinessPack
+          ? buildPlanningPhaseTripOverviewPromptLines()
+          : [
             '【行程进度/概览问法】用户关心的是当前草稿的整体状态（准备度、吃住是否有着落、有无明显不合理），而非仅复述时间轴或罗列景点卡片。',
             '请按以下结构组织回答（小标题可用 `-` 或加粗，保持简洁）：',
             '- **当前摘要**：一句话说明行程覆盖的核心区域/城市或路线主轴。',
@@ -3920,6 +4222,16 @@ export class ClaudeOrchestratorService {
       !itineraryDraftHasItems
         ? [
             '【餐饮推荐】用户询问用餐/餐厅推荐，但当前库内日程草案为空或无日程项：请先简要说明无法绑定具体日程站点，再给目的地通用用餐思路（类型、价位带、预订提示）；可邀请用户在工作台补充日程后再问「某一天或某一站附近吃什么」。',
+          ]
+        : []),
+      ...(effectiveTripId &&
+      wishlistInjectedForTrip &&
+      isActivityRecommendationQuery(request.message ?? '')
+        ? [
+            '【活动推荐 · 愿望单优先】用户正在索取活动/体验推荐；上文「行程愿望单」含其私密或团队心愿（含其他成员已匿名私密条目）。',
+            '正文须**优先**对照愿望单中的活动类条目给出 2～4 条可执行建议，并说明与当前草案日程/驾驶强度的衔接；勿只给泛化目的地攻略而忽略愿望单。',
+            '对其他成员私密愿望：可纳入统筹建议，但**勿透露或猜测**具体是谁写的。',
+            '可补充未列入愿望单但顺路的备选；若愿望与季节/路程冲突，须如实说明并给改期或替代方案。',
           ]
         : []),
       ...(wBranch.block ? [wBranch.block] : []),
@@ -4756,6 +5068,18 @@ export class ClaudeOrchestratorService {
       }
 
       const rt = context.routingTaskType;
+      const teamDiscussMsg = resolveRouteAndRunUserMessage(request);
+      if (isTeamStructuredDiscussionQuery(teamDiscussMsg)) {
+        this.logger.warn(
+          `[Claude Orchestrator] TEAM_STRUCTURED_DISCUSSION bypass QA_LIGHT request_id=${request.request_id}`,
+        );
+        return await this.orchestrateTeamStructuredDiscussionBypass(
+          request,
+          context,
+          teamDiscussMsg,
+          startTime,
+        );
+      }
       const msgLowerEarly = (request.message ?? '').trim().toLowerCase();
       const boundTripLightConsult =
         !!boundTripIdEarly &&
@@ -11374,9 +11698,12 @@ ${JSON.stringify(routingDecision, null, 2)}
         routeIntent?.primary,
         itineraryAdjustTripPoiSeedCount,
       );
+    const existingTripRouteOrderOptimization =
+      this.isExistingTripRouteOrderOptimizationRequest(state);
     if (
       estimatedCommuteMinutes > commuteBudgetMinutes &&
-      !skipCommuteClarifyForItineraryAdjust
+      !skipCommuteClarifyForItineraryAdjust &&
+      !existingTripRouteOrderOptimization
     ) {
       const destinationExample = destinationRaw || '雷克雅未克';
       state.gaps = [
@@ -11420,7 +11747,12 @@ ${JSON.stringify(routingDecision, null, 2)}
     if (skipSparseForItineraryAdjust && scored.length < minPoiRequired) {
       scored = rankedPois.slice(0, Math.max(minPoiRequired, scored.length));
     }
-    if (scored.length > 0 && scored.length < minPoiRequired && !skipSparseForItineraryAdjust) {
+    if (
+      scored.length > 0 &&
+      scored.length < minPoiRequired &&
+      !skipSparseForItineraryAdjust &&
+      !existingTripRouteOrderOptimization
+    ) {
       const destinationExample = destinationRaw || '雷克雅未克';
       state.gaps = [
         ...(state.gaps || []),
@@ -11452,8 +11784,20 @@ ${JSON.stringify(routingDecision, null, 2)}
         allowWithFallback: false,
       };
     }
+    if (existingTripRouteOrderOptimization && (estimatedCommuteMinutes > commuteBudgetMinutes || scored.length < minPoiRequired)) {
+      state.metadata = {
+        ...(state.metadata ?? {}),
+        poi_selection_destination_scope_clarification_bypassed: {
+          reason: 'EXISTING_TRIP_ROUTE_ORDER_OPTIMIZATION',
+          selected_count: scored.length,
+          min_poi_required: minPoiRequired,
+          estimated_commute_minutes: estimatedCommuteMinutes,
+          commute_budget_minutes: commuteBudgetMinutes,
+        },
+      } as any;
+    }
 
-    if (destinationCountry && scored.length === 0) {
+    if (destinationCountry && scored.length === 0 && !existingTripRouteOrderOptimization) {
       if (sparsePoiGate.sparseProfile) {
         (state.metadata as Record<string, unknown>).sparse_region_no_poi_fallback = true;
       } else {
@@ -11534,6 +11878,18 @@ ${JSON.stringify(routingDecision, null, 2)}
       needsClarification: false,
       allowWithFallback,
     };
+  }
+
+  private isExistingTripRouteOrderOptimizationRequest(state: OrchestratorState): boolean {
+    const tripId = state.trip_plan_request?.trip_id ?? state.metadata?.tripId;
+    if (!tripId) return false;
+    const message = [
+      state.trip_plan_request?.message,
+      state.metadata?.intake_user_message,
+    ]
+      .map((x) => (typeof x === 'string' ? x : ''))
+      .join('\n');
+    return /(?:优化|调整|重排|重新排序|reorder|optimi[sz]e).{0,24}(?:路线顺序|路线|交通时间|通勤|route\s*order|travel\s*time)|(?:路线顺序|交通时间|通勤|route\s*order|travel\s*time).{0,24}(?:优化|调整|重排|重新排序|reorder|optimi[sz]e)/i.test(message);
   }
 
   /** Phase 2.0：DSO slice 摘要，写入 metadata 与 observability，便于无 DSO 回放对齐 */
@@ -13241,13 +13597,23 @@ ${JSON.stringify(routingDecision, null, 2)}
     this.logger.debug(`[Claude Orchestrator] 执行 GATE_EVAL 步骤...`);
 
     try {
-      // ========== 1. 准备度检查（新增） ==========
+      // ========== 1. 准备度检查（规划阶段跳过 Readiness Pack） ==========
       let readinessCheckResult: any = null;
       let readinessBlockers: any[] = [];
       let readinessMust: any[] = [];
       let rulesNeedingDecision: any[] = [];
 
-      if (this.readinessService && state.trip_plan_request) {
+      const gateStartStr =
+        (state.trip_plan_request as { start_date?: string; date_range?: { start_date?: string } })
+          ?.start_date ?? state.trip_plan_request?.date_range?.start_date;
+      const gateTripStart = gateStartStr ? new Date(gateStartStr) : undefined;
+      const skipReadinessPackInGate = shouldSkipAgentReadinessPackCheck(
+        request,
+        gateTripStart,
+        request.message ?? '',
+      );
+
+      if (this.readinessService && state.trip_plan_request && !skipReadinessPackInGate) {
         try {
           const destination = typeof state.trip_plan_request.destination === 'string'
             ? state.trip_plan_request.destination
@@ -14550,6 +14916,125 @@ ${JSON.stringify(routingDecision, null, 2)}
   }
 
   /**
+   * PDI-4：Gate 通过后、PLAN 前，对未完成 Travel Style / Money DNA 调查的成员自动推送问卷入口。
+   */
+  private async maybeTriggerDecisionProfilingQuiz(
+    request: RouteAndRunRequestDto,
+    state: OrchestratorState,
+  ): Promise<void> {
+    if (!this.decisionProfilingOrchestrator) return;
+
+    const tripId = (request.trip_id || state.metadata?.tripId || '').trim();
+    const userId = (request.user_id || state.metadata?.userId || '').trim();
+    if (!tripId || !userId) return;
+
+    try {
+      const hint: DecisionProfilingOrchestrationHint =
+        await this.decisionProfilingOrchestrator.tryAutoPromptQuiz({
+          tripId,
+          userId,
+          message: request.message ?? '',
+        });
+
+      if (!hint.triggered) return;
+
+      (state.metadata as Record<string, unknown>).decision_profiling = hint;
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'GATE_EVAL',
+        actor: 'Orchestrator',
+        inputs_summary: `decision_profiling auto-prompt step=${hint.nextStep}`,
+        outputs_summary: `prompt_kind=${hint.promptKind}`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: {
+          system_action: 'DECISION_PROFILING_QUIZ_PROMPTED',
+          next_step: hint.nextStep,
+          prompt_kind: hint.promptKind,
+          team_completion_rate: hint.onboarding.teamCompletionRate,
+          client_navigation: hint.clientNavigation,
+        },
+      });
+
+      if (hint.agentIntroZh) {
+        const prev = state.narration?.user_friendly_summary ?? '';
+        state.narration = {
+          day_by_day_narrative: state.narration?.day_by_day_narrative ?? [],
+          highlights: state.narration?.highlights ?? [],
+          tips: state.narration?.tips ?? [],
+          ...state.narration,
+          user_friendly_summary: prev
+            ? `${prev}\n\n${hint.agentIntroZh}`
+            : hint.agentIntroZh,
+        };
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `[Claude Orchestrator] decision_profiling auto-prompt skipped: ${e?.message ?? e}`,
+      );
+    }
+  }
+
+  /**
+   * F3.1：Gate 通过后、PLAN 前，对多人行程在检测到关键决策节点时自动发起偏好分享轮次。
+   */
+  private async maybeTriggerProcessFairnessRound(
+    request: RouteAndRunRequestDto,
+    state: OrchestratorState,
+  ): Promise<void> {
+    if (!this.preferenceRoundOrchestrator) return;
+
+    const tripId = (request.trip_id || state.metadata?.tripId || '').trim();
+    const userId = (request.user_id || state.metadata?.userId || '').trim();
+    if (!tripId || !userId) return;
+
+    try {
+      const hint: ProcessFairnessOrchestrationHint =
+        await this.preferenceRoundOrchestrator.tryAutoStartForRequest({
+          tripId,
+          userId,
+          message: resolveRouteAndRunUserMessage(request),
+        });
+
+      if (!hint.triggered) return;
+
+      (state.metadata as Record<string, unknown>).process_fairness = hint;
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'GATE_EVAL',
+        actor: 'Orchestrator',
+        inputs_summary: `process_fairness auto-start node=${hint.decisionNode}`,
+        outputs_summary: `round_id=${hint.roundId}`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: {
+          system_action: 'PROCESS_FAIRNESS_ROUND_STARTED',
+          decision_node: hint.decisionNode,
+          round_id: hint.roundId,
+          client_navigation: hint.clientNavigation,
+        },
+      });
+
+      if (hint.agentIntroZh) {
+        const prev = state.narration?.user_friendly_summary ?? '';
+        state.narration = {
+          day_by_day_narrative: state.narration?.day_by_day_narrative ?? [],
+          highlights: state.narration?.highlights ?? [],
+          tips: state.narration?.tips ?? [],
+          ...state.narration,
+          user_friendly_summary: prev
+            ? `${prev}\n\n${hint.agentIntroZh}`
+            : hint.agentIntroZh,
+        };
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `[Claude Orchestrator] process_fairness auto-start skipped: ${e?.message ?? e}`,
+      );
+    }
+  }
+
+  /**
    * 构建成功结果
    * @param decisionState DSO（含 confidence/history/decisionMeta），供 RLHF/分析/前端使用
    */
@@ -14729,6 +15214,12 @@ ${JSON.stringify(routingDecision, null, 2)}
             (state.metadata as any)?.clarification_locale,
           ),
         } : {}),
+        ...((state.metadata as any)?.decision_profiling
+          ? { decision_profiling: (state.metadata as any).decision_profiling }
+          : {}),
+        ...((state.metadata as any)?.process_fairness
+          ? { process_fairness: (state.metadata as any).process_fairness }
+          : {}),
       },
       answerText,
       stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),

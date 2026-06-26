@@ -34,6 +34,19 @@ import {
   pickLastVehicleAcceptedCausalityIds,
 } from '../memory/decision-memory/vehicle-terrain-decision-memory.util';
 import { hydrateOpeningHoursEvidenceForItinerary } from '../utils/opening-hours-evidence-hydration.util';
+import {
+  dataReliabilityFindingsToVerificationIssues,
+  evaluateDataReliability,
+} from './data-reliability-gate';
+import {
+  evaluateRiskEvents,
+  riskEventsToVerificationIssues,
+} from './risk-event-gate';
+import { ValidationGatewayService } from '../../decision/validation-gateway/validation-gateway.service';
+import { ValidationGatewayExtensionService } from '../../decision/validation-gateway/validation-gateway-extension.service';
+
+const VG_SKIP_LEGACY = '__vg_rfe_complete';
+
 
 @Injectable()
 export class VerifyExecutorService implements IVerifyExecutor {
@@ -44,6 +57,8 @@ export class VerifyExecutorService implements IVerifyExecutor {
     @Optional() private readonly experienceAgent?: ExperienceAgentService,
     @Optional() private readonly routeFeasibility?: RouteFeasibilityEngineService,
     @Optional() private readonly worldDecisionMemory?: WorldDecisionMemoryService,
+    @Optional() private readonly validationGateway?: ValidationGatewayService,
+    @Optional() private readonly validationGatewayExt?: ValidationGatewayExtensionService,
   ) {}
 
   /** 与 RepairExecutor.buildTimelineEnvironment 对齐：VERIFY 硬判定日落可行性 */
@@ -151,8 +166,438 @@ export class VerifyExecutorService implements IVerifyExecutor {
   ): Promise<{ issues: VerificationIssue[]; confidenceDelta: number }> {
     this.logger.debug(`[VerifyExecutor] 执行 VERIFY 阶段 requestId=${ctx.requestId}`);
 
+    if (!this.validationGateway) {
+      return this.executeLegacy(dso, ctx);
+    }
+
+    const hints = this.buildVerifyHints(ctx);
+    const result = await this.validationGateway.runStages(
+      { dso, ctx, recordSlo: true },
+      [
+        {
+          stageId: 'DATA_RELIABILITY',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) =>
+            this.stageDataReliability(s, c, issues, confidenceDelta),
+        },
+        {
+          stageId: 'RISK_EVENTS',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) =>
+            this.stageRiskEvents(s, c, issues, confidenceDelta),
+        },
+        {
+          stageId: 'AXIOM_PROJECTION',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) =>
+            this.stageAxiomProjection(s, c, issues, confidenceDelta),
+        },
+        {
+          stageId: 'PHYSICAL_ONTOLOGY',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) => {
+            if (!this.validationGatewayExt) {
+              return { issues, confidenceDelta, skipped: true };
+            }
+            return this.validationGatewayExt.stagePhysicalOntology(s, c, issues, confidenceDelta);
+          },
+        },
+        {
+          stageId: 'ROUTE_FEASIBILITY',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) =>
+            this.stageRouteFeasibility(s, c, issues, confidenceDelta, hints),
+        },
+        {
+          stageId: 'SUNSET_TIMELINE',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) => {
+            if (this.isRfeComplete(c)) {
+              return { issues, confidenceDelta, skipped: true };
+            }
+            return this.stageSunsetOnly(s, c, issues, confidenceDelta);
+          },
+        },
+        {
+          stageId: 'ITINERARY_VERIFY_SKILL',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) => {
+            if (this.isRfeComplete(c)) {
+              return { issues, confidenceDelta, skipped: true };
+            }
+            return this.stageItineraryVerify(s, c, issues, confidenceDelta, hints);
+          },
+        },
+        {
+          stageId: 'EXPERIENCE_AGENT',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) => {
+            if (this.isRfeComplete(c)) {
+              return { issues, confidenceDelta, skipped: true };
+            }
+            return this.stageExperienceAgent(s, c, issues, confidenceDelta);
+          },
+        },
+        {
+          stageId: 'KPU_OUTPUT_CHECK',
+          run: async ({ dso: s, ctx: c, issues, confidenceDelta }) => {
+            if (!this.validationGatewayExt) {
+              return { issues, confidenceDelta, skipped: true };
+            }
+            return this.validationGatewayExt.stageKpuOutputCheck(s, c, issues, confidenceDelta);
+          },
+        },
+      ],
+    );
+
+    let { issues, confidenceDelta } = result;
+    if (issues.length > 0 && confidenceDelta === 0) {
+      confidenceDelta = -0.1 * Math.min(issues.length, 5);
+    }
+
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = {
+        ...(ctx.itinerary.metadata ?? {}),
+        __validation_gateway: {
+          passed: result.passed,
+          durationMs: result.durationMs,
+          stages: result.stages,
+        },
+      };
+    }
+
+    return { issues, confidenceDelta };
+  }
+
+  private isRfeComplete(ctx: PhaseExecutorContext): boolean {
+    return (ctx.itinerary?.metadata as Record<string, unknown> | undefined)?.[VG_SKIP_LEGACY] === true;
+  }
+
+  private markRfeComplete(ctx: PhaseExecutorContext): void {
+    if (!ctx.itinerary) return;
+    ctx.itinerary.metadata = { ...(ctx.itinerary.metadata ?? {}), [VG_SKIP_LEGACY]: true };
+  }
+
+  private buildVerifyHints(ctx: PhaseExecutorContext): {
+    verifyUserQuery?: string;
+    verifyIntentHints?: IcelandVehicleIntentHints;
+  } {
+    const verifyUserQuery = (() => {
+      const m = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
+      if (m) return m;
+      const msgs = Array.isArray(ctx.recent_messages)
+        ? ctx.recent_messages.filter((x): x is string => typeof x === 'string')
+        : [];
+      const last = msgs.length ? msgs[msgs.length - 1].trim() : '';
+      return last || undefined;
+    })();
+
+    const verifyIntentHints: IcelandVehicleIntentHints | undefined = (() => {
+      const hints: IcelandVehicleIntentHints = {};
+      const vt = ctx.tripPlanRequest?.constraints?.vehicle_type;
+      if (vt === '2WD' || vt === '4WD') hints.constraints_vehicle_type = vt;
+      const profileTp = String(ctx.user_profile?.preferences?.transport_preferences ?? '').trim();
+      if (profileTp) {
+        hints.preference_text = profileTp;
+        if (!hints.transport_preferences) hints.transport_preferences = profileTp;
+      }
+      return Object.keys(hints).length > 0 ? hints : undefined;
+    })();
+
+    return { verifyUserQuery, verifyIntentHints };
+  }
+
+  private async stageDataReliability(
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+  ) {
+    const reliability = evaluateDataReliability(dso, ctx);
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = {
+        ...(ctx.itinerary.metadata ?? {}),
+        __data_reliability: {
+          evidence_count: reliability.evidence.length,
+          finding_count: reliability.findings.length,
+          confidence_delta: reliability.confidenceDelta,
+          disclosure: reliability.disclosure,
+          findings: reliability.findings,
+        },
+      };
+    }
+    const next = [...issues];
+    if (reliability.findings.length > 0) {
+      next.push(...dataReliabilityFindingsToVerificationIssues(reliability.findings));
+    }
+    return { issues: next, confidenceDelta: confidenceDelta + reliability.confidenceDelta };
+  }
+
+  private async stageRiskEvents(
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+  ) {
+    const riskGate = evaluateRiskEvents(dso, ctx);
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = { ...(ctx.itinerary.metadata ?? {}), __risk_audit: riskGate.audit };
+    }
+    const next = [...issues];
+    if (riskGate.events.length > 0) {
+      next.push(...riskEventsToVerificationIssues(riskGate.events));
+    }
+    return { issues: next, confidenceDelta: confidenceDelta + riskGate.confidenceDelta };
+  }
+
+  private async stageAxiomProjection(
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+  ) {
+    const next = [...issues];
+    let delta = confidenceDelta;
+    try {
+      const message = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
+      const constraints = (ctx.tripPlanRequest as any)?.constraints as Record<string, any> | undefined;
+      const matches = matchAxioms({ message, constraints });
+      const terrain = matches.find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
+      if (terrain) {
+        const now = new Date().toISOString();
+        const terrainMsg =
+          `[L3-PROOF|${terrain.axiom.cid}|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
+          `意图要求 F-road/高地，但车辆为 2WD（冰岛高地普遍要求 4WD），物理上不可执行。`;
+        next.push({
+          code: 'TERRAIN_F_ROAD_UNFIT',
+          class: 'CONFLICT',
+          message: terrainMsg,
+          source: 'ROUTE_FEASIBILITY',
+          at: now,
+          entityRef: {
+            type: 'DESTINATION',
+            id: String((ctx.tripPlanRequest as any)?.destination ?? '') || ctx.requestId,
+          },
+          suggestedActions: [
+            { action: 'RELAX', detail: '升级车辆至 4WD 或取消 F-road/高地路段' },
+            { action: 'ASK_USER', detail: '确认是否自担风险继续（可能仍无解）' },
+          ],
+        });
+        this.worldDecisionMemory?.append(
+          buildTerrainFroadUnfitAxiomDecisionMemory({
+            axiomCid: terrain.axiom.cid,
+            message: terrainMsg,
+            priorCausalityIds: pickLastVehicleAcceptedCausalityIds(this.worldDecisionMemory),
+          }),
+        );
+        delta -= 0.25;
+      }
+    } catch {
+      // best-effort
+    }
+    return { issues: next, confidenceDelta: delta };
+  }
+
+  private async stageRouteFeasibility(
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+    hints: ReturnType<VerifyExecutorService['buildVerifyHints']>,
+  ) {
+    if (!this.routeFeasibility || !ctx.itinerary) {
+      return { issues, confidenceDelta, skipped: true };
+    }
+    const next = [...issues];
+    let delta = confidenceDelta;
+    try {
+      const userProfile = this.deriveUserProfile(ctx);
+      const out = await this.routeFeasibility.evaluate({
+        itinerary: ctx.itinerary as unknown as Itinerary,
+        userProfile: {
+          fitness_level: userProfile.fitness_level,
+          risk_tolerance:
+            (ctx.tripPlanRequest?.party_profile?.risk_tolerance?.toString().toUpperCase() as any) ?? undefined,
+        },
+        researchData: (ctx.researchData ?? {}) as any,
+        ...(hints.verifyUserQuery ? { user_query: hints.verifyUserQuery } : {}),
+        ...(hints.verifyIntentHints ? { intent_hints: hints.verifyIntentHints } : {}),
+        environment: {
+          month: dso.environmentState?.month,
+          weather: { wind_speed_mps: (dso.environmentState as any)?.weather?.wind_speed_mps },
+        },
+      });
+
+      for (const f of out.findings ?? []) {
+        const v = this.mapFeasibilityFindingToVerificationIssue(f);
+        if (v) next.push(v);
+      }
+      if ((out.findings ?? []).length === 0) {
+        for (const raw of out.issues ?? []) {
+          const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ROUTE_FEASIBILITY' });
+          if (v) next.push(v);
+        }
+      }
+
+      if (!out.result.is_feasible) delta -= 0.2;
+      else if (out.result.risk_level >= 70) delta -= 0.1;
+      else if (out.result.risk_level >= 50) delta -= 0.05;
+
+      const sunsetIssues = await this.collectSunsetTimelineIssues(dso, ctx);
+      for (const si of sunsetIssues) {
+        const dup = next.some(
+          (x) => x.code === 'SUNSET_BREACH' && x.entityRef?.type === 'DAY' && x.entityRef?.id === si.entityRef?.id,
+        );
+        if (!dup) next.push(si);
+      }
+      if (sunsetIssues.length > 0) delta -= 0.12;
+
+      this.markRfeComplete(ctx);
+      return { issues: next, confidenceDelta: delta };
+    } catch (e: any) {
+      this.logger.warn(`[VerifyExecutor] RouteFeasibilityEngine 失败: ${e?.message}`);
+      return { issues: next, confidenceDelta: delta, error: e?.message };
+    }
+  }
+
+  private async stageSunsetOnly(
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+  ) {
+    if (!ctx.itinerary) return { issues, confidenceDelta, skipped: true };
+    const next = [...issues];
+    let delta = confidenceDelta;
+    const sunsetIssues = await this.collectSunsetTimelineIssues(dso, ctx);
+    for (const si of sunsetIssues) {
+      const dup = next.some(
+        (x) => x.code === 'SUNSET_BREACH' && x.entityRef?.type === 'DAY' && x.entityRef?.id === si.entityRef?.id,
+      );
+      if (!dup) next.push(si);
+    }
+    if (sunsetIssues.length > 0) delta -= 0.12;
+    return { issues: next, confidenceDelta: delta };
+  }
+
+  private async stageItineraryVerify(
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+    hints: ReturnType<VerifyExecutorService['buildVerifyHints']>,
+  ) {
+    if (!this.skillsRegistry || !ctx.itinerary) {
+      return { issues, confidenceDelta, skipped: true };
+    }
+    const next = [...issues];
+    let delta = confidenceDelta;
+    try {
+      const skill = this.skillsRegistry.getSkill('itinerary.verify');
+      if (!skill) return { issues: next, confidenceDelta: delta, skipped: true };
+      const result = await skill.execute({
+        itinerary: ctx.itinerary as any,
+        research_data: ctx.researchData,
+        ...(hints.verifyUserQuery ? { user_query: hints.verifyUserQuery } : {}),
+        ...(hints.verifyIntentHints ? { intent_hints: hints.verifyIntentHints } : {}),
+      });
+      if (result?.issues && Array.isArray(result.issues)) {
+        for (const raw of result.issues) {
+          const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ITINERARY_VERIFY_SKILL' });
+          if (v) next.push(v);
+        }
+        delta += -0.1 * Math.min(result.issues.length, 5);
+      }
+    } catch (e: any) {
+      this.logger.warn(`[VerifyExecutor] itinerary.verify 失败: ${e?.message}`);
+      next.push({
+        code: 'UNKNOWN',
+        class: 'CONFLICT',
+        message: e?.message || '验证失败',
+        source: 'ITINERARY_VERIFY_SKILL',
+        at: new Date().toISOString(),
+      });
+      delta += -0.2;
+    }
+    return { issues: next, confidenceDelta: delta };
+  }
+
+  private async stageExperienceAgent(
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+  ) {
+    if (!this.experienceAgent || !ctx.itinerary || !this.hasValidItinerary(ctx.itinerary)) {
+      return { issues, confidenceDelta, skipped: true };
+    }
+    const next = [...issues];
+    let delta = confidenceDelta;
+    try {
+      const userProfile = this.deriveUserProfile(ctx);
+      const execResult = await this.experienceAgent.assessHumanExecutability(
+        ctx.itinerary as unknown as Itinerary,
+        userProfile,
+      );
+      const severeChallenges = (execResult.challenge_points || []).filter(
+        (c) => c.severity === 'DIFFICULT' || c.severity === 'EXTREME',
+      );
+      for (const c of severeChallenges) {
+        next.push({
+          code: 'FATIGUE_HIGH',
+          class: c.severity === 'EXTREME' ? 'CONFLICT' : 'ADVISORY',
+          message: `[体验评估] ${c.challenge} (${c.severity})，建议：${c.adaptation}`,
+          source: 'EXPERIENCE_AGENT',
+          at: new Date().toISOString(),
+        });
+      }
+      if (execResult.executability_score < 50) {
+        delta -= 0.15;
+        next.push({
+          code: 'ROUTE_INFEASIBLE',
+          class: 'CONFLICT',
+          message: `[体验评估] 人体可执行性较低 (${execResult.executability_score}/100)，行程强度可能超过用户体能`,
+          source: 'EXPERIENCE_AGENT',
+          at: new Date().toISOString(),
+        });
+      } else if (execResult.executability_score < 70 && severeChallenges.length > 0) {
+        delta -= 0.05;
+      }
+    } catch (e: any) {
+      this.logger.warn(`[VerifyExecutor] ExperienceAgent 失败: ${e?.message}`);
+    }
+    return { issues: next, confidenceDelta: delta };
+  }
+
+  /** Gateway 未注入时的回退路径（测试 / 轻量模块） */
+  private async executeLegacy(
+    dso: DecisionState,
+    ctx: PhaseExecutorContext,
+  ): Promise<{ issues: VerificationIssue[]; confidenceDelta: number }> {
     const issues: VerificationIssue[] = [];
     let confidenceDelta = 0;
+
+    const reliability = evaluateDataReliability(dso, ctx);
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = {
+        ...(ctx.itinerary.metadata ?? {}),
+        __data_reliability: {
+          evidence_count: reliability.evidence.length,
+          finding_count: reliability.findings.length,
+          confidence_delta: reliability.confidenceDelta,
+          disclosure: reliability.disclosure,
+          findings: reliability.findings,
+        },
+      };
+    }
+    if (reliability.findings.length > 0) {
+      issues.push(...dataReliabilityFindingsToVerificationIssues(reliability.findings));
+      confidenceDelta += reliability.confidenceDelta;
+    }
+
+    const riskGate = evaluateRiskEvents(dso, ctx);
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = {
+        ...(ctx.itinerary.metadata ?? {}),
+        __risk_audit: riskGate.audit,
+      };
+    }
+    if (riskGate.events.length > 0) {
+      issues.push(...riskEventsToVerificationIssues(riskGate.events));
+      confidenceDelta += riskGate.confidenceDelta;
+    }
 
     const verifyUserQuery = (() => {
       const m = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
@@ -372,7 +817,7 @@ export class VerifyExecutorService implements IVerifyExecutor {
               const v = classifyVerificationIssueFromText({ text, source: 'ITINERARY_VERIFY_SKILL' });
               if (v) issues.push(v);
             }
-            confidenceDelta = -0.1 * Math.min(issues.length, 5);
+            confidenceDelta += -0.1 * Math.min(result.issues.length, 5);
           }
         }
       } catch (e: any) {
@@ -384,7 +829,7 @@ export class VerifyExecutorService implements IVerifyExecutor {
           source: 'ITINERARY_VERIFY_SKILL',
           at: new Date().toISOString(),
         });
-        confidenceDelta = -0.2;
+        confidenceDelta += -0.2;
       }
     }
 

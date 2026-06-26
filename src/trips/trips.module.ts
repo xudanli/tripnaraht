@@ -13,6 +13,13 @@ import { TripEmergencyService } from './services/trip-emergency.service';
 import { TripBudgetService } from './services/trip-budget.service';
 import { TripAdjustmentService } from './services/trip-adjustment.service';
 import { TripDraftService } from './services/trip-draft.service';
+import { NlTripCreationOrchestrator } from './services/nl-trip-creation-orchestrator.service';
+import { TripPlanningReadinessService } from './services/trip-planning-readiness.service';
+import { ClarificationFieldPolicyService } from './services/clarification-field-policy.service';
+import { TripPlanningInitializationService } from './services/trip-planning-initialization.service';
+import { TripDraftGenerationService } from './services/trip-draft-generation.service';
+import { PoiRetrievalService } from './services/poi-retrieval.service';
+import { RouteTemplatePlanningService } from './services/route-template-planning.service';
 import { CandidateRetrievalEngine } from './services/candidate-retrieval.engine';
 import { SpatialClusteringEngine } from './services/spatial-clustering.engine';
 import { ConstraintEngine } from './services/constraint.engine';
@@ -52,6 +59,7 @@ import { BookingComModule } from '../mcp/booking-com.module';
 import { DecisionKernelModule } from '../decision/decision-kernel.module';
 import { TransportModule } from '../transport/transport.module';
 import { RouteDirectionsModule } from '../route-directions/route-directions.module';
+import { ReadinessModule } from './readiness/readiness.module';
 import { DsoFeedbackPersistenceModule } from './decision/dso-feedback-persistence.module';
 import { PlanningPolicyModule } from '../planning-policy/planning-policy.module';
 import { SolverService } from './solver/solver.service';
@@ -70,9 +78,28 @@ import { CityDigitalTwinService } from './services/city-digital-twin.service';
 import { StubRealityApiService } from './services/stub-reality-api.service';
 import { EmbeddedHikingTripSummaryService } from './services/embedded-hiking-trip-summary.service';
 import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
+import { TripLifecycleValidatorService } from './services/trip-lifecycle-validator.service';
+import { TripOutcomeOrchestratorService } from './services/trip-outcome-orchestrator.service';
+import { DecisionOSModule } from './decision/optimization/decision-os.module';
+import { TravelEventPersistenceService } from './event-store/travel-event-persistence.service';
+import { TravelEventSubscriberService } from './event-store/travel-event-subscriber.service';
+import { AttributionModule } from './attribution/attribution.module';
+import { TravelOutcomeModule } from './outcome/outcome.module';
+import { MemoryModule } from './memory/memory.module';
+import { NarrativeEngineModule } from './narrative-engine/narrative-engine.module';
+import { TripBudgetOsModule } from './budget-os/budget-os.module';
+import { TripWishModule } from './wishlist/trip-wish.module';
+import { TripSilentVoteModule } from './silent-vote/trip-silent-vote.module';
+import { TripDomainInfluenceModule } from './domain-influence/trip-domain-influence.module';
+import { TripProcessFairnessModule } from './process-fairness/trip-process-fairness.module';
+import { TripDecisionProfilingModule } from './decision-profiling/decision-profiling.module';
+import { InTripExecutionModule } from './in-trip-execution/in-trip-execution.module';
+import { TripConstraintSolverModule } from './trip-constraint-solver/trip-constraint-solver.module';
+import { LoopsModule } from '../loops/loops.module';
+import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, LoopsModule, IdentityGovernanceModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
@@ -94,6 +121,13 @@ import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
     RouteOptimizationEngine,
     CandidateRetrievalEngine,
     TripDraftService,
+    NlTripCreationOrchestrator,
+    TripPlanningReadinessService,
+    ClarificationFieldPolicyService,
+    TripPlanningInitializationService,
+    TripDraftGenerationService,
+    PoiRetrievalService,
+    RouteTemplatePlanningService,
     TripDraftOrchestratorService,
     DraftRuntimeCore,
     UserIntentStateService,
@@ -125,31 +159,50 @@ import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
     NLConversationContextService,
     SolverService,
     EmbeddedHikingTripSummaryService,
+    TripLifecycleValidatorService,
+    TripOutcomeOrchestratorService,
+    TravelEventPersistenceService,
+    TravelEventSubscriberService,
   ],
   exports: [
     WorldKernelService,
     WorldBusService,
-    TripsService, 
-    FlightPriceService, 
-    FlightPriceDetailService, 
-    ScheduleConverterService, 
-    ActionHistoryService, 
-    TripExtendedService, 
-    TripRecapService, 
-    TripEmergencyService, 
-    TripBudgetService, 
-    TripAdjustmentService, 
-    TripDraftService, 
-    TripMetricsService, 
-    TripConflictsService, 
-    TripIntentService, 
-    TripOptimizationService, 
-    TripSuggestionsService, 
-    TripInsightService, 
+    TripsService,
+    FlightPriceService,
+    FlightPriceDetailService,
+    ScheduleConverterService,
+    ActionHistoryService,
+    TripExtendedService,
+    TripRecapService,
+    TripEmergencyService,
+    TripBudgetService,
+    TripAdjustmentService,
+    TripDraftService,
+    NlTripCreationOrchestrator,
+    TripPlanningInitializationService,
+    TripDraftGenerationService,
+    PoiRetrievalService,
+    RouteTemplatePlanningService,
+    TripMetricsService,
+    TripConflictsService,
+    TripIntentService,
+    TripOptimizationService,
+    TripSuggestionsService,
+    TripInsightService,
     BudgetEvaluationService,
     EvidenceManagementService,
     EvidenceFetchTaskService,
     NLConversationContextService,
+    TripOutcomeOrchestratorService,
+    NarrativeEngineModule,
+    TripBudgetOsModule,
+    TripWishModule,
+    TripSilentVoteModule,
+    TripDomainInfluenceModule,
+    TripProcessFairnessModule,
+    TripDecisionProfilingModule,
+    InTripExecutionModule,
+    TripConstraintSolverModule,
   ], // 导出 Service，供其他模块使用
 })
 export class TripsModule {}

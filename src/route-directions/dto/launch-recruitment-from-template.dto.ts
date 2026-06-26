@@ -1,4 +1,5 @@
 import {
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -17,11 +18,11 @@ const PLANNING_STYLE_VALUES = ['full_managed', 'co_planning', 'casual_play'] as 
 
 export class LaunchRecruitmentFromTemplateDto {
   @ApiProperty({ example: '2026-07-01' })
-  @IsString()
+  @IsDateString()
   startDate!: string;
 
   @ApiProperty({ example: '2026-07-04' })
-  @IsString()
+  @IsDateString()
   endDate!: string;
 
   @ApiProperty({ minimum: 1, maximum: 6 })
@@ -80,4 +81,14 @@ export class LaunchRecruitmentFromTemplateDto {
   @IsOptional()
   @IsIn([...TRAVEL_MODE_VALUES])
   travelMode?: TravelMode;
+
+  @ApiPropertyOptional({ description: '前端 catalog 匹配结果，可选；缺省时后端用模板元数据或模板名兜底' })
+  @IsOptional()
+  @IsString()
+  routeTemplateCatalogId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  routeTemplateTitleZh?: string;
 }

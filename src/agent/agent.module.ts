@@ -2,6 +2,7 @@
 import { Module, Optional, forwardRef } from '@nestjs/common';
 import { AgentController } from './agent.controller';
 import { ActionsController } from './actions.controller';
+import { QuickPlanController } from './quick-plan.controller';
 import { AgentService } from './services/agent.service';
 import { ExecutionGatewayService } from './services/execution-gateway.service';
 import { TripOrchestrationLockService } from './services/trip-orchestration-lock.service';
@@ -29,6 +30,8 @@ import { WebBrowseExecutorService } from './services/webbrowse-executor.service'
 import { LlmModule } from '../llm/llm.module';
 import { PlacesModule } from '../places/places.module';
 import { TripsModule } from '../trips/trips.module';
+import { TripProcessFairnessModule } from '../trips/process-fairness/trip-process-fairness.module';
+import { TripDecisionProfilingModule } from '../trips/decision-profiling/decision-profiling.module';
 import { ItineraryItemsModule } from '../itinerary-items/itinerary-items.module';
 import { ItineraryOptimizationModule } from '../itinerary-optimization/itinerary-optimization.module';
 import { TransportModule } from '../transport/transport.module';
@@ -36,6 +39,8 @@ import { PlanningPolicyModule } from '../planning-policy/planning-policy.module'
 import { RailPassModule } from '../railpass/railpass.module';
 import { ReadinessModule } from '../trips/readiness/readiness.module';
 import { DecisionModule } from '../trips/decision/decision.module';
+import { CausalRuntimeModule } from '../trips/causal-runtime/causal-runtime.module';
+import { OptimizationModule } from '../trips/decision/optimization/optimization.module';
 import { SharedMemoryModule } from './memory/shared-memory.module';
 import { RagModule } from '../rag/rag.module';
 import { PlacesService } from '../places/places.service';
@@ -56,6 +61,9 @@ import { createWebBrowseActions } from './services/actions/webbrowse.actions';
 import { createRailPassActions } from '../railpass/actions/railpass-agent-actions';
 import { createReadinessActions } from './services/actions/readiness.actions';
 import { ReadinessService } from '../trips/readiness/services/readiness.service';
+import { ReadinessGuardianNegotiationService } from '../trips/readiness/services/readiness-guardian-negotiation.service';
+import { ReadinessCausalPreanalysisService } from '../trips/readiness/services/readiness-causal-preanalysis.service';
+import { ReadinessRepairService } from '../trips/readiness/services/readiness-repair.service';
 import { createPlanningActions } from './services/actions/planning.actions';
 import { createExecutionActions } from './services/actions/execution.actions';
 import { createTripDetailActions } from './services/actions/trip-detail.actions';
@@ -65,6 +73,8 @@ import { PlanExecuteModule } from './plan-execute/plan-execute.module';
 import { ClaudeOrchestratorService } from './services/claude-orchestrator.service';
 import { PersonaShellService } from './services/persona-shell.service';
 import { PlanningWorkbenchAgentService } from './services/planning-workbench-agent.service';
+import { PlanningWorkbenchKernelBridgeService } from './services/planning-workbench-kernel-bridge.service';
+import { AgentOpsOutcomeBridgeService } from './services/agent-ops-outcome-bridge.service';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
 import { ExecutionAgentService } from './services/execution-agent.service';
 import { TripDetailAgentService } from './services/trip-detail-agent.service';
@@ -101,6 +111,14 @@ import { NegotiationNarratorService } from './services/negotiation-narrator.serv
 import { HotelDecisionSupportNarratorService } from './services/hotel-decision-support-narrator.service';
 import { TravelTimeResolverService } from './services/travel-time-resolver.service';
 import { TravelTimeRouterService } from './services/travel-time-router.service';
+import { DependencyHealthCheckService } from './services/dependency-health-check.service';
+import { RecoveryStrategyService } from './services/recovery-strategy.service';
+import { LLMTraceService } from './services/llm-trace.service';
+import { LLMCacheService } from './services/llm-cache.service';
+import { SmartInferenceService } from './services/smart-inference.service';
+import { GateCoordinatorService, RuleGateService, ConfigGateService, SemanticGateService } from './services/gate-coordinator.service';
+import { QuickPlanService } from './services/quick-plan.service';
+import { FeatureFlagService } from './services/feature-flag.service';
 import { NegotiationSessionStoreService } from './services/negotiation-session-store.service';
 import { NegotiationResolverService } from './services/negotiation-resolver.service';
 import { TimelineInspectorService } from './services/timeline-inspector.service';
@@ -114,6 +132,7 @@ import { UserPreferenceLearningService } from './services/user-preference-learni
 import { UserProfileLearningService } from './services/user-profile-learning.service';
 import { ItineraryRollbackService } from './services/itinerary-rollback.service';
 import { PreferenceEvolutionService } from './services/preference-evolution.service';
+import { DecisionOsP0Module } from '../decision/decision-os-p0.module';
 import { AgentEntryResponseFactoryService } from './services/agent-entry-response-factory.service';
 import { PlanningRequestClassifierService } from './services/planning-request-classifier.service';
 import { DecisionReplayService } from './services/decision-replay.service';
@@ -192,6 +211,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     LlmModule,
     forwardRef(() => PlacesModule), // 使用 forwardRef 避免循环依赖（PlacesModule <-> RagModule -> SkillsModule -> AgentModule）
     forwardRef(() => TripsModule), // 使用 forwardRef 避免循环依赖（TripsModule -> DecisionDraftModule -> ChainOfWorkModule -> AgentModule -> TripsModule）
+    TripProcessFairnessModule, // F3.1 orchestrator 自动发起 Round Robin
+    TripDecisionProfilingModule, // PDI-4 orchestrator 自动推送 Travel Style / Money DNA 调查
     ItineraryItemsModule,
     ItineraryOptimizationModule,
     TransportModule,
@@ -199,6 +220,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     RailPassModule,
     ReadinessModule,
     DecisionModule,
+    CausalRuntimeModule,
+    OptimizationModule,
     SharedMemoryModule,
     forwardRef(() => RagModule), // RAG 模块（用于增强对话），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
@@ -224,10 +247,12 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     AgentContextModule, // P1-a：recent_messages 滑动窗口适配器（消费端迁移见 P1-b）
     forwardRef(() => AuthModule), // AdminStrictAuthGuard（replay 锚点 admin API）
     RoadIsModule, // ontology 区域 → Road.is / segment 缓存路况（轻量问答硬锚点附录）
+    DecisionOsP0Module, // Validation Gateway + Contingency + SLO + DNA compliance
   ],
   controllers: [
     AgentController,
     ActionsController,
+    QuickPlanController,
     PlanningWorkbenchController,
     PlanningWorkbenchAdminController,
     ExecutionController,
@@ -267,6 +292,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     ClaudeOrchestratorService, // Claude 编排服务
     PersonaShellService, // 人格外壳服务
     PlanningWorkbenchAgentService, // 规划工作台 Agent
+    PlanningWorkbenchKernelBridgeService, // 规划工作台 ↔ Decision Kernel 桥接
+    AgentOpsOutcomeBridgeService, // Agent → OPS outcome（自动携带 TripWorldState）
     PlanningWorkbenchAdminService, // 规划工作台管理服务（后台管理）
     ExecutionAgentService, // 执行阶段 Agent
     TripDetailAgentService, // 行程详情页 Agent
@@ -353,12 +380,30 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     CbrRepository,
     CbrAggregatorService,
     LocalCaseStoreService,
+    DependencyHealthCheckService, // 依赖健康检查服务
+    RecoveryStrategyService, // Recovery 策略服务
+    // P0: 性能止血服务
+    LLMTraceService, // LLM调用链埋点
+    LLMCacheService, // LLM缓存
+    // P0: Gate分层架构
+    RuleGateService, // 硬规则Gate
+    ConfigGateService, // 配置Gate
+    SemanticGateService, // 语义Gate
+    GateCoordinatorService, // Gate协调器
+    // P0: 智能默认值
+    SmartInferenceService, // 智能推断
+    // P1: 快速规划
+    QuickPlanService, // 快速规划服务
+    // 功能开关
+    FeatureFlagService, // 功能开关服务
+    AgentOpsOutcomeBridgeService,
     // TokenStatsService 已移至 AgentInfraModule
   ],
   exports: [
     AgentContextModule,
     AgentService,
     ActionRegistryService,
+    AgentOpsOutcomeBridgeService,
     TripNaraSystemPromptService,
     ReactSystemPromptService,
     AgentInfraModule, // 导出 Infra 模块（LLMExecutor、CoreGateway）
@@ -391,6 +436,9 @@ export class AgentModule {
     private feasibilityService?: FeasibilityService,
     private railPassService?: RailPassService,
     private readinessService?: ReadinessService,
+    @Optional() private guardianNegotiationService?: ReadinessGuardianNegotiationService,
+    @Optional() private causalPreanalysisService?: ReadinessCausalPreanalysisService,
+    @Optional() private readinessRepairService?: ReadinessRepairService,
     @Optional() private planningWorkbenchAgent?: PlanningWorkbenchAgentService,
     @Optional() private executionAgent?: ExecutionAgentService,
     @Optional() private tripDetailAgent?: TripDetailAgentService,
@@ -449,7 +497,12 @@ export class AgentModule {
 
     // 注册 Readiness Actions
     if (this.readinessService) {
-      const readinessActions = createReadinessActions(this.readinessService);
+      const readinessActions = createReadinessActions({
+        readinessService: this.readinessService,
+        guardianNegotiationService: this.guardianNegotiationService,
+        causalPreanalysisService: this.causalPreanalysisService,
+        readinessRepairService: this.readinessRepairService,
+      });
       this.actionRegistry.registerMany(readinessActions);
     }
     

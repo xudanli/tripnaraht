@@ -10,9 +10,16 @@
  * 可选环境变量:
  *   CGUS_SUITE_OUT=artifacts/cgus-replay-report.json
  *   CGUS_SUITE_N=25
- *   CGUS_SUITE_PROFILE=lite|stress
+ *   CGUS_SUITE_PROFILE=lite|stress|bridge
  *     - lite: 默认合成混合（包含 HARD 注入用例）
+ *     - bridge: Planning Workbench compare + Feasibility MC 物理对齐回放（session_consistency_score gate）
  *     - stress: SOFT-only 约束 + 更宽的结构差异，用于压测 deterministic vs MC 排序权
+ *
+ * Bridge 回放:
+ *   CGUS_SUITE_PROFILE=bridge CGUS_SUITE_OUT=artifacts/bridge-replay-report.json npx ts-node --transpile-only scripts/replay-cgus-suite.ts
+ *
+ * 或在标准 CGUS suite 上附带 bridge 轨道:
+ *   CGUS_SUITE_INCLUDE_BRIDGE=1 npx ts-node --transpile-only scripts/replay-cgus-suite.ts
  *
  * 报告含 `observability`（corpus / caseCount / 关键 rankAuthority 比率）与每 case `rankReplaySnapshot`。
  * 与基线 JSON 对比: `npm run cgus:replay:compare -- <baseline.json> <current.json> [--out diff.json]`
@@ -52,6 +59,10 @@ import {
 import { buildCgusReplayTraceRefsV1 } from './lib/evaluation-harness-report-refs';
 import { runDecisionClosureGate } from './lib/decision-closure-gate';
 import { ICELAND_DECISION_CLOSURE_FIXTURES } from '../src/trips/decision/evaluation/e2e-cases/registry';
+import {
+  runBridgeKernelReplaySuite,
+  BRIDGE_REPLAY_SCHEMA_VERSION,
+} from '../src/trips/decision/evaluation/bridge-kernel-replay.util';
 
 const logger = new Logger('CGUS-ReplaySuite');
 
@@ -268,6 +279,9 @@ function buildSuiteCasesStress(n: number): SuiteCase[] {
 
 function buildSuiteCases(n: number): SuiteCase[] {
   const profile = (process.env.CGUS_SUITE_PROFILE ?? 'lite').trim().toLowerCase() as SuiteProfile;
+  if (profile === 'bridge') {
+    return [];
+  }
   if (
     profile === 'stress' ||
     profile === 'stress_weather' ||
@@ -374,6 +388,7 @@ type SuiteMode = 'lite' | 'app';
 
 type SuiteProfile =
   | 'lite'
+  | 'bridge'
   | 'stress'
   | 'stress_weather'
   | 'stress_fatigue'
@@ -524,6 +539,36 @@ async function main(): Promise<void> {
   const outPath = process.env.CGUS_SUITE_OUT ?? 'artifacts/cgus-replay-report.json';
   const mode: SuiteMode = (process.env.CGUS_SUITE_MODE as SuiteMode) ?? 'lite';
   const suiteProfile = (process.env.CGUS_SUITE_PROFILE ?? 'lite').trim() as SuiteProfile;
+
+  if (suiteProfile === 'bridge') {
+    const startedAt = Date.now();
+    logger.log(`Running bridge kernel replay suite → ${outPath}`);
+    const bridgeReplay = await runBridgeKernelReplaySuite(logger);
+    const report = {
+      mode: 'bridge',
+      suiteProfile: 'bridge',
+      schemaVersion: BRIDGE_REPLAY_SCHEMA_VERSION,
+      generatedAt: bridgeReplay.generatedAt,
+      totalMs: Date.now() - startedAt,
+      bridgeReplay,
+      gate: bridgeReplay.gate,
+      env: {
+        BRIDGE_REPLAY_MIN_SESSION_SCORE: process.env.BRIDGE_REPLAY_MIN_SESSION_SCORE,
+        PLANNING_WORKBENCH_KERNEL_MODE: process.env.PLANNING_WORKBENCH_KERNEL_MODE,
+        FEASIBILITY_MONTE_CARLO: process.env.FEASIBILITY_MONTE_CARLO,
+      },
+    };
+    const abs = path.isAbsolute(outPath) ? outPath : path.join(process.cwd(), outPath);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, JSON.stringify(report, null, 2), 'utf-8');
+    logger.log(`Done. Wrote bridge replay report: ${abs}`);
+    if (!bridgeReplay.gate.passed) {
+      logger.error(`Bridge gate failed: ${bridgeReplay.gate.failures.join(' | ')}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   const seedRaw = process.env.CGUS_SUITE_SEED;
   const seed = seedRaw !== undefined && seedRaw !== '' ? Number.parseInt(seedRaw, 10) : undefined;
   logger.log(`Running CGUS suite (${mode}, profile=${suiteProfile}): N=${n} → ${outPath}`);
@@ -531,6 +576,18 @@ async function main(): Promise<void> {
   const cases = buildSuiteCases(n);
   const startedAt = Date.now();
   const suiteCompareTopN = Number(process.env.KERNEL_CGUS_MC_RERANK_COMPARE_TOPN ?? 5);
+
+  // Optional bridge replay piggyback on standard CGUS suite
+  const includeBridge = String(process.env.CGUS_SUITE_INCLUDE_BRIDGE ?? '').trim() === '1';
+  let bridgeReplay: Awaited<ReturnType<typeof runBridgeKernelReplaySuite>> | undefined;
+  if (includeBridge) {
+    logger.log('CGUS_SUITE_INCLUDE_BRIDGE=1 — running bridge kernel replay in parallel track');
+    bridgeReplay = await runBridgeKernelReplaySuite(logger);
+    if (!bridgeReplay.gate.passed) {
+      logger.error(`Bridge replay gate failed: ${bridgeReplay.gate.failures.join(' | ')}`);
+      process.exitCode = 1;
+    }
+  }
 
     const results: Array<{
       id: string;
@@ -1129,6 +1186,7 @@ async function main(): Promise<void> {
         KERNEL_CGUS_MC_RERANK_COMPARE_TOPN: process.env.KERNEL_CGUS_MC_RERANK_COMPARE_TOPN,
       },
       results,
+      ...(bridgeReplay ? { bridgeReplay } : {}),
     };
 
     const abs = path.isAbsolute(outPath) ? outPath : path.join(process.cwd(), outPath);

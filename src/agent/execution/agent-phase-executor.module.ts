@@ -15,6 +15,8 @@ import { forwardRef, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { RagModule } from '../../rag/rag.module';
 import { PoiPitfallInsightService } from '../services/poi-pitfall-insight.service';
+import { DecisionOsP0Module } from '../../decision/decision-os-p0.module';
+
 import { DomainAgentsModule } from '../services/domain-agents/domain-agents.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { WorldFactsModule } from '../../world-facts/world-facts.module';
@@ -52,6 +54,7 @@ import { TrainingModule } from '../training/training.module';
 
 @Module({
   imports: [
+    DecisionOsP0Module,
     DomainAgentsModule,
     PrismaModule,
     WorldFactsModule,

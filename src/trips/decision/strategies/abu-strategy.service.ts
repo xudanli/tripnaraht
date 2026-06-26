@@ -198,6 +198,16 @@ export class AbuStrategy implements DecisionPersonaStrategy {
           this.logger.warn(
             `计划 ${plan.tripId} 检测到实时风险: ${realTimeRiskInfo.riskType} - ${realTimeRiskInfo.riskDescription}`
           );
+
+          if (realTimeRiskInfo.confidence !== 'HIGH') {
+            this.logger.warn(
+              `实时风险置信度不足，跳过 Abu 硬否决: confidence=${realTimeRiskInfo.confidence || 'UNKNOWN'}, route=${routeName}`,
+            );
+            realTimeRiskInfo = null;
+          }
+        }
+
+        if (realTimeRiskInfo?.hasRisk) {
           
           // 如果检测到道路封闭风险，直接拒绝
           if (realTimeRiskInfo.riskType === 'ROAD_CLOSED' || realTimeRiskInfo.riskType === 'TRANSPORT') {
@@ -593,4 +603,3 @@ export class AbuStrategy implements DecisionPersonaStrategy {
     };
   }
 }
-

@@ -595,4 +595,18 @@ export class CreateTripFromNLResponseDto {
   @IsString()
   @IsOptional()
   lastMessageId?: string;
+
+  @ApiPropertyOptional({
+    description: 'PRD §9.2 旅行理解卡（体验原子 + 结构化摘要）',
+  })
+  @IsObject()
+  @IsOptional()
+  experienceUnderstanding?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'PRD §13.5 四级确定性表达（路线/体验/变化因素）',
+  })
+  @IsObject()
+  @IsOptional()
+  experienceExplanation?: Record<string, unknown>;
 }

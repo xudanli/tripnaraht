@@ -24,7 +24,14 @@ export interface TripConsultationSuggestedOperation {
 const MARK_START = '<<<SUGGESTED_OPS_JSON>>>';
 const MARK_END = '<<<END_SUGGESTED_OPS_JSON>>>';
 
-const ALLOWED_NAV_ROUTES = new Set(['timeline', 'replay', 'planning', 'itinerary', 'decision_cockpit']);
+const ALLOWED_NAV_ROUTES = new Set([
+  'timeline',
+  'replay',
+  'planning',
+  'itinerary',
+  'decision_cockpit',
+  'structured_negotiation',
+]);
 
 function sanitizeOperation(
   raw: unknown,

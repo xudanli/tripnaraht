@@ -535,7 +535,7 @@ export class RagFallbackService {
   /**
    * 获取数据缺口统计（用于分析和改进）
    */
-  async getKnowledgeGapStats(_params?: {
+  async getKnowledgeGapStats(params?: {
     category?: QueryCategory;
     startDate?: Date;
     endDate?: Date;
@@ -545,20 +545,128 @@ export class RagFallbackService {
     byCategory: Record<QueryCategory, number>;
     topQueries: Array<{ query: string; count: number }>;
     needsIndexCount: number;
+    trendData?: Array<{ date: string; count: number }>;
   }> {
-    // TODO: 实现统计查询
-    // 目前返回占位数据
-    return {
-      totalGaps: 0,
-      byCategory: {
+    const { category, startDate, endDate, limit = 20 } = params || {};
+
+    // 构建查询条件
+    const whereConditions: string[] = [];
+    const queryParams: any[] = [];
+
+    if (category) {
+      whereConditions.push('category = $1');
+      queryParams.push(category);
+    }
+
+    if (startDate) {
+      const paramIdx = queryParams.length + 1;
+      whereConditions.push(`timestamp >= $${paramIdx}`);
+      queryParams.push(startDate);
+    }
+
+    if (endDate) {
+      const paramIdx = queryParams.length + 1;
+      whereConditions.push(`timestamp <= $${paramIdx}`);
+      queryParams.push(endDate);
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    try {
+      // 1. 统计总数
+      const totalCountResult = await this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT COUNT(*) as count FROM rag_knowledge_gaps ${whereClause}`,
+        ...queryParams
+      );
+      const totalGaps = Number(totalCountResult[0]?.count || 0);
+
+      // 2. 按类别统计
+      const categoryWhereClause = whereConditions.length > 0
+        ? whereClause.replace('category = $1', 'category IS NOT NULL').replace('category = $1', '')
+        : '';
+      const categoryResults = await this.prisma.$queryRawUnsafe<Array<{ category: string; count: bigint }>>(
+        `SELECT category, COUNT(*) as count FROM rag_knowledge_gaps ${categoryWhereClause} GROUP BY category`,
+        ...queryParams.filter((_, idx) => idx !== 0 || !category) // 移除 category 参数
+      );
+
+      const byCategory: Record<QueryCategory, number> = {
         [QueryCategory.RULES]: 0,
         [QueryCategory.GATE]: 0,
         [QueryCategory.POI]: 0,
         [QueryCategory.SPATIAL]: 0,
         [QueryCategory.GENERAL]: 0,
-      },
-      topQueries: [],
-      needsIndexCount: 0,
-    };
+      };
+
+      categoryResults.forEach((row) => {
+        if (row.category in byCategory) {
+          byCategory[row.category as QueryCategory] = Number(row.count);
+        }
+      });
+
+      // 3. 统计需要索引的数量
+      const needsIndexResult = await this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT COUNT(*) as count FROM rag_knowledge_gaps ${whereClause} AND needs_index = true`,
+        ...queryParams
+      );
+      const needsIndexCount = Number(needsIndexResult[0]?.count || 0);
+
+      // 4. 获取热门查询（按查询频次排序）
+      const topQueriesResult = await this.prisma.$queryRawUnsafe<Array<{ query: string; count: bigint }>>(
+        `SELECT query, COUNT(*) as count FROM rag_knowledge_gaps ${whereClause} GROUP BY query ORDER BY count DESC LIMIT $${queryParams.length + 1}`,
+        ...queryParams,
+        limit
+      );
+
+      const topQueries = topQueriesResult.map((row) => ({
+        query: row.query,
+        count: Number(row.count),
+      }));
+
+      // 5. 获取趋势数据（按日期统计，最近30天）
+      const trendEndDate = endDate || new Date();
+      const trendStartDate = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      const trendResult = await this.prisma.$queryRawUnsafe<Array<{ date: string; count: bigint }>>(
+        `SELECT DATE(timestamp) as date, COUNT(*) as count FROM rag_knowledge_gaps
+         WHERE timestamp >= $1 AND timestamp <= $2
+         GROUP BY DATE(timestamp)
+         ORDER BY date ASC`,
+        trendStartDate,
+        trendEndDate
+      );
+
+      const trendData = trendResult.map((row) => ({
+        date: row.date,
+        count: Number(row.count),
+      }));
+
+      this.logger.debug(
+        `[KnowledgeGapStats] total=${totalGaps}, needsIndex=${needsIndexCount}, topQueries=${topQueries.length}`
+      );
+
+      return {
+        totalGaps,
+        byCategory,
+        topQueries,
+        needsIndexCount,
+        trendData,
+      };
+    } catch (error: any) {
+      this.logger.error(`[KnowledgeGapStats] 查询失败: ${error.message}`, error.stack);
+
+      // 降级：返回空统计
+      return {
+        totalGaps: 0,
+        byCategory: {
+          [QueryCategory.RULES]: 0,
+          [QueryCategory.GATE]: 0,
+          [QueryCategory.POI]: 0,
+          [QueryCategory.SPATIAL]: 0,
+          [QueryCategory.GENERAL]: 0,
+        },
+        topQueries: [],
+        needsIndexCount: 0,
+      };
+    }
   }
 }

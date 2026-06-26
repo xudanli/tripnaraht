@@ -10,12 +10,14 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { TransportModule } from '../transport/transport.module';
 import { PlacesModule } from '../places/places.module';
 import { GoogleMapsDirectModule } from '../mcp/google-maps-direct.module';
+import { TripBudgetOsModule } from '../trips/budget-os/budget-os.module';
 
 @Module({
   imports: [
     PrismaModule, 
     TransportModule,
-    forwardRef(() => PlacesModule), // 使用 forwardRef 避免循环依赖
+    forwardRef(() => PlacesModule),
+    forwardRef(() => TripBudgetOsModule),
     GoogleMapsDirectModule,
   ],
   controllers: [ItineraryItemsController],

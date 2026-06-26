@@ -2,6 +2,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
+import { CoverageMapService } from '../readiness/services/coverage-map.service';
 import {
   TripInsightResponseDto,
   TripSummaryDto,
@@ -30,12 +31,19 @@ export class TripInsightService {
   // 每天警告的景点数量阈值
   private readonly WARNING_PLACES_PER_DAY = 6;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly coverageMapService: CoverageMapService,
+  ) {}
 
   /**
    * 获取行程洞察摘要
+   * @param opts.skipReadinessPack 规划阶段跳过 Coverage/Readiness Pack，仅保留日程/交通类 findings
    */
-  async getInsight(tripId: string): Promise<TripInsightResponseDto> {
+  async getInsight(
+    tripId: string,
+    opts?: { skipReadinessPack?: boolean },
+  ): Promise<TripInsightResponseDto> {
     // 1. 获取行程数据
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
@@ -61,13 +69,14 @@ export class TripInsightService {
     // 2. 构建行程摘要
     const tripSummary = this.buildTripSummary(trip);
 
-    // 3. 生成 AI 发现
-    const findings = await this.generateFindings(trip);
+    // 3. 生成 AI 发现（规划阶段可跳过 Readiness Pack）
+    const readiness = opts?.skipReadinessPack
+      ? undefined
+      : await this.getReadinessSummary(tripId, trip);
 
-    // 4. 获取准备度摘要
-    const readiness = await this.getReadinessSummary(tripId, trip);
+    const findings = await this.generateFindings(trip, readiness);
 
-    // 5. 计算整体状态
+    // 4. 计算整体状态
     const overallStatus = this.calculateOverallStatus(findings, readiness);
 
     return {
@@ -164,8 +173,70 @@ export class TripInsightService {
   /**
    * 生成 AI 发现
    */
-  private async generateFindings(trip: any): Promise<FindingDto[]> {
+  private async generateFindings(trip: any, readiness?: ReadinessSummaryDto): Promise<FindingDto[]> {
     const findings: FindingDto[] = [];
+
+    const cascadeHints =
+      readiness?.cascadeUiHints?.filter(
+        (hint) => hint.riskLevel === 'HIGH' || hint.riskLevel === 'CRITICAL',
+      ) ?? [];
+    for (const hint of cascadeHints.slice(0, 2)) {
+      findings.push({
+        type: FindingType.WARNING,
+        icon: 'git-branch',
+        title: hint.riskLevel === 'CRITICAL' ? '级联影响严重' : '级联影响需关注',
+        message: hint.message,
+        actionLabel: '查看级联影响',
+        actionPrompt:
+          hint.recommendation ||
+          '说明当前阻塞项可能引发的级联影响，并给出优先修复建议',
+      });
+    }
+
+    const negotiation = readiness?.guardianNegotiation?.latest;
+    if (negotiation) {
+      if (negotiation.humanDecisionPoints?.length) {
+        for (const point of negotiation.humanDecisionPoints.slice(0, 2)) {
+          findings.push({
+            type: FindingType.WARNING,
+            icon: 'users',
+            title: '三人格协商需您确认',
+            message: point,
+            actionLabel: '查看协商结论',
+            actionPrompt: '说明三人格对当前行程的分歧，并给出我的选择建议',
+          });
+        }
+      } else if (negotiation.consensusLevel < 0.6) {
+        findings.push({
+          type: FindingType.SUGGESTION,
+          icon: 'users',
+          title: '三人格共识度偏低',
+          message: `修复后三人共识 ${Math.round(negotiation.consensusLevel * 100)}%，${negotiation.summary || '建议复核关键权衡'}`,
+          actionLabel: '查看协商结论',
+          actionPrompt: '总结 Abu/Dre/Neptune 对修复后行程的主要分歧',
+        });
+      }
+    }
+
+    if (readiness?.blockers && readiness.blockers > 0) {
+      findings.push({
+        type: FindingType.WARNING,
+        icon: 'alert-triangle',
+        title: `存在 ${readiness.blockers} 个阻塞项`,
+        message: '行程准备度检查发现道路封闭、交通不确定或证据缺口，建议先处理后再确认行程。',
+        actionLabel: '查看准备度',
+        actionPrompt: '帮我优先处理当前行程的 readiness blockers，并给出修复方案',
+      });
+    } else if (readiness?.must && readiness.must > 0) {
+      findings.push({
+        type: FindingType.WARNING,
+        icon: 'shield-alert',
+        title: `存在 ${readiness.must} 个必须处理项`,
+        message: '行程仍有必须补齐的安全、交通或证据检查项。',
+        actionLabel: '处理必须项',
+        actionPrompt: '帮我处理当前行程的 must readiness items',
+      });
+    }
 
     // 分析每天的行程
     for (let dayIndex = 0; dayIndex < trip.TripDay.length; dayIndex++) {
@@ -346,9 +417,71 @@ export class TripInsightService {
    * 
    * 基于行程数据估算准备度状态
    */
-  private async getReadinessSummary(_tripId: string, trip: any): Promise<ReadinessSummaryDto> {
-    // 基于行程数据估算准备度
-    return this.estimateReadiness(trip);
+  private async getReadinessSummary(tripId: string, trip: any): Promise<ReadinessSummaryDto> {
+    try {
+      const scoreResult = await this.coverageMapService.getReadinessScore(tripId);
+      const summary = scoreResult.summary;
+      const blockers = summary.blockers;
+      const must = summary.must ?? summary.warnings ?? 0;
+      const should = summary.should ?? summary.suggestions ?? 0;
+
+      let status: ReadinessStatus;
+      if (blockers > 0) {
+        status = ReadinessStatus.BLOCK;
+      } else if (must > 0 || (scoreResult.score?.overall ?? 100) < 70) {
+        status = ReadinessStatus.WARN;
+      } else {
+        status = ReadinessStatus.PASS;
+      }
+
+      const score = scoreResult.score;
+      return {
+        status,
+        blockers,
+        must,
+        should,
+        warnings: must,
+        suggestions: should,
+        overall: score.overall,
+        evidenceCoverage: score.evidenceCoverage,
+        scheduleFeasibility: score.scheduleFeasibility,
+        transportCertainty: score.transportCertainty,
+        safetyRisk: score.safetyRisk,
+        buffers: score.buffers,
+        guardianNegotiation: scoreResult.guardianNegotiation
+          ? {
+              latest: scoreResult.guardianNegotiation.latest
+                ? {
+                    decision: scoreResult.guardianNegotiation.latest.decision,
+                    consensusLevel: scoreResult.guardianNegotiation.latest.consensusLevel,
+                    humanDecisionPoints:
+                      scoreResult.guardianNegotiation.latest.humanDecisionPoints ?? [],
+                    summary: scoreResult.guardianNegotiation.latest.summary,
+                  }
+                : undefined,
+            }
+          : undefined,
+        cascadeUiHints: scoreResult.cascadeUiHints,
+        causalPreAnalysis: scoreResult.causalPreAnalysis
+          ? {
+              triggerFactType: scoreResult.causalPreAnalysis.trigger?.factType,
+              affectedCount: scoreResult.causalPreAnalysis.impact?.affected?.length ?? 0,
+              maxRiskLevel: scoreResult.causalPreAnalysis.impact?.affected?.reduce<
+                'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | undefined
+              >((max, node) => {
+                const order = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+                if (!max) return node.riskLevel;
+                return order[node.riskLevel] > order[max] ? node.riskLevel : max;
+              }, undefined),
+            }
+          : undefined,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `真实准备度评分不可用，使用本地估算: ${(error as Error).message}`,
+      );
+      return this.estimateReadiness(trip);
+    }
   }
 
   /**
@@ -420,17 +553,24 @@ export class TripInsightService {
    */
   private calculateOverallStatus(
     findings: FindingDto[],
-    readiness: ReadinessSummaryDto
+    readiness?: ReadinessSummaryDto,
   ): OverallStatus {
-    // 如果有阻塞项，状态为 has_issues
-    if (readiness.status === ReadinessStatus.BLOCK) {
-      return OverallStatus.HAS_ISSUES;
-    }
+    if (readiness) {
+      // 如果有阻塞项，状态为 has_issues
+      if (readiness.status === ReadinessStatus.BLOCK || readiness.blockers > 0) {
+        return OverallStatus.HAS_ISSUES;
+      }
 
-    // 如果有警告类型的发现或准备度警告，状态为 needs_attention
-    const hasWarningFinding = findings.some(f => f.type === FindingType.WARNING);
-    if (hasWarningFinding || readiness.status === ReadinessStatus.WARN) {
-      return OverallStatus.NEEDS_ATTENTION;
+      // 如果有警告类型的发现或准备度警告，状态为 needs_attention
+      const hasWarningFinding = findings.some((f) => f.type === FindingType.WARNING);
+      if (hasWarningFinding || readiness.status === ReadinessStatus.WARN || readiness.must > 0) {
+        return OverallStatus.NEEDS_ATTENTION;
+      }
+    } else {
+      const hasWarningFinding = findings.some((f) => f.type === FindingType.WARNING);
+      if (hasWarningFinding) {
+        return OverallStatus.NEEDS_ATTENTION;
+      }
     }
 
     // 否则状态为 good

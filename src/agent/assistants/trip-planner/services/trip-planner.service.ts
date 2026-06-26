@@ -26,6 +26,8 @@ import { StateStoreService } from '../../../infra/state-store.service';
 import { ClaudeOrchestratorService } from '../../../services/claude-orchestrator.service';
 import { ClaudeGatekeeperAgentService } from '../../../services/sub-agents/gatekeeper-agent.service';
 import { ClaudeNarratorAgentService } from '../../../services/sub-agents/narrator-agent.service';
+import { buildGuardianInsightCard, buildPresentationFromInsights } from '../../../services/persona-lead-speaker.util';
+import type { GuardianPersonaPresentation } from '../../../../trips/decision/shared/guardian-presentation.types';
 import { randomUUID } from 'crypto';
 import { Observable, Subject } from 'rxjs';
 import {
@@ -81,6 +83,8 @@ import { GapPreferencesService } from './gap-preferences.service';
 import { resolveRagSoftWorldPolicy } from '../../../../rag/reality-policy/rag-soft-world-policy';
 import { extractTripnaraStructuredSlicesFromPreferences } from '../../../utils/tripnara-structured-preferences-context.util';
 import { isValidUuidForUserProfile } from '../../../services/user-standing-preference.service';
+import { mapCausalProjectionToGuardianEvaluation } from '../../../../trips/causal-runtime/persona/map-causal-persona-to-guardian.util';
+import { shouldSkipLlmGuardianEval } from '../../../../trips/causal-runtime/persona/causal-persona-kernel.config';
 
 /**
  * 多意图识别结果
@@ -282,6 +286,9 @@ export class TripPlannerService {
       const state = await this.loadOrCreateSession(request);
       if (request.decisionContext) {
         state.decisionContext = request.decisionContext;
+      }
+      if (request.causalPersonaProjection) {
+        state.causalPersonaProjection = request.causalPersonaProjection;
       }
 
       // 🆕 1.5 处理澄清选择（用户点击了澄清按钮后）
@@ -6769,6 +6776,12 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
     evaluation: GuardianEvaluation;
     guardiansInvoked: GuardianPersona[];
   }> {
+    const projection = state.causalPersonaProjection;
+    if (shouldSkipLlmGuardianEval(projection)) {
+      this.logger.debug('[三人格] 跳过 LLM 评估 — causal persona kernel authoritative');
+      return mapCausalProjectionToGuardianEvaluation(projection!);
+    }
+
     const ctx = state.tripContext;
     const guardiansToInvoke = this.shouldInvokeGuardians(intent, message, state);
     
@@ -7191,6 +7204,17 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
     // 添加人格洞察
     response.personaInsights = sortedInsights;
     response.guardianEvaluation = guardianResult.evaluation;
+
+    const warningInsights = sortedInsights.filter(
+      (i) => i.severity === 'warning' || i.severity === 'error',
+    );
+    if (warningInsights.length > 0) {
+      response.guardianPresentation = buildPresentationFromInsights(
+        warningInsights,
+        GUARDIAN_PRIORITY,
+        'in_trip',
+      );
+    }
     
     // 更新元数据
     response.meta = {
@@ -7198,14 +7222,9 @@ ${history.slice(-5).map(m => `${m.role}: ${m.content}`).join('\n')}
       guardiansInvoked: guardianResult.guardiansInvoked,
     };
 
-    // 如果有严重问题，更新消息以引起注意
     const hasWarning = sortedInsights.some(i => i.severity === 'warning' || i.severity === 'error');
-    if (hasWarning) {
-      // 在消息前添加顾问团提示（按优先级排序后的结果）
-      const warningInsights = sortedInsights.filter(i => i.severity === 'warning' || i.severity === 'error');
-      const advisorSummary = warningInsights.map(i => `${i.emoji} ${i.name}: ${i.message}`).join('\n');
-      
-      response.message = `💭 **顾问团评估**\n${advisorSummary}\n\n---\n\n${response.message}`;
+    if (hasWarning && response.guardianPresentation) {
+      response.message = `**决策摘要**\n${response.guardianPresentation.narrative}\n\n---\n\n${response.message}`;
     }
 
     return response;

@@ -13,6 +13,7 @@ import { createOpenAIHttp } from '../utils/openai-http.factory';
 import { retryWithBackoff } from '../utils/retry-with-backoff';
 import { CircuitBreaker } from '../utils/circuit-breaker';
 import { extractTokenUsage } from '../utils/token-extractor.util';
+import { parseJsonFromLlmText, stripLlmJsonMarkdown } from '../utils/parse-llm-json.util';
 import type { OrchestrationStep, SubAgentType } from '../../agent/interfaces/trip-plan.interface';
 import { TokenStatsService } from '../../agent/services/token-stats.service';
 import { LlmUsageRecorderService } from './llm-usage-recorder.service';
@@ -188,20 +189,7 @@ export class LlmService {
    * 处理可能包含 markdown 代码块标记的情况（如 ```json ... ```）
    */
   private extractJSON(response: string): any {
-    let cleaned = response.trim();
-    
-    // 移除 markdown 代码块标记
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, ''); // 移除开头的 ```json 或 ```
-    cleaned = cleaned.replace(/\s*```$/i, ''); // 移除结尾的 ```
-    cleaned = cleaned.trim();
-    
-    // 尝试提取 JSON 对象（如果响应中包含其他文本）
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleaned = jsonMatch[0];
-    }
-    
-    return JSON.parse(cleaned);
+    return parseJsonFromLlmText(response);
   }
 
   async naturalLanguageToTripParams(dto: NaturalLanguageToParamsDto): Promise<{
@@ -536,7 +524,7 @@ export class LlmService {
         success: true,
         tokenContext,
       });
-      return result.content;
+      return schema ? stripLlmJsonMarkdown(result.content) : result.content;
     } catch (error: any) {
       const durationMs = Date.now() - startTime;
       this.emitLlmUsageLog({
@@ -1634,7 +1622,8 @@ ${contextInfo}
    - 用户说"春节去" → 转换为具体日期，inferredFields 不包含日期
 
 2. **需要推断的信息**：标记为推断并设置 needsClarification: true
-   - 用户没提日期 → 推断合理日期，inferredFields 包含 "startDate", "endDate"
+   - 用户没提日期 → **禁止默认从今天/明天起算**；若用户已提到具体月份或季节（如「十一月」「春节后」），必须按该时间窗口推断，不得用近端日期凑数
+   - 若用户提到未来月份但具体日期不清 → **不要填写 startDate/endDate**，将二者留空并把 "startDate","endDate" 放入 inferredFields，在 reply 中追问具体出发日期
    - 用户没提预算 → 根据目的地推断，inferredFields 包含 "totalBudget"
 
 3. **天数推算**

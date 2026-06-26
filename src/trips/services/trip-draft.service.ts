@@ -31,6 +31,12 @@ import {
   CandidateRetrievalEngine,
   type CandidatePlace,
 } from './candidate-retrieval.engine';
+import { validateDraftLlmSlotsAsCandidates } from '../experience-fulfillment/utils/draft-slot-candidate.util';
+import {
+  buildExperienceUnderstandingFromNl,
+  buildExperienceExplanationFromUnderstanding,
+  buildItineraryPresentationBundle,
+} from '../experience-fulfillment';
 import { ConstraintEngine } from './constraint.engine';
 import { RouteOptimizationEngine } from './route-optimization.engine';
 import { FatiguePredictionEngine } from './fatigue-prediction.engine';
@@ -683,6 +689,29 @@ export class TripDraftService {
       },
     };
 
+    const experienceUnderstanding = buildExperienceUnderstandingFromNl({
+      text: [dto.style, dto.intensity, dto.destination].filter(Boolean).join(' '),
+      partialParams: {
+        tripDays: dto.days,
+        destination: countryCode,
+        hasElderly: dto.constraints?.withElderly,
+        hasChildren: dto.constraints?.withChildren,
+        transport: dto.transport,
+        vehicleType: dto.transport === 'car' ? 'UNKNOWN' : undefined,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+      },
+    });
+    const experienceExplanation = buildExperienceExplanationFromUnderstanding(experienceUnderstanding);
+    response.itineraryPresentation = buildItineraryPresentationBundle({
+      draftDays: validatedDays,
+      candidates: stableCandidates,
+      understanding: experienceUnderstanding,
+      explanation: experienceExplanation,
+      transport: dto.transport,
+      hasElderly: dto.constraints?.withElderly,
+    });
+
     if (this.worldBus) {
       try {
         this.worldBus.emit(
@@ -985,6 +1014,19 @@ export class TripDraftService {
       }
       
       this.logger.log(`LLM 返回了 ${parsed.days.length} 天的编排结果`);
+
+      const slotValidation = validateDraftLlmSlotsAsCandidates(parsed, candidates, dto, days);
+      if (!slotValidation.valid) {
+        this.logger.warn(
+          `ExperienceCandidate 校验失败（${slotValidation.errors.length} 项）: ${slotValidation.errors.slice(0, 3).join('; ')}`,
+        );
+        throw new BadRequestException(
+          `LLM 草案不符合 ExperienceCandidate 协议: ${slotValidation.errors.slice(0, 2).join('; ')}`,
+        );
+      }
+      this.logger.log(
+        `ExperienceCandidate 校验通过：${slotValidation.candidates.length} 个结构化候选`,
+      );
       
       // LLM 编排完成，通知进度回调
       if (onProgress) {
@@ -1087,7 +1129,8 @@ export class TripDraftService {
     const slotShouldBeNonRestaurant = (slot: TimeSlot) =>
       slot === TimeSlot.MORNING || slot === TimeSlot.AFTERNOON || slot === TimeSlot.EVENING;
 
-    // 🆕 重复上限策略（Decision OS）：F&B（餐饮/咖啡）默认全程最多 1 次；景点类保留 2 次
+    // 🆕 重复上限策略（Decision OS）：F&B（餐饮/咖啡）默认全程最多 1 次；景点类根据行程天数动态调整
+    const totalDays = days.length;
     const isFoodAndBeverage = (c: CandidatePlace): boolean => {
       if (c.category === 'RESTAURANT') return true;
       const ct = String((c as any).canonicalType ?? '').toUpperCase();
@@ -1096,7 +1139,11 @@ export class TripDraftService {
       const t = tags.join(' ').toLowerCase();
       return t.includes('cafe') || t.includes('coffee') || t.includes('咖啡') || t.includes('bar');
     };
-    const repetitionLimitFor = (c: CandidatePlace): number => (isFoodAndBeverage(c) ? 1 : 2);
+    const repetitionLimitFor = (c: CandidatePlace): number => {
+      if (isFoodAndBeverage(c)) return 1;
+      // 对于多天行程（>3天），非餐饮类最多1次；短行程（≤3天）最多2次
+      return totalDays > 3 ? 1 : 2;
+    };
 
     const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
       const R = 6371;
@@ -1286,13 +1333,15 @@ export class TripDraftService {
         let km = 0;
         if (near) {
           km = haversineKm(c.lat, c.lng, near.lat, near.lng);
-          distScore = 1 / (1 + km); // 0..1
+          // 🆕 更严格的距离衰减：步行1km内线性衰减，超过则指数衰减
+          const threshold = options?.transport === 'car' ? 3 : options?.transport === 'transit' ? 2 : 1;
+          distScore = km < threshold ? 1 - (km / (threshold * 2)) : Math.exp(-(km - threshold) / 2);
         }
         // categoryFit: 符合类型锁 +1，否则 -1（但不应发生，因为已过滤；保留做解释）
         const categoryFit = requireRestaurant ? (c.category === 'RESTAURANT' ? 1 : -1) : forbidRestaurant ? (c.category !== 'RESTAURANT' ? 1 : -1) : 0.5;
         // pacingImpact: 越不踩节奏越好（extraFilter 已过滤；这里给 1）
         const pacingImpact = 1;
-        // fatigueImpact: 用“到 near 的行驶时间”近似（越小越好）
+        // fatigueImpact: 用"到 near 的行驶时间"近似（越小越好）
         const speedKmh =
           options?.transport === 'car' ? 60 : options?.transport === 'transit' ? 25 : 4;
         const travelTimeH = near ? Math.min(km / speedKmh, 4) : 1;
@@ -1309,12 +1358,13 @@ export class TripDraftService {
           else if (hoursStr) openingHoursFit = this.openingHoursContainWindowTz((c as any).openingHours, args.date, args.visitWindow.start, args.visitWindow.end, args.timezone) ? 1 : 0;
         }
 
-        const w1 = 0.33;
-        const w2 = 0.15;
-        const wOH = 0.07;
-        const w3 = 0.1;
-        const w4 = 0.2;
-        const w5 = 0.15;
+        // 🆕 调整权重：距离 35%，体验 30%，热度 20%，时间匹配 15%
+        const w1 = 0.35;  // 距离权重（从0.33提升）
+        const w2 = 0.15;  // 类别匹配
+        const wOH = 0.07; // 营业时间
+        const w3 = 0.1;   // 节奏
+        const w4 = 0.2;   // 疲劳
+        const w5 = 0.13;  // 商业价值（从0.15降低，为距离让出空间）
         // timeCompressionCost：估算为了不挤爆下一锚点需要压缩的分钟数（负向）
         let timeCompressionCost = 0;
         if (args.timeContext?.nextAnchorMin != null) {
@@ -1707,7 +1757,8 @@ export class TripDraftService {
 
       // 🆕 约束满足修复循环（Solver-like）：距离 → 疲劳 → 节奏，最多迭代 N 次
       const MAX_REPAIR_ITERS = 3;
-      const maxDistKm = options?.transport === 'car' ? 150 : options?.transport === 'transit' ? 30 : 5;
+      // 🆕 缩小最大距离限制：步行2km，公交20km，汽车80km（原为5/30/150）
+      const maxDistKm = options?.transport === 'car' ? 80 : options?.transport === 'transit' ? 20 : 2;
 
       const adjustSetsForRemoval = (placeId: number) => {
         dayPlaceIds.delete(placeId);
@@ -1859,7 +1910,7 @@ export class TripDraftService {
           );
         } else {
         warnings.push(`第 ${dayData.day} 天去重后只有 ${slotCount} 个行程项，尝试从候选列表填充`);
-        await this.fillMissingSlots(dayData, slots, candidates, dayPlaceIds, dayRestaurantIds, globalPlaceIds, warnings, tz, options?.sparseRegionProfile);
+        await this.fillMissingSlots(dayData, slots, candidates, dayPlaceIds, dayRestaurantIds, globalPlaceIds, warnings, tz, options?.sparseRegionProfile, days.length);
         }
       }
 
@@ -2273,6 +2324,7 @@ export class TripDraftService {
     warnings: string[],
     timezone?: string,
     sparseRegionProfile?: SparseRegionProfile | null,
+    totalDays?: number,
   ): Promise<void> {
     const tz = timezone || 'UTC';
     const requiredSlots: TimeSlot[] = [TimeSlot.MORNING, TimeSlot.LUNCH, TimeSlot.AFTERNOON, TimeSlot.DINNER];
@@ -2288,7 +2340,11 @@ export class TripDraftService {
       const t = tags.join(' ').toLowerCase();
       return t.includes('cafe') || t.includes('coffee') || t.includes('咖啡') || t.includes('bar');
     };
-    const repetitionLimitFor = (c: CandidatePlace): number => (isFoodAndBeverage(c) ? 1 : 2);
+    const repetitionLimitFor = (c: CandidatePlace): number => {
+      if (isFoodAndBeverage(c)) return 1;
+      // 对于多天行程（>3天），非餐饮类最多1次；短行程（≤3天）最多2次
+      return (totalDays ?? 3) > 3 ? 1 : 2;
+    };
 
     for (const slot of missingSlots) {
       const isMealSlot = slot === TimeSlot.LUNCH || slot === TimeSlot.DINNER;

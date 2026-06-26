@@ -104,6 +104,51 @@ export class DataContractsController {
   }
 
   @Public()
+  @Get('road-status/evidence')
+  @ApiOperation({
+    summary: '获取路况证据信封',
+    description:
+      '返回 EvidenceEnvelope 包装的 RoadStatus，含 observedAt、validUntil、confidence 与 freshness 评估。',
+  })
+  @ApiQuery({ name: 'lat', description: '纬度', example: 64.1466, type: Number, required: true })
+  @ApiQuery({ name: 'lng', description: '经度', example: -21.9426, type: Number, required: true })
+  @ApiQuery({ name: 'radius', description: '查询半径（米）', example: 50000, type: Number, required: false })
+  @ApiQuery({ name: 'includeFRoadInfo', description: '是否包含 F-Road 信息（冰岛特定）', example: false, type: Boolean, required: false })
+  @ApiQuery({ name: 'includeRiverCrossing', description: '是否包含河流渡口信息（冰岛特定）', example: false, type: Boolean, required: false })
+  async getRoadStatusEvidence(
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+    @Query('radius') radius?: string,
+    @Query('includeFRoadInfo') includeFRoadInfo?: string,
+    @Query('includeRiverCrossing') includeRiverCrossing?: string,
+  ) {
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+
+    if (isNaN(latNum) || isNaN(lngNum)) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, '经纬度必须是有效数字');
+    }
+
+    try {
+      const query: RoadStatusQuery = {
+        lat: latNum,
+        lng: lngNum,
+        radius: radius ? parseInt(radius, 10) : undefined,
+        includeFRoadInfo: includeFRoadInfo === 'true',
+        includeRiverCrossing: includeRiverCrossing === 'true',
+      };
+
+      const envelope = await this.dataSourceRouter.getRoadStatusEvidence(query);
+      return successResponse(envelope);
+    } catch (error: any) {
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        `获取路况证据失败: ${error.message}`,
+      );
+    }
+  }
+
+  @Public()
   @Get('road-status/by-froads')
   @ApiOperation({
     summary: '根据 F-Road 编号获取路况状态（冰岛特定）',

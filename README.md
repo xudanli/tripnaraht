@@ -16,6 +16,29 @@ TripNARA 是：
 - ✅ **地理 × 体力 × 风险的联合决策系统**
 - ✅ **会替用户承担"判断责任"的世界级路线认知引擎**
 
+## 产品边界（写死）
+
+TripNARA **不进入交易履约层**：
+
+- ❌ 不替用户交易、不承诺库存、不执行预订
+- ❌ 不做 GDS / NDC / ONE Order / PMS / CRS 深集成
+- ❌ 不提供「一键预订 / 自动改签 / 自动下单」
+
+TripNARA **只做旅行决策与路线认知**：
+
+- ✅ 判断路线是否值得走、是否可执行
+- ✅ 识别风险并给出调整建议（影响分析，非代订）
+- ✅ 表达数据来源、覆盖边界与不确定性
+
+核心内部模型见 `src/travel-cognition/`：
+
+| 建设重点 | 类型 | 作用 |
+|---------|------|------|
+| 实体统一 | `TravelEntityRef` | 消除同名地点/机场/道路歧义 |
+| 事实可信度 | `EvidenceEnvelope<T>` | 来源、时效、置信度 |
+| 覆盖声明 | `CoverageDisclosure` | 基于哪些数据判断、哪些未覆盖 |
+| 级联影响 | `TravelDependencyImpact` | 延误/封路 → 接驳/入住/当日路线风险 |
+
 ## 技术栈
 
 - **框架**: NestJS 11
@@ -96,7 +119,7 @@ npm run start
 启动服务后，访问 `http://localhost:3000/api-docs` 查看完整的 Swagger API 文档。
 
 **主要 API 文档**：
-- [Agent 统一入口 API](./docs/AGENT_UNIFIED_ENTRY_API.md) - `POST /agent/route_and_run`
+- [Agent 统一入口 API](./docs/AGENT_UNIFIED_ENTRY_API.md) - `POST /api/agent/route_and_run`
 - [Iterative Deployment API](./docs/API_ITERATIVE_DEPLOYMENT.md) ⭐ - `/api/training/*`（模型训练与迭代部署）
 - [规划工作台提交 API](./docs/API_PLANNING_WORKBENCH_COMMIT.md) - `POST /planning-workbench/plans/:planId/commit`
 

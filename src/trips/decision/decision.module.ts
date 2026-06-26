@@ -25,18 +25,6 @@ import { DecisionController } from './decision.controller';
 import { DecisionStatsController } from './decision-stats.controller';
 import { DecisionEngineController } from './decision-engine.controller';
 import { TransportModule } from '../../transport/transport.module';
-// 在 MCP 模式下使用轻量级 PlacesLiteModule，避免启动卡死
-const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
-                  process.env.MCP_MODE === 'true';
-
-// 动态导入，避免在 MCP 模式下加载完整的 PlacesModule（@Module 中暂未启用）
-let _placesModuleOrLite: any;
-if (isMcpMode && process.env.ENABLE_FULL_PLACES_MODULE !== 'true') {
-  _placesModuleOrLite = require('../../places/places-lite.module').PlacesLiteModule;
-} else {
-  _placesModuleOrLite = require('../../places/places.module').PlacesModule;
-}
-
 import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
 import { ContextEngineModule } from '../../agent/context-engine/context-engine.module';
 import { SkillsModule } from '../../skills/skills.module';
@@ -104,6 +92,8 @@ import { TrainingModule } from '../../agent/training/training.module';
 import { ExaModule } from '../../mcp/exa.module';
 import { AirbnbModule } from '../../mcp/airbnb.module';
 import { BookingComModule } from '../../mcp/booking-com.module';
+import { TripClosedLoopService } from './closed-loop';
+import { CausalRuntimeModule } from '../causal-runtime/causal-runtime.module';
 
 // Phase 1/2/3: 优化模块（目标函数、概率模型、多智能体协商）
 import { OptimizationModule } from './optimization/optimization.module';
@@ -145,7 +135,7 @@ try {
     ...(DataQualityModule ? [forwardRef(() => DataQualityModule)] : []), // 数据质量模块（用于信息源标注）
     ...(DataModelingModule ? [DataModelingModule] : []), // 数据建模模块（用于不确定性建模）
     // forwardRef(() => ReadinessModule), // 暂时禁用，使用懒加载获取 ReadinessService（打破循环依赖）
-    // _placesModuleOrLite, // 暂时禁用，检查依赖错误和依赖链
+    // PlacesModule 已移出 imports；需要 POI 时启用 forwardRef(() => PlacesModule) 或 PlacesLiteModule
     ...(enableRouteDirectionsModule ? [forwardRef(() => RouteDirectionsModule)] : []),
     SharedMemoryModule,
     EventEmitterModule,
@@ -159,6 +149,7 @@ try {
     OptimizationModule, // Phase 1/2/3: 优化模块（目标函数、概率模型、多智能体协商）
     FlywheelModule, // Phase 2: 数据飞轮
     IcelandRoadModule, // 冰岛路网约束图 MVP → ROAD_CONSTRAINT_UPDATE / semantic delta
+    CausalRuntimeModule, // P0: Causal Travel Runtime — intervention schema + travel event dual-write
   ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
   controllers: [
     DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）
@@ -267,6 +258,7 @@ try {
     FitnessABTestingService,
     CalibrationSchedulerService,
     WearableIntegrationService,
+    TripClosedLoopService,
   ],
   exports: [
     EcoIdentityLedgerPersistenceService,
@@ -329,6 +321,7 @@ try {
     HeuristicDietService, // 恢复：DecisionStatsController 需要
     // TripFeedbackService,
     DecisionLogStorageService, // 必需：TripsService 需要它
+    OpsRealityAuditService, // P-OPS-2 + Agent OPS bridge
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
     DecisionTelemetryService, // 决策埋点四元组统一入口
     TravelDnaInferenceService,
@@ -356,9 +349,9 @@ try {
     FitnessABTestingService,
     CalibrationSchedulerService,
     WearableIntegrationService,
+    TripClosedLoopService,
     // Phase 1/2/3: 优化模块服务（通过 re-export）
     // OptimizationModule 已通过 imports 导入，相关服务通过该模块获取
   ],
 })
 export class DecisionModule {}
-

@@ -111,6 +111,28 @@ export class PlanGenExecutorService implements IPlanGenExecutor {
             },
           };
         }
+
+        // 时间约束优化：收敛排期，杜绝凌晨反常识调度
+        const temporalSkill = this.skillsRegistry.getSkill('itinerary.temporalOptimize');
+        if (temporalSkill && days.length > 0) {
+          try {
+            const temporal = await temporalSkill.execute({
+              itinerary: {
+                request_id: itinerary.request_id,
+                days: itinerary.days,
+                metadata: itinerary.metadata,
+              },
+              party_profile: req.party_profile as Record<string, unknown> | undefined,
+            });
+            if (temporal && typeof temporal === 'object' && 'itinerary' in temporal) {
+              const t = temporal as { itinerary: ItineraryLike };
+              itinerary.days = t.itinerary.days;
+            }
+          } catch (e: any) {
+            this.logger.warn(`[PlanGenExecutor] itinerary.temporalOptimize 失败（继续使用原始草案）: ${e?.message}`);
+          }
+        }
+
         return { itinerary, planDraft: itinerary };
       }
       return {

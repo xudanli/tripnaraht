@@ -3,7 +3,7 @@
  * skill.decision.runThreeGuardians
  * 
  * 用途：一次性跑三人格，并给出结构化裁决。
- * 把现在分散的 abuCheck / drdrePace / neptuneRepair 做成一个「总调度」版本。
+ * 按顺序执行 Abu → Dr.Dre → Neptune；Neptune 修改 plan 后 Abu 复核 → Dr.Dre 再平衡。
  * 
  * 输入：tripId 或已构建的 WorldModelContext + planCandidate
  * 输出：abuResult / drdreResult / neptuneResult + finalPlan + decisionSummary

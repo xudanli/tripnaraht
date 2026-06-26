@@ -47,6 +47,10 @@ import { buildVoicePayloadForDiagnostic } from '../narrator/services/voice-evide
 import type { TravelDiagnosticReport } from '../narrator/utils/travel-diagnostic-collector.util';
 import { syncDecisionContextToDecisionState } from '../../planning-policy/open-world/decision-context-sync.util';
 import { mergeDecisionContextIntoNarration } from '../narrator/utils/merge-decision-context-narration.util';
+import {
+  buildProactiveUxHints,
+  mergeProactiveUxHintsIntoNarration,
+} from './proactive-ux-hints';
 
 @Injectable()
 export class NarrateExecutorService implements INarrateExecutor {
@@ -210,6 +214,19 @@ export class NarrateExecutorService implements INarrateExecutor {
           );
         }
       }
+      narration = mergeProactiveUxHintsIntoNarration(
+        narration,
+        buildProactiveUxHints({
+          dso,
+          ctx: {
+            requestId: ctx.requestId,
+            tripPlanRequest: ctx.tripPlanRequest,
+            itinerary: state.itinerary as any,
+            researchData: state.research_data,
+            user_profile: ctx.user_profile,
+          },
+        }),
+      );
 
       if (state.metadata && typeof state.metadata === 'object') {
         const m = state.metadata as Record<string, unknown>;

@@ -1,7 +1,17 @@
 // src/route-directions/dto/query-route-template.dto.ts
 import { IsOptional, IsInt, IsBoolean } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+
+function parseBooleanQuery(value: unknown): boolean | unknown {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return value;
+}
 
 export class QueryRouteTemplateDto {
   @ApiPropertyOptional({ description: '路线方向 ID', type: Number })
@@ -18,7 +28,7 @@ export class QueryRouteTemplateDto {
 
   @ApiPropertyOptional({ description: '是否激活', type: Boolean })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => parseBooleanQuery(value))
   @IsBoolean()
   isActive?: boolean;
 
@@ -34,4 +44,3 @@ export class QueryRouteTemplateDto {
   @IsInt()
   offset?: number;
 }
-

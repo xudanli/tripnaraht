@@ -20,6 +20,7 @@ import { DEFAULT_UNCERTAINTY_CONFIG } from '../../trips/decision/optimization/pr
 import { DEFAULT_OBJECTIVE_WEIGHTS } from '../../trips/decision/optimization/objective-function.interface';
 import { UnifiedDecisionFormulaService } from '../../trips/decision/optimization/unified-decision-formula.service';
 import { MetaPolicyService } from '../../trips/decision/optimization/meta/meta-policy.service';
+import type { MetaPolicyOutput } from '../../trips/decision/optimization/meta/meta-policy.interface';
 import {
   CGUSSearchService,
   type CGUSCandidate,
@@ -198,16 +199,13 @@ export class OptimizationEngineAdapterService {
     }
 
     const env = state.environmentState ?? {};
-    const hasUncertainty =
-      env.weatherRisk !== undefined ||
-      env.failureRiskLevel !== undefined ||
-      (env.weatherRisk === undefined && env.failureRiskLevel === undefined && planDraft?.days?.length);
+    const mcPolicy = this.resolveMonteCarloPolicy(state, !!planDraft?.days?.length);
 
     if (
       !planDraft?.days?.length ||
       !this.expectedUtility ||
       !this.probabilisticWorldModel ||
-      !hasUncertainty
+      !mcPolicy.enabled
     ) {
       fallbackChain.push(...appendFallbackStep([], 'monte_carlo_gate', 'monte_carlo_gate_false'));
       this.logger.warn(
@@ -218,7 +216,7 @@ export class OptimizationEngineAdapterService {
             hasPlanDraft: !!planDraft?.days?.length,
             expectedUtilityInjected: !!this.expectedUtility,
             probabilisticWorldModelInjected: !!this.probabilisticWorldModel,
-            hasUncertainty,
+            monteCarloPolicy: mcPolicy,
           },
         })}`,
       );
@@ -229,10 +227,6 @@ export class OptimizationEngineAdapterService {
     try {
       const worldContext = dsoToMinimalWorldModelContext(state);
       if (!worldContext) return baseHints;
-
-      // 专利 3.12.3：元决策 MetaPolicy 选择采样预算 N
-      const sampleSize =
-        this.metaPolicy?.selectPolicy(state).sampleSize ?? DEFAULT_MONTE_CARLO_CONFIG.sampleSize ?? 200;
 
       const probabilisticContext = this.probabilisticWorldModel.fromDeterministicModel(
         worldContext,
@@ -250,7 +244,7 @@ export class OptimizationEngineAdapterService {
         plan,
         probabilisticContext,
         DEFAULT_OBJECTIVE_WEIGHTS,
-        { ...DEFAULT_MONTE_CARLO_CONFIG, sampleSize, deterministicWorld: worldContext },
+        { ...DEFAULT_MONTE_CARLO_CONFIG, sampleSize: mcPolicy.sampleSize, deterministicWorld: worldContext },
       );
 
       const uncertaintyProfile: UncertaintyProfile = {
@@ -259,7 +253,7 @@ export class OptimizationEngineAdapterService {
           ...(env.weatherRisk !== undefined ? (['weather'] as const) : []),
           ...(state.tripState?.fatigue !== undefined ? (['human'] as const) : []),
         ],
-        suggestedSampleSize: sampleSize,
+        suggestedSampleSize: mcPolicy.sampleSize,
       };
 
       let hints: OptimizationHints = {
@@ -274,6 +268,7 @@ export class OptimizationEngineAdapterService {
         confidenceInterval: result.confidenceInterval,
         feasibilityProbability: result.feasibilityProbability,
         uncertaintyProfile,
+        monteCarloDiagnostics: mcPolicy,
       };
 
       if (this.planFeatures) {
@@ -584,6 +579,7 @@ export class OptimizationEngineAdapterService {
       await this.resolveCgusCandidates(state, planDraft, plan, routeDirectionId, tripId, violations);
 
     const retrievalCategoryEvidence = await this.resolveRetrievalEvidenceForCgus(state);
+    const mcPolicy = this.resolveMonteCarloPolicy(state, candidates.length > 0);
 
     const patchedCandidates =
       process.env.CGUS_INJECT_CONTRAST_CANDIDATES === '1'
@@ -703,10 +699,12 @@ export class OptimizationEngineAdapterService {
       effectiveCandidates,
       effectiveWorldContext,
       {
-        useMonteCarlo: !!this.expectedUtility && !!this.probabilisticWorldModel,
-        sampleSize: 200,
+        useMonteCarlo: !!this.expectedUtility && !!this.probabilisticWorldModel && mcPolicy.enabled,
+        sampleSize: mcPolicy.sampleSize,
         useUtilityPrior: true,
         useUtilityWeightedSampling: true,
+        useWorldModelRollout: mcPolicy.useWorldModelRollout,
+        rolloutHorizonSteps: mcPolicy.rolloutHorizonSteps,
         mcRankAuthority: {
           enabled: String(process.env.KERNEL_CGUS_MC_RERANK_ENABLED ?? '').toLowerCase() === 'true',
           // 默认门控必须与当前采样预算下典型的每候选分配量相匹配。
@@ -848,6 +846,15 @@ export class OptimizationEngineAdapterService {
       strategyDirection: `CGUS(${effectiveCandidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}`,
       recommendedAlternativeId: result.recommended?.id ?? top?.candidate.id,
       metaDecisionAudit: metaAudit,
+      selectedPlanId: result.recommended?.id ?? top?.candidate.id,
+      monteCarloDiagnostics: {
+        ...mcPolicy,
+        enabled: mcPolicy.enabled && result.usedMonteCarlo === true,
+        skippedReason:
+          mcPolicy.enabled && result.usedMonteCarlo !== true
+            ? 'cgus_search_did_not_use_monte_carlo'
+            : mcPolicy.skippedReason,
+      },
       ...(candidateSearchAudit ? { candidateSearchAudit } : {}),
       ...(decisionVerdict ? { decisionVerdict } : {}),
       ...(decisionVerdictNarrationZh ? { decisionVerdictNarrationZh } : {}),
@@ -862,6 +869,15 @@ export class OptimizationEngineAdapterService {
               globalSubgraphEdgeCount: globalSubgraphStats.edgeCount,
               globalSubgraphPrunedNodes: globalSubgraphStats.prunedNodeCount,
             },
+          }
+        : {}),
+      ...(result.usedMonteCarlo
+        ? {
+            uncertaintyProfile: {
+              hasUncertainty: true,
+              sources: mcPolicy.reasons.includes('weather') ? ['weather'] : [],
+              suggestedSampleSize: mcPolicy.sampleSize,
+            } as UncertaintyProfile,
           }
         : {}),
       ...(result.emergencyMaskAudit ? { emergencyMaskAudit: result.emergencyMaskAudit as any } : {}),
@@ -902,6 +918,57 @@ export class OptimizationEngineAdapterService {
       ...(ci && {
         confidenceInterval: { lower: ci.lower, upper: ci.upper, level: (ci as { level?: number }).level ?? 0.95 },
       }),
+    };
+  }
+
+  private resolveMonteCarloPolicy(
+    state: DecisionState,
+    hasPlanDraft: boolean,
+  ): NonNullable<OptimizationHints['monteCarloDiagnostics']> {
+    const env = state.environmentState ?? {};
+    const violations = state.constraints?.violations ?? [];
+    const reasons: string[] = [];
+
+    if (state.uncertaintyProfile?.hasUncertainty === true) reasons.push('uncertainty_profile');
+    if (env.weatherRisk !== undefined) reasons.push('weather');
+    if (env.failureRiskLevel !== undefined) reasons.push('failure_risk');
+    if (state.tripState?.fatigue !== undefined) reasons.push('human_fatigue');
+    if (violations.length > 0) reasons.push('constraint_violations');
+    if (state.systemState?.currentPhase === 'OPTIMIZE' || state.systemState?.currentPhase === 'VERIFY') {
+      reasons.push(`phase_${state.systemState.currentPhase.toLowerCase()}`);
+    }
+
+    let metaPolicy: MetaPolicyOutput | undefined;
+    try {
+      metaPolicy = this.metaPolicy?.selectPolicy(state);
+    } catch (error: unknown) {
+      this.logger.debug(`[OptimizationAdapter] MetaPolicy skipped: ${(error as Error)?.message}`);
+    }
+    if (metaPolicy?.useWorldModelRollout === true) reasons.push('meta_policy_rollout');
+
+    const sampleSize = Math.max(
+      1,
+      Math.floor(metaPolicy?.sampleSize ?? state.uncertaintyProfile?.suggestedSampleSize ?? DEFAULT_MONTE_CARLO_CONFIG.sampleSize ?? 200),
+    );
+    const rolloutHorizonSteps = Math.max(
+      1,
+      Math.min(8, Math.floor(state.uncertaintyProfile?.planningDepth ?? metaPolicy?.horizon ?? 1)),
+    );
+
+    const skippedReason = !hasPlanDraft
+      ? 'missing_plan_draft'
+      : reasons.length === 0
+        ? 'no_uncertainty_or_optimize_signal'
+        : undefined;
+
+    return {
+      enabled: hasPlanDraft && reasons.length > 0,
+      sampleSize,
+      useWorldModelRollout: metaPolicy?.useWorldModelRollout === true,
+      rolloutHorizonSteps,
+      reasons,
+      ...(skippedReason ? { skippedReason } : {}),
+      policySource: metaPolicy ? 'MetaPolicy' : 'Default',
     };
   }
 

@@ -15,7 +15,7 @@
 | 参数名 | 类型 | 必填 | 说明 | 示例 |
 |--------|------|------|------|------|
 | countryCode | string | 是 | 国家代码（ISO 3166-1 alpha-2） | `IS`（冰岛）、`JP`（日本）、`CN`（中国） |
-| category | string | 否 | 地点类别筛选 | `ATTRACTION`（景点）、`RESTAURANT`（餐厅）、`SHOPPING`（购物）、`HOTEL`（酒店） |
+| category | string | 否 | 地点类别筛选 | `ATTRACTION`（景点）、`RESTAURANT`（餐厅）、`SHOPPING`（购物）、`HOTEL`（酒店）、`TRANSIT_HUB`（交通枢纽）、`HOSPITAL`（医疗） |
 | limit | number | 否 | 返回数量限制，默认 20，最大 100 | `50` |
 
 ### 地点类别枚举值
@@ -24,6 +24,8 @@
 - `RESTAURANT` - 餐厅
 - `SHOPPING` - 购物
 - `HOTEL` - 酒店
+- `TRANSIT_HUB` - 交通枢纽
+- `HOSPITAL` - 医疗
 
 ## 请求示例
 

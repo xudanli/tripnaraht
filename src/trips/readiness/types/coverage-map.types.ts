@@ -7,6 +7,9 @@
  */
 
 import type { ReadinessTripFindingScope } from './readiness-findings.types';
+import type { CoverageDisclosure } from '../../../travel-cognition';
+import type { NonTransactionalReplanResult } from '../../../travel-cognition';
+import type { GuardianPersonaPresentation } from '../../decision/shared/guardian-presentation.types';
 
 // ==================== 准备度分数类型 ====================
 
@@ -40,6 +43,11 @@ export interface ReadinessScoreFinding {
   severity: 'high' | 'medium' | 'low';
   affectedDays?: number[];
   actionRequired?: string;
+  fromItemId?: string;
+  toItemId?: string;
+  issueKind?: string;
+  anchors?: Record<string, unknown>;
+  uiHints?: Record<string, unknown>;
   /** 与树形 findings 对齐：覆盖缺口时的行程定位 */
   tripScope?: ReadinessTripFindingScope;
 }
@@ -92,6 +100,111 @@ export interface ReadinessScoreResponse {
     lowRisks: number;
   };
   calculatedAt: string;
+  /** 行程所处准备阶段（影响分数是否计入临行项） */
+  readinessPhase?: 'planning' | 'pre_departure' | 'in_trip' | 'past';
+  daysUntilStart?: number;
+  phaseHint?: string;
+  /** 最近一次三人格博弈快照（来自 apply-repair / 决策修复） */
+  guardianNegotiation?: ReadinessGuardianNegotiationSnapshot;
+  /** 决策覆盖声明：基于哪些数据判断、哪些未覆盖 */
+  coverageDisclosure?: CoverageDisclosure;
+  /** 最近一次级联影响预分析（trip.metadata 持久化 + 实时计算） */
+  causalPreAnalysis?: import('../../../travel-cognition').NonTransactionalReplanResult;
+  /** 供准备度 UI 渲染的级联提示卡片 */
+  cascadeUiHints?: ReadinessCascadeUiHint[];
+}
+
+/** 级联影响 UI 提示（repair-options / score 页面） */
+export interface ReadinessCascadeUiHint {
+  id: string;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  message: string;
+  recommendation: string;
+  entityKind?: string;
+  entityLabel?: string;
+  userConfirmationRequired?: string[];
+  /** Impact Algebra：净时间影响（分钟） */
+  netImpactMinutes?: number;
+  absorbedMinutes?: number;
+  /** 级联传播置信度 0..1 */
+  cascadeConfidence?: number;
+  propagationHop?: number;
+  triggerFactType?: string;
+  triggerSource?: string;
+}
+
+/** trip.metadata.readinessCausalPreAnalysis 快照 */
+export interface ReadinessCausalPreAnalysisSnapshot {
+  latest?: import('../../../travel-cognition').NonTransactionalReplanResult;
+  byBlockerId?: Record<string, import('../../../travel-cognition').NonTransactionalReplanResult>;
+  updatedAt?: string;
+}
+
+/**
+ * 三人格博弈 — 单次协商摘要（供 score / insight / apply-repair 展示）
+ */
+export interface ReadinessGuardianPersonaSummary {
+  persona: 'ABU' | 'DRE' | 'NEPTUNE';
+  personaLabel: string;
+  stance: string;
+  utility: number;
+  primaryConcerns: string[];
+}
+
+export interface ReadinessGuardianFatigueDaySummary {
+  dayIndex: number;
+  fatigueScore: number;
+  riskLevel: string;
+  recommendation: string;
+  confidence?: number;
+}
+
+export interface ReadinessGuardianNegotiationSummary {
+  /** pre/post_repair：修复闭环；standalone：智能体/MCP 独立调用 */
+  phase: 'pre_repair' | 'post_repair' | 'standalone';
+  tripId: string;
+  repairActionType?: string;
+  blockerId?: string;
+  decision: 'APPROVE' | 'REJECT' | 'CONDITIONAL_APPROVE' | 'REQUIRES_HUMAN';
+  consensusLevel: number;
+  humanDecisionPoints: string[];
+  conditions: string[];
+  keyTradeoffs: string[];
+  summary: string;
+  debateRoundCount: number;
+  suggestedAdjustments?: string[];
+  personaEvaluations: ReadinessGuardianPersonaSummary[];
+  fatiguePrediction?: ReadinessGuardianFatigueDaySummary[];
+  negotiatedAt: string;
+}
+
+export interface ReadinessGuardianNegotiationSnapshot {
+  preRepair?: ReadinessGuardianNegotiationSummary;
+  postRepair?: ReadinessGuardianNegotiationSummary;
+  latest?: ReadinessGuardianNegotiationSummary;
+}
+
+/** repair-options 抽屉 Guardian 面板 — 与前端契约对齐 */
+export type RepairOptionsGuardianConsensus = 'ALIGNED' | 'SPLIT' | 'BLOCKED';
+
+export type RepairOptionsGuardianPersonaCode = 'ABU' | 'DR_DRE' | 'NEPTUNE';
+
+export type RepairOptionsGuardianStance = 'SUPPORT' | 'CAUTION' | 'OPPOSE' | 'NEUTRAL';
+
+export interface RepairOptionsGuardianPersonaView {
+  persona: RepairOptionsGuardianPersonaCode;
+  stance: RepairOptionsGuardianStance;
+  message: string;
+  suggestion?: string;
+  highlights?: string[];
+}
+
+export interface RepairOptionsGuardianNegotiationView {
+  consensus?: RepairOptionsGuardianConsensus;
+  summary?: string;
+  personas: RepairOptionsGuardianPersonaView[];
+  userActionRequired?: string[];
+  analyzedAt?: string;
 }
 
 // ==================== 修复选项类型 ====================
@@ -115,6 +228,7 @@ export interface RepairOption {
   impact: 'high' | 'medium' | 'low';
   timeEstimate?: string;
   actionType?: string;
+  payload?: Record<string, unknown>;
   metadata?: Record<string, any>;
 }
 
@@ -122,9 +236,162 @@ export interface RepairOption {
  * 修复选项响应
  */
 export interface RepairOptionsResponse {
+  /** feasibility 路径参数 issueId（与 issues[].id 对齐） */
+  issueId?: string;
   blockerId: string;
   blockerMessage?: string;
   options: RepairOption[];
+  /** 修复前级联影响预分析（封路/天气/F-road → 下游 POI/当日） */
+  dependencyImpact?: NonTransactionalReplanResult;
+  causalPreAnalysis?: NonTransactionalReplanResult;
+  /** 供 repair-options 弹层直接渲染 */
+  cascadeUiHints?: ReadinessCascadeUiHint[];
+  /** 修复前三人格协商预览（repair-options 抽屉 Guardian 面板） */
+  guardianNegotiation?: RepairOptionsGuardianNegotiationView;
+}
+
+/**
+ * 应用修复请求
+ */
+export interface ApplyRepairRequest {
+  tripId: string;
+  blockerId: string;
+  optionId: string;
+  reason?: string;
+  /** 为 true 时，计划类修复会直接调用决策引擎 repair-plan（否则仅 redirect） */
+  executeDecision?: boolean;
+  /** executeDecision=true 时是否将 decisionPlan 写回 ItineraryItem，默认 true */
+  persistDecision?: boolean;
+  /** executeDecision=true 时是否运行三人格博弈（默认 true；全局可用 READINESS_GUARDIAN_NEGOTIATION=0 关闭） */
+  runGuardianNegotiation?: boolean;
+  /** 为 true 时跳过 pre_repair 低共识 REJECT 门控，强制执行 Neptune 修复 */
+  forceDecisionRepair?: boolean;
+}
+
+/**
+ * 应用修复结果状态
+ */
+export type ApplyRepairStatus = 'applied' | 'deferred' | 'redirect';
+
+/**
+ * 应用修复响应
+ */
+export interface ApplyRepairResponse {
+  tripId: string;
+  blockerId: string;
+  optionId: string;
+  actionType: string;
+  status: ApplyRepairStatus;
+  message: string;
+  readinessScore?: ReadinessScoreResponse;
+  redirectUrl?: string;
+  metadata?: Record<string, unknown>;
+  /** 决策引擎 repair-plan 返回的计划（executeDecision=true 时） */
+  decisionPlan?: Record<string, unknown>;
+  decisionLog?: Record<string, unknown>;
+  /** 当前版本仅返回修复计划，尚未写回 Prisma 行程 */
+  persisted?: boolean;
+  persistence?: {
+    applied: boolean;
+    updatedItemIds: string[];
+    createdItemIds: string[];
+    removedItemIds: string[];
+    skippedLockedItemIds: string[];
+  };
+  /** 修复前后的三人格博弈结果（executeDecision + runGuardianNegotiation 时） */
+  guardianNegotiation?: ReadinessGuardianNegotiationSnapshot;
+  /** status=deferred 时扁平 CHOOSE 选项（source: readiness_repair） */
+  humanDecisionPointsFlat?: string[];
+  /** deferred 时可选单主角表达（与 guardian/choose presentation 同构） */
+  presentation?: GuardianPersonaPresentation;
+}
+
+export type RepairPreviewMode = 'heuristic' | 'decision_engine_dry_run';
+
+export type PreviewRepairStatus = 'preview' | 'would_defer';
+
+/**
+ * 修复预览请求（feasibility preview-repair / readiness 共用）
+ */
+export interface PreviewRepairRequest {
+  tripId: string;
+  blockerId: string;
+  optionId: string;
+  /** feasibility issue id（审计/UI 用，可选） */
+  issueId?: string;
+  /** 受影响日序号（feasibility issue.affectedDays[0]） */
+  affectedDayNumber?: number;
+  runGuardianNegotiation?: boolean;
+  forceDecisionRepair?: boolean;
+}
+
+/**
+ * 修复预览响应 — decision_engine_dry_run 与 apply-repair 同路径但不写库
+ */
+export interface PreviewRepairResponse {
+  tripId: string;
+  blockerId: string;
+  issueId?: string;
+  optionId: string;
+  actionType: string;
+  previewMode: RepairPreviewMode;
+  status: PreviewRepairStatus;
+  message: string;
+  before: {
+    dayNumber: number;
+    itemCount: number;
+    totalItemCount: number;
+    highlights: string[];
+  };
+  after: {
+    dayNumber: number;
+    itemCount: number;
+    totalItemCount: number;
+    highlights: string[];
+  };
+  itineraryDiff: Array<{
+    slotId: string;
+    changeType: string;
+    dayNumber: number;
+    before?: Record<string, unknown>;
+    after?: Record<string, unknown>;
+  }>;
+  impact: {
+    feasibilityScoreBefore: number;
+    feasibilityScoreAfter?: number;
+    estimated: boolean;
+  };
+  wouldDefer?: boolean;
+  guardianNegotiation?: ReadinessGuardianNegotiationSnapshot;
+  /** status=would_defer 时扁平 CHOOSE 选项 */
+  humanDecisionPointsFlat?: string[];
+  /** would_defer 时可选单主角表达 */
+  presentation?: GuardianPersonaPresentation;
+  decisionPlan?: Record<string, unknown>;
+  decisionLog?: Record<string, unknown>;
+  option: RepairOption;
+}
+
+/**
+ * 自动修复请求（选取首个高影响可本地执行的选项）
+ */
+export interface AutoRepairRequest {
+  tripId: string;
+  blockerId: string;
+  executeDecision?: boolean;
+  persistDecision?: boolean;
+  runGuardianNegotiation?: boolean;
+  forceDecisionRepair?: boolean;
+}
+
+/**
+ * 刷新证据响应
+ */
+export interface RefreshEvidenceResponse {
+  tripId: string;
+  score: ReadinessScoreResponse;
+  coverageSummary: CoverageSummary;
+  refreshedAt: string;
 }
 
 /**
@@ -178,10 +445,13 @@ export interface SegmentHazard {
  */
 export interface PoiCoverage {
   id: string;
+  itemId?: string;
   day: number;
   order: number;
   name: string;
   type: string;
+  startTime?: string;
+  endTime?: string;
   coordinates: Coordinates;
   coverageStatus: PoiCoverageStatus;
   evidenceCount: number;
@@ -282,4 +552,9 @@ export interface CoverageMapData {
     roadClosure?: string; // 道路封闭数据最后更新时间
     openingHours?: string; // 开放时间数据最后更新时间
   };
+  /** 规划期 vs 临行前：控制路况类缺口是否展示 */
+  readinessPhase?: 'planning' | 'pre_departure' | 'in_trip' | 'past';
+  daysUntilStart?: number;
+  phaseHint?: string;
+  deferredLiveGapCount?: number;
 }

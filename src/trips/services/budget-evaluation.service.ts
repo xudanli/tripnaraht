@@ -1,6 +1,19 @@
 // src/trips/services/budget-evaluation.service.ts
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BudgetDecisionLogService } from '../budget-os/services/budget-decision-log.service';
+import { BudgetStructureService } from '../budget-os/services/budget-structure.service';
+import { TripBudgetIntentService } from '../budget-os/services/trip-budget-intent.service';
+import { TravelWalletService } from '../budget-os/services/travel-wallet.service';
+import { resolveTripWalletRoster } from '../budget-os/services/trip-wallet-roster.service';
+import type {
+  BudgetStructure,
+  BudgetViolation,
+  TripBudgetIntent,
+} from '../budget-os/types/trip-budget-os.types';
+import { parseBudgetConfig } from '../budget-os/utils/budget-config.util';
+import { toInputJsonValue } from '../budget-os/utils/prisma-json.util';
 import { TripBudgetService, BudgetConstraint } from './trip-budget.service';
 
 export interface BudgetEvaluationRequest {
@@ -13,19 +26,26 @@ export interface BudgetEvaluationRequest {
     food: number;
     activities: number;
     other: number;
+    experience?: number;
   };
   budgetConstraint: BudgetConstraint;
+  budgetIntent?: TripBudgetIntent;
+  budgetStructure?: BudgetStructure;
 }
 
+export type BudgetEvaluationVerdict = 'ALLOW' | 'NEED_ADJUST' | 'NEED_CONFIRM' | 'REJECT';
+
 export interface BudgetEvaluationResponse {
-  verdict: 'ALLOW' | 'NEED_ADJUST' | 'REJECT';
+  verdict: BudgetEvaluationVerdict;
   reason: string;
   confidence: number;
+  /** @deprecated use budgetViolations */
   violations?: Array<{
     category: string;
     exceeded: number;
     percentage: number;
   }>;
+  budgetViolations?: BudgetViolation[];
   recommendations?: Array<{
     action: string;
     impact: string;
@@ -38,22 +58,26 @@ export interface BudgetDecisionLogItem {
   id: string;
   timestamp: string;
   planId: string;
-  verdict: 'ALLOW' | 'NEED_ADJUST' | 'REJECT';
+  verdict: BudgetEvaluationVerdict;
   estimatedCost: number;
   budgetConstraint: BudgetConstraint;
   reason: string;
   evidenceRefs: string[];
+  budgetViolations?: BudgetViolation[];
   persona?: 'ABU';
 }
 
 @Injectable()
 export class BudgetEvaluationService {
   private readonly logger = new Logger(BudgetEvaluationService.name);
-  private decisionLogs: Map<string, BudgetDecisionLogItem[]> = new Map();
 
   constructor(
     private prisma: PrismaService,
     private tripBudgetService: TripBudgetService,
+    private intentService: TripBudgetIntentService,
+    private structureService: BudgetStructureService,
+    private walletService: TravelWalletService,
+    private decisionLogService: BudgetDecisionLogService,
   ) {}
 
   /**
@@ -62,7 +86,6 @@ export class BudgetEvaluationService {
   async evaluateBudget(request: BudgetEvaluationRequest): Promise<BudgetEvaluationResponse> {
     const { planId, tripId, estimatedCost, categoryBreakdown, budgetConstraint } = request;
 
-    // 验证行程存在
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
     });
@@ -71,38 +94,50 @@ export class BudgetEvaluationService {
       throw new NotFoundException(`行程 ${tripId} 不存在`);
     }
 
-    const totalBudget = budgetConstraint.total;
+    const intent =
+      request.budgetIntent ?? (await this.intentService.getIntent(tripId));
+    const structure =
+      request.budgetStructure ?? (await this.structureService.getStructure(tripId));
+
+    const totalBudget = intent?.total ?? budgetConstraint.total;
+    const currency = intent?.currency ?? budgetConstraint.currency ?? 'CNY';
     const ratio = totalBudget > 0 ? estimatedCost / totalBudget : 0;
-    const violations: BudgetEvaluationResponse['violations'] = [];
+
+    const legacyViolations: NonNullable<BudgetEvaluationResponse['violations']> = [];
+    const budgetViolations: BudgetViolation[] = [];
     const recommendations: BudgetEvaluationResponse['recommendations'] = [];
 
-    // 评估总预算
-    let verdict: 'ALLOW' | 'NEED_ADJUST' | 'REJECT' = 'ALLOW';
+    let verdict: BudgetEvaluationVerdict = 'ALLOW';
     let reason = '';
     let confidence = 0.9;
 
     if (ratio > 1.0) {
-      // 严重超支
       verdict = 'REJECT';
-      reason = `预估成本 ${estimatedCost.toFixed(2)} ${budgetConstraint.currency} 超出总预算 ${totalBudget.toFixed(2)} ${budgetConstraint.currency}，超支 ${((ratio - 1) * 100).toFixed(1)}%`;
+      reason = `预估成本 ${estimatedCost.toFixed(2)} ${currency} 超出总预算 ${totalBudget.toFixed(2)} ${currency}，超支 ${((ratio - 1) * 100).toFixed(1)}%`;
       confidence = 0.95;
+      budgetViolations.push({
+        type: 'TOTAL_EXCEEDED',
+        estimatedAmount: estimatedCost,
+        intentAmount: totalBudget,
+        variance: estimatedCost - totalBudget,
+        variancePercent: (ratio - 1) * 100,
+        message: reason,
+      });
     } else if (ratio > 0.95) {
-      // 接近预算上限，需要调整
       verdict = 'NEED_ADJUST';
-      reason = `预估成本 ${estimatedCost.toFixed(2)} ${budgetConstraint.currency} 接近预算上限，使用率 ${(ratio * 100).toFixed(1)}%，建议优化`;
+      reason = `预估成本 ${estimatedCost.toFixed(2)} ${currency} 接近预算上限，使用率 ${(ratio * 100).toFixed(1)}%，建议优化`;
       confidence = 0.85;
     } else if (ratio > 0.8) {
-      // 预算使用率较高，给出警告
       verdict = 'ALLOW';
-      reason = `预估成本 ${estimatedCost.toFixed(2)} ${budgetConstraint.currency} 在预算范围内，但使用率 ${(ratio * 100).toFixed(1)}% 较高`;
+      reason = `预估成本 ${estimatedCost.toFixed(2)} ${currency} 在预算范围内，但使用率 ${(ratio * 100).toFixed(1)}% 较高`;
       confidence = 0.8;
     } else {
       verdict = 'ALLOW';
-      reason = `预估成本 ${estimatedCost.toFixed(2)} ${budgetConstraint.currency} 在预算范围内，使用率 ${(ratio * 100).toFixed(1)}%`;
+      reason = `预估成本 ${estimatedCost.toFixed(2)} ${currency} 在预算范围内，使用率 ${(ratio * 100).toFixed(1)}%`;
       confidence = 0.9;
     }
 
-    // 检查分类预算限制
+    // Legacy categoryLimits (ceiling semantics)
     if (budgetConstraint.categoryLimits) {
       const categoryMap: Record<string, keyof typeof categoryBreakdown> = {
         accommodation: 'accommodation',
@@ -117,10 +152,15 @@ export class BudgetEvaluationService {
         if (limit && actual > limit) {
           const exceeded = actual - limit;
           const percentage = (exceeded / limit) * 100;
-          violations.push({
+          legacyViolations.push({ category, exceeded, percentage });
+          budgetViolations.push({
+            type: 'CATEGORY_EXCEEDED',
             category,
-            exceeded,
-            percentage,
+            intentAmount: limit,
+            estimatedAmount: actual,
+            variance: exceeded,
+            variancePercent: percentage,
+            message: `${category} 分类超支 ${percentage.toFixed(1)}%`,
           });
 
           if (percentage > 20) {
@@ -134,8 +174,46 @@ export class BudgetEvaluationService {
       }
     }
 
-    // 生成优化建议
-    if (verdict !== 'ALLOW') {
+    // L2 structure mismatch (allocation intent vs estimate)
+    if (structure) {
+      const mismatches = this.structureService.evaluateStructureMismatch(
+        structure,
+        categoryBreakdown,
+      );
+      for (const m of mismatches) {
+        const msg = `${m.category} 预估 ${m.estimatedAmount.toFixed(0)} 与结构分配 ${m.intentAmount.toFixed(0)} 偏差 ${(m.variancePercent * 100).toFixed(0)}%`;
+        budgetViolations.push({
+          type: 'STRUCTURE_MISMATCH',
+          category: m.category,
+          intentAmount: m.intentAmount,
+          estimatedAmount: m.estimatedAmount,
+          variance: m.estimatedAmount - m.intentAmount,
+          variancePercent: m.variancePercent * 100,
+          message: msg,
+        });
+        reason += `；${msg}`;
+        if (verdict !== 'REJECT') {
+          verdict = 'NEED_CONFIRM';
+        }
+      }
+    }
+
+    const roster = await resolveTripWalletRoster(this.prisma, tripId);
+    if (roster.length >= 2) {
+      const hasRule = await this.walletService.hasPaymentRule(tripId);
+      if (!hasRule) {
+        budgetViolations.push({
+          type: 'WALLET_UNSET',
+          message: '组队行程尚未设置付款规则（L3 Travel Wallet）',
+        });
+        reason += '；组队行程尚未设置付款规则';
+        if (verdict === 'ALLOW') {
+          verdict = 'NEED_CONFIRM';
+        }
+      }
+    }
+
+    if (verdict !== 'ALLOW' && verdict !== 'NEED_CONFIRM') {
       const totalExceeded = estimatedCost - totalBudget;
       if (totalExceeded > 0) {
         recommendations.push({
@@ -156,9 +234,16 @@ export class BudgetEvaluationService {
       }
     }
 
-    // 记录决策日志
+    const violationTypes = [...new Set(budgetViolations.map((v) => v.type))];
+    await this.persistGateStatus(tripId, {
+      verdict,
+      violationTypes,
+      evaluatedAt: new Date().toISOString(),
+      planId,
+    });
+
     const logItem: BudgetDecisionLogItem = {
-      id: `${planId}-${Date.now()}`,
+      id: randomUUID(),
       timestamp: new Date().toISOString(),
       planId,
       verdict,
@@ -166,52 +251,65 @@ export class BudgetEvaluationService {
       budgetConstraint,
       reason,
       evidenceRefs: [],
+      budgetViolations: budgetViolations.length ? budgetViolations : undefined,
       persona: 'ABU',
     };
 
-    if (!this.decisionLogs.has(tripId)) {
-      this.decisionLogs.set(tripId, []);
-    }
-    this.decisionLogs.get(tripId)!.push(logItem);
+    await this.decisionLogService.appendLog(tripId, logItem);
 
     return {
       verdict,
       reason,
       confidence,
-      violations: violations.length > 0 ? violations : undefined,
+      violations: legacyViolations.length > 0 ? legacyViolations : undefined,
+      budgetViolations: budgetViolations.length > 0 ? budgetViolations : undefined,
       recommendations: recommendations.length > 0 ? recommendations : undefined,
       evidenceRefs: [],
     };
   }
 
-  /**
-   * 获取预算决策日志
-   */
+  private async persistGateStatus(
+    tripId: string,
+    gateStatus: {
+      verdict: BudgetEvaluationVerdict;
+      violationTypes: BudgetViolation['type'][];
+      evaluatedAt: string;
+      planId: string;
+    },
+  ): Promise<void> {
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) return;
+    const config = parseBudgetConfig(trip.budgetConfig);
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        budgetConfig: toInputJsonValue({
+          ...config,
+          gateStatus,
+          updatedAt: new Date().toISOString(),
+        }),
+      },
+    });
+  }
+
   async getBudgetDecisionLog(
     planId: string,
     tripId: string,
     limit?: number,
-    offset?: number
-  ): Promise<{
-    items: BudgetDecisionLogItem[];
-    total: number;
-  }> {
-    const logs = this.decisionLogs.get(tripId) || [];
-    const filteredLogs = logs.filter(log => log.planId === planId);
-
-    const total = filteredLogs.length;
-    const paginatedLogs = filteredLogs.slice(offset || 0, (offset || 0) + (limit || 50));
-
-    return {
-      items: paginatedLogs,
-      total,
-    };
+    offset?: number,
+  ): Promise<{ items: BudgetDecisionLogItem[]; total: number }> {
+    return this.decisionLogService.listLogs(
+      planId,
+      tripId,
+      limit ?? 50,
+      offset ?? 0,
+    );
   }
 
-  /**
-   * 获取规划方案的预算评估结果
-   */
-  async getPlanBudgetEvaluation(planId: string, tripId: string): Promise<{
+  async getPlanBudgetEvaluation(
+    planId: string,
+    tripId: string,
+  ): Promise<{
     planId: string;
     budgetEvaluation: BudgetEvaluationResponse;
     personaOutput?: {
@@ -221,25 +319,24 @@ export class BudgetEvaluationService {
       evidence: Array<{ type: string; content: string }>;
     };
   }> {
-    const logs = this.decisionLogs.get(tripId) || [];
-    const latestLog = logs.filter(log => log.planId === planId).pop();
+    const latestLog = await this.decisionLogService.getLatestLog(planId, tripId);
 
     if (!latestLog) {
       throw new NotFoundException(`未找到方案 ${planId} 的预算评估结果`);
     }
 
-    // 简化：从日志中恢复评估结果
     const budgetEvaluation: BudgetEvaluationResponse = {
       verdict: latestLog.verdict,
       reason: latestLog.reason,
       confidence: 0.85,
       evidenceRefs: latestLog.evidenceRefs,
+      budgetViolations: latestLog.budgetViolations,
     };
 
-    // 映射到三人格输出
     const personaVerdictMap: Record<string, 'ALLOW' | 'NEED_CONFIRM' | 'REJECT'> = {
       ALLOW: 'ALLOW',
       NEED_ADJUST: 'NEED_CONFIRM',
+      NEED_CONFIRM: 'NEED_CONFIRM',
       REJECT: 'REJECT',
     };
 

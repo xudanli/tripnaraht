@@ -1,6 +1,7 @@
 // src/itinerary-items/services/item-cost.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Inject, Optional, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TravelWalletService } from '../../trips/budget-os/services/travel-wallet.service';
 import { ItemType } from '../dto/create-itinerary-item.dto';
 import { 
   CostCategory, 
@@ -16,7 +17,12 @@ import {
 export class ItemCostService {
   private readonly logger = new Logger(ItemCostService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional()
+    @Inject(forwardRef(() => TravelWalletService))
+    private readonly walletService?: TravelWalletService,
+  ) {}
 
   /**
    * 根据 ItemType 获取默认费用分类
@@ -39,6 +45,10 @@ export class ItemCostService {
     // 验证行程项存在
     const item = await this.prisma.itineraryItem.findUnique({
       where: { id: itemId },
+      include: {
+        TripDay: { select: { tripId: true } },
+        Place: { select: { nameCN: true, nameEN: true } },
+      },
     });
 
     if (!item) {
@@ -47,7 +57,7 @@ export class ItemCostService {
 
     this.logger.log(`更新行程项费用: ${itemId}, 数据: ${JSON.stringify(costData)}`);
 
-    return this.prisma.itineraryItem.update({
+    const updated = await this.prisma.itineraryItem.update({
       where: { id: itemId },
       data: {
         estimatedCost: costData.estimatedCost,
@@ -69,6 +79,27 @@ export class ItemCostService {
         },
       },
     });
+
+    const amount = costData.actualCost ?? costData.estimatedCost ?? updated.actualCost ?? updated.estimatedCost ?? 0;
+    const isPaid = costData.isPaid ?? updated.isPaid;
+    const paidBy = costData.paidBy ?? updated.paidBy ?? undefined;
+
+    if (this.walletService && item.TripDay?.tripId) {
+      await this.walletService.syncItineraryItemLedger({
+        itemId,
+        tripId: item.TripDay.tripId,
+        title: item.Place?.nameCN ?? item.Place?.nameEN ?? '行程项',
+        category: (costData.costCategory ?? updated.costCategory ?? 'other').toLowerCase(),
+        amount,
+        currency: costData.currency ?? updated.currency ?? 'CNY',
+        paidByUserId: paidBy ?? '',
+        splitAmongUserIds: costData.splitAmongUserIds,
+        autoLedger: costData.autoLedger,
+        isPaid,
+      });
+    }
+
+    return updated;
   }
 
   /**

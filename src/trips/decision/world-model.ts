@@ -190,6 +190,8 @@ export interface ExternalSignalsState {
   proposedCorridorMigrations?: import('./migration/proposed-corridor-migration.types').ProposedCorridorMigration[];
   /** Progressive micro-repair 建议（非全量 replan） */
   repairEvaluation?: import('./repair/repair-action.types').RepairEvaluationResult;
+  /** Readiness 三人格辩论条件 — Neptune repair 上下文（非权威决策源） */
+  guardianRepairHints?: import('./repair/guardian-repair-hints.types').GuardianRepairHints;
   /**
    * **Ingestion spec**（P8）：合并路由/天气/时间漂移后的逐 leg 输入，用于 **构建** `ExecutionTruthDAG`。
    * P-Next 3：`finalExecutionState` / reliability 由 PhysicsFieldIndex 物化后为 **执行痕迹**，不作为独立决策源。
@@ -286,14 +288,11 @@ export interface ExternalSignalsState {
   /**
    * Policy → Plan → Execution 因果骨架（append-only；每元素一次 generate_plan / repair_plan tick）。
    */
-  decisionCausalityChain?: import('../reality-kernel/decision-causality.types').DecisionCausalityRecordV0[];
+  decisionCausalityChain?: import('../causal-runtime/decision-causality-v1.types').DecisionCausalityRecord[];
   /** 当前 tick 草稿 — gate 通过后写入，返回计划前冲刷入 `decisionCausalityChain` */
   _decisionCausalityDraft?: import('../reality-kernel/decision-causality.types').DecisionCausalityDraftPayload;
   /** 最近一次写入因果链的 `causality_id`（供 outcome / telemetry 关联） */
   lastDecisionCausalityId?: string;
-  /**
-   * Phase 2.5：硬徒步 Trail 段计划（`generatePlan` 内挂载；POI 优化主路径仍保留）。
-   */
   hardTrekTrailPlan?: import('./adapters/trail-planning.adapter').TrailPlanPreviewResult;
   /** `trail_first` 当 hardTrekTrailPlan.mode === trail_segments */
   planningMode?: 'poi_first' | 'trail_first';
@@ -307,6 +306,14 @@ export interface ExternalSignalsState {
     segmentIds: string[];
     dateRange: { start: string; end: string };
   };
+  /** P2: 冰岛自驾因果评估（wind → P90 → miss prob + 用户可读结论） */
+  icelandSelfDriveCausalAssessment?: import('../causal-runtime/domains/iceland-self-drive-causal.types').IcelandSelfDriveCausalOutput;
+  /** P3: 三人格共享因果投影（Abu / Dr.Dre / Neptune 叙事唯一来源） */
+  causalPersonaProjection?: import('../causal-runtime/persona/causal-persona-projection.types').CausalPersonaProjection;
+  /** P5: Iceland wind→miss online calibration from observed outcomes */
+  icelandCausalCalibration?: import('../causal-runtime/domains/iceland-causal-calibration.types').IcelandCausalCalibration;
+  /** P5: Latest counterfactual closure report (observe → revise seed) */
+  causalCounterfactualSnapshot?: import('../causal-runtime/counterfactual/causal-counterfactual.types').CausalCounterfactualSnapshot;
   alerts?: Array<{ code: string; severity: 'info'|'warn'|'critical'; message: string }>;
   lastUpdatedAt: ISODatetime;
 }

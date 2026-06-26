@@ -2,6 +2,7 @@
 
 import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { DOMParser, type Element as XmlElement } from '@xmldom/xmldom';
 import { WeatherAdapter } from './weather.adapter.interface';
 import { WeatherData, WeatherQuery, ExtendedWeatherData, WeatherAlert } from '../interfaces/weather.interface';
 import { BaseAdapter } from './base.adapter';
@@ -10,11 +11,10 @@ import { AdapterMapper } from '../../common/utils/adapter-mapper.util';
 /**
  * 冰岛天气适配器
  * 
- * 接入 apis.is Weather API（冰岛官方开放数据）
- * 数据来源：Icelandic Meteorological Office (Vedur.is)
+ * 接入 Icelandic Meteorological Office (Vedur.is) 官方 XML Weather API。
  * 提供实时天气观测数据、风速、阵风、气象预警等信息
  * 
- * API 文档: https://docs.apis.is/#endpoint-weather
+ * API: https://xmlweather.vedur.is/?op_w=xml&type=obs&lang=en&view=xml&ids=<stationId>
  * 观测站列表: http://en.vedur.is/weather/stations/
  */
 @Injectable()
@@ -27,14 +27,19 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
     { id: '1480', name: 'Vestmannaeyjar', lat: 63.4427, lng: -20.2734 }, // 韦斯特曼纳群岛
     { id: '1479', name: 'Höfn', lat: 64.2539, lng: -15.2083 },        // 赫本
   ];
+  private readonly xmlParser = new DOMParser();
 
   constructor(@Optional() private configService?: ConfigService) {
     super(IcelandWeatherAdapter.name, {
-      baseURL: 'http://apis.is',
+      baseURL: 'https://xmlweather.vedur.is',
       timeout: 15000,
+      headers: {
+        'User-Agent': 'TripNARA/1.0 (+https://tripnara.com)',
+        Accept: 'application/xml,text/xml,*/*',
+      },
     });
     
-    // 禁用代理（apis.is 不需要代理，且代理服务器可能未运行）
+    // 官方 IMO 接口不需要代理；避免环境代理不可用导致 ECONNREFUSED。
     this.httpClient.defaults.proxy = false;
     if (this.httpClient.defaults.httpAgent) {
       delete this.httpClient.defaults.httpAgent;
@@ -49,38 +54,33 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
       // 根据坐标选择最近的观测站
       const stationId = this.findNearestStation(query.lat, query.lng);
       
-      // 调用 apis.is Weather Observations API
-      const response = await this.httpClient.get('/weather/observations/en', {
+      // 调用 Icelandic Meteorological Office 官方观测 XML。
+      const response = await this.httpClient.get('/', {
         params: {
-          stations: stationId,
-          time: '1h',      // 每小时更新的自动观测站数据
-          anytime: '0',     // 如果当前数据不可用则返回错误
+          op_w: 'xml',
+          type: 'obs',
+          lang: 'en',
+          view: 'xml',
+          ids: stationId,
         },
+        responseType: 'text',
+        transformResponse: [(data) => data],
       });
 
-      const data = response.data;
-      
-      // 检查响应格式
-      if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
-        throw new Error('未找到观测站数据');
-      }
-
-      // 使用第一个结果（应该只有一个，因为我们只查询一个观测站）
-      const observation = data.results[0];
+      const observation = this.extractObservation(response.data, stationId);
       
       // 转换为标准格式
       const weatherData = await this.mapToWeatherData(observation, query);
       
       return weatherData;
     } catch (error: any) {
-      // 对于证书过期等错误，抛出异常以便路由器降级到其他适配器
       if (error.code === 'CERT_HAS_EXPIRED' || error.message?.includes('certificate')) {
-        this.logger.warn(`apis.is SSL 证书错误: ${error.message}，将降级到其他适配器`);
-        throw new Error(`apis.is SSL 证书错误: ${error.message}`);
+        this.logger.warn(`Vedur.is SSL 证书错误: ${error.message}，将降级到其他适配器`);
+        throw new Error(`Vedur.is SSL 证书错误: ${error.message}`);
       }
       
       // 对于其他错误，也抛出异常以便降级
-      this.logger.error(`获取冰岛天气失败: ${error.message}`);
+      this.logger.error(`获取 Vedur.is 冰岛官方天气失败: ${error.message}`);
       throw error;
     }
   }
@@ -94,7 +94,7 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
   }
 
   getName(): string {
-    return 'Iceland apis.is (Vedur.is)';
+    return 'Icelandic Meteorological Office (Vedur.is)';
   }
 
   /**
@@ -136,10 +136,66 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
     return deg * (Math.PI / 180);
   }
 
+  private extractObservation(xml: string, stationId: string): any {
+    if (typeof xml !== 'string' || xml.trim().length === 0) {
+      throw new Error('Vedur.is 返回空响应');
+    }
+
+    const parsed = this.xmlParser.parseFromString(xml, 'application/xml');
+    const parseError = parsed.getElementsByTagName('parsererror')[0];
+    if (parseError) {
+      throw new Error(`Vedur.is XML 解析失败: ${parseError.textContent || 'Invalid XML'}`);
+    }
+
+    const stations = Array.from(parsed.getElementsByTagName('station'));
+    if (stations.length === 0) {
+      throw new Error('Vedur.is 未返回观测站数据');
+    }
+
+    const station = stations.find((item) => item.getAttribute('id') === String(stationId)) ?? stations[0];
+    const observation = this.stationElementToRecord(station);
+    if (observation.err) {
+      throw new Error(`Vedur.is 观测站错误: ${observation.err}`);
+    }
+    return observation;
+  }
+
+  private stationElementToRecord(station: XmlElement): Record<string, unknown> {
+    const record: Record<string, unknown> = {
+      id: station.getAttribute('id') ?? undefined,
+      valid: station.getAttribute('valid') ?? undefined,
+    };
+    for (let i = 0; i < station.childNodes.length; i += 1) {
+      const node = station.childNodes.item(i);
+      if (!node || node.nodeType !== 1) {
+        continue;
+      }
+      const element = node as XmlElement;
+      record[element.tagName] = element.textContent?.trim() ?? '';
+    }
+    return record;
+  }
+
+  private parseNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    const parsed = typeof value === 'number' ? value : parseFloat(String(value).replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private parseObservationDate(value: unknown): Date {
+    if (!value) {
+      return new Date();
+    }
+    const date = new Date(String(value));
+    return Number.isNaN(date.getTime()) ? new Date() : date;
+  }
+
   /**
-   * 将 apis.is Weather API 响应映射为标准 WeatherData 格式
+   * 将 Vedur.is Weather XML 响应映射为标准 WeatherData 格式
    * 
-   * apis.is 响应字段说明：
+   * Vedur.is 观测字段说明：
    * - T: 温度 (°C)
    * - F: 风速 (m/s)
    * - FX: 最大风速 (m/s)
@@ -156,35 +212,48 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
   private async mapToWeatherData(observation: any, query: WeatherQuery): Promise<ExtendedWeatherData> {
     // 解析风向（字符串如 "N", "NNE", "NE"）转换为度数
     const windDirection = this.parseWindDirection(observation.D);
+    const temperature = this.parseNumber(observation.T) ?? 0;
+    const humidity = this.parseNumber(observation.RH);
+    const visibilityKm = this.parseNumber(observation.V);
+    const windSpeed = this.parseNumber(observation.F);
+    const windGust = this.parseNumber(observation.FG);
+    const maxWindSpeed = this.parseNumber(observation.FX);
+    const cloudCover = this.parseNumber(observation.N);
+    const pressure = this.parseNumber(observation.P);
+    const dewPoint = this.parseNumber(observation.TD);
+    const precipitation = this.parseNumber(observation.R);
 
     const weatherData: ExtendedWeatherData = {
-      temperature: parseFloat(observation.T) || 0,
+      temperature,
       condition: this.mapWeatherCondition(observation.W),
-      windSpeed: parseFloat(observation.F) || undefined,
+      windSpeed,
       windDirection: windDirection,
-      humidity: observation.RH ? parseFloat(observation.RH) : undefined,
-      visibility: observation.V ? parseFloat(observation.V) * 1000 : undefined, // 转换为米
+      humidity,
+      visibility: visibilityKm !== undefined ? visibilityKm * 1000 : undefined,
       alerts: this.extractAlerts(observation),
-      lastUpdated: observation.time ? new Date(observation.time) : new Date(),
-      source: 'apis.is',
+      lastUpdated: this.parseObservationDate(observation.time),
+      source: 'vedur.is',
       metadata: {
         stationName: observation.name,
         stationId: observation.id,
-        windGust: observation.FG ? parseFloat(observation.FG) : undefined,
-        maxWindSpeed: observation.FX ? parseFloat(observation.FX) : undefined,
-        pressure: observation.P ? parseFloat(observation.P) : undefined,
-        cloudCover: observation.N ? parseFloat(observation.N) : undefined,
-        dewPoint: observation.TD ? parseFloat(observation.TD) : undefined,
-        precipitation: observation.R ? parseFloat(observation.R) : undefined,
+        sourceAuthority: 'official',
+        providerName: 'Icelandic Meteorological Office',
+        endpoint: 'https://xmlweather.vedur.is',
+        windGust,
+        maxWindSpeed,
+        pressure,
+        cloudCover,
+        dewPoint,
+        precipitation,
         rawData: observation,
         query: query,
       },
     };
 
     // 冰岛特定字段：阵风（重要！）
-    if (query.includeWindDetails || observation.FG) {
-      weatherData.windGust = observation.FG ? parseFloat(observation.FG) : undefined;
-      weatherData.cloudCover = observation.N ? parseFloat(observation.N) : undefined;
+    if (query.includeWindDetails || windGust !== undefined) {
+      weatherData.windGust = windGust;
+      weatherData.cloudCover = cloudCover;
     }
 
     // 如果需要极光信息
@@ -227,7 +296,7 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
       'Calm': 0,
     };
 
-    return directionMap[direction.toUpperCase()] ?? undefined;
+    return directionMap[direction.toUpperCase()] ?? this.parseNumber(direction);
   }
 
   /**
@@ -240,14 +309,14 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
   /**
    * 提取天气警报
    * 
-   * apis.is 的观测数据不包含警报信息
+   * Vedur.is 的观测数据不包含警报信息
    * 可以根据风速、能见度等条件生成警告
    */
   private extractAlerts(observation: any): WeatherAlert[] {
     const alerts: WeatherAlert[] = [];
 
     // 根据阵风速度生成警告（冰岛车门被吹掉的主因）
-    const windGust = observation.FG ? parseFloat(observation.FG) : 0;
+    const windGust = this.parseNumber(observation.FG) ?? 0;
     if (windGust > 25) {
       alerts.push({
         type: 'wind',
@@ -267,7 +336,7 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
     }
 
     // 根据能见度生成警告
-    const visibility = observation.V ? parseFloat(observation.V) : undefined;
+    const visibility = this.parseNumber(observation.V);
     if (visibility !== undefined && visibility < 1) {
       alerts.push({
         type: 'visibility',
@@ -279,7 +348,7 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
     }
 
     // 根据温度生成警告
-    const temperature = parseFloat(observation.T) || 0;
+    const temperature = this.parseNumber(observation.T) ?? 0;
     if (temperature < -10) {
       alerts.push({
         type: 'cold',
@@ -300,4 +369,3 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
     return AdapterMapper.mapSeverity(severity);
   }
 }
-

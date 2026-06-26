@@ -131,6 +131,53 @@ export class ReadinessSummaryDto {
    */
   @ApiPropertyOptional({ description: '建议项数量（已废弃，使用should）', example: 5, deprecated: true })
   suggestions?: number;
+
+  /** 综合准备度分数 0-100（来自 coverage-map /score） */
+  @ApiPropertyOptional({ description: '综合准备度分数', example: 41 })
+  overall?: number;
+
+  @ApiPropertyOptional({ description: '证据覆盖分数', example: 76 })
+  evidenceCoverage?: number;
+
+  @ApiPropertyOptional({ description: '日程可行性分数', example: 55 })
+  scheduleFeasibility?: number;
+
+  @ApiPropertyOptional({ description: '交通确定性分数', example: 0 })
+  transportCertainty?: number;
+
+  @ApiPropertyOptional({ description: '安全风险分数', example: 0 })
+  safetyRisk?: number;
+
+  @ApiPropertyOptional({ description: '缓冲时间分数', example: 55 })
+  buffers?: number;
+
+  @ApiPropertyOptional({ description: '三人格博弈最新快照（修复后协商结果）' })
+  guardianNegotiation?: {
+    latest?: {
+      decision: string;
+      consensusLevel: number;
+      humanDecisionPoints: string[];
+      summary: string;
+    };
+  };
+
+  @ApiPropertyOptional({ description: '级联影响 UI 提示（来自 readiness score / repair-options）' })
+  cascadeUiHints?: Array<{
+    id: string;
+    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    message: string;
+    recommendation: string;
+    entityKind?: string;
+    entityLabel?: string;
+    userConfirmationRequired?: string[];
+  }>;
+
+  @ApiPropertyOptional({ description: '级联预分析摘要（触发类型 + 受影响节点数）' })
+  causalPreAnalysis?: {
+    triggerFactType?: string;
+    affectedCount?: number;
+    maxRiskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  };
 }
 
 /**
@@ -149,11 +196,11 @@ export class TripInsightResponseDto {
   })
   findings!: FindingDto[];
 
-  @ApiProperty({ 
-    description: '准备度摘要',
+  @ApiPropertyOptional({ 
+    description: '准备度摘要（规划阶段 skipReadinessPack 时不返回）',
     type: ReadinessSummaryDto
   })
-  readiness!: ReadinessSummaryDto;
+  readiness?: ReadinessSummaryDto;
 
   @ApiProperty({ 
     description: '整体状态',

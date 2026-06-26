@@ -3,6 +3,7 @@ import {
   ResearchPatchScopeViolationError,
   computeResearchPatchFromIsolation,
   createSuturePatchFromPrior,
+  partitionResearchPatchByScope,
 } from './research-context-manager';
 
 describe('ResearchContextManager', () => {
@@ -69,6 +70,21 @@ describe('ResearchContextManager', () => {
     expect(patch.evidenceRefsAppended).toEqual(['e1']);
   });
 
+  it('partitionResearchPatchByScope splits destination patch with cost_estimate', () => {
+    const { scopedPartial, outOfScopePartial } = partitionResearchPatchByScope({
+      scope: 'destination',
+      researchDataPartial: {
+        poi_evidence: [{ id: '1' }],
+        cost_estimate: { total_estimate: { expected: 900 } },
+      },
+      evidenceRefsAppended: [],
+    });
+    expect(scopedPartial).toEqual({ poi_evidence: [{ id: '1' }] });
+    expect(outOfScopePartial).toEqual({
+      cost_estimate: { total_estimate: { expected: 900 } },
+    });
+  });
+
   it('applyResearchPatch writes keys and evidence with scope gate', () => {
     const master: Record<string, unknown> = { prior_hotel: 1 };
     const refs: string[] = ['e0'];
@@ -93,6 +109,25 @@ describe('ResearchContextManager', () => {
         attribution: 'MEMBER_PATCH',
       }),
     ]);
+  });
+
+  it('applyResearchPatch auto-merges common keys on destination patch (e.g. cost_estimate)', () => {
+    const mgr = new ResearchContextManager({}, []);
+    mgr.applyResearchPatch({
+      patch: {
+        scope: 'destination',
+        researchDataPartial: {
+          poi_evidence: [{ id: 'geysir' }],
+          cost_estimate: { total_estimate: { expected: 800 } },
+        },
+        evidenceRefsAppended: [],
+      },
+      source: 'DestinationResearchMember',
+      phase: 'parallel',
+    });
+    const snap = mgr.getSnapshot().researchData;
+    expect(snap.poi_evidence).toEqual([{ id: 'geysir' }]);
+    expect(snap.cost_estimate).toEqual({ total_estimate: { expected: 800 } });
   });
 
   it('applyResearchPatch rejects keys whose inferred scope mismatches patch.scope', () => {
@@ -166,6 +201,18 @@ describe('ResearchContextManager', () => {
     const manifest = master.__research_asset_manifest as { scopes?: { hotel?: { freshness?: string } } };
     expect(manifest?.scopes?.hotel?.freshness).toBe('STALE_RECOVERED');
     expect(mgr.getMergeLog()[0]?.attribution).toBe('FALLBACK_SUTURE');
+  });
+
+  it('mergeResearchDataKeys writes common-scope keys without scope gate', () => {
+    const mgr = new ResearchContextManager({}, []);
+    mgr.mergeResearchDataKeys({
+      keys: { cost_estimate: { total_estimate: { expected: 500 } } },
+      source: 'DestinationResearchMember',
+      phase: 'parallel',
+    });
+    expect(mgr.getSnapshot().researchData.cost_estimate).toEqual({
+      total_estimate: { expected: 500 },
+    });
   });
 
   it('getSnapshot is decoupled from later merges', async () => {

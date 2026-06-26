@@ -93,6 +93,9 @@ playgrounds/
 # Raw run dumps / local evaluation payloads (do not commit)
 data/raw_runs*.json
 
+# Self-hosted routing graph data (OSM PBF + OSRM/GraphHopper caches)
+data/routing/
+
 # Documentation (not pushed to git)
 docs/
 .env.backup

@@ -27,8 +27,9 @@ import { ContextPerformanceAnalysisService } from './services/context-performanc
 import { ContextController } from './context.controller';
 import { SkillsModule } from '../../skills/skills.module';
 import { RedisModule } from '../../redis/redis.module';
-import { SharedMemoryModule } from '../../agent/memory/shared-memory.module';
+import { TripDomainInfluenceModule } from '../../trips/domain-influence/trip-domain-influence.module';
 import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RAG 模块以使用 ParallelExecutorService
+import { SharedMemoryModule } from '../memory/shared-memory.module';
 
 @Global()
 @Module({
@@ -38,6 +39,7 @@ import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RA
     RedisModule, // 提供 RedisService（用于持久化缓存）
     forwardRef(() => RagModule), // Phase 2.1 优化: 导入 RAG 模块以使用 ParallelExecutorService
     forwardRef(() => SharedMemoryModule), // Context Orchestrator: 读取 UserTravelProfile（全局 SharedMemory）
+    TripDomainInfluenceModule, // 领域影响力 → Context Block 投影
   ],
   controllers: [ContextController],
   providers: [

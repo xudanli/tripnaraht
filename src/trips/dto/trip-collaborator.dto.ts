@@ -32,6 +32,12 @@ export class CollaboratorResponseDto {
   @ApiProperty({ description: '用户ID' })
   userId!: string;
 
+  @ApiProperty({ description: '用户邮箱', required: false, nullable: true })
+  email?: string | null;
+
+  @ApiProperty({ description: '用户显示名称', required: false, nullable: true })
+  displayName?: string | null;
+
   @ApiProperty({ description: '角色', enum: CollaboratorRole })
   role!: string;
 

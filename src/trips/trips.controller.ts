@@ -18,12 +18,23 @@ import {
 } from './utils/embedded-hiking-trip-metadata.util';
 import { EmbeddedHikingTripSummaryService } from './services/embedded-hiking-trip-summary.service';
 import { CreateTripFromNaturalLanguageDto } from './dto/create-trip-from-nl.dto';
+import { InitializeTripPlanningDto } from './dto/initialize-trip-planning.dto';
 import { nlDiscussionDraftGuidance } from './constants/nl-discussion-draft-guidance';
+import {
+  buildExperienceUnderstandingFromNl,
+  type TravelUnderstandingCard,
+} from './experience-fulfillment';
+import {
+  buildExperienceExplanationFromUnderstanding,
+} from './experience-fulfillment/utils/experience-explanation.util';
+import type { ExperienceExplanationCard } from './experience-fulfillment/types/experience-explanation.types';
+import { buildWhyRecommendPlannerBlocks } from './experience-fulfillment/utils/why-recommend-blocks.util';
+import { TRIP_EXPERIENCE_UNDERSTANDING_METADATA_KEY } from './experience-fulfillment/utils/experience-outcome.util';
 import { SelectGateAlternativeDto } from './dto/select-gate-alternative.dto';
 import { UpdateConversationContextDto } from './dto/nl-conversation-context.dto';
 import { SaveScheduleDto } from './dto/schedule.dto';
 import { CreateTripShareDto } from './dto/trip-share.dto';
-import { AddCollaboratorDto } from './dto/trip-collaborator.dto';
+import { AddCollaboratorDto, CollaboratorResponseDto } from './dto/trip-collaborator.dto';
 import { DeleteTripDto } from './dto/delete-trip.dto';
 import { UpdateTaskStatusDto } from './dto/tasks.dto';
 import {
@@ -36,6 +47,8 @@ import { UnifiedBootstrapTripDto } from './dto/unified-bootstrap-trip.dto';
 import { EnrichTripDto } from './dto/enrich-trip.dto';
 import { buildTripDraftContract } from './draft-synthesis/contract';
 import { TripDraftService } from './services/trip-draft.service';
+import { NlTripCreationOrchestrator } from './services/nl-trip-creation-orchestrator.service';
+import { TripPlanningInitializationService } from './services/trip-planning-initialization.service';
 import { WorldBusService } from './services/world-bus.service';
 import { buildTripCreatedEvent } from './draft-synthesis/autonomous-world';
 import { UserIntentStateService } from './services/user-intent-state.service';
@@ -97,6 +110,14 @@ import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-pe
 import { ConfigService } from '@nestjs/config';
 import { SolverService } from './solver/solver.service';
 import type { OntologyConstraints } from './nl-clarification/ontology-constraints.types';
+import { DecisionParamsInjectorService } from '../agent/memory/services/decision-params-injector.service';
+import { FitnessAssessmentService } from './decision/services/fitness-assessment.service';
+import { sanitizeNlInferredDates } from './nl-clarification/utils/nl-date-inference.util';
+import { applyNlPersonalizationToParams } from './nl-clarification/utils/nl-draft-personalization.util';
+import {
+  isNlPhase1ConfirmText,
+  reconcileInferredFieldsFromUserInput,
+} from './nl-clarification/utils/nl-inferred-reconciliation.util';
 
 @ApiTags('trips')
 @Public() // 临时开放测试，生产环境应移除
@@ -223,6 +244,8 @@ export class TripsController {
     private readonly tripBudgetService: TripBudgetService,
     private readonly tripAdjustmentService: TripAdjustmentService,
     private readonly tripDraftService: TripDraftService,
+    private readonly nlTripCreationOrchestrator: NlTripCreationOrchestrator,
+    private readonly tripPlanningInitializationService: TripPlanningInitializationService,
     private readonly userIntentStateService: UserIntentStateService,
     private readonly llmService: LlmService,
     private readonly llmResponseTransformer: LlmResponseTransformerService,
@@ -250,6 +273,8 @@ export class TripsController {
     @Optional() private readonly configService?: ConfigService,
     @Optional() private readonly solverService?: SolverService,
     @Optional() private readonly worldBus?: WorldBusService,
+    @Optional() private readonly decisionParamsInjector?: DecisionParamsInjectorService,
+    @Optional() private readonly fitnessAssessmentService?: FitnessAssessmentService,
   ) {}
 
   private emitTripCreatedWorldBus(
@@ -499,6 +524,81 @@ export class TripsController {
       });
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error?.message || 'enrich 失败');
+    }
+  }
+
+  @Post('from-natural-language/v3')
+  @ApiOperation({
+    summary: '自然语言创建 Draft Trip（draft-first）',
+    description:
+      'v3 只负责接住旅行愿望并立即创建 Draft Trip。规划信息补齐、方案生成和可行性验证按后续阶段执行，不在创建前阻塞。',
+  })
+  @ApiBody({ type: CreateTripFromNaturalLanguageDto })
+  @ApiResponse({
+    status: 200,
+    description: '已创建或更新 Draft Trip，并返回旅行理解卡与下一条高信息增益问题',
+    type: ApiSuccessResponseDto,
+  })
+  async createFromNaturalLanguageV3(
+    @Body() dto: CreateTripFromNaturalLanguageDto,
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request,
+  ) {
+    try {
+      let userId = user?.userId;
+      if (!userId) {
+        const testUserId = (req?.headers?.['x-test-user-id'] as string)?.trim();
+        if (testUserId) {
+          userId = testUserId;
+          this.logger.warn(`[测试模式] [v3] 使用 X-Test-User-Id: ${userId}`);
+        } else if (process.env.NODE_ENV === 'development' || process.env.ALLOW_TEST_MODE === 'true') {
+          userId = dto.sessionId ? `temp_${dto.sessionId.split('_').pop()}` : `temp_${Date.now()}`;
+          this.logger.warn(`[测试模式] [v3] 使用临时 userId: ${userId}`);
+        } else {
+          return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+        }
+      }
+
+      return await this.nlTripCreationOrchestrator.execute(dto, userId);
+    } catch (error: any) {
+      this.logger.error(`[v3] Draft-first 自然语言创建失败: ${error?.message}`, error?.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, `Draft-first 自然语言创建失败: ${error?.message || error}`);
+    }
+  }
+
+  @Post(':id/initialize-planning')
+  @ApiOperation({
+    summary: '初始化 Draft Trip 的规划结构',
+    description:
+      '将已创建的 Draft Trip 推进到规划初始化阶段：写入真实日期/预算/节奏，创建 TripDay。不会生成详细行程，也不会执行候选或完整可行性验证。',
+  })
+  @ApiParam({ name: 'id', description: 'Draft Trip ID' })
+  @ApiBody({ type: InitializeTripPlanningDto })
+  @ApiResponse({
+    status: 200,
+    description: '规划结构初始化结果；信息不足时返回 missingFields，不删除 Draft Trip',
+    type: ApiSuccessResponseDto,
+  })
+  async initializeTripPlanning(
+    @Param('id') id: string,
+    @Body() dto: InitializeTripPlanningDto,
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request,
+  ) {
+    try {
+      let userId = user?.userId;
+      if (!userId) {
+        const testUserId = (req?.headers?.['x-test-user-id'] as string)?.trim();
+        userId = testUserId || undefined;
+      }
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能初始化行程规划');
+      }
+      const result = await this.tripPlanningInitializationService.initialize(id, userId, dto);
+      return successResponse(result);
+    } catch (error: any) {
+      this.logger.error(`初始化行程规划失败: ${error?.message}`, error?.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, `初始化行程规划失败: ${error?.message || error}`);
     }
   }
 
@@ -831,6 +931,16 @@ export class TripsController {
           mergedParams.originalUserInput = dto.text.trim();
         }
 
+        const sourceTextsGeneral = this.collectNlSourceTexts(dto.text, existingContext, mergedParams);
+        Object.assign(
+          mergedParams,
+          await this.postProcessNlMergedParams(mergedParams, userId, sourceTextsGeneral),
+        );
+        Object.assign(
+          mergedParams,
+          reconcileInferredFieldsFromUserInput(mergedParams, dto.text),
+        );
+
         // 更新对话上下文
         await this.nlConversationContextService.updateContext(sessionId, userId, {
           conversationContext: parseResult.conversationContext,
@@ -1065,6 +1175,16 @@ export class TripsController {
           thinkingProcess: this.buildEvolvedThinkingContent(mergedParams, destinationName, clarificationQuestions.length, 'clarify'),
           progressSteps: genericProgressSteps,
           phaseIndicator: buildPhaseIndicator(genericPhase),
+          experienceUnderstanding: this.buildExperienceUnderstandingForNl(
+            dto.text,
+            mergedParams,
+            conversationHistory,
+          ),
+          experienceExplanation: this.buildExperienceExplanationForNl(
+            dto.text,
+            mergedParams,
+            conversationHistory,
+          ),
         });
       }
 
@@ -1235,6 +1355,17 @@ export class TripsController {
         },
       ];
       
+      const mergedForExplanation = {
+        ...(existingContext?.partialParams || {}),
+        ...(parseResult.params || {}),
+      };
+      const confirmationExplanation = this.buildExperienceExplanationForNl(
+        dto.text,
+        mergedForExplanation,
+        existingContext?.messages,
+      );
+      confirmationBlocks.push(...buildWhyRecommendPlannerBlocks(confirmationExplanation));
+
       // 🆕 HCI P1优化：如果没有偏好信息，添加偏好信息入口提示
       if (!hasPreferences) {
         confirmationBlocks.push({
@@ -1303,6 +1434,16 @@ export class TripsController {
           { id: 'collect', label: '已收集必需信息', status: 'completed' },
           { id: 'confirm', label: '等待用户确认', detail: '请确认以上信息无误后创建行程', status: 'running' },
         ],
+        experienceUnderstanding: this.buildExperienceUnderstandingForNl(
+          dto.text,
+          mergedParamsForConfirmCard,
+          conversationHistory,
+        ),
+        experienceExplanation: this.buildExperienceExplanationForNl(
+          dto.text,
+          mergedParamsForConfirmCard,
+          conversationHistory,
+        ),
       });
     } catch (error: any) {
       const errorMessage = error?.message || error?.toString() || 'Unknown error';
@@ -1557,6 +1698,16 @@ export class TripsController {
           partialParams: this.normalizePartialParams(mergedParams),
           destination: detectedCountryCode,
           feasibility,
+          experienceUnderstanding: this.buildExperienceUnderstandingForNl(
+            dto.text,
+            mergedParams,
+            conversationHistory,
+          ),
+          experienceExplanation: this.buildExperienceExplanationForNl(
+            dto.text,
+            mergedParams,
+            conversationHistory,
+          ),
         });
       }
 
@@ -1590,11 +1741,24 @@ export class TripsController {
           partialParams: this.normalizePartialParams(mergedParams),
           destination: detectedCountryCode,
           feasibility,
+          experienceUnderstanding: this.buildExperienceUnderstandingForNl(
+            dto.text,
+            mergedParams,
+            conversationHistory,
+          ),
+          experienceExplanation: this.buildExperienceExplanationForNl(
+            dto.text,
+            mergedParams,
+            conversationHistory,
+          ),
         });
       }
 
       // Create trip when required fields are present; otherwise clarify missing fields
-      const params = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
+      let params = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
+      const sourceTextsV2 = this.collectNlSourceTexts(dto.text, existingContext, params);
+      params = await this.postProcessNlMergedParams(params, userId, sourceTextsV2);
+      params = reconcileInferredFieldsFromUserInput(params, dto.text);
       const missing: string[] = [];
       if (!params.destination && !detectedCountryCode) missing.push('destination');
       if (!params.startDate) missing.push('startDate');
@@ -1627,6 +1791,16 @@ export class TripsController {
           partialParams: this.normalizePartialParams(params),
           destination: detectedCountryCode,
           feasibility,
+          experienceUnderstanding: this.buildExperienceUnderstandingForNl(
+            dto.text,
+            params,
+            conversationHistory,
+          ),
+          experienceExplanation: this.buildExperienceExplanationForNl(
+            dto.text,
+            params,
+            conversationHistory,
+          ),
         });
       }
 
@@ -1634,7 +1808,21 @@ export class TripsController {
       const result = await this.createTripFromParams(params, userId, sessionId, destCode ?? undefined);
       // attach v2 engine tag if possible
       if (result && typeof result === 'object' && (result as any).success === true) {
-        (result as any).data = { ...(result as any).data, feasibility, generationEngine: 'SOLVER' };
+        (result as any).data = {
+          ...(result as any).data,
+          feasibility,
+          generationEngine: 'SOLVER',
+          experienceUnderstanding: this.buildExperienceUnderstandingForNl(
+            dto.text,
+            params,
+            conversationHistory,
+          ),
+          experienceExplanation: this.buildExperienceExplanationForNl(
+            dto.text,
+            params,
+            conversationHistory,
+          ),
+        };
       }
       return result;
     } catch (error: any) {
@@ -1967,10 +2155,22 @@ export class TripsController {
       if (paramsWithInferred?.inferredFields) {
         const existingInferred = currentParams.inferredFields || [];
         const newInferred = paramsWithInferred.inferredFields || [];
-        // 合并并去重
-        mergedParams.inferredFields = [...new Set([...existingInferred, ...newInferred])];
-        this.logger.debug(`累积推断字段: ${JSON.stringify(mergedParams.inferredFields)}`);
+        const mergedInferred = [...new Set([...existingInferred, ...newInferred])];
+        mergedParams.inferredFields = mergedInferred.filter((field: string) => {
+          if (field === 'startDate' || field === 'endDate' || field === 'totalBudget') {
+            const v = mergedParams[field];
+            return v == null || String(v).trim() === '';
+          }
+          return true;
+        });
+        if (!mergedParams.inferredFields.length) delete mergedParams.inferredFields;
+        this.logger.debug(`累积推断字段: ${JSON.stringify(mergedParams.inferredFields ?? [])}`);
       }
+
+      Object.assign(
+        mergedParams,
+        reconcileInferredFieldsFromUserInput(mergedParams, dto.text),
+      );
       
       // 🆕 修复：将 preferences.activityType 或 preferences.activityTypes 转换为根级别的 activityTypes 数组
       // LLM 可能返回 preferences.activityType（字符串）或 preferences.activityTypes（数组），但配置需要根级别的 activityTypes（数组）
@@ -2027,6 +2227,12 @@ export class TripsController {
       
       // 🆕 添加调试日志
       this.logger.debug(`合并后的参数: ${JSON.stringify(mergedParams, null, 2)}`);
+
+      const sourceTextsDest = this.collectNlSourceTexts(dto.text, existingContext, mergedParams);
+      Object.assign(
+        mergedParams,
+        await this.postProcessNlMergedParams(mergedParams, userId, sourceTextsDest),
+      );
 
       // 🆕 阶段 1 推断确认门：有推断的硬约束字段且未确认时，必须先确认再进入后续轮次
       const { hasUnconfirmedPhase1Inferred, buildPhaseIndicator, ROUND_TO_PHASE } = await import(
@@ -2514,12 +2720,70 @@ export class TripsController {
   /**
    * 🆕 从参数创建行程（辅助方法）
    */
+  private collectNlSourceTexts(
+    dtoText: string | undefined,
+    existingContext: { messages?: Array<{ role: string; content: string }> } | null | undefined,
+    params?: Record<string, any>,
+  ): string[] {
+    const texts: string[] = [];
+    if (dtoText?.trim()) texts.push(dtoText.trim());
+    if (params?.originalUserInput) texts.push(String(params.originalUserInput));
+    if (params?.userInput) texts.push(String(params.userInput));
+    for (const m of existingContext?.messages || []) {
+      if (m.role === 'user' && m.content) texts.push(String(m.content));
+    }
+    return texts;
+  }
+
+  private applyNlDateSanitization(
+    params: Record<string, any>,
+    sourceTexts: string[],
+  ): Record<string, any> {
+    const result = sanitizeNlInferredDates(params, sourceTexts);
+    if (result.datesRejected) {
+      this.logger.warn(
+        `[NL日期校验] 清除可疑推断日期: reason=${result.reason}, explicitMonths=${JSON.stringify(result.explicitMonths)}`,
+      );
+    }
+    return result.params;
+  }
+
+  private async enrichNlParamsWithUserContext(
+    userId: string,
+    params: Record<string, any>,
+  ): Promise<Record<string, any>> {
+    if (!userId || userId.startsWith('temp_')) return params;
+    try {
+      const profile = this.decisionParamsInjector
+        ? await this.decisionParamsInjector.getUserTravelProfileForRuntime(userId)
+        : null;
+      const fitnessModel = this.fitnessAssessmentService
+        ? await this.fitnessAssessmentService.loadUserModel(userId)
+        : null;
+      return applyNlPersonalizationToParams(params, { profile, fitnessModel });
+    } catch (error: any) {
+      this.logger.warn(`NL 参数个性化失败: ${error?.message}`);
+      return params;
+    }
+  }
+
+  private async postProcessNlMergedParams(
+    params: Record<string, any>,
+    userId: string,
+    sourceTexts: string[],
+  ): Promise<Record<string, any>> {
+    const sanitized = this.applyNlDateSanitization(params, sourceTexts);
+    return this.enrichNlParamsWithUserContext(userId, sanitized);
+  }
+
   private async createTripFromParams(
     params: Record<string, any>,
     userId: string,
     sessionId: string,
     destinationCode?: string
   ): Promise<any> {
+    params = await this.enrichNlParamsWithUserContext(userId, params);
+
     // 🆕 P0: 检查 Critical 字段（如果启用了目的地特化配置）
     if (destinationCode && this.destinationClarificationConfigService) {
       const criticalFields = await this.destinationClarificationConfigService.getCriticalFields(destinationCode);
@@ -2653,11 +2917,48 @@ export class TripsController {
     } else if (params.preferences?.interests && typeof params.preferences.interests === 'string') {
       prefTags.push(params.preferences.interests);
     }
+    const activityPreferences = this.normalizeActivityPreferences(params);
+    prefTags.push(...activityPreferences);
     if (params.riskTolerance) prefTags.push(`risk_${params.riskTolerance}`);
+    const uniquePrefTags = [...new Set(prefTags.filter(Boolean))];
 
     // 🆕 P0修复：优先使用 destinationCode（ISO），避免 params.destination 为「东京」「杭州」等导致创建失败
     const isoDestination = destinationCode || this.extractCountryCode(params.destination) || params.destination;
     const lunchMeta = buildTripLunchMetadataFromParams(params, isoDestination);
+    const tripMetadata: Record<string, any> = {
+      lunch_strategy: lunchMeta.lunch_strategy,
+      tripParams: {
+        ...lunchMeta.tripParams,
+        destination: params.destination,
+        startDate,
+        endDate,
+        totalBudget: params.totalBudget,
+      },
+    };
+    if (params.origin) tripMetadata.origin = params.origin;
+    if (params.drivingFatiguePreferences) {
+      tripMetadata.drivingFatiguePreferences = params.drivingFatiguePreferences;
+    }
+    if (activityPreferences.length > 0) {
+      tripMetadata.activityPreferences = activityPreferences;
+    }
+    if (params._nlPersonalization) {
+      tripMetadata.nlPersonalization = params._nlPersonalization;
+    }
+    try {
+      const sessionContext = await this.nlConversationContextService.getContext(sessionId, userId);
+      const userTexts =
+        sessionContext?.messages?.filter((m) => m.role === 'user').map((m) => m.content) ?? [];
+      const understanding = buildExperienceUnderstandingFromNl({
+        text: userTexts[userTexts.length - 1] ?? '',
+        historyTexts: userTexts.slice(0, -1),
+        partialParams: params,
+      });
+      tripMetadata[TRIP_EXPERIENCE_UNDERSTANDING_METADATA_KEY] = understanding;
+    } catch (e: any) {
+      this.logger.debug(`experienceUnderstanding persist skipped: ${e?.message ?? e}`);
+    }
+
     const createTripDto = {
       destination: isoDestination,
       startDate,
@@ -2666,18 +2967,8 @@ export class TripsController {
       travelers: travelers as any,
       currency,
       pace: tripPace as any,
-      preferences: prefTags.length > 0 ? prefTags : undefined,
-      metadata: {
-        ...(params.origin ? { origin: params.origin } : {}),
-        lunch_strategy: lunchMeta.lunch_strategy,
-        tripParams: {
-          ...lunchMeta.tripParams,
-          destination: params.destination,
-          startDate,
-          endDate,
-          totalBudget: params.totalBudget,
-        },
-      },
+      preferences: uniquePrefTags.length > 0 ? uniquePrefTags : undefined,
+      metadata: tripMetadata,
     } as CreateTripDto;
 
     // 创建行程（TripsService.create 会写入初始 DSO 到 Trip.metadata）
@@ -2738,17 +3029,20 @@ export class TripsController {
     // USE_LLM_DRAFT=true 时使用 LLM 编排（质量更好，Token 约 40k）；否则使用算法编排（Token ~3k）
     const useAlgorithmicDraft = this.configService?.get<string>('USE_LLM_DRAFT') !== 'true';
     this.logger.debug(`行程编排模式: ${useAlgorithmicDraft ? '算法' : 'LLM'}`);
+    const personalization = params._nlPersonalization as Record<string, any> | undefined;
     this.generateDraftAsync(trip.id, {
       destination: isoDestination, // 使用 ISO 国家代码
       days: durationDays,
       startDate: startDate,
       endDate: endDate,
-      style: params.preferences?.style || 'balanced',
-      intensity: params.preferences?.intensity || 'balanced',
+      style: params.preferences?.style || personalization?.draftStyle || 'balanced',
+      intensity: params.preferences?.intensity || personalization?.draftIntensity || 'balanced',
+      pace: personalization?.draftPace,
       useAlgorithmicDraft,
       draftRuntimeMode: useAlgorithmicDraft ? 'ALGO' : 'HYBRID',
       cities: params.cities,
       mustHavePois: params.mustHavePois,
+      activityPreferences,
       dayAllocation: params.dayAllocation,
       userInput: params.userInput || params.originalUserInput,
     }).catch((error: any) => {
@@ -3137,6 +3431,13 @@ export class TripsController {
       });
     }
     if (!prefs.pace && !params.preferencePace && questions.length < 3) {
+      const paceHint = params._fitnessAssessmentMissing
+        ? '尚未完成体能评估；填写问卷后我们能更准确推荐节奏（可在个人中心完成）'
+        : params._nlPaceSource === 'profile'
+          ? '已根据您的旅行偏好预填建议节奏，可直接确认或调整'
+          : params._nlPaceSource === 'fitness'
+            ? '已根据体能画像预填建议节奏，可直接确认或调整'
+            : undefined;
       questions.push({
         id: 'pref_pace',
         question: '旅行节奏您更偏向？',
@@ -3147,6 +3448,7 @@ export class TripsController {
           { value: 'intensive', label: '紧凑充实' },
         ],
         required: false,
+        ...(paceHint ? { hint: paceHint } : {}),
         metadata: { category: 'preferences', priority: 'medium', fieldName: 'preferencePace' },
         group: 'optional',
       });
@@ -3524,6 +3826,38 @@ export class TripsController {
     return TripsController.DESTINATION_NAME_MAP[destinationCode] || destinationCode;
   }
 
+  /** PRD §9.2 旅行理解卡 — NL 创建流程 */
+  private buildExperienceUnderstandingForNl(
+    text: string,
+    partialParams?: Record<string, any>,
+    conversationMessages?: Array<{ role: string; content: string }>,
+  ): TravelUnderstandingCard {
+    const historyTexts =
+      conversationMessages
+        ?.filter((m) => m.role === 'user')
+        .map((m) => m.content)
+        .slice(-6) ?? [];
+    return buildExperienceUnderstandingFromNl({
+      text,
+      historyTexts,
+      partialParams,
+    });
+  }
+
+  /** PRD §13.5 四级确定性用户文案 */
+  private buildExperienceExplanationForNl(
+    text: string,
+    partialParams?: Record<string, any>,
+    conversationMessages?: Array<{ role: string; content: string }>,
+  ): ExperienceExplanationCard {
+    const understanding = this.buildExperienceUnderstandingForNl(
+      text,
+      partialParams,
+      conversationMessages,
+    );
+    return buildExperienceExplanationFromUnderstanding(understanding);
+  }
+
   /**
    * 短路径上下文（供 createFromNaturalLanguage 短路径复用）
    */
@@ -3588,7 +3922,9 @@ export class TripsController {
     const isCreateNowIntent =
       /明确\s*confirm|确认\s*创建|创建\s*行程|开始\s*创建|立即\s*创建|马上\s*创建|确认出行|明确confirm/i.test(trimmedText) ||
       /^(create|创建|confirm)$/i.test(trimmedText);
-    const isShortConfirm = /^(已确认|确认|确认无误|好的|ok)$/i.test(trimmedText) && trimmedText.length <= 10;
+    const isShortConfirm =
+      (isNlPhase1ConfirmText(trimmedText) && trimmedText.length <= 50) ||
+      (/^(已确认|确认|确认无误|好的|ok)$/i.test(trimmedText) && trimmedText.length <= 10);
     const hasConfirmInferredConfirm =
       hasRequiredForConfirm && (pp.confirmInferred === 'confirm' || pp.confirmInferred === '确认无误');
     const ppNorm = this.normalizePartialParams(pp);
@@ -3614,7 +3950,10 @@ export class TripsController {
       const result = await this.createTripFromParams(params, ctx.userId, ctx.sessionId, destCode ?? undefined);
       return { handled: true, result };
     }
-    const params = { ...pp };
+    const params = reconcileInferredFieldsFromUserInput({ ...pp }, trimmedText);
+    if ((isShortConfirm || isConfirmWithPrefSummary) && !params.confirmInferred) {
+      params.confirmInferred = 'confirm';
+    }
     const destCode = this.extractCountryCode(params.destination) || detectedCountryCode;
     if (destCode && this.destinationClarificationConfigService) {
       const criticalFields = await this.destinationClarificationConfigService.getCriticalFields(destCode);
@@ -3737,6 +4076,12 @@ export class TripsController {
         content: '⚙️ 偏好设置：未设置\n如需补充偏好信息（如旅行风格、兴趣点、节奏等），请告诉我。',
       });
     }
+    const shortPathExplanation = this.buildExperienceExplanationForNl(
+      ctx.trimmedText,
+      params,
+      ctx.existingContext?.messages,
+    );
+    confirmationBlocks.push(...buildWhyRecommendPlannerBlocks(shortPathExplanation));
     confirmationBlocks.push({
       type: 'paragraph',
       content: '在创建行程前，请确认以上信息是否正确，或者告诉我是否需要补充其他信息。',
@@ -4774,9 +5119,13 @@ export class TripsController {
     description: '请求参数错误（统一响应格式）',
     type: ApiErrorResponseDto,
   })
-  async update(@Param('id') id: string, @Body() dto: UpdateTripDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTripDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
     try {
-      const trip = await this.tripsService.update(id, dto);
+      const trip = await this.tripsService.update(id, dto, user?.userId);
       return successResponse(trip);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
@@ -5068,8 +5417,8 @@ export class TripsController {
   @ApiBody({ type: AddCollaboratorDto })
   @ApiResponse({
     status: 200,
-    description: '成功添加协作者（统一响应格式）',
-    type: ApiSuccessResponseDto,
+    description: '成功添加协作者（统一响应格式，含 email、displayName）',
+    type: CollaboratorResponseDto,
   })
   async addCollaborator(
     @Param('id') id: string,
@@ -5097,8 +5446,9 @@ export class TripsController {
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
   @ApiResponse({
     status: 200,
-    description: '成功返回协作者列表（统一响应格式）',
-    type: ApiSuccessResponseDto,
+    description: '成功返回协作者列表（统一响应格式，含 email、displayName）',
+    type: CollaboratorResponseDto,
+    isArray: true,
   })
   async getCollaborators(@Param('id') id: string) {
     try {
@@ -7085,8 +7435,15 @@ export class TripsController {
           count: 1 + (tripParams.hasChildren ? 1 : 0) + (tripParams.hasElderly ? 1 : 0),
           has_children: tripParams.hasChildren,
           has_elderly: tripParams.hasElderly,
-          fitness_level: tripParams.preferences?.intensity === 'high' ? 'high' : 
-                         tripParams.preferences?.intensity === 'low' ? 'low' : 'medium',
+          fitness_level: (() => {
+            const fl = parsedParams?._nlPersonalization?.fitnessLevel;
+            if (fl === 'LOW' || fl === 'MEDIUM_LOW') return 'low';
+            if (fl === 'MEDIUM_HIGH' || fl === 'HIGH') return 'high';
+            const intensity = tripParams.preferences?.intensity;
+            if (intensity === 'intense' || intensity === 'high') return 'high';
+            if (intensity === 'relaxed' || intensity === 'low') return 'low';
+            return 'medium';
+          })(),
         },
         constraints: {
           budget: {
@@ -7155,6 +7512,46 @@ export class TripsController {
       this.logger.error(`后台生成决策草案失败 (tripId: ${tripId}): ${error.message}`, error.stack);
       // 不抛出错误，避免影响主流程
     }
+  }
+
+  private normalizeActivityPreferences(params: Record<string, any>): string[] {
+    const rawValues = [
+      params.activityPreferences,
+      params.activityTypes,
+      params.preferences?.activityPreferences,
+      params.preferences?.activityTypes,
+      params.preferences?.activityType,
+    ];
+    const values = rawValues.flatMap((value) => {
+      if (!value) return [];
+      return Array.isArray(value) ? value : [value];
+    });
+    const activityMap: Record<string, string> = {
+      冰川徒步: 'glacier_hiking',
+      冰川: 'glacier_hiking',
+      冰洞探险: 'glacier_hiking',
+      冰洞: 'glacier_hiking',
+      glacier: 'glacier_hiking',
+      'glacier walk': 'glacier_hiking',
+      'ice cave': 'glacier_hiking',
+      冒险活动: 'adventure_activities',
+      冒险: 'adventure_activities',
+      火山: 'adventure_activities',
+      峡谷漂流: 'adventure_activities',
+      峡谷: 'adventure_activities',
+      漂流: 'adventure_activities',
+      volcano: 'adventure_activities',
+      canyon: 'adventure_activities',
+      rafting: 'adventure_activities',
+    };
+    return [
+      ...new Set(
+        values
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+          .map((value) => activityMap[value] ?? activityMap[value.toLowerCase()] ?? value),
+      ),
+    ];
   }
 
   /**

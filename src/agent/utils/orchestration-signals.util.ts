@@ -7,6 +7,11 @@ import { isExecutableFlightInventoryQuery } from './flight-inventory-signals.uti
 import { matchesAnyDataLookupProfile } from '../intent/intent-profile-registry';
 import { detectItineraryDayViewIntent } from './itinerary-day-view.util';
 import { detectItineraryAdjustIntent, detectFullTripReplanIntent } from './itinerary-adjust-intent.util';
+import { normalizeLiveTools } from './live-tools.util';
+import { isAgentTripComprehensiveAnalysisMessage } from './agent-readiness-phase.util';
+import { isTeamStructuredDiscussionQuery } from './team-structured-discussion.util';
+import { resolveRouteAndRunUserMessage } from './resolve-route-and-run-message.util';
+
 /**
  * 任务类型
  */
@@ -30,10 +35,34 @@ export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type ComplexityLevel = 'SIMPLE' | 'MODERATE' | 'COMPLEX';
 
 /**
+ * route_and_run 产品能力面：用于 eval 固定“用户想做哪类事”，不要只看 taskType。
+ */
+export type RouteRunCapability =
+  | 'PLANNING_AND_REVISION'
+  | 'FAST_QA'
+  | 'CRUD_EDIT'
+  | 'SAFETY_NEGOTIATION'
+  | 'DELIVERY'
+  | 'CLARIFICATION';
+
+export type RouteRunActionKind =
+  | 'FULL_TRIP_PLANNING'
+  | 'EXISTING_TRIP_ROUTE_OPTIMIZATION'
+  | 'LOCAL_ITINERARY_EDIT'
+  | 'TRIP_SCOPED_CONSULTATION'
+  | 'BOOKING_OR_DELIVERY_HANDOFF'
+  | 'SAFETY_OR_TRADEOFF_REVIEW'
+  | 'TEAM_STRUCTURED_DISCUSSION'
+  | 'CLARIFICATION_RESPONSE'
+  | 'GENERIC';
+
+/**
  * 路由信号（从请求中提取的信号）
  */
 export interface RoutingSignals {
   taskType: TaskType;
+  capability: RouteRunCapability;
+  actionKind: RouteRunActionKind;
   risk: RiskLevel;
   needsAudit: boolean;
   latencyBudgetMs: number;
@@ -238,7 +267,7 @@ function hasReplanningEditSignalBeforeTransportConsult(msg: string, msgLower: st
  * @returns 路由信号
  */
 export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
-  const msg = (req.message ?? '').trim();
+  const msg = resolveRouteAndRunUserMessage(req);
   const msgLower = msg.toLowerCase();
 
   const options = req.options ?? {};
@@ -252,7 +281,10 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
 
   // 推断各项信号（intent_mode 非 AUTO 时覆盖 taskType）
   const inferredTaskType = inferTaskType(req.trip_id, msg, msgLower);
-  let taskType = inferredTaskType;
+  const teamStructuredDiscussion = isTeamStructuredDiscussionQuery(msg);
+  let taskType = teamStructuredDiscussion
+    ? 'DATA_LOOKUP'
+    : inferredTaskType;
   taskType = applyIntentModeToTaskType(intent_mode_requested, taskType, req);
   /** 前端「深度思考」等场景常误传 intent_mode=GENERIC_QA；已绑定 trip 且用户明确改稿时仍须走 TRIP_PLANNING，避免 ui_surface=consultation */
   taskType = clampTaskTypeForBoundTripReplanning(req.trip_id, msg, msgLower, taskType);
@@ -261,12 +293,15 @@ export function signalsFromRequest(req: RouteAndRunRequestDto): RoutingSignals {
   const requiresStructuredOutput = inferRequiresStructuredOutput(taskType, req.trip_id);
   const needsAudit = inferNeedsAudit(taskType, requiresStructuredOutput, options);
   const risk = inferRisk(taskType, msg, msgLower);
+  const { capability, actionKind } = inferRouteRunCapability(req, taskType, msg, msgLower);
 
   const legacyWellSupported = inferLegacyWellSupported(taskType, complexity);
   const intent_mode_resolved = taskTypeToIntentBucket(taskType);
 
   return {
     taskType,
+    capability,
+    actionKind,
     risk,
     needsAudit,
     latencyBudgetMs,
@@ -332,6 +367,9 @@ function clampTaskTypeForBoundTripReplanning(
 ): TaskType {
   const tid = tripId?.trim();
   if (!tid) return taskType;
+  if (isTeamStructuredDiscussionQuery(msg)) {
+    return taskType === 'TRIP_PLANNING' ? 'DATA_LOOKUP' : taskType;
+  }
   if (isWestfjordsLegTransportPreferenceConsultation(msg, msgLower)) {
     return taskType;
   }
@@ -359,6 +397,72 @@ function clampTaskTypeForBoundTripReplanning(
     return 'TRIP_PLANNING';
   }
   return taskType;
+}
+
+export function isExistingTripRouteOrderOptimizationQuery(
+  tripId: string | null | undefined,
+  msg: string,
+  msgLower = msg.toLowerCase(),
+): boolean {
+  if (!tripId?.trim()) return false;
+  return /(?:优化|调整|重排|重新排序|reorder|optimi[sz]e).{0,24}(?:路线顺序|路线|交通时间|通勤|route\s*order|travel\s*time)|(?:路线顺序|交通时间|通勤|route\s*order|travel\s*time).{0,24}(?:优化|调整|重排|重新排序|reorder|optimi[sz]e)/i.test(
+    `${msg}\n${msgLower}`,
+  );
+}
+
+function isLocalItineraryEditQuery(tripId: string | null | undefined, msg: string, msgLower: string): boolean {
+  if (!tripId?.trim()) return false;
+  return (
+    /(?:删除|删掉|删去|去掉|添加|新增|加上|加入|插入|移动|挪到|放到|换成|替换|改时间|改到).{0,24}(?:景点|地点|POI|行程项|第\s*\d+\s*天|day\s*\d+|酒店|餐厅)/i.test(msg) ||
+    /(?:remove|delete|add|insert|move|replace|change).{0,24}(?:poi|place|stop|item|day\s*\d+|hotel|restaurant)/i.test(msgLower)
+  );
+}
+
+function isSafetyOrTradeoffQuery(msg: string, msgLower: string): boolean {
+  return (
+    /(?:安全|风险|阻断|太赶|疲劳|节奏|协商|权衡|折中|Abu|Dr\.?\s*Dre|Neptune|三人格)/i.test(msg) ||
+    /\b(?:risk|safety|fatigue|trade-?off|negotiate|blocked|too tight)\b/i.test(msgLower)
+  );
+}
+
+function isDeliveryOrBookingHandoffQuery(msg: string, msgLower: string): boolean {
+  return (
+    /(?:地图|日历|PDF|分享|语音|解说|购物车|预订优先级|跳转订|订票链接|deep link|晴雨方案|避坑|住宿健康度)/i.test(msg) ||
+    /\b(?:map|calendar|pdf|share|voice|cart|booking link|deep link|handoff)\b/i.test(msgLower)
+  );
+}
+
+function inferRouteRunCapability(
+  req: RouteAndRunRequestDto,
+  taskType: TaskType,
+  msg: string,
+  msgLower: string,
+): { capability: RouteRunCapability; actionKind: RouteRunActionKind } {
+  if (req.clarification_answers?.length) {
+    return { capability: 'CLARIFICATION', actionKind: 'CLARIFICATION_RESPONSE' };
+  }
+  if (isExistingTripRouteOrderOptimizationQuery(req.trip_id, msg, msgLower)) {
+    return { capability: 'PLANNING_AND_REVISION', actionKind: 'EXISTING_TRIP_ROUTE_OPTIMIZATION' };
+  }
+  if (isLocalItineraryEditQuery(req.trip_id, msg, msgLower) || taskType === 'CRUD') {
+    return { capability: 'CRUD_EDIT', actionKind: 'LOCAL_ITINERARY_EDIT' };
+  }
+  if (isTeamStructuredDiscussionQuery(msg)) {
+    return { capability: 'SAFETY_NEGOTIATION', actionKind: 'TEAM_STRUCTURED_DISCUSSION' };
+  }
+  if (isSafetyOrTradeoffQuery(msg, msgLower)) {
+    return { capability: 'SAFETY_NEGOTIATION', actionKind: 'SAFETY_OR_TRADEOFF_REVIEW' };
+  }
+  if (isDeliveryOrBookingHandoffQuery(msg, msgLower) || taskType === 'BOOKING_WORKFLOW') {
+    return { capability: 'DELIVERY', actionKind: 'BOOKING_OR_DELIVERY_HANDOFF' };
+  }
+  if (taskType === 'DATA_LOOKUP' || taskType === 'GENERIC_QA' || taskType === 'RAG_QA') {
+    return { capability: 'FAST_QA', actionKind: 'TRIP_SCOPED_CONSULTATION' };
+  }
+  if (taskType === 'TRIP_PLANNING') {
+    return { capability: 'PLANNING_AND_REVISION', actionKind: 'FULL_TRIP_PLANNING' };
+  }
+  return { capability: 'FAST_QA', actionKind: 'GENERIC' };
 }
 
 /** 与前端 RouteDecision / options.intent_mode 三档对齐 */
@@ -431,6 +535,9 @@ export function isMetaChatQuery(msg: string, msgLower: string): boolean {
  * 供轻量问答 Prompt 与路由共用。
  */
 export function isTripStatusOverviewQuery(msg: string, msgLower: string): boolean {
+  if (isAgentTripComprehensiveAnalysisMessage(msg)) {
+    return true;
+  }
   /** 含「规划」但实为看草稿状态：须在 isTripScopedConsultationQuery 里早于「规划」动词黑名单判断 */
   const tripReadinessZh =
     /规划情况|规划如何|规划得怎么样|查看.{0,12}行程.{0,14}(?:规划|情况)|行程.{0,16}(?:规划情况|说明|总结|解读)|准备度|合理不合理|是否合理|有没有不合理|有没有订酒店|酒店.{0,10}(?:订了|定了|有没有)|用餐安排|中晚餐|(?:午餐|晚餐).{0,10}(?:安排|有没有|订)|伙食|吃住怎么|吃喝怎么安排/.test(
@@ -669,7 +776,7 @@ export function shouldEnableLiveWeatherMcpForLightweightRoute(
 ): boolean {
   const rt = routingTaskType;
   if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-  const tools = options?.enable_live_tools ?? [];
+  const tools = normalizeLiveTools(options?.enable_live_tools);
   const liveFacts = options?.intent_flags?.live_facts === true;
   const msg = message ?? '';
   if (tools.includes('weather')) return true;
@@ -938,6 +1045,9 @@ function inferTaskType(tripId: string | null | undefined, msg: string, msgLower:
 
   // 有 trip_id：默认行程规划，但允许咨询类请求降级为 DATA_LOOKUP（见 isTripScopedConsultationQuery）
   if (tripId) {
+    if (isTeamStructuredDiscussionQuery(msg)) {
+      return 'DATA_LOOKUP';
+    }
     if (isTripScopedConsultationQuery(msg, msgLower)) {
       return 'DATA_LOOKUP';
     }
@@ -1266,10 +1376,13 @@ export function routingSignalsWithResolvedTaskType(
   const requiresStructuredOutput = inferRequiresStructuredOutput(taskType, req.trip_id);
   const needsAudit = inferNeedsAudit(taskType, requiresStructuredOutput, options);
   const risk = inferRisk(taskType, msg, msgLower);
+  const { capability, actionKind } = inferRouteRunCapability(req, taskType, msg, msgLower);
   const legacyWellSupported = inferLegacyWellSupported(taskType, complexity);
   const intent_mode_resolved = taskTypeToIntentBucket(taskType);
   return {
     taskType,
+    capability,
+    actionKind,
     risk,
     needsAudit,
     latencyBudgetMs,

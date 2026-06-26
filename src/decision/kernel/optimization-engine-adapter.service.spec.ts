@@ -6,6 +6,9 @@ import { CGUSSearchService } from '../../trips/decision/optimization/cgus-search
 import { ChunkRetrievalService } from '../../rag/services/chunk-retrieval.service';
 import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
 import { DecisionOSConfigService } from '../../trips/decision/optimization/config';
+import { ExpectedUtilityService } from '../../trips/decision/optimization/probabilistic/expected-utility.service';
+import { ProbabilisticWorldModelService } from '../../trips/decision/optimization/probabilistic/probabilistic-world-model.service';
+import { MetaPolicyService } from '../../trips/decision/optimization/meta/meta-policy.service';
 
 describe('OptimizationEngineAdapterService', () => {
   const prevKernelCgusRag = process.env.KERNEL_CGUS_RAG_EVIDENCE;
@@ -66,7 +69,12 @@ describe('OptimizationEngineAdapterService', () => {
     }).compile();
 
     const service = module.get<OptimizationEngineAdapterService>(OptimizationEngineAdapterService);
-    const hints = await service.getHintsAsync(mkDso({ constraints: { feasible: true, violations: [] } as any }));
+    const hints = await service.getHintsAsync(
+      mkDso({
+        constraints: { feasible: true, violations: [] } as any,
+        uncertaintyProfile: { hasUncertainty: true, suggestedSampleSize: 50 } as any,
+      }),
+    );
 
     expect(hints?.method).toBe('CGUS');
     expect(cgusSearchMock.search).toHaveBeenCalled();
@@ -111,7 +119,12 @@ describe('OptimizationEngineAdapterService', () => {
     }).compile();
 
     const service = module.get<OptimizationEngineAdapterService>(OptimizationEngineAdapterService);
-    const hints = await service.getHintsAsync(mkDso({ constraints: { feasible: true, violations: [] } as any }));
+    const hints = await service.getHintsAsync(
+      mkDso({
+        constraints: { feasible: true, violations: [] } as any,
+        uncertaintyProfile: { hasUncertainty: true, suggestedSampleSize: 50 } as any,
+      }),
+    );
 
     expect(hints?.method).toBe('CGUS');
     expect(Array.isArray(hints?.alternatives)).toBe(true);
@@ -173,6 +186,105 @@ describe('OptimizationEngineAdapterService', () => {
     // If CGUS reports no feasible candidates, adapter should allow upstream degradation (not force CGUS method).
     // (Current lightweight adapter still returns method=CGUS; this assertion is about feasibility propagation.)
     expect(hints).toBeDefined();
+  });
+
+  it('passes MetaPolicy Monte Carlo budget and rollout knobs into CGUS search', async () => {
+    const cgusSearchMock: Pick<CGUSSearchService, 'search'> = {
+      search: jest.fn(async (candidates: CGUSCandidate[], _world: any, options: any) => {
+        return {
+          rankedCandidates: candidates.map((c) => ({
+            candidate: c,
+            utility: 0.8,
+            expectedUtility: 0.75,
+            feasibilityProbability: 0.9,
+          })),
+          recommended: candidates[0],
+          usedMonteCarlo: true,
+          usedRollout: true,
+          usedExploration: false,
+        } as any;
+      }),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        OptimizationEngineAdapterService,
+        RagRealityPolicyGateService,
+        { provide: CGUSSearchService, useValue: cgusSearchMock },
+        { provide: ExpectedUtilityService, useValue: { computeExpectedUtility: jest.fn() } },
+        { provide: ProbabilisticWorldModelService, useValue: { fromDeterministicModel: jest.fn() } },
+        {
+          provide: MetaPolicyService,
+          useValue: {
+            selectPolicy: jest.fn(() => ({
+              horizon: 2,
+              sampleSize: 500,
+              strategy: 'CGUS',
+              useWorldModelRollout: true,
+              useExploration: true,
+              explorationBeta: 0.15,
+            })),
+          },
+        },
+      ],
+    }).compile();
+
+    const service = module.get<OptimizationEngineAdapterService>(OptimizationEngineAdapterService);
+    const hints = await service.getHintsAsync(
+      mkDso({
+        constraints: { feasible: true, violations: [] } as any,
+        uncertaintyProfile: { hasUncertainty: true, suggestedSampleSize: 50 } as any,
+      }),
+    );
+
+    expect(hints?.method).toBe('CGUS');
+    expect(hints?.monteCarloDiagnostics).toMatchObject({
+      enabled: true,
+      sampleSize: 500,
+      useWorldModelRollout: true,
+      policySource: 'MetaPolicy',
+    });
+    expect(cgusSearchMock.search).toHaveBeenCalled();
+    const options = (cgusSearchMock.search as jest.Mock).mock.calls[0][2];
+    expect(options?.useMonteCarlo).toBe(true);
+    expect(options?.sampleSize).toBe(500);
+    expect(options?.useWorldModelRollout).toBe(true);
+    expect(options?.rolloutHorizonSteps).toBe(2);
+  });
+
+  it('does not run fallback Monte Carlo for a plan without uncertainty or optimize signal', async () => {
+    const expectedUtilityMock = { computeExpectedUtility: jest.fn() };
+    const probabilisticWorldModelMock = { fromDeterministicModel: jest.fn() };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        OptimizationEngineAdapterService,
+        RagRealityPolicyGateService,
+        { provide: ExpectedUtilityService, useValue: expectedUtilityMock },
+        { provide: ProbabilisticWorldModelService, useValue: probabilisticWorldModelMock },
+      ],
+    }).compile();
+
+    const service = module.get<OptimizationEngineAdapterService>(OptimizationEngineAdapterService);
+    const hints = await service.getHintsAsync(
+      mkDso({
+        uncertaintyProfile: undefined,
+        environmentState: { routeDirectionId: 'rd-1' },
+        tripState: {
+          planDraft: (mkDso() as any).tripState.planDraft,
+          fatigue: undefined,
+        } as any,
+        constraints: { feasible: true, violations: [] } as any,
+        systemState: {
+          ...(mkDso().systemState as any),
+          currentPhase: 'INTAKE',
+        },
+      }),
+    );
+
+    expect(hints?.method).toBe('HEURISTIC');
+    expect(expectedUtilityMock.computeExpectedUtility).not.toHaveBeenCalled();
+    expect(probabilisticWorldModelMock.fromDeterministicModel).not.toHaveBeenCalled();
   });
 
   it('buildKernelRagQuery merges destination/country and road-safety tail', () => {
@@ -368,4 +480,3 @@ describe('OptimizationEngineAdapterService', () => {
     expect(cgusSearchMock.search).toHaveBeenCalled();
   });
 });
-

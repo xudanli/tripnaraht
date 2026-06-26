@@ -71,6 +71,11 @@ function minContext(ledger: DecisionLedgerSnapshot): AgentMemoryContext {
     recoveryHistory: [],
     failurePatterns: [],
     recentTripFeedbacks: [],
+    domainInfluenceDigest: null,
+    wishConstraintDigest: null,
+    privateWishDigest: null,
+    decisionProfilingDigest: null,
+    negotiationDigest: null,
     loadedAt: new Date().toISOString(),
     observability: { layers: [] },
   };

@@ -1,0 +1,375 @@
+import { NotFoundException } from '@nestjs/common';
+import { CoverageMapService } from './coverage-map.service';
+import type { ReadinessService } from './readiness.service';
+import type { PrismaService } from '../../../prisma/prisma.service';
+import type { CoverageMapData, SegmentCoverage } from '../types/coverage-map.types';
+import type { ReadinessCheckResult } from '../types/readiness-findings.types';
+
+function makeSummary(): CoverageMapData['summary'] {
+  return {
+    totalPois: 2,
+    coveredPois: 2,
+    partialPois: 0,
+    uncoveredPois: 0,
+    totalSegments: 1,
+    coveredSegments: 0,
+    warningSegments: 1,
+    blockedSegments: 0,
+    totalGaps: 0,
+    coverageRate: 1,
+  };
+}
+
+function makeSegmentWithLiveHazard(): SegmentCoverage {
+  return {
+    id: 'seg-1',
+    fromPoiId: 'poi-1',
+    toPoiId: 'poi-2',
+    day: 1,
+    distance: 120,
+    duration: 150,
+    routeType: 'driving',
+    coverageStatus: 'warning',
+    polyline: '',
+    hazards: [
+      {
+        type: 'road_closure',
+        severity: 'high',
+        message: '出发前查看路况（road.is）',
+      },
+    ],
+  };
+}
+
+function makeCoverageMapData(overrides: Partial<CoverageMapData> = {}): CoverageMapData {
+  return {
+    tripId: 'trip-1',
+    bounds: {
+      northeast: { lat: 65, lng: -20 },
+      southwest: { lat: 63, lng: -22 },
+    },
+    center: { lat: 64, lng: -21 },
+    zoom: 8,
+    pois: [
+      {
+        id: 'poi-1',
+        day: 1,
+        order: 1,
+        name: 'A',
+        type: 'attraction',
+        coordinates: { lat: 64, lng: -21 },
+        coverageStatus: 'covered',
+        evidenceCount: 1,
+      },
+      {
+        id: 'poi-2',
+        day: 1,
+        order: 2,
+        name: 'B',
+        type: 'attraction',
+        coordinates: { lat: 64.1, lng: -21.1 },
+        coverageStatus: 'covered',
+        evidenceCount: 1,
+      },
+    ],
+    segments: [makeSegmentWithLiveHazard()],
+    gaps: [],
+    summary: makeSummary(),
+    calculatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function makeTrip(startDate: Date) {
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 7);
+  return {
+    id: 'trip-1',
+    destination: 'IS',
+    startDate,
+    endDate,
+    TripDay: [],
+  };
+}
+
+describe('CoverageMapService', () => {
+  const prisma = {
+    trip: { findUnique: jest.fn() },
+    tripFindingMark: { findMany: jest.fn() },
+    $queryRaw: jest.fn(),
+  } as unknown as PrismaService;
+
+  const readinessService = {
+    checkFromDestination: jest.fn(),
+  } as unknown as ReadinessService;
+
+  let service: CoverageMapService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new CoverageMapService(prisma, readinessService);
+    (prisma.tripFindingMark.findMany as jest.Mock).mockResolvedValue([]);
+    (readinessService.checkFromDestination as jest.Mock).mockResolvedValue({
+      findings: [],
+      summary: {},
+    });
+  });
+
+  describe('getReadinessScore', () => {
+    it('marks far-future trips as planning phase', async () => {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 120);
+
+      (prisma.trip.findUnique as jest.Mock).mockResolvedValue(makeTrip(startDate));
+      jest.spyOn(service, 'getCoverageMap').mockResolvedValue(makeCoverageMapData());
+
+      const result = await service.getReadinessScore('trip-1');
+
+      expect(result.readinessPhase).toBe('planning');
+      expect(result.daysUntilStart).toBeGreaterThan(14);
+      expect(result.phaseHint).toContain('出发前');
+      expect(result.coverageDisclosure?.summary).toMatch(/未检查/);
+      expect(result.coverageDisclosure?.uncoveredCapabilities).toContain('BOOKABILITY');
+    });
+
+    it('does not heavily penalize live road hazards during planning', async () => {
+      const planningStart = new Date();
+      planningStart.setDate(planningStart.getDate() + 120);
+      const preDepartureStart = new Date();
+      preDepartureStart.setDate(preDepartureStart.getDate() + 7);
+
+      const coverage = makeCoverageMapData();
+
+      jest.spyOn(service, 'getCoverageMap').mockResolvedValue(coverage);
+
+      (prisma.trip.findUnique as jest.Mock).mockResolvedValue(makeTrip(planningStart));
+      const planningScore = await service.getReadinessScore('trip-1');
+
+      (prisma.trip.findUnique as jest.Mock).mockResolvedValue(makeTrip(preDepartureStart));
+      const preDepartureScore = await service.getReadinessScore('trip-1');
+
+      expect(planningScore.score.transportCertainty).toBeGreaterThan(
+        preDepartureScore.score.transportCertainty,
+      );
+      expect(planningScore.readinessPhase).toBe('planning');
+      expect(preDepartureScore.readinessPhase).toBe('pre_departure');
+    });
+
+    it('throws when trip is missing', async () => {
+      (prisma.trip.findUnique as jest.Mock).mockResolvedValue(null);
+
+      await expect(service.getReadinessScore('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('reservation evidence coverage', () => {
+    it('marks required reservation as missing booking confirmation until a confirmation exists', () => {
+      const place = {
+        id: 1,
+        nameCN: '蓝湖温泉',
+        nameEN: 'Blue Lagoon',
+        category: 'attraction',
+        metadata: {
+          canonicalType: 'HOT_SPRING',
+          openingHours: { source: 'official' },
+        },
+      };
+
+      const coverage = (service as any).evaluateCoverageFromReadiness(
+        place,
+        { findings: [], summary: {} },
+        '2026-06-20',
+      );
+
+      expect(coverage.missingEvidence).toContain('booking_confirmation');
+      expect(coverage.evidenceTypes).toContain('opening_hours');
+
+      const confirmed = (service as any).evaluateCoverageFromReadiness(
+        {
+          ...place,
+          metadata: {
+            ...place.metadata,
+            reservation: { required: true, leadTime: 'P3D', confirmationId: 'BL-123' },
+          },
+        },
+        { findings: [], summary: {} },
+        '2026-06-20',
+      );
+
+      expect(confirmed.evidenceTypes).toContain('booking_confirmation');
+      expect(confirmed.missingEvidence).not.toContain('booking_confirmation');
+    });
+
+    it('normalizes popular reservation POI metadata with lead time hints', () => {
+      const poi = (service as any).evaluatePoiCoverage(
+        'poi-1',
+        'item-blue-lagoon',
+        1,
+        1,
+        {
+          id: 1,
+          nameCN: '蓝湖温泉',
+          nameEN: 'Blue Lagoon',
+          category: 'attraction',
+          metadata: { canonicalType: 'HOT_SPRING' },
+        },
+        { lat: 64, lng: -21 },
+        { findings: [], summary: {} },
+        '2026-06-20',
+      );
+
+      expect(poi.metadata.requiresReservation).toBe(true);
+      expect(poi.metadata.reservation.leadTime).toBe('P3D');
+      expect(poi.missingEvidence).toContain('booking_confirmation');
+    });
+  });
+
+  describe('P1 evidence grading (gap severity)', () => {
+    it('escalates partial reservation POI missing booking to high severity gap', () => {
+      const poi = {
+        id: 'poi-1',
+        day: 1,
+        name: '蓝湖温泉',
+        coverageStatus: 'partial',
+        missingEvidence: ['booking_confirmation'],
+        metadata: { requiresReservation: true, canonicalType: 'HOT_SPRING' },
+        coordinates: { lat: 64, lng: -21 },
+      };
+
+      const severity = (service as any).resolvePoiGapSeverity(poi);
+      expect(severity).toBe('high');
+    });
+
+    it('keeps weather-only missing evidence at medium severity', () => {
+      const poi = {
+        id: 'poi-2',
+        day: 2,
+        name: '冰川湖',
+        coverageStatus: 'uncovered',
+        missingEvidence: ['weather'],
+        metadata: { canonicalType: 'GLACIER' },
+        coordinates: { lat: 64, lng: -16 },
+      };
+
+      const severity = (service as any).resolvePoiGapSeverity(poi);
+      expect(severity).toBe('medium');
+    });
+
+    it('marks road_closure high hazards as blocker in supplement findings', () => {
+      const findings: any[] = [];
+      const coverageData = {
+        pois: [
+          { id: 'p1', day: 1, name: 'A', coordinates: { lat: 64, lng: -21 } },
+          { id: 'p2', day: 1, name: 'B', coordinates: { lat: 64.1, lng: -21.1 } },
+        ],
+        segments: [
+          {
+            id: 'seg-1',
+            fromPoiId: 'p1',
+            toPoiId: 'p2',
+            day: 1,
+            duration: 120,
+            hazards: [{ type: 'road_closure', severity: 'high', message: '道路可能封闭' }],
+          },
+        ],
+      };
+
+      (service as any).supplementScoreDimensionFindings(findings, { TripDay: [{ dayNumber: 1 }] }, coverageData);
+
+      const transport = findings.find((f) => f.id === 'transport-seg-1-road_closure');
+      expect(transport?.type).toBe('blocker');
+    });
+
+    it('tags ≥300km long_distance as road_class with open_repair uiHints', () => {
+      const findings: any[] = [];
+      const coverageData = {
+        pois: [
+          { id: 'p1', day: 1, name: '蓝湖', itemId: 'item-1', coordinates: { lat: 64, lng: -22 } },
+          { id: 'p2', day: 1, name: '塞济斯菲厄泽', itemId: 'item-2', coordinates: { lat: 65.26, lng: -14 } },
+        ],
+        segments: [
+          {
+            id: 'seg-1',
+            fromPoiId: 'p1',
+            toPoiId: 'p2',
+            day: 1,
+            distance: 620,
+            duration: 480,
+            hazards: [
+              {
+                type: 'long_distance',
+                severity: 'high',
+                message: '超长距离行驶(>300km)，强烈建议分段或中途住宿',
+              },
+            ],
+          },
+        ],
+      };
+
+      (service as any).supplementScoreDimensionFindings(findings, { TripDay: [{ dayNumber: 1 }] }, coverageData);
+
+      const roadClass = findings.find((f) => f.id === 'transport-seg-1-long_distance');
+      expect(roadClass?.issueKind).toBe('road_class');
+      expect(roadClass?.uiHints?.primaryAction).toBe('open_repair');
+      expect(roadClass?.anchors?.distanceKm).toBe(620);
+      expect(findings.some((f) => f.id === 'schedule-long-drive-seg-1')).toBe(false);
+    });
+  });
+
+  describe('mergeHighSeverityCoverageGapBlockersIntoTripReadiness', () => {
+    it('merges high severity coverage gaps into destination blockers', async () => {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 30);
+
+      jest.spyOn(service, 'getCoverageMap').mockResolvedValue(
+        makeCoverageMapData({
+          gaps: [
+            {
+              id: 'gap-1',
+              type: 'segment',
+              relatedId: 'seg-1',
+              coordinates: { lat: 64, lng: -21 },
+              severity: 'high',
+              message: '路段缺少道路封闭证据',
+              affectedDays: [1],
+            },
+          ],
+        }),
+      );
+
+      const baseResult: ReadinessCheckResult = {
+        destinationId: 'IS',
+        findings: [
+          {
+            destinationId: 'IS',
+            destinationName: { en: 'Iceland', zh: '冰岛' },
+            blockers: [],
+            must: [],
+            should: [],
+            optional: [],
+            risks: [],
+          },
+        ],
+        summary: {
+          totalBlockers: 0,
+          totalMust: 0,
+          totalShould: 0,
+          totalOptional: 0,
+          totalRisks: 0,
+        },
+      };
+
+      const merged = await service.mergeHighSeverityCoverageGapBlockersIntoTripReadiness(
+        'trip-1',
+        'IS',
+        baseResult,
+      );
+
+      const blockers = merged.findings[0].blockers;
+      expect(blockers.some((b) => b.id === 'coverage-gap:gap-1')).toBe(true);
+      expect(merged.summary.totalBlockers).toBeGreaterThan(0);
+    });
+  });
+});

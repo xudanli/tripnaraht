@@ -13,7 +13,7 @@ import {
   Matches,
   IsObject,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiExtraModels, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RouterOutputDto } from './router-output.dto';
 import { ItineraryDay, DecisionLogEntry, OrchestratorState, Itinerary, GateResult, ItineraryItem, EvidenceRef, SimplifiedExplanation, AICapabilityDisplay, OrchestrationStep, JepaPayload } from '../interfaces/trip-plan.interface';
@@ -32,7 +32,7 @@ import {
 import type { IntentMode } from '../constants/intent-mode.constants';
 import { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 import { RESEARCH_ASSET_SCOPE_VALUES, type ResearchAssetScope } from '../utils/research-asset-scope.util';
-import type { RuntimeExecutionProfile } from '../contracts/runtime-execution-profile.types';
+import type { RuntimeExecutionProfile, ThinkingModeResolved } from '../contracts/runtime-execution-profile.types';
 import type { UnifiedExplainabilityEnvelopeV1 } from '../../trips/decision/explainability/unified-explainability.types';
 import type { DecisionCockpitPayloadV1 } from '../../trips/decision/explainability/project-decision-cockpit-from-envelope.util';
 import type { RuntimeExecutionAnomaly } from '../contracts/runtime-execution-profile.validation.types';
@@ -52,7 +52,20 @@ import type {
   NarrativeIntegrityObservabilitySlice,
   NarrativeIntegrityReport,
 } from '../inventory/narrative-integrity-validator.util';
+import {
+  CascadeUiHintDto,
+  SchemaOrgDiscoveryEntityDto,
+  SchemaOrgDiscoveryPayloadDto,
+  TravelEntityRefDto,
+  TravelRuntimeEdgeDto,
+  TravelRuntimeGraphDto,
+  TravelRuntimeNodeDto,
+} from '../../travel-cognition/dto/travel-runtime-api.dto';
+import type { TravelRuntimeGraph } from '../../travel-cognition/types/travel-runtime-graph.types';
+import type { SchemaOrgDiscoveryPayload } from '../../travel-cognition/adapters/schema-org-discovery.mapper';
+import { extractLatestUserMessageFromRecent } from '../utils/resolve-route-and-run-message.util';
 
+export type { CascadeUiHintDto, SchemaOrgDiscoveryPayloadDto, TravelRuntimeGraphDto };
 export type { IntentMode } from '../constants/intent-mode.constants';
 export { INTENT_MODE_VALUES } from '../constants/intent-mode.constants';
 
@@ -323,6 +336,16 @@ export class AgentOptionsDto {
   show_debug_scores?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      '是否强制返回/执行三人格门控辩论；为 true 时 active_trip_summary 不走轻量 fast path，保留给 Gate/VERIFY 链路处理。',
+    example: true,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  enable_guardians_debate_llm?: boolean;
+
+  @ApiPropertyOptional({
     description: '是否返回 fallback 通勤矩阵（调试用途）',
     example: false,
     default: false,
@@ -396,16 +419,6 @@ export class AgentOptionsDto {
   @ValidateNested()
   @Type(() => PersonaHintDto)
   persona_hint?: PersonaHintDto;
-
-  @ApiPropertyOptional({
-    description:
-      '启用三人格影子辩论 LLM（`prompts/agents/guardians-debate.md`）：在硬门未致命时对 `guardian_results` 做结构化合议；BLOCK/HARD 时跳过 LLM 并保留确定性投影。行程规划状态机路径下未传时默认为 `true`；传 `false` 可显式关闭。',
-    example: true,
-    default: true,
-  })
-  @IsOptional()
-  @IsBoolean()
-  enable_guardians_debate_llm?: boolean;
 
   @ApiPropertyOptional({ 
     description: '入口来源标识（用于权限控制和操作限制）',
@@ -697,14 +710,12 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
-      '只读实时工具开关（Phase1 传感器）：weather=天气；flight=Amadeus 航班报价；hotel=住宿检索；car_rental=Booking.com 租车（需 Trip 或 structured 起止日）。轻量路径 DATA_LOOKUP/GENERIC_QA/RAG_QA 下注入事实块；航班亦可在开放程/实时组合话术下自动触发（需 AMADEUS 凭证）。',
+      '只读实时工具开关（Phase1 传感器）：true=默认工具集；数组可精确指定 weather=天气；flight=Amadeus 航班报价；hotel=住宿检索；car_rental=Booking.com 租车（需 Trip 或 structured 起止日）。轻量路径 DATA_LOOKUP/GENERIC_QA/RAG_QA 下注入事实块；航班亦可在开放程/实时组合话术下自动触发（需 AMADEUS 凭证）。',
     example: ['weather', 'flight', 'hotel', 'car_rental'],
-    type: [String],
+    oneOf: [{ type: 'boolean' }, { type: 'array', items: { type: 'string' } }],
   })
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  enable_live_tools?: string[];
+  enable_live_tools?: boolean | string[];
 
   @ApiPropertyOptional({
     description:
@@ -1034,11 +1045,21 @@ export class RouteAndRunRequestDto {
   @IsString()
   route_direction_id?: string | null;
 
-  @ApiProperty({ 
-    description: '用户输入消息',
+  @ApiProperty({
+    description:
+      '用户输入消息。Plan Studio 等客户端可省略本字段，改由 conversation_context.recent_messages 末条用户话术自动补齐。',
     example: '推荐新宿拉面',
   })
+  @Transform(({ value, obj }) => {
+    const direct = typeof value === 'string' ? value.trim() : '';
+    if (direct) return direct;
+    return extractLatestUserMessageFromRecent(obj?.conversation_context?.recent_messages) ?? '';
+  })
   @IsString()
+  @MinLength(1, {
+    message:
+      'message 不能为空；请传 message 或在 conversation_context.recent_messages 中提供用户话术',
+  })
   message!: string;
 
   @ApiPropertyOptional({
@@ -2459,6 +2480,36 @@ export class EvidenceCardRefDto {
   rule_id?: string;
 }
 
+export class CoverageDisclosureDto {
+  @ApiProperty({
+    description: 'Fact types used for this recommendation',
+    type: [String],
+    example: ['WEATHER', 'ROAD', 'OPENING_HOURS'],
+  })
+  @IsArray()
+  coveredFactTypes!: string[];
+
+  @ApiProperty({ description: 'Data sources consulted', type: [String] })
+  @IsArray()
+  sourcesUsed!: string[];
+
+  @ApiProperty({
+    description: 'Capabilities explicitly not checked (non-transaction boundary)',
+    type: [String],
+    example: ['INVENTORY', 'PRICING', 'BOOKABILITY'],
+  })
+  @IsArray()
+  uncoveredCapabilities!: string[];
+
+  @ApiProperty({ description: 'User-facing disclosure summary' })
+  @IsString()
+  summary!: string;
+
+  @ApiProperty({ description: 'Disclosure timestamp (ISO 8601)' })
+  @IsString()
+  disclosedAt!: string;
+}
+
 export class EvidenceBundleDto {
   @ApiProperty({ description: 'Bundle id (stable hash)' })
   @IsString()
@@ -2794,6 +2845,14 @@ export class ReferenceSourceDto {
   NegotiationAlternativeDto,
   EvidenceLineageDto,
   ReferenceSourceDto,
+  CoverageDisclosureDto,
+  CascadeUiHintDto,
+  TravelRuntimeGraphDto,
+  TravelRuntimeNodeDto,
+  TravelRuntimeEdgeDto,
+  TravelEntityRefDto,
+  SchemaOrgDiscoveryPayloadDto,
+  SchemaOrgDiscoveryEntityDto,
 )
 export class RouteAndRunResponseDto {
   @ApiProperty({ 
@@ -3233,6 +3292,8 @@ export class RouteAndRunResponseDto {
       };
       /** DSO 旅行本体子状态投影（与 Kernel STATE_UPDATE 对齐；无 Kernel 时由编排 state 推导） */
       travelOntologyState?: DecisionState['travelOntologyState'];
+      /** Schema.org 发现层（SEO / 外部摄入；非 Runtime 语义） */
+      schema_org_discovery?: SchemaOrgDiscoveryPayload;
       // 重定向信息（仅在 REDIRECT_REQUIRED 时存在）
       redirectInfo?: {
         redirect_to: string;
@@ -3557,6 +3618,14 @@ export class RouteAndRunResponseDto {
       user_action_recommended: boolean;
       headline_zh?: string;
     };
+    /** 决策覆盖声明：基于哪些数据判断、哪些渠道未覆盖（非交易型产品边界） */
+    coverage_disclosure?: CoverageDisclosureDto;
+    /** 级联影响分析（封路/天气/航班等；有证据且可行动时附带） */
+    dependency_impact?: Record<string, unknown>;
+    /** 级联影响 UI 卡片（与 Readiness cascadeUiHints 同形） */
+    cascade_ui_hints?: CascadeUiHintDto[];
+    /** L3 Travel Runtime Graph（执行态图，非知识图谱） */
+    travel_runtime_graph?: TravelRuntimeGraph;
   };
 
   @ApiProperty({ 
@@ -3586,6 +3655,8 @@ export class RouteAndRunResponseDto {
     latency_ms: number;
     router_ms: number;
     system_mode: 'SYSTEM1' | 'SYSTEM2' | 'REDIRECT';
+    /** 产品侧最终思考档位：fast=快答/轻量；balanced=交互式推理；deep=状态机/规划流水线 */
+    thinking_mode_resolved?: ThinkingModeResolved;
     tool_calls: number;
     /**
      * Agentic Tool Loop：本轮 MCP 工具真实调用次数（与 SYSTEM1 固定 1 步对照实验）。
@@ -3971,4 +4042,3 @@ export class RouteAndRunResponseDto {
     };
   };
 }
-

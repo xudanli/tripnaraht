@@ -49,7 +49,7 @@ export interface TransportSearchOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'transport.search',
-  description: '搜索 transport 两点间路线与耗时。在 RESEARCH/VERIFY/REPAIR 阶段计算转场或校验可达性时调用。',
+  description: '搜索 transport 两点间路线与耗时。POI 跳点优先驾车/步行；在 RESEARCH/VERIFY/REPAIR 阶段计算转场或校验可达性时调用。',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -107,21 +107,13 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
       const destLat = destination.lat;
       const destLng = destination.lng;
 
-      // 调用交通规划服务
-      const recommendation = await this.transportRoutingService.planRoute(
+      const hopMode = input.mode ?? 'drive';
+      const recommendation = await this.transportRoutingService.planPoiHopRoute(
         originLat,
         originLng,
         destLat,
         destLng,
-        {
-          budgetSensitivity: 'MEDIUM',
-          timeSensitivity: 'MEDIUM',
-          hasLuggage: false,
-          hasElderly: false,
-          isMovingDay: false,
-          isRaining: false,
-          hasLimitedMobility: false,
-        }
+        hopMode,
       );
 
       // 转换为输出格式

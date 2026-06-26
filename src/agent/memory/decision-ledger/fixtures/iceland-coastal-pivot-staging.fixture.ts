@@ -85,6 +85,11 @@ export function buildIcelandCoastalPivotStagingMemoryContext(
     recoveryHistory: [],
     failurePatterns: [],
     recentTripFeedbacks: [],
+    domainInfluenceDigest: null,
+    wishConstraintDigest: null,
+    privateWishDigest: null,
+    decisionProfilingDigest: null,
+    negotiationDigest: null,
     loadedAt: new Date().toISOString(),
     observability: { layers: ['fixture:iceland_coastal_pivot_staging'] },
   };

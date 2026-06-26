@@ -99,7 +99,7 @@ export class ContextEngineAdapterService {
         agent,
         userQuery,
         tokenBudget: overrides.tokenBudget,
-        includePrivate: false,
+        includePrivate: Boolean(overrides.userId?.trim()),
         destinationCountryCode,
         requiredTopics: requiredTopicsOverride,
         abortSignal: overrides.abortSignal,

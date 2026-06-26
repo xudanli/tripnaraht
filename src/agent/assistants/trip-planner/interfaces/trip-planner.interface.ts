@@ -1,6 +1,8 @@
 // src/agent/assistants/trip-planner/interfaces/trip-planner.interface.ts
 
 import type { DecisionContextV0 } from '../../../../trips/reality-kernel/decision-context.types';
+import type { GuardianPersonaPresentation } from '../../../../trips/decision/shared/guardian-presentation.types';
+import type { CausalPersonaProjection } from '../../../../trips/causal-runtime/persona/causal-persona-projection.types';
 
 /**
  * 行程规划智能助手接口定义
@@ -175,6 +177,9 @@ export interface TripPlannerState {
   /** Latest Reality OS binding for this session — gates RAG when enforcement is on */
   decisionContext?: DecisionContextV0;
   
+  /** P3 — shared causal kernel projection (skip parallel LLM guardian eval when authoritative) */
+  causalPersonaProjection?: CausalPersonaProjection;
+  
   // 行程上下文（缓存）
   tripContext: TripContext;
   
@@ -252,6 +257,9 @@ export interface TripPlannerRequest {
 
   /** Optional — when REALITY_ENFORCEMENT / RAG_REALITY_POLICY_ENFORCE binds soft-world retrieval */
   decisionContext?: DecisionContextV0;
+
+  /** P3 — causal persona kernel output; when kernelAuthoritative, guardian LLM eval is skipped */
+  causalPersonaProjection?: CausalPersonaProjection;
   
   // 可选：指定操作的目标
   targetDay?: number;
@@ -309,6 +317,9 @@ export interface TripPlannerResponse {
   // 待确认的修改（如果有）
   pendingChanges?: PendingChange[];
   
+  // 🎭 三人格单主角表达（P2：行中默认 execution_brief）
+  guardianPresentation?: GuardianPersonaPresentation;
+
   // 🎭 三人格洞察（渐进式显现，仅在需要时出现）
   personaInsights?: PersonaInsight[];
   
@@ -473,28 +484,28 @@ export const GUARDIAN_PERSONAS: Record<GuardianPersona, {
     emoji: '🐻‍❄️',
     name: 'Abu',
     nameCN: '阿布',
-    role: 'Safety Guardian',
-    roleCN: '安全守护者',
-    tone: '严肃但温柔',
-    catchphrase: '我负责：这条路，真的能走吗？',
+    role: 'Existence Gate',
+    roleCN: '存在性守门人',
+    tone: '严肃但诚实',
+    catchphrase: '世界允不允许，由我判断。',
   },
   DrDre: {
     emoji: '🐕',
     name: 'Dr.Dre',
     nameCN: '德雷医生',
-    role: 'Rhythm Designer',
-    roleCN: '节奏设计师',
-    tone: '体谅、稳定、贴心',
-    catchphrase: '别太累，我会让每一天刚刚好。',
+    role: 'Cost of Travel',
+    roleCN: '代价评估者',
+    tone: '体谅、清晰、不回避代价',
+    catchphrase: '人承不承受，我把代价说清楚。',
   },
   Neptune: {
     emoji: '🦦',
     name: 'Neptune',
     nameCN: '海王星',
-    role: 'Space Magician',
-    roleCN: '空间魔法师',
-    tone: '聪明、灵活、共情',
-    catchphrase: '如果行不通，我会给你一个刚刚好的替代。',
+    role: 'Intent Conservator',
+    roleCN: '意图守恒修复者',
+    tone: '灵活、共情、守住意义',
+    catchphrase: '体验能不能保住，我负责修复结构。',
   },
 };
 

@@ -7,7 +7,7 @@
  * 只做决策，不做 UI，不做爬取
  */
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import { PrometheusMetricsService } from '../../monitoring/prometheus-metrics.service';
 import { OperationalPolicyService } from './operational-policy/operational-policy.service';
 import { evaluateGeneratePlanGovernance } from './operational-policy/operational-policy-evaluator';
@@ -163,6 +163,7 @@ import { buildUnifiedConstraintGraph } from './constraint-graph/build-unified-co
 import { reduceSemanticRuntimeView } from './execution/semantic-runtime-reducer';
 import type { WorldConstraintStoreSnapshot } from '../../world/world-snapshot';
 import { evaluateMinimalRepairs } from './repair/repair-evaluator';
+import { mapGuardianRepairsToChosenActions } from './repair/guardian-repair-applier.util';
 import type { AuroraNightObservationSignal } from './signals/aurora-night-signals.types';
 import {
   buildAuroraNightObservationSignal,
@@ -219,10 +220,19 @@ import {
 import {
   appendDecisionCausality,
   attachOutcomeToCausalityRecord,
-  buildBlockedAtGateCausalityRecord,
   buildDecisionCausalityId,
-  finalizeDecisionCausalityRecord,
 } from '../reality-kernel/decision-causality';
+import {
+  buildBlockedAtGateCausalityRecordV1,
+  finalizeDecisionCausalityRecordV1,
+} from '../causal-runtime/decision-causality-v1';
+import { CausalTravelEventEmitterService } from '../causal-runtime/causal-travel-event.emitter.service';
+import { CausalRuntimeSessionService } from '../causal-runtime/causal-runtime-session.service';
+import {
+  attachIcelandAssessmentToState,
+  buildIcelandAssessmentFromTripState,
+} from '../causal-runtime/domains/trip-world-state-iceland-causal.util';
+import { buildCausalPersonaProjection } from '../causal-runtime/persona/build-causal-persona-projection';
 
 export interface SenseTools {
   // keep it small: you can adapt to your existing services
@@ -266,12 +276,16 @@ export class TripDecisionEngineService {
     @Optional() private readonly constraintDSLCompiler?: ConstraintDSLCompiler,
     @Optional() private readonly conflictResolver?: ConstraintConflictResolver,
     @Optional() private readonly constraintEngine?: ConstraintEngineService,
-    @Optional() private readonly multiPlanGenerator?: MultiPlanGenerator,
+    @Inject(forwardRef(() => MultiPlanGenerator))
+    @Optional()
+    private readonly multiPlanGenerator?: MultiPlanGenerator,
     @Optional() private readonly weatherDecisionEvidence?: WeatherDecisionEvidenceService,
     @Optional() private readonly promMetrics?: PrometheusMetricsService,
     @Optional() private readonly opsRealityAudit?: OpsRealityAuditService,
     @Optional() private readonly operationalPolicy?: OperationalPolicyService,
     @Optional() private readonly trailPlanningAdapter?: TrailPlanningAdapter,
+    @Optional() private readonly causalTravelEventEmitter?: CausalTravelEventEmitterService,
+    @Optional() private readonly causalRuntimeSession?: CausalRuntimeSessionService,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
     // ReadinessService 和 ReadinessAgentService 在需要时通过 ModuleRef 获取
@@ -794,25 +808,29 @@ export class TripDecisionEngineService {
       this.logger.warn(
         `[RealityKernel][ExecutionGate] BLOCK snapshot_id=${boundForValidity?.snapshot_id} gate=${execDecision.reason}`,
       );
-      const blockedRec = buildBlockedAtGateCausalityRecord({
-        causality_id: causalityId,
-        started_at: startedAt,
-        tick_kind: tickKind,
-        trace_request_id: traceRequestId,
-        reality: {
-          snapshot_id: boundForValidity?.snapshot_id,
-          validity_status: boundForValidity?.reality.validity.status,
-          region: boundForValidity?.reality.domain.region,
+      const blockedRec = buildBlockedAtGateCausalityRecordV1(
+        {
+          causality_id: causalityId,
+          started_at: startedAt,
+          tick_kind: tickKind,
+          trace_request_id: traceRequestId,
+          reality: {
+            snapshot_id: boundForValidity?.snapshot_id,
+            validity_status: boundForValidity?.reality.validity.status,
+            region: boundForValidity?.reality.domain.region,
+          },
+          policy_engine: {
+            verdict: planningPolicy.verdict,
+            codes: planningPolicy.codes,
+            reasons: planningPolicy.reasons,
+          },
+          execution_gate: execDecision,
         },
-        policy_engine: {
-          verdict: planningPolicy.verdict,
-          codes: planningPolicy.codes,
-          reasons: planningPolicy.reasons,
-        },
-        execution_gate: execDecision,
-      });
+        state,
+      );
       appendDecisionCausality(state, blockedRec);
       state.signals.lastDecisionCausalityId = blockedRec.causality_id;
+      void this.emitCausalityToTravelEventStore(state, blockedRec, traceRequestId);
     }
     enforceExecutionDecision(execDecision, { snapshotId: boundForValidity?.snapshot_id });
     bindExecutionDecisionToContext(boundForValidity, execDecision);
@@ -871,10 +889,52 @@ export class TripDecisionEngineService {
   ): void {
     const draft = state.signals._decisionCausalityDraft;
     if (!draft) return;
-    const finalized = finalizeDecisionCausalityRecord(draft, outcome);
+    attachIcelandAssessmentToState(
+      state,
+      buildIcelandAssessmentFromTripState(state, outcome.plan),
+    );
+    const finalized = finalizeDecisionCausalityRecordV1(draft, outcome, state);
     appendDecisionCausality(state, finalized);
     state.signals.lastDecisionCausalityId = finalized.causality_id;
+    state.signals.causalPersonaProjection =
+      buildCausalPersonaProjection({
+        worldState: state,
+        icelandAssessment: state.signals.icelandSelfDriveCausalAssessment,
+        causalityRecord: finalized,
+      }) ?? undefined;
     delete state.signals._decisionCausalityDraft;
+    void this.emitCausalityToTravelEventStore(
+      state,
+      finalized,
+      draft.trace_request_id,
+    );
+  }
+
+  /** Server-side causal session for Agent OPS / P5 join (no client state round-trip). */
+  private captureCausalRuntimeSession(
+    state: TripWorldState,
+    meta?: { requestId?: string; traceRequestId?: string },
+  ): void {
+    this.causalRuntimeSession?.capture({
+      state,
+      requestId: meta?.requestId,
+      traceRequestId: meta?.traceRequestId,
+    });
+  }
+
+  /** Fail-open dual-write to Travel Event Store (DECISION segment). */
+  private async emitCausalityToTravelEventStore(
+    state: TripWorldState,
+    record: import('../causal-runtime/decision-causality-v1.types').DecisionCausalityRecord,
+    requestId?: string,
+  ): Promise<void> {
+    const tripId = state.context.tripId;
+    if (!tripId || !this.causalTravelEventEmitter) return;
+    await this.causalTravelEventEmitter.emitDecisionCausalityRecord({
+      tripId,
+      record,
+      requestId,
+    });
   }
 
   /**
@@ -2548,6 +2608,8 @@ export class TripDecisionEngineService {
       weatherPipeline: weatherPipelineSnapshot,
     });
 
+    this.captureCausalRuntimeSession(state, { requestId, traceRequestId });
+
     return { plan: finalPlan, log, readiness, decisionContext };
   }
 
@@ -2735,6 +2797,10 @@ export class TripDecisionEngineService {
     }
 
     if (!state.signals.executionTruthDAG?.nodes?.length) {
+      this.ensureExecutionTruthOverlayForEco(state, plan);
+    }
+
+    if (!state.signals.executionTruthDAG?.nodes?.length) {
       throw new Error('NO_EXECUTION_TRUTH_SOURCE');
     }
     if (!state.signals.executionIR?.steps?.length) {
@@ -2767,11 +2833,17 @@ export class TripDecisionEngineService {
         slotId: t.slotId,
         details: t.details,
       })),
-      chosenActions: repaired.changedSlotIds.map(id => ({
-        actionType: 'swap',
-        reasonCodes: ['MIN_EDIT_REPAIR'],
-        payload: { slotId: id },
-      })),
+      chosenActions: [
+        ...mapGuardianRepairsToChosenActions(
+          state.signals.repairEvaluation?.repairs,
+          repaired.guardianAppliedRepairIds ?? [],
+        ),
+        ...repaired.changedSlotIds.map((id) => ({
+          actionType: 'swap' as const,
+          reasonCodes: ['MIN_EDIT_REPAIR'],
+          payload: { slotId: id },
+        })),
+      ],
       diff: {
         changedSlots: repaired.changedSlotIds.length,
         movedSlots: 0,
@@ -2804,6 +2876,9 @@ export class TripDecisionEngineService {
       ...(state.signals.opsOperationalGovernance
         ? { opsOperationalGovernance: state.signals.opsOperationalGovernance }
         : {}),
+      ...(state.signals.guardianRepairHints
+        ? { guardianRepairHints: state.signals.guardianRepairHints }
+        : {}),
     };
 
     this.flushDecisionCausalityChain(state, {
@@ -2811,6 +2886,8 @@ export class TripDecisionEngineService {
       log,
       plan: repaired.plan,
     });
+
+    this.captureCausalRuntimeSession(state, { traceRequestId });
 
     return { plan: repaired.plan, log };
   }

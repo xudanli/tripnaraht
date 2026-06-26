@@ -1,5 +1,5 @@
 // src/agent/agent.controller.ts
-import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Logger, Optional, Headers, Res, Req } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Logger, Optional, Headers, Res, Req, BadRequestException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiOkResponse, ApiExtraModels } from '@nestjs/swagger';
 import { AgentService } from './services/agent.service';
@@ -38,6 +38,7 @@ import {
 import { ActionExecutionService } from './services/action-execution.service';
 import { PhysicalActionPlanEnricherService } from '../domain/spatial/physical-action-plan-enricher.service';
 import { RouteAndRunTaskStreamService } from './services/route-and-run-task-stream.service';
+import { normalizeRouteAndRunRequestMessage, resolveRouteAndRunUserMessage } from './utils/resolve-route-and-run-message.util';
 
 /**
  * Agent Controller
@@ -344,6 +345,12 @@ export class AgentController {
     const headerProfile = xClientProfile?.trim();
     if (headerProfile) {
       request.meta = { ...(request.meta ?? {}), client_profile: request.meta?.client_profile ?? headerProfile };
+    }
+    normalizeRouteAndRunRequestMessage(request);
+    if (!resolveRouteAndRunUserMessage(request).trim()) {
+      throw new BadRequestException(
+        'message 不能为空；请传 message 或在 conversation_context.recent_messages 中提供用户话术',
+      );
     }
     // Hotspot observation (metrics-driven v0): record station pairing usage for PT warmup scheduler.
     const pair = (request as any)?.emergency_constraints?.pt_station_pair;

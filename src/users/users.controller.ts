@@ -3,17 +3,22 @@ import { Controller, Get, Put, Delete, Body, BadRequestException, NotFoundExcept
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserProfileDto } from './dto/user-profile.dto';
+import { UpdateDecisionDnaConsentDto } from './dto/decision-dna-consent.dto';
 import { GetUsersQueryDto, UpdateUserDto } from './dto/admin-user.dto';
 import { UpdateCurrentUserDto, DeleteAccountDto } from './dto/current-user.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
+import { DecisionDnaComplianceService } from '../agent/memory/governance/decision-dna-compliance.service';
 
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly dnaCompliance: DecisionDnaComplianceService,
+  ) {}
 
   // ==================== 当前用户接口 ====================
 
@@ -200,6 +205,35 @@ export class UsersController {
       }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
+  }
+
+  @Public()
+  @Get('me/decision-dna/consent')
+  @ApiOperation({
+    summary: '获取 Decision DNA 隐式学习 consent 状态',
+    description: 'PIPL：显式确认类信号始终允许；rollback 聚合等隐式信号需用户 opt-in。',
+  })
+  async getDecisionDnaConsent(@CurrentUser() user: CurrentUserPayload) {
+    if (!user?.userId) {
+      return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+    }
+    return successResponse(await this.dnaCompliance.getConsentStatus(user.userId));
+  }
+
+  @Public()
+  @Put('me/decision-dna/consent')
+  @ApiOperation({ summary: '更新 Decision DNA 隐式学习 consent' })
+  @ApiBody({ type: UpdateDecisionDnaConsentDto })
+  async updateDecisionDnaConsent(
+    @Body() dto: UpdateDecisionDnaConsentDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    if (!user?.userId) {
+      return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+    }
+    return successResponse(
+      await this.dnaCompliance.updateConsent(user.userId, dto.implicit_learning),
+    );
   }
 
   // ==================== 管理接口 ====================

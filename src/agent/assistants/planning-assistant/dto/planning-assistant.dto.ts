@@ -3,6 +3,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEnum, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PersonaShellOutputDto } from '../../../dto/guardian-persona.dto';
 
 /**
  * 位置上下文
@@ -276,6 +277,12 @@ export class PlanningChatResponseDto {
 
   @ApiPropertyOptional({ description: '建议操作', type: [SuggestedActionDto] })
   suggestedActions?: SuggestedActionDto[];
+
+  @ApiPropertyOptional({
+    description: '三人格评估（含 presentation 单主角表达）',
+    type: PersonaShellOutputDto,
+  })
+  personaEvaluation?: PersonaShellOutputDto;
 }
 
 /**

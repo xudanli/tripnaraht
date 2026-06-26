@@ -14,6 +14,7 @@ import { PlaceCategory } from '@prisma/client';
 import { attachDisplaySortIndices } from './utils/itinerary-day-display-order.util';
 import { parseCoordsFromRestNote } from '../agent/utils/accommodation-place.util';
 import { resolveEffectiveIcelandPlaceCoordinates } from '../places/utils/iceland-canonical-poi-coords.util';
+import { TripRevisionBumpService } from '../trips/services/trip-revision-bump.service';
 
 @Injectable()
 export class ItineraryItemsService {
@@ -23,6 +24,7 @@ export class ItineraryItemsService {
     @Optional() private readonly travelTimeEstimator?: TravelTimeEstimatorService,
     @Optional() @Inject(forwardRef(() => PlacesService)) private readonly placesService?: PlacesService,
     @Optional() private readonly googleMapsService?: GoogleMapsDirectService,
+    @Optional() private readonly tripRevisionBump?: TripRevisionBumpService,
   ) {}
 
   /**
@@ -312,6 +314,8 @@ export class ItineraryItemsService {
         console.warn('自动计算交通信息失败:', err.message);
       });
     }
+
+    await this.bumpTripRevisionIfAvailable(tripDay.Trip.id);
 
     // 为 Place 添加坐标字段
     return this.enrichItemWithCoordinates(newItem);
@@ -918,6 +922,8 @@ export class ItineraryItemsService {
       },
     });
 
+    await this.bumpTripRevisionIfAvailable(existing.TripDay.Trip.id);
+
     // 为 Place 添加坐标字段
     return this.enrichItemWithCoordinates(updatedItem);
   }
@@ -1416,15 +1422,28 @@ export class ItineraryItemsService {
   async remove(id: string) {
     const item = await this.prisma.itineraryItem.findUnique({
       where: { id },
+      include: { TripDay: { select: { tripId: true } } },
     });
 
     if (!item) {
       throw new NotFoundException(`找不到指定的行程项 (ID: ${id})`);
     }
 
-    return this.prisma.itineraryItem.delete({
+    const deleted = await this.prisma.itineraryItem.delete({
       where: { id },
     });
+
+    await this.bumpTripRevisionIfAvailable(item.TripDay.tripId);
+    return deleted;
+  }
+
+  private async bumpTripRevisionIfAvailable(tripId: string): Promise<void> {
+    if (!this.tripRevisionBump) return;
+    try {
+      await this.tripRevisionBump.bump(tripId);
+    } catch (error) {
+      console.warn(`bump trip revision failed trip=${tripId}:`, (error as Error).message);
+    }
   }
 
   // ========== 交通信息相关方法 ==========
@@ -1958,6 +1977,9 @@ export class ItineraryItemsService {
    * 根据距离和交通方式估算时间（分钟）
    */
   private estimateDuration(distanceKm: number, travelMode: string): number {
+    if (this.travelTimeEstimator) {
+      return this.travelTimeEstimator.estimateDurationMinutes(distanceKm, travelMode);
+    }
     switch (travelMode) {
       case 'WALKING':
         return Math.round(distanceKm / 5 * 60); // 5 km/h
@@ -1977,6 +1999,13 @@ export class ItineraryItemsService {
       default:
         return Math.round(distanceKm / 50 * 60); // 默认 50 km/h
     }
+  }
+
+  private estimateRouteDistanceKm(straightDistanceKm: number, travelMode: string): number {
+    if (travelMode === 'DRIVING' && straightDistanceKm >= 50) {
+      return straightDistanceKm * 1.2;
+    }
+    return straightDistanceKm;
   }
 
   /**
@@ -2043,7 +2072,105 @@ export class ItineraryItemsService {
       duration: number | null;
       distance: number | null;
       travelMode: string | null;
+      crossDay?: boolean;
     }> = [];
+
+    const firstItem = items.find((item) => item.placeId);
+    if (firstItem) {
+      const previousDay = await this.prisma.tripDay.findFirst({
+        where: {
+          tripId,
+          date: { lt: tripDay.date },
+        },
+        include: {
+          ItineraryItem: {
+            include: { Place: true },
+            orderBy: { startTime: 'asc' },
+          },
+        },
+        orderBy: { date: 'desc' },
+      });
+      const previousItem = previousDay?.ItineraryItem?.filter((item) => item.placeId).at(-1);
+      if (previousItem) {
+        let fromCoords = this.extractPlaceCoordinates(previousItem.Place);
+        let toCoords = this.extractPlaceCoordinates(firstItem.Place);
+
+        if (!fromCoords && previousItem.placeId) {
+          fromCoords = await this.getPlaceCoordinates(previousItem.placeId);
+        }
+        if (!toCoords && firstItem.placeId) {
+          toCoords = await this.getPlaceCoordinates(firstItem.placeId);
+        }
+
+        let duration: number | null = null;
+        let distance: number | null = null;
+        let travelMode: string | null = firstItem.travelMode || defaultMode;
+
+        if (fromCoords && toCoords) {
+          const calculatedDistance = this.calculateHaversineDistance(
+            fromCoords.lat, fromCoords.lng,
+            toCoords.lat, toCoords.lng,
+          );
+          const mode =
+            calculatedDistance < 1
+              ? 'WALKING'
+              : defaultMode === 'TRANSIT'
+                ? calculatedDistance < 2
+                  ? 'WALKING'
+                  : calculatedDistance < 50
+                    ? 'DRIVING'
+                    : 'TRANSIT'
+                : 'DRIVING';
+          travelMode = mode;
+          const routeDistanceKm = this.estimateRouteDistanceKm(calculatedDistance, mode);
+          distance = Math.round(routeDistanceKm * 1000);
+          duration = this.travelTimeEstimator
+            ? this.travelTimeEstimator.estimateDurationMinutes(routeDistanceKm, mode)
+            : (mode === 'WALKING'
+                ? Math.round((routeDistanceKm / 5) * 60)
+                : mode === 'DRIVING'
+                  ? Math.round((routeDistanceKm / 60) * 60)
+                  : Math.round((routeDistanceKm / 80) * 60));
+
+          if (this.smartRoutesService) {
+            try {
+              const routes = await this.smartRoutesService.getRoutes(
+                fromCoords.lat,
+                fromCoords.lng,
+                toCoords.lat,
+                toCoords.lng,
+                travelMode as 'DRIVING' | 'WALKING' | 'TRANSIT',
+              );
+              const routeData = routes[0] as any;
+              if (routeData?.durationMinutes) {
+                duration = routeData.durationMinutes;
+                if (routeData.distanceMeters) {
+                  distance = routeData.distanceMeters;
+                } else if (routeData.distanceKm) {
+                  distance = Math.round(routeData.distanceKm * 1000);
+                }
+              }
+            } catch {
+              // 使用估算值
+            }
+          }
+        } else {
+          duration = firstItem.travelFromPreviousDuration;
+          distance = firstItem.travelFromPreviousDistance;
+        }
+
+        travelSegments.push({
+          fromItemId: previousItem.id,
+          toItemId: firstItem.id,
+          fromPlace: previousItem.Place?.nameCN || previousItem.Place?.nameEN || '未知地点',
+          toPlace: firstItem.Place?.nameCN || firstItem.Place?.nameEN || '未知地点',
+          duration,
+          distance,
+          travelMode,
+          crossDay: true,
+        });
+      }
+    }
 
     // 计算相邻行程项之间的交通信息
     for (let i = 0; i < items.length - 1; i++) {
@@ -2066,8 +2193,8 @@ export class ItineraryItemsService {
       let distance: number | null = toItem.travelFromPreviousDistance;
       let travelMode: string | null = toItem.travelMode;
 
-      // 如果数据库没有存储，尝试计算（与 getConflicts 使用同一套 TravelTimeEstimatorService）
-      if ((!duration || !distance) && fromCoords && toCoords) {
+      // 只要坐标可用就重新计算 A→B 路段，避免把旧库存储的日程空档误当作交通耗时。
+      if (fromCoords && toCoords) {
         const calculatedDistance = this.calculateHaversineDistance(
           fromCoords.lat, fromCoords.lng,
           toCoords.lat, toCoords.lng
@@ -2086,13 +2213,15 @@ export class ItineraryItemsService {
                   : 'TRANSIT'
               : 'DRIVING'; // 自驾：除极短距离外统一驾车
         travelMode = mode;
+        const routeDistanceKm = this.estimateRouteDistanceKm(calculatedDistance, mode);
+        distance = Math.round(routeDistanceKm * 1000);
         duration = this.travelTimeEstimator
-          ? this.travelTimeEstimator.estimateDurationMinutes(calculatedDistance, mode)
+          ? this.travelTimeEstimator.estimateDurationMinutes(routeDistanceKm, mode)
           : (mode === 'WALKING'
-              ? Math.round((calculatedDistance / 5) * 60)
+              ? Math.round((routeDistanceKm / 5) * 60)
               : mode === 'DRIVING'
-                ? Math.round((calculatedDistance / 60) * 60)
-                : Math.round((calculatedDistance / 80) * 60));
+                ? Math.round((routeDistanceKm / 60) * 60)
+                : Math.round((routeDistanceKm / 80) * 60));
 
         // 如果有 SmartRoutesService，使用更精确的计算
         if (this.smartRoutesService) {

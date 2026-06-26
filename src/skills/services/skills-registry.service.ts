@@ -20,9 +20,13 @@ import {
   SKILL_DECISION_DRDRE_PACE,
   SKILL_DECISION_NEPTUNE_REPAIR,
   SKILL_DECISION_RUN_THREE_GUARDIANS,
+  SKILL_DECISION_GUARDIAN_NEGOTIATE,
   SKILL_DECISION_EXPLAIN_FOR_HUMAN,
   SKILL_DEM_GET_PROFILE,
   SKILL_READINESS_GENERATE_CHECKLIST,
+  SKILL_READINESS_GUARDIAN_NEGOTIATION_GET,
+  SKILL_READINESS_CASCADE_IMPACT_GET,
+  SKILL_READINESS_APPLY_REPAIR,
   SKILL_READINESS_SUMMARIZE_RISKS,
   SKILL_READINESS_CHECK_VISA_WINDOW,
   SKILL_ROUTE_DIRECTION_PICK_FOR_INTENT,
@@ -59,6 +63,7 @@ export class SkillsRegistryService implements OnModuleInit {
     @Optional() @Inject(SKILL_DECISION_DRDRE_PACE) private readonly decisionDrdrePace?: Skill,
     @Optional() @Inject(SKILL_DECISION_NEPTUNE_REPAIR) private readonly decisionNeptuneRepair?: Skill,
     @Optional() @Inject(SKILL_DECISION_RUN_THREE_GUARDIANS) private readonly decisionRunThreeGuardians?: Skill,
+    @Optional() @Inject(SKILL_DECISION_GUARDIAN_NEGOTIATE) private readonly decisionGuardianNegotiate?: Skill,
     @Optional() @Inject(SKILL_DECISION_EXPLAIN_FOR_HUMAN) private readonly decisionExplainForHuman?: Skill,
     @Optional()
     @Inject(SKILL_ROUTE_DIRECTION_PICK_FOR_INTENT)
@@ -69,6 +74,11 @@ export class SkillsRegistryService implements OnModuleInit {
     @Optional()
     @Inject(SKILL_READINESS_GENERATE_CHECKLIST)
     private readonly readinessGenerateChecklist?: Skill,
+    @Optional() @Inject(SKILL_READINESS_GUARDIAN_NEGOTIATION_GET)
+    private readonly readinessGuardianNegotiationGet?: Skill,
+    @Optional() @Inject(SKILL_READINESS_CASCADE_IMPACT_GET)
+    private readonly readinessCascadeImpactGet?: Skill,
+    @Optional() @Inject(SKILL_READINESS_APPLY_REPAIR) private readonly readinessApplyRepair?: Skill,
     @Optional() @Inject(SKILL_READINESS_SUMMARIZE_RISKS) private readonly readinessSummarizeRisks?: Skill,
     @Optional() @Inject(SKILL_READINESS_CHECK_VISA_WINDOW) private readonly readinessCheckVisaWindow?: Skill,
     @Optional() @Inject(SKILL_TRIP_QUICK_EVALUATE) private readonly tripQuickEvaluate?: Skill,
@@ -100,10 +110,14 @@ export class SkillsRegistryService implements OnModuleInit {
     if (this.decisionDrdrePace) this.registerSkill(this.decisionDrdrePace);
     if (this.decisionNeptuneRepair) this.registerSkill(this.decisionNeptuneRepair);
     if (this.decisionRunThreeGuardians) this.registerSkill(this.decisionRunThreeGuardians);
+    if (this.decisionGuardianNegotiate) this.registerSkill(this.decisionGuardianNegotiate);
     if (this.decisionExplainForHuman) this.registerSkill(this.decisionExplainForHuman);
     if (this.routeDirectionPickForIntent) this.registerSkill(this.routeDirectionPickForIntent);
     if (this.routeDirectionListForCountry) this.registerSkill(this.routeDirectionListForCountry);
     if (this.readinessGenerateChecklist) this.registerSkill(this.readinessGenerateChecklist);
+    if (this.readinessGuardianNegotiationGet) this.registerSkill(this.readinessGuardianNegotiationGet);
+    if (this.readinessCascadeImpactGet) this.registerSkill(this.readinessCascadeImpactGet);
+    if (this.readinessApplyRepair) this.registerSkill(this.readinessApplyRepair);
     if (this.readinessSummarizeRisks) this.registerSkill(this.readinessSummarizeRisks);
     if (this.readinessCheckVisaWindow) this.registerSkill(this.readinessCheckVisaWindow);
     if (this.tripQuickEvaluate) this.registerSkill(this.tripQuickEvaluate);

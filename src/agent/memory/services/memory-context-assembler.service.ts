@@ -44,6 +44,7 @@ import {
   L4_TRIP_FEEDBACK_TAIL,
   projectTripFeedbackSnapshots,
 } from '../utils/trip-feedback-memory.util';
+import { TripIntentDigestService } from './trip-intent-digest.service';
 
 export type MemoryContractObservabilityV1 = {
   revision: 'v1';
@@ -74,6 +75,7 @@ export class MemoryContextAssemblerService {
     private readonly wdArchive?: WorldDecisionMemoryArchivePort,
     @Optional() private readonly ledgerPendingAudit?: LedgerPendingAuditStoreService,
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
   ) {}
 
   /**
@@ -234,8 +236,32 @@ export class MemoryContextAssemblerService {
             layers: [] as string[],
             metadata: {} as Record<string, unknown>,
           });
-    const [l3, l4] = await Promise.all([l3Promise, l4Promise]);
+    let domainInfluenceDigest: AgentMemoryContext['domainInfluenceDigest'] = null;
+    let wishConstraintDigest: AgentMemoryContext['wishConstraintDigest'] = null;
+    let privateWishDigest: AgentMemoryContext['privateWishDigest'] = null;
+    let decisionProfilingDigest: AgentMemoryContext['decisionProfilingDigest'] = null;
+    let negotiationDigest: AgentMemoryContext['negotiationDigest'] = null;
+    const digestPromise =
+      tripId && this.tripIntentDigest
+        ? this.tripIntentDigest.loadForMemoryContext(tripId, userId).catch((e: any) => {
+            this.logger.warn(`MemoryContextAssembler: trip intent digest failed: ${e?.message ?? e}`);
+            return null;
+          })
+        : Promise.resolve(null);
+    const [l3, l4, digests] = await Promise.all([l3Promise, l4Promise, digestPromise]);
     layers.push(...l3.layers, ...l4.layers);
+    if (digests) {
+      domainInfluenceDigest = digests.domainInfluenceDigest;
+      wishConstraintDigest = digests.wishConstraintDigest;
+      privateWishDigest = digests.privateWishDigest;
+      decisionProfilingDigest = digests.decisionProfilingDigest;
+      negotiationDigest = digests.negotiationDigest;
+      if (domainInfluenceDigest) layers.push('trip_domain_influence_digest');
+      if (wishConstraintDigest) layers.push('trip_wish_constraint_digest');
+      if (privateWishDigest) layers.push('trip_private_wish_digest');
+      if (decisionProfilingDigest) layers.push('trip_decision_profiling_digest');
+      if (negotiationDigest) layers.push('trip_negotiation_digest');
+    }
 
     const mergedMetadata = { ...l3.metadata, ...l4.metadata };
 
@@ -259,6 +285,11 @@ export class MemoryContextAssemblerService {
       activeRouteHealthSnapshot: l3.activeRouteHealthSnapshot,
       routeHealthByKey: l3.routeHealthByKey,
       recentTripFeedbacks: l4.recentTripFeedbacks,
+      domainInfluenceDigest,
+      wishConstraintDigest,
+      privateWishDigest,
+      decisionProfilingDigest,
+      negotiationDigest,
       loadedAt,
       observability: {
         layers,

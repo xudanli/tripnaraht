@@ -16,6 +16,7 @@ import type { TripAction } from '../../trips/road/trip-action.types';
 import type { RouteTopologyLockRecord } from './route-topology-lock.util';
 import type { PersonaClosureAudit } from '../../trips/decision/shared/persona-closure.types';
 import type { DecisionContextSlice } from '../../planning-policy/types/open-world-poi.types';
+import type { ExperienceFulfillmentState } from '../../trips/experience-fulfillment/types/experience-fulfillment-state.types';
 
 /** 用户意图（从 INTAKE 提取） */
 export interface UserIntent {
@@ -444,6 +445,16 @@ export interface OptimizationHints {
   feasibilityProbability?: number;
   /** Phase 2：不确定性概要，用于信念状态判断 */
   uncertaintyProfile?: UncertaintyProfile;
+  /** Monte Carlo / world-model rollout 诊断：说明是否启用、采样预算与跳过原因 */
+  monteCarloDiagnostics?: {
+    enabled: boolean;
+    sampleSize: number;
+    useWorldModelRollout: boolean;
+    rolloutHorizonSteps?: number;
+    reasons: string[];
+    skippedReason?: string;
+    policySource: 'MetaPolicy' | 'Default';
+  };
   /**
    * Kernel fail-safe：当元决策预算不足以支撑高风险优化时，明确给出降级动作。
    * - BLOCK: 禁止继续推进优化（需要用户/外部系统干预）
@@ -485,6 +496,8 @@ export interface OptimizationHints {
   }>;
   /** 推荐候选 id（若已计算） */
   recommendedAlternativeId?: string;
+  /** 专利 6.5 OPTIMIZE 输出：选中方案 id（与 recommendedAlternativeId 同义，审计/答辩字段） */
+  selectedPlanId?: string;
 
   /**
    * 元决策预算审计摘要（人读/可截图）
@@ -858,6 +871,11 @@ export interface DecisionState {
   /** POI 区域骨架、锚点与预算（Phase 1） */
   poiPlanning?: PoiPlanningDecisionSlice;
 
+  /**
+   * 体验兑现协议切片（Round 3：VerificationResult + RepairContract + Intent）
+   */
+  experienceFulfillment?: ExperienceFulfillmentState;
+
   /** VERIFY 结构化结果（Phase 3） */
   verification?: VerificationReport;
 
@@ -1014,6 +1032,11 @@ export interface UncertaintyProfile {
    * - 当前作为可审计预算字段；具体解释由各优化器自行映射
    */
   planningDepth?: number;
+  /**
+   * 专利 6.5 / 步骤 5：Exploration 系数 β（U'(a)=U(a)+β·IG(a)）
+   * - 由 entropy/不确定性信号推导，供 CGUS / PLAN_GEN 候选池审计
+   */
+  explorationBeta?: number;
 }
 
 /**

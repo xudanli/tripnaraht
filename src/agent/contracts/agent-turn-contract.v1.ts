@@ -7,6 +7,7 @@ import type { AgentMemoryContext } from '../memory/interfaces/agent-memory-conte
 import type { IntentMode } from '../constants/intent-mode.constants';
 import type { HydratedGovernanceRuntimeContext } from '../../governance/activation/governance-activation.types';
 import { applyGovernancePressureToPreferenceWeights } from '../../governance/activation/runtime/apply-governance-pressure-to-preference-weights.util';
+import { normalizeLiveTools } from '../utils/live-tools.util';
 
 export type AgentTurnContractVersion = 'v1';
 
@@ -123,7 +124,7 @@ export function buildAgentTurnContract(args: {
 }): AgentTurnContractV1 {
   const { request, memory } = args;
   const opt = request.options ?? {};
-  const liveTools = opt.enable_live_tools ?? [];
+  const liveTools = normalizeLiveTools(opt.enable_live_tools);
   const intentFlags = opt.intent_flags;
 
   const preference = request.preference_profile;

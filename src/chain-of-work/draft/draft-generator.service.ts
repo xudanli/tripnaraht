@@ -1,6 +1,6 @@
 // src/chain-of-work/draft/draft-generator.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { TripPlanRequest, OrchestrationStep } from '../../agent/interfaces/trip-plan.interface';
 import { LlmService } from '../../llm/services/llm.service';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
@@ -21,6 +21,7 @@ export class DraftGeneratorService {
 
   constructor(
     private readonly llmService: LlmService,
+    @Inject(forwardRef(() => SkillsRegistryService))
     private readonly skillsRegistry: SkillsRegistryService,
   ) {}
 

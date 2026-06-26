@@ -8,6 +8,7 @@
 
 import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { OptimizationModule } from '../decision/optimization/optimization.module';
 import { ReadinessService } from './services/readiness.service';
 import { ReadinessChecker } from './engine/readiness-checker';
 import { FactsToReadinessCompiler } from './compilers/facts-to-readiness.compiler';
@@ -43,7 +44,14 @@ import { ReadinessFeatureFlagsService } from './services/readiness-feature-flags
 import { CapabilityPackChecklistService } from './services/capability-pack-checklist.service';
 import { CoverageMapService } from './services/coverage-map.service';
 import { ReadinessAutoRepairService } from './services/readiness-auto-repair.service';
+import { ReadinessRepairService } from './services/readiness-repair.service';
+import { ReadinessGuardianNegotiationService } from './services/readiness-guardian-negotiation.service';
+import { ReadinessDecisionRepairBridgeService } from './services/readiness-decision-repair-bridge.service';
+import { TripPlanPersistenceService } from './services/trip-plan-persistence.service';
 import { RiskTypeMapperService } from './services/risk-type-mapper.service';
+import { TripReadinessWeatherForecastService } from './services/trip-readiness-weather-forecast.service';
+import { ReadinessCausalPreanalysisService } from './services/readiness-causal-preanalysis.service';
+import { TripDependencyImpactService } from './services/trip-dependency-impact.service';
 import { UserDecisionService } from './services/user-decision.service';
 import { LlmModule } from '../../llm/llm.module';
 import { RedisModule } from '../../redis/redis.module';
@@ -60,6 +68,7 @@ import { RagModule } from '../../rag/rag.module';
     LlmModule, // 导入 LlmModule 以使用 LLM 服务
     RedisModule, // 导入 RedisModule 以使用 Redis 服务
     forwardRef(() => RagModule), // 使用 forwardRef 避免循环依赖（ReadinessModule -> RagModule -> SkillsModule -> ReadinessModule）
+    forwardRef(() => OptimizationModule),
     // forwardRef(() => TripsModule), // 暂时禁用，验证懒加载方案是否能解决问题
   ],
   controllers: [ReadinessController],
@@ -100,8 +109,15 @@ import { RagModule } from '../../rag/rag.module';
     // 覆盖地图服务
     CoverageMapService,
     ReadinessAutoRepairService,
+    ReadinessRepairService,
+    ReadinessDecisionRepairBridgeService,
+    TripPlanPersistenceService,
+    ReadinessGuardianNegotiationService,
     // 风险类型映射服务
     RiskTypeMapperService,
+    // 行程天气预报（Open-Meteo）
+    TripReadinessWeatherForecastService,
+    TripDependencyImpactService,
     // 用户决策服务
     UserDecisionService,
   ],
@@ -130,9 +146,12 @@ import { RagModule } from '../../rag/rag.module';
     ReadinessAIService,
     ReadinessCacheService,
     ReadinessFeatureFlagsService,
+    CoverageMapService,
+    ReadinessRepairService,
+    ReadinessGuardianNegotiationService,
+    ReadinessCausalPreanalysisService,
     // 用户决策服务
     UserDecisionService,
   ],
 })
 export class ReadinessModule {}
-

@@ -6,6 +6,7 @@ import { DestinationRecommendationDto } from './shared/destination-recommendatio
 import { PlanCandidateDto } from './shared/plan-candidate.dto';
 import { HotelDto } from './shared/hotel.dto';
 import { AccommodationItemDto } from './shared/accommodation-item.dto';
+import { PersonaShellOutputDto } from '../../../../dto/guardian-persona.dto';
 
 /**
  * 路由目标类型（支持所有 MCP 服务）
@@ -269,4 +270,10 @@ export class ChatResponseDto {
     drift_detected?: boolean;
     trip_id?: string;
   };
+
+  @ApiPropertyOptional({
+    description: '三人格评估（含 presentation 单主角表达，与 workbench 一致）',
+    type: PersonaShellOutputDto,
+  })
+  personaEvaluation?: PersonaShellOutputDto;
 }

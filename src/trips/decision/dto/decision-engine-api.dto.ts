@@ -83,6 +83,82 @@ export class CheckConstraintsRequestDto {
   plan!: Record<string, any>;
 }
 
+export class EvaluateClosedLoopRequestDto {
+  @ApiProperty({ description: '待评估的行程计划 TripPlan' })
+  @IsObject()
+  plan!: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description: '可选：要先模拟的 TripAction，例如 MOVE_SLOT / REMOVE_SLOT / CHANGE_PACE',
+  })
+  @IsOptional()
+  @IsObject()
+  action?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description: '可选：覆盖评估约束，例如 maxDailySlots、maxDailyTravelMinutes、minRobustnessScore',
+  })
+  @IsOptional()
+  @IsObject()
+  constraints?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: '可选：已接受的风险 issue id，评估时不再阻断' })
+  @IsOptional()
+  @IsArray()
+  acceptedRiskIssueIds?: string[];
+}
+
+export class RecordClosedLoopFailureEventDto {
+  @ApiPropertyOptional({ description: 'Prisma Trip.id，可选；无效 UUID 会按现有日志策略降级为空' })
+  @IsOptional()
+  @IsString()
+  tripId?: string;
+
+  @ApiPropertyOptional({ description: '关联的 TripAction.id，可选' })
+  @IsOptional()
+  @IsString()
+  actionId?: string;
+
+  @ApiProperty({
+    description: '失败事件类型',
+    enum: [
+      'USER_REJECTED_REPAIR',
+      'USER_REMOVED_SLOT',
+      'USER_REPORTED_TOO_TIRING',
+      'EXECUTION_FAILED',
+      'EVIDENCE_INVALIDATED',
+      'RISK_ACCEPTED',
+    ],
+  })
+  @IsString()
+  eventType!: string;
+
+  @ApiPropertyOptional({ description: '失败原因或用户反馈' })
+  @IsOptional()
+  @IsString()
+  failedReason?: string;
+
+  @ApiPropertyOptional({ description: '受影响 issue id 列表' })
+  @IsOptional()
+  @IsArray()
+  affectedIssueIds?: string[];
+
+  @ApiPropertyOptional({ description: '受影响 slot id 列表' })
+  @IsOptional()
+  @IsArray()
+  affectedSlotIds?: string[];
+
+  @ApiPropertyOptional({ description: '可选：当前 TripPlan，用于生成 failure stateSnapshot' })
+  @IsOptional()
+  @IsObject()
+  plan?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: '可选：评估约束快照' })
+  @IsOptional()
+  @IsObject()
+  constraints?: Record<string, any>;
+}
+
 export class GenerateMultiplePlansRequestDto {
   @ApiPropertyOptional({
     description:
@@ -216,4 +292,55 @@ export class RecordRealityOutcomeDto {
   @IsOptional()
   @IsObject()
   failure_ontology?: Record<string, unknown>;
+
+  /**
+   * P5：回填 outcome 后自动关闭反事实环（需与 generate-plan 时的 TripWorldState 同会话）。
+   * 须同时提供 `causality_id`。
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  state?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: 'Trip id — 写入 travel event 与 state.context' })
+  @IsOptional()
+  @IsString()
+  tripId?: string;
+}
+
+/** P5 — Record observed outcome against a causality_id (counterfactual closure). */
+export class RecordCausalOutcomeDto {
+  @ApiProperty({ description: 'TripWorldState — must include decisionCausalityChain row' })
+  @IsObject()
+  state!: Record<string, unknown>;
+
+  @ApiProperty({ description: 'Join key from generate-plan / causality_recorded event' })
+  @IsString()
+  causality_id!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  tripId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  requestId?: string;
+
+  @ApiProperty({
+    description: 'Observed metrics, e.g. iceland_miss_prob, iceland_p90_minutes',
+    example: { iceland_miss_prob: 1, iceland_p90_minutes: 168 },
+  })
+  @IsObject()
+  metrics!: Record<string, number>;
+
+  @ApiPropertyOptional({ description: 'Hard label: core appointment missed?' })
+  @IsOptional()
+  missed_appointment?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  narrative?: string;
 }

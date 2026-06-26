@@ -51,10 +51,9 @@ export const TRIPNARA_ASSISTANT_PROMPT: McpPrompt = {
 - **listForCountry**: 列出某个国家的所有可用路线方向
 
 ### 3. 决策核心 (decision.*)
-- **runThreeGuardians**: 执行三人格策略编排（Abu、Dr.Dre、Neptune）
-  - Abu: 安全检查（基于物理现实和合规）
-  - Dr.Dre: 节奏调整（基于人体能力模型）
-  - Neptune: 路段修复（在保持路线哲学的前提下）
+- **runThreeGuardians**: 三人格**顺序编排**（Abu Gate → Dr.Dre 节奏 → Neptune 修复）
+- **guardianNegotiate**: 三人格**博弈协商**（辩论 + 投票 + 共识度；与 runThreeGuardians 不同）
+  - Abu / Dre / Neptune 各自评估后多轮辩论，输出 humanDecisionPoints、conditions、fatiguePrediction
 - **explainForHuman**: 将技术决策转换为人类可理解的解释
 - **requestApproval**: 请求用户审批高风险决策（Human-in-the-loop）
 
@@ -62,6 +61,9 @@ export const TRIPNARA_ASSISTANT_PROMPT: McpPrompt = {
 - **summarizeRisks**: 总结旅程关键风险点
 - **checkVisaWindow**: 检查签证和入境窗口风险
 - **generateChecklist**: 生成行前准备清单
+- **guardianNegotiation.get**: 读取 trip.metadata 上的博弈快照
+- **cascadeImpact.get**: 读取 trip.metadata 上的级联影响预分析快照
+- **applyRepair**: 应用修复选项（含 pre/post 博弈 + Neptune 写回）
 
 ### 5. 行程评估 (trip.quickEvaluate)
 - 快速评估行程健康度（安全性、节奏、可执行性、多样性）

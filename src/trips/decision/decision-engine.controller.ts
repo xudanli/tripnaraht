@@ -45,6 +45,9 @@ import {
   AdjustPacingRequestDto,
   ReplaceNodesRequestDto,
   RecordRealityOutcomeDto,
+  EvaluateClosedLoopRequestDto,
+  RecordClosedLoopFailureEventDto,
+  RecordCausalOutcomeDto,
 } from './dto/decision-engine-api.dto';
 import { OpsRealityAuditService } from './services/ops-reality-audit.service';
 import { OperationalPolicyService } from './operational-policy/operational-policy.service';
@@ -57,6 +60,13 @@ import {
   mergeFailureOntologyIntoOutcome,
 } from './failure-ontology/failure-ontology-outcome';
 import { applyPrismaTripIdToWorldState } from '../execution-closure-persistence/apply-prisma-trip-id-to-world-state';
+import { buildCausalRuntimeEcho } from '../causal-runtime/causal-runtime-echo.util';
+import { CausalCounterfactualClosureService } from '../causal-runtime/causal-counterfactual-closure.service';
+import {
+  CausalRuntimeSessionService,
+  enrichOpsOutcomeWithSession,
+} from '../causal-runtime';
+import { asTripWorldState } from '../causal-runtime/coerce-trip-world-state.util';
 import { DecisionLoggingService } from './services/decision-logging.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { applyEmbeddedHikingToWorldState } from '../utils/embedded-hiking-trip-metadata.util';
@@ -64,6 +74,8 @@ import {
   buildLegacyEngineSsotBlockPayload,
   isLegacyTripEngineHttpBlocked,
 } from '../../decision/kernel/decision-kernel-ssot.util';
+import { DecisionLogStorageService } from './services/decision-log-storage.service';
+import { TripClosedLoopService, type TripAction, type TripFailureEvent } from './closed-loop';
 
 @ApiTags('decision-engine')
 @Controller('decision-engine/v1')
@@ -94,12 +106,64 @@ export class DecisionEngineController {
     @Optional() private readonly opsRealityAudit?: OpsRealityAuditService,
     @Optional() private readonly operationalPolicy?: OperationalPolicyService,
     @Optional() private readonly decisionLogging?: DecisionLoggingService,
+    @Optional() private readonly tripClosedLoop?: TripClosedLoopService,
+    @Optional() private readonly decisionLogStorage?: DecisionLogStorageService,
+    @Optional() private readonly causalCounterfactual?: CausalCounterfactualClosureService,
+    @Optional() private readonly causalRuntimeSession?: CausalRuntimeSessionService,
   ) {}
 
-  /** Echo `signals.lastDecisionCausalityId` for OPS / clients that POST outcome without full state. */
+  /** Echo causal runtime artifacts for frontend / OPS join. */
+  private echoCausalRuntime(state: TripWorldState) {
+    return buildCausalRuntimeEcho(state);
+  }
+
+  /** @deprecated use echoCausalRuntime */
   private echoLastDecisionCausalityId(state: TripWorldState): { lastDecisionCausalityId?: string } {
     const id = state.signals?.lastDecisionCausalityId?.trim();
     return id ? { lastDecisionCausalityId: id } : {};
+  }
+
+  private buildClosedLoopReport(plan: TripPlan, constraints?: Record<string, unknown>) {
+    if (!this.tripClosedLoop || !plan?.days) return undefined;
+    return this.tripClosedLoop.evaluate(
+      this.tripClosedLoop.buildState(plan, { constraints: constraints ?? {} }),
+    );
+  }
+
+  private buildClosedLoopPayload(plan: TripPlan, constraints?: Record<string, unknown>) {
+    const closedLoopReport = this.buildClosedLoopReport(plan, constraints);
+    return {
+      closedLoopReport,
+      closedLoopUiHints: closedLoopReport && this.tripClosedLoop
+        ? this.tripClosedLoop.buildUiHints(closedLoopReport)
+        : undefined,
+    };
+  }
+
+  private buildClosedLoopFailureEvent(body: RecordClosedLoopFailureEventDto): TripFailureEvent {
+    if (this.tripClosedLoop && body.plan?.days) {
+      const state = this.tripClosedLoop.buildState(body.plan as TripPlan, {
+        constraints: body.constraints ?? {},
+      });
+      return this.tripClosedLoop.recordFailureEvent(state, {
+        tripId: body.tripId,
+        actionId: body.actionId,
+        eventType: body.eventType as TripFailureEvent['eventType'],
+        failedReason: body.failedReason,
+        affectedIssueIds: body.affectedIssueIds,
+        affectedSlotIds: body.affectedSlotIds,
+      });
+    }
+
+    return {
+      tripId: body.tripId,
+      actionId: body.actionId,
+      eventType: body.eventType as TripFailureEvent['eventType'],
+      failedReason: body.failedReason,
+      affectedIssueIds: body.affectedIssueIds,
+      affectedSlotIds: body.affectedSlotIds,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   @Get('health')
@@ -119,6 +183,7 @@ export class DecisionEngineController {
         explainPlan: !!this.explainabilityService,
         generateMultiplePlans: !!this.multiPlanGenerator,
         operationalPolicy: !!this.operationalPolicy,
+        closedLoopEvaluation: !!this.tripClosedLoop,
       },
     });
   }
@@ -181,7 +246,7 @@ export class DecisionEngineController {
           this.logger.warn(`hardTrekTrailPlan persist skipped: ${persistErr?.message}`);
         }
       }
-      return successResponse({ plan, log, ...this.echoLastDecisionCausalityId(state) });
+      return successResponse({ plan, log, ...this.buildClosedLoopPayload(plan), ...this.echoCausalRuntime(state) });
     } catch (error: any) {
       if (error instanceof RealityExecutionBlockedError) {
         this.logger.warn(`generatePlan execution gate: ${error.message}`);
@@ -193,6 +258,58 @@ export class DecisionEngineController {
       this.logger.error(`generatePlan 失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
+  }
+
+  @Post('causal-outcome')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'P5：记录实况 outcome 并关闭因果反事实环',
+    description:
+      '对比 causality_id 对应预测 metrics 与观测值，更新 Iceland 校准 / reflectiveCausalModel，并 dual-write Travel Event Store（RESULT）。',
+  })
+  @ApiBody({ type: RecordCausalOutcomeDto })
+  async recordCausalOutcome(@Body() body: RecordCausalOutcomeDto) {
+    if (!this.causalCounterfactual) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, 'CausalCounterfactualClosureService 不可用');
+    }
+    if (!body.state?.['context']) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, 'state.context 是必需的');
+    }
+    const state = asTripWorldState(body.state as Record<string, unknown>);
+    if (!state) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, 'state.context 是必需的');
+    }
+    applyPrismaTripIdToWorldState(state, body.tripId);
+    const causalityId = body.causality_id?.trim();
+    if (!causalityId) {
+      return errorResponse(ErrorCode.VALIDATION_ERROR, 'causality_id 是必需的');
+    }
+
+    const result = await this.causalCounterfactual.closeLoop({
+      state,
+      causalityId,
+      tripId: body.tripId,
+      requestId: body.requestId,
+      observation: {
+        metrics: body.metrics ?? {},
+        narrative: body.narrative,
+        missedAppointment: body.missed_appointment,
+      },
+    });
+
+    if (!result) {
+      return errorResponse(
+        ErrorCode.VALIDATION_ERROR,
+        '未找到 causality_id 或 metrics 不足以执行反事实闭环',
+      );
+    }
+
+    return successResponse({
+      report: result.report,
+      travelEventPersisted: result.travelEventPersisted,
+      travelEventId: result.travelEventId,
+      ...this.echoCausalRuntime(state),
+    });
   }
 
   @Post('repair-plan')
@@ -222,7 +339,7 @@ export class DecisionEngineController {
       applyPrismaTripIdToWorldState(state, body.tripId);
       const trigger = (body.trigger || 'signal_update') as any;
       const { plan, log } = await this.decisionEngine.repairPlan(state, body.plan as TripPlan, trigger);
-      return successResponse({ plan, log, ...this.echoLastDecisionCausalityId(state) });
+      return successResponse({ plan, log, ...this.buildClosedLoopPayload(plan), ...this.echoCausalRuntime(state) });
     } catch (error: any) {
       if (error instanceof RealityExecutionBlockedError) {
         this.logger.warn(`repairPlan execution gate: ${error.message}`);
@@ -310,6 +427,95 @@ export class DecisionEngineController {
     }
   }
 
+  @Post('evaluate-closed-loop')
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  @ApiOperation({
+    summary: '闭环评估',
+    description: '将 TripPlan 视为 TripState，可选先模拟 TripAction，再输出 safe/risky/blocked 决策报告与修复建议。',
+  })
+  @ApiBody({ type: EvaluateClosedLoopRequestDto })
+  @ApiResponse({ status: 200, description: '评估完成' })
+  evaluateClosedLoop(@Body() body: EvaluateClosedLoopRequestDto) {
+    try {
+      if (!this.tripClosedLoop) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'TripClosedLoopService 不可用');
+      }
+      if (!body.plan?.days) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'plan.days 是必需的');
+      }
+
+      const state = this.tripClosedLoop.buildState(body.plan as TripPlan, {
+        constraints: body.constraints ?? {},
+        acceptedRiskIssueIds: body.acceptedRiskIssueIds ?? [],
+      });
+      const report = this.tripClosedLoop.evaluate(
+        state,
+        body.action ? (body.action as TripAction) : undefined,
+      );
+      return successResponse({
+        report,
+        uiHints: this.tripClosedLoop.buildUiHints(report),
+      });
+    } catch (error: any) {
+      this.logger.error(`evaluateClosedLoop 失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Post('closed-loop/failure-events')
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  @ApiOperation({
+    summary: '记录闭环失败事件',
+    description: '标准化记录用户拒绝、太累、执行失败、证据失效等 failure data，并尽量写入决策日志 metadata。',
+  })
+  @ApiBody({ type: RecordClosedLoopFailureEventDto })
+  @ApiResponse({ status: 200, description: '记录完成' })
+  async recordClosedLoopFailureEvent(@Body() body: RecordClosedLoopFailureEventDto) {
+    try {
+      if (!body.eventType) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'eventType 是必需的');
+      }
+
+      const event = this.buildClosedLoopFailureEvent(body);
+      if (this.decisionLogStorage) {
+        await this.decisionLogStorage.saveLogEntry(
+          {
+            persona: 'USER_ACTION',
+            action: body.eventType === 'RISK_ACCEPTED' ? 'ALLOW' : 'MODIFY',
+            decisionSource: 'USER',
+            decisionStage: 'PLAN_EDIT',
+            explanation: body.failedReason
+              ? `闭环失败事件: ${body.eventType} - ${body.failedReason}`
+              : `闭环失败事件: ${body.eventType}`,
+            reasonCodes: ['CLOSED_LOOP_FAILURE', body.eventType],
+            evidenceRefs: body.affectedIssueIds ?? [],
+            timestamp: event.timestamp,
+            metadata: {
+              closedLoopFailureEvent: event,
+              affectedSlotIds: body.affectedSlotIds ?? [],
+            },
+          },
+          {
+            tripId: body.tripId,
+            metadata: {
+              source: 'decision-engine.closed-loop.failure-events',
+            },
+          },
+        );
+      }
+
+      return successResponse({
+        event,
+        persisted: !!this.decisionLogStorage,
+      });
+    } catch (error: any) {
+      this.logger.error(`recordClosedLoopFailureEvent 失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   @Post('generate-multiple-plans')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '多方案生成', description: '生成 2–N 个不同权衡方案' })
@@ -339,7 +545,13 @@ export class DecisionEngineController {
         state.policies = { ...(state.policies ?? {}), constraintDSL: body.constraints as any } as TripWorldState['policies'];
       }
       const { variants, log } = await this.decisionEngine.generateMultiplePlans(state, body.requestId);
-      return successResponse({ variants, log, ...this.echoLastDecisionCausalityId(state) });
+      const variantsWithClosedLoop = this.tripClosedLoop
+        ? variants.map((variant: any) => ({
+            ...variant,
+            ...this.buildClosedLoopPayload(variant.plan, body.constraints),
+          }))
+        : variants;
+      return successResponse({ variants: variantsWithClosedLoop, log, ...this.echoLastDecisionCausalityId(state) });
     } catch (error: any) {
       this.logger.error(`generateMultiplePlans 失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
@@ -489,28 +701,59 @@ export class DecisionEngineController {
     if (!this.opsRealityAudit) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, 'OpsRealityAuditService 不可用');
     }
+
+    const sessionTripId =
+      body.tripId?.trim() ||
+      this.causalRuntimeSession?.resolveTripId({
+        tripId: body.tripId,
+        requestId: body.execution_trace_id,
+      });
+    const session = sessionTripId
+      ? this.causalRuntimeSession?.getForTrip(sessionTripId)
+      : null;
+    const enriched = enrichOpsOutcomeWithSession(
+      {
+        tripId: body.tripId,
+        causality_id: body.causality_id,
+        state: body.state,
+        snapshotId,
+      },
+      session,
+    );
+    const effectiveSnapshotId = enriched.snapshotId?.trim() || snapshotId.trim();
+    const effectiveBody: RecordRealityOutcomeDto = {
+      ...body,
+      tripId: enriched.tripId ?? body.tripId,
+      causality_id: enriched.causality_id ?? body.causality_id,
+      state: enriched.state ?? body.state,
+    };
+
     const tripRun =
-      body.trip_run_id?.trim() ||
+      effectiveBody.trip_run_id?.trim() ||
       this.pickHeader(headers, 'x-trip-run-id');
     const execTrace =
-      body.execution_trace_id?.trim() ||
+      effectiveBody.execution_trace_id?.trim() ||
       this.pickHeader(headers, 'x-execution-trace-id') ||
       this.pickHeader(headers, 'x-request-id');
-    const causalityRef = body.causality_id?.trim();
-    let mergedOutcome = mergeOutcomeTelemetryRefs(body.outcome as Record<string, unknown>, {
+    const causalityRef = effectiveBody.causality_id?.trim();
+    let mergedOutcome = mergeOutcomeTelemetryRefs(effectiveBody.outcome as Record<string, unknown>, {
       tripRunId: tripRun,
       executionTraceId: execTrace,
       causalityId: causalityRef,
     }) as unknown as OpsRealityOutcomePayloadV1;
 
-    if (body.failure_ontology && typeof body.failure_ontology === 'object') {
-      const failureRecord = coerceFailureOntologyPayload(body.failure_ontology as Record<string, unknown>);
+    if (effectiveBody.failure_ontology && typeof effectiveBody.failure_ontology === 'object') {
+      const failureRecord = coerceFailureOntologyPayload(effectiveBody.failure_ontology as Record<string, unknown>);
       if (failureRecord) {
         mergedOutcome = mergeFailureOntologyIntoOutcome(mergedOutcome, failureRecord);
       }
     }
 
-    const ok = await this.opsRealityAudit.recordOutcome(snapshotId, mergedOutcome, body.source);
+    const ok = await this.opsRealityAudit.recordOutcome(
+      effectiveSnapshotId,
+      mergedOutcome,
+      effectiveBody.source,
+    );
     if (!ok) {
       return errorResponse(
         ErrorCode.VALIDATION_ERROR,
@@ -518,7 +761,7 @@ export class DecisionEngineController {
       );
     }
 
-    const decisionLogId = body.decision_log_id?.trim();
+    const decisionLogId = effectiveBody.decision_log_id?.trim();
     let decisionOutcomeId: string | undefined;
     let decisionOutcomePrismaError: string | undefined;
     if (this.decisionLogging && decisionLogId) {
@@ -527,7 +770,7 @@ export class DecisionEngineController {
           decisionLogId,
           {
             expectedCharacteristics: {
-              ops_reality_audit_snapshot_id: snapshotId,
+              ops_reality_audit_snapshot_id: effectiveSnapshotId,
               bridge: 'p-ops-2/outcome-to-decision_outcomes',
             },
           },
@@ -552,12 +795,71 @@ export class DecisionEngineController {
 
     return successResponse({
       success: true,
-      snapshotId,
+      snapshotId: effectiveSnapshotId,
+      ...(enriched.stateAutoFilled ? { stateAutoFilled: true } : {}),
+      ...(enriched.causalityAutoFilled ? { causalityAutoFilled: true } : {}),
+      ...(enriched.snapshotAutoFilled ? { snapshotAutoFilled: true } : {}),
       ...(decisionOutcomeId ? { decision_outcome_id: decisionOutcomeId } : {}),
       ...(decisionOutcomePrismaError
         ? { decision_outcome_prisma_error: decisionOutcomePrismaError }
         : {}),
+      ...(await this.tryCounterfactualAfterOpsOutcome({
+        body: effectiveBody,
+        mergedOutcome,
+        causalityRef,
+        headers,
+      })),
     });
+  }
+
+  /**
+   * P5 bridge — optional auto-close when OPS outcome carries state + causality_id.
+   */
+  private async tryCounterfactualAfterOpsOutcome(input: {
+    body: RecordRealityOutcomeDto;
+    mergedOutcome: OpsRealityOutcomePayloadV1;
+    causalityRef?: string;
+    headers: Record<string, string | string[] | undefined>;
+  }): Promise<Record<string, unknown>> {
+    if (!this.causalCounterfactual || !input.causalityRef || !input.body.state?.['context']) {
+      return {};
+    }
+
+    const state = asTripWorldState(input.body.state as Record<string, unknown>);
+    if (!state) {
+      return {};
+    }
+    applyPrismaTripIdToWorldState(state, input.body.tripId);
+
+    const requestId =
+      input.body.execution_trace_id?.trim() ||
+      this.pickHeader(input.headers, 'x-request-id') ||
+      undefined;
+
+    try {
+      const closed = await this.causalCounterfactual.tryCloseFromOpsOutcome({
+        state,
+        causalityId: input.causalityRef,
+        outcome: input.mergedOutcome,
+        tripId: input.body.tripId,
+        requestId: typeof requestId === 'string' ? requestId : undefined,
+      });
+
+      if (!closed) return { causalCounterfactualClosed: false };
+
+      this.causalRuntimeSession?.capture({ state });
+
+      return {
+        causalCounterfactualClosed: true,
+        causalCounterfactualReport: closed.report,
+        travelEventPersisted: closed.travelEventPersisted,
+        ...this.echoCausalRuntime(state),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[P5/OPS] counterfactual auto-close failed: ${message}`);
+      return { causalCounterfactualClosed: false, causalCounterfactualError: message };
+    }
   }
 
   @Get('ops-reality-audit/by-trip/:tripId')

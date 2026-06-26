@@ -2,15 +2,18 @@
 import { Injectable, BadRequestException, NotFoundException, ForbiddenException, Logger, Optional, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Place } from '@prisma/client';
+import { resolveTripRevision } from './trip-constraint-solver/utils/trip-revision.util';
 import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
-import { TripStatus } from './dto/trip-status.dto';
+import { TripStatus, normalizeTripStatus } from './dto/trip-status.dto';
 import { DateTime } from 'luxon';
 import { PacingCalculator } from './utils/pacing-calculator.util';
 import { FlightPriceService } from './services/flight-price.service';
 import { ScheduleConverterService } from './services/schedule-converter.service';
 import { ActionHistoryService } from './services/action-history.service';
+import { TripRevisionBumpService } from './services/trip-revision-bump.service';
 import { DayScheduleResult } from '../planning-policy/interfaces/scheduler.interface';
 import { randomUUID } from 'crypto';
+import { ProjectMembershipService } from '../identity-governance/services/project-membership.service';
 import { PersonaAlertDto, PersonaType, AlertSeverity } from './dto/persona-alerts.dto';
 import { DecisionLogEntryDto, DecisionLogResponseDto, DecisionSource } from './dto/decision-log.dto';
 import { TaskDto, TaskPriority, TaskCategory } from './dto/tasks.dto';
@@ -27,7 +30,8 @@ import {
   UpdateEvidenceResponseDto,
   BatchUpdateEvidenceRequestDto,
   BatchUpdateEvidenceResponseDto,
-  EvidenceStatus
+  EvidenceStatus,
+  EvidenceSeverity
 } from './dto/evidence.dto';
 import { AttentionItemDto, AttentionQueueResponseDto, GetAttentionQueueQueryDto, AttentionItemType, AttentionSeverity, AttentionStatus } from './dto/attention-queue.dto';
 import { toPlaceResponseDto } from './dto/place-response.dto';
@@ -46,6 +50,10 @@ import {
   formatConsultationTripDaySkeletonLines,
   formatTripPromptSummaryForConsultation,
 } from './utils/trip-prompt-summary.util';
+import {
+  buildNarrativeThemeBanner,
+  isNarrativeThemeBannerEnabled,
+} from './narrative-engine/utils/narrative-theme-banner.util';
 import { BookingComIntegrationService } from '../mcp/booking-com-integration.service';
 import { RouteDirectionsService } from '../route-directions/route-directions.service';
 import {
@@ -76,6 +84,11 @@ import {
   attachDisplaySortIndices,
   sortItineraryItemsForDayDisplay,
 } from '../itinerary-items/utils/itinerary-day-display-order.util';
+import { TripLifecycleValidatorService, extractTripContext } from './services/trip-lifecycle-validator.service';
+import { DecisionEventEmitter } from './decision/optimization/events/decision-events';
+import { TripOutcomeOrchestratorService } from './services/trip-outcome-orchestrator.service';
+import { AnchorHandoffService } from './in-trip-execution/services/anchor-handoff.service';
+import { PostTripSummaryService } from './in-trip-execution/services/post-trip-summary.service';
 
 @Injectable()
 export class TripsService {
@@ -206,10 +219,17 @@ export class TripsService {
     private evidenceFiltering: EvidenceFilteringService,
     private evidenceCompletenessChecker: EvidenceCompletenessChecker,
     private evidenceTrigger: EvidenceTriggerService,
+    private tripLifecycleValidator: TripLifecycleValidatorService,
+    private decisionEventEmitter: DecisionEventEmitter,
     private bookingComIntegration?: BookingComIntegrationService,
     @Optional() private routeDirectionsService?: RouteDirectionsService,
     @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private dsoFeedbackPersistence?: IDsoFeedbackPersistence,
     @Optional() private itineraryItemsService?: ItineraryItemsService,
+    @Optional() private tripOutcomeOrchestrator?: TripOutcomeOrchestratorService,
+    @Optional() private anchorHandoff?: AnchorHandoffService,
+    @Optional() private postTripSummary?: PostTripSummaryService,
+    @Optional() private readonly tripRevisionBump?: TripRevisionBumpService,
+    @Optional() private readonly projectMembership?: ProjectMembershipService,
   ) {}
 
   /**
@@ -444,6 +464,9 @@ export class TripsService {
             updatedAt: new Date(),
           } as any,
         });
+        if (this.projectMembership) {
+          await this.projectMembership.syncFromCollaborator(trip.id, userId, 'OWNER', tx);
+        }
       }
 
       // 返回完整的 Trip 对象（包含关联的 TripDay）
@@ -772,36 +795,27 @@ export class TripsService {
 
   /**
    * 验证状态转换是否合法
-   * 
+   *
+   * 使用 TripLifecycleValidatorService 进行正向验证
+   *
    * @param currentStatus 当前状态
    * @param newStatus 新状态
+   * @param context Trip 上下文（可选）
    * @throws BadRequestException 如果状态转换不合法
    */
-  private validateStatusTransition(currentStatus: string | null, newStatus: TripStatus): void {
-    // 如果当前状态为空，允许设置为任何状态
-    if (!currentStatus) {
-      return;
-    }
-
-    // 已取消的行程不能改回其他状态
-    if (currentStatus === TripStatus.CANCELLED) {
-      throw new BadRequestException('已取消的行程不能修改状态');
-    }
-
-    // 已完成的行程不能改回规划中或进行中
-    if (currentStatus === TripStatus.COMPLETED && 
-        (newStatus === TripStatus.PLANNING || newStatus === TripStatus.IN_PROGRESS)) {
-      throw new BadRequestException('已完成的行程不能改回规划中或进行中状态');
-    }
-
-    // 进行中的行程不能改回规划中
-    // 决策：禁止 IN_PROGRESS → PLANNING，避免数据混乱
-    // 参考：.claude/product-decisions/trip-detail-page-key-decisions.md
-    if (currentStatus === TripStatus.IN_PROGRESS && newStatus === TripStatus.PLANNING) {
-      throw new BadRequestException('进行中的行程不能改回规划中状态。如需重新规划，请使用规划工作台功能');
-    }
-
-    // 其他状态转换都是允许的
+  private validateStatusTransition(
+    tripId: string,
+    currentStatus: string | null,
+    newStatus: TripStatus,
+    context?: any,
+    userId?: string,
+  ): void {
+    this.tripLifecycleValidator.validateTransitionOrThrow(
+      currentStatus,
+      newStatus,
+      context,
+      { tripId, userId },
+    );
   }
 
   /**
@@ -811,7 +825,7 @@ export class TripsService {
    * @param dto 更新数据（部分字段）
    * @returns 更新后的行程
    */
-  async update(id: string, dto: Partial<CreateTripDto>) {
+  async update(id: string, dto: Partial<CreateTripDto>, userId?: string) {
     // 验证行程存在
     const existingTrip = await this.prisma.trip.findUnique({
       where: { id },
@@ -869,9 +883,33 @@ export class TripsService {
     }
 
     // 处理状态更新
+    let statusChanged = false;
+    let previousStatus: string | null = null;
+    let newStatus: string | null = null;
+
     if (dto.status !== undefined) {
+      // 使用合并后的 Trip 上下文，允许同一次更新补齐条件并推进状态
+      const tripContext = extractTripContext({
+        ...existingTrip,
+        ...updateData,
+      });
+
       // 验证状态转换
-      this.validateStatusTransition(existingTrip.status, dto.status);
+      this.validateStatusTransition(
+        id,
+        existingTrip.status,
+        dto.status,
+        tripContext,
+        userId,
+      );
+
+      // 归一化当前状态和新状态，用于比较实际变化
+      const normalizedCurrent = normalizeTripStatus(existingTrip.status);
+      const normalizedNew = normalizeTripStatus(dto.status);
+
+      statusChanged = normalizedCurrent !== normalizedNew;
+      previousStatus = existingTrip.status || TripStatus.DRAFT;
+      newStatus = dto.status;
       updateData.status = dto.status;
     }
 
@@ -970,6 +1008,56 @@ export class TripsService {
 
       return tripWithDays;
     });
+
+    if (deltaDays !== 0) {
+      await this.bumpTripRevisionIfAvailable(id);
+    }
+
+    if (statusChanged && previousStatus && newStatus) {
+      try {
+        this.decisionEventEmitter.tripStateChanged(
+          id,
+          previousStatus,
+          newStatus,
+          userId,
+        );
+      } catch (eventError) {
+        this.logger.warn(
+          `[TripLifecycle] Failed to emit TRIP_STATE_CHANGED event for trip ${id}: ${eventError}`,
+        );
+      }
+
+      if (this.anchorHandoff && normalizeTripStatus(newStatus) === TripStatus.TRAVELING) {
+        void this.anchorHandoff.materializeOnTransition(id, userId).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[InTripHandoff] transition hook failed for trip ${id}: ${msg}`);
+        });
+      }
+
+      if (this.postTripSummary && normalizeTripStatus(newStatus) === TripStatus.COMPLETED) {
+        void this.postTripSummary.onTripCompleted(id).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[PostTripSummary] transition hook failed for trip ${id}: ${msg}`);
+        });
+      }
+
+      // Trigger outcome calculation when trip completes
+      if (this.tripOutcomeOrchestrator && normalizeTripStatus(newStatus) === TripStatus.COMPLETED) {
+        try {
+          this.tripOutcomeOrchestrator.handleStatusTransition(
+            id,
+            TripStatus.COMPLETED,
+            { trip: updatedTrip },
+          ).catch(err => {
+            this.logger.error(`[TripOutcome] Failed to calculate outcome for trip ${id}: ${err}`);
+          });
+        } catch (outcomeError) {
+          this.logger.warn(
+            `[TripOutcome] Failed to trigger outcome calculation for trip ${id}: ${outcomeError}`,
+          );
+        }
+      }
+    }
 
     return await this.enrichTripData(updatedTrip);
   }
@@ -1264,9 +1352,20 @@ export class TripsService {
       void this.backfillGenerationProgress(trip.id, tripData.metadata, generationProgress);
     }
 
+    const revisionInfo = resolveTripRevision({
+      updatedAt: trip.updatedAt ?? new Date(),
+      metadata: trip.metadata,
+    });
+
     return {
       ...tripData,
       TripDay: transformedTripDays,
+      revision: revisionInfo.revision,
+      revisionLabel: revisionInfo.revisionLabel,
+      // 叙事主题 Banner（Trip 详情页顶部展示，需 NARRATIVE_THEME_V1=true）
+      ...(isNarrativeThemeBannerEnabled()
+        ? { narrativeThemeBanner: buildNarrativeThemeBanner(tripData.metadata) }
+        : {}),
       // 添加状态字段（优先使用数据库中的状态）
       status: status,
       // 添加点赞和收藏字段
@@ -1741,6 +1840,8 @@ export class TripsService {
       dateISO
     );
 
+    await this.bumpTripRevisionIfAvailable(tripId);
+
     return {
       date: dateISO,
       schedule,
@@ -2060,7 +2161,7 @@ export class TripsService {
       }
     }
 
-    // 营业时间不作为证据：行程项已展示营业时间，证据列表不再重复
+    evidenceItems.push(...this.buildPlaceMetadataEvidenceItems(trip));
 
     // 应用类型过滤
     let filteredItems = evidenceItems;
@@ -2142,6 +2243,182 @@ export class TripsService {
       limit,
       offset,
     };
+  }
+
+  private buildPlaceMetadataEvidenceItems(trip: any): EvidenceItemDto[] {
+    const items: EvidenceItemDto[] = [];
+    const seen = new Set<string>();
+
+    const addEvidence = (item: EvidenceItemDto) => {
+      if (seen.has(item.id)) return;
+      seen.add(item.id);
+      items.push(item);
+    };
+
+    const getDayNumber = (tripDay: any, index: number) => {
+      if (!trip.startDate || !tripDay.date) return index + 1;
+      const start = DateTime.fromJSDate(new Date(trip.startDate)).startOf('day');
+      const day = DateTime.fromJSDate(new Date(tripDay.date)).startOf('day');
+      const diff = Math.round(day.diff(start, 'days').days);
+      return Number.isFinite(diff) ? diff + 1 : index + 1;
+    };
+
+    for (let dayIndex = 0; dayIndex < (trip.TripDay || []).length; dayIndex++) {
+      const tripDay = trip.TripDay[dayIndex];
+      const dayNumber = getDayNumber(tripDay, dayIndex);
+
+      for (const itineraryItem of tripDay.ItineraryItem || []) {
+        const place = itineraryItem.Place;
+        if (!place) continue;
+
+        const metadata = place.metadata || {};
+        const placeName = place.nameCN || place.nameEN || `POI ${place.id}`;
+        const affectedItemIds = [itineraryItem.id].filter(Boolean);
+        const common = {
+          poiId: String(place.id),
+          day: dayNumber,
+          affectedItemIds,
+        };
+
+        const weather = metadata.weatherInfo || metadata.weather;
+        if (weather) {
+          const timestamp =
+            metadata.weatherFetchedAt ||
+            weather.lastUpdated ||
+            weather.updatedAt ||
+            new Date().toISOString();
+          const condition = weather.condition || weather.text || weather.summary || '已获取天气信息';
+          const temperature =
+            typeof weather.temperature === 'number'
+              ? `，温度 ${weather.temperature}°C`
+              : '';
+          const wind =
+            typeof weather.windSpeed === 'number'
+              ? `，风速 ${Math.round(weather.windSpeed * 10) / 10}`
+              : '';
+          const hasAlert = Array.isArray(weather.alerts) && weather.alerts.length > 0;
+          addEvidence({
+            id: `ev-place-${place.id}-weather-${itineraryItem.id}`,
+            type: EvidenceType.WEATHER,
+            title: `${placeName}天气`,
+            description: `${condition}${temperature}${wind}`,
+            source: weather.source || metadata.weatherSource || 'weather',
+            timestamp,
+            severity: hasAlert ? EvidenceSeverity.HIGH : EvidenceSeverity.LOW,
+            metadata: {
+              ...common,
+              evidenceSource: 'place.metadata.weather',
+              weather,
+            },
+            ...common,
+          });
+        }
+
+        const roadStatus = metadata.roadStatus || metadata.road_status;
+        if (roadStatus || typeof metadata.roadClosure === 'boolean') {
+          const isClosed =
+            roadStatus?.isOpen === false ||
+            roadStatus?.status === 'closed' ||
+            metadata.roadClosure === true;
+          const timestamp =
+            metadata.roadStatusFetchedAt ||
+            roadStatus?.lastUpdated ||
+            roadStatus?.updatedAt ||
+            new Date().toISOString();
+          addEvidence({
+            id: `ev-place-${place.id}-road-${itineraryItem.id}`,
+            type: EvidenceType.ROAD_CLOSURE,
+            title: `${placeName}路况`,
+            description: roadStatus?.reason || (isClosed ? '存在道路封闭风险' : '道路状态已获取'),
+            source: roadStatus?.source || 'road.is',
+            timestamp,
+            severity: isClosed ? EvidenceSeverity.HIGH : EvidenceSeverity.LOW,
+            metadata: {
+              ...common,
+              evidenceSource: 'place.metadata.roadStatus',
+              currentStatus: isClosed ? 'closed' : 'open',
+              roadStatus,
+              roadClosure: metadata.roadClosure,
+            },
+            ...common,
+          });
+        }
+
+        const openingHours =
+          metadata.openingHours_v1 ||
+          metadata.openingHours ||
+          metadata.opening_hours ||
+          metadata.basic?.openingHours ||
+          metadata.visit_info?.opening_hours;
+        if (openingHours) {
+          const timestamp =
+            metadata.openingHoursFetchedAt ||
+            metadata.openingHoursUpdatedAt ||
+            openingHours.updatedAt ||
+            openingHours.lastUpdated ||
+            new Date().toISOString();
+          const source = openingHours.source || metadata.openingHoursSource || 'opening_hours';
+          const todayHours =
+            typeof openingHours === 'string'
+              ? openingHours
+              : openingHours.osmFormat ||
+                openingHours.notes ||
+                metadata.basic?.openingHours ||
+                '营业时间已获取';
+          addEvidence({
+            id: `ev-place-${place.id}-opening-hours-${itineraryItem.id}`,
+            type: EvidenceType.OPENING_HOURS,
+            title: `${placeName}营业时间`,
+            description: todayHours,
+            source,
+            timestamp,
+            severity: EvidenceSeverity.LOW,
+            metadata: {
+              ...common,
+              evidenceSource: 'place.metadata.openingHours',
+              currentStatus: 'unknown',
+              todayHours,
+              openingHours,
+              timezone: openingHours.timezone || metadata.timezone,
+            },
+            ...common,
+          });
+        }
+
+        const booking =
+          metadata.bookingConfirmation ||
+          metadata.reservation ||
+          metadata.booking ||
+          metadata.booking_notes;
+        if (booking) {
+          const timestamp =
+            booking.updatedAt ||
+            booking.confirmedAt ||
+            metadata.bookingFetchedAt ||
+            new Date().toISOString();
+          addEvidence({
+            id: `ev-place-${place.id}-booking-${itineraryItem.id}`,
+            type: EvidenceType.BOOKING,
+            title: `${placeName}预订信息`,
+            description:
+              typeof booking === 'string'
+                ? booking
+                : booking.note || booking.status || '已获取预订相关信息',
+            source: booking.source || 'booking',
+            timestamp,
+            severity: EvidenceSeverity.MEDIUM,
+            metadata: {
+              ...common,
+              evidenceSource: 'place.metadata.booking',
+              booking,
+            },
+            ...common,
+          });
+        }
+      }
+    }
+
+    return items;
   }
 
   /**
@@ -3621,6 +3898,17 @@ export class TripsService {
    * 格式：{目的地名称} {开始日期}
    * 例如：冰岛 2025-06-01
    */
+  private async bumpTripRevisionIfAvailable(tripId: string): Promise<void> {
+    if (!this.tripRevisionBump) return;
+    try {
+      await this.tripRevisionBump.bump(tripId);
+    } catch (error) {
+      this.logger.warn(
+        `bump trip revision failed trip=${tripId}: ${(error as Error).message}`,
+      );
+    }
+  }
+
   private generateDefaultTripName(params: {
     destination: string;
     startDate: string;

@@ -82,6 +82,35 @@ const DIVERSITY_RATIOS = {
   random: 0.1,
 };
 
+const ACTIVITY_PREFERENCE_SCORE_REASON = 'activity_preference_boost';
+
+type ActivityPreferenceRetrievalProfile = {
+  keywords: string[];
+  canonicalTypes: string[];
+  tags: string[];
+};
+
+const ACTIVITY_PREFERENCE_PROFILES: Record<string, ActivityPreferenceRetrievalProfile> = {
+  glacier_hiking: {
+    keywords: ['冰川', '冰洞', 'glacier', 'ice cave', 'glacier walk'],
+    canonicalTypes: [
+      'GLACIER_WALK',
+      'ICE_CAVE',
+      'ATTRACTION_NATURE_GLACIER',
+      'ATTRACTION_NATURE_GLACIER_LAGOON',
+    ],
+    tags: ['冰川', '冰洞', 'glacier', 'ice_cave', 'glacier_walk', 'adventure'],
+  },
+  adventure_activities: {
+    keywords: ['火山', '峡谷', '漂流', 'volcano', 'canyon', 'rafting'],
+    canonicalTypes: [
+      'ATTRACTION_NATURE_VOLCANO',
+      'ATTRACTION_NATURE_CANYON',
+    ],
+    tags: ['火山', '峡谷', '漂流', 'volcano', 'canyon', 'rafting', 'adventure'],
+  },
+};
+
 @Injectable()
 export class CandidateRetrievalEngine {
   private readonly logger = new Logger(CandidateRetrievalEngine.name);
@@ -138,6 +167,29 @@ export class CandidateRetrievalEngine {
         bucketed = this.mergeSignaturePlaces(bucketed, mustHavePlaces);
         this.logger.log(`mustHavePois: 合并 ${mustHavePlaces.length} 个必含景点`);
       }
+    }
+
+    // Step 2a.5: 活动偏好召回/加权 - 用户表达兴趣时倾向纳入相关 POI，但不作为硬性必去
+    const activityProfile = this.buildActivityPreferenceProfile(dto.activityPreferences);
+    if (activityProfile) {
+      const activityPlaces = await this.fetchMustHavePois(countryCode, activityProfile.keywords);
+      if (activityPlaces.length > 0) {
+        bucketed = this.mergeSignaturePlaces(
+          bucketed,
+          activityPlaces.map((place) => ({
+            ...place,
+            compositeScore: 8.5,
+            poiPlanningScoreReasons: [
+              ...(place.poiPlanningScoreReasons ?? []),
+              ACTIVITY_PREFERENCE_SCORE_REASON,
+            ],
+          })),
+        );
+      }
+      bucketed = this.applyActivityPreferenceBoost(bucketed, activityProfile);
+      this.logger.log(
+        `activityPreferences: 偏好=${dto.activityPreferences?.join(',') ?? ''}, 召回=${activityPlaces.length}`,
+      );
     }
 
     // Step 2b: RouteDirection 偏好检索（Phase 4）- 合并 signature/RouteTemplate Place，提升 compositeScore
@@ -325,6 +377,68 @@ export class CandidateRetrievalEngine {
       }
     }
     return [...byId.values()];
+  }
+
+  private buildActivityPreferenceProfile(
+    activityPreferences?: string[],
+  ): ActivityPreferenceRetrievalProfile | null {
+    if (!activityPreferences?.length) return null;
+    const merged: ActivityPreferenceRetrievalProfile = {
+      keywords: [],
+      canonicalTypes: [],
+      tags: [],
+    };
+    for (const pref of activityPreferences) {
+      const profile = ACTIVITY_PREFERENCE_PROFILES[pref];
+      if (!profile) continue;
+      merged.keywords.push(...profile.keywords);
+      merged.canonicalTypes.push(...profile.canonicalTypes);
+      merged.tags.push(...profile.tags);
+    }
+    merged.keywords = [...new Set(merged.keywords)];
+    merged.canonicalTypes = [...new Set(merged.canonicalTypes)];
+    merged.tags = [...new Set(merged.tags.map((tag) => tag.toLowerCase()))];
+    return merged.keywords.length || merged.canonicalTypes.length || merged.tags.length ? merged : null;
+  }
+
+  private applyActivityPreferenceBoost(
+    bucketed: Array<CandidatePlace & { compositeScore: number }>,
+    profile: ActivityPreferenceRetrievalProfile,
+  ): Array<CandidatePlace & { compositeScore: number }> {
+    const canonicalTypes = new Set(profile.canonicalTypes.map((type) => type.toLowerCase()));
+    const tags = new Set(profile.tags.map((tag) => tag.toLowerCase()));
+    const keywords = profile.keywords.map((keyword) => keyword.toLowerCase());
+
+    for (const place of bucketed) {
+      const canonicalType = place.canonicalType?.toLowerCase();
+      const placeTags = (place.tags ?? []).map((tag) => String(tag).toLowerCase());
+      const haystack = [
+        place.nameCN,
+        place.nameEN,
+        place.category,
+        place.canonicalType,
+        ...placeTags,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const matched =
+        (canonicalType ? canonicalTypes.has(canonicalType) : false) ||
+        placeTags.some((tag) => tags.has(tag)) ||
+        keywords.some((keyword) => haystack.includes(keyword));
+
+      if (!matched) continue;
+      place.compositeScore = Math.max(place.compositeScore + 2.5, 8.5);
+      place.poiPlanningScoreReasons = [
+        ...new Set([
+          ...(place.poiPlanningScoreReasons ?? []),
+          ACTIVITY_PREFERENCE_SCORE_REASON,
+        ]),
+      ];
+    }
+
+    return bucketed;
   }
 
   /**
@@ -549,7 +663,19 @@ export class CandidateRetrievalEngine {
         const rating = place.rating ?? 0;
         const popularity = rating * 2;
         const editorialScore = rating; // 无独立 editorialScore 时用 rating 近似
-        const compositeScore = 0.5 * rating + 0.3 * popularity + 0.2 * editorialScore;
+
+        // 🆕 增强评分：加入特色维度
+        const rarityScore = this.computeRarityScore(place.category, countryCode);
+        const culturalScore = this.computeCulturalScore(metadata);
+        const uniquenessScore = this.computeUniquenessScore(metadata?.experienceVector);
+
+        // 🆕 调整权重：特色维度占 40%
+        const compositeScore =
+          0.3 * rating +           // 降低纯评分权重（从0.5）
+          0.2 * popularity +        // 降低热度权重（从0.3）
+          0.2 * rarityScore +      // 新增：稀缺性
+          0.15 * culturalScore +   // 新增：文化特色
+          0.15 * uniquenessScore;  // 新增：独特性
 
         const ev = this.experienceVectorService?.getOrCompute({
           category: place.category,
@@ -591,6 +717,7 @@ export class CandidateRetrievalEngine {
 
   /**
    * Step 3 & 4: 综合评分 + 多样性采样
+   * 🆕 改进 hidden gems 识别：不只是取中间段，而是识别真正的小众但高质量景点
    * Top rated 40% + Popular 30% + Hidden gems 20% + Random 10%
    */
   private diversitySample(
@@ -613,17 +740,26 @@ export class CandidateRetrievalEngine {
     const sorted = [...places].sort((a, b) => b.compositeScore - a.compositeScore);
     const n = sorted.length;
 
-    const topRatedCount = Math.ceil(n * DIVERSITY_RATIOS.topRated);
-    const popularCount = Math.ceil(n * DIVERSITY_RATIOS.popular);
-    const hiddenGemsCount = Math.ceil(n * DIVERSITY_RATIOS.hiddenGems);
-    const randomCount = Math.ceil(n * DIVERSITY_RATIOS.random);
-
     const selectedIds = new Set<number>();
+
+    // 🆕 首先保护必选锚点
     for (const p of sorted) {
       if (p.poiPlanningAdmissionProtected) {
         selectedIds.add(p.id);
       }
     }
+
+    // 🆕 改进 hidden gems 识别：评分不错（4.0+）但热度不高（<6）的景点
+    const hiddenGems = sorted.filter(p => {
+      const rating = p.rating ?? 0;
+      const popularity = p.popularity ?? 0;
+      return rating >= 4.0 && popularity < 6 && !selectedIds.has(p.id);
+    });
+
+    const topRatedCount = Math.ceil(n * DIVERSITY_RATIOS.topRated);
+    const popularCount = Math.ceil(n * DIVERSITY_RATIOS.popular);
+    const hiddenGemsCount = Math.ceil(n * DIVERSITY_RATIOS.hiddenGems);
+    const randomCount = Math.ceil(n * DIVERSITY_RATIOS.random);
 
     // Top 40%: 最高分
     for (let i = 0; i < Math.min(topRatedCount, sorted.length); i++) {
@@ -636,10 +772,18 @@ export class CandidateRetrievalEngine {
       selectedIds.add(sorted[popularStart + i].id);
     }
 
-    // Hidden gems 20%: 中后段（评分中等但非最热）
-    const hiddenStart = Math.floor(n * 0.5);
-    for (let i = 0; i < hiddenGemsCount && hiddenStart + i < n; i++) {
-      selectedIds.add(sorted[hiddenStart + i].id);
+    // 🆕 Hidden gems 20%: 优先选择真正的小众高质量景点
+    const hiddenGemsSelected = Math.min(hiddenGemsCount, hiddenGems.length);
+    for (let i = 0; i < hiddenGemsSelected; i++) {
+      selectedIds.add(hiddenGems[i].id);
+    }
+
+    // 如果 hidden gems 不够，从中后段补充
+    if (hiddenGemsSelected < hiddenGemsCount) {
+      const hiddenStart = Math.floor(n * 0.5);
+      for (let i = 0; i < (hiddenGemsCount - hiddenGemsSelected) && hiddenStart + i < n; i++) {
+        selectedIds.add(sorted[hiddenStart + i].id);
+      }
     }
 
     // Random 10%: 随机探索
@@ -673,5 +817,70 @@ export class CandidateRetrievalEngine {
       [TravelStyle.ADVENTURE]: ['ATTRACTION'],
     };
     return styleMap[style] || ['ATTRACTION', 'RESTAURANT'];
+  }
+
+  /**
+   * 🆕 计算稀缺性评分：基于类别在该国家的稀有程度
+   * 稀有类别（如博物馆、历史遗迹）得分更高
+   */
+  private computeRarityScore(category: string, countryCode: string): number {
+    // 定义各国家的稀有类别
+    const rareCategoriesByCountry: Record<string, Set<string>> = {
+      CN: new Set(['MUSEUM', 'HISTORICAL_SITE', 'TEMPLE', 'GARDEN']),
+      JP: new Set(['MUSEUM', 'SHRINE', 'TEMPLE', 'ONSEN', 'CASTLE']),
+      IS: new Set(['GLACIER', 'VOLCANO', 'GEYSER', 'WATERFALL', 'NATURE_RESERVE']),
+      FR: new Set(['MUSEUM', 'MONUMENT', 'CHATEAU', 'CATHEDRAL']),
+      IT: new Set(['MUSEUM', 'RUINS', 'CHURCH', 'VILLA']),
+      GB: new Set(['CASTLE', 'PALACE', 'CATHEDRAL', 'GARDEN']),
+    };
+
+    const rareCategories = rareCategoriesByCountry[countryCode] || new Set(['MUSEUM', 'HISTORICAL_SITE', 'NATURE_RESERVE']);
+    return rareCategories.has(category) ? 1.0 : 0.6;
+  }
+
+  /**
+   * 🆕 计算文化特色评分：基于 tags 和 canonicalType
+   * 具有地域文化特色的 POI 得分更高
+   */
+  private computeCulturalScore(metadata: PlaceMetadata | null): number {
+    if (!metadata) return 0.5;
+
+    const tags = metadata.rawTags || [];
+    const canonicalType = metadata.canonicalType || '';
+    const tagText = tags.join(' ').toLowerCase();
+    const typeText = canonicalType.toLowerCase();
+
+    // 文化特色关键词
+    const culturalKeywords = [
+      'heritage', 'historic', 'ancient', 'traditional', 'cultural',
+      'temple', 'shrine', 'mosque', 'church', 'cathedral',
+      'castle', 'palace', 'fortress', 'monument',
+      '遗产', '古迹', '传统', '文化', '寺庙', '神社', '教堂', '城堡', '宫殿',
+    ];
+
+    const hasCulturalKeyword = culturalKeywords.some(kw =>
+      tagText.includes(kw) || typeText.includes(kw)
+    );
+
+    return hasCulturalKeyword ? 1.0 : 0.5;
+  }
+
+  /**
+   * 🆕 计算独特性评分：基于体验向量的多样性
+   * 体验向量越独特（与主流差异越大），得分越高
+   */
+  private computeUniquenessScore(experienceVector?: ExperienceVector): number {
+    if (!experienceVector) return 0.5;
+
+    // 简化版：基于体验向量的熵或方差计算独特性
+    // 这里使用一个简化的启发式方法
+    const values = Object.values(experienceVector);
+    if (values.length === 0) return 0.5;
+
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+
+    // 方差越大，说明体验向量越独特
+    return Math.min(1.0, 0.5 + variance * 2);
   }
 }

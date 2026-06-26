@@ -2215,11 +2215,14 @@ export class PlanningAssistantV2Service {
       language: dto.language,
       countryCode: dto.context?.countryCode,
       tripId: dto.context?.tripId,
+
       context: dto.context ? {
         currentLocation: dto.context.currentLocation?.lat !== undefined && dto.context.currentLocation?.lng !== undefined
           ? { lat: dto.context.currentLocation.lat, lng: dto.context.currentLocation.lng }
           : undefined,
         timezone: dto.context.timezone,
+        tripId: dto.context.tripId,
+        countryCode: dto.context.countryCode,
       } : undefined,
     });
 
@@ -2253,6 +2256,10 @@ export class PlanningAssistantV2Service {
         // params字段在PlanningAssistantResponse中不存在，保持为undefined
         params: undefined,
       }));
+    }
+
+    if (response.personaEvaluation) {
+      chatResponse.personaEvaluation = response.personaEvaluation;
     }
 
     return chatResponse;

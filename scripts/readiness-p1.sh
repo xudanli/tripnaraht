@@ -81,6 +81,15 @@ npm run test:ao-p0 || ao_p0=1
 decision_os=0
 npm run test:decision-os:unit || decision_os=1
 
+decision_runtime=0
+decision_runtime_skipped="false"
+if [ "${READINESS_P1_SKIP_DECISION_RUNTIME:-}" = "1" ]; then
+  decision_runtime_skipped="true"
+  echo "readiness:p1 — SKIP test:decision-runtime (READINESS_P1_SKIP_DECISION_RUNTIME=1)"
+else
+  npm run test:decision-runtime || decision_runtime=1
+fi
+
 td_p0=0
 if [ "${READINESS_P1_SKIP_TD_REPLAY:-}" = "1" ]; then
   echo "readiness:p1 — SKIP test:td-replay → npm run test:td-p0-core only (READINESS_P1_SKIP_TD_REPLAY=1)"
@@ -91,6 +100,9 @@ fi
 
 ao_p1=0
 npm run test:ao-p1-contract || ao_p1=1
+
+readiness_health=0
+npm run test:readiness-alignment || readiness_health=1
 
 execution_os_stability=0
 execution_os_stability_skipped="false"
@@ -144,7 +156,7 @@ fi
 if [ "${READINESS_P1_SKIP_TYPECHECK_TRIPS:-}" != "1" ] && [ "$typecheck_trips" -ne 0 ]; then
   overall=1
 fi
-if [ "$build" -ne 0 ] || [ "$ao_p0" -ne 0 ] || [ "$decision_os" -ne 0 ] || [ "$td_p0" -ne 0 ] || [ "$ao_p1" -ne 0 ]; then
+if [ "$build" -ne 0 ] || [ "$ao_p0" -ne 0 ] || [ "$decision_os" -ne 0 ] || [ "$decision_runtime" -ne 0 ] || [ "$td_p0" -ne 0 ] || [ "$ao_p1" -ne 0 ] || [ "$readiness_health" -ne 0 ]; then
   overall=1
 fi
 if [ "$execution_os_stability_skipped" != "true" ] && [ "$execution_os_stability" -ne 0 ]; then
@@ -157,6 +169,9 @@ if [ "$route_routing_gate_skipped" != "true" ] && [ "$route_routing_gate" -ne 0 
   overall=1
 fi
 if [ "$routing_classifier_eval_skipped" != "true" ] && [ "$routing_classifier_eval" -ne 0 ]; then
+  overall=1
+fi
+if [ "$decision_runtime_skipped" != "true" ] && [ "$decision_runtime" -ne 0 ]; then
   overall=1
 fi
 if [ "$roll_skipped" = "false" ] && [ "$roll_exit" = "1" ]; then
@@ -215,6 +230,12 @@ else
   routing_classifier_block='"ci_routing_classifier_eval": { "skipped": false, "exitCode": '"$routing_classifier_eval"' }'
 fi
 
+if [ "$decision_runtime_skipped" = "true" ]; then
+  decision_runtime_block='"test_decision_runtime": { "skipped": true, "exitCode": null }'
+else
+  decision_runtime_block='"test_decision_runtime": { "skipped": false, "exitCode": '"$decision_runtime"' }'
+fi
+
 printf '%s\n' "{
   \"schema\": \"readiness-p1/v2\",
   \"timestamp\": \"$TS\",
@@ -232,9 +253,11 @@ printf '%s\n' "{
     $roll_block,
     \"test_ao_p0\": { \"exitCode\": $ao_p0 },
     \"test_decision_os_unit\": { \"exitCode\": $decision_os },
+    $decision_runtime_block,
     \"test_td_p0\": { \"exitCode\": $td_p0 },
     $td_replay_block,
     \"test_ao_p1_contract\": { \"exitCode\": $ao_p1 },
+    \"test_readiness_alignment\": { \"exitCode\": $readiness_health },
     $execution_os_block,
     $cid_block,
     $route_routing_block,

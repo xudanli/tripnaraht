@@ -24,6 +24,10 @@ import {
   applyMarathonIntakeSignalsToTripPlan,
   buildMarathonIntakeSignalsFromGaps,
 } from '../utils/marathon-intake-signals.util';
+import { SmartInferenceService } from '../services/smart-inference.service';
+import { GateCoordinatorService } from '../services/gate-coordinator.service';
+import { FeatureFlagService } from '../services/feature-flag.service';
+
 
 @Injectable()
 export class IntakeExecutorService implements IIntakeExecutor {
@@ -33,6 +37,9 @@ export class IntakeExecutorService implements IIntakeExecutor {
     @Optional() private readonly plannerAgent?: ClaudePlannerAgentService,
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     private readonly intakeCompiler: IntakeCompilerService = new IntakeCompilerService(),
+    @Optional() private readonly smartInference?: SmartInferenceService,
+    @Optional() private readonly gateCoordinator?: GateCoordinatorService,
+    @Optional() private readonly featureFlag?: FeatureFlagService,
   ) {}
 
   async execute(
@@ -65,7 +72,7 @@ export class IntakeExecutorService implements IIntakeExecutor {
     intent?: string;
     candidate_structure?: { suggested_days?: number; suggested_route?: string[]; key_pois?: string[] };
   }> {
-    const tripPlanRequest = ctx.tripPlanRequest as TripPlanRequest;
+    let tripPlanRequest = ctx.tripPlanRequest as TripPlanRequest;
     if (!tripPlanRequest) {
       this.logger.warn('[IntakeExecutor] 缺少 tripPlanRequest，返回空结果');
       return {
@@ -73,6 +80,66 @@ export class IntakeExecutorService implements IIntakeExecutor {
         gaps: [],
         clarificationQuestions: [],
       };
+    }
+
+    // 🆕 P0: 智能推断 - 尝试填充缺失信息
+    if (this.smartInference && this.featureFlag?.isEnabled('enableSmartInference')) {
+      try {
+        const userInput = this.extractUserInput(ctx);
+        if (userInput) {
+          const inference = await this.smartInference.inferDefaults(userInput, tripPlanRequest);
+
+          // 应用高置信度的推断结果（>0.8）
+          // 注意：只填充 TripPlanRequest 中存在的字段
+          if (inference.destination.confidence > 0.8) {
+            tripPlanRequest = { ...tripPlanRequest, destination: inference.destination.value };
+            this.logger.log(`[IntakeExecutor] 智能推断目的地: ${inference.destination.value} (置信度: ${inference.destination.confidence})`);
+          }
+          if (inference.days.confidence > 0.8) {
+            tripPlanRequest = { ...tripPlanRequest, days: inference.days.value };
+            this.logger.log(`[IntakeExecutor] 智能推断天数: ${inference.days.value} (置信度: ${inference.days.confidence})`);
+          }
+          // transport/style/intensity 不在 TripPlanRequest 中，跳过
+          // 这些字段可能在其他上下文中使用
+        }
+      } catch (error) {
+        this.logger.warn(`[IntakeExecutor] 智能推断失败: ${(error as Error)?.message}，继续原有流程`);
+      }
+    }
+
+    // 🆕 P0: Gate检查 - 在INTAKE阶段执行Gate检查
+    if (this.gateCoordinator && this.featureFlag?.isEnabled('enableGateCoordinator')) {
+      try {
+        const gateResult = await this.gateCoordinator.executeGateCheck(tripPlanRequest);
+
+        // 如果有Critical Blocker，直接返回
+        if (gateResult.hasCriticalBlocker) {
+          this.logger.warn(`[IntakeExecutor] Gate检查发现Critical Blocker，阻止下游执行`);
+          const gateGaps: IntakeGap[] = gateResult.results
+            .filter(r => !r.passed && r.blocker?.severity === 'critical')
+            .map(r => ({
+              type: 'SPEC_TYPE_ERROR' as const,
+              severity: 'HARD' as const,
+              detail: r.blocker?.message || 'Gate检查失败',
+            }));
+
+          return {
+            tripPlanRequest,
+            gaps: gateGaps,
+            clarificationQuestions: gateResult.results
+              .filter(r => !r.passed && r.blocker)
+              .map(r => ({
+                id: `gate_${r.blocker?.code}`,
+                question: r.blocker?.message || '',
+                type: 'confirmation',
+                required: r.blocker?.severity === 'critical',
+                hint: r.blocker?.suggestedAction,
+              })),
+          };
+        }
+      } catch (error) {
+        this.logger.warn(`[IntakeExecutor] Gate检查失败: ${(error as Error)?.message}，继续原有流程`);
+      }
     }
 
     let gaps: IntakeGap[];
@@ -195,5 +262,39 @@ export class IntakeExecutorService implements IIntakeExecutor {
       intent,
       candidate_structure,
     };
+  }
+
+  /**
+   * 🆕 从上下文中提取用户输入
+   */
+  private extractUserInput(ctx: IntakeExecutorContext): string {
+    // 尝试从多个来源提取用户输入
+    const message = (ctx as any)?.message;
+    const originalRequest = (ctx as any)?.originalRequest;
+    const tripPlanRequest = ctx.tripPlanRequest as TripPlanRequest;
+
+    if (message && typeof message === 'string') {
+      return message;
+    }
+    if (originalRequest && typeof originalRequest === 'string') {
+      return originalRequest;
+    }
+    if (tripPlanRequest) {
+      // 从TripPlanRequest构建简化的输入描述
+      const parts: string[] = [];
+      if (tripPlanRequest.destination) {
+        // destination 可能是字符串或坐标对象
+        const dest = tripPlanRequest.destination;
+        if (typeof dest === 'string') {
+          parts.push(dest);
+        } else {
+          parts.push('坐标位置');
+        }
+      }
+      if (tripPlanRequest.days) parts.push(`${tripPlanRequest.days}天`);
+      // transport/style/intensity 不在 TripPlanRequest 中，跳过
+      return parts.join(' ');
+    }
+    return '';
   }
 }

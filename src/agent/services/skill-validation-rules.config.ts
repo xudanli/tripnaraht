@@ -40,6 +40,42 @@ export const SKILL_VALIDATION_RULES: Record<string, SkillValidationRule> = {
       tripId: (context, request) => context.tripId || request.trip_id,
     },
   },
+
+  'decision.guardianNegotiate': {
+    dependencies: [
+      { param: 'world', alternatives: ['tripId'] },
+      { param: 'tripId', alternatives: ['world'] },
+      { param: 'plan', alternatives: ['tripId'] },
+    ],
+    extractors: {
+      tripId: (context, request) => context.tripId || request.trip_id,
+    },
+  },
+
+  'readiness.guardianNegotiation.get': {
+    dependencies: [{ param: 'tripId' }],
+    extractors: {
+      tripId: (context, request) => context.tripId || request.trip_id,
+    },
+  },
+
+  'readiness.cascadeImpact.get': {
+    dependencies: [{ param: 'tripId' }],
+    extractors: {
+      tripId: (context, request) => context.tripId || request.trip_id,
+    },
+  },
+
+  'readiness.applyRepair': {
+    dependencies: [
+      { param: 'tripId' },
+      { param: 'blockerId' },
+      { param: 'optionId' },
+    ],
+    extractors: {
+      tripId: (context, request) => context.tripId || request.trip_id,
+    },
+  },
   
   'world.buildContext': {
     dependencies: [

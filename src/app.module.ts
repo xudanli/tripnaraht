@@ -6,6 +6,7 @@ import { INCREMENTAL_RECOMPUTE_LLM } from './agent/memory/decision-ledger/increm
 import { createIncrementalRecomputeLlmAdapter } from './agent/adapters/llm/incremental-recompute.llm-adapter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
+import { TripRevisionModule } from './trips/trip-revision.module';
 import { PlacesModule } from './places/places.module';
 import { TripsModule } from './trips/trips.module';
 import { ItineraryItemsModule } from './itinerary-items/itinerary-items.module';
@@ -76,6 +77,8 @@ import { OdysseyIntakeModule } from './odyssey-intake/odyssey-intake.module';
 import { MatchSquareModule } from './match-square/match-square.module';
 import { ReputationOsModule } from './reputation-os/reputation-os.module';
 import { MatchLearningModule } from './match-learning/match-learning.module';
+import { IdentityGovernanceModule } from './identity-governance/identity-governance.module';
+import { Gate1Module } from './gate1/gate1.module';
 
 @Module({
   imports: [
@@ -89,6 +92,7 @@ import { MatchLearningModule } from './match-learning/match-learning.module';
     }),
     ScheduleModule.forRoot(), // 提供定时任务支持（SchedulerRegistry）
     PrismaModule,
+    TripRevisionModule,
     SharedMemoryModule,
     RoadIsModule, // Road.is provider + spatial segment latest_status sync (opt-in via ROAD_IS_SEGMENT_SYNC_ENABLED)
     AuthModule,
@@ -173,6 +177,8 @@ import { MatchLearningModule } from './match-learning/match-learning.module';
     AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
     SafetyModule, // 安全预警模块（地缘政治风险评估、旅行警告、安全通知）
     WorldModelSchedulerModule, // 专利实施例：世界模型异步推送调度（WeatherAgent → pushEnvironmentDelta）
+    IdentityGovernanceModule, // 账号、验证、发布权限（R0 身份治理）
+    Gate1Module, // Gate 1 Human-Assisted Concierge 验证实验
   ],
   providers: [
     {
@@ -183,4 +189,3 @@ import { MatchLearningModule } from './match-learning/match-learning.module';
   ],
 })
 export class AppModule {}
-

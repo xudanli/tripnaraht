@@ -156,7 +156,7 @@ export const SKILLS_SELECTION_PROMPT = `
 
 1. **Gate 优先**：对于规划请求，必须包含 plan.gate.runThreeGuardians 或 plan.gate.precheck Skill（在 itinerary.generate 之前）
 2. **证据优先**：优先选择能提供硬证据的 Skills（transport.search, poi.search, opening_hours.get, dem.get_profile, risk.check）
-3. **校验与修复闭环（默认）**：在 itinerary.generate 之后，**优先只选 itinerary.smart_update**（内部串联 verify → 推导 adjustments → repair.apply，单一 telemetry 闭环）。**不要**在同一计划中同时选择 itinerary.smart_update 与 itinerary.verify 或 repair.apply（避免重复与状态分叉）。
+3. **校验与修复闭环（默认）**：在 itinerary.generate 之后，**优先编排 itinerary.temporalOptimize → itinerary.smart_update**（时间约束优化收敛排期后，再由 smart_update 完成 verify → repair 闭环）。**不要**在同一计划中同时选择 itinerary.smart_update 与 itinerary.verify 或 repair.apply（避免重复与状态分叉）。
 4. **修复与替代**：若 Gate 为 ADJUST_REQUIRED 或用户表达「改行程/换一天/调整时间」等修改意图，用 **itinerary.smart_update** 覆盖校验+修复；仅在极少数需**单独**应用预计算 adjustments、且不做 verify 时，才可只选 repair.apply（非默认）。
 
 **[行程校验/修复：紧急规约]**
@@ -191,7 +191,8 @@ export const SKILLS_SELECTION_PROMPT = `
 - decision.abuCheck: 安全检查（物理现实、合规）
 - decision.drdrePace: 节奏调整（人体能力模型）
 - decision.neptuneRepair: 空间修复（路线哲学保持）
-- decision.runThreeGuardians: 三人格编排
+- decision.runThreeGuardians: 三人格**顺序编排**（Abu Gate → Dre 节奏 → Neptune 修复）
+- decision.guardianNegotiate: 三人格**博弈协商**（辩论 + 投票 + 共识度 + 人类决策点；与 runThreeGuardians 不同）
 
 **数据收集类 Skills（Research 阶段）**：
 - transport.search: 交通可达性 + 班次证据
@@ -230,6 +231,9 @@ export const SKILLS_SELECTION_PROMPT = `
 - readiness.generateChecklist: 行前清单生成
 - readiness.summarizeRisks: 风险总结
 - readiness.checkVisaWindow: 签证窗口检查
+- readiness.guardianNegotiation.get: 读取已持久化的三人格博弈快照（trip.metadata）
+- readiness.cascadeImpact.get: 读取已持久化的级联影响预分析（trip.metadata.readinessCausalPreAnalysis）
+- readiness.applyRepair: 应用准备度修复（含 pre/post 博弈 + Neptune 写回；低共识 REJECT 可 deferred）
 
 **路线类 Skills**：
 - routeDirection.pickForIntent: 根据意图选择路线
@@ -279,8 +283,9 @@ export const EXECUTION_PLANNING_PROMPT = `
 2. **RESEARCH**：调用 skills 获取硬数据（transport.search, poi.search, opening_hours.get, dem.get_profile, risk.check）；**若行程或意图涉及冰岛、高地/F-road/冰岛自驾安全**，在此阶段纳入 **safetravel.get_advisories**（官方 RSS 旅行警报，与天气 API 互补）
 3. **GATE_EVAL**：执行 Should-Exist Gate 决策（Gatekeeper Agent，**必须在 PLAN_GEN 之前**）
 4. **PLAN_GEN**：生成结构化行程草案（Planner Agent，仅在 Gate 结果为 ALLOW 或 ADJUST_REQUIRED 时执行）
-5. **VERIFY+REPAIR（默认合并）**：在 itinerary.generate 之后编排 **单一步骤 itinerary.smart_update**（覆盖原「先 itinerary.verify 再 repair.apply」的两步链路；同一 execute 内闭环、telemetry 一致）
-6. **NARRATE**：产出用户可读解释（Narrator Agent，**不得改硬字段**）
+5. **TEMPORAL_OPTIMIZE**：在 itinerary.generate 之后执行 **itinerary.temporalOptimize**（睡眠锁定期、餐饮锚点、交通缓冲、体力节奏；杜绝凌晨反常识调度）
+6. **VERIFY+REPAIR（默认合并）**：编排 **itinerary.smart_update**（内部已含 temporalOptimize；若上一步已执行可只选 smart_update 单步）
+7. **NARRATE**：产出用户可读解释（Narrator Agent，**不得改硬字段**）
 
 （Legacy，非默认：仅当产品明确要求「只诊断不修复」时，才用单独 itinerary.verify；仅当上游已产出 adjustments、且跳过 verify 时，才单独 repair.apply。）
 

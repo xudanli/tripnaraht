@@ -10,6 +10,7 @@ import {
 import { TransportDecisionService } from './transport-decision.service';
 import { SmartRoutesService } from './services/smart-routes.service';
 import { RouteCacheService } from './services/route-cache.service';
+import { TravelTimeEstimatorService, type PoiTravelMode } from './services/travel-time-estimator.service';
 
 /**
  * 交通路线规划服务
@@ -25,6 +26,7 @@ export class TransportRoutingService {
     private decisionService: TransportDecisionService,
     private smartRoutesService: SmartRoutesService,
     private routeCacheService: RouteCacheService,
+    private travelTimeEstimator: TravelTimeEstimatorService,
   ) {}
 
   /**
@@ -52,6 +54,103 @@ export class TransportRoutingService {
       return this.planInterCityRoute(fromLat, fromLng, toLat, toLng, context);
     } else {
       return this.planIntraCityRoute(fromLat, fromLng, toLat, toLng, context);
+    }
+  }
+
+  /**
+   * POI 跳点交通（相邻景点/行程项之间）。
+   * 不走城际大交通分支，优先 SmartRoutes，降级统一启发式。
+   */
+  async planPoiHopRoute(
+    fromLat: number,
+    fromLng: number,
+    toLat: number,
+    toLng: number,
+    mode: 'walk' | 'drive' | 'transit' | 'mixed' = 'drive',
+  ): Promise<TransportRecommendation> {
+    const from = { lat: fromLat, lng: fromLng };
+    const to = { lat: toLat, lng: toLng };
+    const travelMode = this.mapPoiHopMode(mode, from, to);
+    const apiMode = travelMode as 'TRANSIT' | 'WALKING' | 'DRIVING';
+
+    try {
+      const cached = await this.routeCacheService.getCachedRoute(
+        fromLat,
+        fromLng,
+        toLat,
+        toLng,
+        apiMode,
+      );
+      const cachedOptions = Array.isArray(cached) ? cached : cached ? [cached] : [];
+      if (cachedOptions.length > 0) {
+        return {
+          options: cachedOptions,
+          recommendationReason: 'POI 跳点：缓存路由',
+        };
+      }
+
+      const routeOptions = await this.smartRoutesService.getRoutes(
+        fromLat,
+        fromLng,
+        toLat,
+        toLng,
+        apiMode,
+      );
+      if (routeOptions.length > 0) {
+        await this.routeCacheService.saveCachedRoute(
+          fromLat,
+          fromLng,
+          toLat,
+          toLng,
+          apiMode,
+          routeOptions,
+        );
+        return {
+          options: routeOptions,
+          recommendationReason: 'POI 跳点：路由 API',
+        };
+      }
+    } catch (error) {
+      this.logger.warn(`POI 跳点路由 API 失败，使用启发式: ${error}`);
+    }
+
+    const fallback = this.travelTimeEstimator.estimatePoiTravelMinutes(from, to, {
+      travelMode,
+      defaultDriving: mode === 'drive' || mode === 'mixed',
+    });
+    const option: TransportOption = {
+      mode: this.poiTravelModeToTransportMode(travelMode),
+      durationMinutes: fallback.durationMinutes,
+      cost: 0,
+      walkDistance: Math.round(fallback.distanceKm * 1000),
+      description: `POI 跳点估算（${travelMode}，${fallback.distanceKm.toFixed(1)} km）`,
+    };
+    return {
+      options: [option],
+      recommendationReason: 'POI 跳点：直线距离启发式',
+    };
+  }
+
+  private mapPoiHopMode(
+    mode: 'walk' | 'drive' | 'transit' | 'mixed',
+    from: { lat: number; lng: number },
+    to: { lat: number; lng: number },
+  ): PoiTravelMode {
+    if (mode === 'walk') return 'WALKING';
+    if (mode === 'transit') return 'TRANSIT';
+    if (mode === 'drive') return 'DRIVING';
+    const km = this.travelTimeEstimator.haversineDistanceKm(from, to);
+    return km < 1 ? 'WALKING' : 'DRIVING';
+  }
+
+  private poiTravelModeToTransportMode(mode: PoiTravelMode): TransportMode {
+    switch (mode) {
+      case 'WALKING':
+        return TransportMode.WALKING;
+      case 'TRANSIT':
+        return TransportMode.TRANSIT;
+      default:
+        return TransportMode.TAXI;
     }
   }
 

@@ -4,6 +4,7 @@ import type { DecisionTrace } from '../draft-synthesis/decision-trace/decision-t
 import type { UserIntentState } from '../draft-synthesis/user-intent/user-intent-state.types';
 import type { TripDraftState } from '../draft-synthesis/state/trip-draft-state.types';
 import type { ObjectiveVector } from '../draft-synthesis/pareto/objective-vector.types';
+import type { ItineraryPresentationBundle } from '../experience-fulfillment/types/itinerary-presentation.types';
 import { IsString, IsNumber, IsOptional, IsEnum, IsArray, IsBoolean, ValidateNested, IsObject, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -208,6 +209,17 @@ export class CreateTripDraftDto {
   @IsString({ each: true })
   @IsOptional()
   mustHavePois?: string[];
+
+  /** 活动偏好（来自自然语言澄清，如 glacier_hiking、adventure_activities），用于候选 POI 召回和加权 */
+  @ApiPropertyOptional({
+    description: '活动偏好列表，用于候选 POI 召回和加权',
+    type: [String],
+    example: ['glacier_hiking', 'adventure_activities'],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  activityPreferences?: string[];
 
   /** 按天的城市分配（如杭州2天、千岛湖1天），编排时按天分配城市 */
   @ApiPropertyOptional({
@@ -520,6 +532,10 @@ export class TripDraftResponseDto {
   /** 决策链追踪（因果图谱，可解释 / 学习埋点） */
   @ApiPropertyOptional({ description: 'Decision Trace（规划执行图谱）', type: 'object', additionalProperties: true })
   decisionTrace?: DecisionTrace;
+
+  /** PRD §13.3 日程展示层（灵感 + 可信事实，不含工程术语） */
+  @ApiPropertyOptional({ description: '日程展示层', type: 'object', additionalProperties: true })
+  itineraryPresentation?: ItineraryPresentationBundle;
 }
 
 /**

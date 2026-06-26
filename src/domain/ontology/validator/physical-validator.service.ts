@@ -15,6 +15,8 @@ import { ICELAND_F_ROAD_POLICY_SOURCE } from './iceland-f-road-policy.util';
 import type { SegmentLatestRoadStatusV1 } from './road-status-contract.types';
 import { getStaticPhysicalPoliciesEnvelope, type StaticPhysicalPoliciesEnvelope } from './physical-validator.static-policies';
 import { computeSegmentFeasibilityViolations, type SegmentFeasibilityPoiLike } from './segment-feasibility.util';
+import { validateOntologyRulesAgainstShapes } from '../shacl/physical-constraint.shapes';
+import { enrichPhysicalEvaluation } from '../../../trips/experience-fulfillment/services/experience-fulfillment.orchestrator';
 
 function userIntentFromActionInput(ai: Record<string, unknown>): DecisionState['userIntent'] | undefined {
   const wallet = ai.wallet as Record<string, unknown> | undefined;
@@ -158,15 +160,46 @@ export class PhysicalValidatorService {
       violations.push(...spatial);
     }
 
+    const ontologyRules =
+      ai.place_ontology_rules ?? ai.ontologyRules ?? (ai.ontology_rules as unknown);
+    if (ontologyRules) {
+      for (const sv of validateOntologyRulesAgainstShapes(ontologyRules)) {
+        violations.push({
+          code: 'ONTOLOGY_RULES_SHAPE_VIOLATION',
+          severity: sv.severity,
+          detail: `${sv.path}: ${sv.message}`,
+          constraint: sv.shapeId,
+        });
+      }
+    }
+
     const blocking = violations.some((x) => x.severity === 'BLOCK');
 
-    return {
+    const base: PhysicalEvaluationResult = {
       validator_version: PHYSICAL_VALIDATOR_VERSION,
       rule_bundle_id: PHYSICAL_RULE_BUNDLE_ID,
       violations,
       evaluated_at,
       blocking,
     };
+
+    const userMessage =
+      typeof ai.user_message === 'string'
+        ? ai.user_message
+        : typeof ai.message === 'string'
+          ? ai.message
+          : undefined;
+    const partialParams =
+      ai.partial_params && typeof ai.partial_params === 'object'
+        ? (ai.partial_params as Record<string, unknown>)
+        : undefined;
+
+    return enrichPhysicalEvaluation(base, {
+      userMessage,
+      partialParams,
+      scope: 'CANDIDATE',
+      targetIds: pd?.segment_id ? [String(pd.segment_id)] : undefined,
+    });
   }
 
   private async evaluateSegment(

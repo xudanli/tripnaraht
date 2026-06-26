@@ -36,7 +36,7 @@ import {
   GetContextAnalyticsQueryDto,
   ContextAnalyticsResponseDto,
 } from './dto/admin-context.dto';
-import { Inject, Optional, Param } from '@nestjs/common';
+import { Inject, Optional, Param, forwardRef } from '@nestjs/common';
 import { ApiParam } from '@nestjs/swagger';
 
 @ApiTags('context')
@@ -49,7 +49,9 @@ export class ContextController {
     @Optional() private readonly metricsService?: ContextMetricsService,
     @Optional() private readonly prometheusMetrics?: ContextPrometheusMetricsService,
     @Optional() private readonly performanceAnalysis?: ContextPerformanceAnalysisService,
-    @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
+    @Inject(forwardRef(() => SkillsRegistryService))
+    @Optional()
+    private readonly skillsRegistry?: SkillsRegistryService,
   ) {}
 
   /**
@@ -88,6 +90,7 @@ export class ContextController {
       const contextPackage = await this.contextEngineer.build(
         {
           tripId: dto.tripId,
+          userId: dto.userId,
           phase: dto.phase,
           agent: dto.agent,
           userQuery: dto.userQuery,

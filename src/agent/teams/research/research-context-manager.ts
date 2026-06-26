@@ -56,6 +56,23 @@ function assertResearchPatchKeyAllowed(key: string, patchScope: ResearchScopedPa
   }
 }
 
+/** 将 Member patch 拆成「域内键」与「common 等跨域键」（如 destination 成员写入的 cost_estimate）。 */
+export function partitionResearchPatchByScope(patch: ScopedResearchPatch): {
+  scopedPartial: Record<string, unknown>;
+  outOfScopePartial: Record<string, unknown>;
+} {
+  const scopedPartial: Record<string, unknown> = {};
+  const outOfScopePartial: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(patch.researchDataPartial)) {
+    if (key.startsWith('__') || inferResearchKeyScope(key) === patch.scope) {
+      scopedPartial[key] = val;
+    } else {
+      outOfScopePartial[key] = val;
+    }
+  }
+  return { scopedPartial, outOfScopePartial };
+}
+
 function clonePatchValue(v: unknown): unknown {
   const sc = (globalThis as { structuredClone?: (x: unknown) => unknown }).structuredClone;
   try {
@@ -203,9 +220,14 @@ export class ResearchContextManager {
   }): void {
     const { patch, source, phase } = input;
     const attribution = input.attribution ?? 'MEMBER_PATCH';
+    const { scopedPartial, outOfScopePartial } = partitionResearchPatchByScope(patch);
     const keysTouched: string[] = [];
-    for (const [key, val] of Object.entries(patch.researchDataPartial)) {
+    for (const [key, val] of Object.entries(scopedPartial)) {
       assertResearchPatchKeyAllowed(key, patch.scope);
+      this.researchData[key] = val;
+      keysTouched.push(key);
+    }
+    for (const [key, val] of Object.entries(outOfScopePartial)) {
       this.researchData[key] = val;
       keysTouched.push(key);
     }
@@ -228,6 +250,27 @@ export class ResearchContextManager {
         attribution: 'HARNESS:FALLBACK_SUTURE',
       });
     }
+  }
+
+  /** 合并 common 等跨域键（不经 scope gate，供 destination bundle 内的 CostAgent 等）。 */
+  mergeResearchDataKeys(input: {
+    keys: Record<string, unknown>;
+    source: string;
+    phase: ResearchContextPhase;
+    attribution?: ResearchMergeAttribution;
+  }): void {
+    const keysTouched = Object.keys(input.keys);
+    if (!keysTouched.length) return;
+    for (const [key, val] of Object.entries(input.keys)) {
+      this.researchData[key] = val;
+    }
+    this.mergeLog.push({
+      source: input.source,
+      phase: input.phase,
+      keysTouched,
+      evidenceRefsAppended: 0,
+      attribution: input.attribution ?? 'MEMBER_PATCH',
+    });
   }
 
   /**

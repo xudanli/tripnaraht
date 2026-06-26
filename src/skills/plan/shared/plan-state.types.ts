@@ -430,4 +430,22 @@ export interface OptionComparison {
     optionId: string;
     reason: string;
   };
+  /** P3: 多方案并行 Kernel GATE_EVAL 增量（shadow/native 模式） */
+  kernelGateEval?: {
+    optionDeltas: Array<{
+      optionId: string;
+      optionName?: string;
+      gateStatus: GateStatus['status'];
+      kernelGateResult: string;
+      violationCount: number;
+      violationTypes: string[];
+      topReasons: string[];
+      guardiansAllowed?: boolean;
+      expectedUtility?: number;
+    }>;
+    recommendedByGate?: string;
+    divergesFromLlmRecommendation?: boolean;
+    llmRecommendedOptionId?: string;
+    appliedAt: string;
+  };
 }
