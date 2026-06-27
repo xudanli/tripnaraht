@@ -78,4 +78,7 @@ export enum ErrorCode {
   
   // 请求错误
   BAD_REQUEST = 'BAD_REQUEST',
+
+  /** 日程写库冲突（缓冲/顺延与现有项重叠） */
+  SCHEDULE_CONFLICT = 'SCHEDULE_CONFLICT',
 }

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Optional, Inject, forwardRef } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TripConflictsService } from '../../services/trip-conflicts.service';
 import { CoverageMapService } from '../../readiness/services/coverage-map.service';
@@ -36,7 +37,32 @@ import {
 import { DateTime } from 'luxon';
 import { FeasibilityPomdpMonteCarloService } from './feasibility-pomdp-monte-carlo.service';
 import { TeamFitAssessmentService } from './team-fit-assessment.service';
+import { PreTripReadinessP0Service } from './pre-trip-readiness-p0.service';
+import { ItineraryItemsService } from '../../../itinerary-items/itinerary-items.service';
+import { TripReservationEvidenceService } from '../../../poi-access-capacity/services/trip-reservation-evidence.service';
+import {
+  IcelandAccessEvidenceRefreshService,
+  type AccessEvidenceRefreshScope,
+} from '../../../poi-access-capacity/services/iceland-access-evidence-refresh.service';
+import type { RepairOption } from '../../readiness/types/coverage-map.types';
 import type { FeasibilityProbabilisticAssessmentDto, FeasibilityIssueDto, TripFeasibilityReportDto } from '../types/trip-constraint-solver.types';
+import {
+  applyInterDayBufferDayRepair,
+  buildAddBufferPreviewResponse,
+  buildAddBufferRepairOption,
+  shouldOfferAddBufferRepair,
+} from '../utils/inter-day-buffer-repair.util';
+import {
+  buildBufferInsufficientRepairOptions,
+} from '../utils/buffer-insufficient-repair.util';
+import {
+  applyMinuteTimingShiftRepair,
+  buildMinuteBufferRepairOptions,
+  buildShiftDepartureRepairOption,
+  isInsertRestDayRepairPayload,
+  isMinuteBufferRepairPayload,
+  shouldOfferMinuteTimingRepairs,
+} from '../utils/travel-timing-repair.util';
 
 @Injectable()
 export class FeasibilityReportService {
@@ -46,6 +72,10 @@ export class FeasibilityReportService {
     private readonly conflicts: TripConflictsService,
     private readonly readinessRepair: ReadinessRepairService,
     private readonly teamFitAssessment: TeamFitAssessmentService,
+    private readonly preTripP0: PreTripReadinessP0Service,
+    private readonly reservationEvidence: TripReservationEvidenceService,
+    private readonly accessEvidenceRefresh: IcelandAccessEvidenceRefreshService,
+    private readonly moduleRef: ModuleRef,
     @Optional() private readonly pomdpMonteCarlo?: FeasibilityPomdpMonteCarloService,
     @Optional()
     @Inject(forwardRef(() => LoopTriggerBridgeService))
@@ -67,6 +97,12 @@ export class FeasibilityReportService {
       tripId,
       conflicts: conflictsResp.conflicts,
       coverage,
+    });
+    const p0Issues = await this.preTripP0.buildP0Issues({
+      id: trip.id,
+      status: trip.status,
+      startDate: trip.startDate,
+      metadata: trip.metadata,
     });
     return assembleFeasibilityReport({
       trip,
@@ -101,16 +137,21 @@ export class FeasibilityReportService {
         score: itineraryCompleteness.score,
         signalCount: itineraryCompleteness.signalCount,
       },
+      p0Issues,
     });
   }
 
   async validate(
     tripId: string,
-    opts?: { forceRefreshEvidence?: boolean; lang?: string; runMonteCarlo?: boolean; monteCarloSampleSize?: number },
+    opts?: {
+      forceRefreshEvidence?: boolean | AccessEvidenceRefreshScope[];
+      lang?: string;
+      runMonteCarlo?: boolean;
+      monteCarloSampleSize?: number;
+    },
   ): Promise<TripFeasibilityReportDto> {
-    if (opts?.forceRefreshEvidence !== false) {
-      await this.readinessRepair.refreshEvidence(tripId);
-    }
+    await this.refreshEvidenceIfRequested(tripId, opts?.forceRefreshEvidence);
+    await this.syncTravelDurationsFromTravelInfo(tripId);
 
     const tripRow = await this.prisma.trip.findUnique({ where: { id: tripId } });
     if (!tripRow) throw new NotFoundException(`行程 ${tripId} 不存在`);
@@ -177,6 +218,12 @@ export class FeasibilityReportService {
       conflicts: conflictsResp.conflicts,
       coverage,
     });
+    const p0Issues = await this.preTripP0.buildP0Issues({
+      id: ctx.id,
+      status: ctx.status,
+      startDate: ctx.startDate,
+      metadata: tripAfter?.metadata ?? tripRow.metadata,
+    });
     return assembleFeasibilityReport({
       trip: ctx,
       tripDays: ctx.tripDays,
@@ -205,6 +252,7 @@ export class FeasibilityReportService {
         score: itineraryCompleteness.score,
         signalCount: itineraryCompleteness.signalCount,
       },
+      p0Issues,
     });
   }
 
@@ -230,6 +278,28 @@ export class FeasibilityReportService {
       response = buildRoadClassRepairOptions(tripId, roadClassIssue);
     } else if (issue?.issueKind === 'inter_day_travel' || issue?.issueKind === 'same_day_travel') {
       response = buildTravelTimingRepairOptions(tripId, issue);
+    } else if (issue?.issueKind === 'buffer_insufficient') {
+      response = buildBufferInsufficientRepairOptionsResponse(tripId, issue);
+    } else if (!issue) {
+      throw new NotFoundException(`REPAIR_OPTIONS_NOT_FOUND: issue ${issueId}`);
+    } else if (issue?.issueKind?.startsWith('poi_access') && issue.repairOptions?.length) {
+      response = {
+        blockerId: issue.id,
+        blockerMessage: issue.message,
+        issueId: canonicalIssueId,
+        options: issue.repairOptions.map(
+          (o): RepairOption => ({
+            id: o.id,
+            title: o.label,
+            description: o.description,
+            impact: (['high', 'medium', 'low'].includes(o.impactSummary)
+              ? o.impactSummary
+              : 'medium') as RepairOption['impact'],
+            actionType: o.actionType ?? o.type,
+            payload: o.payload,
+          }),
+        ),
+      };
     } else {
       const blockerId = resolveIssueIdToBlockerId(issueId);
       const tryIds = [blockerId, issueId, issueId.replace(/^issue-/, 'coverage-gap:')];
@@ -255,11 +325,9 @@ export class FeasibilityReportService {
   async validateScope(
     tripId: string,
     scope: FeasibilityScopeDto,
-    opts?: { forceRefreshEvidence?: boolean; lang?: string },
+    opts?: { forceRefreshEvidence?: boolean | AccessEvidenceRefreshScope[]; lang?: string },
   ): Promise<TripFeasibilityReportDto> {
-    if (opts?.forceRefreshEvidence) {
-      await this.readinessRepair.refreshEvidence(tripId);
-    }
+    await this.refreshEvidenceIfRequested(tripId, opts?.forceRefreshEvidence);
 
     const locale = opts?.lang === 'en' ? 'en' : 'zh';
     const trip = await this.loadTripContext(tripId);
@@ -301,6 +369,12 @@ export class FeasibilityReportService {
       conflicts: conflictsResp.conflicts,
       coverage,
     });
+    const p0Issues = await this.preTripP0.buildP0Issues({
+      id: trip.id,
+      status: trip.status,
+      startDate: trip.startDate,
+      metadata: trip.metadata,
+    });
 
     const report = assembleFeasibilityReport({
       trip,
@@ -334,6 +408,7 @@ export class FeasibilityReportService {
         score: itineraryCompleteness.score,
         signalCount: itineraryCompleteness.signalCount,
       },
+      p0Issues,
     });
 
     return applyScopeToReport(report, scope);
@@ -347,13 +422,78 @@ export class FeasibilityReportService {
     const repair = await this.getRepairOptions(tripId, issueId);
     const option = repair.options.find((o) => o.id === body.optionId);
     if (!option) {
-      throw new BadRequestException(`修复选项 ${body.optionId} 不存在`);
+      throw new BadRequestException(`OPTION_NOT_APPLICABLE: optionId ${body.optionId}`);
     }
 
     const issue = (await this.getReport(tripId)).issues.find(
       (i) => i.id === issueId || i.id === normalizeIssueIdAlias(issueId),
     );
     const blockerId = resolveIssueIdToBlockerId(issueId);
+    const optionPayload = (option.payload ?? {}) as Record<string, unknown>;
+
+    if (
+      (option.actionType === 'add_buffer' || option.actionType === 'insert_rest_day') &&
+      issue?.issueKind === 'inter_day_travel' &&
+      isInsertRestDayRepairPayload(optionPayload)
+    ) {
+      const tripCtx = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        include: { TripDay: { include: { ItineraryItem: true } } },
+      });
+      const totalDays = tripCtx?.TripDay.length ?? 0;
+      const totalItems =
+        tripCtx?.TripDay.reduce((n, d) => n + d.ItineraryItem.length, 0) ?? 0;
+      return buildAddBufferPreviewResponse({
+        tripId,
+        blockerId,
+        issueId: repair.issueId ?? issueId,
+        optionId: body.optionId,
+        payload: (option.payload ?? {}) as Record<string, unknown>,
+        totalDays,
+        totalItems,
+      });
+    }
+
+    if (
+      (option.actionType === 'shift_departure' ||
+        option.actionType === 'add_buffer_minutes' ||
+        (option.actionType === 'add_buffer' &&
+          isMinuteBufferRepairPayload((option.payload ?? {}) as Record<string, unknown>))) &&
+      (issue?.issueKind === 'inter_day_travel' ||
+        issue?.issueKind === 'same_day_travel' ||
+        issue?.issueKind === 'buffer_insufficient')
+    ) {
+      const shiftMinutes = (option.payload as Record<string, unknown>)?.shiftMinutes;
+      return {
+        tripId,
+        blockerId,
+        issueId: repair.issueId ?? issueId,
+        optionId: body.optionId,
+        actionType: option.actionType,
+        previewMode: 'heuristic' as const,
+        status: 'preview' as const,
+        message: `将把下一站开始时间顺延 ${shiftMinutes ?? '?'} 分钟`,
+        before: {
+          dayNumber: issue.affectedDays?.[0] ?? 1,
+          itemCount: 0,
+          totalItemCount: 0,
+          highlights: [],
+        },
+        after: {
+          dayNumber: issue.affectedDays?.[0] ?? 1,
+          itemCount: 0,
+          totalItemCount: 0,
+          highlights: [`+${shiftMinutes ?? 0} 分钟`],
+        },
+        itineraryDiff: [],
+        impact: {
+          feasibilityScoreBefore: 0,
+          feasibilityScoreAfter: 10,
+          estimated: true,
+        },
+        option,
+      };
+    }
 
     return this.readinessRepair.previewRepair({
       tripId,
@@ -370,9 +510,113 @@ export class FeasibilityReportService {
     tripId: string,
     issueId: string,
     body: FeasibilityApplyRepairBodyDto,
+    userId?: string,
   ) {
+    const report = await this.getReport(tripId);
+    const issue = report.issues.find(
+      (i) => matchesIssueId(i.id, issueId) || i.id === normalizeIssueIdAlias(issueId),
+    );
+
     const repair = await this.getRepairOptions(tripId, issueId);
     const option = repair.options.find((o) => o.id === body.optionId);
+    if (!option) {
+      throw new BadRequestException(`OPTION_NOT_APPLICABLE: optionId ${body.optionId}`);
+    }
+
+    const optionPayload = (option.payload ?? {}) as Record<string, unknown>;
+
+    const isManualConfirm =
+      body.optionId.includes('manual_confirm') ||
+      option?.actionType === 'manual_confirm' ||
+      option?.payload?.type === 'manual_confirm';
+
+    const isInsertRestDay =
+      (body.optionId === 'add_buffer' ||
+        option?.actionType === 'add_buffer' ||
+        option?.actionType === 'insert_rest_day') &&
+      isInsertRestDayRepairPayload(optionPayload);
+
+    if (issue?.issueKind === 'inter_day_travel' && isInsertRestDay) {
+      const result = await applyInterDayBufferDayRepair(
+        this.prisma,
+        tripId,
+        (option?.payload ?? {}) as Record<string, unknown>,
+      );
+      const refreshed = await this.getReport(tripId);
+      return {
+        tripId,
+        blockerId: issue.id,
+        optionId: body.optionId,
+        actionType: 'insert_rest_day',
+        status: 'applied' as const,
+        message: `已插入缓冲日（${result.insertedDateISO}），Day ${result.beforeDayNumber} 及之后顺延 1 天`,
+        metadata: { ...result, readinessHint: { reportVerdict: refreshed.verdict.status } },
+      };
+    }
+
+    const isMinuteShift =
+      option?.actionType === 'shift_departure' ||
+      option?.actionType === 'add_buffer_minutes' ||
+      (option?.actionType === 'add_buffer' && isMinuteBufferRepairPayload(optionPayload));
+
+    if (
+      (issue?.issueKind === 'inter_day_travel' ||
+        issue?.issueKind === 'same_day_travel' ||
+        issue?.issueKind === 'buffer_insufficient') &&
+      isMinuteShift
+    ) {
+      const result = await applyMinuteTimingShiftRepair(
+        this.prisma,
+        (option?.payload ?? {}) as Record<string, unknown>,
+      );
+      const refreshed = await this.getReport(tripId);
+      return {
+        tripId,
+        blockerId: issue.id,
+        optionId: body.optionId,
+        actionType: option!.actionType!,
+        status: 'applied' as const,
+        message: `已顺延 ${result.shiftMinutes} 分钟`,
+        metadata: { ...result, readinessHint: { reportVerdict: refreshed.verdict.status } },
+      };
+    }
+
+    if (issue?.issueKind?.startsWith('poi_access') && isManualConfirm) {
+      const code = body.parkingReservationRef?.trim();
+      if (!code && !body.evidenceAttachmentId) {
+        throw new BadRequestException('manual_confirm 需要 parkingReservationRef 或 evidenceAttachmentId');
+      }
+      const payload = option?.payload ?? {};
+      const ctx = await this.loadTripContext(tripId);
+      const dayNum = issue.affectedDays?.[0] ?? 1;
+      const day = ctx.tripDays.find((d) => d.dayNumber === dayNum);
+      const dateISO =
+        day?.date != null
+          ? DateTime.fromJSDate(day.date).toISODate() ?? new Date().toISOString().slice(0, 10)
+          : new Date().toISOString().slice(0, 10);
+      const evidence = await this.reservationEvidence.upsertEvidence(
+        tripId,
+        userId ?? 'anonymous-dev-user',
+        {
+          tripItemId: String(payload.tripItemId ?? issue.fromItemId ?? ''),
+          poiId: String(payload.poiId ?? issue.visitorAccess?.evaluation.poiId ?? ''),
+          dateISO,
+          confirmationCode: code,
+          attachmentId: body.evidenceAttachmentId,
+          resource: 'PARKING',
+        },
+      );
+      return {
+        tripId,
+        blockerId: issue.id,
+        optionId: body.optionId,
+        actionType: 'manual_confirm',
+        status: 'applied' as const,
+        message: '预约凭证已保存',
+        metadata: { evidence, readinessHint: { reportVerdict: (await this.getReport(tripId)).verdict.status } },
+      };
+    }
+
     const executeDecision =
       body.executeDecision ?? isDecisionEngineRepairAction(option?.actionType);
 
@@ -403,6 +647,42 @@ export class FeasibilityReportService {
     return result;
   }
 
+  /** validate 前将 travel-info 计算结果写回 DB，与 feasibility 冲突检测同源 */
+  private async syncTravelDurationsFromTravelInfo(tripId: string): Promise<void> {
+    try {
+      const items = this.moduleRef.get(ItineraryItemsService, { strict: false });
+      if (items) {
+        await items.syncTravelDurationsFromDayTravelInfo(tripId);
+      }
+    } catch {
+      // optional when ItineraryItemsModule not loaded
+    }
+  }
+
+  private async refreshEvidenceIfRequested(
+    tripId: string,
+    forceRefreshEvidence?: boolean | AccessEvidenceRefreshScope[],
+  ): Promise<void> {
+    if (forceRefreshEvidence === false) return;
+
+    if (Array.isArray(forceRefreshEvidence)) {
+      if (forceRefreshEvidence.length) {
+        await this.accessEvidenceRefresh.refresh(forceRefreshEvidence);
+      }
+      return;
+    }
+
+    if (forceRefreshEvidence === true) {
+      await this.accessEvidenceRefresh.refresh([
+        'access_rules',
+        'access_inventory',
+        'access_congestion',
+      ]);
+    }
+
+    await this.readinessRepair.refreshEvidence(tripId);
+  }
+
   private async loadTripContext(tripId: string) {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
@@ -416,6 +696,7 @@ export class FeasibilityReportService {
       name: trip.name,
       startDate: trip.startDate,
       endDate: trip.endDate,
+      status: trip.status,
       updatedAt: trip.updatedAt,
       metadata: trip.metadata,
       tripDays: trip.TripDay.map((d, i) => ({ id: d.id, dayNumber: i + 1, date: d.date })),
@@ -504,7 +785,20 @@ function mapGateFromVerdict(status: TripFeasibilityReportDto['verdict']['status'
 }
 
 function mapVerdictAfterValidate(report: TripFeasibilityReportDto): TripFeasibilityReportDto['verdict']['status'] {
-  if (report.summary.mustHandle > 0) return 'NOT_EXECUTABLE';
+  if (report.gateExecute.blocked) {
+    const hasHard = report.issues.some((i) => i.issueKind === 'poi_access_blocked');
+    if (hasHard) return 'NOT_EXECUTABLE';
+    return 'ADJUST_REQUIRED';
+  }
+  if (report.summary.mustHandle > 0) {
+    const onlyReservation = report.issues.every(
+      (i) =>
+        i.priority !== 'must_handle' ||
+        i.issueKind === 'poi_access_reservation_required',
+    );
+    if (!onlyReservation) return 'NOT_EXECUTABLE';
+    return 'ADJUST_REQUIRED';
+  }
   if (report.summary.suggestAdjust + report.summary.pendingConfirm > 0) return 'ADJUST_REQUIRED';
   return 'EXECUTABLE';
 }
@@ -522,6 +816,49 @@ function matchesIssueId(actual: string, requested: string): boolean {
   );
 }
 
+function buildBufferInsufficientRepairOptionsResponse(
+  tripId: string,
+  issue: FeasibilityIssueDto,
+): RepairOptionsResponse {
+  const anchors = issue.anchors ?? {};
+  const itemId = issue.toItemId ?? anchors.toItemId;
+  const toLabel = anchors.toPlaceLabel ?? '下一项';
+  const repairOpts =
+    issue.repairOptions ??
+    (itemId
+      ? buildBufferInsufficientRepairOptions({
+          issueId: issue.id,
+          toItemId: itemId,
+          toLabel,
+          shortfallMinutes: anchors.shortfallMinutes,
+          suggestedTime:
+            typeof anchors.suggestedTime === 'string' ? anchors.suggestedTime : undefined,
+          anchors,
+        })
+      : []);
+
+  return {
+    issueId: issue.id,
+    blockerId: issue.id,
+    blockerMessage: issue.message,
+    options: repairOpts.map((o) => ({
+      id: o.id,
+      title: o.label,
+      description: o.description,
+      impact: 'medium',
+      timeEstimate: '1分钟',
+      actionType: o.actionType ?? o.id,
+      payload: o.payload,
+      metadata: {
+        tripId,
+        issueKind: issue.issueKind,
+        primaryAction: 'add_buffer',
+        deepLink: issue.uiHints?.deepLink,
+      },
+    })),
+  };
+}
+
 function buildTravelTimingRepairOptions(
   tripId: string,
   issue: FeasibilityIssueDto,
@@ -536,7 +873,88 @@ function buildTravelTimingRepairOptions(
     ? '顺延次日首项开始时间'
     : '顺延下一项开始时间';
 
-  const options: RepairOptionsResponse['options'] = [
+  const options: RepairOptionsResponse['options'] = [];
+
+  if (
+    shouldOfferAddBufferRepair({
+      issueKind: issue.issueKind,
+      isStartTooEarly: issue.anchors?.isStartTooEarly ?? issue.severity === 'high',
+      priority: issue.priority,
+    })
+  ) {
+    const bufferOpt = buildAddBufferRepairOption({
+      issueId: issue.id,
+      anchors: issue.anchors,
+      affectedDays: issue.affectedDays,
+      fromItemId: issue.fromItemId,
+      toItemId: issue.toItemId,
+    });
+    options.push({
+      id: bufferOpt.id,
+      title: bufferOpt.label,
+      description: bufferOpt.description,
+      impact: 'high',
+      timeEstimate: '2分钟',
+      actionType: bufferOpt.actionType ?? 'insert_rest_day',
+      payload: bufferOpt.payload,
+      metadata: {
+        tripId,
+        issueKind: issue.issueKind,
+        primaryAction: 'insert_rest_day',
+        deepLink: issue.uiHints?.deepLink,
+      },
+    });
+  }
+
+  if (
+    itemId &&
+    shouldOfferMinuteTimingRepairs({
+      toItemId: itemId,
+      shortfallMinutes: anchors.shortfallMinutes,
+      isStartTooEarly: anchors.isStartTooEarly,
+      issueKind: issue.issueKind,
+      priority: issue.priority,
+    })
+  ) {
+    const shiftOpt = buildShiftDepartureRepairOption({
+      issueId: issue.id,
+      toItemId: itemId,
+      toLabel,
+      shortfallMinutes: anchors.shortfallMinutes,
+      bufferMinutes: anchors.bufferMinutes ?? 5,
+      suggestedTime,
+      anchors,
+    });
+    for (const opt of [
+      ...buildMinuteBufferRepairOptions({
+        issueId: issue.id,
+        toItemId: itemId,
+        fromItemId: issue.fromItemId ?? anchors.fromItemId,
+        toLabel,
+        toDayNumber: anchors.toDayNumber,
+        shortfallMinutes: anchors.shortfallMinutes,
+        anchors,
+      }),
+      shiftOpt,
+    ]) {
+      options.push({
+        id: opt.id,
+        title: opt.label,
+        description: opt.description,
+        impact: 'high',
+        timeEstimate: '1分钟',
+        actionType: opt.actionType ?? opt.id,
+        payload: opt.payload,
+        metadata: {
+          tripId,
+          issueKind: issue.issueKind,
+          deepLink: issue.uiHints?.deepLink,
+        },
+      });
+    }
+  }
+
+  options.push(
       {
         id: 'adjust_time',
         title: adjustTitle,
@@ -560,7 +978,7 @@ function buildTravelTimingRepairOptions(
           deepLink: issue.uiHints?.deepLink,
         },
       },
-    ];
+    );
 
   if (issue.issueKind === 'inter_day_travel') {
     options.push(

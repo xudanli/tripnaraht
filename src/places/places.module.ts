@@ -23,6 +23,7 @@ import { PlaceGraphService } from './services/place-graph.service';
 import { DistrictService } from './services/district.service';
 import { CrowdCurveService } from './services/crowd-curve.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PoiAccessCapacityModule } from '../poi-access-capacity/poi-access-capacity.module';
 import { HotelsModule } from '../hotels/hotels.module';
 import { RagModule } from '../rag/rag.module';
 import { UploadModule } from '../upload/upload.module';
@@ -31,6 +32,7 @@ import { LlmModule } from '../llm/llm.module';
 @Module({
   imports: [
     PrismaModule, 
+    PoiAccessCapacityModule,
     HotelsModule,
     UploadModule, // 导入上传模块以使用 UploadService
     forwardRef(() => RagModule), // 导入RAG模块以使用EmbeddingCacheService（使用forwardRef避免循环依赖）

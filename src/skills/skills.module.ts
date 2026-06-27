@@ -27,6 +27,7 @@ import { MemoryModule } from '../agent/memory/memory.module';
 import { QueryRewritingModule } from '../agent/query-rewriting.module';
 import { GovernanceModule } from '../governance/governance.module';
 import { WorldStrategyModule } from '../agent/strategy/world-strategy.module';
+import { PoiAccessCapacityModule } from '../poi-access-capacity/poi-access-capacity.module';
 import { CountryConfigService } from './world/services/country-config.service';
 import { EvidenceCacheService } from './world/services/evidence-cache.service';
 import { PrefetcherService } from './world/services/prefetcher.service';
@@ -301,6 +302,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     QueryRewritingModule, // poi.search 下游零结果绑定 QueryRewriteMetricsService
     forwardRef(() => GovernanceModule), // Governance ledger + GRG (re-exports LedgerModule)
     forwardRef(() => WorldStrategyModule), // WorldStrategy：冰岛策略 JSON → 仲裁 strat: 留痕
+    PoiAccessCapacityModule, // POI 准入与容量引擎（itinerary.verify）
   ],
   controllers: [
     WorldController,

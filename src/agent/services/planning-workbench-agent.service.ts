@@ -55,6 +55,11 @@ import {
 } from '../utils/strategy-conflict-dna-tuning.util';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import type { ConflictDetection } from '../../skills/plan/shared/plan-state.types';
+import {
+  resolveSelectedOptionIdFromExecuteRequest,
+  resolveSkeletonOptionsFromExecuteRequest,
+} from '../dto/planning-workbench-execute.dto';
+import { enrichPlanningWorkbenchExecuteResponse } from '../utils/planning-workbench-execute-enrich.util';
 
 export interface PlanningWorkbenchRequest {
   /** 规划上下文 */
@@ -71,6 +76,59 @@ export interface PlanningWorkbenchRequest {
 
   /** 节奏调整反馈（userAction === 'adjust' 时） */
   paceFeedback?: 'too_tired' | 'too_rushed' | 'too_relaxed';
+
+  /** 骨架方案集（compare/commit；也可从 existingPlanState.metadata.skeletonOptions 读取） */
+  skeletonOptions?: PlanSkeletonSet;
+
+  /** 选定方案 ID（commit） */
+  selectedOptionId?: string;
+
+  /** 内部元数据：tripRunId、updateProgress、taskId 等 */
+  metadata?: PlanningWorkbenchRequestMetadata;
+}
+
+export interface PlanningWorkbenchRequestMetadata {
+  tripRunId?: string;
+  userId?: string;
+  taskId?: string;
+  updateProgress?: (progress: number, stage?: string) => void;
+  /** 前端 Context Package id */
+  contextPackageId?: string;
+  /** 时间轴 revision */
+  scheduleRevision?: number;
+  /** Plan Studio 约束快照 id */
+  constraintSnapshotId?: string;
+}
+
+export interface WorkbenchDecisionContext {
+  tripId?: string;
+  planId: string;
+  planVersion: number;
+  gateStatus: string;
+  contextPackageId?: string;
+  scheduleRevision?: number;
+  constraintSnapshotId?: string;
+}
+
+export interface WorkbenchBudgetPreview {
+  totalEstimate?: number;
+  currency: string;
+  vsLimit?: number;
+  evaluated: boolean;
+  band: 'healthy' | 'warning' | 'critical';
+  message?: string;
+}
+
+export type WorkbenchConsolidatedDecisionStatus =
+  | 'ALLOW'
+  | 'NEED_CONFIRM'
+  | 'SUGGEST_REPLACE'
+  | 'REJECT';
+
+export interface WorkbenchConsolidatedDecision {
+  status: WorkbenchConsolidatedDecisionStatus;
+  summary: string;
+  nextSteps: string[];
 }
 
 export interface PlanningWorkbenchResponse {
@@ -103,6 +161,18 @@ export interface PlanningWorkbenchResponse {
     
     /** 需要用户确认的事项 */
     confirmations?: string[];
+
+    /** OpenAPI 对齐：顶层 consolidatedDecision（与 personas.consolidatedDecision 同步） */
+    consolidatedDecision?: WorkbenchConsolidatedDecision;
+
+    /** OpenAPI 对齐：顶层 timestamp（与 personas.timestamp 同步） */
+    timestamp?: string;
+
+    /** RAG / 合规下游关联 */
+    decisionContext?: WorkbenchDecisionContext;
+
+    /** 预算预览（evaluated=false 时前端 lazy load） */
+    budgetPreview?: WorkbenchBudgetPreview;
   };
 }
 
@@ -164,14 +234,14 @@ export class PlanningWorkbenchAgentService {
     if (this.tripRunManager) {
       try {
         // 从 request 的 metadata 中获取 tripRunId（如果 AgentService 已创建）
-        const metadata = (request as any).metadata || {};
-        tripRunId = metadata.tripRunId || null;
+        const metadata: PlanningWorkbenchRequestMetadata = request.metadata ?? {};
+        tripRunId = metadata.tripRunId ?? null;
         
         if (!tripRunId) {
           // 创建新的 TripRun
           tripRunId = await this.tripRunManager.createTripRun({
             tripId: request.tripId || null,
-            userId: metadata.userId || null,
+            userId: metadata.userId ?? null,
             userQuery: `规划工作台: ${request.context.destination.city || request.context.destination.country}`,
             planningPhase: 'PLANNING',
             currentAgent: 'PlanningWorkbench',
@@ -192,9 +262,9 @@ export class PlanningWorkbenchAgentService {
 
     try {
       // 获取进度更新函数（如果存在）
-      const metadata = (request as any).metadata || {};
-      const updateProgress = metadata.updateProgress as ((progress: number, stage?: string) => void) | undefined;
-      const taskId = metadata.taskId as string | undefined;
+      const metadata: PlanningWorkbenchRequestMetadata = request.metadata ?? {};
+      const updateProgress = metadata.updateProgress;
+      const taskId = metadata.taskId;
       
       if (updateProgress) {
         this.logger.debug(`进度更新函数已注入: taskId=${taskId || 'unknown'}`);
@@ -235,6 +305,7 @@ export class PlanningWorkbenchAgentService {
 
       // 2. 根据用户操作执行不同流程
       let planState: PlanState = request.existingPlanState || this.createInitialPlanState(request.context, request.tripId);
+      planState = this.hydratePlanStateFromContext(planState, request.context, request.tripId);
       const uiOutput: PlanningWorkbenchResponse['uiOutput'] = {};
 
       // 透传 tripId：域 Agent + MultiAgent 桥（与 UnifiedWorldModel 共享同一 trip 有界上下文）
@@ -300,6 +371,7 @@ export class PlanningWorkbenchAgentService {
                 world,
               });
               uiOutput.skeletonOptions = skeletonResult.skeletonSet;
+              this.persistSkeletonOptionsToPlanState(planState, skeletonResult.skeletonSet);
               updateProgress?.(40, '骨架方案生成完成，正在转换为segments...');
               
               // 将推荐的骨架方案转换为 segments（填充 planState.itinerary.segments）
@@ -447,6 +519,7 @@ export class PlanningWorkbenchAgentService {
                     reason: '生成失败，使用默认方案',
                   },
                 };
+                this.persistSkeletonOptionsToPlanState(planState, uiOutput.skeletonOptions);
                 
                 // 将默认方案也转换为 segments
                 planState.itinerary.segments = defaultDayThemes.map((theme) => ({
@@ -498,11 +571,7 @@ export class PlanningWorkbenchAgentService {
 
             try {
               // 1. 获取要对比的方案列表
-              // 优先从 request.existingPlanState 或 uiOutput 中获取
-              const skeletonSet = 
-                (request as any).skeletonOptions || 
-                uiOutput.skeletonOptions || 
-                planState.metadata?.skeletonOptions;
+              const skeletonSet = this.resolveSkeletonSetFromRequest(request, planState, uiOutput);
 
               if (!skeletonSet || !skeletonSet.options || skeletonSet.options.length < 2) {
                 this.logger.warn(`对比方案失败: 需要至少2个方案，当前有 ${skeletonSet?.options?.length || 0} 个`);
@@ -637,11 +706,11 @@ export class PlanningWorkbenchAgentService {
 
             try {
               // 1. 获取选定的方案
-              // 优先从 request 中获取，否则从 planState.metadata 或 comparison.recommendation 中获取
-              const selectedOptionId = 
-                (request as any).selectedOptionId ||
-                planState.metadata?.recommendedOptionId ||
-                uiOutput.comparison?.recommendation?.optionId;
+              const selectedOptionId = this.resolveSelectedOptionIdFromRequest(
+                request,
+                planState,
+                uiOutput,
+              );
 
               if (!selectedOptionId) {
                 this.logger.warn('提交方案失败: 未指定要提交的方案');
@@ -650,10 +719,7 @@ export class PlanningWorkbenchAgentService {
                 ];
               } else {
                 // 2. 从 skeletonOptions 中查找选定的方案
-                const skeletonSet = 
-                  (request as any).skeletonOptions || 
-                  uiOutput.skeletonOptions || 
-                  planState.metadata?.skeletonOptions;
+                const skeletonSet = this.resolveSkeletonSetFromRequest(request, planState, uiOutput);
 
                 if (!skeletonSet || !skeletonSet.options) {
                   this.logger.warn('提交方案失败: 未找到骨架方案集');
@@ -799,6 +865,7 @@ export class PlanningWorkbenchAgentService {
                 world,
               });
               uiOutput.skeletonOptions = skeletonResult.skeletonSet;
+              this.persistSkeletonOptionsToPlanState(planState, skeletonResult.skeletonSet);
               
               // 将推荐的骨架方案转换为 segments（填充 planState.itinerary.segments）
               const recommendedOption = skeletonResult.skeletonSet.options?.find(
@@ -911,6 +978,7 @@ export class PlanningWorkbenchAgentService {
                     reason: '生成失败，使用默认方案',
                   },
                 };
+                this.persistSkeletonOptionsToPlanState(planState, uiOutput.skeletonOptions);
                 
                 // 将默认方案也转换为 segments
                 planState.itinerary.segments = defaultDayThemes.map((theme) => ({
@@ -936,6 +1004,8 @@ export class PlanningWorkbenchAgentService {
       }
 
       // 3. System 1 快速检查（预算、交通、节奏）
+      // commit/compare 等步骤可能替换 planState，进入 System 1 前再次补齐 constraints
+      planState = this.hydratePlanStateFromContext(planState, request.context, request.tripId);
       if (planState.plan_id) {
         this.logger.debug('开始 System 1 快速检查...');
         
@@ -980,20 +1050,32 @@ export class PlanningWorkbenchAgentService {
 
         // 计算时间窗
         if (this.paceComputeTimeWindows) {
-          const timeWindowsResult = await this.paceComputeTimeWindows.execute({ planState });
-          planState.pace.timeWindows = timeWindowsResult.timeWindows;
+          try {
+            const timeWindowsResult = await this.paceComputeTimeWindows.execute({ planState });
+            planState.pace.timeWindows = timeWindowsResult.timeWindows;
+          } catch (paceError: any) {
+            this.logger.warn(`计算时间窗失败: ${paceError.message}，已跳过 pace 时间窗`);
+          }
         }
 
         // 疲劳评分
         if (this.paceFatigueScore) {
-          const fatigueResult = await this.paceFatigueScore.execute({ planState });
-          planState.pace.fatigueScore = fatigueResult.fatigueScore;
+          try {
+            const fatigueResult = await this.paceFatigueScore.execute({ planState });
+            planState.pace.fatigueScore = fatigueResult.fatigueScore;
+          } catch (paceError: any) {
+            this.logger.warn(`疲劳评分失败: ${paceError.message}，已跳过 pace 疲劳评分`);
+          }
         }
 
         // 门控预检查（System 1）
         if (this.gatePrecheck) {
-          const gateResult = await this.gatePrecheck.execute({ planState });
-          planState.gate = gateResult.gateStatus;
+          try {
+            const gateResult = await this.gatePrecheck.execute({ planState });
+            planState.gate = gateResult.gateStatus;
+          } catch (gateError: any) {
+            this.logger.warn(`门控预检查失败: ${gateError.message}，保留现有 gate 状态`);
+          }
         }
 
         // 冲突检测
@@ -1115,10 +1197,12 @@ export class PlanningWorkbenchAgentService {
       // 更新进度到95%（即将完成）
       updateProgress?.(95, '正在完成规划工作台流程...');
       
-      return {
+      return enrichPlanningWorkbenchExecuteResponse({
         planState,
         uiOutput,
-      };
+        tripId: request.tripId,
+        requestMetadata: request.metadata,
+      });
     } catch (error: any) {
       this.logger.error(`规划工作台执行失败: ${error.message}`, error.stack);
       
@@ -1135,6 +1219,77 @@ export class PlanningWorkbenchAgentService {
       
       throw error;
     }
+  }
+
+  /**
+   * 回传 existingPlanState 可能缺 constraints.time 等字段（前端 JSON 裁剪 / commit 增量），
+   * 在 System 1 技能读 planState.constraints.time.days 前补齐。
+   */
+  private hydratePlanStateFromContext(
+    planState: PlanState,
+    context: PlanContext,
+    tripId?: string,
+  ): PlanState {
+    const segmentDayCount = planState.itinerary?.segments?.length ?? 0;
+    const resolvedDays =
+      planState.constraints?.time?.days ??
+      context.days ??
+      (segmentDayCount > 0 ? segmentDayCount : undefined) ??
+      1;
+
+    planState.constraints = {
+      ...(planState.constraints ?? {}),
+      time: {
+        ...(planState.constraints?.time ?? {}),
+        days: resolvedDays,
+        availableHoursPerDay:
+          planState.constraints?.time?.availableHoursPerDay ??
+          context.constraints?.time?.availableHoursPerDay,
+        startDate:
+          planState.constraints?.time?.startDate ?? context.constraints?.time?.startDate,
+        endDate: planState.constraints?.time?.endDate ?? context.constraints?.time?.endDate,
+      },
+      budget: {
+        ...(context.constraints?.budget ?? {}),
+        ...(planState.constraints?.budget ?? {}),
+      },
+      fitness: planState.constraints?.fitness ?? context.constraints?.fitness ?? {},
+      travelMode: planState.constraints?.travelMode ?? context.travelMode,
+      accommodation: planState.constraints?.accommodation ?? context.constraints?.accommodation,
+      mustDo: planState.constraints?.mustDo ?? context.mustDo,
+      mustAvoid: planState.constraints?.mustAvoid ?? context.mustAvoid,
+      companions: planState.constraints?.companions ?? context.constraints?.companions,
+    };
+
+    if (!planState.itinerary) {
+      planState.itinerary = {
+        tripId: tripId ?? `trip_${Date.now()}`,
+        routeDirectionId: `route_${Date.now()}`,
+        segments: [],
+      };
+    } else if (tripId && !planState.itinerary.tripId) {
+      planState.itinerary.tripId = tripId;
+    }
+
+    if (!planState.mobility) {
+      planState.mobility = { transferSegments: [] };
+    } else if (!planState.mobility.transferSegments) {
+      planState.mobility.transferSegments = [];
+    }
+
+    planState.budget = planState.budget ?? {};
+    planState.pace = planState.pace ?? {};
+    planState.gate = planState.gate ?? {
+      status: 'NEED_CONFIRM',
+      reasons: ['初始状态，待验证'],
+      missingEvidence: [],
+    };
+    planState.evidence_refs = planState.evidence_refs ?? [];
+    planState.decision_log_refs = planState.decision_log_refs ?? [];
+    planState.status = planState.status ?? 'DRAFT';
+    planState.metadata = planState.metadata ?? {};
+
+    return planState;
   }
 
   /**
@@ -1176,6 +1331,52 @@ export class PlanningWorkbenchAgentService {
       status: 'DRAFT',
       metadata: {},
     };
+  }
+
+  private persistSkeletonOptionsToPlanState(
+    planState: PlanState,
+    skeletonSet: PlanSkeletonSet,
+  ): void {
+    const recommendedOptionId =
+      skeletonSet.recommendation?.optionId ?? skeletonSet.options?.[0]?.id;
+
+    planState.metadata = {
+      ...(planState.metadata || {}),
+      skeletonOptions: skeletonSet,
+      ...(recommendedOptionId ? { recommendedOptionId } : {}),
+    };
+  }
+
+  private resolveSkeletonSetFromRequest(
+    request: PlanningWorkbenchRequest,
+    planState: PlanState,
+    uiOutput: PlanningWorkbenchResponse['uiOutput'],
+  ): PlanSkeletonSet | undefined {
+    return (
+      request.skeletonOptions ??
+      resolveSkeletonOptionsFromExecuteRequest({
+        skeletonOptions: request.skeletonOptions,
+        existingPlanState: planState,
+      }) ??
+      uiOutput.skeletonOptions ??
+      (planState.metadata?.skeletonOptions as PlanSkeletonSet | undefined)
+    );
+  }
+
+  private resolveSelectedOptionIdFromRequest(
+    request: PlanningWorkbenchRequest,
+    planState: PlanState,
+    uiOutput: PlanningWorkbenchResponse['uiOutput'],
+  ): string | undefined {
+    return (
+      request.selectedOptionId ??
+      resolveSelectedOptionIdFromExecuteRequest({
+        selectedOptionId: request.selectedOptionId,
+        existingPlanState: planState,
+        skeletonOptions: request.skeletonOptions,
+      }) ??
+      uiOutput.comparison?.recommendation?.optionId
+    );
   }
 
   /**

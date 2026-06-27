@@ -26,7 +26,6 @@ import { WorldFactsModule } from '../world-facts/world-facts.module';
 import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
 import { HikingDetailOverrideController } from './hiking-detail-override.controller';
 import { TransportModule } from '../transport/transport.module';
-import { MatchSquareModule } from '../match-square/match-square.module';
 import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
 
 // 检查是否在 MCP 模式下
@@ -60,7 +59,6 @@ class MockRedisService {
     POIModule,
     WorldFactsModule,
     HikingDemoModule,
-    MatchSquareModule,
     TransportModule,
     IdentityGovernanceModule,
     forwardRef(() => DecisionModule), // 用于RhythmMatchingService和ThreeLayerExplanationService - 使用 forwardRef 避免循环依赖

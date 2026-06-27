@@ -48,6 +48,29 @@ export interface ReadinessScoreFinding {
   issueKind?: string;
   anchors?: Record<string, unknown>;
   uiHints?: Record<string, unknown>;
+  /** POI Access Engine — 与 feasibility issues[].visitorAccess 同形 */
+  visitorAccess?: {
+    evaluation: {
+      verdict: string;
+      poiId: string;
+      message: string;
+      confidence: string;
+      planBHints: Array<{
+        action: string;
+        detail: string;
+        suggestedArrivalTime?: string;
+        alternativePoiId?: string;
+      }>;
+      crowding?: {
+        crowdLevel?: string;
+        predictedWaitP50?: number;
+        predictedWaitP90?: number;
+        disclosureLabel?: string;
+      };
+    };
+    hasReservationEvidence?: boolean;
+    deferredLive?: boolean;
+  };
   /** 与树形 findings 对齐：覆盖缺口时的行程定位 */
   tripScope?: ReadinessTripFindingScope;
 }

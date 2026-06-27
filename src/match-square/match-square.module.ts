@@ -40,7 +40,7 @@ import { CalibrationController } from './controllers/calibration.controller';
     HikingDemoModule,
     forwardRef(() => AgentModule),
     forwardRef(() => DecisionModule),
-    RouteDirectionsModule,
+    forwardRef(() => RouteDirectionsModule),
     RecruitingRuntimeModule,
     IdentityGovernanceModule,
   ],

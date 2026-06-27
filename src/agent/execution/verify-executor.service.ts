@@ -25,6 +25,7 @@ import { ExperienceAgentService } from '../services/domain-agents/experience-age
 import type { Itinerary } from '../interfaces/trip-plan.interface';
 import { RouteFeasibilityEngineService } from '../services/route-feasibility-engine.service';
 import { classifyVerificationIssueFromText } from './verification-issue.rules';
+import { mapItineraryVerifyIssueToVerificationIssue } from '../utils/map-itinerary-verify-issue.util';
 import type { ConstraintViolation, FeasibilityFinding } from '../services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../services/constraint-registry';
 import type { IcelandVehicleIntentHints } from '../../skills/itinerary/iceland-vehicle-terrain-arbitrator.util';
@@ -495,7 +496,16 @@ export class VerifyExecutorService implements IVerifyExecutor {
       });
       if (result?.issues && Array.isArray(result.issues)) {
         for (const raw of result.issues) {
-          const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ITINERARY_VERIFY_SKILL' });
+          const structured =
+            raw && typeof raw === 'object' && typeof (raw as { message?: string }).message === 'string'
+              ? mapItineraryVerifyIssueToVerificationIssue(raw as Parameters<typeof mapItineraryVerifyIssueToVerificationIssue>[0])
+              : undefined;
+          const v =
+            structured ??
+            classifyVerificationIssueFromText({
+              text: typeof raw === 'string' ? raw : String((raw as { message?: string })?.message ?? ''),
+              source: 'ITINERARY_VERIFY_SKILL',
+            });
           if (v) next.push(v);
         }
         delta += -0.1 * Math.min(result.issues.length, 5);
@@ -808,13 +818,21 @@ export class VerifyExecutorService implements IVerifyExecutor {
 
           if (result?.issues && Array.isArray(result.issues)) {
             for (const raw of result.issues) {
-              const text =
-                typeof raw === 'string'
-                  ? raw
-                  : raw && typeof raw === 'object' && typeof (raw as { message?: string }).message === 'string'
-                    ? (raw as { message: string }).message
-                    : '';
-              const v = classifyVerificationIssueFromText({ text, source: 'ITINERARY_VERIFY_SKILL' });
+              const structured =
+                raw && typeof raw === 'object' && typeof (raw as { message?: string }).message === 'string'
+                  ? mapItineraryVerifyIssueToVerificationIssue(raw as Parameters<typeof mapItineraryVerifyIssueToVerificationIssue>[0])
+                  : undefined;
+              const v =
+                structured ??
+                classifyVerificationIssueFromText({
+                  text:
+                    typeof raw === 'string'
+                      ? raw
+                      : raw && typeof raw === 'object' && typeof (raw as { message?: string }).message === 'string'
+                        ? (raw as { message: string }).message
+                        : '',
+                  source: 'ITINERARY_VERIFY_SKILL',
+                });
               if (v) issues.push(v);
             }
             confidenceDelta += -0.1 * Math.min(result.issues.length, 5);
@@ -958,9 +976,18 @@ export class VerifyExecutorService implements IVerifyExecutor {
       // entity.*
       case CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP:
       case CONSTRAINT_IDS.ENTITY_SEASONAL_CLOSURE:
+      case CONSTRAINT_IDS.ENTITY_ACCESS_BLOCKED:
         return 'POI_CLOSED';
       case CONSTRAINT_IDS.ENTITY_MANDATORY_RESERVATION:
+      case CONSTRAINT_IDS.ENTITY_PARKING_RESERVATION_MISSING:
+      case CONSTRAINT_IDS.ENTITY_INVENTORY_SOLD_OUT:
         return 'TIME_WINDOW_BREACH';
+      case CONSTRAINT_IDS.ENTITY_VEHICLE_INCOMPATIBLE:
+        return 'ROUTE_INFEASIBLE';
+      case CONSTRAINT_IDS.ENTITY_ACCESS_STATUS_STALE:
+        return 'UNKNOWN';
+      case CONSTRAINT_IDS.ENTITY_PARKING_WAIT_HIGH:
+        return 'UNKNOWN';
 
       // environment.*
       case CONSTRAINT_IDS.ENVIRONMENT_WIND_SPEED_LIMIT:

@@ -26,7 +26,9 @@ export type FeasibilityDimensionKey =
   | 'booking'
   | 'environment'
   | 'team_fit'
-  | 'itinerary_completeness';
+  | 'itinerary_completeness'
+  | 'access_capacity'
+  | 'experience_expectation';
 
 export type FeasibilityDayStatus = 'ok' | 'warning' | 'blocked';
 
@@ -113,10 +115,16 @@ export interface FeasibilityIssueAnchorsDto {
 
 export interface FeasibilityIssueUiHintsDto {
   primaryAction?: string;
+  /** P0-3 team_fit CTA */
+  profilingSurface?: 'decision_profiling' | 'team_pacing';
+  copyVariant?: string;
+  affectedMemberIds?: string[];
   deepLink?: string | {
     tab?: string;
+    subTab?: string;
     dayIndex?: number;
     highlightItemIds?: string[];
+    highlightDomains?: string[];
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -124,6 +132,8 @@ export interface FeasibilityIssueUiHintsDto {
 
 export interface FeasibilityIssueDto {
   id: string;
+  /** 稳定 dedupe 键 — 与 revalidate 后 id 抖动时前端可对齐 */
+  semanticKey?: string;
   priority: FeasibilityIssuePriority;
   category: FeasibilityDimensionKey | string;
   title: string;
@@ -139,6 +149,29 @@ export interface FeasibilityIssueDto {
   actionRequired?: string;
   repairOptions?: FeasibilityRepairOptionDto[];
   proofs?: FeasibilityProofDto[];
+  /** POI Access Engine — 三结论 UI payload */
+  visitorAccess?: {
+    evaluation: {
+      verdict: string;
+      poiId: string;
+      message: string;
+      confidence: string;
+      planBHints: Array<{
+        action: string;
+        detail: string;
+        suggestedArrivalTime?: string;
+        alternativePoiId?: string;
+      }>;
+      crowding?: {
+        crowdLevel?: string;
+        predictedWaitP50?: number;
+        predictedWaitP90?: number;
+        disclosureLabel?: string;
+      };
+    };
+    hasReservationEvidence?: boolean;
+    deferredLive?: boolean;
+  };
 }
 
 export interface FeasibilityAlternativeDto {
@@ -223,6 +256,15 @@ export interface ItineraryCompletenessSummaryDto {
   signalCount: number;
 }
 
+export interface GateExecuteStatusDto {
+  blocked: boolean;
+  reasons: Array<{
+    code: 'access_hard_blocked' | 'experience_regret_unconfirmed';
+    issueId?: string;
+    message: string;
+  }>;
+}
+
 export interface TripFeasibilityReportDto {
   tripId: string;
   tripTitle: string;
@@ -233,8 +275,10 @@ export interface TripFeasibilityReportDto {
   verifiedForTripVersion?: string;
   currentTripVersion: string;
   isStale: boolean;
-  /** 是否可进入行中执行（已验证 + 未过期 + 无 must_handle） */
+  /** 是否可进入行中执行（已验证 + 未过期 + gate 未阻塞 + EXECUTABLE） */
   canStartExecute: boolean;
+  /** GATE-EXECUTE：阻止「开始行程」（权威来源） */
+  gateExecute: GateExecuteStatusDto;
   /** 行前阶段提示（与 /score phaseHint 同源） */
   phaseHint?: string;
   /** 决策覆盖声明：基于哪些数据判断、哪些未覆盖 */

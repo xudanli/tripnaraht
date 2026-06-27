@@ -761,6 +761,12 @@ export class ReadinessController {
         result,
       );
 
+      result = await this.coverageMapService.mergePoiAccessFindingsIntoTripReadiness(
+        tripId,
+        trip.destination ?? '',
+        result,
+      );
+
       // 与 /score、/insight 对齐：卡片可展示覆盖地图分数与行程级 must/blockers
       let coverage: Awaited<ReturnType<CoverageMapService['getReadinessScore']>> | undefined;
       try {

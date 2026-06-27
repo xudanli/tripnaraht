@@ -76,6 +76,7 @@ import { PlanningWorkbenchAgentService } from './services/planning-workbench-age
 import { PlanningWorkbenchKernelBridgeService } from './services/planning-workbench-kernel-bridge.service';
 import { AgentOpsOutcomeBridgeService } from './services/agent-ops-outcome-bridge.service';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
+import { PlanningWorkbenchTaskService } from './services/planning-workbench-task.service';
 import { ExecutionAgentService } from './services/execution-agent.service';
 import { TripDetailAgentService } from './services/trip-detail-agent.service';
 import { ExecutionController } from './execution.controller';
@@ -296,6 +297,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     PlanningWorkbenchKernelBridgeService, // 规划工作台 ↔ Decision Kernel 桥接
     AgentOpsOutcomeBridgeService, // Agent → OPS outcome（自动携带 TripWorldState）
     PlanningWorkbenchAdminService, // 规划工作台管理服务（后台管理）
+    PlanningWorkbenchTaskService, // 规划工作台异步任务（execute-async）
     ExecutionAgentService, // 执行阶段 Agent
     TripDetailAgentService, // 行程详情页 Agent
     // Claude 编排子 Agent

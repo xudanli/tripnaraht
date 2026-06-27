@@ -905,6 +905,12 @@ export interface VerificationIssueMetadata {
   confidence_impact?: number;
   /** 证据形态（营业时间等） */
   evidenceKind?: 'PERIODS' | 'IS_OPEN_NOW_ONLY' | 'WEEKDAY_TEXT_ONLY' | 'NONE';
+  /** POI Access & Capacity Engine 约束 ID */
+  poi_access_constraint_id?: string;
+  /** Plan B 替代 POI slug */
+  poi_access_alternative_poi_id?: string;
+  /** 被阻断的 POI slug */
+  poi_access_blocked_poi_id?: string;
 }
 
 export interface VerificationIssue {

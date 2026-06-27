@@ -163,7 +163,7 @@ ${userPrompt}`;
     
     parts.push(`## 行程信息`);
     parts.push(`目的地: ${destination.city || destination.country || '未指定'}`);
-    parts.push(`天数: ${planState.constraints.time.days} 天`);
+    parts.push(`天数: ${this.resolvePlanDays(planState)} 天`);
     
     if (planState.constraints.budget?.total) {
       parts.push(`总预算: ${planState.constraints.budget.total} ${planState.constraints.budget.currency || 'CNY'}`);
@@ -188,11 +188,20 @@ ${userPrompt}`;
     return parts.join('\n');
   }
 
+  private resolvePlanDays(planState: PlanState): number {
+    const days = planState.constraints?.time?.days;
+    if (typeof days === 'number' && days > 0) {
+      return days;
+    }
+    const fromSegments = planState.itinerary?.segments?.length ?? 0;
+    return fromSegments > 0 ? fromSegments : 1;
+  }
+
   /**
    * 获取默认预算拆分（当 LLM 调用失败时使用）
    */
   private getDefaultBudgetBreakdown(planState: PlanState, _destination: any): PlanBudgetEstimateBaselineOutput {
-    const days = planState.constraints.time.days;
+    const days = this.resolvePlanDays(planState);
     const totalBudget = planState.constraints.budget?.total || 20000; // 默认 2 万
     
     // 简单的默认预算拆分（基于天数）

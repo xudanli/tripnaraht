@@ -42,7 +42,7 @@ export class PlanGatePrecheckSkill implements Skill<PlanGatePrecheckInput, PlanG
       let status: GateStatus['status'] = 'ALLOW';
 
       // 1. 检查基本约束
-      if (!input.planState.constraints.time.days || input.planState.constraints.time.days <= 0) {
+      if (!input.planState.constraints?.time?.days || input.planState.constraints.time.days <= 0) {
         status = 'REJECT';
         reasons.push('天数无效或未指定');
       }

@@ -817,6 +817,42 @@ export class ItineraryItemsController {
   }
 
   @Public()
+  @Get('trip/:tripId/travel-info')
+  @ApiOperation({
+    summary: '批量获取行程交通信息（只读缓存）',
+    description:
+      '一次返回所有天的交通段，仅读 ItineraryItem.travelFromPrevious*，不触发路由重算。' +
+      '重算请用 POST /itinerary-items/trip/:tripId/calculate-all-travel。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({
+    name: 'dates',
+    required: false,
+    description: 'YYYY-MM-DD 逗号分隔，仅返回指定天',
+  })
+  @ApiResponse({ status: 200, description: '批量交通信息（cached）' })
+  async getTripTravelInfo(
+    @Param('tripId') tripId: string,
+    @Query('dates') dates?: string,
+  ) {
+    try {
+      const dateFilter = dates
+        ?.split(',')
+        .map((d) => d.trim())
+        .filter(Boolean);
+      const result = await this.itineraryItemsService.getTripTravelInfoFromCache(tripId, {
+        dates: dateFilter?.length ? dateFilter : undefined,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
   @Get('trip/:tripId/days/:dayId/travel-info')
   @ApiOperation({ 
     summary: '获取某天的交通信息',
@@ -824,6 +860,12 @@ export class ItineraryItemsController {
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
   @ApiParam({ name: 'dayId', description: '行程日期 ID' })
+  @ApiQuery({
+    name: 'mode',
+    required: false,
+    enum: ['live', 'cached'],
+    description: 'cached 只读 DB 段；live（默认）可能触发路由计算',
+  })
   @ApiResponse({ 
     status: 200, 
     description: '交通信息',
@@ -862,9 +904,13 @@ export class ItineraryItemsController {
   async getDayTravelInfo(
     @Param('tripId') tripId: string,
     @Param('dayId') dayId: string,
+    @Query('mode') mode?: 'live' | 'cached',
   ) {
     try {
-      const result = await this.itineraryItemsService.getDayTravelInfo(tripId, dayId);
+      const result =
+        mode === 'cached'
+          ? await this.itineraryItemsService.getDayTravelInfoFromCache(tripId, dayId)
+          : await this.itineraryItemsService.getDayTravelInfo(tripId, dayId);
       return successResponse(result);
     } catch (error: any) {
       if (error instanceof NotFoundException) {

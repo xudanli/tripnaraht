@@ -1,5 +1,6 @@
 import type { ConflictDto } from '../../dto/trip-conflicts.dto';
 import { ConflictType } from '../../dto/trip-conflicts.dto';
+import type { FrictionDomain } from '../../decision-profiling/types/decision-profiling.types';
 import type {
   DecisionStyleType,
   MoneyDnaCard,
@@ -10,6 +11,19 @@ import {
   computeFrictionMatrix,
 } from '../../decision-profiling/utils/friction-matrix.util';
 import type { FeasibilityIssueDto } from '../types/trip-constraint-solver.types';
+import {
+  buildTeamFitUiHints,
+  teamPacingIssueKind,
+} from './team-fit-ui-hints.util';
+
+function isTeamFrictionIssue(issueKind?: string): boolean {
+  return (
+    issueKind === 'member_friction' ||
+    (Boolean(issueKind?.startsWith('team_pacing_')) &&
+      issueKind !== 'team_pacing_fatigue' &&
+      issueKind !== 'team_pacing_profiling')
+  );
+}
 
 export interface TeamFitMemberInput {
   userId: string;
@@ -51,11 +65,15 @@ function buildProfilingCoverageIssue(
     id: `issue-team-fit-profiling-${tripId}`,
     priority: 'pending_confirm',
     category: 'team_fit',
+    issueKind: teamPacingIssueKind('profiling'),
     title: '成员决策画像未齐',
     message: `${completedCount}/${memberCount} 位成员已完成决策画像，团队适配评估置信度较低`,
     affectedDays: [],
     severity: 'medium',
-    issueKind: 'profiling_incomplete',
+    uiHints: buildTeamFitUiHints({
+      kind: 'profiling_incomplete',
+      affectedMemberIds: [],
+    }),
     proofs: [
       {
         entity: '团队决策画像',
@@ -77,11 +95,16 @@ function frictionAlertToIssue(tripId: string, alert: ReturnType<typeof buildHigh
     id: `issue-team-fit-${alert.id}`,
     priority: alert.domain === 'pace' ? 'suggest_adjust' : 'pending_confirm',
     category: 'team_fit',
+    issueKind: teamPacingIssueKind('friction', alert.domain),
     title: `${alert.domainLabel} · 成员差异`,
     message: alert.summary,
     affectedDays: [],
     severity: alert.domain === 'pace' ? 'high' : 'medium',
-    issueKind: 'member_friction',
+    uiHints: buildTeamFitUiHints({
+      kind: 'member_friction',
+      domain: alert.domain,
+      affectedMemberIds: [alert.memberAId, alert.memberBId],
+    }),
     proofs: [
       {
         entity: `${alert.memberAName} · ${alert.memberBName}`,
@@ -106,11 +129,15 @@ function fatigueConflictToIssue(tripId: string, conflict: ConflictDto): Feasibil
     id: `issue-team-fit-fatigue-${conflict.id}`,
     priority: 'suggest_adjust',
     category: 'team_fit',
+    issueKind: teamPacingIssueKind('fatigue'),
     title: '高强度日 · 成员体能风险',
     message: `${conflict.description}；多人同行时需确认最弱体能成员能否承受`,
     affectedDays: dayNumber ? [dayNumber] : [],
     severity: 'high',
-    issueKind: 'team_fatigue',
+    uiHints: buildTeamFitUiHints({
+      kind: 'team_fatigue',
+      affectedDayNumbers: dayNumber ? [dayNumber] : undefined,
+    }),
     proofs: [
       {
         entity: '团队节奏',
@@ -134,11 +161,14 @@ function scoreFromIssues(issues: FeasibilityIssueDto[], memberCount: number, pro
   score -= (1 - profilingRatio) * 25;
 
   for (const issue of issues) {
-    if (issue.issueKind === 'member_friction') {
+    if (isTeamFrictionIssue(issue.issueKind)) {
       score -= issue.priority === 'suggest_adjust' ? 18 : 10;
-    } else if (issue.issueKind === 'team_fatigue') {
+    } else if (issue.issueKind === 'team_fatigue' || issue.issueKind === 'team_pacing_fatigue') {
       score -= 15;
-    } else if (issue.issueKind === 'profiling_incomplete') {
+    } else if (
+      issue.issueKind === 'profiling_incomplete' ||
+      issue.issueKind === 'team_pacing_profiling'
+    ) {
       score -= 8;
     }
   }
@@ -219,9 +249,13 @@ export function deriveTeamFitChecklistStatus(
     return { result: 'failed', detail: blockers[0]?.message };
   }
 
-  const friction = assessment.issues.filter((i) => i.issueKind === 'member_friction');
-  const fatigue = assessment.issues.filter((i) => i.issueKind === 'team_fatigue');
-  const profiling = assessment.issues.filter((i) => i.issueKind === 'profiling_incomplete');
+  const friction = assessment.issues.filter((i) => isTeamFrictionIssue(i.issueKind));
+  const fatigue = assessment.issues.filter(
+    (i) => i.issueKind === 'team_fatigue' || i.issueKind === 'team_pacing_fatigue',
+  );
+  const profiling = assessment.issues.filter(
+    (i) => i.issueKind === 'profiling_incomplete' || i.issueKind === 'team_pacing_profiling',
+  );
 
   if (friction.length > 0 || fatigue.length > 0) {
     const top = friction[0] ?? fatigue[0];

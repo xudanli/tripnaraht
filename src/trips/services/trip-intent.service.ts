@@ -7,6 +7,7 @@ import {
   normalizeLunchStrategy,
   resolveLunchStrategyFromTrip,
 } from '../../planning-policy/utils/lunch-strategy.util';
+import { bumpConstraintsVersion, snapshotConstraintsMeta } from '../trip-constraint-solver/utils/constraints-metadata.util';
 
 @Injectable()
 export class TripIntentService {
@@ -56,6 +57,9 @@ export class TripIntentService {
 
     // 更新 metadata（存储偏好、约束、规划策略、午餐策略）
     let metadata = trip.metadata as any || {};
+    let constraintsTouched = false;
+    if (dto.pacingConfig) constraintsTouched = true;
+    if (dto.totalBudget !== undefined) constraintsTouched = true;
     if (dto.preferences || dto.constraints || dto.planningPolicy || dto.lunch_strategy) {
       metadata = {
         ...metadata,
@@ -73,6 +77,10 @@ export class TripIntentService {
           };
         }
       }
+    }
+
+    if (constraintsTouched) {
+      metadata = bumpConstraintsVersion(metadata);
     }
 
     // 更新数据库
@@ -94,6 +102,7 @@ export class TripIntentService {
         budgetConfig: budgetConfig,
       },
       metadata: this.buildIntentMetadata(metadata),
+      constraints: snapshotConstraintsMeta(updatedTrip.metadata),
     };
   }
 

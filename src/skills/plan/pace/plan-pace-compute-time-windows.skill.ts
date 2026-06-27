@@ -40,9 +40,10 @@ export class PlanPaceComputeTimeWindowsSkill implements Skill<PlanPaceComputeTim
     this.logger.debug(`执行 plan.pace.computeTimeWindows: planId=${input.planState.plan_id}`);
 
     try {
-      const days = input.planState.constraints.time.days;
+      const days = this.resolvePlanDays(input.planState);
       const bufferPolicy = input.bufferPolicy || 'standard';
-      const availableHoursPerDay = input.planState.constraints.time.availableHoursPerDay || 10;
+      const availableHoursPerDay =
+        input.planState.constraints?.time?.availableHoursPerDay ?? 10;
       
       // 计算每天的时间窗
       const timeWindows: TimeWindow[] = [];
@@ -89,5 +90,14 @@ export class PlanPaceComputeTimeWindowsSkill implements Skill<PlanPaceComputeTim
       this.logger.error(`计算时间窗失败: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  private resolvePlanDays(planState: PlanState): number {
+    const days = planState.constraints?.time?.days;
+    if (typeof days === 'number' && days > 0) {
+      return days;
+    }
+    const fromSegments = planState.itinerary?.segments?.length ?? 0;
+    return fromSegments > 0 ? fromSegments : 1;
   }
 }

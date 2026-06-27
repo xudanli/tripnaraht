@@ -6,6 +6,7 @@ import type {
   TripFeasibilityReportDto,
 } from '../types/trip-constraint-solver.types';
 import { computeCanStartExecute } from './feasibility-assembler.util';
+import { computeGateExecute } from '../../../poi-access-capacity/utils/gate-execute.util';
 
 export function filterReadinessByDay(
   readiness: ReadinessScoreResponse,
@@ -129,18 +130,21 @@ export function applyScopeToReport(
         ? `issue ${scope.issueId}`
         : `route ${scope.segmentId}`;
 
+  const gateExecute = computeGateExecute(issues);
+
   return {
     ...report,
     issues,
     dayTimeline,
     dimensions,
     summary,
+    gateExecute,
     overallScore: computeScopedOverallScore(dimensions, issues),
     canStartExecute: computeCanStartExecute({
       hasValidation: Boolean(report.verifiedAt),
       isStale: report.isStale,
       verdictStatus: scopedVerdictStatus,
-      mustHandle: summary.mustHandle,
+      gateExecute,
     }),
     verdict: {
       status: scopedVerdictStatus,

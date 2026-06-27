@@ -6,6 +6,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { FlightPriceService } from './services/flight-price.service';
 import { FlightPriceDetailService } from './services/flight-price-detail.service';
 import { ScheduleConverterService } from './services/schedule-converter.service';
+import { ScheduleTimelineService } from './services/schedule-timeline.service';
 import { ActionHistoryService } from './services/action-history.service';
 import { TripExtendedService } from './services/trip-extended.service';
 import { TripRecapService } from './services/trip-recap.service';
@@ -99,7 +100,7 @@ import { LoopsModule } from '../loops/loops.module';
 import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, LoopsModule, IdentityGovernanceModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, forwardRef(() => RouteDirectionsModule), ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, LoopsModule, IdentityGovernanceModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
@@ -142,6 +143,7 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     CityDigitalTwinService,
     StubRealityApiService,
     TripMetricsService, 
+    ScheduleTimelineService,
     TripConflictsService, 
     TripIntentService, 
     TripOptimizationService, 
@@ -184,6 +186,7 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     PoiRetrievalService,
     RouteTemplatePlanningService,
     TripMetricsService,
+    ScheduleTimelineService,
     TripConflictsService,
     TripIntentService,
     TripOptimizationService,

@@ -21,6 +21,7 @@ describe('InTripOfflineSyncService', () => {
     submitMicroFeedback: jest.fn(),
   };
   const experiencePulse = { submit: jest.fn() };
+  const poiFeedback = { recordAndAggregate: jest.fn() };
 
   let service: InTripOfflineSyncService;
 
@@ -33,6 +34,7 @@ describe('InTripOfflineSyncService', () => {
       transactions as never,
       groupPulse as never,
       experiencePulse as never,
+      poiFeedback as never,
     );
   });
 
@@ -128,6 +130,38 @@ describe('InTripOfflineSyncService', () => {
     await expect(
       service.sync('trip-1', 'user-1', { operations: [] }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('syncs poi_execution_feedback with aggregation', async () => {
+    prisma.tripInTripOfflineQueueEntry.findFirst.mockResolvedValue(null);
+    prisma.tripInTripOfflineQueueEntry.create.mockResolvedValue({ id: 'q1' });
+    poiFeedback.recordAndAggregate.mockResolvedValue({
+      id: 'fb-1',
+      aggregatedSnapshot: { poiId: 'is.gullfoss', crowdLevel: 'MEDIUM' },
+    });
+
+    const result = await service.sync('trip-1', 'user-1', {
+      operations: [
+        {
+          clientSeq: 1,
+          operationType: 'poi_execution_feedback',
+          payload: {
+            poiId: 'is.gullfoss',
+            dateISO: '2026-07-15',
+            parkingWaitMin: 15,
+          },
+          recordedAt: '2026-07-15T14:20:00.000Z',
+        },
+      ],
+    });
+
+    expect(result.applied).toBe(1);
+    expect(poiFeedback.recordAndAggregate).toHaveBeenCalledWith({
+      poiId: 'is.gullfoss',
+      dateISO: '2026-07-15',
+      parkingWaitMin: 15,
+      tripId: 'trip-1',
+    });
   });
 });
 

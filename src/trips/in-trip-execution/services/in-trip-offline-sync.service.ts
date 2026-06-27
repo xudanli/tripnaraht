@@ -10,6 +10,8 @@ import type {
 } from '../types/in-trip-offline.types';
 import { isInTripExecutionEnabled } from '../utils/in-trip-config.util';
 import { ExperiencePulseService } from './experience-pulse.service';
+import { PoiExecutionFeedbackService } from '../../../poi-access-capacity/services/poi-execution-feedback.service';
+import type { RecordPoiExecutionFeedbackInput } from '../../../poi-access-capacity/services/poi-execution-feedback.service';
 import { GroupPulseService } from './group-pulse.service';
 import { InTripAccessService } from './in-trip-access.service';
 import { SmartTransactionService } from './smart-transaction.service';
@@ -24,6 +26,7 @@ export class InTripOfflineSyncService {
     private readonly transactions: SmartTransactionService,
     private readonly groupPulse: GroupPulseService,
     private readonly experiencePulse: ExperiencePulseService,
+    private readonly poiFeedback: PoiExecutionFeedbackService,
   ) {}
 
   async sync(
@@ -160,6 +163,14 @@ export class InTripOfflineSyncService {
           op.payload as unknown as SubmitExperiencePulseInput,
         );
         return;
+      case 'poi_execution_feedback': {
+        const payload = op.payload as unknown as RecordPoiExecutionFeedbackInput;
+        await this.poiFeedback.recordAndAggregate({
+          ...payload,
+          tripId: payload.tripId ?? tripId,
+        });
+        return;
+      }
       default:
         throw new BadRequestException(`未知离线操作类型: ${(op as OfflineOperationInput).operationType}`);
     }
@@ -172,6 +183,7 @@ export class InTripOfflineSyncService {
       'motion_signal',
       'experience_pulse',
       'micro_feedback',
+      'poi_execution_feedback',
     ];
     if (!allowed.includes(type as OfflineOperationType)) {
       throw new BadRequestException(`不支持的 operationType: ${type}`);

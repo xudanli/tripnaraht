@@ -21,6 +21,7 @@ import {
 } from '../utils/budget-config.util';
 import { sumAllocations } from '../utils/budget-structure.util';
 import { toInputJsonValue } from '../utils/prisma-json.util';
+import { bumpConstraintsVersion, snapshotConstraintsMeta } from '../../trip-constraint-solver/utils/constraints-metadata.util';
 
 @Injectable()
 export class TripBudgetIntentService {
@@ -36,7 +37,7 @@ export class TripBudgetIntentService {
     tripId: string,
     input: PutBudgetIntentInput,
     source: TripBudgetIntent['source'] = 'user',
-  ): Promise<TripBudgetIntent> {
+  ): Promise<TripBudgetIntent & { constraints: ReturnType<typeof snapshotConstraintsMeta> }> {
     const trip = await this.requireTrip(tripId);
     this.validateIntentInput(input);
 
@@ -68,12 +69,20 @@ export class TripBudgetIntentService {
       updated.createdAt = new Date().toISOString();
     }
 
+    const bumpedMeta = bumpConstraintsVersion(trip.metadata);
+
     await this.prisma.trip.update({
       where: { id: tripId },
-      data: { budgetConfig: toInputJsonValue(updated) },
+      data: {
+        budgetConfig: toInputJsonValue(updated),
+        metadata: toInputJsonValue(bumpedMeta),
+      },
     });
 
-    return intent;
+    return {
+      ...intent,
+      constraints: snapshotConstraintsMeta(bumpedMeta),
+    };
   }
 
   async deleteIntent(tripId: string): Promise<void> {

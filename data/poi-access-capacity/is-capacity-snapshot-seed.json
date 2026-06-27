@@ -1,0 +1,36 @@
+{
+  "fetchedAt": "2026-06-20T00:00:00.000Z",
+  "source": "manual_seed",
+  "slots": [
+    {
+      "poiId": "is.landmannalaugar",
+      "dateISO": "2026-07-15",
+      "slotStartTime": "09:00",
+      "slotEndTime": "16:00",
+      "remaining": 3,
+      "capacity": 80,
+      "soldOut": false,
+      "signalSource": "PARKA"
+    },
+    {
+      "poiId": "is.blue_lagoon",
+      "dateISO": "2026-08-01",
+      "slotStartTime": "09:00",
+      "slotEndTime": "10:00",
+      "remaining": 0,
+      "capacity": 50,
+      "soldOut": true,
+      "signalSource": "BOKUN"
+    },
+    {
+      "poiId": "is.blue_lagoon",
+      "dateISO": "2026-08-01",
+      "slotStartTime": "11:00",
+      "slotEndTime": "12:00",
+      "remaining": 18,
+      "capacity": 50,
+      "soldOut": false,
+      "signalSource": "BOKUN"
+    }
+  ]
+}

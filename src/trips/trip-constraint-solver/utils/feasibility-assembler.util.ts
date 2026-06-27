@@ -28,9 +28,28 @@ import type {
 } from '../types/trip-constraint-solver.types';
 import { normalizeIssueId, revisionToString, type TripRevisionInfo } from './trip-revision.util';
 import {
+  buildFeasibilityIssueDedupeKey,
   buildFeasibilityVerdictSubheadline,
   dedupeFeasibilityIssues,
 } from './feasibility-issue-dedup.util';
+import {
+  buildAddBufferRepairOption,
+  shouldOfferAddBufferRepair,
+} from './inter-day-buffer-repair.util';
+import {
+  buildBufferInsufficientProofs,
+  buildBufferInsufficientRepairOptions,
+  bufferConflictAnchors,
+  bufferConflictUiHints,
+  isBufferInsufficientConflict,
+} from './buffer-insufficient-repair.util';
+import {
+  buildMinuteBufferRepairOptions,
+  buildShiftDepartureRepairOption,
+  shouldOfferMinuteTimingRepairs,
+} from './travel-timing-repair.util';
+import { computeGateExecute } from '../../../poi-access-capacity/utils/gate-execute.util';
+import type { GateExecuteStatusDto } from '../types/trip-constraint-solver.types';
 
 const DIMENSION_LABELS: Record<FeasibilityDimensionKey, string> = {
   schedule: '日程可行性',
@@ -39,6 +58,8 @@ const DIMENSION_LABELS: Record<FeasibilityDimensionKey, string> = {
   environment: '天气与环境',
   team_fit: '团队成员适配',
   itinerary_completeness: '行程结构完整',
+  access_capacity: '准入与容量',
+  experience_expectation: '体验预期',
 };
 
 export interface FeasibilityDecisionEvidenceInput {
@@ -545,9 +566,7 @@ function buildTravelTimingProofs(c: ConflictDto, issueId: string): FeasibilityPr
         ? `按当前时刻表无法按时抵达，时间不足约 ${Math.round(c.shortfallMinutes ?? 0)} 分钟`
         : `可抵达但缓冲偏紧，抵达后约 ${Math.round(c.gapMinutes ?? 0)} 分钟开始活动`;
 
-  const timingRepairOptions = buildTravelTimingRepairOptions(issueId, c)?.filter(
-    (option) => option.actionType === 'adjust_time',
-  );
+  const timingRepairOptions = buildTravelTimingRepairOptions(issueId, c);
 
   return [
     {
@@ -558,7 +577,7 @@ function buildTravelTimingProofs(c: ConflictDto, issueId: string): FeasibilityPr
       entity,
       constraint: '路段行驶时间须纳入当日或跨日日程，并与下一站开始时间对齐',
       currentFact: routeFact,
-      evidenceSource: 'route-engine / travel-info',
+      evidenceSource: 'travel-info',
       evidenceType: 'L3-PROOF',
       ruleId: 'schedule.travel_time.route',
       conclusion: `本段预估行驶 ${formatMinutesZh(travelMinutes)}`,
@@ -588,6 +607,70 @@ function buildTravelTimingRepairOptions(issueId: string, c: ConflictDto) {
   const suggestedTime = c.suggestedTime;
   const toLabel = c.toPlaceLabel ?? '下一站';
   const options = [];
+
+  if (
+    shouldOfferAddBufferRepair({
+      issueKind: c.issueKind,
+      isStartTooEarly: c.isStartTooEarly,
+      priority: c.priority,
+    })
+  ) {
+    options.push(
+      buildAddBufferRepairOption({
+        issueId,
+        fromItemId: c.fromItemId ?? c.affectedItemIds?.[0],
+        toItemId,
+        fromDayNumber: c.fromDayNumber,
+        toDayNumber: c.toDayNumber,
+        fromPlaceLabel: c.fromPlaceLabel,
+        toPlaceLabel: c.toPlaceLabel,
+        affectedDays: parseAffectedDayNumbers(c.affectedDays),
+        isStartTooEarly: c.isStartTooEarly,
+      }),
+    );
+  }
+
+  if (
+    shouldOfferMinuteTimingRepairs({
+      toItemId,
+      shortfallMinutes: c.shortfallMinutes,
+      isStartTooEarly: c.isStartTooEarly,
+      issueKind: c.issueKind,
+      priority: c.priority,
+    })
+  ) {
+    options.push(
+      ...buildMinuteBufferRepairOptions({
+        issueId,
+        toItemId: toItemId!,
+        fromItemId: c.fromItemId ?? c.affectedItemIds?.[0],
+        toLabel,
+        toDayNumber: c.toDayNumber,
+        shortfallMinutes: c.shortfallMinutes,
+        anchors: {
+          fromItemId: c.fromItemId,
+          toItemId,
+          shortfallMinutes: c.shortfallMinutes,
+          travelMinutes: c.travelMinutes,
+        },
+      }),
+      buildShiftDepartureRepairOption({
+        issueId,
+        toItemId: toItemId!,
+        toLabel,
+        shortfallMinutes: c.shortfallMinutes,
+        bufferMinutes: 5,
+        suggestedTime,
+        anchors: {
+          fromItemId: c.fromItemId,
+          toItemId,
+          shortfallMinutes: c.shortfallMinutes,
+          travelMinutes: c.travelMinutes,
+        },
+      }),
+    );
+  }
+
   if (toItemId && suggestedTime) {
     options.push({
       id: 'repair-delay-start',
@@ -623,8 +706,9 @@ function buildTravelTimingRepairOptions(issueId: string, c: ConflictDto) {
 }
 
 function conflictToIssue(c: ConflictDto, context?: { tripId: string }): FeasibilityIssueDto {
+  const isBuffer = isBufferInsufficientConflict(c);
   const isTravelTiming = isTravelTimingConflict(c);
-  const category = isTravelTiming ? 'schedule' : mapConflictCategory(c.type);
+  const category = isTravelTiming || isBuffer ? 'schedule' : mapConflictCategory(c.type);
   const affectedDays = parseAffectedDayNumbers(c.affectedDays);
   const fromItemId = c.fromItemId ?? c.affectedItemIds?.[0];
   const toItemId = c.toItemId ?? c.affectedItemIds?.[1];
@@ -636,7 +720,9 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
     travelMinutes != null ? travelMinutes + 5 : undefined;
   const proofs: FeasibilityProofDto[] = isTravelTiming
     ? buildTravelTimingProofs(c, issueId)
-    : [
+    : isBuffer
+      ? buildBufferInsufficientProofs(c, issueId)
+      : [
         {
           entity: c.title,
           constraint: c.type,
@@ -655,9 +741,9 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
     message: c.description,
     affectedDays,
     severity: c.severity === ConflictSeverity.HIGH ? 'high' : c.severity === ConflictSeverity.MEDIUM ? 'medium' : 'low',
-    issueKind: isTravelTiming ? c.issueKind : c.issueKind,
-    fromItemId: isTravelTiming ? fromItemId : c.fromItemId,
-    toItemId: isTravelTiming ? toItemId : c.toItemId,
+    issueKind: isBuffer ? 'buffer_insufficient' : isTravelTiming ? c.issueKind : c.issueKind,
+    fromItemId: isTravelTiming || isBuffer ? fromItemId : c.fromItemId,
+    toItemId: isTravelTiming || isBuffer ? toItemId : c.toItemId,
     anchors: isTravelTiming
       ? {
           fromItemId,
@@ -683,10 +769,15 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
           isStartTooEarly: c.isStartTooEarly ?? (c.shortfallMinutes ?? 0) > 0,
           timingSource: c.timingSource,
         }
-      : undefined,
+      : isBuffer
+        ? bufferConflictAnchors(c)
+        : undefined,
     uiHints: isTravelTiming
       ? {
-          primaryAction: 'adjust_time',
+          primaryAction:
+            c.issueKind === 'inter_day_travel' && c.isStartTooEarly
+              ? 'add_buffer'
+              : 'adjust_time',
           deepLink: {
             tab: 'schedule',
             dayIndex: Math.max(0, (c.toDayNumber ?? affectedDays[0] ?? 1) - 1),
@@ -694,9 +785,22 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
           },
           tripPath: `/trips/${context?.tripId ?? ''}?tab=schedule&itemId=${toItemId ?? ''}`,
         }
-      : undefined,
+      : isBuffer
+        ? bufferConflictUiHints(c, context)
+        : undefined,
     actionRequired: c.suggestions?.[0]?.description,
-    repairOptions: isTravelTiming ? buildTravelTimingRepairOptions(issueId, c) : undefined,
+    repairOptions: isTravelTiming
+      ? buildTravelTimingRepairOptions(issueId, c)
+      : isBuffer && toItemId
+        ? buildBufferInsufficientRepairOptions({
+            issueId,
+            toItemId,
+            toLabel: c.toPlaceLabel,
+            shortfallMinutes: c.shortfallMinutes,
+            suggestedTime: c.suggestedTime,
+            anchors: bufferConflictAnchors(c),
+          })
+        : undefined,
     proofs,
   };
 }
@@ -712,9 +816,13 @@ function buildDimensions(
     'transport',
     'booking',
     'environment',
+    'access_capacity',
+    'experience_expectation',
     'team_fit',
     'itinerary_completeness',
   ];
+  const accessIssues = issues.filter((i) => i.category === 'access_capacity');
+  const experienceIssues = issues.filter((i) => i.category === 'experience_expectation');
   const scoreByKey: Record<FeasibilityDimensionKey, number> = {
     schedule: score.scheduleFeasibility ?? 0,
     transport: score.transportCertainty ?? 0,
@@ -722,6 +830,14 @@ function buildDimensions(
     environment: score.safetyRisk ?? 0,
     team_fit: teamFitScore ?? 100,
     itinerary_completeness: itineraryCompletenessScore ?? 100,
+    access_capacity:
+      accessIssues.length === 0
+        ? 100
+        : Math.max(0, 100 - accessIssues.filter((i) => i.priority === 'must_handle').length * 25),
+    experience_expectation:
+      experienceIssues.length === 0
+        ? 100
+        : Math.max(0, 100 - experienceIssues.filter((i) => i.priority === 'must_handle').length * 30),
   };
   return keys.map((key) => {
     const dimIssues = issues.filter((i) => i.category === key);
@@ -780,10 +896,12 @@ export function resolveFeasibilityVerdict(input: {
   hasValidation: boolean;
   isStale: boolean;
   summary: FeasibilitySummaryDto;
+  issues?: FeasibilityIssueDto[];
   gateResult?: string;
   probabilisticAssessment?: FeasibilityProbabilisticAssessmentDto;
 }): FeasibilityVerdictDto {
   const mcSuffix = buildMonteCarloSubheadline(input.probabilisticAssessment);
+  const issues = input.issues ?? [];
 
   if (!input.hasValidation) {
     return {
@@ -799,15 +917,30 @@ export function resolveFeasibilityVerdict(input: {
       subheadline: '行程已修改，请重新验证',
     };
   }
-  const { mustHandle, suggestAdjust, pendingConfirm } = input.summary;
-  if (input.gateResult === 'BLOCK' || mustHandle > 0) {
+
+  const hasHardAccess = issues.some((i) => i.issueKind === 'poi_access_blocked');
+  const legacyMustHandle = issues.filter(
+    (i) =>
+      i.priority === 'must_handle' &&
+      !String(i.issueKind ?? '').startsWith('poi_access') &&
+      i.issueKind !== 'experience_regret_unconfirmed',
+  ).length;
+
+  if (hasHardAccess || legacyMustHandle > 0 || input.gateResult === 'BLOCK') {
     return {
       status: 'NOT_EXECUTABLE',
       headline: '当前方案暂不可执行',
       subheadline: appendSubheadline(buildFeasibilityVerdictSubheadline(input.summary), mcSuffix),
     };
   }
-  if (input.gateResult === 'ADJUST_REQUIRED' || suggestAdjust > 0 || pendingConfirm > 0) {
+
+  const { suggestAdjust, pendingConfirm, mustHandle } = input.summary;
+  if (
+    input.gateResult === 'ADJUST_REQUIRED' ||
+    mustHandle > 0 ||
+    suggestAdjust > 0 ||
+    pendingConfirm > 0
+  ) {
     return {
       status: 'ADJUST_REQUIRED',
       headline: '当前方案基本可行，需要调整',
@@ -892,6 +1025,8 @@ export function assembleFeasibilityReport(input: {
   itineraryCompletenessScore?: number;
   itineraryCompletenessIssues?: FeasibilityIssueDto[];
   itineraryCompletenessSummary?: ItineraryCompletenessSummaryDto;
+  /** Readiness P0 — POI Access + Experience Regret issues */
+  p0Issues?: FeasibilityIssueDto[];
 }): TripFeasibilityReportDto {
   const evidenceContext = {
     coverage: input.coverage,
@@ -906,8 +1041,13 @@ export function assembleFeasibilityReport(input: {
     ...conflictIssues,
     ...teamFitIssues,
     ...itineraryIssues,
-  ]);
+    ...(input.p0Issues ?? []),
+  ]).map((issue) => ({
+    ...issue,
+    semanticKey: buildFeasibilityIssueDedupeKey(issue),
+  }));
   const summary = buildSummary(issues);
+  const gateExecute: GateExecuteStatusDto = computeGateExecute(issues);
   const verifiedFor = input.snapshot?.verifiedForTripVersion;
   const currentVersion = revisionToString(input.revision);
   const isStale = Boolean(verifiedFor && verifiedFor !== currentVersion);
@@ -916,6 +1056,7 @@ export function assembleFeasibilityReport(input: {
     hasValidation,
     isStale,
     summary,
+    issues,
     gateResult: input.snapshot?.gateResult,
     probabilisticAssessment: input.probabilisticAssessment,
   });
@@ -941,8 +1082,9 @@ export function assembleFeasibilityReport(input: {
       hasValidation,
       isStale,
       verdictStatus: verdict.status,
-      mustHandle: summary.mustHandle,
+      gateExecute,
     }),
+    gateExecute,
     phaseHint: input.readiness.phaseHint,
     coverageDisclosure: input.readiness.coverageDisclosure,
     dimensions: buildDimensions(
@@ -965,13 +1107,13 @@ export function computeCanStartExecute(input: {
   hasValidation: boolean;
   isStale: boolean;
   verdictStatus: FeasibilityVerdictStatus;
-  mustHandle: number;
+  gateExecute: GateExecuteStatusDto;
 }): boolean {
   return (
     input.hasValidation &&
     !input.isStale &&
     input.verdictStatus === 'EXECUTABLE' &&
-    input.mustHandle === 0
+    !input.gateExecute.blocked
   );
 }
 

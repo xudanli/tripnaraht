@@ -152,6 +152,8 @@ export enum AssessmentDimension {
   GEOGRAPHY = 'GEOGRAPHY',
   /** 缓冲时间 */
   BUFFER = 'BUFFER',
+  /** 规划可执行性（与 planning-conflicts / feasibility 同源） */
+  FEASIBILITY = 'FEASIBILITY',
 }
 
 /**
@@ -236,6 +238,16 @@ export class DayAssessmentDto {
 
   @ApiPropertyOptional({ description: '首要改进建议' })
   topSuggestion?: string;
+
+  @ApiPropertyOptional({
+    description: '当日规划冲突摘要（与 planning-conflicts 同源）',
+  })
+  planningConflicts?: {
+    mustHandleCount: number;
+    suggestAdjustCount: number;
+    pendingConfirmCount: number;
+    titles: string[];
+  };
 }
 
 /**
@@ -325,5 +337,41 @@ export class AssessTripResponseDto {
 
   @ApiPropertyOptional({ description: '首要改进建议列表', type: [String] })
   topSuggestions?: string[];
+
+  @ApiPropertyOptional({
+    description: '规划冲突摘要（与 GET planning-conflicts 同源；must_handle 会触发当日/整体降级）',
+  })
+  planningConflicts?: {
+    summary: {
+      total: number;
+      mustHandle: number;
+      suggestAdjust: number;
+      pendingConfirm: number;
+      verdictStatus?: string;
+    };
+    mustHandleItems: Array<{
+      id: string;
+      title: string;
+      message: string;
+      category: string;
+      affectedDays?: number[];
+    }>;
+    suggestAdjustItems: Array<{
+      id: string;
+      title: string;
+      message: string;
+      category: string;
+      affectedDays?: number[];
+      priority: string;
+    }>;
+    /** 无具体日期、仅行程级的冲突（不重复写入每日 FEASIBILITY） */
+    tripWideItems: Array<{
+      id: string;
+      title: string;
+      message: string;
+      category: string;
+      priority: string;
+    }>;
+  };
 }
 

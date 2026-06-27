@@ -3,6 +3,7 @@ import { Injectable, BadRequestException, NotFoundException, ForbiddenException,
 import { PrismaService } from '../prisma/prisma.service';
 import { Place } from '@prisma/client';
 import { resolveTripRevision } from './trip-constraint-solver/utils/trip-revision.util';
+import { bumpConstraintsVersion } from './trip-constraint-solver/utils/constraints-metadata.util';
 import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
 import { TripStatus, normalizeTripStatus } from './dto/trip-status.dto';
 import { DateTime } from 'luxon';
@@ -14,7 +15,7 @@ import { TripRevisionBumpService } from './services/trip-revision-bump.service';
 import { DayScheduleResult } from '../planning-policy/interfaces/scheduler.interface';
 import { randomUUID } from 'crypto';
 import { ProjectMembershipService } from '../identity-governance/services/project-membership.service';
-import { PersonaAlertDto, PersonaType, AlertSeverity } from './dto/persona-alerts.dto';
+import { PersonaAlertDto, GetPersonaAlertsQueryDto, PersonaType, AlertSeverity } from './dto/persona-alerts.dto';
 import { DecisionLogEntryDto, DecisionLogResponseDto, DecisionSource } from './dto/decision-log.dto';
 import { TaskDto, TaskPriority, TaskCategory } from './dto/tasks.dto';
 import { PipelineStatusResponseDto, PipelineStageDto, PipelineStageStatus } from './dto/pipeline-status.dto';
@@ -78,7 +79,10 @@ import {
 import { DSO_FEEDBACK_PERSISTENCE } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { IDsoFeedbackPersistence } from '../decision/kernel/dso-feedback-persistence.interface';
 import type { DecisionState } from '../decision/kernel/decision-state.types';
-import { reasonCodesDisplayZh } from '../agent/utils/decision-log-user-facing.zh.util';
+import { projectPersonaAlertsForAudience } from './utils/persona-alert-bff.projection';
+import { pickLatestGuardianPresentationFromLogs } from './utils/guardian-user-facing.projection.util';
+import { extractGuardianNegotiationSnapshot } from './readiness/utils/readiness-guardian-negotiation.util';
+import { FeasibilityReportService } from './trip-constraint-solver/services/feasibility-report.service';
 import { ItineraryItemsService } from '../itinerary-items/itinerary-items.service';
 import {
   attachDisplaySortIndices,
@@ -230,6 +234,7 @@ export class TripsService {
     @Optional() private postTripSummary?: PostTripSummaryService,
     @Optional() private readonly tripRevisionBump?: TripRevisionBumpService,
     @Optional() private readonly projectMembership?: ProjectMembershipService,
+    @Optional() private readonly feasibilityReport?: FeasibilityReportService,
   ) {}
 
   /**
@@ -880,6 +885,16 @@ export class TripsService {
       await validateHikingSegmentHikePlanRefs(id, merged, this.prisma);
       assertMetadataSizeLimit(merged);
       updateData.metadata = merged;
+    }
+
+    const constraintsTouched =
+      dto.startDate !== undefined ||
+      dto.endDate !== undefined ||
+      dto.totalBudget !== undefined ||
+      hasTravelers;
+    if (constraintsTouched) {
+      const base = (updateData.metadata ?? existingTrip.metadata ?? {}) as Record<string, unknown>;
+      updateData.metadata = bumpConstraintsVersion(base);
     }
 
     // 处理状态更新
@@ -1967,13 +1982,12 @@ export class TripsService {
   }
 
   /**
-   * 获取三人格提醒（Persona Alerts）
-   * 
-   * @param tripId 行程 ID
-   * @returns 提醒列表
+   * 获取三人格提醒（Persona Alerts）— C 端 BFF 人话投影
    */
-  async getPersonaAlerts(tripId: string): Promise<PersonaAlertDto[]> {
-    // 验证行程存在
+  async getPersonaAlerts(
+    tripId: string,
+    query: GetPersonaAlertsQueryDto = {},
+  ): Promise<PersonaAlertDto[]> {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
     });
@@ -1982,119 +1996,42 @@ export class TripsService {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
     }
 
-    // 从决策日志中获取最近的提醒
+    const audience = query.audience ?? 'user';
+    const limit = query.limit ?? 20;
+
     const decisionLogs = await this.decisionLogStorage.queryLogs({
       tripId,
       limit: 50,
     });
 
-    // 将决策日志转换为提醒
-    const alerts: PersonaAlertDto[] = [];
-    const personaNames: Record<string, string> = {
-      ABU: 'Abu',
-      DR_DRE: 'Dr.Dre',
-      NEPTUNE: 'Neptune',
-      USER_ACTION: '系统',
-    };
+    let feasibilityIssues: Awaited<
+      ReturnType<FeasibilityReportService['getReport']>
+    >['issues'] = [];
+    const guardianNegotiation = extractGuardianNegotiationSnapshot(trip.metadata);
+    const guardianPresentation = pickLatestGuardianPresentationFromLogs(decisionLogs);
 
-    const personaTitles: Record<string, string> = {
-      ABU: '安全守护者 Abu（北极熊 🐻‍❄️）',
-      DR_DRE: '节奏设计师 Dr.Dre（牧羊犬 🐕）',
-      NEPTUNE: '空间魔法师 Neptune（海獭 🦦）',
-      USER_ACTION: '系统处理记录（非行程优化建议）',
-    };
-
-    // 根据决策日志生成提醒（过滤掉"无风险"的条目）
-    for (const log of decisionLogs) {
-      // 跳过"无风险"的条目
-      if (this.isNoRiskEntry(log)) {
-        continue;
-      }
-      // 编排审计类步骤：不应出现在「优化建议」里当作用户可采纳项
-      if (this.shouldOmitPersonaAlertForEndUser(log)) {
-        continue;
-      }
-
-      const severity = log.action === 'REJECT' ? AlertSeverity.WARNING :
-                       log.action === 'ADJUST' ? AlertSeverity.INFO :
-                       AlertSeverity.SUCCESS;
-
-      // 生成提醒消息：explanation 已为用户向；reasonCodes 仅映射为中文说明，原始码留在 metadata
-      let message = log.explanation;
-      const reasonLine = reasonCodesDisplayZh(log.reasonCodes);
-      if (reasonLine) {
-        message += `\n${reasonLine}`;
-      }
-
-      alerts.push({
-        id: `alert-${log.timestamp}`,
-        persona: log.persona as PersonaType,
-        name: personaNames[log.persona] || log.persona,
-        title: personaTitles[log.persona] || log.persona,
-        message,
-        severity,
-        createdAt: log.timestamp,
-        metadata: {
-          decisionSource: log.decisionSource,
-          action: log.action,
-          reasonCodes: log.reasonCodes,
-          ...(log.evidenceRefs?.length ? { evidenceRefs: log.evidenceRefs } : {}),
-        },
-      });
-    }
-
-    // 如果没有决策日志，生成基于行程状态的默认提醒
-    if (alerts.length === 0) {
-      // 基于行程数据生成一些基础提醒
-      const tripDays = await this.prisma.tripDay.findMany({
-        where: { tripId },
-        include: {
-          ItineraryItem: {
-            orderBy: { startTime: 'asc' },
-          },
-        },
-        orderBy: { date: 'asc' },
-      });
-
-      // 检查是否有过于密集的行程
-      for (let i = 0; i < tripDays.length; i++) {
-        const day = tripDays[i];
-        const itemCount = day.ItineraryItem.length;
-        
-        if (itemCount > 8) {
-          alerts.push({
-            id: `alert-day-${i + 1}`,
-            persona: PersonaType.DR_DRE,
-            name: personaNames[PersonaType.DR_DRE],
-            title: personaTitles[PersonaType.DR_DRE],
-            message: `第 ${i + 1} 天行程稍密集\n如果你想更轻松，我建议拆成两天\n这样会舒服一点`,
-            severity: AlertSeverity.INFO,
-            createdAt: new Date().toISOString(),
-            metadata: {
-              day: i + 1,
-              suggestion: 'SPLIT_DAY',
-              itemCount,
-            },
-          });
-        }
+    if (this.feasibilityReport) {
+      try {
+        const report = await this.feasibilityReport.getReport(tripId);
+        feasibilityIssues = report.issues ?? [];
+      } catch (err) {
+        this.logger.debug(
+          `Persona alerts: feasibility report skipped for ${tripId}: ${(err as Error).message}`,
+        );
       }
     }
 
-    const deduped = this.dedupePersonaAlertsByContent(alerts);
-    return deduped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }
-
-  /** 同一行程多次编排会产生相同文案的多条日志，仅保留一条避免列表刷屏 */
-  private dedupePersonaAlertsByContent(alerts: PersonaAlertDto[]): PersonaAlertDto[] {
-    const seen = new Set<string>();
-    const out: PersonaAlertDto[] = [];
-    for (const a of alerts) {
-      const key = `${a.persona}::${a.message}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(a);
-    }
-    return out;
+    return projectPersonaAlertsForAudience({
+      decisionLogs,
+      feasibilityIssues,
+      guardianPresentation,
+      guardianNegotiation,
+      options: {
+        audience,
+        limit,
+        phase: query.phase,
+      },
+    });
   }
 
   /**

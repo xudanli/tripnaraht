@@ -6,6 +6,7 @@ import { TravelEventStoreModule } from '../event-store/travel-event-store.module
 import { TripSilentVoteModule } from '../silent-vote/trip-silent-vote.module';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { LoopsModule } from '../../loops/loops.module';
+import { PoiAccessCapacityModule } from '../../poi-access-capacity/poi-access-capacity.module';
 import { TripEnvironmentRadarController } from './controllers/trip-environment-radar.controller';
 import { TripMoneyBrainController } from './controllers/trip-money-brain.controller';
 import { TripInTripController } from './controllers/trip-in-trip.controller';
@@ -47,6 +48,7 @@ import { VulnerabilityScoreService } from './services/vulnerability-score.servic
     TripSilentVoteModule,
     forwardRef(() => ReadinessModule),
     forwardRef(() => LoopsModule),
+    PoiAccessCapacityModule,
   ],
   controllers: [
     TripInTripController,

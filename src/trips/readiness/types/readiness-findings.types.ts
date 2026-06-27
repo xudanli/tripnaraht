@@ -67,6 +67,30 @@ export interface ReadinessFindingItem {
   }>;
   /** 行程内位置（覆盖缺口等），规则类 finding 通常不带此字段 */
   tripScope?: ReadinessTripFindingScope;
+  /** POI Access / Experience Regret — 与 `/score` findings 同形 */
+  visitorAccess?: {
+    evaluation: {
+      verdict: string;
+      poiId: string;
+      message: string;
+      confidence: string;
+      planBHints: Array<{
+        action: string;
+        detail: string;
+        suggestedArrivalTime?: string;
+        alternativePoiId?: string;
+      }>;
+      crowding?: {
+        crowdLevel?: string;
+        predictedWaitP50?: number;
+        predictedWaitP90?: number;
+        disclosureLabel?: string;
+      };
+    };
+    hasReservationEvidence?: boolean;
+    deferredLive?: boolean;
+  };
+  issueKind?: string;
 }
 
 export interface ReadinessFinding {

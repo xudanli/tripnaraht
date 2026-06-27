@@ -132,5 +132,12 @@ export class UpdateIntentResponseDto {
     lunch_strategy?: string;
     lunch_strategy_label?: string;
   };
+
+  @ApiPropertyOptional({ description: '约束版本快照（写后）' })
+  constraints?: {
+    constraintsVersion: number;
+    constraintsConfirmedAt: string | null;
+    constraintsConfirmedBy: string | null;
+  };
 }
 

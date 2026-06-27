@@ -5,6 +5,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { DateTime } from 'luxon';
+import { resolvePoiAccessSlugFromPlaceMetadata } from '../../../poi-access-capacity/utils/resolve-poi-slug.util';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TripBudgetIntentService } from '../../budget-os/services/trip-budget-intent.service';
 import { BudgetStructureService } from '../../budget-os/services/budget-structure.service';
@@ -248,7 +249,7 @@ export class AnchorHandoffService {
           include: {
             ItineraryItem: {
               orderBy: { order: 'asc' },
-              include: { Place: { select: { nameCN: true, nameEN: true } } },
+              include: { Place: { select: { nameCN: true, nameEN: true, metadata: true } } },
             },
           },
         },
@@ -303,6 +304,11 @@ export class AnchorHandoffService {
           bigTransportRefs.push(item.id);
         }
 
+        const poiAccessSlug = resolvePoiAccessSlugFromPlaceMetadata(
+          item.Place?.metadata,
+          title,
+        );
+
         return {
           id: item.id,
           type,
@@ -311,6 +317,7 @@ export class AnchorHandoffService {
           refundable,
           estimatedCost: item.estimatedCost ?? undefined,
           category: item.costCategory ?? 'other',
+          ...(poiAccessSlug ? { poiAccessSlug } : {}),
         };
       });
 

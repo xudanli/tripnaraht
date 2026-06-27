@@ -1,5 +1,5 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Req, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Req, BadRequestException, NotFoundException, ForbiddenException, Logger, Headers, Res, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { DateTime } from 'luxon';
@@ -58,6 +58,7 @@ import {
   BatchUpdateEvidenceRequestDto,
 } from './dto/evidence.dto';
 import { GetAttentionQueueQueryDto } from './dto/attention-queue.dto';
+import { GetPersonaAlertsQueryDto } from './dto/persona-alerts.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -74,6 +75,7 @@ import { ApplyOptimizationRequestDto } from './dto/trip-optimization.dto';
 import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/trip-items.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripMetricsService } from './services/trip-metrics.service';
+import { ScheduleTimelineService } from './services/schedule-timeline.service';
 import { TripConflictsService } from './services/trip-conflicts.service';
 import { TripIntentService } from './services/trip-intent.service';
 import { TripOptimizationService } from './services/trip-optimization.service';
@@ -90,7 +92,8 @@ import {
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { TokenService } from '../auth/services/token.service';
 import { JwtService } from '@nestjs/jwt';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+import { formatEtagHeader } from './utils/schedule-timeline-etag.util';
 import { ContextEngineerService } from '../agent/context-engine/services/context-engineer.service';
 import { SkillsRegistryService } from '../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../skills/services/skills-registry.token';
@@ -250,6 +253,7 @@ export class TripsController {
     private readonly llmService: LlmService,
     private readonly llmResponseTransformer: LlmResponseTransformerService,
     private readonly tripMetricsService: TripMetricsService,
+    private readonly scheduleTimelineService: ScheduleTimelineService,
     private readonly tripConflictsService: TripConflictsService,
     private readonly tripIntentService: TripIntentService,
     private readonly tripOptimizationService: TripOptimizationService,
@@ -5209,6 +5213,72 @@ export class TripsController {
     }
   }
 
+  @Get(':id/schedule-timeline')
+  @ApiOperation({
+    summary: '规划工作台时间轴聚合 BFF（P0）',
+    description:
+      '一次返回 ScheduleTab 首屏：items + schedule + metrics + travelInfo(cached)。' +
+      '替代 N×GET itinerary-items + N×GET schedule + metrics + calculate-all-travel。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'include', required: false, description: 'items,schedule,metrics,travelInfo' })
+  @ApiQuery({ name: 'dates', required: false, description: 'YYYY-MM-DD 逗号分隔' })
+  @ApiQuery({ name: 'from', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({
+    name: 'travelInfoMode',
+    required: false,
+    enum: ['cached', 'none', 'recalculate'],
+    description: 'recalculate 在 GET 上拒绝；重算请 POST calculate-all-travel',
+  })
+  @ApiResponse({ status: 304, description: 'If-None-Match 与 ETag 一致，无 body' })
+  async getScheduleTimeline(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @Query('dates') dates?: string,
+    @Query('from') from?: string,
+    @Query('limit') limit?: string,
+    @Query('travelInfoMode') travelInfoMode?: 'cached' | 'none' | 'recalculate',
+    @Headers('if-none-match') ifNoneMatch?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    try {
+      const result = await this.scheduleTimelineService.getScheduleTimeline(id, user?.userId, {
+        include,
+        dates,
+        from: from != null ? Number(from) : undefined,
+        limit: limit != null ? Number(limit) : undefined,
+        travelInfoMode,
+        ifNoneMatch,
+      });
+
+      if (result.status === 'not_modified') {
+        res?.status(HttpStatus.NOT_MODIFIED);
+        res?.setHeader('ETag', formatEtagHeader(result.etag));
+        return;
+      }
+
+      if (result.data.etag) {
+        res?.setHeader('ETag', formatEtagHeader(result.data.etag));
+      }
+      return successResponse(result.data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        const resp = error.getResponse();
+        const payload =
+          typeof resp === 'object' && resp !== null
+            ? (resp as { code?: string; message?: string })
+            : { message: error.message };
+        return errorResponse(payload.code ?? ErrorCode.BAD_REQUEST, payload.message ?? error.message);
+      }
+      throw error;
+    }
+  }
+
   @Get(':id/schedule')
   @ApiOperation({
     summary: '获取指定日期的 Schedule',
@@ -6299,9 +6369,13 @@ export class TripsController {
   @Get(':id/persona-alerts')
   @ApiOperation({
     summary: '获取三人格提醒（Persona Alerts）',
-    description: '获取当前行程的三人格（Abu、Dr.Dre、Neptune）提醒列表',
+    description:
+      'C 端 BFF 人话投影：返回 Abu / Dr.Dre / Neptune 用户可见提醒（含 explanation、reasonCodesDisplayZh）；默认过滤编排 debug 串。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'audience', required: false, enum: ['user', 'internal'], description: '默认 user' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '默认 20' })
+  @ApiQuery({ name: 'phase', required: false, enum: ['planning', 'in_trip'] })
   @ApiResponse({
     status: 200,
     description: '成功返回提醒列表（统一响应格式）',
@@ -6312,9 +6386,9 @@ export class TripsController {
     description: '行程不存在（统一响应格式）',
     type: ApiErrorResponseDto,
   })
-  async getPersonaAlerts(@Param('id') id: string) {
+  async getPersonaAlerts(@Param('id') id: string, @Query() query: GetPersonaAlertsQueryDto) {
     try {
-      const alerts = await this.tripsService.getPersonaAlerts(id);
+      const alerts = await this.tripsService.getPersonaAlerts(id, query);
       return successResponse(alerts);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
@@ -6806,6 +6880,7 @@ export class TripsController {
 - **交通效率** (TRANSPORT): 交通时间占比、长途移动次数
 - **地理分布** (GEOGRAPHY): 路线是否顺畅、是否存在折返
 - **缓冲时间** (BUFFER): 活动间缓冲是否充足
+- **规划可执行性** (FEASIBILITY): 与 planning-conflicts 同源的 must / suggest / pending 冲突
 
 评估等级：
 - EXCELLENT (90-100): 非常合理

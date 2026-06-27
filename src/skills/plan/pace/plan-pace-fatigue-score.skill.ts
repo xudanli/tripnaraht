@@ -37,7 +37,10 @@ export class PlanPaceFatigueScoreSkill implements Skill<PlanPaceFatigueScoreInpu
     this.logger.debug(`执行 plan.pace.fatigueScore: planId=${input.planState.plan_id}`);
 
     try {
-      const days = input.planState.constraints.time.days;
+      const days =
+        input.planState.constraints?.time?.days ??
+        input.planState.itinerary?.segments?.length ??
+        1;
       const transferSegments = input.planState.mobility.transferSegments;
       
       // 计算疲劳驱动因素

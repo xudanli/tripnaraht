@@ -64,6 +64,8 @@ import {
 import { extractTripPhysicalValidationSnapshot } from '../../../domain/ontology/bridge/physical-violation-snapshot.util';
 import { ReadinessCausalPreanalysisService } from './readiness-causal-preanalysis.service';
 import { ReadinessGuardianNegotiationService } from './readiness-guardian-negotiation.service';
+import type { PoiAccessReadinessBridgeService } from '../../../poi-access-capacity/services/poi-access-readiness-bridge.service';
+import { scoreFindingToTreeItem } from '../../../poi-access-capacity/utils/poi-access-readiness-findings.util';
 import {
   ReadinessCheckResult,
   ReadinessFinding,
@@ -89,6 +91,7 @@ export class CoverageMapService {
     private readonly readinessService: ReadinessService,
     @Optional() private readonly causalPreanalysisService?: ReadinessCausalPreanalysisService,
     @Optional() private readonly guardianNegotiationService?: ReadinessGuardianNegotiationService,
+    @Optional() private readonly poiAccessReadiness?: PoiAccessReadinessBridgeService,
   ) {}
 
   /**
@@ -1067,6 +1070,24 @@ export class CoverageMapService {
       findings = findings.filter((f) => !excludedIds.has(f.id));
     }
 
+    if (this.poiAccessReadiness) {
+      try {
+        const accessFindings = await this.poiAccessReadiness.buildReadinessFindings({
+          id: trip.id,
+          destination: trip.destination,
+          status: trip.status,
+          startDate: trip.startDate,
+          metadata: trip.metadata,
+        });
+        const existingIds = new Set(findings.map((f) => f.id));
+        for (const af of accessFindings) {
+          if (!existingIds.has(af.id)) findings.push(af);
+        }
+      } catch (err) {
+        this.logger.warn(`POI Access readiness findings skipped: ${(err as Error).message}`);
+      }
+    }
+
     // 提取风险项
     const risks = this.extractRisks(coverageData, readinessResult);
 
@@ -1325,6 +1346,122 @@ export class CoverageMapService {
       totalMust: findings.reduce((sum, f) => sum + f.must.length, 0),
       totalShould: findings.reduce((sum, f) => sum + f.should.length, 0),
       totalOptional: findings.reduce((sum, f) => sum + f.optional.length, 0),
+      totalRisks: findings.reduce((sum, f) => sum + (f.risks?.length ?? 0), 0),
+    };
+
+    return {
+      ...result,
+      findings,
+      summary,
+    };
+  }
+
+  /**
+   * 将 POI Access / Experience Regret 扁平 findings 合并进树形
+   * `findings[].blockers|must|should`，与 `/score` 列表 id 对齐。
+   */
+  async mergePoiAccessFindingsIntoTripReadiness(
+    tripId: string,
+    destinationId: string,
+    result: ReadinessCheckResult,
+  ): Promise<ReadinessCheckResult> {
+    if (!this.poiAccessReadiness) return result;
+
+    let trip: {
+      id: string;
+      destination: string;
+      status: string | null;
+      startDate: Date;
+      metadata: unknown;
+    };
+    try {
+      trip = await this.prisma.trip.findUniqueOrThrow({
+        where: { id: tripId },
+        select: {
+          id: true,
+          destination: true,
+          status: true,
+          startDate: true,
+          metadata: true,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(
+        `mergePoiAccessFindingsIntoTripReadiness: trip load failed: ${(e as Error).message}`,
+      );
+      return result;
+    }
+
+    let accessFindings: ReadinessScoreFinding[] = [];
+    try {
+      accessFindings = await this.poiAccessReadiness.buildReadinessFindings(trip);
+    } catch (e) {
+      this.logger.warn(
+        `mergePoiAccessFindingsIntoTripReadiness: build failed: ${(e as Error).message}`,
+      );
+      return result;
+    }
+
+    if (accessFindings.length === 0) return result;
+
+    const existingIds = new Set<string>();
+    for (const f of result.findings) {
+      for (const item of [...f.blockers, ...f.must, ...f.should, ...f.optional]) {
+        existingIds.add(item.id);
+      }
+    }
+
+    const blockers: ReadinessFindingItem[] = [];
+    const must: ReadinessFindingItem[] = [];
+    const should: ReadinessFindingItem[] = [];
+
+    for (const sf of accessFindings) {
+      if (existingIds.has(sf.id)) continue;
+      const item = scoreFindingToTreeItem(sf);
+      if (item.level === 'blocker') blockers.push(item);
+      else if (item.level === 'must') must.push(item);
+      else should.push(item);
+    }
+
+    if (blockers.length === 0 && must.length === 0 && should.length === 0) {
+      return result;
+    }
+
+    let findings: ReadinessFinding[];
+    if (result.findings.length === 0) {
+      findings = [
+        {
+          destinationId,
+          packId: 'internal.poi-access',
+          packVersion: '1',
+          blockers,
+          must,
+          should,
+          optional: [],
+          risks: [],
+        },
+      ];
+    } else {
+      const matchIdx = result.findings.findIndex((f) => f.destinationId === destinationId);
+      const idx = matchIdx >= 0 ? matchIdx : 0;
+      findings = result.findings.map((f, i) =>
+        i === idx
+          ? {
+              ...f,
+              blockers: [...f.blockers, ...blockers],
+              must: [...f.must, ...must],
+              should: [...f.should, ...should],
+            }
+          : f,
+      );
+    }
+
+    const summary = {
+      ...result.summary,
+      totalBlockers: findings.reduce((sum, f) => sum + f.blockers.length, 0),
+      totalMust: findings.reduce((sum, f) => sum + f.must.length, 0),
+      totalShould: findings.reduce((sum, f) => sum + f.should.length, 0),
+      totalOptional: findings.reduce((sum, f) => sum + (f.optional?.length ?? 0), 0),
       totalRisks: findings.reduce((sum, f) => sum + (f.risks?.length ?? 0), 0),
     };
 

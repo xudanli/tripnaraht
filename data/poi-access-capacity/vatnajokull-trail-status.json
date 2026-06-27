@@ -1,0 +1,26 @@
+{
+  "fetchedAt": "2026-06-20T00:00:00.000Z",
+  "source": "manual_seed",
+  "trails": [
+    {
+      "trailId": "S3",
+      "trailName": "S3",
+      "status": "CLOSED",
+      "effectiveFrom": "2026-04-01",
+      "effectiveTo": "2026-06-10",
+      "sourceUrl": "https://www.vatnajokulsthjodgardur.is/en/trails/skaftafell",
+      "notes": "S3 步道春季关闭至 6 月 10 日（示例快照，由 sync 脚本刷新）",
+      "lastVerifiedAt": "2026-06-20T00:00:00.000Z"
+    },
+    {
+      "trailId": "S4",
+      "trailName": "Kristínartindar (S4)",
+      "status": "LIMITED",
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": "2026-06-30",
+      "sourceUrl": "https://www.vatnajokulsthjodgardur.is/en/trails/skaftafell",
+      "notes": "S4 可能因积雪/冰况限制进入",
+      "lastVerifiedAt": "2026-06-20T00:00:00.000Z"
+    }
+  ]
+}

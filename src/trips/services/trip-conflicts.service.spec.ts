@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { TripConflictsService } from './trip-conflicts.service';
 import { SmartRoutesService } from '../../transport/services/smart-routes.service';
 import { TravelTimeEstimatorService } from '../../transport/services/travel-time-estimator.service';
+import { PoiHopTravelSegmentService } from '../../transport/services/poi-hop-travel-segment.service';
 
 describe('TripConflictsService', () => {
   let service: TripConflictsService;
@@ -23,6 +24,7 @@ describe('TripConflictsService', () => {
           useValue: { getRoutes: jest.fn().mockResolvedValue([]) },
         },
         TravelTimeEstimatorService,
+        PoiHopTravelSegmentService,
       ],
     }).compile();
 

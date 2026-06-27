@@ -96,6 +96,34 @@ export class GuardianPersonaPresentationDto {
     example: false,
   })
   hardConstraintBlocked?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'CHOOSE 时结构化选项（勿用 consolidatedDecision.nextSteps 当选项）',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        question: { type: 'string' },
+        options: { type: 'array', items: { type: 'string' } },
+        recommendation: { type: 'string' },
+        optionIds: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  })
+  humanDecisionPoints?: Array<{
+    id: string;
+    question: string;
+    options: string[];
+    recommendation?: string;
+    optionIds?: string[];
+  }>;
+
+  @ApiPropertyOptional({
+    description: 'humanDecisionPoints 扁平化选项文案',
+    type: [String],
+  })
+  humanDecisionPointsFlat?: string[];
 }
 
 export class PersonaStatementDto {

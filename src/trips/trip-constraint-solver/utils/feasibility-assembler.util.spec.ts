@@ -49,15 +49,18 @@ describe('feasibility-assembler', () => {
       snapshot: null,
     });
     expect(report.verdict.status).toBe('UNKNOWN');
-    expect(report.dimensions).toHaveLength(6);
+    expect(report.dimensions).toHaveLength(8);
     expect(report.dimensions.map((d) => d.key)).toEqual([
       'schedule',
       'transport',
       'booking',
       'environment',
+      'access_capacity',
+      'experience_expectation',
       'team_fit',
       'itinerary_completeness',
     ]);
+    expect(report.gateExecute).toEqual({ blocked: false, reasons: [] });
     expect(report.isStale).toBe(false);
   });
 
@@ -153,7 +156,7 @@ describe('feasibility-assembler', () => {
       hasValidation: true,
       isStale: false,
       verdictStatus: report.verdict.status,
-      mustHandle: report.summary.mustHandle,
+      gateExecute: report.gateExecute,
     })).toBe(false);
   });
 
@@ -500,7 +503,7 @@ describe('feasibility-assembler', () => {
         suggestedTime: '2026-06-22T07:55:00.000+08:00',
       },
       uiHints: {
-        primaryAction: 'adjust_time',
+        primaryAction: 'add_buffer',
         deepLink: {
           tab: 'schedule',
           dayIndex: 1,
@@ -520,22 +523,17 @@ describe('feasibility-assembler', () => {
       fromItemId: 'item-a',
       toItemId: 'item-b',
       placeLabel: '蓝湖温泉',
-      repairOptions: [
-        {
-          actionType: 'adjust_time',
-          payload: {
-            itemId: 'item-b',
-            field: 'startTime',
-            suggestedValue: '2026-06-22T07:55:00.000+08:00',
-          },
-        },
-      ],
     });
-    expect(timingProof?.planBOptions?.[0].payload).toMatchObject({
-      itemId: 'item-b',
-      field: 'startTime',
-      suggestedValue: '2026-06-22T07:55:00.000+08:00',
-    });
+    expect(timingProof?.repairOptions?.map((o) => o.actionType)).toEqual([
+      'insert_rest_day',
+      'add_buffer',
+      'add_buffer',
+      'add_buffer_minutes',
+      'shift_departure',
+      'adjust_time',
+      'move_to_day',
+    ]);
+    expect(timingProof?.planBOptions?.[0].actionType).toBe('insert_rest_day');
     expect(report.dayTimeline[0].issueIds).toContain(report.issues[0].id);
     expect(report.dayTimeline[1].issueIds).toContain(report.issues[0].id);
   });
@@ -614,13 +612,14 @@ describe('feasibility-assembler', () => {
     expect(timingProof?.planBOptions?.[0].label).not.toContain('18:59');
   });
 
-  it('computeCanStartExecute requires validation, fresh version, and EXECUTABLE verdict', () => {
+  it('computeCanStartExecute requires validation, fresh version, EXECUTABLE, and open gate', () => {
+    const openGate = { blocked: false, reasons: [] };
     expect(
       computeCanStartExecute({
         hasValidation: true,
         isStale: false,
         verdictStatus: 'EXECUTABLE',
-        mustHandle: 0,
+        gateExecute: openGate,
       }),
     ).toBe(true);
     expect(
@@ -628,7 +627,7 @@ describe('feasibility-assembler', () => {
         hasValidation: false,
         isStale: false,
         verdictStatus: 'EXECUTABLE',
-        mustHandle: 0,
+        gateExecute: openGate,
       }),
     ).toBe(false);
     expect(
@@ -636,7 +635,7 @@ describe('feasibility-assembler', () => {
         hasValidation: true,
         isStale: true,
         verdictStatus: 'EXECUTABLE',
-        mustHandle: 0,
+        gateExecute: openGate,
       }),
     ).toBe(false);
     expect(
@@ -644,7 +643,15 @@ describe('feasibility-assembler', () => {
         hasValidation: true,
         isStale: false,
         verdictStatus: 'NOT_EXECUTABLE',
-        mustHandle: 1,
+        gateExecute: openGate,
+      }),
+    ).toBe(false);
+    expect(
+      computeCanStartExecute({
+        hasValidation: true,
+        isStale: false,
+        verdictStatus: 'EXECUTABLE',
+        gateExecute: { blocked: true, reasons: [{ code: 'experience_regret_unconfirmed', message: 'x' }] },
       }),
     ).toBe(false);
   });

@@ -1,14 +1,15 @@
 import {
+  BadRequestException,
   Body,
+  ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Post,
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -88,7 +89,10 @@ export class FeasibilityReportController {
     try {
       const userId = this.access.resolveUserId(user);
       await this.access.assertTripMember(tripId, userId);
-      const data = await this.feasibility.validateScope(tripId, body.scope);
+      const data = await this.feasibility.validateScope(tripId, body.scope, {
+        forceRefreshEvidence: body.forceRefreshEvidence,
+        lang: body.lang,
+      });
       return successResponse(data);
     } catch (e) {
       return this.handleError(e);
@@ -110,6 +114,7 @@ export class FeasibilityReportController {
       const data = await this.feasibility.previewRepair(tripId, issueId, body);
       return successResponse(data);
     } catch (e) {
+      if (e instanceof ConflictException) throw e;
       return this.handleError(e);
     }
   }
@@ -126,9 +131,10 @@ export class FeasibilityReportController {
     try {
       const userId = this.access.resolveUserId(user);
       await this.access.assertTripMember(tripId, userId);
-      const data = await this.feasibility.applyRepair(tripId, issueId, body);
+      const data = await this.feasibility.applyRepair(tripId, issueId, body, userId);
       return successResponse(data);
     } catch (e) {
+      if (e instanceof ConflictException) throw e;
       return this.handleError(e);
     }
   }

@@ -15,6 +15,13 @@ import { Itinerary } from '../../agent/interfaces/trip-plan.interface';
 import { applyRiskTagsFromVerifyIssues, type VerifyIssueLike } from '../../agent/utils/itinerary-risk-tags.util';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { collectItineraryOpeningHoursVerifyIssues } from '../../agent/utils/itinerary-opening-hours-verify.util';
+import {
+  collectItineraryPoiAccessVerifyIssues,
+  collectPoiAccessSlugsFromItinerary,
+} from '../../agent/utils/itinerary-poi-access-verify.util';
+import { PoiAccessCapacityService } from '../../poi-access-capacity/poi-access-capacity.service';
+import { ICELAND_ALL_ACCESS_RULES } from '../../poi-access-capacity/fixtures/iceland-poi-registry';
+import type { PoiAccessRule } from '../../poi-access-capacity/interfaces/poi-access-capacity.interface';
 import { DateTime } from 'luxon';
 import type { ConstraintViolation } from '../../agent/services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../../agent/services/constraint-registry';
@@ -41,7 +48,7 @@ export interface ItineraryVerifyInput extends SkillInput {
 export interface ItineraryVerifyOutput extends SkillOutput {
   verified: boolean;
   issues: Array<{
-    type: 'OPENING_HOURS_CONFLICT' | 'TRANSFER_BUFFER_INSUFFICIENT' | 'REACHABILITY_ISSUE' | 'FATIGUE_THRESHOLD_EXCEEDED' | 'TIME_WINDOW_OVERLAP';
+    type: 'OPENING_HOURS_CONFLICT' | 'TRANSFER_BUFFER_INSUFFICIENT' | 'REACHABILITY_ISSUE' | 'FATIGUE_THRESHOLD_EXCEEDED' | 'TIME_WINDOW_OVERLAP' | 'POI_ACCESS_BLOCKED' | 'POI_ACCESS_RISK' | 'POI_ACCESS_UNCONFIRMED';
     severity: 'CRITICAL' | 'ERROR' | 'WARNING' | 'INFO';
     item_id?: string;
     /** TIME_WINDOW_OVERLAP：与 item_id（后项）构成重叠对的另一项（前项） */
@@ -98,6 +105,7 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
   constructor(
     @Optional() private readonly worldDecisionMemory?: WorldDecisionMemoryService,
     @Optional() private readonly worldStrategy?: WorldStrategyService,
+    @Optional() private readonly poiAccessCapacity?: PoiAccessCapacityService,
   ) {
     this.logger.log(`[ItineraryVerifySkill] 已初始化`);
   }
@@ -111,6 +119,9 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
 
       // 1. 验证开放时间冲突
       this.verifyOpeningHours(itinerary, research_data, issues);
+
+      // 1b. POI 准入与容量（冰岛 A 级 MVP）
+      await this.verifyPoiAccess(itinerary, research_data, input.intent_hints, issues);
 
       // 2. 验证换乘 buffer
       this.verifyTransferBuffers(itinerary, issues);
@@ -186,6 +197,66 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
     issues: ItineraryVerifyOutput['issues'],
   ): void {
     issues.push(...collectItineraryOpeningHoursVerifyIssues(itinerary, researchData));
+  }
+
+  /**
+   * POI 准入与容量校验（规则层 + 库存层 + 拥堵层）
+   */
+  private async verifyPoiAccess(
+    itinerary: Itinerary,
+    researchData: Record<string, any> | undefined,
+    intentHints: ItineraryVerifyInput['intent_hints'],
+    issues: ItineraryVerifyOutput['issues'],
+  ): Promise<void> {
+    const slugs = collectPoiAccessSlugsFromItinerary(itinerary);
+    if (!slugs.length) return;
+
+    let rulesByPoiSlug: Map<string, PoiAccessRule[]> | undefined;
+
+    if (this.poiAccessCapacity) {
+      const rules = await this.poiAccessCapacity.getRulesForPoiSlugs(slugs);
+      rulesByPoiSlug = new Map();
+      for (const rule of rules) {
+        const list = rulesByPoiSlug.get(rule.poiId) ?? [];
+        list.push(rule);
+        rulesByPoiSlug.set(rule.poiId, list);
+      }
+    } else {
+      const rules = ICELAND_ALL_ACCESS_RULES.filter((r) => slugs.includes(r.poiId));
+      if (rules.length) {
+        rulesByPoiSlug = new Map();
+        for (const rule of rules) {
+          const list = rulesByPoiSlug.get(rule.poiId) ?? [];
+          list.push(rule);
+          rulesByPoiSlug.set(rule.poiId, list);
+        }
+      }
+    }
+
+    const vehicleType =
+      intentHints?.constraints_vehicle_type ??
+      (typeof researchData?.vehicle_type === 'string'
+        ? researchData.vehicle_type
+        : undefined);
+
+    const accessIssues = collectItineraryPoiAccessVerifyIssues({
+      itinerary,
+      researchData,
+      rulesByPoiSlug,
+      vehicleType,
+    });
+
+    for (const issue of accessIssues) {
+      issues.push({
+        type: issue.type,
+        severity: issue.severity,
+        item_id: issue.item_id,
+        day: issue.day,
+        message: issue.message,
+        suggestion: issue.suggestion,
+        violation: issue.violation,
+      });
+    }
   }
 
   /**

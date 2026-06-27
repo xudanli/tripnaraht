@@ -1,0 +1,32 @@
+[
+  {
+    "id": "is.dyrholaey.bird_breeding_2026_confirmed_open",
+    "poiId": "is.dyrholaey",
+    "ruleType": "TRAIL_RESTRICTION",
+    "targetResource": "VIEWPOINT",
+    "enforcement": "HARD",
+    "effectiveFrom": "2026-05-15T00:00:00.000Z",
+    "effectiveTo": "2026-06-20T23:59:59.000Z",
+    "status": "INACTIVE",
+    "sourceAuthority": "Environment Agency of Iceland",
+    "sourceUrl": "https://www.umhverfisstofnun.is/",
+    "lastVerifiedAt": "2026-05-20T00:00:00.000Z",
+    "confidence": "OFFICIAL",
+    "notes": "示例：当年公告确认 Dyrhólaey 繁殖期部分开放 → INACTIVE 覆盖解除 PENDING 基础规则"
+  },
+  {
+    "id": "is.skaftafell.trail_s3_closed_2026_spring",
+    "poiId": "is.skaftafell",
+    "ruleType": "TRAIL_RESTRICTION",
+    "targetResource": "TRAIL",
+    "enforcement": "HARD",
+    "effectiveFrom": "2026-04-01T00:00:00.000Z",
+    "effectiveTo": "2026-06-10T23:59:59.000Z",
+    "status": "ACTIVE",
+    "sourceAuthority": "Vatnajökull National Park",
+    "sourceUrl": "https://www.vatnajokulsthjodgardur.is/en/trails/skaftafell",
+    "lastVerifiedAt": "2026-06-01T00:00:00.000Z",
+    "confidence": "OFFICIAL",
+    "notes": "示例：2026 年春季公告确认 S3 关闭至 6 月 10 日"
+  }
+]

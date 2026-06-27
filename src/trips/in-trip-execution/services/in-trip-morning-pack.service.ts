@@ -13,6 +13,7 @@ import { defaultTripTimezone, isInTripExecutionEnabled } from '../utils/in-trip-
 import { resolveTripDayNumber } from '../utils/in-trip-day.util';
 import { AnchorHandoffService } from './anchor-handoff.service';
 import { VulnerabilityScoreService } from './vulnerability-score.service';
+import { InTripPoiAccessMorningService } from '../../../poi-access-capacity/services/in-trip-poi-access-morning.service';
 
 @Injectable()
 export class InTripMorningPackService {
@@ -22,6 +23,7 @@ export class InTripMorningPackService {
     private readonly vulnerability: VulnerabilityScoreService,
     private readonly budgetProfile: TripBudgetProfileService,
     private readonly wallet: TravelWalletService,
+    private readonly poiAccessMorning: InTripPoiAccessMorningService,
   ) {}
 
   async buildForTrip(tripId: string, userId?: string): Promise<InTripMorningPack | null> {
@@ -79,6 +81,17 @@ export class InTripMorningPackService {
 
     const pendingOperations = await this.listPendingOperations(tripId, userId);
 
+    let poiAccessAlerts: InTripMorningPack['poiAccessAlerts'] = [];
+    try {
+      poiAccessAlerts = await this.poiAccessMorning.buildAlertsForDay({
+        dateISO: date,
+        timezone: tz,
+        items: todayItems,
+      });
+    } catch {
+      poiAccessAlerts = [];
+    }
+
     return {
       schemaVersion: IN_TRIP_MORNING_PACK_SCHEMA_VERSION,
       syncedAt: new Date().toISOString(),
@@ -88,6 +101,7 @@ export class InTripMorningPackService {
       budgetSnapshot,
       walletBalances,
       pendingOperations,
+      ...(poiAccessAlerts?.length ? { poiAccessAlerts } : {}),
     };
   }
 

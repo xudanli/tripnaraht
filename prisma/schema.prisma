@@ -240,6 +240,11 @@ model Place {
   PlaceEdgeFrom                   PlaceEdge[]               @relation("PlaceEdgeFrom")
   PlaceEdgeTo                     PlaceEdge[]               @relation("PlaceEdgeTo")
   CrowdCurve                      CrowdCurve[]
+  PoiAccessRule                   PoiAccessRule[]
+  PoiCapacitySnapshot             PoiCapacitySnapshot[]
+  PoiCrowdingSnapshot             PoiCrowdingSnapshot[]
+  PoiAccessStatusOverride         PoiAccessStatusOverride[]
+  PoiExecutionFeedback            PoiExecutionFeedback[]
 
   @@index([metadata(ops: JsonbPathOps)], type: Gin)
   @@index([lastVerifiedAt])
@@ -303,6 +308,135 @@ model CrowdCurve {
 
   @@unique([placeId, hour, dayOfWeek])
   @@index([placeId])
+}
+
+/// POI Access & Capacity Engine — 准入规则（关闭/预约/车型/时段/步道等）
+model PoiAccessRule {
+  id                     String    @id @db.VarChar(191)
+  poiId                  String    @map("poi_id") @db.VarChar(191)
+  placeId                Int?      @map("place_id")
+  ruleType               String    @map("rule_type") @db.VarChar(64)
+  targetResource         String    @map("target_resource") @db.VarChar(32)
+  validFrom              DateTime? @map("valid_from") @db.Date
+  validTo                DateTime? @map("valid_to") @db.Date
+  dailyStartTime         String?   @map("daily_start_time") @db.VarChar(5)
+  dailyEndTime           String?   @map("daily_end_time") @db.VarChar(5)
+  quota                  Int?
+  reservationRequired    Boolean?  @map("reservation_required")
+  applicableVehicleTypes Json?     @map("applicable_vehicle_types")
+  status                 String    @db.VarChar(32)
+  sourceAuthority        String    @map("source_authority") @db.VarChar(255)
+  sourceUrl              String?   @map("source_url") @db.VarChar(1024)
+  sourceUpdatedAt        DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  lastVerifiedAt         DateTime  @map("last_verified_at") @db.Timestamptz(6)
+  confidence             String    @db.VarChar(16)
+  /** HARD=阻断求解器；SOFT=FEASIBLE_WITH_RISK 建议 */
+  enforcement            String    @default("HARD") @db.VarChar(16)
+  notes                  String?   @db.Text
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, status])
+  @@index([placeId])
+  @@map("poi_access_rules")
+}
+
+/// POI Access & Capacity Engine — 日期/班次级库存快照
+model PoiCapacitySnapshot {
+  id              String   @id @default(uuid()) @db.Uuid
+  poiId           String   @map("poi_id") @db.VarChar(191)
+  placeId         Int?     @map("place_id")
+  dateISO         String   @map("date_iso") @db.VarChar(10)
+  slotStartTime   String?  @map("slot_start_time") @db.VarChar(5)
+  slotEndTime     String?  @map("slot_end_time") @db.VarChar(5)
+  remaining       Int?
+  capacity        Int?
+  soldOut         Boolean  @default(false) @map("sold_out")
+  signalSource    String   @map("signal_source") @db.VarChar(32)
+  observedAt      DateTime @map("observed_at") @db.Timestamptz(6)
+  confidenceScore Float?   @map("confidence_score")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, dateISO])
+  @@index([placeId, dateISO])
+  @@map("poi_capacity_snapshots")
+}
+
+/// POI Access & Capacity Engine — 拥堵融合快照
+model PoiCrowdingSnapshot {
+  id                    String   @id @default(uuid()) @db.Uuid
+  poiId                 String   @map("poi_id") @db.VarChar(191)
+  placeId               Int?     @map("place_id")
+  observedAt            DateTime @map("observed_at") @db.Timestamptz(6)
+  parkingOccupancyRatio Float?   @map("parking_occupancy_ratio")
+  bookingRemaining      Int?     @map("booking_remaining")
+  bookingCapacity       Int?     @map("booking_capacity")
+  arrivalRatePerHour    Float?   @map("arrival_rate_per_hour")
+  predictedWaitP50      Int?     @map("predicted_wait_p50")
+  predictedWaitP90      Int?     @map("predicted_wait_p90")
+  crowdLevel            String   @map("crowd_level") @db.VarChar(16)
+  signalSources         Json     @map("signal_sources")
+  confidenceScore       Float    @map("confidence_score")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, observedAt])
+  @@index([placeId, observedAt])
+  @@map("poi_crowding_snapshots")
+}
+
+/// POI Access & Capacity Engine — 官方公告驱动的动态状态覆盖（步道关闭、临时管制等）
+model PoiAccessStatusOverride {
+  id              String    @id @db.VarChar(191)
+  poiId           String    @map("poi_id") @db.VarChar(191)
+  placeId         Int?      @map("place_id")
+  ruleType        String    @map("rule_type") @db.VarChar(64)
+  targetResource  String    @map("target_resource") @db.VarChar(32)
+  enforcement     String    @default("HARD") @db.VarChar(16)
+  effectiveFrom   DateTime  @map("effective_from") @db.Timestamptz(6)
+  effectiveTo     DateTime? @map("effective_to") @db.Timestamptz(6)
+  status          String    @db.VarChar(32)
+  sourceAuthority String    @map("source_authority") @db.VarChar(255)
+  sourceUrl       String?   @map("source_url") @db.VarChar(1024)
+  lastVerifiedAt  DateTime  @map("last_verified_at") @db.Timestamptz(6)
+  confidence      String    @db.VarChar(16)
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, status, effectiveFrom])
+  @@index([placeId])
+  @@map("poi_access_status_overrides")
+}
+
+/// POI 行中执行反馈 — 校准拥堵预测（匿名）
+model PoiExecutionFeedback {
+  id                  String   @id @default(uuid()) @db.Uuid
+  poiId               String   @map("poi_id") @db.VarChar(191)
+  placeId             Int?     @map("place_id")
+  tripId              String?  @map("trip_id") @db.VarChar(191)
+  dateISO             String   @map("date_iso") @db.VarChar(10)
+  arrivalTime         String?  @map("arrival_time") @db.VarChar(5)
+  parkingWaitMin      Int?     @map("parking_wait_min")
+  visitDurationMin    Int?     @map("visit_duration_min")
+  couldNotPark        Boolean  @default(false) @map("could_not_park")
+  abandonedDueToCrowd Boolean  @default(false) @map("abandoned_due_to_crowd")
+  crowdLevelSubjective String? @map("crowd_level_subjective") @db.VarChar(16)
+  notes               String?  @db.Text
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, dateISO])
+  @@index([tripId])
+  @@map("poi_execution_feedbacks")
 }
 
 model RailPassProfile {

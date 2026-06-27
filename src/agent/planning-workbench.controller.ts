@@ -5,12 +5,17 @@
  * 规划工作台 API 接口
  */
 
-import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery, ApiExtraModels, getSchemaPath } from '@nestjs/swagger';
 import { PlanningWorkbenchAgentService, PlanningWorkbenchRequest } from './services/planning-workbench-agent.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import {
+  PlanningWorkbenchExecuteDto,
+  toPlanningWorkbenchRequest,
+  validatePlanningWorkbenchExecuteSemantics,
+} from './dto/planning-workbench-execute.dto';
 import { BudgetEvaluationService } from '../trips/services/budget-evaluation.service';
 import { TripBudgetService, BudgetConstraint } from '../trips/services/trip-budget.service';
 import type { BudgetStructure, TripBudgetIntent } from '../trips/budget-os/types/trip-budget-os.types';
@@ -158,12 +163,30 @@ export class PlanningWorkbenchController {
       },
     },
   })
-  async execute(@Body() request: PlanningWorkbenchRequest) {
+  @ApiResponse({
+    status: 400,
+    description: '请求参数校验失败（结构或 compare/commit/adjust 语义）',
+    type: ApiErrorResponseDto,
+  })
+  async execute(@Body() request: PlanningWorkbenchExecuteDto) {
+    this.assertPlanningWorkbenchExecuteSemantics(request);
     try {
-      const result = await this.planningWorkbenchAgent.execute(request);
+      const result = await this.planningWorkbenchAgent.execute(
+        toPlanningWorkbenchRequest(request),
+      );
       return successResponse(result);
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  private assertPlanningWorkbenchExecuteSemantics(request: PlanningWorkbenchExecuteDto): void {
+    const semanticError = validatePlanningWorkbenchExecuteSemantics(request);
+    if (semanticError) {
+      throw new BadRequestException({
+        errorCode: semanticError.code,
+        message: semanticError.message,
+      });
     }
   }
 
@@ -1729,10 +1752,13 @@ export class PlanningWorkbenchController {
       },
     },
   })
-  async executeAsync(@Body() request: PlanningWorkbenchRequest) {
+  async executeAsync(@Body() request: PlanningWorkbenchExecuteDto) {
     if (!this.planningWorkbenchTaskService) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, 'PlanningWorkbenchTaskService 未注入');
     }
+
+    this.assertPlanningWorkbenchExecuteSemantics(request);
+    const workbenchRequest = toPlanningWorkbenchRequest(request);
 
     try {
       // 创建任务
@@ -1741,7 +1767,7 @@ export class PlanningWorkbenchController {
       // 异步执行任务（不等待完成）
       // 使用 setImmediate 确保不会阻塞当前请求
       setImmediate(() => {
-        this.executeTaskAsync(taskId, request).catch((error: any) => {
+        this.executeTaskAsync(taskId, workbenchRequest).catch((error: any) => {
           this.logger.error(`异步任务执行失败: taskId=${taskId}, error=${error.message}`, error.stack);
           try {
             this.planningWorkbenchTaskService?.markFailed(taskId, error.message || '未知错误');
@@ -1893,10 +1919,10 @@ export class PlanningWorkbenchController {
       this.planningWorkbenchTaskService.markRunning(taskId, '正在初始化...');
       
       // 将 taskId 和进度更新函数注入到 request 的 metadata 中
-      const requestWithProgress = {
+      const requestWithProgress: PlanningWorkbenchRequest = {
         ...request,
         metadata: {
-          ...(request as any).metadata,
+          ...request.metadata,
           taskId,
           updateProgress: (progress: number, stage?: string) => {
             try {

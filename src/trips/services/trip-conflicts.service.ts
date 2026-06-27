@@ -15,6 +15,11 @@ import {
 } from '../dto/trip-conflicts.dto';
 import { SmartRoutesService } from '../../transport/services/smart-routes.service';
 import { TravelTimeEstimatorService } from '../../transport/services/travel-time-estimator.service';
+import {
+  PoiHopTravelSegmentService,
+  resolveTripDefaultTravelMode,
+  type TripDefaultTravelMode,
+} from '../../transport/services/poi-hop-travel-segment.service';
 import { assertRealityWorldReadAllowed } from '../reality-kernel/reality-policy-engine';
 import {
   RealityExecutionBlockedError,
@@ -48,6 +53,7 @@ export class TripConflictsService {
     private prisma: PrismaService,
     private smartRoutesService: SmartRoutesService,
     private travelTimeEstimator: TravelTimeEstimatorService,
+    private poiHopTravelSegment: PoiHopTravelSegmentService,
   ) {}
 
   /**
@@ -93,15 +99,24 @@ export class TripConflictsService {
 
     const conflicts: ConflictDto[] = [];
     const lunchStrategy = resolveLunchStrategyFromTrip(trip);
+    const defaultTravelMode = resolveTripDefaultTravelMode(trip.pacingConfig);
 
     // 检测所有日期的冲突
     for (let i = 0; i < trip.TripDay.length; i++) {
-      const dayConflicts = await this.detectDayConflicts(tripId, trip.TripDay[i], i + 1, lunchStrategy);
+      const dayConflicts = await this.detectDayConflicts(
+        tripId,
+        trip.TripDay[i],
+        i + 1,
+        lunchStrategy,
+        defaultTravelMode,
+      );
       conflicts.push(...dayConflicts);
     }
 
     if (!date) {
-      conflicts.push(...await this.detectInterDayTravelConflicts(trip.TripDay));
+      conflicts.push(
+        ...(await this.detectInterDayTravelConflicts(trip.TripDay, defaultTravelMode)),
+      );
     }
 
     // 跨日重复检测：同一地点（placeId 或 place 名称）在行程中多天出现
@@ -236,6 +251,7 @@ export class TripConflictsService {
     day: any,
     _dayIndex: number,
     lunchStrategy: LunchStrategy = 'balanced',
+    defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
   ): Promise<ConflictDto[]> {
     const conflicts: ConflictDto[] = [];
     const items = day.ItineraryItem || [];
@@ -368,7 +384,12 @@ export class TripConflictsService {
       const toCoords = next.placeId ? coordsMap.get(next.placeId) : null;
       if (!fromCoords || !toCoords) continue;
 
-      const estimate = await this.estimateTravelSegment(fromCoords, toCoords, next.travelMode);
+      const estimate = await this.estimateTravelSegment(
+        fromCoords,
+        toCoords,
+        next.travelMode,
+        defaultTravelMode,
+      );
       const currentEnd = current.endTime ? DateTime.fromJSDate(current.endTime) : null;
       const nextStart = next.startTime ? DateTime.fromJSDate(next.startTime) : null;
       const fromName = this.getItemPlaceLabel(current);
@@ -511,15 +532,28 @@ export class TripConflictsService {
       // 如果缓冲时间少于 15 分钟，可能存在风险
       if (bufferMinutes < DEFAULT_BUFFER_MINUTES && bufferMinutes > 0) {
         const shortfallMinutes = DEFAULT_BUFFER_MINUTES - bufferMinutes;
+        const fromName = this.getItemPlaceLabel(current);
+        const toName = this.getItemPlaceLabel(next);
+        const suggestedTime = currentEnd.plus({ minutes: DEFAULT_BUFFER_MINUTES });
         conflicts.push({
           id: `buffer-insufficient-${current.id}-${next.id}`,
           type: ConflictType.BUFFER_INSUFFICIENT,
           severity: ConflictSeverity.MEDIUM,
           title: '缓冲时间不足',
-          description: `活动 "${current.Place?.nameCN || current.Place?.nameEN || '未知'}" 到 "${next.Place?.nameCN || next.Place?.nameEN || '未知'}" 之间缓冲时间仅 ${bufferMinutes} 分钟`,
-          affectedDays: [date],
+          description: `活动 "${fromName}" 到 "${toName}" 之间缓冲时间仅 ${Math.round(bufferMinutes)} 分钟`,
+          affectedDays: [String(_dayIndex)],
           affectedItemIds: [current.id, next.id],
+          fromItemId: current.id,
+          toItemId: next.id,
+          fromPlaceLabel: fromName,
+          toPlaceLabel: toName,
+          fromDayNumber: _dayIndex,
+          toDayNumber: _dayIndex,
+          issueKind: 'buffer_insufficient',
+          gapMinutes: Math.round(bufferMinutes),
           shortfallMinutes,
+          suggestedTime: suggestedTime.toISO() ?? undefined,
+          priority: 'suggest_adjust',
           suggestions: [
             {
               action: '增加缓冲时间',
@@ -569,7 +603,10 @@ export class TripConflictsService {
     return conflicts;
   }
 
-  private async detectInterDayTravelConflicts(days: any[]): Promise<ConflictDto[]> {
+  private async detectInterDayTravelConflicts(
+    days: any[],
+    defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
+  ): Promise<ConflictDto[]> {
     const conflicts: ConflictDto[] = [];
     if (!days || days.length < 2) return conflicts;
 
@@ -592,7 +629,12 @@ export class TripConflictsService {
       const toCoords = coordsMap.get(toItem.placeId);
       if (!fromCoords || !toCoords) continue;
 
-      const estimate = await this.estimateTravelSegment(fromCoords, toCoords, toItem.travelMode);
+      const estimate = await this.estimateTravelSegment(
+        fromCoords,
+        toCoords,
+        toItem.travelMode,
+        defaultTravelMode,
+      );
       const fromEnd = fromItem.endTime ? DateTime.fromJSDate(fromItem.endTime) : null;
       const toStart = toItem.startTime ? DateTime.fromJSDate(toItem.startTime) : null;
       const fromName = this.getItemPlaceLabel(fromItem);
@@ -779,70 +821,58 @@ export class TripConflictsService {
     fromCoords: { lat: number; lng: number },
     toCoords: { lat: number; lng: number },
     preferredMode?: string | null,
+    defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
   ): Promise<TravelSegmentEstimate> {
-    const distanceKm = this.calculateHaversineDistance(
-      fromCoords.lat,
-      fromCoords.lng,
-      toCoords.lat,
-      toCoords.lng,
-    );
-    const travelMode = (
-      preferredMode && ['WALKING', 'DRIVING', 'TRANSIT'].includes(preferredMode)
-        ? preferredMode
-        : this.travelTimeEstimator.inferTravelMode(distanceKm)
-    ) as 'DRIVING' | 'WALKING' | 'TRANSIT';
-    const fallbackDistanceKm = this.estimateRouteDistanceKm(distanceKm, travelMode);
+    const useHeuristicOnly = requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext());
 
-    let travelMinutes: number | null = null;
-    let travelDistanceMeters: number | null = null;
-
-    if (requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext())) {
-      travelMinutes = this.travelTimeEstimator.estimateDurationMinutes(fallbackDistanceKm, travelMode);
-      travelDistanceMeters = Math.round(fallbackDistanceKm * 1000);
-    } else {
+    if (!useHeuristicOnly) {
       try {
         assertRealityWorldReadAllowed(
           this.logger,
           'TripConflictsService.getRoutes',
           'route provider read',
         );
-        const routes = await this.smartRoutesService.getRoutes(
-          fromCoords.lat,
-          fromCoords.lng,
-          toCoords.lat,
-          toCoords.lng,
-          travelMode,
-        );
-        const route = routes[0] as any;
-        if (route?.durationMinutes) {
-          travelMinutes = route.durationMinutes;
-          travelDistanceMeters =
-            route.distanceMeters != null
-              ? Math.round(route.distanceMeters)
-              : route.distanceKm != null
-                ? Math.round(route.distanceKm * 1000)
-                : Math.round(distanceKm * 1000);
-        }
       } catch (e) {
         if (e instanceof RealityBypassBlockedError || e instanceof RealityExecutionBlockedError) {
           throw e;
         }
-        this.logger.debug(`路线 API 调用失败，使用统一估算: ${(e as Error)?.message}`);
-      }
-
-      if (travelMinutes == null || travelDistanceMeters == null) {
-        travelMinutes = this.travelTimeEstimator.estimateDurationMinutes(fallbackDistanceKm, travelMode);
-        travelDistanceMeters = Math.round(fallbackDistanceKm * 1000);
       }
     }
 
-    return {
-      travelMinutes: Math.max(1, Math.round(travelMinutes)),
-      travelDistanceMeters: Math.max(0, Math.round(travelDistanceMeters)),
-      travelMode,
-    };
+    try {
+      const segment = await this.poiHopTravelSegment.resolveSegment({
+        from: fromCoords,
+        to: toCoords,
+        preferredMode,
+        defaultMode: defaultTravelMode,
+        useRouteApi: !useHeuristicOnly,
+      });
+      return {
+        travelMinutes: segment.durationMinutes,
+        travelDistanceMeters: segment.distanceMeters,
+        travelMode: segment.travelMode,
+      };
+    } catch (e) {
+      if (e instanceof RealityBypassBlockedError || e instanceof RealityExecutionBlockedError) {
+        throw e;
+      }
+      this.logger.debug(`路线 API 调用失败，使用统一估算: ${(e as Error)?.message}`);
+      const segment = await this.poiHopTravelSegment.resolveSegment({
+        from: fromCoords,
+        to: toCoords,
+        preferredMode,
+        defaultMode: defaultTravelMode,
+        useRouteApi: false,
+      });
+      return {
+        travelMinutes: segment.durationMinutes,
+        travelDistanceMeters: segment.distanceMeters,
+        travelMode: segment.travelMode,
+      };
+    }
   }
 
+  /** @deprecated use PoiHopTravelSegmentService.estimateRouteDistanceKm */
   private estimateRouteDistanceKm(straightDistanceKm: number, travelMode: string): number {
     if (travelMode === 'DRIVING' && straightDistanceKm >= 50) {
       return straightDistanceKm * 1.2;
@@ -930,6 +960,20 @@ export class TripConflictsService {
             field: 'startTime',
           },
         },
+        ...(input.issueKind === 'inter_day_travel' && input.isStartTooEarly
+          ? [
+              {
+                action: 'add_buffer',
+                description: `在 Day ${input.fromDayNumber} 与 Day ${input.toDayNumber} 之间插入缓冲日`,
+                impact: '增加 1 天行程缓冲',
+                payload: {
+                  beforeDayNumber: input.toDayNumber,
+                  afterDayNumber: input.fromDayNumber,
+                  itemId: input.toItem.id,
+                },
+              },
+            ]
+          : []),
         ...(input.issueKind === 'inter_day_travel'
           ? [
               {

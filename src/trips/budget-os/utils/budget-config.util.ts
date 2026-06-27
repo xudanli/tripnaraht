@@ -11,19 +11,20 @@ export function parseBudgetConfig(raw: unknown): TripBudgetConfigJson {
 }
 
 export function resolveBudgetIntent(config: TripBudgetConfigJson): TripBudgetIntent | null {
-  if (config.budgetIntent?.total) {
-    return config.budgetIntent;
+  const intentTotal = config.budgetIntent?.total;
+  if (intentTotal != null && intentTotal > 0) {
+    return config.budgetIntent!;
   }
 
   const total = config.totalBudget ?? config.total;
-  if (!total || total <= 0) return null;
+  if (total == null || total <= 0) return null;
 
   return {
     total,
-    currency: config.currency ?? 'CNY',
-    dailyBudget: config.dailyBudget ?? undefined,
-    source: 'user',
-    setAt: config.updatedAt ?? config.createdAt ?? new Date().toISOString(),
+    currency: config.currency ?? config.budgetIntent?.currency ?? 'CNY',
+    dailyBudget: config.dailyBudget ?? config.budgetIntent?.dailyBudget ?? undefined,
+    source: config.budgetIntent?.source ?? 'user',
+    setAt: config.budgetIntent?.setAt ?? config.updatedAt ?? config.createdAt ?? new Date().toISOString(),
   };
 }
 

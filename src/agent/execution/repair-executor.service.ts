@@ -20,6 +20,13 @@ import type {
 } from '../../decision/kernel/decision-state.types';
 import { haversineMeters, normalizeItem } from '../../decision/kernel/itinerary.types';
 import {
+  applyPoiAccessShiftArrivalRepair,
+  applyPoiAccessReplaceRepair,
+  isPoiAccessConstraintIssue,
+  type ItineraryLike as PoiAccessItineraryLike,
+} from '../../poi-access-capacity/utils/poi-access-repair.util';
+import { CONSTRAINT_IDS } from '../services/constraint-registry';
+import {
   isOutdoorVisibilityConstrainedItem,
   addMinutes,
   parseItemWindow,
@@ -661,9 +668,86 @@ export class RepairExecutorService implements IRepairExecutor {
 
     switch (issue.code as VerificationIssueCode) {
       case 'POI_CLOSED':
+        if (isPoiAccessConstraintIssue(issue)) {
+          const meta = issue.metadata as {
+            poi_access_constraint_id?: string;
+            poi_access_blocked_poi_id?: string;
+          } | undefined;
+          const isTrailBlock =
+            meta?.poi_access_constraint_id === CONSTRAINT_IDS.ENTITY_ACCESS_BLOCKED;
+          if (isTrailBlock || issue.suggestedActions?.some((a) => a.action === 'REPLACE')) {
+            const replaced = applyPoiAccessReplaceRepair(
+              issue,
+              itinerary as PoiAccessItineraryLike,
+              meta?.poi_access_blocked_poi_id,
+            );
+            if (replaced.ok && replaced.itinerary) {
+              return {
+                ok: true,
+                itinerary: replaced.itinerary as typeof itinerary,
+                repairTrace: {
+                  tacticId: 'PoiAccessReplaceTactic',
+                  targetEntity: issue.entityRef ?? { type: 'POI' },
+                  applied: true,
+                  reason: 'SUCCESS_APPLIED',
+                  metrics: {
+                    fatigue_weight: 1,
+                    base_limit: 0,
+                    effective_limit: 0,
+                    actual_cost: 1,
+                    unit: 'op',
+                  },
+                  evidence: { refIds: [replaced.alternativePoiId ?? 'unknown'] },
+                },
+              };
+            }
+          }
+          const shift = applyPoiAccessShiftArrivalRepair(issue, itinerary as PoiAccessItineraryLike);
+          if (shift.ok && shift.itinerary) {
+            return {
+              ok: true,
+              itinerary: shift.itinerary as typeof itinerary,
+              repairTrace: {
+                tacticId: 'PoiAccessShiftArrivalTactic',
+                targetEntity: issue.entityRef ?? { type: 'POI' },
+                applied: true,
+                reason: 'SUCCESS_APPLIED',
+                metrics: {
+                  fatigue_weight: 1,
+                  base_limit: 0,
+                  effective_limit: 0,
+                  actual_cost: shift.shiftMinutes ?? 0,
+                  unit: 'min',
+                },
+              },
+            };
+          }
+        }
         return this.poiClosedReplacementOperator(issue, dso, itinerary, ctx);
       case 'TIME_WINDOW_OVERLAP':
       case 'TIME_WINDOW_BREACH':
+        if (isPoiAccessConstraintIssue(issue)) {
+          const shift = applyPoiAccessShiftArrivalRepair(issue, itinerary as PoiAccessItineraryLike);
+          if (shift.ok && shift.itinerary) {
+            return {
+              ok: true,
+              itinerary: shift.itinerary as typeof itinerary,
+              repairTrace: {
+                tacticId: 'PoiAccessReservationShiftTactic',
+                targetEntity: issue.entityRef ?? { type: 'POI' },
+                applied: true,
+                reason: 'SUCCESS_APPLIED',
+                metrics: {
+                  fatigue_weight: 1,
+                  base_limit: 0,
+                  effective_limit: 0,
+                  actual_cost: shift.shiftMinutes ?? 0,
+                  unit: 'min',
+                },
+              },
+            };
+          }
+        }
         return this.timeWindowSwapShiftOperator(issue, itinerary);
       case 'ROUTE_INFEASIBLE':
       case 'SUNSET_BREACH':

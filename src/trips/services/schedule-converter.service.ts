@@ -181,9 +181,47 @@ export class ScheduleConverterService {
       orderBy: { startTime: 'asc' },
     });
 
+    return this.buildScheduleFromItems(items, dateISO);
+  }
+
+  /** 由已加载的 ItineraryItem 行构建 schedule（timeline 批量路径） */
+  buildScheduleFromItems(
+    items: Array<{
+      id: string;
+      type: unknown;
+      order: number | null;
+      placeId: number | null;
+      trailId: number | null;
+      startTime: Date | null;
+      endTime: Date | null;
+      note: string | null;
+      estimatedCost: number | null;
+      actualCost: number | null;
+      currency: string | null;
+      travelFromPreviousDuration: number | null;
+      travelFromPreviousDistance: number | null;
+      travelMode: string | null;
+      Place?: {
+        id: number;
+        nameCN: string | null;
+        nameEN: string | null;
+        address: string | null;
+        category: unknown;
+        rating: number | null;
+        location?: unknown;
+      } | null;
+    }>,
+    dateISO: string,
+  ): DayScheduleResult | null {
     if (items.length === 0) {
       return null;
     }
+
+    const sortedItems = [...items].sort((a, b) => {
+      const ta = a.startTime?.getTime() ?? 0;
+      const tb = b.startTime?.getTime() ?? 0;
+      return ta - tb;
+    });
 
     const date = DateTime.fromISO(dateISO);
     const dayStart = date.startOf('day');
@@ -199,7 +237,7 @@ export class ScheduleConverterService {
     let totalInterLegTravel = 0;
     let totalCost = 0;
 
-    for (const item of items) {
+    for (const item of sortedItems) {
       const startDt = item.startTime ? DateTime.fromJSDate(item.startTime) : null;
       const endDt = item.endTime ? DateTime.fromJSDate(item.endTime) : null;
 
