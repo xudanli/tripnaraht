@@ -145,4 +145,11 @@ export interface IntakePhaseHost {
 
   /** Intelligence-grade 决策埋点（best-effort，不阻塞 INTAKE） */
   recordIntakeDecisionTelemetry?(event: DecisionTelemetryEvent): Promise<unknown>;
+
+  /** INTAKE 澄清接受后，将放宽 action 写入 trip 约束（需 trip_id） */
+  persistRelaxationToTrip?(
+    tripId: string,
+    userId: string,
+    applied: import('../../../services/clarification-handler.service').AppliedRelaxation[],
+  ): Promise<{ persisted: boolean; constraintsVersion?: number; actionIds: string[] } | undefined>;
 }

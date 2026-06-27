@@ -2388,6 +2388,22 @@ export class DecisionUiDisplayDto {
     intentional_slack_summary_zh?: string;
     computed_at: string;
   };
+
+  @ApiPropertyOptional({
+    type: 'array',
+    description:
+      'RelaxationSuggestionBar 投影（schema tripnara.relaxation_suggestion@v1）；与 clarificationQuestions 中 early_warning / plan_gen 放宽卡同源',
+  })
+  @IsOptional()
+  @IsArray()
+  relaxation_suggestions?: Array<Record<string, unknown>>;
+
+  @ApiPropertyOptional({
+    description: 'RelaxationSuggestionBar 上下文（schema tripnara.relaxation_suggestions@v1）',
+  })
+  @IsOptional()
+  @IsObject()
+  relaxation_suggestions_context?: Record<string, unknown>;
 }
 
 export class DecisionCandidateScoreDimensionsDto {
@@ -3321,6 +3337,40 @@ export class RouteAndRunResponseDto {
         suppress_chat_prose?: boolean;
         card_source?: 'clarificationQuestions';
       };
+      /** RelaxationSuggestionBar BFF（见 docs/api/relaxation-suggestions-bff-contract.md） */
+      relaxation_suggestions?: Array<{
+        schema: 'tripnara.relaxation_suggestion@v1';
+        actionId: string;
+        labelZh: string;
+        descriptionZh: string;
+        kind: 'relaxation' | 'proceed_at_own_risk' | 'accept_no_solution' | 'manual_relax_constraints';
+        confidence?: 'high_probability_fixed' | 'needs_more_changes';
+        score?: number;
+        pathGroup?: 'path_a' | 'path_b' | 'other';
+        recommended?: boolean;
+        metadata?: {
+          constraint_id?: string;
+          fixed_conflict_types?: string[];
+          violations_before?: number;
+          violations_after?: number;
+          dominant_cid?: string;
+        };
+      }>;
+      relaxation_suggestions_context?: {
+        schema: 'tripnara.relaxation_suggestions@v1';
+        questionId: string;
+        selectionMode: 'single' | 'multi';
+        headlineZh?: string;
+        hintZh?: string;
+        earlyWarningId?: string;
+        riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+        conflictType?: 'REACHABILITY' | 'SCOPE' | 'MIXED';
+        evidenceSummaryZh?: string;
+        failureRiskScore?: number;
+        failureProbHintZh?: string;
+      };
+      /** Plan Studio 方案矩阵主读模型（schema tripnara.option_comparison@v1） */
+      comparison?: import('./option-comparison.dto').OptionComparisonBffDto;
       missingServices?: string[];
       solutions?: string[];
       errorType?: ErrorType;
@@ -3504,6 +3554,8 @@ export class RouteAndRunResponseDto {
      * 装配时为同一引用，客户端应只读、勿作为独立可写状态；展示与审计以 payload 门控结果为准。
      */
     guardian_personas?: GateResult['guardian_results'];
+    /** BFF 方案矩阵列（与 payload.comparison 同源；≥2 时可用） */
+    alternatives?: import('./option-comparison.dto').ExplainAlternativeBffDto[];
     /** OPTIMIZE/CGUS 输出（用于直接展示备选方案与推荐理由） */
     optimization?: {
       method?: 'CGUS' | 'MONTE_CARLO' | 'HEURISTIC';

@@ -235,6 +235,42 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
               fingerprint,
             },
           });
+
+          const tripIdForPersist =
+            request.trip_id?.trim() ?? tripPlanRequest.trip_id?.trim() ?? state.trip_plan_request?.trip_id?.trim();
+          const userIdForPersist = request.user_id?.trim() || 'anonymous';
+          if (tripIdForPersist && host.persistRelaxationToTrip && applied.length > 0) {
+            const persistResult = await host.persistRelaxationToTrip(
+              tripIdForPersist,
+              userIdForPersist,
+              applied,
+            );
+            if (persistResult?.persisted) {
+              state.metadata = {
+                ...(state.metadata ?? {}),
+                trip_relaxation_persisted: {
+                  at: new Date().toISOString(),
+                  tripId: tripIdForPersist,
+                  actionIds: persistResult.actionIds,
+                  constraintsVersion: persistResult.constraintsVersion,
+                },
+              } as any;
+              state.decision_log.push({
+                request_id: state.request_id,
+                step: 'STATE_UPDATE',
+                actor: 'Orchestrator',
+                inputs_summary: 'clarification_answers → TripConstraintsPersist',
+                outputs_summary: `TRIP_RELAXATION_PERSISTED: ${persistResult.actionIds.join('+')} v=${persistResult.constraintsVersion ?? '?'}`,
+                evidence_refs: [],
+                timestamp: new Date().toISOString(),
+                metadata: {
+                  system_action: 'TRIP_RELAXATION_PERSISTED',
+                  trip_id: tripIdForPersist,
+                  ...persistResult,
+                },
+              });
+            }
+          }
         }
 
         if (earlyWarningProceedAtOwnRisk) {

@@ -6,7 +6,10 @@ import { tryParseLatLngPairFromString } from '../../skills/transport/transport-s
 export type AppliedRelaxation =
   | { id: 'upgrade_vehicle_to_4wd' }
   | { id: 'increase_days_by_1' }
-  | { id: 'drop_one_must_include_poi'; dropped_poi_id?: string };
+  | { id: 'drop_one_must_include_poi'; dropped_poi_id?: string }
+  | { id: 'relax_pace_to_conservative' }
+  | { id: 'relax_budget_by_10pct' }
+  | { id: 'reduce_scope' };
 
 @Injectable()
 export class ClarificationHandlerService {
@@ -37,6 +40,9 @@ export class ClarificationHandlerService {
 
     const relPlanGen = answers.find((a) => a.questionId === 'plan_gen_empty_draft_relax_constraints');
     const relEarly = answers.find((a) => a.questionId === 'early_warning_relaxations');
+    const relGate = answers.find((a) => a.questionId === 'gate_eval_relax_constraints');
+    const relVerify = answers.find((a) => a.questionId === 'verify_relax_constraints');
+    const relPlanning = answers.find((a) => a.questionId === 'planning_conflicts_relax_constraints');
 
     const toPicked = (rel: typeof relPlanGen): string[] => {
       if (!rel) return [];
@@ -44,12 +50,29 @@ export class ClarificationHandlerService {
     };
     const pickedPlanGen = toPicked(relPlanGen);
     const pickedEarly = toPicked(relEarly);
-    const RELAX_ATOMS = new Set(['upgrade_vehicle_to_4wd', 'increase_days_by_1', 'drop_one_must_include_poi']);
+    const pickedGate = toPicked(relGate);
+    const pickedVerify = toPicked(relVerify);
+    const pickedPlanning = toPicked(relPlanning);
+    const RELAX_ATOMS = new Set([
+      'upgrade_vehicle_to_4wd',
+      'increase_days_by_1',
+      'drop_one_must_include_poi',
+      'relax_budget_by_10pct',
+      'relax_pace_to_conservative',
+      'reduce_scope',
+      'manual_relax_constraints',
+    ]);
     const earlyAtoms = pickedEarly.filter((x) => RELAX_ATOMS.has(x));
     const earlyProceedOnly =
       !!relEarly && pickedEarly.includes('proceed_at_own_risk') && earlyAtoms.length === 0;
 
-    const picked = [...pickedPlanGen, ...pickedEarly];
+    const picked = [
+      ...pickedPlanGen,
+      ...pickedEarly,
+      ...pickedGate,
+      ...pickedVerify,
+      ...pickedPlanning,
+    ];
 
     const next: TripPlanRequest = this.deepClone(base);
     let didPatch = false;
@@ -279,6 +302,31 @@ export class ClarificationHandlerService {
         next.must_include_poi_ids = must;
       }
       applied.push({ id: 'drop_one_must_include_poi', dropped_poi_id: dropped });
+    }
+
+    if (pickSet.has('relax_pace_to_conservative')) {
+      next.constraints = {
+        ...(next.constraints ?? {}),
+        ...( { pacing_mode: 'conservative' } as Record<string, unknown> ),
+      };
+      applied.push({ id: 'relax_pace_to_conservative' });
+    }
+
+    if (pickSet.has('relax_budget_by_10pct')) {
+      const budgetRaw = (next.constraints as Record<string, unknown> | undefined)?.budget;
+      if (budgetRaw && typeof budgetRaw === 'object' && typeof (budgetRaw as { total?: number }).total === 'number') {
+        const b = budgetRaw as { total: number; currency?: string };
+        next.constraints = {
+          ...(next.constraints ?? {}),
+          budget: { ...b, total: Math.ceil(b.total * 1.1) },
+        };
+        applied.push({ id: 'relax_budget_by_10pct' });
+      }
+    }
+
+    if (pickSet.has('reduce_scope') && typeof next.days === 'number' && next.days > 1) {
+      next.days = Math.max(1, next.days - 1);
+      applied.push({ id: 'reduce_scope' });
     }
 
     return {

@@ -63,6 +63,8 @@ import { CONSTRAINT_IDS } from './constraint-registry';
 import { buildL3PersuasionLine, selectPersuasionMode } from '../utils/narrator-l3-persuasion.util';
 import { formatPredictiveFailureReport } from '../utils/repair-causal-explainer.util';
 import { calculateEarlyWarningRisk } from '../utils/early-warning-risk-model.util';
+import { injectGateRelaxationClarificationIfEligible } from '../utils/gate-relaxation-clarification.util';
+import { hydrateRelaxationConstraintsFromTripRecord } from '../utils/trip-relaxation-hydrate.util';
 import {
   IntentAnalysis,
   RoutingDecision,
@@ -794,6 +796,7 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly skillInputValidator?: SkillInputValidatorService,
     @Optional() private hallucinationDetection?: HallucinationDetectionService,
     @Optional() private readonly clarificationHandler?: ClarificationHandlerService,
+    @Optional() private readonly relaxationTripPersist?: import('./relaxation-trip-persist.service').RelaxationTripPersistService,
     @Optional() private readonly shadowConflictScanner?: ShadowConflictScannerService,
     @Optional() private readonly localCaseStore?: LocalCaseStoreService,
     @Optional() private readonly cbrAggregator?: CbrAggregatorService,
@@ -8292,7 +8295,14 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): Promise<
     | {
         ok: true;
-        trip: { destination: string | null; startDate: Date | null; endDate: Date | null };
+        trip: {
+          destination: string | null;
+          startDate: Date | null;
+          endDate: Date | null;
+          budgetConfig?: unknown;
+          pacingConfig?: unknown;
+          metadata?: unknown;
+        };
         source: 'trips_service' | 'prisma_fallback';
       }
     | { ok: false; error_message: string }
@@ -8311,6 +8321,9 @@ ${JSON.stringify(routingDecision, null, 2)}
             destination: destNorm || null,
             startDate: full.startDate ?? null,
             endDate: full.endDate ?? null,
+            budgetConfig: (full as { budgetConfig?: unknown }).budgetConfig,
+            pacingConfig: (full as { pacingConfig?: unknown }).pacingConfig,
+            metadata: (full as { metadata?: unknown }).metadata,
           },
           source: 'trips_service',
         };
@@ -8334,7 +8347,14 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     const row = await this.prisma.trip.findUnique({
       where: { id: tid },
-      select: { destination: true, startDate: true, endDate: true },
+      select: {
+        destination: true,
+        startDate: true,
+        endDate: true,
+        budgetConfig: true,
+        pacingConfig: true,
+        metadata: true,
+      },
     });
     if (!row) {
       return { ok: false, error_message: `行程 ID ${tid} 不存在` };
@@ -9387,6 +9407,11 @@ ${JSON.stringify(routingDecision, null, 2)}
       trip_id: tid,
     };
 
+    const relaxationFilled = hydrateRelaxationConstraintsFromTripRecord(tripPlanRequest, trip);
+    if (relaxationFilled.length > 0) {
+      filledFields.push(...relaxationFilled);
+    }
+
     const planDatesMissing =
       !tripPlanRequest.start_date &&
       !(tripPlanRequest.date_range?.start_date && tripPlanRequest.date_range?.end_date);
@@ -10366,6 +10391,8 @@ ${JSON.stringify(routingDecision, null, 2)}
               );
             })
         : undefined,
+      persistRelaxationToTrip: (tripId, userId, applied) =>
+        this.relaxationTripPersist?.persistFromIntake(tripId, userId, applied),
     };
   }
 
@@ -15237,6 +15264,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     decisionState?: DecisionState,
     context?: AgentContext,
   ): OrchestrationResult {
+    injectGateRelaxationClarificationIfEligible(state);
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
     attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);

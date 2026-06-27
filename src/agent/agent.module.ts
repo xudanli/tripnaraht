@@ -94,6 +94,7 @@ import { SideEffectRuleSyncerService } from './services/side-effect-rule-syncer.
 import { HardTruthRuleResolverService } from './services/hard-truth-rule-resolver.service';
 import { AgentActionLogService } from './services/agent-action-log.service';
 import { ClarificationHandlerService } from './services/clarification-handler.service';
+import { RelaxationTripPersistService } from './services/relaxation-trip-persist.service';
 import { ResearchPriorSnapshotService } from './services/research-prior-snapshot.service';
 import { ShadowConflictScannerService } from './services/shadow-conflict-scanner.service';
 import { ShadowRoutingEvaluatorService } from './services/shadow-routing-evaluator.service';
@@ -219,9 +220,9 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     PlanningPolicyModule,
     RailPassModule,
     ReadinessModule,
-    DecisionModule,
-    CausalRuntimeModule,
-    OptimizationModule,
+    forwardRef(() => DecisionModule),
+    forwardRef(() => CausalRuntimeModule),
+    forwardRef(() => OptimizationModule),
     SharedMemoryModule,
     forwardRef(() => RagModule), // RAG 模块（用于增强对话），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
@@ -231,7 +232,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     AgentInfraModule, // Infra 层（LLMExecutor、CoreGateway）
     CacheModule, // 异步 route_and_run 任务进度（task_progress:*）
     EventEmitterModule.forRoot({ wildcard: false, maxListeners: 32 }),
-    RouteDirectionsModule, // 路线方向模块（用于信息卡片）
+    forwardRef(() => RouteDirectionsModule), // 路线方向模块（用于信息卡片）
     DataModelingModule, // 数据建模模块（用于不确定性建模）
     PrismaModule, // Prisma 模块（用于数据库访问）
     SpatialModule, // POI→SpatialDomainSegment 投影，供 route_and_run Action PREVIEW 物理门
@@ -373,6 +374,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     RouteRunIcelandMarketPriorHydratorService,
     StrategyConflictOptionsService,
     ClarificationHandlerService,
+    RelaxationTripPersistService,
     ResearchPriorSnapshotService,
     ShadowConflictScannerService,
     ShadowRoutingEvaluatorService,

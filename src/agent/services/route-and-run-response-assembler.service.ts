@@ -136,6 +136,8 @@ import {
   sanitizeClarificationQuestionsForClientDisplay,
 } from '../utils/feasibility-message-surface.zh.util';
 import { renderClarificationMarkdownToSafeHtml, resolveClarificationShortStepDetail, resolveClarificationChatLead, renderPlainClarificationChatLeadHtml, isStructuredClarificationChoiceCard } from '../utils/user-clarification-markdown.util';
+import { attachRelaxationSuggestionsToPayload } from '../utils/relaxation-suggestion-bff.projection.util';
+import { attachOptionComparisonToResponse } from '../utils/option-comparison-bff.projection.util';
 import { filterGateViolationsToDraftScheduleOnly } from '../utils/filter-stale-verify-violations.util';
 import { filterDecisionLogVerifyToDraftPois } from '../utils/itinerary-adjust-decision-log.util';
 import { extractSkillsHitFromDecisionLog } from '../utils/itinerary-item-crud-decision-log.util';
@@ -1603,7 +1605,7 @@ export class RouteAndRunResponseAssemblerService {
   private applyNeedMoreInfoUiSurface(response: RouteAndRunResponseDto): void {
     if (response.result?.status !== 'NEED_MORE_INFO') return;
 
-    const payload = response.result.payload as {
+    const payload = response.result.payload as unknown as {
       clarificationQuestions?: ClarificationQuestion[];
       clarificationMessage?: string;
       clarification_render_format?: 'markdown';
@@ -1613,6 +1615,9 @@ export class RouteAndRunResponseAssemblerService {
         card_source?: 'clarificationQuestions';
       };
       orchestrationResult?: { state?: OrchestratorState };
+      relaxation_suggestions?: unknown[];
+      relaxation_suggestions_context?: Record<string, unknown>;
+      ui_display?: Record<string, unknown>;
     };
 
     const sanitized = sanitizeClarificationQuestionsForClientDisplay(
@@ -2975,7 +2980,67 @@ export class RouteAndRunResponseAssemblerService {
       stepsExecuted: orchestrationResult.stepsExecuted,
     });
 
+    this.attachClientReadModels(response, {
+      orchestrationResult,
+      stateWithVerdict: stateWithVerdict as OrchestratorState | undefined,
+      resultStatus,
+      needsUserConfirmation,
+    });
+
     return response;
+  }
+
+  /** P0-1 comparison + P0-2 relaxation 读模型（Plan Studio 矩阵 / RelaxationSuggestionBar） */
+  private attachClientReadModels(
+    response: RouteAndRunResponseDto,
+    ctx: {
+      orchestrationResult: OrchestrationResult;
+      stateWithVerdict?: OrchestratorState | null;
+      resultStatus: string;
+      needsUserConfirmation: boolean;
+    },
+  ): void {
+    const payload = response.result?.payload as Record<string, unknown> | undefined;
+    if (!payload) return;
+
+    const st = ctx.stateWithVerdict ?? (ctx.orchestrationResult.result?.state as OrchestratorState | undefined);
+    const decisionState = ctx.orchestrationResult.result?.decisionState;
+    const gateResult =
+      st?.gate_result ?? ctx.orchestrationResult.result?.gate_result ?? undefined;
+
+    if (
+      ctx.resultStatus === 'OK' ||
+      ctx.resultStatus === 'NEED_CONFIRMATION' ||
+      (ctx.needsUserConfirmation && ctx.resultStatus === 'NEED_MORE_INFO')
+    ) {
+      const uiDisplay = payload.ui_display as { dual_track_itinerary?: import('../utils/dual-track-itinerary-ui.util').DualTrackItineraryUi } | undefined;
+      attachOptionComparisonToResponse({
+        payload,
+        explain: response.explain as Record<string, unknown>,
+        projectInput: {
+          orchestratorState: st,
+          decisionState,
+          primaryItinerary:
+            ctx.orchestrationResult.result?.itinerary ??
+            (st?.itinerary as import('../interfaces/trip-plan.interface').Itinerary | undefined),
+          dualTrackUi: uiDisplay?.dual_track_itinerary,
+          candidates: payload.candidates as Parameters<
+            typeof attachOptionComparisonToResponse
+          >[0]['projectInput']['candidates'],
+        },
+      });
+    }
+
+    attachRelaxationSuggestionsToPayload(payload, {
+      clarificationQuestions:
+        (payload.clarificationQuestions as import('../interfaces/clarification.interface').ClarificationQuestion[] | undefined) ??
+        st?.clarification_questions,
+      orchestratorState: st,
+      gateResult,
+      decisionViolations:
+        (gateResult?.violations as Array<{ type?: string; detail?: string; severity?: string }> | undefined) ??
+        (decisionState?.constraints?.violations as Array<{ type?: string; detail?: string; severity?: string }> | undefined),
+    });
   }
 
   private buildDecisionCandidates(

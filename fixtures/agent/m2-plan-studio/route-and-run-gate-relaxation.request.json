@@ -1,0 +1,19 @@
+{
+  "request_id": "fixture-gate-relaxation-001",
+  "trip_id": "REPLACE_WITH_TRIP_ID",
+  "message": "",
+  "clarification_answers": [
+    {
+      "questionId": "gate_eval_relax_constraints",
+      "value": ["upgrade_vehicle_to_4wd"]
+    }
+  ],
+  "trip_plan_request": {
+    "request_id": "fixture-gate-relaxation-001",
+    "origin": "Reykjavik",
+    "destination": { "lat": 64.1466, "lng": -21.9426 },
+    "date_range": { "start_date": "2026-07-01", "end_date": "2026-07-07" },
+    "days": 7,
+    "constraints": { "vehicle_type": "2WD" }
+  }
+}
