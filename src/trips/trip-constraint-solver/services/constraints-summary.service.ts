@@ -15,6 +15,7 @@ import type {
   ConfirmConstraintsResponse,
   ConstraintsSummaryResponse,
 } from '../types/constraints-summary.types';
+import type { TeamFitSummaryDto } from '../types/trip-constraint-solver.types';
 import {
   applyConstraintsConfirm,
   getConstraintsVersion,
@@ -40,7 +41,10 @@ export class ConstraintsSummaryService {
     private readonly moduleRef: ModuleRef,
   ) {}
 
-  async getSummary(tripId: string): Promise<ConstraintsSummaryResponse> {
+  async getSummary(
+    tripId: string,
+    opts?: { teamFitSummary?: TeamFitSummaryDto },
+  ): Promise<ConstraintsSummaryResponse> {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
@@ -63,7 +67,9 @@ export class ConstraintsSummaryService {
       budgetConfig: trip.budgetConfig,
     });
     const memberCount = trip.TripCollaborator.length;
-    const teamFit = await this.teamFitAssessment.assessForTrip(tripId, []);
+    const profilingCompletedCount =
+      opts?.teamFitSummary?.profilingCompletedCount ??
+      (await this.teamFitAssessment.assessForTrip(tripId, [])).profilingCompletedCount;
 
     const sampleSegment = await this.loadFirstTravelSample(tripId, trip.TripDay[0]?.id);
 
@@ -84,7 +90,7 @@ export class ConstraintsSummaryService {
     const travelers = {
       count: travelerCount,
       memberCount,
-      profilingCompletedCount: teamFit.profilingCompletedCount,
+      profilingCompletedCount,
       status: resolveTravelersStatus(travelerCount, memberCount),
     };
 

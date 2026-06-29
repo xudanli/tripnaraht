@@ -172,12 +172,38 @@ import {
 } from '../utils/agentic-tool-loop-dispatch.util';
 import { deriveAgenticMcpRuntimeAllowlist, extractAgenticSkillAllowlistForMcpCap } from '../runtime/agentic-mcp-runtime-cap.util';
 import {
-  mergeAgenticToolPolicies,
   mergeApprovedToolInvocations,
-  parseAgenticGovernanceHitlFlag,
 } from '../runtime/agentic-tool-governance.util';
+import { mergeExecutionToolPolicies } from '../runtime/agent-execution-policy-gateway.util';
+import {
+  hydrateRouteAndRunExecutionPolicyInPlace,
+  readExecutionPolicyGatewayApproved,
+  readExecutionPolicyGatewayPolicies,
+  type RouteAndRunExecutionPolicyCarrier,
+} from '../runtime/execution-policy-gateway-context.util';
+import {
+  applySubagentSandboxToMcpAllowlist,
+  hydrateSubagentPermissionSandboxInPlace,
+  readSubagentSandboxSanitizedMessage,
+  type RouteAndRunSubagentSandboxCarrier,
+} from '../runtime/subagent-permission-sandbox-context.util';
+import { resolveOrchestrationSubAgentFromRequest } from '../runtime/subagent-message-chain-sandbox.util';
+import { EpisodicMemorySummarizerService } from '../memory/services/episodic-memory-summarizer.service';
+import type {
+  EpisodicSummarizerObservabilityV1,
+  RouteAndRunEpisodicCarrier,
+} from '../memory/utils/episodic-memory-summarizer.util';
+import {
+  estimateUsdFromTokens,
+  mountRouteAndRunEstimatedCostUsd,
+} from '../runtime/cost-governance-observability.util';
 import type { ConflictStrategyOptionsResponseDto } from '../dto/conflict-strategy-options.dto';
 import { StrategyConflictOptionsService } from './strategy-conflict-options.service';
+import { AgentExecutionPolicyGatewayService } from './agent-execution-policy-gateway.service';
+import {
+  resolveAgenticResumeCheckpointFromRequestOptions,
+  type AgenticTaskRollbackObservabilityV1,
+} from '../runtime/agentic-task-rollback.util';
 import { MemoryContextAssemblerService } from '../memory/services/memory-context-assembler.service';
 import { RouteRunRequestFitnessHydratorService } from '../memory/services/route-run-request-fitness-hydrator.service';
 import { RouteRunIcelandMarketPriorHydratorService } from '../memory/services/route-run-iceland-market-prior-hydrator.service';
@@ -277,6 +303,7 @@ export class AgentService {
     @Optional() private readonly executionIntegration?: ExecutionIntegrationService,
     @Optional() private readonly configService?: ConfigService,
     @Optional() private readonly mcpAgentExecutor?: McpAgentExecutorService,
+    @Optional() private readonly executionPolicyGateway?: AgentExecutionPolicyGatewayService,
     @Optional() private readonly strategyConflictOptions?: StrategyConflictOptionsService,
     @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
     @Optional() private readonly governanceLedgerStore?: GovernanceLedgerStoreService,
@@ -296,6 +323,7 @@ export class AgentService {
     @Optional() private readonly shadowRoutingEvaluator?: import('./shadow-routing-evaluator.service').ShadowRoutingEvaluatorService,
     @Optional()
     private readonly shadowRouteClassEvaluator?: import('./shadow-route-class-evaluator.service').ShadowRouteClassEvaluatorService,
+    @Optional() private readonly episodicMemorySummarizer?: EpisodicMemorySummarizerService,
   ) {}
 
   /**
@@ -1101,6 +1129,40 @@ export class AgentService {
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return String(h);
+  }
+
+  /**
+   * DecisionRuntimeKernel tick 入口：挂载 Execution Policy Gateway 上下文（主链 SSOT）。
+   */
+  hydrateExecutionPolicyGatewayContext(
+    request: RouteAndRunRequestDto,
+    memory: AgentMemoryContext | undefined,
+  ): void {
+    if (this.executionPolicyGateway) {
+      this.executionPolicyGateway.hydrateRouteAndRunRequest(request, memory);
+    } else {
+      hydrateRouteAndRunExecutionPolicyInPlace(
+        request as RouteAndRunExecutionPolicyCarrier,
+        memory,
+        false,
+      );
+    }
+    hydrateSubagentPermissionSandboxInPlace(request as RouteAndRunSubagentSandboxCarrier);
+  }
+
+  /** State P3：memory hydrate 后压缩 conversation_context（若有 episodic summary） */
+  applyEpisodicMemoryCompactionInPlace(
+    request: RouteAndRunRequestDto,
+    memory: AgentMemoryContext | undefined,
+  ): void {
+    if (!this.episodicMemorySummarizer) return;
+    (request as RouteAndRunEpisodicCarrier).__episodicSummarizerIngressV1 =
+      this.episodicMemorySummarizer.applyCompactionFromMemoryInPlace(request, memory);
+  }
+
+  /** State P3：route_and_run 完成后异步 summarizer（不阻塞响应） */
+  scheduleEpisodicSummarizerAfterRouteAndRun(request: RouteAndRunRequestDto): void {
+    this.episodicMemorySummarizer?.scheduleAfterRouteAndRun(request);
   }
 
   /**
@@ -2315,6 +2377,11 @@ export class AgentService {
       });
       runtimeMcpToolAllowlist = [...derived.allowedMcpToolNames];
       runtimeMcpCapProvenance = derived.provenance;
+      runtimeMcpToolAllowlist = applySubagentSandboxToMcpAllowlist(
+        request as RouteAndRunSubagentSandboxCarrier,
+        runtimeMcpToolAllowlist,
+        resolveOrchestrationSubAgentFromRequest(request.options),
+      );
       this.logger.debug(
         `[AgenticRuntimeMcpCap] phase=${phase} provenance=${derived.provenance} tools=${runtimeMcpToolAllowlist.length}`,
       );
@@ -2336,36 +2403,142 @@ export class AgentService {
         ? parseInt(String(envRetryBaseRaw), 10)
         : NaN;
 
-    const hitlGovEnabled = parseAgenticGovernanceHitlFlag(
-      this.configService?.get<string>('FEATURE_AGENTIC_GOVERNANCE_HITL') ??
-        process.env.FEATURE_AGENTIC_GOVERNANCE_HITL,
+    const toolGovernancePolicies =
+      readExecutionPolicyGatewayPolicies(request as RouteAndRunExecutionPolicyCarrier) ??
+      (this.executionPolicyGateway
+        ? this.executionPolicyGateway.mergeToolPolicies(
+            memory?.activeTripState?.constraints?.tool_policies,
+          )
+        : mergeExecutionToolPolicies(
+            false,
+            memory?.activeTripState?.constraints?.tool_policies,
+          ));
+    const governanceApprovedToolInvocations =
+      readExecutionPolicyGatewayApproved(request as RouteAndRunExecutionPolicyCarrier) ??
+      mergeApprovedToolInvocations(
+        memory?.activeTripState?.constraints?.approved_tool_invocations,
+        request.options?.agentic_approved_tool_invocations,
+      );
+
+    const maxTotalTokensRaw =
+      parseInt(
+        String(
+          this.configService?.get<string>('AGENTIC_LOOP_MAX_TOTAL_TOKENS') ??
+            process.env.AGENTIC_LOOP_MAX_TOTAL_TOKENS ??
+            '4000',
+        ),
+        10,
+      ) || 4000;
+
+    if (this.executionPolicyGateway) {
+      const admission = await this.executionPolicyGateway.checkAgenticAdmission(
+        request,
+        request.user_id,
+        maxTotalTokensRaw,
+      );
+      if (!admission.allowed) {
+        const quota = admission.quota;
+        this.logger.warn(
+          `[AgenticTokenQuota] fast-path blocked request_id=${request.request_id} scope=${quota.scope}`,
+        );
+        const assembler = this.getResponseAssembler();
+        const orch: OrchestrationResult = {
+          success: false,
+          answerText: quota.userMessage ?? '今日 Agent 推理额度已用尽。',
+          result: {
+            agentic_token_quota: {
+              scope: quota.scope,
+              used: quota.used,
+              limit: quota.limit,
+              remaining: quota.remaining,
+            },
+          },
+          stepsExecuted: [],
+          totalDuration: Date.now() - startTime,
+          decisionLog: [
+            {
+              request_id: request.request_id,
+              step: 'INTAKE' as OrchestrationStep,
+              actor: 'Orchestrator' as SubAgentType,
+              inputs_summary: 'AGENTIC_TOKEN_QUOTA',
+              outputs_summary: quota.scope,
+              evidence_refs: [],
+              timestamp: new Date().toISOString(),
+              metadata: { agentic_token_quota: quota },
+            },
+          ],
+        };
+        return assembler.assembleClaudeDynamicResponse({
+          request,
+          startTime,
+          traceInfo,
+          orchestrationResult: orch,
+          system1Result: {
+            success: false,
+            answerText: orch.answerText ?? '',
+            result: orch.result,
+          },
+          routingTaskType: signals.taskType,
+        });
+      }
+    }
+
+    const agenticMessage =
+      readSubagentSandboxSanitizedMessage(request as RouteAndRunSubagentSandboxCarrier) ??
+      request.message;
+
+    const checkpointResolution = resolveAgenticResumeCheckpointFromRequestOptions(
+      request.options,
+      agenticMessage,
     );
-    const toolGovernancePolicies = mergeAgenticToolPolicies(
-      hitlGovEnabled,
-      memory?.activeTripState?.constraints?.tool_policies,
-    );
-    const governanceApprovedToolInvocations = mergeApprovedToolInvocations(
-      memory?.activeTripState?.constraints?.approved_tool_invocations,
-      request.options?.agentic_approved_tool_invocations,
-    );
+    (request as RouteAndRunRequestDto & { __agenticTaskRollbackObservabilityV1?: AgenticTaskRollbackObservabilityV1 })
+      .__agenticTaskRollbackObservabilityV1 = checkpointResolution.rollbackObs;
+
+    if ('error' in checkpointResolution && checkpointResolution.error) {
+      this.logger.warn(
+        `[AgentService] agentic checkpoint/rollback invalid request_id=${request.request_id} reason=${checkpointResolution.error}`,
+      );
+      const assembler = this.getResponseAssembler();
+      const orch: OrchestrationResult = {
+        success: false,
+        answerText: '无法从所选 checkpoint 恢复 Agent 任务，请检查 message 与 rollback 参数。',
+        result: {
+          agentic_checkpoint_error: checkpointResolution.error,
+          agentic_tool_loop: {
+            stopped_reason: `resume_invalid:${checkpointResolution.error}`,
+            task_rollback_v1: checkpointResolution.rollbackObs,
+          },
+        },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+      return assembler.assembleClaudeDynamicResponse({
+        request,
+        startTime,
+        traceInfo,
+        orchestrationResult: orch,
+        system1Result: {
+          success: false,
+          answerText: orch.answerText ?? '',
+          result: orch.result,
+        },
+        routingTaskType: signals.taskType,
+      });
+    }
+
+    const resumeCheckpoint =
+      'checkpoint' in checkpointResolution ? checkpointResolution.checkpoint : null;
 
     let execResult: McpAgentExecutorRunResult;
     try {
       execResult = await withTimeout(
         this.mcpAgentExecutor.runLoop({
-          message: request.message,
+          message: agenticMessage,
           maxSteps,
           toolPacks,
           budget: {
-            maxTotalTokens:
-              parseInt(
-                String(
-                  this.configService?.get<string>('AGENTIC_LOOP_MAX_TOTAL_TOKENS') ??
-                    process.env.AGENTIC_LOOP_MAX_TOTAL_TOKENS ??
-                    '4000',
-                ),
-                10,
-              ) || 4000,
+            maxTotalTokens: maxTotalTokensRaw,
             minRemainingMsForNextLlm:
               parseInt(
                 String(
@@ -2390,6 +2563,7 @@ export class AgentService {
             : {}),
           toolGovernancePolicies,
           governanceApprovedToolInvocations,
+          ...(resumeCheckpoint ? { resumeCheckpoint, taskRollbackV1: checkpointResolution.rollbackObs } : {}),
           ...(taskClosureBookingEnabled
             ? {
                 taskClosure: {
@@ -2407,6 +2581,15 @@ export class AgentService {
     } catch (e: any) {
       this.logger.warn(`[AgentService] agentic tool loop aborted: ${e?.message || e}`);
       return null;
+    }
+
+    if (this.executionPolicyGateway && execResult.metrics?.total_tokens) {
+      mountRouteAndRunEstimatedCostUsd(request, estimateUsdFromTokens(execResult.metrics.total_tokens));
+      await this.executionPolicyGateway.recordAgenticTokenUsage(
+        request,
+        request.user_id,
+        execResult.metrics.total_tokens,
+      );
     }
 
     const orch = this.buildOrchestrationResultFromAgentic(execResult, request.request_id);
@@ -2443,11 +2626,15 @@ export class AgentService {
   private extractPrimaryRobustnessFromAgenticTrace(
     exec: McpAgentExecutorRunResult,
   ): OrchestratorRobustnessMetadata | undefined {
+    type AgenticToolEnvelope = {
+      success?: boolean;
+      orchestrator_robustness?: OrchestratorRobustnessMetadata;
+    };
     for (let i = exec.trace.steps.length - 1; i >= 0; i--) {
       const tr = exec.trace.steps[i]?.tool_results;
       if (!tr) continue;
       for (let j = tr.length - 1; j >= 0; j--) {
-        const env = tr[j]?.envelope;
+        const env = tr[j]?.envelope as AgenticToolEnvelope | undefined;
         if (env && env.success === false && env.orchestrator_robustness) {
           return env.orchestrator_robustness;
         }
@@ -2468,7 +2655,9 @@ export class AgentService {
       skillName: 'mcp.tool_loop',
       success:
         !st.tool_results?.length ||
-        !st.tool_results.some((t) => !t.envelope.success),
+        !st.tool_results.some(
+          (t) => !(t.envelope as { success?: boolean }).success,
+        ),
       duration: st.latency_ms ?? 0,
       result: st.tool_results,
     }));

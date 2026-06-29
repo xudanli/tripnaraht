@@ -2,7 +2,8 @@
 
 > **状态**：1.0 Feature Freeze 之后的主线规划。与本地 `docs/Harness Runtime.md`、[orchestrator-graph-refactor-backlog.md](./orchestrator-graph-refactor-backlog.md)（Phase 1–4b）互补。
 >
-> **模块与环境变量全景图：** [harness-architecture-map.md](./harness-architecture-map.md)
+> **模块与环境变量全景图：** [harness-architecture-map.md](./harness-architecture-map.md)  
+> **生产落地 Checklist（State / Control / Observability）：** [harness-production-checklist.md](./harness-production-checklist.md)
 
 ## 1. 物理架构演进依赖栈
 
@@ -79,7 +80,7 @@ HARNESS_TRACE_EXPORT_DIR=artifacts/harness-on-failure
 架构图：[harness-architecture-map.md §2](./harness-architecture-map.md#2-l1-smoke-数据流26s-指纹门禁)。
 
 ## 5. 梯队 3 摘要（待排期）
-- **Shadow Grader**：`HARNESS_SHADOW_GRADER=1` + PLAN/VERIFY 异步语义分 → `HarnessShadowMetricsCollector`；不阻塞主链。
+- **Shadow Grader**：`HARNESS_SHADOW_GRADER=1`（或 `SHADOW_GRADER_ENABLED=1`）+ 注册 active shadow + Decision Trajectory finalize 后异步评分 → `observability.shadow_grader_v1`；不阻塞主链。
 - **同步硬门禁**：rubric 稳定后 `HARNESS_KERNEL_HARD=1`（须运维签字）。
 
 ## 6. 相关测试

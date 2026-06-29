@@ -27,6 +27,10 @@ import {
   resolveScenarioFromFeasibilityIssue,
   toGuardianPresentationSnapshot,
 } from './guardian-user-facing.projection.util';
+import {
+  buildFeasibilityIssueUserExplanation,
+  isLowQualityUserFacingText,
+} from '../trip-constraint-solver/utils/feasibility-issue-user-copy.util';
 
 export type PersonaAlertAudience = 'user' | 'internal';
 
@@ -79,8 +83,21 @@ export function isPersonaMarketingTitle(title: string | undefined): boolean {
 
 function sanitizeUserFacingExplanation(raw: string | undefined): string {
   const t = String(raw ?? '').trim();
-  if (!t || isInternalDebugPersonaText(t)) return '';
+  if (!t || isInternalDebugPersonaText(t) || isLowQualityUserFacingText(t)) return '';
   return truncate(t, 500);
+}
+
+function resolveIssueForPersona(
+  persona: PersonaType,
+  issues: FeasibilityIssueDto[],
+): FeasibilityIssueDto | undefined {
+  const matched = issues.filter((i) => resolvePersonaFromFeasibilityIssue(i) === persona);
+  if (matched.length === 0) return undefined;
+  return (
+    matched.find((i) => i.priority === 'must_handle') ??
+    matched.find((i) => i.severity === 'high') ??
+    matched[0]
+  );
 }
 
 function isNoRiskDecisionLog(log: DecisionLogEntry): boolean {
@@ -188,6 +205,7 @@ function resolveDeepLinkForDecisionLog(
 function projectFromDecisionLog(
   log: DecisionLogEntry,
   audience: PersonaAlertAudience,
+  feasibilityIssues: FeasibilityIssueDto[] = [],
 ): PersonaAlertDto | null {
   if (audience === 'user' && shouldOmitDecisionLogForUser(log)) return null;
 
@@ -203,14 +221,40 @@ function projectFromDecisionLog(
   const { displayZh: reasonCodesDisplayZh, templateExplanation } =
     mapPersonaAlertReasonCodesDisplayZh(log.reasonCodes);
 
-  let explanation =
-    sanitizeUserFacingExplanation(presentation?.narrative) ||
-    sanitizeUserFacingExplanation(presentation?.briefLines?.[0]) ||
-    sanitizeUserFacingExplanation(readinessEvidenceDisplayZh) ||
-    sanitizeUserFacingExplanation(log.explanation) ||
-    sanitizeUserFacingExplanation(templateExplanation);
+  const issueId =
+    typeof log.metadata?.issueId === 'string'
+      ? log.metadata.issueId
+      : typeof log.metadata?.feasibility_issue_id === 'string'
+        ? log.metadata.feasibility_issue_id
+        : undefined;
+
+  const persona = (
+    presentation?.leadSpeaker ??
+    (log.persona === 'USER_ACTION' ? null : log.persona)
+  ) as PersonaType | null;
+  if (!persona || persona === PersonaType.USER_ACTION) return null;
+
+  const linkedIssue = issueId
+    ? feasibilityIssues.find((i) => i.id === issueId)
+    : undefined;
+  const personaIssue = linkedIssue ?? resolveIssueForPersona(persona, feasibilityIssues);
+
+  let explanation = personaIssue
+    ? truncate(buildFeasibilityIssueUserExplanation(personaIssue), 500)
+    : undefined;
+
+  if (!explanation) {
+    explanation =
+      sanitizeUserFacingExplanation(presentation?.narrative) ||
+      sanitizeUserFacingExplanation(presentation?.briefLines?.[0]) ||
+      sanitizeUserFacingExplanation(readinessEvidenceDisplayZh) ||
+      sanitizeUserFacingExplanation(log.explanation) ||
+      sanitizeUserFacingExplanation(templateExplanation);
+  }
 
   if (!explanation) return null;
+
+  const deepLinkIssueId = personaIssue?.id ?? issueId;
 
   const titleRaw =
     presentation?.headline ||
@@ -226,19 +270,15 @@ function projectFromDecisionLog(
   const severity = mapActionToSeverity(log.action, audience);
   if (!severity) return null;
 
-  const persona = (
-    presentation?.leadSpeaker ??
-    (log.persona === 'USER_ACTION' ? null : log.persona)
-  ) as PersonaType | null;
-  if (!persona || persona === PersonaType.USER_ACTION) return null;
-
   const scenario =
     presentation?.scenario ??
     (typeof log.metadata?.guardianScenario === 'string'
       ? log.metadata.guardianScenario
       : undefined);
 
-  const deepLink = resolveDeepLinkForDecisionLog(log, presentationRaw);
+  const deepLink = deepLinkIssueId
+    ? { type: 'decision_checker' as const, issueId: deepLinkIssueId }
+    : resolveDeepLinkForDecisionLog(log, presentationRaw);
 
   return {
     id: `alert-log-${log.timestamp}-${persona}`,
@@ -261,9 +301,30 @@ function projectFromDecisionLog(
       decisionSource: log.decisionSource,
       readinessEvidenceDisplayZh,
       deepLink,
+      issueId: deepLinkIssueId,
       expressionPhase: presentation?.expressionPhase,
     }),
   };
+}
+
+function dropLogsSupersededByIssues(
+  logs: DecisionLogEntry[],
+  issueAlerts: PersonaAlertDto[],
+): DecisionLogEntry[] {
+  const coveredIssueIds = new Set(
+    issueAlerts.map((a) => a.metadata?.issueId).filter((id): id is string => Boolean(id)),
+  );
+  if (coveredIssueIds.size === 0) return logs;
+
+  return logs.filter((log) => {
+    const issueId =
+      typeof log.metadata?.issueId === 'string'
+        ? log.metadata.issueId
+        : typeof log.metadata?.feasibility_issue_id === 'string'
+          ? log.metadata.feasibility_issue_id
+          : undefined;
+    return !issueId || !coveredIssueIds.has(issueId);
+  });
 }
 
 function projectFromGuardianPresentation(
@@ -334,7 +395,9 @@ function dedupePersonaAlerts(alerts: PersonaAlertDto[]): PersonaAlertDto[] {
   const byKey = new Map<string, PersonaAlertDto>();
   for (const alert of alerts) {
     const issueId = alert.metadata?.issueId ?? alert.metadata?.deepLink?.issueId ?? '';
-    const key = `${alert.persona}::${alert.metadata?.scenario ?? ''}::${issueId}`;
+    const key = issueId
+      ? `${alert.persona}::${issueId}`
+      : `${alert.persona}::${alert.metadata?.scenario ?? ''}::${alert.title}`;
     const existing = byKey.get(key);
     if (!existing || severityRank[alert.severity] > severityRank[existing.severity]) {
       byKey.set(key, alert);
@@ -371,10 +434,6 @@ export function projectPersonaAlertsForAudience(input: {
   const audience = input.options?.audience ?? 'user';
   const limit = input.options?.limit ?? 20;
 
-  const fromLogs = input.decisionLogs
-    .map((log) => projectFromDecisionLog(log, audience))
-    .filter((a): a is PersonaAlertDto => a != null);
-
   const fromIssues = projectPersonaAlertsFromFeasibilityIssues(
     input.feasibilityIssues ?? [],
     {
@@ -382,6 +441,12 @@ export function projectPersonaAlertsForAudience(input: {
       guardianNegotiation: input.guardianNegotiation,
     },
   );
+
+  const filteredLogs = dropLogsSupersededByIssues(input.decisionLogs, fromIssues);
+
+  const fromLogs = filteredLogs
+    .map((log) => projectFromDecisionLog(log, audience, input.feasibilityIssues ?? []))
+    .filter((a): a is PersonaAlertDto => a != null);
 
   const fromPresentation = input.guardianPresentation
     ? [projectFromGuardianPresentation(input.guardianPresentation, audience)].filter(

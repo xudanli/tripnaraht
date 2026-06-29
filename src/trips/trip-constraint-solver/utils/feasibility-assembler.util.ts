@@ -28,6 +28,9 @@ import type {
 } from '../types/trip-constraint-solver.types';
 import { normalizeIssueId, revisionToString, type TripRevisionInfo } from './trip-revision.util';
 import {
+  buildDailyDriveFeasibilityRepairOptions,
+} from './daily-drive-repair.util';
+import {
   buildFeasibilityIssueDedupeKey,
   buildFeasibilityVerdictSubheadline,
   dedupeFeasibilityIssues,
@@ -94,6 +97,7 @@ function mapConflictCategory(type: ConflictType): FeasibilityDimensionKey {
   switch (type) {
     case ConflictType.TRANSPORT_TOO_LONG:
     case ConflictType.TRANSPORT_INSUFFICIENT:
+    case ConflictType.MAX_DAILY_DRIVE_EXCEEDED:
       return 'transport';
     case ConflictType.CLOSURE_RISK:
       return 'booking';
@@ -123,6 +127,9 @@ function findingPriority(f: ReadinessScoreFinding): FeasibilityIssuePriority {
 
 function conflictPriority(c: ConflictDto): FeasibilityIssuePriority {
   if (c.priority) return c.priority;
+  if (c.issueKind === 'daily_drive' || c.type === ConflictType.MAX_DAILY_DRIVE_EXCEEDED) {
+    return 'must_handle';
+  }
   if (c.severity === ConflictSeverity.HIGH) return 'must_handle';
   if (c.type === ConflictType.CLOSURE_RISK || c.type === ConflictType.TRANSPORT_INSUFFICIENT) {
     return 'must_handle';
@@ -522,6 +529,25 @@ function isTravelTimingConflict(c: ConflictDto): boolean {
   );
 }
 
+function isDailyDriveConflict(c: ConflictDto): boolean {
+  return c.issueKind === 'daily_drive' || c.type === ConflictType.MAX_DAILY_DRIVE_EXCEEDED;
+}
+
+function buildDailyDriveProofs(c: ConflictDto): FeasibilityProofDto[] {
+  const driveMinutes = c.travelMinutes ?? c.travelTimeMinutes ?? 0;
+  return [
+    {
+      entity: '路线引擎',
+      constraint: 'max_daily_drive',
+      currentFact: `预计驾驶 ${formatMinutesZh(driveMinutes)}`,
+      evidenceSource: 'trip.conflicts',
+      evidenceType: 'route_engine',
+      conclusion: '超出上限',
+      confidence: 0.95,
+    },
+  ];
+}
+
 function formatMinutesZh(minutes: number | undefined): string {
   if (minutes == null || !Number.isFinite(minutes)) return '待确认';
   const rounded = Math.max(0, Math.round(minutes));
@@ -708,7 +734,12 @@ function buildTravelTimingRepairOptions(issueId: string, c: ConflictDto) {
 function conflictToIssue(c: ConflictDto, context?: { tripId: string }): FeasibilityIssueDto {
   const isBuffer = isBufferInsufficientConflict(c);
   const isTravelTiming = isTravelTimingConflict(c);
-  const category = isTravelTiming || isBuffer ? 'schedule' : mapConflictCategory(c.type);
+  const isDailyDrive = isDailyDriveConflict(c);
+  const category = isDailyDrive
+    ? 'transport'
+    : isTravelTiming || isBuffer
+      ? 'schedule'
+      : mapConflictCategory(c.type);
   const affectedDays = parseAffectedDayNumbers(c.affectedDays);
   const fromItemId = c.fromItemId ?? c.affectedItemIds?.[0];
   const toItemId = c.toItemId ?? c.affectedItemIds?.[1];
@@ -718,7 +749,9 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
     c.travelDistanceMeters ?? (c.distanceKm != null ? Math.round(c.distanceKm * 1000) : undefined);
   const requiredMinutes =
     travelMinutes != null ? travelMinutes + 5 : undefined;
-  const proofs: FeasibilityProofDto[] = isTravelTiming
+  const proofs: FeasibilityProofDto[] = isDailyDrive
+    ? buildDailyDriveProofs(c)
+    : isTravelTiming
     ? buildTravelTimingProofs(c, issueId)
     : isBuffer
       ? buildBufferInsufficientProofs(c, issueId)
@@ -741,10 +774,17 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
     message: c.description,
     affectedDays,
     severity: c.severity === ConflictSeverity.HIGH ? 'high' : c.severity === ConflictSeverity.MEDIUM ? 'medium' : 'low',
-    issueKind: isBuffer ? 'buffer_insufficient' : isTravelTiming ? c.issueKind : c.issueKind,
+    issueKind: isDailyDrive ? 'daily_drive' : isBuffer ? 'buffer_insufficient' : isTravelTiming ? c.issueKind : c.issueKind,
     fromItemId: isTravelTiming || isBuffer ? fromItemId : c.fromItemId,
     toItemId: isTravelTiming || isBuffer ? toItemId : c.toItemId,
-    anchors: isTravelTiming
+    anchors: isDailyDrive
+      ? {
+          fromDayNumber: c.fromDayNumber ?? affectedDays[0],
+          toDayNumber: c.toDayNumber ?? affectedDays[0],
+          travelMinutes,
+          shortfallMinutes: c.shortfallMinutes,
+        }
+      : isTravelTiming
       ? {
           fromItemId,
           toItemId,
@@ -772,7 +812,17 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
       : isBuffer
         ? bufferConflictAnchors(c)
         : undefined,
-    uiHints: isTravelTiming
+    uiHints: isDailyDrive
+      ? {
+          primaryAction: 'adjust_schedule',
+          deepLink: {
+            tab: 'schedule',
+            dayIndex: Math.max(0, (c.fromDayNumber ?? affectedDays[0] ?? 1) - 1),
+            highlightItemIds: c.affectedItemIds,
+          },
+          tripPath: `/trips/${context?.tripId ?? ''}?tab=schedule&day=${c.fromDayNumber ?? affectedDays[0] ?? 1}`,
+        }
+      : isTravelTiming
       ? {
           primaryAction:
             c.issueKind === 'inter_day_travel' && c.isStartTooEarly
@@ -789,7 +839,23 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
         ? bufferConflictUiHints(c, context)
         : undefined,
     actionRequired: c.suggestions?.[0]?.description,
-    repairOptions: isTravelTiming
+    repairOptions: isDailyDrive
+      ? buildDailyDriveFeasibilityRepairOptions(issueId, {
+          id: issueId,
+          priority: conflictPriority(c),
+          category: 'transport',
+          title: c.title,
+          message: c.description,
+          affectedDays: parseAffectedDayNumbers(c.affectedDays),
+          severity: c.severity === ConflictSeverity.HIGH ? 'high' : 'medium',
+          issueKind: 'daily_drive',
+          anchors: {
+            fromDayNumber: c.fromDayNumber,
+            travelMinutes: c.travelMinutes ?? c.travelTimeMinutes,
+            shortfallMinutes: c.shortfallMinutes,
+          },
+        })
+      : isTravelTiming
       ? buildTravelTimingRepairOptions(issueId, c)
       : isBuffer && toItemId
         ? buildBufferInsufficientRepairOptions({

@@ -1,6 +1,7 @@
 # Harness 模块依赖与环境变量图
 
-> **Companion** to [harness-1x-roadmap.md](./harness-1x-roadmap.md). Describes the **production-ready base** after Phase 4b: trace on-failure, L1 fingerprint gate, and orchestration routing SSOT.
+> **Companion** to [harness-1x-roadmap.md](./harness-1x-roadmap.md). Describes the **production-ready base** after Phase 4b: trace on-failure, L1 fingerprint gate, and orchestration routing SSOT.  
+> **生产 Checklist：** [harness-production-checklist.md](./harness-production-checklist.md)
 
 ---
 
@@ -224,8 +225,8 @@ flowchart LR
 
 | 变量 | 状态 | 作用 |
 |------|------|------|
-| `HARNESS_SHADOW_GRADER` | 未接 | 异步语义分 |
-| `HARNESS_KERNEL_HARD` | 未接 | 同步硬门禁（需运维签字） |
+| `HARNESS_SHADOW_GRADER` | ✅ | 异步语义分 · admin/CLI register |
+| `HARNESS_KERNEL_HARD` | ✅ | 同步硬门禁；`HARNESS_KERNEL_HARD=1` 隐含 shadow after phase + strict；见 kernel-hard runbook |
 
 ---
 

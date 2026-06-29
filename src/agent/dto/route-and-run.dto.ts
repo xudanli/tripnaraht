@@ -752,12 +752,63 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
-      'Decision OS 全链路统一 session_id（Intake / fed_sse / Pareto / MOCK_PLAZA / Post-Booking Saga）。未传时回落 request_id。',
+      'Agentic loop checkpoint 续跑（State P2）：须与 message 一致；来自上轮 `agentic_tool_loop_trace.checkpoints[]` 末条。',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  @IsObject()
+  agentic_resume_checkpoint_v1?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Agentic rollback（State P2+）：上轮 `agentic_tool_loop_trace.checkpoints[]` 全量 catalog；配合 rollback_to_step / rollback_to_checkpoint_id。',
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+  })
+  @IsOptional()
+  @IsArray()
+  agentic_checkpoint_catalog_v1?: Array<Record<string, unknown>>;
+
+  @ApiPropertyOptional({
+    description: '回滚到 catalog 中指定 step 的 checkpoint（含该 step），丢弃其后执行图。',
+    example: 2,
+  })
+  @IsOptional()
+  @IsNumber()
+  agentic_rollback_to_step_v1?: number;
+
+  @ApiPropertyOptional({
+    description: '回滚到 catalog 中指定 checkpoint_id（与 agentic_rollback_to_step_v1 二选一）。',
+  })
+  @IsOptional()
+  @IsString()
+  agentic_rollback_to_checkpoint_id_v1?: string;
+
+  @ApiPropertyOptional({
     example: '550e8400-e29b-41d4-a716-446655440099',
   })
   @IsOptional()
   @IsString()
   client_session_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '组织/租户 UUID。启用 AGENTIC_DAILY_TOKEN_QUOTA_PER_ORG 时计入 org 级日 token 配额（B2B / 多租户）。',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsString()
+  organization_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '编排/Agentic 当前 SubAgent actor（Harness subagent sandbox MCP cap）；如 Planner / Gatekeeper / Narrator。',
+    example: 'Planner',
+  })
+  @IsOptional()
+  @IsString()
+  orchestration_active_sub_agent?: string;
 
   @ApiPropertyOptional({
     description: '意图微标志（与 intent_mode / task_type 并行）；用于 live_facts 等细粒度开关',
@@ -1188,6 +1239,14 @@ export class RouteAndRunRequestDto {
   @ValidateNested()
   @Type(() => PreferenceProfileDto)
   preference_profile?: PreferenceProfileDto;
+
+  /**
+   * 内部：HTTP OTel 头挂载点（`attachOtelTraceContextToRouteAndRunRequest`），不经 OpenAPI 暴露。
+   */
+  __otelTraceContext?: {
+    otel_trace_id: string;
+    otel_span_id: string;
+  };
 }
 
 /** Flags on assembled evidence cards (payload.decision_metadata.evidence_cards) */
@@ -3745,6 +3804,150 @@ export class RouteAndRunResponseDto {
     harness_trace_export_path?: string | null;
     /** 回显 Evaluation Harness `meta.run_id` / DSO `evaluationRunId` */
     evaluation_run_id?: string | null;
+    /** 入站 W3C / OTel trace id（32 hex）；与 Harness trace JSON `meta.otelTraceId` 对齐 */
+    otel_trace_id?: string | null;
+    /** 入站 W3C parent span id（16 hex） */
+    otel_span_id?: string | null;
+    /** Harness Control P2+：Execution Policy Gateway 主链 hydrate 快照 */
+    execution_policy_gateway_v1?: {
+      schemaId: 'tripnara.execution_policy_gateway@v1';
+      version: 1;
+      hitl_governance_enabled: boolean;
+      tool_policy_count: number;
+      restrictive_tool_names: string[];
+      token_quota: {
+        enabled: boolean;
+        user_daily_limit: number;
+        org_daily_limit: number;
+        global_daily_limit: number;
+        session_token_cap: number;
+      };
+      approved_invocation_count: number;
+      policy_manifest_v1?: {
+        schemaId: 'tripnara.execution_policy_manifest@v1';
+        version: 1;
+        rule_count: number;
+        channels: Record<
+          'mcp_tool' | 'llm_call' | 'external_api',
+          { rule_count: number; enforcement: 'observe' | 'enforce' }
+        >;
+        sample_rules: Array<{
+          id: string;
+          channel: 'mcp_tool' | 'llm_call' | 'external_api';
+          target: string;
+          mode: 'auto' | 'ask' | 'deny';
+          reason?: string;
+          source: string;
+        }>;
+      };
+    };
+    /** Harness Cost：token 配额 + session cap + 粗算 cost */
+    cost_governance_v1?: {
+      schemaId: 'tripnara.cost_governance@v1';
+      version: 1;
+      token_quota_enabled: boolean;
+      user_daily_limit: number;
+      org_daily_limit: number;
+      global_daily_limit: number;
+      session_token_cap: number;
+      session_id: string | null;
+      org_id: string | null;
+      admission_scope: string;
+      tokens_used_in_scope: number;
+      tokens_limit_in_scope: number;
+      tokens_remaining_in_scope: number;
+      admission_allowed: boolean;
+      estimated_cost_usd: number | null;
+    };
+    /** State P2：Agentic loop checkpoint 可观测 */
+    agentic_loop_checkpoints_v1?: {
+      schemaId: 'tripnara.agentic_loop_checkpoints@v1';
+      version: 1;
+      enabled: boolean;
+      count: number;
+      latest_step: number | null;
+      resumable: boolean;
+      stopped_for_governance_hold: boolean;
+    };
+    /** State P2+：Agent 任务 rollback（按 step / checkpoint_id 恢复执行图） */
+    agentic_task_rollback_v1?: {
+      schemaId: 'tripnara.agentic_task_rollback@v1';
+      version: 1;
+      applied: boolean;
+      rolled_back_to_step: number | null;
+      rolled_back_from_step: number | null;
+      checkpoint_id: string | null;
+      selection: 'step' | 'checkpoint_id' | 'direct_resume' | null;
+      skip_reason?: 'not_requested' | 'catalog_empty' | 'target_not_found' | 'invalid_checkpoint';
+    };
+    /** Observability P3：Shadow Grader 异步评测（不阻塞主链） */
+    shadow_grader_v1?: {
+      schemaId: 'tripnara.shadow_grader@v1';
+      version: 1;
+      enabled: boolean;
+      active_shadow_version: string | null;
+      scheduled: boolean;
+      skip_reason?: 'disabled' | 'no_active_shadow' | 'in_flight' | 'trajectory_capture_off';
+      aggregate?: {
+        sampleCount: number;
+        shadowWinRate: number;
+        promotionReady: boolean;
+      };
+    };
+    /** Control P3：Subagent 权限沙箱（message / options escalation 剥离 + MCP cap） */
+    subagent_permission_sandbox_v1?: {
+      schemaId: 'tripnara.subagent_permission_sandbox@v1';
+      version: 1;
+      enabled: boolean;
+      active_sub_agent: string;
+      message_escalation_strips: number;
+      option_escalation_strips: number;
+      chain_messages_scanned: number;
+      chain_message_strips: number;
+      orchestration_handoff_strips: number;
+      mcp_cap_applied: boolean;
+      mcp_tools_before_cap: number | null;
+      mcp_tools_after_cap: number | null;
+    };
+    /** State P3：情景 memory 异步 summarizer */
+    episodic_summarizer_v1?: {
+      schemaId: 'tripnara.episodic_summarizer@v1';
+      version: 1;
+      enabled: boolean;
+      scheduled: boolean;
+      skip_reason?: 'disabled' | 'below_threshold' | 'no_trip_id' | 'in_flight';
+      compaction_applied: boolean;
+      conversation_tokens_before: number | null;
+      conversation_tokens_after: number | null;
+      episodic_summary_present: boolean;
+      summary_source?: 'deterministic' | 'llm' | null;
+    };
+    /** Observability：在线质量环 runtime 采样 cohort */
+    quality_sample_v1?: {
+      schemaId: 'tripnara.harness_quality_sample@v1';
+      version: 1;
+      enabled: boolean;
+      sampled: boolean;
+      sample_rate: number;
+      cohort: 'quality_loop';
+    };
+    /** Cost：多模型 / fallback 路由可观测（单请求 provider 分布） */
+    llm_routing_v1?: {
+      schemaId: 'tripnara.llm_routing@v1';
+      version: 1;
+      requested_provider: string;
+      providers_used: string[];
+      multi_provider_request: boolean;
+      provider_switch_count: number;
+      calls_by_provider: Array<{
+        provider: string;
+        tokens: number;
+        cost_usd: number;
+        calls: number;
+      }>;
+      total_cost_usd: number;
+      total_tokens: number;
+    };
     /** Phase 2.0：区域 POI 规划 slice + 真实 outcome（metadata.poiPlanningOutcome） */
     poi_planning?: {
       regionId?: string;

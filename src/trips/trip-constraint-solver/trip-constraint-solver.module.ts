@@ -12,7 +12,12 @@ import { FeasibilityReportController } from './controllers/feasibility-report.co
 import { PreTripReadinessP0Controller } from './controllers/pre-trip-readiness-p0.controller';
 import { ExecutionAdvisoryController } from './controllers/execution-advisory.controller';
 import { PlanningConflictsController } from './controllers/planning-conflicts.controller';
+import { DecisionCheckerController } from './controllers/decision-checker.controller';
+import { TripWishModule } from '../wishlist/trip-wish.module';
 import { ConstraintsSummaryController, ConstraintsLegacyController } from './controllers/constraints.controller';
+import { TripConstraintsController } from './controllers/trip-constraints.controller';
+import { PlanningCommandsController } from './controllers/planning-commands.controller';
+import { SplitPlanController } from './controllers/split-plan.controller';
 import { ConstraintSolverAccessService } from './services/constraint-solver-access.service';
 import { FeasibilityReportService } from './services/feasibility-report.service';
 import { FeasibilityPomdpMonteCarloService } from './services/feasibility-pomdp-monte-carlo.service';
@@ -21,7 +26,12 @@ import { PreTripReadinessP0Service } from './services/pre-trip-readiness-p0.serv
 import { ExperienceRegretBoundService } from './services/experience-regret-bound.service';
 import { ExecutionAdvisoryService } from './services/execution-advisory.service';
 import { PlanningConflictsService } from './services/planning-conflicts.service';
+import { DecisionCheckerService } from './services/decision-checker.service';
+import { SplitPlanService } from './services/split-plan.service';
 import { ApplyRelaxationConstraintsService } from './services/apply-relaxation-constraints.service';
+import { TripConstraintRegistryService } from './services/trip-constraint-registry.service';
+import { TripConstraintCommandsService } from './services/trip-constraint-commands.service';
+import { TripConstraintPreviewService } from './services/trip-constraint-preview.service';
 import { ConstraintsSummaryService } from './services/constraints-summary.service';
 import { TripBudgetOsModule } from '../budget-os/budget-os.module';
 
@@ -32,6 +42,7 @@ import { TripBudgetOsModule } from '../budget-os/budget-os.module';
     ReadinessModule,
     PoiAccessCapacityModule,
     TripBudgetOsModule,
+    TripWishModule,
     forwardRef(() => InTripExecutionModule),
     OptimizationModule,
     forwardRef(() => SkillsModule),
@@ -42,8 +53,12 @@ import { TripBudgetOsModule } from '../budget-os/budget-os.module';
     PreTripReadinessP0Controller,
     ExecutionAdvisoryController,
     PlanningConflictsController,
+    DecisionCheckerController,
     ConstraintsSummaryController,
     ConstraintsLegacyController,
+    TripConstraintsController,
+    PlanningCommandsController,
+    SplitPlanController,
   ],
   providers: [
     ConstraintSolverAccessService,
@@ -55,16 +70,26 @@ import { TripBudgetOsModule } from '../budget-os/budget-os.module';
     ExecutionAdvisoryService,
     TripConflictsService,
     PlanningConflictsService,
+    DecisionCheckerService,
+    SplitPlanService,
     ConstraintsSummaryService,
     ApplyRelaxationConstraintsService,
+    TripConstraintRegistryService,
+    TripConstraintPreviewService,
+    TripConstraintCommandsService,
   ],
   exports: [
     FeasibilityReportService,
     ExecutionAdvisoryService,
     ConstraintSolverAccessService,
     PlanningConflictsService,
+    DecisionCheckerService,
+    SplitPlanService,
     ConstraintsSummaryService,
     ApplyRelaxationConstraintsService,
+    TripConstraintRegistryService,
+    TripConstraintPreviewService,
+    TripConstraintCommandsService,
   ],
 })
 export class TripConstraintSolverModule {}

@@ -12,12 +12,16 @@ import type {
   OptionComparisonScoresDto,
 } from '../dto/option-comparison.dto';
 import type { DualTrackItineraryUi } from './dual-track-itinerary-ui.util';
+import type { BudgetComparePlansResponse } from '../../trips/services/budget-evaluation.service';
+import { applyBudgetComparisonToOptionComparison, buildOptionComparisonFromBudgetCompare } from './option-comparison-budget.projection.util';
 
 export type ProjectOptionComparisonInput = {
   orchestratorState?: OrchestratorState | null;
   decisionState?: DecisionState | null;
   primaryItinerary?: Itinerary | null;
   dualTrackUi?: DualTrackItineraryUi | null;
+  /** 多方案预算对比 SSOT — 合并到 options[].budget 与 scores.cost */
+  budgetComparison?: BudgetComparePlansResponse | null;
   candidates?: Array<{
     candidate_id?: string;
     explanation?: string;
@@ -302,15 +306,29 @@ function fromCandidates(input: ProjectOptionComparisonInput): OptionComparisonBf
 
 export function projectOptionComparison(input: ProjectOptionComparisonInput): OptionComparisonBffDto | undefined {
   const md = input.orchestratorState?.metadata as Record<string, unknown> | undefined;
+  const budgetComparison =
+    input.budgetComparison ??
+    (md?.budgetComparison as BudgetComparePlansResponse | undefined);
+
   const wbComparison = md?.comparison as OptionComparison | undefined;
+  let comparison: OptionComparisonBffDto | undefined;
   if (wbComparison?.options?.length >= 2) {
-    return fromWorkbenchComparison(wbComparison);
+    comparison = fromWorkbenchComparison(wbComparison);
+  } else {
+    comparison = fromOptimizationHints(input) ?? fromCandidates(input);
   }
 
-  const fromHints = fromOptimizationHints(input);
-  if (fromHints) return fromHints;
+  if (!comparison && budgetComparison && budgetComparison.plans.length >= 2) {
+    return buildOptionComparisonFromBudgetCompare(budgetComparison);
+  }
 
-  return fromCandidates(input);
+  if (!comparison) return undefined;
+
+  if (budgetComparison && budgetComparison.plans.length >= 2) {
+    return applyBudgetComparisonToOptionComparison(comparison, budgetComparison);
+  }
+
+  return comparison;
 }
 
 export function projectExplainAlternatives(

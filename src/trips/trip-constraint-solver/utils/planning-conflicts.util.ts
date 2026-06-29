@@ -39,6 +39,7 @@ export function mapScheduleConflictCategory(type: ConflictType): PlanningConflic
   switch (type) {
     case ConflictType.TRANSPORT_TOO_LONG:
     case ConflictType.TRANSPORT_INSUFFICIENT:
+    case ConflictType.MAX_DAILY_DRIVE_EXCEEDED:
       return 'transport';
     case ConflictType.BUFFER_INSUFFICIENT:
     case ConflictType.TIME_CONFLICT:

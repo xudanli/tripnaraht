@@ -1,0 +1,755 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { TripWishService } from '../../wishlist/services/trip-wish.service';
+import { TripBudgetIntentService } from '../../budget-os/services/trip-budget-intent.service';
+import { toInputJsonValue } from '../../budget-os/utils/prisma-json.util';
+import {
+  normalizeLunchStrategy,
+} from '../../../planning-policy/utils/lunch-strategy.util';
+import type {
+  CreateTripConstraintDto,
+  DisableConstraintDto,
+  ListTripConstraintsQueryDto,
+  PatchTripConstraintDto,
+  PreviewConstraintImpactDto,
+  RepairConstraintsDto,
+} from '../dto/trip-constraint.dto';
+import { ConstraintsSummaryService } from './constraints-summary.service';
+import { PlanningConflictsService } from './planning-conflicts.service';
+import { FeasibilityReportService } from './feasibility-report.service';
+import {
+  bumpConstraintsVersion,
+  getConstraintsVersion,
+  snapshotConstraintsMeta,
+} from '../utils/constraints-metadata.util';
+import {
+  applyMaxSegmentDistanceConstraintPatch,
+} from '../utils/segment-distance-threshold.util';
+import { applyMaxDailyDrivingHoursConstraintPatch } from '../utils/daily-drive-threshold.util';
+import {
+  aggregateTripConstraints,
+  classifyConstraintRefreshType,
+  isLegacyConstraintId,
+  newCustomConstraintId,
+} from '../utils/trip-constraint-aggregate.util';
+import { isOfficialConstraintId } from '../utils/country-official-constraints.util';
+import { enrichPlanningConflictsWithRelatedConstraintIds } from '../utils/constraint-conflict-link.util';
+import type {
+  StoredUnifiedConstraint,
+  TripConstraint,
+  TripConstraintCheckResponse,
+  TripConstraintImpactPreviewResponse,
+  TripConstraintMetadataExtension,
+  TripConstraintRepairResponse,
+  TripConstraintsListResponse,
+} from '../types/trip-constraint.types';
+import { TRIP_CONSTRAINT_LEGACY_IDS } from '../types/trip-constraint.types';
+import { TripConstraintPreviewService } from './trip-constraint-preview.service';
+
+@Injectable()
+export class TripConstraintRegistryService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly constraintsSummary: ConstraintsSummaryService,
+    private readonly planningConflicts: PlanningConflictsService,
+    private readonly feasibility: FeasibilityReportService,
+    private readonly budgetIntent: TripBudgetIntentService,
+    private readonly wishService: TripWishService,
+    private readonly preview: TripConstraintPreviewService,
+  ) {}
+
+  async list(
+    tripId: string,
+    userId: string,
+    query: ListTripConstraintsQueryDto,
+  ): Promise<TripConstraintsListResponse> {
+    const { items, meta } = await this.buildList(tripId, userId);
+    let filtered = items;
+
+    if (query.type) filtered = filtered.filter((c) => c.type === query.type);
+    if (query.category) filtered = filtered.filter((c) => c.category === query.category);
+    if (query.status) filtered = filtered.filter((c) => c.status === query.status);
+    if (query.conflictOnly === '1' || query.conflictOnly === 'true') {
+      filtered = filtered.filter((c) => c.hasConflict);
+    }
+
+    return {
+      meta: { ...meta, total: filtered.length },
+      items: filtered,
+    };
+  }
+
+  async create(
+    tripId: string,
+    userId: string,
+    dto: CreateTripConstraintDto,
+  ): Promise<{ constraint: TripConstraint; constraints: ReturnType<typeof snapshotConstraintsMeta> }> {
+    await this.assertVersion(tripId, dto.constraintsVersion);
+
+    if (dto.type === 'HARD' && dto.source?.type === 'AI_INFERRED') {
+      throw new BadRequestException({
+        code: 'AI_INFERRED_HARD_FORBIDDEN',
+        message: 'AI 推断的约束不能自动设为硬约束，需用户确认后升级',
+      });
+    }
+
+    const trip = await this.requireTrip(tripId);
+    const ext = this.readExt(trip.metadata);
+
+    if (dto.category === 'MEMBER' && dto.source?.type === 'PRIVATE_WISH') {
+      const wish = await this.wishService.create(tripId, userId, {
+        category: 'activities',
+        text: String(dto.value ?? dto.name),
+        importance: dto.priority ?? 5,
+        visibility: 'private',
+        inputMode: 'free_text',
+      });
+      const { items } = await this.buildList(tripId, userId);
+      const created = items.find((c) => c.backing?.wishId === wish.id);
+      return {
+        constraint: created ?? items[items.length - 1],
+        constraints: snapshotConstraintsMeta(trip.metadata),
+      };
+    }
+
+    const stored: StoredUnifiedConstraint = {
+      id: newCustomConstraintId(),
+      name: dto.name,
+      description: dto.description,
+      category: dto.category,
+      type: dto.type,
+      status: dto.type === 'HARD' ? 'ACTIVE' : 'DRAFT',
+      scope: dto.scope,
+      operator: dto.operator,
+      value: dto.value,
+      unit: dto.unit,
+      tolerance: dto.tolerance,
+      priority: dto.priority,
+      allowRelaxation: dto.allowRelaxation ?? dto.type !== 'HARD',
+      locked: dto.locked ?? false,
+      source: dto.source ?? { type: 'USER', sourceId: userId },
+      visibility: dto.visibility ?? 'TEAM',
+      createdBy: userId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const metadata = bumpConstraintsVersion({
+      ...((trip.metadata as object) ?? {}),
+      unifiedConstraints: [...(ext.unifiedConstraints ?? []), stored],
+    });
+
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { metadata: toInputJsonValue(metadata) },
+    });
+
+    const { items } = await this.buildList(tripId, userId);
+    const created = items.find((c) => c.id === stored.id);
+    if (!created) throw new NotFoundException('约束创建后读模型未找到');
+
+    return {
+      constraint: created,
+      constraints: snapshotConstraintsMeta(metadata),
+    };
+  }
+
+  async patch(
+    tripId: string,
+    userId: string,
+    constraintId: string,
+    dto: PatchTripConstraintDto,
+  ): Promise<{ constraint: TripConstraint; constraints: ReturnType<typeof snapshotConstraintsMeta> }> {
+    await this.assertVersion(tripId, dto.constraintsVersion);
+
+    if (isOfficialConstraintId(constraintId)) {
+      throw new BadRequestException({
+        code: 'OFFICIAL_RULE_READONLY',
+        message: '目的地官方规则为只读，不可修改',
+      });
+    }
+
+    const trip = await this.requireTrip(tripId);
+    const ext = this.readExt(trip.metadata);
+
+    if (dto.locked === false && ext.legacyConstraintLocks?.[constraintId]) {
+      // allow unlock
+    } else if (ext.legacyConstraintLocks?.[constraintId] && dto.value !== undefined) {
+      throw new BadRequestException({
+        code: 'CONSTRAINT_LOCKED',
+        message: '该约束已锁定，请先解锁后再修改值',
+      });
+    }
+
+    if (isLegacyConstraintId(constraintId)) {
+      await this.patchLegacyField(tripId, trip, constraintId, dto, userId);
+    } else if (constraintId.startsWith('c_wish_')) {
+      throw new BadRequestException({
+        code: 'WISH_CONSTRAINT_USE_WISH_API',
+        message: '成员愿望约束请使用 /trips/:tripId/wishes API 修改',
+      });
+    } else {
+      await this.patchUnifiedStore(tripId, trip, constraintId, dto, userId);
+    }
+
+    const { items } = await this.buildList(tripId, userId);
+    const updated = items.find((c) => c.id === constraintId);
+    if (!updated) throw new NotFoundException(`约束 ${constraintId} 不存在`);
+
+    const refreshed = await this.prisma.trip.findUnique({ where: { id: tripId }, select: { metadata: true } });
+    return {
+      constraint: updated,
+      constraints: snapshotConstraintsMeta(refreshed?.metadata),
+    };
+  }
+
+  async remove(
+    tripId: string,
+    userId: string,
+    constraintId: string,
+    constraintsVersion?: number,
+  ): Promise<{ deleted: string; constraints: ReturnType<typeof snapshotConstraintsMeta> }> {
+    await this.assertVersion(tripId, constraintsVersion);
+
+    if (isOfficialConstraintId(constraintId)) {
+      throw new BadRequestException({
+        code: 'OFFICIAL_RULE_READONLY',
+        message: '目的地官方规则为只读，不可删除',
+      });
+    }
+
+    const trip = await this.requireTrip(tripId);
+    const ext = this.readExt(trip.metadata);
+
+    if (ext.legacyConstraintLocks?.[constraintId]) {
+      throw new BadRequestException({
+        code: 'CONSTRAINT_LOCKED',
+        message: '锁定约束不可删除，请先解锁',
+      });
+    }
+
+    if (constraintId.startsWith('c_wish_')) {
+      const wishId = constraintId.replace('c_wish_', '');
+      await this.wishService.archive(tripId, wishId, userId);
+    } else if (isLegacyConstraintId(constraintId)) {
+      await this.clearLegacyField(tripId, trip, constraintId);
+    } else {
+      const unified = (ext.unifiedConstraints ?? []).filter((c) => c.id !== constraintId);
+      if (unified.length === (ext.unifiedConstraints ?? []).length) {
+        throw new NotFoundException(`约束 ${constraintId} 不存在`);
+      }
+      const metadata = bumpConstraintsVersion({
+        ...((trip.metadata as object) ?? {}),
+        unifiedConstraints: unified,
+      });
+      await this.prisma.trip.update({
+        where: { id: tripId },
+        data: { metadata: toInputJsonValue(metadata) },
+      });
+    }
+
+    const refreshed = await this.prisma.trip.findUnique({ where: { id: tripId }, select: { metadata: true } });
+    return {
+      deleted: constraintId,
+      constraints: snapshotConstraintsMeta(refreshed?.metadata),
+    };
+  }
+
+  async disable(
+    tripId: string,
+    userId: string,
+    constraintId: string,
+    dto: DisableConstraintDto,
+  ): Promise<{ constraintId: string; status: 'DISABLED'; constraints: ReturnType<typeof snapshotConstraintsMeta> }> {
+    await this.assertVersion(tripId, dto.constraintsVersion);
+
+    if (isOfficialConstraintId(constraintId)) {
+      throw new BadRequestException({
+        code: 'OFFICIAL_RULE_READONLY',
+        message: '目的地官方规则为只读，不可停用',
+      });
+    }
+
+    const trip = await this.requireTrip(tripId);
+    const ext = this.readExt(trip.metadata);
+    const disabled = new Set(ext.disabledConstraintIds ?? []);
+    if (!disabled.has(constraintId)) disabled.add(constraintId);
+
+    const metadata = bumpConstraintsVersion({
+      ...((trip.metadata as object) ?? {}),
+      disabledConstraintIds: [...disabled],
+    });
+
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { metadata: toInputJsonValue(metadata) },
+    });
+
+    const refreshed = await this.prisma.trip.findUnique({ where: { id: tripId }, select: { metadata: true } });
+    return {
+      constraintId,
+      status: 'DISABLED',
+      constraints: snapshotConstraintsMeta(refreshed?.metadata),
+    };
+  }
+
+  async previewImpact(
+    tripId: string,
+    userId: string,
+    dto: PreviewConstraintImpactDto,
+  ): Promise<TripConstraintImpactPreviewResponse> {
+    const before = await this.planningConflicts.getPlanningConflicts(tripId);
+    const summary = await this.constraintsSummary.getSummary(tripId);
+    const refreshType = classifyConstraintRefreshType(dto.changes);
+
+    const assessBefore = await this.preview.captureAssessSummary(tripId);
+    const feasibilityBefore = await this.preview.captureFeasibilitySnapshot(tripId);
+
+    const recommendations: string[] = [];
+    if (refreshType === 'quick') {
+      recommendations.push('轻量变更已接入 assess 读模型');
+    } else {
+      recommendations.push('重量变更已接入 feasibility 读模型；persist=true 时将触发 validate-scope');
+    }
+
+    let conflictsAfter: TripConstraintImpactPreviewResponse['conflictsAfter'] | undefined;
+    let suggestedFollowUp: TripConstraintImpactPreviewResponse['suggestedFollowUp'];
+    let assessAfter: TripConstraintImpactPreviewResponse['assessAfter'];
+    let feasibilityAfter: TripConstraintImpactPreviewResponse['feasibilityAfter'];
+    let budgetDelta: TripConstraintImpactPreviewResponse['budgetDelta'];
+
+    const budgetChange = dto.changes.find((c) => c.constraintId === TRIP_CONSTRAINT_LEGACY_IDS.BUDGET_TOTAL);
+    if (budgetChange?.patch?.value != null && summary.budget.total != null) {
+      const newTotal = Number(budgetChange.patch.value);
+      if (!Number.isNaN(newTotal)) {
+        budgetDelta = {
+          amount: newTotal - summary.budget.total,
+          currency: summary.budget.currency,
+        };
+      }
+    }
+
+    if (dto.persist === true) {
+      let version = summary.constraintsVersion;
+      for (const ch of dto.changes) {
+        await this.patch(tripId, userId, ch.constraintId, {
+          ...ch.patch,
+          constraintsVersion: version,
+        } as PatchTripConstraintDto);
+        version = (await this.constraintsSummary.getSummary(tripId)).constraintsVersion;
+      }
+      const after = await this.planningConflicts.getPlanningConflicts(tripId);
+      conflictsAfter = {
+        mustHandle: after.summary.mustHandle,
+        suggestAdjust: after.summary.suggestAdjust,
+        pendingConfirm: after.summary.pendingConfirm,
+      };
+      assessAfter = await this.preview.captureAssessSummary(tripId);
+      feasibilityAfter = await this.preview.captureFeasibilitySnapshot(tripId);
+
+      if (refreshType === 'deep') {
+        const dayNumber = dto.changes
+          .flatMap((c) => (c.patch as { dayNumber?: number }).dayNumber)
+          .find((d) => typeof d === 'number') ?? affectedDaysFromConflicts(before)[0];
+        if (dayNumber != null) {
+          const scopedFeasibility = await this.preview.captureFeasibilityValidateScope(
+            tripId,
+            dayNumber,
+          );
+          if (scopedFeasibility) feasibilityAfter = scopedFeasibility;
+        }
+      }
+    } else if (refreshType === 'deep') {
+      suggestedFollowUp = {
+        endpoint: `/api/trips/${tripId}/feasibility-report/validate`,
+        body: { forceRefreshEvidence: true },
+      };
+    }
+
+    const affectedDays = affectedDaysFromConflicts(before);
+
+    const executeabilityDelta = this.preview.computeExecuteabilityDelta(
+      feasibilityBefore,
+      feasibilityAfter,
+      assessBefore,
+      assessAfter,
+    );
+
+    const refreshedSummary = await this.constraintsSummary.getSummary(tripId);
+
+    return {
+      tripId,
+      constraintsVersion: refreshedSummary.constraintsVersion,
+      refreshType,
+      affectedDays: affectedDays.length ? affectedDays : undefined,
+      budgetDelta,
+      conflictsBefore: {
+        mustHandle: before.summary.mustHandle,
+        suggestAdjust: before.summary.suggestAdjust,
+        pendingConfirm: before.summary.pendingConfirm,
+      },
+      conflictsAfter,
+      assessBefore,
+      assessAfter,
+      feasibilityBefore,
+      feasibilityAfter,
+      executeabilityDelta,
+      recommendations,
+      suggestedFollowUp,
+    };
+  }
+
+  async check(tripId: string): Promise<TripConstraintCheckResponse> {
+    const data = await this.planningConflicts.getPlanningConflicts(tripId);
+    const conflicts = enrichPlanningConflictsWithRelatedConstraintIds(data.conflicts);
+    return {
+      tripId,
+      hasConflicts: data.summary.total > 0,
+      summary: {
+        mustHandle: data.summary.mustHandle,
+        suggestAdjust: data.summary.suggestAdjust,
+        pendingConfirm: data.summary.pendingConfirm,
+        total: data.summary.total,
+      },
+      conflicts,
+      canStartExecute: data.canStartExecute,
+      gateExecute: data.gateExecute,
+    };
+  }
+
+  async repair(tripId: string, dto: RepairConstraintsDto): Promise<TripConstraintRepairResponse> {
+    const conflictsData = await this.planningConflicts.getPlanningConflicts(tripId);
+    const enriched = enrichPlanningConflictsWithRelatedConstraintIds(conflictsData.conflicts);
+    const issueId =
+      dto.issueId ??
+      enriched.find((c) => c.priority === 'must_handle')?.id;
+
+    if (!issueId) {
+      return { tripId, options: [] };
+    }
+
+    const matched = enriched.find((c) => c.id === issueId);
+    const repair = await this.feasibility.getRepairOptions(tripId, issueId);
+    return {
+      tripId,
+      issueId: repair.issueId ?? issueId,
+      relatedConstraintIds: matched?.relatedConstraintIds,
+      blockerId: repair.blockerId,
+      blockerMessage: repair.blockerMessage,
+      options: repair.options ?? [],
+      guardianNegotiation: repair.guardianNegotiation,
+      cascadeUiHints: repair.cascadeUiHints,
+    };
+  }
+
+  private async buildList(tripId: string, userId: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          orderBy: { date: 'asc' },
+          select: {
+            id: true,
+            date: true,
+            ItineraryItem: {
+              select: {
+                type: true,
+                note: true,
+                Place: {
+                  select: {
+                    nameCN: true,
+                    nameEN: true,
+                    metadata: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!trip) throw new NotFoundException(`行程 ${tripId} 不存在`);
+
+    const [summary, planning, teamWishes] = await Promise.all([
+      this.constraintsSummary.getSummary(tripId),
+      this.planningConflicts.getPlanningConflicts(tripId),
+      this.wishService.listTeam(tripId, userId),
+    ]);
+
+    return aggregateTripConstraints({
+      trip,
+      summary,
+      teamWishes,
+      conflicts: planning.conflicts,
+      isFeasibilityStale: planning.isStale,
+      userId,
+    });
+  }
+
+  private async requireTrip(tripId: string) {
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) throw new NotFoundException(`行程 ${tripId} 不存在`);
+    return trip;
+  }
+
+  private readExt(metadata: unknown): TripConstraintMetadataExtension {
+    if (!metadata || typeof metadata !== 'object') return {};
+    return metadata as TripConstraintMetadataExtension;
+  }
+
+  private async assertVersion(tripId: string, expected?: number) {
+    if (expected == null) return;
+    const trip = await this.requireTrip(tripId);
+    const current = getConstraintsVersion(trip.metadata);
+    if (current !== expected) {
+      throw new ConflictException({
+        code: 'CONSTRAINTS_STALE',
+        message: `约束版本不匹配（当前 ${current}，请求 ${expected}）`,
+        currentVersion: current,
+      });
+    }
+  }
+
+  private async patchLegacyField(
+    tripId: string,
+    trip: { destination: string; metadata: unknown; pacingConfig: unknown; budgetConfig: unknown },
+    constraintId: string,
+    dto: PatchTripConstraintDto,
+    userId: string,
+  ) {
+    const metadata = { ...((trip.metadata as Record<string, unknown>) ?? {}) };
+    const pacing = { ...((trip.pacingConfig as Record<string, unknown>) ?? {}) };
+    let budgetConfig = trip.budgetConfig;
+    let bumpMeta = false;
+
+    if (dto.locked !== undefined) {
+      const locks = { ...(this.readExt(metadata).legacyConstraintLocks ?? {}) };
+      locks[constraintId] = dto.locked;
+      metadata.legacyConstraintLocks = locks;
+      bumpMeta = true;
+    }
+
+    switch (constraintId) {
+      case TRIP_CONSTRAINT_LEGACY_IDS.BUDGET_TOTAL:
+        if (dto.value != null) {
+          await this.budgetIntent.setIntent(tripId, {
+            total: Number(dto.value),
+            currency: dto.unit ?? 'CNY',
+          });
+          return;
+        }
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.PACING_LEVEL:
+        if (dto.value != null) {
+          pacing.level = dto.value;
+          bumpMeta = true;
+        }
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.TRANSPORT_MODE:
+        if (dto.value != null) {
+          pacing.travelMode = dto.value;
+          bumpMeta = true;
+        }
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.MUST_PLACES:
+        const constraints: Record<string, unknown> = {
+          ...((metadata.constraints as Record<string, unknown>) ?? {}),
+        };
+        if (dto.value != null) constraints.mustPlaces = dto.value;
+        metadata.constraints = constraints;
+        bumpMeta = true;
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.AVOID_PLACES:
+        const c2: Record<string, unknown> = {
+          ...((metadata.constraints as Record<string, unknown>) ?? {}),
+        };
+        if (dto.value != null) c2.avoidPlaces = dto.value;
+        metadata.constraints = c2;
+        bumpMeta = true;
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.DAILY_WALK_LIMIT:
+        const c3: Record<string, unknown> = {
+          ...((metadata.constraints as Record<string, unknown>) ?? {}),
+        };
+        if (dto.value != null) c3.dailyWalkLimit = dto.value;
+        metadata.constraints = c3;
+        bumpMeta = true;
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.MAX_SEGMENT_DISTANCE: {
+        const c4: Record<string, unknown> = {
+          ...((metadata.constraints as Record<string, unknown>) ?? {}),
+        };
+        if (
+          applyMaxSegmentDistanceConstraintPatch(c4, {
+            value: dto.value,
+            tolerance: dto.tolerance,
+            destination: trip.destination,
+          })
+        ) {
+          metadata.constraints = c4;
+          bumpMeta = true;
+        }
+        break;
+      }
+      case TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE: {
+        const c5: Record<string, unknown> = {
+          ...((metadata.constraints as Record<string, unknown>) ?? {}),
+        };
+        if (applyMaxDailyDrivingHoursConstraintPatch(c5, dto.value)) {
+          metadata.constraints = c5;
+          bumpMeta = true;
+        }
+        break;
+      }
+      case TRIP_CONSTRAINT_LEGACY_IDS.PLANNING_POLICY:
+        if (dto.value != null) {
+          metadata.planningPolicy = dto.value;
+          bumpMeta = true;
+        }
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.LUNCH_STRATEGY:
+        if (dto.value != null) {
+          const normalized = normalizeLunchStrategy(String(dto.value));
+          if (normalized) {
+            metadata.lunch_strategy = normalized;
+            metadata.tripParams = {
+              ...((metadata.tripParams as object) ?? {}),
+              lunch_strategy: normalized,
+            };
+            bumpMeta = true;
+          }
+        }
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.TIME_RANGE:
+      case TRIP_CONSTRAINT_LEGACY_IDS.TRAVELERS:
+      case TRIP_CONSTRAINT_LEGACY_IDS.WORLD_FEASIBILITY:
+        throw new BadRequestException({
+          code: 'LEGACY_CONSTRAINT_USE_DEDICATED_API',
+          message: '该约束请使用 PUT /trips/:id 或 constraints-summary 对应写接口',
+        });
+      default:
+        break;
+    }
+
+    if (!bumpMeta) return;
+
+    const bumped = bumpConstraintsVersion(metadata);
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        pacingConfig: toInputJsonValue(pacing),
+        budgetConfig: budgetConfig ? toInputJsonValue(budgetConfig) : undefined,
+        metadata: toInputJsonValue(bumped),
+      },
+    });
+  }
+
+  private async patchUnifiedStore(
+    tripId: string,
+    trip: { metadata: unknown },
+    constraintId: string,
+    dto: PatchTripConstraintDto,
+    userId: string,
+  ) {
+    const ext = this.readExt(trip.metadata);
+    const list = ext.unifiedConstraints ?? [];
+    const idx = list.findIndex((c) => c.id === constraintId);
+    if (idx < 0) throw new NotFoundException(`约束 ${constraintId} 不存在`);
+
+    const prev = list[idx];
+    const { constraintsVersion: _v, ...rest } = dto;
+    const next: StoredUnifiedConstraint = {
+      ...prev,
+      ...rest,
+      scope: rest.scope ?? prev.scope,
+      source: prev.source,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (dto.type === 'HARD' && prev.source.type === 'AI_INFERRED') {
+      throw new BadRequestException({
+        code: 'AI_INFERRED_HARD_FORBIDDEN',
+        message: 'AI 推断约束需经用户确认后才能升级为硬约束',
+      });
+    }
+
+    list[idx] = next;
+    const metadata = bumpConstraintsVersion({
+      ...((trip.metadata as object) ?? {}),
+      unifiedConstraints: list,
+    });
+
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { metadata: toInputJsonValue(metadata) },
+    });
+  }
+
+  private async clearLegacyField(
+    tripId: string,
+    trip: { metadata: unknown; pacingConfig: unknown },
+    constraintId: string,
+  ) {
+    const metadata = { ...((trip.metadata as Record<string, unknown>) ?? {}) };
+    const pacing = { ...((trip.pacingConfig as Record<string, unknown>) ?? {}) };
+
+    switch (constraintId) {
+      case TRIP_CONSTRAINT_LEGACY_IDS.PACING_LEVEL:
+        delete pacing.level;
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.TRANSPORT_MODE:
+        delete pacing.travelMode;
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.MUST_PLACES:
+      case TRIP_CONSTRAINT_LEGACY_IDS.AVOID_PLACES:
+      case TRIP_CONSTRAINT_LEGACY_IDS.DAILY_WALK_LIMIT:
+      case TRIP_CONSTRAINT_LEGACY_IDS.MAX_SEGMENT_DISTANCE:
+      case TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE:
+        const c = { ...((metadata.constraints as Record<string, unknown>) ?? {}) };
+        if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.MUST_PLACES) delete c.mustPlaces;
+        if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.AVOID_PLACES) delete c.avoidPlaces;
+        if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.DAILY_WALK_LIMIT) delete c.dailyWalkLimit;
+        if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.MAX_SEGMENT_DISTANCE) {
+          delete c.maxSegmentDistanceKm;
+          delete c.warnSegmentDistanceKm;
+        }
+        if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE) {
+          delete c.maxDailyDrivingHours;
+          delete c.maxDailyDriveHours;
+        }
+        metadata.constraints = c;
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.PLANNING_POLICY:
+        delete metadata.planningPolicy;
+        break;
+      case TRIP_CONSTRAINT_LEGACY_IDS.LUNCH_STRATEGY:
+        delete metadata.lunch_strategy;
+        break;
+      default:
+        throw new BadRequestException({
+          code: 'LEGACY_CONSTRAINT_CANNOT_DELETE',
+          message: '该合成约束不可直接删除，请通过对应业务接口清空',
+        });
+    }
+
+    const bumped = bumpConstraintsVersion(metadata);
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        pacingConfig: toInputJsonValue(pacing),
+        metadata: toInputJsonValue(bumped),
+      },
+    });
+  }
+}
+
+function affectedDaysFromConflicts(
+  before: { conflicts: import('../types/planning-conflicts.types').PlanningConflictItem[] },
+): number[] {
+  return [...new Set(before.conflicts.flatMap((c) => c.affectedDays ?? []))].sort((a, b) => a - b);
+}

@@ -19,6 +19,8 @@ export enum ConflictType {
   TRANSPORT_TOO_LONG = 'TRANSPORT_TOO_LONG',
   /** 交通时间不足：可用时间 < 交通时间 + 缓冲 */
   TRANSPORT_INSUFFICIENT = 'TRANSPORT_INSUFFICIENT',
+  /** 当日累计驾驶时长超过 metadata.constraints.maxDailyDrivingHours */
+  MAX_DAILY_DRIVE_EXCEEDED = 'MAX_DAILY_DRIVE_EXCEEDED',
   /** 行程项重复：同一地点在同一天被安排多次 */
   DUPLICATE_ITEM = 'DUPLICATE_ITEM',
 }

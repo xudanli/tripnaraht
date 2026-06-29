@@ -144,9 +144,9 @@ export function buildPendingItems(
     push('budget', 'missing', 'tab=budget');
   }
   if (parts.travelers.status === 'misaligned') {
-    push('travelers', 'misaligned', 'tab=team');
+    push('travelers', 'misaligned', 'openCollaborationCenter=1&section=members');
   } else if (parts.travelers.status === 'missing') {
-    push('travelers', 'missing', 'tab=team');
+    push('travelers', 'missing', 'openCollaborationCenter=1&section=members');
   }
   if (parts.transport.status === 'misaligned') {
     push('transport', 'misaligned', 'openIntent=1');

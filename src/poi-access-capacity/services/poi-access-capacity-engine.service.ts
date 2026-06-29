@@ -15,12 +15,14 @@ import {
 } from '../utils/trip-reservation-evidence.util';
 import { mapAccessVerdictToIssueKind } from '../types/poi-access-readiness.types';
 import type { PoiAccessTargetResource } from '../interfaces/poi-access-capacity.interface';
+import { logThrottledDebug } from '../../common/utils/throttled-debug-log.util';
 
 const POI_ITEM_TYPES = new Set(['POI', 'ACTIVITY', 'VIEWPOINT', 'NATURE']);
 
 @Injectable()
 export class PoiAccessCapacityEngineService {
   private readonly logger = new Logger(PoiAccessCapacityEngineService.name);
+  private readonly evaluateTripInflight = new Map<string, Promise<PoiAccessTripEvaluation[]>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -48,6 +50,17 @@ export class PoiAccessCapacityEngineService {
   }
 
   async evaluateTrip(tripId: string): Promise<PoiAccessTripEvaluation[]> {
+    const inflight = this.evaluateTripInflight.get(tripId);
+    if (inflight) return inflight;
+
+    const promise = this.evaluateTripInner(tripId).finally(() => {
+      this.evaluateTripInflight.delete(tripId);
+    });
+    this.evaluateTripInflight.set(tripId, promise);
+    return promise;
+  }
+
+  private async evaluateTripInner(tripId: string): Promise<PoiAccessTripEvaluation[]> {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
@@ -146,7 +159,11 @@ export class PoiAccessCapacityEngineService {
       }
     }
 
-    this.logger.debug(`evaluateTrip ${tripId}: ${results.length} non-feasible POI`);
+    logThrottledDebug(
+      this.logger,
+      `poi-access:evaluate:${tripId}`,
+      `evaluateTrip ${tripId}: ${results.length} non-feasible POI`,
+    );
     return results;
   }
 

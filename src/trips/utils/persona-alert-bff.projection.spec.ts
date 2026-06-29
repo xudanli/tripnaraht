@@ -101,10 +101,77 @@ describe('persona-alert-bff.projection', () => {
     expect(alerts[0].persona).toBe(PersonaType.DR_DRE);
     expect(alerts[0].presentation?.scenario).toBe('PACE_COST');
     expect(alerts[0].metadata.deepLink).toEqual({
-      type: 'schedule_day',
+      type: 'decision_checker',
       issueId: 'issue-pace-day2',
       dayIndex: 2,
     });
+  });
+
+  it('drops English-heavy decision log when feasibility issue covers same issueId', () => {
+    const alerts = projectPersonaAlertsForAudience({
+      decisionLogs: [
+        baseLog({
+          metadata: {
+            issueId: 'issue-closure',
+          },
+          explanation:
+            "实时信息显示路线封闭：'s road closure system is essential for any driver here.",
+        }),
+      ],
+      feasibilityIssues: [
+        {
+          id: 'issue-closure',
+          priority: 'must_handle',
+          category: 'access_capacity',
+          title: '路线封闭风险',
+          message: '实时信息显示路线封闭或交通中断',
+          severity: 'high',
+          proofs: [
+            {
+              entity: 'F206',
+              constraint: 'road_closure',
+              currentFact: '封路段预计 18:00 前不可通行',
+              evidenceSource: 'road_closure',
+              conclusion: '不建议继续原路线',
+            },
+          ],
+        },
+      ],
+      options: { audience: 'user' },
+    });
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].explanation).toContain('路线封闭');
+    expect(alerts[0].explanation).not.toMatch(/road closure/i);
+    expect(alerts[0].metadata.deepLink?.type).toBe('decision_checker');
+  });
+
+  it('uses feasibility issue copy for Abu log template fallback', () => {
+    const alerts = projectPersonaAlertsForAudience({
+      decisionLogs: [
+        baseLog({
+          persona: 'ABU',
+          action: 'REJECT',
+          explanation: 'persona closure noise',
+          reasonCodes: ['ABU_FATAL_REJECT'],
+        }),
+      ],
+      feasibilityIssues: [
+        {
+          id: 'issue-wind',
+          priority: 'must_handle',
+          category: 'environment',
+          title: '第 3 天大风不宜自驾',
+          message: '第 3 天大风条件下不建议自驾穿越高地。',
+          affectedDays: [3],
+          severity: 'high',
+        },
+      ],
+      options: { audience: 'user' },
+    });
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].persona).toBe(PersonaType.ABU);
+    expect(alerts[0].explanation).toContain('第 3 天大风');
+    expect(alerts[0].explanation).not.toContain('不可接受的安全风险');
   });
 });
 

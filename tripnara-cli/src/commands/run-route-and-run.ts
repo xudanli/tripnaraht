@@ -3,6 +3,7 @@ import {
   callRouteAndRun,
   type ItineraryDayRow,
 } from "../core/api-client";
+import { formatHarnessTraceObservabilityLine } from "../core/harness-observability.util";
 import { logger } from "../infra/logger";
 import { getConfig } from "../infra/config";
 import { toCliError } from "../infra/errors";
@@ -171,6 +172,27 @@ export function registerRunRouteAndRunCommand(program: Command): void {
               console.log(colorize("--- debug trace ---", "90", useColor));
               console.log(`decision_steps: ${(result.decision_steps ?? []).join(" -> ") || "-"}`);
               console.log(`policy_path   : ${(result.policy_path ?? []).join(" | ") || "-"}`);
+              console.log(
+                colorize(
+                  `harness       : ${formatHarnessTraceObservabilityLine({
+                    harness_active_trace_id: result.harness_active_trace_id,
+                    harness_trace_export_path: result.harness_trace_export_path,
+                    evaluation_run_id: result.evaluation_run_id,
+                    run_id: result.run_id,
+                  })}`,
+                  "90",
+                  useColor,
+                ),
+              );
+              if (result.harness_trace_export_path) {
+                console.log(
+                  colorize(
+                    `  open trace  : tripnara harness trace open "${result.harness_trace_export_path}" --print`,
+                    "36",
+                    useColor,
+                  ),
+                );
+              }
               if (result.confidence) {
                 console.log(
                   `confidence    : overall=${result.confidence.overall ?? "-"}, gate=${result.confidence.gate_evaluation ?? "-"}, plan=${result.confidence.plan_generation ?? "-"}`,

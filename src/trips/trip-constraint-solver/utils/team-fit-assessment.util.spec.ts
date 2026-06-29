@@ -3,10 +3,26 @@ import type { DecisionStyleType } from '../../decision-profiling/types/decision-
 import {
   assessTeamFit,
   deriveTeamFitChecklistStatus,
+  filterValidMemberUserIds,
   parseStoredTravelStyleCard,
 } from './team-fit-assessment.util';
 
 describe('team-fit-assessment.util', () => {
+  describe('filterValidMemberUserIds', () => {
+    it('drops anonymous and non-uuid ids', () => {
+      expect(
+        filterValidMemberUserIds([
+          'b950dbf2-7583-4b43-b0c6-ddd947719c54',
+          'anonymous',
+          'anonymous-dev-user',
+          'not-a-uuid',
+          '',
+          'b950dbf2-7583-4b43-b0c6-ddd947719c54',
+        ]),
+      ).toEqual(['b950dbf2-7583-4b43-b0c6-ddd947719c54']);
+    });
+  });
+
   it('returns perfect score for solo trips', () => {
     const result = assessTeamFit({
       tripId: 'trip-1',

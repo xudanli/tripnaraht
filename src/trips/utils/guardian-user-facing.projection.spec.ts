@@ -25,7 +25,7 @@ describe('guardian-user-facing.projection.util', () => {
     expect(alert!.presentation?.headline).toBe(issue.title);
     expect(alert!.presentation?.leadSpeaker).toBe('ABU');
     expect(alert!.metadata.deepLink).toEqual({
-      type: 'feasibility',
+      type: 'decision_checker',
       issueId: issue.id,
       dayIndex: 3,
     });

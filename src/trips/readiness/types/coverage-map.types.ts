@@ -10,6 +10,7 @@ import type { ReadinessTripFindingScope } from './readiness-findings.types';
 import type { CoverageDisclosure } from '../../../travel-cognition';
 import type { NonTransactionalReplanResult } from '../../../travel-cognition';
 import type { GuardianPersonaPresentation } from '../../decision/shared/guardian-presentation.types';
+import type { ResolvedSegmentDistanceThresholds } from '../../trip-constraint-solver/utils/segment-distance-threshold.util';
 
 // ==================== 准备度分数类型 ====================
 
@@ -491,11 +492,15 @@ export interface SegmentCoverage {
   fromPoiId: string;
   toPoiId: string;
   day: number;
+  /** 全程 0-based 序号，便于 journey-map trunkSegmentIds 引用 */
+  sequenceIndex?: number;
   distance: number; // km
   duration: number; // minutes
   routeType: 'driving' | 'walking' | 'transit' | 'cycling';
   coverageStatus: SegmentCoverageStatus;
   polyline: string; // Google Encoded Polyline / Mapbox polyline
+  /** 几何来源：route_api=贴路，straight_line=直线回退 */
+  geometrySource?: 'route_api' | 'straight_line' | 'cached_metadata';
   hazards: SegmentHazard[];
 }
 
@@ -574,10 +579,13 @@ export interface CoverageMapData {
     weather?: string; // 天气数据最后更新时间
     roadClosure?: string; // 道路封闭数据最后更新时间
     openingHours?: string; // 开放时间数据最后更新时间
+    inventory?: string; // 住宿库存/预订确认最后更新时间
   };
   /** 规划期 vs 临行前：控制路况类缺口是否展示 */
   readinessPhase?: 'planning' | 'pre_departure' | 'in_trip' | 'past';
   daysUntilStart?: number;
   phaseHint?: string;
   deferredLiveGapCount?: number;
+  /** 生效的单段距离阈值（用户 > 国家 > 全球） */
+  segmentDistanceThresholds?: ResolvedSegmentDistanceThresholds;
 }

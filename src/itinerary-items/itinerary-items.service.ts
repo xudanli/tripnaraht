@@ -553,6 +553,43 @@ export class ItineraryItemsService {
   };
 
   /**
+   * journey-map / timeline BFF：按 trip 一次拉取全部行程项（含 Place 坐标）
+   */
+  async findByTrip(tripId: string, options?: { includePlace?: boolean }) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: { orderBy: { date: 'asc' } },
+      },
+    });
+    if (!trip) {
+      throw new NotFoundException(`找不到行程 (ID: ${tripId})`);
+    }
+
+    const allOrderedDays = trip.TripDay.map((d) => ({ id: d.id, date: d.date }));
+    const dayIds = allOrderedDays.map((d) => d.id);
+    const itemsByDayId = await this.loadItemsGroupedByTripDayIds(tripId, dayIds);
+
+    const flat: any[] = [];
+    for (const day of trip.TripDay) {
+      const dayItems = await this.buildTimelineDayItems(
+        { id: day.id, date: day.date, tripId },
+        allOrderedDays,
+        itemsByDayId,
+      );
+      flat.push(...dayItems);
+    }
+
+    if (options?.includePlace === false) {
+      return flat.map((item) => {
+        const { Place: _place, ...rest } = item;
+        return rest;
+      });
+    }
+    return flat;
+  }
+
+  /**
    * timeline BFF：一次查询多天的 ItineraryItem，按 tripDayId 分组
    */
   async loadItemsGroupedByTripDayIds(

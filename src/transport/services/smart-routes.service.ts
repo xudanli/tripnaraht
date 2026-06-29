@@ -15,6 +15,7 @@ import { TransportOption } from '../interfaces/transport.interface';
 @Injectable()
 export class SmartRoutesService {
   private readonly logger = new Logger(SmartRoutesService.name);
+  private lastOverseasRouteLogAt = 0;
 
   constructor(
     private googleRoutesService: GoogleRoutesService,
@@ -111,7 +112,11 @@ export class SmartRoutesService {
     }
 
     // 海外路线：使用 Google Routes API
-    this.logger.debug('使用 Google Routes API（海外路线）');
+    const now = Date.now();
+    if (now - this.lastOverseasRouteLogAt > 15000) {
+      this.lastOverseasRouteLogAt = now;
+      this.logger.debug('使用 Google Routes API（海外路线）');
+    }
     return this.googleRoutesService.getRoutes(
       fromLat,
       fromLng,

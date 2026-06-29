@@ -32,6 +32,7 @@ import { TripOrchestrationLockService } from './trip-orchestration-lock.service'
 import { AgentService } from './agent.service';
 import { runRouteAndRunMainChain } from './execution-gateway.route-and-run.orchestration';
 import { applyRouteAndRunEntryRoutingInPlace } from '../routing/route-and-run-route-class-fork.util';
+import { normalizeRouteAndRunConversationContextInPlace } from '../context/utils/conversation-context-window.util';
 import { shouldRejectDedupForStaleTraceContract } from './execution-gateway-trace-compatibility.util';
 import {
   attachRobustnessDashboardToResponse,
@@ -97,6 +98,12 @@ export class ExecutionGatewayService {
     if (!request.request_id?.trim()) {
       request.request_id = requestId;
     }
+    const windowStats = normalizeRouteAndRunConversationContextInPlace(request);
+    if (windowStats.originalSize > windowStats.normalizedSize) {
+      this.logger.debug(
+        `[ExecutionGateway] conversation_context ingress window ${windowStats.originalSize} -> ${windowStats.normalizedSize} request_id=${requestId}`,
+      );
+    }
     const runChain = () => runRouteAndRunMainChain(this.agent, this, request);
     const runGuarded = this.tripOrchestrationLock
       ? () => this.tripOrchestrationLock!.runWithTripWriteLockIfNeeded(request, runChain)
@@ -104,7 +111,11 @@ export class ExecutionGatewayService {
 
     return runWithLlmTraceContext(
       { requestId, stepName: 'INTAKE', subAgent: 'Orchestrator', routePath: 'GATEWAY' },
-      runGuarded,
+      async () => {
+        const response = await runGuarded();
+        this.agent.scheduleEpisodicSummarizerAfterRouteAndRun(request);
+        return response;
+      },
     );
   }
 

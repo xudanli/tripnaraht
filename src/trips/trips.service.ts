@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Place } from '@prisma/client';
 import { resolveTripRevision } from './trip-constraint-solver/utils/trip-revision.util';
 import { bumpConstraintsVersion } from './trip-constraint-solver/utils/constraints-metadata.util';
+import { mergeSeededTripConstraints, ensureSegmentDistanceConstraints } from './trip-constraint-solver/utils/segment-distance-threshold.util';
 import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
 import { TripStatus, normalizeTripStatus } from './dto/trip-status.dto';
 import { DateTime } from 'luxon';
@@ -36,6 +37,7 @@ import {
 } from './dto/evidence.dto';
 import { AttentionItemDto, AttentionQueueResponseDto, GetAttentionQueueQueryDto, AttentionItemType, AttentionSeverity, AttentionStatus } from './dto/attention-queue.dto';
 import { toPlaceResponseDto } from './dto/place-response.dto';
+import { resolvePlaceDisplayName } from '../places/utils/place-display-name.util';
 import { buildSyntheticPlaceForRestItineraryItem } from '../itinerary-items/utils/rest-itinerary-item-display.util';
 import { EvidenceManagementService } from './services/evidence-management.service';
 import { EvidenceFilteringService } from './services/evidence-filtering.service';
@@ -414,6 +416,8 @@ export class TripsService {
       });
       assertMetadataSizeLimit(metadata);
     }
+
+    ensureSegmentDistanceConstraints(normalizedCountryCode, metadata);
 
     // ============================================
     // 步骤 4: 写入数据库 (使用 Transaction 保证原子性)
@@ -1335,8 +1339,8 @@ export class TripsService {
           ...item,
           Place: resolvedPlace,
           placeName:
-            resolvedPlace?.nameCN ??
-            resolvedPlace?.nameEN ??
+            resolvedPlace?.displayName ??
+            resolvePlaceDisplayName(resolvedPlace) ??
             (typeof item.note === 'string' ? item.note.split('\n')[0]?.trim() : undefined),
           crossDayInfo: this.calculateCrossDayInfo(item, day.date),
           isRequired,
@@ -1741,7 +1745,7 @@ export class TripsService {
     return {
       itemId: item.id,
       placeId: item.placeId,
-      placeName: place.nameEN || place.nameCN || '未知地点',
+      placeName: resolvePlaceDisplayName(place, { fallback: '未知地点' }),
       startTime: startTime.toISO(),
       estimatedArrivalTime: startTime.toISO(),
       Place: {
@@ -3737,6 +3741,7 @@ export class TripsService {
             id: item.Place.id,
             nameCN: item.Place.nameCN,
             nameEN: item.Place.nameEN,
+            displayName: resolvePlaceDisplayName(item.Place, { fallback: '行程点' }),
             category: item.Place.category,
           } : null,
         })),

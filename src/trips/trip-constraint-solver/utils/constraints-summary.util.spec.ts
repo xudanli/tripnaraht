@@ -75,6 +75,8 @@ describe('constraints-summary.util', () => {
       transport: { travelMode: 'DRIVING', transportHint: 'car', status: 'confirmed' },
     });
     expect(items[0].label).toContain('预算');
+    const travelersPending = items.find((i) => i.key === 'travelers');
+    expect(travelersPending?.deepLink).toBe('openCollaborationCenter=1&section=members');
     expect(computeAllReady({
       timeRange: { startDate: 'a', endDate: 'b', dayCount: 1, status: 'confirmed' },
       budget: { total: 1, currency: 'CNY', gateStatus: 'ALLOW', status: 'confirmed' },

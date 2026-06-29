@@ -4,6 +4,7 @@ import type { ReadinessService } from './readiness.service';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import type { CoverageMapData, SegmentCoverage } from '../types/coverage-map.types';
 import type { ReadinessCheckResult } from '../types/readiness-findings.types';
+import { GLOBAL_SEGMENT_DISTANCE_THRESHOLDS } from '../../trip-constraint-solver/utils/segment-distance-threshold.util';
 
 function makeSummary(): CoverageMapData['summary'] {
   return {
@@ -88,6 +89,7 @@ function makeTrip(startDate: Date) {
     destination: 'IS',
     startDate,
     endDate,
+    updatedAt: startDate,
     TripDay: [],
   };
 }
@@ -161,6 +163,122 @@ describe('CoverageMapService', () => {
       await expect(service.getReadinessScore('missing')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    it('reuses provided coverageData without calling getCoverageMap', async () => {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 120);
+      const coverage = makeCoverageMapData();
+
+      (prisma.trip.findUnique as jest.Mock).mockResolvedValue(makeTrip(startDate));
+      const getCoverageMapSpy = jest.spyOn(service, 'getCoverageMap');
+
+      await service.getReadinessScore('trip-1', { coverageData: coverage });
+
+      expect(getCoverageMapSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getCoverageMap', () => {
+    it('skips gap analysis when includeGaps is false', async () => {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 30);
+
+      (prisma.trip.findUnique as jest.Mock).mockResolvedValue({
+        ...makeTrip(startDate),
+        status: 'PLANNING',
+        metadata: {},
+        TripDay: [
+          {
+            date: startDate,
+            ItineraryItem: [
+              {
+                id: 'item-1',
+                placeId: 1,
+                startTime: null,
+                endTime: null,
+                Place: {
+                  id: 1,
+                  nameCN: 'A',
+                  nameEN: 'A',
+                  category: 'attraction',
+                  metadata: { lat: 64, lng: -21 },
+                },
+              },
+            ],
+          },
+        ],
+      });
+      (prisma.$queryRaw as jest.Mock).mockResolvedValue([{ id: 1, lat: 64, lng: -21 }]);
+
+      const identifyGapsSpy = jest
+        .spyOn(service as any, 'identifyGaps')
+        .mockReturnValue([{ id: 'gap-1' }]);
+
+      const result = await service.getCoverageMap('trip-1', { includeGaps: false });
+
+      expect(identifyGapsSpy).not.toHaveBeenCalled();
+      expect(result.gaps).toEqual([]);
+      expect(result.deduplicatedWarnings).toBeUndefined();
+      expect(result.summary.totalGaps).toBe(0);
+    });
+
+    it('includes POI when coords only exist in metadata.location (itinerary parity)', async () => {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 30);
+
+      (prisma.trip.findUnique as jest.Mock).mockResolvedValue({
+        ...makeTrip(startDate),
+        status: 'PLANNING',
+        metadata: {},
+        TripDay: [
+          {
+            date: startDate,
+            ItineraryItem: [
+              {
+                id: 'item-a',
+                placeId: 101,
+                order: 1,
+                startTime: null,
+                endTime: null,
+                Place: {
+                  id: 101,
+                  nameCN: 'A',
+                  nameEN: 'A',
+                  category: 'attraction',
+                  metadata: { location: { lat: 64.1, lng: -21.9 } },
+                },
+              },
+              {
+                id: 'item-b',
+                placeId: 102,
+                order: 2,
+                startTime: null,
+                endTime: null,
+                Place: {
+                  id: 102,
+                  nameCN: 'B',
+                  nameEN: 'B',
+                  category: 'attraction',
+                  metadata: { location: { lat: 64.2, lng: -21.8 } },
+                },
+              },
+            ],
+          },
+        ],
+      });
+      (prisma.$queryRaw as jest.Mock).mockResolvedValue([]);
+
+      const result = await service.getCoverageMap('trip-1', { includeGaps: false });
+
+      expect(result.pois).toHaveLength(2);
+      expect(result.pois.map((p) => p.itemId)).toEqual(['item-a', 'item-b']);
+      expect(result.segments).toHaveLength(1);
+      expect(result.segments[0]).toMatchObject({
+        fromPoiId: result.pois[0]!.id,
+        toPoiId: result.pois[1]!.id,
+        day: 1,
+      });
     });
   });
 
@@ -315,6 +433,111 @@ describe('CoverageMapService', () => {
       expect(roadClass?.uiHints?.primaryAction).toBe('open_repair');
       expect(roadClass?.anchors?.distanceKm).toBe(620);
       expect(findings.some((f) => f.id === 'schedule-long-drive-seg-1')).toBe(false);
+    });
+  });
+
+  describe('generateSegments', () => {
+    it('pairs adjacent POIs within each day only', async () => {
+      const pois = [
+        {
+          id: 'poi-1',
+          day: 1,
+          order: 1,
+          name: 'A',
+          type: 'attraction',
+          coordinates: { lat: 64, lng: -21 },
+          coverageStatus: 'covered',
+          evidenceCount: 1,
+        },
+        {
+          id: 'poi-2',
+          day: 1,
+          order: 2,
+          name: 'B',
+          type: 'attraction',
+          coordinates: { lat: 64.1, lng: -21.1 },
+          coverageStatus: 'covered',
+          evidenceCount: 1,
+        },
+        {
+          id: 'poi-3',
+          day: 2,
+          order: 1,
+          name: 'C',
+          type: 'attraction',
+          coordinates: { lat: 64.2, lng: -21.2 },
+          coverageStatus: 'covered',
+          evidenceCount: 1,
+        },
+        {
+          id: 'poi-4',
+          day: 2,
+          order: 2,
+          name: 'D',
+          type: 'attraction',
+          coordinates: { lat: 64.3, lng: -21.3 },
+          coverageStatus: 'covered',
+          evidenceCount: 1,
+        },
+      ] as const;
+
+      const { segments } = await (service as any).generateSegments(
+        [...pois],
+        false,
+        new Date('2026-07-01'),
+        GLOBAL_SEGMENT_DISTANCE_THRESHOLDS,
+        false,
+      );
+
+      expect(segments).toHaveLength(2);
+      expect(segments[0]).toMatchObject({
+        fromPoiId: 'poi-1',
+        toPoiId: 'poi-2',
+        day: 1,
+        sequenceIndex: 0,
+      });
+      expect(segments[1]).toMatchObject({
+        fromPoiId: 'poi-3',
+        toPoiId: 'poi-4',
+        day: 2,
+        sequenceIndex: 1,
+      });
+      expect(segments.every((s) => s.polyline.length > 0)).toBe(true);
+    });
+
+    it('returns no segments when a day has fewer than two POIs', async () => {
+      const pois = [
+        {
+          id: 'poi-1',
+          day: 1,
+          order: 1,
+          name: 'A',
+          type: 'attraction',
+          coordinates: { lat: 64, lng: -21 },
+          coverageStatus: 'covered',
+          evidenceCount: 1,
+        },
+        {
+          id: 'poi-2',
+          day: 2,
+          order: 1,
+          name: 'B',
+          type: 'attraction',
+          coordinates: { lat: 64.1, lng: -21.1 },
+          coverageStatus: 'covered',
+          evidenceCount: 1,
+        },
+      ] as const;
+
+      const { segments } = await (service as any).generateSegments(
+        [...pois],
+        false,
+        new Date('2026-07-01'),
+        GLOBAL_SEGMENT_DISTANCE_THRESHOLDS,
+        false,
+      );
+
+      expect(segments).toEqual([]);
     });
   });
 

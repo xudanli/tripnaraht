@@ -48,6 +48,17 @@ describe('HarnessTraceRecorderService', () => {
     expect(recorder.getTrace('t-meta')?.meta?.evaluationRunId).toBe('run-uuid-1');
   });
 
+  it('ensureTrace stores otel correlation on trace.meta', () => {
+    const recorder = new HarnessTraceRecorderService();
+    recorder.ensureTrace('t-otel', 'r-otel', {
+      otelTraceId: '4bf92f3577b34da6a3ce929d0e0e4736',
+      otelSpanId: '00f067aa0ba902b7',
+    });
+    expect(recorder.getTrace('t-otel')?.meta?.otelTraceId).toBe(
+      '4bf92f3577b34da6a3ce929d0e0e4736',
+    );
+  });
+
   it('finalizeIfStillOpen sets endedAt once and is idempotent', () => {
     const recorder = new HarnessTraceRecorderService();
     recorder.ensureTrace('t1', 'r1');

@@ -127,6 +127,11 @@ import { TimelineInspectorService } from './services/timeline-inspector.service'
 import { ItineraryVersionService } from './services/itinerary-version.service';
 import { TripRobustnessDashboardService } from './services/trip-robustness-dashboard.service';
 import { AuditRecordService } from './services/audit-record.service';
+import { AgenticTokenQuotaService } from './services/agentic-token-quota.service';
+import { HarnessCostDiagnosticsService } from './services/harness-cost-diagnostics.service';
+import { HarnessQualityLoopDiagnosticsService } from './services/harness-quality-loop-diagnostics.service';
+import { HarnessLlmRoutingDiagnosticsService } from './services/harness-llm-routing-diagnostics.service';
+import { AgentExecutionPolicyGatewayService } from './services/agent-execution-policy-gateway.service';
 import { RevisionNarratorService } from './services/revision-narrator.service';
 import { ItineraryRevisionTimelineService } from './services/itinerary-revision-timeline.service';
 import { ItineraryRevisionRegretService } from './services/itinerary-revision-regret.service';
@@ -339,6 +344,11 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     NegotiationResolverService,
     TimelineInspectorService,
     AuditRecordService,
+    AgenticTokenQuotaService,
+    HarnessCostDiagnosticsService,
+    HarnessQualityLoopDiagnosticsService,
+    HarnessLlmRoutingDiagnosticsService,
+    AgentExecutionPolicyGatewayService,
     RevisionNarratorService,
     ItineraryRevisionTimelineService,
     ItineraryRevisionRegretService,
@@ -424,6 +434,11 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     SelfHealingService,
     PreferenceEvolutionService,
     UserProfileLearningService,
+    AgenticTokenQuotaService,
+    HarnessCostDiagnosticsService,
+    HarnessQualityLoopDiagnosticsService,
+    HarnessLlmRoutingDiagnosticsService,
+    AgentExecutionPolicyGatewayService,
   ],
 })
 export class AgentModule {

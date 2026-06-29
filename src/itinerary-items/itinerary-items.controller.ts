@@ -376,6 +376,39 @@ export class ItineraryItemsController {
   }
 
   @Public()
+  @Get('trip/:tripId')
+  @ApiOperation({
+    summary: '按 trip 批量拉取行程项（P0）',
+    description:
+      '一次返回全程全部 ItineraryItem（含 Place 坐标），替代 N×GET /itinerary-items?tripDayId=…。' +
+      '可与 GET /trips/:tripId/journey-map 并行或单独使用。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({
+    name: 'includePlace',
+    required: false,
+    type: Boolean,
+    description: '是否包含 Place 坐标（全程地图 marker 需要，默认 true）',
+  })
+  @ApiResponse({ status: 200, description: '成功', type: ApiSuccessResponseDto })
+  async findByTrip(
+    @Param('tripId') tripId: string,
+    @Query('includePlace') includePlace?: string,
+  ) {
+    try {
+      const items = await this.itineraryItemsService.findByTrip(tripId, {
+        includePlace: includePlace !== 'false',
+      });
+      return successResponse(items);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
   @Get(':id')
   @ApiOperation({ 
     summary: '获取单个行程项详情',

@@ -33,6 +33,14 @@ import {
   resolveLunchStrategyFromTrip,
   type LunchStrategy,
 } from '../../planning-policy/utils/lunch-strategy.util';
+import {
+  accumulateDailyDrivingMinutes,
+  buildDailyDriveExceededConflicts,
+} from '../trip-constraint-solver/utils/daily-drive-conflicts.util';
+import {
+  isSelfDriveTrip,
+  resolveMaxDailyDrivingHours,
+} from '../trip-constraint-solver/utils/daily-drive-threshold.util';
 
 const DEFAULT_BUFFER_MINUTES = Number(process.env.TRIP_CONFLICT_BUFFER_MINUTES) || 15;
 const START_TOO_EARLY_THRESHOLD_MINUTES =
@@ -43,6 +51,11 @@ interface TravelSegmentEstimate {
   travelMinutes: number;
   travelDistanceMeters: number;
   travelMode: 'DRIVING' | 'WALKING' | 'TRANSIT';
+}
+
+export interface TripConflictsQueryOpts {
+  /** false 时全程用启发式路程，跳过 Google Routes（planning-conflicts 首包） */
+  useRouteApi?: boolean;
 }
 
 @Injectable()
@@ -62,7 +75,8 @@ export class TripConflictsService {
   async getConflicts(
     tripId: string,
     date?: string,
-    severity?: ConflictSeverity
+    severity?: ConflictSeverity,
+    opts?: TripConflictsQueryOpts,
   ): Promise<ConflictsResponseDto> {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
@@ -101,6 +115,16 @@ export class TripConflictsService {
     const lunchStrategy = resolveLunchStrategyFromTrip(trip);
     const defaultTravelMode = resolveTripDefaultTravelMode(trip.pacingConfig);
 
+    const useRouteApi = opts?.useRouteApi !== false;
+    const dailyDriveMinutes = new Map<number, number>();
+    const dailyDriveItemIds = new Map<number, string[]>();
+    const maxDailyDrive = resolveMaxDailyDrivingHours({
+      metadata: trip.metadata,
+      pacingConfig: trip.pacingConfig,
+    });
+    const trackDailyDrive =
+      maxDailyDrive != null && isSelfDriveTrip(trip.pacingConfig);
+
     // 检测所有日期的冲突
     for (let i = 0; i < trip.TripDay.length; i++) {
       const dayConflicts = await this.detectDayConflicts(
@@ -109,13 +133,36 @@ export class TripConflictsService {
         i + 1,
         lunchStrategy,
         defaultTravelMode,
+        useRouteApi,
+        trackDailyDrive ? dailyDriveMinutes : undefined,
       );
       conflicts.push(...dayConflicts);
+      if (trackDailyDrive) {
+        const itemIds = (trip.TripDay[i].ItineraryItem ?? [])
+          .map((item: { id: string }) => item.id)
+          .filter(Boolean);
+        if (itemIds.length) dailyDriveItemIds.set(i + 1, itemIds);
+      }
     }
 
     if (!date) {
       conflicts.push(
-        ...(await this.detectInterDayTravelConflicts(trip.TripDay, defaultTravelMode)),
+        ...(await this.detectInterDayTravelConflicts(
+          trip.TripDay,
+          defaultTravelMode,
+          useRouteApi,
+          trackDailyDrive ? dailyDriveMinutes : undefined,
+        )),
+      );
+    }
+
+    if (trackDailyDrive && maxDailyDrive) {
+      conflicts.push(
+        ...buildDailyDriveExceededConflicts({
+          dailyDriveMinutes,
+          maxDailyDrivingHours: maxDailyDrive.maxDailyDrivingHours,
+          dayItemIds: dailyDriveItemIds,
+        }),
       );
     }
 
@@ -252,6 +299,8 @@ export class TripConflictsService {
     _dayIndex: number,
     lunchStrategy: LunchStrategy = 'balanced',
     defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
+    useRouteApi = true,
+    dailyDriveAccumulator?: Map<number, number>,
   ): Promise<ConflictDto[]> {
     const conflicts: ConflictDto[] = [];
     const items = day.ItineraryItem || [];
@@ -389,7 +438,16 @@ export class TripConflictsService {
         toCoords,
         next.travelMode,
         defaultTravelMode,
+        useRouteApi,
       );
+      if (dailyDriveAccumulator) {
+        accumulateDailyDrivingMinutes(
+          dailyDriveAccumulator,
+          _dayIndex,
+          estimate.travelMinutes,
+          estimate.travelMode,
+        );
+      }
       const currentEnd = current.endTime ? DateTime.fromJSDate(current.endTime) : null;
       const nextStart = next.startTime ? DateTime.fromJSDate(next.startTime) : null;
       const fromName = this.getItemPlaceLabel(current);
@@ -606,6 +664,8 @@ export class TripConflictsService {
   private async detectInterDayTravelConflicts(
     days: any[],
     defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
+    useRouteApi = true,
+    dailyDriveAccumulator?: Map<number, number>,
   ): Promise<ConflictDto[]> {
     const conflicts: ConflictDto[] = [];
     if (!days || days.length < 2) return conflicts;
@@ -634,7 +694,16 @@ export class TripConflictsService {
         toCoords,
         toItem.travelMode,
         defaultTravelMode,
+        useRouteApi,
       );
+      if (dailyDriveAccumulator) {
+        accumulateDailyDrivingMinutes(
+          dailyDriveAccumulator,
+          i + 2,
+          estimate.travelMinutes,
+          estimate.travelMode,
+        );
+      }
       const fromEnd = fromItem.endTime ? DateTime.fromJSDate(fromItem.endTime) : null;
       const toStart = toItem.startTime ? DateTime.fromJSDate(toItem.startTime) : null;
       const fromName = this.getItemPlaceLabel(fromItem);
@@ -822,8 +891,10 @@ export class TripConflictsService {
     toCoords: { lat: number; lng: number },
     preferredMode?: string | null,
     defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
+    useRouteApi = true,
   ): Promise<TravelSegmentEstimate> {
-    const useHeuristicOnly = requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext());
+    const useHeuristicOnly =
+      !useRouteApi || requiresPlanningHeuristicWorldModelOnly(getBoundDecisionContext());
 
     if (!useHeuristicOnly) {
       try {
@@ -1113,15 +1184,16 @@ export class TripConflictsService {
     const typeOrder: Record<ConflictType, number> = {
       [ConflictType.TIME_CONFLICT]: 0,
       [ConflictType.TRANSPORT_INSUFFICIENT]: 1,
-      [ConflictType.BUFFER_INSUFFICIENT]: 2,
-      [ConflictType.DUPLICATE_ITEM]: 3,
-      [ConflictType.CLOSURE_RISK]: 4,
-      [ConflictType.LUNCH_MISSING]: 5,
-      [ConflictType.DINNER_MISSING]: 6,
-      [ConflictType.LUNCH_WINDOW]: 7,
-      [ConflictType.FATIGUE_EXCEEDED]: 8,
-      [ConflictType.ACCESSIBILITY_MISMATCH]: 9,
-      [ConflictType.TRANSPORT_TOO_LONG]: 10,
+      [ConflictType.MAX_DAILY_DRIVE_EXCEEDED]: 2,
+      [ConflictType.BUFFER_INSUFFICIENT]: 3,
+      [ConflictType.DUPLICATE_ITEM]: 4,
+      [ConflictType.CLOSURE_RISK]: 5,
+      [ConflictType.LUNCH_MISSING]: 6,
+      [ConflictType.DINNER_MISSING]: 7,
+      [ConflictType.LUNCH_WINDOW]: 8,
+      [ConflictType.FATIGUE_EXCEEDED]: 9,
+      [ConflictType.ACCESSIBILITY_MISMATCH]: 10,
+      [ConflictType.TRANSPORT_TOO_LONG]: 11,
     };
     conflicts.sort((a, b) => {
       const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
@@ -1185,6 +1257,7 @@ export class TripConflictsService {
       ConflictType.FATIGUE_EXCEEDED,
       ConflictType.ACCESSIBILITY_MISMATCH,
       ConflictType.TRANSPORT_TOO_LONG,
+      ConflictType.MAX_DAILY_DRIVE_EXCEEDED,
     ];
 
     if (unresolvableTypes.includes(conflict.type)) {

@@ -7,6 +7,8 @@ import { FlightPriceService } from './services/flight-price.service';
 import { FlightPriceDetailService } from './services/flight-price-detail.service';
 import { ScheduleConverterService } from './services/schedule-converter.service';
 import { ScheduleTimelineService } from './services/schedule-timeline.service';
+import { JourneyMapService } from './services/journey-map.service';
+import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
 import { ActionHistoryService } from './services/action-history.service';
 import { TripExtendedService } from './services/trip-extended.service';
 import { TripRecapService } from './services/trip-recap.service';
@@ -144,6 +146,8 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     StubRealityApiService,
     TripMetricsService, 
     ScheduleTimelineService,
+    JourneyMapService,
+    JourneyMapDecisionItemsService,
     TripConflictsService, 
     TripIntentService, 
     TripOptimizationService, 
@@ -187,6 +191,8 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     RouteTemplatePlanningService,
     TripMetricsService,
     ScheduleTimelineService,
+    JourneyMapService,
+    JourneyMapDecisionItemsService,
     TripConflictsService,
     TripIntentService,
     TripOptimizationService,

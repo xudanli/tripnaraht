@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import type { ConflictDto } from '../../dto/trip-conflicts.dto';
 import {
   assessTeamFit,
+  filterValidMemberUserIds,
   parseStoredMoneyDnaCard,
   parseStoredTravelStyleCard,
   type TeamFitAssessmentResult,
@@ -25,11 +26,12 @@ export class TeamFitAssessmentService {
     });
     if (!trip) return [];
 
-    const memberIds = new Set(trip.TripCollaborator.map((c) => c.userId));
-    const ownerId = (trip.metadata as { userId?: string } | null)?.userId;
-    if (ownerId) memberIds.add(ownerId);
+    const rawMemberIds = [
+      ...trip.TripCollaborator.map((c) => c.userId),
+      (trip.metadata as { userId?: string } | null)?.userId,
+    ].filter((id): id is string => typeof id === 'string' && id.length > 0);
 
-    const ids = [...memberIds];
+    const ids = filterValidMemberUserIds(rawMemberIds);
     if (ids.length === 0) return [];
 
     const [users, profilingStatuses, profiles] = await Promise.all([

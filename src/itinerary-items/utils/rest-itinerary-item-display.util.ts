@@ -41,6 +41,7 @@ export function buildSyntheticPlaceForRestItineraryItem(item: {
     uuid: `synthetic-rest-${item.id}`,
     nameCN,
     nameEN: nameCN,
+    displayName: nameCN,
     category: 'HOTEL',
     address: address ?? null,
     rating: rating ?? 0,

@@ -24,8 +24,10 @@ export enum AlertSeverity {
 }
 
 export class PersonaAlertDeepLinkDto {
-  @ApiProperty({ enum: ['feasibility', 'schedule_day', 'decision_log', 'plan_gate'] })
-  type!: 'feasibility' | 'schedule_day' | 'decision_log' | 'plan_gate';
+  @ApiProperty({
+    enum: ['feasibility', 'schedule_day', 'decision_log', 'plan_gate', 'decision_checker'],
+  })
+  type!: 'feasibility' | 'schedule_day' | 'decision_log' | 'plan_gate' | 'decision_checker';
 
   @ApiPropertyOptional()
   issueId?: string;

@@ -14,6 +14,7 @@ import type {
   HarnessTraceFinalStatus,
   HarnessTraceStep,
 } from './harness-trace.types';
+import { harnessTraceCorrelationMetaFromRuntime } from './harness-otel-correlation.util';
 
 @Injectable()
 export class HarnessTraceRecorderService {
@@ -44,10 +45,7 @@ export class HarnessTraceRecorderService {
     let t = this.traces.get(traceId);
     if (!t) {
       this.evictTracesIfOverLimitBeforeInsert();
-      const mergedMeta =
-        meta?.evaluationRunId && String(meta.evaluationRunId).trim()
-          ? { evaluationRunId: String(meta.evaluationRunId).trim() }
-          : undefined;
+      const mergedMeta = this.mergeCorrelationMeta(undefined, meta);
       t = {
         traceId,
         requestId,
@@ -57,10 +55,27 @@ export class HarnessTraceRecorderService {
         ...(mergedMeta ? { meta: mergedMeta } : {}),
       };
       this.traces.set(traceId, t);
-    } else if (meta?.evaluationRunId && String(meta.evaluationRunId).trim() && !t.meta?.evaluationRunId) {
-      t.meta = { ...t.meta, evaluationRunId: String(meta.evaluationRunId).trim() };
+    } else {
+      const mergedMeta = this.mergeCorrelationMeta(t.meta, meta);
+      if (mergedMeta) {
+        t.meta = mergedMeta;
+      }
     }
     return t;
+  }
+
+  private mergeCorrelationMeta(
+    existing: HarnessTraceCorrelationMeta | undefined,
+    incoming: HarnessTraceCorrelationMeta | undefined,
+  ): HarnessTraceCorrelationMeta | undefined {
+    const out: HarnessTraceCorrelationMeta = { ...(existing ?? {}) };
+    const runId = incoming?.evaluationRunId?.trim();
+    if (runId && !out.evaluationRunId) out.evaluationRunId = runId;
+    const otelTraceId = incoming?.otelTraceId?.trim();
+    if (otelTraceId && !out.otelTraceId) out.otelTraceId = otelTraceId;
+    const otelSpanId = incoming?.otelSpanId?.trim();
+    if (otelSpanId && !out.otelSpanId) out.otelSpanId = otelSpanId;
+    return Object.keys(out).length > 0 ? out : undefined;
   }
 
   appendStep(traceId: string, step: HarnessTraceStep): void {
@@ -152,9 +167,12 @@ export class HarnessTraceRecorderService {
       endedAt: now,
       finalStatus,
       steps: [step],
-      ...(params.evaluationRunId
-        ? { meta: { evaluationRunId: params.evaluationRunId } }
-        : {}),
+      ...((): { meta?: HarnessTraceCorrelationMeta } => {
+        const meta = harnessTraceCorrelationMetaFromRuntime(
+          (params.dsoSnapshot as DecisionState)?.harnessRuntime,
+        );
+        return meta ? { meta } : {};
+      })(),
       retrofit: {
         triggeredBy: 'ON_FAILURE_TRIGGER',
         failedPhase: params.failedPhase,

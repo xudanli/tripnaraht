@@ -20,6 +20,11 @@ import type {
 } from '../../trips/decision/shared/guardian-presentation.types';
 import { flattenChooseOptionPoints } from '../../trips/decision/shared/guardian-choose-options.util';
 import { resolveHardConstraintBlocked } from '../../trips/decision/shared/guardian-presentation.util';
+import {
+  projectOptionComparison,
+} from './option-comparison-bff.projection.util';
+import type { OptionComparisonBffDto } from '../dto/option-comparison.dto';
+import type { BudgetComparePlansResponse } from '../../trips/services/budget-evaluation.service';
 
 export interface PlanningWorkbenchExecuteEnrichInput {
   skeletonOptions?: PlanSkeletonSet;
@@ -905,6 +910,21 @@ function flattenOpenApiUiOutput(
     };
   }
 
+  const budgetComparison = planState.metadata?.budgetComparison as
+    | BudgetComparePlansResponse
+    | undefined;
+  const optionComparison =
+    uiOutput.optionComparison ??
+    projectOptionComparison({
+      orchestratorState: {
+        metadata: {
+          comparison: uiOutput.comparison ?? planState.metadata?.comparison,
+          budgetComparison,
+        },
+      } as never,
+      budgetComparison,
+    });
+
   return {
     ...uiOutput,
     confirmations: signOffLayers.confirmations,
@@ -912,6 +932,7 @@ function flattenOpenApiUiOutput(
     timestamp: personas?.timestamp ?? uiOutput.timestamp ?? new Date().toISOString(),
     decisionContext: buildWorkbenchDecisionContext(planState, tripId, requestMetadata),
     budgetPreview: buildWorkbenchBudgetPreview(planState, uiOutput.health),
+    optionComparison,
   };
 }
 

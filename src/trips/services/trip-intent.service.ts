@@ -8,6 +8,10 @@ import {
   resolveLunchStrategyFromTrip,
 } from '../../planning-policy/utils/lunch-strategy.util';
 import { bumpConstraintsVersion, snapshotConstraintsMeta } from '../trip-constraint-solver/utils/constraints-metadata.util';
+import {
+  applyMaxSegmentDistanceConstraintPatch,
+  ensureSegmentDistanceConstraints,
+} from '../trip-constraint-solver/utils/segment-distance-threshold.util';
 
 @Injectable()
 export class TripIntentService {
@@ -61,10 +65,24 @@ export class TripIntentService {
     if (dto.pacingConfig) constraintsTouched = true;
     if (dto.totalBudget !== undefined) constraintsTouched = true;
     if (dto.preferences || dto.constraints || dto.planningPolicy || dto.lunch_strategy) {
+      constraintsTouched = constraintsTouched || Boolean(dto.constraints);
+      const mergedConstraints = dto.constraints
+        ? {
+            ...((metadata.constraints as Record<string, unknown> | undefined) ?? {}),
+            ...dto.constraints,
+          }
+        : (metadata.constraints as Record<string, unknown> | undefined);
+      if (mergedConstraints && dto.constraints?.maxSegmentDistanceKm != null) {
+        applyMaxSegmentDistanceConstraintPatch(mergedConstraints, {
+          value: dto.constraints.maxSegmentDistanceKm,
+          tolerance: dto.constraints.warnSegmentDistanceKm,
+          destination: trip.destination,
+        });
+      }
       metadata = {
         ...metadata,
         preferences: dto.preferences || metadata.preferences,
-        constraints: dto.constraints || metadata.constraints,
+        constraints: mergedConstraints ?? metadata.constraints,
         planningPolicy: dto.planningPolicy || metadata.planningPolicy,
       };
       if (dto.lunch_strategy) {
@@ -79,7 +97,8 @@ export class TripIntentService {
       }
     }
 
-    if (constraintsTouched) {
+    const constraintsEnsured = ensureSegmentDistanceConstraints(trip.destination, metadata);
+    if (constraintsTouched || constraintsEnsured) {
       metadata = bumpConstraintsVersion(metadata);
     }
 

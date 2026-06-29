@@ -65,6 +65,87 @@ describe('option-comparison-bff.projection.util', () => {
     expect(comparison?.kernelGateEval?.divergesFromLlmRecommendation).toBe(true);
   });
 
+  it('merges budgetComparison into matrix cost column', () => {
+    const comparison = projectOptionComparison({
+      orchestratorState: {
+        metadata: {
+          comparison: {
+            options: [
+              {
+                optionId: 'opt-a',
+                scores: {
+                  executability: 80,
+                  cost: 40,
+                  fatigue: 30,
+                  experienceDensity: 70,
+                  risk: 20,
+                  freedom: 50,
+                },
+                summary: '稳健',
+              },
+              {
+                optionId: 'opt-b',
+                scores: {
+                  executability: 65,
+                  cost: 55,
+                  fatigue: 45,
+                  experienceDensity: 85,
+                  risk: 35,
+                  freedom: 60,
+                },
+                summary: '体验',
+              },
+            ],
+          },
+        },
+      } as never,
+      budgetComparison: {
+        schema: 'tripnara.budget_comparison@v1',
+        tripId: 't1',
+        intentTotal: 10000,
+        currency: 'CNY',
+        plans: [
+          {
+            planId: 'opt-a',
+            label: 'A',
+            estimatedCost: 9500,
+            budgetUsagePercent: 95,
+            vsIntentDelta: -500,
+            verdict: 'NEED_ADJUST',
+            violationCount: 0,
+            categoryBreakdown: {
+              accommodation: 0,
+              transportation: 0,
+              food: 0,
+              activities: 0,
+              other: 0,
+            },
+          },
+          {
+            planId: 'opt-b',
+            label: 'B',
+            estimatedCost: 7800,
+            budgetUsagePercent: 78,
+            vsIntentDelta: -2200,
+            verdict: 'ALLOW',
+            violationCount: 0,
+            categoryBreakdown: {
+              accommodation: 0,
+              transportation: 0,
+              food: 0,
+              activities: 0,
+              other: 0,
+            },
+          },
+        ],
+        recommendedPlanId: 'opt-b',
+        priceEvidence: [],
+      },
+    });
+    expect(comparison?.options.find((o) => o.optionId === 'opt-b')?.scores.cost).toBe(78);
+    expect(comparison?.options.find((o) => o.optionId === 'opt-b')?.budget?.estimatedCost).toBe(7800);
+  });
+
   it('projects ≥3 options from hints + dual_track + fallback_plans (P2)', () => {
     const comparison = projectOptionComparison({
       primaryItinerary: { days: [{ date: '2026-07-01', items: [] }] } as any,

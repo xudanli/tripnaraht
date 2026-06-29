@@ -1,0 +1,229 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false },
+        "content": "**数据源：** PostgreSQL 表 `llm_token_logs`（与 `LlmUsageRecorderService` / `cost_history_v1` 同源）。\n\n**CLI 对照：** `tripnara harness cost history --token $ADMIN_DIAGNOSTICS_TOKEN`\n\n**若看板无数据：** Grafana PostgreSQL 数据源须指向应用 `DATABASE_URL` 同一库；见底部 Sanity 面板。\n\n**告警阈值 env（API 进程）：** `HARNESS_COST_ALERT_GLOBAL_QUOTA_PCT` · `HARNESS_COST_ALERT_DAILY_USD` — admin diagnostics `cost_history.alerts` 与 CLI 一致，Grafana 仅做趋势可视化。",
+        "mode": "markdown"
+      },
+      "title": "Notes",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 3 },
+      "id": 10,
+      "title": "LLM Cost / Token (Harness cost_history_v1)",
+      "type": "row"
+    },
+    {
+      "datasource": { "uid": "${DS_POSTGRES}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 11,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "uid": "${DS_POSTGRES}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  date_trunc('day', created_at AT TIME ZONE 'UTC') AS time,\n  SUM(cost_usd)::double precision AS cost_usd\nFROM llm_token_logs\nWHERE $__timeFilter(created_at)\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily LLM cost (USD)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "uid": "${DS_POSTGRES}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 12,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "uid": "${DS_POSTGRES}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  date_trunc('day', created_at AT TIME ZONE 'UTC') AS time,\n  SUM(total_tokens)::bigint AS tokens\nFROM llm_token_logs\nWHERE $__timeFilter(created_at)\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily token volume",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "uid": "${DS_POSTGRES}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 25 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 12 },
+      "id": 13,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "datasource": { "uid": "${DS_POSTGRES}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(SUM(cost_usd), 0)::double precision AS today_cost_usd\nFROM llm_token_logs\nWHERE created_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')",
+          "refId": "A"
+        }
+      ],
+      "title": "Today cost (UTC day)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "uid": "${DS_POSTGRES}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 12 },
+      "id": 14,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "datasource": { "uid": "${DS_POSTGRES}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(SUM(total_tokens), 0)::bigint AS today_tokens\nFROM llm_token_logs\nWHERE created_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')",
+          "refId": "A"
+        }
+      ],
+      "title": "Today tokens (UTC day)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "uid": "${DS_POSTGRES}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 15,
+      "targets": [
+        {
+          "datasource": { "uid": "${DS_POSTGRES}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT step_name, COUNT(*)::int AS calls, SUM(total_tokens)::bigint AS tokens, SUM(cost_usd)::double precision AS cost_usd\nFROM llm_token_logs\nWHERE $__timeFilter(created_at)\nGROUP BY step_name\nORDER BY cost_usd DESC\nLIMIT 15",
+          "refId": "A"
+        }
+      ],
+      "title": "Top steps by cost",
+      "type": "table"
+    },
+    {
+      "datasource": { "uid": "${DS_POSTGRES}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "id": 16,
+      "targets": [
+        {
+          "datasource": { "uid": "${DS_POSTGRES}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT provider, SUM(cost_usd)::double precision AS cost_usd, SUM(total_tokens)::bigint AS tokens, COUNT(*)::int AS calls\nFROM llm_token_logs\nWHERE $__timeFilter(created_at)\nGROUP BY provider\nORDER BY cost_usd DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Cost by LLM provider (llm_routing admin)",
+      "type": "table"
+    },
+    {
+      "datasource": { "uid": "${DS_POSTGRES}" },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 28 },
+      "id": 99,
+      "targets": [
+        {
+          "datasource": { "uid": "${DS_POSTGRES}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT current_database()::text AS grafana_db, COUNT(*)::int AS llm_token_log_rows FROM llm_token_logs",
+          "refId": "A"
+        }
+      ],
+      "title": "Sanity: llm_token_logs row count",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["tripnara", "harness", "cost"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "PostgreSQL",
+        "multi": false,
+        "name": "DS_POSTGRES",
+        "options": [],
+        "query": "postgres",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-7d", "to": "now" },
+  "timezone": "utc",
+  "title": "TripNARA Harness — LLM Cost & Tokens",
+  "uid": "tripnara-harness-cost",
+  "version": 1
+}

@@ -12,6 +12,7 @@
  */
 
 import { Injectable, Logger, Optional, NotFoundException } from '@nestjs/common';
+import type { OptionComparisonBffDto } from '../dto/option-comparison.dto';
 import { PlanState, PlanContext, PlanSkeletonSet, OptionComparison, PlanSkeleton } from '../../skills/plan/shared/plan-state.types';
 import { ContextBuildSkill } from '../../skills/context/context-build.skill';
 import { PlanArchitectGenerateSkeletonSkill } from '../../skills/plan/architect/plan-architect-generate-skeleton.skill';
@@ -173,6 +174,9 @@ export interface PlanningWorkbenchResponse {
 
     /** 预算预览（evaluated=false 时前端 lazy load） */
     budgetPreview?: WorkbenchBudgetPreview;
+
+    /** 方案矩阵 BFF（含 options[].budget / scores.cost） */
+    optionComparison?: OptionComparisonBffDto;
   };
 }
 

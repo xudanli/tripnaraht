@@ -340,6 +340,10 @@ import {
   cloneResearchRecord,
 } from '../utils/research-asset-scope.util';
 import { resolveResearchInvalidation } from '../runtime/resolve-research-invalidation.util';
+import {
+  sanitizeOrchestrationHandoffForRequest,
+  type RouteAndRunSubagentSandboxCarrier,
+} from '../runtime/subagent-permission-sandbox-context.util';
 import type { DecisionOsExecutionContext } from '../runtime/decision-os-execution-context';
 import { DecisionOsExecutionContextStore } from '../runtime/decision-os-execution-context.store';
 import {
@@ -575,6 +579,7 @@ import {
   type PoiPlanningDecisionSlice,
 } from '../../decision/kernel/decision-state.types';
 import type { PlanGenTerminalFailure } from '../../decision/kernel/decision-state.types';
+import { otelHarnessRuntimeFieldsFromRequest } from '../../harness/tracing/harness-otel-correlation.util';
 import type { RuntimeBranchDirective } from '../../governance/activation/runtime/runtime-branch-directive.types';
 import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
 import { normalizeDecisionOsAuditContract } from '../contracts/decision-os-audit.contract';
@@ -1085,14 +1090,19 @@ export class ClaudeOrchestratorService {
     state: OrchestratorState,
   ): {
     evaluationRunId?: string;
+    otelTraceId?: string;
+    otelSpanId?: string;
     replanLineage?: { previous_plan_version?: number; previous_world_snapshot_hash?: string };
     orchestratorPlanVersion?: number;
+    userId?: string;
   } {
     const rc = state.metadata?.replan_context as
       | { previous_plan_version?: number; previous_world_snapshot_hash?: string }
       | undefined;
+    const otel = otelHarnessRuntimeFieldsFromRequest(request);
     return {
       evaluationRunId: request.meta?.run_id,
+      ...(otel ?? {}),
       ...(rc ? { replanLineage: rc } : {}),
       orchestratorPlanVersion: state.plan_version,
       ...(request.user_id ? { userId: request.user_id } : {}),
@@ -6486,7 +6496,7 @@ export class ClaudeOrchestratorService {
             this.logger.debug(`[Claude Orchestrator] 执行 Skill: ${step.skillName}`);
             const result = await skill.execute(input);
             const mergedSkillResult = this.mergeSkillOutputWithPlanStateInput(input, result);
-            results[step.id] = mergedSkillResult;
+            results[step.id] = this.sanitizeOrchestrationHandoff(request, mergedSkillResult);
             
             stepsExecuted.push({
               stepId: step.id,
@@ -6510,7 +6520,7 @@ export class ClaudeOrchestratorService {
               results,
             };
             const result = await action.execute(input, state);
-            results[step.id] = result;
+            results[step.id] = this.sanitizeOrchestrationHandoff(request, result);
             
             stepsExecuted.push({
               stepId: step.id,
@@ -6573,7 +6583,7 @@ export class ClaudeOrchestratorService {
                   const input = this.prepareSkillInput(step, results, context, request, intentSnapshot);
                   const result = await skill.execute(input);
                   const merged = this.mergeSkillOutputWithPlanStateInput(input, result);
-                  results[step.id] = merged;
+                  results[step.id] = this.sanitizeOrchestrationHandoff(request, merged);
                   
                   stepsExecuted.push({
                     stepId: step.id,
@@ -6598,7 +6608,7 @@ export class ClaudeOrchestratorService {
                     results,
                   };
                   const result = await action.execute(input, state);
-                  results[step.id] = result;
+                  results[step.id] = this.sanitizeOrchestrationHandoff(request, result);
                   
                   stepsExecuted.push({
                     stepId: step.id,
@@ -7346,7 +7356,14 @@ ${JSON.stringify(routingDecision, null, 2)}
       input.intent_hints = { ...intentSnapshot.intent_hints, ...(input.intent_hints ?? {}) };
     }
 
-    return input;
+    return this.sanitizeOrchestrationHandoff(request, input);
+  }
+
+  private sanitizeOrchestrationHandoff(request: RouteAndRunRequestDto, value: unknown): unknown {
+    return sanitizeOrchestrationHandoffForRequest(
+      request as RouteAndRunSubagentSandboxCarrier,
+      value,
+    );
   }
 
   /** skillName → OrchestrationStep（用于 Token 按阶段打点） */

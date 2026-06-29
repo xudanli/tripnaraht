@@ -50,6 +50,10 @@ export type HarnessTraceFinalStatus =
 /** 与 Evaluation Harness（replay 报告 `runFingerprint.runId`）对齐的 trace 级元数据 */
 export interface HarnessTraceCorrelationMeta {
   evaluationRunId?: string;
+  /** W3C / OTel trace id（32 hex），与 `observability.otel_trace_id` 对齐 */
+  otelTraceId?: string;
+  /** W3C parent span id（16 hex），与 `observability.otel_span_id` 对齐 */
+  otelSpanId?: string;
 }
 
 export interface HarnessTrace {

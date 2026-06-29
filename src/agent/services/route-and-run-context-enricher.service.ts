@@ -17,6 +17,8 @@ import {
 import { loadWishlistPromptInjectionForAgent } from '../../trips/wishlist/utils/wish-prompt-injection.util';
 import { TripIntentDigestService } from '../memory/services/trip-intent-digest.service';
 import { formatTripIntentDigestPromptInjection } from '../memory/utils/trip-intent-context-blocks.util';
+import { TripBudgetProfileService } from '../../trips/budget-os/services/trip-budget-profile.service';
+import { formatBudgetProfilePromptBlock } from '../../trips/services/budget-comparison.util';
 
 /**
  * Enriches `route_and_run` conversation context before orchestration (e.g. active trip summary).
@@ -31,6 +33,7 @@ export class RouteAndRunContextEnricherService {
     @Optional() private readonly tripInsightService?: TripInsightService,
     @Optional() private readonly tripMetricsService?: TripMetricsService,
     @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
+    @Optional() private readonly budgetProfileService?: TripBudgetProfileService,
   ) {}
 
   /**
@@ -113,8 +116,14 @@ export class RouteAndRunContextEnricherService {
         const prefix = '[系统注入·当前行程摘要]\n';
         const body = injected.startsWith(prefix) ? injected.slice(prefix.length) : injected;
         injected = `${prefix}${body}\n${riskLines.join('\n')}`;
-      } else if (riskLines.length > 0 && !injected.trim()) {
+      } else       if (riskLines.length > 0 && !injected.trim()) {
         injected = `[系统注入·当前行程摘要]\n${riskLines.join('\n')}`;
+      }
+      const budgetBlock = await this.buildBudgetProfileLines(tripId);
+      if (budgetBlock) {
+        injected = injected.trim()
+          ? `${injected}\n${budgetBlock}`
+          : budgetBlock;
       }
       if (!injected.trim()) {
         return;
@@ -190,6 +199,32 @@ export class RouteAndRunContextEnricherService {
     }
 
     return lines;
+  }
+
+  private async buildBudgetProfileLines(tripId: string): Promise<string | null> {
+    if (!this.budgetProfileService) {
+      return null;
+    }
+    try {
+      const profile = await this.budgetProfileService.getProfile(tripId, ['actuals']);
+      if (!profile.intent && !profile.structure && !profile.actuals) {
+        return null;
+      }
+      return formatBudgetProfilePromptBlock({
+        intentTotal: profile.intent?.total,
+        currency: profile.intent?.currency ?? profile.actuals?.currency ?? 'CNY',
+        dailyBudget: profile.intent?.dailyBudget,
+        spendingPersona: profile.structure?.spendingPersona,
+        structureAllocations: profile.structure?.allocations,
+        actualsTotalEstimated: profile.actuals?.totalEstimated,
+        budgetUsagePercent: profile.actuals?.budgetUsagePercent,
+        gateVerdict: profile.gateStatus?.verdict,
+        unpaidCount: profile.actuals?.unpaidCount,
+      });
+    } catch (e: any) {
+      this.logger.debug(`[ContextEnricher] budget profile skipped: ${e?.message ?? e}`);
+      return null;
+    }
   }
 
   /**

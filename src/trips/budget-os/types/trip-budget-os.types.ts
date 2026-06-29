@@ -100,6 +100,8 @@ export interface TripBudgetProfile {
   wallet?: TravelWallet;
   valueSummary?: TripValueSummary;
   actuals?: BudgetActualsSnapshot;
+  /** Structure vs actual variance by category (also nested under structure) */
+  structureVsActual?: Record<string, StructureVsActualEntry>;
   gateStatus?: BudgetGateStatus;
   updatedAt: string;
 }
@@ -109,6 +111,26 @@ export interface SuggestedBudgetStructure {
   percentages: CategoryPercentages;
   spendingPersona: SpendingPersona;
   source: 'money_dna' | 'canonical';
+}
+
+export interface BudgetOptimizationProposalSnapshot {
+  id: string;
+  type: 'REMOVE' | 'REDUCE' | 'REPLACE';
+  action: string;
+  impact: string;
+  estimatedSavings: number;
+  itemId?: string;
+  itemName?: string;
+  category?: string;
+}
+
+export interface BudgetEvidenceSnapshot {
+  id: string;
+  type: 'intent' | 'structure' | 'category_cost' | 'itinerary_item' | 'violation';
+  title: string;
+  content: string;
+  reliability: 'high' | 'medium' | 'low';
+  source: string;
 }
 
 /** Persisted shape inside Trip.budgetConfig */
@@ -122,6 +144,10 @@ export interface TripBudgetConfigJson {
   dailyBudget?: number | null;
   categoryLimits?: Record<string, number> | null;
   alertThreshold?: number;
+  /** Pending budget optimization proposals keyed by planId (from evaluate) */
+  pendingOptimizations?: Record<string, BudgetOptimizationProposalSnapshot[]>;
+  /** Evidence snapshots keyed by planId (from evaluate) */
+  pendingBudgetEvidence?: Record<string, BudgetEvidenceSnapshot[]>;
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string;

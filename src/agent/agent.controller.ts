@@ -39,6 +39,7 @@ import { ActionExecutionService } from './services/action-execution.service';
 import { PhysicalActionPlanEnricherService } from '../domain/spatial/physical-action-plan-enricher.service';
 import { RouteAndRunTaskStreamService } from './services/route-and-run-task-stream.service';
 import { normalizeRouteAndRunRequestMessage, resolveRouteAndRunUserMessage } from './utils/resolve-route-and-run-message.util';
+import { attachOtelTraceContextToRouteAndRunRequest } from '../harness/tracing/harness-otel-correlation.util';
 
 /**
  * Agent Controller
@@ -340,8 +341,10 @@ export class AgentController {
   async routeAndRun(
     @Body() request: RouteAndRunRequestDto,
     @Headers('x-client-profile') xClientProfile?: string,
+    @Req() req?: Request,
     @Res({ passthrough: true }) res?: import('express').Response,
   ): Promise<RouteAndRunResponseDto> {
+    attachOtelTraceContextToRouteAndRunRequest(request, req?.headers);
     const headerProfile = xClientProfile?.trim();
     if (headerProfile) {
       request.meta = { ...(request.meta ?? {}), client_profile: request.meta?.client_profile ?? headerProfile };

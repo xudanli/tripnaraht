@@ -1,5 +1,5 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Req, BadRequestException, NotFoundException, ForbiddenException, Logger, Headers, Res, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Req, BadRequestException, NotFoundException, ForbiddenException, ConflictException, Logger, Headers, Res, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { DateTime } from 'luxon';
@@ -76,6 +76,13 @@ import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/t
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripMetricsService } from './services/trip-metrics.service';
 import { ScheduleTimelineService } from './services/schedule-timeline.service';
+import { JourneyMapService, parseJourneyMapInclude } from './services/journey-map.service';
+import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
+import type { CreateJourneyMapDecisionItemDto } from './dto/journey-map-decision-item.dto';
+import {
+  computeJourneyMapEtag,
+  ifNoneMatchMatches,
+} from './utils/journey-map-etag.util';
 import { TripConflictsService } from './services/trip-conflicts.service';
 import { TripIntentService } from './services/trip-intent.service';
 import { TripOptimizationService } from './services/trip-optimization.service';
@@ -254,6 +261,8 @@ export class TripsController {
     private readonly llmResponseTransformer: LlmResponseTransformerService,
     private readonly tripMetricsService: TripMetricsService,
     private readonly scheduleTimelineService: ScheduleTimelineService,
+    private readonly journeyMapService: JourneyMapService,
+    private readonly journeyMapDecisionItems: JourneyMapDecisionItemsService,
     private readonly tripConflictsService: TripConflictsService,
     private readonly tripIntentService: TripIntentService,
     private readonly tripOptimizationService: TripOptimizationService,
@@ -5207,6 +5216,147 @@ export class TripsController {
       return successResponse(state);
     } catch (error: any) {
       if (error.status === 404) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Post(':id/decision-items')
+  @ApiOperation({
+    summary: '全程地图检查器 · 创建决策事项',
+    description: '从 Inspector 风险 Tab 创建待办决策项，持久化至 trip.metadata.journeyMapDecisionItems',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  async createJourneyMapDecisionItem(
+    @Param('id') id: string,
+    @Body() body: CreateJourneyMapDecisionItemDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const userId = user?.userId ?? 'anonymous';
+      const data = await this.journeyMapDecisionItems.create(id, body, userId);
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.BAD_REQUEST, error.message);
+      }
+      if (error instanceof ConflictException) {
+        const payload = error.getResponse();
+        const row =
+          typeof payload === 'object' && payload !== null
+            ? (payload as { code?: string; message?: string })
+            : { message: error.message };
+        return errorResponse(row.code ?? 'CONSTRAINTS_STALE', row.message ?? error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/journey-map/inspector/activities/:activityId')
+  @ApiOperation({
+    summary: '全程地图检查器 · 单活动懒加载',
+    description:
+      '返回单个 JourneyMapInspectorActivityContext + 共享 evidence/impact。' +
+      'BFF 二段过慢时可按 activity 懒加载；支持 If-None-Match。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'activityId', description: '活动 ID（item-uuid 或 uuid）' })
+  @ApiQuery({
+    name: 'fields',
+    required: false,
+    enum: ['full', 'minimal'],
+    description: 'coverage 裁剪；默认 full',
+  })
+  @ApiResponse({ status: 304, description: 'If-None-Match 与 ETag 一致，无 body' })
+  async getJourneyMapInspectorActivity(
+    @Param('id') id: string,
+    @Param('activityId') activityId: string,
+    @Query('fields') fields?: 'full' | 'minimal',
+    @Headers('if-none-match') ifNoneMatch?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    try {
+      const data = await this.journeyMapService.getJourneyMapInspectorActivity(id, activityId, {
+        fields: fields ?? 'full',
+      });
+
+      if (data.etag && ifNoneMatchMatches(ifNoneMatch, data.etag)) {
+        res?.status(HttpStatus.NOT_MODIFIED);
+        res?.setHeader('ETag', formatEtagHeader(data.etag));
+        res?.setHeader('Cache-Control', 'private, max-age=60');
+        return;
+      }
+
+      if (data.etag) {
+        res?.setHeader('ETag', formatEtagHeader(data.etag));
+      }
+      res?.setHeader('Cache-Control', 'private, max-age=60');
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/journey-map')
+  @ApiOperation({
+    summary: '全程地图聚合 BFF',
+    description:
+      '一次返回 Journey Map 首屏：trip 摘要、coverage-map、全 trip itineraryItems、feasibilityScore、travelerCount。' +
+      'include=inspector 二段加载 decision-checker evidence/impact 与 score 分解。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'include', required: false, description: 'shell（默认）, inspector' })
+  @ApiQuery({
+    name: 'fields',
+    required: false,
+    enum: ['full', 'minimal'],
+    description: 'coverage 裁剪；minimal 省略 gaps 与 deduplicatedWarnings',
+  })
+  @ApiResponse({ status: 304, description: 'If-None-Match 与 ETag 一致，无 body' })
+  async getJourneyMap(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @Query('fields') fields?: 'full' | 'minimal',
+    @Headers('if-none-match') ifNoneMatch?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    try {
+      const fieldsResolved = fields ?? 'full';
+      const includeInspector = parseJourneyMapInclude(include).has('inspector');
+      const data = await this.journeyMapService.getJourneyMap(id, {
+        include,
+        fields: fieldsResolved,
+      });
+
+      const etag = computeJourneyMapEtag({
+        tripId: id,
+        tripUpdatedAt: data.trip.updatedAt,
+        coverageCalculatedAt: data.coverage.calculatedAt,
+        itemCount: data.itineraryItems.length,
+        fields: fieldsResolved,
+        includeInspector,
+      });
+
+      if (ifNoneMatchMatches(ifNoneMatch, etag)) {
+        res?.status(HttpStatus.NOT_MODIFIED);
+        res?.setHeader('ETag', formatEtagHeader(etag));
+        res?.setHeader('Cache-Control', 'private, max-age=60');
+        return;
+      }
+
+      data.etag = etag;
+      res?.setHeader('ETag', formatEtagHeader(etag));
+      res?.setHeader('Cache-Control', 'private, max-age=60');
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       throw error;

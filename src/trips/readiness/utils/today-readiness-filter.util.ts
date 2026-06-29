@@ -20,11 +20,7 @@ export function filterCoverageMapForDay(
   const pois = data.pois.filter((p) => p.day === dayNumber);
   const poiIds = new Set(pois.map((p) => p.id));
 
-  const segments = data.segments.filter((segment) => {
-    const fromPoi = data.pois.find((p) => p.id === segment.fromPoiId);
-    const toPoi = data.pois.find((p) => p.id === segment.toPoiId);
-    return fromPoi?.day === dayNumber || toPoi?.day === dayNumber;
-  });
+  const segments = data.segments.filter((segment) => segment.day === dayNumber);
 
   const segmentIds = new Set(segments.map((s) => s.id));
 

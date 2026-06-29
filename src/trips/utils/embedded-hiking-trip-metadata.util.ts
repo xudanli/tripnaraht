@@ -42,16 +42,7 @@ export function getTripMetadataMaxBytes(): number {
   return Number.isFinite(n) && n > 1024 ? n : 65536;
 }
 
-export function assertMetadataSizeLimit(metadata: Record<string, unknown>): void {
-  const json = JSON.stringify(metadata);
-  const max = getTripMetadataMaxBytes();
-  if (json.length > max) {
-    throw embeddedHikingBadRequest(
-      'METADATA_TOO_LARGE',
-      `metadata serialized size ${json.length} exceeds limit ${max} bytes`,
-    );
-  }
-}
+export { assertMetadataSizeLimit } from './trip-metadata-size.util';
 
 /** embedded 片段日期跨度（含首尾），用于 generate-plan durationDays */
 export function computeEmbeddedSegmentDurationDays(segments: HikingSegment[]): number {

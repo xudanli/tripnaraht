@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException, Optional, Inject, f
 import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TripConflictsService } from '../../services/trip-conflicts.service';
+import type { ConflictsResponseDto } from '../../dto/trip-conflicts.dto';
+import type { TripConflictsQueryOpts } from '../../services/trip-conflicts.service';
 import { CoverageMapService } from '../../readiness/services/coverage-map.service';
 import { ReadinessRepairService } from '../../readiness/services/readiness-repair.service';
 import { LoopTriggerBridgeService } from '../../../loops/services/loop-trigger-bridge.service';
@@ -28,6 +30,7 @@ import {
   revisionToString,
   snapshotMetaPatch,
 } from '../utils/trip-revision.util';
+import { buildStubReadinessFromSnapshot } from '../utils/feasibility-readiness-stub.util';
 import { isDecisionEngineRepairAction } from '../../readiness/utils/trip-decision-repair-bridge.util';
 import {
   buildRoadClassRepairOptions,
@@ -63,6 +66,7 @@ import {
   isMinuteBufferRepairPayload,
   shouldOfferMinuteTimingRepairs,
 } from '../utils/travel-timing-repair.util';
+import { buildDailyDriveRepairOptionsResponse } from '../utils/daily-drive-repair.util';
 
 @Injectable()
 export class FeasibilityReportService {
@@ -82,12 +86,25 @@ export class FeasibilityReportService {
     private readonly loopTriggerBridge?: LoopTriggerBridgeService,
   ) {}
 
-  async getReport(tripId: string, opts?: { locale?: string }): Promise<TripFeasibilityReportDto> {
+  async getReport(
+    tripId: string,
+    opts?: {
+      locale?: string;
+      preloadedConflicts?: ConflictsResponseDto;
+      /** 与外部共享同一 getConflicts promise，避免重复计算且可与 coverage 并行 */
+      preloadedConflictsPromise?: Promise<ConflictsResponseDto>;
+    },
+  ): Promise<TripFeasibilityReportDto> {
     const trip = await this.loadTripContext(tripId);
+    const conflictsPromise =
+      opts?.preloadedConflictsPromise ??
+      (opts?.preloadedConflicts != null
+        ? Promise.resolve(opts.preloadedConflicts)
+        : this.conflicts.getConflicts(tripId));
     const [readiness, coverage, conflictsResp, decisionEvidence] = await Promise.all([
       this.coverageMap.getReadinessScore(tripId),
       this.coverageMap.getCoverageMap(tripId),
-      this.conflicts.getConflicts(tripId),
+      conflictsPromise,
       this.loadDecisionEvidence(tripId),
     ]);
     const snapshot = readFeasibilitySnapshot(trip.metadata);
@@ -138,6 +155,56 @@ export class FeasibilityReportService {
         signalCount: itineraryCompleteness.signalCount,
       },
       p0Issues,
+    });
+  }
+
+  /**
+   * 快速 feasibility：启发式 conflicts + team-fit + metadata snapshot，跳过 coverage/readiness。
+   */
+  async getReportFast(
+    tripId: string,
+    opts?: {
+      preloadedConflicts?: ConflictsResponseDto;
+      preloadedConflictsPromise?: Promise<ConflictsResponseDto>;
+      conflictsQuery?: TripConflictsQueryOpts;
+    },
+  ): Promise<TripFeasibilityReportDto> {
+    const trip = await this.loadTripContext(tripId);
+    const conflictsPromise =
+      opts?.preloadedConflictsPromise ??
+      (opts?.preloadedConflicts != null
+        ? Promise.resolve(opts.preloadedConflicts)
+        : this.conflicts.getConflicts(tripId, undefined, undefined, opts?.conflictsQuery));
+
+    const conflictsResp = await conflictsPromise;
+    const teamFit = await this.teamFitAssessment.assessForTrip(tripId, conflictsResp.conflicts);
+    const snapshot = readFeasibilitySnapshot(trip.metadata);
+    const revision = resolveTripRevision(trip);
+    const readiness = buildStubReadinessFromSnapshot(tripId, snapshot);
+
+    return assembleFeasibilityReport({
+      trip,
+      tripDays: trip.tripDays,
+      readiness,
+      conflicts: conflictsResp.conflicts,
+      revision,
+      snapshot: snapshot
+        ? {
+            verifiedAt: typeof snapshot.verifiedAt === 'string' ? snapshot.verifiedAt : undefined,
+            verifiedForTripVersion:
+              typeof snapshot.verifiedForTripVersion === 'string'
+                ? snapshot.verifiedForTripVersion
+                : undefined,
+            gateResult: typeof snapshot.gateResult === 'string' ? snapshot.gateResult : undefined,
+          }
+        : null,
+      teamFitScore: teamFit.score,
+      teamFitIssues: teamFit.issues,
+      teamFitSummary: {
+        score: teamFit.score,
+        memberCount: teamFit.memberCount,
+        profilingCompletedCount: teamFit.profilingCompletedCount,
+      },
     });
   }
 
@@ -276,6 +343,8 @@ export class FeasibilityReportService {
         throw new BadRequestException(`无法解析超长路段 issue: ${issueId}`);
       }
       response = buildRoadClassRepairOptions(tripId, roadClassIssue);
+    } else if (issue?.issueKind === 'daily_drive') {
+      response = buildDailyDriveRepairOptionsResponse(tripId, issue);
     } else if (issue?.issueKind === 'inter_day_travel' || issue?.issueKind === 'same_day_travel') {
       response = buildTravelTimingRepairOptions(tripId, issue);
     } else if (issue?.issueKind === 'buffer_insufficient') {

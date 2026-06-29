@@ -644,6 +644,13 @@ export interface HarnessRuntimeState {
    */
   evaluationRunId?: string;
   /**
+   * 入站 W3C / OTel trace id（32 hex），与 Harness trace JSON `meta.otelTraceId`、
+   * `observability.otel_trace_id` 对齐，便于 APM ↔ on-failure JSON 联查。
+   */
+  otelTraceId?: string;
+  /** 入站 W3C parent span id（16 hex） */
+  otelSpanId?: string;
+  /**
    * 若设置 `HARNESS_TRACE_EXPORT_DIR` 且落盘成功：相对 `process.cwd()` 的 POSIX 路径（replay `traceRefs.path` / API observability）。
    */
   traceExportRelativePath?: string;

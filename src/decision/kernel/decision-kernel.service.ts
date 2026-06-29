@@ -125,22 +125,28 @@ import {
   patentCandidatesToDsoField,
 } from './patent/plan-gen-candidate-pool.util';
 import { applyPatentFeedbackLearning } from './patent/patent-feedback-learning.util';
+import {
+  parseHarnessKernelHardEnabled,
+  parseHarnessKernelShadowStrictEnabled,
+  parseHarnessShadowAfterPhaseEnabled,
+} from './harness-kernel-hard-mode.util';
 
 @Injectable()
 export class DecisionKernelService {
   private readonly logger = new Logger(DecisionKernelService.name);
   private readonly strictAtomicity = process.env.DECISION_OS_ATOMIC_STRICT === '1';
   /**
-   * 每阶段 commit 后追加影子 Harness（不阻断；`HARNESS_SHADOW_AFTER_PHASE=1` 开启）。
+   * 每阶段 commit 后追加影子 Harness（不阻断；`HARNESS_SHADOW_AFTER_PHASE=1` 或 `HARNESS_KERNEL_HARD=1` 开启）。
    * 产物写入 `harnessRuntime.shadow_harness_events`，供监控与 `explain.kernel_explainability`。
-   *  rollout：先在 STRICT 下积累「无差」样本（如连续 100 请求），再考虑将硬门设为默认；见类型侧对指标 A/B 的注释。
+   *  rollout：先在 shadow 下积累「无差」样本（如连续 100 请求），运维签字后 `HARNESS_KERNEL_HARD=1`。
    * 指标：`HarnessShadowMetricsCollector`（`HARNESS_SHADOW_METRICS_DISABLED=1` 关闭；`HARNESS_SHADOW_CONSECUTIVE_THRESHOLD` 默认 100）。
    */
-  private readonly shadowHarnessAfterPhase = process.env.HARNESS_SHADOW_AFTER_PHASE === '1';
+  private readonly kernelHard = parseHarnessKernelHardEnabled();
+  private readonly shadowHarnessAfterPhase = parseHarnessShadowAfterPhaseEnabled();
   /**
-   * 影子 Harness 失败时抛错中断（`HARNESS_KERNEL_SHADOW_STRICT=1`）。用于演练硬门，不等同于生产默认拦截。
+   * 影子 Harness 失败时抛错中断（`HARNESS_KERNEL_HARD=1` 或演练 `HARNESS_KERNEL_SHADOW_STRICT=1`）。
    */
-  private readonly shadowHarnessStrict = process.env.HARNESS_KERNEL_SHADOW_STRICT === '1';
+  private readonly shadowHarnessStrict = parseHarnessKernelShadowStrictEnabled();
   private readonly commitWindowMs = Number(process.env.DECISION_OS_COMMIT_WINDOW_MS ?? 20);
   private readonly metaBudget = new MetaDecisionBudgetAllocatorService();
   private readonly failSafeMetaBudgetMinSampleSize = (() => {
@@ -191,7 +197,13 @@ export class DecisionKernelService {
     @Optional() private readonly observationHarness?: ObservationHarnessService,
     @Optional() private readonly contextLint?: OrchestratorContextLintService,
     @Optional() private readonly multiPersonDecision?: MultiPersonDecisionService,
-  ) {}
+  ) {
+    if (this.kernelHard) {
+      this.logger.warn(
+        '[Harness] HARNESS_KERNEL_HARD=1 — post-phase shadow harness failures BLOCK main chain',
+      );
+    }
+  }
 
   /**
    * Phase 4a：进入 Kernel phase 执行器前的上下文边界检查（`ORCHESTRATOR_CONTEXT_LINT_ENABLED=1`）。
@@ -393,11 +405,6 @@ export class DecisionKernelService {
       },
     );
     const passed = out.status === 'PASSED' || out.status === 'REPAIRED';
-    if (!passed && this.shadowHarnessStrict) {
-      throw new Error(
-        `HARNESS_KERNEL_SHADOW_STRICT: shadow harness failed phase=${phaseName} step=${String(harnessStep)} status=${out.status}`,
-      );
-    }
 
     this.harnessShadowMetrics?.recordShadowCheck({
       kernel_phase: phaseName,
@@ -408,6 +415,12 @@ export class DecisionKernelService {
       request_id: requestId,
     });
 
+    if (!passed && this.shadowHarnessStrict) {
+      throw new Error(
+        `${this.kernelHard ? 'HARNESS_KERNEL_HARD' : 'HARNESS_KERNEL_SHADOW_STRICT'}: shadow harness failed phase=${phaseName} step=${String(harnessStep)} status=${out.status}`,
+      );
+    }
+
     const failedCodes = out.validationResults.filter((v) => !v.passed).map((v) => v.code);
     const event = {
       kernel_phase: phaseName,
@@ -416,7 +429,9 @@ export class DecisionKernelService {
       shadow_enforcement: true as const,
       harness_warning: passed
         ? undefined
-        : `[SHADOW_HARNESS] 阶段 ${phaseName} 提交后复验 Harness(${String(harnessStep)})=${out.status}；主链未阻断。失败码: ${failedCodes.join(',') || 'n/a'}`,
+        : this.shadowHarnessStrict
+          ? `[SHADOW_HARNESS] 阶段 ${phaseName} Harness(${String(harnessStep)})=${out.status}；硬门禁已阻断主链。失败码: ${failedCodes.join(',') || 'n/a'}`
+          : `[SHADOW_HARNESS] 阶段 ${phaseName} 提交后复验 Harness(${String(harnessStep)})=${out.status}；主链未阻断。失败码: ${failedCodes.join(',') || 'n/a'}`,
       validation_results: out.validationResults.map((v) => ({
         passed: v.passed,
         code: v.code,
@@ -454,6 +469,8 @@ export class DecisionKernelService {
     requestId: string,
     opts?: {
       evaluationRunId?: string;
+      otelTraceId?: string;
+      otelSpanId?: string;
       replanLineage?: {
         previous_plan_version?: number;
         previous_world_snapshot_hash?: string;
@@ -479,6 +496,14 @@ export class DecisionKernelService {
     const runId = opts?.evaluationRunId?.trim();
     if (runId) {
       harnessRuntime.evaluationRunId = runId;
+    }
+    const otelTraceId = opts?.otelTraceId?.trim();
+    if (otelTraceId) {
+      harnessRuntime.otelTraceId = otelTraceId;
+    }
+    const otelSpanId = opts?.otelSpanId?.trim();
+    if (otelSpanId) {
+      harnessRuntime.otelSpanId = otelSpanId;
     }
     if (opts?.replanLineage) {
       const rl = opts.replanLineage;

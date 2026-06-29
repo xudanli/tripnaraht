@@ -49,6 +49,24 @@ export interface TeamFitAssessmentResult {
 const PACE_STRATEGY =
   '设定每日「固定锚点 + 弹性时段」，高强度日优先照顾节奏保守成员。';
 
+const MEMBER_USER_ID_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 过滤 metadata / collaborator 中的非 UUID userId，避免 Prisma `in` 查询抛错。 */
+export function filterValidMemberUserIds(userIds: Iterable<string>): string[] {
+  const seen = new Set<string>();
+  const valid: string[] = [];
+  for (const raw of userIds) {
+    const id = raw?.trim();
+    if (!id || id === 'anonymous' || !MEMBER_USER_ID_UUID_RE.test(id) || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    valid.push(id);
+  }
+  return valid;
+}
+
 function clampScore(value: number): number {
   return Math.round(Math.max(0, Math.min(100, value)));
 }

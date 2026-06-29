@@ -53,4 +53,11 @@ describe('ContextSlidingWindowAdapter', () => {
     expect(result).toHaveLength(2);
     expect(result).toEqual(['Message 1', 'Message 2']);
   });
+
+  it('sliceSafe filters invalid messages before slice', () => {
+    expect(adapter.sliceSafe('intent_compiler', ['a', '', '  ', 1 as unknown as string, 'b'])).toEqual([
+      'a',
+      'b',
+    ]);
+  });
 });

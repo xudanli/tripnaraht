@@ -35,6 +35,12 @@ import {
   getTripReadinessPhase,
 } from '../utils/trip-readiness-relevance.util';
 import { isRoadClassHazard, buildRoadClassRepairOptions, resolveRoadClassFindingForRepair } from '../../trip-constraint-solver/utils/road-class-repair-options.util';
+import {
+  resolveSegmentDistanceThresholds,
+  longDistanceHighMessage,
+  longDistanceWarnMessage,
+  GLOBAL_SEGMENT_DISTANCE_THRESHOLDS,
+} from '../../trip-constraint-solver/utils/segment-distance-threshold.util';
 import { normalizeIssueId } from '../../trip-constraint-solver/utils/trip-revision.util';
 import {
   deriveTodayReadinessStatus,
@@ -65,7 +71,10 @@ import { extractTripPhysicalValidationSnapshot } from '../../../domain/ontology/
 import { ReadinessCausalPreanalysisService } from './readiness-causal-preanalysis.service';
 import { ReadinessGuardianNegotiationService } from './readiness-guardian-negotiation.service';
 import type { PoiAccessReadinessBridgeService } from '../../../poi-access-capacity/services/poi-access-readiness-bridge.service';
+import { RouteGeometryService } from '../../../transport/services/route-geometry.service';
+import { encodePolyline } from '../../../transport/utils/encoded-polyline.util';
 import { scoreFindingToTreeItem } from '../../../poi-access-capacity/utils/poi-access-readiness-findings.util';
+import { resolvePlaceCoordinates } from '../../../places/utils/place-coordinates.util';
 import {
   ReadinessCheckResult,
   ReadinessFinding,
@@ -82,6 +91,18 @@ interface PlaceWithCoordinates {
   location?: any;
 }
 
+export interface GetCoverageMapOptions {
+  /** false 时跳过 identifyGaps / deduplicatedWarnings（journey-map fields=minimal） */
+  includeGaps?: boolean;
+  /** false 时 segment polyline 使用直线（跳过路线 API） */
+  resolveRouteGeometry?: boolean;
+}
+
+export interface GetReadinessScoreOptions {
+  /** 已计算的 coverage，避免 journey-map / feasibility BFF 重复 getCoverageMap */
+  coverageData?: CoverageMapData;
+}
+
 @Injectable()
 export class CoverageMapService {
   private readonly logger = new Logger(CoverageMapService.name);
@@ -92,12 +113,18 @@ export class CoverageMapService {
     @Optional() private readonly causalPreanalysisService?: ReadinessCausalPreanalysisService,
     @Optional() private readonly guardianNegotiationService?: ReadinessGuardianNegotiationService,
     @Optional() private readonly poiAccessReadiness?: PoiAccessReadinessBridgeService,
+    @Optional() private readonly routeGeometry?: RouteGeometryService,
   ) {}
 
   /**
    * 获取行程覆盖地图数据
    */
-  async getCoverageMap(tripId: string): Promise<CoverageMapData> {
+  async getCoverageMap(
+    tripId: string,
+    options?: GetCoverageMapOptions,
+  ): Promise<CoverageMapData> {
+    const includeGaps = options?.includeGaps !== false;
+    const resolveRouteGeometry = options?.resolveRouteGeometry !== false;
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
@@ -105,7 +132,7 @@ export class CoverageMapService {
           include: {
             ItineraryItem: {
               include: { Place: true },
-              orderBy: { startTime: 'asc' },
+              orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
             },
           },
           orderBy: { date: 'asc' },
@@ -169,23 +196,25 @@ export class CoverageMapService {
 
     for (let dayIndex = 0; dayIndex < trip.TripDay.length; dayIndex++) {
       const day = trip.TripDay[dayIndex];
-      let orderInDay = 0;
+      let fallbackOrderInDay = 0;
 
       for (const item of day.ItineraryItem) {
         if (item.Place) {
-          // 优先使用 PostGIS 坐标，其次使用 metadata 中的坐标
-          let coords = item.placeId ? placeCoordinatesMap.get(item.placeId) : null;
-          if (!coords) {
-            coords = this.extractPlaceCoordinates(item.Place);
-          }
+          const postgisCoords = item.placeId ? placeCoordinatesMap.get(item.placeId) : undefined;
+          const coords = resolvePlaceCoordinates(item.Place, postgisCoords);
           if (coords) {
             coordinates.push(coords);
             poiIndex++;
+            fallbackOrderInDay += 1;
+            const orderInDay =
+              typeof item.order === 'number' && Number.isFinite(item.order)
+                ? item.order
+                : fallbackOrderInDay;
             const poiCoverage = this.evaluatePoiCoverage(
               `poi-${poiIndex}`,
               item.id,
               dayIndex + 1,
-              ++orderInDay,
+              orderInDay,
               item.Place,
               coords,
               readinessResult,
@@ -194,21 +223,37 @@ export class CoverageMapService {
               item.endTime?.toISOString(),
             );
             pois.push(poiCoverage);
+          } else {
+            this.logger.debug(
+              `coverage POI 链跳过无坐标项: trip=${tripId} day=${dayIndex + 1} item=${item.id} place=${item.placeId ?? 'n/a'}`,
+            );
           }
         }
       }
     }
 
     const isWinter = this.isWinterSeason(tripStartDate);
-    const { segments, deferredHazardCount } = this.generateSegments(pois, isWinter, trip.startDate);
-    const gaps = this.identifyGaps(pois, segments);
+    const segmentDistanceThresholds = resolveSegmentDistanceThresholds({
+      destination: trip.destination,
+      metadata: trip.metadata,
+    });
+    const { segments, deferredHazardCount } = await this.generateSegments(
+      pois,
+      isWinter,
+      trip.startDate,
+      segmentDistanceThresholds,
+      resolveRouteGeometry,
+    );
+    const gaps = includeGaps ? this.identifyGaps(pois, segments) : [];
     const bounds = this.calculateBounds(coordinates);
     const center = this.calculateCenter(coordinates);
     const zoom = this.calculateZoom(bounds);
     const summary = this.calculateSummary(pois, segments, gaps);
 
-    // 优化：去重和排序警告
-    const { deduplicatedWarnings, warningsBySeverity } = this.deduplicateAndSortWarnings(gaps, pois, segments);
+    const dedupeResult = includeGaps
+      ? this.deduplicateAndSortWarnings(gaps, pois, segments)
+      : { deduplicatedWarnings: undefined, warningsBySeverity: undefined };
+    const { deduplicatedWarnings, warningsBySeverity } = dedupeResult;
     
     // 优化：计算证据状态摘要
     const evidenceStatusSummary = this.calculateEvidenceStatusSummary(pois);
@@ -233,42 +278,18 @@ export class CoverageMapService {
       deduplicatedWarnings,
       warningsBySeverity,
       evidenceStatusSummary,
-      calculatedAt: new Date().toISOString(),
+      calculatedAt: this.resolveCoverageCalculatedAt(dataFreshness, trip.updatedAt),
       dataFreshness,
       readinessPhase: phaseMeta.readinessPhase,
       daysUntilStart: phaseMeta.daysUntilStart,
       phaseHint: phaseMeta.phaseHint.zh,
       deferredLiveGapCount: deferredHazardCount > 0 ? deferredHazardCount : undefined,
+      segmentDistanceThresholds,
     };
   }
 
   private extractPlaceCoordinates(place: PlaceWithCoordinates): Coordinates | null {
-    const metadata = place.metadata || {};
-    if (metadata.lat && metadata.lng) {
-      return { lat: metadata.lat, lng: metadata.lng };
-    }
-    if (metadata.coordinates && Array.isArray(metadata.coordinates)) {
-      return { lat: metadata.coordinates[1], lng: metadata.coordinates[0] };
-    }
-    const location = place.location;
-    if (location) {
-      if (typeof location === 'string') {
-        const match = location.match(/POINT\(([^)]+)\)/);
-        if (match) {
-          const [lng, lat] = match[1].split(/\s+/).map(parseFloat);
-          return { lat, lng };
-        }
-      }
-      if (typeof location === 'object') {
-        if (location.coordinates && Array.isArray(location.coordinates)) {
-          return { lng: location.coordinates[0], lat: location.coordinates[1] };
-        }
-        if (location.lat && location.lng) {
-          return { lat: location.lat, lng: location.lng };
-        }
-      }
-    }
-    return null;
+    return resolvePlaceCoordinates(place);
   }
 
   private evaluatePoiCoverage(
@@ -661,64 +682,215 @@ export class CoverageMapService {
     return typesNeedingPermit.some(t => canonicalType.includes(t));
   }
 
+  private resolveCoverageCalculatedAt(
+    dataFreshness: {
+      weather?: string;
+      roadClosure?: string;
+      openingHours?: string;
+      inventory?: string;
+    },
+    tripUpdatedAt: Date,
+  ): string {
+    const candidates = [
+      dataFreshness?.weather,
+      dataFreshness?.roadClosure,
+      dataFreshness?.openingHours,
+      dataFreshness?.inventory,
+      tripUpdatedAt.toISOString(),
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+    return candidates.sort().reverse()[0]!;
+  }
+
+  private normalizeJourneyMapPoiType(raw: string): string {
+    const POI_TYPE_MAP: Record<string, string> = {
+      city: 'city',
+      attraction: 'attraction',
+      hotel: 'hotel',
+      restaurant: 'restaurant',
+      transport: 'transport',
+      nature: 'attraction',
+      accommodation: 'hotel',
+      lodging: 'hotel',
+      food: 'restaurant',
+      culture: 'attraction',
+      viewpoint: 'attraction',
+      beach: 'attraction',
+      hot_spring: 'attraction',
+      camping: 'hotel',
+      shopping: 'other',
+      service: 'other',
+    };
+    const key = raw.trim().toLowerCase();
+    return POI_TYPE_MAP[key] ?? 'other';
+  }
+
   private mapPlaceCategoryWithCanonical(category: string, canonicalType?: string): string {
+    let raw = 'attraction';
+
     // 优先使用 canonicalType 映射
     if (canonicalType) {
       const ct = canonicalType.toUpperCase();
-      if (ct.includes('CITY') || ct.includes('TOWN') || ct.includes('VILLAGE')) return 'city';
-      if (ct.includes('HOTEL') || ct.includes('ACCOMMODATION') || ct.includes('HOSTEL') || ct.includes('GUESTHOUSE')) return 'accommodation';
-      if (ct.includes('RESTAURANT') || ct.includes('CAFE') || ct.includes('FOOD')) return 'restaurant';
-      if (ct.includes('GLACIER') || ct.includes('VOLCANO') || ct.includes('WATERFALL') || ct.includes('GEYSER')) return 'nature';
-      if (ct.includes('HOT_SPRING') || ct.includes('SPA') || ct.includes('POOL')) return 'hot_spring';
-      if (ct.includes('NATIONAL_PARK') || ct.includes('NATURE') || ct.includes('TRAILHEAD')) return 'nature';
-      if (ct.includes('MUSEUM') || ct.includes('CULTURE') || ct.includes('CHURCH')) return 'culture';
-      if (ct.includes('SHOP') || ct.includes('SUPERMARKET')) return 'shopping';
-      if (ct.includes('FUEL') || ct.includes('GAS_STATION')) return 'service';
-      if (ct.includes('VIEWPOINT') || ct.includes('SCENIC')) return 'viewpoint';
-      if (ct.includes('BEACH') || ct.includes('COASTAL')) return 'beach';
-      if (ct.includes('CAMPING')) return 'camping';
+      if (ct.includes('CITY') || ct.includes('TOWN') || ct.includes('VILLAGE')) raw = 'city';
+      else if (ct.includes('HOTEL') || ct.includes('ACCOMMODATION') || ct.includes('HOSTEL') || ct.includes('GUESTHOUSE')) raw = 'accommodation';
+      else if (ct.includes('RESTAURANT') || ct.includes('CAFE') || ct.includes('FOOD')) raw = 'restaurant';
+      else if (ct.includes('GLACIER') || ct.includes('VOLCANO') || ct.includes('WATERFALL') || ct.includes('GEYSER')) raw = 'nature';
+      else if (ct.includes('HOT_SPRING') || ct.includes('SPA') || ct.includes('POOL')) raw = 'hot_spring';
+      else if (ct.includes('NATIONAL_PARK') || ct.includes('NATURE') || ct.includes('TRAILHEAD')) raw = 'nature';
+      else if (ct.includes('MUSEUM') || ct.includes('CULTURE') || ct.includes('CHURCH')) raw = 'culture';
+      else if (ct.includes('SHOP') || ct.includes('SUPERMARKET')) raw = 'shopping';
+      else if (ct.includes('FUEL') || ct.includes('GAS_STATION')) raw = 'service';
+      else if (ct.includes('VIEWPOINT') || ct.includes('SCENIC')) raw = 'viewpoint';
+      else if (ct.includes('BEACH') || ct.includes('COASTAL')) raw = 'beach';
+      else if (ct.includes('CAMPING')) raw = 'camping';
+    } else {
+      const categoryLower = (category || '').toLowerCase();
+      if (categoryLower.includes('city') || categoryLower.includes('town')) raw = 'city';
+      else if (categoryLower.includes('hotel') || categoryLower.includes('accommodation')) raw = 'accommodation';
+      else if (categoryLower.includes('restaurant') || categoryLower.includes('food')) raw = 'restaurant';
+      else if (categoryLower.includes('nature') || categoryLower.includes('outdoor')) raw = 'nature';
+      else if (categoryLower.includes('museum') || categoryLower.includes('culture')) raw = 'culture';
+      else if (categoryLower.includes('shop') || categoryLower.includes('shopping')) raw = 'shopping';
     }
 
-    // 降级到 category 映射
-    const categoryLower = (category || '').toLowerCase();
-    if (categoryLower.includes('city') || categoryLower.includes('town')) return 'city';
-    if (categoryLower.includes('hotel') || categoryLower.includes('accommodation')) return 'accommodation';
-    if (categoryLower.includes('restaurant') || categoryLower.includes('food')) return 'restaurant';
-    if (categoryLower.includes('nature') || categoryLower.includes('outdoor')) return 'nature';
-    if (categoryLower.includes('museum') || categoryLower.includes('culture')) return 'culture';
-    if (categoryLower.includes('shop') || categoryLower.includes('shopping')) return 'shopping';
-    return 'attraction';
+    return this.normalizeJourneyMapPoiType(raw);
   }
 
-  private generateSegments(
+  private async generateSegments(
     pois: PoiCoverage[],
     isWinter: boolean,
     tripStartDate: Date,
-  ): { segments: SegmentCoverage[]; deferredHazardCount: number } {
+    segmentDistanceThresholds: ReturnType<typeof resolveSegmentDistanceThresholds>,
+    resolveRouteGeometry: boolean,
+  ): Promise<{ segments: SegmentCoverage[]; deferredHazardCount: number }> {
     const segments: SegmentCoverage[] = [];
     let deferredHazardCount = 0;
-    if (pois.length < 2) return { segments, deferredHazardCount };
 
-    for (let i = 0; i < pois.length - 1; i++) {
-      const fromPoi = pois[i];
-      const toPoi = pois[i + 1];
-      const distance = this.calculateDistance(fromPoi.coordinates, toPoi.coordinates);
-      const avgSpeed = isWinter ? 50 : 60;
-      const duration = Math.round((distance / avgSpeed) * 60);
-      const evaluated = this.evaluateSegmentRisk(fromPoi, toPoi, distance, isWinter);
-      const beforeCount = evaluated.hazards.length;
-      const hazards = filterSegmentHazardsForTripPhase(evaluated.hazards, tripStartDate);
-      deferredHazardCount += beforeCount - hazards.length;
-      const status = this.deriveSegmentCoverageStatus(hazards);
-      const polyline = this.encodePolyline([fromPoi.coordinates, toPoi.coordinates]);
+    const adjacentPairs = this.groupAdjacentPoiPairsByDay(pois);
+    if (adjacentPairs.length === 0) return { segments, deferredHazardCount };
 
-      segments.push({
-        id: `seg-${i + 1}`, fromPoiId: fromPoi.id, toPoiId: toPoi.id, day: fromPoi.day,
-        distance: Math.round(distance), duration, routeType: 'driving',
-        coverageStatus: status, polyline, hazards,
-      });
-    }
+    const segmentJobs = adjacentPairs.map(([fromPoi, toPoi], sequenceIndex) =>
+      this.buildSegmentCoverage({
+        fromPoi,
+        toPoi,
+        sequenceIndex,
+        isWinter,
+        tripStartDate,
+        segmentDistanceThresholds,
+        resolveRouteGeometry,
+      }).then(({ segment, deferredDelta }) => {
+        deferredHazardCount += deferredDelta;
+        return segment;
+      }),
+    );
+
+    const built = await Promise.all(segmentJobs);
+    segments.push(...built);
     return { segments, deferredHazardCount };
+  }
+
+  /** Same-day consecutive POI pairs in itinerary order (coverage map route lines). */
+  private groupAdjacentPoiPairsByDay(pois: PoiCoverage[]): Array<[PoiCoverage, PoiCoverage]> {
+    const poisByDay = new Map<number, PoiCoverage[]>();
+    for (const poi of pois) {
+      const list = poisByDay.get(poi.day) ?? [];
+      list.push(poi);
+      poisByDay.set(poi.day, list);
+    }
+
+    const pairs: Array<[PoiCoverage, PoiCoverage]> = [];
+    for (const day of [...poisByDay.keys()].sort((a, b) => a - b)) {
+      const dayPois = poisByDay.get(day)!.slice().sort((a, b) => a.order - b.order);
+      for (let i = 0; i < dayPois.length - 1; i++) {
+        pairs.push([dayPois[i]!, dayPois[i + 1]!]);
+      }
+    }
+    return pairs;
+  }
+
+  private async buildSegmentCoverage(input: {
+    fromPoi: PoiCoverage;
+    toPoi: PoiCoverage;
+    sequenceIndex: number;
+    isWinter: boolean;
+    tripStartDate: Date;
+    segmentDistanceThresholds: ReturnType<typeof resolveSegmentDistanceThresholds>;
+    resolveRouteGeometry: boolean;
+  }): Promise<{ segment: SegmentCoverage; deferredDelta: number }> {
+    const { fromPoi, toPoi, sequenceIndex, isWinter, tripStartDate, segmentDistanceThresholds, resolveRouteGeometry } =
+      input;
+
+    const straightDistance = this.calculateDistance(fromPoi.coordinates, toPoi.coordinates);
+    let distance = straightDistance;
+    let duration = Math.round((straightDistance / (isWinter ? 50 : 60)) * 60);
+
+    const evaluated = this.evaluateSegmentRisk(
+      fromPoi,
+      toPoi,
+      straightDistance,
+      isWinter,
+      segmentDistanceThresholds,
+    );
+    const beforeCount = evaluated.hazards.length;
+    const hazards = filterSegmentHazardsForTripPhase(evaluated.hazards, tripStartDate);
+    const deferredDelta = beforeCount - hazards.length;
+    const status = this.deriveSegmentCoverageStatus(hazards);
+
+    let polyline = encodePolyline([fromPoi.coordinates, toPoi.coordinates]);
+    let geometrySource: SegmentCoverage['geometrySource'] = 'straight_line';
+
+    const cachedPolyline = this.readCachedRoutePolyline(fromPoi.metadata, toPoi.metadata);
+    if (resolveRouteGeometry && this.routeGeometry) {
+      const geometry = await this.routeGeometry.resolveGeometry({
+        from: fromPoi.coordinates,
+        to: toPoi.coordinates,
+        travelMode: 'DRIVING',
+        cachedPolyline,
+        useRouteApi: true,
+      });
+      polyline = geometry.polyline;
+      geometrySource = geometry.geometrySource;
+      if (geometry.distanceMeters != null && geometry.distanceMeters > 0) {
+        distance = Math.round(geometry.distanceMeters / 1000);
+      }
+      if (geometry.durationMinutes != null && geometry.durationMinutes > 0) {
+        duration = geometry.durationMinutes;
+      }
+    } else if (cachedPolyline) {
+      polyline = cachedPolyline;
+      geometrySource = 'cached_metadata';
+    }
+
+    const segment: SegmentCoverage = {
+      id: `seg-${sequenceIndex + 1}`,
+      fromPoiId: fromPoi.id,
+      toPoiId: toPoi.id,
+      day: fromPoi.day,
+      sequenceIndex,
+      distance: Math.round(distance),
+      duration,
+      routeType: 'driving',
+      coverageStatus: status,
+      polyline,
+      geometrySource,
+      hazards,
+    };
+
+    return { segment, deferredDelta };
+  }
+
+  private readCachedRoutePolyline(fromMetadata?: unknown, toMetadata?: unknown): string | undefined {
+    for (const metadata of [toMetadata, fromMetadata]) {
+      if (!metadata || typeof metadata !== 'object') continue;
+      const raw = metadata as Record<string, unknown>;
+      const candidate =
+        raw.route_encoded_polyline ??
+        raw.routeEncodedPolyline ??
+        (raw.routing as { encodedPolyline?: string } | undefined)?.encodedPolyline;
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+    return undefined;
   }
 
   private deriveSegmentCoverageStatus(hazards: SegmentHazard[]): SegmentCoverageStatus {
@@ -731,16 +903,25 @@ export class CoverageMapService {
     toPoi: PoiCoverage,
     distance: number,
     isWinter: boolean = false,
+    thresholds: ReturnType<typeof resolveSegmentDistanceThresholds>,
   ): { status: SegmentCoverageStatus; hazards: SegmentHazard[] } {
     const hazards: SegmentHazard[] = [];
     let status: SegmentCoverageStatus = 'covered';
 
-    // 长距离风险
-    if (distance > 300) {
-      hazards.push({ type: 'long_distance', severity: 'high', message: '超长距离行驶(>300km)，强烈建议分段或中途住宿' });
+    // 长距离风险（阈值来自用户硬约束 / 国家默认 / 全局默认）
+    if (distance > thresholds.maxSegmentDistanceKm) {
+      hazards.push({
+        type: 'long_distance',
+        severity: 'high',
+        message: longDistanceHighMessage(thresholds.maxSegmentDistanceKm),
+      });
       status = 'warning';
-    } else if (distance > 200) {
-      hazards.push({ type: 'long_distance', severity: 'medium', message: '长距离行驶(>200km)，建议中途休息' });
+    } else if (distance > thresholds.warnSegmentDistanceKm) {
+      hazards.push({
+        type: 'long_distance',
+        severity: 'medium',
+        message: longDistanceWarnMessage(thresholds.warnSegmentDistanceKm),
+      });
       status = 'warning';
     }
 
@@ -759,7 +940,7 @@ export class CoverageMapService {
     // 冬季特殊风险
     if (isWinter) {
       // 冬季长距离风险更高
-      if (distance > 150 && !hazards.some(h => h.type === 'long_distance')) {
+      if (distance > thresholds.winterWarnSegmentDistanceKm && !hazards.some(h => h.type === 'long_distance')) {
         hazards.push({ type: 'winter_driving', severity: 'medium', message: '冬季行驶，日照时间短，建议早出发' });
         status = 'warning';
       }
@@ -1007,7 +1188,10 @@ export class CoverageMapService {
   /**
    * 获取行程准备度分数
    */
-  async getReadinessScore(tripId: string): Promise<ReadinessScoreResponse> {
+  async getReadinessScore(
+    tripId: string,
+    options?: GetReadinessScoreOptions,
+  ): Promise<ReadinessScoreResponse> {
     // 获取行程基本信息
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
@@ -1016,7 +1200,7 @@ export class CoverageMapService {
           include: {
             ItineraryItem: {
               include: { Place: true },
-              orderBy: { startTime: 'asc' },
+              orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
             },
           },
           orderBy: { date: 'asc' },
@@ -1028,8 +1212,9 @@ export class CoverageMapService {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
     }
 
-    // 获取覆盖地图数据（复用已有逻辑）
-    const coverageData = await this.getCoverageMap(tripId);
+    // 获取覆盖地图数据（复用已有逻辑或 BFF 预计算结果）
+    const coverageData =
+      options?.coverageData ?? (await this.getCoverageMap(tripId));
 
     // 获取准备度检查结果
     let readinessResult: any;
@@ -1184,7 +1369,7 @@ export class CoverageMapService {
           include: {
             ItineraryItem: {
               include: { Place: true },
-              orderBy: { startTime: 'asc' },
+              orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
             },
           },
           orderBy: { date: 'asc' },
@@ -1893,8 +2078,11 @@ export class CoverageMapService {
       if (!fromPoi || !toPoi) continue;
 
       if (segment.duration > 180 && !hasScheduleHint(segment.day)) {
+        const maxKm =
+          coverageData.segmentDistanceThresholds?.maxSegmentDistanceKm ??
+          GLOBAL_SEGMENT_DISTANCE_THRESHOLDS.maxSegmentDistanceKm;
         const hasRoadClass = segment.hazards.some((h) =>
-          isRoadClassHazard(h, segment.distance),
+          isRoadClassHazard(h, segment.distance, maxKm),
         );
         if (!hasRoadClass) {
           findings.push({
@@ -1914,7 +2102,10 @@ export class CoverageMapService {
       for (const hazard of segment.hazards) {
         const message = `第${segment.day}天 · ${fromPoi.name} → ${toPoi.name} · ${hazard.message}`;
         if (hasTransportMessage(message)) continue;
-        const isRoadClass = isRoadClassHazard(hazard, segment.distance);
+        const maxKm =
+          coverageData.segmentDistanceThresholds?.maxSegmentDistanceKm ??
+          GLOBAL_SEGMENT_DISTANCE_THRESHOLDS.maxSegmentDistanceKm;
+        const isRoadClass = isRoadClassHazard(hazard, segment.distance, maxKm);
         const isRoadClosureBlocker =
           hazard.type === 'road_closure' && hazard.severity === 'high';
         const highlightIds = [fromPoi.itemId, toPoi.itemId].filter(Boolean) as string[];
@@ -2058,7 +2249,7 @@ export class CoverageMapService {
           include: {
             ItineraryItem: {
               include: { Place: true },
-              orderBy: { startTime: 'asc' },
+              orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
             },
           },
           orderBy: { date: 'asc' },
@@ -2590,19 +2781,28 @@ export class CoverageMapService {
     weather?: string;
     roadClosure?: string;
     openingHours?: string;
+    inventory?: string;
   } {
     const freshness: {
       weather?: string;
       roadClosure?: string;
       openingHours?: string;
+      inventory?: string;
     } = {};
     
     const weatherDates: string[] = [];
     const roadClosureDates: string[] = [];
     const openingHoursDates: string[] = [];
+    const inventoryDates: string[] = [];
     
     for (const poi of pois) {
       const statuses = this.getEvidenceStatus(poi);
+      const poiType = poi.type?.toUpperCase() ?? '';
+      const isAccommodation =
+        poiType.includes('HOTEL') ||
+        poiType.includes('ACCOMMODATION') ||
+        poiType.includes('HOSTEL') ||
+        poiType.includes('GUESTHOUSE');
       for (const status of statuses) {
         if (status.type === 'weather' && status.status === 'fetched' && status.lastUpdated) {
           weatherDates.push(status.lastUpdated);
@@ -2610,6 +2810,13 @@ export class CoverageMapService {
           roadClosureDates.push(status.lastUpdated);
         } else if (status.type === 'opening_hours' && status.status === 'fetched' && status.lastUpdated) {
           openingHoursDates.push(status.lastUpdated);
+        } else if (
+          status.type === 'booking_confirmation' &&
+          status.status === 'fetched' &&
+          status.lastUpdated &&
+          isAccommodation
+        ) {
+          inventoryDates.push(status.lastUpdated);
         }
       }
     }
@@ -2623,6 +2830,9 @@ export class CoverageMapService {
     }
     if (openingHoursDates.length > 0) {
       freshness.openingHours = openingHoursDates.sort().reverse()[0];
+    }
+    if (inventoryDates.length > 0) {
+      freshness.inventory = inventoryDates.sort().reverse()[0];
     }
     
     return freshness;

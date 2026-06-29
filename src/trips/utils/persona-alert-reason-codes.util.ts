@@ -30,6 +30,10 @@ export const PERSONA_ALERT_REASON_CODE_ZH: Record<string, PersonaAlertReasonCode
     displayZh: '转场缓冲不足',
     explanationTemplate: '相邻行程之间预留时间不够，可能赶不上下一项。',
   },
+  COVERAGE_GAP: {
+    displayZh: '证据覆盖不足',
+    explanationTemplate: '部分行程点尚未完成路线或开放时间验证，请打开决策检查器查看证据链。',
+  },
   INTENT_REPAIR: {
     displayZh: '需结构修复',
     explanationTemplate: '原意图难以执行，系统有替代走法建议，请查看可执行证明。',

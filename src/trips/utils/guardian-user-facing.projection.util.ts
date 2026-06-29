@@ -18,6 +18,11 @@ import {
   PersonaType,
 } from '../dto/persona-alerts.dto';
 import { mapPersonaAlertReasonCodesDisplayZh } from './persona-alert-reason-codes.util';
+import {
+  buildFeasibilityIssueUserExplanation,
+  buildFeasibilityIssueEvidenceLines,
+  isLowQualityUserFacingText,
+} from '../trip-constraint-solver/utils/feasibility-issue-user-copy.util';
 
 export type GuardianUserFacingAudience = 'user' | 'internal';
 
@@ -75,6 +80,9 @@ export function resolveScenarioFromFeasibilityIssue(
 export function reasonCodesFromFeasibilityIssue(issue: FeasibilityIssueDto): string[] {
   const kind = String(issue.issueKind ?? '').trim();
   if (kind.includes('buffer')) return ['BUFFER_INSUFFICIENT'];
+  if (kind.includes('coverage') || (issue.message ?? '').includes('缺少证据覆盖')) {
+    return ['COVERAGE_GAP'];
+  }
   if (kind.includes('pace') || issue.category === 'schedule') return ['PACE_OVERLOAD'];
   if (kind.includes('closure') || issue.category === 'access_capacity') return ['CLOSURE_RISK'];
   if (kind.includes('wind') || issue.category === 'environment') return ['HIGH_WIND_DRIVING'];
@@ -96,16 +104,16 @@ export function buildDeepLinkForFeasibilityIssue(
     }
   }
 
-  const dayIndex = issue.affectedDays?.[0];
-  if (dayIndex != null && (issue.category === 'schedule' || issue.issueKind?.includes('pace'))) {
-    return { type: 'schedule_day', issueId: issue.id, dayIndex };
-  }
-
   if (issue.priority === 'must_handle' && issue.category === 'booking') {
     return { type: 'plan_gate', issueId: issue.id };
   }
 
-  return { type: 'feasibility', issueId: issue.id, dayIndex: issue.affectedDays?.[0] };
+  const dayIndex = issue.affectedDays?.[0];
+  if (dayIndex != null) {
+    return { type: 'decision_checker', issueId: issue.id, dayIndex };
+  }
+
+  return { type: 'decision_checker', issueId: issue.id };
 }
 
 function resolveGuardianActionForIssue(
@@ -132,7 +140,7 @@ export function buildMinimalPresentationFromFeasibilityIssue(
 
   return {
     headline: truncate(issue.title, 80),
-    narrative: truncate(issue.message, 500),
+    narrative: truncate(buildFeasibilityIssueUserExplanation(issue), 500),
     leadSpeaker: persona as GuardianPresentationSnapshotDto['leadSpeaker'],
     scenario,
     displayStyle: 'design_advisory',
@@ -176,11 +184,10 @@ export function projectFeasibilityIssueToPersonaAlert(
   }
 
   const title = truncate(String(issue.title ?? '').trim(), 40);
-  const explanation = truncate(
-    String(issue.message ?? issue.actionRequired ?? '').trim(),
-    500,
-  );
+  const explanation = truncate(buildFeasibilityIssueUserExplanation(issue), 500);
   if (!title || !explanation) return null;
+
+  const evidenceLines = buildFeasibilityIssueEvidenceLines(issue);
 
   const reasonCodes = reasonCodesFromFeasibilityIssue(issue);
   const { displayZh: reasonCodesDisplayZh } = mapPersonaAlertReasonCodesDisplayZh(reasonCodes);
@@ -208,6 +215,9 @@ export function projectFeasibilityIssueToPersonaAlert(
       action: issue.priority === 'must_handle' ? 'REJECT' : 'ADJUST',
       reasonCodes,
       reasonCodesDisplayZh,
+      readinessEvidenceDisplayZh: evidenceLines.length
+        ? evidenceLines.join('；')
+        : undefined,
       deepLink,
       issueId: issue.id,
       expressionPhase: presentation.expressionPhase,

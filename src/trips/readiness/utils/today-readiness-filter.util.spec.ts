@@ -33,7 +33,13 @@ describe('today-readiness-filter.util', () => {
   it('filters coverage map to a single day', () => {
     const filtered = filterCoverageMapForDay(baseCoverage(), 2);
     expect(filtered.pois.map((p) => p.id)).toEqual(['p2']);
+    expect(filtered.segments).toEqual([]);
     expect(filtered.gaps.map((g) => g.id)).toEqual(['g1']);
+  });
+
+  it('includes same-day segments only', () => {
+    const filtered = filterCoverageMapForDay(baseCoverage(), 1);
+    expect(filtered.segments.map((s) => s.id)).toEqual(['s1']);
   });
 
   it('excludes whole-trip pack findings without day scope', () => {

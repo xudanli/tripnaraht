@@ -41,6 +41,12 @@ export class ConstraintsDto {
   @ApiPropertyOptional({ description: '每日步行限制（公里）' })
   dailyWalkLimit?: number;
 
+  @ApiPropertyOptional({ description: '单段最长行驶距离（公里），超过即 road_class 冲突' })
+  maxSegmentDistanceKm?: number;
+
+  @ApiPropertyOptional({ description: '单段长距离提醒阈值（公里），默认随国家/上限推导' })
+  warnSegmentDistanceKm?: number;
+
   @ApiPropertyOptional({ description: '早起者' })
   earlyRiser?: boolean;
 

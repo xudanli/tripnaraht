@@ -162,3 +162,4 @@ PR-P1-b  迁移 5 个必改文件 + agent/claude 审计路径
 |------|------|
 | **P1-a** | ✅ `src/agent/context/` + `AgentContextModule` |
 | **P1-b** | ✅ 5 处必改 + `agent.service` 编排/路由路径已接入 adapter |
+| **P1-c** | ✅ `conversation-context-window.util` SSOT + Gateway 入口 `normalizeRouteAndRunConversationContextInPlace` + 契约测试 |

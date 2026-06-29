@@ -24,6 +24,7 @@ import { AutoDriftSamplerService } from './services/auto-drift-sampler.service';
 import { AdminStrictAuthGuard } from './guards/admin-strict-auth.guard';
 import { CountriesModule } from '../countries/countries.module';
 import { CountriesAdminController } from '../countries/countries-admin.controller';
+import { TrainingModule } from '../agent/training/training.module';
 
 /**
  * Admin模块
@@ -43,6 +44,7 @@ import { CountriesAdminController } from '../countries/countries-admin.controlle
     forwardRef(() => SkillsModule),
     AuthModule,
     CountriesModule,
+    TrainingModule,
   ],
   controllers: [
     CountriesAdminController,

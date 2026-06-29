@@ -2,6 +2,7 @@
 
 import { Module, forwardRef } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { LlmModule } from '../../llm/llm.module';
 import { MemoryService } from './services/memory.service';
 import { UserProfileMapperService } from './services/user-profile-mapper.service';
 import { DecisionParamsInjectorService } from './services/decision-params-injector.service';
@@ -37,6 +38,7 @@ import { MemoryConsoleController } from './console/memory-console.controller';
 import { TripDomainInfluenceModule } from '../../trips/domain-influence/trip-domain-influence.module';
 import { MemoryStateDecisionParamsService } from './services/memory-state-decision-params.service';
 import { TripIntentDigestService } from './services/trip-intent-digest.service';
+import { EpisodicMemorySummarizerService } from './services/episodic-memory-summarizer.service';
 
 /**
  * Memory Module
@@ -48,7 +50,7 @@ import { TripIntentDigestService } from './services/trip-intent-digest.service';
  * - L4: 行为反馈记忆
  */
 @Module({
-  imports: [PrismaModule, FlywheelModule, EventEmitterModule, forwardRef(() => RedisModule), TripDomainInfluenceModule],
+  imports: [PrismaModule, FlywheelModule, EventEmitterModule, forwardRef(() => RedisModule), TripDomainInfluenceModule, forwardRef(() => LlmModule)],
   providers: [
     MemoryService,
     UserProfileMapperService,
@@ -82,6 +84,7 @@ import { TripIntentDigestService } from './services/trip-intent-digest.service';
     UserMemoryConsoleService,
     TripIntentDigestService,
     MemoryStateDecisionParamsService,
+    EpisodicMemorySummarizerService,
   ],
   controllers: [MemoryConsoleController],
   exports: [
@@ -109,6 +112,7 @@ import { TripIntentDigestService } from './services/trip-intent-digest.service';
     UserMemoryConsoleService,
     TripIntentDigestService,
     MemoryStateDecisionParamsService,
+    EpisodicMemorySummarizerService,
   ],
 })
 export class MemoryModule {}

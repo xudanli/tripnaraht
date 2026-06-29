@@ -1,5 +1,42 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export class OptionComparisonBudgetDto {
+  @ApiProperty({ description: '方案预估总成本' })
+  estimatedCost!: number;
+
+  @ApiProperty({ example: 'CNY' })
+  currency!: string;
+
+  @ApiProperty({ description: '占 L1 总预算百分比' })
+  budgetUsagePercent!: number;
+
+  @ApiProperty({ description: '相对 L1 差额（正=超支）' })
+  vsIntentDelta!: number;
+
+  @ApiProperty({ enum: ['ALLOW', 'NEED_ADJUST', 'NEED_CONFIRM', 'REJECT'] })
+  verdict!: 'ALLOW' | 'NEED_ADJUST' | 'NEED_CONFIRM' | 'REJECT';
+
+  @ApiProperty({ description: '矩阵 cost 列展示文案，如 ¥9,500 或 95%' })
+  costDisplayValue!: string;
+
+  @ApiPropertyOptional({ description: '预算热点摘要' })
+  topHotspot?: string;
+}
+
+export class OptionComparisonBudgetSummaryDto {
+  @ApiProperty({ example: 'tripnara.budget_comparison@v1' })
+  schema!: 'tripnara.budget_comparison@v1';
+
+  @ApiProperty()
+  intentTotal!: number;
+
+  @ApiProperty()
+  currency!: string;
+
+  @ApiPropertyOptional()
+  recommendedPlanId?: string;
+}
+
 export class OptionComparisonScoresDto {
   @ApiPropertyOptional({ minimum: 0, maximum: 100 })
   executability?: number;
@@ -32,6 +69,12 @@ export class OptionComparisonOptionDto {
 
   @ApiPropertyOptional({ description: '一行 caveat / summary' })
   summary?: string;
+
+  @ApiPropertyOptional({
+    type: OptionComparisonBudgetDto,
+    description: '预算 SSOT（来自 budget/compare 或 evaluate）',
+  })
+  budget?: OptionComparisonBudgetDto;
 }
 
 export class OptionComparisonRecommendationDto {
@@ -100,6 +143,12 @@ export class OptionComparisonBffDto {
     description: 'options.length > visibleColumnCount 时下发，供前端 overflow UI',
   })
   display?: OptionComparisonDisplayDto;
+
+  @ApiPropertyOptional({
+    type: OptionComparisonBudgetSummaryDto,
+    description: '多方案预算对比摘要（与 options[].budget 同源）',
+  })
+  budgetComparison?: OptionComparisonBudgetSummaryDto;
 }
 
 /** explain.alternatives[] BFF 投影（与矩阵同源） */

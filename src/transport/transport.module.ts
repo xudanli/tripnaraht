@@ -10,6 +10,8 @@ import { SmartRoutesService } from './services/smart-routes.service';
 import { RouteCacheService } from './services/route-cache.service';
 import { TravelTimeEstimatorService } from './services/travel-time-estimator.service';
 import { PoiHopTravelSegmentService } from './services/poi-hop-travel-segment.service';
+import { RouteGeometryService } from './services/route-geometry.service';
+import { MapboxDirectionsService } from './services/mapbox-directions.service';
 import { SelfHostedRoutingService } from './services/self-hosted-routing.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CacheModule } from '@nestjs/cache-manager';
@@ -58,6 +60,8 @@ class MockRedisService {
     RouteCacheService,
     TravelTimeEstimatorService,
     PoiHopTravelSegmentService,
+    MapboxDirectionsService,
+    RouteGeometryService,
   ],
   exports: [
     TransportDecisionService,
@@ -68,6 +72,8 @@ class MockRedisService {
     RouteCacheService, // 导出路线缓存服务
     TravelTimeEstimatorService, // 统一交通时间估算（与 getDayTravelInfo 对齐）
     PoiHopTravelSegmentService,
+    MapboxDirectionsService,
+    RouteGeometryService,
   ],
 })
 export class TransportModule {}

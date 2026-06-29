@@ -1,4 +1,14 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  readOtelTraceContextFromRouteAndRunRequest,
+  resolveHarnessOtelObservabilityFields,
+} from '../../harness/tracing/harness-otel-correlation.util';
+import { readExecutionPolicyGatewayObservability } from '../runtime/execution-policy-gateway-context.util';
+import type { RouteAndRunExecutionPolicyCarrier } from '../runtime/execution-policy-gateway-context.util';
+import {
+  readSubagentPermissionSandboxObservability,
+  type RouteAndRunSubagentSandboxCarrier,
+} from '../runtime/subagent-permission-sandbox-context.util';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto, PlanningPhaseIntentDto } from '../dto/route-and-run.dto';
 import { enrichClientUiDisplay, type ClientUiEnrichmentInput } from '../utils/client-ui-enrichment.util';
 import { buildFlawedDraftDescriptorV1 } from '../utils/build-flawed-draft-descriptor.util';
@@ -149,6 +159,19 @@ import {
 } from '../utils/workbench-display-alignment.util';
 import { resyncWorkbenchOpeningHoursFeasibility } from '../utils/workbench-feasibility-resync.util';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { HarnessShadowGraderService } from '../training/services/harness-shadow-grader.service';
+import { buildHarnessQualitySampleObservability } from '../../harness/eval/quality/harness-quality-loop.util';
+import { buildLlmRoutingObservabilityFromAccumulator } from '../runtime/harness-llm-routing-observability.util';
+import { EpisodicMemorySummarizerService } from '../memory/services/episodic-memory-summarizer.service';
+import {
+  buildCostGovernanceObservability,
+  type CostGovernanceObservabilityV1,
+  type RouteAndRunCostGovernanceCarrier,
+} from '../runtime/cost-governance-observability.util';
+import { enrichRouteAndRunCostInPlace } from '../runtime/route-and-run-cost-est.util';
+import { readAgenticTaskRollbackObservabilityFromTrace } from '../runtime/agentic-task-rollback.util';
+import type { RouteAndRunEpisodicCarrier } from '../memory/utils/episodic-memory-summarizer.util';
+import type { ShadowGraderObservabilityV1 } from '../training/utils/shadow-grader-observability.util';
 
 @Injectable()
 export class RouteAndRunResponseAssemblerService {
@@ -161,6 +184,8 @@ export class RouteAndRunResponseAssemblerService {
     @Optional() private readonly negotiationSessions?: NegotiationSessionStoreService,
     @Optional() private readonly guardiansDebate?: GuardiansDebateService,
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
+    @Optional() private readonly harnessShadowGrader?: HarnessShadowGraderService,
+    @Optional() private readonly episodicMemorySummarizer?: EpisodicMemorySummarizerService,
   ) {}
 
   /** `enable_guardians_debate_llm`：硬门致命时由辩论服务内短路，不发起 LLM。 */
@@ -2248,6 +2273,7 @@ export class RouteAndRunResponseAssemblerService {
     const { request, startTime, traceInfo, orchestrationResult, policyAction, durableRun, routingTaskType } =
       params;
     const latency = Date.now() - startTime;
+    const routeRunCost = this.resolveRouteAndRunCostBundle(request, { orchestrationResult });
 
     const currentStep =
       orchestrationResult.result?.state?.current_step || (orchestrationResult.success ? 'DONE' : 'FAILED');
@@ -2710,8 +2736,8 @@ export class RouteAndRunResponseAssemblerService {
         thinking_mode_resolved: 'deep',
         tool_calls: orchestrationResult.stepsExecuted?.length || 0,
         browser_steps: 0,
-        tokens_est: 0,
-        cost_est_usd: orchestrationResult.totalCost || 0,
+        tokens_est: routeRunCost.tokens_est,
+        cost_est_usd: routeRunCost.cost_est_usd,
         fallback_used: orchestrationResult.result?.state?.metadata?.fallback_used === true,
         fallback_template_version: orchestrationResult.result?.state?.metadata?.fallback_template_version,
         fallback_data_source: orchestrationResult.result?.state?.metadata?.fallback_data_source,
@@ -2722,6 +2748,15 @@ export class RouteAndRunResponseAssemblerService {
         trace: traceInfo,
         ...this.computeP4ObservabilityMetrics(orchestrationResult),
         ...this.resolveHarnessObservability(request, orchestrationResult),
+        ...this.resolveExecutionPolicyGatewayObservability(request),
+        ...this.resolveShadowGraderObservability(request),
+        ...this.resolveSubagentPermissionSandboxObservability(request),
+        ...this.resolveEpisodicSummarizerObservability(request),
+        ...this.resolveQualitySampleObservability(request),
+        ...this.resolveLlmRoutingObservability(request),
+        cost_governance_v1: routeRunCost.cost_governance_v1,
+        ...this.resolveAgenticLoopCheckpointObservability(orchestrationResult),
+        ...this.resolveAgenticTaskRollbackObservability(request, orchestrationResult),
         ...this.resolvePoiPlanningObservabilityForClient(orchestrationResult, request),
         ...this.resolveGapBehaviorObservationObservability(orchestrationResult),
         ...this.resolveReplanLineageObservability(request, orchestrationResult),
@@ -3185,6 +3220,10 @@ export class RouteAndRunResponseAssemblerService {
             })
           : undefined;
       const repValidation = validateRuntimeExecutionProfile(runtimeExecutionProfile);
+      const routeRunCostSys1 = this.resolveRouteAndRunCostBundle(request, {
+        orchestrationResult,
+        agenticTotalTokens: agenticObs?.total_tokens ?? null,
+      });
       const resp: RouteAndRunResponseDto = {
         request_id: request.request_id,
         route: {
@@ -3278,14 +3317,23 @@ export class RouteAndRunResponseAssemblerService {
               }
             : {}),
           browser_steps: 0,
-          tokens_est: agenticObs ? agenticObs.total_tokens : 0,
-          cost_est_usd: 0,
+          tokens_est: routeRunCostSys1.tokens_est,
+          cost_est_usd: routeRunCostSys1.cost_est_usd,
           fallback_used: false,
           orchestration_request_id: request.request_id,
           current_step: orchestrationResult.result?.state?.current_step,
           trace: traceInfo,
           ...this.computeP4ObservabilityMetrics(orchestrationResult),
           ...this.resolveHarnessObservability(request, orchestrationResult),
+          ...this.resolveExecutionPolicyGatewayObservability(request),
+          ...this.resolveShadowGraderObservability(request),
+          ...this.resolveSubagentPermissionSandboxObservability(request),
+          ...this.resolveEpisodicSummarizerObservability(request),
+        ...this.resolveQualitySampleObservability(request),
+        ...this.resolveLlmRoutingObservability(request),
+          cost_governance_v1: routeRunCostSys1.cost_governance_v1,
+          ...this.resolveAgenticLoopCheckpointObservability(orchestrationResult, system1Result),
+          ...this.resolveAgenticTaskRollbackObservability(request, orchestrationResult, system1Result),
           ...this.resolvePoiPlanningObservabilityForClient(orchestrationResult, request),
           ...this.resolveGapBehaviorObservationObservability(orchestrationResult),
           ...this.resolveReplanLineageObservability(request, orchestrationResult),
@@ -3399,6 +3447,18 @@ export class RouteAndRunResponseAssemblerService {
       heuristicStateMachineRun,
     });
     const dynValidation = validateRuntimeExecutionProfile(runtimeExecutionProfile);
+    const tokensEstDyn = agenticObs
+      ? agenticObs.total_tokens
+      : TokenCalculator.estimateTotalTokens(request.message, orchestrationResult.answerText, {
+          orchestrationResult: orchestrationResult.result,
+          stepsExecuted: orchestrationResult.stepsExecuted,
+          decisionLog: k3DecisionLogClaude,
+        });
+    const routeRunCostDyn = this.resolveRouteAndRunCostBundle(request, {
+      orchestrationResult,
+      agenticTotalTokens: agenticObs?.total_tokens ?? null,
+      tokensEst: tokensEstDyn,
+    });
 
     const orchStateDyn = orchStateDynEarly;
     const gateSurfacedDyn = attachGuardianPersonaSurface(
@@ -3799,20 +3859,23 @@ export class RouteAndRunResponseAssemblerService {
             }
           : {}),
         browser_steps: 0,
-        tokens_est: agenticObs
-          ? agenticObs.total_tokens
-          : TokenCalculator.estimateTotalTokens(request.message, orchestrationResult.answerText, {
-              orchestrationResult: orchestrationResult.result,
-              stepsExecuted: orchestrationResult.stepsExecuted,
-              decisionLog: k3DecisionLogClaude,
-            }),
-        cost_est_usd: orchestrationResult.totalCost || 0,
+        tokens_est: routeRunCostDyn.tokens_est,
+        cost_est_usd: routeRunCostDyn.cost_est_usd,
         fallback_used: false,
         orchestration_request_id: request.request_id,
         current_step: orchestrationResult.result?.state?.current_step,
         trace: traceInfo,
         ...this.computeP4ObservabilityMetrics(orchestrationResult),
         ...this.resolveHarnessObservability(request, orchestrationResult),
+        ...this.resolveExecutionPolicyGatewayObservability(request),
+        ...this.resolveShadowGraderObservability(request),
+        ...this.resolveSubagentPermissionSandboxObservability(request),
+        ...this.resolveEpisodicSummarizerObservability(request),
+        ...this.resolveQualitySampleObservability(request),
+        ...this.resolveLlmRoutingObservability(request),
+        cost_governance_v1: routeRunCostDyn.cost_governance_v1,
+        ...this.resolveAgenticLoopCheckpointObservability(orchestrationResult, system1Result),
+        ...this.resolveAgenticTaskRollbackObservability(request, orchestrationResult, system1Result),
         ...this.resolvePoiPlanningObservabilityForClient(orchestrationResult, request),
         ...this.resolveGapBehaviorObservationObservability(orchestrationResult),
         ...this.resolveReplanLineageObservability(request, orchestrationResult),
@@ -3937,6 +4000,8 @@ export class RouteAndRunResponseAssemblerService {
     harness_active_trace_id: string | null;
     harness_trace_export_path: string | null;
     evaluation_run_id: string | null;
+    otel_trace_id: string | null;
+    otel_span_id: string | null;
     verify_return_to_research_count?: number;
     research_scope_invalidation_reason?: string;
   } {
@@ -3945,16 +4010,23 @@ export class RouteAndRunResponseAssemblerService {
     const stMeta = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
     const retryCount = stMeta?.verify_return_to_research_count;
     const inv = stMeta?.research_scope_invalidation as { reason?: string } | undefined;
+    const otel = resolveHarnessOtelObservabilityFields(
+      hr,
+      readOtelTraceContextFromRouteAndRunRequest(request),
+    );
     const out: {
       harness_active_trace_id: string | null;
       harness_trace_export_path: string | null;
       evaluation_run_id: string | null;
+      otel_trace_id: string | null;
+      otel_span_id: string | null;
       verify_return_to_research_count?: number;
       research_scope_invalidation_reason?: string;
     } = {
       harness_active_trace_id: hr?.activeTraceId ?? null,
       harness_trace_export_path: hr?.traceExportRelativePath ?? null,
       evaluation_run_id: request.meta?.run_id ?? hr?.evaluationRunId ?? null,
+      ...otel,
     };
     if (typeof retryCount === 'number' && Number.isFinite(retryCount) && retryCount > 0) {
       out.verify_return_to_research_count = retryCount;
@@ -3963,6 +4035,133 @@ export class RouteAndRunResponseAssemblerService {
       out.research_scope_invalidation_reason = inv.reason.trim();
     }
     return out;
+  }
+
+  private resolveExecutionPolicyGatewayObservability(
+    request: RouteAndRunRequestDto,
+  ): { execution_policy_gateway_v1?: import('../runtime/execution-policy-gateway-context.util').ExecutionPolicyGatewayObservabilityV1 } {
+    const slice = readExecutionPolicyGatewayObservability(request as RouteAndRunExecutionPolicyCarrier);
+    return slice ? { execution_policy_gateway_v1: slice } : {};
+  }
+
+  private resolveAgenticTaskRollbackObservability(
+    request: RouteAndRunRequestDto,
+    orchestrationResult: { result?: Record<string, unknown> },
+    system1Result?: { result?: Record<string, unknown> },
+  ): {
+    agentic_task_rollback_v1?: import('../runtime/agentic-task-rollback.util').AgenticTaskRollbackObservabilityV1;
+  } {
+    const mounted = (
+      request as RouteAndRunRequestDto & {
+        __agenticTaskRollbackObservabilityV1?: import('../runtime/agentic-task-rollback.util').AgenticTaskRollbackObservabilityV1;
+      }
+    ).__agenticTaskRollbackObservabilityV1;
+    if (mounted?.schemaId === 'tripnara.agentic_task_rollback@v1') {
+      return { agentic_task_rollback_v1: mounted };
+    }
+    const trace =
+      (system1Result?.result?.agentic_tool_loop_trace as unknown) ??
+      orchestrationResult.result?.agentic_tool_loop;
+    const fromTrace = readAgenticTaskRollbackObservabilityFromTrace(trace);
+    return fromTrace ? { agentic_task_rollback_v1: fromTrace } : {};
+  }
+
+  private resolveAgenticLoopCheckpointObservability(
+    orchestrationResult: { result?: Record<string, unknown> },
+    system1Result?: { result?: Record<string, unknown> },
+  ): {
+    agentic_loop_checkpoints_v1?: import('../runtime/agentic-loop-checkpoint.util').AgenticLoopCheckpointObservabilityV1;
+  } {
+    const trace =
+      (system1Result?.result?.agentic_tool_loop_trace as { checkpoint_observability?: unknown } | undefined) ??
+      (orchestrationResult.result?.agentic_tool_loop as { checkpoint_observability?: unknown } | undefined);
+    const obs = trace?.checkpoint_observability as
+      | import('../runtime/agentic-loop-checkpoint.util').AgenticLoopCheckpointObservabilityV1
+      | undefined;
+    return obs?.schemaId === 'tripnara.agentic_loop_checkpoints@v1'
+      ? { agentic_loop_checkpoints_v1: obs }
+      : {};
+  }
+
+  private resolveShadowGraderObservability(
+    request: RouteAndRunRequestDto,
+  ): { shadow_grader_v1?: ShadowGraderObservabilityV1 } {
+    if (!this.harnessShadowGrader) return {};
+    return { shadow_grader_v1: this.harnessShadowGrader.buildObservabilityForRequest(request.request_id) };
+  }
+
+  private resolveSubagentPermissionSandboxObservability(
+    request: RouteAndRunRequestDto,
+  ): {
+    subagent_permission_sandbox_v1?: import('../runtime/subagent-permission-sandbox.util').SubagentPermissionSandboxObservabilityV1;
+  } {
+    const slice = readSubagentPermissionSandboxObservability(request as RouteAndRunSubagentSandboxCarrier);
+    return slice ? { subagent_permission_sandbox_v1: slice } : {};
+  }
+
+  private resolveEpisodicSummarizerObservability(
+    request: RouteAndRunRequestDto,
+  ): {
+    episodic_summarizer_v1?: import('../memory/utils/episodic-memory-summarizer.util').EpisodicSummarizerObservabilityV1;
+  } {
+    if (!this.episodicMemorySummarizer) return {};
+    const ingress = (request as RouteAndRunEpisodicCarrier).__episodicSummarizerIngressV1;
+    return {
+      episodic_summarizer_v1: this.episodicMemorySummarizer.buildObservabilityForRequest(
+        request,
+        ingress,
+      ),
+    };
+  }
+
+  private resolveQualitySampleObservability(
+    request: RouteAndRunRequestDto,
+  ): {
+    quality_sample_v1?: import('../../harness/eval/quality/harness-quality-loop.util').HarnessQualitySampleObservabilityV1;
+  } {
+    const slice = buildHarnessQualitySampleObservability({
+      requestId: request.request_id,
+    });
+    if (!slice.enabled) return {};
+    return { quality_sample_v1: slice };
+  }
+
+  private resolveLlmRoutingObservability(
+    request: RouteAndRunRequestDto,
+  ): { llm_routing_v1?: import('../runtime/harness-llm-routing-observability.util').LlmRoutingObservabilityV1 } {
+    const slice = buildLlmRoutingObservabilityFromAccumulator({ request });
+    return slice ? { llm_routing_v1: slice } : {};
+  }
+
+  private resolveRouteAndRunCostBundle(
+    request: RouteAndRunRequestDto,
+    input: {
+      orchestrationResult?: OrchestrationResult;
+      agenticTotalTokens?: number | null;
+      tokensEst?: number | null;
+    } = {},
+  ): {
+    cost_est_usd: number;
+    tokens_est: number;
+    cost_governance_v1: CostGovernanceObservabilityV1;
+  } {
+    const agenticFromResult = (
+      input.orchestrationResult?.result?.agentic_observability as { total_tokens?: number } | undefined
+    )?.total_tokens;
+    const { costEstUsd, tokensEst } = enrichRouteAndRunCostInPlace(
+      request as RouteAndRunCostGovernanceCarrier,
+      {
+        requestId: request.request_id,
+        orchestrationTotalCost: input.orchestrationResult?.totalCost,
+        agenticTotalTokens: input.agenticTotalTokens ?? agenticFromResult ?? null,
+        tokensEst: input.tokensEst ?? null,
+      },
+    );
+    return {
+      cost_est_usd: costEstUsd,
+      tokens_est: tokensEst,
+      cost_governance_v1: buildCostGovernanceObservability(request as RouteAndRunCostGovernanceCarrier),
+    };
   }
 
   /** PRD I3：replan 继承字段回显到 observability（网关/客户端/日志聚合） */

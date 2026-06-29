@@ -11,6 +11,7 @@
  *
  * HTTP 快照（运维 curl）：`GET /api/admin/diagnostics/harness`（见 `HarnessDiagnosticsAdminController`），
  * 需 `ADMIN_DIAGNOSTICS_HARNESS_ENABLED=1` + `ADMIN_DIAGNOSTICS_TOKEN` + 对应 Header。
+ * 响应含 `shadow_grader` 段（active shadow + aggregate win_rate / promotion_blockers）。
  */
 
 import { Injectable, Logger } from '@nestjs/common';

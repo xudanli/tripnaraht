@@ -15,11 +15,13 @@ import { TrustMetricsService } from './trust-metrics.service';
 import { ReadinessChecker } from '../engine/readiness-checker';
 import { FactsToReadinessCompiler } from '../compilers/facts-to-readiness.compiler';
 import { prismaRowToCountryFacts } from '../../../countries/country-profile-v2.mapper';
+import { findCountryProfileCompat } from '../../../countries/country-profile-compat.util';
 import { ReadinessToConstraintsCompiler } from '../compilers/readiness-to-constraints.compiler';
 import { PackStorageService } from '../storage/pack-storage.service';
 import { mergeReadinessFindings } from '../utils/readiness-pack-overlay.util';
 import { TripWorldState } from '../../decision/world-model';
 import { GeoFactsService } from './geo-facts.service';
+import { logThrottledDebug } from '../../../common/utils/throttled-debug-log.util';
 
 // 辅助函数：日期计算
 function addDays(date: string, days: number): string {
@@ -466,7 +468,9 @@ export class ReadinessService {
     if (countryCode) {
       const packs = await this.packStorage.findPacksByCountry(countryCode);
       if (packs.length > 0) {
-        this.logger.debug(
+        logThrottledDebug(
+          this.logger,
+          `readiness:pack:country:${countryCode}`,
           `Found ${packs.length} pack(s) by country: ${countryCode} (strict derivation)`,
         );
         const result = await this.checkPacksWithCountryDerivation(
@@ -616,9 +620,10 @@ export class ReadinessService {
     const findings: any[] = [];
 
     for (const countryCode of countryCodes) {
-      const profile = await this.prisma.countryProfile.findUnique({
-        where: { isoCode: countryCode.toUpperCase() },
-      });
+      const profile = await findCountryProfileCompat(
+        this.prisma,
+        countryCode.toUpperCase(),
+      );
 
       if (!profile) {
         this.logger.warn(`Country profile not found: ${countryCode}`);

@@ -5,6 +5,25 @@ import type { ShadowGraderSample } from '../interfaces/shadow-deployment.types';
 import { ShadowDeploymentRegistryService } from './shadow-deployment-registry.service';
 import { VllmClientService } from './vllm-client.service';
 import { serializePlannerPrompt } from '../dpo/dpo-preference-extractor.util';
+import {
+  parseHarnessShadowGraderEnabled,
+  parseShadowGraderLogEveryN,
+} from '../utils/harness-shadow-grader-mode.util';
+import {
+  markShadowGraderSchedule,
+} from '../utils/shadow-grader-request-mark.util';
+import {
+  buildShadowGraderObservabilitySlice,
+  type ShadowGraderObservabilityV1,
+} from '../utils/shadow-grader-observability.util';
+import { readShadowGraderScheduleMark } from '../utils/shadow-grader-request-mark.util';
+import { isDecisionTrajectoryCaptureEnabled } from '../utils/decision-trajectory-feature.util';
+import {
+  buildShadowGraderOpsReadiness,
+  summarizeShadowRegistrations,
+  type ShadowGraderOpsReadinessV1,
+  type ShadowGraderRegistrationSummaryV1,
+} from '../utils/harness-shadow-grader-ops.util';
 
 /**
  * Harness Shadow Grader：在线流量异步影子评测，不干涉用户可见输出。
@@ -21,8 +40,32 @@ export class HarnessShadowGraderService {
   ) {}
 
   isEnabled(): boolean {
-    const v = this.configService.get<string>('SHADOW_GRADER_ENABLED')?.trim();
-    return v === '1' || v === 'true';
+    return parseHarnessShadowGraderEnabled();
+  }
+
+  /** route_and_run observability 回显（读一次性 schedule mark + 聚合指标）。 */
+  buildObservabilityForRequest(requestId: string): ShadowGraderObservabilityV1 {
+    const active = this.registry.getActiveShadow();
+    const version = active?.shadowVersion ?? null;
+    const aggregate = version ? this.registry.aggregateMetrics(version) : null;
+    let scheduleMark = readShadowGraderScheduleMark(requestId);
+    if (
+      !scheduleMark &&
+      this.isEnabled() &&
+      !isDecisionTrajectoryCaptureEnabled()
+    ) {
+      scheduleMark = {
+        scheduled: false,
+        skip_reason: 'trajectory_capture_off',
+        marked_at: new Date().toISOString(),
+      };
+    }
+    return buildShadowGraderObservabilitySlice({
+      requestId,
+      scheduleMark,
+      activeShadowVersion: version,
+      aggregate,
+    });
   }
 
   /**
@@ -36,11 +79,24 @@ export class HarnessShadowGraderService {
       totalReward: number;
     },
   ): void {
-    if (!this.isEnabled()) return;
+    if (!this.isEnabled()) {
+      markShadowGraderSchedule(requestId, { scheduled: false, skip_reason: 'disabled' });
+      return;
+    }
     const shadow = this.registry.getActiveShadow();
-    if (!shadow || shadow.lifecycle !== 'ACTIVE') return;
-    if (this.inFlight.has(requestId)) return;
+    if (!shadow || shadow.lifecycle !== 'ACTIVE') {
+      markShadowGraderSchedule(requestId, { scheduled: false, skip_reason: 'no_active_shadow' });
+      return;
+    }
+    if (this.inFlight.has(requestId)) {
+      markShadowGraderSchedule(requestId, { scheduled: false, skip_reason: 'in_flight' });
+      return;
+    }
     this.inFlight.add(requestId);
+    markShadowGraderSchedule(requestId, {
+      scheduled: true,
+      shadow_version: shadow.shadowVersion,
+    });
 
     void this.gradeFromTrajectory(requestId, payload, production, shadow.shadowVersion)
       .catch((err) => {
@@ -121,7 +177,7 @@ export class HarnessShadowGraderService {
 
     this.registry.recordSample(sample);
 
-    const everyN = Number(this.configService.get<string>('SHADOW_GRADER_LOG_EVERY_N') ?? '100');
+    const everyN = parseShadowGraderLogEveryN();
     const metrics = this.registry.aggregateMetrics(shadowVersion);
     if (metrics.sampleCount % everyN === 0) {
       this.logger.log(
@@ -168,5 +224,50 @@ export class HarnessShadowGraderService {
       return 0.55;
     }
     return 0.45;
+  }
+
+  /** Admin diagnostics：`GET /api/admin/diagnostics/harness` shadow_grader 段 */
+  buildAdminDiagnosticsSnapshot(): {
+    enabled: boolean;
+    active_shadow_version: string | null;
+    in_flight_count: number;
+    trajectory_capture_enabled: boolean;
+    ops_readiness: ShadowGraderOpsReadinessV1;
+    registrations: ShadowGraderRegistrationSummaryV1[];
+    aggregate: {
+      sampleCount: number;
+      shadowWinRate: number;
+      promotionReady: boolean;
+      promotionBlockers: string[];
+      productionSafetyPassRate: number;
+      shadowSafetyPassRate: number;
+    } | null;
+  } {
+    const active = this.registry.getActiveShadow();
+    const version = active?.shadowVersion ?? null;
+    const aggregate = version ? this.registry.aggregateMetrics(version) : null;
+    const trajectoryCaptureEnabled = isDecisionTrajectoryCaptureEnabled();
+    return {
+      enabled: this.isEnabled(),
+      active_shadow_version: version,
+      in_flight_count: this.inFlight.size,
+      trajectory_capture_enabled: trajectoryCaptureEnabled,
+      ops_readiness: buildShadowGraderOpsReadiness({
+        graderEnabled: this.isEnabled(),
+        trajectoryCaptureEnabled,
+        activeShadow: active,
+      }),
+      registrations: summarizeShadowRegistrations(this.registry.listRegistrations()),
+      aggregate: aggregate
+        ? {
+            sampleCount: aggregate.sampleCount,
+            shadowWinRate: aggregate.shadowWinRate,
+            promotionReady: aggregate.promotionReady,
+            promotionBlockers: aggregate.promotionBlockers,
+            productionSafetyPassRate: aggregate.productionSafetyPassRate,
+            shadowSafetyPassRate: aggregate.shadowSafetyPassRate,
+          }
+        : null,
+    };
   }
 }

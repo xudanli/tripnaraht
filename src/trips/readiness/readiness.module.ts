@@ -57,6 +57,7 @@ import { UserDecisionService } from './services/user-decision.service';
 import { LlmModule } from '../../llm/llm.module';
 import { RedisModule } from '../../redis/redis.module';
 import { RagModule } from '../../rag/rag.module';
+import { TransportModule } from '../../transport/transport.module';
 // 使用 forwardRef 来解决循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
 // 暂时禁用，验证懒加载方案是否能解决问题
 // import { TripsModule } from '../trips.module';
@@ -71,6 +72,7 @@ import { RagModule } from '../../rag/rag.module';
     forwardRef(() => RagModule), // 使用 forwardRef 避免循环依赖（ReadinessModule -> RagModule -> SkillsModule -> ReadinessModule）
     forwardRef(() => OptimizationModule),
     forwardRef(() => PoiAccessCapacityModule),
+    TransportModule,
     // forwardRef(() => TripsModule), // 暂时禁用，验证懒加载方案是否能解决问题
   ],
   controllers: [ReadinessController],

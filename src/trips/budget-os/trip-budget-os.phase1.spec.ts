@@ -204,6 +204,8 @@ describe('Travel Wallet Phase 1', () => {
       structureService,
       walletService,
       decisionLogService as never,
+      { remove: jest.fn() } as never,
+      { getProfile: jest.fn() } as never,
     );
 
     await intentService.setIntent(tripId, { total: 10000, currency: 'CNY' });

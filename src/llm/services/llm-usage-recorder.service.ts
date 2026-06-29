@@ -6,6 +6,7 @@ import { LlmCostService } from './llm-cost.service';
 import { LlmProvider } from '../dto/llm-request.dto';
 import type { OrchestrationStep, SubAgentType } from '../../agent/interfaces/trip-plan.interface';
 import { getLlmTraceContext } from '../token-context.storage';
+import { recordRouteAndRunRequestCost } from '../../agent/runtime/route-and-run-request-cost-accumulator.util';
 
 export interface LlmUsageRecordInput {
   request_id: string;
@@ -102,6 +103,14 @@ export class LlmUsageRecorderService {
         input.prompt_tokens,
         input.completion_tokens,
       ) ?? 0;
+
+    if (input.request_id?.trim()) {
+      recordRouteAndRunRequestCost(input.request_id, {
+        totalTokens: input.total_tokens,
+        costUsd,
+        provider: String(input.provider),
+      });
+    }
 
     if (this.prisma?.isDbConnected()) {
       try {
@@ -248,6 +257,105 @@ export class LlmUsageRecorderService {
         filters.startTime && filters.endTime
           ? { start: filters.startTime, end: filters.endTime }
           : undefined,
+    };
+  }
+
+  async aggregateCostDailySeries(seriesDays = 7): Promise<{
+    source: 'db' | 'unavailable';
+    days: number;
+    buckets: Array<{
+      date: string;
+      total_cost_usd: number;
+      total_tokens: number;
+      calls: number;
+    }>;
+  }> {
+    const days = Math.min(Math.max(Math.floor(seriesDays), 1), 30);
+    if (!this.isDbEnabled()) {
+      return { source: 'unavailable', days, buckets: [] };
+    }
+
+    const end = new Date();
+    const start = new Date(
+      Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate() - (days - 1)),
+    );
+    const rows = await this.prisma!.llmTokenLog.findMany({
+      where: { createdAt: { gte: start, lte: end } },
+      orderBy: { createdAt: 'asc' },
+      take: 100_000,
+    });
+
+    const bucketMap = new Map<
+      string,
+      { total_cost_usd: number; total_tokens: number; calls: number }
+    >();
+    for (const r of rows) {
+      const date = r.createdAt.toISOString().slice(0, 10);
+      const prev = bucketMap.get(date) ?? { total_cost_usd: 0, total_tokens: 0, calls: 0 };
+      bucketMap.set(date, {
+        total_cost_usd: prev.total_cost_usd + Number(r.costUsd),
+        total_tokens: prev.total_tokens + r.totalTokens,
+        calls: prev.calls + 1,
+      });
+    }
+
+    const buckets = [...bucketMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]) => ({
+        date,
+        total_cost_usd: parseFloat(v.total_cost_usd.toFixed(6)),
+        total_tokens: v.total_tokens,
+        calls: v.calls,
+      }));
+
+    return { source: 'db', days, buckets };
+  }
+
+  async aggregateProviderBreakdown(seriesDays = 7): Promise<{
+    source: 'db' | 'unavailable';
+    providers: Array<{
+      provider: string;
+      cost_usd: number;
+      tokens: number;
+      calls: number;
+    }>;
+  }> {
+    const days = Math.min(Math.max(Math.floor(seriesDays), 1), 30);
+    if (!this.isDbEnabled()) {
+      return { source: 'unavailable', providers: [] };
+    }
+
+    const end = new Date();
+    const start = new Date(
+      Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate() - (days - 1)),
+    );
+    const rows = await this.prisma!.llmTokenLog.findMany({
+      where: { createdAt: { gte: start, lte: end } },
+      orderBy: { createdAt: 'asc' },
+      take: 100_000,
+    });
+
+    const map = new Map<string, { cost_usd: number; tokens: number; calls: number }>();
+    for (const r of rows) {
+      const key = r.provider.toLowerCase();
+      const prev = map.get(key) ?? { cost_usd: 0, tokens: 0, calls: 0 };
+      map.set(key, {
+        cost_usd: prev.cost_usd + Number(r.costUsd),
+        tokens: prev.tokens + r.totalTokens,
+        calls: prev.calls + 1,
+      });
+    }
+
+    return {
+      source: 'db',
+      providers: [...map.entries()]
+        .map(([provider, v]) => ({
+          provider,
+          cost_usd: parseFloat(v.cost_usd.toFixed(6)),
+          tokens: v.tokens,
+          calls: v.calls,
+        }))
+        .sort((a, b) => b.cost_usd - a.cost_usd),
     };
   }
 

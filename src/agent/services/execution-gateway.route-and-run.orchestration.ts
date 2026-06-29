@@ -99,6 +99,9 @@ async function runRouteAndRunTickBody(
   let recoveryTriggered = false;
   const startTime = Date.now();
 
+  agent.hydrateExecutionPolicyGatewayContext(request, memory);
+  agent.applyEpisodicMemoryCompactionInPlace(request, memory);
+
   mergeTripIdAliasesIntoRouteAndRunRequest(request);
   const canonicalTripIdEarly = canonicalTripIdForRouteAndRunRequest(request);
 

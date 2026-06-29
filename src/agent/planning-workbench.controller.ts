@@ -5,7 +5,7 @@
  * 规划工作台 API 接口
  */
 
-import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery, ApiExtraModels, getSchemaPath } from '@nestjs/swagger';
 import { PlanningWorkbenchAgentService, PlanningWorkbenchRequest } from './services/planning-workbench-agent.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
@@ -20,6 +20,11 @@ import { BudgetEvaluationService } from '../trips/services/budget-evaluation.ser
 import { TripBudgetService, BudgetConstraint } from '../trips/services/trip-budget.service';
 import type { BudgetStructure, TripBudgetIntent } from '../trips/budget-os/types/trip-budget-os.types';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
+import {
+  applyBudgetComparisonToOptionComparison,
+  buildOptionComparisonFromBudgetCompare,
+} from './utils/option-comparison-budget.projection.util';
+import type { OptionComparisonBffDto } from './dto/option-comparison.dto';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { DataSourceRouterService } from '../data-contracts/services/data-source-router.service';
@@ -626,6 +631,87 @@ export class PlanningWorkbenchController {
   }
 
   /**
+   * 多方案预算对比（A/B/C）
+   */
+  @Public()
+  @Post('budget/compare')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '多方案预算对比',
+    description: '对比多个规划方案的预算占用、门控 verdict 与 L2 结构偏差',
+  })
+  async compareBudgetPlans(@Body() body: {
+    tripId: string;
+    plans: Array<{
+      planId: string;
+      label?: string;
+      estimatedCost: number;
+      categoryBreakdown: {
+        accommodation: number;
+        transportation: number;
+        food: number;
+        activities: number;
+        other: number;
+        experience?: number;
+      };
+    }>;
+    budgetConstraint?: BudgetConstraint;
+    budgetIntent?: TripBudgetIntent;
+    budgetStructure?: BudgetStructure;
+    /** 可选：已有方案矩阵 BFF，与 budget 列合并 */
+    optionComparison?: OptionComparisonBffDto;
+  }) {
+    try {
+      const budgetCompare = await this.budgetEvaluationService.compareBudgetPlans(body);
+      let optionComparison = buildOptionComparisonFromBudgetCompare(budgetCompare);
+      if (body.optionComparison) {
+        optionComparison = applyBudgetComparisonToOptionComparison(
+          body.optionComparison,
+          budgetCompare,
+        );
+      }
+      return successResponse({ ...budgetCompare, optionComparison });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 预算详情（Checker 证据 Tab + 价格证据）
+   */
+  @Public()
+  @Get('budget/details')
+  @ApiOperation({
+    summary: '预算详情聚合',
+    description: '聚合 Profile、evaluate 证据、优化草案与价格参考',
+  })
+  @ApiQuery({ name: 'tripId', required: true })
+  @ApiQuery({ name: 'planId', required: false })
+  async getBudgetDetails(
+    @Query('tripId') tripId: string,
+    @Query('planId') planId?: string,
+  ) {
+    try {
+      const result = await this.budgetEvaluationService.getWorkbenchBudgetDetails(
+        tripId,
+        planId,
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
    * 获取预算决策日志
    */
   @Public()
@@ -726,21 +812,15 @@ export class PlanningWorkbenchController {
     autoCommit?: boolean;
   }) {
     try {
-      // TODO: 实现应用优化建议的逻辑
-      // 当前返回模拟结果
-      const result = {
-        planId: body.planId,
-        appliedOptimizations: body.optimizationIds.map(id => ({
-          id,
-          type: 'REPLACE',
-          estimatedSavings: 100,
-          status: 'success' as const,
-        })),
-        totalSavings: body.optimizationIds.length * 100,
-        newEstimatedCost: 0, // 需要从实际方案中计算
-      };
+      const result = await this.budgetEvaluationService.applyBudgetOptimizations(body);
       return successResponse(result);
     } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

@@ -1,6 +1,7 @@
 /** INTAKE 车型抽取：仅用户侧 NL，避免助手/System 历史（含辩论「2WD+24h」文案）污染。 */
 
 import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
+import { sliceRecentMessagesForProfile } from '../context/utils/conversation-context-window.util';
 
 export type TripPlanVehicleType = '2WD' | '4WD';
 
@@ -35,7 +36,10 @@ export function buildUserAuthoredIntakeTextBundle(
   message: string | undefined | null,
   recentMessages?: readonly string[] | null,
 ): string {
-  const userRecent = filterUserAuthoredIntakeLines(recentMessages ?? []).slice(-16);
+  const userRecent = sliceRecentMessagesForProfile(
+    'orchestrator_claude',
+    filterUserAuthoredIntakeLines(recentMessages ?? []),
+  );
   const parts = [message, ...userRecent].map((s) => String(s ?? '').trim()).filter(Boolean);
   return normalizeIntakeTextDigits(parts.join('\n'));
 }
