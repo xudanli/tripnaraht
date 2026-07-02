@@ -7,6 +7,9 @@ import { FlightPriceService } from './services/flight-price.service';
 import { FlightPriceDetailService } from './services/flight-price-detail.service';
 import { ScheduleConverterService } from './services/schedule-converter.service';
 import { ScheduleTimelineService } from './services/schedule-timeline.service';
+import { TimelineOverviewService } from './services/timeline-overview.service';
+import { CollabOverviewService } from './services/collab-overview.service';
+import { AccommodationOverviewService } from './services/accommodation-overview.service';
 import { JourneyMapService } from './services/journey-map.service';
 import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
 import { ActionHistoryService } from './services/action-history.service';
@@ -98,11 +101,16 @@ import { TripProcessFairnessModule } from './process-fairness/trip-process-fairn
 import { TripDecisionProfilingModule } from './decision-profiling/decision-profiling.module';
 import { InTripExecutionModule } from './in-trip-execution/in-trip-execution.module';
 import { TripConstraintSolverModule } from './trip-constraint-solver/trip-constraint-solver.module';
+import { DecisionSemanticsModule } from './decision-semantics/decision-semantics.module';
+import { GuardianDecisionCoreModule } from './guardian-decision-core/guardian-decision-core.module';
+import { DecisionGatewayModule } from '../decision-runtime/gateway/decision-gateway.module';
 import { LoopsModule } from '../loops/loops.module';
 import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
+import { TripFilesModule } from './trip-files/trip-files.module';
+import { ActivityFavoritesModule } from './activity-favorites/activity-favorites.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, forwardRef(() => RouteDirectionsModule), ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, LoopsModule, IdentityGovernanceModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, forwardRef(() => RouteDirectionsModule), ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, DecisionSemanticsModule, DecisionGatewayModule, GuardianDecisionCoreModule, LoopsModule, IdentityGovernanceModule, TripFilesModule, ActivityFavoritesModule], // Gateway 须在 Semantics 之后注册，且 Gateway 开启时 Semantics 仅暴露 L1 路由
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
@@ -146,6 +154,9 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     StubRealityApiService,
     TripMetricsService, 
     ScheduleTimelineService,
+    TimelineOverviewService,
+    CollabOverviewService,
+    AccommodationOverviewService,
     JourneyMapService,
     JourneyMapDecisionItemsService,
     TripConflictsService, 
@@ -212,6 +223,8 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     TripDecisionProfilingModule,
     InTripExecutionModule,
     TripConstraintSolverModule,
+    DecisionSemanticsModule,
+    GuardianDecisionCoreModule,
   ], // 导出 Service，供其他模块使用
 })
 export class TripsModule {}
