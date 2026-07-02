@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Tier B — CANONICAL_SELECTIVE: SHADOW + ON_FOR_SELECTED (stop effective plan writes).
+# See: src/decision-runtime/p4-phase/LEGACY_FALLBACK_RUNBOOK.md
+set -euo pipefail
+export DECISION_RUNTIME_MODE=SHADOW
+export CONSTRAINT_GATEWAY_MODE=ON_FOR_SELECTED
+export CONSTRAINT_GATEWAY_ON_SCENARIOS=iceland-road-closed,weather-outdoor-storm,daily-load-excessive,in-trip-replan,full-plan-selection,guide-plan-selection,opening-hours-conflict
+export CONSTRAINT_EVALUATION_GATEWAY_ENABLED=1
+export DECISION_TRIGGER_GATEWAY_ENABLED=1
+export DECISION_TRIGGER_LINEAGE_ENABLED=1
+export REPLANNING_TRIGGER_POLICY_ENABLED=1
+export BOUNDED_LNS_REPAIR_ENABLED=1
+export AUTHORIZATION_POLICY_GATEWAY_ENABLED=1
+export DECISION_PACK_RULES=1
+export CANONICAL_FULL_PLAN_SELECTION=0
+export CANONICAL_EXECUTION_ENABLED=0
+export OPTIMIZATION_STRATEGY_MODE=AUTO
+export LEGACY_CONVERGENCE_TARGET=CANONICAL_SELECTIVE
+unset RFC001_SHADOW_MODE 2>/dev/null || true
+echo "[rollback-tier-b] env applied — restart backend required"
+echo "  DECISION_RUNTIME_MODE=$DECISION_RUNTIME_MODE"
+echo "  CONSTRAINT_GATEWAY_MODE=$CONSTRAINT_GATEWAY_MODE"

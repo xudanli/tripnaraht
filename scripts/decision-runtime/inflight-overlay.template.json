@@ -1,0 +1,107 @@
+{
+  "_comment": "Copy to inflight-overlay.json after maintenance window + db-probe. Every field needs auditable evidence.",
+  "_groups": {
+    "A_postgresql": "Run npm run production-cutover:inflight-db-probe for scaffold",
+    "B_queue": "pendingQueueWriteJobs — queue-admin-console only",
+    "C_silence_5m": "effectivePlanWrites / planVersions / executeRequests — time window counts",
+    "D_paused": "pausedDecisionRunsAcknowledged required when pausedDecisionRuns > 0"
+  },
+  "activeDecisionRuns": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:00.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:active-decision-runs-v1"
+  },
+  "pausedDecisionRuns": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:10.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:paused-decision-runs-v1"
+  },
+  "pausedDecisionRunsAcknowledged": {
+    "value": true,
+    "source": "not-applicable",
+    "checkedAt": "2026-07-02T12:00:10.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "not-applicable:pausedDecisionRuns=0"
+  },
+  "pendingAuthorizations": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:20.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:pending-authorizations-v1"
+  },
+  "expiredButExecutableAuthorizations": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:25.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:expired-but-executable-authorizations-v1"
+  },
+  "orphanAuthorizations": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:30.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:orphan-authorizations-v1"
+  },
+  "activeExecutions": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:35.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:active-executions-v1"
+  },
+  "activeRollbacks": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:40.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:active-rollbacks-v1"
+  },
+  "unresolvedPartialFailures": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:45.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:unresolved-partial-failures-v1"
+  },
+  "activeWriteLeases": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:00:50.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:active-benchmark-write-leases-v1"
+  },
+  "pendingQueueWriteJobs": {
+    "value": 0,
+    "source": "queue-admin-console",
+    "checkedAt": "2026-07-02T12:03:00.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "queue-query:effective-plan-write-jobs-claimed-unacked"
+  },
+  "effectivePlanWritesLast5Minutes": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:05:00.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:effective-plan-writes-last-5m-v1"
+  },
+  "planVersionsCreatedLast5Minutes": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:05:00.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:plan-versions-created-last-5m-v1"
+  },
+  "executeRequestsLast5Minutes": {
+    "value": 0,
+    "source": "postgresql",
+    "checkedAt": "2026-07-02T12:05:00.000Z",
+    "checkedBy": "operator-name",
+    "evidence": "sql:execute-requests-last-5m-v1"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "schemaId": "tripnara.production_observation_metrics@v1",
+  "generatedAt": "2026-07-02T00:00:00.000Z",
+  "windowDays": 30,
+  "source": "prometheus+ledger+apm — copy to artifacts/production-observation/production-metrics.json",
+  "authorization": {
+    "unauthorizedExecuteCount": 0,
+    "expiredStillExecutedCount": 0
+  },
+  "executor": {
+    "duplicateExecuteCount": 0,
+    "shadowEffectiveWriteCount": 0,
+    "runtimeWriteGuardBlockedCount": 0
+  },
+  "monitoring": {
+    "duplicateDecisionRunCount": 0,
+    "eventsProcessed": 0
+  },
+  "latency": {
+    "p95GrowthPct": null,
+    "gatewayErrorRatePct": 0
+  },
+  "constraint": {
+    "blockWinnerCount": 0
+  },
+  "trigger": {
+    "gatewayCoveragePct": null
+  },
+  "volume": {
+    "formalTriggerRequests": 0,
+    "canonicalShadowDispatches": 0,
+    "constraintComparisons": 0,
+    "authorizationEvaluations": 0,
+    "effectivePlanExecutions": 0,
+    "monitoringEvents": 0,
+    "coreScenariosCovered": 0,
+    "destinationPacksCovered": 0,
+    "fallbackDrillsCompleted": 0
+  }
+}
