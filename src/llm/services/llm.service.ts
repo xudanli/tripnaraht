@@ -24,6 +24,7 @@ import type {
   OpenAiFunctionToolDefinition,
   ToolChoice,
 } from '../interfaces/chat-completion-tools.interface';
+import { assertFreshLlmCallAllowedUnderReplayStrictSeal } from '../../agent/runtime/replay-strict-seal.util';
 
 /** P0: Skills 内 LLM 打点上下文 */
 export interface LlmTokenContext {
@@ -409,6 +410,7 @@ export class LlmService {
       response_format?: { type: 'json_object' };
     },
   ): Promise<ChatCompletionsWithToolsResult> {
+    assertFreshLlmCallAllowedUnderReplayStrictSeal();
     if (this.useMock) {
       throw new Error('callChatWithTools: mock LLM mode does not support tool calling');
     }
@@ -479,6 +481,7 @@ export class LlmService {
     schema?: any,
     tokenContext?: LlmTokenContext,
   ): Promise<string> {
+    assertFreshLlmCallAllowedUnderReplayStrictSeal();
     const startTime = Date.now();
     // 如果启用 Mock 模式，返回模拟响应
     if (this.useMock) {

@@ -9,6 +9,13 @@ import {
   orchestrationStepProgressPercent,
 } from '../runtime/route-and-run-orchestration-progress.util';
 import { parseTaskMaxResume } from '../runtime/route-and-run-task-lease.constants';
+import { TripRunManagerService } from './trip-run-manager.service';
+import { buildDurableAuthoritySnapshotV1 } from '../../decision-runtime/execution/async-resume-authority.util';
+import { applyAsyncMutationCommitGuard } from '../../decision-runtime/execution/async-mutation-commit.adapter';
+import {
+  isAsyncMutationWriteGuardEnforce,
+  validateAsyncAuthority,
+} from '../../decision-runtime/execution/async-resume-authority.util';
 
 /**
  * Durable Task Pattern：`POST /agent/route_and_run/async` 秒回 task_id，后台跑完整编排链。
@@ -22,20 +29,29 @@ export class RouteAndRunAsyncService {
     private readonly agentService: AgentService,
     private readonly taskStore: RouteAndRunAsyncTaskStore,
     @Optional() private readonly progressReporter?: RouteAndRunTaskProgressReporter,
+    @Optional() private readonly tripRunManager?: TripRunManagerService,
   ) {}
 
   async startRouteAndRunAsync(request: RouteAndRunRequestDto): Promise<RouteAndRunTaskInitResponseDto> {
     const taskId = this.taskStore.buildTaskId(request);
     const destinationHint = this.inferDestinationHint(request);
+    const serverTripVersion = await this.resolveCurrentTripVersion(request);
+    const authoritySnapshot = buildDurableAuthoritySnapshotV1({
+      request,
+      serverTripVersion,
+    });
 
     const init = await this.taskStore.createInitialized(request, taskId, {
       current_phase: 'INTAKE',
       progress_percentage: orchestrationStepProgressPercent('INTAKE'),
       message: orchestrationStepProgressMessageZh('INTAKE', destinationHint),
+      authority_snapshot_v1: authoritySnapshot ?? undefined,
     });
 
     setImmediate(() => {
-      void this.executeInBackground(taskId, request, destinationHint).catch((err: unknown) => {
+      void this.executeInBackground(taskId, request, destinationHint, {
+        authoritySnapshot,
+      }).catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`[route_and_run/async] 后台任务未捕获异常 task=${taskId}: ${msg}`);
       });
@@ -58,11 +74,6 @@ export class RouteAndRunAsyncService {
       await this.taskStore.markFailed(taskId, `Worker lease stale; max resume ${maxResume} reached`);
       return;
     }
-    const nextResume = (record.resume_count ?? 0) + 1;
-    await this.taskStore.markResuming(taskId, {
-      resume_count: nextResume,
-      message: `Worker 续跑 (${nextResume}/${maxResume})，从 ${record.current_phase} 快照恢复…`,
-    });
 
     const request: RouteAndRunRequestDto = {
       ...record.request_snapshot,
@@ -74,15 +85,41 @@ export class RouteAndRunAsyncService {
           : {}),
       },
     };
+
+    const currentTripVersion = await this.resolveCurrentTripVersion(request);
+    const resumeValidation = validateAsyncAuthority({
+      snapshot: record.authority_snapshot_v1,
+      currentTripVersion,
+      stage: 'resume',
+    });
+
+    if (!resumeValidation.allowed && isAsyncMutationWriteGuardEnforce()) {
+      const reasons = resumeValidation.reasonCodes.join(',');
+      this.logger.warn(`[route_and_run/async] resume blocked task=${taskId} reasons=${reasons}`);
+      await this.taskStore.markFailed(
+        taskId,
+        `Async resume authority check failed: ${reasons}`,
+      );
+      return;
+    }
+
+    const nextResume = (record.resume_count ?? 0) + 1;
+    await this.taskStore.markResuming(taskId, {
+      resume_count: nextResume,
+      message: `Worker 续跑 (${nextResume}/${maxResume})，从 ${record.current_phase} 快照恢复…`,
+    });
+
     const destinationHint = this.inferDestinationHint(request);
 
     setImmediate(() => {
-      void this.executeInBackground(taskId, request, destinationHint, { isResume: true })
-        .catch(async (err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.logger.error(`[route_and_run/async] resume 失败 task=${taskId}: ${msg}`);
-          await this.taskStore.markFailed(taskId, msg);
-        });
+      void this.executeInBackground(taskId, request, destinationHint, {
+        isResume: true,
+        authoritySnapshot: record.authority_snapshot_v1,
+      }).catch(async (err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`[route_and_run/async] resume 失败 task=${taskId}: ${msg}`);
+        await this.taskStore.markFailed(taskId, msg);
+      });
     });
   }
 
@@ -90,14 +127,37 @@ export class RouteAndRunAsyncService {
     taskId: string,
     request: RouteAndRunRequestDto,
     destinationHint: string | undefined,
-    opts?: { isResume?: boolean },
+    opts?: {
+      isResume?: boolean;
+      authoritySnapshot?: import('../../decision-runtime/execution/durable-authority-snapshot-v1.types').DurableAuthoritySnapshotV1 | null;
+    },
   ): Promise<void> {
     const run = async (): Promise<void> => {
       try {
-        const response = await this.agentService.routeAndRun(request);
+        let response = await this.agentService.routeAndRun(request);
         const obs = response.observability as { durable_trip_run_id?: string } | undefined;
         if (obs?.durable_trip_run_id) {
           await this.taskStore.patchDurableTripRunId(taskId, obs.durable_trip_run_id);
+        }
+
+        const currentTripVersion = await this.resolveCurrentTripVersion(request);
+        response = applyAsyncMutationCommitGuard({
+          request,
+          response,
+          authoritySnapshot: opts?.authoritySnapshot,
+          currentTripVersion,
+          stage: 'commit',
+        });
+
+        const blocked = (response.observability as Record<string, unknown>)?.async_mutation_guard_v1;
+        if (blocked && isAsyncMutationWriteGuardEnforce()) {
+          await this.progressReporter?.reportOrchestrationStep('FAILED', 'authority_commit_blocked');
+          await this.taskStore.markSuccess(taskId, response);
+          await this.taskStore.clearResuming(taskId);
+          this.logger.warn(
+            `[route_and_run/async] commit blocked by authority task=${taskId} request_id=${request.request_id}`,
+          );
+          return;
         }
 
         await this.progressReporter?.reportOrchestrationStep('DONE');
@@ -120,6 +180,17 @@ export class RouteAndRunAsyncService {
     } else {
       await run();
     }
+  }
+
+  private async resolveCurrentTripVersion(
+    request: RouteAndRunRequestDto,
+  ): Promise<number | undefined> {
+    const tripId = request.trip_id?.trim();
+    if (!tripId || !this.tripRunManager) return undefined;
+    return this.tripRunManager.resolveLatestServerDsoVersionForTrip(
+      tripId,
+      request.options?.durable_trip_run_id,
+    );
   }
 
   private inferDestinationHint(request: RouteAndRunRequestDto): string | undefined {

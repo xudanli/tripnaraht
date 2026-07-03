@@ -31,6 +31,7 @@ import {
   type GovernanceApprovedToolInvocation,
   type ToolGovernancePolicyEntry,
 } from '../../../runtime/agentic-tool-governance.util';
+import { evaluateAgenticToolMutationGate } from '../../../../decision-runtime/execution/agentic-mutation-commit.adapter';
 import {
   classifyOrchestratorFailure,
   truncateOrchestratorFailurePreview,
@@ -147,6 +148,10 @@ export interface McpAgentExecutorRunInput {
   resumeCheckpoint?: AgenticLoopCheckpointV1;
   /** State P2+：rollback 可观测（写入 trace.task_rollback_v1） */
   taskRollbackV1?: import('../../../runtime/agentic-task-rollback.util').AgenticTaskRollbackObservabilityV1;
+  /** Canonical authority：有 trip 时供 mutation gate 判定 */
+  tripId?: string;
+  /** 若 Fast Path 获准执行 TRIP_MUTATION 工具，须携带完整 envelope */
+  mutationAuthorityEnvelope?: import('../../../../decision-runtime/execution/mutation-authority-envelope-v1.types').MutationAuthorityEnvelopeV1;
 }
 
 /** 双轨实验：MCP 工具调用次数、LLM 轮次、Token 累计（与 observability 对齐） */
@@ -671,6 +676,8 @@ export class McpAgentExecutorService {
             input.toolGovernancePolicies,
             input.governanceApprovedToolInvocations,
             call.id,
+            input.tripId,
+            input.mutationAuthorityEnvelope,
           );
           mcpExecutedThisRound++;
           if (decision.discouraged.includes(proposal)) {
@@ -785,6 +792,8 @@ export class McpAgentExecutorService {
             input.toolGovernancePolicies,
             input.governanceApprovedToolInvocations,
             call.id,
+            input.tripId,
+            input.mutationAuthorityEnvelope,
           );
           toolResults!.push({ tool_call_id: call.id, envelope });
           messages.push({
@@ -1067,6 +1076,8 @@ export class McpAgentExecutorService {
     toolGovernancePolicies: Record<string, ToolGovernancePolicyEntry> | undefined,
     governanceApprovedToolInvocations: GovernanceApprovedToolInvocation[] | undefined,
     toolCallId?: string,
+    tripId?: string,
+    mutationAuthorityEnvelope?: McpAgentExecutorRunInput['mutationAuthorityEnvelope'],
   ): Promise<McpToolRuntimeEnvelope> {
     const entry = routing.get(llmFunctionName);
     if (!entry) {
@@ -1100,6 +1111,22 @@ export class McpAgentExecutorService {
     }
     if (dispatch.policy.mode === 'ask') {
       this.logger.debug(dispatch.logLine);
+    }
+
+    const mutationGate = evaluateAgenticToolMutationGate({
+      mcpToolName: entry.mcpToolName,
+      tripId,
+      mutationAuthorityEnvelope,
+    });
+    if (!mutationGate.allowed && mutationGate.holdEnvelope) {
+      const hold = { ...mutationGate.holdEnvelope };
+      if (hold.data && typeof hold.data === 'object') {
+        hold.data = { ...(hold.data as Record<string, unknown>), mcpToolName: entry.mcpToolName };
+      }
+      this.logger.warn(
+        `[AgenticMutationGate] blocked ${entry.mcpToolName} sideEffect=${mutationGate.sideEffect} reasons=${mutationGate.reasonCodes.join(',')}`,
+      );
+      return hold;
     }
 
     const maxAttempts = resolveMcpToolMaxAttempts(budget);

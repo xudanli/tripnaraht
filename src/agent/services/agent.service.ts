@@ -26,6 +26,8 @@ import {
   type TripRunDsoCheckpointPayload,
 } from './trip-run-manager.service';
 import { recordItineraryAdjustFunnel } from '../utils/itinerary-adjust-metrics.util';
+import { applyLegacyMutationCommitGuard } from '../../decision-runtime/execution/legacy-mutation-commit.adapter';
+import { applyAgenticRouteAndRunMutationGuard } from '../../decision-runtime/execution/agentic-route-and-run-mutation.adapter';
 import {
   buildPendingItineraryAdjustDraft,
   PENDING_ITINERARY_ADJUST_DRAFT_META_KEY,
@@ -2210,7 +2212,7 @@ export class AgentService {
       );
     }
 
-    return response;
+    return applyLegacyMutationCommitGuard(request, response);
   }
 
   /**
@@ -2537,6 +2539,7 @@ export class AgentService {
           message: agenticMessage,
           maxSteps,
           toolPacks,
+          tripId: request.trip_id?.trim(),
           budget: {
             maxTotalTokens: maxTotalTokensRaw,
             minRemainingMsForNextLlm:
@@ -2607,7 +2610,7 @@ export class AgentService {
     }
 
     const assembler = this.getResponseAssembler();
-    return await assembler.assembleClaudeDynamicResponse({
+    const assembled = await assembler.assembleClaudeDynamicResponse({
       request,
       startTime,
       traceInfo,
@@ -2620,6 +2623,11 @@ export class AgentService {
         },
       },
       routingTaskType: signals.taskType,
+    });
+    return applyAgenticRouteAndRunMutationGuard({
+      request,
+      response: assembled,
+      agenticTrace: execResult.trace,
     });
   }
 
@@ -2855,6 +2863,7 @@ export class AgentService {
     const receivedRouteDirectionId = this.resolveRequestRouteDirectionId(request);
     const memContract = request ? (request as any).__memoryContractObs : undefined;
     const ledgerHealing = request ? (request as any).__ledgerHealingObs : undefined;
+    const decisionTriggerObs = request ? (request as any).__decisionTriggerObs : undefined;
     const execMemBinding =
       (request ? (request as any).__memoryExecutionBinding : undefined) ??
       this.agentExecutionContextStore.get()?.executionBinding;
@@ -2875,6 +2884,7 @@ export class AgentService {
       ...obs,
       ...(memContract ? { memory_contract: memContract } : {}),
       ...(ledgerHealing ? { ledger_healing: ledgerHealing } : {}),
+      ...(decisionTriggerObs ? { decision_trigger: decisionTriggerObs } : {}),
       ...(execMemBinding ? { execution_memory_binding: execMemBinding } : {}),
       ...(timelinePreview && timelinePreview.length > 0
         ? { execution_timeline_preview: timelinePreview }

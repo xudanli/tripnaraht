@@ -42,6 +42,16 @@ import { TripRobustnessDashboardService } from './trip-robustness-dashboard.serv
 import { GovernanceHydrationService } from '../../governance/activation/governance-hydration.service';
 import { randomUUID } from 'crypto';
 import { runWithLlmTraceContext } from '../../llm/token-context.storage';
+import {
+  applyGatewayAuthorityAuditToResponse,
+  buildGatewayAuthorityEntryContext,
+} from '../../decision-runtime/execution/execution-gateway-authority-audit.util';
+import {
+  isReplayStrictSealActive,
+  resolveReplayStrictSealContextFromRequest,
+  runWithReplayStrictSealContext,
+} from '../runtime/replay-strict-seal.util';
+import { runWithConstraintGatewayIngressContext } from '../../decision-runtime/constraints/constraint-gateway-ingress-audit.util';
 
 /**
  * Execution Gateway — Stage 2 runtime surface: replay admission + ECPS **before** any engine runs.
@@ -109,13 +119,38 @@ export class ExecutionGatewayService {
       ? () => this.tripOrchestrationLock!.runWithTripWriteLockIfNeeded(request, runChain)
       : runChain;
 
-    return runWithLlmTraceContext(
-      { requestId, stepName: 'INTAKE', subAgent: 'Orchestrator', routePath: 'GATEWAY' },
-      async () => {
-        const response = await runGuarded();
-        this.agent.scheduleEpisodicSummarizerAfterRouteAndRun(request);
-        return response;
-      },
+    return runWithConstraintGatewayIngressContext(() =>
+      runWithReplayStrictSealContext(
+        resolveReplayStrictSealContextFromRequest(request),
+        () =>
+          runWithLlmTraceContext(
+            { requestId, stepName: 'INTAKE', subAgent: 'Orchestrator', routePath: 'GATEWAY' },
+            async () => {
+              const entryContext = buildGatewayAuthorityEntryContext(request);
+              const response = await runGuarded();
+              this.agent.scheduleEpisodicSummarizerAfterRouteAndRun(request);
+              const audited = applyGatewayAuthorityAuditToResponse({
+                request,
+                response,
+                entryContext,
+              });
+              if (isReplayStrictSealActive(request)) {
+                const obs = (audited.observability ?? {}) as Record<string, unknown>;
+                obs.replay_strict_seal_v1 = {
+                  schemaId: 'tripnara.replay_strict_seal@v1',
+                  active: true,
+                  sealed: Boolean(
+                    request.options?.orchestration_replay_anchor_snapshot_id?.trim() &&
+                      request.options?.execution_model_allow_upgrade === false,
+                  ),
+                  anchor_snapshot_id: request.options?.orchestration_replay_anchor_snapshot_id,
+                };
+                audited.observability = obs as typeof audited.observability;
+              }
+              return audited;
+            },
+          ),
+      ),
     );
   }
 

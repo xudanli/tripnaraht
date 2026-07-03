@@ -18,6 +18,7 @@ import {
   resolveKernelTripIdHint,
 } from './dso-to-trips-converter';
 import type { Itinerary } from '../../agent/interfaces/trip-plan.interface';
+import { recordConstraintGatewayIngressFromReport } from '../../decision-runtime/constraints/constraint-gateway-ingress-audit.util';
 
 @Injectable()
 export class ConstraintEngineAdapterService {
@@ -60,6 +61,10 @@ export class ConstraintEngineAdapterService {
       });
       const tripPlan = itineraryToTripPlan(planDraft);
       const result = await this.constraintEngine.isFeasible(tripWorldState, tripPlan);
+
+      if (result.canonicalReport) {
+        recordConstraintGatewayIngressFromReport(result.canonicalReport, 'VERIFY');
+      }
 
       const violations = result.violations.map((v) => ({
         type: v.code,

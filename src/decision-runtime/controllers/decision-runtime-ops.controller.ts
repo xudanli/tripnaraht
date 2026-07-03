@@ -18,6 +18,8 @@ import { Gate1RuntimeAcceptanceService } from '../services/gate1-runtime-accepta
 import { DecisionOsSloService } from '../../decision/slo/decision-os-slo.service';
 import { DecisionDnaComplianceService } from '../../agent/memory/governance/decision-dna-compliance.service';
 import { runContextRecallBaseline } from '../../decision/slo/context-recall-baseline.runner';
+import { resolveEffectivePlanWriteChainStatus } from '../execution/effective-plan-write-chain-status.util';
+import { getRecentEffectivePlanWriteGuardShadowEvents } from '../execution/effective-plan-write-guard-shadow.util';
 
 @ApiTags('gate1-ops')
 @Controller('ops/runtime')
@@ -43,7 +45,21 @@ export class DecisionRuntimeOpsController {
       linkedTripAutoCreate: isGate1LinkedTripAutoCreateEnabled(),
       tripStatusSync: isGate1TripStatusSyncEnabled(),
       runtimeEventOutbox: isRuntimeEventOutboxEnabled(),
+      writeChain: resolveEffectivePlanWriteChainStatus(),
     });
+  }
+
+  @Get('write-chain')
+  @ApiOperation({ summary: 'Phase 5 — Effective Plan 写链状态与授权路径' })
+  writeChainStatus() {
+    return successResponse(resolveEffectivePlanWriteChainStatus());
+  }
+
+  @Get('write-chain/shadow-bypasses')
+  @ApiOperation({ summary: 'Phase 1 — EFFECTIVE_PLAN_WRITE_GUARD=SHADOW 近期 bypass 观测' })
+  writeChainShadowBypasses(@Query('limit') limit?: string) {
+    const n = Math.min(100, Math.max(1, parseInt(String(limit ?? '50'), 10) || 50));
+    return successResponse(getRecentEffectivePlanWriteGuardShadowEvents(n));
   }
 
   @Get('slo')
