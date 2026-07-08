@@ -69,6 +69,10 @@ async function main(): Promise<void> {
       file = await prisma.knowledgeFile.create({
         data: {
           filename: FILE_NAME,
+          filepath: `data/rag/${FILE_NAME}`,
+          category: 'risks',
+          subType: 'road-constraint-p0',
+          countryCode: 'IS',
           version: 'p0-v1',
           language: 'en',
           credibilityScore: 0.9,

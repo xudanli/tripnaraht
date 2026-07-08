@@ -1,9 +1,7 @@
 import { getAuthorityCase } from '../authority/authority-cases.registry';
-import {
-  assertLedgerClosurePresent,
-  expectAuthorityPass,
-  runAuthorityCase,
-} from '../assertions/canonical-authority.assertions';
+import { assertLedgerClosurePresent, expectAuthorityPass } from '../assertions/canonical-authority.assertions';
+import { runAuthorityCaseWithContext } from './run-authority-case-with-context.util';
+import { assertAuthorityResultHasAnchor } from './authority-context-anchor.util';
 import { buildRoadStatusChangedEvent } from '../../../trips/guardian-decision-core/evidence/road-status-changed.event';
 import { buildItemSegmentId } from '../../../trips/guardian-decision-core/detection/road-close-impact-analyzer';
 import { buildPlanVersionIdempotencyKey } from '../../../trips/guardian-decision-core/plan-version/plan-version.service';
@@ -34,16 +32,19 @@ describe('AU-P1-008 — Decision Ledger closure', () => {
   });
 
   it('assertLedgerClosurePresent fails when kinds missing', async () => {
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: `${caseDef.caseId}-unit`,
+      tripId: HARNESS_TRIP_ID,
       run: async () => assertLedgerClosurePresent({ presentKinds: ['PROBLEM', 'EVIDENCE'] }),
     });
     expect(result.pass).toBe(false);
+    assertAuthorityResultHasAnchor(result);
   });
 
   it('assertLedgerClosurePresent passes when all kinds present', async () => {
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: `${caseDef.caseId}-unit-full`,
+      tripId: HARNESS_TRIP_ID,
       run: async () =>
         assertLedgerClosurePresent({
           presentKinds: [
@@ -60,6 +61,7 @@ describe('AU-P1-008 — Decision Ledger closure', () => {
         }),
     });
     expect(result.pass).toBe(true);
+    assertAuthorityResultHasAnchor(result);
   });
 
   it(caseDef.description, async () => {
@@ -102,11 +104,14 @@ describe('AU-P1-008 — Decision Ledger closure', () => {
       evidenceRefCount,
     });
 
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: caseDef.caseId,
+      tripId: HARNESS_TRIP_ID,
+      runtimeAuthority: 'CANONICAL',
       run: async () => assertLedgerClosurePresent({ presentKinds }),
     });
 
     expectAuthorityPass(result);
+    assertAuthorityResultHasAnchor(result, { runtimeAuthority: 'CANONICAL' });
   });
 });

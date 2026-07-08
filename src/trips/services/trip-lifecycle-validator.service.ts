@@ -492,13 +492,13 @@ export class TripLifecycleValidatorService {
 
       // Add signal-specific context based on rejection reason
       if (result.reason?.includes('预算') || result.missingConditions?.some(c => c.includes('预算'))) {
-        attributionContext.tripState = { ...attributionContext.tripState };
+        attributionContext.tripState = { status: normalizedCurrent, ...attributionContext.tripState };
       }
       if (result.reason?.includes('时间') || result.missingConditions?.some(c => c.includes('时间') || c.includes('日期'))) {
-        attributionContext.tripState = { ...attributionContext.tripState };
+        attributionContext.tripState = { status: normalizedCurrent, ...attributionContext.tripState };
       }
       if (result.reason?.includes('成员') || result.missingConditions?.some(c => c.includes('成员'))) {
-        attributionContext.tripState = { ...attributionContext.tripState, memberCount: 0 };
+        attributionContext.tripState = { status: normalizedCurrent, ...attributionContext.tripState, memberCount: 0 };
       }
 
       this.decisionEventEmitter.tripTransitionRejected(

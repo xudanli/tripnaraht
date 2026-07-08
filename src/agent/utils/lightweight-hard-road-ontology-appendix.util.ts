@@ -7,6 +7,10 @@
 
 import type { OntologyRegionRoadStatusPayload } from '../../infrastructure/external/road-is/ontology-road-status-provider.service';
 import type { RoadAccessState } from '../../domain/ontology/validator/road-status-contract.types';
+import {
+  loadCountryRoadOntology,
+  regionAndCorridorNodes,
+} from '../../decision-runtime/packs/ontology/pack-ontology.loader';
 
 export interface LightweightHardOntologyAppendixInput {
   message: string;
@@ -32,8 +36,8 @@ export interface HardOntologyRegionDefinition {
   tripDraftSignals: string[];
 }
 
-/** MVP：冰岛高频自驾走廊；按需扩展条目 */
-const IS_REGIONS: HardOntologyRegionDefinition[] = [
+/** Fallback when pack ontology file is unavailable */
+const IS_REGIONS_FALLBACK: HardOntologyRegionDefinition[] = [
   {
     ontologyNodeId: 'ontology:region:IS:SNAEFELLSNES',
     labelZh: '斯奈山半岛',
@@ -96,6 +100,22 @@ const IS_REGIONS: HardOntologyRegionDefinition[] = [
   },
 ];
 
+function resolveIcelandRegionDefinitions(): HardOntologyRegionDefinition[] {
+  const bundle = loadCountryRoadOntology('IS');
+  if (!bundle) return IS_REGIONS_FALLBACK;
+  const nodes = regionAndCorridorNodes(bundle);
+  if (!nodes.length) return IS_REGIONS_FALLBACK;
+  return nodes.map((n) => ({
+    ontologyNodeId: n.ontologyNodeId,
+    labelZh: n.labelZh,
+    labelEn: n.labelEn,
+    kind: n.kind as 'Region' | 'Corridor',
+    roadRefsZh: n.roadRefsZh ?? '',
+    messageTriggersLower: n.messageTriggersLower ?? [],
+    tripDraftSignals: n.tripDraftSignals ?? [],
+  }));
+}
+
 const DRIVING_OR_ROAD_INTENT =
   /路况|封路|天气|风速|能开吗|自驾|租车|开车|用车|碎石|f\s*路|f-road|road\.is|vedur|通行|驾驶|交规/i;
 
@@ -122,7 +142,7 @@ export function shouldInjectLightweightHardRoadOntologyLayer(
   tripContextText: string,
 ): boolean {
   if (!tripLooksLikeIceland(tripContextText, msgLower)) return false;
-  for (const def of IS_REGIONS) {
+  for (const def of resolveIcelandRegionDefinitions()) {
     if (messageTriggersRegion(def, msgLower)) return true;
     if (tripCoversRegion(def, tripContextText) && DRIVING_OR_ROAD_INTENT.test(message)) return true;
   }
@@ -138,7 +158,7 @@ export function collectMatchedOntologyRegionDefinitions(
     return [];
   }
   const hits: HardOntologyRegionDefinition[] = [];
-  for (const def of IS_REGIONS) {
+  for (const def of resolveIcelandRegionDefinitions()) {
     const byMsg = messageTriggersRegion(def, msgLower);
     const byTrip = tripCoversRegion(def, tripContextText) && DRIVING_OR_ROAD_INTENT.test(message);
     if (byMsg || byTrip) hits.push(def);

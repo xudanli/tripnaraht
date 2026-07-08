@@ -21,6 +21,8 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import { EffectivePlanWriteGuardService } from '../../../../decision-runtime/execution/effective-plan-write-guard.service';
+import { assertPlanMutationAllowedOrThrow } from '../../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { LlmService } from '../../../../llm/services/llm.service';
 import { StateStoreService } from '../../../infra/state-store.service';
 import { ClaudeOrchestratorService } from '../../../services/claude-orchestrator.service';
@@ -260,6 +262,7 @@ export class TripPlannerService {
     @Optional() private readonly promptService?: PromptService, // 🚀 Prompt优化：Prompt版本管理服务
     @Optional() private readonly telemetryService?: TelemetryService, // 🚀 Prompt优化：性能监控服务
     @Optional() private readonly gapPreferencesService?: GapPreferencesService, // 🚀 Phase 3 优化：缺口偏好服务
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {
     this.logger.log('🚀 行程规划智能助手已初始化 (V2 增强版 + 路线优化 + RAG降级)');
     this.logger.debug(
@@ -2925,6 +2928,11 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
     };
     followUpSuggestions?: string[];
   }> {
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'TripPlannerService.applySuggestion',
+    );
+
     this.logger.debug(`[应用建议] tripId=${dto.tripId}, type=${dto.suggestionType}, day=${dto.targetDay}`);
 
     // 1. 验证会话存在
@@ -3131,6 +3139,11 @@ ${ctx.destinationName || ctx.destination}是一个很棒的目的地！
     userId: string;
     changeId?: string;
   }): Promise<TripPlannerResponse> {
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'TripPlannerService.fixNightActivities',
+    );
+
     this.logger.debug(`[修复凌晨活动] tripId=${dto.tripId}`);
 
     // 1. 加载行程上下文

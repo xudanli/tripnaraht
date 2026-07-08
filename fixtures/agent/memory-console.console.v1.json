@@ -41,7 +41,28 @@
     "l2_total_count": 1,
     "feature_flags": {
       "constraint_sink": true,
-      "memory_console": true
+      "memory_console": true,
+      "decision_semantics": true
     }
+  },
+  "decision_ledger_causality": {
+    "revision": "v1",
+    "trip_id": "trip-iceland-coastal-pivot-staging",
+    "ledger_node_to_decision_id": {
+      "POI_REYNISFJARA": "dec_staging_001",
+      "ROUTE_SOUTH_COAST": "dec_staging_001"
+    },
+    "links": [
+      {
+        "ledger_node_id": "POI_REYNISFJARA",
+        "decision_id": "dec_staging_001",
+        "problem_id": "dp_gate_reach_demo",
+        "decided_at": "2026-06-04T09:30:00.000Z",
+        "status": "EXECUTED",
+        "source": "merged"
+      }
+    ],
+    "decision_records_count": 1,
+    "ledger_snapshot_version": 2
   }
 }

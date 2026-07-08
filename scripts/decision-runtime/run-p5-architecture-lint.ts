@@ -22,7 +22,7 @@ function main() {
   fs.writeFileSync(outPath, JSON.stringify(report, null, 2));
   log(`written ${outPath}`);
   log(
-    `pass=${report.pass} legacyBoolean=${report.legacyBooleanCallerCount} executorBypass=${report.executorBypassCount}`,
+    `pass=${report.pass} legacyBoolean=${report.legacyBooleanCallerCount} executorBypass=${report.executorBypassCount} agentItineraryPending=${report.agentItineraryPendingCount ?? 0}`,
   );
   if (!report.pass) {
     log(`blockers: ${report.blockers.join(', ')}`);

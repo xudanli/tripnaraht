@@ -3,8 +3,9 @@ import {
   assertSafetyVerdictParity,
   authorityAssert,
   expectAuthorityPass,
-  runAuthorityCase,
 } from '../assertions/canonical-authority.assertions';
+import { runAuthorityCaseWithContext } from './run-authority-case-with-context.util';
+import { assertAuthorityResultHasAnchor } from './authority-context-anchor.util';
 import { ICELAND_F208_ROAD_CLOSE_PARITY_FIXTURE } from './fixtures/hard-constraint-parity.fixture';
 import {
   deriveAllModeSafetyVerdicts,
@@ -35,8 +36,10 @@ describe('AU-P1-007 — Orchestration mode safety parity', () => {
     );
     const modeVerdicts = deriveAllModeSafetyVerdicts(fixture);
 
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: caseDef.caseId,
+      tripId: 'trip_iceland_harness',
+      runtimeAuthority: 'CANONICAL',
       run: async () => {
         const assertions = Object.entries(modeVerdicts).flatMap(([mode, verdict]) => [
           assertSafetyVerdictParity({ mode, ...verdict }),
@@ -76,5 +79,6 @@ describe('AU-P1-007 — Orchestration mode safety parity', () => {
     });
 
     expectAuthorityPass(result);
+    assertAuthorityResultHasAnchor(result, { runtimeAuthority: 'CANONICAL' });
   });
 });

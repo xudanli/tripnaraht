@@ -1,8 +1,13 @@
 import type { PrismaService } from '../../../prisma/prisma.service';
 import type { RoutePlanDraft, RouteSegment } from '../../decision/shared/world-model.types';
+import {
+  coordsFromPlaceMetadata,
+  loadPlaceCoordinatesMap,
+} from './split-plan-place-coords.util';
 
 type ItemRow = {
   id: string;
+  placeId: number | null;
   travelFromPreviousDistance: number | null;
   travelFromPreviousDuration: number | null;
   trailId: number | null;
@@ -10,6 +15,10 @@ type ItemRow = {
     distanceKm: number | null;
     elevationGainM: number | null;
     averageSlope: number | null;
+  } | null;
+  Place?: {
+    id: number;
+    metadata: unknown;
   } | null;
 };
 
@@ -61,9 +70,13 @@ export async function synthesizeRoutePlanDraftFromTrip(
               orderBy: { startTime: 'asc' },
               select: {
                 id: true,
+                placeId: true,
                 travelFromPreviousDistance: true,
                 travelFromPreviousDuration: true,
                 trailId: true,
+                Place: {
+                  select: { id: true, metadata: true },
+                },
                 Trail: {
                   select: {
                     distanceKm: true,
@@ -78,6 +91,13 @@ export async function synthesizeRoutePlanDraftFromTrip(
       },
     });
     if (!trip) return null;
+
+    const placeIds = (trip.TripDay ?? []).flatMap((day) =>
+      (day.ItineraryItem ?? [])
+        .map((item) => (item as ItemRow).placeId)
+        .filter((id): id is number => typeof id === 'number' && id > 0),
+    );
+    const coordMap = await loadPlaceCoordinatesMap(prisma, placeIds);
 
     const segments: RouteSegment[] = [];
     const days = trip.TripDay ?? [];
@@ -96,6 +116,9 @@ export async function synthesizeRoutePlanDraftFromTrip(
         } else {
           items.forEach((item, segIdx) => {
             const physics = resolveSegmentPhysics(item);
+            const coords =
+              (item.placeId != null ? coordMap.get(item.placeId) : undefined) ??
+              coordsFromPlaceMetadata(item.Place?.metadata);
             segments.push({
               segmentId: `trip-${trip.id}-item-${item.id}`,
               dayIndex: dayIdx,
@@ -107,6 +130,15 @@ export async function synthesizeRoutePlanDraftFromTrip(
                 tripDayIndex: dayIdx,
                 segmentOrder: segIdx,
                 distanceSource: physics.distanceSource,
+                date: day.date.toISOString().slice(0, 10),
+                ...(item.placeId != null ? { placeId: item.placeId } : {}),
+                ...(coords
+                  ? {
+                      lat: coords.lat,
+                      lng: coords.lng,
+                      regionId: `day_${dayIdx}`,
+                    }
+                  : {}),
                 ...(item.travelFromPreviousDuration != null
                   ? { travelFromPreviousDurationMin: item.travelFromPreviousDuration }
                   : {}),

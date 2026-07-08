@@ -60,6 +60,8 @@ import { TripDomainInfluenceService } from '../../../trips/domain-influence/serv
 import { buildDomainInfluenceContextBlocks } from '../../../trips/domain-influence/utils/domain-influence-context-blocks.util';
 import { buildTripIntentContextBlocks } from '../../../agent/memory/utils/trip-intent-context-blocks.util';
 import { TripIntentDigestService } from '../../../agent/memory/services/trip-intent-digest.service';
+import { TravelContextAgentBindingService } from '../../../travel-context/agent/travel-context-agent-binding.service';
+import type { TravelContextAgentGrounding } from '../../../travel-context/agent/travel-context-agent-binding.types';
 
 @Injectable()
 export class ContextEngineerService {
@@ -100,6 +102,7 @@ export class ContextEngineerService {
 
   // 追踪调用的 skills（用于监控）
   private skillsCalledInBuild: string[] = [];
+  private lastTravelContextGrounding?: TravelContextAgentGrounding;
 
   constructor(
     private readonly memoryService: MemoryService,
@@ -125,6 +128,7 @@ export class ContextEngineerService {
     @Optional() private readonly contextCacheEviction?: ContextCacheEvictionService,
     @Optional() private readonly tripDomainInfluence?: TripDomainInfluenceService,
     @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
+    @Optional() private readonly travelContextBinding?: TravelContextAgentBindingService,
   ) {
     this.contextCacheEviction?.registerEngineerCaches(this.memoryCache, this.inFlightBuilds);
     if (this.redisService) {
@@ -287,6 +291,7 @@ export class ContextEngineerService {
           cacheKey: _cacheKey,
           dsoVersion: options.dsoVersion,
           requestId: options.requestId,
+          travelContextGrounding: this.lastTravelContextGrounding,
         },
       };
 
@@ -551,7 +556,25 @@ export class ContextEngineerService {
     toolAllowlist: Array<{ name: string; reason: string; priority: number }>;
   }> {
     this.skillsCalledInBuild = [];
+    this.lastTravelContextGrounding = undefined;
     const blocks: ContextBlock[] = [];
+
+    if (this.travelContextBinding && (options.contextId || options.tripId)) {
+      const binding = await this.travelContextBinding.bind({
+        contextId: options.contextId,
+        tripId: options.tripId,
+        userId: options.userId,
+        revision: options.revision,
+        agent: options.agent,
+        task: options.task,
+        includeDomains: options.includeDomains,
+        includePrivate: options.includePrivate,
+      });
+      if (binding) {
+        blocks.push(binding.block);
+        this.lastTravelContextGrounding = binding.grounding;
+      }
+    }
 
     // 1. 获取世界模型摘要（含 ExpectedUtility 块，decision 阶段）
     if (options.tripId) {

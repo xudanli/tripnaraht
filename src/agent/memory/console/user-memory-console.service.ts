@@ -20,6 +20,9 @@ import {
   summarizePatchForConsole,
 } from '../constraint-sink/constraint-sink-state.util';
 import { CONSTRAINT_SINK_V1_KEY } from '../constraint-sink/constraint-sink.types';
+import { MemorySnapshotPersistenceService } from '../persistence/memory-snapshot-persistence.service';
+import { loadDecisionLedgerCausalityConsoleV1 } from '../../../trips/decision-semantics/read/decision-ledger-console-read.util';
+import type { DecisionLedgerCausalityConsoleV1 } from '../../../trips/decision-semantics/read/decision-ledger-console-read.util';
 
 export type UserMemoryConsoleResponseV1 = {
   revision: 'v1';
@@ -47,9 +50,11 @@ export type UserMemoryConsoleResponseV1 = {
       applied_keys: string[];
     }>;
   };
+  /** Decision Semantics ↔ Ledger caused_by（与 GET decision-ledger/nodes/:id/decision 同源） */
+  decision_ledger_causality?: DecisionLedgerCausalityConsoleV1;
   meta: {
     l2_total_count: number;
-    feature_flags: { constraint_sink: boolean; memory_console: boolean };
+    feature_flags: { constraint_sink: boolean; memory_console: boolean; decision_semantics: boolean };
   };
 };
 
@@ -62,6 +67,7 @@ export class UserMemoryConsoleService {
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly tripTaskMemory?: TripTaskMemoryService,
     @Optional() private readonly configService?: ConfigService,
+    @Optional() private readonly memorySnapshotPersistence?: MemorySnapshotPersistenceService,
   ) {}
 
   assertConsoleEnabled(): void {
@@ -111,6 +117,7 @@ export class UserMemoryConsoleService {
     }));
 
     let trip_constraints: UserMemoryConsoleResponseV1['trip_constraints'];
+    let decision_ledger_causality: UserMemoryConsoleResponseV1['decision_ledger_causality'];
     const tid = tripId?.trim();
     if (tid && this.tripTaskMemory) {
       await this.assertTripOwnedByUser(tid, uid);
@@ -129,6 +136,18 @@ export class UserMemoryConsoleService {
       };
     }
 
+    if (tid && this.prisma?.isDbConnected()) {
+      await this.assertTripOwnedByUser(tid, uid);
+      const memCtx = await this.memorySnapshotPersistence?.loadLatestContextForTrip(tid);
+      decision_ledger_causality =
+        (await loadDecisionLedgerCausalityConsoleV1({
+          tripId: tid,
+          prisma: this.prisma,
+          ledger: memCtx?.decisionLedger ?? null,
+          ledgerSnapshotVersion: memCtx?.snapshotVersion,
+        })) ?? undefined;
+    }
+
     return {
       revision: 'v1',
       user_id: uid,
@@ -136,11 +155,13 @@ export class UserMemoryConsoleService {
       l1,
       l2_recent,
       trip_constraints,
+      decision_ledger_causality,
       meta: {
         l2_total_count: l2All.length,
         feature_flags: {
           constraint_sink: this.configService?.get<string>('FEATURE_MEMORY_CONSTRAINT_SINK') === '1',
           memory_console: true,
+          decision_semantics: !!decision_ledger_causality?.links?.length,
         },
       },
     };
@@ -268,6 +289,7 @@ export class UserMemoryConsoleService {
       });
     }
     await this.tripTaskMemory.update(tid, { constraints: nextConstraints });
+    await this.memorySnapshotPersistence?.invalidateTripHead(tid);
     return after;
   }
 
@@ -281,6 +303,7 @@ export class UserMemoryConsoleService {
       l1: console.l1,
       l2: console.l2_recent,
       trip_task_constraints: console.trip_constraints ? [console.trip_constraints] : [],
+      decision_ledger_causality: console.decision_ledger_causality,
     };
   }
 

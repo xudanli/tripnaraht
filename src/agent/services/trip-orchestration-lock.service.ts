@@ -13,6 +13,10 @@ import {
   shouldAcquireTripOrchestrationLock,
   tripOrchestrationLockResourceId,
 } from '../utils/trip-orchestration-lock.util';
+import {
+  buildTripLockObservabilityTrace,
+  type TripLockObservabilityRecord,
+} from '../utils/trip-orchestration-lock.observability.util';
 import { TripRunManagerService } from './trip-run-manager.service';
 
 @Injectable()
@@ -34,10 +38,12 @@ export class TripOrchestrationLockService {
   ): Promise<T> {
     const signals = signalsFromRequest(request);
     if (!shouldAcquireTripOrchestrationLock(request, signals)) {
+      this.recordLockSkipped(request, signals.taskType);
       return fn();
     }
 
     const tripId = request.trip_id!.trim();
+    const lockWaitStart = Date.now();
 
     // 抢锁前 Fast-Fail：避免在锁队列中空等后才发现视图过期
     await this.assertClientDsoVersionFresh(request, tripId, 'pre_lock');
@@ -61,7 +67,12 @@ export class TripOrchestrationLockService {
       resourceId,
       async () => {
         await this.assertClientDsoVersionFresh(request, tripId, 'post_lock');
-        return fn();
+        const holdStart = Date.now();
+        try {
+          return await fn();
+        } finally {
+          this.recordLockHeld(request, signals.taskType, Date.now() - lockWaitStart, Date.now() - holdStart);
+        }
       },
       {
         ttlMs,
@@ -72,6 +83,7 @@ export class TripOrchestrationLockService {
     );
 
     if (!lockResult.success) {
+      this.recordLockConflict(request, signals.taskType, Date.now() - lockWaitStart);
       this.logger.warn(
         `[TripOrchestrationLock] 获取锁超时 trip=${tripId} request_id=${request.request_id} err=${lockResult.error ?? 'unknown'}`,
       );
@@ -88,6 +100,69 @@ export class TripOrchestrationLockService {
     }
 
     return lockResult.result as T;
+  }
+
+  private recordLockObservability(record: TripLockObservabilityRecord): void {
+    this.logger.debug(
+      buildTripLockObservabilityTrace(record),
+      `[TripOrchestrationLock] observability trip=${record.trip_id} wait=${record.wait_ms}ms hold=${record.hold_ms}ms`,
+    );
+  }
+
+  private recordLockSkipped(request: RouteAndRunRequestDto, taskType: string): void {
+    const tripId = request.trip_id?.trim();
+    if (!tripId) return;
+    this.recordLockObservability({
+      trip_id: tripId,
+      request_id: request.request_id,
+      scope: tripOrchestrationLockResourceId(tripId),
+      reason: taskType,
+      wait_ms: 0,
+      hold_ms: 0,
+      conflict: false,
+      acquired: false,
+      skipped: true,
+      skip_reason: 'read_path_no_lock',
+    });
+  }
+
+  private recordLockHeld(
+    request: RouteAndRunRequestDto,
+    taskType: string,
+    waitMs: number,
+    holdMs: number,
+  ): void {
+    const tripId = request.trip_id!.trim();
+    this.recordLockObservability({
+      trip_id: tripId,
+      request_id: request.request_id,
+      scope: tripOrchestrationLockResourceId(tripId),
+      reason: taskType,
+      wait_ms: waitMs,
+      hold_ms: holdMs,
+      conflict: false,
+      acquired: true,
+      skipped: false,
+    });
+  }
+
+  private recordLockConflict(
+    request: RouteAndRunRequestDto,
+    taskType: string,
+    waitMs: number,
+  ): void {
+    const tripId = request.trip_id!.trim();
+    this.recordLockObservability({
+      trip_id: tripId,
+      request_id: request.request_id,
+      scope: tripOrchestrationLockResourceId(tripId),
+      reason: taskType,
+      wait_ms: waitMs,
+      hold_ms: 0,
+      conflict: true,
+      acquired: false,
+      skipped: false,
+    });
   }
 
   private async assertClientDsoVersionFresh(

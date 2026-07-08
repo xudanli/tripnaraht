@@ -90,6 +90,15 @@ else
   npm run test:decision-runtime || decision_runtime=1
 fi
 
+rfc002_gate=0
+rfc002_gate_skipped="false"
+if [ "${READINESS_P1_SKIP_RFC002_GATE:-}" = "1" ]; then
+  rfc002_gate_skipped="true"
+  echo "readiness:p1 — SKIP rfc002:gate (READINESS_P1_SKIP_RFC002_GATE=1)"
+else
+  npm run rfc002:gate || rfc002_gate=1
+fi
+
 td_p0=0
 if [ "${READINESS_P1_SKIP_TD_REPLAY:-}" = "1" ]; then
   echo "readiness:p1 — SKIP test:td-replay → npm run test:td-p0-core only (READINESS_P1_SKIP_TD_REPLAY=1)"
@@ -156,7 +165,7 @@ fi
 if [ "${READINESS_P1_SKIP_TYPECHECK_TRIPS:-}" != "1" ] && [ "$typecheck_trips" -ne 0 ]; then
   overall=1
 fi
-if [ "$build" -ne 0 ] || [ "$ao_p0" -ne 0 ] || [ "$decision_os" -ne 0 ] || [ "$decision_runtime" -ne 0 ] || [ "$td_p0" -ne 0 ] || [ "$ao_p1" -ne 0 ] || [ "$readiness_health" -ne 0 ]; then
+if [ "$build" -ne 0 ] || [ "$ao_p0" -ne 0 ] || [ "$decision_os" -ne 0 ] || [ "$decision_runtime" -ne 0 ] || [ "$rfc002_gate" -ne 0 ] || [ "$td_p0" -ne 0 ] || [ "$ao_p1" -ne 0 ] || [ "$readiness_health" -ne 0 ]; then
   overall=1
 fi
 if [ "$execution_os_stability_skipped" != "true" ] && [ "$execution_os_stability" -ne 0 ]; then
@@ -172,6 +181,9 @@ if [ "$routing_classifier_eval_skipped" != "true" ] && [ "$routing_classifier_ev
   overall=1
 fi
 if [ "$decision_runtime_skipped" != "true" ] && [ "$decision_runtime" -ne 0 ]; then
+  overall=1
+fi
+if [ "$rfc002_gate_skipped" != "true" ] && [ "$rfc002_gate" -ne 0 ]; then
   overall=1
 fi
 if [ "$roll_skipped" = "false" ] && [ "$roll_exit" = "1" ]; then
@@ -236,6 +248,12 @@ else
   decision_runtime_block='"test_decision_runtime": { "skipped": false, "exitCode": '"$decision_runtime"' }'
 fi
 
+if [ "$rfc002_gate_skipped" = "true" ]; then
+  rfc002_gate_block='"rfc002_gate": { "skipped": true, "exitCode": null }'
+else
+  rfc002_gate_block='"rfc002_gate": { "skipped": false, "exitCode": '"$rfc002_gate"' }'
+fi
+
 printf '%s\n' "{
   \"schema\": \"readiness-p1/v2\",
   \"timestamp\": \"$TS\",
@@ -254,6 +272,7 @@ printf '%s\n' "{
     \"test_ao_p0\": { \"exitCode\": $ao_p0 },
     \"test_decision_os_unit\": { \"exitCode\": $decision_os },
     $decision_runtime_block,
+    $rfc002_gate_block,
     \"test_td_p0\": { \"exitCode\": $td_p0 },
     $td_replay_block,
     \"test_ao_p1_contract\": { \"exitCode\": $ao_p1 },

@@ -100,24 +100,6 @@ export class RouteGeometryService {
     }
 
     if (!resolved && !bothInChina) {
-      const mapbox = await this.mapboxDirections.computeRouteGeometry(
-        from.lat,
-        from.lng,
-        to.lat,
-        to.lng,
-        travelMode,
-      );
-      if (mapbox?.polyline) {
-        resolved = {
-          polyline: mapbox.polyline,
-          geometrySource: 'route_api',
-          distanceMeters: mapbox.distanceMeters,
-          durationMinutes: mapbox.durationMinutes,
-        };
-      }
-    }
-
-    if (!resolved) {
       const google = await this.googleRoutes.computeRouteGeometry(
         from.lat,
         from.lng,
@@ -131,6 +113,24 @@ export class RouteGeometryService {
           geometrySource: 'route_api',
           distanceMeters: google.distanceMeters,
           durationMinutes: google.durationMinutes,
+        };
+      }
+    }
+
+    if (!resolved && !bothInChina) {
+      const mapbox = await this.mapboxDirections.computeRouteGeometry(
+        from.lat,
+        from.lng,
+        to.lat,
+        to.lng,
+        travelMode,
+      );
+      if (mapbox?.polyline) {
+        resolved = {
+          polyline: mapbox.polyline,
+          geometrySource: 'route_api',
+          distanceMeters: mapbox.distanceMeters,
+          durationMinutes: mapbox.durationMinutes,
         };
       }
     }

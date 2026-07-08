@@ -61,7 +61,7 @@ describe('trip-constraint-aggregate.util', () => {
   });
 
   it('aggregateTripConstraints: Iceland trip includes official rules in meta.sections', () => {
-    const { items, meta } = aggregateTripConstraints({
+    const { items, meta, contract } = aggregateTripConstraints({
       trip: {
         id: 'trip-is',
         destination: 'IS',
@@ -94,11 +94,53 @@ describe('trip-constraint-aggregate.util', () => {
       userId: 'user-1',
     });
     expect(meta.countryCode).toBe('IS');
-    expect(meta.sections?.some((s) => s.key === 'official')).toBe(true);
+    expect(meta.sections?.some((s) => s.key === 'readonly_official')).toBe(true);
+    expect(meta.sections?.some((s) => s.key === 'travel_objectives')).toBe(true);
+    expect(meta.sections?.some((s) => s.key === 'hard_must_satisfy')).toBe(true);
     expect(items.some((c) => c.id === TRIP_CONSTRAINT_OFFICIAL_IS_IDS.FROAD_2WD)).toBe(true);
     expect(
       items.some((c) => c.id.includes('blue_lagoon_reservation_required')),
     ).toBe(true);
+    expect(contract.schemaId).toBe('tripnara.travel_decision_contract@v1');
+    expect(contract.objectives.rankedPrinciples.length).toBeGreaterThan(0);
+    expect(contract.displayPrinciples[0]?.label).toBeTruthy();
+    expect(contract.compiledWeights.legacy.safety).toBeGreaterThan(0);
+  });
+
+  it('aggregateTripConstraints: self-drive includes no_night_drive with contractMeta', () => {
+    const { items } = aggregateTripConstraints({
+      trip: {
+        id: 'trip-self-drive',
+        destination: 'IS',
+        startDate: new Date('2026-07-01'),
+        endDate: new Date('2026-07-10'),
+        pacingConfig: { travelMode: 'self_drive' },
+        budgetConfig: { total: 50000, currency: 'CNY' },
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      summary: {
+        tripId: 'trip-self-drive',
+        constraintsVersion: 1,
+        pendingCount: 0,
+        timeRange: { status: 'confirmed', startDate: '2026-07-01', endDate: '2026-07-10', dayCount: 10 },
+        budget: { status: 'confirmed', total: 50000, currency: 'CNY', gateStatus: 'ALLOW' },
+        travelers: { status: 'draft', count: 2, memberCount: 2, profilingCompletedCount: 0 },
+        transport: { status: 'confirmed', travelMode: 'self_drive' },
+      },
+      userId: 'user-1',
+    });
+
+    const noNight = items.find((c) => c.id === TRIP_CONSTRAINT_LEGACY_IDS.NO_NIGHT_DRIVE);
+    expect(noNight).toBeDefined();
+    expect(noNight?.type).toBe('HARD');
+    expect(noNight?.contractMeta?.judgmentRule).toContain('日落后');
+    expect(noNight?.source.templateId).toBe('no_night_drive');
+
+    const budget = items.find((c) => c.id === TRIP_CONSTRAINT_LEGACY_IDS.BUDGET_TOTAL);
+    expect(budget?.contractMeta?.judgmentRule).toContain('50000');
+    expect(budget?.contractMeta?.violationResultLabel).toBeTruthy();
   });
 
   it('resolveConstraintCardTone: active HARD uses default not danger', () => {

@@ -1,0 +1,32 @@
+{
+  "contractVersion": "0.1.0",
+  "rfc": "RFC-001",
+  "phase": 0,
+  "generatedAt": "2026-06-30T09:58:41.495Z",
+  "ironRule": "Only Decision Core may form DecisionRecord; only authorized DecisionRecord may change Effective Plan.",
+  "files": {
+    "entity-ref.types.ts": "5fd53964eb8fadd2c820d38aa6e1fd99f6fec2e3eec5711567674495828258bc",
+    "world-state.types.ts": "7e77da9987622516af3d3b7ea7437bd8a355bc649864ca634b1a046ca153bca2",
+    "decision-problem.types.ts": "a9f1369308637d9dfe6a9a335cd1d0ff3f6ea15ce122a4e1ddf1b338fcdfb519",
+    "plan-operation.types.ts": "77740b89148a35ef3f2db648961c64f82a7bb5d3b6629909125389de7c028d5e",
+    "guardian-outputs.types.ts": "81d9533ad34c12530485027a24d6ee636466e2fcc46811753ae08bc1fea4af82",
+    "decision-workspace.types.ts": "5a2e13f9e7ec1276d5305b5afe7c3a15d9bc990e0260d080fceb37e98ac51312",
+    "authorization.types.ts": "56055890055d065f6cfed5698b38fd3744a09deb151cb084c8b3ebdb9fc6ff11",
+    "decision-record.types.ts": "c805a0d125cc06e4fed9f6c6b5619bb60ea8ce6fbe95b870641c4a491c1e8179",
+    "plan-version.types.ts": "10ead0c20345df060c3d2185267ea8e1b939c2063eb88126289783ae6235c366",
+    "index.ts": "a305e210808294a32a152f01916e60d8073c208e9d1985b7512ca96d304dde6a",
+    "schemas/rfc001-phase0.schemas.ts": "da70529b0c03207fdc9a9bfd5da89768d92c24371ecd2098fbd83f85acd88c64"
+  },
+  "requiredExports": [
+    "WorldStateAssertion",
+    "Rfc001DecisionProblem",
+    "DecisionWorkspace",
+    "Rfc001ConstraintAssertion",
+    "Rfc001LoadAssessment",
+    "Rfc001RepairCandidate",
+    "Rfc001DecisionRecord",
+    "PlanVersion",
+    "AuthorizationRequirement",
+    "RFC001_PHASE0_CONTRACT_VERSION"
+  ]
+}

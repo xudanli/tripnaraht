@@ -23,6 +23,8 @@ export function buildDailyDriveExceededConflicts(input: {
   dailyDriveMinutes: Map<number, number>;
   maxDailyDrivingHours: number;
   dayItemIds?: Map<number, string[]>;
+  /** scopeBinding 过滤 — 仅对适用天数生成冲突 */
+  shouldApplyToDay?: (dayNumber: number) => boolean;
 }): ConflictDto[] {
   const maxMinutes = input.maxDailyDrivingHours * 60;
   const conflicts: ConflictDto[] = [];
@@ -30,6 +32,7 @@ export function buildDailyDriveExceededConflicts(input: {
   for (const [dayNumber, driveMinutes] of [...input.dailyDriveMinutes.entries()].sort(
     (a, b) => a[0] - b[0],
   )) {
+    if (input.shouldApplyToDay && !input.shouldApplyToDay(dayNumber)) continue;
     if (driveMinutes <= maxMinutes) continue;
     const shortfallMinutes = Math.ceil(driveMinutes - maxMinutes);
     const affectedItemIds = input.dayItemIds?.get(dayNumber) ?? [];

@@ -618,6 +618,11 @@ import {
   type PlanVerifyLoopHost,
   type PlanVerifyLoopRunParams,
 } from '../orchestration/plan-verify-loop';
+import { runTravelCompilePhase, runTravelRecompileAfterRepair } from '../orchestration/travel-compile/travel-compile-phase.util';
+import { runGraphEffectivePlanMaterializePhase } from '../orchestration/travel-compile/graph-effective-plan-materialize-phase.util';
+import { TravelCompilerService } from '../../travel-compiler/travel-compiler.service';
+import { TravelGraphStoreService } from '../../travel-compiler/services/travel-graph-store.service';
+import { GraphEffectivePlanMaterializerService } from '../../travel-compiler/services/graph-effective-plan-materializer.service';
 import {
   IntakeOrchestratorNode,
   ResearchOrchestratorNode,
@@ -874,6 +879,9 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly preferenceRoundOrchestrator?: PreferenceRoundOrchestratorService,
     /** PDI-4：未完成调查时自动推送 Travel Style / Money DNA 问卷 */
     @Optional() private readonly decisionProfilingOrchestrator?: DecisionProfilingOrchestratorService,
+    @Optional() private readonly travelCompiler?: TravelCompilerService,
+    @Optional() private readonly travelGraphStore?: TravelGraphStoreService,
+    @Optional() private readonly graphEffectivePlanMaterializer?: GraphEffectivePlanMaterializerService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -7839,6 +7847,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         return planGenOut.terminal;
       }
 
+      await this.runTravelCompilePhaseIfEnabled(state, request);
+
       let planVerifyOutcome = await runPlanVerifyOptimizeRepairLoop(this.asPlanVerifyLoopHost(), {
         request,
         context,
@@ -7889,6 +7899,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           if (regen.terminal) {
             return { planVerifyOutcome, decisionState: ds, planGenTerminal: regen.terminal };
           }
+          await this.runTravelCompilePhaseIfEnabled(state, request);
           const reVerify = await runPlanVerifyOptimizeRepairLoop(this.asPlanVerifyLoopHost(), {
             request,
             context,
@@ -7911,6 +7922,13 @@ ${JSON.stringify(routingDecision, null, 2)}
       if (planVerifyOutcome.kind === 'terminal') {
         return planVerifyOutcome.result;
       }
+
+      await runGraphEffectivePlanMaterializePhase({
+        state,
+        request,
+        materializer: this.graphEffectivePlanMaterializer,
+        configService: this.configService,
+      });
 
       const postPlanOutcome = await runPostPlanGraph(this.asPostPlanGraphHost(), {
         request,
@@ -10409,7 +10427,8 @@ ${JSON.stringify(routingDecision, null, 2)}
             })
         : undefined,
       persistRelaxationToTrip: (tripId, userId, applied) =>
-        this.relaxationTripPersist?.persistFromIntake(tripId, userId, applied),
+        this.relaxationTripPersist?.persistFromIntake(tripId, userId, applied) ??
+        Promise.resolve(undefined),
     };
   }
 
@@ -12865,6 +12884,20 @@ ${JSON.stringify(routingDecision, null, 2)}
       executeRepairStep: (req, ctx, st, llm) =>
         this.executeRepairStep(req, ctx, st, llm),
       recordRepairObservability: (p) => this.recordRepairPhaseObservability(p),
+      runTravelRecompileAfterRepair: (p) =>
+        runTravelRecompileAfterRepair({
+          state: p.state,
+          request: p.request,
+          compiler: this.travelCompiler,
+          graphStore: this.travelGraphStore,
+          configService: this.configService,
+          itineraryBeforeRepair: p.itineraryBeforeRepair,
+          repairApplied: p.repairApplied,
+          verificationIssues: p.verificationIssues,
+          onProgress: (view) => {
+            void this.routeAndRunTaskProgress?.reportCtreCompilationProgress(view);
+          },
+        }),
     };
   }
 
@@ -14840,6 +14873,24 @@ ${JSON.stringify(routingDecision, null, 2)}
     params: PlanGenEmptyDraftGuardParams,
   ): Promise<OrchestrationResult | null> {
     return tryPlanGenEmptyDraftTerminalGuard(this.asPlanGenEmptyDraftGuardHost(), params);
+  }
+
+  private async runTravelCompilePhaseIfEnabled(
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+  ): Promise<void> {
+    this.touchAsyncTaskProgress('TRAVEL_COMPILE');
+    await runTravelCompilePhase({
+      state,
+      request,
+      compiler: this.travelCompiler,
+      graphStore: this.travelGraphStore,
+      configService: this.configService,
+      onProgress: (view) => {
+        void this.routeAndRunTaskProgress?.reportCtreCompilationProgress(view);
+      },
+    });
+    this.maybeSnapshot(state, 'AUTO');
   }
 
   private async runPlanGenWithEmptyDraftGuard(

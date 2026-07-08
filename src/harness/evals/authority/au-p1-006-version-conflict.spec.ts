@@ -1,9 +1,7 @@
 import { getAuthorityCase } from '../authority/authority-cases.registry';
-import {
-  authorityAssert,
-  expectAuthorityPass,
-  runAuthorityCase,
-} from '../assertions/canonical-authority.assertions';
+import { authorityAssert, expectAuthorityPass } from '../assertions/canonical-authority.assertions';
+import { runAuthorityCaseWithContext } from './run-authority-case-with-context.util';
+import { assertAuthorityResultHasAnchor } from './authority-context-anchor.util';
 import { evaluateClientPlanVersionConflict } from '../../../agent/utils/trip-orchestration-lock.util';
 import {
   buildDurableAuthoritySnapshotV1,
@@ -92,8 +90,10 @@ describe('AU-P1-006 — Concurrent modification version conflict', () => {
       stage: 'commit',
     });
 
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: caseDef.caseId,
+      tripId: 'trip_1',
+      runtimeAuthority: 'CANONICAL',
       run: async () => [
         authorityAssert({
           layer: 'trip_version',
@@ -113,5 +113,6 @@ describe('AU-P1-006 — Concurrent modification version conflict', () => {
     });
 
     expectAuthorityPass(result);
+    assertAuthorityResultHasAnchor(result, { runtimeAuthority: 'CANONICAL' });
   });
 });

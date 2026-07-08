@@ -29,11 +29,11 @@ export class ActiveTripDashboardService {
     return buildActiveTripDashboardView({
       trip: {
         tripId: trip.id,
-        name: trip.name,
-        destination: trip.destination,
+        name: trip.name ?? '',
+        destination: trip.destination ?? '',
         startDate: trip.startDate.toISOString().slice(0, 10),
         endDate: trip.endDate.toISOString().slice(0, 10),
-        status: trip.status,
+        status: trip.status ?? '',
       },
       metadata: trip.metadata,
       viewerUserId: userId,

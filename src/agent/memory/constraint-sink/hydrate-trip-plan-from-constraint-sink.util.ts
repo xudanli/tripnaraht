@@ -62,13 +62,17 @@ export function hydrateTripPlanFromConstraintSink(
     applied.keys.push('party.fitness_level');
   }
 
-  if (delta.negative?.avoid_regions?.includes('south_coast')) {
-    const notes = delta.negative.notes_zh ?? '避免沿海/南岸（Constraint Sink）';
-    const anchorBlock = `[SYSTEM_MESSAGE][CONSTRAINT_SINK][USER_INTENT]\n${notes}\n`;
-    tpr.message = tpr.message?.includes('[CONSTRAINT_SINK]')
-      ? tpr.message
-      : `${anchorBlock}${tpr.message ?? request.message ?? ''}`.trim();
-    applied.keys.push('guardian_debate_intent_hint');
+  if (delta.negative?.notes_zh) {
+    const notes = delta.negative.notes_zh;
+    if (!tpr.message?.includes(notes)) {
+      const anchorBlock = `[SYSTEM_MESSAGE][CONSTRAINT_SINK][USER_INTENT]\n${notes}\n`;
+      tpr.message = tpr.message?.includes('[CONSTRAINT_SINK]')
+        ? tpr.message
+        : `${anchorBlock}${tpr.message ?? request.message ?? ''}`.trim();
+      if (!applied.keys.includes('guardian_debate_intent_hint')) {
+        applied.keys.push('guardian_debate_intent_hint');
+      }
+    }
 
     const g = tpr.guardian_debate_trip_context ?? {};
     tpr.guardian_debate_trip_context = {
@@ -78,6 +82,10 @@ export function hydrateTripPlanFromConstraintSink(
         interpretation_zh: g.user_intent_anchors?.interpretation_zh ?? notes,
       },
     };
+  }
+
+  if (delta.negative?.avoid_regions?.includes('south_coast')) {
+    applied.keys.push('avoid_south_coast');
   }
 
   if (delta.negative?.avoid_poi_types?.length) {

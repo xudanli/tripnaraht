@@ -123,6 +123,17 @@ export class PersonaAlertMetadataDto {
   @ApiPropertyOptional({ type: PersonaAlertDeepLinkDto })
   deepLink?: PersonaAlertDeepLinkDto;
 
+  /** M2 — 按维度拆分的 tradeoff + contextualNarrative（与 Decision Space 同源） */
+  @ApiPropertyOptional({ type: [Object] })
+  tradeoffDimensions?: Array<{
+    dimension: string;
+    direction: string;
+    explanation?: string;
+    contextualNarrative?: string;
+    value?: number;
+    unit?: string;
+  }>;
+
   /** 历史/扩展：建议作用域 */
   @ApiPropertyOptional()
   dayId?: string;

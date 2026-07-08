@@ -14,6 +14,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -26,7 +27,11 @@ import {
 } from '../../../common/dto/standard-response.dto';
 import { ConstraintSolverAccessService } from '../../trip-constraint-solver/services/constraint-solver-access.service';
 import { DecisionSemanticsService } from '../services/decision-semantics.service';
+import { DestinationInsightService } from '../services/destination-insight.service';
 import type { CreateDecisionRequestBody } from '../types/decision-semantics.types';
+import { isDecisionGatewayUnifiedEnabled } from '../../../decision-runtime/gateway/config/decision-gateway.config';
+import { ModuleRef } from '@nestjs/core';
+import { DecisionEngineGatewayService } from '../../../decision-runtime/gateway/services/decision-engine-gateway.service';
 
 @ApiTags('decision-semantics')
 @Public()
@@ -35,17 +40,62 @@ export class DecisionSemanticsL1Controller {
   constructor(
     private readonly access: ConstraintSolverAccessService,
     private readonly semantics: DecisionSemanticsService,
+    private readonly destinationInsights: DestinationInsightService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
-  @Get('decision-center/overview')
-  @ApiOperation({ summary: 'Decision Center L1 总览（enforcement 聚合 + 影响范围 + 近期决策）' })
-  async getOverview(
+  @Get('destination-insights')
+  @ApiOperation({
+    summary: '目的地知识与证据 BFF（聚合 conflict proofs + 可选 scoped RAG）',
+  })
+  async getDestinationInsights(
     @Param('tripId') tripId: string,
+    @Query('focusConflictId') focusConflictId?: string,
+    @Query('problemId') problemId?: string,
+    @Query('placeId') placeId?: string,
+    @Query('poiSlug') poiSlug?: string,
+    @Query('dayIndex') dayIndex?: string,
+    @Query('includeRag') includeRag?: string,
     @CurrentUser() user?: CurrentUserPayload,
   ) {
     try {
       const userId = this.access.resolveUserId(user);
       await this.access.assertTripMember(tripId, userId);
+      const parsedPlaceId = placeId ? Number(placeId) : undefined;
+      const parsedDay = dayIndex ? Number(dayIndex) : undefined;
+      const data = await this.destinationInsights.getBundle(tripId, {
+        focusConflictId,
+        problemId,
+        placeId: Number.isFinite(parsedPlaceId) ? parsedPlaceId : undefined,
+        poiSlug,
+        dayIndex: Number.isFinite(parsedDay) ? parsedDay : undefined,
+        includeRag: includeRag === '1' || includeRag === 'true',
+      });
+      return successResponse(data);
+    } catch (e) {
+      return this.handleError(e);
+    }
+  }
+
+  @Get('decision-center/overview')
+  @ApiOperation({ summary: 'Decision Center L1 总览（enforcement 聚合 + 影响范围 + 近期决策）' })
+  async getOverview(
+    @Param('tripId') tripId: string,
+    @Query('includeDebug') includeDebug?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const userId = this.access.resolveUserId(user);
+      await this.access.assertTripMember(tripId, userId);
+      if (isDecisionGatewayUnifiedEnabled()) {
+        const gateway = this.moduleRef.get(DecisionEngineGatewayService, { strict: false });
+        if (gateway) {
+          const unified = await gateway.getOverview(tripId, {
+            includeDebug: includeDebug === 'true' || includeDebug === '1',
+          });
+          return successResponse(unified);
+        }
+      }
       const data = await this.semantics.getOverview(tripId);
       return successResponse(data);
     } catch (e) {

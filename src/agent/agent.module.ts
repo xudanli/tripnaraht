@@ -5,6 +5,7 @@ import { ActionsController } from './actions.controller';
 import { QuickPlanController } from './quick-plan.controller';
 import { AgentService } from './services/agent.service';
 import { ExecutionGatewayService } from './services/execution-gateway.service';
+import { ExecutionAgentService } from './services/execution-agent.service';
 import { TripOrchestrationLockService } from './services/trip-orchestration-lock.service';
 import { EcpsRuntimeBiasService } from './services/ecps-runtime-bias.service';
 import { ExecutionPolicyVersionRegistryService } from './services/execution-policy-version-registry.service';
@@ -77,7 +78,7 @@ import { PlanningWorkbenchKernelBridgeService } from './services/planning-workbe
 import { AgentOpsOutcomeBridgeService } from './services/agent-ops-outcome-bridge.service';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
 import { PlanningWorkbenchTaskService } from './services/planning-workbench-task.service';
-import { ExecutionAgentService } from './services/execution-agent.service';
+import { EffectivePlanWriteGuardService } from '../decision-runtime/execution/effective-plan-write-guard.service';
 import { TripDetailAgentService } from './services/trip-detail-agent.service';
 import { ExecutionController } from './execution.controller';
 import { TripDetailController } from './trip-detail.controller';
@@ -197,6 +198,8 @@ import { FlightMcpModule } from '../mcp/flight-mcp.module';
 import { RedisModule } from '../redis/redis.module';
 import { AgentContextModule } from './context/agent-context.module';
 import { RoadIsModule } from '../infrastructure/external/road-is/road-is.module';
+import { EffectivePlanExecutionModule } from '../decision-runtime/execution/effective-plan-execution.module';
+import { TravelCompilerModule } from '../travel-compiler/travel-compiler.module';
 import { DecisionContractCapturerService } from './services/decision-contract-capturer.service';
 import { AgentActionReconcilerService } from './services/agent-action-reconciler.service';
 import { SagaReconciliationCron } from './crons/saga-reconciliation.cron';
@@ -255,6 +258,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     forwardRef(() => AuthModule), // AdminStrictAuthGuard（replay 锚点 admin API）
     RoadIsModule, // ontology 区域 → Road.is / segment 缓存路况（轻量问答硬锚点附录）
     DecisionOsP0Module, // Validation Gateway + Contingency + SLO + DNA compliance
+    EffectivePlanExecutionModule,
+    TravelCompilerModule,
   ],
   controllers: [
     AgentController,
@@ -461,6 +466,7 @@ export class AgentModule {
     @Optional() private planningWorkbenchAgent?: PlanningWorkbenchAgentService,
     @Optional() private executionAgent?: ExecutionAgentService,
     @Optional() private tripDetailAgent?: TripDetailAgentService,
+    @Optional() private effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {
     // 注册基础 Actions（在模块初始化时）
     this.registerBasicActions();
@@ -475,7 +481,11 @@ export class AgentModule {
     }
     
     // 注册 Trip Actions
-    const tripActions = createTripActions(this.tripsService, this.itineraryItemsService);
+    const tripActions = createTripActions(
+      this.tripsService,
+      this.itineraryItemsService,
+      this.effectivePlanWriteGuard,
+    );
     this.actionRegistry.registerMany(tripActions);
 
     // 注册 Places Actions

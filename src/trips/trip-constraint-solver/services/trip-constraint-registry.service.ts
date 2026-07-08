@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TripWishService } from '../../wishlist/services/trip-wish.service';
@@ -30,15 +32,37 @@ import {
 import {
   applyMaxSegmentDistanceConstraintPatch,
 } from '../utils/segment-distance-threshold.util';
-import { applyMaxDailyDrivingHoursConstraintPatch } from '../utils/daily-drive-threshold.util';
+import { applyMaxDailyDrivingHoursConstraintPatch, applyNoNightDriveConstraintPatch } from '../utils/daily-drive-threshold.util';
 import {
   aggregateTripConstraints,
   classifyConstraintRefreshType,
   isLegacyConstraintId,
   newCustomConstraintId,
 } from '../utils/trip-constraint-aggregate.util';
+import { isPhase6OfficialRulePersistenceBlocked } from '../../../decision-runtime/phase6-legacy-deprecation.config';
 import { isOfficialConstraintId } from '../utils/country-official-constraints.util';
+import { buildStructuredConstraintImpactPreview } from '../utils/constraint-impact-preview.util';
 import { enrichPlanningConflictsWithRelatedConstraintIds } from '../utils/constraint-conflict-link.util';
+import {
+  enrichScopeBindingWithResolvedMember,
+  mergeConstraintValueOnPatch,
+  readScopeBindingFromValue,
+  resolveScopeFromPatch,
+  validateScopeBinding,
+  writeConstraintExtendedValue,
+} from '../utils/constraint-scope-binding.util';
+import {
+  buildStoredTemplateConstraint,
+  constraintIdFromTemplate,
+  exportConstraintTemplateCatalog,
+  getConstraintTemplate,
+  isLegacyPatchOnlyTemplate,
+  mergeTemplateValue,
+  type ConstraintTemplateCatalogDocument,
+} from '../utils/constraint-template-registry.util';
+import { buildSoftConstraintCheckConflicts } from '../utils/soft-constraint-evaluation.util';
+import { buildSoftScheduleEvalContext } from '../utils/soft-constraint-schedule-eval.util';
+import { normalizeSoftPriorityPatch } from '../utils/soft-constraint-priority.util';
 import type {
   StoredUnifiedConstraint,
   TripConstraint,
@@ -48,6 +72,12 @@ import type {
   TripConstraintRepairResponse,
   TripConstraintsListResponse,
 } from '../types/trip-constraint.types';
+import type { TravelDecisionContract } from '../types/travel-decision-contract.types';
+import type { PatchTravelDecisionContractDto } from '../dto/travel-decision-contract.dto';
+import {
+  mergeStoredTravelDecisionContract,
+  readStoredTravelDecisionContract,
+} from '../utils/travel-decision-contract.builder';
 import { TRIP_CONSTRAINT_LEGACY_IDS } from '../types/trip-constraint.types';
 import { TripConstraintPreviewService } from './trip-constraint-preview.service';
 
@@ -56,7 +86,9 @@ export class TripConstraintRegistryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly constraintsSummary: ConstraintsSummaryService,
+    @Inject(forwardRef(() => PlanningConflictsService))
     private readonly planningConflicts: PlanningConflictsService,
+    @Inject(forwardRef(() => FeasibilityReportService))
     private readonly feasibility: FeasibilityReportService,
     private readonly budgetIntent: TripBudgetIntentService,
     private readonly wishService: TripWishService,
@@ -68,7 +100,7 @@ export class TripConstraintRegistryService {
     userId: string,
     query: ListTripConstraintsQueryDto,
   ): Promise<TripConstraintsListResponse> {
-    const { items, meta } = await this.buildList(tripId, userId);
+    const { items, meta, contract } = await this.buildList(tripId, userId);
     let filtered = items;
 
     if (query.type) filtered = filtered.filter((c) => c.type === query.type);
@@ -81,6 +113,62 @@ export class TripConstraintRegistryService {
     return {
       meta: { ...meta, total: filtered.length },
       items: filtered,
+      contract,
+    };
+  }
+
+  getTemplateCatalog(filter?: { type?: 'HARD' | 'SOFT' }): ConstraintTemplateCatalogDocument {
+    const catalog = exportConstraintTemplateCatalog();
+    if (!filter?.type) return catalog;
+    return {
+      ...catalog,
+      templates: catalog.templates.filter((t) => t.type === filter.type),
+    };
+  }
+
+  async getSoftConstraintAdvisories(
+    tripId: string,
+    userId: string,
+  ): Promise<import('../types/planning-conflicts.types').PlanningConflictItem[]> {
+    const { items, scheduleCtx } = await this.buildList(tripId, userId);
+    return buildSoftConstraintCheckConflicts(items, scheduleCtx);
+  }
+
+  async patchContract(
+    tripId: string,
+    userId: string,
+    dto: PatchTravelDecisionContractDto,
+  ): Promise<{ contract: TravelDecisionContract; constraints: ReturnType<typeof snapshotConstraintsMeta> }> {
+    await this.assertVersion(tripId, dto.constraintsVersion);
+
+    const trip = await this.requireTrip(tripId);
+    const existing = readStoredTravelDecisionContract(
+      (trip.metadata as Record<string, unknown>) ?? {},
+    );
+    const merged = mergeStoredTravelDecisionContract(existing, {
+      objectives: dto.objectives,
+      changeStrategy: dto.changeStrategy,
+      automation: dto.automation,
+      teamGovernance: dto.teamGovernance,
+      automationPaused: dto.automationPaused,
+      automationScope: dto.automationScope,
+      resetAutomationToDefaults: dto.resetAutomationToDefaults,
+    });
+
+    const metadata = bumpConstraintsVersion({
+      ...((trip.metadata as object) ?? {}),
+      travelDecisionContract: merged,
+    });
+
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { metadata: toInputJsonValue(metadata) },
+    });
+
+    const { contract } = await this.buildList(tripId, userId);
+    return {
+      contract,
+      constraints: snapshotConstraintsMeta(metadata),
     };
   }
 
@@ -98,8 +186,111 @@ export class TripConstraintRegistryService {
       });
     }
 
+    if (
+      isPhase6OfficialRulePersistenceBlocked() &&
+      (dto.source?.type === 'OFFICIAL_RULE' || dto.type === 'EXTERNAL')
+    ) {
+      throw new BadRequestException({
+        code: 'OFFICIAL_RULE_NOT_PERSISTED',
+        message: '官方规则由 Destination Pack 只读投影，不可写入 TripConstraint 存储',
+      });
+    }
+
     const trip = await this.requireTrip(tripId);
     const ext = this.readExt(trip.metadata);
+
+    const templateId = dto.source?.templateId;
+    if (templateId) {
+      if (isLegacyPatchOnlyTemplate(templateId)) {
+        throw new BadRequestException({
+          code: 'LEGACY_CONSTRAINT_USE_PATCH',
+          message: `模板 ${templateId} 为 legacy 合成约束，请 PATCH 对应 constraintId 而非 POST 创建`,
+          legacyConstraintId:
+            templateId === 'no_night_drive'
+              ? TRIP_CONSTRAINT_LEGACY_IDS.NO_NIGHT_DRIVE
+              : templateId === 'max_daily_drive'
+                ? TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE
+                : templateId === 'budget_total'
+                  ? TRIP_CONSTRAINT_LEGACY_IDS.BUDGET_TOTAL
+                  : undefined,
+        });
+      }
+      const def = getConstraintTemplate(templateId);
+      if (!def) {
+        throw new BadRequestException({
+          code: 'UNKNOWN_CONSTRAINT_TEMPLATE',
+          message: `未知约束模板 ${templateId}`,
+        });
+      }
+      const stableId = constraintIdFromTemplate(templateId);
+      const duplicate = (ext.unifiedConstraints ?? []).find(
+        (c) => c.id === stableId || c.source.templateId === templateId,
+      );
+      if (duplicate) {
+        throw new ConflictException({
+          code: 'CONSTRAINT_TEMPLATE_ALREADY_EXISTS',
+          message: `模板 ${templateId} 已添加`,
+          constraintId: duplicate.id,
+        });
+      }
+
+      const mergedValue = mergeTemplateValue(def, dto.value);
+      const scopeBinding = readScopeBindingFromValue(mergedValue);
+      const stored: StoredUnifiedConstraint = {
+        ...buildStoredTemplateConstraint({
+          def,
+          dtoValue: dto.value,
+          dtoPriority: dto.priority,
+          dtoName: dto.name,
+          dtoDescription: dto.description,
+          dtoCategory: dto.category,
+          dtoScope:
+            resolveScopeFromPatch({ scopeBinding, scope: dto.scope ?? def.scope }) ??
+            dto.scope ??
+            def.scope,
+          dtoOperator: dto.operator,
+          dtoType: dto.type,
+          dtoAllowRelaxation: dto.allowRelaxation,
+          dtoUnit: dto.unit,
+          userId,
+          stableId,
+          sourceType: dto.source?.type,
+        }),
+        scope:
+          resolveScopeFromPatch({ scopeBinding, scope: dto.scope ?? def.scope }) ??
+          dto.scope ??
+          def.scope,
+        tolerance: dto.tolerance,
+        locked: dto.locked ?? false,
+        visibility: dto.visibility ?? 'TEAM',
+      };
+
+      const metadata = bumpConstraintsVersion({
+        ...((trip.metadata as object) ?? {}),
+        unifiedConstraints: [...(ext.unifiedConstraints ?? []), stored],
+      });
+
+      await this.prisma.trip.update({
+        where: { id: tripId },
+        data: { metadata: toInputJsonValue(metadata) },
+      });
+
+      const { items } = await this.buildList(tripId, userId);
+      const created = items.find((c) => c.id === stored.id);
+      if (!created) throw new NotFoundException('约束创建后读模型未找到');
+
+      return {
+        constraint: created,
+        constraints: snapshotConstraintsMeta(metadata),
+      };
+    }
+
+    if (!dto.scope || !dto.operator) {
+      throw new BadRequestException({
+        code: 'MISSING_SCOPE_OR_OPERATOR',
+        message: '无 templateId 时 scope 与 operator 必填',
+      });
+    }
 
     if (dto.category === 'MEMBER' && dto.source?.type === 'PRIVATE_WISH') {
       const wish = await this.wishService.create(tripId, userId, {
@@ -123,13 +314,20 @@ export class TripConstraintRegistryService {
       description: dto.description,
       category: dto.category,
       type: dto.type,
-      status: dto.type === 'HARD' ? 'ACTIVE' : 'DRAFT',
+      status: dto.type === 'HARD' || dto.type === 'SOFT' ? 'ACTIVE' : 'DRAFT',
       scope: dto.scope,
       operator: dto.operator,
-      value: dto.value,
+      value:
+        dto.type === 'SOFT'
+          ? normalizeSoftPriorityPatch({ priority: dto.priority, value: { custom: true, ...(dto.value as object) } })
+              .value
+          : dto.value,
       unit: dto.unit,
       tolerance: dto.tolerance,
-      priority: dto.priority,
+      priority:
+        dto.type === 'SOFT'
+          ? normalizeSoftPriorityPatch({ priority: dto.priority, value: dto.value }).priority
+          : dto.priority,
       allowRelaxation: dto.allowRelaxation ?? dto.type !== 'HARD',
       locked: dto.locked ?? false,
       source: dto.source ?? { type: 'USER', sourceId: userId },
@@ -381,6 +579,19 @@ export class TripConstraintRegistryService {
     );
 
     const refreshedSummary = await this.constraintsSummary.getSummary(tripId);
+    const { items } = await this.buildList(tripId, userId);
+    const structuredImpact = buildStructuredConstraintImpactPreview({
+      changes: dto.changes,
+      items,
+      conflictsBefore: before.conflicts,
+      conflictsAfter,
+      assessBefore,
+      assessAfter,
+      feasibilityBefore,
+      feasibilityAfter,
+      budgetDelta,
+      budgetTotalBefore: summary.budget.total,
+    });
 
     return {
       tripId,
@@ -399,26 +610,32 @@ export class TripConstraintRegistryService {
       feasibilityBefore,
       feasibilityAfter,
       executeabilityDelta,
-      recommendations,
+      recommendations: [...structuredImpact.summaryBullets, ...recommendations],
       suggestedFollowUp,
+      structuredImpact,
     };
   }
 
-  async check(tripId: string): Promise<TripConstraintCheckResponse> {
+  async check(tripId: string, userId: string): Promise<TripConstraintCheckResponse> {
     const data = await this.planningConflicts.getPlanningConflicts(tripId);
-    const conflicts = enrichPlanningConflictsWithRelatedConstraintIds(data.conflicts);
+    const { items, contract, scheduleCtx } = await this.buildList(tripId, userId);
+    const hardConflicts = enrichPlanningConflictsWithRelatedConstraintIds(data.conflicts);
+    const softAdvisories = buildSoftConstraintCheckConflicts(items, scheduleCtx);
+    const conflicts = [...hardConflicts, ...softAdvisories];
+    const softCount = softAdvisories.length;
     return {
       tripId,
-      hasConflicts: data.summary.total > 0,
+      hasConflicts: data.summary.total > 0 || softCount > 0,
       summary: {
         mustHandle: data.summary.mustHandle,
-        suggestAdjust: data.summary.suggestAdjust,
+        suggestAdjust: data.summary.suggestAdjust + softCount,
         pendingConfirm: data.summary.pendingConfirm,
-        total: data.summary.total,
+        total: data.summary.total + softCount,
       },
       conflicts,
       canStartExecute: data.canStartExecute,
       gateExecute: data.gateExecute,
+      contractConflicts: contract.conflicts,
     };
   }
 
@@ -458,7 +675,10 @@ export class TripConstraintRegistryService {
             date: true,
             ItineraryItem: {
               select: {
+                id: true,
                 type: true,
+                startTime: true,
+                endTime: true,
                 note: true,
                 Place: {
                   select: {
@@ -468,6 +688,7 @@ export class TripConstraintRegistryService {
                   },
                 },
               },
+              orderBy: { startTime: 'asc' },
             },
           },
         },
@@ -481,14 +702,17 @@ export class TripConstraintRegistryService {
       this.wishService.listTeam(tripId, userId),
     ]);
 
-    return aggregateTripConstraints({
-      trip,
-      summary,
-      teamWishes,
-      conflicts: planning.conflicts,
-      isFeasibilityStale: planning.isStale,
-      userId,
-    });
+    return {
+      ...aggregateTripConstraints({
+        trip,
+        summary,
+        teamWishes,
+        conflicts: planning.conflicts,
+        isFeasibilityStale: planning.isStale,
+        userId,
+      }),
+      scheduleCtx: buildSoftScheduleEvalContext(trip),
+    };
   }
 
   private async requireTrip(tripId: string) {
@@ -537,11 +761,31 @@ export class TripConstraintRegistryService {
     switch (constraintId) {
       case TRIP_CONSTRAINT_LEGACY_IDS.BUDGET_TOTAL:
         if (dto.value != null) {
-          await this.budgetIntent.setIntent(tripId, {
-            total: Number(dto.value),
-            currency: dto.unit ?? 'CNY',
-          });
-          return;
+          const raw = dto.value;
+          const total =
+            typeof raw === 'number'
+              ? raw
+              : typeof raw === 'object' && raw
+                ? Number(
+                    (raw as Record<string, unknown>).total ??
+                      (raw as Record<string, unknown>).value,
+                  )
+                : NaN;
+          const currency =
+            (typeof raw === 'object' &&
+              raw &&
+              typeof (raw as Record<string, unknown>).currency === 'string'
+              ? String((raw as Record<string, unknown>).currency)
+              : undefined) ??
+            dto.unit ??
+            'CNY';
+          if (Number.isFinite(total)) {
+            await this.budgetIntent.setIntent(tripId, {
+              total,
+              currency,
+            });
+            return;
+          }
         }
         break;
       case TRIP_CONSTRAINT_LEGACY_IDS.PACING_LEVEL:
@@ -600,8 +844,26 @@ export class TripConstraintRegistryService {
         const c5: Record<string, unknown> = {
           ...((metadata.constraints as Record<string, unknown>) ?? {}),
         };
-        if (applyMaxDailyDrivingHoursConstraintPatch(c5, dto.value)) {
-          metadata.constraints = c5;
+        if (dto.value != null) {
+          Object.assign(metadata, writeConstraintExtendedValue(metadata, constraintId, dto.value));
+          if (applyMaxDailyDrivingHoursConstraintPatch(c5, dto.value)) {
+            metadata.constraints = c5;
+          }
+          bumpMeta = true;
+        }
+        break;
+      }
+      case TRIP_CONSTRAINT_LEGACY_IDS.NO_NIGHT_DRIVE: {
+        const c6: Record<string, unknown> = {
+          ...((metadata.constraints as Record<string, unknown>) ?? {}),
+        };
+        if (
+          applyNoNightDriveConstraintPatch(c6, {
+            value: dto.value,
+            status: dto.status,
+          })
+        ) {
+          metadata.constraints = c6;
           bumpMeta = true;
         }
         break;
@@ -663,10 +925,48 @@ export class TripConstraintRegistryService {
 
     const prev = list[idx];
     const { constraintsVersion: _v, ...rest } = dto;
+    let mergedValue = prev.value;
+    if (dto.value !== undefined) {
+      mergedValue = mergeConstraintValueOnPatch(prev.value, dto.value);
+    }
+    const teamGovernance = (trip.metadata as Record<string, unknown>)?.travelDecisionContract;
+    let scopeBinding = readScopeBindingFromValue(mergedValue);
+    if (scopeBinding) {
+      const errors = validateScopeBinding(scopeBinding);
+      if (errors.length > 0) {
+        throw new BadRequestException({
+          code: 'INVALID_SCOPE_BINDING',
+          message: errors[0]?.message ?? 'scopeBinding 无效',
+          errors,
+        });
+      }
+      scopeBinding = enrichScopeBindingWithResolvedMember(scopeBinding, teamGovernance);
+      if (mergedValue && typeof mergedValue === 'object') {
+        mergedValue = { ...(mergedValue as Record<string, unknown>), scopeBinding };
+      }
+    }
+    let nextPriority = dto.priority ?? prev.priority;
+    if (prev.type === 'SOFT' && (dto.priority !== undefined || dto.value !== undefined)) {
+      const def = prev.source.templateId ? getConstraintTemplate(prev.source.templateId) : undefined;
+      const normalized = normalizeSoftPriorityPatch({
+        priority: dto.priority ?? prev.priority,
+        value: mergedValue,
+        defaultPriority: def?.defaultPriority,
+      });
+      nextPriority = normalized.priority;
+      mergedValue = normalized.value;
+    }
+    const nextScope =
+      resolveScopeFromPatch({
+        scopeBinding: scopeBinding ?? readScopeBindingFromValue(mergedValue),
+        scope: rest.scope ?? prev.scope,
+      }) ?? rest.scope ?? prev.scope;
     const next: StoredUnifiedConstraint = {
       ...prev,
       ...rest,
-      scope: rest.scope ?? prev.scope,
+      scope: nextScope,
+      value: mergedValue,
+      priority: nextPriority,
       source: prev.source,
       updatedAt: new Date().toISOString(),
     };
@@ -710,6 +1010,7 @@ export class TripConstraintRegistryService {
       case TRIP_CONSTRAINT_LEGACY_IDS.DAILY_WALK_LIMIT:
       case TRIP_CONSTRAINT_LEGACY_IDS.MAX_SEGMENT_DISTANCE:
       case TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE:
+      case TRIP_CONSTRAINT_LEGACY_IDS.NO_NIGHT_DRIVE:
         const c = { ...((metadata.constraints as Record<string, unknown>) ?? {}) };
         if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.MUST_PLACES) delete c.mustPlaces;
         if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.AVOID_PLACES) delete c.avoidPlaces;
@@ -721,6 +1022,12 @@ export class TripConstraintRegistryService {
         if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE) {
           delete c.maxDailyDrivingHours;
           delete c.maxDailyDriveHours;
+          const ext = { ...((metadata.constraintExtendedValues as Record<string, unknown>) ?? {}) };
+          delete ext[constraintId];
+          metadata.constraintExtendedValues = ext;
+        }
+        if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.NO_NIGHT_DRIVE) {
+          c.noNightDrive = { enabled: false };
         }
         metadata.constraints = c;
         break;

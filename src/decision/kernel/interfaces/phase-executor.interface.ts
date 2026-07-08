@@ -84,6 +84,10 @@ export interface PhaseExecutorContext {
   userCognitiveProfile?: UserCognitiveProfile;
   /** Persona closure 收敛审计（FINALIZE / three-guardians 写入） */
   personaClosureAudit?: PersonaClosureAudit;
+  /** Phase D：Travel Compiler 产物；VERIFY 可读 Graph SSOT */
+  canonicalTravelGraph?: import('../../../travel-compiler/contracts/canonical-travel-graph.types').CanonicalTravelGraph;
+  /** Phase D：VERIFY 输入 itinerary 来源 */
+  verifyItinerarySource?: 'planner_draft' | 'canonical_travel_graph@v0';
 }
 
 /** GateResult 兼容结构（避免直接依赖 trip-plan.interface） */

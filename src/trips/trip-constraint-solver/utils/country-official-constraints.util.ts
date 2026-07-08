@@ -33,18 +33,34 @@ interface OfficialRuleSeed {
   ruleId: string;
   severity: 'CRITICAL' | 'WARNING';
   sourcePath: string;
+  templateId: string;
+  destinationRuleCategory: import('../types/trip-constraint.types').DestinationRuleCategory;
+  destinationRuleTier: import('../types/trip-constraint.types').DestinationRuleTier;
+  sourceAgency: string;
+  applicableScope: string;
+  judgmentRule: string;
+  violationResult: string;
+  evidenceRef?: string;
 }
 
 const ICELAND_OFFICIAL_RULES: OfficialRuleSeed[] = [
   {
     id: TRIP_CONSTRAINT_OFFICIAL_IS_IDS.FROAD_2WD,
-    name: 'F 路须四驱',
+    name: 'F 路车辆准入',
     description:
       '2WD 禁止进入 F 路及高地 track（全年适用；典型租车条款与保险也不覆盖此类路段）。',
     category: 'TRANSPORT',
     ruleId: 'STRAT_ICE_002',
     severity: 'CRITICAL',
     sourcePath: 'assets/strategy/iceland-v1.json#two_wheel_drive_f_road_prohibited',
+    templateId: 'f_road_vehicle_access',
+    destinationRuleCategory: 'TRAFFIC',
+    destinationRuleTier: 'BLOCK',
+    sourceAgency: '冰岛道路管理部门',
+    applicableScope: '高地道路（F 路）',
+    judgmentRule: '仅允许符合要求的四驱车辆进入 F 路',
+    violationResult: '阻断路线',
+    evidenceRef: 'road.is/froad',
   },
   {
     id: TRIP_CONSTRAINT_OFFICIAL_IS_IDS.WINTER_FROAD,
@@ -55,6 +71,14 @@ const ICELAND_OFFICIAL_RULES: OfficialRuleSeed[] = [
     ruleId: 'STRAT_ICE_001',
     severity: 'CRITICAL',
     sourcePath: 'assets/strategy/iceland-v1.json#winter_f_road_prohibited',
+    templateId: 'winter_froad_seasonal_closure',
+    destinationRuleCategory: 'TRAFFIC',
+    destinationRuleTier: 'BLOCK',
+    sourceAgency: '冰岛道路管理部门',
+    applicableScope: 'F 路及内陆高地（季节性）',
+    judgmentRule: '冬季 F 路关闭期间不得规划穿越',
+    violationResult: '阻断路线',
+    evidenceRef: 'road.is/conditions',
   },
   {
     id: TRIP_CONSTRAINT_OFFICIAL_IS_IDS.RED_ALERT,
@@ -65,6 +89,14 @@ const ICELAND_OFFICIAL_RULES: OfficialRuleSeed[] = [
     ruleId: 'STRAT_ICE_000',
     severity: 'CRITICAL',
     sourcePath: 'assets/strategy/iceland-v1.json#red_alert_life_safety',
+    templateId: 'safetravel_red_alert',
+    destinationRuleCategory: 'NATURAL_RISK',
+    destinationRuleTier: 'BLOCK',
+    sourceAgency: 'SafeTravel Iceland',
+    applicableScope: '行程涉及区域',
+    judgmentRule: '红色安全预警生效时不得继续出行',
+    violationResult: '阻断路线',
+    evidenceRef: 'safetravel.is/alerts',
   },
   {
     id: TRIP_CONSTRAINT_OFFICIAL_IS_IDS.WIND_SAFETY,
@@ -75,6 +107,14 @@ const ICELAND_OFFICIAL_RULES: OfficialRuleSeed[] = [
     ruleId: 'STRAT_ICE_003',
     severity: 'WARNING',
     sourcePath: 'assets/strategy/iceland-v1.json#wind_safety_pickup',
+    templateId: 'wind_safety_advisory',
+    destinationRuleCategory: 'NATURAL_RISK',
+    destinationRuleTier: 'ADVISORY',
+    sourceAgency: '冰岛气象局 / 道路安全指引',
+    applicableScope: '大风预警期间驾驶与提车',
+    judgmentRule: '横风预警下需加强侧风驾驶与开门安全',
+    violationResult: '影响风险评分',
+    evidenceRef: 'vedur.is/wind',
   },
 ];
 
@@ -83,6 +123,7 @@ function buildOfficialCard(
   seed: OfficialRuleSeed,
   userId: string,
 ): TripConstraint {
+  const nowIso = trip.updatedAt.toISOString();
   return {
     id: seed.id,
     tripId: trip.id,
@@ -97,15 +138,25 @@ function buildOfficialCard(
       ruleId: seed.ruleId,
       countryCode: 'IS',
       severity: seed.severity,
+      templateId: seed.templateId,
+      destinationRuleCategory: seed.destinationRuleCategory,
+      destinationRuleTier: seed.destinationRuleTier,
+      sourceAgency: seed.sourceAgency,
+      applicableScope: seed.applicableScope,
+      judgmentRule: seed.judgmentRule,
+      violationResult: seed.violationResult,
+      evidenceRef: seed.evidenceRef,
+      evidenceVerifiedAt: nowIso,
     },
-    allowRelaxation: seed.severity === 'WARNING',
+    allowRelaxation: seed.destinationRuleTier === 'ADVISORY',
     locked: true,
-    source: { type: 'OFFICIAL_RULE', sourceId: seed.ruleId },
+    source: { type: 'OFFICIAL_RULE', sourceId: seed.ruleId, templateId: seed.templateId },
     visibility: 'TEAM',
     createdBy: userId,
     createdAt: trip.createdAt.toISOString(),
-    updatedAt: trip.updatedAt.toISOString(),
+    updatedAt: nowIso,
     backing: { kind: 'official_rule', field: seed.sourcePath },
+    enabled: true,
   };
 }
 

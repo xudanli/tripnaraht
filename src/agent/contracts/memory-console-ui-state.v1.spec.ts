@@ -25,4 +25,15 @@ describe('memory-console-ui-state.v1', () => {
     expect(ui.sections).toContain('trip_patches');
     expect(ui.trip_patches_count).toBe(1);
   });
+
+  it('deriveMemoryConsoleUiStateV1 includes decision_ledger_causality when links exist', () => {
+    const ui = deriveMemoryConsoleUiStateV1({
+      feature_flags: { memory_console: true, decision_semantics: true },
+      decision_ledger_causality: {
+        links: [{ ledger_node_id: 'n1', decision_id: 'dec_1' }],
+      },
+    });
+    expect(ui.sections).toContain('decision_ledger_causality');
+    expect(ui.decision_ledger_links_count).toBe(1);
+  });
 });

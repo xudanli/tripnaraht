@@ -69,6 +69,31 @@ export class BuildContextPackageDto {
   @IsBoolean()
   useCache?: boolean;
 
+  @ApiPropertyOptional({ description: 'RFC-003 — Travel Context ID (V1 exploration = scenarioId)' })
+  @IsOptional()
+  @IsString()
+  contextId?: string;
+
+  @ApiPropertyOptional({ description: 'RFC-003 — Expected travel context revision for agent grounding' })
+  @IsOptional()
+  @IsInt()
+  revision?: number;
+
+  @ApiPropertyOptional({ description: 'RFC-003 — Agent task type (e.g. ROAD_SAFETY_VALIDATION)' })
+  @IsOptional()
+  @IsString()
+  task?: string;
+
+  @ApiPropertyOptional({
+    description: 'RFC-003 — Travel Context domains to inject',
+    type: [String],
+    example: ['plan', 'world', 'contract'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  includeDomains?: string[];
+
   @ApiPropertyOptional({ description: '是否包含 API 文档（默认 false）', default: false })
   @IsOptional()
   @IsBoolean()

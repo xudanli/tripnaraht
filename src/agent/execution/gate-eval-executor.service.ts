@@ -26,6 +26,7 @@ import { evaluateConflictMatrix, type ConflictMatrixRule } from '../../trips/dec
 import { PrismaService } from '../../prisma/prisma.service';
 import { getWeatherForTime } from '../../trips/ontology/environment/environment-domain.util';
 import { enrichPatentGateConstraintExtensions } from '../../decision/kernel/patent/patent-gate-constraints.util';
+import { isPhase6GateEvalFormalBlockDelegated } from '../../decision-runtime/phase6-legacy-deprecation.config';
 
 @Injectable()
 export class GateEvalExecutorService implements IGateEvalExecutor {
@@ -106,7 +107,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
 
     // 3. 有 blocker 且无需用户决策 -> BLOCK
     if (readinessBlockers.length > 0 && rulesNeedingDecision.length === 0) {
-      const gateResult: GateResultLike = {
+      const gateResult: GateResultLike = this.delegateFormalBlock({
         gate_result: 'BLOCK',
         violations: readinessBlockers.map((item: any) => ({
           type: 'SAFETY',
@@ -115,16 +116,19 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         })),
         required_adjustments: [],
         confidence: 0.9,
-      };
+      });
       const hasFailureRisk = readinessBlockers.some((b: any) => b?.type === 'FAILURE_RISK');
       return {
         constraints: this.finalizePatentConstraints(dso, {
           feasible: false,
           violations: gateResult.violations,
-          gateOutcome: 'BLOCK',
+          gateOutcome: gateResult.gate_result,
         }),
         gateResult,
-        alternatives: this.alternativesForBlockedGate(gateResult, hasFailureRisk ? 'failure_risk' : 'readiness'),
+        alternatives:
+          gateResult.gate_result === 'BLOCK'
+            ? this.alternativesForBlockedGate(gateResult, hasFailureRisk ? 'failure_risk' : 'readiness')
+            : undefined,
       };
     }
 
@@ -174,17 +178,21 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         }
       }
 
-      const constraints: ConstraintReport = {
-        feasible: gateResult.gate_result === 'ALLOW',
-        violations: (gateResult.violations || []).map((v) => ({ type: v.type, severity: v.severity, detail: v.detail })),
-        feasibleActions: gateResult.required_adjustments?.map((a) => a.action),
-        gateOutcome: gateResult.gate_result,
-      };
-      const gateResultLike: GateResultLike = {
+      const gateResultLike: GateResultLike = this.delegateFormalBlock({
         gate_result: gateResult.gate_result,
         violations: gateResult.violations || [],
         required_adjustments: gateResult.required_adjustments || [],
         confidence: gateResult.confidence ?? 0.8,
+      });
+      const constraints: ConstraintReport = {
+        feasible: gateResultLike.gate_result === 'ALLOW',
+        violations: (gateResultLike.violations || []).map((v) => ({
+          type: v.type,
+          severity: v.severity,
+          detail: v.detail,
+        })),
+        feasibleActions: gateResultLike.required_adjustments?.map((a) => a.action),
+        gateOutcome: gateResultLike.gate_result,
       };
       return {
         constraints: this.finalizePatentConstraints(dso, constraints),
@@ -200,7 +208,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     const extraViolations = await this.evaluateAdmissionAndSpatialAtoms(tripRequest, researchData, hardTruth);
 
     // 降级：默认 ALLOW（若 extraViolations 存在则 ADJUST_REQUIRED/BLOCK）
-    const gateResult: GateResultLike = {
+    const gateResult: GateResultLike = this.delegateFormalBlock({
       gate_result:
         extraViolations.some((v) => v.severity === 'HARD')
           ? 'BLOCK'
@@ -213,7 +221,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         why: typeof item.message === 'string' ? item.message : item.message?.zh || item.message?.en || '',
       })),
       confidence: 0.8,
-    };
+    });
     return {
       constraints: this.finalizePatentConstraints(dso, {
         feasible: gateResult.gate_result === 'ALLOW',
@@ -223,6 +231,14 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       }),
       gateResult,
     };
+  }
+
+  private delegateFormalBlock(gate: GateResultLike): GateResultLike {
+    if (!isPhase6GateEvalFormalBlockDelegated() || gate.gate_result !== 'BLOCK') {
+      return gate;
+    }
+    this.logger.debug('[GateEval] Phase6: formal BLOCK → ADJUST_REQUIRED (gateway authority)');
+    return { ...gate, gate_result: 'ADJUST_REQUIRED' };
   }
 
   private finalizePatentConstraints(dso: DecisionState, constraints: ConstraintReport): ConstraintReport {

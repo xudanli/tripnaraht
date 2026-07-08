@@ -7,6 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { PreferenceEvolutionService } from '../agent/services/preference-evolution.service';
 import {
   applyRouteRollbackDecisionEvent,
@@ -92,7 +93,7 @@ export class ActiveTripDecisionService {
         metadata: {
           ...prevMeta,
           activeTripDecisionLoop: result.loop,
-        },
+        } as unknown as Prisma.InputJsonValue,
         updatedAt: new Date(),
       },
     });

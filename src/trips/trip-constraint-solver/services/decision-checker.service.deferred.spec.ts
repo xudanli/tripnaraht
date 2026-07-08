@@ -53,6 +53,7 @@ describe('DecisionCheckerService deferred', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     );
 
     jest.spyOn(service as any, 'buildDecisionChecker').mockResolvedValue(dcPayload);

@@ -3,9 +3,13 @@ import {
   buildFixedMinuteBufferRepairOption,
   buildMinuteBufferRepairOptions,
   buildShiftDepartureRepairOption,
+  buildShiftEarlierRepairOption,
   computeShiftMinutes,
   findScheduleTimeOverlap,
+  isPresetMinuteBufferViable,
+  isShiftDepartureRepairViable,
   roundBufferMinutes,
+  shouldOfferMinuteTimingRepairs,
 } from './travel-timing-repair.util';
 
 describe('travel-timing-repair.util', () => {
@@ -15,6 +19,18 @@ describe('travel-timing-repair.util', () => {
 
   it('rounds buffer minutes to 15m steps', () => {
     expect(roundBufferMinutes(22)).toBe(30);
+  });
+
+  it('builds shift_earlier with negative shiftMinutes in payload', () => {
+    const opt = buildShiftEarlierRepairOption({
+      issueId: 'issue-1',
+      fromItemId: 'item-a',
+      shortfallMinutes: 90,
+      anchors: { travelMinutes: 200 },
+    });
+    expect(opt?.actionType).toBe('shift_earlier');
+    expect(opt?.payload?.advanceMinutes).toBeGreaterThan(0);
+    expect(opt?.payload?.shiftMinutes).toBeLessThan(0);
   });
 
   it('builds shift_departure payload with shiftMinutes', () => {
@@ -75,5 +91,67 @@ describe('travel-timing-repair.util', () => {
         ],
       }),
     ).toBe('b');
+  });
+
+  describe('magnitude gates for minute-level repairs', () => {
+    it('rejects preset buffers when shortfall exceeds 120 minutes', () => {
+      expect(isPresetMinuteBufferViable({ shortfallMinutes: 121, travelMinutes: 60 })).toBe(false);
+      expect(
+        buildMinuteBufferRepairOptions({
+          issueId: 'issue-1',
+          toItemId: 'item-b',
+          shortfallMinutes: 597,
+          anchors: { travelMinutes: 1920 },
+        }),
+      ).toEqual([]);
+    });
+
+    it('rejects preset buffers and shift when travel exceeds 8 hours', () => {
+      expect(isPresetMinuteBufferViable({ shortfallMinutes: 90, travelMinutes: 520 })).toBe(false);
+      expect(isShiftDepartureRepairViable({ travelMinutes: 520 })).toBe(false);
+      expect(
+        shouldOfferMinuteTimingRepairs({
+          toItemId: 'item-b',
+          shortfallMinutes: 115,
+          travelMinutes: 520,
+          issueKind: 'inter_day_travel',
+          priority: 'must_handle',
+        }),
+      ).toBe(false);
+    });
+
+    it('still allows small-gap minute buffers', () => {
+      expect(isPresetMinuteBufferViable({ shortfallMinutes: 45, travelMinutes: 90 })).toBe(true);
+      expect(
+        shouldOfferMinuteTimingRepairs({
+          toItemId: 'item-b',
+          shortfallMinutes: 45,
+          travelMinutes: 90,
+          issueKind: 'same_day_travel',
+          priority: 'suggest_adjust',
+        }),
+      ).toBe(true);
+    });
+
+    it('allows shift but not preset buffers when shortfall is moderately large', () => {
+      expect(isPresetMinuteBufferViable({ shortfallMinutes: 150, travelMinutes: 200 })).toBe(false);
+      expect(isShiftDepartureRepairViable({ travelMinutes: 200 })).toBe(true);
+      expect(
+        shouldOfferMinuteTimingRepairs({
+          toItemId: 'item-b',
+          shortfallMinutes: 150,
+          travelMinutes: 200,
+          isStartTooEarly: true,
+        }),
+      ).toBe(true);
+      expect(
+        buildMinuteBufferRepairOptions({
+          issueId: 'issue-1',
+          toItemId: 'item-b',
+          shortfallMinutes: 150,
+          anchors: { travelMinutes: 200 },
+        }),
+      ).toEqual([]);
+    });
   });
 });

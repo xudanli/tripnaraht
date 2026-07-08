@@ -81,4 +81,7 @@ export enum ErrorCode {
 
   /** 日程写库冲突（缓冲/顺延与现有项重叠） */
   SCHEDULE_CONFLICT = 'SCHEDULE_CONFLICT',
+
+  /** Travel Context revision 乐观锁冲突（RFC-003 §8.2） */
+  REVISION_CONFLICT = 'REVISION_CONFLICT',
 }

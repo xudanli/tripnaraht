@@ -1,0 +1,17 @@
+[
+  {
+    "scenarioId": "CERT-IS-WEATHER-HIGH-WIND-BLOCK",
+    "country": "IS",
+    "semanticKey": "WEATHER_ACTIVITY_PROHIBITED",
+    "facts": {
+      "weather": { "windSpeedKmh": 95 },
+      "activity": { "exposed": true, "requiresGuide": false, "type": "" }
+    },
+    "candidateUsesRoute": true,
+    "expect": {
+      "matched": true,
+      "ruleId": "IS_WEATHER_HIGH_WIND_BLOCK",
+      "verdict": "BLOCK"
+    }
+  }
+]

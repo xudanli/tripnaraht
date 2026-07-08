@@ -66,9 +66,16 @@ export function buildCausalContextCacheKey(options: ContextPackageOptions, alsRe
   const { tripId, dsoVersion, requestId, daySegment } = resolveCausalContextFields(options, alsRequestId);
   const queryHash = simpleContextQueryHash(options.userQuery ?? '');
   const verSeg = dsoVersion === 'none' ? 'none' : String(dsoVersion);
+  const ctxId = options.contextId?.trim() || 'none';
+  const ctxRev =
+    options.revision !== undefined && Number.isFinite(options.revision)
+      ? String(Math.floor(options.revision))
+      : 'none';
 
   return [
     `trip:${tripId}`,
+    `ctx:${ctxId}`,
+    `ctxRev:${ctxRev}`,
     `ver:${verSeg}`,
     `req:${requestId}`,
     daySegment,

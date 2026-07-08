@@ -20,6 +20,14 @@ describe('resolvePlaceCoordinates', () => {
     ).toEqual({ lat: 64.14, lng: -21.91 });
   });
 
+  it('parses metadata.coordinates object lat/lng', () => {
+    expect(
+      resolvePlaceCoordinates({
+        metadata: { coordinates: { lat: 64.0489, lng: -16.1791 } },
+      }),
+    ).toEqual({ lat: 64.0489, lng: -16.1791 });
+  });
+
   it('parses metadata.coordinates as geojson lng/lat', () => {
     expect(
       resolvePlaceCoordinates({

@@ -35,6 +35,7 @@ import {
   PreviewConstraintImpactDto,
   RepairConstraintsDto,
 } from '../dto/trip-constraint.dto';
+import { PatchTravelDecisionContractDto } from '../dto/travel-decision-contract.dto';
 
 @ApiTags('trip-constraints')
 @Public()
@@ -45,11 +46,33 @@ export class TripConstraintsController {
     private readonly registry: TripConstraintRegistryService,
   ) {}
 
+  @Get('catalog')
+  @ApiOperation({
+    summary: '约束模板 catalog（JSON Schema 对齐）',
+    description:
+      '返回 hard_must_satisfy + soft_prefer 注册表；可选 query type=HARD|SOFT。机器可读 SSOT 见 schemas/constraint-template-registry.json',
+  })
+  async getCatalog(
+    @Param('tripId') _tripId: string,
+    @Query('type') type?: 'HARD' | 'SOFT',
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.handle(
+      () =>
+        Promise.resolve(
+          this.registry.getTemplateCatalog(type ? { type } : undefined),
+        ),
+      user,
+      _tripId,
+    );
+  }
+
   @Get()
   @ApiOperation({
     summary: '获取行程约束列表（统一 SSOT 读模型）',
     description:
-      '合成 intent / budget / pacing / wishes / feasibility 为 TripConstraint[]；支持 type/category/status/conflictOnly 过滤',
+      '合成 intent / budget / pacing / wishes / feasibility 为 TripConstraint[]；' +
+      '返回 contract（旅行决策合同）与 meta.sections（7+2 分区）；支持 type/category/status/conflictOnly 过滤',
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
   async list(
@@ -59,6 +82,25 @@ export class TripConstraintsController {
   ) {
     return this.handle(
       async (userId) => this.registry.list(tripId, userId, query),
+      user,
+      tripId,
+    );
+  }
+
+  @Patch('contract')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '更新旅行决策合同',
+    description:
+      '写入 trip.metadata.travelDecisionContract（旅行目标排序、变化策略、自动化授权、团队治理）',
+  })
+  async patchContract(
+    @Param('tripId') tripId: string,
+    @Body() body: PatchTravelDecisionContractDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.handle(
+      (userId) => this.registry.patchContract(tripId, userId, body),
       user,
       tripId,
     );
@@ -89,7 +131,7 @@ export class TripConstraintsController {
     description: '委托 planning-conflicts BFF',
   })
   async check(@Param('tripId') tripId: string, @CurrentUser() user?: CurrentUserPayload) {
-    return this.handle(() => this.registry.check(tripId), user, tripId);
+    return this.handle((userId) => this.registry.check(tripId, userId), user, tripId);
   }
 
   @Post('repair')

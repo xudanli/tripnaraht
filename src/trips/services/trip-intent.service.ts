@@ -1,7 +1,7 @@
 // src/trips/services/trip-intent.service.ts
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto } from '../dto/trip-intent.dto';
+import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto, ConstraintsDto } from '../dto/trip-intent.dto';
 import {
   LUNCH_STRATEGY_LABELS,
   normalizeLunchStrategy,
@@ -131,7 +131,7 @@ export class TripIntentService {
       normalizeLunchStrategy((metadata.tripParams as Record<string, unknown> | undefined)?.lunch_strategy as string);
     return {
       preferences: metadata.preferences as string[] | undefined,
-      constraints: metadata.constraints,
+      constraints: metadata.constraints as ConstraintsDto | undefined,
       planningPolicy: metadata.planningPolicy as string | undefined,
       lunch_strategy: lunch_strategy ?? undefined,
       lunch_strategy_label: lunch_strategy ? LUNCH_STRATEGY_LABELS[lunch_strategy] : undefined,

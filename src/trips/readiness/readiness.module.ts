@@ -58,6 +58,7 @@ import { LlmModule } from '../../llm/llm.module';
 import { RedisModule } from '../../redis/redis.module';
 import { RagModule } from '../../rag/rag.module';
 import { TransportModule } from '../../transport/transport.module';
+import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/effective-plan-execution.module';
 // 使用 forwardRef 来解决循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
 // 暂时禁用，验证懒加载方案是否能解决问题
 // import { TripsModule } from '../trips.module';
@@ -73,6 +74,7 @@ import { TransportModule } from '../../transport/transport.module';
     forwardRef(() => OptimizationModule),
     forwardRef(() => PoiAccessCapacityModule),
     TransportModule,
+    EffectivePlanExecutionModule,
     // forwardRef(() => TripsModule), // 暂时禁用，验证懒加载方案是否能解决问题
   ],
   controllers: [ReadinessController],

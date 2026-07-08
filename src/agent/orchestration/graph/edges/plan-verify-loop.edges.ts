@@ -9,7 +9,7 @@ export const PLAN_VERIFY_LOOP_EDGES: OrchestrationGraphEdge[] = [
   { from: 'verify', to: 'repair', reason: 'repair_triggered' },
   { from: 'verify', to: 'research', reason: 'RETURN_TO_RESEARCH' },
   // { from: 'verify', to: 'plan_gen', reason: 'RETRY' },
-  { from: 'repair', to: 'END', reason: 'repair_done_same_run' },
+  { from: 'repair', to: 'verify', reason: 'repair_reverify' },
 ];
 
 export type PlanVerifyLoopEdgeReason =
@@ -19,6 +19,7 @@ export type PlanVerifyLoopEdgeReason =
   | 'repair_triggered'
   | 'repair_utility_decay'
   | 'repair_count_exceeded'
+  | 'repair_reverify'
   | 'RETURN_TO_RESEARCH'
   | 'RETRY';
 

@@ -2385,7 +2385,7 @@ export class AgentService {
         resolveOrchestrationSubAgentFromRequest(request.options),
       );
       this.logger.debug(
-        `[AgenticRuntimeMcpCap] phase=${phase} provenance=${derived.provenance} tools=${runtimeMcpToolAllowlist.length}`,
+        `[AgenticRuntimeMcpCap] phase=${phase} provenance=${derived.provenance} tools=${runtimeMcpToolAllowlist?.length ?? 0}`,
       );
     }
 

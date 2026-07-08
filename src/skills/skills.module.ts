@@ -572,6 +572,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     ...(enableReadinessModule ? [DemGetProfileSkill] : []),
     WorldBuildContextSkill,
     WorldWeatherPredictionSkill,
+    RoadStatusRealtimeService,
     ...(enableDecisionSkills
       ? [
           DecisionAbuCheckSkill,

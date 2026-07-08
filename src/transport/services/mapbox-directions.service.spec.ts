@@ -51,4 +51,28 @@ describe('MapboxDirectionsService', () => {
       }),
     );
   });
+
+  it('getRoutes returns TransportOption from Mapbox response', async () => {
+    const get = jest.fn().mockResolvedValue({
+      data: {
+        routes: [
+          {
+            geometry: 'encoded-polyline6',
+            distance: 189200,
+            duration: 7200,
+          },
+        ],
+      },
+    });
+    mockedAxios.create.mockReturnValue({ get } as any);
+
+    const service = new MapboxDirectionsService({
+      get: (key: string) => (key === 'VITE_MAPBOX_ACCESS_TOKEN' ? 'pk.test' : undefined),
+    } as any);
+
+    const result = await service.getRoutes(64.13, -21.82, 63.42, -19.01, 'DRIVING');
+    expect(result).toHaveLength(1);
+    expect(result[0].durationMinutes).toBe(120);
+    expect(result[0].recommendationReason).toContain('Mapbox');
+  });
 });

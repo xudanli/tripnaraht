@@ -93,6 +93,25 @@ export class MemorySnapshotPersistenceService {
     }
   }
 
+  /** 删除 trip 最新 snapshot 指针，防止 delete 后仍从 stale head 召回 */
+  async invalidateTripHead(tripId: string): Promise<void> {
+    if (!this.redis) {
+      return;
+    }
+    const tid = String(tripId).trim();
+    if (!tid) {
+      return;
+    }
+    try {
+      await this.redis.del(`${TRIP_HEAD_PREFIX}${tid}`);
+      this.logger.debug(`MemorySnapshotPersistence: invalidated trip head ${tid}`);
+    } catch (e: unknown) {
+      this.logger.warn(
+        `MemorySnapshotPersistence: invalidateTripHead failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   /** 通过 trip 维度的「最新 snapshot_id 指针」加载最近一次持久化的 AgentMemoryContext */
   async loadLatestContextForTrip(tripId: string): Promise<AgentMemoryContext | null> {
     if (!this.redis) {

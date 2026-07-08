@@ -1,0 +1,26 @@
+[
+  {
+    "scenarioId": "CERT-NZ-ROAD-CLOSED-BLOCK",
+    "country": "NZ",
+    "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
+    "facts": { "road": { "status": "CLOSED" } },
+    "candidateUsesRoute": true,
+    "expect": {
+      "matched": true,
+      "ruleId": "NZ_ROAD_CLOSED_BLOCK",
+      "verdict": "BLOCK"
+    }
+  },
+  {
+    "scenarioId": "CERT-NZ-ROAD-CLOSED-BYPASS",
+    "country": "NZ",
+    "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
+    "facts": { "road": { "status": "CLOSED" } },
+    "candidateUsesRoute": false,
+    "expect": {
+      "matched": true,
+      "ruleId": "NZ_ROAD_CLOSED_BLOCK",
+      "verdict": "PASS"
+    }
+  }
+]

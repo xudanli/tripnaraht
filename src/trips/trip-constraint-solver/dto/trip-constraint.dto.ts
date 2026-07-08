@@ -50,6 +50,11 @@ export class TripConstraintSourceDto {
   @IsOptional()
   @IsString()
   sourceId?: string;
+
+  @ApiPropertyOptional({ description: 'catalog 模板 id — POST 创建 HARD 约束' })
+  @IsOptional()
+  @IsString()
+  templateId?: string;
 }
 
 export class TripConstraintDto {
@@ -177,14 +182,16 @@ export class CreateTripConstraintDto {
   @IsIn(TRIP_CONSTRAINT_TYPES)
   type!: TripConstraintType;
 
-  @ApiProperty({ type: TripConstraintScopeDto })
+  @ApiPropertyOptional({ type: TripConstraintScopeDto })
+  @IsOptional()
   @ValidateNested()
   @Type(() => TripConstraintScopeDto)
-  scope!: TripConstraintScopeDto;
+  scope?: TripConstraintScopeDto;
 
-  @ApiProperty({ enum: TRIP_CONSTRAINT_OPERATORS })
+  @ApiPropertyOptional({ enum: TRIP_CONSTRAINT_OPERATORS })
+  @IsOptional()
   @IsIn(TRIP_CONSTRAINT_OPERATORS)
-  operator!: TripConstraintOperator;
+  operator?: TripConstraintOperator;
 
   @ApiProperty()
   value!: unknown;

@@ -145,7 +145,11 @@ export function isGovernanceAskHoldEnvelope(envelope: {
 
 export function stepHasGovernanceAskHold(step: AgentLoopTraceStep | undefined): boolean {
   if (!step?.tool_results?.length) return false;
-  return step.tool_results.some((tr) => isGovernanceAskHoldEnvelope(tr.envelope));
+  return step.tool_results.some((tr) =>
+    isGovernanceAskHoldEnvelope(
+      tr.envelope as { success?: boolean; data?: unknown; error?: string | null | undefined },
+    ),
+  );
 }
 
 export function buildAgenticLoopCheckpointObservability(params: {

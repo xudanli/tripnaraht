@@ -145,6 +145,9 @@ export interface AccessCapacityPlanB {
 export interface AccessCapacityEvaluationInput {
   poiId: string;
   poiName?: string;
+  /** Itinerary Place.id — enables Place.ontologyRules fallback */
+  placeId?: number;
+  placeOntologyRules?: unknown;
   dateISO: string;
   /** 到达时刻 HH:mm（目的地当地） */
   arrivalTime: string;

@@ -8,6 +8,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { ReadinessRepairService } from '../../trips/readiness/services/readiness-repair.service';
+import {
+  buildEffectivePlanWriteChainBlockedPayload,
+  isDirectPlanMutationBlocked,
+} from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import type {
   ApplyRepairRequest,
   ApplyRepairResponse,
@@ -54,6 +58,23 @@ export class ReadinessApplyRepairSkill
     this.logger.debug(
       `readiness.applyRepair trip=${tripId} blocker=${blockerId} option=${optionId}`,
     );
+
+    if (isDirectPlanMutationBlocked()) {
+      const blocked = buildEffectivePlanWriteChainBlockedPayload('readiness.applyRepair.skill');
+      return {
+        tripId: tripId.trim(),
+        blockerId: blockerId.trim(),
+        optionId: optionId.trim(),
+        actionType: 'write_chain_blocked',
+        status: 'deferred',
+        message: blocked.message,
+        metadata: {
+          writeChainRequired: true,
+          code: blocked.code,
+          authorizedPaths: [...blocked.authorizedPaths],
+        },
+      };
+    }
 
     return this.readinessRepairService.applyRepair({
       tripId: tripId.trim(),

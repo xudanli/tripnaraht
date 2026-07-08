@@ -40,4 +40,8 @@ export class PlanningConflictsCacheStore {
       cachedAt: Date.now(),
     });
   }
+
+  clear(tripId: string): void {
+    this.byTripId.delete(tripId);
+  }
 }

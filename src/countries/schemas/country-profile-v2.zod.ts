@@ -102,6 +102,7 @@ export const countryProfileV2SeedSchema = z.object({
   isoCode: z.string().length(2),
   nameCN: z.string(),
   nameEN: z.string().optional(),
+  coverImageUrl: z.string().url().optional(),
   currencyCode: z.string().optional(),
   currencyName: z.string().optional(),
   exchangeRateToCNY: z.number().optional(),

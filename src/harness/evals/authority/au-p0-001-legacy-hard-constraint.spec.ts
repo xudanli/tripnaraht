@@ -2,8 +2,9 @@ import { getAuthorityCase } from '../authority/authority-cases.registry';
 import {
   authorityAssert,
   expectAuthorityPass,
-  runAuthorityCase,
 } from '../assertions/canonical-authority.assertions';
+import { runAuthorityCaseWithContext } from './run-authority-case-with-context.util';
+import { assertAuthorityResultHasAnchor } from './authority-context-anchor.util';
 import { applyLegacyMutationCommitGuard } from '../../../decision-runtime/execution/legacy-mutation-commit.adapter';
 import { validateMutationAuthority } from '../../../decision-runtime/execution/canonical-mutation-commit-guard.util';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../../../agent/dto/route-and-run.dto';
@@ -61,8 +62,10 @@ describe('AU-P0-001 — Legacy hard constraint equivalence', () => {
     const guardPayload = (guarded.result.payload as any)?.canonical_mutation_guard;
     const audit = (guarded.observability as any)?.authority_audit_v1;
 
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: caseDef.caseId,
+      tripId: 'trip_iceland',
+      runtimeAuthority: 'LEGACY',
       run: async () => [
         authorityAssert({
           layer: 'constraint_gateway',
@@ -89,6 +92,7 @@ describe('AU-P0-001 — Legacy hard constraint equivalence', () => {
     });
 
     expectAuthorityPass(result);
+    assertAuthorityResultHasAnchor(result, { runtimeAuthority: 'LEGACY' });
   });
 
   it('gateway unavailable defaults to non-writable legacy draft', () => {

@@ -22,7 +22,7 @@ import { resolveEffectivePlanWriteChainStatus } from '../execution/effective-pla
 import { getRecentEffectivePlanWriteGuardShadowEvents } from '../execution/effective-plan-write-guard-shadow.util';
 
 @ApiTags('gate1-ops')
-@Controller('ops/runtime')
+@Controller(['ops/runtime', 'decision-runtime/ops'])
 @UseGuards(Gate1OpsAccessGuard)
 export class DecisionRuntimeOpsController {
   constructor(

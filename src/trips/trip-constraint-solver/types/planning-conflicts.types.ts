@@ -29,6 +29,10 @@ export interface PlanningConflictItem {
   title: string;
   message: string;
   affectedDays?: number[];
+  /** BFF 稳定字段 — 与 `issue.affectedDayNumbers` 同源 */
+  affectedDayNumbers?: number[];
+  /** BFF 稳定字段 — 如「瓦特纳冰川 → 冰河湖」 */
+  affectedScopeSummary?: string;
   /** 与 feasibility dedupe 对齐的稳定键 */
   semanticKey?: string;
   /** 关联的 TripConstraint.id（官方规则 / legacy / POI 准入） */
@@ -131,6 +135,8 @@ export interface PlanningConflictsResponse {
   gateExecute?: GateExecuteStatusDto;
   canStartExecute?: boolean;
   isStale?: boolean;
+  /** 当前服务端 constraintsVersion（与 PATCH 乐观锁对齐） */
+  constraintsVersion?: number;
   /** feasibility-report 验证时间 */
   reportVerifiedAt?: string;
   /** schedule 冲突扫描时间 */

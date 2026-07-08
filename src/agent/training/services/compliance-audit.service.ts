@@ -10,6 +10,7 @@ import {
   RiskEvent,
 } from '../interfaces/safety-compliance.interface';
 import { randomUUID } from 'crypto';
+import { resolveConstraintBlockedForAudit } from '../../../decision-runtime/constraints/constraint-agent-narrate-only.util';
 
 /**
  * ComplianceAuditService
@@ -141,8 +142,8 @@ export class ComplianceAuditService {
 
     // 统计信息
     const totalDecisions = records.length;
-    const blockedDecisions = records.filter(
-      (r) => r.constraint_check_result.is_blocked,
+    const blockedDecisions = records.filter((r) =>
+      resolveConstraintBlockedForAudit(r.constraint_check_result),
     ).length;
     const approvedDecisions = records.filter(
       (r) => r.decision_result === 'APPROVED',

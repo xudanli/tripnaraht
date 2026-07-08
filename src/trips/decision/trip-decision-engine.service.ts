@@ -683,6 +683,13 @@ export class TripDecisionEngineService {
     return repaired;
   }
 
+  private isGuideToPlanDraft(state: TripWorldState): boolean {
+    const intents = state.context.preferences?.intents as Record<string, unknown> | undefined;
+    if (!intents) return false;
+    const flag = intents.guide_to_plan;
+    return flag === true || (typeof flag === 'number' && flag > 0);
+  }
+
   private getReadinessService(): ReadinessService | null {
     if (!this.readinessService) {
       try {
@@ -997,7 +1004,8 @@ export class TripDecisionEngineService {
 
     // 可选：运行准备度检查（使用 Pack + 能力包 + 地理特征增强）
     const readinessService = this.getReadinessService();
-    if (readinessService) {
+    const skipReadinessForGuideDraft = this.isGuideToPlanDraft(state);
+    if (readinessService && !skipReadinessForGuideDraft) {
       try {
         const context = readinessService.extractTripContext(state);
         

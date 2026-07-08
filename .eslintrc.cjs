@@ -23,4 +23,39 @@ module.exports = {
     '@typescript-eslint/no-require-imports': 'off',
     'no-console': 'off',
   },
+  overrides: [
+    {
+      files: [
+        'src/agent/**/*.ts',
+        'src/guide-to-plan/**/*.ts',
+        'src/trips/decision/**/*.ts',
+        'src/trips/guardian-decision-core/adapters/**/*.ts',
+        'src/trips/guardian-decision-core/services/**/*.ts',
+        'src/trips/guardian-decision-core/shadow/**/*.ts',
+      ],
+      excludedFiles: ['**/*.spec.ts', '**/*.e2e-spec.ts', '**/e2e/**'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/plan-version/plan-version.store', '**/plan-version.store'],
+                message:
+                  'Effective Plan writes must go through DecisionCore.finalize → authorize → EffectivePlanExecutor. Do not import plan-version.store directly.',
+              },
+              {
+                group: [
+                  '**/rfc001-itinerary-materializer.service',
+                  '**/execution/rfc001-itinerary-materializer.service',
+                ],
+                message:
+                  'Itinerary materialization must run inside EffectivePlanExecutor only.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
 };

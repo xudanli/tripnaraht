@@ -386,7 +386,17 @@ export class DAGOrchestratorService {
           this.logger.warn(
             `[DAG] RL预检查拒绝任务: task=${task.id}, action=${preDecision.action}, reason=${preDecision.reasoning}`,
           );
-          // 返回拒绝结果
+          if (preDecision.writeChainRequired) {
+            return {
+              success: false,
+              error: 'EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED',
+              code: 'EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED',
+              message: preDecision.reasoning,
+              authorizedPaths: preDecision.authorizedPaths,
+              rl_action: preDecision.action,
+              rl_confidence: preDecision.confidence,
+            };
+          }
           return {
             success: false,
             error: `RL pre-check rejected: ${preDecision.reasoning}`,

@@ -41,6 +41,8 @@ export type AuthorityCaseResult = {
   errors: string[];
   startedAt: string;
   finishedAt: string;
+  /** RFC-003 H-P0 — Revision-bound execution anchor when Context snapshot provided */
+  executionAnchor?: import('../../protocol/execution-anchor.types').HarnessExecutionAnchor;
 };
 
 export function mergeAuthorityResults(results: AuthorityCaseResult[]): {

@@ -7,6 +7,7 @@ import type { FeasibilityIssueDto } from '../types/trip-constraint-solver.types'
 import {
   assemblePlanningConflicts,
   buildPlanningConflictsSummary,
+  feasibilityIssueToPlanningItem,
   isLunchValidationNoise,
   isScheduleConflictCoveredByFeasibilityIssue,
   mapScheduleConflictCategory,
@@ -98,6 +99,43 @@ describe('planning-conflicts.util', () => {
         affectedDays: ['Day 5'],
       });
       expect(isScheduleConflictCoveredByFeasibilityIssue(conflict, issue)).toBe(false);
+    });
+  });
+
+  describe('travel scope BFF fields', () => {
+    it('projects affectedDayNumbers and affectedScopeSummary for same_day_travel', () => {
+      const item = feasibilityIssueToPlanningItem(
+        makeIssue({
+          issueKind: 'same_day_travel',
+          affectedDays: [4],
+          anchors: {
+            fromDayNumber: 4,
+            toDayNumber: 4,
+            fromPlaceLabel: '瓦特纳冰川',
+            toPlaceLabel: '冰河湖',
+          },
+        }),
+      );
+
+      expect(item.affectedDayNumbers).toEqual([4]);
+      expect(item.affectedScopeSummary).toBe('瓦特纳冰川 → 冰河湖');
+      expect(item.issue?.affectedDayNumbers).toEqual([4]);
+    });
+
+    it('projects transfer_buffer scope fields from BUFFER_INSUFFICIENT schedule conflict', () => {
+      const item = scheduleConflictToPlanningItem(
+        makeConflict({
+          fromPlaceLabel: '瓦特纳冰川',
+          toPlaceLabel: '冰河湖',
+          fromDayNumber: 4,
+          toDayNumber: 4,
+          affectedDays: ['4'],
+          issueKind: 'buffer_insufficient',
+        }),
+      );
+
+      expect(item.affectedDayNumbers).toEqual([4]);
+      expect(item.affectedScopeSummary).toBe('瓦特纳冰川 → 冰河湖');
     });
   });
 

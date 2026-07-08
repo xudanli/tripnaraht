@@ -189,7 +189,7 @@ export class MatchSquareService {
         captainInteractionMode: persona.interactionMode,
         destinationLat: dto.coordinates?.lat ?? null,
         destinationLng: dto.coordinates?.lng ?? null,
-        vibeSnapshot: dto.vibeParse ? (dto.vibeParse as Prisma.InputJsonValue) : null,
+        vibeSnapshot: dto.vibeParse ? (dto.vibeParse as Prisma.InputJsonValue) : undefined,
         routeDirectionId: dto.routeDirectionId ?? null,
         routeDirectionName: dto.routeDirectionName ?? null,
         publishedAt: new Date(),
@@ -366,8 +366,9 @@ export class MatchSquareService {
 
     const decision = dto.action === 'approve' ? 'approved' : 'rejected';
 
+    const app = application!;
     const updated = await this.prisma.matchSquareApplication.update({
-      where: { id: application.id },
+      where: { id: app.id },
       data: {
         status: decision,
         decidedAt: new Date(),
@@ -377,9 +378,9 @@ export class MatchSquareService {
     // 触发招募归因分析
     if (this.recruitingRuntime) {
       try {
-        await this.recruitingRuntime.reviewApplication(applicationId, decision, {
+        await this.recruitingRuntime!.reviewApplication(applicationId, decision, {
           captainUserId: userId,
-          applicantUserId: application.applicantUserId,
+          applicantUserId: app.applicantUserId,
           compatibilityScore: dto.compatibilityScore,
           mbtiCompatibility: dto.mbtiCompatibility,
           requiredSkills: dto.requiredSkills,

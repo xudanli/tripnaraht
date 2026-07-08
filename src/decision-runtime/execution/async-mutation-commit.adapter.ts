@@ -82,12 +82,13 @@ export function applyAsyncMutationCommitGuard(
 
   const existingPayload = response.result?.payload;
   const payload = {
-    timeline: existingPayload?.timeline ?? [],
-    dropped_items: existingPayload?.dropped_items ?? [],
-    candidates: existingPayload?.candidates ?? [],
-    evidence: existingPayload?.evidence ?? [],
-    robustness: existingPayload?.robustness ?? null,
-    ...(existingPayload ?? {}),
+    ...(existingPayload ?? {
+      timeline: [],
+      dropped_items: [],
+      candidates: [],
+      evidence: [],
+      robustness: null,
+    }),
     canonical_mutation_guard: guardPayload,
   } as RouteAndRunResponseDto['result']['payload'];
 

@@ -1,0 +1,41 @@
+export const EXPLORATION_SCENARIO_STATUS = {
+  DRAFT: 'DRAFT',
+  MATERIALIZING: 'MATERIALIZING',
+  MATERIALIZED: 'MATERIALIZED',
+  COMPLETED: 'COMPLETED',
+  ABANDONED: 'ABANDONED',
+} as const;
+
+export type ExplorationScenarioStatus =
+  (typeof EXPLORATION_SCENARIO_STATUS)[keyof typeof EXPLORATION_SCENARIO_STATUS];
+
+export const EXPLORE_ENTRY_VARIANT = {
+  SINGLE_RECOMMENDATION: 'SINGLE_RECOMMENDATION',
+  THREE_ROUTE_COMPARISON: 'THREE_ROUTE_COMPARISON',
+  THEME_FIRST: 'THEME_FIRST',
+} as const;
+
+export type ExploreEntryVariant =
+  (typeof EXPLORE_ENTRY_VARIANT)[keyof typeof EXPLORE_ENTRY_VARIANT];
+
+export const EXPLORATION_ROUTE_VARIANT_STATUS = {
+  DRAFT: 'DRAFT',
+  SELECTED: 'SELECTED',
+  ARCHIVED: 'ARCHIVED',
+} as const;
+
+export type ExplorationRouteVariantStatus =
+  (typeof EXPLORATION_ROUTE_VARIANT_STATUS)[keyof typeof EXPLORATION_ROUTE_VARIANT_STATUS];
+
+export const CONSUMER_PRINCIPLE_IDS = [
+  'LOW_DRIVING',
+  'NO_NIGHT_DRIVING',
+  'CORE_EXPERIENCE_FIRST',
+  'REMOTE_EXPLORATION',
+  'BUDGET_FLEXIBLE',
+  'STAY_STABILITY',
+] as const;
+
+export type ConsumerPrincipleId = (typeof CONSUMER_PRINCIPLE_IDS)[number];
+
+export const DEFAULT_RESEARCH_PROTOCOL_ID = 'iceland-discovery-v1';

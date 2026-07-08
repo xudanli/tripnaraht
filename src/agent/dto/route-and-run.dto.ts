@@ -645,6 +645,14 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
+      '启用 Travel Compiler：PLAN_GEN 后将草案编译为 CanonicalTravelGraph（默认关；可用 TRAVEL_COMPILER_ENABLED=true 全局开启）。',
+  })
+  @IsOptional()
+  @IsBoolean()
+  enable_travel_compiler?: boolean;
+
+  @ApiPropertyOptional({
+    description:
       'DOS 实验：前端直传结构化 Plan Delta AST，跳过 LLM/legacy 编译（免检注入 INTENT_COMPILE）。',
     isArray: true,
     example: [
@@ -4045,6 +4053,21 @@ export class RouteAndRunResponseDto {
         patch_ids?: string[];
         overridden_by_request_keys?: string[];
       };
+      /** Decision Semantics ledgerNodeToDecisionId（与 Memory Console 对齐） */
+      decision_ledger_causality?: {
+        revision: 'v1';
+        trip_id: string;
+        ledger_node_to_decision_id: Record<string, string>;
+        links: Array<{
+          ledger_node_id: string;
+          decision_id: string;
+          problem_id?: string;
+          decided_at?: string;
+          status?: string;
+          source: string;
+        }>;
+        decision_records_count: number;
+      };
     };
     /**
      * 决策账本自愈（增量 reconcile）：供前端进度条 / 信任动画消费（与 GATE_EVAL/EXECUTION 阻塞式调解对齐）。
@@ -4065,6 +4088,8 @@ export class RouteAndRunResponseDto {
         action: string;
         target_nodes: string[];
       }>;
+      /** INVALIDATED 节点 → Decision Semantics decisionId（调试 / 行程卡片跳转） */
+      user_decision_by_node_id?: Record<string, string>;
     };
     /** INTAKE 删除 POI 短路：轻量 CRUD，不要求完整 planning 日程块 */
     itinerary_item_delete?: boolean;

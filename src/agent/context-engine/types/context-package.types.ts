@@ -74,7 +74,8 @@ export type BlockType =
   | 'DOMAIN_INFLUENCE_PRIVATE' // 领域负责人视角私密约束（memberSlot，仅 includePrivate）
   | 'METADATA'           // 元数据
   | 'API_DOCUMENTATION'  // API 接口文档
-  | 'SYSTEM_CAPABILITY'; // 系统能力说明
+  | 'SYSTEM_CAPABILITY' // 系统能力说明
+  | 'TRAVEL_CONTEXT';  // RFC-003 Travel Context grounding block
 
 /**
  * Block 来源信息
@@ -225,6 +226,17 @@ export interface ContextPackageOptions {
   dsoVersion?: number;
   /** 当前 route_and_run request_id（因果缓存 Key 锚点） */
   requestId?: string;
+
+  /** RFC-003 Phase 6 — Travel Context grounding */
+  contextId?: string;
+  /** Expected travel context revision; mismatch → STALE_TRAVEL_CONTEXT_REVISION */
+  revision?: number;
+  /** Agent task type override (defaults from agent preset) */
+  task?: string;
+  /** Travel Context domains to inject (defaults from agent preset) */
+  includeDomains?: Array<
+    'intent' | 'participants' | 'contract' | 'plan' | 'world' | 'decisions' | 'monitoring' | 'history'
+  >;
 }
 
 /**

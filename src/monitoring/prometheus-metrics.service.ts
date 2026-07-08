@@ -78,6 +78,13 @@ export class PrometheusMetricsService implements OnModuleInit {
   private constraintSinkSkippedTotal!: Counter;
   private constraintSinkHydratedTotal!: Counter;
 
+  // Constraint Gateway SHADOW_COMPARE (decision-runtime)
+  private constraintShadowComparedTotal!: Counter;
+  private constraintShadowDivergedTotal!: Counter;
+
+  /** Decision Trigger Gateway dispatch (production observation) */
+  private decisionTriggerDispatchTotal!: Counter;
+
   /** Decision OS Step 4：灰度分流 + A/B Tick 审计 */
   private dosTickTotal!: Counter;
   private dosTickDurationMs!: Histogram;
@@ -389,6 +396,24 @@ export class PrometheusMetricsService implements OnModuleInit {
     this.constraintSinkHydratedTotal = new Counter({
       name: 'tripnara_constraint_sink_hydrated_total',
       help: 'INTAKE hydrate applied Constraint Sink patches into TripPlanRequest',
+      registers: [this.registry],
+    });
+    this.constraintShadowComparedTotal = new Counter({
+      name: 'tripnara_constraint_shadow_compared_total',
+      help: 'Dual-run constraint evaluations (SHADOW_COMPARE mode)',
+      registers: [this.registry],
+    });
+    this.constraintShadowDivergedTotal = new Counter({
+      name: 'tripnara_constraint_shadow_diverged_total',
+      help: 'Legacy vs canonical constraint divergence in SHADOW_COMPARE',
+      labelNames: ['divergence_kind'],
+      registers: [this.registry],
+    });
+
+    this.decisionTriggerDispatchTotal = new Counter({
+      name: 'tripnara_decision_trigger_dispatch_total',
+      help: 'Decision Trigger Gateway dispatches by route and status',
+      labelNames: ['route_target', 'status'],
       registers: [this.registry],
     });
 
@@ -816,6 +841,34 @@ export class PrometheusMetricsService implements OnModuleInit {
   recordConstraintSinkHydrated(keyCount: number): void {
     try {
       if (keyCount > 0) this.constraintSinkHydratedTotal.inc();
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** SHADOW_COMPARE — legacy boolean vs CanonicalConstraintReport divergence. */
+  recordConstraintShadowComparison(comparison: {
+    diverged: boolean;
+    divergenceKind: string;
+  }): void {
+    try {
+      this.constraintShadowComparedTotal.inc();
+      if (comparison.diverged) {
+        const kind = /^[\w_]+$/.test(comparison.divergenceKind)
+          ? comparison.divergenceKind.slice(0, 48)
+          : 'UNKNOWN';
+        this.constraintShadowDivergedTotal.inc({ divergence_kind: kind });
+      }
+    } catch {
+      // best-effort
+    }
+  }
+
+  recordDecisionTriggerDispatch(input: { routeTarget: string; status: string }): void {
+    try {
+      const route = String(input.routeTarget || 'unknown').slice(0, 48);
+      const status = String(input.status || 'unknown').slice(0, 16);
+      this.decisionTriggerDispatchTotal.inc({ route_target: route, status });
     } catch {
       // best-effort
     }

@@ -156,6 +156,7 @@ export type DecisionCheckerEvidenceKind =
   | 'inventory'
   | 'opening_hours'
   | 'persona_trace'
+  | 'destination_knowledge'
   | 'other';
 
 export interface DecisionCheckerEvidenceItemDto {
@@ -260,6 +261,8 @@ export interface DecisionCheckerResponse {
   splitPlan?: DecisionCheckerSplitPlanDto;
   /** 与 splitPlan 关联的中栏并行时间线（planning-conflicts poll ready 时合并） */
   daySplits?: import('./planning-conflicts.types').PlanningDaySplitDto[];
+  /** Phase 3 — option preview only; formal repair apply via decision-problems */
+  evaluationMode?: 'CHANGE_PREVIEW' | 'PLAN_VERIFY';
 }
 
 export interface DecisionCheckerRefreshBody {

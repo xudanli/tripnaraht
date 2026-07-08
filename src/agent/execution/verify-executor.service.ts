@@ -176,6 +176,11 @@ export class VerifyExecutorService implements IVerifyExecutor {
       { dso, ctx, recordSlo: true },
       [
         {
+          stageId: 'GRAPH_COMPILE_INTEGRITY',
+          run: async ({ ctx: c, issues, confidenceDelta }) =>
+            this.stageGraphCompileIntegrity(c, issues, confidenceDelta),
+        },
+        {
           stageId: 'DATA_RELIABILITY',
           run: async ({ dso: s, ctx: c, issues, confidenceDelta }) =>
             this.stageDataReliability(s, c, issues, confidenceDelta),
@@ -524,6 +529,72 @@ export class VerifyExecutorService implements IVerifyExecutor {
     return { issues: next, confidenceDelta: delta };
   }
 
+  private stageGraphCompileIntegrity(
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+  ): { issues: VerificationIssue[]; confidenceDelta: number; skipped?: boolean } {
+    const graph = ctx.canonicalTravelGraph;
+    if (!graph) {
+      return { issues, confidenceDelta, skipped: true };
+    }
+
+    const next = [...issues];
+    let delta = confidenceDelta;
+    const now = new Date().toISOString();
+
+    if (graph.stats.poiUnresolved > 0) {
+      next.push({
+        code: 'GRAPH_POI_UNRESOLVED',
+        class: 'CONFLICT',
+        message: `[CTRE] ${graph.stats.poiUnresolved} POI(s) unresolved in CanonicalTravelGraph`,
+        source: 'OTHER',
+        at: now,
+        suggestedActions: [{ action: 'ASK_USER', detail: 'Confirm unresolved POI slots' }],
+      });
+      delta -= 0.05;
+    }
+
+    const routeGap = graph.stats.routeTemplatesTotal - graph.stats.routeTemplatesResolved;
+    if (routeGap > 0) {
+      next.push({
+        code: 'GRAPH_ROUTE_UNRESOLVED',
+        class: 'CONFLICT',
+        message: `[CTRE] ${routeGap} route template(s) unresolved in CanonicalTravelGraph`,
+        source: 'OTHER',
+        at: now,
+      });
+      delta -= 0.05;
+    }
+
+    if (ctx.verifyItinerarySource !== 'canonical_travel_graph@v0') {
+      next.push({
+        code: 'GRAPH_VERIFY_SSOT_MISMATCH',
+        class: 'ADVISORY',
+        message: '[CTRE] VERIFY itinerary source is not graph-projected SSOT',
+        source: 'OTHER',
+        at: now,
+      });
+    }
+
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = {
+        ...(ctx.itinerary.metadata ?? {}),
+        __canonical_travel_graph: {
+          graphId: graph.graphId,
+          compileId: graph.compileId,
+          poiResolved: graph.stats.poiResolved,
+          poiUnresolved: graph.stats.poiUnresolved,
+          routeTemplatesResolved: graph.stats.routeTemplatesResolved,
+          routeTemplatesTotal: graph.stats.routeTemplatesTotal,
+          verifyItinerarySource: ctx.verifyItinerarySource,
+        },
+      };
+    }
+
+    return { issues: next, confidenceDelta: delta };
+  }
+
   private async stageExperienceAgent(
     dso: DecisionState,
     ctx: PhaseExecutorContext,
@@ -576,7 +647,7 @@ export class VerifyExecutorService implements IVerifyExecutor {
     dso: DecisionState,
     ctx: PhaseExecutorContext,
   ): Promise<{ issues: VerificationIssue[]; confidenceDelta: number }> {
-    const issues: VerificationIssue[] = [];
+    let issues: VerificationIssue[] = [];
     let confidenceDelta = 0;
 
     const reliability = evaluateDataReliability(dso, ctx);
@@ -596,6 +667,10 @@ export class VerifyExecutorService implements IVerifyExecutor {
       issues.push(...dataReliabilityFindingsToVerificationIssues(reliability.findings));
       confidenceDelta += reliability.confidenceDelta;
     }
+
+    const graphIntegrity = this.stageGraphCompileIntegrity(ctx, issues, confidenceDelta);
+    issues = graphIntegrity.issues;
+    confidenceDelta = graphIntegrity.confidenceDelta;
 
     const riskGate = evaluateRiskEvents(dso, ctx);
     if (ctx.itinerary) {

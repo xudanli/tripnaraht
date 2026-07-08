@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsObject,
@@ -15,6 +16,14 @@ import {
 import { Type } from 'class-transformer';
 import type { PlanSkeletonSet, PlanState } from '../../skills/plan/shared/plan-state.types';
 import type { PlanningWorkbenchRequestMetadata } from '../services/planning-workbench-agent.service';
+import {
+  PlanGateConfirmedItemDto,
+  type PlanGatePendingConfirmationDto,
+} from './plan-gate.dto';
+import {
+  collectPendingConfirmationsForValidation,
+  validateConfirmedItemsForCommit,
+} from '../utils/plan-gate-verification.projection.util';
 
 export const PLANNING_WORKBENCH_USER_ACTIONS = [
   'generate',
@@ -185,6 +194,24 @@ export class PlanningWorkbenchExecuteDto {
   @ValidateNested()
   @Type(() => ExecutePlanningWorkbenchMetadataDto)
   metadata?: ExecutePlanningWorkbenchMetadataDto;
+
+  @ApiPropertyOptional({
+    type: [PlanGateConfirmedItemDto],
+    description: 'userAction=commit 且存在待确认项时必填',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PlanGateConfirmedItemDto)
+  confirmedItems?: PlanGateConfirmedItemDto[];
+
+  @ApiPropertyOptional({
+    description:
+      '启用 CTRE 旅行编译：generate/commit/adjust 完成后将 PlanState 编译为 CanonicalTravelGraph（默认关；可用 TRAVEL_COMPILER_ENABLED=true 全局开启）。',
+  })
+  @IsOptional()
+  @IsBoolean()
+  enable_travel_compiler?: boolean;
 }
 
 export interface PlanningWorkbenchValidationError {
@@ -300,9 +327,38 @@ export function validatePlanningWorkbenchExecuteSemantics(
         message: `commit 找不到方案 ${selectedOptionId}，请检查 selectedOptionId 与 skeletonOptions 是否匹配`,
       };
     }
+
+    const pendingConfirmations = resolvePendingConfirmationsForCommit(dto);
+    const confirmError = validateConfirmedItemsForCommit({
+      pendingConfirmations,
+      confirmedItems: dto.confirmedItems,
+    });
+    if (confirmError) {
+      return confirmError;
+    }
   }
 
   return null;
+}
+
+function resolvePendingConfirmationsForCommit(
+  dto: PlanningWorkbenchExecuteDto,
+): PlanGatePendingConfirmationDto[] {
+  const stored = dto.existingPlanState?.metadata?.planGatePendingConfirmations as
+    | PlanGatePendingConfirmationDto[]
+    | undefined;
+  if (stored?.length) {
+    return stored;
+  }
+  if (!dto.existingPlanState) {
+    return [];
+  }
+  if (!dto.existingPlanState.gate && !dto.existingPlanState.metadata?.planGatePendingConfirmations) {
+    return [];
+  }
+  return collectPendingConfirmationsForValidation(dto.existingPlanState, {
+    confirmations: dto.existingPlanState.gate?.requiredUserConfirmations,
+  });
 }
 
 export function toPlanningWorkbenchRequest(
@@ -316,6 +372,8 @@ export function toPlanningWorkbenchRequest(
     paceFeedback: dto.paceFeedback,
     skeletonOptions: dto.skeletonOptions,
     selectedOptionId: dto.selectedOptionId,
+    confirmedItems: dto.confirmedItems,
+    enableTravelCompiler: dto.enable_travel_compiler,
     metadata: dto.metadata as PlanningWorkbenchRequestMetadata | undefined,
   };
 }

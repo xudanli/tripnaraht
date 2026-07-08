@@ -20,6 +20,7 @@ import {
   HttpStatus,
   Param,
   Headers,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { TripDecisionEngineService } from './trip-decision-engine.service';
@@ -76,6 +77,32 @@ import {
 } from '../../decision/kernel/decision-kernel-ssot.util';
 import { DecisionLogStorageService } from './services/decision-log-storage.service';
 import { TripClosedLoopService, type TripAction, type TripFailureEvent } from './closed-loop';
+import { FullPlanSelectionService } from '../../decision-runtime/core/full-plan-selection.service';
+import {
+  isCanonicalExecutionEnabled,
+  isCanonicalFullPlanSelectionEnabled,
+  resolveDecisionRuntimeMode,
+  resolveEffectiveRuntimeMode,
+  shouldRunFullPlanOptimizationShadow,
+} from '../../decision-runtime/constraints/constraint-evaluation.config';
+import { resolveStagingShadowOptionsForRequest } from '../../decision-runtime/core/resolve-staging-shadow-options.util';
+import { isShadowEvidencePersistenceEnabled } from '../../decision-runtime/observability/shadow-evidence-persistence.config';
+import { OBJECTIVE_REGISTRY_VERSION } from '../../decision-runtime/objectives/objective-semantics.registry';
+import {
+  CONSTRAINT_POLICY_VERSION,
+  resolveGitCommit,
+} from '../../decision-runtime/benchmark/benchmark-config.util';
+import { E1_BENCHMARK_MIGRATION } from '../../decision-runtime/benchmark/benchmark-fault-injection-gate.util';
+import { BenchmarkPreflightGuard } from '../../decision-runtime/observability/benchmark-preflight.guard';
+import type { DecisionCandidate } from '../../decision-runtime/candidates/contracts/decision-candidate';
+import type { CanonicalConstraintReport } from '../../decision-runtime/constraints/contracts/canonical-constraint-report';
+import { DecisionTriggerGatewayService } from '../../decision-runtime/trigger/decision-trigger.gateway.service';
+import { isDecisionTriggerGatewayEnabled } from '../../decision-runtime/trigger/decision-trigger.config';
+import { ConstraintShadowMetricsService } from '../../decision-runtime/constraints/constraint-shadow-metrics.service';
+import { buildDecisionRuntimeCapabilitiesView } from '../../decision-runtime/execution/decision-runtime-capabilities.view';
+import { buildTriggerCenterView } from '../../decision-runtime/trigger/trigger-center.view';
+import { DecisionProviderRegistryService } from '../../decision-runtime/candidates/decision-provider-registry.service';
+import { DecisionProviderInvocationService } from '../../decision-runtime/candidates/decision-provider-invocation.service';
 
 @ApiTags('decision-engine')
 @Controller('decision-engine/v1')
@@ -110,6 +137,11 @@ export class DecisionEngineController {
     @Optional() private readonly decisionLogStorage?: DecisionLogStorageService,
     @Optional() private readonly causalCounterfactual?: CausalCounterfactualClosureService,
     @Optional() private readonly causalRuntimeSession?: CausalRuntimeSessionService,
+    @Optional() private readonly fullPlanSelection?: FullPlanSelectionService,
+    @Optional() private readonly decisionTriggerGateway?: DecisionTriggerGatewayService,
+    @Optional() private readonly constraintShadowMetrics?: ConstraintShadowMetricsService,
+    @Optional() private readonly providerRegistry?: DecisionProviderRegistryService,
+    @Optional() private readonly providerInvocation?: DecisionProviderInvocationService,
   ) {}
 
   /** Echo causal runtime artifacts for frontend / OPS join. */
@@ -184,7 +216,169 @@ export class DecisionEngineController {
         generateMultiplePlans: !!this.multiPlanGenerator,
         operationalPolicy: !!this.operationalPolicy,
         closedLoopEvaluation: !!this.tripClosedLoop,
+        canonicalFullPlanSelection: isCanonicalFullPlanSelectionEnabled(),
+        decisionRuntimeMode: resolveDecisionRuntimeMode(),
+        effectiveRuntimeMode: resolveEffectiveRuntimeMode(),
+        fullPlanOptimizationShadow: shouldRunFullPlanOptimizationShadow(),
       },
+    });
+  }
+
+  @Get('runtime-capabilities')
+  @Public()
+  @ApiOperation({
+    summary: 'Decision Runtime 能力矩阵 + SHADOW_COMPARE 指标',
+    description:
+      '只读 QA 端点：env flags + 进程内 constraint shadow divergence snapshot（无密钥）。',
+  })
+  runtimeCapabilities() {
+    return successResponse(
+      buildDecisionRuntimeCapabilitiesView(
+        this.constraintShadowMetrics?.snapshot(),
+        this.providerRegistry?.snapshot(),
+      ),
+    );
+  }
+
+  @Get('trigger-center/by-trip/:tripId')
+  @Public()
+  @ApiOperation({
+    summary: 'M7 触发中心 — 行程级事件/影响/建议/处置',
+    description:
+      '只读：从 Trigger Gateway lineage 构建用户可读视图（发生了什么、影响范围、方案有效性、系统建议、是否需确认）。',
+  })
+  triggerCenterByTrip(@Param('tripId') tripId: string) {
+    if (!this.decisionTriggerGateway) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, 'Decision Trigger Gateway 不可用');
+    }
+    const entries = this.decisionTriggerGateway.listLineage(tripId);
+    return successResponse(buildTriggerCenterView(tripId, entries));
+  }
+
+  @Post('providers/research')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Agentic research provider (structured advisory artifact)',
+    description: 'Returns tripnara.research_provider_result@v1 — no formal decision authority.',
+  })
+  async invokeResearchProvider(
+    @Body() body: { tripId: string; query?: string; state?: TripWorldState },
+  ) {
+    try {
+      if (!body.tripId?.trim()) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'tripId is required');
+      }
+      if (!this.providerInvocation) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'Provider invocation unavailable');
+      }
+      const result = await this.providerInvocation.invokeResearch({
+        tripId: body.tripId.trim(),
+        query: body.query,
+        state: body.state,
+      });
+      return successResponse(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, message);
+    }
+  }
+
+  @Post('providers/narration')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Agentic narration provider (structured explanation)',
+    description: 'Returns tripnara.narration_provider_result@v1.',
+  })
+  async invokeNarrationProvider(
+    @Body()
+    body: {
+      tripId: string;
+      plan?: TripPlan;
+      decisionRecordId?: string;
+    },
+  ) {
+    try {
+      if (!body.tripId?.trim()) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'tripId is required');
+      }
+      if (!this.providerInvocation) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'Provider invocation unavailable');
+      }
+      const result = await this.providerInvocation.invokeNarration({
+        tripId: body.tripId.trim(),
+        plan: body.plan,
+        decisionRecordId: body.decisionRecordId,
+      });
+      return successResponse(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, message);
+    }
+  }
+
+  @Post('providers/critic')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Constraint critic provider (structured signals)',
+    description: 'Returns tripnara.critic_provider_result@v1.',
+  })
+  async invokeCriticProvider(
+    @Body()
+    body: {
+      tripId: string;
+      plan?: TripPlan;
+      state?: TripWorldState;
+    },
+  ) {
+    try {
+      if (!body.tripId?.trim()) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'tripId is required');
+      }
+      if (!this.providerInvocation) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'Provider invocation unavailable');
+      }
+      const result = await this.providerInvocation.invokeCritic({
+        tripId: body.tripId.trim(),
+        plan: body.plan,
+        state: body.state,
+      });
+      return successResponse(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, message);
+    }
+  }
+
+  @Get('runtime-diagnostics')
+  @Public()
+  @UseGuards(BenchmarkPreflightGuard)
+  @ApiOperation({
+    summary: 'Live runtime configuration (no secrets)',
+    description:
+      'Benchmark preflight only — gated by RUNTIME_DIAGNOSTICS_ENABLED / BENCHMARK_PREFLIGHT_TOKEN in production.',
+  })
+  runtimeDiagnostics() {
+    const hexKey = process.env.SHADOW_REVIEW_BLINDING_ENCRYPTION_KEY?.trim();
+    const blindingConfigured = Boolean(hexKey && /^[0-9a-fA-F]{64}$/.test(hexKey));
+    const environment =
+      process.env.DEPLOYMENT_ENV?.trim() ||
+      process.env.NODE_ENV ||
+      'development';
+    return successResponse({
+      environment,
+      gitCommit: resolveGitCommit(),
+      schemaVersion: E1_BENCHMARK_MIGRATION,
+      runtimeMode: resolveEffectiveRuntimeMode(),
+      canonicalFullPlanSelection: isCanonicalFullPlanSelectionEnabled(),
+      canonicalExecutionEnabled: isCanonicalExecutionEnabled(),
+      shadowEvidencePersistenceEnabled: isShadowEvidencePersistenceEnabled(),
+      blindingEncryptionKeyConfigured: blindingConfigured,
+      solverEngine: process.env.CP_SAT_SOLVER_ENGINE ?? 'cp-sat-lex-v1',
+      objectiveRegistryVersion: OBJECTIVE_REGISTRY_VERSION,
+      constraintPolicyVersion: CONSTRAINT_POLICY_VERSION,
     });
   }
 
@@ -393,6 +587,7 @@ export class DecisionEngineController {
   }
 
   @Post('check-constraints')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '约束校验', description: '检查计划是否满足约束' })
   @ApiBody({ type: CheckConstraintsRequestDto })
@@ -420,6 +615,8 @@ export class DecisionEngineController {
         feasible: result.feasible,
         violations: result.violations,
         infeasibilityExplanation: result.infeasibilityExplanation,
+        canonicalReport: result.canonicalReport,
+        constraintShadowComparison: result.constraintShadowComparison,
       });
     } catch (error: any) {
       this.logger.error(`checkConstraints 失败: ${error.message}`, error.stack);
@@ -554,6 +751,155 @@ export class DecisionEngineController {
       return successResponse({ variants: variantsWithClosedLoop, log, ...this.echoLastDecisionCausalityId(state) });
     } catch (error: any) {
       this.logger.error(`generateMultiplePlans 失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('canonical-plan-selection')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Canonical 全量行程选优 (P1)',
+    description:
+      'Legacy 生成候选 → Constraint Gateway 评估 → DecisionCore.finalize。不写入 Effective Plan。需 CANONICAL_FULL_PLAN_SELECTION=1',
+  })
+  @ApiBody({ type: GenerateMultiplePlansRequestDto })
+  @ApiResponse({ status: 200, description: '正式决策记录 + 推荐方案' })
+  async canonicalPlanSelection(
+    @Body() body: GenerateMultiplePlansRequestDto,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    try {
+      if (!isCanonicalFullPlanSelectionEnabled()) {
+        return errorResponse(
+          ErrorCode.BUSINESS_ERROR,
+          'Canonical full plan selection disabled (set CANONICAL_FULL_PLAN_SELECTION=1)',
+        );
+      }
+      if (!this.fullPlanSelection) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'FullPlanSelectionService unavailable');
+      }
+      if (!body.state?.context) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'state.context 是必需的');
+      }
+      if (!body.tripId?.trim()) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'tripId 是必需的');
+      }
+
+      const experimentId =
+        body.experimentContext?.experimentId ??
+        this.pickHeader(headers, 'X-Decision-Experiment-Id');
+      const scenarioId =
+        body.experimentContext?.scenarioId ??
+        this.pickHeader(headers, 'X-Decision-Scenario-Id');
+      const experimentRunId =
+        body.experimentContext?.runId ??
+        body.problemId ??
+        this.pickHeader(headers, 'X-Decision-Run-Id');
+
+      const stagingShadowOptions = resolveStagingShadowOptionsForRequest(
+        body.stagingShadowOptions,
+      );
+
+      const state = body.state as TripWorldState;
+      applyPrismaTripIdToWorldState(state, body.tripId);
+      if (!(state.policies as { constraintDSL?: unknown } | undefined)?.constraintDSL && body.constraints) {
+        state.policies = {
+          ...(state.policies ?? {}),
+          constraintDSL: body.constraints as any,
+        } as TripWorldState['policies'];
+      }
+
+      const tripRow = await this.prisma.trip.findUnique({
+        where: { id: body.tripId },
+        select: { metadata: true, pacingConfig: true },
+      });
+
+      const planningContext = {
+        tripId: body.tripId,
+        constraintDsl: body.constraints as any,
+        retainAllCandidates: true,
+        experimentRunId,
+        experimentId,
+        scenarioId,
+        stagingShadowOptions,
+        tripMetadata: tripRow?.metadata ?? undefined,
+        pacingConfig: tripRow?.pacingConfig ?? undefined,
+      };
+
+      let result;
+      if (isDecisionTriggerGatewayEnabled() && this.decisionTriggerGateway) {
+        const dispatch = await this.decisionTriggerGateway.dispatch({
+          kind: 'FULL_PLAN_SELECTION',
+          tripId: body.tripId,
+          source: 'DECISION_ENGINE_API',
+          requestId: experimentRunId,
+          fullPlanSelection: {
+            worldState: state,
+            context: planningContext,
+            problemId: experimentRunId,
+            prebuiltCandidates: body.prebuiltCandidates as unknown as DecisionCandidate[] | undefined,
+            constraintReportsByCandidateId: body.constraintReportsByCandidateId as unknown as
+              | Record<string, CanonicalConstraintReport>
+              | undefined,
+          },
+          metadata: {
+            experimentId,
+            scenarioId,
+            httpSource: body.experimentContext?.source ?? this.pickHeader(headers, 'X-Decision-Source'),
+          },
+        });
+        if (dispatch.status !== 'COMPLETED' || !dispatch.result) {
+          return errorResponse(
+            ErrorCode.INTERNAL_ERROR,
+            dispatch.error?.message ?? 'Decision Trigger Gateway dispatch failed',
+          );
+        }
+        result = dispatch.result as unknown as typeof result;
+      } else if (body.prebuiltCandidates?.length) {
+        result = await this.fullPlanSelection!.selectFromPrebuiltCandidates({
+          worldState: state,
+          context: planningContext,
+          candidates: body.prebuiltCandidates as unknown as DecisionCandidate[],
+          problemId: experimentRunId,
+          constraintReportsByCandidateId: body.constraintReportsByCandidateId as unknown as
+            | Record<string, CanonicalConstraintReport>
+            | undefined,
+        });
+      } else {
+        result = await this.fullPlanSelection!.selectRecommendedPlan({
+          worldState: state,
+          context: planningContext,
+          problemId: experimentRunId,
+        });
+      }
+
+      if (!result) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'Plan selection returned no result');
+      }
+
+      return successResponse({
+        ...result,
+        experimentContext: {
+          experimentId,
+          scenarioId,
+          runId: experimentRunId,
+          source:
+            body.experimentContext?.source ??
+            this.pickHeader(headers, 'X-Decision-Source') ??
+            'HTTP',
+        },
+        candidates: result.candidates.map((c) => ({
+          candidateId: c.candidateId,
+          label: c.label,
+          source: c.source,
+          utilityHint: c.utilityHint,
+          legacyVariant: c.legacyVariant,
+        })),
+        recommendedPlan: result.recommendedPlan,
+      });
+    } catch (error: any) {
+      this.logger.error(`canonicalPlanSelection 失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

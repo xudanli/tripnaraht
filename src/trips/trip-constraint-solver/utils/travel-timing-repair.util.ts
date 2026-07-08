@@ -12,6 +12,30 @@ import type {
 
 const DEFAULT_BUFFER_MINUTES = 15;
 
+/** +30/+60 等预设缓冲仅适用于「小缺口」衔接问题。 */
+export const MINUTE_BUFFER_MAX_SHORTFALL_MINUTES = 120;
+
+/** 超过约 8h 驾驶时，分钟级修法无效，应走插入缓冲日 / 改天等结构性修法。 */
+export const MINUTE_BUFFER_MAX_TRAVEL_MINUTES = 8 * 60;
+
+export function isPresetMinuteBufferViable(input: {
+  shortfallMinutes?: number;
+  travelMinutes?: number;
+}): boolean {
+  const shortfall = Math.max(0, input.shortfallMinutes ?? 0);
+  const travel = Math.max(0, input.travelMinutes ?? 0);
+  if (shortfall > MINUTE_BUFFER_MAX_SHORTFALL_MINUTES) return false;
+  if (travel > MINUTE_BUFFER_MAX_TRAVEL_MINUTES) return false;
+  return true;
+}
+
+export function isShiftDepartureRepairViable(input: {
+  travelMinutes?: number;
+}): boolean {
+  const travel = Math.max(0, input.travelMinutes ?? 0);
+  return travel <= MINUTE_BUFFER_MAX_TRAVEL_MINUTES;
+}
+
 export function computeShiftMinutes(
   shortfallMinutes?: number,
   bufferMinutes: number = DEFAULT_BUFFER_MINUTES,
@@ -22,6 +46,50 @@ export function computeShiftMinutes(
 
 export function roundBufferMinutes(minutes: number): number {
   return Math.max(DEFAULT_BUFFER_MINUTES, Math.ceil(minutes / 15) * 15);
+}
+
+export function buildShiftEarlierRepairOption(input: {
+  issueId: string;
+  fromItemId: string;
+  fromLabel?: string;
+  shortfallMinutes?: number;
+  advanceMinutes?: number;
+  anchors?: FeasibilityIssueAnchorsDto;
+}): FeasibilityRepairOptionDto | undefined {
+  const shortfall = Math.max(0, Math.ceil(input.shortfallMinutes ?? 0));
+  const travelMinutes = input.anchors?.travelMinutes;
+  if (
+    !isPresetMinuteBufferViable({ shortfallMinutes: shortfall, travelMinutes }) &&
+    shortfall <= 0
+  ) {
+    return undefined;
+  }
+
+  const rawAdvance =
+    input.advanceMinutes ??
+    (shortfall > 0 ? Math.min(shortfall, MINUTE_BUFFER_MAX_SHORTFALL_MINUTES) : 30);
+  const advanceMinutes = roundBufferMinutes(rawAdvance);
+  if (advanceMinutes <= 0) return undefined;
+
+  const fromLabel = input.fromLabel ?? '上一站';
+
+  return {
+    id: 'shift_earlier',
+    label: `提前 ${advanceMinutes} 分钟从 ${fromLabel} 出发`,
+    description: `将 ${fromLabel} 出发时间前移 ${advanceMinutes} 分钟，为下一段交通预留更多时间。`,
+    impactSummary: `-${advanceMinutes} 分钟`,
+    type: 'shift_earlier',
+    actionType: 'shift_earlier',
+    payload: {
+      fromItemId: input.fromItemId,
+      itemId: input.fromItemId,
+      advanceMinutes,
+      shiftMinutes: -advanceMinutes,
+      field: 'startTime',
+      validateScope: { type: 'issue', issueId: input.issueId },
+      anchors: input.anchors,
+    },
+  };
 }
 
 export function buildShiftDepartureRepairOption(input: {
@@ -102,6 +170,16 @@ export function buildMinuteBufferRepairOptions(input: {
   shortfallMinutes?: number;
   anchors?: FeasibilityIssueAnchorsDto;
 }): FeasibilityRepairOptionDto[] {
+  const travelMinutes = input.anchors?.travelMinutes;
+  if (
+    !isPresetMinuteBufferViable({
+      shortfallMinutes: input.shortfallMinutes,
+      travelMinutes,
+    })
+  ) {
+    return [];
+  }
+
   const presets: Array<30 | 60> = [30, 60];
   const options = presets.map((bufferMinutes) =>
     buildFixedMinuteBufferRepairOption({
@@ -166,14 +244,25 @@ export function buildAddBufferMinutesRepairOption(input: {
 export function shouldOfferMinuteTimingRepairs(input: {
   toItemId?: string;
   shortfallMinutes?: number;
+  travelMinutes?: number;
   isStartTooEarly?: boolean;
   issueKind?: string;
   priority?: string;
 }): boolean {
   if (!input.toItemId) return false;
-  if (input.isStartTooEarly === true || (input.shortfallMinutes ?? 0) > 0) return true;
-  if (input.issueKind === 'inter_day_travel' && input.priority === 'must_handle') return true;
-  return false;
+
+  const travelMinutes = input.travelMinutes;
+  const shortfall = input.shortfallMinutes ?? 0;
+  const needsTimingFix = input.isStartTooEarly === true || shortfall > 0;
+  const interDayMustHandle =
+    input.issueKind === 'inter_day_travel' && input.priority === 'must_handle';
+
+  if (!needsTimingFix && !interDayMustHandle) return false;
+
+  return (
+    isPresetMinuteBufferViable({ shortfallMinutes: shortfall, travelMinutes }) ||
+    (needsTimingFix && isShiftDepartureRepairViable({ travelMinutes }))
+  );
 }
 
 export function findScheduleTimeOverlap(input: {
@@ -257,5 +346,71 @@ export async function applyMinuteTimingShiftRepair(
     itemId,
     shiftMinutes,
     newStartTime: newStart.toISO() ?? undefined,
+  };
+}
+
+export async function applySuggestedStartTimeRepair(
+  prisma: PrismaService,
+  payload: Record<string, unknown>,
+): Promise<{ itemId: string; newStartTime: string }> {
+  const itemId = typeof payload.itemId === 'string' ? payload.itemId : undefined;
+  const suggestedValue = typeof payload.suggestedValue === 'string' ? payload.suggestedValue : undefined;
+
+  if (!itemId || !suggestedValue) {
+    throw new BadRequestException('adjust_time 修复缺少 itemId 或 suggestedValue');
+  }
+
+  const newStart = DateTime.fromISO(suggestedValue);
+  if (!newStart.isValid) {
+    throw new BadRequestException(`adjust_time suggestedValue 无效: ${suggestedValue}`);
+  }
+
+  const item = await prisma.itineraryItem.findUnique({
+    where: { id: itemId },
+    include: {
+      TripDay: {
+        include: {
+          ItineraryItem: {
+            select: { id: true, startTime: true, endTime: true },
+          },
+        },
+      },
+    },
+  });
+  if (!item) throw new NotFoundException(`行程项 ${itemId} 不存在`);
+  if (!item.startTime) {
+    throw new BadRequestException('该行程项无 startTime，无法调整时间');
+  }
+
+  const durationMin =
+    item.startTime && item.endTime
+      ? DateTime.fromJSDate(item.endTime).diff(DateTime.fromJSDate(item.startTime), 'minutes').minutes
+      : 120;
+  const newEnd = newStart.plus({ minutes: Math.max(30, durationMin) });
+
+  const overlapWith = findScheduleTimeOverlap({
+    itemId,
+    newStart: newStart.toJSDate(),
+    newEnd: newEnd.toJSDate(),
+    siblings: item.TripDay?.ItineraryItem ?? [],
+  });
+  if (overlapWith) {
+    throw new ConflictException({
+      message: `调整后将与行程项 ${overlapWith} 时间重叠`,
+      errorCode: 'SCHEDULE_CONFLICT',
+    });
+  }
+
+  await prisma.itineraryItem.update({
+    where: { id: itemId },
+    data: {
+      startTime: newStart.toJSDate(),
+      endTime: newEnd.toJSDate(),
+    },
+  });
+
+  return {
+    itemId,
+    newStartTime: newStart.toISO() ?? suggestedValue,
   };
 }

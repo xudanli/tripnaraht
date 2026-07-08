@@ -63,9 +63,33 @@ function parseMetadataCoordinates(metadata: Record<string, unknown>): PlaceCoord
   }
 
   if (Array.isArray(metadata.coordinates) && metadata.coordinates.length >= 2) {
-    const lng = Number(metadata.coordinates[0]);
-    const lat = Number(metadata.coordinates[1]);
-    if (isFiniteCoord(lat, lng)) return { lat, lng };
+    const first = metadata.coordinates[0];
+    if (typeof first === 'number') {
+      const lng = Number(metadata.coordinates[0]);
+      const lat = Number(metadata.coordinates[1]);
+      if (isFiniteCoord(lat, lng)) return { lat, lng };
+    }
+    if (first && typeof first === 'object') {
+      const obj = metadata.coordinates as { lat?: unknown; lng?: unknown };
+      if (obj.lat != null && obj.lng != null) {
+        const lat = Number(obj.lat);
+        const lng = Number(obj.lng);
+        if (isFiniteCoord(lat, lng)) return { lat, lng };
+      }
+    }
+  }
+
+  if (
+    metadata.coordinates &&
+    typeof metadata.coordinates === 'object' &&
+    !Array.isArray(metadata.coordinates)
+  ) {
+    const obj = metadata.coordinates as { lat?: unknown; lng?: unknown };
+    if (obj.lat != null && obj.lng != null) {
+      const lat = Number(obj.lat);
+      const lng = Number(obj.lng);
+      if (isFiniteCoord(lat, lng)) return { lat, lng };
+    }
   }
 
   if (metadata.location && typeof metadata.location === 'object') {

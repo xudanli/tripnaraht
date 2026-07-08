@@ -143,6 +143,12 @@ export class CountryProfileDto {
   @ApiPropertyOptional({ description: '国家英文名称', example: 'Japan' })
   nameEN?: string;
 
+  @ApiPropertyOptional({
+    description: '目的地图（行程列表封面回退）',
+    example: 'https://images.unsplash.com/photo-1504829857797-ddff29c27927?w=1200',
+  })
+  coverImageUrl?: string | null;
+
   @ApiProperty({ description: '最后更新时间' })
   updatedAt!: Date;
 

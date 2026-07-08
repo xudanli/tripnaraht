@@ -20,6 +20,13 @@ export type ExecutionVerdictStatus =
 
 export type FeasibilityIssuePriority = 'must_handle' | 'suggest_adjust' | 'pending_confirm';
 
+export type FeasibilityResolutionMode =
+  | 'DIRECT_EDIT'
+  | 'AUTO_FIX'
+  | 'EVIDENCE_REFRESH'
+  | 'COLLABORATION'
+  | 'DECISION_REQUIRED';
+
 export type FeasibilityDimensionKey =
   | 'schedule'
   | 'transport'
@@ -74,6 +81,8 @@ export interface FeasibilityProofDto {
   confidence?: number;
   evidenceType: string;
   conclusion: string;
+  /** Gateway PlanObject 投影 — trace 用，不进 evidence title */
+  semanticKey?: string;
   repairOptions?: FeasibilityRepairOptionDto[];
   planBOptions?: FeasibilityRepairOptionDto[];
 }
@@ -111,6 +120,9 @@ export interface FeasibilityIssueAnchorsDto {
   suggestedTime?: string;
   isStartTooEarly?: boolean;
   timingSource?: 'computed' | 'missing_times' | 'user_confirmed';
+  removableItemId?: string;
+  removableItemLabel?: string;
+  removableItemSavedMinutes?: number;
 }
 
 export interface FeasibilityIssueUiHintsDto {
@@ -139,6 +151,10 @@ export interface FeasibilityIssueDto {
   title: string;
   message: string;
   affectedDays: number[];
+  /** BFF 稳定字段 — `same_day_travel` / `transfer_buffer`（`buffer_insufficient`） */
+  affectedDayNumbers?: number[];
+  /** BFF 稳定字段 — 如「瓦特纳冰川 → 冰河湖」 */
+  affectedScopeSummary?: string;
   tripDayId?: string;
   severity: 'high' | 'medium' | 'low';
   issueKind?: string;
@@ -147,6 +163,12 @@ export interface FeasibilityIssueDto {
   anchors?: FeasibilityIssueAnchorsDto;
   uiHints?: FeasibilityIssueUiHintsDto;
   actionRequired?: string;
+  /** How this issue should be resolved in the product surface */
+  resolutionMode?: FeasibilityResolutionMode;
+  /** Set when resolutionMode is DECISION_REQUIRED — stable link to DecisionProblem */
+  linkedDecisionProblemId?: string | null;
+  /** Why the issue was escalated to decision runtime */
+  escalationReason?: string;
   repairOptions?: FeasibilityRepairOptionDto[];
   proofs?: FeasibilityProofDto[];
   /** POI Access Engine — 三结论 UI payload */
@@ -360,6 +382,31 @@ export interface ExecutionTechnicalFindingDto {
   score?: number;
 }
 
+/** Aligns with feasibility gate vocabulary for in-trip causal banners. */
+export type ExecutionCausalPrimaryEnforcement = 'ADJUST_REQUIRED' | 'NOT_EXECUTABLE';
+
+export interface ExecutionCausalStoryChainNodeDto {
+  nodeId: string;
+  type: string;
+  title: string;
+  description: string;
+  sourceRefs?: string[];
+}
+
+export interface ExecutionCausalStoryDto {
+  chain: ExecutionCausalStoryChainNodeDto[];
+  assessment: string;
+}
+
+/** Canonical causal trace projection for in-trip execution advisory (Tier-3 refresh via linkedProblemId). */
+export interface ExecutionCausalInsightDto {
+  guardianHeadline: string;
+  primaryEnforcement: ExecutionCausalPrimaryEnforcement;
+  causalStory: ExecutionCausalStoryDto;
+  /** Optional — deep-link to decision-problems/:id or causal-trace refresh */
+  linkedProblemId?: string;
+}
+
 export interface TripExecutionAdvisoryDto {
   tripId: string;
   tripDayId: string;
@@ -374,6 +421,46 @@ export interface TripExecutionAdvisoryDto {
   realtimeRisks: ExecutionRealtimeRisksDto;
   evidence: ExecutionEvidenceDto;
   technicalFindings: ExecutionTechnicalFindingDto[];
+  /** Present when an open travel causal trace or weather signal exists */
+  causalInsight?: ExecutionCausalInsightDto;
+}
+
+export type ExecutionScheduleMutationType =
+  | 'SHORTEN_STAY'
+  | 'SKIP_ITEM'
+  | 'REPLACE_ITEM'
+  | 'REROUTE';
+
+export interface ExecutionScheduleMutationDto {
+  type: ExecutionScheduleMutationType;
+  itemId: string;
+  deltaMinutes?: number;
+  replacementPlaceId?: number;
+}
+
+export interface ExecutionAdvisoryScheduleItemDto {
+  placeId: number | string;
+  placeName: string;
+  startTime: string;
+  endTime: string;
+  status?: 'upcoming' | 'in_progress' | 'completed' | 'cancelled';
+}
+
+export interface ApplyExecutionRecommendationRequestDto {
+  confirm: boolean;
+  clientTimestamp?: string;
+}
+
+export interface ApplyExecutionRecommendationResponseDto {
+  applied: boolean;
+  executionAdvisory: TripExecutionAdvisoryDto;
+  scheduleMutations: ExecutionScheduleMutationDto[];
+  updatedSchedule: {
+    date: string;
+    schedule: {
+      items: ExecutionAdvisoryScheduleItemDto[];
+    };
+  };
 }
 
 export interface FeasibilityReportSnapshot {

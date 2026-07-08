@@ -2,9 +2,13 @@
  * 冰岛 POI 准入规则 → 动态官方约束卡片（按行程 POI + 日期窗口）
  */
 
-import { ICELAND_ALL_ACCESS_RULES, ICELAND_POI_SLUG_RESOLVERS } from '../../../poi-access-capacity/fixtures/iceland-poi-registry';
+import { ICELAND_ALL_ACCESS_RULES } from '../../../poi-access-capacity/fixtures/iceland-poi-registry';
 import type { PoiAccessRule } from '../../../poi-access-capacity/interfaces/poi-access-capacity.interface';
-import { resolvePoiAccessSlugFromPlaceMetadata } from '../../../poi-access-capacity/utils/resolve-poi-slug.util';
+import {
+  readCanonicalPoiIdFromMetadata,
+  resolveCanonicalPoiIdSync,
+  resolvePoiIdsFromTextBlob,
+} from '../../../canonical-poi-resolution/utils/resolve-poi-id-sync.util';
 import type { TripConstraint } from '../types/trip-constraint.types';
 
 export const OFFICIAL_POI_CONSTRAINT_ID_PREFIX = 'c_official_poi_';
@@ -79,18 +83,34 @@ export function collectItineraryMatchTexts(input: {
 export function resolveIcelandPoiSlugsFromTrip(trip: IcelandTripContextLike): string[] {
   const slugs = new Set<string>();
   const mustPlaces = readMustPlaces(trip.metadata);
+  const countryCode = 'IS';
 
   for (const day of trip.TripDay ?? []) {
     for (const item of day.ItineraryItem ?? []) {
+      const fromMeta = readCanonicalPoiIdFromMetadata(item.Place?.metadata);
+      if (fromMeta) {
+        slugs.add(fromMeta);
+        continue;
+      }
+
       const name = [item.Place?.nameCN, item.Place?.nameEN, item.note].filter(Boolean).join(' ');
-      const slug = resolvePoiAccessSlugFromPlaceMetadata(item.Place?.metadata, name);
-      if (slug) slugs.add(slug);
+      const resolved = resolveCanonicalPoiIdSync({ name, countryCode });
+      if (resolved.poiId && resolved.status === 'MATCHED') {
+        slugs.add(resolved.poiId);
+      }
+    }
+  }
+
+  for (const mention of mustPlaces) {
+    const resolved = resolveCanonicalPoiIdSync({ name: mention, countryCode });
+    if (resolved.poiId && resolved.status === 'MATCHED') {
+      slugs.add(resolved.poiId);
     }
   }
 
   const blob = collectItineraryMatchTexts({ tripDays: trip.TripDay, mustPlaces }).join('\n');
-  for (const { slug, patterns } of ICELAND_POI_SLUG_RESOLVERS) {
-    if (patterns.some((p) => p.test(blob))) slugs.add(slug);
+  for (const poiId of resolvePoiIdsFromTextBlob(blob, countryCode)) {
+    slugs.add(poiId);
   }
 
   return Array.from(slugs);
@@ -168,12 +188,73 @@ function ruleCategory(rule: PoiAccessRule): TripConstraint['category'] {
   return 'ACTIVITY';
 }
 
+function poiDestinationRuleMeta(rule: PoiAccessRule): {
+  destinationRuleCategory: import('../types/trip-constraint.types').DestinationRuleCategory;
+  destinationRuleTier: import('../types/trip-constraint.types').DestinationRuleTier;
+  templateId: string;
+  sourceAgency: string;
+  applicableScope: string;
+  judgmentRule: string;
+  violationResult: string;
+  evidenceRef?: string;
+} {
+  const poi = POI_SHORT_LABEL[rule.poiId] ?? rule.poiId;
+  const severity = ruleSeverity(rule);
+  if (rule.ruleType === 'RESERVATION_REQUIRED' || rule.ruleType === 'PARKING_RESERVATION') {
+    return {
+      destinationRuleCategory: 'VENUE_ACCESS',
+      destinationRuleTier: 'CONDITIONAL',
+      templateId: 'poi_reservation_required',
+      sourceAgency: '景点运营方',
+      applicableScope: `${poi} 入场/停车`,
+      judgmentRule: `${poi} 须提前预约方可入场`,
+      violationResult: '检查条件是否满足',
+      evidenceRef: rule.sourceUrl,
+    };
+  }
+  if (rule.ruleType === 'VEHICLE_RESTRICTION') {
+    return {
+      destinationRuleCategory: 'TRAFFIC',
+      destinationRuleTier: severity === 'WARNING' ? 'CONDITIONAL' : 'BLOCK',
+      templateId: 'poi_vehicle_restriction',
+      sourceAgency: '冰岛道路 / 景区管理',
+      applicableScope: `${poi} 周边路况`,
+      judgmentRule: rule.notes ?? `${poi} 车型或路况限制`,
+      violationResult: severity === 'WARNING' ? '检查条件是否满足' : '阻断路线',
+      evidenceRef: rule.sourceUrl,
+    };
+  }
+  if (rule.ruleType === 'SAFETY_RESTRICTION') {
+    return {
+      destinationRuleCategory: 'NATURAL_RISK',
+      destinationRuleTier: 'ADVISORY',
+      templateId: 'poi_safety_advisory',
+      sourceAgency: '景区安全指引',
+      applicableScope: poi,
+      judgmentRule: rule.notes ?? `${poi} 安全提示`,
+      violationResult: '影响风险评分',
+      evidenceRef: rule.sourceUrl,
+    };
+  }
+  return {
+    destinationRuleCategory: 'REGULATION',
+    destinationRuleTier: severity === 'WARNING' ? 'ADVISORY' : 'CONDITIONAL',
+    templateId: 'poi_access_rule',
+    sourceAgency: '目的地管理方',
+    applicableScope: poi,
+    judgmentRule: rule.notes ?? `${poi} 准入规则`,
+    violationResult: severity === 'WARNING' ? '影响风险评分' : '检查条件是否满足',
+    evidenceRef: rule.sourceUrl,
+  };
+}
+
 function poiRuleToConstraint(
   trip: IcelandTripContextLike,
   rule: PoiAccessRule,
   userId: string,
 ): TripConstraint {
   const severity = ruleSeverity(rule);
+  const meta = poiDestinationRuleMeta(rule);
   return {
     id: officialConstraintIdForPoiAccessRule(rule.id),
     tripId: trip.id,
@@ -193,15 +274,25 @@ function poiRuleToConstraint(
       validFrom: rule.validFrom,
       validTo: rule.validTo,
       sourceUrl: rule.sourceUrl,
+      templateId: meta.templateId,
+      destinationRuleCategory: meta.destinationRuleCategory,
+      destinationRuleTier: meta.destinationRuleTier,
+      sourceAgency: meta.sourceAgency,
+      applicableScope: meta.applicableScope,
+      judgmentRule: meta.judgmentRule,
+      violationResult: meta.violationResult,
+      evidenceRef: meta.evidenceRef,
+      evidenceVerifiedAt: trip.updatedAt.toISOString(),
     },
-    allowRelaxation: severity === 'WARNING',
+    allowRelaxation: meta.destinationRuleTier === 'ADVISORY',
     locked: true,
-    source: { type: 'OFFICIAL_RULE', sourceId: rule.id },
+    source: { type: 'OFFICIAL_RULE', sourceId: rule.id, templateId: meta.templateId },
     visibility: 'TEAM',
     createdBy: userId,
     createdAt: trip.createdAt.toISOString(),
     updatedAt: trip.updatedAt.toISOString(),
     backing: { kind: 'official_rule', field: `poi-access:${rule.id}` },
+    enabled: true,
   };
 }
 
@@ -246,6 +337,18 @@ export function inferOfficialPoiConstraintIdsFromConflict(
     for (const rule of ICELAND_ALL_ACCESS_RULES) {
       if (rule.poiId === poiId) {
         ids.add(officialConstraintIdForPoiAccessRule(rule.id));
+      }
+    }
+  } else {
+    const resolved = resolveCanonicalPoiIdSync({
+      name: `${conflict.title} ${conflict.message}`,
+      countryCode: 'IS',
+    });
+    if (resolved.poiId && resolved.status === 'MATCHED') {
+      for (const rule of ICELAND_ALL_ACCESS_RULES) {
+        if (rule.poiId === resolved.poiId) {
+          ids.add(officialConstraintIdForPoiAccessRule(rule.id));
+        }
       }
     }
   }

@@ -27,4 +27,6 @@ export type RouteAndRunTaskProgressPayload = {
   };
   /** NARRATE 阶段增量：情绪矩阵 BFF 投影（tripnara.emotional_context.client@v1） */
   emotional_context?: EmotionalContextClientProjection;
+  /** CTRE 编译进度（TRAVEL_COMPILE 阶段 SSE 增量） */
+  ctre_compilation?: import('../../travel-compiler/contracts/ctre-compile-progress.types').CtreCompileProgressView;
 };

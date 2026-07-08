@@ -107,6 +107,7 @@ export function assembleCountryProfileResponse(profile: CountryProfile): Country
     isoCode: profile.isoCode,
     nameCN: profile.nameCN,
     nameEN: profile.nameEN ?? undefined,
+    coverImageUrl: profile.coverImageUrl ?? undefined,
     updatedAt: profile.updatedAt,
     currencyCode: profile.currencyCode ?? undefined,
     currencyName: profile.currencyName ?? undefined,
@@ -131,6 +132,7 @@ export function seedV2ToPrismaUpdate(seed: CountryProfileV2Seed): {
   isoCode: string;
   nameCN: string;
   nameEN?: string;
+  coverImageUrl?: string;
   currencyCode?: string;
   currencyName?: string;
   exchangeRateToCNY?: number;
@@ -151,6 +153,7 @@ export function seedV2ToPrismaUpdate(seed: CountryProfileV2Seed): {
     isoCode: seed.isoCode.toUpperCase(),
     nameCN: seed.nameCN,
     nameEN: seed.nameEN,
+    coverImageUrl: seed.coverImageUrl,
     currencyCode: seed.currencyCode,
     currencyName: seed.currencyName,
     exchangeRateToCNY: seed.exchangeRateToCNY,
@@ -199,6 +202,7 @@ export function prismaRowToV2SeedCandidate(profile: CountryProfile): CountryProf
     isoCode: profile.isoCode,
     nameCN: profile.nameCN,
     nameEN: profile.nameEN ?? undefined,
+    coverImageUrl: profile.coverImageUrl ?? undefined,
     currencyCode: profile.currencyCode ?? undefined,
     currencyName: profile.currencyName ?? undefined,
     exchangeRateToCNY: profile.exchangeRateToCNY ?? undefined,

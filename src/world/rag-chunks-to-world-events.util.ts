@@ -112,7 +112,7 @@ export function worldEventsFromRagChunks(
   const seenWeather = new Set<string>();
 
   for (const chunk of chunks) {
-    const category = normCategory(chunk.category);
+    const category = normCategory(chunk.category ?? undefined);
     if (!STRESS_CATEGORIES.has(category) && category !== 'WEATHER') {
       continue;
     }

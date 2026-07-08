@@ -7,6 +7,7 @@ import { OptimizationModule } from '../decision/optimization/optimization.module
 import { SkillsModule } from '../../skills/skills.module';
 import { LoopsModule } from '../../loops/loops.module';
 import { PoiAccessCapacityModule } from '../../poi-access-capacity/poi-access-capacity.module';
+import { CausalProtocolModule } from '../../causal-protocol/causal-protocol.module';
 import { TripConflictsService } from '../services/trip-conflicts.service';
 import { FeasibilityReportController } from './controllers/feasibility-report.controller';
 import { PreTripReadinessP0Controller } from './controllers/pre-trip-readiness-p0.controller';
@@ -25,6 +26,8 @@ import { TeamFitAssessmentService } from './services/team-fit-assessment.service
 import { PreTripReadinessP0Service } from './services/pre-trip-readiness-p0.service';
 import { ExperienceRegretBoundService } from './services/experience-regret-bound.service';
 import { ExecutionAdvisoryService } from './services/execution-advisory.service';
+import { ExecutionCausalInsightService } from './services/execution-causal-insight.service';
+import { ExecutionAdvisoryApplyService } from './services/execution-advisory-apply.service';
 import { PlanningConflictsService } from './services/planning-conflicts.service';
 import { DecisionCheckerService } from './services/decision-checker.service';
 import { SplitPlanService } from './services/split-plan.service';
@@ -34,6 +37,7 @@ import { TripConstraintCommandsService } from './services/trip-constraint-comman
 import { TripConstraintPreviewService } from './services/trip-constraint-preview.service';
 import { ConstraintsSummaryService } from './services/constraints-summary.service';
 import { TripBudgetOsModule } from '../budget-os/budget-os.module';
+import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/effective-plan-execution.module';
 
 @Module({
   imports: [
@@ -42,7 +46,9 @@ import { TripBudgetOsModule } from '../budget-os/budget-os.module';
     ReadinessModule,
     PoiAccessCapacityModule,
     TripBudgetOsModule,
+    EffectivePlanExecutionModule,
     TripWishModule,
+    CausalProtocolModule,
     forwardRef(() => InTripExecutionModule),
     OptimizationModule,
     forwardRef(() => SkillsModule),
@@ -68,6 +74,8 @@ import { TripBudgetOsModule } from '../budget-os/budget-os.module';
     FeasibilityPomdpMonteCarloService,
     TeamFitAssessmentService,
     ExecutionAdvisoryService,
+    ExecutionCausalInsightService,
+    ExecutionAdvisoryApplyService,
     TripConflictsService,
     PlanningConflictsService,
     DecisionCheckerService,
@@ -80,6 +88,7 @@ import { TripBudgetOsModule } from '../budget-os/budget-os.module';
   ],
   exports: [
     FeasibilityReportService,
+    PreTripReadinessP0Service,
     ExecutionAdvisoryService,
     ConstraintSolverAccessService,
     PlanningConflictsService,

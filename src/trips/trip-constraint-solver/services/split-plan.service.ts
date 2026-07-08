@@ -5,8 +5,10 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ConstraintsSummaryService } from './constraints-summary.service';
@@ -87,6 +89,7 @@ export class SplitPlanService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly constraintsSummary: ConstraintsSummaryService,
+    @Inject(forwardRef(() => FeasibilityReportService))
     private readonly feasibility: FeasibilityReportService,
     private readonly preview: TripConstraintPreviewService,
   ) {}

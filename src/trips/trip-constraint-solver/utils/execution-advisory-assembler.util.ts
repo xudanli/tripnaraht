@@ -5,6 +5,7 @@ import type { InTripAnchorSnapshot } from '../../in-trip-execution/types/anchor-
 import type {
   ExecutionActionType,
   ExecutionAffectedItemDto,
+  ExecutionCausalInsightDto,
   ExecutionItemStatus,
   ExecutionRecommendationDto,
   ExecutionTechnicalFindingDto,
@@ -38,6 +39,7 @@ export function buildExecutionAdvisory(input: {
   environmentEvents: EnvironmentEventSummary[];
   delayMinutes?: number;
   timezone?: string;
+  causalInsight?: ExecutionCausalInsightDto;
 }): TripExecutionAdvisoryDto {
   const now = DateTime.now().setZone(input.timezone ?? 'UTC');
   const day = input.anchor?.itinerary?.days?.[input.dayNumber - 1]
@@ -135,6 +137,7 @@ export function buildExecutionAdvisory(input: {
       openingHoursAsOf: now.startOf('day').toISO() ?? undefined,
     },
     technicalFindings,
+    ...(input.causalInsight ? { causalInsight: input.causalInsight } : {}),
   };
 }
 

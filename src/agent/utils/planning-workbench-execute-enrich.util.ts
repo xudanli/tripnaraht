@@ -25,6 +25,22 @@ import {
 } from './option-comparison-bff.projection.util';
 import type { OptionComparisonBffDto } from '../dto/option-comparison.dto';
 import type { BudgetComparePlansResponse } from '../../trips/services/budget-evaluation.service';
+import type {
+  PlanGateConfirmedItemDto,
+  PlanGateCommitResultDto,
+  PlanGateDraftDiffDto,
+  PlanGatePreTripTasksSummaryDto,
+  PlanGateUiDto,
+} from '../dto/plan-gate.dto';
+import {
+  buildPlanGateCommitResult,
+  projectPlanGateDraftDiff,
+  type PlanGateCommitResult,
+  type PlanGateDraftDiff,
+} from './plan-gate-diff.projection.util';
+import type { PlanGatePreTripTasksSummary } from './plan-gate-pretrip-tasks.util';
+import { projectPlanGateUi } from './plan-gate-verification.projection.util';
+import type { PlanGateEnrichmentContext } from './plan-gate-enrichment.util';
 
 export interface PlanningWorkbenchExecuteEnrichInput {
   skeletonOptions?: PlanSkeletonSet;
@@ -882,6 +898,11 @@ function flattenOpenApiUiOutput(
   planState: PlanState,
   tripId?: string,
   requestMetadata?: PlanningWorkbenchRequestMetadata,
+  confirmedItems?: PlanGateConfirmedItemDto[],
+  baselinePlanState?: PlanState,
+  userAction?: string,
+  preTripTasks?: PlanGatePreTripTasksSummaryDto,
+  planGateEnrichment?: PlanGateEnrichmentContext,
 ): PlanningWorkbenchResponse['uiOutput'] {
   const personas = uiOutput.personas;
   const presentation = uiOutput.presentation ?? personas?.presentation;
@@ -925,6 +946,25 @@ function flattenOpenApiUiOutput(
       budgetComparison,
     });
 
+  const planGate = attachPlanGateDiffAndCommit({
+    planGate: projectPlanGateUi({
+      planState,
+      uiOutput: {
+        ...uiOutput,
+        confirmations: signOffLayers.confirmations,
+        consolidatedDecision,
+      },
+      consolidatedStatus: consolidatedDecision?.status,
+      confirmedItems,
+      extraSubmitBlockers: planGateEnrichment?.memberSplitBlockers,
+    }),
+    planState,
+    baselinePlanState,
+    userAction,
+    preTripTasks,
+    planGateEnrichment,
+  });
+
   return {
     ...uiOutput,
     confirmations: signOffLayers.confirmations,
@@ -933,7 +973,60 @@ function flattenOpenApiUiOutput(
     decisionContext: buildWorkbenchDecisionContext(planState, tripId, requestMetadata),
     budgetPreview: buildWorkbenchBudgetPreview(planState, uiOutput.health),
     optionComparison,
+    planGate,
   };
+}
+
+function attachPlanGateDiffAndCommit(input: {
+  planGate: PlanGateUiDto;
+  planState: PlanState;
+  baselinePlanState?: PlanState;
+  userAction?: string;
+  preTripTasks?: PlanGatePreTripTasksSummaryDto;
+  planGateEnrichment?: PlanGateEnrichmentContext;
+}): PlanGateUiDto {
+  let planGate = input.planGate;
+  const preTripTasks = input.preTripTasks;
+  const baselineId =
+    input.baselinePlanState?.plan_id ??
+    (input.planState.metadata?.baselinePlanId as string | undefined);
+
+  if (input.baselinePlanState && baselineId && baselineId !== input.planState.plan_id) {
+    const draftDiff = projectPlanGateDraftDiff({
+      baselinePlanId: baselineId,
+      baselinePlanState: input.baselinePlanState,
+      draftPlanId: input.planState.plan_id,
+      draftPlanState: input.planState,
+      options: input.planGateEnrichment?.diffOptions,
+    }) as unknown as PlanGateDraftDiffDto;
+    planGate = { ...planGate, draftDiff };
+    if (draftDiff.metrics) {
+      planGate = {
+        ...planGate,
+        verification: {
+          ...planGate.verification,
+          metrics: draftDiff.metrics,
+        },
+      };
+    }
+  }
+
+  if (
+    input.userAction === 'commit' &&
+    (input.planState.metadata?.committedAt || input.planState.status === 'PROPOSED' || input.planState.status === 'LOCKED')
+  ) {
+    const commitResult = buildPlanGateCommitResult({
+      planState: input.planState,
+      baselinePlanState: input.baselinePlanState,
+      diff: planGate.draftDiff as unknown as PlanGateDraftDiff | undefined,
+      preTripTasks: preTripTasks as PlanGatePreTripTasksSummary | undefined,
+    }) as PlanGateCommitResultDto;
+    planGate = { ...planGate, commitResult, preTripTasks };
+  } else if (preTripTasks) {
+    planGate = { ...planGate, preTripTasks };
+  }
+
+  return planGate;
 }
 
 export function buildWorkbenchDecisionContext(
@@ -992,9 +1085,22 @@ export function enrichPlanningWorkbenchExecuteResponse(input: {
   uiOutput: PlanningWorkbenchResponse['uiOutput'];
   tripId?: string;
   requestMetadata?: PlanningWorkbenchRequestMetadata;
+  confirmedItems?: PlanGateConfirmedItemDto[];
+  baselinePlanState?: PlanState;
+  userAction?: string;
+  preTripTasks?: PlanGatePreTripTasksSummaryDto;
+  planGateEnrichment?: PlanGateEnrichmentContext;
 }): PlanningWorkbenchResponse {
   let { planState, uiOutput } = input;
-  const { tripId, requestMetadata } = input;
+  const {
+    tripId,
+    requestMetadata,
+    confirmedItems,
+    baselinePlanState,
+    userAction,
+    preTripTasks,
+    planGateEnrichment,
+  } = input;
 
   if (planState.itinerary?.segments?.length) {
     planState.itinerary.segments = enrichItinerarySegmentDisplayNames(
@@ -1003,10 +1109,18 @@ export function enrichPlanningWorkbenchExecuteResponse(input: {
   }
 
   if (!uiOutput.presentation && !uiOutput.personas?.presentation) {
-    return {
+    const flattened = flattenOpenApiUiOutput(
+      uiOutput,
       planState,
-      uiOutput: flattenOpenApiUiOutput(uiOutput, planState, tripId, requestMetadata),
-    };
+      tripId,
+      requestMetadata,
+      confirmedItems,
+      baselinePlanState,
+      userAction,
+      preTripTasks,
+      planGateEnrichment,
+    );
+    return persistPlanGateMetadata(planState, flattened);
   }
 
   if (!uiOutput.presentation && uiOutput.personas?.presentation) {
@@ -1020,7 +1134,7 @@ export function enrichPlanningWorkbenchExecuteResponse(input: {
   };
 
   let enrichedPresentation = enrichPlanningWorkbenchPresentation(
-    uiOutput.presentation,
+    uiOutput.presentation!,
     enrichContext,
   );
 
@@ -1047,8 +1161,36 @@ export function enrichPlanningWorkbenchExecuteResponse(input: {
     };
   }
 
-  return {
+  return persistPlanGateMetadata(planState, flattenOpenApiUiOutput(
+    nextUiOutput,
     planState,
-    uiOutput: flattenOpenApiUiOutput(nextUiOutput, planState, tripId, requestMetadata),
-  };
+    tripId,
+    requestMetadata,
+    confirmedItems,
+    baselinePlanState,
+    userAction,
+    preTripTasks,
+    planGateEnrichment,
+  ));
+}
+
+function persistPlanGateMetadata(
+  planState: PlanState,
+  uiOutput: PlanningWorkbenchResponse['uiOutput'],
+): PlanningWorkbenchResponse {
+  if (uiOutput.planGate?.verification.pendingConfirmations?.length) {
+    planState.metadata = {
+      ...planState.metadata,
+      planGatePendingConfirmations: uiOutput.planGate.verification.pendingConfirmations,
+      draftLabel: uiOutput.planGate.verification.draftLabel,
+    };
+  }
+  if (uiOutput.planGate?.draftDiff) {
+    planState.metadata = {
+      ...planState.metadata,
+      baselinePlanId: uiOutput.planGate.draftDiff.baselinePlanId,
+      planGateDraftDiff: uiOutput.planGate.draftDiff,
+    };
+  }
+  return { planState, uiOutput };
 }

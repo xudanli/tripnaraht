@@ -13,8 +13,8 @@ import { Public } from '../../auth/decorators/public.decorator';
  * 上传物理现实数据DTO
  */
 export class UploadPhysicalRealityDataDto {
-  countryCode: string;
-  dataType: 'road-status' | 'ferry-schedules' | 'weather-windows';
+  countryCode!: string;
+  dataType!: 'road-status' | 'ferry-schedules' | 'weather-windows';
   data: any; // JSON数据
 }
 

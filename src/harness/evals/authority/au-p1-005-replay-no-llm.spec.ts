@@ -1,9 +1,7 @@
 import { getAuthorityCase } from '../authority/authority-cases.registry';
-import {
-  authorityAssert,
-  expectAuthorityPass,
-  runAuthorityCase,
-} from '../assertions/canonical-authority.assertions';
+import { authorityAssert, expectAuthorityPass } from '../assertions/canonical-authority.assertions';
+import { runAuthorityCaseWithContext } from './run-authority-case-with-context.util';
+import { assertAuthorityResultHasAnchor } from './authority-context-anchor.util';
 import {
   buildReplayProfileFromTrace,
   mergeReplayProfileIntoRouteAndRunRequest,
@@ -141,8 +139,11 @@ describe('AU-P1-005 — Replay must not re-invoke LLM', () => {
       },
     );
 
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: caseDef.caseId,
+      tripId: 'trip_replay',
+      runtimeAuthority: 'CANONICAL',
+      authorityRunId: 'au-p1-005-replay',
       run: async () => [
         authorityAssert({
           layer: 'memory_snapshot',
@@ -171,5 +172,6 @@ describe('AU-P1-005 — Replay must not re-invoke LLM', () => {
     });
 
     expectAuthorityPass(result);
+    assertAuthorityResultHasAnchor(result, { runtimeAuthority: 'CANONICAL' });
   });
 });

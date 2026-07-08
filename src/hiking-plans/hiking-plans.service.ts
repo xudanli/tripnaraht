@@ -519,7 +519,9 @@ export class HikingPlansService {
     constraints: unknown;
     countryCode: string | null;
   }): Promise<Array<{ lat: number; lng: number }> | null> {
-    const detail = await this.trailDetail.build(rd, {
+    const detail = await this.trailDetail.build(
+      { ...rd, countryCode: rd.countryCode ?? undefined },
+      {
       longestHike: 2,
       useCachedProfileFallback: true,
     });

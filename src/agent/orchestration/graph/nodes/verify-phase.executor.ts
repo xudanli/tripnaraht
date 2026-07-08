@@ -6,6 +6,7 @@ import {
   formatVerifyOutputsZh,
 } from '../../../utils/decision-log-user-facing.zh.util';
 import type { GuardianType } from '../../../interfaces/trip-plan.interface';
+import type { CanonicalTravelGraph } from '../../../../travel-compiler/contracts/canonical-travel-graph.types';
 import type { VerifyPhaseHost, RunVerifyPhaseParams } from './verify-phase.host';
 import { appendVerifyTemporalOpeningAuditProof } from './verify-temporal-opening-audit.util';
 import {
@@ -37,11 +38,18 @@ export async function runVerifyPhase(
         state.request_id,
         state.research_data as Record<string, unknown> | undefined,
       ) ?? decisionState;
+    const meta = (state.metadata ?? {}) as Record<string, unknown>;
     const ctx = {
       requestId: state.request_id,
       tripPlanRequest: state.trip_plan_request,
       itinerary: state.itinerary as any,
       researchData: state.research_data,
+      tripId: request.trip_id ?? (meta.tripId as string | undefined),
+      canonicalTravelGraph: meta.canonical_travel_graph as CanonicalTravelGraph | undefined,
+      verifyItinerarySource: meta.verify_itinerary_source as
+        | 'planner_draft'
+        | 'canonical_travel_graph@v0'
+        | undefined,
     };
     const { newState, issues } = await host.decisionKernel.executeVerify(effectiveDecisionState, ctx);
     host.syncOrchestratorFromDecisionState(newState, state);

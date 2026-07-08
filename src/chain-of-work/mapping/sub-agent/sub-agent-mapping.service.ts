@@ -26,6 +26,7 @@ export class SubAgentMappingService {
     'GATE_EVAL': 'Gatekeeper',
     'CONTEXT_BUILD': 'Orchestrator',
     'PLAN_GEN': 'Planner',
+    'TRAVEL_COMPILE': 'Orchestrator',
     'OPTIMIZE': 'Orchestrator',
     'VERIFY': 'CoreDecision',
     'COMPLIANCE': 'Compliance',

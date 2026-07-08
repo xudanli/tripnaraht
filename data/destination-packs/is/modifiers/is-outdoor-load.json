@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.environment.modifiers@v1",
+  "modifiers": [
+    {
+      "modifierId": "IS_OUTDOOR_LOAD",
+      "domain": "activity",
+      "semanticKeys": ["WEATHER_ACTIVITY_PROHIBITED", "EXCESSIVE_DAILY_LOAD"],
+      "parameters": {
+        "windExposureMultiplier": 1.15,
+        "highlandFatigueFactor": 1.1
+      }
+    }
+  ]
+}

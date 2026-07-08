@@ -115,7 +115,7 @@ export const IS_MARKET_DACH_HIGHLANDS_WESTFJORDS_10_14: RouteDirection = {
   tags: ['highlands', 'f-road', 'westfjords', 'landmannalaugar', 'askja', 'offbeat', 'camping', '4x4'],
   seasonality: { bestMonths: [6, 7, 8, 9], avoidMonths: [11, 12, 1, 2, 3, 4, 5] },
   constraints: {
-    hard: { rapidAscentForbidden: true, requiresGuide: false, ...baseCompliance },
+    hard: { ...baseCompliance, rapidAscentForbidden: true, requiresGuide: false },
     soft: { maxDailyAscentM: 1200, maxSlopePct: 30, bufferTimeMin: 45 },
     objectives: { preferNature: 0.5, preferViewpoints: 0.3 },
   },

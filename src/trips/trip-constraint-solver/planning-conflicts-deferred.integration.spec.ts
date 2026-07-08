@@ -12,6 +12,12 @@ describe('PlanningConflicts deferred decisionChecker (integration)', () => {
   const tripId = 'trip-test-1';
   const userId = 'user-1';
 
+  const baseResponse = {
+    tripId,
+    summary: { total: 1, mustHandle: 1, suggestAdjust: 0, pendingConfirm: 0, byCategory: {} },
+    conflicts: [{ id: 'cfl_1', source: 'feasibility' as const, priority: 'must_handle' as const, category: 'schedule' as const, title: 't', message: 'm' }],
+  };
+
   const planningMock = {
     loadArtifacts: jest.fn(),
     loadArtifactsFast: jest.fn(),
@@ -19,6 +25,13 @@ describe('PlanningConflicts deferred decisionChecker (integration)', () => {
     getCachedArtifacts: jest.fn(),
     getStaleCachedArtifacts: jest.fn(),
     getPlanningConflicts: jest.fn(),
+    attachConstraintsVersionMeta: jest.fn(
+      async (_tripId: string, response: typeof baseResponse, queryCv?: number) => ({
+        ...response,
+        constraintsVersion: 3,
+        ...(queryCv != null && queryCv !== 3 ? { isStale: true } : {}),
+      }),
+    ),
   };
 
   const decisionCheckerMock = {
@@ -38,12 +51,6 @@ describe('PlanningConflicts deferred decisionChecker (integration)', () => {
   const accessMock = {
     resolveUserId: jest.fn(() => userId),
     assertTripMember: jest.fn(async () => undefined),
-  };
-
-  const baseResponse = {
-    tripId,
-    summary: { total: 1, mustHandle: 1, suggestAdjust: 0, pendingConfirm: 0, byCategory: {} },
-    conflicts: [{ id: 'cfl_1', source: 'feasibility' as const, priority: 'must_handle' as const, category: 'schedule' as const, title: 't', message: 'm' }],
   };
 
   const baseReport = {
@@ -104,7 +111,7 @@ describe('PlanningConflicts deferred decisionChecker (integration)', () => {
       pollUrl: `/trips/${tripId}/planning-conflicts?decisionCheckerTaskId=dc_embed_test`,
       pollIntervalMs: 5000,
     });
-    expect(planningMock.loadArtifactsFast).toHaveBeenCalledWith(tripId);
+    expect(planningMock.loadArtifactsFast).toHaveBeenCalledWith(tripId, { userId: expect.any(String) });
     expect(planningMock.loadArtifacts).not.toHaveBeenCalled();
     expect(decisionCheckerMock.startPlanningDeferredWithFullRefresh).toHaveBeenCalledWith(
       tripId,

@@ -127,8 +127,23 @@ export interface DomainRecommendation {
 
 export type CollaborativeTaskStatus = 'pending' | 'in_discussion' | 'consensus_reached';
 
+export type CollaborativeTaskSource = 'domain_influence' | 'decision_problem';
+
 export interface CollaborativeTaskItem {
   id: string;
+  /** 协商任务 ID（decision_problem 时为 nt:{problemId}） */
+  negotiationTaskId?: string;
+  /** domain_influence = F2.3 领域交叉任务；decision_problem = 决策问题预生成协商入口 */
+  source: CollaborativeTaskSource;
+  /** 当 source=decision_problem 时，对应 GET decision-problems/:problemId */
+  problemId?: string | null;
+  /** FE 契约别名，与 problemId 相同 */
+  decisionProblemId?: string | null;
+  /** 用户提交决策结论后绑定（Phase 3） */
+  resolutionId?: string | null;
+  actionPlanId?: string | null;
+  /** 发起协商时的 focusConflictId（decision-checker 焦点） */
+  sourceConflictId?: string | null;
   domain: WishCategory;
   title: string;
   description: string;
@@ -143,4 +158,12 @@ export interface CollaborativeTaskItem {
   closesAt: string | null;
   /** Active F3.1 preference round when status is in_discussion */
   activeRoundId: string | null;
+  /** decision_problem 协作跟进子任务（POST .../collaborative-sub-tasks） */
+  isSubTask?: boolean;
+  subTaskKind?: string;
+  subTaskStatus?: string;
+  /** 子任务负责人（isSubTask 时；任务分工 Tab 按此筛选） */
+  assigneeUserId?: string | null;
+  /** 关联决策问题标题（BFF 展示用，避免多条子任务同名） */
+  problemTitle?: string | null;
 }

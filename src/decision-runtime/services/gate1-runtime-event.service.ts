@@ -64,7 +64,7 @@ export class Gate1RuntimeEventService {
    */
   flushStaged(results: Array<Gate1RuntimeEmitResult | undefined>): void {
     for (const result of results) {
-      if (!isStagedRuntimeEmit(result)) continue;
+      if (!result || !isStagedRuntimeEmit(result)) continue;
       void this.outbox.publishById(result.outboxId).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.warn(

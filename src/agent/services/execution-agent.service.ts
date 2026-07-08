@@ -21,6 +21,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
 import { ReorderRequestDto } from '../dto/reorder.dto';
 import { ApplyFallbackRequestDto } from '../dto/apply-fallback.dto';
+import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution/effective-plan-write-guard.service';
+import { assertPlanMutationAllowedOrThrow } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 export interface ExecutionAgentRequest {
   /** Trip ID */
@@ -82,6 +84,7 @@ export class ExecutionAgentService {
     @Optional() @Inject(forwardRef(() => TripsService)) private readonly tripsService?: TripsService,
     @Optional() @Inject(forwardRef(() => ItineraryItemsService)) private readonly itineraryItemsService?: ItineraryItemsService,
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {
     // 添加诊断日志
     this.logger.log(`[ExecutionAgentService] 服务已创建`);
@@ -243,6 +246,11 @@ export class ExecutionAgentService {
   async reorder(request: ReorderRequestDto) {
     this.logger.debug(`重新排序行程: tripId=${request.tripId}, dayId=${request.dayId}`);
 
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'ExecutionAgentService.reorder',
+    );
+
     if (!this.itineraryItemsService || !this.prisma) {
       throw new BadRequestException('ItineraryItemsService 或 PrismaService 未注入');
     }
@@ -378,6 +386,11 @@ export class ExecutionAgentService {
    */
   async applyFallback(request: ApplyFallbackRequestDto) {
     this.logger.debug(`应用修复方案: tripId=${request.tripId}, solutionId=${request.solutionId}`);
+
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'ExecutionAgentService.applyFallback',
+    );
 
     if (!this.itineraryItemsService || !this.prisma) {
       throw new BadRequestException('ItineraryItemsService 或 PrismaService 未注入');

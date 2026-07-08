@@ -39,6 +39,7 @@ function mockHost(overrides: Partial<PlanVerifyLoopHost> = {}): PlanVerifyLoopHo
     computeRepairFatigue: jest.fn(() => undefined),
     buildClarificationResult: jest.fn(() => ({ status: 'NEED_USER_CONFIRMATION' }) as ReturnType<PlanVerifyLoopHost['buildClarificationResult']>),
     persistHarnessTraceOnReturnToResearch: jest.fn(),
+    applyReturnToResearchInvalidation: jest.fn(async (_s, ds) => ds),
     runPlanGenWithEmptyDraftGuard: jest.fn(),
     ...overrides,
   };
@@ -78,6 +79,45 @@ describe('runPlanVerifyOptimizeRepairLoop (graph)', () => {
   it('continues to narrate path when verify passes without repair', async () => {
     const out = await runPlanVerifyOptimizeRepairLoop(mockHost(), baseParams());
     expect(out.kind).toBe('continue');
+  });
+
+  it('loops repair back to verify before exiting subgraph', async () => {
+    let verifyCalls = 0;
+    const runVerifyPhase = jest.fn(async (ds, state) => {
+      verifyCalls += 1;
+      if (verifyCalls === 1) {
+        state.errors = [
+          {
+            step: 'VERIFY',
+            error_code: 'X',
+            message: 'needs fix',
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        state.gate_result = { gate_result: 'ADJUST_REQUIRED' };
+        return {
+          decisionState: ds,
+          verdict: { kind: 'needs_repair' as const },
+        };
+      }
+      state.errors = [];
+      state.gate_result = { gate_result: 'PASS' };
+      return {
+        decisionState: ds,
+        verdict: { kind: 'complete' as const },
+      };
+    });
+
+    const runRepairPhase = jest.fn(async (ds) => ds);
+
+    const out = await runPlanVerifyOptimizeRepairLoop(
+      mockHost({ runVerifyPhase, runRepairPhase }),
+      baseParams(),
+    );
+
+    expect(out.kind).toBe('continue');
+    expect(verifyCalls).toBe(2);
+    expect(runRepairPhase).toHaveBeenCalledTimes(1);
   });
 
   it('reroute_pre_plan when VERIFY harness suggests RETURN_TO_RESEARCH (evidence binding)', async () => {

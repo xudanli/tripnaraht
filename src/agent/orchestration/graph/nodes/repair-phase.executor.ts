@@ -23,6 +23,7 @@ export async function runRepairPhase(
     state.gate_result
   ) {
     const stepStartTime = Date.now();
+    const itineraryBeforeRepair = structuredClone(state.itinerary) as Itinerary;
     const ctx = {
       requestId: state.request_id,
       tripPlanRequest: state.trip_plan_request,
@@ -69,6 +70,15 @@ export async function runRepairPhase(
       },
     });
     state.metadata.last_updated_at = new Date().toISOString();
+    if (host.runTravelRecompileAfterRepair) {
+      await host.runTravelRecompileAfterRepair({
+        state,
+        request,
+        itineraryBeforeRepair,
+        repairApplied,
+        verificationIssues: newState.verification?.issues as never,
+      });
+    }
     await host.generateDecisionStepForStep(state, 'REPAIR', 'LocalInsight');
     await host.recordRepairObservability({ newState, state, request });
     return newState;

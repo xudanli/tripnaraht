@@ -61,4 +61,11 @@ export interface ProductionObservationSupplement {
   architectureLint?: ProductionObservationArchitectureLint;
   legacyFallbackDrillPass?: boolean;
   effectivePlanWriteGuard?: boolean;
+  writeChainStatus?: {
+    writeChainEnabled?: boolean;
+    phase6LegacyDeprecation?: boolean;
+    gatewayDomainRulesExclusive?: boolean;
+    constraintPlanVerifyProjection?: boolean;
+    agentItineraryPendingCount?: number;
+  };
 }

@@ -48,6 +48,7 @@ import { TransitousDirectModule } from '../../../mcp/transitous-direct.module';
 import { BookingComModule } from '../../../mcp/booking-com.module';
 import { GoogleCalendarModule } from '../../../mcp/google-calendar.module';
 import { ItineraryItemsModule } from '../../../itinerary-items/itinerary-items.module';
+import { EffectivePlanExecutionModule } from '../../../decision-runtime/execution/effective-plan-execution.module';
 import { AgentModule } from '../../agent.module';
 import { TripsModule } from '../../../trips/trips.module';
 import { QueryRewritingModule } from '../../query-rewriting.module';
@@ -91,7 +92,8 @@ const throttlerConfig = disableThrottler
     TransitousDirectModule, // Transitous MOTIS API（欧洲 fallback，55+ 国 GTFS）
     BookingComModule, // Booking.com 租车服务
     GoogleCalendarModule, // Google Calendar MCP 服务（日历管理）
-    ItineraryItemsModule, // 行程项服务（用于「提取攻略中的景点加入行程」）
+    ItineraryItemsModule,
+    EffectivePlanExecutionModule,
     forwardRef(() => TripsModule), // 方案2：ExecutionAgent 不可用时，TripSuggestionsService 作为优化降级
   ],
   controllers: [

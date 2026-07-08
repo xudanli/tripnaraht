@@ -31,6 +31,16 @@ export const ICELAND_POI_SLUG_RESOLVERS: Array<{
     slug: ICELAND_C_TIER_POI_SLUGS.THINGVELLIR,
     patterns: [/thingvellir|þingvellir|辛格维利尔/i],
   },
+  { slug: 'is.myvatn', patterns: [/m[yý]vatn|米湖/i] },
+  { slug: 'is.godafoss', patterns: [/goðafoss|godafoss|神之瀑布|众神瀑布/i] },
+  { slug: 'is.krafla', patterns: [/krafla|克拉布拉/i] },
+  { slug: 'is.fjadrargljufur', patterns: [/fjaðrárgljúfur|fjadrargljufur|羽毛峡谷/i] },
+  { slug: 'is.husavik', patterns: [/húsavík|husavik|胡萨维克/i] },
+  { slug: 'is.silfra', patterns: [/silfra|丝浮拉/i] },
+  { slug: 'is.kerid_crater', patterns: [/kerið|kerid|凯里斯/i] },
+  { slug: 'is.secret_lagoon', patterns: [/secret lagoon|秘密温泉/i] },
+  { slug: 'is.bruarfoss', patterns: [/brúarfoss|bruarfoss|蓝色秘境/i] },
+  { slug: 'is.askja', patterns: [/askja|阿斯恰/i] },
 ];
 
 export const ICELAND_ALL_ACCESS_RULES: PoiAccessRule[] = [

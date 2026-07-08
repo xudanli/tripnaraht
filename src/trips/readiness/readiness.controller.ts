@@ -46,6 +46,7 @@ import {
 import { TripContext } from './types/trip-context.types';
 import { ReadinessCheckResult, ReadinessFindingItem } from './types/readiness-findings.types';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
+import { mapWriteChainBlockedToErrorResponse } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../../common/dto/api-response.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
@@ -69,6 +70,8 @@ import { CascadeUiHintDto } from '../../travel-cognition/dto/travel-runtime-api.
 import { CoverageMapService } from './services/coverage-map.service';
 import { ReadinessAutoRepairService } from './services/readiness-auto-repair.service';
 import { ReadinessRepairService } from './services/readiness-repair.service';
+import { dispatchManualRepairFromModule } from '../../decision-runtime/trigger/record-trigger-lineage-from-module.util';
+import { resolveDecisionRunId } from '../../decision-runtime/trigger/record-trigger-lineage.util';
 import { UpdateChecklistStatusDto } from './dto/checklist-status.dto';
 import {
   MarkNotApplicableDto,
@@ -329,7 +332,7 @@ export class ReadinessController {
     private readonly moduleRef: ModuleRef,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
-    // TripConflictsService 在需要时通过 ModuleRef 获取
+    // TripConflictsService / DecisionTriggerGatewayService 在需要时通过 ModuleRef 获取
   }
 
   /**
@@ -2300,11 +2303,29 @@ export class ReadinessController {
       runGuardianNegotiation?: boolean;
       forceDecisionRepair?: boolean;
     },
+    @CurrentUser() user?: CurrentUserPayload,
   ): Promise<any> {
     try {
+      const dispatched = await dispatchManualRepairFromModule(this.moduleRef, {
+        tripId: body.tripId,
+        userId: user?.userId,
+        entryPointId: 'user.readiness-apply-repair',
+        issueId: body.blockerId,
+        metadata: {
+          repairOptionId: body.optionId,
+          intent: 'manual_repair',
+          executeDecision: body.executeDecision,
+        },
+      });
+      const decisionRunId = resolveDecisionRunId(dispatched);
       const result = await this.readinessRepairService.applyRepair(body);
-      return successResponse(result);
+      return successResponse({
+        ...result,
+        ...(decisionRunId ? { decisionRunId } : {}),
+      });
     } catch (error) {
+      const writeChain = mapWriteChainBlockedToErrorResponse(error);
+      if (writeChain) return writeChain;
       const err = error as Error;
       if (err instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, err.message);

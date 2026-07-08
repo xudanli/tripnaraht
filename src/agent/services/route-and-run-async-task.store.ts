@@ -41,6 +41,8 @@ export type RouteAndRunTaskRecord = {
   lease_resuming?: boolean;
   /** 用于 resume 的原始请求快照（不含 secrets） */
   request_snapshot?: RouteAndRunRequestDto;
+  /** P0 authority：任务启动时冻结的权威快照 */
+  authority_snapshot_v1?: import('../../decision-runtime/execution/durable-authority-snapshot-v1.types').DurableAuthoritySnapshotV1;
 };
 
 const TASK_PROGRESS_PREFIX = 'task_progress';
@@ -67,7 +69,9 @@ export class RouteAndRunAsyncTaskStore {
   async createInitialized(
     request: RouteAndRunRequestDto,
     taskId: string,
-    init: Pick<RouteAndRunTaskRecord, 'current_phase' | 'progress_percentage' | 'message'>,
+    init: Pick<RouteAndRunTaskRecord, 'current_phase' | 'progress_percentage' | 'message'> & {
+      authority_snapshot_v1?: RouteAndRunTaskRecord['authority_snapshot_v1'];
+    },
   ): Promise<RouteAndRunTaskInitResponseDto> {
     const now = new Date().toISOString();
     const record: RouteAndRunTaskRecord = {
@@ -85,6 +89,7 @@ export class RouteAndRunAsyncTaskStore {
       worker_instance_id: buildWorkerInstanceId(),
       durable_trip_run_id: request.options?.durable_trip_run_id?.trim() ?? null,
       request_snapshot: this.sanitizeRequestSnapshot(request),
+      authority_snapshot_v1: init.authority_snapshot_v1,
     };
     await this.persist(record);
     this.emitSse(record, 'PHASE');

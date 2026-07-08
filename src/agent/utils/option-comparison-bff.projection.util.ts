@@ -312,7 +312,7 @@ export function projectOptionComparison(input: ProjectOptionComparisonInput): Op
 
   const wbComparison = md?.comparison as OptionComparison | undefined;
   let comparison: OptionComparisonBffDto | undefined;
-  if (wbComparison?.options?.length >= 2) {
+  if ((wbComparison?.options?.length ?? 0) >= 2 && wbComparison) {
     comparison = fromWorkbenchComparison(wbComparison);
   } else {
     comparison = fromOptimizationHints(input) ?? fromCandidates(input);

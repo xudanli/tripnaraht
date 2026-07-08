@@ -184,7 +184,7 @@ export class MemoryController {
 
     return this.semanticMemoryService.scheduleReflection(
       userId,
-      episodicMemories as EpisodicMemory[],
+      episodicMemories as unknown as EpisodicMemory[],
     );
   }
 }

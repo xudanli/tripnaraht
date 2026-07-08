@@ -1,0 +1,154 @@
+{
+  "$id": "tripnara.constraint_template_catalog@v1",
+  "title": "TripConstraint Template Catalog",
+  "description": "POST /trips/:tripId/constraints catalog SSOT — hard_must_satisfy + soft_prefer",
+  "type": "object",
+  "required": ["schemaId", "version", "generatedFrom", "templates"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaId": { "const": "tripnara.constraint_template_catalog@v1" },
+    "version": { "type": "integer", "minimum": 1 },
+    "generatedFrom": { "type": "string" },
+    "templates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/template" },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "template": {
+      "type": "object",
+      "required": [
+        "templateId",
+        "constraintId",
+        "defaultName",
+        "category",
+        "type",
+        "sectionKey",
+        "scope",
+        "operator",
+        "defaultValue",
+        "allowRelaxation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "templateId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "前后端 POST source.templateId"
+        },
+        "constraintId": {
+          "type": "string",
+          "pattern": "^c_tpl_[a-z][a-z0-9_]*$",
+          "description": "稳定卡片 id"
+        },
+        "defaultName": { "type": "string" },
+        "description": { "type": "string" },
+        "category": {
+          "type": "string",
+          "enum": [
+            "TIME",
+            "BUDGET",
+            "DESTINATION",
+            "ACTIVITY",
+            "TRANSPORT",
+            "ACCOMMODATION",
+            "MEMBER",
+            "SAFETY",
+            "WORLD_STATE",
+            "CUSTOM"
+          ]
+        },
+        "type": { "type": "string", "enum": ["HARD", "SOFT"] },
+        "sectionKey": {
+          "type": "string",
+          "enum": ["hard_must_satisfy", "soft_prefer"]
+        },
+        "scope": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "TRIP",
+                "DAY",
+                "ITEM",
+                "ROUTE_SEGMENT",
+                "MEMBER",
+                "MEMBER_GROUP",
+                "DOMAIN",
+                "PLAN"
+              ]
+            },
+            "ids": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "EQ",
+            "NE",
+            "LTE",
+            "GTE",
+            "IN",
+            "NOT_IN",
+            "BEFORE",
+            "AFTER",
+            "CONTAINS",
+            "CUSTOM"
+          ]
+        },
+        "defaultValue": { "type": "object" },
+        "allowRelaxation": { "type": "boolean" },
+        "unit": { "type": "string" },
+        "defaultPriority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "SOFT 默认重要程度；8=高 5=中 3=低"
+        },
+        "defaultIntensity": {
+          "type": "integer",
+          "enum": [25, 50, 85],
+          "description": "与 defaultPriority 档位对应的 value.intensity"
+        },
+        "solverRuleKind": {
+          "type": "string",
+          "enum": [
+            "time_window",
+            "daily_count",
+            "time_budget",
+            "lodging_continuity",
+            "budget",
+            "route_shape",
+            "poi_preference",
+            "crowd_avoidance"
+          ]
+        },
+        "legacyPatchOnly": { "type": "boolean" },
+        "judgmentRuleSample": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "SOFT" } } },
+          "then": {
+            "properties": {
+              "allowRelaxation": { "const": true },
+              "sectionKey": { "const": "soft_prefer" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "HARD" } } },
+          "then": {
+            "properties": {
+              "sectionKey": { "const": "hard_must_satisfy" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

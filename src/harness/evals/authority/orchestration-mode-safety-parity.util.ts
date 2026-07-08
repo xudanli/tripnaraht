@@ -1,5 +1,5 @@
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../../../agent/dto/route-and-run.dto';
-import { RouteType } from '../../../agent/interfaces/router.interface';
+import { RouteType, UIStatus } from '../../../agent/interfaces/router.interface';
 import { applyLegacyMutationCommitGuard } from '../../../decision-runtime/execution/legacy-mutation-commit.adapter';
 import { validateMutationAuthority } from '../../../decision-runtime/execution/canonical-mutation-commit-guard.util';
 import type { HardConstraintParityFixtureV1 } from './fixtures/hard-constraint-parity.fixture';
@@ -44,7 +44,15 @@ export function projectCanonicalSafetyVerdictFromConstraint(
 function buildParityMutationResponse(): RouteAndRunResponseDto {
   return {
     request_id: 'au-p1-007',
-    route: { route: RouteType.SYSTEM2_REASONING, confidence: 0.5, reasons: [] },
+    route: {
+      route: RouteType.SYSTEM2_REASONING,
+      confidence: 0.5,
+      reasons: [],
+      required_capabilities: [],
+      consent_required: false,
+      budget: { max_seconds: 60, max_steps: 8, max_browser_steps: 0 },
+      ui_hint: { mode: 'fast', status: UIStatus.DONE, message: 'harness' },
+    },
     result: {
       status: 'OK',
       answer_text: 'draft replan day3',

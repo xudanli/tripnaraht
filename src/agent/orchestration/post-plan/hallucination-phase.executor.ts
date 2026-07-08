@@ -50,7 +50,7 @@ export async function runHallucinationPhase(
         items: Array<{ text: string; confidence: number; action: string }>;
       }>).push({
         type: 'HALLUCINATION_RISK',
-        message: detectionResult.userNotification.message,
+        message: detectionResult.userNotification.message ?? '',
         items: detectionResult.hallucinationRisks.map((r) => ({
           text: r.text,
           confidence: r.confidence,
@@ -105,7 +105,7 @@ export async function runHallucinationPhase(
           sample_rows: hallucinationSampleRows,
           user_notification: detectionResult.userNotification?.hasRisks
             ? {
-                message: detectionResult.userNotification.message,
+                message: detectionResult.userNotification.message ?? '',
                 low_confidence_count:
                   detectionResult.userNotification.lowConfidenceItems?.length ?? 0,
               }

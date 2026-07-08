@@ -29,6 +29,8 @@ import { McpToolDispatcherService } from './mcp-tool-dispatcher.service';
 import { TaskService, TaskStatus } from '../../../infra/task.service';
 import { CacheService } from '../../../../common/cache/cache.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import { EffectivePlanWriteGuardService } from '../../../../decision-runtime/execution/effective-plan-write-guard.service';
+import { assertPlanMutationAllowedOrThrow } from '../../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { randomUUID } from 'crypto';
 import { createHash } from 'crypto';
 import { SessionNotFoundException, SessionExpiredException, DestinationRequiredException } from '../exceptions/planning-assistant.exceptions';
@@ -148,6 +150,7 @@ export class PlanningAssistantV2Service {
     @Optional() @Inject(forwardRef(() => AgentService)) private readonly agentService?: AgentService,
     @Optional() private readonly tripSuggestionsService?: TripSuggestionsService,
     @Optional() private readonly queryRewritingService?: QueryRewritingService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {
     // 从配置服务获取值，如果没有配置服务则使用默认值
     this.sessionCacheTTL = this.configService?.get<number>('PLANNING_ASSISTANT.SESSION_CACHE_TTL', 86400) ?? 86400; // 24小时（秒）
@@ -6136,6 +6139,12 @@ export class PlanningAssistantV2Service {
     isChinese: boolean
   ): Promise<ChatResponseDto | null> {
     if (!this.itineraryItemsService || !this.prisma || !this.llmService) return null;
+
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'PlanningAssistantV2Service.handleAddAttractionsFromSearch',
+    );
+
     const combinedText = searchResults
       .map((r) => `${r.title || ''}\n${r.text || ''}`)
       .join('\n\n')
@@ -6470,6 +6479,11 @@ ${combinedText}`;
         messageCN: '行程服务不可用，无法加入住宿',
       });
     }
+
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'PlanningAssistantV2Service.applyAccommodationToItinerary',
+    );
 
     let sessionItem: AccommodationItemDto | undefined;
     let sessionState = await this.planningAssistantService.getSessionState(dto.sessionId).catch(() => null);

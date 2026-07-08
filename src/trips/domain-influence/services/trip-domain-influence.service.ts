@@ -35,6 +35,7 @@ import {
 } from '../utils/domain-weight.util';
 import { TripDomainAccessService } from './trip-domain-access.service';
 import { PreferenceRoundService } from '../../process-fairness/services/preference-round.service';
+import { DecisionProblemPreferenceRoundService } from '../../process-fairness/services/decision-problem-preference-round.service';
 
 type ClaimRow = {
   id: string;
@@ -56,10 +57,18 @@ export class TripDomainInfluenceService {
     private readonly prisma: PrismaService,
     private readonly access: TripDomainAccessService,
     private readonly preferenceRoundService: PreferenceRoundService,
+    private readonly decisionProblemRoundService: DecisionProblemPreferenceRoundService,
   ) {}
 
-  async getSnapshot(tripId: string, userId: string): Promise<TripDomainInfluenceSnapshot> {
-    await this.access.assertTripMember(tripId, userId);
+  async getSnapshot(
+    tripId: string,
+    userId: string,
+    options?: { includeImpactHints?: boolean; skipAccessCheck?: boolean },
+  ): Promise<TripDomainInfluenceSnapshot> {
+    if (!options?.skipAccessCheck) {
+      await this.access.assertTripMember(tripId, userId);
+    }
+    const includeImpactHints = options?.includeImpactHints !== false;
     const memberIds = await this.access.listMemberIds(tripId);
     const eligibleCount = Math.max(memberIds.length, 1);
     const displayNames = await this.resolveDisplayNames(memberIds);
@@ -74,10 +83,12 @@ export class TripDomainInfluenceService {
         where: { id: tripId },
         select: { metadata: true },
       }),
-      this.prisma.tripWishItem.findMany({
-        where: { tripId, status: 'active' },
-        select: { category: true, text: true, structuredHints: true },
-      }),
+      includeImpactHints
+        ? this.prisma.tripWishItem.findMany({
+            where: { tripId, status: 'active' },
+            select: { category: true, text: true, structuredHints: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const meta = (trip?.metadata ?? {}) as {
@@ -567,7 +578,18 @@ export class TripDomainInfluenceService {
     tripId: string,
     userId: string,
   ): Promise<{ tasks: CollaborativeTaskItem[] }> {
-    const snapshot = await this.getSnapshot(tripId, userId);
+    await this.access.assertTripMember(tripId, userId);
+    const [activeRounds, tripRow, snapshot] = await Promise.all([
+      this.preferenceRoundService.listActiveRoundsForTrip(tripId),
+      this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { metadata: true },
+      }),
+      this.getSnapshot(tripId, userId, {
+        includeImpactHints: false,
+        skipAccessCheck: true,
+      }),
+    ]);
     const tasks: CollaborativeTaskItem[] = [];
 
     for (const d of snapshot.domains) {
@@ -581,18 +603,11 @@ export class TripDomainInfluenceService {
       let closesAt: string | null =
         status === 'in_discussion' ? this.defaultDiscussionDeadline() : null;
 
-      const roundId = await this.preferenceRoundService.getActiveRoundForDomain(
-        tripId,
-        d.domain,
-      );
-      if (roundId) {
-        activeRoundId = roundId;
+      const activeRound = activeRounds.get(d.domain);
+      if (activeRound) {
+        activeRoundId = activeRound.id;
         status = 'in_discussion';
-        const row = await this.prisma.tripPreferenceRound.findUnique({
-          where: { id: roundId },
-          select: { closesAt: true },
-        });
-        closesAt = row?.closesAt?.toISOString() ?? closesAt;
+        closesAt = activeRound.closesAt?.toISOString() ?? closesAt;
       }
 
       const endorsementLine =
@@ -604,6 +619,8 @@ export class TripDomainInfluenceService {
 
       tasks.push({
         id: `task:${d.domain}`,
+        source: 'domain_influence',
+        problemId: null,
         domain: d.domain,
         title: d.domainLabel,
         description: this.buildTaskDescription(d),
@@ -619,7 +636,18 @@ export class TripDomainInfluenceService {
       });
     }
 
-    return { tasks };
+    const problemTasks =
+      await this.decisionProblemRoundService.listDecisionProblemCollaborativeTasks(
+        tripId,
+        userId,
+        {
+          skipAccessCheck: true,
+          metadata: tripRow?.metadata ?? null,
+          activeRounds,
+        },
+      );
+
+    return { tasks: [...tasks, ...problemTasks] };
   }
 
   private resolveCollaborativeTaskStatus(

@@ -2,7 +2,8 @@
 
 > **Swagger Tag**: `trip-constraints`  
 > **Global prefix**: `/api`  
-> **响应**: `{ success, data, error }`
+> **响应**: `{ success, data, error }`  
+> **架构收口（规划）：** [CONSTRAINT_SEMANTIC_CONSOLIDATION](../decision-runtime/CONSTRAINT_SEMANTIC_CONSOLIDATION.md)
 
 约束控制台 V1 统一读写在 `GET/POST /trips/:tripId/constraints`；存量字段（intent / budget / wishes）在读时合成为 `TripConstraint`，写时路由到对应持久化层。
 
@@ -30,7 +31,8 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/trips/:tripId/constraints` | 列表（合成读模型） |
+| `GET` | `/trips/:tripId/constraints` | 列表 + **旅行决策合同**（`contract` + 7+2 `sections`） |
+| `PATCH` | `/trips/:tripId/constraints/contract` | 写旅行目标 / 变化策略 / 自动化授权 / 团队治理 |
 | `POST` | `/trips/:tripId/constraints` | 新增 custom / private wish |
 | `PATCH` | `/trips/:tripId/constraints/:constraintId` | 修改 |
 | `DELETE` | `/trips/:tripId/constraints/:constraintId` | 删除 |
@@ -78,6 +80,39 @@
 ```
 
 前端：按 `meta.sections` 分区渲染；`source.type=OFFICIAL_RULE` 隐藏编辑/删除；冲突样式读 `hasConflict` / `cardTone`（勿用 `type===HARD` 判断官方规则）。
+
+> **2026-07 升级**：`meta.sections` 已改为 **7+2 旅行决策合同分区**（`travel_objectives` / `hard_must_satisfy` / … / `readonly_official`）。  
+> 完整前端对接见 **[TRAVEL_DECISION_CONTRACT_FRONTEND_API.md](./TRAVEL_DECISION_CONTRACT_FRONTEND_API.md)**。
+
+**响应 `meta.sections`（新）**：
+
+```json
+{
+  "sections": [
+    { "key": "travel_objectives", "label": "旅行目标", "constraintIds": [], "contractBlock": "objectives" },
+    { "key": "hard_must_satisfy", "label": "必须满足", "constraintIds": ["c_time_range", "c_budget_total"] },
+    { "key": "soft_prefer", "label": "尽量满足", "constraintIds": ["c_pacing_level"] },
+    { "key": "team_members", "label": "团队成员", "constraintIds": ["c_travelers"], "contractBlock": "team_governance" },
+    { "key": "change_strategy", "label": "风险与变化策略", "constraintIds": [], "contractBlock": "change_strategy" },
+    { "key": "automation", "label": "自动化授权", "constraintIds": [], "contractBlock": "automation" },
+    { "key": "conflicts_and_impact", "label": "冲突与影响", "constraintIds": [], "contractBlock": "conflicts" },
+    { "key": "readonly_official", "label": "目的地规则", "constraintIds": ["c_official_is_froad_2wd"], "readonly": true }
+  ]
+}
+```
+
+**响应 `data.contract`**（决策合同 SSOT）：
+
+```json
+{
+  "schemaId": "tripnara.travel_decision_contract@v1",
+  "objectives": { "rankedPrinciples": ["SAFETY", "PACE", "CORE_EXPERIENCE"], "version": 1 },
+  "displayPrinciples": [{ "key": "SAFETY", "label": "安全第一", "rank": 1 }],
+  "changeStrategy": { "archetype": "BALANCED", "tolerances": { "maxBudgetOverrunPct": 10 } },
+  "automation": { "defaultLevel": "SUGGEST", "autoAllowed": ["shift_meal_within_30min"], "confirmationRequired": ["change_lodging"] },
+  "conflicts": { "hasConflicts": false, "mustHandle": 0, "conflictConstraintIds": [] }
+}
+```
 
 ### POI 动态官方规则（P1，`destination=IS`）
 
@@ -128,7 +163,8 @@
     "conflictCount": 2,
     "pendingConfirmCount": 1
   },
-  "items": [ /* TripConstraint */ ]
+  "items": [ /* TripConstraint */ ],
+  "contract": { /* TravelDecisionContract — 见 TRAVEL_DECISION_CONTRACT_FRONTEND_API.md */ }
 }
 ```
 
@@ -204,6 +240,28 @@ PATCH /trips/:tripId/constraints/c_max_segment_distance
 ```
 
 旧冰岛 trip 批量 seed：`npx tsx scripts/backfill-iceland-segment-distance-constraints.ts --apply`
+
+### `c_max_segment_distance` → 用户可见文案（后端必读）
+
+**问题：** 左侧约束已显示用户值（如 380km），但 planning-conflicts / 决策检查器 / road_class finding 仍出现 `>250km` 文案。
+
+**根因：** 250 仅是冰岛**国家默认**，不是写死常量；用户 PATCH `c_max_segment_distance` 后，部分聚合缓存或旧 finding 仍携带改阈值前 baked 的 message。
+
+**生成 message 时必须：**
+
+| 规则 | 实现 |
+|------|------|
+| 读当前有效上限 | `resolveSegmentDistanceThresholds({ destination, metadata })` → `maxSegmentDistanceKm`（用户 `metadata.constraints.maxSegmentDistanceKm` 优先于国家默认 250） |
+| 禁止写死 250 | 文案用 `longDistanceHighMessage(thresholds.maxSegmentDistanceKm)` / `longDistanceWarnMessage(thresholds.warnSegmentDistanceKm)` |
+| 判定 road_class | `segment.distance > thresholds.maxSegmentDistanceKm`（勿用冰岛 pack 常量直接比） |
+| 约束变更后失效缓存 | planning-conflicts 缓存键须含 `constraintsVersion`（`{revision}:cv{N}`） |
+| 读路径兜底刷新 | `findingToIssue` 对 `issueKind === 'road_class'` 调用 `refreshRoadClassTransportMessage(message, anchors.distanceKm, coverage.segmentDistanceThresholds)` |
+
+**涉及链路：** `coverage-map` hazard → readiness finding → `feasibility-assembler` issue → `planning-conflicts` / `decision-checker` / Decision Semantics `decision-problems`。
+
+**验收：** PATCH `c_max_segment_distance` 为 380 后，462km 路段仍报硬冲突（462>380），但文案须为 `超长距离行驶(>380km)…`，不得再出现 `>250km`。
+
+**代码锚点：** `segment-distance-threshold.util.ts`、`coverage-map.service.ts`（`evaluateSegmentRisk`）、`feasibility-assembler.util.ts`（`findingToIssue`）、`planning-conflicts.service.ts`（`resolveRevisionKey`）。
 
 ## POST preview-impact
 

@@ -71,8 +71,12 @@ export function buildWishConstraintDigest(
 
   const mustDo = new Set<string>();
   const mustAvoid = new Set<string>();
+  const uid = requestingUserId?.trim() ?? '';
 
   for (const row of active) {
+    if (row.visibility === 'private' && row.userId !== uid) {
+      continue;
+    }
     const hints = row.structuredHints as WishStructuredHints | null;
     hints?.must_do?.forEach((x) => {
       if (x?.trim()) mustDo.add(x.trim());

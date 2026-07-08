@@ -1,7 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import type { AssessTripResponseDto } from '../../dto/trip-metrics.dto';
-import { TripMetricsService } from '../../services/trip-metrics.service';
 import type { TripFeasibilityReportDto } from '../types/trip-constraint-solver.types';
 import type {
   TripConstraintAssessSummary,
@@ -19,6 +18,7 @@ export class TripConstraintPreviewService {
 
   constructor(
     private readonly moduleRef: ModuleRef,
+    @Inject(forwardRef(() => FeasibilityReportService))
     private readonly feasibility: FeasibilityReportService,
   ) {}
 
@@ -77,6 +77,8 @@ export class TripConstraintPreviewService {
 
   private getTripMetricsService(): TripMetricsServiceLike | undefined {
     try {
+      const { TripMetricsService } =
+        require('../../services/trip-metrics.service') as typeof import('../../services/trip-metrics.service');
       return this.moduleRef.get(TripMetricsService, { strict: false }) as TripMetricsServiceLike;
     } catch {
       return undefined;

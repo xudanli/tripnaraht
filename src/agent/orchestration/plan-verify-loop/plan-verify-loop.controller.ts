@@ -174,7 +174,7 @@ export function createPlanVerifyLoopHandler(
             };
           }
 
-          return { kind: 'complete', decisionState };
+          return { kind: 'continue', next: 'verify', decisionState };
         }
         default:
           throw new Error(`plan_verify_loop: unsupported node ${nodeId}`);

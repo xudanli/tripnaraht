@@ -24,6 +24,7 @@ import { UserConstraintProvider } from './providers/user-constraint.provider';
 import { isConstraintGatewayPlanVerifyProjectionEnabled } from './constraint-plan-verify.config';
 import { GuardianConstraintProvider } from './providers/guardian-constraint.provider';
 import { LegacyConstraintCheckerAdapter } from './providers/legacy-checker.provider';
+import { OntologyConstraintProvider } from './providers/ontology-constraint.provider';
 import { evaluateWorldStateCompleteness } from './world-state/completeness-evaluator.util';
 import { buildCompletenessAssertions } from './world-state/reality-completeness.provider';
 import { recordConstraintGatewayIngressFromReport } from './constraint-gateway-ingress-audit.util';
@@ -36,6 +37,7 @@ export class ConstraintEvaluationGatewayService {
     private readonly legacyAdapter: LegacyConstraintCheckerAdapter,
     private readonly guardianProvider: GuardianConstraintProvider,
     private readonly packProvider: DestinationPackConstraintProvider,
+    private readonly ontologyProvider: OntologyConstraintProvider,
     private readonly failurePolicy: ConstraintFailurePolicyService,
     @Optional() private readonly userConstraintProvider?: UserConstraintProvider,
   ) {}
@@ -149,6 +151,14 @@ export class ConstraintEvaluationGatewayService {
       this.packProvider.evaluate({
         tripId: input.tripId,
         packContext: input.packContext,
+      }),
+    );
+
+    assertionBatches.push(
+      this.ontologyProvider.evaluate({
+        tripId: input.tripId,
+        travelWorldFacts: input.travelWorldFacts,
+        snapshotWorldFacts: input.snapshotWorldFacts,
       }),
     );
 

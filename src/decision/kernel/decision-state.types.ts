@@ -905,6 +905,9 @@ export type VerificationIssueCode =
   | 'WEATHER_RISK'
   | 'CONFIDENCE_DEGRADED'
   | 'SUNSET_BREACH'
+  | 'GRAPH_POI_UNRESOLVED'
+  | 'GRAPH_ROUTE_UNRESOLVED'
+  | 'GRAPH_VERIFY_SSOT_MISMATCH'
   | 'UNKNOWN';
 
 export interface VerificationIssueMetadata {

@@ -10,7 +10,6 @@ import type {
   DecisionCheckerCounterfactualDto,
   DecisionCheckerEvidenceDto,
   DecisionCheckerEvidenceItemDto,
-  DecisionCheckerEvidenceKind,
   DecisionCheckerImpactDto,
   DecisionCheckerMetricDto,
   DecisionCheckerOverviewDto,
@@ -19,12 +18,13 @@ import type {
   DecisionCheckerScenarioDto,
 } from '../types/decision-checker.types';
 import { DECISION_CHECKER_SCHEMA } from '../types/decision-checker.types';
+import { collectDecisionCheckerEvidenceItems } from './decision-checker-evidence.projection.util';
 import type {
   FeasibilityIssueDto,
-  FeasibilityProofDto,
   TripFeasibilityReportDto,
 } from '../types/trip-constraint-solver.types';
 import type { ConstraintsSummaryResponse } from '../types/constraints-summary.types';
+import { resolveEffectiveRepairOptions } from './daily-drive-repair.util';
 import {
   appendSplitSnapshotSuffix,
   projectSplitPlanBundle,
@@ -33,7 +33,10 @@ import {
 import type { SplitPlanScheduleSource } from './split-plan-schedule.source.util';
 import { formatDriveDurationZhLong } from './daily-drive-threshold.util';
 import { buildFeasibilityIssueUserExplanation } from './feasibility-issue-user-copy.util';
-import { resolveEffectiveRepairOptions } from './daily-drive-repair.util';
+import {
+  buildCounterfactualFromOptionPreviews,
+} from './decision-checker-option-preview.util';
+import type { UnifiedDecisionActionPreviewView } from '../../../decision-runtime/gateway/contracts/unified-decision-ui.types';
 
 export type DecisionCheckerProjectionInput = {
   tripId: string;
@@ -52,6 +55,11 @@ export type DecisionCheckerProjectionInput = {
   appliedSplitPlanIds?: string[];
   /** Schedule 真源 — splitPlan 必须有对应 daySplits */
   schedule?: SplitPlanScheduleSource | null;
+  /** 覆盖地图 POI — 证据 Tab 按当日 itinerary 全量投影 */
+  coveragePois?: import('../../readiness/types/coverage-map.types').PoiCoverage[];
+  coverageCalculatedAt?: string;
+  evaluationMode?: 'CHANGE_PREVIEW' | 'PLAN_VERIFY';
+  optionPreviews?: UnifiedDecisionActionPreviewView[];
 };
 
 const SCENARIO_VARIANTS: Array<'blue' | 'orange' | 'purple'> = ['blue', 'orange', 'purple'];
@@ -85,95 +93,7 @@ export function formatScoreDelta(delta: number): string {
   return rounded >= 0 ? `+${rounded}` : `${rounded}`;
 }
 
-export function mapProofEvidenceKind(proof: FeasibilityProofDto): DecisionCheckerEvidenceKind {
-  const src = String(proof.evidenceSource ?? '').toLowerCase();
-  const type = String(proof.evidenceType ?? '').toLowerCase();
-  if (/osrm|route.?engine|travel-info|transport/.test(src) || /route|travel/.test(type)) {
-    return 'route_engine';
-  }
-  if (/weather|wind|road_closure|closure/.test(src) || /weather|road/.test(type)) {
-    return 'weather_road';
-  }
-  if (/opening.?hour|hours/.test(src) || type.includes('opening')) {
-    return 'opening_hours';
-  }
-  if (/booking|reservation|inventory/.test(src) || /booking/.test(type)) {
-    return 'inventory';
-  }
-  if (/persona|profiling|decision.?log|guardian/.test(src) || /persona|profiling/.test(type)) {
-    return 'persona_trace';
-  }
-  if (/historical|model|monte.?carlo|pomdp/.test(src)) {
-    return 'historical_model';
-  }
-  return 'other';
-}
-
-export function mapProofReliability(proof: FeasibilityProofDto): 'high' | 'medium' | 'low' {
-  const conf = proof.confidence;
-  if (typeof conf === 'number') {
-    if (conf >= 0.85) return 'high';
-    if (conf >= 0.6) return 'medium';
-    return 'low';
-  }
-  const src = String(proof.evidenceSource ?? '').toLowerCase();
-  if (/osrm|route.?engine|user_confirmed|constraint-solver/.test(src)) return 'high';
-  if (/readiness|coverage|decision/.test(src)) return 'medium';
-  return 'low';
-}
-
-function evidenceKindTitle(kind: DecisionCheckerEvidenceKind): string {
-  switch (kind) {
-    case 'route_engine':
-      return '路线引擎';
-    case 'historical_model':
-      return '历史模型';
-    case 'weather_road':
-      return '天气与道路';
-    case 'inventory':
-      return '库存与预约';
-    case 'opening_hours':
-      return '营业时间';
-    case 'persona_trace':
-      return '决策画像';
-    default:
-      return '其他证据';
-  }
-}
-
-function proofToEvidenceItem(proof: FeasibilityProofDto, index: number, issueId: string): DecisionCheckerEvidenceItemDto {
-  const kind = mapProofEvidenceKind(proof);
-  const publisher = proof.evidenceSource?.trim() || undefined;
-  const observedAt = proof.observedAt;
-  const refs: DecisionCheckerEvidenceItemDto['refs'] = [];
-  if (proof.itemId) refs.push({ type: 'trip_item', id: proof.itemId });
-  if (proof.ruleId) refs.push({ type: 'rule', id: proof.ruleId });
-
-  return {
-    id: `ev_${issueId}_${index}`,
-    kind,
-    title: proof.entity?.trim() ? `${evidenceKindTitle(kind)}（${proof.entity}）` : evidenceKindTitle(kind),
-    subtitle: proof.currentFact?.trim() || proof.conclusion?.trim() || proof.constraint,
-    reliability: mapProofReliability(proof),
-    observedAt,
-    publisher,
-    confidence: proof.confidence,
-    refs: refs.length ? refs : undefined,
-  };
-}
-
-function collectEvidenceItems(issue?: FeasibilityIssueDto, allIssues?: FeasibilityIssueDto[]): DecisionCheckerEvidenceItemDto[] {
-  const items: DecisionCheckerEvidenceItemDto[] = [];
-  const sources = issue ? [issue, ...(allIssues ?? []).filter((i) => i.id !== issue.id)] : allIssues ?? [];
-
-  for (const src of sources) {
-    for (let i = 0; i < (src.proofs?.length ?? 0); i++) {
-      const proof = src.proofs![i];
-      items.push(proofToEvidenceItem(proof, i, src.id));
-    }
-  }
-  return items.slice(0, 12);
-}
+export { mapProofEvidenceKind, mapProofReliability } from './decision-checker-evidence-mapping.util';
 
 function buildEvidenceSummary(items: DecisionCheckerEvidenceItemDto[]): DecisionCheckerEvidenceDto['summary'] {
   const summary = { high: 0, medium: 0, low: 0, lastUpdatedAt: undefined as string | undefined };
@@ -224,6 +144,10 @@ function buildCalculationDetailUrl(tripId: string, issue?: FeasibilityIssueDto):
 
 function isDailyDriveIssue(issue?: FeasibilityIssueDto): boolean {
   return issue?.issueKind === 'daily_drive';
+}
+
+function isNoNightDriveIssue(issue?: FeasibilityIssueDto): boolean {
+  return issue?.issueKind === 'no_night_drive';
 }
 
 function resolveMaxDailyDriveHoursFromIssue(issue?: FeasibilityIssueDto): number | undefined {
@@ -493,6 +417,14 @@ function buildImpact(
               : issue.message,
         impact: issue.severity === 'high' ? 'high' : issue.severity === 'medium' ? 'medium' : 'low',
       });
+    } else if (isNoNightDriveIssue(issue)) {
+      constraints.push({
+        constraintId: 'c_no_night_drive',
+        type: 'hard',
+        name: issue.title,
+        status: issue.message.length > 60 ? `${issue.message.slice(0, 59)}…` : issue.message,
+        impact: 'high',
+      });
     } else {
       constraints.push({
         type: severityToConflictLevel(issue.priority),
@@ -658,7 +590,15 @@ export function projectDecisionCheckerResponse(input: DecisionCheckerProjectionI
     repairOptions: input.repairOptions,
   });
 
-  const evidenceItems = collectEvidenceItems(issue, input.report.issues);
+  const evidenceItems = collectDecisionCheckerEvidenceItems({
+    issue,
+    allIssues: input.report.issues,
+    coveragePois: input.coveragePois,
+    coverageCalculatedAt: input.coverageCalculatedAt,
+    planningConflicts: input.planningConflicts,
+    focusConflictId: input.focusConflictId,
+    dayTimeline: input.report.dayTimeline,
+  });
   const evidence: DecisionCheckerEvidenceDto = {
     items: evidenceItems,
     summary: buildEvidenceSummary(evidenceItems),
@@ -675,7 +615,10 @@ export function projectDecisionCheckerResponse(input: DecisionCheckerProjectionI
     currency,
   );
   const impact = buildImpact(input, primary, issue, effectiveRepair);
-  const counterfactual = buildCounterfactual(effectiveRepair, issue, currency);
+  const counterfactual =
+    input.evaluationMode === 'CHANGE_PREVIEW' && input.optionPreviews?.length
+      ? buildCounterfactualFromOptionPreviews(input.optionPreviews, issue)
+      : buildCounterfactual(effectiveRepair, issue, currency);
 
   const splitBundleInput: SplitPlanProjectionInput = {
     tripId: input.tripId,
@@ -752,5 +695,6 @@ export function projectDecisionCheckerResponse(input: DecisionCheckerProjectionI
         }
       : undefined,
     daySplits: splitBundle?.daySplits?.length ? splitBundle.daySplits : undefined,
+    evaluationMode: input.evaluationMode,
   };
 }

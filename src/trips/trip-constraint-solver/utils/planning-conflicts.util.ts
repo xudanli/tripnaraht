@@ -14,6 +14,10 @@ import type {
   PlanningConflictsSummary,
 } from '../types/planning-conflicts.types';
 import { buildFeasibilityIssueDedupeKey } from './feasibility-issue-dedup.util';
+import {
+  buildTravelScopeBffFieldsFromConflict,
+  enrichTravelScopeBffFields,
+} from './travel-scope-bff.util';
 
 export function parseScheduleAffectedDayNumbers(values: string[] | undefined): number[] {
   if (!values?.length) return [];
@@ -118,17 +122,20 @@ export function isScheduleConflictCoveredByAnyIssue(
 }
 
 export function feasibilityIssueToPlanningItem(issue: FeasibilityIssueDto): PlanningConflictItem {
-  const semanticKey = buildFeasibilityIssueDedupeKey(issue);
+  const enriched = enrichTravelScopeBffFields(issue);
+  const semanticKey = buildFeasibilityIssueDedupeKey(enriched);
   return {
-    id: issue.id,
+    id: enriched.id,
     source: 'feasibility',
-    priority: issue.priority,
-    category: (issue.category as PlanningConflictCategory) ?? 'other',
-    title: issue.title,
-    message: issue.message,
-    affectedDays: issue.affectedDays?.length ? [...issue.affectedDays] : undefined,
+    priority: enriched.priority,
+    category: (enriched.category as PlanningConflictCategory) ?? 'other',
+    title: enriched.title,
+    message: enriched.message,
+    affectedDays: enriched.affectedDays?.length ? [...enriched.affectedDays] : undefined,
+    affectedDayNumbers: enriched.affectedDayNumbers,
+    affectedScopeSummary: enriched.affectedScopeSummary,
     semanticKey,
-    issue: { ...issue, semanticKey },
+    issue: { ...enriched, semanticKey },
   };
 }
 
@@ -142,6 +149,8 @@ export function scheduleConflictToPlanningItem(conflict: ConflictDto): PlanningC
   }
   affectedDays.sort((a, b) => a - b);
 
+  const scopeFields = buildTravelScopeBffFieldsFromConflict(conflict, affectedDays);
+
   return {
     id: `schedule:${conflict.id}`,
     source: 'schedule',
@@ -150,6 +159,8 @@ export function scheduleConflictToPlanningItem(conflict: ConflictDto): PlanningC
     title: conflict.title,
     message: conflict.description,
     affectedDays: affectedDays.length ? affectedDays : undefined,
+    affectedDayNumbers: scopeFields?.affectedDayNumbers,
+    affectedScopeSummary: scopeFields?.affectedScopeSummary,
     studioConflict: conflict,
   };
 }

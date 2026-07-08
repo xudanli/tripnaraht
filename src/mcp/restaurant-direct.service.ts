@@ -10,8 +10,11 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import axios, { AxiosInstance } from 'axios';
-import * as https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import {
+  createExternalHttpsAgent,
+  EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
+  EXTERNAL_API_REQUEST_TIMEOUT_MS,
+} from './utils/external-http-agent.util';
 
 export interface RestaurantSearchParams {
   query?: string; // 自然语言查询，如 "附近好吃的意大利餐厅"
@@ -76,24 +79,11 @@ export class RestaurantDirectService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     if (this.apiKey) {
-      // 初始化 HTTP 客户端（支持代理）
-      const proxyUrl =
-        process.env.HTTPS_PROXY ||
-        process.env.https_proxy ||
-        process.env.ALL_PROXY ||
-        process.env.all_proxy;
-      
-      const httpsAgent = proxyUrl
-        ? new HttpsProxyAgent<string>(proxyUrl)
-        : new https.Agent({
-            keepAlive: true,
-            family: 4, // 强制 IPv4
-            rejectUnauthorized: true,
-          });
+      const httpsAgent = createExternalHttpsAgent();
 
       this.axiosInstance = axios.create({
         baseURL: this.baseUrl,
-        timeout: 30000,
+        timeout: EXTERNAL_API_REQUEST_TIMEOUT_MS,
         httpsAgent,
         proxy: false,
         headers: {
@@ -101,15 +91,14 @@ export class RestaurantDirectService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      // 测试连接
       try {
-        // 简单的测试查询
         const testResponse = await this.axiosInstance.get('/textsearch/json', {
           params: {
             query: 'restaurant',
             key: this.apiKey,
             type: 'restaurant',
           },
+          timeout: EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
         });
         
         if (testResponse.data.status === 'OK' || testResponse.data.status === 'ZERO_RESULTS') {
@@ -120,7 +109,9 @@ export class RestaurantDirectService implements OnModuleInit, OnModuleDestroy {
           this.isAvailable = false;
         }
       } catch (error: any) {
-        this.logger.error('Failed to initialize Restaurant Direct Service:', error.message);
+        this.logger.warn(
+          `Restaurant Direct Service unavailable (init probe failed): ${error.message}`,
+        );
         this.isAvailable = false;
       }
     } else {

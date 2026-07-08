@@ -24,11 +24,19 @@ import {
   resolveMaxDailyDrivingHours,
 } from './daily-drive-threshold.util';
 import {
-  buildConstraintsListSections,
   buildCountryOfficialConstraints,
   normalizeTripDestinationCode,
 } from './country-official-constraints.util';
-import { inferConflictConstraintIds } from './constraint-conflict-link.util';
+import { buildTravelDecisionContractSections } from './travel-decision-contract-sections.util';
+import { buildTravelDecisionContract } from './travel-decision-contract.builder';
+import { projectTripConstraintsForBff } from './trip-constraint-bff.projection.util';
+import type { TravelDecisionContract } from '../types/travel-decision-contract.types';
+import { inferConflictConstraintIds, inferScopedConflictConstraintIds } from './constraint-conflict-link.util';
+import {
+  inferCoarseScopeFromBinding,
+  readConstraintExtendedValue,
+  readScopeBindingFromValue,
+} from './constraint-scope-binding.util';
 
 type TripRow = {
   id: string;
@@ -383,6 +391,18 @@ function buildIntentConstraints(
   const explicitDailyDrive = readUserMaxDailyDrivingHours(metadata);
   if (dailyDrive) {
     const id = LEGACY_IDS.MAX_DAILY_DRIVE;
+    const extended = readConstraintExtendedValue(metadata, id);
+    const scopeBinding = readScopeBindingFromValue(extended);
+    const scope = scopeBinding
+      ? (inferCoarseScopeFromBinding(scopeBinding) ?? { type: 'TRIP' as const })
+      : { type: 'TRIP' as const };
+    const value =
+      extended ??
+      ({
+        maxHours: dailyDrive.maxDailyDrivingHours,
+        hours: dailyDrive.maxDailyDrivingHours,
+        maxDailyDrivingHours: dailyDrive.maxDailyDrivingHours,
+      } as Record<string, unknown>);
     out.push({
       id,
       tripId: trip.id,
@@ -391,9 +411,9 @@ function buildIntentConstraints(
       category: 'TRANSPORT',
       type: 'HARD',
       status: baseStatus(id, ext),
-      scope: { type: 'TRIP' },
+      scope,
       operator: 'LTE',
-      value: dailyDrive.maxDailyDrivingHours,
+      value,
       unit: 'hour',
       allowRelaxation: true,
       locked: isLocked(id, ext),
@@ -410,6 +430,46 @@ function buildIntentConstraints(
       createdAt: trip.createdAt.toISOString(),
       updatedAt: now,
       backing: { kind: 'legacy_field', field: 'metadata.constraints.maxDailyDrivingHours' },
+    });
+  }
+
+  if (isSelfDriveTrip(pacing)) {
+    const noNightRaw = constraints.noNightDrive;
+    const noNightCfg =
+      noNightRaw && typeof noNightRaw === 'object'
+        ? (noNightRaw as Record<string, unknown>)
+        : {};
+    const enabled = noNightCfg.enabled !== false;
+    const id = LEGACY_IDS.NO_NIGHT_DRIVE;
+    const mins = Number(noNightCfg.maxMinutesAfterSunset ?? 30);
+    const noNightValue = {
+      maxMinutesAfterSunset: mins,
+      ...(readScopeBindingFromValue(noNightCfg) ? { scopeBinding: noNightCfg.scopeBinding } : {}),
+    };
+    const noNightScopeBinding = readScopeBindingFromValue(noNightValue);
+    const noNightScope = noNightScopeBinding
+      ? (inferCoarseScopeFromBinding(noNightScopeBinding) ?? { type: 'TRIP' as const })
+      : { type: 'TRIP' as const };
+    out.push({
+      id,
+      tripId: trip.id,
+      name: '不夜驾',
+      description: '日落后不得继续驾驶',
+      category: 'SAFETY',
+      type: 'HARD',
+      status: enabled ? baseStatus(id, ext, true) : 'DISABLED',
+      scope: noNightScope,
+      operator: 'AFTER',
+      value: noNightValue,
+      unit: 'minute',
+      allowRelaxation: false,
+      locked: isLocked(id, ext),
+      source: { type: 'USER', templateId: 'no_night_drive' },
+      visibility: 'TEAM',
+      createdBy: userId,
+      createdAt: trip.createdAt.toISOString(),
+      updatedAt: now,
+      backing: { kind: 'legacy_field', field: 'metadata.constraints.noNightDrive' },
     });
   }
 
@@ -563,7 +623,7 @@ export function aggregateTripConstraints(input: {
   conflicts?: PlanningConflictItem[];
   isFeasibilityStale?: boolean;
   userId: string;
-}): { items: TripConstraint[]; meta: TripConstraintsListMeta } {
+}): { items: TripConstraint[]; meta: TripConstraintsListMeta; contract: TravelDecisionContract } {
   const { trip, summary, teamWishes = [], conflicts = [], isFeasibilityStale, userId } = input;
   const ext = readMetaExt(trip.metadata);
   const metadata = (trip.metadata as Record<string, unknown>) ?? {};
@@ -582,13 +642,24 @@ export function aggregateTripConstraints(input: {
   const wishes = teamWishes.map((w) => mapWishToConstraint(w, trip));
   const official = buildCountryOfficialConstraints(trip, userId);
 
-  const conflictIds = inferConflictConstraintIds(conflicts);
-  const all = [...legacy, ...unified, ...wishes, ...official].map((c) =>
-    withConflict(c, conflictIds),
-  );
+  const raw = [...legacy, ...unified, ...wishes, ...official];
+  const conflictIds = inferScopedConflictConstraintIds(raw, conflicts);
+  const projected = projectTripConstraintsForBff(raw.map((c) => withConflict(c, conflictIds)));
+  const all = projected;
 
   const countryCode = normalizeTripDestinationCode(trip.destination);
   const normalizedCountry = countryCode === 'GLOBAL' ? undefined : countryCode;
+  const sections = buildTravelDecisionContractSections(all, conflictIds);
+
+  const contract = buildTravelDecisionContract({
+    tripId: trip.id,
+    constraintsVersion: summary.constraintsVersion,
+    metadata,
+    pacing,
+    items: all,
+    conflicts,
+    conflictConstraintIds: conflictIds,
+  });
 
   const byType = { HARD: 0, SOFT: 0, EXTERNAL: 0 };
   const byStatus: Partial<Record<TripConstraintStatus, number>> = {};
@@ -606,12 +677,10 @@ export function aggregateTripConstraints(input: {
     conflictCount: all.filter((c) => c.hasConflict).length,
     pendingConfirmCount: summary.pendingCount,
     ...(normalizedCountry ? { countryCode: normalizedCountry } : {}),
-    ...(normalizedCountry
-      ? { sections: buildConstraintsListSections(normalizedCountry, all) }
-      : {}),
+    sections,
   };
 
-  return { items: all, meta };
+  return { items: all, meta, contract };
 }
 
 export function classifyConstraintRefreshType(
@@ -625,6 +694,7 @@ export function classifyConstraintRefreshType(
     LEGACY_IDS.DAILY_WALK_LIMIT,
     LEGACY_IDS.MAX_SEGMENT_DISTANCE,
     LEGACY_IDS.MAX_DAILY_DRIVE,
+    LEGACY_IDS.NO_NIGHT_DRIVE,
     LEGACY_IDS.TRAVELERS,
   ]);
   for (const ch of changes) {

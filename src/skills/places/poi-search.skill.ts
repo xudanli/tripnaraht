@@ -18,12 +18,15 @@ import {
 } from '../../agent/utils/query-rewriting-multi-route.util';
 import { QueryRewriteMetricsService } from '../../agent/services/query-rewrite-metrics.service';
 import { bindQueryRewriteDownstreamSafe } from '../../agent/utils/query-rewrite-metrics-bind.util';
+import { inferEntityResolutionCountryCode } from '../../canonical-poi-resolution/adapters/cpre-entity-resolution.bridge';
 
 export interface PoiSearchInput extends SkillInput {
   query: string;
   limit?: number;
   lat?: number;
   lng?: number;
+  /** ISO 3166-1 alpha-2 — 冰岛 IS 时走 CPRE */
+  countryCode?: string;
   category?: string;
   /**
    * 为 true 时仅关键词 SQL 召回，不生成 embedding / 不跑向量段。
@@ -195,27 +198,45 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
 
     if (this.entityResolutionService) {
       try {
+        const countryCode = inferEntityResolutionCountryCode({
+          countryCode: input.countryCode,
+          query,
+          lat: input.lat,
+          lng: input.lng,
+        });
         const resolutionResult = await this.entityResolutionService.resolveEntities(
           query,
           [],
           input.lat,
           input.lng,
           limit,
-          keywordOnly ? { keywordOnly: true } : undefined,
+          {
+            ...(keywordOnly ? { keywordOnly: true } : {}),
+            ...(countryCode ? { countryCode } : {}),
+          },
         );
 
         pois = resolutionResult.results
           .filter((r) => r.lat != null && r.lng != null && r.lat !== 0 && r.lng !== 0)
-          .map((r) => ({
-            poi_id: String(r.id),
-            name: r.nameCN || r.nameEN || r.name,
-            nameCN: r.nameCN ?? undefined,
-            nameEN: r.nameEN ?? undefined,
-            coordinates: { lat: r.lat!, lng: r.lng! },
-            category: r.category ?? undefined,
-            address: r.address ?? undefined,
-            evidence_id: `poi_${r.id}_${Date.now()}`,
-          }));
+          .map((r) => {
+            const canonicalPoiId =
+              typeof r.metadata?.canonical_poi_id === 'string'
+                ? r.metadata.canonical_poi_id
+                : undefined;
+            return {
+              poi_id: canonicalPoiId ?? String(r.id),
+              name: r.nameCN || r.nameEN || r.name,
+              nameCN: r.nameCN ?? undefined,
+              nameEN: r.nameEN ?? undefined,
+              coordinates: { lat: r.lat!, lng: r.lng! },
+              category: r.category ?? undefined,
+              address: r.address ?? undefined,
+              evidence_id:
+                r.source === 'cpre' && canonicalPoiId
+                  ? `cpre_${canonicalPoiId}_${Date.now()}`
+                  : `poi_${r.id}_${Date.now()}`,
+            };
+          });
       } catch (error: any) {
         this.logger.warn(`EntityResolutionService 失败: ${error?.message}，尝试 PlacesService`);
       }

@@ -173,21 +173,22 @@ export function applyLegacyMutationCommitGuard(
   if (isLegacyMutationWriteGuardEnforce()) {
     const timeline =
       (proposedChangeSet?.patch.timeline as RouteAndRunResponseDto['result']['payload']['timeline'] | undefined) ??
-      payload.timeline ??
-      [];
+      (Array.isArray(payload.timeline) ? payload.timeline : []);
     response.result = {
       ...response.result,
       status: 'OK',
       answer_text: `${response.result.answer_text}\n\n${guardPayload.userMessage}`.trim(),
       payload: {
-        timeline: Array.isArray(timeline) ? timeline : [],
-        dropped_items: (payload.dropped_items as RouteAndRunResponseDto['result']['payload']['dropped_items']) ?? [],
-        candidates: (payload.candidates as RouteAndRunResponseDto['result']['payload']['candidates']) ?? [],
-        evidence: (payload.evidence as RouteAndRunResponseDto['result']['payload']['evidence']) ?? [],
-        robustness: (payload.robustness as RouteAndRunResponseDto['result']['payload']['robustness']) ?? null,
-        ...payload,
+        ...(response.result?.payload ?? {
+          timeline: [],
+          dropped_items: [],
+          candidates: [],
+          evidence: [],
+          robustness: null,
+        }),
+        timeline,
         canonical_mutation_guard: guardPayload,
-      },
+      } as RouteAndRunResponseDto['result']['payload'],
     };
   }
 

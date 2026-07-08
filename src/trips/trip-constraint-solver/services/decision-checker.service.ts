@@ -2,7 +2,8 @@
  * 规划工作台 · 决策检查器 BFF 聚合服务
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { randomBytes } from 'crypto';
 import { PlanningConflictsService } from './planning-conflicts.service';
 import { FeasibilityReportService } from './feasibility-report.service';
@@ -21,9 +22,16 @@ import type {
   DecisionCheckerResponse,
 } from '../types/decision-checker.types';
 import { projectDecisionCheckerResponse } from '../utils/decision-checker-view.projection.util';
+import { CoverageMapService } from '../../readiness/services/coverage-map.service';
 import type { FeasibilityIssueDto, TripFeasibilityReportDto } from '../types/trip-constraint-solver.types';
 import type { PlanningConflictItem, PlanningConflictsResponse } from '../types/planning-conflicts.types';
 import type { PlanningConflictsArtifacts, PlanningConflictsLoadOpts } from './planning-conflicts.service';
+import { isDecisionCheckerChangePreviewEnabled } from '../../../decision-runtime/decision-problems/decision-problem-ssot.config';
+import { resolveDecisionCheckerProblemId } from '../utils/decision-checker-option-preview.util';
+import type { UnifiedDecisionActionPreviewView } from '../../../decision-runtime/gateway/contracts/unified-decision-ui.types';
+
+const DECISION_CHECKER_PREVIEW_USER = 'decision-checker-preview';
+const MAX_OPTION_PREVIEWS = 3;
 
 interface DecisionCheckerBuildContext {
   planningResponse: PlanningConflictsResponse;
@@ -44,10 +52,13 @@ export class DecisionCheckerService {
 
   constructor(
     private readonly planningConflicts: PlanningConflictsService,
+    @Inject(forwardRef(() => FeasibilityReportService))
     private readonly feasibility: FeasibilityReportService,
     private readonly constraintsSummary: ConstraintsSummaryService,
     private readonly preview: TripConstraintPreviewService,
     private readonly splitPlans: SplitPlanService,
+    private readonly coverageMap: CoverageMapService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   async getDecisionChecker(tripId: string, query?: DecisionCheckerQuery): Promise<DecisionCheckerResponse> {
@@ -239,7 +250,9 @@ export class DecisionCheckerService {
     const planningResp = ctx?.planningResponse;
     const report = ctx?.report;
 
-    const [planningConflicts, feasibilityReport, constraintsSummary, assessSummary, appliedSplitPlanIds, scheduleContext] =
+    const changePreview = isDecisionCheckerChangePreviewEnabled();
+
+    const [planningConflicts, feasibilityReport, constraintsSummary, assessSummary, appliedSplitPlanIds, scheduleContext, coverageMap] =
       await Promise.all([
         planningResp
           ? Promise.resolve(planningResp)
@@ -266,13 +279,18 @@ export class DecisionCheckerService {
           transport: { travelMode: null, transportHint: null, status: 'missing' as const },
           pendingItems: [],
         })),
-        this.withOptionalTimeout(
-          this.preview.captureAssessSummary(tripId),
-          DEFERRED_BUILD_TIMEOUT_MS,
-          'captureAssessSummary',
-        ).catch(() => undefined),
+        changePreview
+          ? Promise.resolve(undefined)
+          : this.withOptionalTimeout(
+              this.preview.captureAssessSummary(tripId),
+              DEFERRED_BUILD_TIMEOUT_MS,
+              'captureAssessSummary',
+            ).catch(() => undefined),
         this.splitPlans.getAppliedSplitPlanIds(tripId),
         this.splitPlans.getScheduleContext(tripId),
+        this.withOptionalTimeout(this.coverageMap.getCoverageMap(tripId), DEFERRED_BUILD_TIMEOUT_MS, 'getCoverageMap').catch(
+          () => undefined,
+        ),
       ]);
 
     const { primaryIssue, focusConflictId } = this.resolveFocusIssue(
@@ -281,8 +299,16 @@ export class DecisionCheckerService {
       query?.focusConflictId,
     );
 
+    const optionPreviews = changePreview
+      ? await this.loadOptionPreviews(tripId, {
+          focusConflictId,
+          primaryIssue,
+          planningConflicts: planningConflicts.conflicts,
+        })
+      : undefined;
+
     let repairOptions: Awaited<ReturnType<FeasibilityReportService['getRepairOptions']>> | undefined;
-    if (primaryIssue) {
+    if (primaryIssue && !changePreview) {
       try {
         repairOptions = await this.withOptionalTimeout(
           this.feasibility.getRepairOptions(tripId, primaryIssue.id),
@@ -322,7 +348,89 @@ export class DecisionCheckerService {
       experienceCompletionDelta,
       appliedSplitPlanIds,
       schedule: scheduleContext.schedule,
+      coveragePois: coverageMap?.pois,
+      coverageCalculatedAt: coverageMap?.calculatedAt,
+      evaluationMode: changePreview ? 'CHANGE_PREVIEW' : 'PLAN_VERIFY',
+      optionPreviews,
     });
+  }
+
+  private async loadOptionPreviews(
+    tripId: string,
+    input: {
+      focusConflictId?: string;
+      primaryIssue?: FeasibilityIssueDto;
+      planningConflicts: PlanningConflictItem[];
+    },
+  ): Promise<UnifiedDecisionActionPreviewView[] | undefined> {
+    const readModel = this.getUnifiedReadModel();
+    if (!readModel) return undefined;
+
+    const primaryConflict = input.planningConflicts.find(
+      (c) => c.id === input.focusConflictId,
+    ) ?? input.planningConflicts[0];
+
+    const problemId = resolveDecisionCheckerProblemId({
+      focusConflictId: input.focusConflictId,
+      planningConflictId: primaryConflict?.id,
+      issue: input.primaryIssue ?? primaryConflict?.issue,
+    });
+    if (!problemId) return undefined;
+
+    try {
+      const options = await readModel.getProblemOptions(tripId, problemId);
+      const previews: UnifiedDecisionActionPreviewView[] = [];
+      for (const action of options.actions.slice(0, MAX_OPTION_PREVIEWS)) {
+        try {
+          const preview = await readModel.previewAction(
+            tripId,
+            problemId,
+            action.actionId,
+            DECISION_CHECKER_PREVIEW_USER,
+          );
+          previews.push(preview);
+        } catch (e: unknown) {
+          this.logger.debug(
+            `option preview skipped action=${action.actionId}: ${e instanceof Error ? e.message : e}`,
+          );
+        }
+      }
+      return previews.length ? previews : undefined;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `CHANGE_PREVIEW load failed problem=${problemId}: ${e instanceof Error ? e.message : e}`,
+      );
+      return undefined;
+    }
+  }
+
+  private getUnifiedReadModel():
+    | {
+        getProblemOptions: (tripId: string, problemId: string) => Promise<{ actions: Array<{ actionId: string }> }>;
+        previewAction: (
+          tripId: string,
+          problemId: string,
+          actionId: string,
+          userId: string,
+        ) => Promise<UnifiedDecisionActionPreviewView>;
+      }
+    | undefined {
+    try {
+      const { UnifiedDecisionProblemReadModelService } = require('../../../decision-runtime/gateway/services/unified-decision-problem-read-model.service') as {
+        UnifiedDecisionProblemReadModelService: new (...args: never[]) => {
+          getProblemOptions: (tripId: string, problemId: string) => Promise<{ actions: Array<{ actionId: string }> }>;
+          previewAction: (
+            tripId: string,
+            problemId: string,
+            actionId: string,
+            userId: string,
+          ) => Promise<UnifiedDecisionActionPreviewView>;
+        };
+      };
+      return this.moduleRef.get(UnifiedDecisionProblemReadModelService, { strict: false });
+    } catch {
+      return undefined;
+    }
   }
 
   private buildPlanningPollUrl(tripId: string, taskId: string): string {

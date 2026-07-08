@@ -328,7 +328,7 @@ export class Gate1ReadinessService {
 
       if (dto.action === 'RESOLVE') {
         data.closedAt = new Date();
-        data.advisorFeedbackNote = dto.reason ?? dto.solutionSummary ?? null;
+        data.advisorFeedbackNote = dto.reason ?? dto.solutionSummary ?? undefined;
       }
 
       if (dto.action === 'SELECT_SOLUTION') {

@@ -101,6 +101,7 @@ export function analyzeRentalHotelSplit(input: {
   if (!rental || !hotel) return undefined;
 
   const routeRef = resolveForkReferenceItem(input.sharedBefore, input.forkItem);
+  if (!routeRef) return undefined;
   const refCoord = coordOf(routeRef);
   const hotelCoord = coordOf(hotel);
 

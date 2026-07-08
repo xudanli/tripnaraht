@@ -21,10 +21,19 @@ import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { SecurityMiddleware } from './common/middlewares/security.middleware';
+import { assertShadowEvidencePersistenceConfigOnStartup } from './decision-runtime/observability/shadow-evidence-persistence.config';
 
 async function bootstrap() {
   console.log('🚀 [Bootstrap] 开始启动应用...');
   console.log(`🔍 [Bootstrap] DISABLE_REDIS=${process.env.DISABLE_REDIS || 'false'}`);
+
+  try {
+    assertShadowEvidencePersistenceConfigOnStartup();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`❌ [Bootstrap] Shadow evidence persistence config invalid: ${message}`);
+    process.exit(1);
+  }
   
   // 根据环境变量设置日志级别（生产环境默认不显示 debug）
   const logLevels = process.env.LOG_LEVEL 
@@ -79,7 +88,7 @@ async function bootstrap() {
 
   // 自定义 body parser（支持更大 payload，避免 planning-assistant chat 等接口 "request entity too large"）
   const bodyLimit = process.env.BODY_PARSER_LIMIT || '2mb';
-  app.use(json({ limit: bodyLimit }));
+  app.use(json({ limit: bodyLimit, strict: false }));
   app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
   // 设置全局 API 前缀

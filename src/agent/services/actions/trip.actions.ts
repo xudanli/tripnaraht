@@ -5,6 +5,12 @@ import { ItineraryItemsService } from '../../../itinerary-items/itinerary-items.
 import { DayScheduleResult } from '../../../planning-policy/interfaces/scheduler.interface';
 import { DateTime } from 'luxon';
 import { BadRequestException } from '@nestjs/common';
+import type { EffectivePlanWriteGuardService } from '../../../decision-runtime/execution/effective-plan-write-guard.service';
+import {
+  assertPlanMutationAllowedOrThrow,
+  extractEffectivePlanWriteChainError,
+  isEffectivePlanWriteChainBadRequest,
+} from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -34,7 +40,8 @@ function pickTripId(...candidates: Array<unknown>): string | undefined {
  */
 export function createTripActions(
   tripsService: TripsService,
-  itineraryItemsService?: ItineraryItemsService
+  itineraryItemsService?: ItineraryItemsService,
+  effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
 ): Action[] {
   return [
     {
@@ -212,6 +219,25 @@ Please provide args.trip_id or ensure it is stored in agent state.`;
         // 应用编辑逻辑
         if (!itineraryItemsService) {
           throw new Error('ItineraryItemsService is required for apply_user_edit action');
+        }
+
+        try {
+          assertPlanMutationAllowedOrThrow(effectivePlanWriteGuard, 'trip.apply_user_edit');
+        } catch (error: unknown) {
+          if (isEffectivePlanWriteChainBadRequest(error)) {
+            const extracted = extractEffectivePlanWriteChainError(error);
+            return {
+              success: false,
+              error: extracted.code,
+              message: extracted.message,
+              authorizedPaths: extracted.details.authorizedPaths,
+              writeChainRequired: true,
+              results: [],
+              appliedCount: 0,
+              totalCount: 0,
+            };
+          }
+          throw error;
         }
 
         const { trip_id, edits } = input;

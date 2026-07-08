@@ -7,6 +7,7 @@ import {
   longDistanceHighMessage,
   mergeSeededTripConstraints,
   resolveSegmentDistanceThresholds,
+  refreshRoadClassTransportMessage,
   seedDefaultTripConstraintsMetadata,
 } from './segment-distance-threshold.util';
 
@@ -36,6 +37,19 @@ describe('segment-distance-threshold.util', () => {
 
   it('builds dynamic hazard messages from threshold', () => {
     expect(longDistanceHighMessage(250)).toContain('>250km');
+    expect(longDistanceHighMessage(380)).toContain('>380km');
+  });
+
+  it('refreshRoadClassTransportMessage updates stale threshold in finding copy', () => {
+    const stale =
+      '第5天 · Mývatn → Dyrhólaey（约 462 km）· 超长距离行驶(>250km)，强烈建议分段或中途住宿';
+    const refreshed = refreshRoadClassTransportMessage(stale, 462, {
+      maxSegmentDistanceKm: 380,
+      warnSegmentDistanceKm: 228,
+      winterWarnSegmentDistanceKm: 120,
+    });
+    expect(refreshed).toContain('>380km');
+    expect(refreshed).not.toContain('>250km');
   });
 
   it('seeds Iceland defaults into metadata.constraints', () => {

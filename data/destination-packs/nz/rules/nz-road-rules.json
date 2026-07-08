@@ -1,0 +1,43 @@
+{
+  "schemaId": "tripnara.destination.rules@v1",
+  "rules": [
+    {
+      "ruleId": "NZ_ROAD_CLOSED_BLOCK",
+      "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
+      "appliesWhen": { "country": "NZ" },
+      "whenCandidateUsesRoute": true,
+      "conditions": [
+        {
+          "field": "road.status",
+          "operator": "EQ",
+          "value": "CLOSED"
+        }
+      ],
+      "result": {
+        "verdict": "BLOCK",
+        "reasonCode": "ROAD_SEGMENT_CLOSED",
+        "constraintCode": "ROAD_CLOSED",
+        "overridable": false
+      }
+    },
+    {
+      "ruleId": "NZ_ROAD_LIMITED_WARN",
+      "semanticKey": "ROAD_SEGMENT_RESTRICTED",
+      "appliesWhen": { "country": "NZ" },
+      "whenCandidateUsesRoute": true,
+      "conditions": [
+        {
+          "field": "road.status",
+          "operator": "EQ",
+          "value": "LIMITED"
+        }
+      ],
+      "result": {
+        "verdict": "WARNING",
+        "reasonCode": "ROAD_SEGMENT_RESTRICTED",
+        "constraintCode": "ROAD_RESTRICTED",
+        "overridable": true
+      }
+    }
+  ]
+}

@@ -60,6 +60,7 @@ import {
 import { GetAttentionQueueQueryDto } from './dto/attention-queue.dto';
 import { GetPersonaAlertsQueryDto } from './dto/persona-alerts.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { mapWriteChainBlockedToErrorResponse } from '../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { AssessTripRequestDto } from './dto/trip-metrics.dto';
@@ -76,6 +77,11 @@ import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/t
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripMetricsService } from './services/trip-metrics.service';
 import { ScheduleTimelineService } from './services/schedule-timeline.service';
+import { TimelineOverviewService } from './services/timeline-overview.service';
+import { CollabOverviewService } from './services/collab-overview.service';
+import { TripListService } from './services/trip-list.service';
+import { TripListQueryDto } from './dto/trip-list.dto';
+import { AccommodationOverviewService } from './services/accommodation-overview.service';
 import { JourneyMapService, parseJourneyMapInclude } from './services/journey-map.service';
 import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
 import type { CreateJourneyMapDecisionItemDto } from './dto/journey-map-decision-item.dto';
@@ -101,11 +107,14 @@ import { TokenService } from '../auth/services/token.service';
 import { JwtService } from '@nestjs/jwt';
 import { Request, Response } from 'express';
 import { formatEtagHeader } from './utils/schedule-timeline-etag.util';
+import { resolveBffIncludeFromPreset } from './utils/bff-include-preset.util';
 import { ContextEngineerService } from '../agent/context-engine/services/context-engineer.service';
 import { SkillsRegistryService } from '../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../skills/services/skills-registry.token';
 import { Inject, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ContextBlock } from '../agent/context-engine/types/context-package.types';
+import { dispatchUserIntentFromModule } from '../decision-runtime/trigger/record-trigger-lineage-from-module.util';
 import { DecisionDraftGeneratorService } from '../decision-draft/services/decision-draft-generator.service';
 import { DecisionDraftStorageService } from '../decision-draft/storage/decision-draft-storage.service';
 import { TripPlanRequest } from '../agent/interfaces/trip-plan.interface';
@@ -261,6 +270,10 @@ export class TripsController {
     private readonly llmResponseTransformer: LlmResponseTransformerService,
     private readonly tripMetricsService: TripMetricsService,
     private readonly scheduleTimelineService: ScheduleTimelineService,
+    private readonly timelineOverviewService: TimelineOverviewService,
+    private readonly collabOverviewService: CollabOverviewService,
+    private readonly tripListService: TripListService,
+    private readonly accommodationOverviewService: AccommodationOverviewService,
     private readonly journeyMapService: JourneyMapService,
     private readonly journeyMapDecisionItems: JourneyMapDecisionItemsService,
     private readonly tripConflictsService: TripConflictsService,
@@ -273,6 +286,7 @@ export class TripsController {
     private readonly tokenService: TokenService,
     private readonly jwtService: JwtService,
     private readonly embeddedHikingSummary: EmbeddedHikingTripSummaryService,
+    private readonly moduleRef: ModuleRef,
     @Optional() private readonly hotelRecommendationService?: HotelRecommendationService,
     @Optional() private readonly contextEngineerService?: ContextEngineerService,
     @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
@@ -1770,8 +1784,8 @@ export class TripsController {
       // Create trip when required fields are present; otherwise clarify missing fields
       let params = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
       const sourceTextsV2 = this.collectNlSourceTexts(dto.text, existingContext, params);
-      params = await this.postProcessNlMergedParams(params, userId, sourceTextsV2);
-      params = reconcileInferredFieldsFromUserInput(params, dto.text);
+      params = await this.postProcessNlMergedParams(params, userId, sourceTextsV2) as typeof params;
+      params = reconcileInferredFieldsFromUserInput(params, dto.text) as typeof params;
       const missing: string[] = [];
       if (!params.destination && !detectedCountryCode) missing.push('destination');
       if (!params.startDate) missing.push('startDate');
@@ -4847,6 +4861,30 @@ export class TripsController {
     return successResponse(trips);
   }
 
+  @Get('list')
+  @ApiOperation({
+    summary: '行程列表 BFF',
+    description:
+      '返回带 listSummary 投影的行程卡片列表。前端优先调用此接口；不可用时降级 GET /trips。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回行程列表卡片（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getTripListPage(
+    @Query() query: TripListQueryDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const data = await this.tripListService.getTripListPage(user?.userId, query);
+      return successResponse(data);
+    } catch (error: any) {
+      this.logger.error(`获取行程列表 BFF 失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   @Get('attention-queue')
   @ApiOperation({
     summary: '获取关注队列',
@@ -5360,6 +5398,150 @@ export class TripsController {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       throw error;
+    }
+  }
+
+  @Get(':id/accommodation-overview')
+  @ApiOperation({
+    summary: '行程详情 · 住宿 Tab 聚合 BFF（P2）',
+    description:
+      '一次返回住宿 Tab 首屏：按晚卡片、预订状态、资料、路线影响、提醒与统计。' +
+      '替代从 GET /trips/:id 全量行程中前端推导 accommodation。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description: 'stats,nights,reminders,travel,files（逗号分隔，默认全部）',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回住宿概览（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getAccommodationOverview(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const data = await this.accommodationOverviewService.getAccommodationOverview(
+        id,
+        user?.userId,
+        { include },
+      );
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof ForbiddenException) {
+        return errorResponse(ErrorCode.FORBIDDEN, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/collab-overview')
+  @ApiOperation({
+    summary: '行程详情 · 成员 Tab 协作聚合 BFF（P1）',
+    description:
+      '一次返回协作者、协商任务、领域主张、Silent Vote、决策画像 onboarding、摩擦雷达摘要、心愿摘要与 teamHealth。' +
+      '替代 useCollabOverview 多路请求与前端 heuristic。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description: 'members,tasks,domain,votes,profiling,wishes,health（逗号分隔，默认全部）',
+  })
+  @ApiQuery({
+    name: 'preset',
+    required: false,
+    enum: ['shell', 'full'],
+    description: 'shell=首屏 members+health；full=全量。显式 include 优先于 preset',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回协作概览（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getCollabOverview(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @Query('preset') preset?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const userId = user?.userId ?? (process.env.NODE_ENV !== 'production' ? 'anonymous-dev-user' : undefined);
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+      }
+      const resolvedInclude = resolveBffIncludeFromPreset({
+        preset,
+        include,
+        kind: 'collab',
+      });
+      const data = await this.collabOverviewService.getCollabOverview(id, userId, {
+        include: resolvedInclude,
+      });
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof ForbiddenException) {
+        return errorResponse(ErrorCode.FORBIDDEN, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/timeline-overview')
+  @ApiOperation({
+    summary: '行程详情 · 时间轴 Tab 聚合 BFF（P1）',
+    description:
+      '一次返回时间轴侧栏与顶部统计：可行性/节奏/冲突数、规划进度、待办、今日提醒、新建议数。' +
+      '替代分别请求 metrics + health + tasks + persona-alerts + conflicts + pipeline-status。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description: 'stats,pipeline,tasks,reminders,suggestions,health（逗号分隔，默认前五项）',
+  })
+  @ApiQuery({
+    name: 'preset',
+    required: false,
+    enum: ['shell', 'full'],
+    description: 'shell=首屏 stats；full=全量。显式 include 优先于 preset',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回时间轴概览（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getTimelineOverview(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @Query('preset') preset?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const resolvedInclude = resolveBffIncludeFromPreset({
+        preset,
+        include,
+        kind: 'timeline',
+      });
+      const data = await this.timelineOverviewService.getTimelineOverview(id, user?.userId, {
+        include: resolvedInclude,
+      });
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
 
@@ -7134,6 +7316,8 @@ export class TripsController {
       const result = await this.tripConflictsService.resolveConflicts(id, dto);
       return successResponse(result);
     } catch (error: any) {
+      const writeChain = mapWriteChainBlockedToErrorResponse(error);
+      if (writeChain) return writeChain;
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
@@ -7303,7 +7487,8 @@ export class TripsController {
   })
   async batchUpdateItems(
     @Param('id') id: string,
-    @Body() dto: BatchUpdateItemsRequestDto
+    @Body() dto: BatchUpdateItemsRequestDto,
+    @CurrentUser() user?: CurrentUserPayload,
   ) {
     try {
       const errors: Array<{ itemId: string; error: string }> = [];
@@ -7361,6 +7546,27 @@ export class TripsController {
         failedCount: errors.length,
         errors: errors.length > 0 ? errors : undefined,
       };
+
+      if (updatedCount > 0) {
+        try {
+          await dispatchUserIntentFromModule(this.moduleRef, {
+            tripId: id,
+            userId: user?.userId,
+            entryPointId: 'user.trip-edit',
+            metadata: {
+              intent: 'batch_itinerary_update',
+              updatedCount,
+              itemCount: dto.updates.length,
+            },
+          });
+        } catch (dispatchErr: unknown) {
+          const message =
+            dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr);
+          this.logger.warn(
+            `[user.trip-edit] Trigger Gateway dispatch failed (edit persisted): ${message}`,
+          );
+        }
+      }
 
       return successResponse(result);
     } catch (error: any) {

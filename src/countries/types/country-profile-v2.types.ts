@@ -178,4 +178,6 @@ export interface CountryProfileV2Data {
   complianceInfo?: CountryProfileV2Compliance;
   timeBoundaries?: CountryProfileV2TimeBoundaries;
   travelCulture?: CountryProfileV2TravelCulture;
+  /** Destination hero image — trip list cover fallback & profile endpoint */
+  coverImageUrl?: string | null;
 }

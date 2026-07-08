@@ -50,6 +50,12 @@ async function fetchRuntimeSnapshot(
       mode: body.mode,
       constraintGatewayMode: body.constraintGatewayMode,
       effectivePlanWriteGuard: body.effectivePlanWriteGuard,
+      effectivePlanWriteChain: (body as { effectivePlanWriteChain?: boolean }).effectivePlanWriteChain,
+      phase6LegacyDeprecation: (body as { phase6LegacyDeprecation?: boolean }).phase6LegacyDeprecation,
+      gatewayDomainRulesExclusive: (body as { gatewayDomainRulesExclusive?: boolean })
+        .gatewayDomainRulesExclusive,
+      constraintPlanVerifyProjection: (body as { constraintPlanVerifyProjection?: boolean })
+        .constraintPlanVerifyProjection,
     };
   } catch (err) {
     log(`runtime-capabilities fetch failed: ${(err as Error).message}`);
@@ -104,6 +110,7 @@ async function main() {
     ...report,
     readiness,
     phase: readiness.phase,
+    writeChainStatus: supplement.writeChainStatus,
   };
 
   const outPath = path.join(OUT_DIR, 'report.json');
@@ -114,6 +121,11 @@ async function main() {
   );
   log(`blockers=${report.blockers.length} volumeBlockers=${readiness.volumeBlockers.length}`);
   log(`phase=${readiness.phase.decisionRuntimePhase} authority=${readiness.phase.currentAuthority}`);
+  if (supplement.writeChainStatus) {
+    log(
+      `writeChain=${supplement.writeChainStatus.writeChainEnabled} phase6=${supplement.writeChainStatus.phase6LegacyDeprecation} gatewayExclusive=${supplement.writeChainStatus.gatewayDomainRulesExclusive} agentPending=${supplement.writeChainStatus.agentItineraryPendingCount ?? 0}`,
+    );
+  }
 
   if (readiness.nextActions[0]) {
     log(`next: ${readiness.nextActions[0]}`);

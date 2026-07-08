@@ -45,6 +45,8 @@ import {
   projectTripFeedbackSnapshots,
 } from '../utils/trip-feedback-memory.util';
 import { TripIntentDigestService } from './trip-intent-digest.service';
+import { loadDecisionLedgerCausalityConsoleV1 } from '../../../trips/decision-semantics/read/decision-ledger-console-read.util';
+import type { DecisionLedgerCausalityConsoleV1 } from '../../../trips/decision-semantics/read/decision-ledger-console-read.util';
 
 export type MemoryContractObservabilityV1 = {
   revision: 'v1';
@@ -313,6 +315,28 @@ export class MemoryContextAssemblerService {
       snapshot_version: memory.snapshotVersion,
       loaded_at_iso: memory.loadedAt,
     };
+  }
+
+  /** Decision Semantics ↔ Ledger caused_by（Memory Console / route_and_run 调试） */
+  async loadDecisionLedgerCausalityForTrip(
+    tripId: string,
+    ledger?: DecisionLedgerSnapshot | null,
+    ledgerSnapshotVersion?: number,
+  ): Promise<DecisionLedgerCausalityConsoleV1 | null> {
+    if (!this.prisma?.isDbConnected()) return null;
+    try {
+      return await loadDecisionLedgerCausalityConsoleV1({
+        tripId,
+        prisma: this.prisma,
+        ledger: ledger ?? null,
+        ledgerSnapshotVersion,
+      });
+    } catch (e: unknown) {
+      this.logger.warn(
+        `loadDecisionLedgerCausalityForTrip failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return null;
+    }
   }
 
   /**

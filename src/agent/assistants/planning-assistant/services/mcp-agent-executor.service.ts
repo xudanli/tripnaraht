@@ -883,7 +883,9 @@ export class McpAgentExecutorService {
     }
     return {
       ...base,
-      booking_summary: buildBookingToolLoopSummary(traceSteps),
+      booking_summary: buildBookingToolLoopSummary(
+        traceSteps as Parameters<typeof buildBookingToolLoopSummary>[0],
+      ),
     };
   }
 

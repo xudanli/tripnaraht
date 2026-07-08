@@ -2,8 +2,9 @@ import { getAuthorityCase } from '../authority/authority-cases.registry';
 import {
   authorityAssert,
   expectAuthorityPass,
-  runAuthorityCase,
 } from '../assertions/canonical-authority.assertions';
+import { runAuthorityCaseWithContext } from './run-authority-case-with-context.util';
+import { assertAuthorityResultHasAnchor } from './authority-context-anchor.util';
 import { shouldAcquireTripOrchestrationLock } from '../../../agent/utils/trip-orchestration-lock.util';
 import { signalsFromRequest } from '../../../agent/utils/orchestration-signals.util';
 import type { RouteAndRunRequestDto } from '../../../agent/dto/route-and-run.dto';
@@ -137,8 +138,10 @@ describe('AU-P0-002 — Fast Path write protection', () => {
 
     const guardPayload = (guarded.result.payload as any)?.canonical_mutation_guard;
 
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: caseDef.caseId,
+      tripId: 'trip_1',
+      runtimeAuthority: 'CANONICAL',
       run: async () => [
         authorityAssert({
           layer: 'routing',
@@ -158,5 +161,6 @@ describe('AU-P0-002 — Fast Path write protection', () => {
     });
 
     expectAuthorityPass(result);
+    assertAuthorityResultHasAnchor(result, { runtimeAuthority: 'CANONICAL' });
   });
 });

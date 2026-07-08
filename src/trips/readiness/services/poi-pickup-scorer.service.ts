@@ -49,13 +49,8 @@ export class POIPickupScorerService {
       // 1. 召回候选点（满足任一条件）
       const candidates = await this.recallCandidates(lat, lng, radiusM);
       
-      // 2. 计算到海岸线的距离
-      const candidatesWithCoastline = await Promise.all(
-        candidates.map(async (candidate) => {
-          const distance = await this.getDistanceToCoastline(candidate.lat, candidate.lng);
-          return { ...candidate, distanceToCoastlineM: distance };
-        })
-      );
+      // 2. 计算到海岸线的距离（限制并发，避免打满 Prisma 连接池）
+      const candidatesWithCoastline = await this.attachCoastlineDistances(candidates);
       
       // 3. 评分
       const scored = candidatesWithCoastline.map(candidate => this.scoreCandidate(candidate));
@@ -128,6 +123,27 @@ export class POIPickupScorerService {
       tags: row.tags_slim || {},
       hasContactInfo: !!(row.opening_hours || row.phone || row.website),
     }));
+  }
+
+  /**
+   * 批量附加海岸线距离（限制并发，避免 N 个候选点同时占用连接池）
+   */
+  private async attachCoastlineDistances<
+    T extends { lat: number; lng: number },
+  >(candidates: T[]): Promise<Array<T & { distanceToCoastlineM: number | null }>> {
+    const concurrency = 3;
+    const out: Array<T & { distanceToCoastlineM: number | null }> = [];
+    for (let i = 0; i < candidates.length; i += concurrency) {
+      const chunk = candidates.slice(i, i + concurrency);
+      const chunkResults = await Promise.all(
+        chunk.map(async (candidate) => ({
+          ...candidate,
+          distanceToCoastlineM: await this.getDistanceToCoastline(candidate.lat, candidate.lng),
+        })),
+      );
+      out.push(...chunkResults);
+    }
+    return out;
   }
 
   /**

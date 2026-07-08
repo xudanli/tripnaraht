@@ -24,6 +24,7 @@ import { MemoryUpdaterService } from './feedback/memory-updater.service';
 import { DecisionController } from './decision.controller';
 import { DecisionStatsController } from './decision-stats.controller';
 import { DecisionEngineController } from './decision-engine.controller';
+import { BenchmarkPreflightGuard } from '../../decision-runtime/observability/benchmark-preflight.guard';
 import { TransportModule } from '../../transport/transport.module';
 import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
 import { ContextEngineModule } from '../../agent/context-engine/context-engine.module';
@@ -32,6 +33,11 @@ import { DemModule } from '../dem/dem.module';
 import { TrailsModule } from '../../trails/trails.module';
 import { TrailPlanningAdapter } from './adapters/trail-planning.adapter';
 import { HardTrekTripMetadataService } from '../../hiking-demo/services/hard-trek-trip-metadata.service';
+import { ConstraintEvaluationModule } from '../../decision-runtime/constraints/constraint-evaluation.module';
+import { CanonicalPlanSelectionModule } from '../../decision-runtime/core/canonical-plan-selection.module';
+import { DecisionTriggerModule } from '../../decision-runtime/trigger/decision-trigger.module';
+import { CandidateProvidersModule } from '../../decision-runtime/candidates/candidate-providers.module';
+import { DecisionLabModule } from '../../decision-lab/decision-lab.module';
 
 // 使用 forwardRef 来解决循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
 // 注意：DecisionModule 现在主要通过 DemModule 获取 DEM 服务，而不是直接依赖 ReadinessModule
@@ -150,7 +156,12 @@ try {
     FlywheelModule, // Phase 2: 数据飞轮
     IcelandRoadModule, // 冰岛路网约束图 MVP → ROAD_CONSTRAINT_UPDATE / semantic delta
     CausalRuntimeModule, // P0: Causal Travel Runtime — intervention schema + travel event dual-write
-  ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
+    forwardRef(() => ConstraintEvaluationModule), // ADR-006: unified constraint gateway (optional via env)
+    forwardRef(() => CanonicalPlanSelectionModule), // ADR-006 P1: full plan canonical finalize
+    forwardRef(() => DecisionTriggerModule), // P1: Decision Trigger Gateway (opt-in via env)
+    CandidateProvidersModule, // P1: provider registry
+    DecisionLabModule, // ADR-007: solver lab benchmark (read-only)
+  ],
   controllers: [
     DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）
     DecisionEngineController, // 决策引擎统一 API：/api/decision-engine/v1/*
@@ -163,6 +174,7 @@ try {
     DecisionTelemetryController, // 决策埋点 + Travel DNA + B 端履约 MVP
   ],
   providers: [
+    BenchmarkPreflightGuard,
     InterventionEngine,
     EcoIdentityLedgerPersistenceService,
     AlignmentTier3PersistenceService,
@@ -350,6 +362,7 @@ try {
     CalibrationSchedulerService,
     WearableIntegrationService,
     TripClosedLoopService,
+    DecisionTriggerModule,
     // Phase 1/2/3: 优化模块服务（通过 re-export）
     // OptimizationModule 已通过 imports 导入，相关服务通过该模块获取
   ],

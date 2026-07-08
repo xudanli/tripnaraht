@@ -3,8 +3,9 @@ import {
   assertSafetyVerdictParity,
   authorityAssert,
   expectAuthorityPass,
-  runAuthorityCase,
 } from '../assertions/canonical-authority.assertions';
+import { runAuthorityCaseWithContext } from './run-authority-case-with-context.util';
+import { assertAuthorityResultHasAnchor } from './authority-context-anchor.util';
 import { ORIGINAL_CANDIDATE_ID } from '../../../trips/guardian-decision-core/adapters/repair-candidate.adapter';
 import { RFC001_REASON_CODES } from '../../../trips/guardian-decision-core/reason-codes/reason-code.registry';
 import {
@@ -36,8 +37,10 @@ describe('AU-P1-007 L2 — Orchestration mode safety parity (RFC001 harness)', (
   it(`${caseDef.caseId}-L2: ${caseDef.description}`, async () => {
     const l2 = await runOrchestrationModeSafetyParityL2();
 
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: `${caseDef.caseId}-L2`,
+      tripId: 'trip_iceland_harness',
+      runtimeAuthority: 'CANONICAL',
       run: async () => {
         const assertions = [
           authorityAssert({
@@ -105,5 +108,6 @@ describe('AU-P1-007 L2 — Orchestration mode safety parity (RFC001 harness)', (
     });
 
     expectAuthorityPass(result);
+    assertAuthorityResultHasAnchor(result, { runtimeAuthority: 'CANONICAL' });
   });
 });

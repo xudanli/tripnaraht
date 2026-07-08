@@ -2,8 +2,9 @@ import { getAuthorityCase } from '../authority/authority-cases.registry';
 import {
   authorityAssert,
   expectAuthorityPass,
-  runAuthorityCase,
 } from '../assertions/canonical-authority.assertions';
+import { runAuthorityCaseWithContext } from './run-authority-case-with-context.util';
+import { assertAuthorityResultHasAnchor } from './authority-context-anchor.util';
 import {
   buildDurableAuthoritySnapshotV1,
   validateAsyncAuthority,
@@ -54,8 +55,10 @@ describe('AU-P0-003 — Async resume freshness', () => {
       nowMs: Date.parse(snapshot.evidenceSnapshot.expiresAt!) + 1000,
     });
 
-    const result = await runAuthorityCase({
+    const result = await runAuthorityCaseWithContext({
       caseId: caseDef.caseId,
+      tripId: 'trip_1',
+      runtimeAuthority: 'CANONICAL',
       run: async () => [
         authorityAssert({
           layer: 'trip_version',
@@ -83,5 +86,6 @@ describe('AU-P0-003 — Async resume freshness', () => {
     });
 
     expectAuthorityPass(result);
+    assertAuthorityResultHasAnchor(result, { runtimeAuthority: 'CANONICAL' });
   });
 });

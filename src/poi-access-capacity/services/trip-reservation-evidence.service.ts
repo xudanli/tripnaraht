@@ -76,14 +76,14 @@ export class TripReservationEvidenceService {
     const resource: PoiAccessTargetResource = input.resource ?? 'PARKING';
     const code = input.confirmationCode?.trim();
 
-    const existingByCode =
-      code &&
-      store.items.find(
-        (i) =>
-          i.tripItemId === input.tripItemId &&
-          i.confirmationCode?.trim() === code &&
-          i.poiId === input.poiId,
-      );
+    const existingByCode = code
+      ? store.items.find(
+          (i) =>
+            i.tripItemId === input.tripItemId &&
+            i.confirmationCode?.trim() === code &&
+            i.poiId === input.poiId,
+        )
+      : undefined;
 
     const id = input.id ?? existingByCode?.id ?? `rev-${Date.now()}`;
     const nextItem = {

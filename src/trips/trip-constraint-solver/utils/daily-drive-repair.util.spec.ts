@@ -33,4 +33,23 @@ describe('daily-drive-repair.util', () => {
     const resp = buildDailyDriveRepairOptionsResponse('trip-1', dailyDriveIssue());
     expect(resp.options[0].metadata?.netImpactMinutes).toBe(-80);
   });
+
+  it('includes remove_poi when removable item anchor is present', () => {
+    const issue = {
+      ...dailyDriveIssue(),
+      anchors: {
+        ...dailyDriveIssue().anchors,
+        removableItemId: 'item-far',
+        removableItemSavedMinutes: 95,
+        removableItemLabel: '远端瀑布',
+      },
+      uiHints: {
+        deepLink: { tab: 'schedule' as const, dayIndex: 1, highlightItemIds: ['item-far'] },
+      },
+    };
+    const resp = buildDailyDriveRepairOptionsResponse('trip-1', issue);
+    const remove = resp.options.find((o) => o.actionType === 'remove_poi');
+    expect(remove?.payload?.savedMinutes).toBe(95);
+    expect(remove?.id).toBe('remove_poi_item-far');
+  });
 });

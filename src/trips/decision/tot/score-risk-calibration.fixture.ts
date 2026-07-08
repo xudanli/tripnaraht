@@ -88,7 +88,7 @@ export const SCORE_RISK_CALIBRATION_SCENARIOS: readonly ScoreRiskCalibrationScen
         total_buffer_minutes: 120,
       },
       diagnostics: { critical_windows: [] },
-    } as OptimizationResult,
+    } as unknown as OptimizationResult,
     minScore: 0.45,
   },
   {
@@ -105,7 +105,7 @@ export const SCORE_RISK_CALIBRATION_SCENARIOS: readonly ScoreRiskCalibrationScen
       diagnostics: {
         critical_windows: [{ slack_to_close_min: 8 }],
       },
-    } as OptimizationResult,
+    } as unknown as OptimizationResult,
     maxScore: 0.55,
   },
   {
@@ -119,7 +119,7 @@ export const SCORE_RISK_CALIBRATION_SCENARIOS: readonly ScoreRiskCalibrationScen
         risk_level: 'medium',
         total_buffer_minutes: 30,
       },
-    } as OptimizationResult,
+    } as unknown as OptimizationResult,
     maxScore: 0.56,
   },
   {
@@ -133,7 +133,7 @@ export const SCORE_RISK_CALIBRATION_SCENARIOS: readonly ScoreRiskCalibrationScen
         risk_level: 'low',
         total_buffer_minutes: 180,
       },
-    } as OptimizationResult,
+    } as unknown as OptimizationResult,
     minScore: 0.55,
   },
 ];

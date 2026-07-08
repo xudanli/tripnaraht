@@ -1,5 +1,5 @@
 // src/trips/services/trip-metrics.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
@@ -57,6 +57,7 @@ export class TripMetricsService {
     private prisma: PrismaService,
     private conflictsService: TripConflictsService,
     private readonly itineraryItems: ItineraryItemsService,
+    @Inject(forwardRef(() => PlanningConflictsService))
     private readonly planningConflicts: PlanningConflictsService,
   ) {}
 

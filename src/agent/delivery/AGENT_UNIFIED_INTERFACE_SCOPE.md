@@ -28,6 +28,8 @@
 
 | 管道 | 路径 | 关系 |
 |------|------|------|
+| **Consumer Exploration** | `/exploration/*` | C 端探索规划：Scenario → Trip 物化 → 原则 → 路线 variant → Unified ReadModel 问题投影；**复用** Plan 子服务与 Decision Gateway，**不**走 `route_and_run` 自然语言入口 — PRD [exploration V1.1](../../internal-docs/exploration/prd-exploration-reliability-closure-v1.1.md) |
+| **Guide-to-Plan** | `/guide-to-plan/*` | 攻略导入 → 解析 → 草案对比 → 接受落地；与 Exploration **入口不同**，可靠性阶段可共用 Canonical Runtime |
 | Planning Assistant v1/v2 | `/agent/planning-assistant/*` | 对话式助手；**未**并入 `route_and_run` 编排链 |
 | Planning Workbench | `/planning-workbench/*` | MAC / 策略冲突写入端；冲突选项经 `strategy/conflict_options` 读回 |
 | Action Execution | `/agent/actions/*` | Preview / Commit / Rollback；**需 Bearer**，生产非 Public |

@@ -5,7 +5,13 @@
  * - 与 `observability.memory_contract.constraint_sink` 对账
  */
 
-export type MemoryConsoleSectionV1 = 'l1' | 'l0' | 'l2' | 'trip_patches' | 'export';
+export type MemoryConsoleSectionV1 =
+  | 'l1'
+  | 'l0'
+  | 'l2'
+  | 'trip_patches'
+  | 'decision_ledger_causality'
+  | 'export';
 
 export type ConstraintSinkUiAnchorV1 = {
   patch_ids: string[];
@@ -20,6 +26,7 @@ export type MemoryConsoleUiStateV1 = {
   enabled: boolean;
   sections: MemoryConsoleSectionV1[];
   trip_patches_count: number;
+  decision_ledger_links_count: number;
   l1_present: boolean;
   l2_count: number;
 };
@@ -54,21 +61,27 @@ export function deriveConstraintSinkUiAnchorV1(
 
 /** GET /agent/memory/v1/console → 侧栏/设置页结构 */
 export function deriveMemoryConsoleUiStateV1(input: {
-  feature_flags?: { constraint_sink?: boolean; memory_console?: boolean };
+  feature_flags?: { constraint_sink?: boolean; memory_console?: boolean; decision_semantics?: boolean };
   l1?: unknown | null;
   l2_recent?: unknown[];
   trip_constraints?: { patches?: unknown[] } | null;
+  decision_ledger_causality?: { links?: unknown[] } | null;
 }): MemoryConsoleUiStateV1 {
   const enabled = input.feature_flags?.memory_console === true;
   const patches = input.trip_constraints?.patches?.length ?? 0;
+  const ledgerLinks = input.decision_ledger_causality?.links?.length ?? 0;
   const sections: MemoryConsoleSectionV1[] = ['l1', 'l0', 'l2', 'export'];
   if (input.feature_flags?.constraint_sink && patches > 0) {
     sections.splice(3, 0, 'trip_patches');
+  }
+  if (ledgerLinks > 0) {
+    sections.splice(sections.length - 1, 0, 'decision_ledger_causality');
   }
   return {
     enabled,
     sections,
     trip_patches_count: patches,
+    decision_ledger_links_count: ledgerLinks,
     l1_present: input.l1 != null,
     l2_count: input.l2_recent?.length ?? 0,
   };
@@ -80,6 +93,8 @@ export const MEMORY_CONSOLE_UI_DEFAULT_ZH: Record<string, string> = {
   'memory.ui.console.l0': '基础资料',
   'memory.ui.console.l2': '近期路线决策',
   'memory.ui.console.trip_patches': '本行程偏好更新',
+  'memory.ui.console.decision_ledger_causality': '决策账本关联',
+  'memory.ui.console.decision_ledger_link_row': 'Ledger 节点 → 用户决策',
   'memory.ui.console.export': '导出我的数据',
   'memory.ui.console.delete_l1_confirm': '这将清空 AI 记住的长期旅行偏好，不会影响当前对话。',
   'memory.ui.console.delete_patch_confirm': '删除后，后续规划将不再自动应用这条偏好更新。',

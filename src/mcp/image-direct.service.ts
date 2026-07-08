@@ -10,8 +10,11 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import axios, { AxiosInstance } from 'axios';
-import * as https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import {
+  createExternalHttpsAgent,
+  EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
+  EXTERNAL_API_REQUEST_TIMEOUT_MS,
+} from './utils/external-http-agent.util';
 
 export interface ImageSearchParams {
   query: string; // 搜索关键词
@@ -84,29 +87,18 @@ export class ImageDirectService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    // 初始化 HTTP 客户端（支持代理）
-    const proxyUrl =
-      process.env.HTTPS_PROXY ||
-      process.env.https_proxy ||
-      process.env.ALL_PROXY ||
-      process.env.all_proxy;
-    
-    const httpsAgent = proxyUrl
-      ? new HttpsProxyAgent<string>(proxyUrl)
-      : new https.Agent({
-          keepAlive: true,
-          family: 4, // 强制 IPv4
-          rejectUnauthorized: true,
-        });
+    const httpsAgent = createExternalHttpsAgent();
 
     this.axiosInstance = axios.create({
-      timeout: 30000,
+      timeout: EXTERNAL_API_REQUEST_TIMEOUT_MS,
       httpsAgent,
       proxy: false,
       headers: {
         'User-Agent': 'TripNARA/1.0',
       },
     });
+
+    const probeTimeout = EXTERNAL_API_INIT_PROBE_TIMEOUT_MS;
 
     // 测试连接（优先测试 Pexels）
     if (this.pexelsApiKey) {
@@ -119,6 +111,7 @@ export class ImageDirectService implements OnModuleInit, OnModuleDestroy {
           headers: {
             'Authorization': this.pexelsApiKey,
           },
+          timeout: probeTimeout,
         });
         
         if (testResponse.data && testResponse.data.photos) {
@@ -141,6 +134,7 @@ export class ImageDirectService implements OnModuleInit, OnModuleDestroy {
               headers: {
                 'Authorization': `Client-ID ${this.unsplashApiKey}`,
               },
+              timeout: probeTimeout,
             });
             
             if (unsplashTest.data && unsplashTest.data.results) {
@@ -148,7 +142,9 @@ export class ImageDirectService implements OnModuleInit, OnModuleDestroy {
               this.logger.log('Image Direct Service initialized (Unsplash API)');
             }
           } catch (unsplashError: any) {
-            this.logger.error('Failed to initialize with Unsplash API:', unsplashError.message);
+            this.logger.warn(
+              `Image Direct Service unavailable (Unsplash probe failed): ${unsplashError.message}`,
+            );
             this.isAvailable = false;
           }
         } else {
@@ -166,6 +162,7 @@ export class ImageDirectService implements OnModuleInit, OnModuleDestroy {
           headers: {
             'Authorization': `Client-ID ${this.unsplashApiKey}`,
           },
+          timeout: probeTimeout,
         });
         
         if (testResponse.data && testResponse.data.results) {
@@ -176,7 +173,9 @@ export class ImageDirectService implements OnModuleInit, OnModuleDestroy {
           this.isAvailable = false;
         }
       } catch (error: any) {
-        this.logger.error('Failed to initialize Image Direct Service:', error.message);
+        this.logger.warn(
+          `Image Direct Service unavailable (Unsplash probe failed): ${error.message}`,
+        );
         this.isAvailable = false;
       }
     } else {

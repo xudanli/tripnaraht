@@ -70,6 +70,12 @@ export interface ConstraintCheckResult {
   is_blocked: boolean;
   sev_level: SEVLevel;
   requires_approval: boolean;
+  /** Phase 2c — when `gateway`, formal BLOCK authority is delegated to ConstraintEvaluationGateway */
+  block_authority?: 'agent' | 'gateway';
+  /** Phase 6 — Agent engine emits violations/warnings for narration only; no independent gate */
+  narrate_only?: boolean;
+  /** Phase 6 — formal approval authority when narrate_only */
+  approval_authority?: 'agent' | 'gateway';
 }
 
 /**

@@ -218,7 +218,10 @@ export async function hydrateOpeningHoursEvidenceForItinerary(params: {
 
   const result = await params.openingHoursSkill.execute({ poi_ids: missing });
   const fetched = Array.isArray(result.opening_hours) ? result.opening_hours : [];
-  const merged = mergeOpeningHoursEvidenceLists(params.researchData.opening_hours_evidence, fetched);
+  const merged = mergeOpeningHoursEvidenceLists(
+    params.researchData.opening_hours_evidence,
+    fetched as Array<{ poi_id?: string; opening_hours?: unknown }>,
+  );
   params.researchData.opening_hours_evidence = merged;
   return { fetched: fetched.length, merged: merged.length };
 }

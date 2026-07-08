@@ -23,6 +23,7 @@ import {
   buildFeasibilityIssueEvidenceLines,
   isLowQualityUserFacingText,
 } from '../trip-constraint-solver/utils/feasibility-issue-user-copy.util';
+import { projectIssueTradeoffDimensionsForPersonaAlert } from '../decision-semantics/projections/tradeoff-contextual-narrative.util';
 
 export type GuardianUserFacingAudience = 'user' | 'internal';
 
@@ -201,6 +202,15 @@ export function projectFeasibilityIssueToPersonaAlert(
   const scenario = presentation.scenario ?? resolveScenarioFromFeasibilityIssue(issue);
   const deepLink = buildDeepLinkForFeasibilityIssue(issue);
 
+  const tradeoffDimensions = projectIssueTradeoffDimensionsForPersonaAlert(issue).map((row) => ({
+    dimension: row.dimension,
+    direction: row.direction,
+    explanation: row.explanation,
+    contextualNarrative: row.contextualNarrative,
+    value: row.value,
+    unit: row.unit,
+  }));
+
   return {
     id: `alert-issue-${issue.id}`,
     persona,
@@ -221,6 +231,7 @@ export function projectFeasibilityIssueToPersonaAlert(
       deepLink,
       issueId: issue.id,
       expressionPhase: presentation.expressionPhase,
+      tradeoffDimensions,
     },
   };
 }

@@ -564,6 +564,17 @@ export interface ItineraryItem {
       alert_severity?: 'CRITICAL' | 'ERROR' | 'WARNING';
       alert_ids?: string[];
     };
+    /** CTRE Graph 投影：canonical poiId */
+    canonical_poi_id?: string;
+    intent_tags?: string[];
+    /** CTRE Graph 节点溯源 */
+    graph_node_kind?: string;
+    graph_node_id?: string;
+    booking_kind?: string;
+    booking_status?: string;
+    linked_node_id?: string;
+    linked_poi_node_id?: string;
+    activity_type?: string;
   };
 }
 
@@ -581,6 +592,10 @@ export interface Itinerary {
     robustness_score?: number; // 0..1
     /** verify 旁路只读快照（避免 itinerary 合同依赖 skills 具体类型） */
     verify_shadow?: Record<string, unknown>;
+    /** CTRE Graph 投影来源 */
+    source?: string;
+    graphId?: string;
+    compileId?: string;
   };
   /**
    * Action 层执行计划（不代表已提交）
@@ -612,6 +627,7 @@ export type OrchestrationStep =
   | 'GATE_EVAL'        // Should-Exist Gate (Gatekeeper/Abu)，含 CONSTRAINT_CHECK
   | 'CONTEXT_BUILD'    // Phase 2.3: 构建 Context Package (Kernel)
   | 'PLAN_GEN'         // 生成多方案 (Planner)
+  | 'TRAVEL_COMPILE'   // Planner Draft → CanonicalTravelGraph（Travel Compiler）
   | 'OPTIMIZE'         // Phase 2.3: 抽取 Optimization Hints (Kernel)
   | 'VERIFY'           // 验证可执行性 (CoreDecision/Dr.Dre)
   | 'COMPLIANCE'       // 风险合规检查 (Compliance)

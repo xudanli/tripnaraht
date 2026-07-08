@@ -9,6 +9,8 @@ import { ScheduleConverterService } from './services/schedule-converter.service'
 import { ScheduleTimelineService } from './services/schedule-timeline.service';
 import { TimelineOverviewService } from './services/timeline-overview.service';
 import { CollabOverviewService } from './services/collab-overview.service';
+import { TripListService } from './services/trip-list.service';
+import { CoverImageService } from './services/cover-image.service';
 import { AccommodationOverviewService } from './services/accommodation-overview.service';
 import { JourneyMapService } from './services/journey-map.service';
 import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
@@ -108,9 +110,16 @@ import { LoopsModule } from '../loops/loops.module';
 import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
 import { TripFilesModule } from './trip-files/trip-files.module';
 import { ActivityFavoritesModule } from './activity-favorites/activity-favorites.module';
+import { PlanObjectsModule } from '../decision-runtime/plan-objects/plan-objects.module';
+import { EffectivePlanExecutionModule } from '../decision-runtime/execution/effective-plan-execution.module';
+import { TravelStatusModule } from './travel-status/travel-status.module';
+import { WorldStateSnapshotModule } from '../decision-runtime/snapshot/world-state-snapshot.module';
+import { TripIntentModule } from '../decision-runtime/trigger/trip-intent.module';
+import { TripMonitoringModule } from '../decision-runtime/monitoring/trip-monitoring.module';
+import { AutomationAuthorizationModule } from '../decision-runtime/authorization/automation-authorization.module';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, forwardRef(() => RouteDirectionsModule), ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, DecisionSemanticsModule, DecisionGatewayModule, GuardianDecisionCoreModule, LoopsModule, IdentityGovernanceModule, TripFilesModule, ActivityFavoritesModule], // Gateway 须在 Semantics 之后注册，且 Gateway 开启时 Semantics 仅暴露 L1 路由
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, forwardRef(() => RouteDirectionsModule), ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, DecisionSemanticsModule, DecisionGatewayModule, GuardianDecisionCoreModule, EffectivePlanExecutionModule, WorldStateSnapshotModule, TravelStatusModule, TripIntentModule, TripMonitoringModule, AutomationAuthorizationModule, LoopsModule, IdentityGovernanceModule, TripFilesModule, ActivityFavoritesModule, PlanObjectsModule], // Gateway 须在 Semantics 之后注册，且 Gateway 开启时 Semantics 仅暴露 L1 路由
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
@@ -156,6 +165,8 @@ import { ActivityFavoritesModule } from './activity-favorites/activity-favorites
     ScheduleTimelineService,
     TimelineOverviewService,
     CollabOverviewService,
+    TripListService,
+    CoverImageService,
     AccommodationOverviewService,
     JourneyMapService,
     JourneyMapDecisionItemsService,

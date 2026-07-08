@@ -105,7 +105,7 @@ export class Gate1ChangeNoticeService {
       severity,
       title: event.title,
       whatHappened: event.description ?? event.title,
-      impactSummary: event.result,
+      impactSummary: event.result ?? undefined,
       actionRequired: '请确认是否影响您的行程',
       travelEventId: event.id,
       requiresAck: true,

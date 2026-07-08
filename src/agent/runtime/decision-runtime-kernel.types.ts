@@ -29,6 +29,8 @@ export type DecisionRuntimeTickObservabilityV1 = {
   request_id: string;
   phases: DecisionRuntimeTickPhaseRecord[];
   replay_anchor?: string;
+  /** Agentic hint — not a formal decision run */
+  decision_trigger?: import('../../decision-runtime/trigger/build-route-and-run-decision-trigger-input.util').RouteAndRunDecisionTriggerObservabilityV1;
 };
 
 /**

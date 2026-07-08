@@ -51,6 +51,26 @@ export class WorldFactRepository {
     });
   }
 
+  /**
+   * Trip 范围事实：factKey 前缀 `trip:{tripId}:`，每个 factKey 只保留最新一行。
+   * 写入时请使用 {@link tripWorldFactKey}（travel-ontology adapter）。
+   */
+  async findLatestFactsForTrip(tripId: string) {
+    const prefix = `trip:${tripId}:`;
+    const rows = await this.prisma.worldFact.findMany({
+      where: { factKey: { startsWith: prefix } },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+
+    const seen = new Set<string>();
+    return rows.filter((row) => {
+      if (seen.has(row.factKey)) return false;
+      seen.add(row.factKey);
+      return true;
+    });
+  }
+
   /** 同一时间键下的版本链（审计 / Explainability）；不含其它 factKey */
   async findHistoryByFactKey(factKey: string, limit = 50) {
     return this.prisma.worldFact.findMany({

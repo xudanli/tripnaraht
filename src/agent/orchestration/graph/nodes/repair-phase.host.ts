@@ -5,6 +5,8 @@ import type { LlmProvider } from '../../../../llm/dto/llm-request.dto';
 import type { RouteAndRunRequestDto } from '../../../dto/route-and-run.dto';
 import type { AgentContext } from '../../../interfaces/claude-orchestration.interface';
 import type { Itinerary, OrchestratorState } from '../../../interfaces/trip-plan.interface';
+import type { TravelCompilePhaseOutcome } from '../../travel-compile/travel-compile-phase.util';
+import type { RepairIssueDayHint } from '../../../../travel-compiler/utils/infer-repair-affected-days.util';
 
 export interface RunRepairPhaseParams {
   decisionState: DecisionState | undefined;
@@ -58,4 +60,13 @@ export interface RepairPhaseHost {
     state: OrchestratorState;
     request: RouteAndRunRequestDto;
   }): Promise<void>;
+
+  /** Phase E：REPAIR 后增量 CTRE re-compile（可选） */
+  runTravelRecompileAfterRepair?(params: {
+    state: OrchestratorState;
+    request: RouteAndRunRequestDto;
+    itineraryBeforeRepair: Itinerary;
+    repairApplied: boolean;
+    verificationIssues?: RepairIssueDayHint[];
+  }): Promise<TravelCompilePhaseOutcome>;
 }

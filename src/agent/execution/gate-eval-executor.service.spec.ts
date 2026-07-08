@@ -310,4 +310,32 @@ describe('GateEvalExecutorService — vehicle party constraints', () => {
     });
     expect(result.gateResult.violations.some((v) => v.type === 'VEHICLE_SPACE_INSUFFICIENT')).toBe(false);
   });
+
+  describe('Phase 6 formal BLOCK delegation', () => {
+    const originalPhase6 = process.env.PHASE6_LEGACY_DEPRECATION;
+
+    afterEach(() => {
+      if (originalPhase6 === undefined) delete process.env.PHASE6_LEGACY_DEPRECATION;
+      else process.env.PHASE6_LEGACY_DEPRECATION = originalPhase6;
+    });
+
+    it('CAS-094: readiness failure risk BLOCK softens to ADJUST_REQUIRED when Phase 6 on', async () => {
+      process.env.PHASE6_LEGACY_DEPRECATION = '1';
+      const result = await service.execute(
+        {} as any,
+        {
+          requestId: 'r1',
+          routeDirectionId: 'rd-1',
+          tripPlanRequest: { destination: 'Iceland' },
+          researchData: {
+            failure_risk_prediction: {
+              predictions: [{ day: 2, riskLevel: 'HIGH' }],
+            },
+          },
+        },
+      );
+      expect(result.gateResult.gate_result).toBe('ADJUST_REQUIRED');
+      expect(result.constraints.feasible).toBe(false);
+    });
+  });
 });

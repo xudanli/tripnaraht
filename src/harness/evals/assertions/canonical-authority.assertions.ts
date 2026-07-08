@@ -102,6 +102,7 @@ export function assertSafetyVerdictParity(input: {
 export async function runAuthorityCase(input: {
   caseId: string;
   run: () => Promise<AuthorityAssertionResult[]>;
+  executionAnchor?: import('../../protocol/execution-anchor.types').HarnessExecutionAnchor;
 }): Promise<import('../authority/authority-case.schema').AuthorityCaseResult> {
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
@@ -125,6 +126,7 @@ export async function runAuthorityCase(input: {
     errors,
     startedAt,
     finishedAt: new Date().toISOString(),
+    executionAnchor: input.executionAnchor,
   };
 }
 

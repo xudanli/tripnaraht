@@ -526,16 +526,82 @@ describe('feasibility-assembler', () => {
     });
     expect(timingProof?.repairOptions?.map((o) => o.actionType)).toEqual([
       'insert_rest_day',
-      'add_buffer',
-      'add_buffer',
-      'add_buffer_minutes',
-      'shift_departure',
       'adjust_time',
       'move_to_day',
     ]);
     expect(timingProof?.planBOptions?.[0].actionType).toBe('insert_rest_day');
     expect(report.dayTimeline[0].issueIds).toContain(report.issues[0].id);
     expect(report.dayTimeline[1].issueIds).toContain(report.issues[0].id);
+  });
+
+  it('omits minute buffers for inter-day travel beyond 8h drive', () => {
+    const report = assembleFeasibilityReport({
+      trip: baseTrip,
+      tripDays: [
+        { id: 'd4', dayNumber: 4 },
+        { id: 'd5', dayNumber: 5 },
+      ],
+      readiness: {
+        tripId: 'trip-1',
+        score: {
+          overall: 70,
+          evidenceCoverage: 90,
+          scheduleFeasibility: 60,
+          transportCertainty: 55,
+          safetyRisk: 90,
+          buffers: 60,
+        },
+        findings: [],
+        risks: [],
+        summary: {
+          totalFindings: 0,
+          blockers: 0,
+          must: 0,
+          should: 0,
+          warnings: 0,
+          suggestions: 0,
+          highRisks: 0,
+          mediumRisks: 0,
+          lowRisks: 0,
+        },
+        calculatedAt: '2026-06-20T00:00:00.000Z',
+      },
+      conflicts: [
+        {
+          id: 'inter-day-travel-extreme',
+          type: ConflictType.TRANSPORT_INSUFFICIENT,
+          severity: ConflictSeverity.HIGH,
+          title: '跨天交通时间不足',
+          description: 'Day 4 到 Day 5 交通时间不足',
+          affectedDays: ['4', '5'],
+          affectedItemIds: ['item-a', 'item-b'],
+          fromItemId: 'item-a',
+          toItemId: 'item-b',
+          issueKind: 'inter_day_travel',
+          fromDayNumber: 4,
+          toDayNumber: 5,
+          fromPlaceLabel: '拉特拉尔角',
+          toPlaceLabel: '红沙滩',
+          travelMode: 'DRIVING',
+          travelMinutes: 1920,
+          travelDistanceMeters: 1916900,
+          shortfallMinutes: 597,
+          isStartTooEarly: true,
+          timingSource: 'computed',
+        },
+      ],
+      revision: { revision: 12, revisionLabel: 'V12' },
+      snapshot: { verifiedAt: '2026-06-20T00:00:00.000Z', verifiedForTripVersion: '12' },
+    });
+
+    const timingProof = report.issues[0].proofs?.find(
+      (proof) => proof.ruleId === 'schedule.travel_time.timing',
+    );
+    const actionTypes = timingProof?.repairOptions?.map((o) => o.actionType) ?? [];
+    expect(actionTypes).toContain('insert_rest_day');
+    expect(actionTypes).not.toContain('add_buffer');
+    expect(actionTypes).not.toContain('add_buffer_minutes');
+    expect(actionTypes).not.toContain('shift_departure');
   });
 
   it('preserves ISO offset when formatting proof-level repair labels', () => {

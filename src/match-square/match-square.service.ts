@@ -535,7 +535,7 @@ export class MatchSquareService {
         slotsNeeded: dto.slotsNeeded,
         preferenceNotes,
         tripMoodTag,
-        planningStyle,
+        planningStyle: planningStyle!,
         travelMode,
         vehicleInfo: dto.vehicleInfo?.trim() ?? null,
         captainMessage,
@@ -598,7 +598,7 @@ export class MatchSquareService {
       slotsNeeded: input.dto.slotsNeeded,
       preferenceNotes: fields.preferenceNotes ?? undefined,
       tripMoodTag: input.dto.tripMoodTag,
-      planningStyle,
+      planningStyle: planningStyle!,
       travelMode: input.dto.travelMode,
       captainMessage: fields.captainMessage ?? undefined,
     };
@@ -609,7 +609,7 @@ export class MatchSquareService {
       catalog: input.catalog,
       fields,
       routeTemplateMatch,
-      planningStyle,
+      planningStyle: planningStyle!,
     });
 
     let personaSnapshot = attachVibeParseSnapshot(snapshot, vibeView.payload, vibeView);
@@ -641,7 +641,7 @@ export class MatchSquareService {
         slotsNeeded: input.dto.slotsNeeded,
         preferenceNotes: fields.preferenceNotes,
         tripMoodTag: input.dto.tripMoodTag ?? null,
-        planningStyle,
+        planningStyle: planningStyle!,
         travelMode: input.dto.travelMode ?? null,
         vehicleInfo: null,
         captainMessage: fields.captainMessage,
@@ -703,14 +703,14 @@ export class MatchSquareService {
     const post = await this.prisma.matchSquareRecruitmentPost.update({
       where: { id: postId },
       data: {
-        destination: merged.destination.trim(),
+        destination: merged.destination?.trim() ?? '',
         departureLabel: merged.departureLabel?.trim() ?? null,
         destinationLat: merged.destinationLat ?? null,
         destinationLng: merged.destinationLng ?? null,
         destinationPoiId: merged.destinationPoiId ?? null,
         startDate: this.parseDate(merged.startDate, 'startDate'),
         endDate: this.parseDate(merged.endDate, 'endDate'),
-        itinerarySummary: merged.itinerarySummary.trim(),
+        itinerarySummary: merged.itinerarySummary?.trim() ?? '',
         budgetMinCents: merged.budgetMinCents ?? null,
         budgetMaxCents: merged.budgetMaxCents ?? null,
         slotsNeeded: merged.slotsNeeded,

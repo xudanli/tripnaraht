@@ -144,6 +144,10 @@ export function buildFeasibilityIssueUserExplanation(issue: FeasibilityIssueDto)
   if (issue.issueKind === 'daily_drive') {
     return buildDailyDriveExplanation(issue);
   }
+  if (issue.issueKind === 'no_night_drive') {
+    const lead = resolveLeadSentence(issue);
+    return lead ?? '存在日落后继续驾驶的段落，违反不夜驾硬约束，请调整出发时间或增加住宿。';
+  }
 
   const kind = String(issue.issueKind ?? '');
   const msg = issue.message?.trim() ?? '';

@@ -18,12 +18,30 @@ import type {
   DecisionRuntimeTickBundle,
   DecisionRuntimeTickObservabilityV1,
 } from './decision-runtime-kernel.types';
+import {
+  enrichLedgerHealingObsWithDecisionCausality,
+  mergeDecisionLedgerCausalityIntoMemoryContractObs,
+} from '../../trips/decision-semantics/read/merge-decision-ledger-memory-contract.util';
+import {
+  buildRouteAndRunDecisionTriggerInput,
+  buildRouteAndRunDecisionTriggerObservability,
+} from '../../decision-runtime/trigger/build-route-and-run-decision-trigger-input.util';
+import {
+  dispatchAgentRouteAndRunIfEnabled,
+} from '../../decision-runtime/trigger/record-trigger-lineage.util';
+import type { DecisionTriggerGatewayService } from '../../decision-runtime/trigger/decision-trigger.gateway.service';
+import type { DecisionRunRequest } from '../../decision-runtime/contracts/decision-run-request';
 
 /** Kernel 依赖的 Agent 能力子集（避免整包 AgentService 耦合） */
 export type DecisionRuntimeKernelAgentDeps = {
   memoryContextAssembler: {
     loadForRouteAndRun: (request: RouteAndRunRequestDto) => Promise<AgentMemoryContext>;
     buildObservability: (memory: AgentMemoryContext) => unknown;
+    loadDecisionLedgerCausalityForTrip?: (
+      tripId: string,
+      ledger?: AgentMemoryContext['decisionLedger'],
+      ledgerSnapshotVersion?: number,
+    ) => Promise<import('../../trips/decision-semantics/read/decision-ledger-console-read.util').DecisionLedgerCausalityConsoleV1 | null>;
   };
   hydrateRequestFitnessIfNeeded: (
     request: RouteAndRunRequestDto,
@@ -46,6 +64,11 @@ export type DecisionRuntimeKernelAgentDeps = {
       opts: { maxRetries: number },
     ) => Promise<ReconcileResultV1>;
   };
+  /** Optional — records Agentic trigger lineage / dispatch when gateway enabled */
+  decisionTriggerGateway?: Pick<
+    DecisionTriggerGatewayService,
+    'buildRunRequest' | 'dispatch'
+  >;
   agentExecutionContextFactory: {
     createFromFrozenMemory: (memory: AgentMemoryContext) => AgentExecutionContext;
   };
@@ -231,12 +254,60 @@ export async function prepareDecisionRuntimeTick(
   const freezeStart = Date.now();
   void deps.memorySnapshotPersistence?.persistSerializableSnapshot(memory);
   freezeAgentMemorySnapshot(memory);
-  (request as RouteAndRunRequestDto & { __memoryContractObs?: unknown }).__memoryContractObs =
-    deps.memoryContextAssembler.buildObservability(memory);
+  let memContractObs = deps.memoryContextAssembler.buildObservability(memory) as import('../../agent/memory/services/memory-context-assembler.service').MemoryContractObservabilityV1;
+  const tripIdForCausality = String(request.trip_id ?? '').trim();
+  if (tripIdForCausality && deps.memoryContextAssembler.loadDecisionLedgerCausalityForTrip) {
+    const causality = await deps.memoryContextAssembler.loadDecisionLedgerCausalityForTrip(
+      tripIdForCausality,
+      memory.decisionLedger,
+      memory.snapshotVersion,
+    );
+    if (causality) {
+      memContractObs = mergeDecisionLedgerCausalityIntoMemoryContractObs(memContractObs, causality);
+      const healingKey = '__ledgerHealingObs' as const;
+      const reqExt = request as RouteAndRunRequestDto & { [healingKey]?: import('../memory/decision-ledger/ledger-healing-observability.util').LedgerHealingObservabilityV1 };
+      if (reqExt[healingKey]) {
+        reqExt[healingKey] = enrichLedgerHealingObsWithDecisionCausality(reqExt[healingKey]!, causality);
+      }
+    }
+  }
+  (request as RouteAndRunRequestDto & { __memoryContractObs?: unknown }).__memoryContractObs = memContractObs;
   const execCtxBase = deps.agentExecutionContextFactory.createFromFrozenMemory(memory);
   const goldenChainSpanId = randomUUID();
   const execCtx: AgentExecutionContext = { ...execCtxBase, activeParentSpanId: goldenChainSpanId };
   recordPhase(tickObs, 'MVCC_FREEZE', freezeStart);
+
+  const triggerInput = buildRouteAndRunDecisionTriggerInput(request);
+  if (triggerInput) {
+    let runRequest: DecisionRunRequest | undefined;
+    let gatewayDispatched = false;
+    if (deps.decisionTriggerGateway) {
+      const dispatched = await dispatchAgentRouteAndRunIfEnabled(
+        deps.decisionTriggerGateway as DecisionTriggerGatewayService,
+        triggerInput,
+      );
+      if (dispatched && 'request' in dispatched) {
+        runRequest = dispatched.request;
+        gatewayDispatched = dispatched.status === 'COMPLETED';
+      } else if (
+        dispatched &&
+        'runId' in dispatched &&
+        'triggerKind' in dispatched &&
+        !('status' in dispatched)
+      ) {
+        runRequest = dispatched as DecisionRunRequest;
+      }
+    }
+    tickObs.decision_trigger = buildRouteAndRunDecisionTriggerObservability({
+      triggerInput,
+      runRequest,
+      gatewayDispatched,
+    });
+    (
+      request as RouteAndRunRequestDto & { __decisionTriggerObs?: unknown }
+    ).__decisionTriggerObs = tickObs.decision_trigger;
+    memory.observability.layers.push('decision_trigger_hint');
+  }
 
   return {
     bundle: {

@@ -7,6 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { PreferenceEvolutionService } from '../agent/services/preference-evolution.service';
 import { TrekkingFitnessBackflowService } from './trekking-fitness-backflow.service';
 import {
@@ -107,7 +108,7 @@ export class CollaborativeTaskFlywheelService {
         metadata: {
           ...prevMeta,
           collaborativeTaskFlywheel: result.plan,
-        },
+        } as unknown as Prisma.InputJsonValue,
         updatedAt: new Date(),
       },
     });

@@ -105,6 +105,8 @@ describe('persona-alert-bff.projection', () => {
       issueId: 'issue-pace-day2',
       dayIndex: 2,
     });
+    expect(alerts[0].metadata.tradeoffDimensions?.length).toBeGreaterThanOrEqual(1);
+    expect(alerts[0].metadata.tradeoffDimensions?.[0].contextualNarrative).toMatch(/Day 2/);
   });
 
   it('drops English-heavy decision log when feasibility issue covers same issueId', () => {

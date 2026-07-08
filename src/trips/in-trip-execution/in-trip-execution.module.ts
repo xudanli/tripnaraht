@@ -14,6 +14,7 @@ import { TripGroupPulseController } from './controllers/trip-group-pulse.control
 import { TripSplitOrchestratorController } from './controllers/trip-split-orchestrator.controller';
 import { TripExperienceLoopController } from './controllers/trip-experience-loop.controller';
 import { TripInTripBetaController } from './controllers/trip-in-trip-beta.controller';
+import { TripInTripCommsController } from './controllers/trip-in-trip-comms.controller';
 import { ExperienceWeightJob } from './jobs/experience-weight.job';
 import { ExperiencePulseService } from './services/experience-pulse.service';
 import { PostTripSummaryService } from './services/post-trip-summary.service';
@@ -30,6 +31,11 @@ import { AnchorHandoffService } from './services/anchor-handoff.service';
 import { InTripBetaMetricsService } from './services/in-trip-beta-metrics.service';
 import { InTripMorningPackService } from './services/in-trip-morning-pack.service';
 import { InTripOfflineSyncService } from './services/in-trip-offline-sync.service';
+import { InTripCommsPeersService } from './services/in-trip-comms-peers.service';
+import { InTripCommsService } from './services/in-trip-comms.service';
+import { InTripCommsSummaryService } from './services/in-trip-comms-summary.service';
+import { InTripCommsTranscribeService } from './services/in-trip-comms-transcribe.service';
+import { VoiceModule } from '../../voice/voice.module';
 import { BudgetRebalanceService } from './services/budget-rebalance.service';
 import { EnvironmentDataAdapter } from './services/environment-data.adapter';
 import { EnvironmentRadarService } from './services/environment-radar.service';
@@ -42,6 +48,7 @@ import { VulnerabilityScoreService } from './services/vulnerability-score.servic
 @Module({
   imports: [
     PrismaModule,
+    VoiceModule,
     TripBudgetOsModule,
     TripDecisionProfilingModule,
     TravelEventStoreModule,
@@ -58,12 +65,17 @@ import { VulnerabilityScoreService } from './services/vulnerability-score.servic
     TripSplitOrchestratorController,
     TripExperienceLoopController,
     TripInTripBetaController,
+    TripInTripCommsController,
   ],
   providers: [
     InTripAccessService,
     AnchorHandoffService,
     InTripMorningPackService,
     InTripOfflineSyncService,
+    InTripCommsService,
+    InTripCommsPeersService,
+    InTripCommsTranscribeService,
+    InTripCommsSummaryService,
     InTripBetaMetricsService,
     TripTodayService,
     EnvironmentDataAdapter,

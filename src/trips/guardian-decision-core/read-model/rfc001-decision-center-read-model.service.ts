@@ -165,7 +165,9 @@ export class Rfc001DecisionCenterReadModelService {
       record,
       planVersion,
       options: workspace
-        ? bridgeCandidatesToOptions(problemId, workspace.repairCandidates, workspace, record)
+        ? bridgeCandidatesToOptions(problemId, workspace.repairCandidates, workspace, record, {
+            problem,
+          })
         : [],
       lineage: buildDecisionLineage({
         triggerEventId: problem.triggerEventId,

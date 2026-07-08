@@ -1,12 +1,13 @@
 /**
- * Plan Studio 冲突中心 BFF — feasibility-report + schedule conflicts 聚合
+ * Plan Studio 冲突中心 BFF — Decision Problem 规划阶段投影（SSOT）
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TripConflictsService } from '../../services/trip-conflicts.service';
 import { FeasibilityReportService } from './feasibility-report.service';
-import type { PlanningConflictsResponse } from '../types/planning-conflicts.types';
+import type { PlanningConflictsResponse, PlanningConflictItem } from '../types/planning-conflicts.types';
 import {
   assemblePlanningConflicts,
   buildPlanningConflictsSummary,
@@ -15,7 +16,14 @@ import { ConstraintsSummaryService } from './constraints-summary.service';
 import { SplitPlanService } from './split-plan.service';
 import type { TripFeasibilityReportDto } from '../types/trip-constraint-solver.types';
 import { PlanningConflictsCacheStore } from './planning-conflicts-cache.store';
-import { resolveTripRevision, revisionToString } from '../utils/trip-revision.util';
+import { buildPlanningConflictsCacheKey } from '../utils/planning-conflicts-cache-key.util';
+import { applyConstraintsVersionToPlanningConflictsResponse } from '../utils/planning-conflicts-constraints-version.util';
+import {
+  isPlanningConflictsFromProblemOnlyEnabled,
+  shouldUseUnifiedDecisionReadModel,
+} from '../../../decision-runtime/decision-problems/decision-problem-ssot.config';
+import { TripConstraintRegistryService } from './trip-constraint-registry.service';
+import { mergeSoftAdvisoriesIntoPlanningConflicts } from '../utils/soft-constraint-planning.util';
 
 export interface PlanningConflictsArtifacts {
   response: PlanningConflictsResponse;
@@ -26,6 +34,8 @@ export interface PlanningConflictsLoadOpts {
   includeConstraintsSummary?: boolean;
   /** includeDecisionChecker 时跳过同步 summary，首包只返 conflicts + deferred */
   skipConstraintsSummary?: boolean;
+  /** 用于合并 SOFT advisory（soft_prefer） */
+  userId?: string;
 }
 
 @Injectable()
@@ -35,10 +45,15 @@ export class PlanningConflictsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => FeasibilityReportService))
     private readonly feasibility: FeasibilityReportService,
     private readonly conflicts: TripConflictsService,
     private readonly constraintsSummary: ConstraintsSummaryService,
+    @Inject(forwardRef(() => SplitPlanService))
     private readonly splitPlans: SplitPlanService,
+    private readonly moduleRef: ModuleRef,
+    @Inject(forwardRef(() => TripConstraintRegistryService))
+    private readonly constraintRegistry: TripConstraintRegistryService,
   ) {}
 
   async resolveRevisionKey(tripId: string): Promise<string> {
@@ -47,7 +62,7 @@ export class PlanningConflictsService {
       select: { updatedAt: true, metadata: true },
     });
     if (!trip) return `${tripId}:missing`;
-    return revisionToString(resolveTripRevision(trip));
+    return buildPlanningConflictsCacheKey(trip);
   }
 
   getCachedArtifacts(tripId: string, revisionKey: string): PlanningConflictsArtifacts | undefined {
@@ -58,25 +73,19 @@ export class PlanningConflictsService {
     return this.cache.getStale(tripId);
   }
 
-  /** deferred 首包：启发式 schedule conflicts + 轻量 feasibility，通常 <2s */
-  async loadArtifactsFast(tripId: string): Promise<PlanningConflictsArtifacts> {
-    const conflictsGeneratedAt = new Date().toISOString();
-    const conflictsPromise = this.conflicts.getConflicts(tripId, undefined, undefined, {
-      useRouteApi: false,
-    });
-    const [conflictsResp, report] = await Promise.all([
-      conflictsPromise,
-      this.feasibility.getReportFast(tripId, {
-        preloadedConflictsPromise: conflictsPromise,
-        conflictsQuery: { useRouteApi: false },
-      }),
-    ]);
+  invalidateCache(tripId: string): void {
+    this.cache.clear(tripId);
+  }
 
-    const merged = assemblePlanningConflicts({
-      tripId,
-      issues: report.issues,
-      scheduleConflicts: conflictsResp.conflicts,
+  /** deferred 首包：Decision Problem 投影 + 轻量 feasibility verdict */
+  async loadArtifactsFast(tripId: string, opts?: PlanningConflictsLoadOpts): Promise<PlanningConflictsArtifacts> {
+    const conflictsGeneratedAt = new Date().toISOString();
+    const report = await this.feasibility.getReportFast(tripId, {
+      conflictsQuery: { useRouteApi: false },
     });
+
+    const merged = await this.resolvePlanningConflictItems(tripId, report);
+    const withSoft = await this.mergeSoftAdvisories(tripId, opts?.userId, merged);
 
     const daySplits = await this.splitPlans.projectDaySplits(tripId, { report, lightweight: true });
 
@@ -91,8 +100,8 @@ export class PlanningConflictsService {
       isStale: true,
       reportVerifiedAt: report.verifiedAt,
       conflictsGeneratedAt,
-      summary: buildPlanningConflictsSummary(merged),
-      conflicts: merged,
+      summary: buildPlanningConflictsSummary(withSoft),
+      conflicts: withSoft,
       ...(daySplits?.length ? { daySplits } : {}),
     };
 
@@ -133,11 +142,8 @@ export class PlanningConflictsService {
       this.feasibility.getReport(tripId, { preloadedConflictsPromise: conflictsPromise }),
     ]);
 
-    const merged = assemblePlanningConflicts({
-      tripId,
-      issues: report.issues,
-      scheduleConflicts: conflictsResp.conflicts,
-    });
+    const merged = await this.resolvePlanningConflictItems(tripId, report, conflictsResp.conflicts);
+    const withSoft = await this.mergeSoftAdvisories(tripId, opts?.userId, merged);
 
     const includeSummary =
       opts?.includeConstraintsSummary === true && opts?.skipConstraintsSummary !== true;
@@ -162,8 +168,8 @@ export class PlanningConflictsService {
       isStale: report.isStale,
       reportVerifiedAt: report.verifiedAt,
       conflictsGeneratedAt,
-      summary: buildPlanningConflictsSummary(merged),
-      conflicts: merged,
+      summary: buildPlanningConflictsSummary(withSoft),
+      conflicts: withSoft,
       ...(daySplits?.length ? { daySplits } : {}),
       ...(constraintsSummary ? { constraintsSummary } : {}),
     };
@@ -178,5 +184,78 @@ export class PlanningConflictsService {
     opts?: PlanningConflictsLoadOpts,
   ): Promise<PlanningConflictsResponse> {
     return (await this.loadArtifacts(tripId, opts)).response;
+  }
+
+  async attachConstraintsVersionMeta(
+    tripId: string,
+    response: PlanningConflictsResponse,
+    queryConstraintsVersion?: number,
+  ): Promise<PlanningConflictsResponse> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    return applyConstraintsVersionToPlanningConflictsResponse(
+      response,
+      trip?.metadata,
+      queryConstraintsVersion,
+    );
+  }
+
+  private async mergeSoftAdvisories(
+    tripId: string,
+    userId: string | undefined,
+    conflicts: PlanningConflictItem[],
+  ): Promise<PlanningConflictItem[]> {
+    if (!userId) return conflicts;
+    const soft = await this.constraintRegistry.getSoftConstraintAdvisories(tripId, userId);
+    return mergeSoftAdvisoriesIntoPlanningConflicts(conflicts, soft);
+  }
+
+  /**
+   * SSOT projection when unified read model is available; legacy merge as fallback.
+   */
+  private async resolvePlanningConflictItems(
+    tripId: string,
+    report: TripFeasibilityReportDto,
+    scheduleConflicts?: import('../../dto/trip-conflicts.dto').ConflictDto[],
+  ): Promise<PlanningConflictItem[]> {
+    const unifiedConflicts = await this.tryUnifiedSsotProjection(tripId);
+    if (unifiedConflicts) {
+      return unifiedConflicts;
+    }
+
+    if (isPlanningConflictsFromProblemOnlyEnabled()) {
+      return [];
+    }
+
+    const conflictsResp =
+      scheduleConflicts !== undefined
+        ? { conflicts: scheduleConflicts }
+        : await this.conflicts.getConflicts(tripId, undefined, undefined, { useRouteApi: false });
+
+    return assemblePlanningConflicts({
+      tripId,
+      issues: report.issues,
+      scheduleConflicts: conflictsResp.conflicts,
+    });
+  }
+
+  /**
+   * Lazy resolve — avoids static import cycle with UnifiedDecisionProblemReadModelService.
+   */
+  private async tryUnifiedSsotProjection(tripId: string): Promise<PlanningConflictItem[] | undefined> {
+    if (!shouldUseUnifiedDecisionReadModel()) {
+      return undefined;
+    }
+    try {
+      const { UnifiedDecisionProblemReadModelService } = await import(
+        '../../../decision-runtime/gateway/services/unified-decision-problem-read-model.service'
+      );
+      const readModel = this.moduleRef.get(UnifiedDecisionProblemReadModelService, { strict: false });
+      return (await readModel.projectPlanningConflicts(tripId)).conflicts;
+    } catch {
+      return undefined;
+    }
   }
 }

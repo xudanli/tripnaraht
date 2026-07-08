@@ -21,12 +21,16 @@ describe('country-official-constraints.util', () => {
     expect(normalizeTripDestinationCode('冰岛')).toBe('IS');
   });
 
-  it('buildCountryOfficialConstraints: injects 4 Iceland EXTERNAL cards', () => {
+  it('buildCountryOfficialConstraints: injects Iceland EXTERNAL destination rules', () => {
     const items = buildCountryOfficialConstraints(trip, 'user-1');
     expect(items).toHaveLength(4);
     expect(items.every((c) => c.type === 'EXTERNAL')).toBe(true);
     expect(items.every((c) => c.source.type === 'OFFICIAL_RULE')).toBe(true);
     expect(items.every((c) => c.locked)).toBe(true);
+    const froad = items.find((c) => c.id === TRIP_CONSTRAINT_OFFICIAL_IS_IDS.FROAD_2WD);
+    expect(froad?.name).toBe('F 路车辆准入');
+    expect((froad?.value as Record<string, unknown>).templateId).toBe('f_road_vehicle_access');
+    expect((froad?.value as Record<string, unknown>).destinationRuleTier).toBe('BLOCK');
     expect(items.map((c) => c.id)).toEqual(
       expect.arrayContaining([
         TRIP_CONSTRAINT_OFFICIAL_IS_IDS.FROAD_2WD,

@@ -19,6 +19,7 @@ import {
   resolvePersuasionTierFromContext,
   type PersuasionTier,
 } from '../../utils/persuasion-tier.util';
+import { isConstraintAgentBlockDelegated } from '../../../decision-runtime/constraints/constraint-plan-verify.config';
 
 function buildPersuasionTierTemplateVars(context: any): Record<string, string | number> {
   const wallMs = Number(context?.wall_hit_distance_ms);
@@ -235,12 +236,17 @@ export class ConstraintsEngineService {
     // 确定SEV级别
     const sevLevel = this.determineSevLevel(violations, warnings);
 
-    // 判断是否需要阻止
-    const isBlocked = violations.length > 0 || sevLevel === 'SEV-1';
+    const blockDelegated = isConstraintAgentBlockDelegated();
 
-    // 判断是否需要审批
-    const requiresApproval =
-      sevLevel === 'SEV-2' || violations.some((v) => v.sev_level === 'SEV-2');
+    // 判断是否需要阻止（Phase 2c：正式 BLOCK 权威移交 Gateway 时 Agent 仅保留叙述/提示）
+    const isBlocked = blockDelegated
+      ? false
+      : violations.length > 0 || sevLevel === 'SEV-1';
+
+    // 判断是否需要审批（Phase 6：委托时审批权威亦移交 Gateway）
+    const requiresApproval = blockDelegated
+      ? false
+      : sevLevel === 'SEV-2' || violations.some((v) => v.sev_level === 'SEV-2');
 
     const result: ConstraintCheckResult = {
       violations,
@@ -248,6 +254,9 @@ export class ConstraintsEngineService {
       is_blocked: isBlocked,
       sev_level: sevLevel,
       requires_approval: requiresApproval,
+      block_authority: blockDelegated ? 'gateway' : 'agent',
+      narrate_only: blockDelegated,
+      approval_authority: blockDelegated ? 'gateway' : 'agent',
     };
 
     this.logger.debug(

@@ -18,7 +18,7 @@ function formatMoney(amount: number, currency: string): string {
 }
 
 export function sumCategoryBreakdown(breakdown: Record<string, number | undefined>): number {
-  return Object.values(breakdown).reduce((sum, n) => sum + (typeof n === 'number' ? n : 0), 0);
+  return Object.values(breakdown).reduce<number>((sum, n) => sum + (typeof n === 'number' ? n : 0), 0);
 }
 
 export type StructureMismatchRow = {

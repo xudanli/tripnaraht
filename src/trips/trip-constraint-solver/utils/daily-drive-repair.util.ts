@@ -15,6 +15,36 @@ function estimateLodgingCostDelta(shortfallMinutes: number): number {
   return 280;
 }
 
+export function buildRemovePoiRepairOption(input: {
+  issueId: string;
+  dayNumber: number;
+  itemId: string;
+  itemLabel?: string;
+  savedMinutes?: number;
+}): FeasibilityRepairOptionDto {
+  const label = input.itemLabel ?? '较远景点';
+  const saved = input.savedMinutes;
+
+  return {
+    id: `remove_poi_${input.itemId}`,
+    label: `移除 ${label}`,
+    description:
+      typeof saved === 'number' && saved > 0
+        ? `从 Day ${input.dayNumber} 移除 ${label}，预计可缩短约 ${formatDriveDurationZhLong(saved)} 驾驶。`
+        : `从 Day ${input.dayNumber} 移除较远景点以缩短当日驾驶。`,
+    impactSummary: typeof saved === 'number' && saved > 0 ? `-${saved} 分钟` : 'medium',
+    type: 'remove_poi',
+    actionType: 'remove_poi',
+    payload: {
+      itemId: input.itemId,
+      itemLabel: label,
+      dayNumber: input.dayNumber,
+      ...(typeof saved === 'number' && saved > 0 ? { savedMinutes: saved } : {}),
+      validateScope: { type: 'issue', issueId: input.issueId },
+    },
+  };
+}
+
 export function buildDailyDriveFeasibilityRepairOptions(
   issueId: string,
   issue: FeasibilityIssueDto,
@@ -22,6 +52,13 @@ export function buildDailyDriveFeasibilityRepairOptions(
   const day = issue.affectedDays?.[0] ?? issue.anchors?.fromDayNumber ?? 1;
   const shortfall = issue.anchors?.shortfallMinutes ?? 0;
   const travel = issue.anchors?.travelMinutes;
+  const deepLink = issue.uiHints?.deepLink;
+  const highlightItemIds =
+    deepLink && typeof deepLink === 'object' && !Array.isArray(deepLink)
+      ? deepLink.highlightItemIds
+      : undefined;
+  const removableItemId =
+    issue.anchors?.removableItemId ?? highlightItemIds?.slice(-1)[0];
 
   return [
     {
@@ -37,6 +74,7 @@ export function buildDailyDriveFeasibilityRepairOptions(
       payload: {
         dayNumber: day,
         issueId,
+        expectedDriveReductionMinutes: shortfall > 0 ? shortfall : undefined,
         validateScope: { type: 'issue', issueId },
       },
     },
@@ -54,6 +92,17 @@ export function buildDailyDriveFeasibilityRepairOptions(
         validateScope: { type: 'issue', issueId },
       },
     },
+    ...(removableItemId
+      ? [
+          buildRemovePoiRepairOption({
+            issueId,
+            dayNumber: day,
+            itemId: removableItemId,
+            itemLabel: issue.anchors?.removableItemLabel ?? issue.anchors?.toPlaceLabel,
+            savedMinutes: issue.anchors?.removableItemSavedMinutes,
+          }),
+        ]
+      : []),
     ...(typeof travel === 'number' && shortfall > 0
       ? [
           {
@@ -63,7 +112,13 @@ export function buildDailyDriveFeasibilityRepairOptions(
             impactSummary: 'medium',
             type: 'split_day',
             actionType: 'split_day',
-            payload: { dayNumber: day, issueId },
+            payload: {
+              dayNumber: day,
+              issueId,
+              expectedDriveReductionMinutes: shortfall,
+              targetTravelMinutes: Math.max(0, travel - shortfall),
+              validateScope: { type: 'issue', issueId },
+            },
           } satisfies FeasibilityRepairOptionDto,
         ]
       : []),

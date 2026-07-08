@@ -101,7 +101,11 @@ export class PoiAccessCapacityEngineService {
         );
         if (!poiId) continue;
 
-        const rules = await this.poiAccess.getRulesForPoiSlugs([poiId]);
+        const rules = await this.poiAccess.getRulesForPoi({
+          poiId,
+          placeId: item.Place?.id,
+          ontologyRules: item.Place?.ontologyRules ?? undefined,
+        });
         if (!rules.length) continue;
 
         const arrivalTime = item.startTime
@@ -137,6 +141,8 @@ export class PoiAccessCapacityEngineService {
         const evaluation = await this.poiAccess.evaluate({
           poiId,
           poiName,
+          placeId: item.Place?.id,
+          placeOntologyRules: item.Place?.ontologyRules ?? undefined,
           dateISO,
           arrivalTime,
           vehicleType,

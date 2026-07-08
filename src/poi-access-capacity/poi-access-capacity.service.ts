@@ -21,6 +21,7 @@ import { inferCrowdingFromCapacitySnapshots } from './utils/infer-crowding-from-
 import { ParkaCapacityProvider } from './providers/parka-capacity.provider';
 import { UmferdinArrivalRateProvider } from './providers/umferdin-arrival-rate.provider';
 import { PoiExecutionFeedbackService } from './services/poi-execution-feedback.service';
+import { placeOntologyToAccessRules } from './utils/place-ontology-to-access-rules.util';
 
 function mapDbRule(row: {
   id: string;
@@ -115,28 +116,91 @@ export class PoiAccessCapacityService {
     private readonly feedbackService: PoiExecutionFeedbackService,
   ) {}
 
-  /** 获取 POI 准入规则（DB 优先，无数据时回退 A+B 级内置种子） */
+  /** 获取 POI 准入规则：DB → Place.ontologyRules → 内置种子 */
   async getRulesForPoiSlugs(poiSlugs: string[]): Promise<PoiAccessRule[]> {
     const unique = [...new Set(poiSlugs.filter(Boolean))];
-    if (!unique.length) return [];
+    const merged: PoiAccessRule[] = [];
+    for (const poiId of unique) {
+      merged.push(...(await this.getRulesForPoi({ poiId })));
+    }
+    return merged;
+  }
+
+  /**
+   * 单 POI 规则链：PoiAccessRule 表 → Place.ontologyRules → fixture。
+   * 行程评估时应传入 itinerary 上的 `placeId` 以启用本体 fallback。
+   */
+  async getRulesForPoi(input: {
+    poiId: string;
+    placeId?: number;
+    ontologyRules?: unknown;
+  }): Promise<PoiAccessRule[]> {
+    const poiId = input.poiId?.trim();
+    if (!poiId) return [];
 
     try {
       const rows = await this.prisma.poiAccessRule.findMany({
         where: {
-          poiId: { in: unique },
+          poiId,
           status: { not: 'INACTIVE' },
+          ...(input.placeId != null ? { placeId: input.placeId } : {}),
         },
       });
-      if (rows.length) {
-        return rows.map(mapDbRule);
+      if (rows.length) return rows.map(mapDbRule);
+
+      if (input.placeId == null) {
+        const anyRows = await this.prisma.poiAccessRule.findMany({
+          where: { poiId, status: { not: 'INACTIVE' } },
+        });
+        if (anyRows.length) return anyRows.map(mapDbRule);
       }
     } catch (err) {
-      this.logger.warn(
-        `PoiAccessRule 表不可用，回退内置种子: ${(err as Error).message}`,
-      );
+      this.logger.warn(`PoiAccessRule 表不可用: ${(err as Error).message}`);
     }
 
-    return getBuiltinRulesForPoiSlugs(unique);
+    const ontologyRules = await this.resolveOntologyRulesForPoi(input);
+    const fromOntology = placeOntologyToAccessRules(
+      poiId,
+      input.placeId ?? (await this.resolveRegistryPlaceId(poiId)) ?? 0,
+      ontologyRules,
+    ).filter((r) => r.placeId != null && r.placeId > 0);
+    if (fromOntology.length) return fromOntology;
+
+    return getBuiltinRulesForPoiSlugs([poiId]);
+  }
+
+  private async resolveRegistryPlaceId(poiId: string): Promise<number | undefined> {
+    try {
+      const row = await this.prisma.poiAccessRule.findFirst({
+        where: { poiId, placeId: { not: null } },
+        select: { placeId: true },
+        orderBy: { updatedAt: 'desc' },
+      });
+      return row?.placeId ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async resolveOntologyRulesForPoi(input: {
+    poiId: string;
+    placeId?: number;
+    ontologyRules?: unknown;
+  }): Promise<unknown> {
+    if (input.ontologyRules != null) return input.ontologyRules;
+
+    const placeId = input.placeId ?? (await this.resolveRegistryPlaceId(input.poiId));
+    if (placeId == null) return null;
+
+    try {
+      const place = await this.prisma.place.findUnique({
+        where: { id: placeId },
+        select: { ontologyRules: true },
+      });
+      return place?.ontologyRules ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async getStatusOverridesForPoiSlugs(
@@ -168,20 +232,36 @@ export class PoiAccessCapacityService {
     const unique = [...new Set(placeIds.filter((id) => Number.isFinite(id)))];
     if (!unique.length) return [];
 
-    try {
-      const rows = await this.prisma.poiAccessRule.findMany({
-        where: {
-          placeId: { in: unique },
-          status: { not: 'INACTIVE' },
-        },
-      });
-      if (rows.length) return rows.map(mapDbRule);
-    } catch (err) {
-      this.logger.warn(
-        `按 placeId 查询 PoiAccessRule 失败: ${(err as Error).message}`,
-      );
+    const out: PoiAccessRule[] = [];
+    for (const placeId of unique) {
+      try {
+        const rows = await this.prisma.poiAccessRule.findMany({
+          where: {
+            placeId,
+            status: { not: 'INACTIVE' },
+          },
+        });
+        if (rows.length) {
+          out.push(...rows.map(mapDbRule));
+          continue;
+        }
+
+        const place = await this.prisma.place.findUnique({
+          where: { id: placeId },
+          select: { ontologyRules: true },
+        });
+        if (place?.ontologyRules) {
+          out.push(
+            ...placeOntologyToAccessRules(`place:${placeId}`, placeId, place.ontologyRules),
+          );
+        }
+      } catch (err) {
+        this.logger.warn(
+          `按 placeId 查询规则失败 (${placeId}): ${(err as Error).message}`,
+        );
+      }
     }
-    return [];
+    return out;
   }
 
   async getLatestCrowdingSnapshot(
@@ -257,7 +337,11 @@ export class PoiAccessCapacityService {
   ): Promise<AccessCapacityEvaluationResult> {
     const rules =
       input.rules ??
-      (await this.getRulesForPoiSlugs([input.poiId]));
+      (await this.getRulesForPoi({
+        poiId: input.poiId,
+        placeId: input.placeId,
+        ontologyRules: input.placeOntologyRules,
+      }));
 
     const statusOverrides =
       input.statusOverrides ??

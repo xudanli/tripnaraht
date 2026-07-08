@@ -56,7 +56,7 @@ export class DetailShowEvidenceSkill implements Skill<DetailShowEvidenceInput, D
     if (input.evidenceRefs && input.evidenceRefs.length > 0) {
       const refSet = new Set(input.evidenceRefs);
       evidence = evidence.filter(
-        (item, index) =>
+        (item: DetailShowEvidenceOutput['evidence'][number], index: number) =>
           refSet.has(item.id) ||
           refSet.has(`evidence_${index}`) ||
           refSet.has(evidenceRefs[index]?.source_title ?? ''),

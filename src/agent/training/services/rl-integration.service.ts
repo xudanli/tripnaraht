@@ -4,10 +4,13 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PolicyServiceManagerService } from './policy-service-manager.service';
 import { ConstraintsEngineService } from './constraints-engine.service';
+import { isConstraintAgentBlockDelegated } from '../../../decision-runtime/constraints/constraint-plan-verify.config';
 import { TrajectoryCollectionService } from './trajectory-collection.service';
 import { QualityScorerService } from './quality-scorer.service';
 import { ObservabilityService } from './observability.service';
 import { PolicyInferenceRequest } from '../interfaces/training-platform.interface';
+import { evaluateAgentOrchestrationWriteGate } from '../../../decision-runtime/execution/agent-orchestration-write-gate.util';
+import { EFFECTIVE_PLAN_WRITE_CHAIN_AUTHORIZED_PATHS } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 /**
  * RL Integration Service
@@ -61,6 +64,8 @@ export class RLIntegrationService {
     reasoning?: string;
     adjustedParams?: Record<string, any>;
     warnings?: string[];
+    writeChainRequired?: boolean;
+    authorizedPaths?: readonly string[];
   }> {
     if (!this.enabled) {
       return { allowed: true, action: 'ALLOW', confidence: 1.0 };
@@ -69,6 +74,21 @@ export class RLIntegrationService {
     this.logger.debug(
       `[RLIntegration] 执行前检查: requestId=${context.requestId}, action=${context.action}`,
     );
+
+    const writeGate = evaluateAgentOrchestrationWriteGate(
+      context.action,
+      'RLIntegration.preDecision',
+    );
+    if (writeGate.blocked) {
+      return {
+        allowed: false,
+        action: 'REJECT',
+        confidence: 0.99,
+        reasoning: writeGate.message,
+        writeChainRequired: true,
+        authorizedPaths: writeGate.authorizedPaths ?? EFFECTIVE_PLAN_WRITE_CHAIN_AUTHORIZED_PATHS,
+      };
+    }
 
     const warnings: string[] = [];
     const adjustedParams = context.params;
@@ -84,8 +104,8 @@ export class RLIntegrationService {
           },
         );
 
-        if (constraintResult.is_blocked) {
-          // 硬约束违反 - 拒绝执行
+        if (constraintResult.is_blocked && !isConstraintAgentBlockDelegated()) {
+          // 硬约束违反 - 拒绝执行（仅 legacy agent-authority 模式）
           return {
             allowed: false,
             action: 'REJECT',
@@ -93,6 +113,17 @@ export class RLIntegrationService {
             reasoning: `Constraint violations: ${constraintResult.violations.map((v) => v.message).join(', ')}`,
             warnings: constraintResult.warnings.map((w) => w.message),
           };
+        }
+
+        if (
+          constraintResult.block_authority === 'gateway' &&
+          constraintResult.violations.length > 0
+        ) {
+          warnings.push(
+            ...constraintResult.violations.map(
+              (v) => `[gateway-authority] ${v.message}`,
+            ),
+          );
         }
 
         // 收集警告

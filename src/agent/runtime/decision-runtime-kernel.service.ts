@@ -17,6 +17,7 @@ import {
 import { hydrateGovernanceAndDosContext } from './decision-runtime-kernel.governance-dos.util';
 import { buildDosTickAuditV1, emitDosTickAudit } from './decision-os-tick-audit.util';
 import type { RouteAndRunTaskProgressReporter } from './route-and-run-task-progress.reporter';
+import type { DecisionTriggerGatewayService } from '../../decision-runtime/trigger/decision-trigger.gateway.service';
 import type {
   DecisionRuntimeTickBody,
   DecisionRuntimeTickBundle,
@@ -53,6 +54,7 @@ export class DecisionRuntimeKernelService {
     @Optional() private readonly governanceHydration?: GovernanceHydrationService,
     @Optional() private readonly llmIntentCompiler?: LlmIntentCompilerService,
     @Optional() private readonly routeAndRunTaskProgressReporter?: RouteAndRunTaskProgressReporter,
+    @Optional() private readonly decisionTriggerGateway?: DecisionTriggerGatewayService,
   ) {}
 
   /**
@@ -192,6 +194,7 @@ export class DecisionRuntimeKernelService {
       agentExecutionContextFactory: $.agentExecutionContextFactory,
       getEntryResponses: () => $.getEntryResponses(),
       logger: $.logger,
+      decisionTriggerGateway: this.decisionTriggerGateway,
     };
   }
 }

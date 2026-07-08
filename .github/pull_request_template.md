@@ -17,3 +17,5 @@
 
 - [ ] `npm run ci:execution-os-stability`
 - [ ] `npm run ci:cid-v1`
+- [ ] 若改动 Decision Semantics / Harness eval：本地 `npm run harness:blockers && npm run harness:replay`（CI：`.github/workflows/harness-release-gate.yml`）
+- [ ] 若改动 Decision Center 前端执行态：对照 `DECISION_CENTER_FE_MVP_INTEGRATION.md` §5 手工清单

@@ -548,7 +548,7 @@ function buildGroupCardHighlights(
   segments: PlanningDaySplitSegmentDto[],
   letter: 'A' | 'B',
   kind: DecisionCheckerSplitPlanDto['kind'],
-  rentalHotel?: PlanningDaySplitDto['stats'] extends { rentalHotel?: infer R } ? R : never,
+  rentalHotel?: NonNullable<PlanningDaySplitDto['stats']>['rentalHotel'],
 ): string[] {
   const isRestBranch =
     letter === 'B' || segments.every((s) => s.intensity === 'low' || s.intensity === undefined);

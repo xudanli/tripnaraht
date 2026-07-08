@@ -301,7 +301,7 @@ export class ScheduleConverterService {
         stops.push({
           kind: 'POI',
           id: `poi-${item.Place.id}`,
-          name: item.Place.nameEN || item.Place.nameCN,
+          name: item.Place.nameEN || item.Place.nameCN || '',
           startMin,
           endMin,
           lat: this.extractLat(item.Place),

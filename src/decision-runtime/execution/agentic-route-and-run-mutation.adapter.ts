@@ -38,7 +38,7 @@ export function applyAgenticRouteAndRunMutationGuard(input: {
   const scan = scanAgenticTraceForMutationTools(agenticTrace);
   const audit = buildAgenticFastPathAuthorityAudit({
     trace: scan,
-    tripId: request.trip_id,
+    tripId: request.trip_id?.trim() || undefined,
   });
 
   const obs = (response.observability ?? {}) as Record<string, unknown>;
@@ -73,14 +73,17 @@ export function applyAgenticRouteAndRunMutationGuard(input: {
   obs.agentic_mutation_guard_v1 = guardPayload;
   const existingPayload = response.result?.payload;
   const payload = {
-    timeline: existingPayload?.timeline ?? [],
-    dropped_items: existingPayload?.dropped_items ?? [],
-    candidates: existingPayload?.candidates ?? [],
-    evidence: existingPayload?.evidence ?? [],
-    robustness: existingPayload?.robustness ?? null,
-    ...(existingPayload ?? {}),
+    ...(existingPayload ?? {
+      timeline: [],
+      dropped_items: [],
+      candidates: [],
+      evidence: [],
+      robustness: null,
+    }),
     canonical_mutation_guard: guardPayload,
-    agentic_tool_loop_trace: agenticTrace ?? (existingPayload as Record<string, unknown> | undefined)?.agentic_tool_loop_trace,
+    agentic_tool_loop_trace:
+      agenticTrace ??
+      (existingPayload as Record<string, unknown> | undefined)?.agentic_tool_loop_trace,
   } as RouteAndRunResponseDto['result']['payload'];
 
   response.result = {

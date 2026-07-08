@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Optional, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TripConflictsService } from '../../services/trip-conflicts.service';
@@ -6,7 +6,6 @@ import type { ConflictsResponseDto } from '../../dto/trip-conflicts.dto';
 import type { TripConflictsQueryOpts } from '../../services/trip-conflicts.service';
 import { CoverageMapService } from '../../readiness/services/coverage-map.service';
 import { ReadinessRepairService } from '../../readiness/services/readiness-repair.service';
-import { LoopTriggerBridgeService } from '../../../loops/services/loop-trigger-bridge.service';
 import type { ReadinessScoreResponse } from '../../readiness/types/coverage-map.types';
 import type { RepairOptionsResponse } from '../../readiness/types/coverage-map.types';
 import type { FeasibilityApplyRepairBodyDto, FeasibilityPreviewRepairBodyDto, FeasibilityScopeDto } from '../dto/feasibility-report.dto';
@@ -60,13 +59,30 @@ import {
 } from '../utils/buffer-insufficient-repair.util';
 import {
   applyMinuteTimingShiftRepair,
+  applySuggestedStartTimeRepair,
   buildMinuteBufferRepairOptions,
   buildShiftDepartureRepairOption,
+  buildShiftEarlierRepairOption,
   isInsertRestDayRepairPayload,
   isMinuteBufferRepairPayload,
   shouldOfferMinuteTimingRepairs,
+  isShiftDepartureRepairViable,
 } from '../utils/travel-timing-repair.util';
 import { buildDailyDriveRepairOptionsResponse } from '../utils/daily-drive-repair.util';
+import {
+  buildPlanObjectRepairOptionsResponse,
+  isPlanObjectFeasibilityIssue,
+} from '../../../decision-runtime/constraints/utils/plan-object-repair-options.util';
+import { applyPlanObjectRepair } from '../utils/apply-plan-object-repair.util';
+import { isScheduleDomainConflict } from '../utils/schedule-domain.util';
+import { mapConflictToFeasibilityIssue } from '../utils/feasibility-assembler.util';
+import type { AssemblerGatewayDomainCoverage } from '../utils/assembler-gateway-coverage.util';
+import { isPhase6GatewayDomainRulesExclusive } from '../../../decision-runtime/constraints/constraint-plan-verify.config';
+import {
+  EffectivePlanWriteGuardService,
+} from '../../../decision-runtime/execution/effective-plan-write-guard.service';
+import { assertPlanMutationAllowedOrThrow } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
+import { buildMcpoiBenchmarkFeasibilityIssues } from '../../benchmarks/multi-constraint-poi/mcpoi-benchmark-runtime.util';
 
 @Injectable()
 export class FeasibilityReportService {
@@ -81,10 +97,142 @@ export class FeasibilityReportService {
     private readonly accessEvidenceRefresh: IcelandAccessEvidenceRefreshService,
     private readonly moduleRef: ModuleRef,
     @Optional() private readonly pomdpMonteCarlo?: FeasibilityPomdpMonteCarloService,
-    @Optional()
-    @Inject(forwardRef(() => LoopTriggerBridgeService))
-    private readonly loopTriggerBridge?: LoopTriggerBridgeService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {}
+
+  private getFeasibilityProjection():
+    | import('../../../decision-runtime/constraints/services/feasibility-projection.service').FeasibilityProjectionService
+    | undefined {
+    try {
+      const { FeasibilityProjectionService } = require('../../../decision-runtime/constraints/services/feasibility-projection.service') as {
+        FeasibilityProjectionService: new (...args: never[]) => {
+          projectP0Issues: (trip: {
+            id: string;
+            status?: string | null;
+            startDate: Date;
+            metadata: unknown;
+          }) => Promise<import('../../../decision-runtime/constraints/services/feasibility-projection.service').FeasibilityProjectionResult>;
+          projectScheduleConflicts: (
+            tripId: string,
+            conflicts: ConflictsResponseDto['conflicts'],
+          ) => import('../../../decision-runtime/constraints/services/feasibility-projection.service').ScheduleConflictProjectionResult;
+          projectGuardianIssues: (
+            tripId: string,
+            existingIssues: FeasibilityIssueDto[],
+          ) => Promise<FeasibilityIssueDto[]>;
+          projectPlanObjectIssues: (tripId: string) => Promise<FeasibilityIssueDto[]>;
+          isProjectionEnabled: () => boolean;
+        };
+      };
+      return this.moduleRef.get(FeasibilityProjectionService, { strict: false });
+    } catch {
+      return undefined;
+    }
+  }
+
+  private buildConflictAssemblyInput(
+    tripId: string,
+    conflicts: ConflictsResponseDto['conflicts'],
+  ): {
+    conflicts: ConflictsResponseDto['conflicts'];
+    projectedScheduleIssues?: FeasibilityIssueDto[];
+    scheduleProjectionApplied: boolean;
+  } {
+    const projection = this.getFeasibilityProjection();
+    if (!projection?.isProjectionEnabled()) {
+      return { conflicts, scheduleProjectionApplied: false };
+    }
+    const result = projection.projectScheduleConflicts(tripId, conflicts);
+    if (!result.projectionApplied) {
+      return { conflicts, scheduleProjectionApplied: false };
+    }
+    return {
+      conflicts: result.nonScheduleConflicts,
+      projectedScheduleIssues: result.scheduleIssues,
+      scheduleProjectionApplied: true,
+    };
+  }
+
+  private resolveGatewayDomainCoverage(input: {
+    p0ProjectionApplied: boolean;
+    scheduleProjectionApplied: boolean;
+  }): AssemblerGatewayDomainCoverage | undefined {
+    const projection = this.getFeasibilityProjection();
+    if (!isPhase6GatewayDomainRulesExclusive() || !projection?.isProjectionEnabled()) {
+      return undefined;
+    }
+    return {
+      poiAccess: input.p0ProjectionApplied,
+      schedule: input.scheduleProjectionApplied,
+      guardian: true,
+    };
+  }
+
+  private async buildP0IssuesForReport(trip: {
+    id: string;
+    status?: string | null;
+    startDate: Date;
+    metadata: unknown;
+  }): Promise<{
+    issues: import('../types/trip-constraint-solver.types').FeasibilityIssueDto[];
+    p0ProjectionApplied: boolean;
+  }> {
+    const projection = this.getFeasibilityProjection();
+    if (projection?.isProjectionEnabled()) {
+      const { mergeProjectedP0Issues } = await import(
+        '../../../decision-runtime/constraints/services/feasibility-projection.service'
+      );
+      const result = await projection.projectP0Issues(trip);
+      return {
+        issues: mergeProjectedP0Issues(result),
+        p0ProjectionApplied: result.projectionApplied,
+      };
+    }
+    return {
+      issues: await this.preTripP0.buildP0Issues(trip),
+      p0ProjectionApplied: false,
+    };
+  }
+
+  private async buildGuardianIssuesForReport(
+    tripId: string,
+    prelude: {
+      p0Issues: FeasibilityIssueDto[];
+      projectedScheduleIssues?: FeasibilityIssueDto[];
+      conflicts: ConflictsResponseDto['conflicts'];
+    },
+  ): Promise<FeasibilityIssueDto[]> {
+    const projection = this.getFeasibilityProjection();
+    if (!projection?.isProjectionEnabled()) return [];
+
+    const scheduleIssues =
+      prelude.projectedScheduleIssues ??
+      prelude.conflicts
+        .filter((c) => isScheduleDomainConflict(c))
+        .map((c) => mapConflictToFeasibilityIssue(c, { tripId }));
+
+    return [
+      ...(await projection.projectPlanObjectIssues(tripId)),
+      ...(await projection.projectGuardianIssues(tripId, [...prelude.p0Issues, ...scheduleIssues])),
+    ];
+  }
+
+  private getLoopTriggerBridge():
+    | { notifyItineraryChanged: (input: Record<string, unknown>) => Promise<void> }
+    | undefined {
+    try {
+      // Lazy require breaks feasibility-report ↔ loops adapter circular import.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { LoopTriggerBridgeService } = require('../../../loops/services/loop-trigger-bridge.service') as {
+        LoopTriggerBridgeService: new (...args: never[]) => {
+          notifyItineraryChanged: (input: Record<string, unknown>) => Promise<void>;
+        };
+      };
+      return this.moduleRef.get(LoopTriggerBridgeService, { strict: false });
+    } catch {
+      return undefined;
+    }
+  }
 
   async getReport(
     tripId: string,
@@ -115,19 +263,34 @@ export class FeasibilityReportService {
       conflicts: conflictsResp.conflicts,
       coverage,
     });
-    const p0Issues = await this.preTripP0.buildP0Issues({
+    const { issues: p0Issues, p0ProjectionApplied } = await this.buildP0IssuesForReport({
       id: trip.id,
       status: trip.status,
       startDate: trip.startDate,
       metadata: trip.metadata,
     });
+    const conflictAssembly = this.buildConflictAssemblyInput(tripId, conflictsResp.conflicts);
+    const projectedGuardianIssues = await this.mergeMcpoiBenchmarkGuardianIssues(
+      tripId,
+      await this.buildGuardianIssuesForReport(tripId, {
+        p0Issues,
+        projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
+        conflicts: conflictsResp.conflicts,
+      }),
+    );
     return assembleFeasibilityReport({
       trip,
       tripDays: trip.tripDays,
       readiness,
       coverage,
       decisionEvidence,
-      conflicts: conflictsResp.conflicts,
+      conflicts: conflictAssembly.conflicts,
+      projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
+      projectedGuardianIssues,
+      gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
+        p0ProjectionApplied,
+        scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
+      }),
       revision: resolveTripRevision(trip),
       snapshot: snapshot
         ? {
@@ -182,11 +345,26 @@ export class FeasibilityReportService {
     const revision = resolveTripRevision(trip);
     const readiness = buildStubReadinessFromSnapshot(tripId, snapshot);
 
+    const conflictAssembly = this.buildConflictAssemblyInput(tripId, conflictsResp.conflicts);
+    const projectedGuardianIssues = await this.mergeMcpoiBenchmarkGuardianIssues(
+      tripId,
+      await this.buildGuardianIssuesForReport(tripId, {
+        p0Issues: [],
+        projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
+        conflicts: conflictsResp.conflicts,
+      }),
+    );
     return assembleFeasibilityReport({
       trip,
       tripDays: trip.tripDays,
       readiness,
-      conflicts: conflictsResp.conflicts,
+      conflicts: conflictAssembly.conflicts,
+      projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
+      projectedGuardianIssues,
+      gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
+        p0ProjectionApplied: false,
+        scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
+      }),
       revision,
       snapshot: snapshot
         ? {
@@ -285,11 +463,17 @@ export class FeasibilityReportService {
       conflicts: conflictsResp.conflicts,
       coverage,
     });
-    const p0Issues = await this.preTripP0.buildP0Issues({
+    const { issues: p0Issues, p0ProjectionApplied } = await this.buildP0IssuesForReport({
       id: ctx.id,
       status: ctx.status,
       startDate: ctx.startDate,
       metadata: tripAfter?.metadata ?? tripRow.metadata,
+    });
+    const conflictAssembly = this.buildConflictAssemblyInput(tripId, conflictsResp.conflicts);
+    const projectedGuardianIssues = await this.buildGuardianIssuesForReport(tripId, {
+      p0Issues,
+      projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
+      conflicts: conflictsResp.conflicts,
     });
     return assembleFeasibilityReport({
       trip: ctx,
@@ -297,7 +481,13 @@ export class FeasibilityReportService {
       readiness,
       coverage,
       decisionEvidence,
-      conflicts: conflictsResp.conflicts,
+      conflicts: conflictAssembly.conflicts,
+      projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
+      projectedGuardianIssues,
+      gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
+        p0ProjectionApplied,
+        scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
+      }),
       revision: resolveTripRevision(tripAfter ?? tripRow),
       snapshot: {
         verifiedAt: snapshot.verifiedAt as string,
@@ -323,13 +513,19 @@ export class FeasibilityReportService {
     });
   }
 
-  async getRepairOptions(tripId: string, issueId: string): Promise<RepairOptionsResponse> {
-    const report = await this.getReport(tripId);
+  async getRepairOptions(
+    tripId: string,
+    issueId: string,
+    opts?: { preloadedReport?: TripFeasibilityReportDto },
+  ): Promise<RepairOptionsResponse> {
+    const report = opts?.preloadedReport ?? (await this.getReport(tripId));
     const issue = report.issues.find((i) => matchesIssueId(i.id, issueId));
     const canonicalIssueId = issue?.id ?? normalizeIssueIdAlias(issueId);
 
     let response: RepairOptionsResponse;
-    if (isRoadClassIssueRef(issueId, issue) || isRoadClassIssueRef(canonicalIssueId, issue)) {
+    if (issue && isPlanObjectFeasibilityIssue(issue)) {
+      response = buildPlanObjectRepairOptionsResponse(tripId, issue);
+    } else if (isRoadClassIssueRef(issueId, issue) || isRoadClassIssueRef(canonicalIssueId, issue)) {
       const coverage = await this.coverageMap.getCoverageMap(tripId);
       const roadClassIssue =
         issue?.issueKind === 'road_class'
@@ -349,6 +545,31 @@ export class FeasibilityReportService {
       response = buildTravelTimingRepairOptions(tripId, issue);
     } else if (issue?.issueKind === 'buffer_insufficient') {
       response = buildBufferInsufficientRepairOptionsResponse(tripId, issue);
+    } else if (
+      issue?.issueKind === 'ROAD_CLOSED' ||
+      issue?.semanticKey?.includes('ROAD_CLOSED')
+    ) {
+      response = {
+        blockerId: issue.id,
+        blockerMessage: issue.message,
+        issueId: canonicalIssueId,
+        options: [
+          {
+            id: 'road_plan_detour',
+            title: '规划绕行路线',
+            description: '调整受影响的路段与后续行程衔接。',
+            impact: 'high',
+            actionType: 'alternative',
+          },
+          {
+            id: 'road_remove_segment',
+            title: '移除或替换封闭路段',
+            description: issue.message,
+            impact: 'high',
+            actionType: 'repair',
+          },
+        ],
+      };
     } else if (!issue) {
       throw new NotFoundException(`REPAIR_OPTIONS_NOT_FOUND: issue ${issueId}`);
     } else if (issue?.issueKind?.startsWith('poi_access') && issue.repairOptions?.length) {
@@ -361,7 +582,7 @@ export class FeasibilityReportService {
             id: o.id,
             title: o.label,
             description: o.description,
-            impact: (['high', 'medium', 'low'].includes(o.impactSummary)
+            impact: (['high', 'medium', 'low'].includes(String(o.impactSummary ?? ''))
               ? o.impactSummary
               : 'medium') as RepairOption['impact'],
             actionType: o.actionType ?? o.type,
@@ -438,20 +659,32 @@ export class FeasibilityReportService {
       conflicts: conflictsResp.conflicts,
       coverage,
     });
-    const p0Issues = await this.preTripP0.buildP0Issues({
+    const { issues: p0Issues, p0ProjectionApplied } = await this.buildP0IssuesForReport({
       id: trip.id,
       status: trip.status,
       startDate: trip.startDate,
       metadata: trip.metadata,
     });
 
+    const conflictAssembly = this.buildConflictAssemblyInput(tripId, conflictsResp.conflicts);
+    const projectedGuardianIssues = await this.buildGuardianIssuesForReport(tripId, {
+      p0Issues,
+      projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
+      conflicts: conflictsResp.conflicts,
+    });
     const report = assembleFeasibilityReport({
       trip,
       tripDays: trip.tripDays,
       readiness,
       coverage,
       decisionEvidence,
-      conflicts: conflictsResp.conflicts,
+      conflicts: conflictAssembly.conflicts,
+      projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
+      projectedGuardianIssues,
+      gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
+        p0ProjectionApplied,
+        scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
+      }),
       revision: resolveTripRevision(trip),
       snapshot: snapshot
         ? {
@@ -487,14 +720,21 @@ export class FeasibilityReportService {
     tripId: string,
     issueId: string,
     body: FeasibilityPreviewRepairBodyDto,
+    opts?: {
+      preloadedReport?: TripFeasibilityReportDto;
+      preloadedRepairOptions?: RepairOptionsResponse;
+    },
   ) {
-    const repair = await this.getRepairOptions(tripId, issueId);
+    const repair =
+      opts?.preloadedRepairOptions ??
+      (await this.getRepairOptions(tripId, issueId, { preloadedReport: opts?.preloadedReport }));
     const option = repair.options.find((o) => o.id === body.optionId);
     if (!option) {
       throw new BadRequestException(`OPTION_NOT_APPLICABLE: optionId ${body.optionId}`);
     }
 
-    const issue = (await this.getReport(tripId)).issues.find(
+    const report = opts?.preloadedReport ?? (await this.getReport(tripId));
+    const issue = report.issues.find(
       (i) => i.id === issueId || i.id === normalizeIssueIdAlias(issueId),
     );
     const blockerId = resolveIssueIdToBlockerId(issueId);
@@ -581,6 +821,11 @@ export class FeasibilityReportService {
     body: FeasibilityApplyRepairBodyDto,
     userId?: string,
   ) {
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'FeasibilityReportService.applyRepair',
+    );
+
     const report = await this.getReport(tripId);
     const issue = report.issues.find(
       (i) => matchesIssueId(i.id, issueId) || i.id === normalizeIssueIdAlias(issueId),
@@ -650,6 +895,52 @@ export class FeasibilityReportService {
       };
     }
 
+    const isAdjustTime =
+      option?.actionType === 'adjust_time' &&
+      typeof optionPayload.suggestedValue === 'string' &&
+      typeof optionPayload.itemId === 'string';
+
+    if (
+      (issue?.issueKind === 'inter_day_travel' ||
+        issue?.issueKind === 'same_day_travel' ||
+        issue?.issueKind === 'buffer_insufficient') &&
+      isAdjustTime
+    ) {
+      const result = await applySuggestedStartTimeRepair(
+        this.prisma,
+        optionPayload as Record<string, unknown>,
+      );
+      const refreshed = await this.getReport(tripId);
+      return {
+        tripId,
+        blockerId: issue.id,
+        optionId: body.optionId,
+        actionType: 'adjust_time',
+        status: 'applied' as const,
+        message: `已将开始时间调整到 ${result.newStartTime}`,
+        metadata: { ...result, readinessHint: { reportVerdict: refreshed.verdict.status } },
+      };
+    }
+
+    if (issue && isPlanObjectFeasibilityIssue(issue)) {
+      const result = await applyPlanObjectRepair(
+        this.prisma,
+        tripId,
+        body.optionId,
+        optionPayload,
+      );
+      const refreshed = await this.getReport(tripId);
+      return {
+        tripId,
+        blockerId: issue.id,
+        optionId: body.optionId,
+        actionType: option?.actionType ?? body.optionId,
+        status: 'applied' as const,
+        message: result.message,
+        metadata: { ...result, readinessHint: { reportVerdict: refreshed.verdict.status } },
+      };
+    }
+
     if (issue?.issueKind?.startsWith('poi_access') && isManualConfirm) {
       const code = body.parkingReservationRef?.trim();
       if (!code && !body.evidenceAttachmentId) {
@@ -702,15 +993,17 @@ export class FeasibilityReportService {
     });
 
     if (
-      this.loopTriggerBridge &&
       result.status === 'applied' &&
       body.persistDecision !== false
     ) {
-      void this.loopTriggerBridge.notifyItineraryChanged({
+      const loopTriggerBridge = this.getLoopTriggerBridge();
+      if (loopTriggerBridge) {
+        void loopTriggerBridge.notifyItineraryChanged({
         tripId,
         issueId,
         source: 'feasibility_apply_repair',
       });
+      }
     }
 
     return result;
@@ -752,6 +1045,15 @@ export class FeasibilityReportService {
     await this.readinessRepair.refreshEvidence(tripId);
   }
 
+  private async mergeMcpoiBenchmarkGuardianIssues(
+    tripId: string,
+    guardianIssues: FeasibilityIssueDto[],
+  ): Promise<FeasibilityIssueDto[]> {
+    const mcpoiIssues = await buildMcpoiBenchmarkFeasibilityIssues(this.prisma, tripId);
+    if (!mcpoiIssues.length) return guardianIssues;
+    return [...mcpoiIssues, ...guardianIssues];
+  }
+
   private async loadTripContext(tripId: string) {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
@@ -773,6 +1075,10 @@ export class FeasibilityReportService {
   }
 
   private async loadDecisionEvidence(tripId: string): Promise<FeasibilityDecisionEvidenceInput[]> {
+    if (!this.isUuidTripId(tripId)) {
+      return [];
+    }
+
     const logs = await this.prisma.decisionLog.findMany({
       where: { tripId },
       orderBy: { timestamp: 'desc' },
@@ -827,6 +1133,11 @@ export class FeasibilityReportService {
       sampleSize: opts?.sampleSize,
       runPomdpBeliefUpdate: true,
     });
+  }
+
+  /** DecisionLog.trip_id is UUID; benchmark trips may use string ids like TRIP-ICELAND-MULTI-001. */
+  private isUuidTripId(tripId: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tripId);
   }
 }
 
@@ -980,40 +1291,84 @@ function buildTravelTimingRepairOptions(
     shouldOfferMinuteTimingRepairs({
       toItemId: itemId,
       shortfallMinutes: anchors.shortfallMinutes,
+      travelMinutes: anchors.travelMinutes,
       isStartTooEarly: anchors.isStartTooEarly,
       issueKind: issue.issueKind,
       priority: issue.priority,
     })
   ) {
-    const shiftOpt = buildShiftDepartureRepairOption({
+    const travelMinutes = anchors.travelMinutes;
+    const minuteBuffers = buildMinuteBufferRepairOptions({
       issueId: issue.id,
       toItemId: itemId,
+      fromItemId: issue.fromItemId ?? anchors.fromItemId,
       toLabel,
+      toDayNumber: anchors.toDayNumber,
       shortfallMinutes: anchors.shortfallMinutes,
-      bufferMinutes: anchors.bufferMinutes ?? 5,
-      suggestedTime,
       anchors,
     });
-    for (const opt of [
-      ...buildMinuteBufferRepairOptions({
+    const timingOpts: RepairOptionsResponse['options'] = minuteBuffers.map((opt) => ({
+      id: opt.id,
+      title: opt.label,
+      description: opt.description,
+      impact: 'high' as const,
+      timeEstimate: '1分钟',
+      actionType: opt.actionType ?? opt.id,
+      payload: opt.payload,
+      metadata: {
+        tripId,
+        issueKind: issue.issueKind,
+        deepLink: issue.uiHints?.deepLink,
+      },
+    }));
+
+    if (anchors.isStartTooEarly === true && issue.fromItemId) {
+      const earlier = buildShiftEarlierRepairOption({
         issueId: issue.id,
-        toItemId: itemId,
-        fromItemId: issue.fromItemId ?? anchors.fromItemId,
-        toLabel,
-        toDayNumber: anchors.toDayNumber,
+        fromItemId: issue.fromItemId,
+        fromLabel: anchors.fromPlaceLabel,
         shortfallMinutes: anchors.shortfallMinutes,
         anchors,
-      }),
-      shiftOpt,
-    ]) {
-      options.push({
-        id: opt.id,
-        title: opt.label,
-        description: opt.description,
+      });
+      if (earlier) {
+        timingOpts.push({
+          id: earlier.id,
+          title: earlier.label,
+          description: earlier.description,
+          impact: 'high',
+          timeEstimate: '1分钟',
+          actionType: earlier.actionType ?? earlier.id,
+          payload: earlier.payload,
+          metadata: {
+            tripId,
+            issueKind: issue.issueKind,
+            deepLink: issue.uiHints?.deepLink,
+          },
+        });
+      }
+    }
+
+    if (
+      (anchors.isStartTooEarly === true || (anchors.shortfallMinutes ?? 0) > 0) &&
+      isShiftDepartureRepairViable({ travelMinutes })
+    ) {
+      const shiftOpt = buildShiftDepartureRepairOption({
+        issueId: issue.id,
+        toItemId: itemId,
+        toLabel,
+        shortfallMinutes: anchors.shortfallMinutes,
+        bufferMinutes: anchors.bufferMinutes ?? 5,
+        suggestedTime,
+        anchors,
+      });
+      timingOpts.push({
+        id: shiftOpt.id,
+        title: shiftOpt.label,
+        description: shiftOpt.description,
         impact: 'high',
         timeEstimate: '1分钟',
-        actionType: opt.actionType ?? opt.id,
-        payload: opt.payload,
+        actionType: shiftOpt.actionType ?? shiftOpt.id,
+        payload: shiftOpt.payload,
         metadata: {
           tripId,
           issueKind: issue.issueKind,
@@ -1021,6 +1376,8 @@ function buildTravelTimingRepairOptions(
         },
       });
     }
+
+    options.push(...timingOpts);
   }
 
   options.push(

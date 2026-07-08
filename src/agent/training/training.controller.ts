@@ -31,6 +31,7 @@ import { TrainingBatchProcessorService } from './services/training-batch-process
 import { ModelCollapseMonitorService } from './services/model-collapse-monitor.service';
 import { TrainingQualityAnalyzerService } from './services/training-quality-analyzer.service';
 import { ConstraintsEngineService } from './services/constraints-engine.service';
+import { isConstraintAgentNarrateOnlyMode } from '../../decision-runtime/constraints/constraint-agent-narrate-only.util';
 import { RiskEventManagerService } from './services/risk-event-manager.service';
 import { ComplianceAuditService } from './services/compliance-audit.service';
 import { SecurityRedTeamService } from './services/security-red-team.service';
@@ -1728,7 +1729,15 @@ export class TrainingController {
 
       return {
         success: true,
-        data: result,
+        data: {
+          ...result,
+          ...(isConstraintAgentNarrateOnlyMode()
+            ? {
+                usage: 'narrate_only',
+                formal_authority: 'ConstraintEvaluationGateway',
+              }
+            : {}),
+        },
       };
     } catch (error: any) {
       this.logger.error(

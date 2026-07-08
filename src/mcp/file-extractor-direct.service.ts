@@ -37,7 +37,7 @@ export interface FileContent {
 @Injectable()
 export class FileExtractorDirectService implements OnModuleInit {
   private readonly logger = new Logger(FileExtractorDirectService.name);
-  private axiosInstance: AxiosInstance;
+  private axiosInstance!: AxiosInstance;
   private isAvailable: boolean = true;
 
   async onModuleInit() {
@@ -100,6 +100,92 @@ export class FileExtractorDirectService implements OnModuleInit {
       this.logger.error(`Failed to download file from ${url}:`, errorMessage);
       throw new Error(`Failed to download file from ${url}: ${errorMessage}`);
     }
+  }
+
+  /**
+   * 从上传 Buffer 提取文本（Guide-to-Plan 文件导入）
+   */
+  async extractFromBuffer(
+    filename: string,
+    buffer: Buffer,
+    options?: { limit?: number },
+  ): Promise<FileContent & { format: string; wordCount: number; pages?: number }> {
+    const ext = this.getExtensionFromFilename(filename);
+    const limit = options?.limit ?? 120_000;
+
+    switch (ext) {
+      case 'pdf': {
+        const result = await this.extractPdfContent(buffer, { limit });
+        const text = String(result.content ?? '');
+        return {
+          ...result,
+          format: 'PDF',
+          wordCount: this.countWords(text),
+        };
+      }
+      case 'docx': {
+        const result = await this.extractDocxContent(buffer, { limit });
+        const text = String(result.content ?? '');
+        return {
+          ...result,
+          format: 'DOCX',
+          wordCount: this.countWords(text),
+        };
+      }
+      case 'xlsx':
+      case 'xls': {
+        const result = await this.extractExcelContent(buffer);
+        const text = this.excelContentToText(result.content);
+        const clipped = text.length > limit ? text.slice(0, limit) + '...' : text;
+        return {
+          content: clipped,
+          sheet: result.sheet,
+          format: ext.toUpperCase(),
+          wordCount: this.countWords(clipped),
+        };
+      }
+      case 'csv': {
+        const result = await this.extractCsvContent(buffer);
+        const text = this.excelContentToText(result.content);
+        const clipped = text.length > limit ? text.slice(0, limit) + '...' : text;
+        return {
+          content: clipped,
+          format: 'CSV',
+          wordCount: this.countWords(clipped),
+        };
+      }
+      case 'txt':
+      case 'md': {
+        let text = buffer.toString('utf-8');
+        if (text.length > limit) text = text.slice(0, limit) + '...';
+        return {
+          content: text,
+          format: ext.toUpperCase(),
+          wordCount: this.countWords(text),
+        };
+      }
+      default:
+        throw new Error(
+          `Unsupported file format: .${ext}. Supported: pdf, docx, xlsx, xls, csv, txt, md`,
+        );
+    }
+  }
+
+  private getExtensionFromFilename(filename: string): string {
+    const parts = filename.split('.');
+    return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+  }
+
+  private countWords(text: string): number {
+    const cjk = (text.match(/[\u4e00-\u9fff]/g) ?? []).length;
+    const latin = (text.match(/[A-Za-z0-9]+/g) ?? []).length;
+    return cjk + latin;
+  }
+
+  private excelContentToText(content: unknown): string {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return JSON.stringify(content);
+    return content.map((row) => (Array.isArray(row) ? row.join('\t') : String(row))).join('\n');
   }
 
   /**

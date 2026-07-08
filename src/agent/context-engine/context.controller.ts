@@ -27,6 +27,7 @@ import {
   GetMetricsQueryDto,
   GetMetricsResponseDto,
 } from './dto/context.dto';
+import type { ContextPackageOptions } from './types/context-package.types';
 import {
   GetContextPackagesQueryDto,
   ContextPackageListResponseDto,
@@ -100,6 +101,10 @@ export class ContextController {
           excludeTopics: dto.excludeTopics,
           includeApiDocs: dto.includeApiDocs,
           apiDocCategories: dto.apiDocCategories,
+          contextId: dto.contextId,
+          revision: dto.revision,
+          task: dto.task,
+          includeDomains: dto.includeDomains as ContextPackageOptions['includeDomains'],
         },
         dto.useCache !== false, // 默认使用缓存
       );

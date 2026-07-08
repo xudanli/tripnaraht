@@ -74,12 +74,15 @@ export class PlanningConflictsController {
           trimmedTaskId,
           deferred,
         );
-        return successResponse(data);
+        return successResponse(
+          await this.planningConflicts.attachConstraintsVersionMeta(tripId, data, parsedVersion),
+        );
       }
 
       const loadOpts = {
         includeConstraintsSummary: includeSummary,
         skipConstraintsSummary: includeDeferred,
+        userId,
       };
 
       if (includeDeferred) {
@@ -92,7 +95,9 @@ export class PlanningConflictsController {
             activePending.entry.status,
             activePending.entry.error,
           );
-          return successResponse(data);
+          return successResponse(
+            await this.planningConflicts.attachConstraintsVersionMeta(tripId, data, parsedVersion),
+          );
         }
 
         const revisionKey = await this.planningConflicts.resolveRevisionKey(tripId);
@@ -113,13 +118,15 @@ export class PlanningConflictsController {
             taskId,
             'pending',
           );
-          return successResponse(data);
+          return successResponse(
+            await this.planningConflicts.attachConstraintsVersionMeta(tripId, data, parsedVersion),
+          );
         }
 
         const stale = this.planningConflicts.getStaleCachedArtifacts(tripId);
         const fastArtifacts =
           stale ??
-          (await this.planningConflicts.loadArtifactsFast(tripId));
+          (await this.planningConflicts.loadArtifactsFast(tripId, { userId }));
 
         const { taskId } = this.decisionChecker.startPlanningDeferredWithFullRefresh(
           tripId,
@@ -139,13 +146,17 @@ export class PlanningConflictsController {
           taskId,
           'pending',
         );
-        return successResponse(data);
+        return successResponse(
+          await this.planningConflicts.attachConstraintsVersionMeta(tripId, data, parsedVersion),
+        );
       }
 
       const artifacts = await this.planningConflicts.loadArtifacts(tripId, loadOpts);
       const data = artifacts.response;
 
-      return successResponse(data);
+      return successResponse(
+        await this.planningConflicts.attachConstraintsVersionMeta(tripId, data, parsedVersion),
+      );
     } catch (e) {
       return this.handleError(e);
     }

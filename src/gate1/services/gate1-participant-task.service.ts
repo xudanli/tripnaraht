@@ -130,7 +130,7 @@ export class Gate1ParticipantTaskService {
       data: {
         status: 'COMPLETED',
         completedAt: new Date(),
-        evidence: dto.evidence ? asInputJson(dto.evidence) : task.evidence,
+        evidence: dto.evidence ? asInputJson(dto.evidence) : (task.evidence === null ? undefined : task.evidence),
       },
     });
 

@@ -6,6 +6,11 @@ import type { PlanningConflictItem } from '../types/planning-conflicts.types';
 import { TRIP_CONSTRAINT_LEGACY_IDS as LEGACY_IDS } from '../types/trip-constraint.types';
 import { inferOfficialConstraintIdsFromConflict } from './country-official-constraints.util';
 import { inferOfficialPoiConstraintIdsFromConflict } from './iceland-poi-official-constraints.util';
+import {
+  constraintAppliesToConflict,
+  readScopeBindingFromValue,
+} from './constraint-scope-binding.util';
+import type { TripConstraint } from '../types/trip-constraint.types';
 
 /** 单条 conflict 关联的 constraintId（legacy + 国家官方 + POI 官方） */
 export function inferRelatedConstraintIdsFromConflict(
@@ -21,6 +26,9 @@ export function inferRelatedConstraintIdsFromConflict(
   }
   if (/每日驾驶|daily.?drive|max_daily_drive/.test(msg)) {
     ids.add(LEGACY_IDS.MAX_DAILY_DRIVE);
+  }
+  if (/不夜驾|夜驾|no.?night|night.?drive|日落后.*驾驶|sunset.*driv/i.test(msg)) {
+    ids.add(LEGACY_IDS.NO_NIGHT_DRIVE);
   }
   if (/步行|walk|疲劳|fatigue/.test(msg)) {
     ids.add(LEGACY_IDS.DAILY_WALK_LIMIT);
@@ -48,6 +56,28 @@ export function inferConflictConstraintIds(
   for (const c of conflicts) {
     for (const id of inferRelatedConstraintIdsFromConflict(c)) {
       ids.add(id);
+    }
+  }
+  return ids;
+}
+
+/** 按 value.scopeBinding 过滤 — 冲突仅关联范围内约束 */
+export function inferScopedConflictConstraintIds(
+  constraints: TripConstraint[],
+  conflicts: PlanningConflictItem[],
+): Set<string> {
+  const byId = new Map(constraints.map((c) => [c.id, c]));
+  const ids = new Set<string>();
+  for (const conflict of conflicts) {
+    const related =
+      conflict.relatedConstraintIds ?? inferRelatedConstraintIdsFromConflict(conflict);
+    for (const id of related) {
+      const constraint = byId.get(id);
+      if (!constraint || !readScopeBindingFromValue(constraint.value)) {
+        ids.add(id);
+        continue;
+      }
+      if (constraintAppliesToConflict(constraint, conflict)) ids.add(id);
     }
   }
   return ids;

@@ -67,7 +67,7 @@ export function buildReadinessPackSkillEvolverContextBlock(
     countryCode,
     body,
     'readiness_pack',
-    ext.syncedAt ?? 'db',
+    ext?.syncedAt ?? 'db',
   );
 }
 

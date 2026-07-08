@@ -184,7 +184,8 @@ export class EpisodicMemoryService {
     // 过滤
     let filtered = userMemories;
     if (request.minActivationScore !== undefined) {
-      filtered = filtered.filter(m => m.activationScore >= request.minActivationScore);
+      const minScore = request.minActivationScore;
+      filtered = filtered.filter(m => m.activationScore >= minScore);
     }
     if (request.season) {
       filtered = filtered.filter(

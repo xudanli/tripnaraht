@@ -27,6 +27,8 @@ import type {
   TripFeasibilityReportDto,
 } from '../types/trip-constraint-solver.types';
 import { normalizeIssueId, revisionToString, type TripRevisionInfo } from './trip-revision.util';
+import { enrichFeasibilityIssuesWithResolution } from './feasibility-resolution-mode.util';
+import { resolveAutomationPolicyFromTripMetadata } from './travel-decision-contract-runtime.util';
 import {
   buildDailyDriveFeasibilityRepairOptions,
 } from './daily-drive-repair.util';
@@ -47,12 +49,24 @@ import {
   isBufferInsufficientConflict,
 } from './buffer-insufficient-repair.util';
 import {
+  isDailyDriveConflict,
+  isNoNightDriveConflict,
+  isScheduleDomainConflict,
+  isTravelTimingConflict,
+} from './schedule-domain.util';
+import { filterAssemblerLegacyIssuesWhenProjected } from './assembler-legacy-domain-filter.util';
+import type { AssemblerGatewayDomainCoverage } from './assembler-gateway-coverage.util';
+import {
   buildMinuteBufferRepairOptions,
   buildShiftDepartureRepairOption,
+  buildShiftEarlierRepairOption,
   shouldOfferMinuteTimingRepairs,
+  isShiftDepartureRepairViable,
 } from './travel-timing-repair.util';
 import { computeGateExecute } from '../../../poi-access-capacity/utils/gate-execute.util';
 import type { GateExecuteStatusDto } from '../types/trip-constraint-solver.types';
+import { refreshRoadClassTransportMessage } from './segment-distance-threshold.util';
+import { enrichTravelScopeBffFields } from './travel-scope-bff.util';
 
 const DIMENSION_LABELS: Record<FeasibilityDimensionKey, string> = {
   schedule: '日程可行性',
@@ -130,6 +144,9 @@ function conflictPriority(c: ConflictDto): FeasibilityIssuePriority {
   if (c.issueKind === 'daily_drive' || c.type === ConflictType.MAX_DAILY_DRIVE_EXCEEDED) {
     return 'must_handle';
   }
+  if (c.issueKind === 'no_night_drive' || c.type === ConflictType.NO_NIGHT_DRIVE_VIOLATION) {
+    return 'must_handle';
+  }
   if (c.severity === ConflictSeverity.HIGH) return 'must_handle';
   if (c.type === ConflictType.CLOSURE_RISK || c.type === ConflictType.TRANSPORT_INSUFFICIENT) {
     return 'must_handle';
@@ -151,6 +168,15 @@ function parseAffectedDayNumbers(values: string[] | undefined): number[] {
 function findingToIssue(f: ReadinessScoreFinding, evidenceContext?: EvidenceContext): FeasibilityIssueDto {
   const category = mapFindingCategory(f.category);
   const proofs: FeasibilityProofDto[] = buildProofsForFinding(f, category, evidenceContext);
+  let message = f.message;
+  if (f.issueKind === 'road_class' && evidenceContext?.coverage?.segmentDistanceThresholds) {
+    const distanceKm = (f.anchors as { distanceKm?: number } | undefined)?.distanceKm;
+    message = refreshRoadClassTransportMessage(
+      f.message,
+      distanceKm,
+      evidenceContext.coverage.segmentDistanceThresholds,
+    );
+  }
   if (!proofs.length && f.id.startsWith('coverage-gap:')) {
     proofs.push({
       entity: f.tripScope?.fromPoi?.name ?? '行程项',
@@ -166,8 +192,8 @@ function findingToIssue(f: ReadinessScoreFinding, evidenceContext?: EvidenceCont
     id: normalizeIssueId(f.id),
     priority: findingPriority(f),
     category,
-    title: f.message.split('：')[0]?.slice(0, 80) || f.message.slice(0, 80),
-    message: f.message,
+    title: message.split('：')[0]?.slice(0, 80) || message.slice(0, 80),
+    message,
     affectedDays: f.affectedDays ?? [],
     severity: f.severity,
     issueKind: f.issueKind,
@@ -520,17 +546,18 @@ function dedupeProofs(proofs: FeasibilityProofDto[]): FeasibilityProofDto[] {
   return out;
 }
 
-function isTravelTimingConflict(c: ConflictDto): boolean {
-  return (
-    c.issueKind === 'same_day_travel' ||
-    c.issueKind === 'inter_day_travel' ||
-    c.id.startsWith('same-day-travel-') ||
-    c.id.startsWith('inter-day-travel-')
-  );
-}
-
-function isDailyDriveConflict(c: ConflictDto): boolean {
-  return c.issueKind === 'daily_drive' || c.type === ConflictType.MAX_DAILY_DRIVE_EXCEEDED;
+function buildNoNightDriveProofs(c: ConflictDto): FeasibilityProofDto[] {
+  return [
+    {
+      entity: '日照计算',
+      constraint: 'no_night_drive',
+      currentFact: c.description,
+      evidenceSource: 'trip.conflicts',
+      evidenceType: 'solar_physics',
+      conclusion: '违反不夜驾硬约束',
+      confidence: 0.92,
+    },
+  ];
 }
 
 function buildDailyDriveProofs(c: ConflictDto): FeasibilityProofDto[] {
@@ -629,6 +656,7 @@ function buildTravelTimingProofs(c: ConflictDto, issueId: string): FeasibilityPr
 }
 
 function buildTravelTimingRepairOptions(issueId: string, c: ConflictDto) {
+  const fromItemId = c.fromItemId ?? c.affectedItemIds?.[0];
   const toItemId = c.toItemId ?? c.affectedItemIds?.[1];
   const suggestedTime = c.suggestedTime;
   const toLabel = c.toPlaceLabel ?? '下一站';
@@ -660,41 +688,66 @@ function buildTravelTimingRepairOptions(issueId: string, c: ConflictDto) {
     shouldOfferMinuteTimingRepairs({
       toItemId,
       shortfallMinutes: c.shortfallMinutes,
+      travelMinutes: c.travelMinutes ?? c.travelTimeMinutes,
       isStartTooEarly: c.isStartTooEarly,
       issueKind: c.issueKind,
       priority: c.priority,
     })
   ) {
-    options.push(
-      ...buildMinuteBufferRepairOptions({
+    const travelMinutes = c.travelMinutes ?? c.travelTimeMinutes;
+    const minuteBuffers = buildMinuteBufferRepairOptions({
+      issueId,
+      toItemId: toItemId!,
+      fromItemId: c.fromItemId ?? c.affectedItemIds?.[0],
+      toLabel,
+      toDayNumber: c.toDayNumber,
+      shortfallMinutes: c.shortfallMinutes,
+      anchors: {
+        fromItemId: c.fromItemId,
+        toItemId,
+        shortfallMinutes: c.shortfallMinutes,
+        travelMinutes,
+      },
+    });
+    if (minuteBuffers.length) {
+      options.push(...minuteBuffers);
+    }
+    if (c.isStartTooEarly === true && fromItemId) {
+      const earlier = buildShiftEarlierRepairOption({
         issueId,
-        toItemId: toItemId!,
-        fromItemId: c.fromItemId ?? c.affectedItemIds?.[0],
-        toLabel,
-        toDayNumber: c.toDayNumber,
+        fromItemId,
+        fromLabel: c.fromPlaceLabel,
         shortfallMinutes: c.shortfallMinutes,
         anchors: {
-          fromItemId: c.fromItemId,
+          fromItemId,
           toItemId,
           shortfallMinutes: c.shortfallMinutes,
-          travelMinutes: c.travelMinutes,
+          travelMinutes,
         },
-      }),
-      buildShiftDepartureRepairOption({
-        issueId,
-        toItemId: toItemId!,
-        toLabel,
-        shortfallMinutes: c.shortfallMinutes,
-        bufferMinutes: 5,
-        suggestedTime,
-        anchors: {
-          fromItemId: c.fromItemId,
-          toItemId,
+      });
+      if (earlier) options.push(earlier);
+    }
+    if (
+      (c.isStartTooEarly === true || (c.shortfallMinutes ?? 0) > 0) &&
+      isShiftDepartureRepairViable({ travelMinutes })
+    ) {
+      options.push(
+        buildShiftDepartureRepairOption({
+          issueId,
+          toItemId: toItemId!,
+          toLabel,
           shortfallMinutes: c.shortfallMinutes,
-          travelMinutes: c.travelMinutes,
-        },
-      }),
-    );
+          bufferMinutes: 5,
+          suggestedTime,
+          anchors: {
+            fromItemId: c.fromItemId,
+            toItemId,
+            shortfallMinutes: c.shortfallMinutes,
+            travelMinutes,
+          },
+        }),
+      );
+    }
   }
 
   if (toItemId && suggestedTime) {
@@ -709,6 +762,7 @@ function buildTravelTimingRepairOptions(issueId: string, c: ConflictDto) {
         itemId: toItemId,
         field: 'startTime',
         suggestedValue: suggestedTime,
+        shortfallMinutes: c.shortfallMinutes,
         validateScope: { type: 'issue', issueId },
       },
     });
@@ -731,11 +785,15 @@ function buildTravelTimingRepairOptions(issueId: string, c: ConflictDto) {
   return options.length ? options : undefined;
 }
 
-function conflictToIssue(c: ConflictDto, context?: { tripId: string }): FeasibilityIssueDto {
+export function mapConflictToFeasibilityIssue(
+  c: ConflictDto,
+  context?: { tripId: string },
+): FeasibilityIssueDto {
   const isBuffer = isBufferInsufficientConflict(c);
   const isTravelTiming = isTravelTimingConflict(c);
   const isDailyDrive = isDailyDriveConflict(c);
-  const category = isDailyDrive
+  const isNoNightDrive = isNoNightDriveConflict(c);
+  const category = isDailyDrive || isNoNightDrive
     ? 'transport'
     : isTravelTiming || isBuffer
       ? 'schedule'
@@ -751,6 +809,8 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
     travelMinutes != null ? travelMinutes + 5 : undefined;
   const proofs: FeasibilityProofDto[] = isDailyDrive
     ? buildDailyDriveProofs(c)
+    : isNoNightDrive
+      ? buildNoNightDriveProofs(c)
     : isTravelTiming
     ? buildTravelTimingProofs(c, issueId)
     : isBuffer
@@ -766,7 +826,7 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
           confidence: c.severity === ConflictSeverity.HIGH ? 0.95 : 0.75,
         },
       ];
-  return {
+  return enrichTravelScopeBffFields({
     id: issueId,
     priority: conflictPriority(c),
     category,
@@ -774,16 +834,39 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
     message: c.description,
     affectedDays,
     severity: c.severity === ConflictSeverity.HIGH ? 'high' : c.severity === ConflictSeverity.MEDIUM ? 'medium' : 'low',
-    issueKind: isDailyDrive ? 'daily_drive' : isBuffer ? 'buffer_insufficient' : isTravelTiming ? c.issueKind : c.issueKind,
-    fromItemId: isTravelTiming || isBuffer ? fromItemId : c.fromItemId,
-    toItemId: isTravelTiming || isBuffer ? toItemId : c.toItemId,
+    issueKind: isDailyDrive
+      ? 'daily_drive'
+      : isNoNightDrive
+        ? 'no_night_drive'
+        : isBuffer
+          ? 'buffer_insufficient'
+          : isTravelTiming
+            ? c.issueKind
+            : c.issueKind,
+    fromItemId: isTravelTiming || isBuffer || isNoNightDrive ? fromItemId : c.fromItemId,
+    toItemId: isTravelTiming || isBuffer || isNoNightDrive ? toItemId : c.toItemId,
     anchors: isDailyDrive
       ? {
           fromDayNumber: c.fromDayNumber ?? affectedDays[0],
           toDayNumber: c.toDayNumber ?? affectedDays[0],
           travelMinutes,
           shortfallMinutes: c.shortfallMinutes,
+          removableItemId: c.affectedItemIds?.[c.affectedItemIds.length - 1],
+          removableItemLabel: c.toPlaceLabel,
         }
+      : isNoNightDrive
+        ? {
+            fromItemId,
+            toItemId,
+            fromDayNumber: c.fromDayNumber ?? affectedDays[0],
+            toDayNumber: c.toDayNumber ?? affectedDays[0],
+            fromPlaceLabel: c.fromPlaceLabel,
+            toPlaceLabel: c.toPlaceLabel,
+            travelMode: c.travelMode,
+            travelMinutes,
+            departAt: c.departAt ?? c.fromTime,
+            arriveAt: c.arriveAt,
+          }
       : isTravelTiming
       ? {
           fromItemId,
@@ -822,6 +905,16 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
           },
           tripPath: `/trips/${context?.tripId ?? ''}?tab=schedule&day=${c.fromDayNumber ?? affectedDays[0] ?? 1}`,
         }
+      : isNoNightDrive
+        ? {
+            primaryAction: 'adjust_schedule',
+            deepLink: {
+              tab: 'schedule',
+              dayIndex: Math.max(0, (c.fromDayNumber ?? affectedDays[0] ?? 1) - 1),
+              highlightItemIds: c.affectedItemIds,
+            },
+            tripPath: `/trips/${context?.tripId ?? ''}?tab=schedule&day=${c.fromDayNumber ?? affectedDays[0] ?? 1}`,
+          }
       : isTravelTiming
       ? {
           primaryAction:
@@ -868,7 +961,7 @@ function conflictToIssue(c: ConflictDto, context?: { tripId: string }): Feasibil
           })
         : undefined,
     proofs,
-  };
+  });
 }
 
 function buildDimensions(
@@ -928,7 +1021,7 @@ function buildDayTimeline(
   issues: FeasibilityIssueDto[],
 ): FeasibilityDayTimelineDto[] {
   return tripDays.map((day) => {
-    const dayIssues = issues.filter((i) => i.affectedDays.includes(day.dayNumber));
+    const dayIssues = issues.filter((i) => (i.affectedDays ?? []).includes(day.dayNumber));
     const issueIds = dayIssues.map((i) => i.id);
     let status: FeasibilityDayStatus = 'ok';
     if (dayIssues.some((i) => i.priority === 'must_handle')) status = 'blocked';
@@ -1033,9 +1126,9 @@ function buildMonteCarloSubheadline(
   return `蒙特卡洛可执行概率 ${pct}%${eu}`;
 }
 
-function appendSubheadline(base: string, extra?: string): string {
-  if (!extra) return base;
-  return `${base} · ${extra}`;
+function appendSubheadline(base: string | undefined, extra?: string): string {
+  if (!extra) return base ?? '';
+  return base ? `${base} · ${extra}` : extra;
 }
 
 export function buildAlternatives(
@@ -1093,25 +1186,60 @@ export function assembleFeasibilityReport(input: {
   itineraryCompletenessSummary?: ItineraryCompletenessSummaryDto;
   /** Readiness P0 — POI Access + Experience Regret issues */
   p0Issues?: FeasibilityIssueDto[];
+  /** Phase 2b — schedule domain issues from Gateway PLAN_VERIFY projection */
+  projectedScheduleIssues?: FeasibilityIssueDto[];
+  /** Phase 2c — supplemental Guardian workspace assertions */
+  projectedGuardianIssues?: FeasibilityIssueDto[];
+  /** Phase 6 slice-7 — Gateway PLAN_VERIFY domain coverage (strip legacy duplicate rules) */
+  gatewayDomainCoverage?: AssemblerGatewayDomainCoverage;
 }): TripFeasibilityReportDto {
   const evidenceContext = {
     coverage: input.coverage,
     decisionEvidence: input.decisionEvidence,
   };
   const findingIssues = input.readiness.findings.map((finding) => findingToIssue(finding, evidenceContext));
-  const conflictIssues = input.conflicts.map((conflict) => conflictToIssue(conflict, { tripId: input.trip.id }));
+  const nonScheduleConflicts = input.projectedScheduleIssues
+    ? input.conflicts.filter((c) => !isScheduleDomainConflict(c))
+    : input.conflicts;
+  const conflictIssues = nonScheduleConflicts.map((conflict) =>
+    mapConflictToFeasibilityIssue(conflict, { tripId: input.trip.id }),
+  );
+  const scheduleIssues =
+    input.projectedScheduleIssues ??
+    input.conflicts
+      .filter((c) => isScheduleDomainConflict(c))
+      .map((c) => mapConflictToFeasibilityIssue(c, { tripId: input.trip.id }));
+  const projectedBundle = [
+    ...(input.p0Issues ?? []),
+    ...(input.projectedScheduleIssues ?? []),
+    ...(input.projectedGuardianIssues ?? []),
+  ];
+  const filteredFindingIssues = filterAssemblerLegacyIssuesWhenProjected(
+    findingIssues,
+    projectedBundle,
+    input.gatewayDomainCoverage,
+  );
+  const filteredConflictIssues = filterAssemblerLegacyIssuesWhenProjected(
+    conflictIssues,
+    projectedBundle,
+    input.gatewayDomainCoverage,
+  );
   const teamFitIssues = input.teamFitIssues ?? [];
   const itineraryIssues = input.itineraryCompletenessIssues ?? [];
   const issues = dedupeFeasibilityIssues([
-    ...findingIssues,
-    ...conflictIssues,
+    ...filteredFindingIssues,
+    ...filteredConflictIssues,
+    ...scheduleIssues,
     ...teamFitIssues,
     ...itineraryIssues,
     ...(input.p0Issues ?? []),
-  ]).map((issue) => ({
-    ...issue,
-    semanticKey: buildFeasibilityIssueDedupeKey(issue),
-  }));
+    ...(input.projectedGuardianIssues ?? []),
+  ]).map((issue) =>
+    enrichTravelScopeBffFields({
+      ...issue,
+      semanticKey: buildFeasibilityIssueDedupeKey(issue),
+    }),
+  );
   const summary = buildSummary(issues);
   const gateExecute: GateExecuteStatusDto = computeGateExecute(issues);
   const verifiedFor = input.snapshot?.verifiedForTripVersion;
@@ -1133,6 +1261,11 @@ export function assembleFeasibilityReport(input: {
     input.locale === 'en'
       ? `${start.toFormat('MMM d')} – ${end.toFormat('MMM d')}`
       : `${start.toFormat('M月d日')}—${end.toFormat('M月d日')}`;
+
+  const automation = resolveAutomationPolicyFromTripMetadata(
+    (input.trip.metadata as Record<string, unknown>) ?? {},
+  );
+  const resolvedIssues = enrichFeasibilityIssuesWithResolution(issues, { automation });
 
   return {
     tripId: input.trip.id,
@@ -1160,7 +1293,7 @@ export function assembleFeasibilityReport(input: {
       input.itineraryCompletenessScore,
     ),
     dayTimeline: buildDayTimeline(input.tripDays, issues),
-    issues,
+    issues: resolvedIssues,
     alternatives: buildAlternatives(overallScore, input.trip.metadata),
     summary,
     probabilisticAssessment: input.probabilisticAssessment,

@@ -1,5 +1,5 @@
 // src/trips/services/trip-conflicts.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
@@ -33,6 +33,10 @@ import {
   resolveLunchStrategyFromTrip,
   type LunchStrategy,
 } from '../../planning-policy/utils/lunch-strategy.util';
+import { isPlanObjectGatewayEvaluationEnabled } from '../../decision-runtime/plan-objects/plan-object.config';
+import { isEffectivePlanWriteChainEnabled } from '../../decision-runtime/execution/effective-plan-write-chain.config';
+import { assertPlanMutationAllowedOrThrow } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
+import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution/effective-plan-write-guard.service';
 import {
   accumulateDailyDrivingMinutes,
   buildDailyDriveExceededConflicts,
@@ -40,7 +44,16 @@ import {
 import {
   isSelfDriveTrip,
   resolveMaxDailyDrivingHours,
+  resolveNoNightDrivePolicy,
+  type NoNightDrivePolicy,
 } from '../trip-constraint-solver/utils/daily-drive-threshold.util';
+import { maybeBuildNoNightDriveConflict } from '../trip-constraint-solver/utils/no-night-drive-conflicts.util';
+import {
+  constraintAppliesInContext,
+  evaluationContextFromConflictDay,
+  readMaxDailyDriveScopeBinding,
+  readNoNightDriveScopeBinding,
+} from '../trip-constraint-solver/utils/constraint-scope-binding.util';
 
 const DEFAULT_BUFFER_MINUTES = Number(process.env.TRIP_CONFLICT_BUFFER_MINUTES) || 15;
 const START_TOO_EARLY_THRESHOLD_MINUTES =
@@ -67,6 +80,7 @@ export class TripConflictsService {
     private smartRoutesService: SmartRoutesService,
     private travelTimeEstimator: TravelTimeEstimatorService,
     private poiHopTravelSegment: PoiHopTravelSegmentService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {}
 
   /**
@@ -124,6 +138,14 @@ export class TripConflictsService {
     });
     const trackDailyDrive =
       maxDailyDrive != null && isSelfDriveTrip(trip.pacingConfig);
+    const noNightPolicy = resolveNoNightDrivePolicy(trip.metadata, trip.pacingConfig);
+    const maxDailyScopeBinding = readMaxDailyDriveScopeBinding(trip.metadata);
+    const noNightScopeBinding = readNoNightDriveScopeBinding(trip.metadata);
+    const shouldApplyDailyDriveDay = (dayNumber: number) =>
+      constraintAppliesInContext(
+        maxDailyScopeBinding,
+        evaluationContextFromConflictDay({ dayNumber, phase: 'planning' }),
+      );
 
     // 检测所有日期的冲突
     for (let i = 0; i < trip.TripDay.length; i++) {
@@ -135,6 +157,8 @@ export class TripConflictsService {
         defaultTravelMode,
         useRouteApi,
         trackDailyDrive ? dailyDriveMinutes : undefined,
+        noNightPolicy,
+        noNightScopeBinding,
       );
       conflicts.push(...dayConflicts);
       if (trackDailyDrive) {
@@ -152,6 +176,8 @@ export class TripConflictsService {
           defaultTravelMode,
           useRouteApi,
           trackDailyDrive ? dailyDriveMinutes : undefined,
+          noNightPolicy,
+          noNightScopeBinding,
         )),
       );
     }
@@ -162,6 +188,7 @@ export class TripConflictsService {
           dailyDriveMinutes,
           maxDailyDrivingHours: maxDailyDrive.maxDailyDrivingHours,
           dayItemIds: dailyDriveItemIds,
+          shouldApplyToDay: maxDailyScopeBinding ? shouldApplyDailyDriveDay : undefined,
         }),
       );
     }
@@ -301,6 +328,8 @@ export class TripConflictsService {
     defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
     useRouteApi = true,
     dailyDriveAccumulator?: Map<number, number>,
+    noNightPolicy?: NoNightDrivePolicy,
+    noNightScopeBinding?: import('../trip-constraint-solver/types/trip-constraint.types').ConstraintScopeBinding,
   ): Promise<ConflictDto[]> {
     const conflicts: ConflictDto[] = [];
     const items = day.ItineraryItem || [];
@@ -482,6 +511,27 @@ export class TripConflictsService {
       const isStartTooEarly = gapMinutes < -START_TOO_EARLY_THRESHOLD_MINUTES;
       const shortfallMinutes = Math.max(0, Math.ceil(-gapMinutes));
 
+      if (noNightPolicy) {
+        const nightConflict = maybeBuildNoNightDriveConflict({
+          policy: noNightPolicy,
+          idPrefix: 'no-night-drive',
+          dayNumber: _dayIndex,
+          dateIso: date,
+          fromItemId: current.id,
+          toItemId: next.id,
+          fromName,
+          toName,
+          departAt: currentEnd,
+          arriveAt,
+          travelMinutes: estimate.travelMinutes,
+          travelMode: estimate.travelMode,
+          lat: (fromCoords.lat + toCoords.lat) / 2,
+          lng: (fromCoords.lng + toCoords.lng) / 2,
+          scopeBinding: noNightScopeBinding,
+        });
+        if (nightConflict) conflicts.push(nightConflict);
+      }
+
       if (!isStartTooEarly && gapMinutes > TIGHT_TRAVEL_GAP_MINUTES) continue;
 
       const priority = isStartTooEarly ? 'must_handle' : 'suggest_adjust';
@@ -516,61 +566,66 @@ export class TripConflictsService {
       }));
     }
 
-    // 2. 检测午餐时间窗（若当日已有足够午餐/用餐安排，则不报冲突）
-    const minLunchGap = getMinLunchGapMinutes(lunchStrategy);
-    const lunchWindow = this.detectLunchWindow(items);
-    if (
-      lunchWindow &&
-      lunchWindow.duration < minLunchGap &&
-      !this.hasAdequateLunchInWindow(items, day.date, minLunchGap)
-    ) {
-      const copy = buildLunchWindowConflictCopy({
-        strategy: lunchStrategy,
-        durationMinutes: lunchWindow.duration,
-        minRequired: minLunchGap,
-      });
-      conflicts.push({
-        id: `lunch-window-${date}`,
-        type: ConflictType.LUNCH_WINDOW,
-        severity: lunchStrategy === 'rigid' ? ConflictSeverity.HIGH : ConflictSeverity.MEDIUM,
-        title: copy.title,
-        description: copy.description,
-        affectedDays: [date],
-        affectedItemIds: lunchWindow.itemIds,
-        suggestions: copy.suggestions,
-        lunchStrategy,
-      });
-    }
-
-    // 3. 检测疲劳超标
-    let totalFatigue = 0;
-    for (const item of items) {
-      if (item.Place?.physicalMetadata) {
-        const physical = item.Place.physicalMetadata as any;
-        totalFatigue += physical.fatigueScore || 0;
+    // 2. 检测午餐时间窗（PlanObject Gateway 开启时由 plan-object-evaluator 承接）
+    if (!isPlanObjectGatewayEvaluationEnabled()) {
+      const minLunchGap = getMinLunchGapMinutes(lunchStrategy);
+      const lunchWindow = this.detectLunchWindow(items);
+      if (
+        lunchWindow &&
+        lunchWindow.duration < minLunchGap &&
+        !this.hasAdequateLunchInWindow(items, day.date, minLunchGap)
+      ) {
+        const copy = buildLunchWindowConflictCopy({
+          strategy: lunchStrategy,
+          durationMinutes: lunchWindow.duration,
+          minRequired: minLunchGap,
+        });
+        conflicts.push({
+          id: `lunch-window-${date}`,
+          type: ConflictType.LUNCH_WINDOW,
+          severity: lunchStrategy === 'rigid' ? ConflictSeverity.HIGH : ConflictSeverity.MEDIUM,
+          title: copy.title,
+          description: copy.description,
+          affectedDays: [date],
+          affectedItemIds: lunchWindow.itemIds,
+          suggestions: copy.suggestions,
+          lunchStrategy,
+        });
       }
     }
 
-    if (totalFatigue > 80) {
-      conflicts.push({
-        id: `fatigue-exceeded-${date}`,
-        type: ConflictType.FATIGUE_EXCEEDED,
-        severity: ConflictSeverity.HIGH,
-        title: '体力超标',
-        description: `当日疲劳指数 ${totalFatigue.toFixed(1)}，超过建议值 80`,
-        affectedDays: [date],
-        affectedItemIds: items.map((i: any) => i.id),
-        suggestions: [
-          {
-            action: '减少活动',
-            description: '移除部分高强度活动或增加休息时间',
-            impact: '降低疲劳指数，提高行程舒适度',
-          },
-        ],
-      });
+    // 3. 检测疲劳超标（PlanObject Gateway 开启时由 plan-object-evaluator 承接）
+    if (!isPlanObjectGatewayEvaluationEnabled()) {
+      let totalFatigue = 0;
+      for (const item of items) {
+        if (item.Place?.physicalMetadata) {
+          const physical = item.Place.physicalMetadata as any;
+          totalFatigue += physical.fatigueScore || 0;
+        }
+      }
+
+      if (totalFatigue > 80) {
+        conflicts.push({
+          id: `fatigue-exceeded-${date}`,
+          type: ConflictType.FATIGUE_EXCEEDED,
+          severity: ConflictSeverity.HIGH,
+          title: '体力超标',
+          description: `当日疲劳指数 ${totalFatigue.toFixed(1)}，超过建议值 80`,
+          affectedDays: [date],
+          affectedItemIds: items.map((i: any) => i.id),
+          suggestions: [
+            {
+              action: '减少活动',
+              description: '移除部分高强度活动或增加休息时间',
+              impact: '降低疲劳指数，提高行程舒适度',
+            },
+          ],
+        });
+      }
     }
 
-    // 4. 检测缓冲不足（若已报告 TRANSPORT_INSUFFICIENT 则跳过，避免重复）
+    // 4. 检测缓冲不足（PlanObject Gateway 开启时由 plan-object-evaluator 承接）
+    if (!isPlanObjectGatewayEvaluationEnabled()) {
     for (let i = 0; i < items.length - 1; i++) {
       const current = items[i];
       const next = items[i + 1];
@@ -622,6 +677,7 @@ export class TripConflictsService {
         });
       }
     }
+    }
 
     // 5. 检测闭园风险（支持 openingHours、opening_hours、visit_info.opening_hours）
     for (const item of items) {
@@ -666,6 +722,8 @@ export class TripConflictsService {
     defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
     useRouteApi = true,
     dailyDriveAccumulator?: Map<number, number>,
+    noNightPolicy?: NoNightDrivePolicy,
+    noNightScopeBinding?: import('../trip-constraint-solver/types/trip-constraint.types').ConstraintScopeBinding,
   ): Promise<ConflictDto[]> {
     const conflicts: ConflictDto[] = [];
     if (!days || days.length < 2) return conflicts;
@@ -736,6 +794,28 @@ export class TripConflictsService {
       const gapMinutes = toStart.diff(arriveAt, 'minutes').minutes;
       const isStartTooEarly = gapMinutes < -START_TOO_EARLY_THRESHOLD_MINUTES;
       const shortfallMinutes = Math.max(0, Math.ceil(-gapMinutes));
+
+      if (noNightPolicy) {
+        const fromDate = DateTime.fromJSDate(days[i].date).toISODate() || String(i + 1);
+        const nightConflict = maybeBuildNoNightDriveConflict({
+          policy: noNightPolicy,
+          idPrefix: 'no-night-drive-inter-day',
+          dayNumber: i + 1,
+          dateIso: fromDate,
+          fromItemId: fromItem.id,
+          toItemId: toItem.id,
+          fromName,
+          toName,
+          departAt: fromEnd,
+          arriveAt,
+          travelMinutes: estimate.travelMinutes,
+          travelMode: estimate.travelMode,
+          lat: (fromCoords.lat + toCoords.lat) / 2,
+          lng: (fromCoords.lng + toCoords.lng) / 2,
+          scopeBinding: noNightScopeBinding,
+        });
+        if (nightConflict) conflicts.push(nightConflict);
+      }
 
       if (!isStartTooEarly && gapMinutes > TIGHT_TRAVEL_GAP_MINUTES) continue;
 
@@ -1165,6 +1245,12 @@ export class TripConflictsService {
     dto: ResolveConflictsRequestDto
   ): Promise<ResolveConflictsResponseDto> {
     const dryRun = dto.dryRun ?? false;
+    if (!dryRun && isEffectivePlanWriteChainEnabled()) {
+      assertPlanMutationAllowedOrThrow(
+        this.effectivePlanWriteGuard,
+        'TripConflictsService.resolveConflicts',
+      );
+    }
     const strategy = dto.strategy ?? ConflictResolutionStrategy.AUTO;
 
     // 1. 获取当前冲突列表
@@ -1194,6 +1280,7 @@ export class TripConflictsService {
       [ConflictType.FATIGUE_EXCEEDED]: 9,
       [ConflictType.ACCESSIBILITY_MISMATCH]: 10,
       [ConflictType.TRANSPORT_TOO_LONG]: 11,
+      [ConflictType.NO_NIGHT_DRIVE_VIOLATION]: 12,
     };
     conflicts.sort((a, b) => {
       const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];

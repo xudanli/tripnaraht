@@ -91,6 +91,7 @@ export const TRIP_CONSTRAINT_LEGACY_IDS = {
   DAILY_WALK_LIMIT: 'c_daily_walk_limit',
   MAX_SEGMENT_DISTANCE: 'c_max_segment_distance',
   MAX_DAILY_DRIVE: 'c_max_daily_drive',
+  NO_NIGHT_DRIVE: 'c_no_night_drive',
   PLANNING_POLICY: 'c_planning_policy',
   LUNCH_STRATEGY: 'c_lunch_strategy',
   WORLD_FEASIBILITY: 'c_world_feasibility',
@@ -110,11 +111,111 @@ export type TripConstraintLegacyId =
 export interface TripConstraintScope {
   type: TripConstraintScopeType;
   ids?: string[];
+  /** 前端粗粒度 scope 别名 — 细粒度以 value.scopeBinding 为准 */
+  dayIndex?: number;
+}
+
+/** value.scopeBinding — 约束生效范围（PATCH 原样持久化，GET 完整回显） */
+export type ConstraintTemporalKind =
+  | 'trip'
+  | 'day'
+  | 'day_range'
+  | 'route_segment'
+  | 'destination';
+
+export interface ConstraintTemporalScopeBinding {
+  kind: ConstraintTemporalKind;
+  dayNumber?: number;
+  dayFrom?: number;
+  dayTo?: number;
+  segmentId?: string;
+  fromItemId?: string;
+  toItemId?: string;
+  destinationId?: string;
+  label?: string;
+}
+
+export type ConstraintMemberKind = 'all' | 'primary_driver' | 'members';
+
+export interface ConstraintMemberScopeBinding {
+  kind: ConstraintMemberKind;
+  memberIds?: string[];
+  labels?: string[];
+  /** PATCH 时服务端解析 primary_driver 后写入 */
+  resolvedMemberId?: string;
+}
+
+export interface ConstraintPhaseScopeBinding {
+  planning: boolean;
+  execution: boolean;
+}
+
+export interface ConstraintActivityScopeBinding {
+  kind: 'all' | 'specific' | string;
+  activityIds?: string[];
+  labels?: string[];
+}
+
+export interface ConstraintScopeBinding {
+  temporal: ConstraintTemporalScopeBinding;
+  member: ConstraintMemberScopeBinding;
+  phase: ConstraintPhaseScopeBinding;
+  activity: ConstraintActivityScopeBinding;
 }
 
 export interface TripConstraintSource {
   type: TripConstraintSourceType;
   sourceId?: string;
+  /** 约束模板 id — 前后端对齐判定规则 */
+  templateId?: string;
+}
+
+export type ViolationResultCode = 'BLOCK' | 'CONFIRM';
+
+export const DESTINATION_RULE_CATEGORIES = [
+  'TRAFFIC',
+  'NATURAL_RISK',
+  'VENUE_ACCESS',
+  'REGULATION',
+  'SERVICE_AVAILABILITY',
+] as const;
+export type DestinationRuleCategory = (typeof DESTINATION_RULE_CATEGORIES)[number];
+
+export const DESTINATION_RULE_TIERS = ['BLOCK', 'CONDITIONAL', 'ADVISORY'] as const;
+export type DestinationRuleTier = (typeof DESTINATION_RULE_TIERS)[number];
+
+export const DESTINATION_RULE_VERIFICATION_STATUSES = [
+  'CURRENT',
+  'OUTDATED',
+  'PENDING',
+] as const;
+export type DestinationRuleVerificationStatus =
+  (typeof DESTINATION_RULE_VERIFICATION_STATUSES)[number];
+
+export interface DestinationRuleValue {
+  destinationRuleCategory: DestinationRuleCategory;
+  destinationRuleTier: DestinationRuleTier;
+  sourceAgency?: string;
+  applicableScope?: string;
+  judgmentRule: string;
+  /** 人话：阻断路线 / 检查条件是否满足 / 影响风险评分 */
+  violationResult: string;
+  tripImpact?: string;
+  evidenceRef?: string;
+  evidenceVerifiedAt?: string;
+  ruleId?: string;
+  countryCode?: string;
+  severity?: string;
+  [key: string]: unknown;
+}
+
+export interface TripConstraintContractMeta {
+  enabledSummary: string;
+  scopeLabel: string;
+  judgmentRule: string;
+  violationResult: ViolationResultCode;
+  /** 人话：阻断执行 / 需确认后调整 */
+  violationResultLabel: string;
 }
 
 /** 用户自定义约束（metadata.unifiedConstraints） */
@@ -175,6 +276,20 @@ export interface TripConstraint {
   hasConflict?: boolean;
   /** 左侧约束卡片视觉强调（非 HARD=红框；仅冲突/待确认才 accent） */
   cardTone?: TripConstraintCardTone;
+  /** 是否启用（status=DISABLED 时为 false；BFF 投影后必有） */
+  enabled?: boolean;
+  /** 侧栏摘要（可选） */
+  displayValue?: string;
+  /** 四项元数据 SSOT — 优先于前端静态规则表 */
+  contractMeta?: TripConstraintContractMeta;
+  /** 分区 key — BFF 投影 */
+  sectionKey?:
+    | 'soft_prefer'
+    | 'hard_must_satisfy'
+    | 'readonly_official'
+    | 'readonly_world';
+  /** 目的地规则证据 freshness */
+  verificationStatus?: DestinationRuleVerificationStatus;
 }
 
 export interface TripConstraintsListSection {
@@ -182,6 +297,8 @@ export interface TripConstraintsListSection {
   label: string;
   /** 该分区下的 constraintId 顺序（前端直接按 id 渲染） */
   constraintIds: string[];
+  readonly?: boolean;
+  contractBlock?: 'objectives' | 'change_strategy' | 'automation' | 'team_governance' | 'conflicts';
 }
 
 export interface TripConstraintsListMeta {
@@ -201,6 +318,8 @@ export interface TripConstraintsListMeta {
 export interface TripConstraintsListResponse {
   meta: TripConstraintsListMeta;
   items: TripConstraint[];
+  /** 旅行决策合同读模型（目标、策略、自动化授权、冲突摘要） */
+  contract: import('./travel-decision-contract.types').TravelDecisionContract;
 }
 
 export type ConstraintRefreshType = 'quick' | 'deep';
@@ -257,6 +376,8 @@ export interface TripConstraintImpactPreviewResponse {
     mustHandleDelta?: number;
     suggestAdjustDelta?: number;
   };
+  /** 决策沙盘结构化影响（§9） */
+  structuredImpact?: import('../utils/constraint-impact-preview.util').ConstraintImpactStructuredPreview;
 }
 
 export interface TripConstraintAssessSummary {
@@ -303,6 +424,8 @@ export interface TripConstraintCheckResponse {
   conflicts: import('./planning-conflicts.types').PlanningConflictItem[];
   canStartExecute?: boolean;
   gateExecute?: import('./trip-constraint-solver.types').GateExecuteStatusDto;
+  /** 与 GET contract.conflicts 对齐的摘要（冲突沙盘） */
+  contractConflicts?: import('./travel-decision-contract.types').TravelDecisionContractConflictSummary;
 }
 
 export interface TripConstraintRepairResponse {
@@ -322,4 +445,5 @@ export interface TripConstraintMetadataExtension {
   unifiedConstraints?: StoredUnifiedConstraint[];
   disabledConstraintIds?: string[];
   legacyConstraintLocks?: Record<string, boolean>;
+  travelDecisionContract?: import('./travel-decision-contract.types').StoredTravelDecisionContract;
 }

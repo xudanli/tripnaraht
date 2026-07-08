@@ -19,6 +19,7 @@ import type {
   DecisionProblemType,
   DecisionRecord,
   TripMutation,
+  TradeoffDirection,
 } from '../../decision-semantics/types/decision-semantics.types';
 import type { TripMutationSet } from '../../decision-semantics/types/decision-semantics.types';
 import { resolveRfc001ProblemSemanticKey } from '../../../decision-capabilities/problem-semantic';
@@ -27,6 +28,7 @@ import { resolveRepairCandidateExecutionCapability } from './repair-execution-ca
 import { isEffectiveExecutable } from '../cutover/cutover-reconciliation.util';
 import type { TripDecisionRoutingView } from '../routing/decision-engine-routing.types';
 import type { ImpactScopeView } from '../../../decision-runtime/gateway/frontend/impact-scope-view.types';
+import { projectDecisionOptionsForSpaceView } from '../../decision-semantics/projections/decision-space-option-projection.util';
 
 export type Rfc001LeadingPersona = 'ABU' | 'DRDRE' | 'NEPTUNE' | 'DECISION_CORE';
 
@@ -243,9 +245,10 @@ export function bridgeCandidatesToOptions(
   candidates: Rfc001RepairCandidate[],
   workspace?: DecisionWorkspace,
   record?: Rfc001DecisionRecord,
+  ctx?: { problem?: Rfc001DecisionProblem },
 ): DecisionOption[] {
   const cutoverBlocked = record ? !isEffectiveExecutable(record) : false;
-  return candidates.map((c) => {
+  const options: DecisionOption[] = candidates.map((c) => {
     const blocked = cutoverBlocked
       ? true
       : workspace
@@ -256,34 +259,55 @@ export function bridgeCandidatesToOptions(
               !a.overridable,
           )
         : false;
+    const durationDirection: TradeoffDirection =
+      c.estimatedAddedDurationMinutes >= 0 ? 'WORSEN' : 'IMPROVE';
     return {
       id: c.candidateId,
       problemId,
-      type: 'REPAIR',
+      type: 'REPAIR' as const,
       title: `候选 ${c.candidateId}`,
       description: `${c.generationMethod} · 意图保留 ${Math.round(c.estimatedIntentPreservation * 100)}%`,
-      source: 'NEPTUNE',
+      source: 'ALTERNATIVE_GENERATOR' as const,
       resolves: c.replacesPlanItemIds,
       tradeoffs: [
         {
-          dimension: 'POI_COVERAGE',
-          direction: 'IMPROVE',
-          value: c.estimatedIntentPreservation,
+          dimension: 'POI_COVERAGE' as const,
+          direction: 'IMPROVE' as const,
+          value: Math.round(c.estimatedIntentPreservation * 100),
+          unit: 'PERCENT' as const,
           explanation: '体验意图保留',
         },
-        {
-          dimension: 'TIME',
-          direction: c.estimatedAddedDurationMinutes >= 0 ? 'WORSEN' : 'IMPROVE',
-          value: Math.abs(c.estimatedAddedDurationMinutes),
-          unit: 'MINUTE',
-          explanation: '行程时长变化',
-        },
+        ...(c.estimatedAddedDurationMinutes !== 0
+          ? [
+              {
+                dimension: 'TIME' as const,
+                direction: durationDirection,
+                value: Math.abs(c.estimatedAddedDurationMinutes),
+                unit: 'MINUTE' as const,
+                explanation: '行程时长变化',
+              },
+            ]
+          : []),
       ],
       executable: !blocked,
       requiresConfirmation: true,
       executionCapability: resolveRepairCandidateExecutionCapability(c),
       sourceRefId: c.candidateId,
     };
+  });
+
+  const candidatesById = new Map(candidates.map((c) => [c.candidateId, c] as const));
+  return projectDecisionOptionsForSpaceView(options, {
+    workspace,
+    problem: ctx?.problem,
+    candidatesById,
+    affectedScopeDisplay: ctx?.problem
+      ? bridgeRfc001ProblemToAffectedScope(ctx.problem).map((s) => ({
+          scopeType: s.scopeType,
+          scopeId: s.scopeId,
+          label: s.explanation ?? s.scopeId,
+        }))
+      : undefined,
   });
 }
 

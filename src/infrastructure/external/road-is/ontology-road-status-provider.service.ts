@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   inferRoadAccessFromSurfaceCondition,
@@ -8,6 +8,7 @@ import {
   type RoadSurfaceCondition,
   type SegmentLatestRoadStatusV1,
 } from '../../../domain/ontology/validator/road-status-contract.types';
+import { DestinationPackLoaderService } from '../../../decision-runtime/packs/loader/destination-pack-loader.service';
 import { RoadIsProviderService } from './road-is-provider.service';
 
 /** 单条路段查询结果（注入 Prompt 的一行事实） */
@@ -30,11 +31,8 @@ export interface OntologyRegionRoadStatusPayload {
   aggregateAccessState: RoadAccessState;
 }
 
-/**
- * ontology 节点 → Road.is 查询键（与 `SpatialDomainSegment.rules.road_is_road_code` 对齐时可命中缓存）。
- * 键为示意编号；以 road.is 与地图为准，后续可换为 DB 映射表。
- */
-const ONTOLOGY_NODE_TO_ROAD_IS_KEYS: Record<string, readonly string[]> = {
+/** Fallback when pack ontology is unavailable (tests / pre-init). */
+const ONTOLOGY_NODE_TO_ROAD_IS_KEYS_FALLBACK: Record<string, readonly string[]> = {
   'ontology:region:IS:SNAEFELLSNES': ['54', '56', '574'],
   'ontology:corridor:IS:SOUTH_COAST': ['1', '218', '249'],
 };
@@ -64,6 +62,7 @@ export class OntologyRoadStatusProviderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly roadIs: RoadIsProviderService,
+    @Optional() private readonly packLoader?: DestinationPackLoaderService,
   ) {}
 
   /**
@@ -75,8 +74,8 @@ export class OntologyRoadStatusProviderService {
     const out = new Map<string, OntologyRegionRoadStatusPayload>();
     const unique = [...new Set(ontologyNodeIds.filter(Boolean))];
     for (const nodeId of unique) {
-      const keys = ONTOLOGY_NODE_TO_ROAD_IS_KEYS[nodeId];
-      if (!keys?.length) continue;
+      const keys = this.resolveRoadIsKeys(nodeId);
+      if (!keys.length) continue;
       const segments: OntologyRoadStatusSegmentRow[] = [];
       let aggregate: RoadAccessState = 'OPEN';
       for (const roadQueryKey of keys) {
@@ -89,6 +88,12 @@ export class OntologyRoadStatusProviderService {
       }
     }
     return out;
+  }
+
+  private resolveRoadIsKeys(ontologyNodeId: string): readonly string[] {
+    const node = this.packLoader?.findOntologyNode(ontologyNodeId);
+    if (node?.roadIsKeys?.length) return node.roadIsKeys;
+    return ONTOLOGY_NODE_TO_ROAD_IS_KEYS_FALLBACK[ontologyNodeId] ?? [];
   }
 
   private async resolveOneRoadKey(roadQueryKey: string): Promise<OntologyRoadStatusSegmentRow> {

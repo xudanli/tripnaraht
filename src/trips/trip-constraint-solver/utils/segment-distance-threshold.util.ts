@@ -112,6 +112,52 @@ export function longDistanceWarnMessage(warnKm: number): string {
   return `长距离行驶(>${warnKm}km)，建议中途休息`;
 }
 
+const ROAD_CLASS_HAZARD_TAIL_RE =
+  /(超长距离行驶\(>\d+km\)，强烈建议分段或中途住宿|长距离行驶\(>\d+km\)，建议中途休息)/;
+
+/** 约束阈值变更后，按当前 max/warn 刷新 finding 文案中的 km 门槛（避免缓存仍显示旧 250km）。 */
+export function refreshRoadClassTransportMessage(
+  message: string,
+  distanceKm: number | undefined,
+  thresholds: SegmentDistanceThresholds,
+): string {
+  const hazardMsg =
+    typeof distanceKm === 'number' && Number.isFinite(distanceKm)
+      ? distanceKm > thresholds.maxSegmentDistanceKm
+        ? longDistanceHighMessage(thresholds.maxSegmentDistanceKm)
+        : distanceKm > thresholds.warnSegmentDistanceKm
+          ? longDistanceWarnMessage(thresholds.warnSegmentDistanceKm)
+          : undefined
+      : undefined;
+
+  if (hazardMsg) {
+    if (ROAD_CLASS_HAZARD_TAIL_RE.test(message)) {
+      return message.replace(ROAD_CLASS_HAZARD_TAIL_RE, hazardMsg);
+    }
+    const parts = message.split('·').map((s) => s.trim());
+    if (parts.length >= 2) {
+      return `${parts.slice(0, -1).join(' · ')} · ${hazardMsg}`;
+    }
+    return `${message} · ${hazardMsg}`;
+  }
+
+  if (ROAD_CLASS_HAZARD_TAIL_RE.test(message)) {
+    return message.replace(
+      />(\d+)km/g,
+      (match, km: string) => {
+        const n = Number(km);
+        if (!Number.isFinite(n)) return match;
+        if (n <= thresholds.warnSegmentDistanceKm) {
+          return `>${thresholds.warnSegmentDistanceKm}km`;
+        }
+        return `>${thresholds.maxSegmentDistanceKm}km`;
+      },
+    );
+  }
+
+  return message;
+}
+
 /** 按国家默认 max/warn 比例推导 warn（用户只改 max 时同步 warn） */
 export function deriveWarnSegmentDistanceKm(
   maxKm: number,
@@ -165,7 +211,7 @@ export function applyMaxSegmentDistanceConstraintPatch(
     constraints.warnSegmentDistanceKm =
       explicitWarn ?? deriveWarnSegmentDistanceKm(parsed.maxKm, input.destination);
   } else if (parsed?.warnKm != null || toleranceWarn != null) {
-    constraints.warnSegmentDistanceKm = parsed.warnKm ?? toleranceWarn!;
+    constraints.warnSegmentDistanceKm = parsed!.warnKm ?? toleranceWarn!;
   }
 
   return true;

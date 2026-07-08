@@ -205,7 +205,7 @@ export class McpCapabilityManagerService implements OnModuleInit {
           where: { serviceName },
         });
         if (capability) {
-          this.capabilityStatusCache.set(serviceName, capability.enabled);
+          this.capabilityStatusCache.set(serviceName, capability.enabled ?? false);
         }
       }
     } catch (error: any) {
@@ -250,10 +250,10 @@ export class McpCapabilityManagerService implements OnModuleInit {
         serviceName: cap.serviceName,
         displayName: cap.displayName,
         description: cap.description || '', // 确保 description 字段始终存在，即使数据库为空也返回空字符串
-        enabled: cap.enabled,
+        enabled: cap.enabled ?? false,
         tools: Array.isArray(cap.tools) ? cap.tools as string[] : [],
         category: cap.category || undefined,
-        authRequired: cap.authRequired,
+        authRequired: cap.authRequired ?? false,
       }));
     } catch (error: any) {
       this.logger.error(`Failed to get capabilities: ${error.message}`, error.stack);
@@ -297,7 +297,7 @@ export class McpCapabilityManagerService implements OnModuleInit {
         enabled,
         tools: def.tools,
         category: def.category,
-        authRequired: def.authRequired,
+        authRequired: def.authRequired ?? false,
       });
     });
 
@@ -327,7 +327,7 @@ export class McpCapabilityManagerService implements OnModuleInit {
         enabled: def.defaultEnabled ?? true,
         tools: def.tools,
         category: def.category,
-        authRequired: def.authRequired,
+        authRequired: def.authRequired ?? false,
       };
       }
 
@@ -335,10 +335,10 @@ export class McpCapabilityManagerService implements OnModuleInit {
         serviceName: capability.serviceName,
         displayName: capability.displayName,
         description: capability.description || '', // 确保 description 字段始终存在
-        enabled: capability.enabled,
+        enabled: capability.enabled ?? false,
         tools: Array.isArray(capability.tools) ? capability.tools as string[] : [],
         category: capability.category || undefined,
-        authRequired: capability.authRequired,
+        authRequired: capability.authRequired ?? false,
       };
     } catch (error: any) {
       this.logger.error(`Failed to get capability: ${error.message}`, error.stack);
@@ -355,7 +355,7 @@ export class McpCapabilityManagerService implements OnModuleInit {
         enabled,
         tools: def.tools,
         category: def.category,
-        authRequired: def.authRequired,
+        authRequired: def.authRequired ?? false,
       };
     }
   }
@@ -384,8 +384,8 @@ export class McpCapabilityManagerService implements OnModuleInit {
       
       if (capability) {
         // 更新缓存
-        this.capabilityStatusCache.set(serviceName, capability.enabled);
-        return capability.enabled;
+        this.capabilityStatusCache.set(serviceName, capability.enabled ?? false);
+        return capability.enabled ?? false;
       }
       
       // 如果数据库中没有，使用默认值

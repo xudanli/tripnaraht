@@ -19,10 +19,12 @@ import { TransportSearchSkill } from '../../../skills/transport/transport-search
 import { OpeningHoursGetSkill } from '../../../skills/places/opening-hours-get.skill';
 import { DemGetProfileSkill } from '../../../skills/dem/dem-get-profile.skill';
 import { GeoCheckHazardZonesSkill } from '../../../skills/geo/geo-check-hazard-zones.skill';
+import { EffectivePlanExecutionModule } from '../../../decision-runtime/execution/effective-plan-execution.module';
 
 @Module({
   imports: [
     PrismaModule,
+    EffectivePlanExecutionModule,
     LlmModule,
     DemModule, // 导入 DemModule 以使用 DEM 服务（DemGetProfileSkill 需要 DEMElevationService 和 DEMEffortMetadataService）
     forwardRef(() => RagModule), // 导入 RagModule 以使用 RAG 服务（LLM 失败时的降级策略），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule -> AssistantsModule -> TripPlannerModule）

@@ -1,0 +1,679 @@
+{
+  "$schema": "./constraint-template-registry.schema.json",
+  "schemaId": "tripnara.constraint_template_catalog@v1",
+  "version": 1,
+  "generatedFrom": "utils/constraint-template-registry.util.ts",
+  "templates": [
+    {
+      "templateId": "earliest_departure",
+      "constraintId": "c_tpl_earliest_departure",
+      "defaultName": "最早出发时间",
+      "category": "TIME",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "AFTER",
+      "defaultValue": {
+        "time": "08:00",
+        "templateId": "earliest_departure"
+      },
+      "allowRelaxation": false,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "每日出发不早于 08:00"
+    },
+    {
+      "templateId": "latest_end",
+      "constraintId": "c_tpl_latest_end",
+      "defaultName": "最晚结束时间",
+      "category": "TIME",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "BEFORE",
+      "defaultValue": {
+        "time": "22:00",
+        "templateId": "latest_end"
+      },
+      "allowRelaxation": false,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "每日活动结束不晚于 22:00"
+    },
+    {
+      "templateId": "max_daily_activity",
+      "constraintId": "c_tpl_max_daily_activity",
+      "defaultName": "每日活动上限",
+      "category": "TIME",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "LTE",
+      "defaultValue": {
+        "maxHours": 10,
+        "templateId": "max_daily_activity"
+      },
+      "allowRelaxation": true,
+      "unit": "hour",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "单日活动时长不超过 10 小时"
+    },
+    {
+      "templateId": "required_rest",
+      "constraintId": "c_tpl_required_rest",
+      "defaultName": "强制休息",
+      "category": "TIME",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "GTE",
+      "defaultValue": {
+        "minRestMinutes": 60,
+        "templateId": "required_rest"
+      },
+      "allowRelaxation": false,
+      "unit": "minute",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "每日至少安排 60 分钟休息"
+    },
+    {
+      "templateId": "fixed_appointments",
+      "constraintId": "c_tpl_fixed_appointments",
+      "defaultName": "固定预约",
+      "category": "TIME",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CONTAINS",
+      "defaultValue": {
+        "appointments": [],
+        "templateId": "fixed_appointments"
+      },
+      "allowRelaxation": false,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "固定预约时间不可变更"
+    },
+    {
+      "templateId": "activity_budget",
+      "constraintId": "c_tpl_activity_budget",
+      "defaultName": "活动预算",
+      "category": "BUDGET",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "LTE",
+      "defaultValue": {
+        "total": 5000,
+        "currency": "CNY",
+        "templateId": "activity_budget"
+      },
+      "allowRelaxation": true,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "活动支出不超过 5000 CNY"
+    },
+    {
+      "templateId": "allow_budget_overrun",
+      "constraintId": "c_tpl_allow_budget_overrun",
+      "defaultName": "允许预算超支",
+      "description": "允许临时超出总预算，以保留体验弹性",
+      "category": "BUDGET",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "EQ",
+      "defaultValue": {
+        "allowed": true,
+        "templateId": "allow_budget_overrun"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "budget",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "允许临时超支"
+    },
+    {
+      "templateId": "budget_overrun_tolerance",
+      "constraintId": "c_tpl_budget_overrun_tolerance",
+      "defaultName": "预算超支容忍度",
+      "category": "BUDGET",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "LTE",
+      "defaultValue": {
+        "overrunTolerancePct": 5,
+        "templateId": "budget_overrun_tolerance"
+      },
+      "allowRelaxation": true,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "总预算超支不超过 5%"
+    },
+    {
+      "templateId": "elderly_walk_limit",
+      "constraintId": "c_tpl_elderly_walk_limit",
+      "defaultName": "老人步行上限",
+      "category": "MEMBER",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "MEMBER_GROUP"
+      },
+      "operator": "LTE",
+      "defaultValue": {
+        "maxKm": 3,
+        "templateId": "elderly_walk_limit"
+      },
+      "allowRelaxation": true,
+      "unit": "km",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "老人每日步行不超过 3 km"
+    },
+    {
+      "templateId": "child_nap_time",
+      "constraintId": "c_tpl_child_nap_time",
+      "defaultName": "儿童午睡",
+      "category": "MEMBER",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "MEMBER_GROUP"
+      },
+      "operator": "CONTAINS",
+      "defaultValue": {
+        "startTime": "13:00",
+        "durationMinutes": 90,
+        "templateId": "child_nap_time"
+      },
+      "allowRelaxation": true,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "每日 13:00 起安排约 90 分钟午睡"
+    },
+    {
+      "templateId": "accessibility",
+      "constraintId": "c_tpl_accessibility",
+      "defaultName": "无障碍要求",
+      "category": "MEMBER",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "EQ",
+      "defaultValue": {
+        "wheelchairAccessible": true,
+        "noStairs": true,
+        "templateId": "accessibility"
+      },
+      "allowRelaxation": false,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "行程须满足轮椅可达、避免长时间楼梯"
+    },
+    {
+      "templateId": "motion_sickness",
+      "constraintId": "c_tpl_motion_sickness",
+      "defaultName": "晕车限制",
+      "category": "MEMBER",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "MEMBER_GROUP"
+      },
+      "operator": "LTE",
+      "defaultValue": {
+        "maxContinuousDriveMinutes": 120,
+        "templateId": "motion_sickness"
+      },
+      "allowRelaxation": true,
+      "unit": "minute",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "连续乘车不超过 120 分钟"
+    },
+    {
+      "templateId": "no_unpaved_road",
+      "constraintId": "c_tpl_no_unpaved_road",
+      "defaultName": "不走非铺装路",
+      "category": "SAFETY",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "ROUTE_SEGMENT"
+      },
+      "operator": "EQ",
+      "defaultValue": {
+        "unpavedAllowed": false,
+        "templateId": "no_unpaved_road"
+      },
+      "allowRelaxation": false,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "路线不得包含非铺装 / F 路路段"
+    },
+    {
+      "templateId": "no_bad_weather",
+      "constraintId": "c_tpl_no_bad_weather",
+      "defaultName": "恶劣天气不出行",
+      "category": "SAFETY",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "EQ",
+      "defaultValue": {
+        "minWeatherScore": 60,
+        "templateId": "no_bad_weather"
+      },
+      "allowRelaxation": true,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "恶劣天气评分低于 60 时不安排户外驾驶"
+    },
+    {
+      "templateId": "no_high_risk_activity",
+      "constraintId": "c_tpl_no_high_risk_activity",
+      "defaultName": "禁止高风险活动",
+      "category": "SAFETY",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "NOT_IN",
+      "defaultValue": {
+        "blockedTags": [
+          "high_risk",
+          "glacier_walk"
+        ],
+        "templateId": "no_high_risk_activity"
+      },
+      "allowRelaxation": false,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "不得安排冰川徒步等高风险活动"
+    },
+    {
+      "templateId": "no_unverified_route",
+      "constraintId": "c_tpl_no_unverified_route",
+      "defaultName": "禁止未验证路线",
+      "category": "SAFETY",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "ROUTE_SEGMENT"
+      },
+      "operator": "EQ",
+      "defaultValue": {
+        "requireVerifiedRoute": true,
+        "templateId": "no_unverified_route"
+      },
+      "allowRelaxation": false,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "仅使用已通过道路/证据验证的路线"
+    },
+    {
+      "templateId": "minimize_hotel_changes",
+      "constraintId": "c_tpl_minimize_hotel_changes",
+      "defaultName": "少换酒店",
+      "description": "尽量连续住同一家酒店，减少搬运行李与换宿摩擦",
+      "category": "ACCOMMODATION",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "minimize_hotel_changes"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 8,
+      "defaultIntensity": 85,
+      "solverRuleKind": "lodging_continuity",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量连续住同一家酒店"
+    },
+    {
+      "templateId": "budget_soft",
+      "constraintId": "c_tpl_budget_soft",
+      "defaultName": "控制预算",
+      "description": "在可接受范围内控制活动与交通支出",
+      "category": "BUDGET",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "budget_soft"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 8,
+      "defaultIntensity": 85,
+      "solverRuleKind": "budget",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量控制活动与交通支出"
+    },
+    {
+      "templateId": "elderly_rest",
+      "constraintId": "c_tpl_elderly_rest",
+      "defaultName": "老人下午休息",
+      "description": "为老人/长者安排下午休息时段",
+      "category": "MEMBER",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "startTime": "14:00",
+        "durationMinutes": 90,
+        "templateId": "elderly_rest"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 8,
+      "defaultIntensity": 85,
+      "solverRuleKind": "time_window",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "下午为老人安排休息"
+    },
+    {
+      "templateId": "lunch_time_window",
+      "constraintId": "c_tpl_lunch_time_window",
+      "defaultName": "午餐时间窗",
+      "description": "午餐尽量安排在 12:00–13:30",
+      "category": "TIME",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "startTime": "12:00",
+        "endTime": "13:30",
+        "templateId": "lunch_time_window"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "time_window",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "午餐尽量在 12:00–13:30"
+    },
+    {
+      "templateId": "max_major_pois_per_day",
+      "constraintId": "c_tpl_max_major_pois_per_day",
+      "defaultName": "每日主要景点上限",
+      "description": "单日主要景点不超过 3 个，避免行程过满",
+      "category": "ACTIVITY",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "LTE",
+      "defaultValue": {
+        "maxCount": 3,
+        "templateId": "max_major_pois_per_day"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "daily_count",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "每日主要景点不超过 3 个"
+    },
+    {
+      "templateId": "daily_free_time",
+      "constraintId": "c_tpl_daily_free_time",
+      "defaultName": "每日自由时间",
+      "description": "每天保留约 1 小时自由缓冲",
+      "category": "TIME",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "GTE",
+      "defaultValue": {
+        "minMinutes": 60,
+        "templateId": "daily_free_time"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "time_budget",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "每日保留至少 60 分钟自由时间"
+    },
+    {
+      "templateId": "avoid_early",
+      "constraintId": "c_tpl_avoid_early",
+      "defaultName": "尽量避免早起",
+      "description": "非必要不安排过早出发",
+      "category": "TIME",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "AFTER",
+      "defaultValue": {
+        "earliestTime": "08:30",
+        "templateId": "avoid_early"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "time_window",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量 08:30 后再出发"
+    },
+    {
+      "templateId": "avoid_backtracking",
+      "constraintId": "c_tpl_avoid_backtracking",
+      "defaultName": "不走回头路",
+      "description": "路线尽量单向推进，减少折返",
+      "category": "TRANSPORT",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "avoid_backtracking"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "route_shape",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "路线尽量不走回头路"
+    },
+    {
+      "templateId": "prefer_nature_scenery",
+      "constraintId": "c_tpl_prefer_nature_scenery",
+      "defaultName": "多自然景观",
+      "description": "优先安排自然景观类 POI",
+      "category": "ACTIVITY",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "prefer_nature_scenery"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "poi_preference",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量多安排自然景观"
+    },
+    {
+      "templateId": "less_shopping",
+      "constraintId": "c_tpl_less_shopping",
+      "defaultName": "少购物",
+      "description": "减少购物停留，把时间留给体验",
+      "category": "ACTIVITY",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "less_shopping"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 3,
+      "defaultIntensity": 25,
+      "solverRuleKind": "poi_preference",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量减少购物停留"
+    },
+    {
+      "templateId": "sunset_photography",
+      "constraintId": "c_tpl_sunset_photography",
+      "defaultName": "日落摄影",
+      "description": "为日落摄影保留傍晚时段与机位",
+      "category": "ACTIVITY",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "sunset_photography"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 3,
+      "defaultIntensity": 25,
+      "solverRuleKind": "time_window",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量保留日落摄影时段"
+    },
+    {
+      "templateId": "aurora_photo",
+      "constraintId": "c_tpl_aurora_photo",
+      "defaultName": "极光摄影",
+      "description": "为极光观测/拍摄保留夜间窗口",
+      "category": "ACTIVITY",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "aurora_photo"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 3,
+      "defaultIntensity": 25,
+      "solverRuleKind": "time_window",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量保留极光摄影窗口"
+    },
+    {
+      "templateId": "prefer_local_food",
+      "constraintId": "c_tpl_prefer_local_food",
+      "defaultName": "本地美食",
+      "description": "优先安排当地特色餐饮",
+      "category": "ACTIVITY",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "prefer_local_food"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "poi_preference",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量多安排本地美食"
+    },
+    {
+      "templateId": "avoid_crowds",
+      "constraintId": "c_tpl_avoid_crowds",
+      "defaultName": "避开车流/人流高峰",
+      "description": "尽量避开高峰时段与拥挤景点",
+      "category": "ACTIVITY",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "avoid_crowds"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "crowd_avoidance",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "尽量避开拥挤时段"
+    },
+    {
+      "templateId": "attractions_over_shopping",
+      "constraintId": "c_tpl_attractions_over_shopping",
+      "defaultName": "景点优先于购物",
+      "description": "时间冲突时优先景点体验而非购物",
+      "category": "ACTIVITY",
+      "type": "SOFT",
+      "sectionKey": "soft_prefer",
+      "scope": {
+        "type": "TRIP"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "templateId": "attractions_over_shopping"
+      },
+      "allowRelaxation": true,
+      "unit": "score",
+      "defaultPriority": 5,
+      "defaultIntensity": 50,
+      "solverRuleKind": "poi_preference",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "景点体验优先于购物"
+    }
+  ]
+}

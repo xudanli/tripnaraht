@@ -12,6 +12,7 @@
  */
 
 import { Injectable, Logger, Optional, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { OptionComparisonBffDto } from '../dto/option-comparison.dto';
 import { PlanState, PlanContext, PlanSkeletonSet, OptionComparison, PlanSkeleton } from '../../skills/plan/shared/plan-state.types';
 import { ContextBuildSkill } from '../../skills/context/context-build.skill';
@@ -61,6 +62,45 @@ import {
   resolveSkeletonOptionsFromExecuteRequest,
 } from '../dto/planning-workbench-execute.dto';
 import { enrichPlanningWorkbenchExecuteResponse } from '../utils/planning-workbench-execute-enrich.util';
+import type {
+  PlanGateConfirmedItemDto,
+  PlanGateDraftDiffDto,
+  PlanGateFeasibilitySnapshotDto,
+  PlanGatePreTripTasksSummaryDto,
+  PlanGateReadinessDto,
+  PlanGateUiDto,
+} from '../dto/plan-gate.dto';
+import {
+  projectPlanGateDraftDiff,
+  resolveBaselinePlanId,
+} from '../utils/plan-gate-diff.projection.util';
+import {
+  buildFeasibilityEndpointSnapshot,
+  resolvePlanGateEnrichmentContext,
+} from '../utils/plan-gate-enrichment.util';
+import {
+  buildPreTripTasksFromPlanState,
+  mergePreTripTasksSummary,
+  type PlanGatePreTripTasksSummary,
+} from '../utils/plan-gate-pretrip-tasks.util';
+import { FeasibilityReportService } from '../../trips/trip-constraint-solver/services/feasibility-report.service';
+import { SplitPlanService } from '../../trips/trip-constraint-solver/services/split-plan.service';
+import {
+  materializePlanStateToTimeline,
+  summarizeTimelineWrite,
+  type PlanGateTimelineWriteStats,
+} from '../utils/plan-gate-timeline-materializer.util';
+import {
+  buildAgentPlanDraftMutationSet,
+  summarizeAgentPlanDraft,
+} from '../utils/agent-plan-draft.util';
+import { isAgentPlanDraftOnlyEnabled } from '../../decision-runtime/execution/effective-plan-write-chain.config';
+import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution/effective-plan-write-guard.service';
+import type { TripMutationSet } from '../../trips/decision-semantics/types/decision-semantics.types';
+import { TravelCompilerService } from '../../travel-compiler/travel-compiler.service';
+import { TravelGraphStoreService } from '../../travel-compiler/services/travel-graph-store.service';
+import { runPlanningWorkbenchTravelCompile } from '../orchestration/travel-compile/planning-workbench-travel-compile.util';
+import { runPlanningWorkbenchVerifyRepairLoop } from '../orchestration/travel-compile/planning-workbench-verify-repair-loop.util';
 
 export interface PlanningWorkbenchRequest {
   /** 规划上下文 */
@@ -84,6 +124,12 @@ export interface PlanningWorkbenchRequest {
   /** 选定方案 ID（commit） */
   selectedOptionId?: string;
 
+  /** Plan Gate：用户逐项确认的取舍/风险签收（commit） */
+  confirmedItems?: PlanGateConfirmedItemDto[];
+
+  /** 启用 CTRE 旅行编译（默认关；可用 TRAVEL_COMPILER_ENABLED=true 全局开启） */
+  enableTravelCompiler?: boolean;
+
   /** 内部元数据：tripRunId、updateProgress、taskId 等 */
   metadata?: PlanningWorkbenchRequestMetadata;
 }
@@ -99,6 +145,8 @@ export interface PlanningWorkbenchRequestMetadata {
   scheduleRevision?: number;
   /** Plan Studio 约束快照 id */
   constraintSnapshotId?: string;
+  /** commit 时传入的已确认项（仅 enrich 投影用） */
+  confirmedItems?: import('../dto/plan-gate.dto').PlanGateConfirmedItemDto[];
 }
 
 export interface WorkbenchDecisionContext {
@@ -177,6 +225,88 @@ export interface PlanningWorkbenchResponse {
 
     /** 方案矩阵 BFF（含 options[].budget / scores.cost） */
     optionComparison?: OptionComparisonBffDto;
+
+    /** Plan Gate：多维验证 + 提交就绪（前端主读此块，personas 逐步废弃） */
+    planGate?: PlanGateUiDto;
+
+    /** CTRE 旅行编译进度（Planning Workbench 内嵌 compile；非 route_and_run SSE） */
+    ctre?: {
+      skipped?: boolean;
+      reason?: string;
+      progress?: import('../../travel-compiler/contracts/ctre-compile-progress.types').CtreCompileProgressView;
+      graphProjectedItemCount?: number;
+      segmentEnrichment?: {
+        segmentsUpdated: number;
+        poiTagsApplied: number;
+        routeTemplatesTagged: number;
+      };
+      verifySsotApplied?: boolean;
+      incrementalRepair?: {
+        affectedDayIndices: number[];
+        merged: boolean;
+      };
+      kernelVerify?: {
+        skipped?: boolean;
+        reason?: string;
+        applied?: boolean;
+        issueCount?: number;
+        fatalCount?: number;
+        conflictCount?: number;
+        advisoryCount?: number;
+      };
+      kernelRepair?: {
+        applied?: boolean;
+        skipped?: boolean;
+        reason?: string;
+        segmentsUpdated?: number;
+        itemsApplied?: number;
+        appliedAt?: string;
+      };
+      kernelReVerify?: {
+        skipped?: boolean;
+        reason?: string;
+        applied?: boolean;
+        issueCount?: number;
+        fatalCount?: number;
+        conflictCount?: number;
+        advisoryCount?: number;
+      };
+      kernelVerifyRepairLoop?: {
+        terminatedReason?: string;
+        repairCount?: number;
+        maxRepairs?: number;
+        rounds?: number;
+        finalVerify?: {
+          issueCount?: number;
+          fatalCount?: number;
+          conflictCount?: number;
+        };
+        roundDetails?: Array<{
+          round: number;
+          verify: {
+            issueCount: number;
+            fatalCount: number;
+            conflictCount: number;
+            advisoryCount: number;
+            issues?: Array<{ code: string; class: string; message: string }>;
+          };
+          repair?: {
+            applied?: boolean;
+            skipped?: boolean;
+            reason?: string;
+            segmentsUpdated?: number;
+            itemsApplied?: number;
+          };
+          recompile?: {
+            skipped?: boolean;
+            status?: string;
+            score?: number;
+            incrementalMerged?: boolean;
+            affectedDayIndices?: number[];
+          };
+        }>;
+      };
+    };
   };
 }
 
@@ -221,6 +351,12 @@ export class PlanningWorkbenchAgentService {
     @Optional()
     private readonly multiAgentCollaboration?: MultiAgentCollaborationService,
     @Optional() private readonly guardianChoose?: GuardianChooseService,
+    @Optional() private readonly feasibilityReport?: FeasibilityReportService,
+    @Optional() private readonly splitPlanService?: SplitPlanService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
+    @Optional() private readonly travelCompiler?: TravelCompilerService,
+    @Optional() private readonly travelGraphStore?: TravelGraphStoreService,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   /**
@@ -310,6 +446,7 @@ export class PlanningWorkbenchAgentService {
       // 2. 根据用户操作执行不同流程
       let planState: PlanState = request.existingPlanState || this.createInitialPlanState(request.context, request.tripId);
       planState = this.hydratePlanStateFromContext(planState, request.context, request.tripId);
+      planState = await this.attachBaselinePlanReference(planState, request);
       const uiOutput: PlanningWorkbenchResponse['uiOutput'] = {};
 
       // 透传 tripId：域 Agent + MultiAgent 桥（与 UnifiedWorldModel 共享同一 trip 有界上下文）
@@ -779,14 +916,37 @@ export class PlanningWorkbenchAgentService {
                       await this.enrichSegmentsWithGeographicData(planState.itinerary.segments, request.context, updateProgress);
                     }
 
-                    // 7. 更新 planState 状态为 PROPOSED
-                    planState.status = 'PROPOSED';
+                    planState.status = isAgentPlanDraftOnlyEnabled() ? 'PROPOSED' : 'LOCKED';
                     planState.metadata = {
                       ...planState.metadata,
                       selectedSkeleton: selectedOption.id,
                       selectedSkeletonName: selectedOption.name,
                       committedAt: new Date().toISOString(),
+                      ...(isAgentPlanDraftOnlyEnabled()
+                        ? { planMutationMode: 'DRAFT_ONLY' as const }
+                        : {}),
+                      ...(request.confirmedItems?.length
+                        ? { planGateUserConfirmations: request.confirmedItems }
+                        : {}),
                     };
+
+                    if (request.tripId && this.prisma) {
+                      try {
+                        const timelineWrite = await this.materializeCommittedPlanToTimeline(
+                          request.tripId,
+                          planState,
+                        );
+                        planState.metadata = {
+                          ...planState.metadata,
+                          planGateTimelineWrite: timelineWrite,
+                        };
+                      } catch (materializeError: any) {
+                        this.logger.warn(
+                          `Plan Gate 时间轴写入失败: ${materializeError.message}`,
+                        );
+                        planState.status = 'PROPOSED';
+                      }
+                    }
 
                     // === 更新 TripAttempt 为 COMPLETED ===
                     if (attemptId && this.tripRunManager) {
@@ -1200,12 +1360,150 @@ export class PlanningWorkbenchAgentService {
       
       // 更新进度到95%（即将完成）
       updateProgress?.(95, '正在完成规划工作台流程...');
-      
-      return enrichPlanningWorkbenchExecuteResponse({
+
+      const ctreOutcome = await runPlanningWorkbenchTravelCompile({
         planState,
+        context: request.context,
+        tripId: request.tripId,
+        userAction: request.userAction,
+        enableTravelCompiler: request.enableTravelCompiler,
+        compiler: this.travelCompiler,
+        graphStore: this.travelGraphStore,
+        configService: this.configService,
+        onProgress: (message) => updateProgress?.(92, message),
+      });
+      if (ctreOutcome.progress || ctreOutcome.skipped) {
+        uiOutput.ctre = {
+          skipped: ctreOutcome.skipped,
+          reason: ctreOutcome.reason,
+          progress: ctreOutcome.progress,
+          graphProjectedItemCount: ctreOutcome.graphProjectedItemCount,
+          segmentEnrichment: ctreOutcome.segmentEnrichment,
+          verifySsotApplied: ctreOutcome.verifySsotApplied,
+          incrementalRepair: ctreOutcome.incrementalRepair,
+        };
+      }
+
+      if (
+        !ctreOutcome.skipped &&
+        ctreOutcome.verifySsotApplied &&
+        this.kernelBridge?.isVerifyAvailable()
+      ) {
+        const loopOutcome = await runPlanningWorkbenchVerifyRepairLoop({
+          request,
+          planState,
+          tripRunId,
+          priorGateStatus: planState.gate,
+          kernelBridge: this.kernelBridge,
+          compiler: this.travelCompiler,
+          graphStore: this.travelGraphStore,
+          configService: this.configService,
+          enableTravelCompiler: request.enableTravelCompiler,
+          onProgress: updateProgress,
+        });
+
+        if (!loopOutcome.skipped) {
+          planState.gate = loopOutcome.gateStatus;
+        }
+
+        const firstRound = loopOutcome.rounds[0];
+        const lastRound = loopOutcome.rounds[loopOutcome.rounds.length - 1];
+        uiOutput.ctre = {
+          ...(uiOutput.ctre ?? {}),
+          kernelVerify: firstRound
+            ? {
+                applied: firstRound.verify.applied,
+                issueCount: firstRound.verify.issueCount,
+                fatalCount: firstRound.verify.fatalCount,
+                conflictCount: firstRound.verify.conflictCount,
+                advisoryCount: firstRound.verify.advisoryCount,
+              }
+            : undefined,
+          kernelRepair: firstRound?.repair,
+          kernelReVerify:
+            loopOutcome.rounds.length > 1 && lastRound
+              ? {
+                  applied: lastRound.verify.applied,
+                  issueCount: lastRound.verify.issueCount,
+                  fatalCount: lastRound.verify.fatalCount,
+                  conflictCount: lastRound.verify.conflictCount,
+                  advisoryCount: lastRound.verify.advisoryCount,
+                }
+              : undefined,
+          kernelVerifyRepairLoop: loopOutcome.skipped
+            ? { terminatedReason: loopOutcome.reason ?? 'verify_skipped' }
+            : {
+                terminatedReason: loopOutcome.terminatedReason,
+                repairCount: loopOutcome.repairCount,
+                maxRepairs: (planState.metadata?.kernelVerifyRepairLoop as { maxRepairs?: number })
+                  ?.maxRepairs,
+                rounds: loopOutcome.rounds.length,
+                finalVerify: loopOutcome.finalVerify
+                  ? {
+                      issueCount: loopOutcome.finalVerify.issueCount,
+                      fatalCount: loopOutcome.finalVerify.fatalCount,
+                      conflictCount: loopOutcome.finalVerify.conflictCount,
+                    }
+                  : undefined,
+                roundDetails: loopOutcome.rounds.map((round) => ({
+                  round: round.round,
+                  verify: {
+                    issueCount: round.verify.issueCount,
+                    fatalCount: round.verify.fatalCount,
+                    conflictCount: round.verify.conflictCount,
+                    advisoryCount: round.verify.advisoryCount,
+                    issues: round.verify.issues,
+                  },
+                  repair: round.repair,
+                  recompile: round.recompile
+                    ? {
+                        skipped: round.recompile.skipped,
+                        status: round.recompile.progress?.status,
+                        score: round.recompile.progress?.score,
+                        incrementalMerged: round.recompile.incrementalRepair?.merged,
+                        affectedDayIndices: round.recompile.incrementalRepair?.affectedDayIndices,
+                      }
+                    : undefined,
+                })),
+              },
+        };
+
+        if (loopOutcome.finalCtre?.progress) {
+          uiOutput.ctre = {
+            ...uiOutput.ctre,
+            progress: loopOutcome.finalCtre.progress,
+            graphProjectedItemCount: loopOutcome.finalCtre.graphProjectedItemCount,
+            segmentEnrichment: loopOutcome.finalCtre.segmentEnrichment,
+            verifySsotApplied: loopOutcome.finalCtre.verifySsotApplied,
+            incrementalRepair: loopOutcome.finalCtre.incrementalRepair,
+          };
+        }
+      }
+
+      const baselinePlanState = await this.loadBaselinePlanState(planState, request.tripId);
+      const { context: planGateEnrichment, planState: enrichedPlanState } =
+        await resolvePlanGateEnrichmentContext({
+          tripId: request.tripId,
+          planState,
+          baselinePlanState,
+          feasibilityReport: this.feasibilityReport,
+          splitPlanService: this.splitPlanService,
+        });
+      const preTripTasks = await this.resolvePreTripTasksSummary(
+        request.tripId,
+        enrichedPlanState,
+      );
+
+      return enrichPlanningWorkbenchExecuteResponse({
+        planState: enrichedPlanState,
         uiOutput,
         tripId: request.tripId,
         requestMetadata: request.metadata,
+        confirmedItems: request.confirmedItems,
+        baselinePlanState,
+        userAction: request.userAction,
+        preTripTasks,
+        planGateEnrichment,
       });
     } catch (error: any) {
       this.logger.error(`规划工作台执行失败: ${error.message}`, error.stack);
@@ -2100,48 +2398,82 @@ export class PlanningWorkbenchAgentService {
         }
 
         // 3. 计算变更统计
-        const changes = {
+        let changes = {
           added: 0,
           modified: 0,
           removed: 0,
         };
 
-        // 4. 保存 PlanState 到 Trip metadata
-        const metadata = (trip.metadata as any) || {};
-        const previousPlanState = metadata.planState;
-        
-        metadata.planState = planState;
-        metadata.lastCommittedPlanId = planId;
-        metadata.lastCommittedAt = new Date().toISOString();
-
-        // 5. 如果支持部分提交，只更新指定的天数
-        if (options?.partialCommit && options?.commitDays && options.commitDays.length > 0) {
-          // 部分提交：只更新指定天数的行程项
-          // 这里简化处理，实际应该根据 PlanState.itinerary.segments 来更新对应的 ItineraryItem
-          this.logger.debug(`部分提交: 更新天数 ${options.commitDays.join(', ')}`);
-          
-          // 更新 PlanState 状态
-          planState.status = 'PROPOSED';
-          
-          // 计算变更（简化处理）
-          const affectedDays = options.commitDays;
-          changes.added = affectedDays.length; // 简化：假设都是新增
-        } else {
-          // 全量提交：更新整个 PlanState
-          planState.status = 'LOCKED';
-          
-          // 计算变更（简化处理）
-          if (previousPlanState) {
-            const previousSegments = previousPlanState.itinerary?.segments || [];
-            const currentSegments = planState.itinerary?.segments || [];
-            changes.added = currentSegments.length - previousSegments.length;
-            changes.modified = Math.min(previousSegments.length, currentSegments.length);
-          } else {
-            changes.added = planState.itinerary?.segments?.length || 0;
+        // 4. 写入 TripDay / ItineraryItem 时间轴
+        if (planState.itinerary?.segments?.length) {
+          try {
+            const timelineWrite = await this.materializeCommittedPlanToTimeline(
+              tripId,
+              planState,
+              options,
+            );
+            changes = {
+              added: timelineWrite.added,
+              modified: timelineWrite.modified,
+              removed: timelineWrite.removed,
+            };
+            planState.metadata = {
+              ...planState.metadata,
+              planGateTimelineWrite: timelineWrite,
+            };
+          } catch (materializeError: any) {
+            this.logger.error(
+              `Plan Gate 时间轴写入失败: ${materializeError.message}`,
+              materializeError.stack,
+            );
+            throw materializeError;
           }
         }
 
-        // 6. 更新 Trip metadata
+        // 5. 保存 PlanState 到 Trip metadata（物化后重新读取，避免覆盖 revision / journal）
+        const refreshedTrip = await this.prisma.trip.findUnique({
+          where: { id: tripId },
+          select: { metadata: true },
+        });
+        const metadata = { ...((refreshedTrip?.metadata ?? trip.metadata) as Record<string, unknown>) };
+        const previousPlanState = metadata.planState as PlanState | undefined;
+
+        metadata.planState = planState;
+        metadata.lastCommittedPlanId = planId;
+        metadata.lastCommittedAt = new Date().toISOString();
+        metadata.currentPlanId = planId;
+        if (planState.metadata?.planGateTimelineWrite) {
+          metadata.planGateTimelineWrite = planState.metadata.planGateTimelineWrite;
+        }
+        if (planState.metadata?.agentPlanDraftMutation) {
+          metadata.agentPlanDraftMutation = planState.metadata.agentPlanDraftMutation;
+          metadata.planMutationMode = planState.metadata.planMutationMode ?? 'DRAFT_ONLY';
+        }
+
+        // 6. 部分提交 vs 全量提交状态
+        if (options?.partialCommit && options?.commitDays && options.commitDays.length > 0) {
+          planState.status = 'PROPOSED';
+          this.logger.debug(`部分提交: 更新天数 ${options.commitDays.join(', ')}`);
+        } else if (isAgentPlanDraftOnlyEnabled()) {
+          planState.status = 'PROPOSED';
+          this.logger.debug('写链开启: 方案保持 PROPOSED，时间轴变更仅存为 TripMutationSet 草稿');
+          if (previousPlanState && !planState.itinerary?.segments?.length) {
+            const previousSegments = previousPlanState.itinerary?.segments || [];
+            const currentSegments = planState.itinerary?.segments || [];
+            changes.added = Math.max(changes.added, currentSegments.length - previousSegments.length);
+            changes.modified = Math.min(previousSegments.length, currentSegments.length);
+          }
+        } else {
+          planState.status = 'LOCKED';
+          if (previousPlanState && !planState.itinerary?.segments?.length) {
+            const previousSegments = previousPlanState.itinerary?.segments || [];
+            const currentSegments = planState.itinerary?.segments || [];
+            changes.added = Math.max(changes.added, currentSegments.length - previousSegments.length);
+            changes.modified = Math.min(previousSegments.length, currentSegments.length);
+          }
+        }
+
+        // 7. 更新 Trip metadata（revision 已在 materializer 事务内 bump）
         await this.prisma.trip.update({
           where: { id: tripId },
           data: {
@@ -2150,7 +2482,7 @@ export class PlanningWorkbenchAgentService {
           },
         });
 
-        // 7. 更新 StateStore（如果可用）
+        // 8. 更新 StateStore（如果可用）
         if (this.stateStore) {
           const currentVersion = await this.stateStore.getVersion(planId, 'PlanState');
           if (currentVersion !== null) {
@@ -2203,6 +2535,53 @@ export class PlanningWorkbenchAgentService {
       this.logger.error(`提交方案失败: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  private async materializeCommittedPlanToTimeline(
+    tripId: string,
+    planState: PlanState,
+    options?: { partialCommit?: boolean; commitDays?: number[] },
+  ): Promise<PlanGateTimelineWriteStats & { draftMutation?: TripMutationSet }> {
+    if (!this.prisma) {
+      throw new Error('PrismaService 未注入，无法写入时间轴');
+    }
+    if (!planState.itinerary?.segments?.length) {
+      return { added: 0, modified: 0, removed: 0, materializedDays: [], skippedDays: [] };
+    }
+
+    if (isAgentPlanDraftOnlyEnabled()) {
+      const draft = buildAgentPlanDraftMutationSet({
+        tripId,
+        planState,
+        partialCommit: options?.partialCommit,
+        commitDays: options?.commitDays,
+      });
+      const summary = summarizeAgentPlanDraft(draft);
+      planState.metadata = {
+        ...planState.metadata,
+        planMutationMode: 'DRAFT_ONLY',
+        agentPlanDraftMutation: draft,
+      };
+      this.logger.debug(
+        `写链 draft-only: 跳过时间轴物化，产出 ${draft.operations.length} 条 ADD 草稿`,
+      );
+      return {
+        ...summary,
+        skippedDays: [],
+        draftMutation: draft,
+      };
+    }
+
+    return materializePlanStateToTimeline(
+      this.prisma,
+      {
+        tripId,
+        planState,
+        partialCommit: options?.partialCommit,
+        commitDays: options?.commitDays,
+      },
+      this.effectivePlanWriteGuard,
+    );
   }
 
   /**
@@ -2556,6 +2935,7 @@ export class PlanningWorkbenchAgentService {
       bestTime?: string;
       recommendations?: string[];
     };
+    draftDiff?: PlanGateDraftDiffDto;
   }> {
     this.logger.debug(`对比方案: planIds=${planIds.join(', ')}`);
 
@@ -2646,11 +3026,208 @@ export class PlanningWorkbenchAgentService {
       summary.recommendations?.push(`方案 ${bestBudgetPlan.planId} 预算最优`);
     }
 
+    let draftDiff: PlanGateDraftDiffDto | undefined;
+    if (plans.length >= 2) {
+      const tripId =
+        plans[1].planState.itinerary?.tripId ?? plans[0].planState.itinerary?.tripId;
+      const { context } = await resolvePlanGateEnrichmentContext({
+        tripId,
+        planState: plans[1].planState,
+        baselinePlanState: plans[0].planState,
+        feasibilityReport: this.feasibilityReport,
+        splitPlanService: this.splitPlanService,
+      });
+      draftDiff = projectPlanGateDraftDiff({
+        baselinePlanId: plans[0].planId,
+        baselinePlanState: plans[0].planState,
+        draftPlanId: plans[1].planId,
+        draftPlanState: plans[1].planState,
+        options: context.diffOptions,
+      }) as unknown as PlanGateDraftDiffDto;
+    }
+
     return {
       plans,
       differences,
       summary,
+      draftDiff,
     };
+  }
+
+  /**
+   * Plan Gate：草案 vs 基线差异
+   */
+  async getPlanGateDiff(
+    draftPlanId: string,
+    baselinePlanId: string,
+    tripId?: string,
+  ): Promise<PlanGateDraftDiffDto> {
+    const [baseline, draft] = await Promise.all([
+      this.getPlan(baselinePlanId),
+      this.getPlan(draftPlanId),
+    ]);
+    const resolvedTripId =
+      tripId ??
+      draft.planState.itinerary?.tripId ??
+      baseline.planState.itinerary?.tripId;
+    const { context } = await resolvePlanGateEnrichmentContext({
+      tripId: resolvedTripId,
+      planState: draft.planState,
+      baselinePlanState: baseline.planState,
+      feasibilityReport: this.feasibilityReport,
+      splitPlanService: this.splitPlanService,
+    });
+    return projectPlanGateDraftDiff({
+      baselinePlanId,
+      baselinePlanState: baseline.planState,
+      draftPlanId,
+      draftPlanState: draft.planState,
+      options: context.diffOptions,
+    }) as unknown as PlanGateDraftDiffDto;
+  }
+
+  /**
+   * Plan Gate：可执行性快照（基线 vs 草案）
+   */
+  async getPlanGateFeasibility(
+    tripId: string,
+    planId?: string,
+  ): Promise<{
+    tripId: string;
+    planId: string;
+    baselinePlanId?: string;
+    draft: PlanGateFeasibilitySnapshotDto;
+    baseline?: PlanGateFeasibilitySnapshotDto;
+    delta?: { executability?: { from?: number; to?: number } };
+  }> {
+    let planState: PlanState | null = null;
+    if (planId) {
+      planState = await this.tryLoadPlanState(planId);
+    }
+    if (!planState && this.prisma) {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { metadata: true },
+      });
+      const meta = (trip?.metadata as Record<string, unknown>) ?? {};
+      const currentPlanId =
+        (meta.currentPlanId as string | undefined) ??
+        (meta.lastCommittedPlanId as string | undefined);
+      if (currentPlanId) {
+        planState = await this.tryLoadPlanState(currentPlanId);
+      }
+    }
+    if (!planState) {
+      throw new NotFoundException('找不到可用于可执行性评估的方案');
+    }
+
+    const baselinePlanState = await this.loadBaselinePlanState(planState, tripId);
+    const { context, planState: enrichedPlanState } = await resolvePlanGateEnrichmentContext({
+      tripId,
+      planState,
+      baselinePlanState,
+      feasibilityReport: this.feasibilityReport,
+      splitPlanService: this.splitPlanService,
+    });
+
+    const snapshot = buildFeasibilityEndpointSnapshot({
+      tripId,
+      planState: enrichedPlanState,
+      baselinePlanState,
+      report: context.feasibilityReport,
+      enrichment: context,
+    });
+
+    return {
+      tripId: snapshot.tripId,
+      planId: snapshot.planId,
+      baselinePlanId: snapshot.baselinePlanId,
+      draft: snapshot.draft as PlanGateFeasibilitySnapshotDto,
+      baseline: snapshot.baseline as PlanGateFeasibilitySnapshotDto | undefined,
+      delta: snapshot.delta,
+    };
+  }
+
+  private async attachBaselinePlanReference(
+    planState: PlanState,
+    request: PlanningWorkbenchRequest,
+  ): Promise<PlanState> {
+    if (planState.metadata?.baselinePlanId || !request.tripId || !this.prisma) {
+      return planState;
+    }
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: request.tripId },
+      select: { metadata: true },
+    });
+    const baselinePlanId = resolveBaselinePlanId(
+      planState,
+      (trip?.metadata as Record<string, unknown> | null) ?? undefined,
+    );
+    if (!baselinePlanId) return planState;
+
+    const baselineState = await this.tryLoadPlanState(baselinePlanId);
+    planState.metadata = {
+      ...planState.metadata,
+      baselinePlanId,
+      baselineMetrics: baselineState
+        ? {
+            executability: baselineState.metadata?.executabilityScore as number | undefined,
+            budgetPerPerson: this.estimatePlanBudgetTotal(baselineState),
+            drivingMinutes: this.estimatePlanDrivingMinutes(baselineState),
+          }
+        : planState.metadata?.baselineMetrics,
+    };
+    return planState;
+  }
+
+  private async loadBaselinePlanState(
+    planState: PlanState,
+    tripId?: string,
+  ): Promise<PlanState | undefined> {
+    const baselinePlanId = planState.metadata?.baselinePlanId as string | undefined;
+    if (baselinePlanId) {
+      return (await this.tryLoadPlanState(baselinePlanId)) ?? undefined;
+    }
+    if (!tripId || !this.prisma) return undefined;
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const resolved = resolveBaselinePlanId(
+      planState,
+      (trip?.metadata as Record<string, unknown> | null) ?? undefined,
+    );
+    if (!resolved) return undefined;
+    return (await this.tryLoadPlanState(resolved)) ?? undefined;
+  }
+
+  private async tryLoadPlanState(planId: string): Promise<PlanState | null> {
+    try {
+      const plan = await this.getPlan(planId);
+      return plan.planState;
+    } catch {
+      if (!this.stateStore) return null;
+      const stored = await this.stateStore.get<PlanState>(planId, 'PlanState');
+      return stored?.data ?? null;
+    }
+  }
+
+  private estimatePlanBudgetTotal(planState: PlanState): number {
+    return (
+      planState.budget?.breakdown?.categories?.reduce((sum, c) => sum + (c.estimated ?? 0), 0) ??
+      0
+    );
+  }
+
+  private estimatePlanDrivingMinutes(planState: PlanState): number {
+    return (
+      planState.itinerary?.segments?.reduce(
+        (sum, s) => sum + ((s.metadata?.drivingMinutes as number | undefined) ?? 0),
+        0,
+      ) ?? 0
+    );
   }
 
   /**
@@ -3196,6 +3773,141 @@ export class PlanningWorkbenchAgentService {
       factLayerAnchor,
       strategyLayer: strategyLayerOut,
       collaborationBridge,
+    };
+  }
+
+  /**
+   * Plan Gate：行前任务预览（草案提交后待办）
+   */
+  async getPlanGatePreTripTasks(
+    tripId: string,
+    planId?: string,
+  ): Promise<PlanGatePreTripTasksSummary> {
+    let planState: PlanState | null = null;
+    if (planId) {
+      planState = await this.tryLoadPlanState(planId);
+    }
+    if (!planState && this.prisma) {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { metadata: true },
+      });
+      const meta = (trip?.metadata as Record<string, unknown>) ?? {};
+      const currentPlanId =
+        (meta.currentPlanId as string | undefined) ??
+        (meta.lastCommittedPlanId as string | undefined);
+      if (currentPlanId) {
+        planState = await this.tryLoadPlanState(currentPlanId);
+      }
+    }
+    if (!planState) {
+      throw new NotFoundException('找不到可用于预览行前任务的方案');
+    }
+    return this.resolvePreTripTasksSummary(tripId, planState);
+  }
+
+  private async resolvePreTripTasksSummary(
+    tripId: string | undefined,
+    planState: PlanState,
+  ): Promise<PlanGatePreTripTasksSummary> {
+    const planTasks = buildPreTripTasksFromPlanState(planState);
+    if (!tripId || !this.prisma) {
+      return mergePreTripTasksSummary(planTasks);
+    }
+
+    try {
+      const [packing, capability, suggestions] = await Promise.all([
+        this.prisma.tripPackingListItem.count({ where: { tripId, checked: false } }),
+        this.prisma.tripCapabilityPackItem.count({ where: { tripId, checked: false } }),
+        this.prisma.tripSuggestionState.count({
+          where: { tripId, status: { in: ['new', 'seen'] } },
+        }),
+      ]);
+      return mergePreTripTasksSummary(planTasks, {
+        uncheckedPackingItems: packing,
+        uncheckedCapabilityPackItems: capability,
+        openSuggestions: suggestions,
+      });
+    } catch (error: any) {
+      this.logger.warn(`行前任务统计失败: ${error.message}`);
+      return mergePreTripTasksSummary(planTasks);
+    }
+  }
+
+  /**
+   * Plan Gate 空态：生成草案前的输入就绪情况
+   */
+  async getPlanGateReadiness(tripId: string): Promise<PlanGateReadinessDto> {
+    if (!this.prisma) {
+      throw new Error('PrismaService 未注入');
+    }
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { id: true, metadata: true, budgetConfig: true },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`找不到行程: ${tripId}`);
+    }
+
+    const metadata = (trip.metadata as Record<string, unknown>) || {};
+    const blockers: string[] = [];
+    const warnings: string[] = [];
+
+    const confirmedConstraintsCount =
+      (metadata.confirmedConstraintsCount as number | undefined) ??
+      (metadata.constraintSnapshot as { confirmed?: number } | undefined)?.confirmed ??
+      0;
+
+    let decisionConclusionsCount = 0;
+    if (this.decisionDraftStorage) {
+      try {
+        const draft = await this.decisionDraftStorage.loadDecisionDraftByTripId(tripId);
+        decisionConclusionsCount = draft?.decision_steps?.length ?? 0;
+      } catch {
+        warnings.push('决策草案暂不可用');
+      }
+    }
+
+    const memberCount =
+      (metadata.memberCount as number | undefined) ??
+      (metadata.companions as { count?: number } | undefined)?.count;
+
+    const currentPlanId =
+      (metadata.lastCommittedPlanId as string | undefined) ??
+      (metadata.currentPlanId as string | undefined);
+
+    let currentPlanVersion: number | undefined;
+    if (currentPlanId && metadata.plans) {
+      const planEntry = (metadata.plans as Record<string, { planVersion?: number }>)[currentPlanId];
+      currentPlanVersion = planEntry?.planVersion;
+    }
+
+    if (confirmedConstraintsCount === 0) {
+      warnings.push('尚未记录已确认约束，建议先在决策空间完成选择');
+    }
+
+    const canGenerateDraft = blockers.length === 0;
+
+    const budgetCfg = (trip.budgetConfig as { total?: number; currency?: string } | null) ?? {};
+
+    return {
+      tripId,
+      canGenerateDraft,
+      confirmedConstraintsCount,
+      decisionConclusionsCount,
+      budgetPerPerson: budgetCfg.total
+        ? {
+            amount: Number(budgetCfg.total),
+            currency: budgetCfg.currency ?? 'CNY',
+          }
+        : undefined,
+      memberCount,
+      blockers,
+      warnings,
+      currentPlanId,
+      currentPlanVersion,
     };
   }
 }

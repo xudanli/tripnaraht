@@ -79,6 +79,14 @@ import { ReputationOsModule } from './reputation-os/reputation-os.module';
 import { MatchLearningModule } from './match-learning/match-learning.module';
 import { IdentityGovernanceModule } from './identity-governance/identity-governance.module';
 import { Gate1Module } from './gate1/gate1.module';
+import { GuideToPlanModule } from './guide-to-plan/guide-to-plan.module';
+import { ExplorationModule } from './trips/exploration/exploration.module';
+import { AttractionExploreModule } from './trips/attraction-explore/attraction-explore.module';
+import { ArrangeItineraryModule } from './trips/arrange-itinerary/arrange-itinerary.module';
+import { ResearchModule } from './research/research.module';
+import { TravelContextModule } from './travel-context/travel-context.module';
+import { CanonicalPoiResolutionModule } from './canonical-poi-resolution/canonical-poi-resolution.module';
+import { TravelCompilerModule } from './travel-compiler/travel-compiler.module';
 
 @Module({
   imports: [
@@ -119,6 +127,8 @@ import { Gate1Module } from './gate1/gate1.module';
     IcelandInfoModule, // 冰岛信息源模块（vedur.is, safetravel.is, road.is）
     LlmModule, // LLM 通用服务模块
     PlacesModule, // 地点相关模块
+    CanonicalPoiResolutionModule, // CPRE — Travel Primary Key resolution (P0)
+    TravelCompilerModule, // Travel Compiler — Planner Draft → CanonicalTravelGraph (P0)
     FlightPricesModule, // 机票价格参考模块
     HotelsModule, // 酒店价格模块
     // 第二批：行程相关模块
@@ -179,6 +189,12 @@ import { Gate1Module } from './gate1/gate1.module';
     WorldModelSchedulerModule, // 专利实施例：世界模型异步推送调度（WeatherAgent → pushEnvironmentDelta）
     IdentityGovernanceModule, // 账号、验证、发布权限（R0 身份治理）
     Gate1Module, // Gate 1 Human-Assisted Concierge 验证实验
+    GuideToPlanModule, // 从攻略开始规划（Guide-to-Plan Pipeline）
+    ExplorationModule, // Consumer Exploration Pipeline（/api/exploration）
+    AttractionExploreModule, // 景点探索 BFF（/trips/:id/attraction-explore）
+    ArrangeItineraryModule, // 编排行程 BFF（/trips/:id/arrange-itinerary + explore place/ai-actions）
+    ResearchModule, // 产品发现研究 Session / 事件
+    TravelContextModule, // RFC-003 Travel Context Protocol
   ],
   providers: [
     {

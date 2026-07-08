@@ -19,8 +19,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import axios, { AxiosInstance } from 'axios';
-import * as https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import {
+  createExternalHttpsAgent,
+  EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
+  EXTERNAL_API_REQUEST_TIMEOUT_MS,
+} from './utils/external-http-agent.util';
 
 export interface HotelSearchParams {
   query?: string; // 自然语言查询，如 "纽约市中心酒店"
@@ -106,28 +109,11 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     if (this.apiKey) {
-      // 初始化 HTTP 客户端；LLM_DISABLE_PROXY=true 时直连，避免代理未启动导致 ECONNREFUSED
-      const disableProxy =
-        process.env.LLM_DISABLE_PROXY === 'true' ||
-        process.env.GOOGLE_DISABLE_PROXY === 'true';
-      const proxyUrl = disableProxy
-        ? undefined
-        : process.env.HTTPS_PROXY ||
-          process.env.https_proxy ||
-          process.env.ALL_PROXY ||
-          process.env.all_proxy;
-
-      const httpsAgent = proxyUrl
-        ? new HttpsProxyAgent<string>(proxyUrl)
-        : new https.Agent({
-            keepAlive: true,
-            family: 4, // 强制 IPv4
-            rejectUnauthorized: true,
-          });
+      const httpsAgent = createExternalHttpsAgent();
 
       this.axiosInstance = axios.create({
         baseURL: this.baseUrl,
-        timeout: 30000,
+        timeout: EXTERNAL_API_REQUEST_TIMEOUT_MS,
         httpsAgent,
         proxy: false,
         headers: {
@@ -135,7 +121,7 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      // 测试连接
+      // 测试连接（短超时，避免阻塞启动）
       try {
         const testResponse = await this.axiosInstance.get('/textsearch/json', {
           params: {
@@ -143,6 +129,7 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
             key: this.apiKey,
             type: 'lodging',
           },
+          timeout: EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
         });
         
         if (testResponse.data.status === 'OK' || testResponse.data.status === 'ZERO_RESULTS') {
@@ -153,7 +140,9 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
           this.isAvailable = false;
         }
       } catch (error: any) {
-        this.logger.error('Failed to initialize Hotel Direct Service:', error.message);
+        this.logger.warn(
+          `Hotel Direct Service unavailable (init probe failed): ${error.message}`,
+        );
         this.isAvailable = false;
       }
     } else {

@@ -23,7 +23,7 @@ import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-re
 import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadService } from '../upload/upload.service';
-import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
+import { PlaceEvidenceService } from './services/place-evidence.service';
 
 @ApiTags('places')
 @Controller('places')
@@ -40,6 +40,7 @@ export class PlacesController {
     private readonly unsplashService: UnsplashService,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
+    private readonly placeEvidence: PlaceEvidenceService,
   ) {}
 
   @Public()
@@ -70,79 +71,36 @@ export class PlacesController {
         return errorResponse(ErrorCode.NOT_FOUND, `地点 ID ${placeId} 不存在`);
       }
 
-      const metadata = (place.metadata as any) || {};
-      const shouldIncludeWeather = includeWeather !== 'false';
-      const shouldIncludeTraffic = includeTraffic !== 'false';
-      const targetDate = date || new Date().toISOString().split('T')[0];
-
-      // 构建营业时间
-      let businessHours: any = undefined;
-      if (metadata.openingHours || metadata.opening_hours) {
-        const timezone = metadata.timezone || 'Asia/Tokyo';
-        const todayHours = OpeningHoursUtil.getTodayHours(metadata, timezone);
-        
-        businessHours = {
-          open: todayHours !== 'Closed' ? todayHours.split('-')[0]?.trim() : undefined,
-          close: todayHours !== 'Closed' ? todayHours.split('-')[1]?.trim() : undefined,
-          timezone: timezone,
-          exceptions: [], // TODO: 可以从metadata中提取例外情况
-        };
+      let postgisCoords: { lat: number; lng: number } | null = null;
+      try {
+        const rows = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+          SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+          FROM "Place" WHERE id = ${placeId} AND location IS NOT NULL
+        `;
+        if (rows[0]?.lat != null && rows[0]?.lng != null) {
+          postgisCoords = { lat: Number(rows[0].lat), lng: Number(rows[0].lng) };
+        }
+      } catch {
+        // PostGIS unavailable — fall back to metadata coords in service
       }
 
-      // 构建封路信息
-      let roadClosure: any = { hasClosure: false };
-      if (shouldIncludeTraffic && (metadata.roadStatus || metadata.roadClosure)) {
-        const roadStatus = metadata.roadStatus || {};
-        roadClosure = {
-          hasClosure: metadata.roadClosure === true || roadStatus.closed === true,
-          closures: roadStatus.closures || [],
-        };
-      }
-
-      // 构建天气窗口
-      let weatherWindow: any = undefined;
-      if (shouldIncludeWeather && (metadata.weatherInfo || metadata.weather)) {
-        const weatherInfo = metadata.weatherInfo || metadata.weather || {};
-        weatherWindow = {
-          date: targetDate,
-          condition: weatherInfo.condition || weatherInfo.weather || '未知',
-          description: weatherInfo.description || `${weatherInfo.condition || '未知'}，${weatherInfo.temperature ? `温度${weatherInfo.temperature}°C` : ''}`,
-          temperature: {
-            min: weatherInfo.tempMin || weatherInfo.temperature_min || undefined,
-            max: weatherInfo.tempMax || weatherInfo.temperature_max || weatherInfo.temperature || undefined,
-            unit: 'celsius' as const,
-          },
-          precipitation: weatherInfo.precipitation ? {
-            probability: weatherInfo.precipitation.probability || weatherInfo.precipitation_probability || undefined,
-            amount: weatherInfo.precipitation.amount || weatherInfo.precipitation_amount || undefined,
-          } : undefined,
-          wind: weatherInfo.wind ? {
-            speed: weatherInfo.wind.speed || weatherInfo.wind_speed || undefined,
-            direction: weatherInfo.wind.direction || weatherInfo.wind_direction || undefined,
-          } : undefined,
-          suitableForOutdoor: weatherInfo.suitableForOutdoor !== false, // 默认true
-        };
-      }
-
-      // 构建其他信息
-      const otherInfo: any = {};
-      if (metadata.crowdLevel) {
-        otherInfo.crowdLevel = metadata.crowdLevel;
-      }
-      if (metadata.specialEvents) {
-        otherInfo.specialEvents = metadata.specialEvents;
-      }
-
-      return successResponse({
-        placeId: place.id,
-        placeName: place.nameCN || place.nameEN || '未知地点',
-        evidence: {
-          businessHours,
-          roadClosure,
-          weatherWindow,
-          otherInfo: Object.keys(otherInfo).length > 0 ? otherInfo : undefined,
+      const data = await this.placeEvidence.buildEvidence(
+        {
+          id: place.id,
+          nameCN: place.nameCN,
+          nameEN: place.nameEN,
+          metadata: place.metadata,
+          location: (place as { location?: unknown }).location,
         },
-      });
+        {
+          date,
+          includeWeather: includeWeather !== 'false',
+          includeTraffic: includeTraffic !== 'false',
+        },
+        postgisCoords,
+      );
+
+      return successResponse(data);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);

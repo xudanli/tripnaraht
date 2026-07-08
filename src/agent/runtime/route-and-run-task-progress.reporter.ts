@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AsyncLocalStorage } from 'async_hooks';
 import type { OrchestrationStep } from '../interfaces/trip-plan.interface';
+import type { CtreCompileProgressView } from '../../travel-compiler/contracts/ctre-compile-progress.types';
 import {
   orchestrationStepProgressMessageZh,
   orchestrationStepProgressPercent,
@@ -76,6 +77,44 @@ export class RouteAndRunTaskProgressReporter {
     } catch (e: unknown) {
       this.logger.warn(
         `进度上报失败 task=${ctx.taskId} step=${phase}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  /** CTRE 编译进度 — SSE 增量（phaseReports + counters） */
+  async reportCtreCompilationProgress(view: CtreCompileProgressView): Promise<void> {
+    const ctx = this.als.getStore();
+    if (!ctx?.taskId || !this.taskStore) return;
+
+    const poi = view.counters.POI;
+    const route = view.counters.Route;
+    const parts: string[] = [];
+    if (poi) parts.push(`POI ${poi.done}/${poi.total}`);
+    if (route) parts.push(`Route ${route.done}/${route.total}`);
+    const counterText = parts.length ? `（${parts.join(' · ')}）` : '';
+    const message = `CTRE 编译${view.trigger === 'repair' ? '(修复后)' : ''}：${view.status} score=${view.score}${counterText}`;
+
+    try {
+      await this.taskStore.updateProgress(ctx.taskId, {
+        current_phase: 'TRAVEL_COMPILE',
+        progress_percentage: orchestrationStepProgressPercent('TRAVEL_COMPILE'),
+        message,
+        status: 'PROCESSING',
+      });
+      const record = await this.taskStore.getRecord(ctx.taskId);
+      if (record && this.eventBus) {
+        const payload = attachEmotionalContextToProgressPayload(
+          {
+            ...taskRecordToProgressPayload(record, 'PHASE'),
+            ctre_compilation: view,
+          },
+          undefined,
+        );
+        this.eventBus.emitProgress(payload);
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `CTRE 进度上报失败 task=${ctx.taskId}: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }

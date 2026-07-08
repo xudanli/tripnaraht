@@ -82,7 +82,7 @@ export class MetaPolicyService implements IMetaPolicyService {
       useWorldModelRollout = true;
       useExploration = true;
       explorationBeta = 0.2;
-    } else if (uncertaintyLevel > 0.75 || dso.uncertaintyProfile?.entropy01 > 0.7) {
+    } else if (uncertaintyLevel > 0.75 || (dso.uncertaintyProfile?.entropy01 ?? 0) > 0.7) {
       sampleSize = 1000;
       horizon = 3;
       strategy = 'CGUS';

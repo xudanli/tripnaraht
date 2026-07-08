@@ -103,6 +103,8 @@ export function applyMaxDailyDrivingHoursConstraintPatch(
         ? readPositiveNumber(
             (value as Record<string, unknown>).maxDailyDrivingHours ??
               (value as Record<string, unknown>).maxDailyDriveHours ??
+              (value as Record<string, unknown>).maxHours ??
+              (value as Record<string, unknown>).hours ??
               (value as Record<string, unknown>).value,
           )
         : undefined;
@@ -110,4 +112,71 @@ export function applyMaxDailyDrivingHoursConstraintPatch(
   constraints.maxDailyDrivingHours = parsed;
   delete constraints.maxDailyDriveHours;
   return true;
+}
+
+export function applyNoNightDriveConstraintPatch(
+  constraints: Record<string, unknown>,
+  patch: { value?: unknown; status?: string },
+): boolean {
+  const current =
+    constraints.noNightDrive && typeof constraints.noNightDrive === 'object'
+      ? (constraints.noNightDrive as Record<string, unknown>)
+      : {};
+  let next: Record<string, unknown> = { ...current };
+  let changed = false;
+
+  if (patch.status === 'DISABLED') {
+    next.enabled = false;
+    changed = true;
+  } else if (patch.status === 'ACTIVE' || patch.status === 'LOCKED') {
+    next.enabled = true;
+    changed = true;
+  }
+
+  if (patch.value != null) {
+    const raw = patch.value;
+    const mins =
+      typeof raw === 'number'
+        ? raw
+        : Number(
+            (raw as Record<string, unknown>).maxMinutesAfterSunset ??
+              (raw as Record<string, unknown>).value,
+          );
+    if (Number.isFinite(mins) && mins >= 0) {
+      next.maxMinutesAfterSunset = mins;
+      if (next.enabled === undefined) next.enabled = true;
+      changed = true;
+    }
+    if (raw && typeof raw === 'object' && (raw as Record<string, unknown>).scopeBinding) {
+      next.scopeBinding = (raw as Record<string, unknown>).scopeBinding;
+      changed = true;
+    }
+  }
+
+  if (!changed) return false;
+  constraints.noNightDrive = next;
+  return true;
+}
+
+export interface NoNightDrivePolicy {
+  maxMinutesAfterSunset: number;
+}
+
+/** 不夜驾硬约束 — 与 BFF `no_night_drive` 模板同源 */
+export function resolveNoNightDrivePolicy(
+  metadata: unknown,
+  pacingConfig: unknown,
+): NoNightDrivePolicy | undefined {
+  if (!isSelfDriveTrip(pacingConfig)) return undefined;
+  const constraints =
+    metadata && typeof metadata === 'object'
+      ? ((metadata as Record<string, unknown>).constraints as Record<string, unknown> | undefined)
+      : undefined;
+  const raw = constraints?.noNightDrive;
+  const cfg =
+    raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  if (cfg.enabled === false) return undefined;
+  return {
+    maxMinutesAfterSunset: Number(cfg.maxMinutesAfterSunset ?? 30),
+  };
 }

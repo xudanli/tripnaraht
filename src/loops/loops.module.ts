@@ -4,6 +4,7 @@ import { TripConstraintSolverModule } from '../trips/trip-constraint-solver/trip
 import { InTripExecutionModule } from '../trips/in-trip-execution/in-trip-execution.module';
 import { TravelEventStoreModule } from '../trips/event-store/travel-event-store.module';
 import { DecisionOSModule } from '../trips/decision/optimization/decision-os.module';
+import { DecisionTriggerModule } from '../decision-runtime/trigger/decision-trigger.module';
 import { TripLoopsController } from './controllers/trip-loops.controller';
 import { FeasibilityReportAdapter } from './adapters/feasibility-report.adapter';
 import { ExecutionAdvisoryAdapter } from './adapters/execution-advisory.adapter';
@@ -33,6 +34,7 @@ import { ContingencyInTripBootstrap } from '../decision/contingency/contingency-
   imports: [
     PrismaModule,
     DecisionOsP0Module,
+    DecisionTriggerModule,
     TravelEventStoreModule,
     forwardRef(() => InTripExecutionModule),
     forwardRef(() => TripConstraintSolverModule),

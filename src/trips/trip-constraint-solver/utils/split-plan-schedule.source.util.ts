@@ -201,7 +201,7 @@ function mapScheduleItem(
     lat: metaCoords?.lat,
     lng: metaCoords?.lng,
     trailId: item.trailId,
-    travelDurationMin: item.travelFromPreviousDuration,
+    travelDurationMin: item.travelFromPreviousDuration ?? undefined,
     estimatedCost: item.estimatedCost,
     currency: item.currency,
     note: item.note,

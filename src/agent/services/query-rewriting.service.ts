@@ -58,6 +58,9 @@ export class QueryRewritingService {
     ): Promise<QueryRewriteResult> => {
       const result = await this.runStage2(stage1, enrichedInput, { stage1_source: meta.stage1_source });
       result.pipeline = {
+        stage1_source: result.pipeline?.stage1_source ?? meta.stage1_source,
+        stage2_deterministic: result.pipeline?.stage2_deterministic ?? false,
+        stage2_generative: result.pipeline?.stage2_generative ?? false,
         ...result.pipeline,
         trace_id: traceId,
         entity_resolution_source: meta.entity_resolution_source ?? 'none',

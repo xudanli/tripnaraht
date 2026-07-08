@@ -1,0 +1,102 @@
+{
+  "schema": "tripnara.planning_decision_inspector@v1",
+  "tripId": "trip_iceland_demo",
+  "problemId": "dp_day1_traffic_skew",
+  "optionId": "adjust_time",
+  "planDiff": {
+    "optionBadge": "方案 A",
+    "optionTitle": "顺延下一项开始时间",
+    "changeRows": [
+      {
+        "id": "row_blue_lagoon_end",
+        "itemLabel": "蓝湖结束时间",
+        "before": "10:45",
+        "after": "10:25",
+        "deltaLabel": "-20 分钟",
+        "deltaMinutes": -20
+      },
+      {
+        "id": "row_depart",
+        "itemLabel": "出发时间",
+        "before": "10:50",
+        "after": "10:30",
+        "deltaLabel": "-20 分钟",
+        "deltaMinutes": -20
+      },
+      {
+        "id": "row_church_arrive",
+        "itemLabel": "抵达教堂",
+        "before": "11:37",
+        "after": "11:17",
+        "deltaLabel": "-20 分钟",
+        "deltaMinutes": -20
+      },
+      {
+        "id": "row_traffic_buffer",
+        "itemLabel": "交通缓冲",
+        "before": "-17 分钟",
+        "after": "+3 分钟",
+        "deltaLabel": "+20 分钟",
+        "deltaMinutes": 20
+      }
+    ],
+    "impactTags": [
+      { "id": "tag_time", "label": "修改 3 个时间点", "tone": "good" },
+      { "id": "tag_route", "label": "重算 2 段路线", "tone": "good" },
+      { "id": "tag_member", "label": "影响 1 位成员", "tone": "muted" },
+      { "id": "tag_booking", "label": "预约不变", "tone": "muted" },
+      { "id": "tag_budget", "label": "预算不变", "tone": "muted" }
+    ],
+    "unchangedItems": [
+      "午餐预约保持 12:40",
+      "后续地点不删除",
+      "酒店与预算不受影响"
+    ],
+    "timelineCompare": {
+      "milestones": [
+        {
+          "id": "ms_blue_lagoon_end",
+          "label": "蓝湖（结束）",
+          "originalTime": "10:45",
+          "newTime": "10:25",
+          "deltaMinutes": -20,
+          "durationAfterMinutes": 5,
+          "originalDurationAfterMinutes": 5
+        },
+        {
+          "id": "ms_depart",
+          "label": "出发",
+          "originalTime": "10:50",
+          "newTime": "10:30",
+          "deltaMinutes": -20,
+          "durationAfterMinutes": 47,
+          "originalDurationAfterMinutes": 47
+        },
+        {
+          "id": "ms_church",
+          "label": "抵达教堂",
+          "originalTime": "11:37",
+          "newTime": "11:17",
+          "deltaMinutes": -20,
+          "durationAfterMinutes": 83,
+          "originalDurationAfterMinutes": 63
+        },
+        {
+          "id": "ms_lunch",
+          "label": "午餐",
+          "originalTime": "12:40",
+          "newTime": "12:40",
+          "durationAfterMinutes": 7,
+          "originalDurationAfterMinutes": 7
+        },
+        {
+          "id": "ms_followup",
+          "label": "后续行程",
+          "originalTime": "12:47",
+          "newTime": "12:47"
+        }
+      ],
+      "bannerText": "总计节省 20 分钟缓冲，交通缓冲由 -17 分钟 → +3 分钟"
+    }
+  }
+}

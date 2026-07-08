@@ -244,5 +244,58 @@ describe('planning-workbench-execute.dto', () => {
 
       expect(error?.code).toBe('MISSING_PACE_FEEDBACK');
     });
+
+    it('requires confirmedItems when planGate pending stored on planState', () => {
+      const error = validatePlanningWorkbenchExecuteSemantics({
+        context: baseContext,
+        userAction: 'commit',
+        tripId: 'trip_1',
+        existingPlanState: {
+          ...planStateWithSkeleton,
+          metadata: {
+            ...planStateWithSkeleton.metadata,
+            recommendedOptionId: 'balanced_1',
+            planGatePendingConfirmations: [
+              {
+                id: 'signoff_0',
+                title: '确认',
+                description: '请确认风险',
+                kind: 'sign_off',
+                severity: 'need_confirm',
+              },
+            ],
+          },
+        },
+      } as PlanningWorkbenchExecuteDto);
+
+      expect(error?.code).toBe('MISSING_CONFIRMED_ITEMS');
+    });
+
+    it('allows commit when confirmedItems cover pending', () => {
+      expect(
+        validatePlanningWorkbenchExecuteSemantics({
+          context: baseContext,
+          userAction: 'commit',
+          tripId: 'trip_1',
+          existingPlanState: {
+            ...planStateWithSkeleton,
+            metadata: {
+              ...planStateWithSkeleton.metadata,
+              recommendedOptionId: 'balanced_1',
+              planGatePendingConfirmations: [
+                {
+                  id: 'signoff_0',
+                  title: '确认',
+                  description: '请确认风险',
+                  kind: 'sign_off',
+                  severity: 'need_confirm',
+                },
+              ],
+            },
+          },
+          confirmedItems: [{ confirmationId: 'signoff_0', accepted: true }],
+        } as PlanningWorkbenchExecuteDto),
+      ).toBeNull();
+    });
   });
 });
