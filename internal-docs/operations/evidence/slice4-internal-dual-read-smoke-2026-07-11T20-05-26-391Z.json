@@ -1,0 +1,358 @@
+{
+  "evidenceType": "SLICE4_INTERNAL_DUAL_READ_SMOKE",
+  "testedAt": "2026-07-11T20:05:26.391Z",
+  "baseUrl": "http://127.0.0.1:3002/api",
+  "nestLog": "/tmp/nest3002-slice4-dual-read.log",
+  "env": {},
+  "execSlipDualRead": {
+    "schemaId": "tripnara.attention_internal_dual_read@v1",
+    "phase": "INTERNAL_DUAL_READ",
+    "tripId": "c0c77777-7777-4777-8777-777777777777",
+    "generatedAt": "2026-07-11T20:05:20.758Z",
+    "primarySsoEnabled": false,
+    "notificationsEnabled": false,
+    "currentQueueItems": [
+      {
+        "problemId": "stg_attn_wind",
+        "semanticKey": "WEATHER_STRONG_WIND",
+        "title": "道路 / 可行性：1 个行程项受影响",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "stg_attn_slip",
+        "semanticKey": "EXECUTION_DEPARTURE_SLIP",
+        "title": "道路 / 可行性：1 个行程项受影响",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "stg_attn_infeasible",
+        "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+        "title": "执行偏差：1 个行程项受影响",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "stg_attn_night",
+        "semanticKey": "NIGHT_DRIVING_RISK",
+        "title": "道路 / 可行性：1 个行程项受影响",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "dp_id:issue-time-conflict-c0c77777-7777-4777-8777-777777777632_rfc001_93281797-c0c77777-7777-4777-8777-777777777633",
+        "semanticKey": "id",
+        "title": "时间冲突",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "dp_id:plan_object_plan_object_meal_late_arrival_po_c0c77777-7777-4777-8777-777777777601_meal_windo",
+        "semanticKey": "id",
+        "title": "午餐窗冲突",
+        "workflowStatus": "ASSESSING",
+        "enforcement": "REQUIRE_ADJUSTMENT"
+      },
+      {
+        "problemId": "dp_anchor:environment:EXECUTION_SCHEDULE_INFEASIBLE:c0c77777-7777-4777-8777-777777777631::",
+        "semanticKey": "anchor",
+        "title": "EXECUTION_SCHEDULE_FEASIBILITY",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      }
+    ],
+    "attentionPrimaryItems": [
+      {
+        "clusterId": "cluster_weather_strong_wind_c0c77777_7777_4777_8777_777777777777_segment_c0c77777_7777_4777_8777_777777777777_drive_day2_vedur_ep_exec_slip_staging_20260712",
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "primaryProblemId": "stg_attn_infeasible",
+        "primarySemanticCapability": "EXECUTION_SCHEDULE_INFEASIBLE",
+        "headline": "执行偏差：1 个行程项受影响",
+        "explanation": "执行偏差 · urgency HIGH",
+        "causalStory": [
+          {
+            "code": "WEATHER_STRONG_WIND",
+            "label": "强风",
+            "problemId": "stg_attn_wind",
+            "order": 0
+          },
+          {
+            "code": "EXECUTION_DEPARTURE_SLIP",
+            "label": "执行偏差",
+            "problemId": "stg_attn_slip",
+            "order": 2
+          },
+          {
+            "code": "EXECUTION_SCHEDULE_INFEASIBLE",
+            "label": "行程不可执行",
+            "problemId": "stg_attn_infeasible",
+            "order": 3
+          },
+          {
+            "code": "NIGHT_DRIVING_RISK",
+            "label": "夜间驾驶风险",
+            "problemId": "stg_attn_night",
+            "order": 5
+          }
+        ],
+        "attentionLevel": "INTERRUPT",
+        "status": "OPEN",
+        "relatedEffects": [
+          {
+            "problemId": "stg_attn_slip",
+            "semanticCapability": "EXECUTION_DEPARTURE_SLIP",
+            "label": "执行偏差"
+          },
+          {
+            "problemId": "stg_attn_wind",
+            "semanticCapability": "WEATHER_STRONG_WIND",
+            "label": "强风"
+          },
+          {
+            "problemId": "stg_attn_night",
+            "semanticCapability": "NIGHT_DRIVING_RISK",
+            "label": "夜间驾驶风险"
+          }
+        ],
+        "confirmationEntry": {
+          "problemId": "stg_attn_infeasible",
+          "actionRoute": "decision-queue"
+        },
+        "firstObservedAt": "2026-07-11T20:05:20.758Z",
+        "lastUpdatedAt": "2026-07-11T20:05:20.758Z"
+      }
+    ],
+    "comparison": {
+      "currentVisibleCount": 7,
+      "attentionVisibleCount": 1,
+      "reductionCount": 6,
+      "hiddenProblemIds": [
+        "stg_attn_wind",
+        "stg_attn_slip",
+        "stg_attn_night"
+      ],
+      "primaryProblemIds": [
+        "stg_attn_infeasible"
+      ],
+      "missedProblemIds": [
+        "dp_id:issue-time-conflict-c0c77777-7777-4777-8777-777777777632_rfc001_93281797-c0c77777-7777-4777-8777-777777777633",
+        "dp_id:plan_object_plan_object_meal_late_arrival_po_c0c77777-7777-4777-8777-777777777601_meal_windo",
+        "dp_anchor:environment:EXECUTION_SCHEDULE_INFEASIBLE:c0c77777-7777-4777-8777-777777777631::"
+      ],
+      "openClusterCount": 1,
+      "canonicalProblemCount": 4
+    },
+    "shadowVerdict": "CORRECT_MERGE",
+    "shadowVerdictReason": "Legacy queue has multiple visible items; shadow converged to one primary item"
+  },
+  "weatherDualRead": {
+    "schemaId": "tripnara.attention_internal_dual_read@v1",
+    "phase": "INTERNAL_DUAL_READ",
+    "tripId": "a0a99999-9999-4999-8999-999999999999",
+    "generatedAt": "2026-07-11T20:05:23.250Z",
+    "primarySsoEnabled": false,
+    "notificationsEnabled": false,
+    "currentQueueItems": [
+      {
+        "problemId": "dp_id:plan_object_plan_object_stay_missing_day_2",
+        "semanticKey": "id",
+        "title": "住宿衔接不完整",
+        "workflowStatus": "ASSESSING",
+        "enforcement": "REQUIRE_ADJUSTMENT"
+      },
+      {
+        "problemId": "dp_id:plan_object_plan_object_meal_late_arrival_po_a0a99999-9999-4999-8999-999999999602_meal_windo",
+        "semanticKey": "id",
+        "title": "午餐窗冲突",
+        "workflowStatus": "ASSESSING",
+        "enforcement": "REQUIRE_ADJUSTMENT"
+      }
+    ],
+    "attentionPrimaryItems": [],
+    "comparison": {
+      "currentVisibleCount": 2,
+      "attentionVisibleCount": 0,
+      "reductionCount": 2,
+      "hiddenProblemIds": [],
+      "primaryProblemIds": [],
+      "missedProblemIds": [
+        "dp_id:plan_object_plan_object_stay_missing_day_2",
+        "dp_id:plan_object_plan_object_meal_late_arrival_po_a0a99999-9999-4999-8999-999999999602_meal_windo"
+      ],
+      "openClusterCount": 1,
+      "canonicalProblemCount": 1
+    },
+    "shadowVerdict": "INCONCLUSIVE",
+    "shadowVerdictReason": "Heuristic could not classify merge/separation outcome"
+  },
+  "checks": [
+    {
+      "id": "A-HEALTH",
+      "pass": true,
+      "detail": "status=200"
+    },
+    {
+      "id": "A-ENV-SHADOW-MODE",
+      "pass": false,
+      "detail": "=unset"
+    },
+    {
+      "id": "A-ENV-WEATHER",
+      "pass": false,
+      "detail": "=unset"
+    },
+    {
+      "id": "A-ENV-ROAD-OFF",
+      "pass": false,
+      "detail": "=unset"
+    },
+    {
+      "id": "A-ENV-DUAL-READ",
+      "pass": false,
+      "detail": "=unset"
+    },
+    {
+      "id": "A-ENV-PRIMARY-SSO-OFF",
+      "pass": true,
+      "detail": "=0"
+    },
+    {
+      "id": "A-MODULE-DUAL-READ",
+      "pass": true,
+      "detail": "Nest started; dual-read route verified via HTTP below"
+    },
+    {
+      "id": "A-SCHEDULER-PROMOTION",
+      "pass": false,
+      "detail": "retryCron=unset enabled=unset"
+    },
+    {
+      "id": "B-NO-AUTH",
+      "pass": true,
+      "detail": "success=false code=UNAUTHORIZED"
+    },
+    {
+      "id": "B-EXTERNAL-USER",
+      "pass": true,
+      "detail": "code=FORBIDDEN msg=需要为行程成员"
+    },
+    {
+      "id": "B-INTERNAL-NON-MEMBER",
+      "pass": true,
+      "detail": "code=FORBIDDEN msg=需要为行程成员"
+    },
+    {
+      "id": "B-INTERNAL-CANARY-MEMBER",
+      "pass": true,
+      "detail": "success=true"
+    },
+    {
+      "id": "B-NON-CANARY-TRIP",
+      "pass": true,
+      "detail": "code=FORBIDDEN msg=trip_not_on_attention_internal_dual_read_allowlist"
+    },
+    {
+      "id": "EXEC-SHAPE",
+      "pass": true,
+      "detail": "phase=INTERNAL_DUAL_READ primarySso=false notifications=false"
+    },
+    {
+      "id": "EXEC-COMPARISON-COUNTS",
+      "pass": true,
+      "detail": "current=7 attention=1 reduction=6"
+    },
+    {
+      "id": "EXEC-CANONICAL-COUNT",
+      "pass": true,
+      "detail": "canonicalProblemCount=4"
+    },
+    {
+      "id": "EXEC-NO-ROAD-IN-ATTENTION",
+      "pass": true,
+      "detail": "no road semantic in current queue items"
+    },
+    {
+      "id": "C-EXEC-QUEUE-UNCHANGED-BY-DUAL-READ",
+      "pass": true,
+      "detail": "decision-queue status=200 openCount=7"
+    },
+    {
+      "id": "C-EXEC-INVARIANTS",
+      "pass": true,
+      "detail": "problems 4→4 plan=plan_v2_93281797 ledger 1→1"
+    },
+    {
+      "id": "C-EXEC-DUAL-READ",
+      "pass": true,
+      "detail": "current=7 attention=1 verdict=CORRECT_MERGE"
+    },
+    {
+      "id": "D-WEATHER-DUAL-READ",
+      "pass": true,
+      "detail": "status=200"
+    },
+    {
+      "id": "WEATHER-SHAPE",
+      "pass": true,
+      "detail": "phase=INTERNAL_DUAL_READ primarySso=false notifications=false"
+    },
+    {
+      "id": "WEATHER-COMPARISON-COUNTS",
+      "pass": true,
+      "detail": "current=2 attention=0 reduction=2"
+    },
+    {
+      "id": "WEATHER-CANONICAL-COUNT",
+      "pass": true,
+      "detail": "canonicalProblemCount=1"
+    },
+    {
+      "id": "WEATHER-NO-ROAD-IN-ATTENTION",
+      "pass": true,
+      "detail": "no road semantic in current queue items"
+    },
+    {
+      "id": "D-WEATHER-QUEUE",
+      "pass": true,
+      "detail": "currentItems=2 hasWeather=false attention=0"
+    },
+    {
+      "id": "D-WEATHER-NO-ROAD",
+      "pass": true,
+      "detail": "roadItems=0"
+    },
+    {
+      "id": "D-WEATHER-INVARIANTS",
+      "pass": true,
+      "detail": "problems 1→1 ledger 0→0"
+    },
+    {
+      "id": "E-CANONICAL-MUTATION-ZERO",
+      "pass": true,
+      "detail": "dual-read did not change rfc001DecisionProblems count"
+    },
+    {
+      "id": "E-QUEUE-MUTATION-ZERO",
+      "pass": true,
+      "detail": "exec trip updatedAt unchanged=true"
+    },
+    {
+      "id": "E-NOTIFICATION-ZERO",
+      "pass": true,
+      "detail": "notificationsEnabled=false in response"
+    },
+    {
+      "id": "E-WEATHER-LIVE-NOT-SHADOW",
+      "pass": false,
+      "detail": "ASSERTION_PROMOTION_INTERNAL_SECRET not found in process env"
+    },
+    {
+      "id": "F-ROAD-PROMOTION-ZERO",
+      "pass": false,
+      "detail": "road=unset"
+    }
+  ],
+  "overallPass": false,
+  "status": "Slice 4 Internal Dual-Read Smoke Test = FAIL"
+}

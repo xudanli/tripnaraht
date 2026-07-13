@@ -9,7 +9,10 @@ export function mapDecisionActionsToConsumerRepairOptions(
 
 function mapSingleAction(action: DecisionAction): ConsumerRepairOptionViewModel {
   const impact = action.expectedImpact;
-  const tradeoff = inferTradeoffCopy(action);
+  const preview = action.executionSlipPreview;
+  const tradeoff = preview?.preserves?.length || preview?.sacrifices?.length
+    ? { preserves: preview.preserves ?? [], sacrifices: preview.sacrifices ?? [] }
+    : inferTradeoffCopy(action);
 
   return {
     optionId: action.actionId,
@@ -24,6 +27,8 @@ function mapSingleAction(action: DecisionAction): ConsumerRepairOptionViewModel 
       riskDelta: undefined,
     },
     canApply: action.allowed && !action.blockedReason,
+    ...(preview?.changePreview ? { changePreview: preview.changePreview } : {}),
+    ...(preview?.scheduleContext ? { scheduleContext: preview.scheduleContext } : {}),
   };
 }
 

@@ -1,0 +1,573 @@
+[
+  {
+    "scenarioId": "IS-CERT-001",
+    "description": "2WD + F208 高地路段 → NOT_EXECUTABLE",
+    "input": {
+      "tripId": "cert_001",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "2WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "NOVICE_ABROAD" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": false,
+          "nightDrivingPreference": "AVOID"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-02",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Vik" },
+          "destination": { "ref": "anchor_b", "label": "Landmannalaugar" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 120,
+              "roadRefs": ["segment:cert_001:F208"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [],
+          "buffers": []
+        }
+      ]
+    },
+    "expect": {
+      "status": "NOT_EXECUTABLE",
+      "ruleIds": ["SDR-001"],
+      "outcomes": ["REJECT"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-002",
+    "description": "F-road 官方 CLOSED → NOT_EXECUTABLE",
+    "input": {
+      "tripId": "cert_002",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "EXPERIENCED" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-03",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Start" },
+          "destination": { "ref": "anchor_b", "label": "End" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 90,
+              "roadRefs": ["segment:cert_002:F208"],
+              "importance": "MANDATORY",
+              "flexibility": "FIXED"
+            }
+          ],
+          "activities": [],
+          "buffers": []
+        }
+      ],
+      "roadConditions": [
+        {
+          "roadRef": "segment:cert_002:F208",
+          "roadId": "F208",
+          "status": "CLOSED",
+          "observedAt": "2026-08-03T08:00:00.000Z"
+        }
+      ]
+    },
+    "expect": {
+      "status": "NOT_EXECUTABLE",
+      "ruleIds": ["SDR-002"],
+      "outcomes": ["REJECT"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-003",
+    "description": "16:00 预约活动，17:00 才能到 → NOT_EXECUTABLE",
+    "input": {
+      "tripId": "cert_003",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "INTERMEDIATE" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-04",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Hotel" },
+          "destination": { "ref": "anchor_b", "label": "Blue Lagoon" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 60,
+              "roadRefs": ["segment:cert_003:ring"],
+              "importance": "MANDATORY",
+              "flexibility": "FIXED"
+            }
+          ],
+          "activities": [
+            {
+              "ref": "activity_item_b",
+              "importance": "MANDATORY",
+              "flexibility": "FIXED",
+              "weatherSensitive": false,
+              "reservationRequired": true,
+              "durationMinutes": 90,
+              "bufferMinutes": 0,
+              "fixedStartAt": "2026-08-04T16:00:00.000Z"
+            }
+          ],
+          "buffers": []
+        }
+      ],
+      "activityArrivals": [
+        {
+          "activityRef": "activity_item_b",
+          "projectedArrivalAt": "2026-08-04T17:00:00.000Z"
+        }
+      ]
+    },
+    "expect": {
+      "status": "NOT_EXECUTABLE",
+      "ruleIds": ["SDR-203"],
+      "outcomes": ["REJECT"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-101",
+    "description": "单日等效负荷 340min → REQUIRES_REPAIR",
+    "input": {
+      "tripId": "cert_101",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "EXPERIENCED" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-05",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Reykjavik" },
+          "destination": { "ref": "anchor_b", "label": "Hofn" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 330,
+              "roadRefs": ["segment:cert_101:ring"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [
+            {
+              "ref": "activity_stop_1",
+              "importance": "OPTIONAL",
+              "flexibility": "REMOVABLE",
+              "weatherSensitive": false,
+              "reservationRequired": false,
+              "durationMinutes": 30,
+              "bufferMinutes": 0
+            }
+          ],
+          "buffers": []
+        }
+      ]
+    },
+    "expect": {
+      "status": "REQUIRES_REPAIR",
+      "ruleIds": ["SDR-101"],
+      "outcomes": ["SUGGEST_REPAIR"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-102",
+    "description": "抵达酒店晚于 latestArrival 15min → REQUIRES_CONFIRMATION",
+    "input": {
+      "tripId": "cert_102",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "2WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "INTERMEDIATE" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": false,
+          "nightDrivingPreference": "AVOID"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-06",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Day trip" },
+          "destination": { "ref": "anchor_hotel", "label": "Hotel" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_hotel",
+              "baseNavigationMinutes": 45,
+              "roadRefs": ["segment:cert_102:ring"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [],
+          "accommodation": {
+            "ref": "accommodation_item_hotel",
+            "latestArrival": "22:00"
+          },
+          "buffers": []
+        }
+      ],
+      "activityArrivals": [
+        {
+          "activityRef": "accommodation_item_hotel",
+          "projectedArrivalAt": "2026-08-06T22:15:00.000Z"
+        }
+      ]
+    },
+    "expect": {
+      "status": "REQUIRES_CONFIRMATION",
+      "ruleIds": ["SDR-201"],
+      "outcomes": ["NEED_CONFIRM"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-103",
+    "description": "道路证据过期 → UNKNOWN assessment",
+    "input": {
+      "tripId": "cert_103",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "EXPERIENCED" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-07",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Start" },
+          "destination": { "ref": "anchor_b", "label": "End" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 60,
+              "roadRefs": ["segment:cert_103:F208"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [],
+          "buffers": []
+        }
+      ],
+      "roadConditions": [
+        {
+          "roadRef": "segment:cert_103:F208",
+          "roadId": "F208",
+          "status": "OPEN",
+          "observedAt": "2026-08-01T08:00:00.000Z",
+          "validUntil": "2026-07-01T12:00:00.000Z"
+        }
+      ]
+    },
+    "expect": {
+      "status": "UNKNOWN",
+      "ruleIds": ["SDR-002"],
+      "outcomes": ["UNKNOWN"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-201",
+    "description": "HIGH 负荷日仅 MANDATORY+FIXED → CAUTION",
+    "input": {
+      "tripId": "cert_201",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "EXPERIENCED" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-08",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "A" },
+          "destination": { "ref": "anchor_b", "label": "B" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 310,
+              "roadRefs": ["segment:cert_201:ring"],
+              "importance": "MANDATORY",
+              "flexibility": "FIXED"
+            }
+          ],
+          "activities": [
+            {
+              "ref": "activity_must",
+              "importance": "MANDATORY",
+              "flexibility": "FIXED",
+              "weatherSensitive": false,
+              "reservationRequired": true,
+              "durationMinutes": 60,
+              "bufferMinutes": 0,
+              "fixedStartAt": "2026-08-08T18:00:00.000Z"
+            }
+          ],
+          "buffers": []
+        }
+      ]
+    },
+    "expect": {
+      "status": "REQUIRES_REPAIR",
+      "ruleIds": ["SDR-101", "SDR-301"],
+      "outcomes": ["SUGGEST_REPAIR", "CAUTION"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-202",
+    "description": "天气敏感冰川徒步无 fallback → CAUTION",
+    "input": {
+      "tripId": "cert_202",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "INTERMEDIATE" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-09",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Base" },
+          "destination": { "ref": "anchor_b", "label": "Glacier" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 90,
+              "roadRefs": ["segment:cert_202:ring"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [
+            {
+              "ref": "activity_glacier_hike",
+              "importance": "MANDATORY",
+              "flexibility": "FIXED",
+              "weatherSensitive": true,
+              "reservationRequired": true,
+              "durationMinutes": 180,
+              "bufferMinutes": 30,
+              "fixedStartAt": "2026-08-09T10:00:00.000Z"
+            }
+          ],
+          "buffers": []
+        }
+      ]
+    },
+    "expect": {
+      "status": "EXECUTABLE_WITH_CAUTION",
+      "ruleIds": ["SDR-302"],
+      "outcomes": ["CAUTION"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-203",
+    "description": "冬季末段驾驶进入民用暮光后 + 禁夜驾 → REQUIRES_REPAIR",
+    "input": {
+      "tripId": "cert_203",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "INTERMEDIATE" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": false,
+          "nightDrivingPreference": "AVOID"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-01-15",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Reykjavik" },
+          "destination": { "ref": "anchor_b", "label": "South Coast" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 600,
+              "roadRefs": ["segment:cert_203:ring"],
+              "importance": "MANDATORY",
+              "flexibility": "FIXED"
+            }
+          ],
+          "activities": [],
+          "buffers": []
+        }
+      ]
+    },
+    "expect": {
+      "status": "REQUIRES_REPAIR",
+      "ruleIds": ["SDR-202"],
+      "outcomes": ["SUGGEST_REPAIR"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-004",
+    "description": "4WD + F208 + 租车合同禁 F-road → NOT_EXECUTABLE",
+    "input": {
+      "tripId": "cert_004",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "EXPERIENCED" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        },
+        "rentalRestrictions": [
+          {
+            "code": "NO_F_ROAD",
+            "description": "标准租车合同禁止驶入 F-road（高地路）",
+            "source": "PACK_DEFAULT"
+          },
+          {
+            "code": "GRAVEL_ROAD_LIMITED",
+            "description": "碎石路行驶受合同里程/险种限制",
+            "source": "PACK_DEFAULT"
+          }
+        ]
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-02",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Vik" },
+          "destination": { "ref": "anchor_b", "label": "Landmannalaugar" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 120,
+              "roadRefs": ["segment:cert_004:F208"],
+              "importance": "MANDATORY",
+              "flexibility": "FIXED"
+            }
+          ],
+          "activities": [],
+          "buffers": []
+        }
+      ]
+    },
+    "expect": {
+      "status": "NOT_EXECUTABLE",
+      "ruleIds": ["SDR-003"],
+      "outcomes": ["REJECT"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-105",
+    "description": "碎石路占比超合同阈值 → REQUIRES_CONFIRMATION",
+    "input": {
+      "tripId": "cert_105",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "INTERMEDIATE" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        },
+        "rentalRestrictions": [
+          {
+            "code": "NO_F_ROAD",
+            "description": "标准租车合同禁止驶入 F-road（高地路）",
+            "source": "PACK_DEFAULT"
+          },
+          {
+            "code": "GRAVEL_ROAD_LIMITED",
+            "description": "碎石路行驶受合同里程/险种限制",
+            "source": "PACK_DEFAULT"
+          }
+        ]
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-05",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "A" },
+          "destination": { "ref": "anchor_b", "label": "B" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 60,
+              "roadRefs": ["segment:cert_105:RING_ROAD"],
+              "importance": "MANDATORY",
+              "flexibility": "FIXED"
+            },
+            {
+              "legId": "drive_leg_1_2",
+              "fromRef": "item_b",
+              "toRef": "item_c",
+              "baseNavigationMinutes": 40,
+              "roadRefs": ["segment:cert_105:F26"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [],
+          "buffers": []
+        }
+      ]
+    },
+    "expect": {
+      "status": "NOT_EXECUTABLE",
+      "ruleIds": ["SDR-003"],
+      "outcomes": ["REJECT"]
+    }
+  }
+]

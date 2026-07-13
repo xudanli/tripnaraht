@@ -155,6 +155,20 @@ export class ConflictDto {
   @ApiPropertyOptional({ description: '建议的新时间 ISO 字符串' })
   suggestedTime?: string;
 
+  @ApiPropertyOptional({
+    description: '当日驾驶路段明细（仅 MAX_DAILY_DRIVE_EXCEEDED）',
+    type: 'array',
+    items: { type: 'object' },
+  })
+  dailyDriveLegs?: Array<{
+    fromItemId?: string;
+    toItemId?: string;
+    fromPlaceLabel?: string;
+    toPlaceLabel?: string;
+    travelMinutes: number;
+    departAt?: string;
+  }>;
+
   @ApiPropertyOptional({ description: '直线距离（公里）' })
   distanceKm?: number;
 

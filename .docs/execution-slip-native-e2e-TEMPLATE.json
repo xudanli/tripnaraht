@@ -1,0 +1,78 @@
+{
+  "label": "EXECUTION_SLIP_NATIVE_E2E_EVIDENCE",
+  "evidenceType": "EXECUTION_SLIP_NATIVE_E2E",
+  "date": "2026-07-XX",
+  "commitSha": "<git rev-parse HEAD>",
+  "testedAt": "<ISO8601>",
+  "tester": "<name>",
+  "environment": "staging|dev|canary",
+  "result": "PASS|FAIL",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "activityAId": "c0c77777-7777-4777-8777-777777777631",
+  "observationId": "<from departure-slip response — Scenario A>",
+  "problemId": "<from RECORDED response — Scenario A>",
+  "decisionId": "<same as problemId>",
+  "runId": "<from RECORDED response — Scenario A>",
+  "selectedActionId": "cand_substitute_next",
+  "oldPlanVersionId": "<context-snapshot before accept>",
+  "newPlanVersionId": "<context-snapshot after accept>",
+  "revalidation": {
+    "status": "PASS",
+    "message": ""
+  },
+  "legacyWriteInvocations": 0,
+  "scenarios": {
+    "A": {
+      "delayMinutes": 45,
+      "expectedStatus": "RECORDED",
+      "observedAt": "2026-07-12T13:45:00.000Z",
+      "pass": true
+    },
+    "B": {
+      "delayMinutes": 10,
+      "expectedStatus": "NO_ACTION",
+      "observedAt": "2026-07-12T13:10:00.000Z",
+      "pass": true
+    }
+  },
+  "checks": [
+    {
+      "id": "E2E-FULL-CHAIN",
+      "pass": true,
+      "detail": "场景 A：晚 45min → RECORDED → 决策卡 → 勾选 → accept-recommended → PlanVersion 更新 → 卡片消失"
+    },
+    {
+      "id": "E2E-NO-ACTION-TOAST",
+      "pass": true,
+      "detail": "场景 B：晚 10min → NO_ACTION → Toast 仍可执行，不跳转决策卡"
+    },
+    {
+      "id": "E2E-OBSERVED-AT-CORRECT",
+      "pass": true,
+      "detail": "observedAt = plannedDepartAt + delayMinutes，非 Date() 硬编码"
+    },
+    {
+      "id": "E2E-THREE-REPAIR-OPTIONS",
+      "pass": true,
+      "detail": "决策卡展示 cand_shorten_stay / cand_remove_next / cand_substitute_next"
+    },
+    {
+      "id": "E2E-PLAN-VERSION-UPDATED",
+      "pass": true,
+      "detail": "场景 A 确认后 planVersion 变更；场景 B planVersion 不变"
+    },
+    {
+      "id": "E2E-ACTIVITY-ID-CURRENT",
+      "pass": true,
+      "detail": "departure-slip activityId = 当前活动 A（...777631），非下一站 B"
+    }
+  ],
+  "screenshots": [
+    "execution-slip-native-e2e-screenshots/01-late-modal.png",
+    "execution-slip-native-e2e-screenshots/02-decision-card.png",
+    "execution-slip-native-e2e-screenshots/03-confirm-success.png",
+    "execution-slip-native-e2e-screenshots/04-card-dismissed.png"
+  ],
+  "recordingPath": "",
+  "notes": ""
+}

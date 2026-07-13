@@ -7,7 +7,6 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   isPublicPublishingLevel,
-  MATCH_SQUARE_FROZEN_MESSAGE,
   PublishingLevel,
   PublishingPermissionStatus,
 } from '../constants/identity-governance.constants';
@@ -210,11 +209,12 @@ export class PublishingPermissionService {
     return approved;
   }
 
+  /** @deprecated 搭子广场已下线；请使用 canPublishPublicTrustedProject */
   async canPublicRecruit(userId: string): Promise<{ allowed: boolean; reason?: string }> {
     void userId;
     return {
       allowed: false,
-      reason: MATCH_SQUARE_FROZEN_MESSAGE,
+      reason: '搭子广场公开招募已下线，请使用可信旅行项目发布',
     };
   }
 
@@ -257,7 +257,7 @@ export class PublishingPermissionService {
     if (!check.allowed) {
       throw new ForbiddenException({
         code: 'PUBLISHING_PERMISSION_DENIED',
-        message: check.reason ?? MATCH_SQUARE_FROZEN_MESSAGE,
+        message: check.reason ?? '搭子广场公开招募已下线，请使用可信旅行项目发布',
       });
     }
   }

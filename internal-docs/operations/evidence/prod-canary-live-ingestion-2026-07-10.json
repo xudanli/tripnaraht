@@ -1,0 +1,69 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_LIVE_INGESTION",
+  "acceptanceMode": "PRODUCTION_CANARY_PILOT",
+  "startedAt": "2026-07-10T17:00:28.473Z",
+  "endedAt": "2026-07-10T17:00:59.629Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "dayIndex": 1,
+  "liveSource": "open-meteo",
+  "weatherSource": "open-meteo",
+  "sourceProvider": "global_weather",
+  "vedurDirectPass": false,
+  "liveProbeNotes": [
+    "primary: outcome=UNAVAILABLE weatherSource=none sourceProvider=none vedurDirect=undefined risk=n/a",
+    "open-meteo-retry: outcome=SILENT weatherSource=open-meteo sourceProvider=global_weather risk=CALM"
+  ],
+  "ingestOutcome": "SILENT",
+  "ingestStored": true,
+  "riskTier": "CALM",
+  "liveIngestionPass": true,
+  "hazardAssertionEmitted": false,
+  "checks": [
+    {
+      "id": "PC-LI-001-trip",
+      "pass": true,
+      "detail": "productionCanary=true destination=IS"
+    },
+    {
+      "id": "PC-LI-001b-day-coords",
+      "pass": true,
+      "detail": "dayIndex=1 candidates=1"
+    },
+    {
+      "id": "PC-LI-002-vedur-attempt",
+      "pass": true,
+      "detail": "outcome=UNAVAILABLE weatherSource=none"
+    },
+    {
+      "id": "PC-LI-003-live-egress",
+      "pass": true,
+      "detail": "weatherSource=open-meteo outcome=SILENT"
+    },
+    {
+      "id": "PC-LI-003b-vedur-direct",
+      "pass": false,
+      "detail": "fallback=open-meteo sourceProvider=global_weather"
+    },
+    {
+      "id": "PC-LI-004-persisted",
+      "pass": true,
+      "detail": "ingestStored=true outcome=SILENT"
+    },
+    {
+      "id": "PC-LI-005-no-action-semantics",
+      "pass": true,
+      "detail": "calm weather → SILENT (expected NO_ACTION)"
+    },
+    {
+      "id": "PC-LI-006-not-admin-injection",
+      "pass": true,
+      "detail": "live API only (no replay stub)"
+    },
+    {
+      "id": "PC-LI-007-no-effective-write",
+      "pass": true,
+      "detail": "effective=plan_1 unchanged"
+    }
+  ],
+  "result": "LIVE_INGESTION_PASS"
+}

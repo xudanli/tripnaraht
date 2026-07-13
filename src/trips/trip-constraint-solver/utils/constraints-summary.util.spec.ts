@@ -39,14 +39,14 @@ describe('constraints-summary.util', () => {
     expect(resolveBudgetStatus({ total: 1000, gateStatus: 'REJECT' })).toBe('need_confirm');
   });
 
-  it('detects transport misalignment', () => {
+  it('always confirms transport under self-drive-only scope', () => {
     expect(
       resolveTransportStatus({
         travelMode: 'DRIVING',
         sampleTravelMode: 'WALKING',
         sampleDistanceMeters: 18244,
       }),
-    ).toBe('misaligned');
+    ).toBe('confirmed');
   });
 
   it('returns confirmed when transport mode matches', () => {
@@ -63,8 +63,22 @@ describe('constraints-summary.util', () => {
     expect(resolveTravelersStatus(2, 2)).toBe('confirmed');
   });
 
+  it('defaults to DRIVING when pacingConfig is empty', () => {
+    expect(resolveEffectiveTravelMode(null)).toBe('DRIVING');
+  });
+
   it('infers DRIVING from transport car hint', () => {
     expect(resolveEffectiveTravelMode({ transport: 'car' })).toBe('DRIVING');
+  });
+
+  it('does not emit transport pending items', () => {
+    const items = buildPendingItems({
+      timeRange: { startDate: 'a', endDate: 'b', dayCount: 1, status: 'confirmed' },
+      budget: { total: 1, currency: 'CNY', gateStatus: 'ALLOW', status: 'confirmed' },
+      travelers: { count: 2, memberCount: 2, profilingCompletedCount: 0, status: 'confirmed' },
+      transport: { status: 'missing' },
+    });
+    expect(items.find((i) => i.key === 'transport')).toBeUndefined();
   });
 
   it('builds pending items with labels', () => {
@@ -72,7 +86,7 @@ describe('constraints-summary.util', () => {
       timeRange: { startDate: 'a', endDate: 'b', dayCount: 1, status: 'confirmed' },
       budget: { total: 1, currency: 'CNY', gateStatus: 'NEED_CONFIRM', status: 'need_confirm' },
       travelers: { count: 2, memberCount: 3, profilingCompletedCount: 0, status: 'misaligned' },
-      transport: { travelMode: 'DRIVING', transportHint: 'car', status: 'confirmed' },
+      transport: { status: 'confirmed' },
     });
     expect(items[0].label).toContain('预算');
     const travelersPending = items.find((i) => i.key === 'travelers');
@@ -81,7 +95,6 @@ describe('constraints-summary.util', () => {
       timeRange: { startDate: 'a', endDate: 'b', dayCount: 1, status: 'confirmed' },
       budget: { total: 1, currency: 'CNY', gateStatus: 'ALLOW', status: 'confirmed' },
       travelers: { count: 2, memberCount: 2, profilingCompletedCount: 0, status: 'confirmed' },
-      transport: { travelMode: 'DRIVING', transportHint: null, status: 'confirmed' },
     })).toBe(true);
   });
 });

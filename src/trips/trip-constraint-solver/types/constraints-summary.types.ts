@@ -39,8 +39,14 @@ export interface ConstraintsSummaryResponse {
     status: ConstraintFieldStatus;
   };
   transport: {
-    travelMode: string | null;
+    travelMode: string;
+    label: string;
     transportHint: string | null;
+    /** 产品范围固定自驾，不对用户开放编辑 */
+    editable: false;
+    /** Plan Studio 约束卡片不展示交通行 */
+    hidden: boolean;
+    scope: 'self_drive_only';
     sampleSegment?: {
       duration: number | null;
       distance: number | null;

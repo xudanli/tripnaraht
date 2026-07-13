@@ -121,9 +121,11 @@ export interface AttractionExploreMapPoi {
   placeId: number;
   name: string;
   coordinates: { lat: number; lng: number };
-  kind: 'candidate' | 'recommendation' | 'route';
+  kind: 'candidate' | 'recommendation' | 'route' | 'lodging' | 'lodging_suggestion';
   priority?: AttractionExplorePriority;
   highlighted?: boolean;
+  lodgingNightIndex?: number;
+  lodgingDayIndex?: number;
   insertHint?: {
     suggestedDayIndex?: number;
     detourMinutes?: number;
@@ -132,10 +134,54 @@ export interface AttractionExploreMapPoi {
   };
 }
 
+export interface PlanningLodgingLegEndpoint {
+  lat: number;
+  lng: number;
+  placeId?: number;
+  label?: string;
+  kind: 'day_anchor' | 'lodging' | 'suggested_lodging';
+}
+
+export interface PlanningLodgingLeg {
+  id: string;
+  nightIndex: number;
+  dayIndex: number;
+  from: PlanningLodgingLegEndpoint;
+  to: PlanningLodgingLegEndpoint;
+  distanceKm?: number;
+  driveMinutesEstimate?: number;
+  kind: 'approach' | 'relocation';
+  highlighted?: boolean;
+}
+
+export interface PlanningLodgingSuggestion {
+  id: string;
+  nightIndex: number;
+  dayIndex: number;
+  placeId: number;
+  name: string;
+  nameEN?: string | null;
+  kind: 'current' | 'alternative' | 'recommended';
+  priority: 'primary' | 'alternative' | 'recommended';
+  coordinates?: { lat: number; lng: number };
+  rating?: number | null;
+  priceHint?: string | null;
+  region?: string | null;
+  reason?: string;
+  itineraryItemId?: string;
+  highlighted?: boolean;
+  meta?: {
+    distanceFromAnchorKm?: number;
+    anchorPlaceName?: string;
+    driveMinutesEstimate?: number;
+  };
+}
+
 export interface AttractionExploreMapView {
   tripId: string;
   routePolyline?: Array<{ lat: number; lng: number }> | string | null;
   pois: AttractionExploreMapPoi[];
+  lodgingLegs?: PlanningLodgingLeg[];
   bounds?: {
     northeast: { lat: number; lng: number };
     southwest: { lat: number; lng: number };

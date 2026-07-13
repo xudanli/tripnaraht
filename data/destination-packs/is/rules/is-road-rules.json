@@ -3,6 +3,7 @@
   "rules": [
     {
       "ruleId": "IS_ROAD_CLOSED_BLOCK",
+      "sdrRuleId": "SDR-002",
       "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
       "appliesWhen": { "country": "IS" },
       "whenCandidateUsesRoute": true,
@@ -22,6 +23,7 @@
     },
     {
       "ruleId": "IS_ROAD_LIMITED_WARN",
+      "sdrRuleId": "SDR-001",
       "semanticKey": "ROAD_SEGMENT_RESTRICTED",
       "appliesWhen": { "country": "IS" },
       "whenCandidateUsesRoute": true,

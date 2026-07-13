@@ -1174,7 +1174,7 @@ export class PlanningWorkbenchKernelBridgeService {
       case 'mixed':
         return 'mixed';
       default:
-        return undefined;
+        return 'drive';
     }
   }
 

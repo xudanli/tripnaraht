@@ -2,6 +2,11 @@
  * 目的地规则 BFF 投影 — OFFICIAL_RULE 与 hard_must_satisfy 分离
  */
 
+import {
+  advisoryViolationLabelForCapability,
+  resolveConstraintCapability,
+  shouldUseAdvisoryViolationLabel,
+} from './constraint-capability-registry.util';
 import type {
   DestinationRuleTier,
   DestinationRuleVerificationStatus,
@@ -90,12 +95,15 @@ export function projectDestinationRuleForBff(c: TripConstraint): TripConstraint 
     ...(tripImpact ? { tripImpact } : {}),
   };
 
+  const capability = resolveConstraintCapability(c);
   const contractMeta: TripConstraintContractMeta = {
     enabledSummary: enabled ? `已生效：${c.name}` : `已停用：${c.name}`,
     scopeLabel: typeof raw.applicableScope === 'string' ? raw.applicableScope : scopeLabel,
     judgmentRule,
-    violationResult: violationCode,
-    violationResultLabel,
+    violationResult: shouldUseAdvisoryViolationLabel(capability) ? 'CONFIRM' : violationCode,
+    violationResultLabel: shouldUseAdvisoryViolationLabel(capability)
+      ? advisoryViolationLabelForCapability(capability)
+      : violationResultLabel,
   };
 
   return {
@@ -115,6 +123,7 @@ export function projectDestinationRuleForBff(c: TripConstraint): TripConstraint 
         (typeof raw.templateId === 'string' ? raw.templateId : undefined),
     },
     contractMeta,
+    capability,
     cardTone: c.hasConflict
       ? tier === 'BLOCK'
         ? 'danger'

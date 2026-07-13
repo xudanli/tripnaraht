@@ -1,0 +1,81 @@
+{
+  "note": "Local projection with Phase B code against live Canary ActiveRisks. Restart Nest :3002 to serve userNarrative from HTTP directly.",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "account": "exec-slip-canary@tripnara.dev",
+  "fetchedAt": "2026-07-12T09:58:55.560Z",
+  "endpoints": {
+    "alerts": "GET /api/mobile/trips/{tripId}/execution/execution-alerts",
+    "adjustment": "GET /api/mobile/trips/{tripId}/execution/adjustment-queue"
+  },
+  "executionAlerts": {
+    "schemaId": "tripnara.execution_alerts@v2",
+    "requiredAction": "STOP",
+    "primaryRisk": {
+      "id": "risk_a06a4ffa833852ba",
+      "level": "STOP",
+      "presentationRole": "PRIMARY",
+      "decisionProblemIds": ["stg_attn_night"],
+      "legacyTitle": "道路 / 可行性：1 个行程项受影响",
+      "userNarrative": {
+        "whatHappened": "当前路线不建议继续按原计划行驶",
+        "impactOnTrip": "今日部分安排可能受到影响",
+        "recommendation": "查看替代方案后再继续行程",
+        "affected": { "activities": [] }
+      },
+      "userActions": [
+        { "label": "查看替代方案后再继续行程", "action": "view_alternatives", "enabled": true, "role": "primary" },
+        { "label": "查看影响详情", "action": "view_impact", "enabled": true, "role": "secondary" }
+      ]
+    },
+    "impacts": [
+      { "type": "SAFETY", "label": "当前路段不建议按原计划行驶" },
+      { "type": "DELAY", "label": "驾驶时长超出单日安全上限" },
+      { "type": "ITINERARY", "label": "当天后续活动时间需要顺延" }
+    ],
+    "independentRisksSample": [
+      {
+        "id": "risk_9e7c80b2cedf5d89",
+        "decisionProblemIds": ["stg_attn_wind"],
+        "userNarrative": {
+          "whatHappened": "当前路线不建议继续按原计划行驶",
+          "impactOnTrip": "今日部分安排可能受到影响",
+          "recommendation": "查看替代方案后再继续行程"
+        }
+      }
+    ],
+    "independentTotal": 10
+  },
+  "adjustmentQueue": {
+    "pendingCount": 8,
+    "headline": "今天需要您决定 8 件事，其中 6 项可能影响行程执行",
+    "itemsSample": [
+      {
+        "id": "stg_attn_wind",
+        "decisionProblemId": "stg_attn_wind",
+        "legacyTitle": "当前行程无法按原计划执行",
+        "userNarrative": {
+          "whatHappened": "Exec Slip Canary POI A的安排需要调整",
+          "impactOnTrip": "受影响：Exec Slip Canary POI A · 10:00",
+          "recommendation": "查看替代方案",
+          "affected": {
+            "activities": [{ "label": "Exec Slip Canary POI A", "time": "10:00" }]
+          }
+        },
+        "userActions": [
+          { "label": "查看替代方案", "action": "view_alternatives", "enabled": false, "role": "primary" },
+          { "label": "保留原计划", "action": "keep_original", "enabled": false, "role": "secondary" }
+        ]
+      },
+      {
+        "id": "stg_attn_infeasible",
+        "decisionProblemId": "stg_attn_infeasible",
+        "userNarrative": {
+          "whatHappened": "Exec Slip Canary POI A的安排需要调整",
+          "impactOnTrip": "执行偏差 · urgency HIGH。受影响：Exec Slip Canary POI A · 10:00",
+          "recommendation": "查看替代方案"
+        }
+      }
+    ],
+    "itemsTotal": 8
+  }
+}

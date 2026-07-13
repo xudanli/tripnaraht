@@ -1,0 +1,82 @@
+{
+  "evidenceType": "REPLAY_LIFECYCLE_STAGING",
+  "startedAt": "2026-07-10T16:00:14.514Z",
+  "endedAt": "2026-07-10T16:00:21.137Z",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "rootProblemId": "problem_weather_c0a55555_1783699050162",
+  "upgradeSteps": [
+    {
+      "windKmh": 70,
+      "problemId": "problem_weather_c0a55555_1783699050162",
+      "urgency": "MEDIUM",
+      "jobRunId": "replay_upgrade_70_1783699214665"
+    },
+    {
+      "windKmh": 85,
+      "problemId": "problem_weather_c0a55555_1783699050162",
+      "urgency": "MEDIUM",
+      "jobRunId": "replay_upgrade_85_1783699216429"
+    },
+    {
+      "windKmh": 95,
+      "problemId": "problem_weather_c0a55555_1783699050162",
+      "urgency": "HIGH",
+      "jobRunId": "replay_upgrade_95_1783699217956"
+    }
+  ],
+  "recoverySteps": [
+    {
+      "jobRunId": "replay_recovery_calm_a_1783699219558",
+      "streak": 1,
+      "problemStatus": "DECIDED"
+    },
+    {
+      "jobRunId": "replay_recovery_calm_b_1783699220439",
+      "streak": 1,
+      "problemStatus": "RESOLVED"
+    }
+  ],
+  "checks": [
+    {
+      "id": "REPLAY-000-open-problem",
+      "pass": true,
+      "detail": "open=1 problemId=problem_weather_c0a55555_1783699050162"
+    },
+    {
+      "id": "REPLAY-001-upgrade-70",
+      "pass": true,
+      "detail": "problemId=problem_weather_c0a55555_1783699050162 urgency=MEDIUM"
+    },
+    {
+      "id": "REPLAY-002-upgrade-85",
+      "pass": true,
+      "detail": "problemId=problem_weather_c0a55555_1783699050162 urgency=MEDIUM"
+    },
+    {
+      "id": "REPLAY-003-upgrade-95",
+      "pass": true,
+      "detail": "problemId=problem_weather_c0a55555_1783699050162 urgency=HIGH"
+    },
+    {
+      "id": "REPLAY-010-upgrade-urgency-high",
+      "pass": true,
+      "detail": "urgency=HIGH"
+    },
+    {
+      "id": "REPLAY-011-recovery-streak-1",
+      "pass": true,
+      "detail": "streak=1 status=DECIDED"
+    },
+    {
+      "id": "REPLAY-012-recovery-resolved",
+      "pass": true,
+      "detail": "streak=1 open=0 resolved=true"
+    },
+    {
+      "id": "REPLAY-013-same-problem-id",
+      "pass": true,
+      "detail": "root=problem_weather_c0a55555_1783699050162"
+    }
+  ],
+  "result": "READY"
+}

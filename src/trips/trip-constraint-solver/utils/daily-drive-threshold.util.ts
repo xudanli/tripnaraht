@@ -34,10 +34,19 @@ function readPositiveNumber(value: unknown): number | undefined {
 
 export function readUserMaxDailyDrivingHours(metadata: unknown): number | undefined {
   const constraints = readConstraints(metadata);
-  return (
+  const fromHours =
     readPositiveNumber(constraints.maxDailyDrivingHours) ??
-    readPositiveNumber(constraints.maxDailyDriveHours)
-  );
+    readPositiveNumber(constraints.maxDailyDriveHours);
+  if (fromHours != null) {
+    return fromHours;
+  }
+  const fromMinutes =
+    readPositiveNumber(constraints.maxDailyDriveMinutes) ??
+    readPositiveNumber(constraints.max_daily_drive_minutes);
+  if (fromMinutes != null) {
+    return fromMinutes / 60;
+  }
+  return undefined;
 }
 
 function pacingDefaultHours(pacingConfig: unknown): number | undefined {
@@ -96,21 +105,36 @@ export function applyMaxDailyDrivingHoursConstraintPatch(
   constraints: Record<string, unknown>,
   value: unknown,
 ): boolean {
-  const parsed =
-    typeof value === 'number'
-      ? readPositiveNumber(value)
-      : value && typeof value === 'object'
-        ? readPositiveNumber(
-            (value as Record<string, unknown>).maxDailyDrivingHours ??
-              (value as Record<string, unknown>).maxDailyDriveHours ??
-              (value as Record<string, unknown>).maxHours ??
-              (value as Record<string, unknown>).hours ??
-              (value as Record<string, unknown>).value,
-          )
-        : undefined;
-  if (parsed == null) return false;
-  constraints.maxDailyDrivingHours = parsed;
+  let hours: number | undefined;
+  let minutes: number | undefined;
+
+  if (typeof value === 'number') {
+    hours = readPositiveNumber(value);
+  } else if (value && typeof value === 'object') {
+    const raw = value as Record<string, unknown>;
+    minutes =
+      readPositiveNumber(raw.maxDailyDriveMinutes) ??
+      readPositiveNumber(raw.max_daily_drive_minutes);
+    hours =
+      readPositiveNumber(raw.maxDailyDrivingHours) ??
+      readPositiveNumber(raw.maxDailyDriveHours) ??
+      readPositiveNumber(raw.maxHours) ??
+      readPositiveNumber(raw.hours) ??
+      readPositiveNumber(raw.value);
+    if (minutes != null && hours == null) {
+      hours = minutes / 60;
+    }
+  }
+
+  if (hours == null) return false;
+  if (minutes == null) {
+    minutes = Math.round(hours * 60);
+  }
+
+  constraints.maxDailyDrivingHours = hours;
+  constraints.maxDailyDriveMinutes = minutes;
   delete constraints.maxDailyDriveHours;
+  delete constraints.max_daily_drive_minutes;
   return true;
 }
 

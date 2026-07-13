@@ -126,7 +126,7 @@ export class FeasibilityReportController {
 
   @Post('issues/:issueId/apply-repair')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '应用修复（复用 readiness apply-repair）' })
+  @ApiOperation({ summary: '应用修复（方案写库 SSOT — P4 repair authority）' })
   async applyRepair(
     @Param('tripId') tripId: string,
     @Param('issueId') issueId: string,

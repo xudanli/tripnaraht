@@ -123,6 +123,15 @@ export interface FeasibilityIssueAnchorsDto {
   removableItemId?: string;
   removableItemLabel?: string;
   removableItemSavedMinutes?: number;
+  /** daily_drive — 当日各驾驶路段（供 preview 活动明细） */
+  driveLegs?: Array<{
+    fromItemId?: string;
+    toItemId?: string;
+    fromPlaceLabel?: string;
+    toPlaceLabel?: string;
+    travelMinutes?: number;
+    departAt?: string;
+  }>;
 }
 
 export interface FeasibilityIssueUiHintsDto {
@@ -144,6 +153,8 @@ export interface FeasibilityIssueUiHintsDto {
 
 export interface FeasibilityIssueDto {
   id: string;
+  /** P2 — 关联 TripPrerequisite SSOT；出发准备与可执行性共享 */
+  prerequisiteId?: string;
   /** 稳定 dedupe 键 — 与 revalidate 后 id 抖动时前端可对齐 */
   semanticKey?: string;
   priority: FeasibilityIssuePriority;

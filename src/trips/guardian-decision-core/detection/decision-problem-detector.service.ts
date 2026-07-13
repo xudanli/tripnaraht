@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { resolveTripRevision, revisionToString } from '../../trip-constraint-solver/utils/trip-revision.util';
 import type { Rfc001DecisionProblem } from '../contracts/decision-problem.types';
+import { resolveDedupKeyFromProblem } from '../../tep/utils/tep-canonical-dedup.util';
 import type { WorldStateSnapshot } from '../contracts/world-state.types';
 import type { RoadStatusChangedEvent } from '../evidence/road-status-changed.event';
 import type { WeatherHazardChangedEvent } from '../evidence/weather-hazard-changed.event';
@@ -23,6 +24,13 @@ import {
   assertExcessiveLoadImpactHasPlanItems,
   type ExcessiveDailyLoadImpactResult,
 } from './excessive-daily-load-impact-analyzer';
+import {
+  assertExecutionSlipHasImpact,
+  type ExecutionSlipImpactResult,
+} from './execution-slip-impact-analyzer';
+import type { ExecutionDepartureSlipEvent } from '../evidence/execution-departure-changed.event';
+import type { ExecutionDepartureAssertionPayload } from '../adapters/execution-departure-to-assertion.adapter';
+import { EXECUTION_SCHEDULE_INFEASIBLE_CAPABILITY } from '../contracts/execution-slip.types';
 import {
   isExcessiveDailyLoadProblemInProgress,
 } from './excessive-daily-load-problem.util';
@@ -243,5 +251,88 @@ export class DecisionProblemDetectorService {
       problem.problemId,
     );
     return this.problemStore.upsert(input.tripId, problem);
+  }
+
+  /**
+   * Slice 3 — Open FEASIBILITY_FAILURE when departure slip causes missed lastEntryAt.
+   */
+  async detectExecutionSlipProblem(input: {
+    tripId: string;
+    event: ExecutionDepartureSlipEvent;
+    assertion: WorldStateAssertion<ExecutionDepartureAssertionPayload>;
+    snapshot: WorldStateSnapshot;
+    impact: ExecutionSlipImpactResult;
+  }): Promise<Rfc001DecisionProblem | null> {
+    if (!input.impact.assessment.infeasible) {
+      return null;
+    }
+
+    assertExecutionSlipHasImpact(input.impact);
+
+    const existing = await this.problemStore.findOpenByTriggerEvent(
+      input.tripId,
+      input.event.eventId,
+    );
+    if (existing) return existing;
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: input.tripId },
+      select: { metadata: true, updatedAt: true },
+    });
+    if (!trip) {
+      throw new Error(`Trip not found: ${input.tripId}`);
+    }
+
+    const rev = resolveTripRevision(trip);
+    const planVersionId = `plan_${revisionToString(rev)}`;
+
+    const problem: Rfc001DecisionProblem = {
+      problemId: `problem_exec_slip_${input.tripId.slice(0, 8)}_${Date.now()}`,
+      tripId: input.tripId,
+      planVersionId,
+      type: 'FEASIBILITY_FAILURE',
+      triggerEventId: input.event.eventId,
+      semanticCapability: EXECUTION_SCHEDULE_INFEASIBLE_CAPABILITY,
+      affectedEntityRefs: input.impact.affectedEntityRefs,
+      affectedPlanItemIds: input.impact.affectedPlanItemIds,
+      worldStateSnapshotId: input.snapshot.snapshotId,
+      detectedAt: new Date().toISOString(),
+      urgency: input.impact.assessment.slipMinutes >= 30 ? 'HIGH' : 'MEDIUM',
+      status: 'OPEN',
+    };
+
+    await this.problemStore.supersedeDuplicateOpenExecSlipProblems(
+      input.tripId,
+      problem.problemId,
+      problem.affectedPlanItemIds,
+    );
+
+    return this.problemStore.upsert(input.tripId, problem);
+  }
+
+  /**
+   * WP-TEP-11/12 — persist DecisionProblem created from TEP DecisionHook match (idempotent by triggerEventId).
+   */
+  async persistTepHookProblem(input: {
+    tripId: string;
+    problem: Rfc001DecisionProblem;
+  }): Promise<Rfc001DecisionProblem> {
+    const existing = await this.problemStore.findOpenByTriggerEvent(
+      input.tripId,
+      input.problem.triggerEventId,
+    );
+    if (existing) return existing;
+
+    const dedupKey = resolveDedupKeyFromProblem(input.problem);
+    if (dedupKey) {
+      await this.problemStore.supersedeCanonicalDuplicatesForTepDedupKey(
+        input.tripId,
+        input.problem.problemId,
+        dedupKey,
+        resolveDedupKeyFromProblem,
+      );
+    }
+
+    return this.problemStore.upsert(input.tripId, input.problem);
   }
 }

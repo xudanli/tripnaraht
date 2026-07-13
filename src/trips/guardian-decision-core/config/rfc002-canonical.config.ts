@@ -32,10 +32,28 @@ export function isCanonicalExcessiveDailyLoadEnabled(): boolean {
   );
 }
 
+export function isCanonicalExecutionScheduleInfeasibleEnabled(): boolean {
+  return readEnabledEnv(
+    'CANONICAL_EXECUTION_SCHEDULE_INFEASIBLE',
+    'RFC001_EXECUTION_SLIP',
+  );
+}
+
 export function isAnyCanonicalSemanticCapabilityEnabled(): boolean {
   return (
     isCanonicalRoadSegmentUnavailableEnabled() ||
     isCanonicalWeatherActivityProhibitedEnabled() ||
-    isCanonicalExcessiveDailyLoadEnabled()
+    isCanonicalExcessiveDailyLoadEnabled() ||
+    isCanonicalExecutionScheduleInfeasibleEnabled()
   );
+}
+
+/** Slice 4 — Shadow cluster runtime (read-only observation). Does NOT cut over visible queue. */
+export function isAttentionOrchestrationShadowEnabled(): boolean {
+  return readEnabledEnv('ATTENTION_ROOT_CAUSE_ORCHESTRATION');
+}
+
+/** Slice 4 — Primary Item becomes user-visible SSOT (blocked until Slice 3 CLOSED + shadow exit). */
+export function isAttentionOrchestrationPrimarySsoEnabled(): boolean {
+  return readEnabledEnv('ATTENTION_ROOT_CAUSE_PRIMARY_SSO');
 }

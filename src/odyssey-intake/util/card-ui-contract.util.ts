@@ -71,7 +71,7 @@ export function buildOnboardingStatus(
     } else if (!trustVerified) {
       nextStep = 'trust_verify';
     } else {
-      nextStep = 'match';
+      nextStep = 'view_card';
     }
   } else if (!mbtiSelected) {
     nextStep = 'mbti_select';
@@ -82,7 +82,7 @@ export function buildOnboardingStatus(
   } else if (!trustVerified) {
     nextStep = 'trust_verify';
   } else {
-    nextStep = 'match';
+    nextStep = 'view_card';
   }
 
   return {
@@ -92,7 +92,7 @@ export function buildOnboardingStatus(
     credentialsVerified,
     trustVerified,
     cardReady,
-    canMatch: quizComplete && trustVerified,
+    canMatch: false,
     intakeVersion,
     nextStep,
   };

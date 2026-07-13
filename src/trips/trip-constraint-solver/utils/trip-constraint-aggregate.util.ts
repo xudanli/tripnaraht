@@ -20,7 +20,6 @@ import {
 } from './segment-distance-threshold.util';
 import {
   isSelfDriveTrip,
-  readUserMaxDailyDrivingHours,
   resolveMaxDailyDrivingHours,
 } from './daily-drive-threshold.util';
 import {
@@ -33,6 +32,7 @@ import { projectTripConstraintsForBff } from './trip-constraint-bff.projection.u
 import type { TravelDecisionContract } from '../types/travel-decision-contract.types';
 import { inferConflictConstraintIds, inferScopedConflictConstraintIds } from './constraint-conflict-link.util';
 import {
+  enrichScopeFromBinding,
   inferCoarseScopeFromBinding,
   readConstraintExtendedValue,
   readScopeBindingFromValue,
@@ -353,6 +353,24 @@ function buildIntentConstraints(
   const explicitMaxSegment = readUserMaxSegmentDistanceKm(metadata);
   {
     const id = LEGACY_IDS.MAX_SEGMENT_DISTANCE;
+    const extended = readConstraintExtendedValue(metadata, id);
+    const scopeBinding = readScopeBindingFromValue(extended);
+    const baseScope: TripConstraint['scope'] = { type: 'ROUTE_SEGMENT' };
+    const scope = enrichScopeFromBinding(
+      scopeBinding ? (inferCoarseScopeFromBinding(scopeBinding) ?? baseScope) : baseScope,
+      scopeBinding,
+    );
+    const maxKm =
+      (typeof extended?.maxKm === 'number' ? extended.maxKm : undefined) ??
+      (typeof extended?.maxSegmentDistanceKm === 'number'
+        ? extended.maxSegmentDistanceKm
+        : undefined) ??
+      segmentThresholds.maxSegmentDistanceKm;
+    const value: Record<string, unknown> = {
+      maxSegmentDistanceKm: maxKm,
+      ...(extended ?? {}),
+    };
+    if (scopeBinding) value.scopeBinding = scopeBinding;
     out.push({
       id,
       tripId: trip.id,
@@ -361,9 +379,9 @@ function buildIntentConstraints(
       category: 'TRANSPORT',
       type: 'HARD',
       status: baseStatus(id, ext),
-      scope: { type: 'ROUTE_SEGMENT' },
+      scope,
       operator: 'LTE',
-      value: segmentThresholds.maxSegmentDistanceKm,
+      value,
       unit: 'km',
       allowRelaxation: true,
       locked: isLocked(id, ext),
@@ -388,14 +406,14 @@ function buildIntentConstraints(
     pacingConfig: pacing,
     allowPacingDefault: isSelfDriveTrip(pacing),
   });
-  const explicitDailyDrive = readUserMaxDailyDrivingHours(metadata);
   if (dailyDrive) {
     const id = LEGACY_IDS.MAX_DAILY_DRIVE;
     const extended = readConstraintExtendedValue(metadata, id);
     const scopeBinding = readScopeBindingFromValue(extended);
-    const scope = scopeBinding
-      ? (inferCoarseScopeFromBinding(scopeBinding) ?? { type: 'TRIP' as const })
-      : { type: 'TRIP' as const };
+    const scope = enrichScopeFromBinding(
+      scopeBinding ? (inferCoarseScopeFromBinding(scopeBinding) ?? { type: 'TRIP' as const }) : { type: 'TRIP' as const },
+      scopeBinding,
+    );
     const value =
       extended ??
       ({
@@ -407,7 +425,7 @@ function buildIntentConstraints(
       id,
       tripId: trip.id,
       name: '每日驾驶上限',
-      description: '单日累计驾驶时长上限（planning-conflicts / decision-checker）',
+      description: '单日累计驾驶时长上限',
       category: 'TRANSPORT',
       type: 'HARD',
       status: baseStatus(id, ext),
@@ -417,14 +435,7 @@ function buildIntentConstraints(
       unit: 'hour',
       allowRelaxation: true,
       locked: isLocked(id, ext),
-      source: {
-        type:
-          explicitDailyDrive != null
-            ? 'USER'
-            : dailyDrive.source === 'pacing_default'
-              ? 'USER'
-              : 'OFFICIAL_RULE',
-      },
+      source: { type: 'USER', templateId: 'max_daily_drive' },
       visibility: 'TEAM',
       createdBy: userId,
       createdAt: trip.createdAt.toISOString(),
@@ -447,9 +458,12 @@ function buildIntentConstraints(
       ...(readScopeBindingFromValue(noNightCfg) ? { scopeBinding: noNightCfg.scopeBinding } : {}),
     };
     const noNightScopeBinding = readScopeBindingFromValue(noNightValue);
-    const noNightScope = noNightScopeBinding
-      ? (inferCoarseScopeFromBinding(noNightScopeBinding) ?? { type: 'TRIP' as const })
-      : { type: 'TRIP' as const };
+    const noNightScope = enrichScopeFromBinding(
+      noNightScopeBinding
+        ? (inferCoarseScopeFromBinding(noNightScopeBinding) ?? { type: 'TRIP' as const })
+        : { type: 'TRIP' as const },
+      noNightScopeBinding,
+    );
     out.push({
       id,
       tripId: trip.id,

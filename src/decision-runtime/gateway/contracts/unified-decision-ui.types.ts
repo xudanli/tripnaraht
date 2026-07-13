@@ -53,6 +53,8 @@ export interface DecisionProblemOccurrence {
   dayId?: number;
   itemIds?: string[];
   routeSegmentId?: string;
+  /** Shadow / drill — first observation timestamp for orchestration ordering */
+  observedAt?: string;
 }
 
 /** Multi-source finding lineage (product-facing). */
@@ -181,6 +183,8 @@ export interface DecisionAction {
   allowed: boolean;
   blockedReason?: string;
   navigationTarget?: DecisionActionNavigationTarget;
+  /** Execution slip — structured preview (Slice 3.1) */
+  executionSlipPreview?: import('../../../trips/decision-semantics/types/decision-semantics.types').ExecutionSlipRepairOptionPreview;
 }
 
 import type { CausalTraceReference } from '../../../causal-protocol/causal-trace-reference.types';
@@ -223,6 +227,8 @@ export interface UnifiedDecisionOptionsView {
   actionability: UnifiedDecisionProblemActionability & {
     writeChain: DecisionWriteChain;
   };
+  /** Ack strings the client must send in POST .../resolutions or accept-recommended `acknowledgement` */
+  requiredAcknowledgements?: string[];
   debug?: UnifiedDecisionProblemDebugMeta & {
     suppressedActions?: DecisionAction[];
   };

@@ -1,0 +1,45 @@
+{
+  "evidenceType": "EXECUTION_SLIP_STAGING_ROLLBACK",
+  "phase": "ROLLBACK",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "environment": "tripnara_prod",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "planVersionId": "plan_1",
+  "problemId": null,
+  "decisionId": null,
+  "writeCount": 0,
+  "legacyWriteCount": 0,
+  "timestamps": {
+    "startedAt": "2026-07-11T09:02:21.527Z",
+    "endedAt": "2026-07-11T09:02:22.768Z"
+  },
+  "rollbackResult": "Canary Trip Restored",
+  "checks": [
+    {
+      "id": "ES-R-001",
+      "pass": true,
+      "detail": "Canary Trip Restored effective=plan_1"
+    },
+    {
+      "id": "ES-R-002",
+      "pass": true,
+      "detail": "Open Problem Cleared open=0"
+    },
+    {
+      "id": "ES-R-003",
+      "pass": true,
+      "detail": "Allowlist Restored onAllowlist=false envAllowlist=(empty)"
+    },
+    {
+      "id": "ES-R-004",
+      "pass": true,
+      "detail": "execution state cleared (observations)"
+    },
+    {
+      "id": "ES-R-005",
+      "pass": true,
+      "detail": "Weather/Road Untouched (trip-level road evidence unchanged)"
+    }
+  ],
+  "result": "PASS"
+}

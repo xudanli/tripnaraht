@@ -6,6 +6,7 @@
 import {
   isAnyCanonicalSemanticCapabilityEnabled,
   isCanonicalExcessiveDailyLoadEnabled,
+  isCanonicalExecutionScheduleInfeasibleEnabled,
   isCanonicalRoadSegmentUnavailableEnabled,
   isCanonicalWeatherActivityProhibitedEnabled,
 } from './rfc002-canonical.config';
@@ -20,6 +21,10 @@ export function isRfc001IcelandWeatherActivityEnabled(): boolean {
 
 export function isRfc001IcelandExcessiveDailyLoadEnabled(): boolean {
   return isCanonicalExcessiveDailyLoadEnabled();
+}
+
+export function isRfc001ExecutionSlipEnabled(): boolean {
+  return isCanonicalExecutionScheduleInfeasibleEnabled();
 }
 
 export function isRfc001CanonicalSliceEnabled(): boolean {

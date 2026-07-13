@@ -271,7 +271,7 @@
       "type": "HARD",
       "sectionKey": "hard_must_satisfy",
       "scope": {
-        "type": "TRIP"
+        "type": "ROUTE_SEGMENT"
       },
       "operator": "EQ",
       "defaultValue": {

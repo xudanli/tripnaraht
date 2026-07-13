@@ -11,6 +11,7 @@ export type RoadStatusChangedStatus = 'CLOSED' | 'LIMITED' | 'OPEN' | 'UNKNOWN';
 export type RoadStatusSourceProvider =
   | 'road.is_api'
   | 'road.is_api_or_cache'
+  | 'vegagerdin_gagnaveita'
   | 'vegagerdin_gagnaveita_fallback'
   | 'static_seasonal_data'
   | 'admin_injection';
@@ -74,4 +75,20 @@ export function mapRealtimeStatusToChangedStatus(
     default:
       return 'UNKNOWN';
   }
+}
+
+/** Map RoadStatusRealtimeService dataSource → RFC-001 sourceProvider. */
+export function mapRoadDataSourceToSourceProvider(input: {
+  dataSource?: string;
+  seasonalFallback?: boolean;
+}): RoadStatusSourceProvider {
+  if (input.seasonalFallback) return 'static_seasonal_data';
+  const source = (input.dataSource ?? '').toLowerCase();
+  if (source === 'vegagerdin_gagnaveita') return 'vegagerdin_gagnaveita';
+  if (source.includes('cache')) return 'road.is_api_or_cache';
+  if (source === 'road.is_api') return 'road.is_api';
+  if (source === 'vegagerdin_gagnaveita_fallback') {
+    return 'vegagerdin_gagnaveita_fallback';
+  }
+  return 'vegagerdin_gagnaveita';
 }

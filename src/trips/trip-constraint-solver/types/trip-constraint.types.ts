@@ -3,6 +3,8 @@
  * 合成自 intent / budget / pacing / wishes / feasibility 等存量字段。
  */
 
+import type { TripConstraintCapability } from './constraint-capability.types';
+
 export const TRIP_CONSTRAINT_CATEGORIES = [
   'TIME',
   'BUDGET',
@@ -113,6 +115,13 @@ export interface TripConstraintScope {
   ids?: string[];
   /** 前端粗粒度 scope 别名 — 细粒度以 value.scopeBinding 为准 */
   dayIndex?: number;
+  /** day_range — 连续多天起止（与 scopeBinding.temporal 同步） */
+  dayFrom?: number;
+  dayTo?: number;
+  /** ROUTE_SEGMENT — 路段明细（GET 回显，与 scopeBinding.temporal 同步） */
+  segmentId?: string;
+  fromItemId?: string;
+  toItemId?: string;
 }
 
 /** value.scopeBinding — 约束生效范围（PATCH 原样持久化，GET 完整回显） */
@@ -282,6 +291,8 @@ export interface TripConstraint {
   displayValue?: string;
   /** 四项元数据 SSOT — 优先于前端静态规则表 */
   contractMeta?: TripConstraintContractMeta;
+  /** Phase 0 Capability Registry — 替代 type===HARD 推断 enforce */
+  capability?: TripConstraintCapability;
   /** 分区 key — BFF 投影 */
   sectionKey?:
     | 'soft_prefer'
@@ -344,6 +355,99 @@ export interface TripConstraintChangePatch {
   }>;
 }
 
+export type ConstraintImpactPreviewVerdict =
+  | 'STILL_NOT_EXECUTABLE'
+  | 'IMPROVED'
+  | 'NOW_EXECUTABLE'
+  | 'NEEDS_CONFIRM';
+
+export type ConstraintImpactPreviewConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export type ConstraintImpactScheduleDetailLevel = 'none' | 'day_summary' | 'activity';
+
+export type ConstraintImpactSuggestedFollowUpAction =
+  | 'OPEN_FEASIBILITY_REPORT'
+  | 'CONFIRM_AND_DEEP_CHECK'
+  | 'NONE';
+
+export interface ConstraintImpactUserSummary {
+  verdict: ConstraintImpactPreviewVerdict;
+  verdictLabel: string;
+  verdictReason: string;
+  confidence: ConstraintImpactPreviewConfidence;
+  previewMode: ConstraintRefreshType;
+}
+
+export interface ConstraintImpactConflictBucketDelta {
+  before: number;
+  after?: number;
+  label: string;
+}
+
+export interface ConstraintImpactExecuteabilityDelta {
+  scoreDelta?: number;
+  mustHandleDelta?: number;
+  suggestAdjustDelta?: number;
+  scoreDeltaReason?: string;
+  blockingRuleIds?: string[];
+  conflictsDeltaSummary?: {
+    mustHandle?: ConstraintImpactConflictBucketDelta;
+    suggestAdjust?: ConstraintImpactConflictBucketDelta;
+    pendingConfirm?: ConstraintImpactConflictBucketDelta;
+  };
+}
+
+export interface ConstraintImpactAffectedDayTone {
+  dayNumber: number;
+  tone: 'major' | 'minor';
+}
+
+export type ConstraintImpactScheduleItemImpactType =
+  | 'DRIVE_OVER_LIMIT'
+  | 'TIME_WINDOW'
+  | 'REMOVED';
+
+export interface ConstraintImpactAffectedDayItem {
+  itemId?: string;
+  label: string;
+  startTimeLabel?: string;
+  detail: string;
+  impactType: ConstraintImpactScheduleItemImpactType;
+}
+
+export interface ConstraintImpactAffectedDayDetail {
+  dayNumber: number;
+  tone: 'major' | 'minor';
+  daySummary: string;
+  items?: ConstraintImpactAffectedDayItem[];
+}
+
+export interface ConstraintImpactSuggestedFollowUp {
+  label: string;
+  action: ConstraintImpactSuggestedFollowUpAction;
+  deepLink?: string;
+}
+
+export interface ConstraintImpactPreviewMeta {
+  debug?: {
+    endpoint?: string;
+    body?: Record<string, unknown>;
+    refreshType?: ConstraintRefreshType;
+    engines?: string[];
+    scopedConstraintId?: string;
+    tripLevelConflictsBefore?: {
+      mustHandle: number;
+      suggestAdjust: number;
+      pendingConfirm: number;
+    };
+    tripLevelConflictsAfter?: {
+      mustHandle: number;
+      suggestAdjust: number;
+      pendingConfirm: number;
+    };
+  };
+}
+
 export interface TripConstraintImpactPreviewResponse {
   tripId: string;
   constraintsVersion: number;
@@ -361,21 +465,22 @@ export interface TripConstraintImpactPreviewResponse {
     suggestAdjust: number;
     pendingConfirm: number;
   };
+  /** 用户可读差异摘要（禁 dev 术语） */
   recommendations: string[];
-  /** deep 刷新建议调用的下游端点 */
-  suggestedFollowUp?: {
-    endpoint: string;
-    body?: Record<string, unknown>;
-  };
+  /** @deprecated 使用 suggestedFollowUp；dev 端点见 meta.debug */
+  suggestedFollowUp?: ConstraintImpactSuggestedFollowUp;
+  userSummary?: ConstraintImpactUserSummary;
+  diffBullets?: string[];
   assessBefore?: TripConstraintAssessSummary;
   assessAfter?: TripConstraintAssessSummary;
   feasibilityBefore?: TripConstraintFeasibilitySnapshot;
   feasibilityAfter?: TripConstraintFeasibilitySnapshot;
-  executeabilityDelta?: {
-    scoreDelta?: number;
-    mustHandleDelta?: number;
-    suggestAdjustDelta?: number;
-  };
+  executeabilityDelta?: ConstraintImpactExecuteabilityDelta;
+  scheduleDetailLevel?: ConstraintImpactScheduleDetailLevel;
+  scheduleDetailUnavailableReason?: string;
+  affectedDayDetails?: ConstraintImpactAffectedDayDetail[];
+  constraintAssessments?: import('../../../decision-runtime/constraints/contracts/unified-constraint-assessment.types').UnifiedConstraintAssessmentView[];
+  meta?: ConstraintImpactPreviewMeta;
   /** 决策沙盘结构化影响（§9） */
   structuredImpact?: import('../utils/constraint-impact-preview.util').ConstraintImpactStructuredPreview;
 }

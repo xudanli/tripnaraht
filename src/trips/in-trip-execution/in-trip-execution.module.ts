@@ -35,6 +35,7 @@ import { InTripCommsPeersService } from './services/in-trip-comms-peers.service'
 import { InTripCommsService } from './services/in-trip-comms.service';
 import { InTripCommsSummaryService } from './services/in-trip-comms-summary.service';
 import { InTripCommsTranscribeService } from './services/in-trip-comms-transcribe.service';
+import { InTripCommsAudioStorageService } from './services/in-trip-comms-audio-storage.service';
 import { VoiceModule } from '../../voice/voice.module';
 import { BudgetRebalanceService } from './services/budget-rebalance.service';
 import { EnvironmentDataAdapter } from './services/environment-data.adapter';
@@ -76,6 +77,7 @@ import { VulnerabilityScoreService } from './services/vulnerability-score.servic
     InTripCommsPeersService,
     InTripCommsTranscribeService,
     InTripCommsSummaryService,
+    InTripCommsAudioStorageService,
     InTripBetaMetricsService,
     TripTodayService,
     EnvironmentDataAdapter,
@@ -110,6 +112,11 @@ import { VulnerabilityScoreService } from './services/vulnerability-score.servic
     SplitOrchestratorService,
     ExperiencePulseService,
     PostTripSummaryService,
+    InTripCommsPeersService,
+    InTripCommsService,
+    InTripCommsTranscribeService,
+    InTripCommsSummaryService,
+    InTripCommsAudioStorageService,
   ],
 })
 export class InTripExecutionModule {}

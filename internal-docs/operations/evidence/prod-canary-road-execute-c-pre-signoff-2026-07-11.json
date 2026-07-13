@@ -1,0 +1,67 @@
+{
+  "evidenceType": "ROAD_PROD_CANARY_PRE_SIGNOFF_C_EXECUTE",
+  "evidenceLabel": "ROAD_PROD_CANARY_PRE_SIGNOFF_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road A/B/C Pre-Signoff Drill",
+  "drillStatus": "Road A/B/C Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING WEATHER SOAK SIGN-OFF",
+  "acceptanceMode": "PRE_SIGNOFF_REPLAY",
+  "replay": true,
+  "live": false,
+  "sourceProvider": "vegagerdin_gagnaveita",
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+  "startedAt": "2026-07-10T20:44:39.389Z",
+  "endedAt": "2026-07-10T20:44:39.579Z",
+  "tripId": "b0b88888-8888-4888-8888-888888888888",
+  "userId": "b0b88888-8888-4888-8888-888888888801",
+  "phase": "EXECUTE",
+  "canaryPhase": "EXECUTE",
+  "problemId": "problem_road_F208_b0b88888_1783716279048",
+  "decisionId": "dec_problem_road_F208_b0b88888_1783716279048_1783716279246",
+  "selectedOptionId": "cand_a",
+  "effectivePlanVersionId": "plan_v2_16279246",
+  "writeChain": "EVALUATE_AUTHORIZE_EXECUTE",
+  "problemResolved": true,
+  "checks": [
+    {
+      "id": "PC-ROAD-C-001",
+      "pass": true,
+      "detail": "writeChain=EVALUATE_AUTHORIZE_EXECUTE externalWriteEntry=W-01"
+    },
+    {
+      "id": "PC-ROAD-C-002",
+      "pass": true,
+      "detail": "recordStatus=EFFECTIVE"
+    },
+    {
+      "id": "PC-ROAD-C-003",
+      "pass": true,
+      "detail": "planVersion=EFFECTIVE revalidation=PASSED"
+    },
+    {
+      "id": "PC-ROAD-C-004",
+      "pass": true,
+      "detail": "effectiveBefore=plan_1 effectiveAfter=plan_v2_16279246"
+    },
+    {
+      "id": "PC-ROAD-C-005",
+      "pass": true,
+      "detail": "f208InAppliedPlan=false"
+    },
+    {
+      "id": "PC-ROAD-C-006",
+      "pass": true,
+      "detail": "problemStatus=RESOLVED resolution=RESOLVED_BY_PLAN_REPAIR"
+    },
+    {
+      "id": "PC-ROAD-C-007",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    },
+    {
+      "id": "PC-ROAD-C-008",
+      "pass": true,
+      "detail": "idempotentReplay=true"
+    }
+  ],
+  "result": "PASS"
+}

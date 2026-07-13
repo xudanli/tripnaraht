@@ -40,6 +40,12 @@ function createMaterializerMockPrisma() {
       findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
         items.get(where.id) ?? null,
       ),
+      findMany: jest.fn(async () => [...items.values()]),
+      update: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const existing = items.get(where.id);
+        if (existing) items.set(where.id, { ...existing, ...data });
+        return items.get(where.id);
+      }),
       delete: jest.fn(async ({ where }: { where: { id: string } }) => {
         items.delete(where.id);
         return { id: where.id };
@@ -64,6 +70,71 @@ describe('Rfc001ItineraryMaterializerService (WP3)', () => {
   afterEach(() => {
     if (prevMat === undefined) delete process.env.RFC001_ITINERARY_MATERIALIZE;
     else process.env.RFC001_ITINERARY_MATERIALIZE = prevMat;
+  });
+
+  it('MAT-001 ERC: SHIFT_TIME cascades subsequent items until fixed anchor', async () => {
+    const mock = createMaterializerMockPrisma();
+    const dayDate = new Date('2026-08-01T00:00:00.000Z');
+    mock.tripDay = {
+      findUnique: jest.fn(async () => ({ id: 'day1', tripId: 'trip_mat', date: dayDate })),
+      findMany: jest.fn(async () => [{ id: 'day1', tripId: 'trip_mat', date: dayDate }]),
+    };
+
+    const t = (h: number, m: number) =>
+      new Date(Date.UTC(2026, 7, 1, h, m, 0));
+    mock.items.set('item_glacier', {
+      id: 'item_glacier',
+      tripDayId: 'day1',
+      type: 'ACTIVITY',
+      order: 1,
+      startTime: t(9, 0),
+      endTime: t(11, 0),
+    });
+    mock.items.set('item_drive', {
+      id: 'item_drive',
+      tripDayId: 'day1',
+      type: 'ACTIVITY',
+      order: 2,
+      startTime: t(11, 0),
+      endTime: t(12, 0),
+    });
+    mock.items.set('item_hotel', {
+      id: 'item_hotel',
+      tripDayId: 'day1',
+      type: 'REST',
+      order: 3,
+      startTime: t(21, 0),
+      endTime: t(21, 30),
+      note: '[fixed-anchor] hotel check-in',
+      bookingStatus: 'CONFIRMED',
+    });
+
+    const prisma = mock as unknown as import('../../../prisma/prisma.service').PrismaService;
+    const svc = new Rfc001ItineraryMaterializerService(prisma);
+    await stampExecutionLock(prisma, 'trip_mat', 'dec_shift_1');
+
+    const result = await svc.applyPlanOperations({
+      tripId: 'trip_mat',
+      decisionId: 'dec_shift_1',
+      operations: [
+        {
+          operationId: 'op_shift_glacier',
+          kind: 'SHIFT_TIME',
+          targetRefs: [{ kind: 'PLAN_ITEM', id: 'item_glacier' }],
+          parameters: {
+            itineraryItemId: 'item_glacier',
+            timeDeltaMinutes: 30,
+            propagationMode: 'UNTIL_FIXED_ANCHOR',
+          },
+        },
+      ],
+    });
+
+    expect(result.applied).toBe(true);
+    expect(result.updatedItemIds).toEqual(['item_glacier', 'item_drive']);
+    expect(mock.items.get('item_glacier')?.startTime).toEqual(t(9, 30));
+    expect(mock.items.get('item_drive')?.startTime).toEqual(t(11, 30));
+    expect(mock.items.get('item_hotel')?.startTime).toEqual(t(21, 0));
   });
 
   it('MAT-006: ADD_ITEM creates itinerary row on trip day', async () => {

@@ -71,10 +71,14 @@ export function parseItemMetadataFromNote(note: string | null): Record<string, u
 
 const HOTEL_NAME_PATTERN = /酒店|旅馆|民宿|hotel|hostel|resort|guesthouse|inn/i;
 
-export function isAccommodationItem(row: Pick<
-  AccommodationItemRow,
-  'type' | 'costCategory' | 'placeCategory' | 'note' | 'placeNameCN' | 'placeNameEN'
->): boolean {
+export function isAccommodationItem(row: {
+  type: string;
+  costCategory?: string | null;
+  placeCategory?: string | null;
+  placeNameCN?: string | null;
+  placeNameEN?: string | null;
+  note?: string | null;
+}): boolean {
   if (row.costCategory?.toUpperCase() === 'ACCOMMODATION') return true;
   const placeCat = row.placeCategory?.toUpperCase() ?? '';
   if (placeCat === 'HOTEL') return true;

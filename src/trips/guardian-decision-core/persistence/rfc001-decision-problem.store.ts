@@ -9,6 +9,10 @@ import type { Rfc001DecisionProblem } from '../contracts/decision-problem.types'
 import {
   resolveExcessiveDailyLoadDayIndex,
 } from '../detection/excessive-daily-load-problem.util';
+import {
+  isOpenWeatherActivityProblem,
+  resolveWeatherActivityDayIndex,
+} from '../detection/weather-activity-problem.util';
 
 const METADATA_KEY = 'rfc001DecisionProblems';
 const MAX_PROBLEMS = 100;
@@ -105,6 +109,74 @@ export class Rfc001DecisionProblemStoreService {
     if (changed) {
       await this.writeBlock(tripId, { items });
     }
+  }
+
+  /** Supersede stale open exec-slip problems when a newer slip is recorded (same affected items). */
+  async supersedeDuplicateOpenExecSlipProblems(
+    tripId: string,
+    keepProblemId: string,
+    affectedPlanItemIds?: string[],
+  ): Promise<void> {
+    const scopeKey = affectedPlanItemIds?.slice().sort().join('|') ?? '';
+    const block = await this.readBlock(tripId);
+    let changed = false;
+    const items = block.items.map((p) => {
+      if (p.problemId === keepProblemId) return p;
+      if (['RESOLVED', 'FAILED'].includes(p.status)) return p;
+      if (p.semanticCapability !== 'EXECUTION_SCHEDULE_INFEASIBLE') return p;
+      if (scopeKey) {
+        const otherKey = (p.affectedPlanItemIds ?? []).slice().sort().join('|');
+        if (otherKey !== scopeKey) return p;
+      }
+      changed = true;
+      return { ...p, status: 'FAILED' as const };
+    });
+    if (changed) {
+      await this.writeBlock(tripId, { items });
+    }
+  }
+
+  /** Supersede open canonical duplicates when TEP primary owns the same dedup key (IS-CERT-404). */
+  async supersedeCanonicalDuplicatesForTepDedupKey(
+    tripId: string,
+    keepProblemId: string,
+    dedupKey: string,
+    resolveDedupKey: (problem: Rfc001DecisionProblem) => string | undefined,
+  ): Promise<void> {
+    const block = await this.readBlock(tripId);
+    let changed = false;
+    const items = block.items.map((p) => {
+      if (p.problemId === keepProblemId) return p;
+      if (['RESOLVED', 'FAILED'].includes(p.status)) return p;
+      if (p.problemId.startsWith('problem_tep_')) return p;
+      const key = resolveDedupKey(p);
+      if (!key || key !== dedupKey) return p;
+      changed = true;
+      return { ...p, status: 'FAILED' as const };
+    });
+    if (changed) {
+      await this.writeBlock(tripId, { items });
+    }
+  }
+
+  /** Resolve open weather-activity problems for a trip day after calm Vedur streak. */
+  async resolveOpenWeatherActivityByDay(
+    tripId: string,
+    dayIndex: number,
+  ): Promise<{ problemId: string } | undefined> {
+    const block = await this.readBlock(tripId);
+    const matches = block.items.filter((p) => {
+      if (!isOpenWeatherActivityProblem(p)) return false;
+      return resolveWeatherActivityDayIndex(p) === dayIndex;
+    });
+    if (!matches.length) return undefined;
+
+    const target = matches.sort((a, b) => b.detectedAt.localeCompare(a.detectedAt))[0];
+    const items = block.items.map((p) =>
+      p.problemId === target.problemId ? { ...p, status: 'RESOLVED' as const } : p,
+    );
+    await this.writeBlock(tripId, { items });
+    return { problemId: target.problemId };
   }
 
   private async readBlock(tripId: string): Promise<StoredRfc001DecisionProblems> {

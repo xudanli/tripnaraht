@@ -38,6 +38,7 @@ import {
   EvidenceSeverity
 } from './dto/evidence.dto';
 import { AttentionItemDto, AttentionQueueResponseDto, GetAttentionQueueQueryDto, AttentionItemType, AttentionSeverity, AttentionStatus } from './dto/attention-queue.dto';
+import { projectActiveSosAttentionItems } from './utils/sos-attention.util';
 import { toPlaceResponseDto } from './dto/place-response.dto';
 import { resolvePlaceCoordinates } from '../places/utils/place-coordinates.util';
 import { resolveEffectiveIcelandPlaceCoordinates } from '../places/utils/iceland-canonical-poi-coords.util';
@@ -83,7 +84,7 @@ import {
   resolveEffectiveGenerationProgress,
   resolveTripContentMode,
   type TripGenerationProgress,
-} from './utils/match-square-trip-content.util';
+} from './utils/trip-content-mode.util';
 import {
   buildHikingDayCardsForTrip,
   readHikingTrailSegments,
@@ -2666,7 +2667,15 @@ export class TripsService {
       }
       
       try {
-        const alerts = await this.getPersonaAlerts(query.tripId);
+        const [alerts, tripRow] = await Promise.all([
+          this.getPersonaAlerts(query.tripId),
+          this.prisma.trip.findUnique({
+            where: { id: query.tripId },
+            select: { metadata: true },
+          }),
+        ]);
+
+        attentionItems.push(...projectActiveSosAttentionItems(query.tripId, tripRow?.metadata));
       
         // 将 Persona Alerts 转换为 Attention Items
         for (const alert of alerts) {

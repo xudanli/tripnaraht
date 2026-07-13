@@ -42,14 +42,6 @@ export function buildPendingConfirmations(
       required: true,
     });
   }
-  if (!ctx.transportMode || ctx.transportMode === 'unknown') {
-    items.push({
-      field: 'transportMode',
-      label: '交通方式',
-      reason: '自驾/跟团/公交会显著影响路线可行性',
-      required: true,
-    });
-  }
   if (!ctx.countryCode && !session?.countryCode) {
     items.push({
       field: 'countryCode',

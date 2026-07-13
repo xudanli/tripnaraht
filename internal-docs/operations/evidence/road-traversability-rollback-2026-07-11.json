@@ -1,0 +1,41 @@
+{
+  "evidenceType": "ROAD_TRAVERSABILITY_PRE_SIGNOFF_ROLLBACK",
+  "evidenceLabel": "ROAD_TRAVERSABILITY_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road Traversability T2 Pre-Signoff Drill",
+  "drillStatus": "Road Traversability T2 Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING TRAVERSABILITY T1 + WEATHER SOAK",
+  "tripId": "b0b88888-8888-4888-8888-888888888888",
+  "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+  "effectivePlanVersionId": "plan_1",
+  "baselineLabel": "pre-traversability",
+  "baselineFound": true,
+  "weatherUnchanged": true,
+  "preWeatherSnapshot": {
+    "capturedAt": "2026-07-11T06:32:00.257Z",
+    "gitCommit": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+    "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+    "weatherEffectivePlanVersionId": "plan_1",
+    "weatherTripUpdatedAt": "2026-07-10T17:00:28.155Z",
+    "vedurPollCount": 7,
+    "lastVedurJobRunId": null,
+    "lastVedurOutcome": "INGESTED",
+    "pm2IngestStatus": "online",
+    "pm2IngestRestarts": 0,
+    "legacyWriteInvocations": 0
+  },
+  "postWeatherSnapshot": {
+    "capturedAt": "2026-07-11T06:32:11.670Z",
+    "gitCommit": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+    "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+    "weatherEffectivePlanVersionId": "plan_1",
+    "weatherTripUpdatedAt": "2026-07-10T17:00:28.155Z",
+    "vedurPollCount": 7,
+    "lastVedurJobRunId": null,
+    "lastVedurOutcome": "INGESTED",
+    "pm2IngestStatus": "online",
+    "pm2IngestRestarts": 0,
+    "legacyWriteInvocations": 0
+  },
+  "result": "PASS",
+  "rolledBackAt": "2026-07-11T06:32:11.690Z"
+}

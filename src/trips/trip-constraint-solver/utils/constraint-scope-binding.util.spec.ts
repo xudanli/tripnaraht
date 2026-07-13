@@ -1,4 +1,5 @@
 import {
+  applyConstraintScopePatch,
   constraintAppliesInContext,
   constraintAppliesToConflict,
   formatConstraintScopeSummary,
@@ -41,11 +42,99 @@ describe('constraint-scope-binding.util', () => {
     expect(readScopeBindingFromValue(merged)?.temporal.dayNumber).toBe(2);
   });
 
-  it('inferCoarseScopeFromBinding maps route_segment to ROUTE_SEGMENT', () => {
+  it('inferCoarseScopeFromBinding maps route_segment to ROUTE_SEGMENT with segment fields', () => {
     expect(inferCoarseScopeFromBinding(routeSegmentBinding)).toEqual({
       type: 'ROUTE_SEGMENT',
       ids: ['item-a__item-b'],
+      segmentId: 'item-a__item-b',
+      fromItemId: 'item-a',
+      toItemId: 'item-b',
+      dayIndex: 2,
     });
+  });
+
+  it('applyConstraintScopePatch round-trips route segment scopeBinding', () => {
+    const result = applyConstraintScopePatch({
+      prevScope: { type: 'TRIP' },
+      prevValue: { unpavedAllowed: false, templateId: 'no_unpaved_road' },
+      dtoScope: { type: 'ROUTE_SEGMENT', segmentId: 'item-a__item-b', dayIndex: 2 },
+      dtoValue: {
+        scopeBinding: {
+          temporal: {
+            kind: 'route_segment',
+            segmentId: 'item-a__item-b',
+            label: 'D2 维克 → 冰河湖',
+            dayNumber: 2,
+            fromItemId: 'item-a',
+            toItemId: 'item-b',
+          },
+        },
+      },
+    });
+    expect(result.errors).toBeUndefined();
+    expect(readScopeBindingFromValue(result.value)?.temporal.label).toBe('D2 维克 → 冰河湖');
+    expect(result.scope).toMatchObject({
+      type: 'ROUTE_SEGMENT',
+      segmentId: 'item-a__item-b',
+      dayIndex: 2,
+    });
+  });
+
+  it('applyConstraintScopePatch coerces partial scopeBinding with defaults', () => {
+    const result = applyConstraintScopePatch({
+      prevScope: { type: 'TRIP' },
+      prevValue: { minWeatherScore: 60 },
+      dtoScope: { type: 'DAY', dayIndex: 3 },
+      dtoValue: {
+        scopeBinding: {
+          temporal: { kind: 'day', dayNumber: 3 },
+        },
+      },
+    });
+    expect(result.errors).toBeUndefined();
+    expect(readScopeBindingFromValue(result.value)?.phase).toEqual({
+      planning: true,
+      execution: true,
+    });
+    expect(result.scope.type).toBe('DAY');
+    expect(result.scope.dayIndex).toBe(3);
+  });
+
+  it('applyConstraintScopePatch maps MEMBER scope without reverting to MEMBER_GROUP', () => {
+    const result = applyConstraintScopePatch({
+      prevScope: { type: 'MEMBER_GROUP' },
+      prevValue: { maxWalkKm: 3 },
+      dtoScope: { type: 'MEMBER', ids: ['u1'] },
+      dtoValue: {
+        scopeBinding: {
+          temporal: { kind: 'trip' },
+          member: { kind: 'members', memberIds: ['u1'], labels: ['Alice'] },
+          phase: { planning: true, execution: false },
+          activity: { kind: 'all' },
+        },
+      },
+    });
+    expect(result.scope).toEqual({ type: 'MEMBER', ids: ['u1'] });
+    expect(readScopeBindingFromValue(result.value)?.member.memberIds).toEqual(['u1']);
+  });
+
+  it('applyConstraintScopePatch supports day_range via scope.dayFrom/dayTo', () => {
+    const result = applyConstraintScopePatch({
+      prevScope: { type: 'TRIP' },
+      prevValue: {},
+      dtoScope: { type: 'DAY', dayFrom: 2, dayTo: 4 },
+      dtoValue: {
+        scopeBinding: {
+          temporal: { kind: 'day_range', dayFrom: 2, dayTo: 4 },
+          member: { kind: 'all' },
+          phase: { planning: true, execution: true },
+          activity: { kind: 'all' },
+        },
+      },
+    });
+    expect(result.scope.dayFrom).toBe(2);
+    expect(result.scope.dayTo).toBe(4);
+    expect(readScopeBindingFromValue(result.value)?.temporal.kind).toBe('day_range');
   });
 
   it('constraintAppliesInContext filters by day', () => {

@@ -1,0 +1,56 @@
+{
+  "evidenceType": "STAGING_REPLAY_ROAD_CLOSE_A_OBSERVE",
+  "acceptanceMode": "STAGING_REPLAY",
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+  "sourceProvider": "vegagerdin_gagnaveita",
+  "startedAt": "2026-07-10T20:24:17.514Z",
+  "endedAt": "2026-07-10T20:24:17.520Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "userId": "a0a99999-9999-4999-8999-999999999901",
+  "phase": "OBSERVE",
+  "problemId": "problem_road_F208_a0a99999_1783715057517",
+  "fixture": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+  "checks": [
+    {
+      "id": "PC-ROAD-A-001",
+      "pass": true,
+      "detail": "destination=IS productionCanary=true"
+    },
+    {
+      "id": "PC-ROAD-A-002",
+      "pass": true,
+      "detail": "assertion.status=CLOSED"
+    },
+    {
+      "id": "PC-ROAD-A-003",
+      "pass": true,
+      "detail": "openProblems=1"
+    },
+    {
+      "id": "PC-ROAD-A-004",
+      "pass": true,
+      "detail": "lineageNodes=4"
+    },
+    {
+      "id": "PC-ROAD-A-005",
+      "pass": true,
+      "detail": "OBSERVE: no decision record / workspace finalize (problem internal-only)"
+    },
+    {
+      "id": "PC-ROAD-A-006",
+      "pass": true,
+      "detail": "pipeline created problem; no repair execution"
+    },
+    {
+      "id": "PC-ROAD-A-007",
+      "pass": true,
+      "detail": "effectivePlan=unchanged"
+    },
+    {
+      "id": "PC-ROAD-A-008",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    }
+  ],
+  "result": "PASS"
+}

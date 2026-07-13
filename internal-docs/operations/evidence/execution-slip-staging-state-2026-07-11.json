@@ -1,0 +1,10 @@
+{
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "problemId": "problem_exec_slip_c0c77777_1783760517728",
+  "planVersionIdBefore": "plan_1",
+  "phaseACompletedAt": "2026-07-11T09:01:58.137Z",
+  "decisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+  "phaseBCompletedAt": "2026-07-11T09:01:59.465Z",
+  "planVersionIdAfter": "plan_v2_60518027",
+  "phaseCCompletedAt": "2026-07-11T09:02:01.129Z"
+}

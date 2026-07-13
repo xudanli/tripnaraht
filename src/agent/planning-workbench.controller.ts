@@ -103,7 +103,7 @@ export class PlanningWorkbenchController {
               },
             },
             days: { type: 'number' },
-            travelMode: { type: 'string', enum: ['self_drive', 'public_transit', 'walking', 'mixed'] },
+            travelMode: { type: 'string', enum: ['self_drive'], default: 'self_drive' },
             mustDo: { type: 'array', items: { type: 'string' } },
             mustAvoid: { type: 'array', items: { type: 'string' } },
             constraints: { type: 'object' },

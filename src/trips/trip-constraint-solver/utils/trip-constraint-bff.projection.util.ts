@@ -3,6 +3,11 @@
  */
 
 import {
+  advisoryViolationLabelForCapability,
+  resolveConstraintCapability,
+  shouldUseAdvisoryViolationLabel,
+} from './constraint-capability-registry.util';
+import {
   getConstraintTemplate,
   projectCatalogTemplateForBff,
 } from './constraint-template-registry.util';
@@ -16,6 +21,7 @@ import { TRIP_CONSTRAINT_LEGACY_IDS as LEGACY_IDS } from '../types/trip-constrai
 import { projectDestinationRuleForBff } from './destination-rule-bff.projection.util';
 import {
   formatConstraintScopeSummary,
+  enrichScopeFromBinding,
   readScopeBindingFromValue,
 } from './constraint-scope-binding.util';
 import { softConstraintDescription } from './soft-constraint-evaluation.util';
@@ -215,17 +221,26 @@ function projectByTemplate(c: TripConstraint, templateId: string): TemplateProje
   }
 }
 
+const USER_ADJUSTABLE_HARD_IDS = new Set<string>([
+  LEGACY_IDS.MAX_DAILY_DRIVE,
+  LEGACY_IDS.NO_NIGHT_DRIVE,
+]);
+
 export function projectTripConstraintForBff(c: TripConstraint): TripConstraint {
-  if (c.source.type === 'OFFICIAL_RULE' || c.id.startsWith('c_official_')) {
+  if (
+    (c.source.type === 'OFFICIAL_RULE' || c.id.startsWith('c_official_')) &&
+    !USER_ADJUSTABLE_HARD_IDS.has(c.id)
+  ) {
     return projectDestinationRuleForBff(c);
   }
 
   const enabled = c.status !== 'DISABLED';
   const templateId = templateIdFor(c);
   const scopeBinding = readScopeBindingFromValue(c.value);
+  const enrichedScope = enrichScopeFromBinding(c.scope, scopeBinding);
   const scopeLabel = scopeBinding
     ? formatConstraintScopeSummary(scopeBinding)
-    : buildScopeLabel(c.scope);
+    : buildScopeLabel(enrichedScope);
   const violationResult = resolveViolation(c);
 
   const templated = templateId ? projectByTemplate(c, templateId) : undefined;
@@ -239,12 +254,15 @@ export function projectTripConstraintForBff(c: TripConstraint): TripConstraint {
 
   const enabledSummary = enabled ? `已启用：${c.name}` : `已停用：${c.name}`;
 
+  const capability = resolveConstraintCapability(c);
   const contractMeta: TripConstraintContractMeta = {
     enabledSummary,
     scopeLabel,
     judgmentRule,
-    violationResult,
-    violationResultLabel: violationLabel(violationResult),
+    violationResult: shouldUseAdvisoryViolationLabel(capability) ? 'CONFIRM' : violationResult,
+    violationResultLabel: shouldUseAdvisoryViolationLabel(capability)
+      ? advisoryViolationLabelForCapability(capability)
+      : violationLabel(violationResult),
   };
 
   let value: unknown = c.value;
@@ -256,9 +274,18 @@ export function projectTripConstraintForBff(c: TripConstraint): TripConstraint {
     value = mergeValue({ raw: c.value }, judgmentRule, violationResult);
   }
 
+  if (shouldUseAdvisoryViolationLabel(capability) && value && typeof value === 'object') {
+    const label = advisoryViolationLabelForCapability(capability);
+    Object.assign(value as Record<string, unknown>, {
+      violationResult: label,
+      violation: label,
+    });
+  }
+
   return {
     ...c,
     enabled,
+    scope: enrichedScope,
     displayValue: templated?.displayValue,
     value,
     description: c.description ?? softConstraintDescription(c) ?? getConstraintTemplate(templateId ?? '')?.description,
@@ -267,6 +294,7 @@ export function projectTripConstraintForBff(c: TripConstraint): TripConstraint {
       ...(templateId ? { templateId } : {}),
     },
     contractMeta,
+    capability,
     ...(c.type === 'SOFT' && c.status !== 'DISABLED' ? { sectionKey: 'soft_prefer' as const } : {}),
   };
 }

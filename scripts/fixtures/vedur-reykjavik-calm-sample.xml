@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<observations>
+  <station id="1">
+    <name>Reykjavík</name>
+    <time>2026-07-10 12:00:00</time>
+    <T>12</T>
+    <F>5.0</F>
+    <FG>8.0</FG>
+  </station>
+</observations>

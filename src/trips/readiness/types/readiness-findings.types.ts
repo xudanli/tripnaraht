@@ -46,6 +46,8 @@ export interface FrontendUserQuestion {
 
 export interface ReadinessFindingItem {
   id: string; // rule id
+  /** P2 — 关联 TripPrerequisite SSOT（与 feasibility issue.prerequisiteId 一致） */
+  prerequisiteId?: string;
   category: ReadinessCategory;
   severity: RuleSeverity;
   level: ActionLevel;

@@ -22,6 +22,21 @@ export interface ConstraintImpactStructuredPreview {
     gradeAfter?: string;
   };
   schedule?: {
+    scheduleDetailLevel?: 'none' | 'day_summary' | 'activity';
+    scheduleDetailUnavailableReason?: string;
+    affectedDays?: Array<{ dayNumber: number; tone: 'major' | 'minor' }>;
+    affectedDayDetails?: Array<{
+      dayNumber: number;
+      tone: 'major' | 'minor';
+      daySummary: string;
+      items?: Array<{
+        itemId?: string;
+        label: string;
+        startTimeLabel?: string;
+        detail: string;
+        impactType: 'DRIVE_OVER_LIMIT' | 'TIME_WINDOW' | 'REMOVED';
+      }>;
+    }>;
     daysNeedingSplit?: number[];
     extraLodgingNights?: number;
     poisToRelocate?: Array<{ dayNumber: number; itemId?: string; label?: string }>;
@@ -37,12 +52,112 @@ export interface ConstraintImpactStructuredPreview {
     before?: unknown;
     after?: unknown;
     unit?: string;
+    userFacingSummary?: string;
   }>;
+}
+
+function asArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function asNumber(v: unknown): number | undefined {
   if (typeof v === 'number' && !Number.isNaN(v)) return v;
   if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
+  return undefined;
+}
+
+function readHoursValue(value: unknown): number | undefined {
+  if (typeof value === 'number') return asNumber(value);
+  if (value && typeof value === 'object') {
+    const raw = value as Record<string, unknown>;
+    return (
+      asNumber(raw.maxHours) ??
+      asNumber(raw.hours) ??
+      asNumber(raw.maxDailyDrivingHours) ??
+      asNumber(raw.value)
+    );
+  }
+  return undefined;
+}
+
+const PACING_LEVEL_LABELS: Record<string, string> = {
+  relaxed: '悠闲',
+  slow: '悠闲',
+  normal: '适中',
+  balanced: '适中',
+  intensive: '紧凑',
+  fast: '紧凑',
+};
+
+function formatPacingLevelLabel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const key = value.trim().toLowerCase();
+  if (!key) return undefined;
+  return PACING_LEVEL_LABELS[key] ?? value;
+}
+
+function sanitizeConstraintDisplayName(name?: string): string | undefined {
+  if (typeof name !== 'string') return undefined;
+  const cleaned = name.replace(/（planning-conflicts.*）/u, '').trim();
+  return cleaned || name.trim() || undefined;
+}
+
+function readMinutesAfterSunset(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value && typeof value === 'object') {
+    const raw = value as { maxMinutesAfterSunset?: number; value?: unknown };
+    if (typeof raw.maxMinutesAfterSunset === 'number') return raw.maxMinutesAfterSunset;
+    if (raw.value && typeof raw.value === 'object') {
+      const nested = raw.value as { maxMinutesAfterSunset?: number };
+      if (typeof nested.maxMinutesAfterSunset === 'number') return nested.maxMinutesAfterSunset;
+    }
+  }
+  return undefined;
+}
+
+function formatConstraintChangeUserSummary(
+  before: unknown,
+  after: unknown,
+  unit?: string,
+  name?: string,
+  constraintId?: string,
+): string | undefined {
+  if (before == null && after == null) return undefined;
+
+  if (constraintId === LEGACY_IDS.PACING_LEVEL) {
+    const beforeLabel = formatPacingLevelLabel(before);
+    const afterLabel = formatPacingLevelLabel(after);
+    if (beforeLabel && afterLabel) {
+      return `行程节奏从 ${beforeLabel} 调整为 ${afterLabel}`;
+    }
+    if (afterLabel) {
+      return `行程节奏调整为 ${afterLabel}`;
+    }
+  }
+
+  if (constraintId === LEGACY_IDS.NO_NIGHT_DRIVE && (unit === 'minute' || unit == null)) {
+    const beforeMin = readMinutesAfterSunset(before) ?? 30;
+    const afterMin = readMinutesAfterSunset(after) ?? beforeMin;
+    return `不夜驾：日落后 ${beforeMin} 分钟内停止驾驶 → 日落后 ${afterMin} 分钟内停止驾驶`;
+  }
+
+  if (unit === 'hour') {
+    const beforeH = readHoursValue(before);
+    const afterH = readHoursValue(after);
+    if (beforeH != null && afterH != null) {
+      return `从 ${beforeH} 小时/天 改为 ${afterH} 小时/天`;
+    }
+  }
+  if (unit === 'CNY' || unit === 'USD' || unit === 'EUR') {
+    const beforeN = asNumber(before);
+    const afterN = asNumber(after);
+    if (beforeN != null && afterN != null) {
+      return `从 ${beforeN} ${unit} 改为 ${afterN} ${unit}`;
+    }
+  }
+  if (before != null && after != null) {
+    return `${name ?? '约束'}：${String(before)} → ${String(after)}`;
+  }
   return undefined;
 }
 
@@ -123,7 +238,7 @@ export function buildStructuredConstraintImpactPreview(input: {
   budgetDelta?: TripConstraintImpactPreviewResponse['budgetDelta'];
   budgetTotalBefore?: number | null;
 }): ConstraintImpactStructuredPreview {
-  const itemsById = Object.fromEntries(input.items.map((i) => [i.id, i]));
+  const itemsById = Object.fromEntries(asArray(input.items).map((i) => [i.id, i]));
   const constraintChanges: ConstraintImpactStructuredPreview['constraintChanges'] = [];
   const summaryBullets: string[] = [];
   let daysNeedingSplit: number[] = [];
@@ -131,16 +246,37 @@ export function buildStructuredConstraintImpactPreview(input: {
   const poisToRelocate = extractPoisFromDriveConflicts(input.conflictsBefore);
   let driveHoursDelta: number | undefined;
 
-  for (const ch of input.changes) {
+  for (const ch of asArray(input.changes)) {
     const item = itemsById[ch.constraintId];
     const before = item?.value;
     const after = ch.patch.value ?? before;
+    const unit = ch.patch.unit ?? item?.unit;
+    const displayName =
+      sanitizeConstraintDisplayName(item?.name) ??
+      (ch.constraintId === LEGACY_IDS.PACING_LEVEL ? '行程节奏' : item?.name);
+
+    const normalizedBefore =
+      ch.constraintId === LEGACY_IDS.NO_NIGHT_DRIVE
+        ? { maxMinutesAfterSunset: readMinutesAfterSunset(before) ?? 30 }
+        : before;
+    const normalizedAfter =
+      ch.constraintId === LEGACY_IDS.NO_NIGHT_DRIVE
+        ? { maxMinutesAfterSunset: readMinutesAfterSunset(after) ?? readMinutesAfterSunset(before) ?? 30 }
+        : after;
+
     constraintChanges.push({
       constraintId: ch.constraintId,
-      name: item?.name,
-      before,
-      after,
-      unit: ch.patch.unit ?? item?.unit,
+      name: displayName,
+      before: normalizedBefore,
+      after: normalizedAfter,
+      unit,
+      userFacingSummary: formatConstraintChangeUserSummary(
+        normalizedBefore,
+        normalizedAfter,
+        unit,
+        item?.name,
+        ch.constraintId,
+      ),
     });
 
     if (ch.constraintId === LEGACY_IDS.MAX_DAILY_DRIVE) {

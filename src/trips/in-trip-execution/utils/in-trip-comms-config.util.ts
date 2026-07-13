@@ -12,3 +12,7 @@ export const COMMS_MAX_BODY_LENGTH = 4096;
 export const COMMS_DEFAULT_PEER_TTL_SEC = 120;
 export const COMMS_DEFAULT_LIST_LIMIT = 50;
 export const COMMS_MAX_LIST_LIMIT = 200;
+export const COMMS_AUDIO_SIGNED_URL_TTL_SEC = Math.min(
+  Math.max(60, Number(process.env.COMMS_AUDIO_SIGNED_URL_TTL_SEC ?? 900) || 900),
+  3600,
+);

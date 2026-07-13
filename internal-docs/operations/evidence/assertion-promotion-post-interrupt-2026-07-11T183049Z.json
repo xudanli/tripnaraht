@@ -1,0 +1,1 @@
+{"ok":true,"result":{"schemaId":"tripnara.assertion_promotion@v1","tripId":"a0a99999-9999-4999-8999-999999999999","promotionKey":"weather:recovery:day:1:RECOVERY_OBSERVED","signal":"RECOVERY_OBSERVED","status":"RECOVERY_SHADOW","shadowMode":true,"skipped":true,"detail":"recovery_observed calmStreak=1 tier=CALM","ledgerId":"apl_3c6bfb32-3d04-43f8-ac63-2504d5eeae58"}}

@@ -140,6 +140,7 @@ export class TravelStatusService {
     problemId: string,
     userId: string,
     actionIdOverride?: string,
+    acknowledgement?: string[],
   ): Promise<{
     submit: SubmitDecisionProblemResolutionResponse;
     apply?: ApplyDecisionProblemResponse;
@@ -156,17 +157,21 @@ export class TravelStatusService {
       throw new BadRequestException('No action available for this decision');
     }
 
-    const allowedActionIds = [
+    const selectableActionIds = await this.queue.getSelectableActionIds(tripId, problemId);
+    const fallbackAllowedActionIds = [
       item.actions.acceptRecommended.actionId,
       item.actions.keepOriginal.actionId,
       item.actions.defer.actionId,
     ].filter((id): id is string => Boolean(id));
+    const allowedActionIds =
+      selectableActionIds.length > 0 ? selectableActionIds : fallbackAllowedActionIds;
     if (allowedActionIds.length > 0 && !allowedActionIds.includes(actionId)) {
       throw new BadRequestException('Selected action is not available for this decision');
     }
 
     const submit = await this.gateway.submitResolution(tripId, problemId, userId, {
       selectedActionId: actionId,
+      acknowledgement,
     });
 
     let apply: ApplyDecisionProblemResponse | undefined;

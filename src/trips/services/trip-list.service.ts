@@ -1,9 +1,7 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PlanningConflictsService } from '../trip-constraint-solver/services/planning-conflicts.service';
 import { TripListQueryDto } from '../dto/trip-list.dto';
 import type { TripListPageResponse } from '../dto/frontend-trip-list-api.types';
-import { CoverImageService } from './cover-image.service';
 import { parseBudgetConfig, resolveBudgetIntent } from '../budget-os/utils/budget-config.util';
 import { TripStatus } from '../dto/trip-status.dto';
 import {
@@ -12,6 +10,7 @@ import {
   mapTripRowToListCard,
   sortTripsForListPage,
 } from '../utils/trip-list-bff.projection.util';
+import { resolveTripCoverImageUrl } from '../utils/cover-image.util';
 
 type LiteTripRow = {
   id: string;
@@ -32,11 +31,7 @@ type LiteTripRow = {
 export class TripListService {
   private readonly logger = new Logger(TripListService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly coverImageService: CoverImageService,
-    @Optional() private readonly planningConflicts?: PlanningConflictsService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getTripListPage(
     userId: string | undefined,
@@ -47,70 +42,83 @@ export class TripListService {
     const includeCancelled = query.includeCancelled ?? true;
 
     const where = this.buildWhereClause(userId, query.status, includeCancelled);
-    const [total, tripRows] = await Promise.all([
+    const [total, indexRows] = await Promise.all([
       this.prisma.trip.count({ where }),
       this.prisma.trip.findMany({
         where,
-        select: {
-          id: true,
-          name: true,
-          destination: true,
-          startDate: true,
-          endDate: true,
-          status: true,
-          budgetConfig: true,
-          metadata: true,
-          createdAt: true,
-          updatedAt: true,
-          TripDay: {
-            select: {
-              id: true,
-              date: true,
-              _count: { select: { ItineraryItem: true } },
-            },
-            orderBy: { date: 'asc' },
-          },
-          _count: { select: { TripCollaborator: true } },
-        },
+        select: { id: true, status: true, createdAt: true },
       }),
     ]);
 
-    const sortedRows = sortTripsForListPage(tripRows);
-    const pageRows = sortedRows.slice(offset, offset + limit);
+    const pageIds = sortTripsForListPage(indexRows)
+      .slice(offset, offset + limit)
+      .map((row) => row.id);
+
+    if (pageIds.length === 0) {
+      return { trips: [], total };
+    }
+
+    const tripRows = await this.prisma.trip.findMany({
+      where: { id: { in: pageIds } },
+      select: {
+        id: true,
+        name: true,
+        destination: true,
+        startDate: true,
+        endDate: true,
+        status: true,
+        budgetConfig: true,
+        metadata: true,
+        createdAt: true,
+        updatedAt: true,
+        TripDay: {
+          select: {
+            id: true,
+            date: true,
+            _count: { select: { ItineraryItem: true } },
+          },
+          orderBy: { date: 'asc' },
+        },
+        _count: { select: { TripCollaborator: true } },
+      },
+    });
+
+    const rowById = new Map(tripRows.map((trip) => [trip.id, trip]));
+    const pageRows = pageIds
+      .map((id) => rowById.get(id))
+      .filter((trip) => trip != null) as LiteTripRow[];
+
     const destinationCodes = [...new Set(pageRows.map((trip) => trip.destination.toUpperCase()))];
 
     const [countryProfiles, collaboratorMap] = await Promise.all([
       destinationCodes.length > 0
         ? this.prisma.countryProfile.findMany({
             where: { isoCode: { in: destinationCodes } },
-            select: { isoCode: true, nameCN: true, currencyCode: true },
+            select: { isoCode: true, nameCN: true, currencyCode: true, coverImageUrl: true },
           })
         : Promise.resolve([]),
-      this.loadCollaboratorsForTrips(pageRows.map((trip) => trip.id)),
+      this.loadCollaboratorsForTrips(pageIds),
     ]);
 
     const countryByCode = new Map(
       countryProfiles.map((profile) => [profile.isoCode.toUpperCase(), profile]),
     );
 
-    const coverImageByTripId = await this.coverImageService.resolveCoverImagesForTrips(
-      pageRows.map((trip) => ({
-        id: trip.id,
-        destination: trip.destination,
-        metadata: trip.metadata,
-      })),
-    );
+    const cards = pageRows.map((trip) => {
+      const country = countryByCode.get(trip.destination.toUpperCase());
+      const countryCover =
+        typeof country?.coverImageUrl === 'string' && country.coverImageUrl.trim().length > 0
+          ? country.coverImageUrl.trim()
+          : null;
+      const coverImageUrl = resolveTripCoverImageUrl(trip.id, trip.metadata, [], countryCover);
 
-    const cards = await Promise.all(
-      pageRows.map((trip) =>
-        this.buildTripListCard(
-          trip,
-          countryByCode,
-          collaboratorMap.get(trip.id) ?? [],
-          coverImageByTripId.get(trip.id) ?? null,
-        ),
-      ),
-    );
+      return this.buildTripListCard(
+        trip,
+        countryByCode,
+        collaboratorMap.get(trip.id) ?? [],
+        coverImageUrl,
+      );
+    });
 
     return { trips: cards, total };
   }
@@ -179,9 +187,12 @@ export class TripListService {
     return map;
   }
 
-  private async buildTripListCard(
+  private buildTripListCard(
     trip: LiteTripRow,
-    countryByCode: Map<string, { isoCode: string; nameCN: string; currencyCode: string | null }>,
+    countryByCode: Map<
+      string,
+      { isoCode: string; nameCN: string; currencyCode: string | null; coverImageUrl: string | null }
+    >,
     collaborators: Array<{ userId: string; name?: string; avatarUrl?: string | null }>,
     coverImageUrl: string | null,
   ) {
@@ -198,7 +209,6 @@ export class TripListService {
 
     let listSummary = null;
     try {
-      const conflictSummary = await this.loadConflictSummary(trip.id);
       listSummary = buildTripListSummary({
         destination: trip.destination,
         status: trip.status,
@@ -213,32 +223,11 @@ export class TripListService {
         memberAvatars,
         totalBudget,
         currency,
-        conflictSummary,
       });
     } catch (error: unknown) {
       this.logger.warn(
         `trip-list summary failed for ${trip.id}: ${error instanceof Error ? error.message : error}`,
       );
-      try {
-        listSummary = buildTripListSummary({
-          destination: trip.destination,
-          status: trip.status,
-          startDate: trip.startDate,
-          endDate: trip.endDate,
-          metadata: trip.metadata,
-          coverImageUrl,
-          totalItems: trip.TripDay.reduce((sum, day) => sum + day._count.ItineraryItem, 0),
-          daysWithItems: trip.TripDay.filter((day) => day._count.ItineraryItem > 0).length,
-          totalDays: trip.TripDay.length,
-          memberCount,
-          memberAvatars,
-          totalBudget,
-          currency,
-          conflictSummary: null,
-        });
-      } catch {
-        listSummary = null;
-      }
     }
 
     return mapTripRowToListCard({
@@ -250,19 +239,5 @@ export class TripListService {
       memberAvatars,
       listSummary,
     });
-  }
-
-  private async loadConflictSummary(tripId: string) {
-    if (!this.planningConflicts) return null;
-    try {
-      const { response } = await this.planningConflicts.loadArtifactsFast(tripId);
-      return {
-        mustHandle: response.summary.mustHandle,
-        pendingConfirm: response.summary.pendingConfirm,
-        conflicts: response.conflicts,
-      };
-    } catch {
-      return null;
-    }
   }
 }

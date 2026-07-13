@@ -84,12 +84,12 @@ export function approximateCivilTwilightLocal(
   const utcNoon = new Date(Date.UTC(y, mo - 1, da, 12, 0, 0));
   const times = SunCalc.getTimes(utcNoon, latitudeDeg, longitudeDeg);
 
-  if (
-    !times.dawn ||
-    !times.dusk ||
-    Number.isNaN(times.dawn.getTime()) ||
-    Number.isNaN(times.dusk.getTime())
-  ) {
+  const sunriseValid = isValidInstant(times.sunrise);
+  const sunsetValid = isValidInstant(times.sunset);
+  const dawnValid = isValidInstant(times.dawn);
+  const duskValid = isValidInstant(times.dusk);
+
+  if (!sunriseValid || !sunsetValid) {
     return {
       civilDawn: '00:00',
       civilDusk: '23:59',
@@ -97,15 +97,22 @@ export function approximateCivilTwilightLocal(
     };
   }
 
+  const civilDawnMinutes = dawnValid
+    ? utcInstantToWallClockMinutes(times.dawn, utcOffsetMinutes)
+    : utcInstantToWallClockMinutes(times.sunrise, utcOffsetMinutes);
+  const civilDuskMinutes = duskValid
+    ? utcInstantToWallClockMinutes(times.dusk, utcOffsetMinutes)
+    : utcInstantToWallClockMinutes(times.sunset, utcOffsetMinutes);
+
   return {
-    civilDawn: minutesToIsoTime(
-      utcInstantToWallClockMinutes(times.dawn, utcOffsetMinutes),
-    ),
-    civilDusk: minutesToIsoTime(
-      utcInstantToWallClockMinutes(times.dusk, utcOffsetMinutes),
-    ),
+    civilDawn: minutesToIsoTime(civilDawnMinutes),
+    civilDusk: minutesToIsoTime(civilDuskMinutes),
     ambiguous: false,
   };
+}
+
+function isValidInstant(d?: Date): d is Date {
+  return Boolean(d && !Number.isNaN(d.getTime()));
 }
 
 /**

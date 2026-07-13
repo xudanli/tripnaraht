@@ -12,6 +12,7 @@ import {
   isScheduleConflictCoveredByFeasibilityIssue,
   mapScheduleConflictCategory,
   mapScheduleSeverityToPriority,
+  parseScheduleAffectedDayNumbers,
   scheduleConflictToPlanningItem,
 } from './planning-conflicts.util';
 
@@ -103,6 +104,10 @@ describe('planning-conflicts.util', () => {
   });
 
   describe('travel scope BFF fields', () => {
+    it('parseScheduleAffectedDayNumbers ignores ISO calendar dates', () => {
+      expect(parseScheduleAffectedDayNumbers(['2026-07-19', '4'])).toEqual([4]);
+    });
+
     it('projects affectedDayNumbers and affectedScopeSummary for same_day_travel', () => {
       const item = feasibilityIssueToPlanningItem(
         makeIssue({

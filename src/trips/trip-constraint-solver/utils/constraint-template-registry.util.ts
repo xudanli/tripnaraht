@@ -240,7 +240,7 @@ const CONSTRAINT_TEMPLATE_CATALOG: ConstraintTemplateDefinition[] = [
     defaultName: '恶劣天气不出行',
     category: 'SAFETY',
     type: 'HARD',
-    scope: { type: 'TRIP' },
+    scope: { type: 'ROUTE_SEGMENT' },
     operator: 'EQ',
     defaultValue: { minWeatherScore: 60 },
     allowRelaxation: true,

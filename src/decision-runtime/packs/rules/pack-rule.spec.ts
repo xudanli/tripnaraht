@@ -11,7 +11,7 @@ describe('Destination pack rules (RFC-002 Phase 2)', () => {
     expect(rules.some((r) => r.ruleId === 'IS_ROAD_CLOSED_BLOCK')).toBe(true);
   });
 
-  it('RULE-002: CLOSED + uses route → BLOCK', () => {
+  it('RULE-002: CLOSED + uses route → BLOCK with SDR-002', () => {
     const rules = loadCountryPackRules('IS');
     const ctx = {
       country: 'IS',
@@ -20,6 +20,7 @@ describe('Destination pack rules (RFC-002 Phase 2)', () => {
     };
     const rule = findFirstMatchingPackRule(rules, ctx, 'ROAD_SEGMENT_UNAVAILABLE');
     expect(rule?.ruleId).toBe('IS_ROAD_CLOSED_BLOCK');
+    expect(rule?.sdrRuleId).toBe('SDR-002');
     const applied = applyPackRuleToCandidate(rule!, ctx);
     expect(applied?.verdict).toBe('BLOCK');
     expect(applied?.overridable).toBe(false);

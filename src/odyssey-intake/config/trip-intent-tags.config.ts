@@ -1,6 +1,5 @@
 /** PRD：卡片右下角 CTA 可选即时意向标签（id 与 PATCH tripIntentTag 一致） */
 export const ODYSSEY_TRIP_INTENT_TAG_OPTIONS = [
-  { id: 'open_to_match', label: '开放匹配' },
   { id: 'open_to_spontaneity', label: '接受即兴改动' },
   { id: 'budget_mode', label: '穷游模式' },
   { id: 'comfort_priority', label: '舒适度优先' },

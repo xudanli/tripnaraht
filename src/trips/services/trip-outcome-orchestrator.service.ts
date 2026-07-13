@@ -33,7 +33,6 @@ export interface OutcomeCalculationContext {
     overallSatisfaction?: number;
     budgetSatisfaction?: number;
     activitySatisfaction?: number;
-    companionSatisfaction?: number;
     textFeedback?: string;
     wouldRecommend?: boolean;
     wouldRepeat?: boolean;
@@ -86,9 +85,6 @@ export class TripOutcomeOrchestratorService {
         this.logger.log(
           `Outcome persisted for trip ${tripId}: success=${result.outcome.success}, score=${result.outcome.overallScore.toFixed(2)}`,
         );
-
-        // Trigger recruiting outcome evaluation if this trip is linked to a MatchSquare post
-        await this.evaluateRecruitingOutcome(tripId, result);
 
         // Record verifiable reputation facts for linked trusted projects
         await this.recordTrustedProjectReputation(tripId, result.outcome);
@@ -181,113 +177,6 @@ export class TripOutcomeOrchestratorService {
     } catch (error) {
       this.logger.error(`Failed to record trusted project reputation for trip ${tripId}: ${error}`);
     }
-  }
-
-  /**
-   * Evaluate recruiting outcome for linked MatchSquare post.
-   * Called when trip outcome is calculated.
-   */
-  private async evaluateRecruitingOutcome(
-    tripId: string,
-    tripOutcome: { outcome: any },
-  ): Promise<void> {
-    if (!this.prisma) {
-      return;
-    }
-
-    try {
-      // Find MatchSquare post linked to this trip
-      const recruitingPost = await this.prisma.matchSquarePost.findFirst({
-        where: { tripId },
-      });
-
-      if (!recruitingPost) {
-        this.logger.debug(`No MatchSquare post linked to trip ${tripId}`);
-        return;
-      }
-
-      // Get all applications for this post
-      const applications = await this.prisma.matchSquareApplication.findMany({
-        where: { postId: recruitingPost.id },
-      });
-
-      // Calculate recruiting metrics
-      const approvedCount = applications.filter(a => a.status === 'approved').length;
-      const rejectedCount = applications.filter(a => a.status === 'rejected').length;
-      const conversionRate = applications.length > 0 ? approvedCount / applications.length : 0;
-
-      // Build recruiting outcome
-      const recruitingOutcome = {
-        successLevel: this.mapTripSuccessToRecruitingSuccess(tripOutcome.outcome.success),
-        metrics: {
-          timeToFill: recruitingPost.publishedAt && recruitingPost.closedAt
-            ? Math.ceil((new Date(recruitingPost.closedAt).getTime() - new Date(recruitingPost.publishedAt).getTime()) / (1000 * 60 * 60 * 24))
-            : 0,
-          applicationCount: applications.length,
-          approvedCount,
-          rejectedCount,
-          conversionRate,
-          matchSuccessRate: approvedCount > 0 ? 0.8 : 0, // Simplified
-          teamPerformance: tripOutcome.outcome.overallScore,
-          attritionRate: 0.1, // Default, should be calculated from actual data
-        },
-        factors: [],
-        recommendations: this.generateRecruitingRecommendations(tripOutcome.outcome, conversionRate),
-        computedAt: new Date(),
-        dataQuality: 0.8,
-        confidence: 0.7,
-      };
-
-      // Update MatchSquare post with recruiting outcome
-      await this.prisma.matchSquarePost.update({
-        where: { id: recruitingPost.id },
-        data: { outcome: recruitingOutcome as any },
-      });
-
-      this.logger.log(
-        `Recruiting outcome evaluated for post ${recruitingPost.id}: success=${recruitingOutcome.successLevel}`,
-      );
-    } catch (error) {
-      this.logger.error(`Failed to evaluate recruiting outcome for trip ${tripId}: ${error}`);
-      // Don't throw - recruiting outcome evaluation failure should not block main flow
-    }
-  }
-
-  /**
-   * Map Trip success level to Recruiting success level.
-   */
-  private mapTripSuccessToRecruitingSuccess(tripSuccess: string): string {
-    const mapping: Record<string, string> = {
-      EXCELLENT: 'EXCELLENT',
-      GOOD: 'GOOD',
-      ACCEPTABLE: 'ACCEPTABLE',
-      POOR: 'POOR',
-      FAILED: 'FAILED',
-    };
-    return mapping[tripSuccess] || 'ACCEPTABLE';
-  }
-
-  /**
-   * Generate recruiting recommendations based on trip outcome.
-   */
-  private generateRecruitingRecommendations(tripOutcome: any, conversionRate: number): string[] {
-    const recommendations: string[] = [];
-
-    if (tripOutcome.success === 'EXCELLENT' || tripOutcome.success === 'GOOD') {
-      recommendations.push('招募表现优秀，建议复制当前策略到其他招募');
-    } else if (tripOutcome.success === 'POOR' || tripOutcome.success === 'FAILED') {
-      recommendations.push('招募结果不佳，建议重新评估筛选标准和匹配算法');
-    }
-
-    if (conversionRate < 0.3) {
-      recommendations.push('申请转化率较低，建议优化招募帖文案或降低筛选标准');
-    }
-
-    if (tripOutcome.companionSatisfaction === 'POOR') {
-      recommendations.push('同伴满意度较低，建议强化个性匹配和交互模式分析');
-    }
-
-    return recommendations.length > 0 ? recommendations : ['招募表现正常，继续监控'];
   }
 
   /**

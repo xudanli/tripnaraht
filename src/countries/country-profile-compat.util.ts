@@ -45,6 +45,7 @@ function legacyRowToProfile(row: LegacyCountryProfileRow): CountryProfile {
     entryRequirements: null,
     schemaVersion: 2,
     timeBoundaries: null,
+    coverImageUrl: null,
   };
 }
 

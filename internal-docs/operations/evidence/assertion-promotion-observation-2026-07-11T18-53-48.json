@@ -1,0 +1,114 @@
+{
+  "evidenceType": "ASSERTION_PROMOTION_SHADOW_OBSERVATION",
+  "completedAt": "2026-07-11T18:53:48.475Z",
+  "shadowMode": true,
+  "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+  "weatherEpisodeId": "obs-episode-2026-07-11T18-53-48-d5",
+  "drills": {
+    "retryScheduler": {
+      "drill": "RetrySchedulerOperational",
+      "dayIndex": 7,
+      "ingest": {
+        "ok": true,
+        "ingestId": "vci_e6de48d7-51e9-48b1-9913-db2c99fc62f3",
+        "requestId": "obs_59a08672-9077-46f2-9393-e815ed7b0262",
+        "outcome": "ASSERTION_EMITTED",
+        "transport": "remote_collector",
+        "authoritative": true,
+        "sourceProvider": "iceland_met",
+        "weatherSource": "vedur.is",
+        "canonicalProcessed": true,
+        "detail": "assertion emitted wind=93.6 tier=PROHIBITED",
+        "riskTier": "PROHIBITED",
+        "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033516",
+        "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033515"
+      },
+      "failedEntry": {
+        "detail": "assertion_promotion_test_fail_once",
+        "signal": "ASSERTION_EMITTED",
+        "status": "FAILED",
+        "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033515",
+        "attempts": 1,
+        "ingestId": "vci_e6de48d7-51e9-48b1-9913-db2c99fc62f3",
+        "ledgerId": "apl_e305b1b8-3f87-46bc-9987-f9557255a885",
+        "lastError": "assertion_promotion_test_fail_once",
+        "shadowMode": true,
+        "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033516",
+        "nextRetryAt": "2026-07-11T18:54:08.918Z",
+        "promotionKey": "weather:hazard:day:7:WEATHER_ACTIVITY_PROHIBITED",
+        "lastAttemptAt": "2026-07-11T18:53:53.918Z"
+      },
+      "recoveredEntry": {
+        "detail": "shadow dry-run items=0 wind=93.6",
+        "signal": "ASSERTION_EMITTED",
+        "status": "SHADOW_OBSERVED",
+        "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033515",
+        "attempts": 2,
+        "ingestId": "vci_e6de48d7-51e9-48b1-9913-db2c99fc62f3",
+        "ledgerId": "apl_b6adde5d-bfa3-4eca-a9ed-35b6fdfec514",
+        "shadowMode": true,
+        "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033516",
+        "promotionKey": "weather:hazard:day:7:WEATHER_ACTIVITY_PROHIBITED",
+        "lastAttemptAt": "2026-07-11T18:54:20.173Z"
+      },
+      "before": {
+        "phase": "retry_before",
+        "at": "2026-07-11T18:53:52.983Z",
+        "problemCount": 0,
+        "decisionQueueOpenCount": 2,
+        "promotionKeys": [
+          "weather:hazard:day:7:WEATHER_ACTIVITY_PROHIBITED",
+          "weather:recovery:day:7:RECOVERY_OBSERVED"
+        ]
+      },
+      "after": {
+        "phase": "retry_after",
+        "at": "2026-07-11T18:54:25.457Z",
+        "ingest": {
+          "outcome": "ASSERTION_EMITTED",
+          "riskTier": "PROHIBITED",
+          "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033516",
+          "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033515",
+          "ingestId": "vci_e6de48d7-51e9-48b1-9913-db2c99fc62f3",
+          "detail": "assertion emitted wind=93.6 tier=PROHIBITED",
+          "windSemantic": "STRONG_WIND"
+        },
+        "problemCount": 0,
+        "decisionQueueOpenCount": 2,
+        "calmStreak": 0,
+        "hazardLedger": {
+          "detail": "shadow dry-run items=0 wind=93.6",
+          "signal": "ASSERTION_EMITTED",
+          "status": "SHADOW_OBSERVED",
+          "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033515",
+          "attempts": 2,
+          "ingestId": "vci_e6de48d7-51e9-48b1-9913-db2c99fc62f3",
+          "ledgerId": "apl_b6adde5d-bfa3-4eca-a9ed-35b6fdfec514",
+          "shadowMode": true,
+          "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_7_1783796033516",
+          "promotionKey": "weather:hazard:day:7:WEATHER_ACTIVITY_PROHIBITED",
+          "lastAttemptAt": "2026-07-11T18:54:20.173Z"
+        },
+        "semanticState": "ASSERTION_EMITTED/PROHIBITED",
+        "promotionKeys": [
+          "weather:hazard:day:7:WEATHER_ACTIVITY_PROHIBITED",
+          "weather:recovery:day:7:RECOVERY_OBSERVED"
+        ]
+      },
+      "verdict": {
+        "post_accept_failed_ledger": true,
+        "failed_queue_includes_key": true,
+        "scheduler_auto_recovery": true,
+        "problem_store_unchanged": true,
+        "visible_queue_unchanged": true,
+        "overall_pass": true
+      }
+    }
+  },
+  "closure": {
+    "weatherAutoPromotionShadowObservationClosure": "PASS",
+    "weatherHazardLifecycleDrill": "PASS",
+    "weatherRecoveryShadowClosure": "PASS",
+    "retrySchedulerOperationalDrill": "PASS"
+  }
+}

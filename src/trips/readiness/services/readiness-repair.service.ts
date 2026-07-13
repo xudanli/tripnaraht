@@ -43,6 +43,7 @@ import {
   itineraryDiffToHighlights,
 } from '../utils/trip-plan-repair-preview.util';
 import { isRoadClassStructuralRepairOption } from '../../trip-constraint-solver/utils/road-class-repair-options.util';
+import { assertFeasibilityRepairAuthority } from '../../trip-constraint-solver/utils/repair-authority.util';
 import { isEffectivePlanWriteChainEnabled } from '../../../decision-runtime/execution/effective-plan-write-chain.config';
 import { assertPlanMutationAllowedOrThrow } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { EffectivePlanWriteGuardService } from '../../../decision-runtime/execution/effective-plan-write-guard.service';
@@ -89,6 +90,12 @@ export class ReadinessRepairService {
 
     const actionType = option.actionType || 'unknown';
     this.logger.debug(`applyRepair trip=${tripId} blocker=${blockerId} action=${actionType}`);
+
+    try {
+      assertFeasibilityRepairAuthority(request.repairAuthority ?? 'readiness_prep', option);
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
 
     if (!MARK_NOT_APPLICABLE_ACTIONS.has(actionType) && isEffectivePlanWriteChainEnabled()) {
       assertPlanMutationAllowedOrThrow(

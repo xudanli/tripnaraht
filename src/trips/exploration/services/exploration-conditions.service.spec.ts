@@ -71,9 +71,23 @@ describe('ExplorationConditionsService', () => {
     ).toThrow(/locked/);
   });
 
-  it('returns IS catalog', () => {
+  it('returns IS catalog with self-drive-only scope', () => {
     const catalog = service.getCatalog('IS');
+    expect(catalog.mobilityMode).toBe('self_drive_only');
+    expect(catalog.transportModeEditable).toBe(false);
     expect(catalog.vehicleTypes.map((v) => v.code)).toContain('4WD_SUV');
     expect(catalog.budgetPresets.length).toBeGreaterThan(0);
+  });
+
+  it('defaults vehicle type when mobilityContext omitted', () => {
+    const input = service.buildInitialInput(
+      {
+        destinationCodes: ['IS'],
+        dateRange: { startDate: '2026-09-10', endDate: '2026-09-18' },
+        travelers: [{ type: 'ADULT' }],
+      },
+      null,
+    );
+    expect(input.mobilityContext?.vehicleType).toBe('2WD_COMPACT_SUV');
   });
 });

@@ -380,7 +380,14 @@ export class UnifiedDecisionResolutionService {
     let decisionId = input.detail.resolution?.resolutionId;
     let actionPlanId = input.detail.resolution?.actionPlanId;
 
-    if (!decisionId || input.detail.resolution?.status === 'PROPOSED') {
+    if (!decisionId) {
+      const canonicalView = await this.canonical.getProblem(input.tripId, input.problemId);
+      decisionId = canonicalView.record?.decisionId;
+      actionPlanId =
+        canonicalView.planVersion?.planVersionId ?? actionPlanId;
+    }
+
+    if (!decisionId) {
       const evaluated = await this.runCanonicalEvaluate(input.tripId, input.problemId);
       decisionId =
         (evaluated as { record?: { decisionId?: string } }).record?.decisionId ??

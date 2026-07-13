@@ -44,6 +44,7 @@ import {
   RegenerateTripDto,
 } from './dto/trip-draft.dto';
 import { UnifiedBootstrapTripDto } from './dto/unified-bootstrap-trip.dto';
+import { AdvisorCreateTripDto } from './dto/advisor-create-trip.dto';
 import { EnrichTripDto } from './dto/enrich-trip.dto';
 import { buildTripDraftContract } from './draft-synthesis/contract';
 import { TripDraftService } from './services/trip-draft.service';
@@ -80,6 +81,7 @@ import { ScheduleTimelineService } from './services/schedule-timeline.service';
 import { TimelineOverviewService } from './services/timeline-overview.service';
 import { CollabOverviewService } from './services/collab-overview.service';
 import { TripListService } from './services/trip-list.service';
+import { TripAdvisorCreateService } from './services/trip-advisor-create.service';
 import { TripListQueryDto } from './dto/trip-list.dto';
 import { AccommodationOverviewService } from './services/accommodation-overview.service';
 import { JourneyMapService, parseJourneyMapInclude } from './services/journey-map.service';
@@ -273,6 +275,7 @@ export class TripsController {
     private readonly timelineOverviewService: TimelineOverviewService,
     private readonly collabOverviewService: CollabOverviewService,
     private readonly tripListService: TripListService,
+    private readonly tripAdvisorCreateService: TripAdvisorCreateService,
     private readonly accommodationOverviewService: AccommodationOverviewService,
     private readonly journeyMapService: JourneyMapService,
     private readonly journeyMapDecisionItems: JourneyMapDecisionItemsService,
@@ -526,6 +529,53 @@ export class TripsController {
       }
       this.logger.error(`bootstrapUnified failed: ${error?.message}`, error?.stack);
       return errorResponse(ErrorCode.BUSINESS_ERROR, error?.message || 'bootstrap 失败');
+    }
+  }
+
+  /**
+   * 顾问代客创建行程，并为各干系人角色生成成员邀请码。
+   */
+  @Post('advisor-create')
+  @ApiOperation({
+    summary: '顾问创建行程（B 端）',
+    description:
+      '顾问/机构为用户创建行程壳，并返回各角色（主要联系人、付款人、最终确认人、顾问、领队）的成员邀请码。',
+  })
+  @ApiBody({ type: AdvisorCreateTripDto })
+  @ApiResponse({ status: 200, description: '创建成功', type: ApiSuccessResponseDto })
+  async advisorCreateTrip(
+    @Body() body: AdvisorCreateTripDto,
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request,
+  ) {
+    try {
+      let userId = user?.userId;
+      if (!userId && req?.headers?.authorization) {
+        const authHeader = req.headers.authorization;
+        if (authHeader?.startsWith('Bearer ')) {
+          try {
+            const payload = await this.jwtService.verifyAsync(authHeader.substring(7));
+            userId = payload.sub;
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+      }
+
+      const data = await this.tripAdvisorCreateService.createFromAdvisor(body, userId);
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      if (error instanceof ForbiddenException) {
+        return errorResponse(ErrorCode.FORBIDDEN, error.message);
+      }
+      this.logger.error(`advisorCreateTrip failed: ${error?.message}`, error?.stack);
+      return errorResponse(ErrorCode.BUSINESS_ERROR, error?.message || '顾问创建行程失败');
     }
   }
 

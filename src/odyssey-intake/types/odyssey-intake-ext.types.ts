@@ -34,6 +34,7 @@ export interface OdysseyOnboardingStatus {
   credentialsVerified: boolean;
   trustVerified: boolean;
   cardReady: boolean;
+  /** @deprecated 旅伴匹配已下线，恒为 false */
   canMatch: boolean;
   intakeVersion?: 1 | 2;
   nextStep?:
@@ -42,7 +43,6 @@ export interface OdysseyOnboardingStatus {
     | 'premium_stress_test'
     | 'trust_verify'
     | 'view_card'
-    | 'match'
     | 'quiz';
 }
 

@@ -53,6 +53,7 @@ describe('no-night-drive-conflicts.util', () => {
     expect(conflict?.issueKind).toBe('no_night_drive');
     expect(conflict?.priority).toBe('must_handle');
     expect(conflict?.description).toContain('日落后 30 分钟');
+    expect(conflict?.affectedDays).toEqual(['1']);
   });
 
   it('assembleFeasibilityReport maps no_night_drive to transport hard issue', () => {

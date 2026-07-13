@@ -1,0 +1,24 @@
+{
+  "evidenceType": "ROAD_TRAVERSABILITY_PRE_SIGNOFF_TRIP_SETUP",
+  "evidenceLabel": "ROAD_TRAVERSABILITY_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road Traversability T2 Pre-Signoff Drill",
+  "drillStatus": "Road Traversability T2 Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING TRAVERSABILITY T1 + WEATHER SOAK",
+  "tripId": "b0b88888-8888-4888-8888-888888888888",
+  "userId": "b0b88888-8888-4888-8888-888888888801",
+  "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+  "weatherCanaryUntouched": true,
+  "vehicleProfile": "4WD",
+  "scenarioId": "RT-F208-002",
+  "rfc001VehicleCapability": {
+    "driveType": "4WD",
+    "vehicleClass": "LARGE_4X4",
+    "riverCrossingAllowed": true,
+    "gravelRoadExperience": true
+  },
+  "effectivePlanVersionId": "plan_1",
+  "routeSegmentId": "trip-b0b88888-8888-4888-8888-888888888888-item-b0b88888-8888-4888-8888-888888888631",
+  "t1Readiness": "PENDING_ASSESSOR",
+  "result": "READY",
+  "setupAt": "2026-07-11T06:32:07.641Z"
+}

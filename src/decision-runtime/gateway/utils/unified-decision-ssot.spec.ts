@@ -40,6 +40,36 @@ describe('decision-queue-admission.util', () => {
       }),
     ).toBe(true);
   });
+
+  it('excludes plan object assessment from decision queue during execution', () => {
+    expect(
+      qualifiesForDecisionQueue({
+        enforcement: 'REQUIRE_ADJUSTMENT',
+        workflowStatus: 'WAITING_DECISION',
+        problemId: 'dp_id:plan_object_meal_late_arrival_po_x',
+        semanticKey: 'plan_object_meal_late_arrival_po_x',
+        excludePlanObjectPlanning: true,
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForDecisionQueue({
+        enforcement: 'REQUIRE_ADJUSTMENT',
+        workflowStatus: 'WAITING_DECISION',
+        problemId: 'dp_travel:same_day_travel:day1:seg1',
+        semanticKey: 'same_day_travel:day1',
+        excludePlanObjectPlanning: true,
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForDecisionQueue({
+        enforcement: 'REQUIRE_ADJUSTMENT',
+        workflowStatus: 'WAITING_DECISION',
+        problemId: 'dp_id:plan_object_meal_late_arrival_po_x',
+        semanticKey: 'plan_object_meal_late_arrival_po_x',
+        excludePlanObjectPlanning: false,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe('unified-decision-problem-projection.util', () => {

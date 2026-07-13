@@ -115,6 +115,19 @@ export interface TripConstraintContractMeta {
   violationResultLabel: string;
 }
 
+export interface TripConstraintCapability {
+  constraintKey: string;
+  enforcementLevel: 'ENABLED' | 'PARTIAL' | 'DISPLAY_ONLY' | 'ADVISORY_ONLY';
+  phase0UiPolicy: 'OPEN' | 'DISPLAY_ONLY' | 'HIDDEN' | 'DEFAULT_ONLY';
+  stages?: {
+    planning: boolean;
+    feasibility: boolean;
+    execution: boolean;
+    tep: boolean;
+    optimizer: boolean;
+  };
+}
+
 export interface TripConstraint {
   id: string;
   tripId: string;
@@ -141,6 +154,8 @@ export interface TripConstraint {
   displayValue?: string;
   /** 四项元数据 SSOT — 优先于前端静态规则表 */
   contractMeta?: TripConstraintContractMeta;
+  /** Phase 0 Capability Registry — 替代 type===HARD 推断 enforce / 验证色 */
+  capability?: TripConstraintCapability;
   /** OFFICIAL_RULE 固定 readonly_official，不可 PATCH */
   sectionKey?: 'readonly_official' | 'readonly_world';
   verificationStatus?: DestinationRuleVerificationStatus;
@@ -261,6 +276,21 @@ export interface ConstraintImpactStructuredPreview {
     gradeAfter?: string;
   };
   schedule?: {
+    scheduleDetailLevel?: 'none' | 'day_summary' | 'activity';
+    scheduleDetailUnavailableReason?: string;
+    affectedDays?: Array<{ dayNumber: number; tone: 'major' | 'minor' }>;
+    affectedDayDetails?: Array<{
+      dayNumber: number;
+      tone: 'major' | 'minor';
+      daySummary: string;
+      items?: Array<{
+        itemId?: string;
+        label: string;
+        startTimeLabel?: string;
+        detail: string;
+        impactType: 'DRIVE_OVER_LIMIT' | 'TIME_WINDOW' | 'REMOVED';
+      }>;
+    }>;
     daysNeedingSplit?: number[];
     extraLodgingNights?: number;
     poisToRelocate?: Array<{ dayNumber: number; itemId?: string; label?: string }>;
@@ -276,7 +306,28 @@ export interface ConstraintImpactStructuredPreview {
     before?: unknown;
     after?: unknown;
     unit?: string;
+    userFacingSummary?: string;
   }>;
+}
+
+export type ConstraintImpactPreviewVerdict =
+  | 'STILL_NOT_EXECUTABLE'
+  | 'IMPROVED'
+  | 'NOW_EXECUTABLE'
+  | 'NEEDS_CONFIRM';
+
+export interface ConstraintImpactUserSummary {
+  verdict: ConstraintImpactPreviewVerdict;
+  verdictLabel: string;
+  verdictReason: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  previewMode: 'quick' | 'deep';
+}
+
+export interface ConstraintImpactSuggestedFollowUp {
+  label: string;
+  action: 'OPEN_FEASIBILITY_REPORT' | 'CONFIRM_AND_DEEP_CHECK' | 'NONE';
+  deepLink?: string;
 }
 
 export interface TripConstraintImpactPreviewResponse {
@@ -289,11 +340,28 @@ export interface TripConstraintImpactPreviewResponse {
   conflictsBefore: { mustHandle: number; suggestAdjust: number; pendingConfirm: number };
   conflictsAfter?: { mustHandle: number; suggestAdjust: number; pendingConfirm: number };
   recommendations: string[];
+  diffBullets?: string[];
+  userSummary?: ConstraintImpactUserSummary;
+  suggestedFollowUp?: ConstraintImpactSuggestedFollowUp;
   executeabilityDelta?: {
     scoreDelta?: number;
     mustHandleDelta?: number;
     suggestAdjustDelta?: number;
+    scoreDeltaReason?: string;
+    blockingRuleIds?: string[];
+    conflictsDeltaSummary?: {
+      mustHandle?: { before: number; after?: number; label: string };
+      suggestAdjust?: { before: number; after?: number; label: string };
+      pendingConfirm?: { before: number; after?: number; label: string };
+    };
   };
+  scheduleDetailLevel?: 'none' | 'day_summary' | 'activity';
+  scheduleDetailUnavailableReason?: string;
+  affectedDayDetails?: ConstraintImpactStructuredPreview['schedule'] extends { affectedDayDetails?: infer D }
+    ? D
+    : never;
+  constraintAssessments?: import('./frontend-constraint-assessment-api.types').UnifiedConstraintAssessmentView[];
+  meta?: { debug?: Record<string, unknown> };
   assessBefore?: { overallAverageScore: number; overallGrade: string };
   assessAfter?: { overallAverageScore: number; overallGrade: string };
   structuredImpact?: ConstraintImpactStructuredPreview;

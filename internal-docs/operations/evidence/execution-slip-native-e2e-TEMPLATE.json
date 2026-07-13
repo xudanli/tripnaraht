@@ -1,0 +1,45 @@
+{
+  "label": "EXECUTION_SLIP_NATIVE_E2E_EVIDENCE",
+  "evidenceType": "EXECUTION_SLIP_NATIVE_E2E",
+  "date": "2026-07-XX",
+  "commitSha": "<git rev-parse HEAD>",
+  "testedAt": "<ISO8601>",
+  "tester": "<name>",
+  "environment": "staging|dev|canary",
+  "result": "PASS|FAIL",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "activityAId": "c0c77777-7777-4777-8777-777777777631",
+  "observationId": "<from departure-slip response>",
+  "problemId": "<from RECORDED response>",
+  "decisionId": "<same as problemId>",
+  "runId": "<from RECORDED response>",
+  "selectedActionId": "cand_remove_next|cand_substitute_next|cand_shorten_stay",
+  "oldPlanVersionId": "plan_1",
+  "newPlanVersionId": "plan_2",
+  "revalidation": {
+    "status": "PASS|FAIL|UNKNOWN",
+    "message": "<optional>"
+  },
+  "legacyWriteInvocations": 0,
+  "idempotency": {
+    "firstRequest": { "status": "RECORDED|NO_ACTION", "observationId": "..." },
+    "replayRequest": { "status": "...", "duplicate": true }
+  },
+  "checks": [
+    { "id": "E2E-FULL-CHAIN", "pass": true, "detail": "我晚了 → problem → 3 candidates → confirm → W-01 → RESOLVED" },
+    { "id": "E2E-IDEMPOTENT", "pass": true, "detail": "重复点击不重复写入" },
+    { "id": "E2E-CANCEL-NO-WRITE", "pass": true, "detail": "用户取消不写入 PlanVersion" },
+    { "id": "E2E-UNKNOWN-NO-FALSE-POSITIVE", "pass": true, "detail": "UNKNOWN 不误判 infeasible" },
+    { "id": "E2E-RETRY-SAFE", "pass": true, "detail": "请求失败可重试" },
+    { "id": "E2E-RESOLVED-HIDDEN", "pass": true, "detail": "已 resolved 不重复展示" },
+    { "id": "E2E-NO-LEGACY-WRITE", "pass": true, "detail": "legacyWriteInvocations=0" }
+  ],
+  "screenshots": [
+    "execution-slip-native-e2e-screenshots/01-late-modal.png",
+    "execution-slip-native-e2e-screenshots/02-decision-card.png",
+    "execution-slip-native-e2e-screenshots/03-confirm-success.png",
+    "execution-slip-native-e2e-screenshots/04-card-dismissed.png"
+  ],
+  "recordingPath": "execution-slip-native-e2e-recording.mp4",
+  "notes": ""
+}

@@ -25,6 +25,7 @@ import {
 import {
   buildPendingItems,
   computeAllReady,
+  projectTransportConstraintForBff,
   resolveBudgetStatus,
   resolveEffectiveTravelMode,
   resolveTransportStatus,
@@ -94,7 +95,7 @@ export class ConstraintsSummaryService {
       status: resolveTravelersStatus(travelerCount, memberCount),
     };
 
-    const transport = {
+    const transport = projectTransportConstraintForBff({
       travelMode,
       transportHint,
       sampleSegment,
@@ -103,10 +104,10 @@ export class ConstraintsSummaryService {
         sampleTravelMode: sampleSegment?.travelMode,
         sampleDistanceMeters: sampleSegment?.distance,
       }),
-    };
+    });
 
     const pendingItems = buildPendingItems({ timeRange, budget, travelers, transport });
-    const allReady = computeAllReady({ timeRange, budget, travelers, transport });
+    const allReady = computeAllReady({ timeRange, budget, travelers });
     const confirmedAt = constraintsMeta.constraintsConfirmedAt ?? null;
 
     return {

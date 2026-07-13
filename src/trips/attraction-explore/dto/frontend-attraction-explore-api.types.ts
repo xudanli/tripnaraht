@@ -15,6 +15,8 @@ export type {
   AttractionExploreCandidatesView,
   AttractionExploreMapPoi,
   AttractionExploreMapView,
+  PlanningLodgingLeg,
+  PlanningLodgingSuggestion,
   AttractionExploreAutoArrangeResult,
   AttractionExploreAiConsultResult,
 } from '../types/attraction-explore.types';

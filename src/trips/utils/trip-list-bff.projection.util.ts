@@ -9,9 +9,6 @@ import type {
   TripPlanningAvailability,
   TripListContentMode,
 } from '../dto/frontend-trip-list-api.types';
-import type { PlanningConflictItem } from '../trip-constraint-solver/types/planning-conflicts.types';
-import { ConflictSeverity } from '../dto/trip-conflicts.dto';
-import { computeFeasibilityScoreFromConflicts } from './timeline-overview.util';
 import {
   isExecutableScheduleReady,
   isRouteEstablishedForTrip,
@@ -19,7 +16,7 @@ import {
   resolveEffectiveGenerationProgress,
   resolveTripContentMode,
   type TripContentMode,
-} from './match-square-trip-content.util';
+} from './trip-content-mode.util';
 
 const DISPLAY_STATUS_LABELS: Record<TripListDisplayStatus, string> = {
   planning: '规划中',
@@ -61,13 +58,6 @@ export function resolveTripListDisplayStatus(input: {
 
 export function resolveDisplayStatusLabel(displayStatus: TripListDisplayStatus): string {
   return DISPLAY_STATUS_LABELS[displayStatus];
-}
-
-export function resolveFeasibilityLabel(score: number | null | undefined): string | null {
-  if (score == null || !Number.isFinite(score)) return null;
-  if (score >= 70) return '良好';
-  if (score >= 50) return '待优化';
-  return '需关注';
 }
 
 export function resolvePlanningAvailability(input: {
@@ -120,20 +110,6 @@ export function resolvePrimaryAction(displayStatus: TripListDisplayStatus): Trip
     default:
       return undefined;
   }
-}
-
-export function computeFeasibilityScoreFromPlanningItems(items: PlanningConflictItem[]): number {
-  if (items.length === 0) return 100;
-  const mapped = items.map((item) => ({
-    id: item.id,
-    severity:
-      item.priority === 'must_handle'
-        ? ConflictSeverity.HIGH
-        : item.priority === 'suggest_adjust'
-          ? ConflictSeverity.MEDIUM
-          : ConflictSeverity.LOW,
-  }));
-  return computeFeasibilityScoreFromConflicts(mapped as never);
 }
 
 export function readMetadataNumber(metadata: unknown, keys: string[]): number | null {
@@ -233,11 +209,6 @@ export type BuildTripListSummaryInput = {
   memberAvatars: TripListSummaryDto['memberAvatars'];
   totalBudget: number;
   currency?: string;
-  conflictSummary?: {
-    mustHandle: number;
-    pendingConfirm: number;
-    conflicts: PlanningConflictItem[];
-  } | null;
 };
 
 export function buildTripListSummary(input: BuildTripListSummaryInput): TripListSummaryDto {
@@ -253,18 +224,6 @@ export function buildTripListSummary(input: BuildTripListSummaryInput): TripList
         .diff(DateTime.fromJSDate(input.startDate).startOf('day'), 'days').days,
     ) + 1,
   );
-
-  const feasibilityScore =
-    input.conflictSummary != null
-      ? computeFeasibilityScoreFromPlanningItems(input.conflictSummary.conflicts)
-      : readMetadataNumber(input.metadata, ['feasibilityScore', 'healthScore', 'overallScore']);
-
-  const hardConflictCount =
-    input.conflictSummary?.mustHandle ??
-    readMetadataNumber(input.metadata, ['hardConflictCount', 'conflictCount']);
-  const pendingConfirmCount =
-    input.conflictSummary?.pendingConfirm ??
-    readMetadataNumber(input.metadata, ['pendingConfirmCount', 'pendingItems']);
 
   const budgetPerPerson =
     input.totalBudget > 0 && input.memberCount > 0
@@ -287,10 +246,6 @@ export function buildTripListSummary(input: BuildTripListSummaryInput): TripList
       daysWithItems: input.daysWithItems,
       totalDays: input.totalDays,
     }),
-    feasibilityScore,
-    feasibilityLabel: resolveFeasibilityLabel(feasibilityScore),
-    hardConflictCount,
-    pendingConfirmCount,
     budgetPerPerson,
     primaryAction: resolvePrimaryAction(displayStatus),
   };

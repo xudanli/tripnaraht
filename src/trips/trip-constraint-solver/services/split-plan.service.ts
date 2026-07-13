@@ -11,6 +11,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { DEFAULT_PACING_TRAVEL_MODE } from '../../../common/constants/travel-mode-scope.constants';
 import { ConstraintsSummaryService } from './constraints-summary.service';
 import { FeasibilityReportService } from './feasibility-report.service';
 import { TripConstraintPreviewService } from './trip-constraint-preview.service';
@@ -79,7 +80,15 @@ function stubConstraintsSummaryForSplit(
       profilingCompletedCount: report.teamFitSummary?.profilingCompletedCount ?? 0,
       status: memberCount > 0 ? 'confirmed' : 'missing',
     },
-    transport: { travelMode: null, transportHint: null, status: 'missing' },
+    transport: {
+      travelMode: DEFAULT_PACING_TRAVEL_MODE,
+      label: '自驾',
+      transportHint: 'self_drive',
+      editable: false,
+      hidden: true,
+      scope: 'self_drive_only',
+      status: 'confirmed',
+    },
     pendingItems: [],
   };
 }

@@ -1,0 +1,38 @@
+{
+  "capturedAt": "2026-07-10T15:59:28.772Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "tripOwnerId": "c0a55555-5555-4555-8555-555555555501",
+  "tripPhase": "TRAVELING",
+  "destination": "IS",
+  "effectivePlanVersionId": "plan_sr5_staging_v1",
+  "canaryEnabled": true,
+  "fixture": null,
+  "weatherRegionBinding": [
+    "1:day_1"
+  ],
+  "weatherEvidenceIds": [],
+  "latestWeatherFingerprint": "vedur.is|1|w95|g101.5",
+  "latestWeatherObservedAt": "2026-06-13T14:00:00.000Z",
+  "latestWorldAssertionId": null,
+  "latestCausalTraceId": null,
+  "openCanonicalProblemIds": [
+    "problem_weather_c0a55555_1783699050162"
+  ],
+  "openLegacyProblemIds": [],
+  "queueProblemIds": [
+    "problem_weather_c0a55555_1783699050162"
+  ],
+  "calmRecoveryStreak": {
+    "1": {
+      "streak": 0,
+      "lastFingerprint": "vedur.is|1|w95|g101.5"
+    }
+  },
+  "circuitState": "CLOSED",
+  "lastSuccessfulPollAt": "2026-07-10T15:57:30.742Z",
+  "legacyInvocationCount": 0,
+  "warnings": [
+    "Baseline has 1 open weather problem(s) — consider clean trip or document"
+  ]
+}

@@ -69,6 +69,9 @@ export interface ExplorationConditionsView {
   dateRange: ExplorationDateRange;
   travelers: ExplorationTravelerProfile[];
   budget?: ExplorationBudgetRange;
+  /** 固定自驾；前端不展示交通方式选择器 */
+  mobilityMode?: 'self_drive_only';
+  mobilityModeLabel?: string;
   mobilityContext?: ExplorationMobilityContext;
   insuranceContext?: ExplorationInsuranceContext;
   rentalContext?: ExplorationRentalContext;
@@ -154,6 +157,8 @@ export interface ConsumerRepairOptionViewModel {
     riskDelta?: number;
   };
   canApply: boolean;
+  changePreview?: import('../../guardian-decision-core/contracts/execution-slip-option-preview.types').ExecutionSlipChangePreview;
+  scheduleContext?: import('../../guardian-decision-core/contracts/execution-slip-option-preview.types').ExecutionSlipScheduleContext;
 }
 
 export interface ExplorationApplyResultView {

@@ -1,3 +1,8 @@
+import {
+  DEFAULT_PACING_TRAVEL_MODE,
+  DEFAULT_WORKBENCH_TRAVEL_MODE,
+  TRANSPORT_CONSTRAINT_BFF,
+} from '../../../common/constants/travel-mode-scope.constants';
 import type { BudgetGateStatus } from '../../budget-os/types/trip-budget-os.types';
 import type {
   BudgetConstraintStatus,
@@ -25,20 +30,22 @@ export function resolveTravelerCount(input: {
   );
 }
 
-/** pacingConfig.travelMode 缺失时，从 legacy transport 推断（与 FE 一致） */
-export function resolveEffectiveTravelMode(pacingConfig: unknown): string | null {
-  if (!pacingConfig || typeof pacingConfig !== 'object') return null;
+/** pacingConfig.travelMode 缺失时，从 legacy transport 推断；产品范围默认自驾 */
+export function resolveEffectiveTravelMode(pacingConfig: unknown): string {
+  if (!pacingConfig || typeof pacingConfig !== 'object') {
+    return DEFAULT_PACING_TRAVEL_MODE;
+  }
   const pacing = pacingConfig as { travelMode?: string; transport?: string };
   if (pacing.travelMode) return pacing.travelMode;
 
   const hint = pacing.transport?.toLowerCase();
-  if (!hint) return null;
+  if (!hint) return DEFAULT_PACING_TRAVEL_MODE;
   if (hint === 'car' || hint === 'self_drive' || hint === 'driving' || hint === 'rental') {
     return 'DRIVING';
   }
   if (hint === 'transit' || hint === 'public_transit') return 'PUBLIC_TRANSIT';
   if (hint === 'mixed') return 'MIXED';
-  return null;
+  return DEFAULT_PACING_TRAVEL_MODE;
 }
 
 export function resolveTravelersStatus(
@@ -65,27 +72,30 @@ export function resolveBudgetStatus(input: {
   return 'confirmed';
 }
 
-export function resolveTransportStatus(input: {
+export function resolveTransportStatus(_input: {
   travelMode: string | null;
   sampleTravelMode?: string | null;
   sampleDistanceMeters?: number | null;
 }): ConstraintFieldStatus {
-  if (!input.travelMode) return 'missing';
-
-  const pacing = input.travelMode.toUpperCase();
-  const segmentMode = input.sampleTravelMode?.toUpperCase();
-  const distance = input.sampleDistanceMeters ?? 0;
-
-  if (!segmentMode) return 'confirmed';
-
-  const expectsDriving = pacing === 'DRIVING' || pacing === 'MIXED';
-  if (expectsDriving && segmentMode === 'WALKING' && distance >= 2000) {
-    return 'misaligned';
-  }
-  if (pacing === 'PUBLIC_TRANSIT' && segmentMode === 'DRIVING' && distance < 2000) {
-    return 'misaligned';
-  }
   return 'confirmed';
+}
+
+export function projectTransportConstraintForBff(input: {
+  travelMode: string | null;
+  transportHint: string | null;
+  sampleSegment?: ConstraintsSummaryResponse['transport']['sampleSegment'];
+  status: ConstraintFieldStatus;
+}): ConstraintsSummaryResponse['transport'] {
+  return {
+    travelMode: input.travelMode ?? DEFAULT_PACING_TRAVEL_MODE,
+    label: TRANSPORT_CONSTRAINT_BFF.label,
+    transportHint: input.transportHint ?? DEFAULT_WORKBENCH_TRAVEL_MODE,
+    editable: TRANSPORT_CONSTRAINT_BFF.editable,
+    hidden: TRANSPORT_CONSTRAINT_BFF.hidden,
+    scope: TRANSPORT_CONSTRAINT_BFF.scope,
+    ...(input.sampleSegment ? { sampleSegment: input.sampleSegment } : {}),
+    status: input.status,
+  };
 }
 
 const PENDING_LABELS: Record<
@@ -117,8 +127,10 @@ const PENDING_LABELS: Record<
 export function buildPendingItems(
   parts: Pick<
     ConstraintsSummaryResponse,
-    'timeRange' | 'budget' | 'travelers' | 'transport'
-  >,
+    'timeRange' | 'budget' | 'travelers'
+  > & {
+    transport: Pick<ConstraintsSummaryResponse['transport'], 'status'>;
+  },
 ): ConstraintsSummaryResponse['pendingItems'] {
   const items: ConstraintsSummaryResponse['pendingItems'] = [];
 
@@ -148,11 +160,6 @@ export function buildPendingItems(
   } else if (parts.travelers.status === 'missing') {
     push('travelers', 'missing', 'openCollaborationCenter=1&section=members');
   }
-  if (parts.transport.status === 'misaligned') {
-    push('transport', 'misaligned', 'openIntent=1');
-  } else if (parts.transport.status === 'missing') {
-    push('transport', 'missing', 'openIntent=1');
-  }
 
   return items;
 }
@@ -160,13 +167,12 @@ export function buildPendingItems(
 export function computeAllReady(
   parts: Pick<
     ConstraintsSummaryResponse,
-    'timeRange' | 'budget' | 'travelers' | 'transport'
+    'timeRange' | 'budget' | 'travelers'
   >,
 ): boolean {
   return (
     parts.timeRange.status === 'confirmed' &&
     parts.budget.status === 'confirmed' &&
-    parts.travelers.status === 'confirmed' &&
-    parts.transport.status === 'confirmed'
+    parts.travelers.status === 'confirmed'
   );
 }

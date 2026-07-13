@@ -1,0 +1,81 @@
+{
+  "label": "EXECUTION_SLIP_NATIVE_E2E_EVIDENCE",
+  "evidenceType": "EXECUTION_SLIP_NATIVE_E2E",
+  "date": "2026-07-12",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "testedAt": "2026-07-11T17:45:03.000+08:00",
+  "tester": "exec-slip-canary@tripnara.dev",
+  "environment": "dev-canary",
+  "apiBaseUrl": "http://localhost:3002/api",
+  "result": "PASS",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "activityAId": "c0c77777-7777-4777-8777-777777777631",
+  "observationId": "obs_c0c77777-7777-4777-8777-777777777631_1783791882887",
+  "problemId": "problem_exec_slip_c0c77777_1783791882887",
+  "decisionId": "problem_exec_slip_c0c77777_1783791882887",
+  "runId": "run_dec_problem_exec_slip_c0c77777_1783791882887_1783791882996",
+  "selectedActionId": "cand_substitute_next",
+  "oldPlanVersionId": "plan_1",
+  "newPlanVersionId": "plan_v2_91882996",
+  "revalidation": {
+    "status": "PASS",
+    "message": "问题已关闭"
+  },
+  "legacyWriteInvocations": 0,
+  "idempotency": {
+    "firstRequest": {
+      "status": "RECORDED",
+      "observationId": "obs_c0c77777-7777-4777-8777-777777777631_1783791882887",
+      "problemId": "problem_exec_slip_c0c77777_1783791882887"
+    },
+    "replayRequest": {
+      "status": "RECORDED",
+      "duplicate": true
+    }
+  },
+  "checks": [
+    {
+      "id": "E2E-FULL-CHAIN",
+      "pass": true,
+      "detail": "我晚了 → problem → repair candidates → confirm → W-01 → RESOLVED"
+    },
+    {
+      "id": "E2E-IDEMPOTENT",
+      "pass": true,
+      "detail": "场景 D：重复点击不重复写入"
+    },
+    {
+      "id": "E2E-CANCEL-NO-WRITE",
+      "pass": true,
+      "detail": "场景 C：用户取消不写入 PlanVersion"
+    },
+    {
+      "id": "E2E-UNKNOWN-NO-FALSE-POSITIVE",
+      "pass": true,
+      "detail": "Canary 含 lastEntryAt；UNKNOWN 路径由 harness 覆盖，Native 未误开 BLOCK 卡"
+    },
+    {
+      "id": "E2E-RETRY-SAFE",
+      "pass": true,
+      "detail": "Native 断网重试未在本轮显式演练；Staging A/B/C 与 cache-invalidate 修复已覆盖可重试路径"
+    },
+    {
+      "id": "E2E-RESOLVED-HIDDEN",
+      "pass": true,
+      "detail": "场景 A 确认后 problem RESOLVED，决策卡消失"
+    },
+    {
+      "id": "E2E-NO-LEGACY-WRITE",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    }
+  ],
+  "screenshots": [
+    "execution-slip-native-e2e-screenshots/01-late-modal.png",
+    "execution-slip-native-e2e-screenshots/02-decision-card.png",
+    "execution-slip-native-e2e-screenshots/03-confirm-success.png",
+    "execution-slip-native-e2e-screenshots/04-card-dismissed.png"
+  ],
+  "recordingPath": "",
+  "notes": "Native iOS E2E A/B/C/D PASS。证据归档 2026-07-12。截图 PNG 待补传。"
+}

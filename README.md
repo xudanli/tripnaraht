@@ -69,7 +69,6 @@ DATABASE_URL="postgresql://user:password@localhost:5432/tripnara"
 REDIS_URL="redis://localhost:6379"
 GOOGLE_PLACES_API_KEY="your_key"
 GOOGLE_VISION_API_KEY="your_key"
-MAPBOX_API_KEY="your_key"
 
 # LLM 配置（用于 LangGraph Agent）
 OPENAI_API_KEY="sk-..."  # OpenAI API Key（可选，未配置时使用规则匹配回退）

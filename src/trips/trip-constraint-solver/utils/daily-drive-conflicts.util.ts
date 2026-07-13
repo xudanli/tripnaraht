@@ -8,6 +8,15 @@ import {
   formatDriveDurationZhLong,
 } from './daily-drive-threshold.util';
 
+export interface DailyDriveLegRecord {
+  fromItemId?: string;
+  toItemId?: string;
+  fromPlaceLabel?: string;
+  toPlaceLabel?: string;
+  travelMinutes: number;
+  departAt?: string;
+}
+
 export function accumulateDailyDrivingMinutes(
   accumulator: Map<number, number>,
   dayNumber: number,
@@ -19,10 +28,36 @@ export function accumulateDailyDrivingMinutes(
   accumulator.set(dayNumber, (accumulator.get(dayNumber) ?? 0) + travelMinutes);
 }
 
+export function recordDailyDrivingLeg(
+  dailyDriveMinutes: Map<number, number>,
+  dailyDriveLegs: Map<number, DailyDriveLegRecord[]>,
+  dayNumber: number,
+  leg: DailyDriveLegRecord,
+  travelMode: string | undefined,
+): void {
+  accumulateDailyDrivingMinutes(
+    dailyDriveMinutes,
+    dayNumber,
+    leg.travelMinutes,
+    travelMode,
+  );
+  if (travelMode !== 'DRIVING') return;
+  if (!Number.isFinite(leg.travelMinutes) || leg.travelMinutes <= 0) return;
+  const bucket = dailyDriveLegs.get(dayNumber) ?? [];
+  bucket.push(leg);
+  dailyDriveLegs.set(dayNumber, bucket);
+}
+
+function pickPrimaryDriveLeg(legs: DailyDriveLegRecord[]): DailyDriveLegRecord | undefined {
+  if (!legs.length) return undefined;
+  return [...legs].sort((a, b) => b.travelMinutes - a.travelMinutes)[0];
+}
+
 export function buildDailyDriveExceededConflicts(input: {
   dailyDriveMinutes: Map<number, number>;
   maxDailyDrivingHours: number;
   dayItemIds?: Map<number, string[]>;
+  dayLegs?: Map<number, DailyDriveLegRecord[]>;
   /** scopeBinding 过滤 — 仅对适用天数生成冲突 */
   shouldApplyToDay?: (dayNumber: number) => boolean;
 }): ConflictDto[] {
@@ -36,6 +71,8 @@ export function buildDailyDriveExceededConflicts(input: {
     if (driveMinutes <= maxMinutes) continue;
     const shortfallMinutes = Math.ceil(driveMinutes - maxMinutes);
     const affectedItemIds = input.dayItemIds?.get(dayNumber) ?? [];
+    const legs = input.dayLegs?.get(dayNumber) ?? [];
+    const primaryLeg = pickPrimaryDriveLeg(legs);
     conflicts.push({
       id: `daily-drive-day-${dayNumber}`,
       type: ConflictType.MAX_DAILY_DRIVE_EXCEEDED,
@@ -48,9 +85,15 @@ export function buildDailyDriveExceededConflicts(input: {
       priority: 'must_handle',
       fromDayNumber: dayNumber,
       toDayNumber: dayNumber,
+      fromItemId: primaryLeg?.fromItemId,
+      toItemId: primaryLeg?.toItemId,
+      fromPlaceLabel: primaryLeg?.fromPlaceLabel,
+      toPlaceLabel: primaryLeg?.toPlaceLabel,
+      departAt: primaryLeg?.departAt,
       travelMinutes: driveMinutes,
-      travelTimeMinutes: driveMinutes,
+      travelTimeMinutes: primaryLeg?.travelMinutes ?? driveMinutes,
       shortfallMinutes,
+      dailyDriveLegs: legs.length ? legs : undefined,
       suggestions: [
         {
           action: '拆分行程或增加中途住宿',

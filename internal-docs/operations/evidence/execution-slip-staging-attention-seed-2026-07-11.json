@@ -1,0 +1,58 @@
+{
+  "evidenceType": "EXECUTION_SLIP_STAGING_ATTENTION_SEED",
+  "environment": "tripnara_staging",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "profile": "slice4-d",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "seededAt": "2026-07-11T13:11:21.724Z",
+  "problems": [
+    {
+      "problemId": "stg_attn_wind",
+      "semanticCapability": "WEATHER_STRONG_WIND",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712"
+    },
+    {
+      "problemId": "stg_attn_infeasible",
+      "semanticCapability": "EXECUTION_SCHEDULE_INFEASIBLE",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "causedByProblemId": "stg_attn_slip"
+    },
+    {
+      "problemId": "stg_attn_night",
+      "semanticCapability": "NIGHT_DRIVING_RISK",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "causedByProblemId": "stg_attn_infeasible"
+    },
+    {
+      "problemId": "stg_attn_road",
+      "semanticCapability": "ROAD_SEGMENT_UNAVAILABLE",
+      "status": "OPEN"
+    }
+  ],
+  "checks": [
+    {
+      "id": "SEED-PLAN",
+      "pass": true,
+      "detail": "effectivePlanVersionId=plan_1 expected=plan_1"
+    },
+    {
+      "id": "SEED-TRIP",
+      "pass": true,
+      "detail": "tripId=c0c77777-7777-4777-8777-777777777777"
+    },
+    {
+      "id": "SEED-ATTENTION-PROBLEMS",
+      "pass": true,
+      "detail": "problems=4 profile=slice4-d"
+    },
+    {
+      "id": "SEED-NOT-WEATHER-ROAD-ALLOWLIST",
+      "pass": true,
+      "detail": "allowlist=(empty)"
+    }
+  ],
+  "result": "PASS"
+}

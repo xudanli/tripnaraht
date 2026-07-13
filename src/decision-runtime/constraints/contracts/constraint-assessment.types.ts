@@ -25,7 +25,7 @@ export interface ConstraintAssessmentAffectedScope {
 }
 
 export interface ConstraintAssessmentSourceRef {
-  system: 'FEASIBILITY' | 'GATEWAY' | 'GUARDIAN' | 'GATE' | 'TRIP_CONSTRAINT';
+  system: 'FEASIBILITY' | 'GATEWAY' | 'GUARDIAN' | 'GATE' | 'TRIP_CONSTRAINT' | 'TEP';
   refId: string;
 }
 

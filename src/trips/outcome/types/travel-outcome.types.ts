@@ -60,23 +60,6 @@ export enum CompletionRate {
 }
 
 /**
- * Companion satisfaction level.
- */
-export enum CompanionSatisfaction {
-  /** All companions highly satisfied */
-  EXCELLENT = 'excellent',
-
-  /** Most companions satisfied */
-  GOOD = 'good',
-
-  /** Mixed satisfaction */
-  MIXED = 'mixed',
-
-  /** Many companions dissatisfied */
-  POOR = 'poor',
-}
-
-/**
  * Travel outcome - comprehensive result evaluation.
  */
 export interface TravelOutcome {
@@ -115,18 +98,6 @@ export interface TravelOutcome {
 
   /** Completion percentage (0-100) */
   completionPercentage: number;
-
-  /** Companion satisfaction */
-  companionSatisfaction: CompanionSatisfaction;
-
-  /** Companion match score (0-1) */
-  companionMatchScore: number;
-
-  /** Number of companions */
-  companionCount: number;
-
-  /** Number of satisfied companions */
-  satisfiedCompanions: number;
 
   /** Overall outcome score (0-1) */
   overallScore: number;
@@ -201,7 +172,6 @@ export enum OutcomeFactorType {
   WEATHER = 'weather',
   TRANSPORT = 'transport',
   ACCOMMODATION = 'accommodation',
-  COMPANION = 'companion',
   HEALTH = 'health',
   SAFETY = 'safety',
   TIME = 'time',
@@ -290,9 +260,6 @@ export interface UserFeedback {
 
   /** Activity satisfaction (0-10) */
   activitySatisfaction?: number;
-
-  /** Companion satisfaction (0-10) */
-  companionSatisfaction?: number;
 
   /** Text feedback */
   textFeedback?: string;

@@ -10,26 +10,40 @@ import { TripMonitoringController } from './trip-monitoring.controller';
 import { MonitoringAutoTriggerService } from './monitoring-auto-trigger.service';
 import { MonitoringAutoTriggerController } from './monitoring-auto-trigger.controller';
 import { DecisionAutomationChainService } from './decision-automation-chain.service';
+import { AssertionPromotionService } from './assertion-promotion/assertion-promotion.service';
+import { AssertionPromotionLedgerStore } from './assertion-promotion/assertion-promotion-ledger.store';
+import { AssertionPromotionController } from './assertion-promotion/assertion-promotion.controller';
+import { AssertionPromotionRetryScheduler } from './assertion-promotion/assertion-promotion-retry.scheduler';
+import { VedurWeatherEvidenceStoreService } from '../../trips/guardian-decision-core/evidence/vedur-weather-evidence.store';
 
 @Module({
   imports: [
     PrismaModule,
-    GuardianDecisionCoreModule,
+    forwardRef(() => GuardianDecisionCoreModule),
     WorldStateSnapshotModule,
     TripConstraintSolverModule,
     forwardRef(() => DecisionTriggerModule),
     forwardRef(() => DecisionGatewayModule),
   ],
-  controllers: [TripMonitoringController, MonitoringAutoTriggerController],
+  controllers: [
+    TripMonitoringController,
+    MonitoringAutoTriggerController,
+    AssertionPromotionController,
+  ],
   providers: [
     TripMonitoringMvpService,
     MonitoringAutoTriggerService,
     DecisionAutomationChainService,
+    AssertionPromotionLedgerStore,
+    AssertionPromotionService,
+    AssertionPromotionRetryScheduler,
+    VedurWeatherEvidenceStoreService,
   ],
   exports: [
     TripMonitoringMvpService,
     MonitoringAutoTriggerService,
     DecisionAutomationChainService,
+    AssertionPromotionService,
   ],
 })
 export class TripMonitoringModule {}

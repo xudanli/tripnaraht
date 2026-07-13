@@ -1,0 +1,65 @@
+{
+  "evidenceType": "ROAD_PROD_CANARY_PRE_SIGNOFF_B_SUGGEST",
+  "evidenceLabel": "ROAD_PROD_CANARY_PRE_SIGNOFF_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road A/B/C Pre-Signoff Drill",
+  "drillStatus": "Road A/B/C Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING WEATHER SOAK SIGN-OFF",
+  "acceptanceMode": "PRE_SIGNOFF_REPLAY",
+  "replay": true,
+  "live": false,
+  "sourceProvider": "vegagerdin_gagnaveita",
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+  "startedAt": "2026-07-10T20:44:39.151Z",
+  "endedAt": "2026-07-10T20:44:39.388Z",
+  "tripId": "b0b88888-8888-4888-8888-888888888888",
+  "userId": "b0b88888-8888-4888-8888-888888888801",
+  "phase": "SUGGEST",
+  "canaryPhase": "SUGGEST",
+  "problemId": "problem_road_F208_b0b88888_1783716279048",
+  "decisionId": "dec_problem_road_F208_b0b88888_1783716279048_1783716279246",
+  "repairCount": 3,
+  "selectedCandidateId": "cand_a",
+  "checks": [
+    {
+      "id": "PC-ROAD-B-001",
+      "pass": true,
+      "detail": "repairMethods=ONTOLOGY_EQUIVALENCE,LOCAL_SUBSTITUTION,ROUTE_REPAIR"
+    },
+    {
+      "id": "PC-ROAD-B-002",
+      "pass": true,
+      "detail": "originalBlock=BLOCK"
+    },
+    {
+      "id": "PC-ROAD-B-003",
+      "pass": true,
+      "detail": "executable=3"
+    },
+    {
+      "id": "PC-ROAD-B-004",
+      "pass": true,
+      "detail": "blockedExecutable=0"
+    },
+    {
+      "id": "PC-ROAD-B-005",
+      "pass": true,
+      "detail": "gate=SUGGEST_REPLACE (BLOCK + executable options)"
+    },
+    {
+      "id": "PC-ROAD-B-006",
+      "pass": true,
+      "detail": "bypass=cand_c +90min"
+    },
+    {
+      "id": "PC-ROAD-B-007",
+      "pass": true,
+      "detail": "effectivePlan=plan_1"
+    },
+    {
+      "id": "PC-ROAD-B-008",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    }
+  ],
+  "result": "PASS"
+}

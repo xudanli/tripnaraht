@@ -53,50 +53,6 @@ export function mergePlanningPhaseIntentIntoNarration(
     }
   }
 
-  const party = payload.party_negotiation;
-  if (payload.sub_signals.party_negotiation_requested && party) {
-    const partyLine =
-      `[规划期·多人仲裁] ${party.party_size} 人偏好已聚合（遗憾上界 ${party.regret_upper_bound}，` +
-      `折中 pace=${party.aggregated_pace}）。` +
-      (party.nash_reorder_hint
-        ? ` ${party.nash_reorder_hint.rationale_zh}`
-        : '');
-    if (!tips.some((t) => t.includes('多人仲裁'))) {
-      tips.unshift(partyLine);
-    }
-    if (party.branch_policies?.length) {
-      const branchTip =
-        '[规划期·风险分歧] 已生成 Hold/Proceed 双分支策略；轻雪/大风时将按成员风险耐受度激活不同路由。';
-      if (!tips.some((t) => t.includes('Hold/Proceed'))) {
-        tips.unshift(branchTip);
-      }
-    }
-    if (party.organizational_robustness_preview) {
-      const prev = party.organizational_robustness_preview;
-      const orgPct = Math.round(prev.organizational_robustness_score * 100);
-      const orgLine =
-        `[规划期·搭子组织力] 基于当前草案预演：团队组织鲁棒性 ${orgPct}%` +
-        (prev.peak_social_stress_day
-          ? `；社交压力峰值出现在 ${prev.peak_social_stress_day}`
-          : '') +
-        (prev.bottlenecks[0]?.description ? `（${prev.bottlenecks[0].description}）` : '');
-      if (!tips.some((t) => t.includes('搭子组织力'))) {
-        tips.unshift(orgLine);
-      }
-      if (orgPct < 70 && !warnings.some((w) => typeof w === 'string' && w.includes('组织鲁棒性'))) {
-        warnings.unshift(
-          `[规划期·社交摩擦预警] 搭子组织力 ${orgPct}% 低于建议阈值；建议在 PLAN_GEN 前调整高密度日程或插入休息锚点。`,
-        );
-      }
-    }
-    if (party.requires_hitl_clarification) {
-      const hitl = '[规划期·待澄清] 队友偏好向量不完整，建议群聊补齐各成员 pace/风险档位后再锁定排期。';
-      if (!warnings.some((w) => typeof w === 'string' && w.includes('待澄清'))) {
-        warnings.unshift(hitl);
-      }
-    }
-  }
-
   const spatial = payload.spatial_intent;
   if (payload.sub_signals.spatial_intent_capture_requested && spatial) {
     if (spatial.feasible) {

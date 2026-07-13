@@ -103,6 +103,8 @@ import { TripProcessFairnessModule } from './process-fairness/trip-process-fairn
 import { TripDecisionProfilingModule } from './decision-profiling/decision-profiling.module';
 import { InTripExecutionModule } from './in-trip-execution/in-trip-execution.module';
 import { TripConstraintSolverModule } from './trip-constraint-solver/trip-constraint-solver.module';
+import { TepModule } from './tep/tep.module';
+import { UnifiedConstraintAssessmentModule } from '../decision-runtime/constraints/unified-constraint-assessment.module';
 import { DecisionSemanticsModule } from './decision-semantics/decision-semantics.module';
 import { GuardianDecisionCoreModule } from './guardian-decision-core/guardian-decision-core.module';
 import { DecisionGatewayModule } from '../decision-runtime/gateway/decision-gateway.module';
@@ -113,13 +115,16 @@ import { ActivityFavoritesModule } from './activity-favorites/activity-favorites
 import { PlanObjectsModule } from '../decision-runtime/plan-objects/plan-objects.module';
 import { EffectivePlanExecutionModule } from '../decision-runtime/execution/effective-plan-execution.module';
 import { TravelStatusModule } from './travel-status/travel-status.module';
+import { ExecutionRiskCenterModule } from './execution-risk-center/execution-risk-center.module';
 import { WorldStateSnapshotModule } from '../decision-runtime/snapshot/world-state-snapshot.module';
 import { TripIntentModule } from '../decision-runtime/trigger/trip-intent.module';
 import { TripMonitoringModule } from '../decision-runtime/monitoring/trip-monitoring.module';
 import { AutomationAuthorizationModule } from '../decision-runtime/authorization/automation-authorization.module';
+import { TripMemberInvitesModule } from './member-invites/trip-member-invites.module';
+import { TripAdvisorCreateService } from './services/trip-advisor-create.service';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, forwardRef(() => RouteDirectionsModule), ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, DecisionSemanticsModule, DecisionGatewayModule, GuardianDecisionCoreModule, EffectivePlanExecutionModule, WorldStateSnapshotModule, TravelStatusModule, TripIntentModule, TripMonitoringModule, AutomationAuthorizationModule, LoopsModule, IdentityGovernanceModule, TripFilesModule, ActivityFavoritesModule, PlanObjectsModule], // Gateway 须在 Semantics 之后注册，且 Gateway 开启时 Semantics 仅暴露 L1 路由
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, forwardRef(() => RouteDirectionsModule), ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, TepModule, UnifiedConstraintAssessmentModule, DecisionSemanticsModule, DecisionGatewayModule, GuardianDecisionCoreModule, EffectivePlanExecutionModule, WorldStateSnapshotModule, TravelStatusModule, ExecutionRiskCenterModule, TripIntentModule, TripMonitoringModule, AutomationAuthorizationModule, LoopsModule, IdentityGovernanceModule, TripFilesModule, ActivityFavoritesModule, PlanObjectsModule, TripMemberInvitesModule], // Gateway 须在 Semantics 之后注册，且 Gateway 开启时 Semantics 仅暴露 L1 路由
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
@@ -166,6 +171,7 @@ import { AutomationAuthorizationModule } from '../decision-runtime/authorization
     TimelineOverviewService,
     CollabOverviewService,
     TripListService,
+    TripAdvisorCreateService,
     CoverImageService,
     AccommodationOverviewService,
     JourneyMapService,
@@ -234,8 +240,10 @@ import { AutomationAuthorizationModule } from '../decision-runtime/authorization
     TripDecisionProfilingModule,
     InTripExecutionModule,
     TripConstraintSolverModule,
+    TepModule,
     DecisionSemanticsModule,
     GuardianDecisionCoreModule,
+    ExecutionRiskCenterModule,
   ], // 导出 Service，供其他模块使用
 })
 export class TripsModule {}

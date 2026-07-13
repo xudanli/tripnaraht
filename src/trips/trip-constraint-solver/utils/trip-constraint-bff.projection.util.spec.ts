@@ -70,6 +70,8 @@ describe('trip-constraint-bff.projection.util', () => {
 
     expect(projected.source.templateId).toBe('max_daily_drive');
     expect(projected.contractMeta?.judgmentRule).toBe('单日驾驶时长不超过 4 小时');
+    expect(projected.capability?.constraintKey).toBe('MAX_DAILY_DRIVE');
+    expect(projected.capability?.enforcementLevel).toBe('ENABLED');
     expect((projected.value as Record<string, unknown>).maxHours).toBe(4);
     expect(projected.displayValue).toBe('4 小时/天');
   });
@@ -103,6 +105,22 @@ describe('trip-constraint-bff.projection.util', () => {
 
     expect(projected.enabled).toBe(false);
     expect(projected.contractMeta?.enabledSummary).toBe('已停用：不夜驾');
+  });
+
+  it('DISPLAY_ONLY catalog HARD uses advisory violation label', () => {
+    const projected = projectTripConstraintForBff(
+      baseConstraint({
+        id: 'c_tpl_elderly_walk_limit',
+        name: '老人步行上限',
+        source: { type: 'USER', templateId: 'elderly_walk_limit' },
+        value: { maxMinutes: 30 },
+      }),
+    );
+
+    expect(projected.capability?.enforcementLevel).toBe('DISPLAY_ONLY');
+    expect(projected.capability?.phase0UiPolicy).toBe('HIDDEN');
+    expect(projected.contractMeta?.violationResultLabel).toBe('偏好记录');
+    expect((projected.value as Record<string, unknown>).violationResult).toBe('偏好记录');
   });
 
   it('projectTripConstraintsForBff maps all items', () => {

@@ -1,0 +1,11 @@
+{
+  "evidenceType": "VEDUR_COLLECTOR_FEASIBILITY_SPIKE",
+  "probedAt": "2026-07-10T18:37:35Z",
+  "collectorCandidate": "de-frankfurt",
+  "collectorEgressIp": "47.87.131.183",
+  "dns": "130.208.87.200",
+  "spikePass": true,
+  "verdict": "SPIKE_PASS",
+  "sampleXmlSha256": "e738ba74bf8acd102061b74e6a536142f8047c4b599c60b109b7fccde5d74c6f",
+  "sampleXmlPath": "/tmp/vedur-sample.xml"
+}

@@ -1,0 +1,25 @@
+{
+  "contractVersion": "1.1.0",
+  "generatedAt": "2026-07-09T11:13:24.874Z",
+  "sourcePath": "docs/TripNARA-Execution-Risk-Backend-Package-V1/03_CONTRACTS/execution-risk-contracts-v1.ts",
+  "sourceSha256": "30bda86b2c00d68b26cda54771c77cf9b364dc306129e02a308e6ecf09802095",
+  "outputPath": "src/generated/execution-risk-contracts/index.ts",
+  "requiredExports": [
+    "AdjustmentItemType",
+    "InterventionActionCategory",
+    "RiskGenerationMode",
+    "RiskCapabilityStatus",
+    "AffectedMembersScope",
+    "MemberImpactType",
+    "KnowledgeStatus",
+    "CanonicalRiskDefinition",
+    "SeverityRule",
+    "RiskCausalChain",
+    "InterventionAction",
+    "ExecutionRiskKnowledgeRepository",
+    "ActiveRiskRefreshService",
+    "ActiveRiskQueryService",
+    "CanonicalPlanVersionWriter",
+    "DecisionLedgerWriter"
+  ]
+}

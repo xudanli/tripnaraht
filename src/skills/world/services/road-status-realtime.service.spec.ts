@@ -4,9 +4,49 @@ import { RoadStatusRealtimeService } from './road-status-realtime.service';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 
-// Mock axios
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
+
+const GAGNAVEITA_F208_PAYLOAD = [
+  {
+    IdButur: 913020036,
+    DagsSkrad: '2026-07-10T02:55:01Z',
+    StuttNafnButs: 'Búland-Eldgjá',
+    FulltNafnButs: 'Fjallabaksleið nyrðri: Búland - Eldgjá',
+    DagsButurBreyttist: '2025-11-20T10:47:31Z',
+    AstandYfirbord: 'GREIDFAERT',
+    AstandVidbotaruppl: null,
+    AstandLysing: 'Greiðfært',
+    AstandLysingEn: 'Easily passable',
+    FrkvAudkenni: null,
+    FrkvLysing: null,
+    FrkvLysingEn: null,
+    AsthunAudkenni: null,
+    AsthunLysing: null,
+    AsthunLysingEn: null,
+    Snjomokstursregla: 'EKKI_MOKAD',
+    DagsKeyrtUt: '2026-07-10T20:00:52Z',
+  },
+  {
+    IdButur: 913040036,
+    DagsSkrad: '2026-07-10T02:55:01Z',
+    StuttNafnButs: 'Sigalda-Landmannalaugar',
+    FulltNafnButs: 'Fjallabaksleið nyrðri: Sigalda - Landmannalaugar',
+    DagsButurBreyttist: '2025-11-20T10:47:31Z',
+    AstandYfirbord: 'FAERT_FJALLABILUM',
+    AstandVidbotaruppl: 'FAERT_FJALLABILUM',
+    AstandLysing: 'Fært fjallabílum',
+    AstandLysingEn: 'Mountain vehicles',
+    FrkvAudkenni: null,
+    FrkvLysing: null,
+    FrkvLysingEn: null,
+    AsthunAudkenni: null,
+    AsthunLysing: null,
+    AsthunLysingEn: null,
+    Snjomokstursregla: 'EKKI_MOKAD',
+    DagsKeyrtUt: '2026-07-10T20:00:52Z',
+  },
+];
 
 describe('RoadStatusRealtimeService', () => {
   let service: RoadStatusRealtimeService;
@@ -21,6 +61,7 @@ describe('RoadStatusRealtimeService', () => {
   };
 
   beforeEach(async () => {
+    process.env.ROAD_STATUS_LIVE_SOURCE = 'gagnaveita';
     // Mock Prisma
     mockPrisma = {
       roadStatusRealtime: {
@@ -81,164 +122,84 @@ describe('RoadStatusRealtimeService', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith('[DB Cache Hit] F208: open');
     });
 
-    it('should query API when cache is expired', async () => {
-      // Arrange
-      mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null); // Cache miss
+    it('should query Gagnaveita when cache is expired', async () => {
+      mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null);
 
-      const mockApiResponse = {
+      mockHttpClient.get.mockResolvedValue({
         status: 200,
-        data: {
-          results: [
-            {
-              road_number: 'F208',
-              road_name: 'Fjallabaksleið nyrðri',
-              status: 'open',
-              status_text: 'Opinn',
-              status_text_en: 'Open',
-              last_updated: '2026-02-14T10:00:00Z',
-              warnings: [],
-            },
-          ],
-        },
-      };
-
-      mockHttpClient.get.mockResolvedValue(mockApiResponse);
+        data: GAGNAVEITA_F208_PAYLOAD,
+      });
       mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
 
-      // Act
       const result = await service.getRoadStatus('F208');
 
-      // Assert
       expect(result).toBeDefined();
       expect(result?.roadId).toBe('F208');
-      expect(result?.currentStatus).toBe('open');
-      expect(result?.dataSource).toBe('road.is_api');
+      expect(result?.currentStatus).toBe('limited');
+      expect(result?.dataSource).toBe('vegagerdin_gagnaveita');
       expect(result?.seasonalFallback).toBe(false);
       expect(mockHttpClient.get).toHaveBeenCalledTimes(1);
       expect(mockPrisma.roadStatusRealtime.create).toHaveBeenCalledTimes(1);
       expect(mockLogger.log).toHaveBeenCalledWith(
-        expect.stringContaining('[API Success] F208: open')
+        expect.stringContaining('[Gagnaveita Success] F208: limited'),
       );
     });
   });
 
-  describe('getRoadStatus - API Integration', () => {
+  describe('getRoadStatus - Gagnaveita Integration', () => {
     beforeEach(() => {
-      mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null); // Force API call
+      mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null);
     });
 
-    it('should handle API success and map data correctly', async () => {
-      // Arrange
-      const mockApiResponse = {
+    it('should handle Gagnaveita success and rollup F208 status', async () => {
+      mockHttpClient.get.mockResolvedValue({
         status: 200,
-        data: {
-          results: [
-            {
-              road_number: 'F26',
-              road_name: 'Sprengisandur',
-              status: 'closed',
-              status_text: 'Lokað',
-              status_text_en: 'Closed for winter',
-              last_updated: '2026-02-14T10:00:00Z',
-              warnings: [
-                {
-                  type: 'SNOW',
-                  severity: 'high',
-                  message: 'Heavy snow conditions',
-                },
-              ],
-              conditions: {
-                surface: 'snow',
-                visibility: 'poor',
-                wind_speed_ms: 15,
-                temperature_c: -10,
-              },
-            },
-          ],
-        },
-      };
-
-      mockHttpClient.get.mockResolvedValue(mockApiResponse);
+        data: GAGNAVEITA_F208_PAYLOAD,
+      });
       mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
 
-      // Act
-      const result = await service.getRoadStatus('F26');
-
-      // Assert
-      expect(result).toBeDefined();
-      expect(result?.roadId).toBe('F26');
-      expect(result?.roadName).toBe('Sprengisandur');
-      expect(result?.currentStatus).toBe('closed');
-      expect(result?.statusMessage).toBe('Closed for winter');
-      expect(result?.hazards).toHaveLength(1);
-      expect(result?.hazards[0].type).toBe('SNOW');
-      expect(result?.hazards[0].severity).toBe('high');
-      expect(result?.conditions?.windSpeedMs).toBe(15);
-      expect(result?.conditions?.temperatureC).toBe(-10);
-      expect(result?.confidence).toBe(0.9);
-    });
-
-    it('should handle API error and fallback to seasonal data', async () => {
-      // Arrange
-      mockHttpClient.get.mockRejectedValue(new Error('Network error'));
-      mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
-
-      // Mock current month to winter (February)
-      jest.spyOn(Date.prototype, 'getMonth').mockReturnValue(1); // February (0-indexed)
-
-      // Act
       const result = await service.getRoadStatus('F208');
 
-      // Assert
       expect(result).toBeDefined();
       expect(result?.roadId).toBe('F208');
-      expect(result?.currentStatus).toBe('closed'); // Winter = closed for highland roads
-      expect(result?.dataSource).toBe('static_seasonal_data');
-      expect(result?.seasonalFallback).toBe(true);
-      expect(result?.confidence).toBe(0.6);
-      expect(result?.hazards.some(h => h.type === 'UNVERIFIED_STATUS')).toBe(true);
-      expect(mockLogger.error).toHaveBeenCalled();
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('降级到静态数据源'));
+      expect(result?.currentStatus).toBe('limited');
+      expect(result?.dataSource).toBe('vegagerdin_gagnaveita');
+      expect(result?.confidence).toBe(0.88);
     });
 
-    it('should handle API returning non-200 status code', async () => {
-      // Arrange
-      mockHttpClient.get.mockResolvedValue({
-        status: 500,
-        data: null,
-      });
+    it('should handle Gagnaveita error and fallback to seasonal data', async () => {
+      mockHttpClient.get.mockRejectedValue(new Error('Network error'));
+      mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
+      jest.spyOn(Date.prototype, 'getMonth').mockReturnValue(1);
+
+      const result = await service.getRoadStatus('F208');
+
+      expect(result).toBeDefined();
+      expect(result?.currentStatus).toBe('closed');
+      expect(result?.dataSource).toBe('static_seasonal_data');
+      expect(result?.seasonalFallback).toBe(true);
+    });
+
+    it('should handle Gagnaveita returning non-200 status code', async () => {
+      mockHttpClient.get.mockResolvedValue({ status: 500, data: null });
       mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
 
-      // Act
       const result = await service.getRoadStatus('F35');
 
-      // Assert
       expect(result).toBeDefined();
       expect(result?.dataSource).toBe('static_seasonal_data');
       expect(result?.seasonalFallback).toBe(true);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('API 返回错误状态码: 500')
-      );
     });
 
-    it('should handle API returning empty results', async () => {
-      // Arrange
-      mockHttpClient.get.mockResolvedValue({
-        status: 200,
-        data: { results: [] },
-      });
+    it('should handle Gagnaveita returning empty array', async () => {
+      mockHttpClient.get.mockResolvedValue({ status: 200, data: [] });
       mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
 
-      // Act
       const result = await service.getRoadStatus('F910');
 
-      // Assert
       expect(result).toBeDefined();
       expect(result?.dataSource).toBe('static_seasonal_data');
       expect(result?.seasonalFallback).toBe(true);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('API 未返回 F910 的数据')
-      );
     });
   });
 
@@ -289,50 +250,22 @@ describe('RoadStatusRealtimeService', () => {
   });
 
   describe('getAllRoadStatuses - Batch Processing', () => {
-    it('should fetch all F-roads with batch processing', async () => {
-      // Arrange
+    it('should fetch F-roads from single Gagnaveita payload', async () => {
       mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null);
-
-      // Mock API responses for first batch (5 roads)
       mockHttpClient.get.mockResolvedValue({
         status: 200,
-        data: {
-          results: [
-            {
-              road_number: 'F208',
-              road_name: 'Fjallabaksleið nyrðri',
-              status: 'open',
-              status_text_en: 'Open',
-              last_updated: '2026-02-14T10:00:00Z',
-              warnings: [],
-            },
-          ],
-        },
+        data: GAGNAVEITA_F208_PAYLOAD,
       });
-
       mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
 
-      // Mock setTimeout to avoid actual delays
-      jest.spyOn(global, 'setTimeout').mockImplementation((callback: any) => {
-        callback();
-        return {} as any;
-      });
-
-      // Act
       const results = await service.getAllRoadStatuses();
 
-      // Assert
       expect(results.size).toBeGreaterThan(0);
       expect(results.has('F208')).toBe(true);
+      expect(mockHttpClient.get).toHaveBeenCalledTimes(1);
       expect(mockLogger.log).toHaveBeenCalledWith(
-        expect.stringContaining('开始获取')
+        expect.stringContaining('Gagnaveita'),
       );
-      expect(mockLogger.log).toHaveBeenCalledWith(
-        expect.stringContaining('成功获取')
-      );
-
-      // Cleanup
-      (global.setTimeout as jest.Mock).mockRestore();
     });
   });
 
@@ -386,138 +319,48 @@ describe('RoadStatusRealtimeService', () => {
     });
   });
 
-  describe('normalizeStatus / normalizeSeverity', () => {
-    it('should normalize various status formats', async () => {
-      // Test via mapToTripNARAFormat (private method accessed through public API)
-      mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null);
-
-      const testCases = [
-        { input: 'OPEN', expected: 'open' },
-        { input: 'closed', expected: 'closed' },
-        { input: 'LIMITED', expected: 'limited' },
-        { input: 'unknown_status', expected: 'unknown' },
-      ];
-
-      for (const testCase of testCases) {
-        mockHttpClient.get.mockResolvedValue({
-          status: 200,
-          data: {
-            results: [
-              {
-                road_number: 'TEST',
-                status: testCase.input,
-                status_text_en: 'Test',
-                last_updated: '2026-02-14T10:00:00Z',
-                warnings: [],
-              },
-            ],
-          },
-        });
-
-        mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
-
-        const result = await service.getRoadStatus('TEST');
-        expect(result?.currentStatus).toBe(testCase.expected);
-      }
-    });
-  });
-
   describe('Database Error Handling', () => {
     it('should continue when database read fails', async () => {
-      // Arrange
       mockPrisma.roadStatusRealtime.findFirst.mockRejectedValue(new Error('DB connection error'));
-
-      mockHttpClient.get.mockResolvedValue({
-        status: 200,
-        data: {
-          results: [
-            {
-              road_number: 'F208',
-              status: 'open',
-              status_text_en: 'Open',
-              last_updated: '2026-02-14T10:00:00Z',
-              warnings: [],
-            },
-          ],
-        },
-      });
-
+      mockHttpClient.get.mockResolvedValue({ status: 200, data: GAGNAVEITA_F208_PAYLOAD });
       mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
 
-      // Act
       const result = await service.getRoadStatus('F208');
 
-      // Assert
       expect(result).toBeDefined();
-      expect(result?.currentStatus).toBe('open');
+      expect(result?.currentStatus).toBe('limited');
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('[DB Query Error]'),
-        expect.any(Error)
+        expect.any(Error),
       );
     });
 
     it('should continue when database write fails', async () => {
-      // Arrange
       mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null);
-
-      mockHttpClient.get.mockResolvedValue({
-        status: 200,
-        data: {
-          results: [
-            {
-              road_number: 'F208',
-              status: 'open',
-              status_text_en: 'Open',
-              last_updated: '2026-02-14T10:00:00Z',
-              warnings: [],
-            },
-          ],
-        },
-      });
-
+      mockHttpClient.get.mockResolvedValue({ status: 200, data: GAGNAVEITA_F208_PAYLOAD });
       mockPrisma.roadStatusRealtime.create.mockRejectedValue(new Error('DB write error'));
 
-      // Act
       const result = await service.getRoadStatus('F208');
 
-      // Assert
       expect(result).toBeDefined();
-      expect(result?.currentStatus).toBe('open');
+      expect(result?.currentStatus).toBe('limited');
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('[DB Write Error]'),
-        expect.any(Error)
+        expect.any(Error),
       );
     });
   });
 
   describe('Evidence Chain and Confidence', () => {
-    it('should return high confidence (0.9) for API data', async () => {
-      // Arrange
+    it('should return high confidence (0.88) for Gagnaveita data', async () => {
       mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null);
-
-      mockHttpClient.get.mockResolvedValue({
-        status: 200,
-        data: {
-          results: [
-            {
-              road_number: 'F208',
-              status: 'open',
-              status_text_en: 'Open',
-              last_updated: '2026-02-14T10:00:00Z',
-              warnings: [],
-            },
-          ],
-        },
-      });
-
+      mockHttpClient.get.mockResolvedValue({ status: 200, data: GAGNAVEITA_F208_PAYLOAD });
       mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
 
-      // Act
       const result = await service.getRoadStatus('F208');
 
-      // Assert
-      expect(result?.confidence).toBe(0.9);
-      expect(result?.dataSource).toBe('road.is_api');
+      expect(result?.confidence).toBe(0.88);
+      expect(result?.dataSource).toBe('vegagerdin_gagnaveita');
       expect(result?.seasonalFallback).toBe(false);
     });
 
@@ -536,34 +379,15 @@ describe('RoadStatusRealtimeService', () => {
       expect(result?.seasonalFallback).toBe(true);
     });
 
-    it('should preserve full API response for evidence chain', async () => {
-      // Arrange
+    it('should preserve rollup apiResponse for evidence chain', async () => {
       mockPrisma.roadStatusRealtime.findFirst.mockResolvedValue(null);
-
-      const fullApiResponse = {
-        results: [
-          {
-            road_number: 'F208',
-            status: 'open',
-            status_text_en: 'Open',
-            last_updated: '2026-02-14T10:00:00Z',
-            warnings: [],
-          },
-        ],
-      };
-
-      mockHttpClient.get.mockResolvedValue({
-        status: 200,
-        data: fullApiResponse,
-      });
-
+      mockHttpClient.get.mockResolvedValue({ status: 200, data: GAGNAVEITA_F208_PAYLOAD });
       mockPrisma.roadStatusRealtime.create.mockResolvedValue({});
 
-      // Act
       const result = await service.getRoadStatus('F208');
 
-      // Assert
-      expect(result?.apiResponse).toEqual(fullApiResponse);
+      expect(result?.apiResponse?.rollup).toBe(true);
+      expect(result?.apiResponse?.segmentCount).toBe(2);
     });
   });
 });

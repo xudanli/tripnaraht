@@ -1,0 +1,158 @@
+{
+  "capturedAt": "2026-07-10T11:34:05.771Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "simulationNote": "Simulated cron via runLockedPoll on staging DB — replace with deployed multi-pod Cron logs when available",
+  "rounds": [
+    {
+      "label": "cron-1",
+      "instanceId": "sr5-staging-pod-a:1001",
+      "jobRunId": "vedur_job_fffec8d3-4a22-42ce-af2c-93f8201dae4c",
+      "lockAcquired": true,
+      "pollStartedAt": "2026-07-10T11:34:00.330Z",
+      "pollCompletedAt": "2026-07-10T11:34:01.094Z",
+      "vedurResult": "NO_LOCATION",
+      "circuitState": "CLOSED",
+      "evidenceCreated": false,
+      "assertionCreated": false,
+      "scanExecuted": true,
+      "problemCreatedOrUpdated": false,
+      "legacyInvoked": false
+    },
+    {
+      "label": "cron-2",
+      "instanceId": "sr5-staging-pod-a:1002",
+      "jobRunId": "vedur_job_0bad692c-ed21-45bf-8444-4e9b7c9892a7",
+      "lockAcquired": true,
+      "pollStartedAt": "2026-07-10T11:34:01.395Z",
+      "pollCompletedAt": "2026-07-10T11:34:01.858Z",
+      "vedurResult": "NO_LOCATION",
+      "circuitState": "CLOSED",
+      "evidenceCreated": false,
+      "assertionCreated": false,
+      "scanExecuted": true,
+      "problemCreatedOrUpdated": false,
+      "legacyInvoked": false
+    },
+    {
+      "label": "cron-3",
+      "instanceId": "sr5-staging-restart:1003",
+      "jobRunId": "vedur_job_d6219300-b9a6-418b-b6ee-9f213ef8c489",
+      "lockAcquired": true,
+      "pollStartedAt": "2026-07-10T11:34:02.159Z",
+      "pollCompletedAt": "2026-07-10T11:34:02.641Z",
+      "vedurResult": "NO_LOCATION",
+      "circuitState": "CLOSED",
+      "evidenceCreated": false,
+      "assertionCreated": false,
+      "scanExecuted": true,
+      "problemCreatedOrUpdated": false,
+      "legacyInvoked": false
+    },
+    {
+      "label": "cron-4",
+      "instanceId": "sr5-staging-pod-a:1004",
+      "jobRunId": "vedur_job_00e143d1-7700-4872-ad1e-89e3b290c7b2",
+      "lockAcquired": true,
+      "pollStartedAt": "2026-07-10T11:34:02.942Z",
+      "pollCompletedAt": "2026-07-10T11:34:03.441Z",
+      "vedurResult": "NO_LOCATION",
+      "circuitState": "CLOSED",
+      "evidenceCreated": false,
+      "assertionCreated": false,
+      "scanExecuted": true,
+      "problemCreatedOrUpdated": false,
+      "legacyInvoked": false
+    },
+    {
+      "label": "cron-5",
+      "instanceId": "sr5-staging-pod-a:1005",
+      "jobRunId": "vedur_job_d6bcdac2-d12d-475b-9cec-eb1105999b7f",
+      "lockAcquired": true,
+      "pollStartedAt": "2026-07-10T11:34:03.742Z",
+      "pollCompletedAt": "2026-07-10T11:34:04.266Z",
+      "vedurResult": "NO_LOCATION",
+      "circuitState": "CLOSED",
+      "evidenceCreated": false,
+      "assertionCreated": false,
+      "scanExecuted": true,
+      "problemCreatedOrUpdated": false,
+      "legacyInvoked": false
+    },
+    {
+      "label": "concurrent-a",
+      "instanceId": "sr5-staging-pod-b:concurrent",
+      "jobRunId": "vedur_job_f127b856-5daa-46f1-9f0b-a2b1d105bc02",
+      "lockAcquired": true,
+      "pollStartedAt": "2026-07-10T11:34:05.188Z",
+      "pollCompletedAt": "2026-07-10T11:34:05.188Z",
+      "vedurResult": "NO_LOCATION",
+      "circuitState": "CLOSED",
+      "evidenceCreated": false,
+      "assertionCreated": false,
+      "scanExecuted": false,
+      "problemCreatedOrUpdated": false,
+      "legacyInvoked": false
+    },
+    {
+      "label": "concurrent-b",
+      "instanceId": "sr5-staging-pod-b:concurrent",
+      "jobRunId": "vedur_job_b5243ac1-2979-4e4c-a914-725484a46a85",
+      "lockAcquired": false,
+      "skippedReason": "SKIPPED_LOCK_HELD",
+      "pollStartedAt": "2026-07-10T11:34:05.193Z",
+      "pollCompletedAt": "2026-07-10T11:34:05.193Z",
+      "vedurResult": "N/A",
+      "circuitState": "CLOSED",
+      "evidenceCreated": false,
+      "assertionCreated": false,
+      "scanExecuted": false,
+      "problemCreatedOrUpdated": false,
+      "legacyInvoked": false
+    },
+    {
+      "label": "drill-vs-cron-drill",
+      "instanceId": "sr5-staging-cron:1",
+      "jobRunId": "vedur_job_f0b69cc5-f180-429f-b07e-3d3f1b4d4d03",
+      "lockAcquired": true,
+      "legacyInvoked": false
+    },
+    {
+      "label": "drill-vs-cron-cron",
+      "instanceId": "sr5-staging-cron:1",
+      "jobRunId": "vedur_job_9f1bfae5-f391-49d5-a59c-f74b17560cf4",
+      "lockAcquired": false,
+      "skippedReason": "SKIPPED_LOCK_HELD",
+      "legacyInvoked": false
+    }
+  ],
+  "aggregates": {
+    "totalRounds": 9,
+    "lockAcquired": 7,
+    "lockSkipped": 2,
+    "openWeatherProblemCount": 1,
+    "openWeatherProblemIds": [
+      "problem_weather_c0a55555_1783683104438"
+    ],
+    "evidenceRegionCount": 1,
+    "circuitState": "CLOSED",
+    "lockMetrics": {
+      "lockAcquiredTotal": 8,
+      "lockSkippedTotal": 2,
+      "jobFailuresTotal": 0,
+      "lastSuccessAt": "2026-07-10T11:34:05.742Z",
+      "lastLockDurationMs": 543
+    }
+  },
+  "gate": {
+    "uniqueJobRunIds": true,
+    "oneLockHolderPerConcurrentRound": true,
+    "skippedInstancesReported": true,
+    "noDuplicateOpenProblem": true,
+    "circuitClosed": true,
+    "legacyInvokedFalse": true,
+    "drillCronMutex": true
+  },
+  "gatePass": true,
+  "engineeringObserverVerdict": "PASS"
+}

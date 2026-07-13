@@ -61,6 +61,12 @@ export function isDirectPlanMutationBlocked(): boolean {
   return isEffectivePlanWriteChainEnabled();
 }
 
+/** Legacy ERC bridge — block direct plan mutations when write chain is enforced. */
+export function assertDirectEffectivePlanWriteBlocked(caller: string): void {
+  if (!isDirectPlanMutationBlocked()) return;
+  throw new BadRequestException(buildEffectivePlanWriteChainBadRequestBody(caller));
+}
+
 /** Service-layer: assert write authority or throw structured BadRequestException */
 export function assertPlanMutationAllowedOrThrow(
   guard: EffectivePlanWriteGuardService | undefined,

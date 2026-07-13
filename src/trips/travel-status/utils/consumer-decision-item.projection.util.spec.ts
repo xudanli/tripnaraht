@@ -78,6 +78,27 @@ describe('consumer-decision-item.projection.util', () => {
     expect(JSON.stringify(item)).not.toContain('engineId');
   });
 
+  it('projects affectedActivities into impact copy', () => {
+    const item = listItem({
+      problemId: 'p1',
+      title: '执行偏差：2 个行程项受影响',
+      summary: '执行偏差 · urgency HIGH',
+      enforcement: 'BLOCK',
+      scope: { tripId: 'trip_1', itemIds: ['act_a', 'act_b'] },
+    });
+    const projected = projectListItemToConsumerDecision(item, {
+      affectedActivities: [
+        { activityId: 'act_a', title: 'Exec Slip Canary POI A', dayIndex: 1 },
+        { activityId: 'act_b', title: 'Exec Slip Canary POI B (Timed)', dayIndex: 1 },
+      ],
+    });
+    expect(projected.affectedActivities).toHaveLength(2);
+    expect(projected.impact).toBe(
+      '影响：Exec Slip Canary POI A、Exec Slip Canary POI B (Timed)',
+    );
+    expect(projected.affectedDayNumbers).toEqual([1]);
+  });
+
   it('exposes keepOriginal and defer actionId when matching actions exist', () => {
     const actions: DecisionAction[] = [
       {

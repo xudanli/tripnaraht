@@ -9,6 +9,8 @@ import type {
   ApiResponse,
   ConsumerDecisionItem,
   ConsumerDecisionQueueView,
+  DepartureSlipRequest,
+  DepartureSlipResponse,
   TravelStatusView,
   TripContextSnapshotView,
   TripIntentRouteResult,
@@ -76,6 +78,22 @@ export const travelStatusApi = {
   /** 稍后再说 — 使用 queue item.actions.defer.actionId */
   defer(tripId: string, problemId: string, actionId: string): Promise<AcceptRecommendedResponse> {
     return travelStatusApi.acceptRecommended(tripId, problemId, { actionId });
+  },
+
+  /**
+   * 「我晚了」— 上报执行偏差。
+   * observedAt 须为 plannedDepartAt + delayMinutes（见 EXECUTION_SLIP_FRONTEND_HANDOFF.md）。
+   */
+  recordDepartureSlip(
+    tripId: string,
+    body: DepartureSlipRequest,
+    idempotencyKey?: string,
+  ): Promise<DepartureSlipResponse> {
+    return request<DepartureSlipResponse>(`/trips/${tripId}/execution/departure-slip`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    });
   },
 };
 

@@ -1,0 +1,53 @@
+{
+  "evidenceType": "EXECUTION_SLIP_STAGING_B_SUGGEST",
+  "phase": "B",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "environment": "http://localhost:3001",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "planVersionId": "plan_1",
+  "problemId": "problem_exec_slip_c0c77777_1783760517728",
+  "decisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+  "writeCount": 0,
+  "legacyWriteCount": 0,
+  "timestamps": {
+    "startedAt": "2026-07-11T09:01:59.325Z",
+    "endedAt": "2026-07-11T09:01:59.471Z"
+  },
+  "candidateIds": [
+    "cand_remove_next",
+    "cand_substitute_next"
+  ],
+  "checks": [
+    {
+      "id": "ES-B-001",
+      "pass": true,
+      "detail": "candidates=cand_remove_next,cand_substitute_next"
+    },
+    {
+      "id": "ES-B-002",
+      "pass": true,
+      "detail": "infeasibleShortenFiltered=true"
+    },
+    {
+      "id": "ES-B-003",
+      "pass": true,
+      "detail": "workspaceId=ws_problem_exec_slip_c0c77777_1783760517728 lineageNodes=3"
+    },
+    {
+      "id": "ES-B-004",
+      "pass": true,
+      "detail": "noWriteBeforeConfirm effective=plan_1"
+    },
+    {
+      "id": "ES-B-005",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    },
+    {
+      "id": "ES-B-006",
+      "pass": true,
+      "detail": "decisionId=dec_problem_exec_slip_c0c77777_1783760517728_1783760518027 recordStatus=PROPOSED"
+    }
+  ],
+  "result": "PASS"
+}

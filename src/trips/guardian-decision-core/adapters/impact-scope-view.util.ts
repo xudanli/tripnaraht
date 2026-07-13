@@ -26,9 +26,11 @@ import {
   fetchPlanItemImpactDetails,
   type PlanItemImpactDetail,
 } from './plan-item-impact-details.util';
+import type { RoadTraversabilityWorkspaceSnapshot } from '../contracts/decision-workspace.types';
 
 export interface ImpactScopeBuildContext {
   triggerEvent?: TravelDecisionEvent;
+  traversability?: RoadTraversabilityWorkspaceSnapshot;
 }
 
 function resolveRoadId(
@@ -156,6 +158,7 @@ function buildChain(
   details: PlanItemImpactDetail[],
   directIds: Set<string>,
   routeLabel?: string,
+  traversability?: RoadTraversabilityWorkspaceSnapshot,
 ): ImpactScopeChainNode[] {
   const chain: ImpactScopeChainNode[] = [
     {
@@ -173,6 +176,16 @@ function buildChain(
       label: routeLabel,
       relationship: 'BELONGS_TO',
       entityRefKind: 'ROUTE_SEGMENT',
+    });
+  }
+
+  if (traversability) {
+    chain.push({
+      kind: 'TRAVERSABILITY',
+      id: traversability.segmentId ?? traversability.roadId,
+      label: `${traversability.assessment.result}:${traversability.assessment.gate}`,
+      relationship: 'BLOCKS',
+      entityRefKind: 'ROAD_PROFILE',
     });
   }
 
@@ -275,7 +288,13 @@ export function buildImpactScopeView(
       ? resolveRouteSegmentLabel(view.rfc001Problem, roadId)
       : undefined);
 
-  const chain = buildChain(trigger, details, directIds, routeLabel);
+  const chain = buildChain(
+    trigger,
+    details,
+    directIds,
+    routeLabel,
+    ctx.traversability,
+  );
   const narrative = buildNarrative(
     trigger,
     effectiveArrangements,

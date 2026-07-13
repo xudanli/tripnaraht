@@ -16,10 +16,6 @@ import {
   resolveIdentityCard,
   resolveMbtiType,
 } from './engine/intake-scoring.engine';
-import {
-  rankCompanionMatches,
-  type MatchableProfile,
-} from './engine/companion-matching.engine';
 import { buildOnboardingStatus, buildProfileCardView } from './util/card-ui-contract.util';
 import type {
   OdysseyIntakeProfile,
@@ -40,7 +36,6 @@ import type {
 } from './types/verified-credentials.types';
 import type {
   OdysseyAnswerDto,
-  PeerFeedbackDto,
   PremiumStressAnswerDto,
   SelectMbtiDto,
   SubmitPremiumIntakeDto,
@@ -227,7 +222,7 @@ export class OdysseyIntakeService {
     return profile;
   }
 
-  /** PRD 流程：测评 → 名片 → 推荐列表（≤1.5s loading 由前端动效承担） */
+  /** @deprecated 旅伴匹配已下线；等价于 completePremiumIntake + onboarding 状态 */
   async submitAndMatch(
     userId: string,
     params: {
@@ -237,6 +232,7 @@ export class OdysseyIntakeService {
       matchLimit?: number;
     },
   ) {
+    void params.matchLimit;
     const profile = await this.completePremiumIntake(userId, {
       mbtiType: params.mbtiType,
       answers: params.answers,
@@ -247,20 +243,13 @@ export class OdysseyIntakeService {
     }
 
     const onboarding = await this.getOnboardingStatus(userId);
-    const matchResult = onboarding.canMatch
-      ? await this.matchCompanions(userId, {
-          destination: params.tripMeta?.destination,
-          startDate: params.tripMeta?.startDate,
-          endDate: params.tripMeta?.endDate,
-          limit: params.matchLimit,
-        })
-      : { matches: [], meta: { elapsedMs: 0, candidatePoolSize: 0, skippedReason: 'trust_not_verified' as const } };
 
     return {
       profile,
       card: profile.card,
       onboarding,
-      ...matchResult,
+      matches: [],
+      meta: { elapsedMs: 0, candidatePoolSize: 0, skippedReason: 'companion_matching_removed' as const },
     };
   }
 
@@ -502,139 +491,6 @@ export class OdysseyIntakeService {
   /** @deprecated 使用 updateTripIntent */
   async updateTripIntentTags(userId: string, tags: string[]): Promise<OdysseyProfileCardView> {
     return this.updateTripIntent(userId, { tripIntentTags: tags });
-  }
-
-  async matchCompanions(
-    userId: string,
-    query: { destination?: string; startDate?: string; endDate?: string; limit?: number },
-  ) {
-    const seekerProfile = await this.getProfile(userId);
-    if (!seekerProfile) {
-      throw new NotFoundException('尚未完成旅行人格测评');
-    }
-
-    const onboarding = await this.getOnboardingStatus(userId);
-    if (!onboarding.canMatch) {
-      throw new BadRequestException('请先完成实名/芝麻信用安全授权后再获取旅伴推荐');
-    }
-
-    const storedTripMeta = await this.getTripMeta(userId);
-    const destination = query.destination ?? storedTripMeta?.destination;
-    const startDate = query.startDate ?? storedTripMeta?.startDate;
-    const endDate = query.endDate ?? storedTripMeta?.endDate;
-
-    const seeker: MatchableProfile = {
-      userId,
-      mbtiType: seekerProfile.mbtiType,
-      cardTitle: seekerProfile.card.title,
-      rawScores: seekerProfile.rawScores,
-      dimensionPercents: seekerProfile.dimensionPercents,
-      destination,
-      startDate,
-      endDate,
-    };
-
-    const rows = await this.prisma.userTravelProfile.findMany({
-      where: { userId: { not: userId } },
-      select: { userId: true, extendedProfile: true },
-      take: 500,
-    });
-
-    const candidates: MatchableProfile[] = [];
-    for (const row of rows) {
-      const ext = row.extendedProfile as Record<string, unknown> | null;
-      const intake = ext?.odyssey_intake as OdysseyIntakeProfile | undefined;
-      if (!intake?.mbtiType) continue;
-
-      const tripMeta = ext?.odyssey_trip_meta as OdysseyTripMeta | undefined;
-
-      candidates.push({
-        userId: row.userId,
-        mbtiType: intake.mbtiType,
-        cardTitle: intake.card.title,
-        rawScores: intake.rawScores,
-        dimensionPercents: intake.dimensionPercents,
-        destination: tripMeta?.destination,
-        startDate: tripMeta?.startDate,
-        endDate: tripMeta?.endDate,
-      });
-    }
-
-    const started = Date.now();
-    const matches = rankCompanionMatches(seeker, candidates, query.limit ?? 20);
-    const elapsedMs = Date.now() - started;
-
-    if (elapsedMs > 300) {
-      this.logger.warn(`[OdysseyIntake] match slow=${elapsedMs}ms candidates=${candidates.length}`);
-    }
-
-    return {
-      matches,
-      meta: { elapsedMs, candidatePoolSize: candidates.length },
-    };
-  }
-
-  /** 行后互评 → 动态修正消费带宽 / 计划硬度（PRD 数据回哺） */
-  async applyPeerFeedback(
-    _reviewerUserId: string,
-    payload: PeerFeedbackDto,
-  ): Promise<OdysseyIntakeProfile> {
-    const existing = await this.getProfile(payload.targetUserId);
-    if (!existing) {
-      throw new NotFoundException('目标用户尚未完成旅行人格测评');
-    }
-
-    const scores = { ...existing.rawScores };
-    const refreshMessages: string[] = [];
-
-    for (const tag of payload.tags) {
-      switch (tag) {
-        case 'too_stingy':
-          scores.financial_flexibility -= 1;
-          refreshMessages.push('消费带宽');
-          break;
-        case 'always_late':
-          scores.planning_index -= 1;
-          scores.mbti_j_score -= 1;
-          refreshMessages.push('计划硬度');
-          break;
-        case 'conflict_prone':
-          scores.compromise_index -= 1;
-          refreshMessages.push('沟通顺畅度');
-          break;
-        case 'great_communicator':
-          scores.compromise_index += 1;
-          scores.mbti_f_score += 1;
-          refreshMessages.push('沟通顺畅度');
-          break;
-        default:
-          break;
-      }
-    }
-
-    const percents =
-      existing.mbtiSource === 'self_selected'
-        ? existing.dimensionPercents
-        : computeDimensionPercents(scores);
-    const mbti =
-      existing.mbtiSource === 'self_selected' ? existing.mbtiType : resolveMbtiType(percents);
-
-    const updated: OdysseyIntakeProfile = {
-      ...existing,
-      rawScores: scores,
-      dimensionPercents: percents,
-      mbtiType: mbti,
-      card: resolveIdentityCard(scores, percents, mbti),
-      profileRefreshPending: true,
-      profileRefreshMessage:
-        refreshMessages.length > 0
-          ? `基于你本次的优秀表现，你的『${[...new Set(refreshMessages)].join('、')}』获得了旅伴的联合认证，雷达图已更新`
-          : undefined,
-      lastPeerFeedbackAt: new Date().toISOString(),
-    };
-
-    await this.mergeExtendedProfile(payload.targetUserId, { odyssey_intake: updated });
-    return updated;
   }
 
   async acknowledgeProfileRefresh(userId: string): Promise<OdysseyIntakeProfile> {

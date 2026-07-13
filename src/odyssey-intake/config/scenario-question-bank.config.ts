@@ -52,7 +52,7 @@ export const ODYSSEY_SCENARIO_QUESTIONS: OdysseyScenarioQuestion[] = [
       },
       {
         id: 'C',
-        label: '折中务实：「和搭子商量：如果对方强烈想去，那就进去只点招牌，AA 后尽量不超支。」',
+        label: '折中务实：「和同伴商量：如果对方强烈想去，那就进去只点招牌，AA 后尽量不超支。」',
       },
     ],
   },
@@ -92,7 +92,7 @@ export const ODYSSEY_SCENARIO_QUESTIONS: OdysseyScenarioQuestion[] = [
       },
       {
         id: 'B',
-        label: '拒绝营业：「放过我吧…和搭子商量今天取消 2 个景点，睡到中午再出门，找个咖啡馆发呆。」',
+        label: '拒绝营业：「放过我吧…和同伴商量今天取消 2 个景点，睡到中午再出门，找个咖啡馆发呆。」',
       },
       {
         id: 'C',
@@ -110,11 +110,11 @@ export const ODYSSEY_SCENARIO_QUESTIONS: OdysseyScenarioQuestion[] = [
     options: [
       {
         id: 'A',
-        label: '社交中心：「太棒了！立刻拉上搭子过去拿瓶啤酒坐下，主动和来自各地的人聊天、组局。」',
+        label: '社交中心：「太棒了！立刻拉上同伴过去拿瓶啤酒坐下，主动和来自各地的人聊天、组局。」',
       },
       {
         id: 'B',
-        label: '边缘观察：「拉着搭子在角落悄悄看会儿，不主动说话，只享受热闹的背景音。」',
+        label: '边缘观察：「拉着同伴在角落悄悄看会儿，不主动说话，只享受热闹的背景音。」',
       },
       {
         id: 'C',
@@ -127,7 +127,7 @@ export const ODYSSEY_SCENARIO_QUESTIONS: OdysseyScenarioQuestion[] = [
     order: 5,
     title: '内容审美与意义感偏好',
     scenario:
-      '面对一座历史悠久但目前只剩残垣断壁、极其考验文化功底的古城遗址，你和搭子站在烈日下，你内心的真实独白是？',
+      '面对一座历史悠久但目前只剩残垣断壁、极其考验文化功底的古城遗址，你和同伴站在烈日下，你内心的真实独白是？',
     wallpaperKey: 'ancient_ruins_sun',
     options: [
       {

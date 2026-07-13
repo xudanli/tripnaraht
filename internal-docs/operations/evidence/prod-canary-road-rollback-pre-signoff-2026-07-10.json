@@ -1,0 +1,65 @@
+{
+  "evidenceType": "ROAD_PRE_SIGNOFF_ROLLBACK",
+  "evidenceLabel": "ROAD_PROD_CANARY_PRE_SIGNOFF_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road A/B/C Pre-Signoff Drill",
+  "drillStatus": "Road A/B/C Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING WEATHER SOAK SIGN-OFF",
+  "rolledBackAt": "2026-07-10T20:46:48.180Z",
+  "roadCanaryTripId": "b0b88888-8888-4888-8888-888888888888",
+  "restoredEffectivePlanVersionId": "plan_1",
+  "allowlistClearedInProcessEnv": true,
+  "roadAutoTriggerOff": true,
+  "auditEvidencePreserved": true,
+  "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+  "weatherSoakUnchanged": true,
+  "preWeatherSnapshot": {
+    "capturedAt": "2026-07-10T20:46:42.668Z",
+    "gitCommit": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+    "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+    "weatherEffectivePlanVersionId": "plan_1",
+    "weatherTripUpdatedAt": "2026-07-10T17:00:28.155Z",
+    "vedurPollCount": 6,
+    "lastVedurJobRunId": null,
+    "lastVedurOutcome": "UNCHANGED",
+    "pm2IngestStatus": "unknown",
+    "pm2IngestRestarts": 15,
+    "legacyWriteInvocations": 0
+  },
+  "postWeatherSnapshot": {
+    "capturedAt": "2026-07-10T20:46:48.159Z",
+    "gitCommit": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+    "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+    "weatherEffectivePlanVersionId": "plan_1",
+    "weatherTripUpdatedAt": "2026-07-10T17:00:28.155Z",
+    "vedurPollCount": 6,
+    "lastVedurJobRunId": null,
+    "lastVedurOutcome": "UNCHANGED",
+    "pm2IngestStatus": "unknown",
+    "pm2IngestRestarts": 15,
+    "legacyWriteInvocations": 0
+  },
+  "legacyTripsUnaffected": true,
+  "checks": [
+    {
+      "id": "RB-001",
+      "pass": true,
+      "detail": "effective restored=plan_1"
+    },
+    {
+      "id": "RB-002",
+      "pass": true,
+      "detail": "road allowlist only in drill process env (not global runtime)"
+    },
+    {
+      "id": "RB-003",
+      "pass": true,
+      "detail": "weatherEffective unchanged=true"
+    },
+    {
+      "id": "RB-004",
+      "pass": true,
+      "detail": "evidence/ledger retained for audit"
+    }
+  ],
+  "result": "PASS"
+}

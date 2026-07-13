@@ -1,0 +1,79 @@
+{
+  "evidenceType": "ASSERTION_PROMOTION_SHADOW_SOAK_SUMMARY",
+  "completedAt": "2026-07-11T18:32:57.641Z",
+  "shadowModeEnv": "ASSERTION_PROMOTION_SHADOW_MODE=1",
+  "services": {
+    "nest3002": "prod dist/src/main.js",
+    "collector3000": "pm2 vedur-collector-ingest"
+  },
+  "cronObservation": {
+    "utc": "2026-07-11T18:30:03Z",
+    "vedurOutcome": "SILENT tier=CALM wind=14.4",
+    "promoteHttp": "201 idempotent (ledger already RECOVERY_SHADOW from pre-cron manual seed)",
+    "nestLogCorrelation": "ingest 6:30:03 PM + POST promote-assertion 201 60ms same second"
+  },
+  "invariants": {
+    "rfc001DecisionProblems": {
+      "before": 0,
+      "after": 0,
+      "unchanged": true
+    },
+    "visibleQueueOpenCount": {
+      "before": 2,
+      "after": 2,
+      "unchanged": true
+    },
+    "roadPromotionLedgerEntries": 0,
+    "notificationsChanged": false
+  },
+  "validations": {
+    "wrong_secret": {
+      "pass": true,
+      "status": 403
+    },
+    "duplicate_signal": {
+      "pass": true,
+      "skipped": true
+    },
+    "non_allowlist": {
+      "pass": true,
+      "detail": "trip_not_on_promotion_allowlist"
+    },
+    "road_promotion": {
+      "pass": true,
+      "detail": "predicate_not_enabled"
+    },
+    "service_interrupt": {
+      "pass": true,
+      "down": "HTTP:000 connection_failed",
+      "afterRestart": "201 skipped RECOVERY_SHADOW",
+      "reconcileScan": "success"
+    }
+  },
+  "ledger": {
+    "status": "RECOVERY_SHADOW",
+    "promotionKey": "weather:recovery:day:1:RECOVERY_OBSERVED",
+    "shadowMode": true,
+    "failedQueue": []
+  },
+  "evidenceFiles": [
+    "assertion-promotion-shadow-baseline-2026-07-11T182535Z.json",
+    "assertion-promotion-shadow-post-cron-ledger-2026-07-11T182535Z.json",
+    "assertion-promotion-shadow-pre-validation-2026-07-11T183049Z.json",
+    "assertion-promotion-shadow-validation-2026-07-11T18-31-49-838Z.json",
+    "assertion-promotion-shadow-final-ledger-2026-07-11T183049Z.json",
+    "assertion-promotion-shadow-logs-2026-07-11T183049Z.txt",
+    "assertion-promotion-post-interrupt-2026-07-11T183049Z.json",
+    "assertion-promotion-interrupt-down-2026-07-11T183049Z.json"
+  ],
+  "overallPass": true,
+  "formalClosure": {
+    "weatherShadowWiringClosure": "PASS",
+    "weatherAutoPromotionObservationClosure": "PENDING",
+    "retrySchedulerWiring": "PRESENT",
+    "retrySchedulerOperationalDrill": "PENDING",
+    "reconcileFallback": "PASS",
+    "ledgerRetentionPolicy": "do_not_clear_for_new_cron_samples"
+  },
+  "closureDoc": "internal-docs/operations/WEATHER-AUTO-PROMOTION-SHADOW-WIRING-CLOSURE-2026-07-12.md"
+}

@@ -136,7 +136,7 @@ export class ExecutionAdvisoryApplyService {
           const event = await this.environmentRadar
             .getEvent(tripId, eventId, userId)
             .catch(() => null);
-          const planId = event?.alternativePlans?.[0]?.id;
+          const planId = event?.alternativePlans?.[0]?.planId;
           if (planId) {
             await this.environmentRadar.resolveEvent(tripId, eventId, userId, { planId });
             scheduleMutations.push({

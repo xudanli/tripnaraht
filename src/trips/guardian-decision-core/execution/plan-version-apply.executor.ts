@@ -44,6 +44,7 @@ import { Rfc001DecisionSemanticsProjectorService } from '../read-model/rfc001-de
 import { buildTripMutationSetFromPlanOperations } from '../adapters/plan-operation-to-mutation.adapter';
 import { EffectivePlanWriteGuardService } from '../../../decision-runtime/execution/effective-plan-write-guard.service';
 import { assertRecordExecutableForExecute } from '../cutover/cutover-reconciliation.util';
+import type { PlanDiff } from '../../../generated/execution-risk-contracts';
 
 export interface ExecutePlanVersionInput {
   tripId: string;
@@ -56,6 +57,12 @@ export interface ExecutePlanVersionResult {
   record: Rfc001DecisionRecord;
   idempotentReplay: boolean;
   materializedPlanSnapshotRef: string;
+  itineraryMaterialized?: boolean;
+}
+
+export interface ActivatePendingPlanVersionResult {
+  activated: boolean;
+  effectivePlanVersionId: string;
   itineraryMaterialized?: boolean;
 }
 
@@ -80,6 +87,52 @@ export class Rfc001PlanVersionApplyExecutor {
     return this.effectivePlanWriteGuard.runWithAuthority('execute', () =>
       this.executeAuthorized(input),
     );
+  }
+
+  /** ERC confirm — promote a pending plan version to effective (narrow bridge). */
+  async activatePendingPlanVersion(input: {
+    tripId: string;
+    planVersionId: string;
+    decisionId: string;
+    idempotencyKey: string;
+    planDiff: PlanDiff;
+    materializeItinerary?: boolean;
+  }): Promise<ActivatePendingPlanVersionResult> {
+    return this.effectivePlanWriteGuard.runWithAuthority('execute', () =>
+      this.activatePendingPlanVersionAuthorized(input),
+    );
+  }
+
+  private async activatePendingPlanVersionAuthorized(input: {
+    tripId: string;
+    planVersionId: string;
+    decisionId: string;
+    idempotencyKey: string;
+    planDiff: PlanDiff;
+    materializeItinerary?: boolean;
+  }): Promise<ActivatePendingPlanVersionResult> {
+    const planVersion = await this.planVersionStore.get(input.tripId, input.planVersionId);
+    if (!planVersion) {
+      throw new NotFoundException(`PlanVersion ${input.planVersionId} not found`);
+    }
+
+    let itineraryMaterialized = false;
+    if (input.materializeItinerary && planVersion.operations.length) {
+      const materialization = await this.itineraryMaterializer.applyPlanOperations({
+        tripId: input.tripId,
+        decisionId: input.decisionId,
+        operations: planVersion.operations,
+      });
+      itineraryMaterialized = materialization.applied;
+    }
+
+    await this.planVersionStore.setEffective(input.tripId, input.planVersionId);
+
+    return {
+      activated: true,
+      effectivePlanVersionId: input.planVersionId,
+      itineraryMaterialized,
+    };
   }
 
   private async executeAuthorized(

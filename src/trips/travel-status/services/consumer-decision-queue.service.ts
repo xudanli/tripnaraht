@@ -2,11 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { isDecisionGatewayUnifiedEnabled } from '../../../decision-runtime/gateway/config/decision-gateway.config';
 import { UnifiedDecisionProblemReadModelService } from '../../../decision-runtime/gateway/services/unified-decision-problem-read-model.service';
 import type { UnifiedDecisionProblemListItem } from '../../../decision-runtime/gateway/contracts/unified-decision-ui.types';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { fetchPlanItemImpactDetails } from '../../guardian-decision-core/adapters/plan-item-impact-details.util';
 import {
   buildDecisionQueueHeadline,
   projectListItemToConsumerDecision,
 } from '../utils/consumer-decision-item.projection.util';
 import type {
+  ConsumerAffectedActivity,
   ConsumerDecisionItem,
   ConsumerDecisionQueueView,
 } from '../types/travel-status.types';
@@ -18,7 +21,10 @@ const MAX_OPTION_HYDRATION = 5;
 export class ConsumerDecisionQueueService {
   private readonly logger = new Logger(ConsumerDecisionQueueService.name);
 
-  constructor(private readonly readModel: UnifiedDecisionProblemReadModelService) {}
+  constructor(
+    private readonly readModel: UnifiedDecisionProblemReadModelService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async getQueue(tripId: string, opts?: { hydrateRecommendations?: boolean }): Promise<ConsumerDecisionQueueView> {
     const generatedAt = new Date().toISOString();
@@ -55,9 +61,30 @@ export class ConsumerDecisionQueueService {
 
     try {
       const detail = await this.readModel.getProblemDetail(tripId, problemId);
-      return projectListItemToConsumerDecision(detail.problem, { actions: detail.actions });
+      const affectedActivities = await this.resolveAffectedActivities(detail.problem);
+      const options = await this.readModel.getProblemOptions(tripId, problemId);
+      return projectListItemToConsumerDecision(detail.problem, {
+        actions: options.actions,
+        affectedActivities,
+        requiredAcknowledgements: options.requiredAcknowledgements,
+      });
     } catch {
       return null;
+    }
+  }
+
+  /** All actionIds the user may submit via accept-recommended (repair + keepOriginal + defer). */
+  async getSelectableActionIds(tripId: string, problemId: string): Promise<string[]> {
+    if (!isDecisionGatewayUnifiedEnabled()) return [];
+
+    try {
+      const options = await this.readModel.getProblemOptions(tripId, problemId);
+      return options.actions
+        .filter((action) => action.allowed && !action.blockedReason)
+        .map((action) => action.actionId)
+        .filter((id): id is string => Boolean(id));
+    } catch {
+      return [];
     }
   }
 
@@ -72,7 +99,12 @@ export class ConsumerDecisionQueueService {
       toHydrate.map(async (item) => {
         try {
           const options = await this.readModel.getProblemOptions(tripId, item.problemId);
-          return projectListItemToConsumerDecision(item, { actions: options.actions });
+          const affectedActivities = await this.resolveAffectedActivities(item);
+          return projectListItemToConsumerDecision(item, {
+            actions: options.actions,
+            affectedActivities,
+            requiredAcknowledgements: options.requiredAcknowledgements,
+          });
         } catch {
           return projectListItemToConsumerDecision(item);
         }
@@ -80,6 +112,20 @@ export class ConsumerDecisionQueueService {
     );
 
     return [...hydrated, ...rest.map((item) => projectListItemToConsumerDecision(item))];
+  }
+
+  private async resolveAffectedActivities(
+    item: UnifiedDecisionProblemListItem,
+  ): Promise<ConsumerAffectedActivity[] | undefined> {
+    const itemIds = item.scope.itemIds;
+    if (!itemIds?.length) return undefined;
+
+    const details = await fetchPlanItemImpactDetails(this.prisma, itemIds);
+    return details.map((d) => ({
+      activityId: d.itemId,
+      title: d.label,
+      dayIndex: d.dayIndex > 0 ? d.dayIndex : undefined,
+    }));
   }
 }
 

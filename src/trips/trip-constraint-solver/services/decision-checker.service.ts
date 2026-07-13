@@ -22,6 +22,7 @@ import type {
   DecisionCheckerResponse,
 } from '../types/decision-checker.types';
 import { projectDecisionCheckerResponse } from '../utils/decision-checker-view.projection.util';
+import { projectTransportConstraintForBff } from '../utils/constraints-summary.util';
 import { CoverageMapService } from '../../readiness/services/coverage-map.service';
 import type { FeasibilityIssueDto, TripFeasibilityReportDto } from '../types/trip-constraint-solver.types';
 import type { PlanningConflictItem, PlanningConflictsResponse } from '../types/planning-conflicts.types';
@@ -276,7 +277,11 @@ export class DecisionCheckerService {
           timeRange: { startDate: null, endDate: null, dayCount: 0, status: 'missing' as const },
           budget: { total: null, currency: 'CNY', status: 'missing' as const },
           travelers: { count: 0, memberCount: 0, profilingCompletedCount: 0, status: 'missing' as const },
-          transport: { travelMode: null, transportHint: null, status: 'missing' as const },
+          transport: projectTransportConstraintForBff({
+            travelMode: null,
+            transportHint: null,
+            status: 'missing',
+          }),
           pendingItems: [],
         })),
         changePreview

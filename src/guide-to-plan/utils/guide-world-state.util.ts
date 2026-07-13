@@ -38,17 +38,13 @@ export function buildGuideTripWorldState(input: {
     });
   }
 
-  const usesDrive =
-    travelContext?.transportMode === 'self_drive' ||
-    draft.days.some((d) => (d.drivingMinutesEstimate ?? 0) > 0);
-
   return {
     context: {
       tripId: input.sessionId,
       destination: input.countryCode,
       startDate,
       durationDays,
-      travelModeDefault: usesDrive ? 'drive' : 'walk',
+      travelModeDefault: 'drive',
       preferences: {
         intents: { guide_to_plan: 1 },
         pace: travelContext?.travelers?.seniors ? 'relaxed' : 'moderate',

@@ -849,10 +849,17 @@ export function mapConflictToFeasibilityIssue(
       ? {
           fromDayNumber: c.fromDayNumber ?? affectedDays[0],
           toDayNumber: c.toDayNumber ?? affectedDays[0],
+          fromItemId: c.fromItemId ?? fromItemId,
+          toItemId: c.toItemId ?? toItemId,
+          fromPlaceLabel: c.fromPlaceLabel,
+          toPlaceLabel: c.toPlaceLabel,
+          departAt: c.departAt,
           travelMinutes,
+          travelTimeMinutes: c.travelTimeMinutes ?? travelMinutes,
           shortfallMinutes: c.shortfallMinutes,
           removableItemId: c.affectedItemIds?.[c.affectedItemIds.length - 1],
           removableItemLabel: c.toPlaceLabel,
+          driveLegs: c.dailyDriveLegs,
         }
       : isNoNightDrive
         ? {
@@ -964,8 +971,22 @@ export function mapConflictToFeasibilityIssue(
   });
 }
 
+function issueDimensionScore(
+  issues: FeasibilityIssueDto[],
+  key: FeasibilityDimensionKey,
+): number {
+  const dimIssues = issues.filter((i) => i.category === key);
+  if (dimIssues.length === 0) return 100;
+  let score = 100;
+  for (const i of dimIssues) {
+    if (i.priority === 'must_handle') score -= 25;
+    else if (i.priority === 'suggest_adjust') score -= 10;
+    else score -= 5;
+  }
+  return Math.max(0, Math.min(100, score));
+}
+
 function buildDimensions(
-  score: ReadinessScoreResponse['score'],
   issues: FeasibilityIssueDto[],
   teamFitScore?: number,
   itineraryCompletenessScore?: number,
@@ -983,10 +1004,10 @@ function buildDimensions(
   const accessIssues = issues.filter((i) => i.category === 'access_capacity');
   const experienceIssues = issues.filter((i) => i.category === 'experience_expectation');
   const scoreByKey: Record<FeasibilityDimensionKey, number> = {
-    schedule: score.scheduleFeasibility ?? 0,
-    transport: score.transportCertainty ?? 0,
-    booking: score.evidenceCoverage ?? 0,
-    environment: score.safetyRisk ?? 0,
+    schedule: issueDimensionScore(issues, 'schedule'),
+    transport: issueDimensionScore(issues, 'transport'),
+    booking: issueDimensionScore(issues, 'booking'),
+    environment: issueDimensionScore(issues, 'environment'),
     team_fit: teamFitScore ?? 100,
     itinerary_completeness: itineraryCompletenessScore ?? 100,
     access_capacity:
@@ -996,7 +1017,10 @@ function buildDimensions(
     experience_expectation:
       experienceIssues.length === 0
         ? 100
-        : Math.max(0, 100 - experienceIssues.filter((i) => i.priority === 'must_handle').length * 30),
+        : Math.max(
+            0,
+            100 - experienceIssues.filter((i) => i.priority === 'must_handle').length * 30,
+          ),
   };
   return keys.map((key) => {
     const dimIssues = issues.filter((i) => i.category === key);
@@ -1254,7 +1278,12 @@ export function assembleFeasibilityReport(input: {
     gateResult: input.snapshot?.gateResult,
     probabilisticAssessment: input.probabilisticAssessment,
   });
-  const overallScore = Math.round(input.readiness.score.overall ?? 0);
+  const overallScore = Math.round(
+    buildDimensions(issues, input.teamFitScore, input.itineraryCompletenessScore).reduce(
+      (sum, d) => sum + d.score,
+      0,
+    ) / 8,
+  );
   const start = DateTime.fromJSDate(input.trip.startDate);
   const end = DateTime.fromJSDate(input.trip.endDate);
   const dateRangeLabel =
@@ -1287,7 +1316,6 @@ export function assembleFeasibilityReport(input: {
     phaseHint: input.readiness.phaseHint,
     coverageDisclosure: input.readiness.coverageDisclosure,
     dimensions: buildDimensions(
-      input.readiness.score,
       issues,
       input.teamFitScore,
       input.itineraryCompletenessScore,

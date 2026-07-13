@@ -87,7 +87,7 @@ export const PREMIUM_STRESS_QUESTIONS = [
     order: 3,
     title: '溢价消费与附加值认同',
     scenario:
-      '行程中发现原本包含在路线内的一个极赞的私家直升机看冰川项目，因临时政策变动需要自费增补 3000 元/人。搭子中有人觉得溢价过高强烈反对，而你非常想去，此时你会？',
+      '行程中发现原本包含在路线内的一个极赞的私家直升机看冰川项目，因临时政策变动需要自费增补 3000 元/人。同伴中有人觉得溢价过高强烈反对，而你非常想去，此时你会？',
     wallpaperKey: 'helicopter_glacier_premium',
     options: [
       {

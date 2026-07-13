@@ -20,10 +20,6 @@ export function computeGuideFeasibilityScore(input: GuideFeasibilityInput): numb
   if (!input.travelContext?.startDate || !input.travelContext?.endDate) {
     score -= 12;
   }
-  if (!input.travelContext?.transportMode || input.travelContext.transportMode === 'unknown') {
-    score -= 8;
-  }
-
   if (input.placeCount > 0 && input.unmatchedPlaceCount > 0) {
     score -= Math.min(18, Math.round((input.unmatchedPlaceCount / input.placeCount) * 24));
   }

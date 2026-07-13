@@ -10,10 +10,10 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import type { TravelMode, TripMoodTag } from '../../match-square/types/match-square.types';
-
 const TRIP_MOOD_VALUES = ['relax', 'adventure', 'healing', 'social'] as const;
 const TRAVEL_MODE_VALUES = ['self_drive', 'public_transit', 'mixed', 'other'] as const;
+export type TripMoodTag = (typeof TRIP_MOOD_VALUES)[number];
+export type TravelMode = (typeof TRAVEL_MODE_VALUES)[number];
 const PLANNING_STYLE_VALUES = ['full_managed', 'co_planning', 'casual_play'] as const;
 
 export class LaunchRecruitmentFromTemplateDto {

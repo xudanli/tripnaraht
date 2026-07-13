@@ -12,21 +12,8 @@ import {
 } from './planning-intent-processor.util';
 import type { TripDaySnapshotForPlacement } from './route-and-run-intent-analyzer.util';
 import { stripSystemMessageBlocksForIntakeNl } from './trip-plan-intake-vehicle.util';
-import { buildPartyNegotiationPayload } from './planning-intent-party.util';
 import { evaluateSpatialIntentFeasibility } from './planning-intent-spatial.util';
-import type { PartyMemberProfile } from './planning-intent-processor.util';
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
-import {
-  memberProfilesByIdFromNegotiationArray,
-  mergeMemberProfilesById,
-  resolveInjectedPartyMemberProfilesFromRequest,
-} from './party-member-profile-bridge.util';
-import {
-  applyPartyNegotiationToTripPlanRequest,
-  injectPartyNegotiationIntoRouteAndRunRequest,
-  tryComputeOrganizationalRobustnessPreview,
-  formatOrganizationalRobustnessPreviewZh,
-} from './planning-intent-party-robustness.util';
 
 export function inferAvailableEvidenceLevel(
   state: OrchestratorState,
@@ -123,28 +110,6 @@ export function appendPlanningPhaseIntentSystemHints(
       lines.push('- Absolute promise blocked: use Gate constraints + refill anchors instead of certainty language');
     }
   }
-  if (sig.party_negotiation_requested && payload.party_negotiation) {
-    const pn = payload.party_negotiation;
-    lines.push(
-      `- Multi-party negotiation: size=${pn.party_size}, regret_upper_bound=${pn.regret_upper_bound}, aggregated_pace=${pn.aggregated_pace}`,
-    );
-    if (pn.nash_reorder_hint) {
-      lines.push(
-        `- Nash reorder hint: swap Day ${pn.nash_reorder_hint.swap_day_a} ↔ Day ${pn.nash_reorder_hint.swap_day_b}`,
-      );
-    }
-    if (pn.branch_policies?.length) {
-      lines.push(`- Risk dissent branch_policies: ${pn.branch_policies.length} (Hold/Proceed)`);
-    }
-    if (pn.organizational_robustness_preview) {
-      lines.push(
-        `- Organizational robustness preview: ${Math.round(pn.organizational_robustness_preview.organizational_robustness_score * 100)}% (INTAKE rollout N=${pn.organizational_robustness_preview.sample_count})`,
-      );
-    }
-    if (pn.requires_hitl_clarification) {
-      lines.push('- HITL: collect per-member preference vectors before PLAN_GEN ordering');
-    }
-  }
   if (sig.spatial_intent_capture_requested && payload.spatial_intent) {
     const sp = payload.spatial_intent;
     lines.push(
@@ -181,21 +146,6 @@ export function formatPlanningPhaseIntentOutputsZh(payload: PlanningIntentPayloa
         : `供应链熔断：拦截绝对承诺，证据层级 ${payload.supply_chain_safety.enforcedLevel}`,
     );
   }
-  if (payload.party_negotiation) {
-    parts.push(
-      `多人仲裁 ${payload.party_negotiation.party_size} 人，遗憾上界 ${payload.party_negotiation.regret_upper_bound}`,
-    );
-    if (payload.party_negotiation.organizational_robustness_preview) {
-      parts.push(
-        formatOrganizationalRobustnessPreviewZh(payload.party_negotiation.organizational_robustness_preview),
-      );
-    }
-    if (payload.party_negotiation.nash_reorder_hint) {
-      parts.push(
-        `建议调换 Day ${payload.party_negotiation.nash_reorder_hint.swap_day_a}/${payload.party_negotiation.nash_reorder_hint.swap_day_b}`,
-      );
-    }
-  }
   if (payload.spatial_intent) {
     parts.push(
       payload.spatial_intent.feasible
@@ -211,22 +161,9 @@ export function enrichPlanningPhaseIntentExtensions(params: {
   intakeMsg: string;
   trip?: TripPlanRequest | null;
   tripDaySnapshots?: TripDaySnapshotForPlacement[];
-  memberProfilesById?: Record<string, Partial<PartyMemberProfile>>;
-  injectedMemberProfiles?: PartyMemberProfile[];
   request?: RouteAndRunRequestDto | null;
 }): PlanningIntentPayload {
   const { payload } = params;
-
-  if (payload.sub_signals.party_negotiation_requested) {
-    payload.party_negotiation = buildPartyNegotiationPayload({
-      intakeMsg: params.intakeMsg,
-      trip: params.trip,
-      tripDaySnapshots: params.tripDaySnapshots,
-      memberProfilesById: params.memberProfilesById,
-      injectedMemberProfiles: params.injectedMemberProfiles,
-      request: params.request,
-    });
-  }
 
   if (payload.sub_signals.spatial_intent_capture_requested) {
     payload.spatial_intent = evaluateSpatialIntentFeasibility({
@@ -247,7 +184,6 @@ export function applyPlanningPhaseIntentToIntake(params: {
   state: OrchestratorState;
   trip?: TripPlanRequest | null;
   tripDaySnapshots?: TripDaySnapshotForPlacement[];
-  memberProfilesById?: Record<string, Partial<PartyMemberProfile>>;
   request?: RouteAndRunRequestDto | null;
 }): PlanningIntentPayload | null {
   const nl = stripSystemMessageBlocksForIntakeNl(params.intakeMsg ?? '');
@@ -270,41 +206,13 @@ export function applyPlanningPhaseIntentToIntake(params: {
     return null;
   }
 
-  const injectedMemberProfiles = resolveInjectedPartyMemberProfilesFromRequest(
-    params.request,
-    params.trip,
-  );
-  const memberProfilesById = mergeMemberProfilesById(
-    params.memberProfilesById,
-    memberProfilesByIdFromNegotiationArray(injectedMemberProfiles),
-  );
-
   enrichPlanningPhaseIntentExtensions({
     payload,
     intakeMsg: nl,
     trip: params.trip,
     tripDaySnapshots: params.tripDaySnapshots,
-    memberProfilesById,
-    injectedMemberProfiles,
     request: params.request,
   });
-
-  if (payload.sub_signals.party_negotiation_requested && payload.party_negotiation) {
-    if (params.trip) {
-      applyPartyNegotiationToTripPlanRequest(params.trip, payload.party_negotiation);
-    }
-    if (params.request) {
-      injectPartyNegotiationIntoRouteAndRunRequest(params.request, payload.party_negotiation);
-    }
-    const preview = tryComputeOrganizationalRobustnessPreview({
-      tripDaySnapshots: params.tripDaySnapshots,
-      partyNegotiation: payload.party_negotiation,
-      requestId: params.state.request_id,
-    });
-    if (preview) {
-      payload.party_negotiation.organizational_robustness_preview = preview;
-    }
-  }
 
   const meta = params.state.metadata as Record<string, unknown>;
   meta.planning_phase_intent = payload;
@@ -327,9 +235,6 @@ export function applyPlanningPhaseIntentToIntake(params: {
       contingency_branch_count: payload.contingency_branches?.length ?? 0,
       supply_chain_safe_to_promise: payload.supply_chain_safety?.safeToPromise,
       evidence_level: payload.available_evidence_level,
-      party_regret_upper_bound: payload.party_negotiation?.regret_upper_bound,
-      organizational_robustness_preview_score:
-        payload.party_negotiation?.organizational_robustness_preview?.organizational_robustness_score,
       spatial_intent_feasible: payload.spatial_intent?.feasible,
     },
   });

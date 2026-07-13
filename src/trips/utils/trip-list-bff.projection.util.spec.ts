@@ -2,7 +2,6 @@ import { DateTime } from 'luxon';
 import {
   resolveTripListDisplayStatus,
   resolveDisplayStatusLabel,
-  resolveFeasibilityLabel,
   toApiTripStatus,
   expandStatusFilter,
   computeLitePlanningProgressPercent,
@@ -24,13 +23,6 @@ describe('trip-list-bff.projection.util', () => {
     });
     expect(displayStatus).toBe('pre_trip');
     expect(resolveDisplayStatusLabel(displayStatus)).toBe('行前准备');
-  });
-
-  it('resolves feasibility labels by score band', () => {
-    expect(resolveFeasibilityLabel(82)).toBe('良好');
-    expect(resolveFeasibilityLabel(62)).toBe('待优化');
-    expect(resolveFeasibilityLabel(40)).toBe('需关注');
-    expect(resolveFeasibilityLabel(null)).toBeNull();
   });
 
   it('expands IN_PROGRESS filter to TRAVELING', () => {

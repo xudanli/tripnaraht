@@ -14,7 +14,12 @@ import type {
   TripConstraintImpactPreviewResponse,
   TripConstraintsListResponse,
 } from './frontend-travel-decision-contract-api.types';
+import type {
+  ConstraintConsoleWithAssessmentsViewModel,
+  UnifiedConstraintAssessmentBundle,
+} from './frontend-constraint-assessment-api.types';
 import { buildConstraintConsoleViewModel } from './frontend-travel-decision-contract-view.util';
+import { buildConstraintConsoleWithAssessments } from './frontend-constraint-card-view.util';
 
 const API_PREFIX = '/api';
 
@@ -45,6 +50,30 @@ export async function fetchConstraintConsole(
   );
   if (!res.data) throw new Error('Empty constraints response');
   return buildConstraintConsoleViewModel(res.data);
+}
+
+export async function fetchConstraintAssessments(
+  tripId: string,
+  options?: { refresh?: boolean },
+): Promise<UnifiedConstraintAssessmentBundle> {
+  const qs = options?.refresh ? '?refresh=true' : '';
+  const res = await request<UnifiedConstraintAssessmentBundle>(
+    `${API_PREFIX}/trips/${tripId}/constraint-assessments${qs}`,
+  );
+  if (!res.data) throw new Error('Empty constraint-assessments response');
+  return res.data;
+}
+
+/** Constraint Console 页推荐入口 — 并行拉 contract + assessments 并合并为 ConstraintCardView */
+export async function fetchConstraintConsoleWithAssessments(
+  tripId: string,
+  options?: { refresh?: boolean },
+): Promise<ConstraintConsoleWithAssessmentsViewModel> {
+  const [console, assessments] = await Promise.all([
+    fetchConstraintConsole(tripId),
+    fetchConstraintAssessments(tripId, { refresh: options?.refresh }),
+  ]);
+  return buildConstraintConsoleWithAssessments({ console, assessments, tripId });
 }
 
 export async function patchTravelDecisionContract(
@@ -92,3 +121,10 @@ export async function checkConstraintConflicts(
 }
 
 export { buildConstraintConsoleViewModel };
+export { buildConstraintConsoleWithAssessments } from './frontend-constraint-card-view.util';
+export type {
+  ConstraintCardView,
+  ConstraintConsoleWithAssessmentsViewModel,
+  UnifiedConstraintAssessmentBundle,
+  UnifiedConstraintAssessmentView,
+} from './frontend-constraint-assessment-api.types';

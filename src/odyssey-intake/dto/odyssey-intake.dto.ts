@@ -130,48 +130,6 @@ export class UpdateTripIntentDto implements UpdateTripIntentInput {
 /** @deprecated 使用 UpdateTripIntentDto */
 export class UpdateTripIntentTagsDto extends UpdateTripIntentDto {}
 
-export class MatchCompanionsDto {
-  @ApiPropertyOptional({ example: 'Iceland' })
-  @IsOptional()
-  @IsString()
-  destination?: string;
-
-  @ApiPropertyOptional({ example: '2026-07-01' })
-  @IsOptional()
-  @IsString()
-  startDate?: string;
-
-  @ApiPropertyOptional({ example: '2026-07-10' })
-  @IsOptional()
-  @IsString()
-  endDate?: string;
-
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 50 })
-  @IsOptional()
-  @Min(1)
-  @Max(50)
-  limit?: number;
-}
-
-export class PeerFeedbackDto {
-  @ApiProperty({ description: '被评价用户 ID' })
-  @IsUUID()
-  targetUserId!: string;
-
-  @ApiProperty({
-    type: [String],
-    enum: ['too_stingy', 'always_late', 'conflict_prone', 'great_communicator'],
-  })
-  @IsArray()
-  @IsIn(['too_stingy', 'always_late', 'conflict_prone', 'great_communicator'], { each: true })
-  tags!: Array<'too_stingy' | 'always_late' | 'conflict_prone' | 'great_communicator'>;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsUUID()
-  tripId?: string;
-}
-
 export class UpdateTripMetaDto {
   @ApiProperty({ example: 'Iceland' })
   @IsString()
@@ -333,18 +291,4 @@ export class VerifyProfessionCredentialDto {
   @ApiProperty({ description: '企业邮箱/工牌/职场平台授权 token' })
   @IsString()
   authToken!: string;
-}
-
-export class SubmitAndMatchDto extends SubmitPremiumIntakeDto {
-  @ApiPropertyOptional({ type: UpdateTripMetaDto })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => UpdateTripMetaDto)
-  tripMeta?: UpdateTripMetaDto;
-
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 50 })
-  @IsOptional()
-  @Min(1)
-  @Max(50)
-  matchLimit?: number;
 }

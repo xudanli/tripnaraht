@@ -3,6 +3,7 @@
   "rules": [
     {
       "ruleId": "IS_DAILY_LOAD_SPLIT_PARTIAL_WARN",
+      "sdrRuleId": "SDR-101",
       "semanticKey": "EXCESSIVE_DAILY_LOAD",
       "appliesWhen": { "country": "IS" },
       "whenCandidateUsesRoute": true,
@@ -27,6 +28,7 @@
     },
     {
       "ruleId": "IS_DAILY_LOAD_EXCESSIVE_BLOCK",
+      "sdrRuleId": "SDR-101",
       "semanticKey": "EXCESSIVE_DAILY_LOAD",
       "appliesWhen": { "country": "IS" },
       "whenCandidateUsesRoute": true,

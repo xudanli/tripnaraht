@@ -10,6 +10,7 @@ import type { DestinationPackManifest } from '../contracts/destination-pack.type
 
 const ruleSchema = z.object({
   ruleId: z.string(),
+  sdrRuleId: z.string().optional(),
   semanticKey: z.string(),
   appliesWhen: z
     .object({

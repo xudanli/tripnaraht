@@ -1,0 +1,110 @@
+{
+  "failureMode": "CONTROLLED_STAGING_DRILL",
+  "startedAt": "2026-07-10T15:57:20.948Z",
+  "endedAt": "2026-07-10T15:57:21.747Z",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "affectedJobRunIds": [
+    "CONTROLLED_STAGING_DRILL_fail_1",
+    "CONTROLLED_STAGING_DRILL_fail_2",
+    "CONTROLLED_STAGING_DRILL_fail_3",
+    "CONTROLLED_STAGING_DRILL_short_circuit",
+    "CONTROLLED_STAGING_DRILL_recovery"
+  ],
+  "circuitStateTransitions": [
+    "CLOSED",
+    "OPEN",
+    "HALF_OPEN",
+    "CLOSED"
+  ],
+  "expectedTransitions": [
+    "CLOSED",
+    "OPEN",
+    "HALF_OPEN",
+    "CLOSED"
+  ],
+  "fetchOutcomes": [
+    {
+      "step": "failure-1",
+      "status": "UNAVAILABLE",
+      "circuitState": "CLOSED"
+    },
+    {
+      "step": "failure-2",
+      "status": "UNAVAILABLE",
+      "circuitState": "CLOSED"
+    },
+    {
+      "step": "failure-3",
+      "status": "UNAVAILABLE",
+      "circuitState": "OPEN"
+    },
+    {
+      "step": "short-circuit",
+      "status": "UNAVAILABLE",
+      "circuitState": "OPEN"
+    },
+    {
+      "step": "recovery",
+      "status": "OK",
+      "circuitState": "CLOSED"
+    }
+  ],
+  "existingProblemStatusBefore": "RESOLVED",
+  "existingProblemStatusAfter": "RESOLVED",
+  "existingProblemId": "problem_weather_c0a55555_1783683104438",
+  "vedurFailureThreshold": 3,
+  "vedurCircuitOpenSeconds": 300,
+  "checks": [
+    {
+      "id": "CB-DRILL-000-baseline-problem",
+      "pass": true,
+      "detail": "problemId=problem_weather_c0a55555_1783683104438 status=RESOLVED"
+    },
+    {
+      "id": "CB-DRILL-001-failure-fetch",
+      "pass": true,
+      "detail": "status=UNAVAILABLE circuit=CLOSED"
+    },
+    {
+      "id": "CB-DRILL-002-failure-fetch",
+      "pass": true,
+      "detail": "status=UNAVAILABLE circuit=CLOSED"
+    },
+    {
+      "id": "CB-DRILL-003-failure-fetch",
+      "pass": true,
+      "detail": "status=UNAVAILABLE circuit=OPEN"
+    },
+    {
+      "id": "CB-DRILL-010-circuit-open",
+      "pass": true,
+      "detail": "state=OPEN failures=3"
+    },
+    {
+      "id": "CB-DRILL-011-short-circuit",
+      "pass": true,
+      "detail": "status=UNAVAILABLE reason=vedur_circuit_open circuit=OPEN"
+    },
+    {
+      "id": "CB-DRILL-012-half-open-probe",
+      "pass": true,
+      "detail": "allowed=true state=HALF_OPEN"
+    },
+    {
+      "id": "CB-DRILL-013-recovery-closed",
+      "pass": true,
+      "detail": "status=OK circuit=CLOSED"
+    },
+    {
+      "id": "CB-DRILL-014-problem-unchanged",
+      "pass": true,
+      "detail": "before=RESOLVED after=RESOLVED"
+    },
+    {
+      "id": "CB-DRILL-015-state-transitions",
+      "pass": true,
+      "detail": "CLOSED → OPEN → HALF_OPEN → CLOSED"
+    }
+  ],
+  "result": "READY"
+}

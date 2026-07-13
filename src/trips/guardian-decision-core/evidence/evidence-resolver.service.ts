@@ -18,6 +18,7 @@ import {
 import {
   buildRoadStatusChangedEvent,
   mapRealtimeStatusToChangedStatus,
+  mapRoadDataSourceToSourceProvider,
   type RoadStatusChangedEvent,
   type RoadStatusChangedStatus,
 } from './road-status-changed.event';
@@ -42,6 +43,13 @@ import {
 import type { DailyLoadChangedEvent } from './daily-load-changed.event';
 import { WeatherLiveEvidenceService } from './weather-live-evidence.service';
 import { WorldStateStoreService } from './world-state-store.service';
+import type { ExecutionDepartureSlipEvent } from './execution-departure-changed.event';
+import {
+  assertionImpliesScheduleInfeasible,
+  buildEvidenceRefForExecutionDeparture,
+  executionDepartureSlipToAssertion,
+  type ExecutionDepartureAssertionPayload,
+} from '../adapters/execution-departure-to-assertion.adapter';
 
 export interface ResolveRoadStatusChangedResult {
   event: RoadStatusChangedEvent;
@@ -67,6 +75,15 @@ export interface ResolveDailyLoadChangedResult {
   snapshot: WorldStateSnapshot;
   resolverVersion: string;
   excessiveLoad: boolean;
+  supersededAssertionIds: string[];
+}
+
+export interface ResolveExecutionDepartureSlipResult {
+  event: ExecutionDepartureSlipEvent;
+  assertion: WorldStateAssertion<ExecutionDepartureAssertionPayload>;
+  snapshot: WorldStateSnapshot;
+  resolverVersion: string;
+  scheduleInfeasible: boolean;
   supersededAssertionIds: string[];
 }
 
@@ -179,11 +196,10 @@ export class EvidenceResolverService {
       segmentId: input.segmentId,
       status: nextStatus,
       previousStatus,
-      sourceProvider: rs.seasonalFallback
-        ? 'static_seasonal_data'
-        : rs.dataSource?.includes('cache')
-          ? 'road.is_api_or_cache'
-          : 'road.is_api',
+      sourceProvider: mapRoadDataSourceToSourceProvider({
+        dataSource: rs.dataSource,
+        seasonalFallback: rs.seasonalFallback,
+      }),
       correlationId: input.correlationId,
     });
 
@@ -203,9 +219,10 @@ export class EvidenceResolverService {
       roadId: rs.roadId,
       segmentId: opts?.segmentId,
       status: mapRealtimeStatusToChangedStatus(rs.currentStatus),
-      sourceProvider: rs.seasonalFallback
-        ? 'static_seasonal_data'
-        : 'road.is_api',
+      sourceProvider: mapRoadDataSourceToSourceProvider({
+        dataSource: rs.dataSource,
+        seasonalFallback: rs.seasonalFallback,
+      }),
     });
 
     const assertion = roadStatusSnapshotToAssertion(tripId, rs, {
@@ -385,6 +402,58 @@ export class EvidenceResolverService {
       snapshot,
       resolverVersion: RFC001_EVIDENCE_RESOLVER_VERSION,
       excessiveLoad,
+      supersededAssertionIds,
+    };
+  }
+
+  /**
+   * Slice 3 — Resolve EXECUTION_DEPARTURE_SLIP → WorldStateAssertion + snapshot.
+   */
+  async resolveExecutionDepartureSlip(
+    event: ExecutionDepartureSlipEvent,
+    opts?: { scheduleInfeasible?: boolean },
+  ): Promise<ResolveExecutionDepartureSlipResult> {
+    const tripId = event.aggregateId;
+    const observedAt = event.payload.observedAt;
+    const evidenceRef =
+      event.payload.evidenceRef ??
+      buildEvidenceRefForExecutionDeparture(
+        tripId,
+        event.payload.activityId,
+        observedAt,
+      );
+
+    const assertion = executionDepartureSlipToAssertion({
+      tripId,
+      event: {
+        ...event,
+        payload: { ...event.payload, evidenceRef },
+      },
+      evidenceRef,
+      confidence: event.payload.source === 'USER_REPORT' ? 0.95 : 0.85,
+    });
+
+    await this.worldStateStore.appendTravelDecisionEvent(tripId, {
+      ...event,
+      payload: { ...event.payload, evidenceRef },
+    });
+
+    const { snapshot, supersededAssertionIds } =
+      await this.worldStateStore.appendAssertion(tripId, assertion);
+
+    const scheduleInfeasible =
+      opts?.scheduleInfeasible ?? assertionImpliesScheduleInfeasible(assertion);
+
+    this.logger.debug(
+      `resolveExecutionDepartureSlip trip=${tripId} activity=${event.payload.activityId} infeasible=${scheduleInfeasible} snapshot=${snapshot.snapshotId}`,
+    );
+
+    return {
+      event: { ...event, payload: { ...event.payload, evidenceRef } },
+      assertion,
+      snapshot,
+      resolverVersion: RFC001_EVIDENCE_RESOLVER_VERSION,
+      scheduleInfeasible,
       supersededAssertionIds,
     };
   }

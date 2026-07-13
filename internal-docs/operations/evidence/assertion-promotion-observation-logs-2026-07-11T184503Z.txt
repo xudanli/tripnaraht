@@ -1,0 +1,17 @@
+=== Observation Drills 2026-07-11T184503Z ===
+Sat Jul 11 18:45:03 UTC 2026
+
+=== Phase 1: Hazard Lifecycle (normal shadow, no failpoint) ===
+[start-nest-3002-drill] building...
+✅ 构建成功，输出文件: dist/src/main.js（完整树）
+[start-nest-3002-drill] pid=46130 log=/tmp/nest3002-prod.log
+[start-nest-3002-drill] health ok SHADOW_MODE=1 FAIL_ONCE=0
+{
+  "outPath": "/home/devbox/project/internal-docs/operations/evidence/assertion-promotion-observation-2026-07-11T18-46-01.json",
+  "closure": {
+    "weatherAutoPromotionShadowObservationClosure": "PENDING",
+    "weatherHazardLifecycleDrill": "PENDING",
+    "weatherRecoveryShadowClosure": "PENDING",
+    "retrySchedulerOperationalDrill": "PASS"
+  }
+}

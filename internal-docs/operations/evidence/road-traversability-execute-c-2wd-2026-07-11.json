@@ -1,0 +1,48 @@
+{
+  "evidenceType": "ROAD_TRAVERSABILITY_PRE_SIGNOFF_C_EXECUTE",
+  "evidenceLabel": "ROAD_TRAVERSABILITY_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road Traversability T2 Pre-Signoff Drill",
+  "drillStatus": "Road Traversability T2 Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING TRAVERSABILITY T1 + WEATHER SOAK",
+  "acceptanceMode": "TRAVERSABILITY_REPLAY_SKELETON",
+  "replay": true,
+  "live": false,
+  "vehicleProfile": "2WD",
+  "scenarioId": "RT-F208-001",
+  "startedAt": "2026-07-11T06:32:03.981Z",
+  "endedAt": "2026-07-11T06:32:04.163Z",
+  "tripId": "b0b88888-8888-4888-8888-888888888888",
+  "phase": "EXECUTE",
+  "problemId": "problem_road_F208_b0b88888_1783751523617",
+  "decisionId": "dec_problem_road_F208_b0b88888_1783751523617_1783751523830",
+  "selectedOptionId": "cand_a",
+  "effectivePlanVersionId": "plan_v2_51523830",
+  "checks": [
+    {
+      "id": "RT-C-001",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "recordStatus=EFFECTIVE"
+    },
+    {
+      "id": "RT-C-002",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "f208InAppliedPlan=false"
+    },
+    {
+      "id": "RT-C-003",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "effectiveBefore=plan_1 effectiveAfter=plan_v2_51523830"
+    },
+    {
+      "id": "RT-C-004",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "problemStatus=RESOLVED"
+    }
+  ],
+  "structuralResult": "PASS",
+  "result": "SKELETON_PASS"
+}

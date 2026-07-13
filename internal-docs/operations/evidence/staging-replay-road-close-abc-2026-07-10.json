@@ -1,0 +1,207 @@
+{
+  "suiteId": "staging-replay-road-close-2026-07-10",
+  "generatedAt": "2026-07-10T20:24:17.514Z",
+  "mode": "STAGING_REPLAY",
+  "live": false,
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+  "fixture": {
+    "path": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+    "sha256": "b696bb9fffad5538cf9f04c4bdf68d1a6cd9be58bff54dd31a2e889077601c38",
+    "meta": {
+      "fixtureId": "gagnaveita-f208-replay-v1",
+      "replay": true,
+      "live": false,
+      "sourceUrl": "https://gagnaveita.vegagerdin.is/api/faerd2017_1",
+      "sourceProvider": "vegagerdin_gagnaveita",
+      "fetchedAt": "2026-07-10T20:04:13Z",
+      "egressHost": "47.87.131.183",
+      "egressRegion": "de-frankfurt",
+      "httpStatus": 200,
+      "contentType": "application/json; charset=utf-8",
+      "payloadSha256": "2fed5b6e76f3a1dfa082c5a9cf6d6dda2748d039a3982328633e10163bdd4c4b",
+      "roadId": "F208",
+      "replayScenario": "CLOSED",
+      "replayScenarioNote": "Live snapshot 2026-07-10T20:04:13Z shows F208 north segments as LIMITED/OPEN. Replay CLOSED uses segment identity IdButur=913020036 with LOKAD status enum from live record IdButur=913140036 (Hlöðuvallavegur).",
+      "statusSpliceFromRecordId": 913140036
+    },
+    "fixtureObservedAt": "2026-07-10T20:00:52.000Z"
+  },
+  "phases": {
+    "A": {
+      "evidenceType": "STAGING_REPLAY_ROAD_CLOSE_A_OBSERVE",
+      "acceptanceMode": "STAGING_REPLAY",
+      "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+      "sourceProvider": "vegagerdin_gagnaveita",
+      "startedAt": "2026-07-10T20:24:17.514Z",
+      "endedAt": "2026-07-10T20:24:17.520Z",
+      "tripId": "a0a99999-9999-4999-8999-999999999999",
+      "userId": "a0a99999-9999-4999-8999-999999999901",
+      "phase": "OBSERVE",
+      "problemId": "problem_road_F208_a0a99999_1783715057517",
+      "fixture": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+      "checks": [
+        {
+          "id": "PC-ROAD-A-001",
+          "pass": true,
+          "detail": "destination=IS productionCanary=true"
+        },
+        {
+          "id": "PC-ROAD-A-002",
+          "pass": true,
+          "detail": "assertion.status=CLOSED"
+        },
+        {
+          "id": "PC-ROAD-A-003",
+          "pass": true,
+          "detail": "openProblems=1"
+        },
+        {
+          "id": "PC-ROAD-A-004",
+          "pass": true,
+          "detail": "lineageNodes=4"
+        },
+        {
+          "id": "PC-ROAD-A-005",
+          "pass": true,
+          "detail": "OBSERVE: no decision record / workspace finalize (problem internal-only)"
+        },
+        {
+          "id": "PC-ROAD-A-006",
+          "pass": true,
+          "detail": "pipeline created problem; no repair execution"
+        },
+        {
+          "id": "PC-ROAD-A-007",
+          "pass": true,
+          "detail": "effectivePlan=unchanged"
+        },
+        {
+          "id": "PC-ROAD-A-008",
+          "pass": true,
+          "detail": "legacyWriteInvocations=0"
+        }
+      ],
+      "result": "PASS"
+    },
+    "B": {
+      "evidenceType": "STAGING_REPLAY_ROAD_CLOSE_B_SUGGEST",
+      "acceptanceMode": "STAGING_REPLAY",
+      "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+      "sourceProvider": "vegagerdin_gagnaveita",
+      "startedAt": "2026-07-10T20:24:17.520Z",
+      "endedAt": "2026-07-10T20:24:17.528Z",
+      "tripId": "a0a99999-9999-4999-8999-999999999999",
+      "userId": "a0a99999-9999-4999-8999-999999999901",
+      "phase": "SUGGEST",
+      "problemId": "problem_road_F208_a0a99999_1783715057517",
+      "decisionId": "dec_problem_road_F208_a0a99999_1783715057517_1783715057525",
+      "repairCount": 3,
+      "fixture": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+      "checks": [
+        {
+          "id": "PC-ROAD-B-001",
+          "pass": true,
+          "detail": "repairMethods=ONTOLOGY_EQUIVALENCE,LOCAL_SUBSTITUTION,ROUTE_REPAIR"
+        },
+        {
+          "id": "PC-ROAD-B-002",
+          "pass": true,
+          "detail": "originalBlock=BLOCK"
+        },
+        {
+          "id": "PC-ROAD-B-003",
+          "pass": true,
+          "detail": "executable=3"
+        },
+        {
+          "id": "PC-ROAD-B-004",
+          "pass": true,
+          "detail": "blockedExecutable=0"
+        },
+        {
+          "id": "PC-ROAD-B-005",
+          "pass": true,
+          "detail": "gate=SUGGEST_REPLACE (BLOCK + executable options)"
+        },
+        {
+          "id": "PC-ROAD-B-006",
+          "pass": true,
+          "detail": "bypass=cand_c +90min"
+        },
+        {
+          "id": "PC-ROAD-B-007",
+          "pass": true,
+          "detail": "effectivePlan=unchanged"
+        },
+        {
+          "id": "PC-ROAD-B-008",
+          "pass": true,
+          "detail": "legacyWriteInvocations=0"
+        }
+      ],
+      "result": "PASS"
+    },
+    "C": {
+      "evidenceType": "STAGING_REPLAY_ROAD_CLOSE_C_EXECUTE",
+      "acceptanceMode": "STAGING_REPLAY",
+      "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+      "sourceProvider": "vegagerdin_gagnaveita",
+      "startedAt": "2026-07-10T20:24:17.529Z",
+      "endedAt": "2026-07-10T20:24:17.531Z",
+      "tripId": "a0a99999-9999-4999-8999-999999999999",
+      "userId": "a0a99999-9999-4999-8999-999999999901",
+      "phase": "EXECUTE",
+      "problemId": "problem_road_F208_a0a99999_1783715057517",
+      "decisionId": "dec_problem_road_F208_a0a99999_1783715057517_1783715057525",
+      "selectedOptionId": "cand_c",
+      "effectivePlanVersionId": "plan_v18_15057525",
+      "writeChain": "EVALUATE_AUTHORIZE_EXECUTE",
+      "problemResolved": true,
+      "fixture": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+      "checks": [
+        {
+          "id": "PC-ROAD-C-001",
+          "pass": true,
+          "detail": "writeChain=EVALUATE_AUTHORIZE_EXECUTE"
+        },
+        {
+          "id": "PC-ROAD-C-002",
+          "pass": true,
+          "detail": "recordStatus=EFFECTIVE"
+        },
+        {
+          "id": "PC-ROAD-C-003",
+          "pass": true,
+          "detail": "planVersion=EFFECTIVE revalidation=implicit-pass"
+        },
+        {
+          "id": "PC-ROAD-C-004",
+          "pass": true,
+          "detail": "effectiveBefore=none effectiveAfter=plan_v18_15057525"
+        },
+        {
+          "id": "PC-ROAD-C-005",
+          "pass": true,
+          "detail": "f208InAppliedPlan=false"
+        },
+        {
+          "id": "PC-ROAD-C-006",
+          "pass": true,
+          "detail": "problemStatus=RESOLVED"
+        },
+        {
+          "id": "PC-ROAD-C-007",
+          "pass": true,
+          "detail": "legacyWriteInvocations=0"
+        },
+        {
+          "id": "PC-ROAD-C-008",
+          "pass": true,
+          "detail": "idempotentReplay=true"
+        }
+      ],
+      "result": "PASS"
+    }
+  },
+  "verdict": "PASS"
+}

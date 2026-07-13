@@ -57,7 +57,11 @@ export class ExplorationBudgetDto {
 }
 
 export class ExplorationMobilityContextDto {
-  @ApiPropertyOptional({ example: '2WD_COMPACT_SUV', enum: ['2WD_COMPACT_SUV', '4WD_SUV'] })
+  @ApiPropertyOptional({
+    example: '2WD_COMPACT_SUV',
+    enum: ['2WD_COMPACT_SUV', '4WD_SUV'],
+    description: '自驾车型（当前仅支持自驾出行）',
+  })
   @IsOptional()
   @IsIn(['2WD_COMPACT_SUV', '4WD_SUV'])
   vehicleType?: string;

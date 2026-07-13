@@ -14,6 +14,9 @@ import {
   ValidatorConstraintInterface,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  EXPOSED_PLANNING_WORKBENCH_TRAVEL_MODES,
+} from '../../common/constants/travel-mode-scope.constants';
 import type { PlanSkeletonSet, PlanState } from '../../skills/plan/shared/plan-state.types';
 import type { PlanningWorkbenchRequestMetadata } from '../services/planning-workbench-agent.service';
 import {
@@ -42,12 +45,7 @@ export const PLANNING_WORKBENCH_PACE_FEEDBACK = [
 
 export type PlanningWorkbenchPaceFeedback = (typeof PLANNING_WORKBENCH_PACE_FEEDBACK)[number];
 
-export const PLANNING_WORKBENCH_TRAVEL_MODES = [
-  'self_drive',
-  'public_transit',
-  'walking',
-  'mixed',
-] as const;
+export const PLANNING_WORKBENCH_TRAVEL_MODES = EXPOSED_PLANNING_WORKBENCH_TRAVEL_MODES;
 
 @ValidatorConstraint({ name: 'planningWorkbenchDestination', async: false })
 export class PlanningWorkbenchDestinationConstraint implements ValidatorConstraintInterface {

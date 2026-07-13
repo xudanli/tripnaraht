@@ -30,6 +30,8 @@ export interface PlanVersion {
   status: PlanVersionStatus;
   createdAt: string;
   effectiveAt?: string;
+  /** Per-version metadata bag — TEP writes `tep` namespace */
+  metadata?: Record<string, unknown>;
 }
 
 /** Trip holds only the effective pointer — creating a version ≠ making it effective */

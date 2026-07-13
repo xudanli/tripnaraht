@@ -1,0 +1,115 @@
+{
+  "schemaId": "tripnara.attention_shadow_staging_replay@v1",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "runId": "a4edeaaf-5ea0-4dc2-8aba-32897fee1eca",
+  "scenarioId": "STG-REPLAY-A",
+  "scenarioTitle": "单天气问题 — WEATHER_STRONG_WIND",
+  "setupHint": "Canary trip 仅保留 1 条 OPEN 的 WEATHER_STRONG_WIND（含 weatherEpisodeId + routeSegmentId）。无 execution / road / night。",
+  "runAt": "2026-07-11T13:13:10.960Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "featureFlags": {
+    "attentionOrchestration": true,
+    "primarySso": false
+  },
+  "inputRows": [
+    {
+      "problemId": "stg_attn_wind",
+      "authority": "CANONICAL",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "instanceKey": "WEATHER_STRONG_WIND:stg_attn_wind",
+      "workflowStatus": "OPEN",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "weather strong wind",
+      "summary": "weather strong wind",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "weather strong wind",
+      "queueDescription": "weather strong wind"
+    }
+  ],
+  "normalizedInputs": [
+    {
+      "problemId": "stg_attn_wind",
+      "semanticCapability": "WEATHER_STRONG_WIND",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    }
+  ],
+  "clusters": [
+    {
+      "clusterId": "cluster_weather_strong_wind_c0c77777_7777_4777_8777_777777777777_segment_c0c77777_7777_4777_8777_777777777777_drive_day2_vedur_ep_exec_slip_staging_20260712",
+      "tripId": "c0c77777-7777-4777-8777-777777777777",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "rootCauseType": "WEATHER_STRONG_WIND",
+      "primaryProblemId": "stg_attn_wind",
+      "relatedProblemIds": [],
+      "causalChain": [
+        {
+          "code": "WEATHER_STRONG_WIND",
+          "label": "强风",
+          "problemId": "stg_attn_wind",
+          "order": 0
+        }
+      ],
+      "attentionLevel": "LOG_ONLY",
+      "status": "OPEN",
+      "firstObservedAt": "2026-07-11T13:13:10.957Z",
+      "lastUpdatedAt": "2026-07-11T13:13:10.957Z"
+    }
+  ],
+  "primaryItems": [],
+  "legacyVisibleItems": [
+    {
+      "problemId": "stg_attn_wind",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "title": "weather strong wind",
+      "workflowStatus": "OPEN"
+    }
+  ],
+  "comparison": {
+    "expectedClusterCount": 1,
+    "actualClusterCount": 1,
+    "expectedPrimary": "WEATHER_STRONG_WIND",
+    "actualPrimary": "WEATHER_STRONG_WIND",
+    "primarySelectionReason": "selected WEATHER_STRONG_WIND (stg_attn_wind) by decision-driving > root-cause priority",
+    "actualAttention": "LOG_ONLY",
+    "attentionReason": "attention=LOG_ONLY from capabilities [WEATHER_STRONG_WIND] clusterStatus=OPEN",
+    "expectedVisibleItemCount": 0,
+    "actualVisibleItemCount": 0,
+    "verdict": "NO_OP",
+    "reviewStatus": "AUTO_PASS",
+    "reason": "[TRIP_METADATA_RFC001] Sample STG-REPLAY-A PASS",
+    "underlyingProblemCount": 1
+  },
+  "humanAdjudication": {
+    "shouldMerge": "PENDING",
+    "rootCauseKeyCorrect": "PENDING",
+    "primaryCorrect": "PENDING",
+    "attentionCorrect": "PENDING",
+    "visibleCardCountCorrect": "PENDING",
+    "resolutionBehaviorCorrect": "PENDING",
+    "eligibleForCanary": "PENDING"
+  }
+}

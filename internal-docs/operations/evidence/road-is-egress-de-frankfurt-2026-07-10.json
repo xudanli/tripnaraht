@@ -1,0 +1,36 @@
+{
+  "evidenceType": "ROAD_IS_EGRESS_INVESTIGATION",
+  "probedAt": "2026-07-10T20:00:49Z",
+  "collectorCandidate": "de-frankfurt",
+  "collectorEgressIp": "47.87.131.183",
+  "dnsApiRoadIs": "fail",
+  "dnsGagnaveita": "185.147.137.88",
+  "tcp443Pass": false,
+  "httpApiPass": false,
+  "httpGagnaveitaPass": true,
+  "verdict": "SPIKE_FAIL",
+  "canaryRoadId": "F208",
+  "f208Sample": "parse_fail",
+  "samplePath": "/tmp/road-is-F208-de-frankfurt.json",
+  "recommendedPath": "GAGNAVEITA_LIVE_CANDIDATE — api.road.is DNS fail; official Vegagerdin faerd2017_1 reachable",
+  "diagnosis": "Frankfurt cannot resolve api.road.is (RFC-001 primary adapter URL). gagnaveita.vegagerdin.is/api/faerd2017_1 returns HTTP 200 (~358KB). Slice 2 Live path may require gagnaveita adapter authority or api.road.is DNS fix — not Vedur-style collector for api.road.is until DNS resolves.",
+  "authorityPolicy": {
+    "ROAD_IS_API_LIVE": "NO-GO — DNS fail on devbox and Frankfurt",
+    "GAGNAVEITA_FAERD2017_LIVE": "CANDIDATE — HTTP 200 from Frankfurt; adapter alignment required",
+    "SEASONAL_FALLBACK": "assist only",
+    "REAL_SHAPE_REPLAY": "staging/canary drill until authority frozen"
+  },
+  "statusLabels": {
+    "liveRoadIngestionViaApiRoadIs": "NO-GO",
+    "liveRoadIngestionViaGagnaveita": "EGRESS_PASS_PENDING_ADAPTER",
+    "replayOnlySlice2": true
+  },
+  "probes": [
+    { "name": "egress-ip", "ok": true, "detail": "47.87.131.183" },
+    { "name": "DNS-api.road.is", "ok": false, "stage": "DNS", "detail": "fail" },
+    { "name": "DNS-gagnaveita.vegagerdin.is", "ok": true, "stage": "DNS", "detail": "185.147.137.88" },
+    { "name": "tcp-443-api.road.is", "ok": false, "stage": "TCP", "detail": "DNS fail" },
+    { "name": "http-api-condition-f208", "ok": false, "stage": "HTTP", "detail": "code=000 bytes=0" },
+    { "name": "http-gagnaveita-faerd2017", "ok": true, "stage": "HTTP", "detail": "code=200 bytes=357975" }
+  ]
+}

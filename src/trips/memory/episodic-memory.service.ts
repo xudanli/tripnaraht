@@ -111,7 +111,7 @@ export class EpisodicMemoryService {
     const topAttribution = params.attribution[0];
     const overallScore = params.outcome.overallSatisfaction.score;
 
-    const summary = `${params.keyEvents[0]?.occurredAt?.toISOString().split('T')[0] || 'Unknown'} 的旅行，满意度 ${overallScore.toFixed(2)}/5。关键决策：${topAttribution?.nodeName || '未知'} 贡献最大 (${(topAttribution?.shapleyValue || 0).toFixed(2)})。搭子满意度 ${params.outcome.companionSatisfaction.score.toFixed(2)}，预算准确度 ${params.outcome.budgetAccuracy.score.toFixed(2)}。`;
+    const summary = `${params.keyEvents[0]?.occurredAt?.toISOString().split('T')[0] || 'Unknown'} 的旅行，满意度 ${overallScore.toFixed(2)}/5。关键决策：${topAttribution?.nodeName || '未知'} 贡献最大 (${(topAttribution?.shapleyValue || 0).toFixed(2)})。预算准确度 ${params.outcome.budgetAccuracy.score.toFixed(2)}。`;
 
     return summary;
   }

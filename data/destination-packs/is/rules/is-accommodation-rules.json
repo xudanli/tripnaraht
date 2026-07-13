@@ -1,0 +1,11 @@
+{
+  "schemaId": "tripnara.destination.accommodation_rules@v1",
+  "destination": "IS",
+  "policies": {
+    "defaultLatestArrival": "21:00",
+    "unknownCheckInPolicy": "NEED_CONFIRM",
+    "lateArrivalGraceMinutes": 15,
+    "unreachableAccommodationOutcome": "REJECT",
+    "arrivalAfterLatestOutcome": "NEED_CONFIRM"
+  }
+}

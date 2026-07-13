@@ -1,6 +1,14 @@
 import { buildPendingConfirmations } from './guide-pending-confirmations.util';
 
 describe('buildPendingConfirmations pack hints', () => {
+  it('does not require transportMode confirmation (self-drive only)', () => {
+    const items = buildPendingConfirmations(
+      { countryCode: 'IS' },
+      { countryCode: 'IS' },
+    );
+    expect(items.find((i) => i.field === 'transportMode')).toBeUndefined();
+  });
+
   it('merges pack hints without duplicating fields', () => {
     const items = buildPendingConfirmations(
       { transportMode: 'self_drive', countryCode: 'IS' },

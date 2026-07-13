@@ -13,12 +13,9 @@ export enum AttentionItemType {
   BUDGET_ALERT = 'budget_alert',
   SAFETY_RISK = 'safety_risk',
   BOOKING_ISSUE = 'booking_issue',
+  SOS = 'sos',
   OTHER = 'other',
 }
-
-/**
- * 严重程度
- */
 export enum AttentionSeverity {
   CRITICAL = 'critical',
   HIGH = 'high',

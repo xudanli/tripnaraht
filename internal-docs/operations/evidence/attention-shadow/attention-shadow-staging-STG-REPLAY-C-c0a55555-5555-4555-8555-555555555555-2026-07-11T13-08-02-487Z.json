@@ -1,0 +1,155 @@
+{
+  "schemaId": "tripnara.attention_shadow_staging_replay@v1",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "runId": "b556157f-7ab9-47c0-9cec-244362b92241",
+  "scenarioId": "STG-REPLAY-C",
+  "scenarioTitle": "加入夜间驾驶 — cluster 不变，attention 升级",
+  "setupHint": "在 B 基础上加入 NIGHT_DRIVING_RISK（同 episode lineage）。cluster 数保持 1。",
+  "runAt": "2026-07-11T13:08:02.487Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "featureFlags": {
+    "attentionOrchestration": true,
+    "primarySso": false
+  },
+  "inputRows": [
+    {
+      "problemId": "problem_weather_c0a55555_1783700888409",
+      "authority": "CANONICAL",
+      "semanticKey": "WEATHER_ACTIVITY_PROHIBITED",
+      "instanceKey": "WEATHER_ACTIVITY_PROHIBITED:problem_weather_c0a55555_1783700888409",
+      "workflowStatus": "RESOLVED",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "weather activity prohibited",
+      "summary": "weather activity prohibited",
+      "scope": {
+        "tripId": "c0a55555-5555-4555-8555-555555555555",
+        "itemIds": [
+          "c0a55555-5555-4555-8555-555555555631",
+          "c0a55555-5555-4555-8555-555555555632"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "weather activity prohibited",
+      "queueDescription": "weather activity prohibited"
+    },
+    {
+      "problemId": "problem_weather_c0a55555_1783701000483",
+      "authority": "CANONICAL",
+      "semanticKey": "WEATHER_ACTIVITY_PROHIBITED",
+      "instanceKey": "WEATHER_ACTIVITY_PROHIBITED:problem_weather_c0a55555_1783701000483",
+      "workflowStatus": "DECIDED",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "weather activity prohibited",
+      "summary": "weather activity prohibited",
+      "scope": {
+        "tripId": "c0a55555-5555-4555-8555-555555555555",
+        "itemIds": [
+          "c0a55555-5555-4555-8555-555555555631_rfc001_00888798",
+          "c0a55555-5555-4555-8555-555555555632_rfc001_00888798"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "weather activity prohibited",
+      "queueDescription": "weather activity prohibited"
+    }
+  ],
+  "normalizedInputs": [
+    {
+      "problemId": "problem_weather_c0a55555_1783700888409",
+      "semanticCapability": "WEATHER_STRONG_WIND",
+      "status": "RESOLVED",
+      "weatherEpisodeId": "episode:c0a55555-5555-4555-8555-555555555555:shadow_default",
+      "episodeSource": "ROW",
+      "rootCauseKey": "weather:strong-wind:c0a55555-5555-4555-8555-555555555555:segment:c0a55555-5555-4555-8555-555555555555:shadow_default:episode:c0a55555-5555-4555-8555-555555555555:shadow_default",
+      "mergeAuthority": true
+    },
+    {
+      "problemId": "problem_weather_c0a55555_1783701000483",
+      "semanticCapability": "WEATHER_STRONG_WIND",
+      "status": "DECIDED",
+      "weatherEpisodeId": "episode:c0a55555-5555-4555-8555-555555555555:shadow_default",
+      "episodeSource": "ROW",
+      "rootCauseKey": "weather:strong-wind:c0a55555-5555-4555-8555-555555555555:segment:c0a55555-5555-4555-8555-555555555555:shadow_default:episode:c0a55555-5555-4555-8555-555555555555:shadow_default",
+      "mergeAuthority": true
+    }
+  ],
+  "clusters": [
+    {
+      "clusterId": "cluster_weather_strong_wind_c0a55555_5555_4555_8555_555555555555_segment_c0a55555_5555_4555_8555_555555555555_shadow_default_episode_c0a55555_5555_4555_8555_555555555555_shadow_default",
+      "tripId": "c0a55555-5555-4555-8555-555555555555",
+      "rootCauseKey": "weather:strong-wind:c0a55555-5555-4555-8555-555555555555:segment:c0a55555-5555-4555-8555-555555555555:shadow_default:episode:c0a55555-5555-4555-8555-555555555555:shadow_default",
+      "rootCauseType": "WEATHER_STRONG_WIND",
+      "primaryProblemId": "problem_weather_c0a55555_1783701000483",
+      "relatedProblemIds": [
+        "problem_weather_c0a55555_1783700888409"
+      ],
+      "causalChain": [
+        {
+          "code": "WEATHER_STRONG_WIND",
+          "label": "强风",
+          "problemId": "problem_weather_c0a55555_1783701000483",
+          "order": 0
+        }
+      ],
+      "attentionLevel": "LOG_ONLY",
+      "status": "OPEN",
+      "firstObservedAt": "2026-07-11T13:08:02.487Z",
+      "lastUpdatedAt": "2026-07-11T13:08:02.487Z",
+      "lastAttentionEscalatedAt": "2026-07-11T13:08:02.487Z"
+    }
+  ],
+  "primaryItems": [],
+  "legacyVisibleItems": [
+    {
+      "problemId": "problem_weather_c0a55555_1783701000483",
+      "semanticKey": "WEATHER_ACTIVITY_PROHIBITED",
+      "title": "weather activity prohibited",
+      "workflowStatus": "DECIDED"
+    }
+  ],
+  "comparison": {
+    "expectedClusterCount": 1,
+    "actualClusterCount": 1,
+    "expectedPrimary": "EXECUTION_SCHEDULE_INFEASIBLE",
+    "actualPrimary": "WEATHER_STRONG_WIND",
+    "primarySelectionReason": "selected WEATHER_STRONG_WIND (problem_weather_c0a55555_1783701000483) by decision-driving > root-cause priority",
+    "expectedAttention": "INTERRUPT",
+    "actualAttention": "LOG_ONLY",
+    "attentionReason": "attention=LOG_ONLY from capabilities [WEATHER_STRONG_WIND] clusterStatus=OPEN",
+    "expectedVisibleItemCount": 1,
+    "actualVisibleItemCount": 0,
+    "verdict": "INCONCLUSIVE",
+    "reviewStatus": "AUTO_PENDING_HUMAN",
+    "reason": "[TRIP_METADATA_RFC001] visible items expected 1, got 0; primary expected EXECUTION_SCHEDULE_INFEASIBLE, got WEATHER_STRONG_WIND; attention expected >= INTERRUPT, got LOG_ONLY",
+    "underlyingProblemCount": 2
+  },
+  "humanAdjudication": {
+    "shouldMerge": "PENDING",
+    "rootCauseKeyCorrect": "PENDING",
+    "primaryCorrect": "PENDING",
+    "attentionCorrect": "PENDING",
+    "visibleCardCountCorrect": "PENDING",
+    "resolutionBehaviorCorrect": "PENDING",
+    "eligibleForCanary": "PENDING"
+  }
+}

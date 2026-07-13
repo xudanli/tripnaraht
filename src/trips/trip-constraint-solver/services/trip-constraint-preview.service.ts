@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import type { PlanningRuleResult, DailyDrivePlan } from '../../tep/contracts/tep-self-drive.types';
 import type { AssessTripResponseDto } from '../../dto/trip-metrics.dto';
 import type { TripFeasibilityReportDto } from '../types/trip-constraint-solver.types';
 import type {
@@ -73,6 +74,56 @@ export class TripConstraintPreviewService {
       suggestAdjustDelta:
         before && after ? after.suggestAdjust - before.suggestAdjust : undefined,
     };
+  }
+
+  async captureTepRuleResults(
+    tripId: string,
+    options?: { refresh?: boolean },
+  ): Promise<
+    | {
+        ruleResults: PlanningRuleResult[];
+        dailyDrivePlans: DailyDrivePlan[];
+        itemLabelsById: Map<string, string>;
+        evaluatedAt: string;
+      }
+    | undefined
+  > {
+    const svc = this.getExecutabilityAssessmentService();
+    if (!svc) return undefined;
+    try {
+      const lane = await svc.getTepOnlyPlanningRuleResults(tripId, options);
+      return {
+        ruleResults: lane.ruleResults,
+        dailyDrivePlans: lane.dailyDrivePlans,
+        itemLabelsById: lane.itemLabelsById,
+        evaluatedAt: lane.evaluatedAt,
+      };
+    } catch (e) {
+      this.logger.debug(`tep snapshot failed: ${e}`);
+      return undefined;
+    }
+  }
+
+  private getExecutabilityAssessmentService():
+    | {
+        getTepOnlyPlanningRuleResults: (
+          tripId: string,
+          options?: { refresh?: boolean },
+        ) => Promise<{
+          ruleResults: PlanningRuleResult[];
+          dailyDrivePlans: DailyDrivePlan[];
+          itemLabelsById: Map<string, string>;
+          evaluatedAt: string;
+        }>;
+      }
+    | undefined {
+    try {
+      const { ExecutabilityAssessmentService } =
+        require('../../tep/services/executability-assessment.service') as typeof import('../../tep/services/executability-assessment.service');
+      return this.moduleRef.get(ExecutabilityAssessmentService, { strict: false });
+    } catch {
+      return undefined;
+    }
   }
 
   private getTripMetricsService(): TripMetricsServiceLike | undefined {

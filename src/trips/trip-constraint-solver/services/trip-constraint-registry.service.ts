@@ -42,13 +42,18 @@ import {
 import { isPhase6OfficialRulePersistenceBlocked } from '../../../decision-runtime/phase6-legacy-deprecation.config';
 import { isOfficialConstraintId } from '../utils/country-official-constraints.util';
 import { buildStructuredConstraintImpactPreview } from '../utils/constraint-impact-preview.util';
+import {
+  conflictsForConstraint,
+  primaryChangedConstraintId,
+  simulateScopedPreview,
+} from '../utils/constraint-impact-preview-scope.util';
+import { buildUserFacingImpactPreview, sanitizeDayNumbers } from '../utils/constraint-impact-user-preview.util';
 import { enrichPlanningConflictsWithRelatedConstraintIds } from '../utils/constraint-conflict-link.util';
 import {
-  enrichScopeBindingWithResolvedMember,
-  mergeConstraintValueOnPatch,
+  applyConstraintScopePatch,
+  inferCoarseScopeFromBinding,
+  readConstraintExtendedValue,
   readScopeBindingFromValue,
-  resolveScopeFromPatch,
-  validateScopeBinding,
   writeConstraintExtendedValue,
 } from '../utils/constraint-scope-binding.util';
 import {
@@ -235,19 +240,31 @@ export class TripConstraintRegistryService {
       }
 
       const mergedValue = mergeTemplateValue(def, dto.value);
-      const scopeBinding = readScopeBindingFromValue(mergedValue);
+      const teamGovernance = (trip.metadata as Record<string, unknown>)?.travelDecisionContract;
+      const scopePatch = applyConstraintScopePatch({
+        prevScope: def.scope,
+        prevValue: mergedValue,
+        dtoScope: dto.scope ?? def.scope,
+        dtoValue: dto.value,
+        teamGovernance,
+      });
+      if (scopePatch.errors?.length) {
+        throw new BadRequestException({
+          code: 'INVALID_SCOPE_BINDING',
+          message: scopePatch.errors[0]?.message ?? 'scopeBinding 无效',
+          errors: scopePatch.errors,
+        });
+      }
+      const resolvedScope = scopePatch.scope;
       const stored: StoredUnifiedConstraint = {
         ...buildStoredTemplateConstraint({
           def,
-          dtoValue: dto.value,
+          dtoValue: scopePatch.value,
           dtoPriority: dto.priority,
           dtoName: dto.name,
           dtoDescription: dto.description,
           dtoCategory: dto.category,
-          dtoScope:
-            resolveScopeFromPatch({ scopeBinding, scope: dto.scope ?? def.scope }) ??
-            dto.scope ??
-            def.scope,
+          dtoScope: resolvedScope,
           dtoOperator: dto.operator,
           dtoType: dto.type,
           dtoAllowRelaxation: dto.allowRelaxation,
@@ -256,10 +273,8 @@ export class TripConstraintRegistryService {
           stableId,
           sourceType: dto.source?.type,
         }),
-        scope:
-          resolveScopeFromPatch({ scopeBinding, scope: dto.scope ?? def.scope }) ??
-          dto.scope ??
-          def.scope,
+        scope: resolvedScope,
+        value: scopePatch.value,
         tolerance: dto.tolerance,
         locked: dto.locked ?? false,
         visibility: dto.visibility ?? 'TEAM',
@@ -507,21 +522,19 @@ export class TripConstraintRegistryService {
 
     const assessBefore = await this.preview.captureAssessSummary(tripId);
     const feasibilityBefore = await this.preview.captureFeasibilitySnapshot(tripId);
-
-    const recommendations: string[] = [];
-    if (refreshType === 'quick') {
-      recommendations.push('轻量变更已接入 assess 读模型');
-    } else {
-      recommendations.push('重量变更已接入 feasibility 读模型；persist=true 时将触发 validate-scope');
-    }
+    const tepSnapshot = await this.preview.captureTepRuleResults(tripId, {
+      refresh: dto.persist === true,
+    });
 
     let conflictsAfter: TripConstraintImpactPreviewResponse['conflictsAfter'] | undefined;
-    let suggestedFollowUp: TripConstraintImpactPreviewResponse['suggestedFollowUp'];
+    let suggestedFollowUpLegacy:
+      | { endpoint: string; body?: Record<string, unknown> }
+      | undefined;
     let assessAfter: TripConstraintImpactPreviewResponse['assessAfter'];
     let feasibilityAfter: TripConstraintImpactPreviewResponse['feasibilityAfter'];
     let budgetDelta: TripConstraintImpactPreviewResponse['budgetDelta'];
 
-    const budgetChange = dto.changes.find((c) => c.constraintId === TRIP_CONSTRAINT_LEGACY_IDS.BUDGET_TOTAL);
+    const budgetChange = (dto.changes ?? []).find((c) => c.constraintId === TRIP_CONSTRAINT_LEGACY_IDS.BUDGET_TOTAL);
     if (budgetChange?.patch?.value != null && summary.budget.total != null) {
       const newTotal = Number(budgetChange.patch.value);
       if (!Number.isNaN(newTotal)) {
@@ -531,6 +544,8 @@ export class TripConstraintRegistryService {
         };
       }
     }
+
+    let afterPersistConflicts: import('../types/planning-conflicts.types').PlanningConflictItem[] | undefined;
 
     if (dto.persist === true) {
       let version = summary.constraintsVersion;
@@ -542,6 +557,7 @@ export class TripConstraintRegistryService {
         version = (await this.constraintsSummary.getSummary(tripId)).constraintsVersion;
       }
       const after = await this.planningConflicts.getPlanningConflicts(tripId);
+      afterPersistConflicts = after.conflicts;
       conflictsAfter = {
         mustHandle: after.summary.mustHandle,
         suggestAdjust: after.summary.suggestAdjust,
@@ -563,28 +579,45 @@ export class TripConstraintRegistryService {
         }
       }
     } else if (refreshType === 'deep') {
-      suggestedFollowUp = {
+      suggestedFollowUpLegacy = {
         endpoint: `/api/trips/${tripId}/feasibility-report/validate`,
         body: { forceRefreshEvidence: true },
       };
     }
 
-    const affectedDays = affectedDaysFromConflicts(before);
-
-    const executeabilityDelta = this.preview.computeExecuteabilityDelta(
-      feasibilityBefore,
-      feasibilityAfter,
-      assessBefore,
-      assessAfter,
-    );
-
     const refreshedSummary = await this.constraintsSummary.getSummary(tripId);
-    const { items } = await this.buildList(tripId, userId);
-    const structuredImpact = buildStructuredConstraintImpactPreview({
-      changes: dto.changes,
+    const listResult = await this.buildList(tripId, userId);
+    const items = Array.isArray(listResult.items) ? listResult.items : [];
+
+    const primaryConstraintId = primaryChangedConstraintId(dto.changes ?? []);
+    const tripDayCount = summary.timeRange.dayCount;
+    const enrichedBefore = enrichPlanningConflictsWithRelatedConstraintIds(before.conflicts);
+
+    const persistedScopedConflicts =
+      dto.persist === true && afterPersistConflicts
+        ? conflictsForConstraint(
+            primaryConstraintId,
+            enrichPlanningConflictsWithRelatedConstraintIds(afterPersistConflicts),
+          )
+        : undefined;
+
+    const scopedPreview = simulateScopedPreview({
+      constraintId: primaryConstraintId ?? dto.changes?.[0]?.constraintId ?? '',
+      changes: dto.changes ?? [],
       items,
-      conflictsBefore: before.conflicts,
-      conflictsAfter,
+      allConflicts: enrichedBefore,
+      tripDayCount,
+      assessBefore,
+      feasibilityBefore,
+      persistedAfter: conflictsAfter,
+      persistedScopedConflicts,
+    });
+
+    const structuredImpact = buildStructuredConstraintImpactPreview({
+      changes: dto.changes ?? [],
+      items,
+      conflictsBefore: scopedPreview.scopedConflicts,
+      conflictsAfter: scopedPreview.conflictsAfter,
       assessBefore,
       assessAfter,
       feasibilityBefore,
@@ -593,26 +626,76 @@ export class TripConstraintRegistryService {
       budgetTotalBefore: summary.budget.total,
     });
 
-    return {
+    const affectedDays = sanitizeDayNumbers(
+      scopedPreview.affectedDays.length
+        ? scopedPreview.affectedDays
+        : affectedDaysFromConflicts(before),
+      tripDayCount,
+    );
+
+    const userFacing = buildUserFacingImpactPreview({
       tripId,
-      constraintsVersion: refreshedSummary.constraintsVersion,
+      tripDayCount,
       refreshType,
-      affectedDays: affectedDays.length ? affectedDays : undefined,
-      budgetDelta,
-      conflictsBefore: {
-        mustHandle: before.summary.mustHandle,
-        suggestAdjust: before.summary.suggestAdjust,
-        pendingConfirm: before.summary.pendingConfirm,
-      },
-      conflictsAfter,
+      persist: dto.persist === true,
+      changes: dto.changes ?? [],
+      items,
+      conflictItems: enrichedBefore,
+      conflictsBefore: scopedPreview.conflictsBefore,
+      conflictsAfter: scopedPreview.conflictsAfter,
       assessBefore,
       assessAfter,
       feasibilityBefore,
       feasibilityAfter,
-      executeabilityDelta,
-      recommendations: [...structuredImpact.summaryBullets, ...recommendations],
-      suggestedFollowUp,
       structuredImpact,
+      tepRuleResults: tepSnapshot?.ruleResults,
+      dailyDrivePlans: tepSnapshot?.dailyDrivePlans,
+      itemLabelsById: tepSnapshot?.itemLabelsById,
+      evaluatedAt: tepSnapshot?.evaluatedAt,
+      primaryConstraintId: primaryConstraintId ?? undefined,
+      scopedPreview,
+    });
+
+    return {
+      tripId,
+      constraintsVersion: refreshedSummary.constraintsVersion,
+      refreshType,
+      affectedDays: userFacing.affectedDays.length
+        ? userFacing.affectedDays.map((d) => d.dayNumber)
+        : affectedDays,
+      budgetDelta,
+      conflictsBefore: scopedPreview.conflictsBefore,
+      conflictsAfter: scopedPreview.conflictsAfter,
+      assessBefore,
+      assessAfter,
+      feasibilityBefore,
+      feasibilityAfter,
+      executeabilityDelta: userFacing.executeabilityDelta,
+      recommendations: userFacing.diffBullets,
+      diffBullets: userFacing.diffBullets,
+      userSummary: userFacing.userSummary,
+      suggestedFollowUp: userFacing.suggestedFollowUp,
+      scheduleDetailLevel: userFacing.scheduleDetailLevel,
+      scheduleDetailUnavailableReason: userFacing.scheduleDetailUnavailableReason,
+      affectedDayDetails: userFacing.affectedDayDetails,
+      constraintAssessments: userFacing.constraintAssessments,
+      meta: {
+        ...userFacing.meta,
+        debug: {
+          ...userFacing.meta?.debug,
+          scopedConstraintId: primaryConstraintId,
+          tripLevelConflictsBefore: {
+            mustHandle: before.summary.mustHandle,
+            suggestAdjust: before.summary.suggestAdjust,
+            pendingConfirm: before.summary.pendingConfirm,
+          },
+          tripLevelConflictsAfter: conflictsAfter,
+          ...(suggestedFollowUpLegacy
+            ? { endpoint: suggestedFollowUpLegacy.endpoint, body: suggestedFollowUpLegacy.body }
+            : {}),
+        },
+      },
+      structuredImpact: userFacing.structuredImpact,
     };
   }
 
@@ -739,6 +822,15 @@ export class TripConstraintRegistryService {
     }
   }
 
+  private throwScopePatchErrors(errors?: { field: string; message: string }[]) {
+    if (!errors?.length) return;
+    throw new BadRequestException({
+      code: 'INVALID_SCOPE_BINDING',
+      message: errors[0]?.message ?? 'scopeBinding 无效',
+      errors,
+    });
+  }
+
   private async patchLegacyField(
     tripId: string,
     trip: { destination: string; metadata: unknown; pacingConfig: unknown; budgetConfig: unknown },
@@ -828,6 +920,23 @@ export class TripConstraintRegistryService {
         const c4: Record<string, unknown> = {
           ...((metadata.constraints as Record<string, unknown>) ?? {}),
         };
+        let segmentChanged = false;
+        if (dto.value != null || dto.scope != null) {
+          const prevExt = readConstraintExtendedValue(metadata, constraintId) ?? {};
+          const scopePatch = applyConstraintScopePatch({
+            prevScope: { type: 'ROUTE_SEGMENT' },
+            prevValue: prevExt,
+            dtoScope: dto.scope,
+            dtoValue: dto.value,
+            teamGovernance: metadata.travelDecisionContract,
+          });
+          this.throwScopePatchErrors(scopePatch.errors);
+          Object.assign(
+            metadata,
+            writeConstraintExtendedValue(metadata, constraintId, scopePatch.value),
+          );
+          segmentChanged = true;
+        }
         if (
           applyMaxSegmentDistanceConstraintPatch(c4, {
             value: dto.value,
@@ -836,17 +945,33 @@ export class TripConstraintRegistryService {
           })
         ) {
           metadata.constraints = c4;
-          bumpMeta = true;
+          segmentChanged = true;
         }
+        if (segmentChanged) bumpMeta = true;
         break;
       }
       case TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE: {
         const c5: Record<string, unknown> = {
           ...((metadata.constraints as Record<string, unknown>) ?? {}),
         };
-        if (dto.value != null) {
-          Object.assign(metadata, writeConstraintExtendedValue(metadata, constraintId, dto.value));
-          if (applyMaxDailyDrivingHoursConstraintPatch(c5, dto.value)) {
+        if (dto.value != null || dto.scope != null) {
+          const prevExt = readConstraintExtendedValue(metadata, constraintId);
+          const prevBinding = readScopeBindingFromValue(prevExt);
+          const scopePatch = applyConstraintScopePatch({
+            prevScope: prevBinding
+              ? (inferCoarseScopeFromBinding(prevBinding) ?? { type: 'TRIP' })
+              : { type: 'TRIP' },
+            prevValue: prevExt ?? {},
+            dtoScope: dto.scope,
+            dtoValue: dto.value,
+            teamGovernance: metadata.travelDecisionContract,
+          });
+          this.throwScopePatchErrors(scopePatch.errors);
+          Object.assign(
+            metadata,
+            writeConstraintExtendedValue(metadata, constraintId, scopePatch.value),
+          );
+          if (applyMaxDailyDrivingHoursConstraintPatch(c5, scopePatch.value)) {
             metadata.constraints = c5;
           }
           bumpMeta = true;
@@ -857,7 +982,32 @@ export class TripConstraintRegistryService {
         const c6: Record<string, unknown> = {
           ...((metadata.constraints as Record<string, unknown>) ?? {}),
         };
-        if (
+        const prevCfg =
+          c6.noNightDrive && typeof c6.noNightDrive === 'object'
+            ? (c6.noNightDrive as Record<string, unknown>)
+            : {};
+        if (dto.value != null || dto.scope != null) {
+          const prevBinding = readScopeBindingFromValue(prevCfg);
+          const scopePatch = applyConstraintScopePatch({
+            prevScope: prevBinding
+              ? (inferCoarseScopeFromBinding(prevBinding) ?? { type: 'TRIP' })
+              : { type: 'TRIP' },
+            prevValue: prevCfg,
+            dtoScope: dto.scope,
+            dtoValue: dto.value,
+            teamGovernance: metadata.travelDecisionContract,
+          });
+          this.throwScopePatchErrors(scopePatch.errors);
+          if (
+            applyNoNightDriveConstraintPatch(c6, {
+              value: scopePatch.value,
+              status: dto.status,
+            })
+          ) {
+            metadata.constraints = c6;
+            bumpMeta = true;
+          }
+        } else if (
           applyNoNightDriveConstraintPatch(c6, {
             value: dto.value,
             status: dto.status,
@@ -925,26 +1075,29 @@ export class TripConstraintRegistryService {
 
     const prev = list[idx];
     const { constraintsVersion: _v, ...rest } = dto;
-    let mergedValue = prev.value;
-    if (dto.value !== undefined) {
-      mergedValue = mergeConstraintValueOnPatch(prev.value, dto.value);
-    }
     const teamGovernance = (trip.metadata as Record<string, unknown>)?.travelDecisionContract;
-    let scopeBinding = readScopeBindingFromValue(mergedValue);
-    if (scopeBinding) {
-      const errors = validateScopeBinding(scopeBinding);
-      if (errors.length > 0) {
+
+    let mergedValue = prev.value;
+    let nextScope = prev.scope;
+    if (dto.value !== undefined || dto.scope !== undefined) {
+      const scopePatch = applyConstraintScopePatch({
+        prevScope: prev.scope,
+        prevValue: prev.value,
+        dtoScope: dto.scope,
+        dtoValue: dto.value,
+        teamGovernance,
+      });
+      if (scopePatch.errors?.length) {
         throw new BadRequestException({
           code: 'INVALID_SCOPE_BINDING',
-          message: errors[0]?.message ?? 'scopeBinding 无效',
-          errors,
+          message: scopePatch.errors[0]?.message ?? 'scopeBinding 无效',
+          errors: scopePatch.errors,
         });
       }
-      scopeBinding = enrichScopeBindingWithResolvedMember(scopeBinding, teamGovernance);
-      if (mergedValue && typeof mergedValue === 'object') {
-        mergedValue = { ...(mergedValue as Record<string, unknown>), scopeBinding };
-      }
+      mergedValue = scopePatch.value;
+      nextScope = scopePatch.scope;
     }
+
     let nextPriority = dto.priority ?? prev.priority;
     if (prev.type === 'SOFT' && (dto.priority !== undefined || dto.value !== undefined)) {
       const def = prev.source.templateId ? getConstraintTemplate(prev.source.templateId) : undefined;
@@ -956,11 +1109,6 @@ export class TripConstraintRegistryService {
       nextPriority = normalized.priority;
       mergedValue = normalized.value;
     }
-    const nextScope =
-      resolveScopeFromPatch({
-        scopeBinding: scopeBinding ?? readScopeBindingFromValue(mergedValue),
-        scope: rest.scope ?? prev.scope,
-      }) ?? rest.scope ?? prev.scope;
     const next: StoredUnifiedConstraint = {
       ...prev,
       ...rest,
@@ -1022,6 +1170,8 @@ export class TripConstraintRegistryService {
         if (constraintId === TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE) {
           delete c.maxDailyDrivingHours;
           delete c.maxDailyDriveHours;
+          delete c.maxDailyDriveMinutes;
+          delete c.max_daily_drive_minutes;
           const ext = { ...((metadata.constraintExtendedValues as Record<string, unknown>) ?? {}) };
           delete ext[constraintId];
           metadata.constraintExtendedValues = ext;
@@ -1056,7 +1206,7 @@ export class TripConstraintRegistryService {
 }
 
 function affectedDaysFromConflicts(
-  before: { conflicts: import('../types/planning-conflicts.types').PlanningConflictItem[] },
+  before: { conflicts?: import('../types/planning-conflicts.types').PlanningConflictItem[] },
 ): number[] {
-  return [...new Set(before.conflicts.flatMap((c) => c.affectedDays ?? []))].sort((a, b) => a - b);
+  return [...new Set((Array.isArray(before.conflicts) ? before.conflicts : []).flatMap((c) => c.affectedDays ?? []))].sort((a, b) => a - b);
 }

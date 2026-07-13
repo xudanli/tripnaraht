@@ -84,9 +84,9 @@ export function inferScopedConflictConstraintIds(
 }
 
 export function enrichPlanningConflictsWithRelatedConstraintIds(
-  conflicts: PlanningConflictItem[],
+  conflicts: PlanningConflictItem[] | null | undefined,
 ): PlanningConflictItem[] {
-  return conflicts.map((c) => ({
+  return (Array.isArray(conflicts) ? conflicts : []).map((c) => ({
     ...c,
     relatedConstraintIds: inferRelatedConstraintIdsFromConflict(c),
   }));

@@ -30,6 +30,12 @@ import {
 import {
   evaluateAbuRoadConstraintForCandidate,
 } from '../adapters/abu-road-constraint.adapter';
+import { buildTraversabilityAssessmentForRoad } from '../assessment/road-traversability-trip-context.util';
+import { ROAD_TRAVERSABILITY_ASSESSOR_VERSION } from '../assessment/road-traversability.assessor';
+import {
+  loadRoadSegmentProfilesForCountry,
+  resolveRoadSegmentProfile,
+} from '../../../decision-runtime/packs/road/road-segment-profile.loader';
 import {
   evaluateDreRoadLoadForCandidate,
   mergeDreStrategyIntoRoadLoadAssessment,
@@ -158,6 +164,21 @@ export class RoadSegmentUnavailableEvaluateService {
     const destinationCountry =
       resolveTripDestinationCountry(tripRow?.destination) ?? 'GLOBAL';
 
+    const tripMetadata = (tripRow?.metadata ?? {}) as Record<string, unknown>;
+    const worldStore = await this.worldStateStore.readStore(tripId);
+    const traversabilityAssessment = buildTraversabilityAssessmentForRoad(
+      tripId,
+      evidence.event.payload.roadId,
+      roadAssertion,
+      tripMetadata,
+      tripRow?.destination,
+      { worldAssertions: worldStore.assertions },
+    );
+    const profileBundle = loadRoadSegmentProfilesForCountry(destinationCountry);
+    const roadProfile = profileBundle
+      ? resolveRoadSegmentProfile(evidence.event.payload.roadId, profileBundle)
+      : null;
+
     const world = buildMinimalEvaluateWorld({
       countryCode: destinationCountry,
       roadId: evidence.event.payload.roadId,
@@ -203,6 +224,7 @@ export class RoadSegmentUnavailableEvaluateService {
         candidatePlan,
         bindings,
         destinationCountry: tripRow?.destination ?? undefined,
+        traversabilityAssessment,
       });
       constraintAssertions.push(roadConstraint);
 
@@ -286,6 +308,15 @@ export class RoadSegmentUnavailableEvaluateService {
       constraintAssertions,
       loadAssessments,
       repairCandidates,
+      roadTraversability: traversabilityAssessment
+        ? {
+            roadId: evidence.event.payload.roadId.toUpperCase(),
+            segmentId: roadProfile?.segmentId,
+            assessment: traversabilityAssessment,
+            assessorVersion: ROAD_TRAVERSABILITY_ASSESSOR_VERSION,
+            evaluatedAt: new Date().toISOString(),
+          }
+        : undefined,
       revision: workspace.revision + 1,
       status: 'COLLECTING',
     });

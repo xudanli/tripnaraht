@@ -108,7 +108,7 @@ describe('trip-constraint-aggregate.util', () => {
   });
 
   it('aggregateTripConstraints: self-drive includes no_night_drive with contractMeta', () => {
-    const { items } = aggregateTripConstraints({
+    const { items, meta } = aggregateTripConstraints({
       trip: {
         id: 'trip-self-drive',
         destination: 'IS',
@@ -132,11 +132,24 @@ describe('trip-constraint-aggregate.util', () => {
       userId: 'user-1',
     });
 
+    const hardSection = meta.sections?.find((s) => s.key === 'hard_must_satisfy');
+    const officialSection = meta.sections?.find((s) => s.key === 'readonly_official');
+    expect(hardSection?.constraintIds).toContain(TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE);
+    expect(hardSection?.constraintIds).toContain(TRIP_CONSTRAINT_LEGACY_IDS.NO_NIGHT_DRIVE);
+    expect(officialSection?.constraintIds ?? []).not.toContain(TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE);
+
     const noNight = items.find((c) => c.id === TRIP_CONSTRAINT_LEGACY_IDS.NO_NIGHT_DRIVE);
     expect(noNight).toBeDefined();
     expect(noNight?.type).toBe('HARD');
     expect(noNight?.contractMeta?.judgmentRule).toContain('日落后');
     expect(noNight?.source.templateId).toBe('no_night_drive');
+
+    const maxDaily = items.find((c) => c.id === TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE);
+    expect(maxDaily).toBeDefined();
+    expect(maxDaily?.type).toBe('HARD');
+    expect(maxDaily?.source.type).toBe('USER');
+    expect(maxDaily?.source.templateId).toBe('max_daily_drive');
+    expect(maxDaily?.contractMeta?.judgmentRule).toContain('小时');
 
     const budget = items.find((c) => c.id === TRIP_CONSTRAINT_LEGACY_IDS.BUDGET_TOTAL);
     expect(budget?.contractMeta?.judgmentRule).toContain('50000');

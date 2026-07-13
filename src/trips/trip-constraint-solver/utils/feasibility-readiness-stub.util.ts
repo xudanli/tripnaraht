@@ -11,11 +11,12 @@ export function buildStubReadinessFromSnapshot(
       : 75;
   const score = {
     overall,
-    evidenceCoverage: overall,
-    scheduleFeasibility: overall,
-    transportCertainty: overall,
-    safetyRisk: overall,
-    buffers: overall,
+    entryTransit: overall,
+    healthInsurance: overall,
+    gearPacking: overall,
+    bookingsCredentials: overall,
+    logisticsComms: overall,
+    emergency: overall,
   };
   return {
     tripId,

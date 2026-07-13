@@ -56,10 +56,8 @@ import {
   mapSummaryToRepairOptionsGuardianNegotiation,
   pickGuardianSummaryForBlocker,
 } from '../utils/readiness-guardian-negotiation.util';
-import {
-  calculateSafetyRiskForPhase,
-  calculateTransportCertaintyForPhase,
-} from '../utils/trip-readiness-score.util';
+import { buildDeparturePreparationScore } from '../utils/departure-preparation-score.util';
+import { collectDeparturePrepItems } from '../../trip-constraint-solver/utils/departure-prep-projection.util';
 import { buildCoverageDisclosureFromCoverageMap } from '../../../travel-cognition';
 import {
   buildReadinessCausalPreanalysis,
@@ -70,10 +68,10 @@ import {
 import { extractTripPhysicalValidationSnapshot } from '../../../domain/ontology/bridge/physical-violation-snapshot.util';
 import { ReadinessCausalPreanalysisService } from './readiness-causal-preanalysis.service';
 import { ReadinessGuardianNegotiationService } from './readiness-guardian-negotiation.service';
-import type { PoiAccessReadinessBridgeService } from '../../../poi-access-capacity/services/poi-access-readiness-bridge.service';
+import { TripPrerequisiteService } from '../../prerequisites/services/trip-prerequisite.service';
+import { mergePrerequisitePrepItemsIntoReadinessTree } from '../../prerequisites/utils/prerequisite-projection.util';
 import { RouteGeometryService } from '../../../transport/services/route-geometry.service';
 import { encodePolyline } from '../../../transport/utils/encoded-polyline.util';
-import { scoreFindingToTreeItem } from '../../../poi-access-capacity/utils/poi-access-readiness-findings.util';
 import { resolvePlaceCoordinates } from '../../../places/utils/place-coordinates.util';
 import {
   ReadinessCheckResult,
@@ -112,7 +110,7 @@ export class CoverageMapService {
     private readonly readinessService: ReadinessService,
     @Optional() private readonly causalPreanalysisService?: ReadinessCausalPreanalysisService,
     @Optional() private readonly guardianNegotiationService?: ReadinessGuardianNegotiationService,
-    @Optional() private readonly poiAccessReadiness?: PoiAccessReadinessBridgeService,
+    @Optional() private readonly tripPrerequisites?: TripPrerequisiteService,
     @Optional() private readonly routeGeometry?: RouteGeometryService,
   ) {}
 
@@ -1242,8 +1240,8 @@ export class CoverageMapService {
       status: trip.status,
     });
 
-    // 提取发现项
-    let findings = this.extractFindings(trip, coverageData, readinessResult);
+    // 提取发现项（PR-1：仅 Pack 出发准备域）
+    let findings = this.extractDeparturePrepFindings(readinessResult as ReadinessCheckResult);
 
     // 过滤用户已标记为「不适用」的项
     const notApplicableMarks = await this.prisma.tripFindingMark.findMany({
@@ -1255,26 +1253,10 @@ export class CoverageMapService {
       findings = findings.filter((f) => !excludedIds.has(f.id));
     }
 
-    if (this.poiAccessReadiness) {
-      try {
-        const accessFindings = await this.poiAccessReadiness.buildReadinessFindings({
-          id: trip.id,
-          destination: trip.destination,
-          status: trip.status,
-          startDate: trip.startDate,
-          metadata: trip.metadata,
-        });
-        const existingIds = new Set(findings.map((f) => f.id));
-        for (const af of accessFindings) {
-          if (!existingIds.has(af.id)) findings.push(af);
-        }
-      } catch (err) {
-        this.logger.warn(`POI Access readiness findings skipped: ${(err as Error).message}`);
-      }
-    }
+    // PR-1：POI Access / 方案缺口不再注入 readiness score（见 feasibility-report）
 
-    // 提取风险项
-    const risks = this.extractRisks(coverageData, readinessResult);
+    // 提取风险项（Pack 目的地风险 only）
+    const risks = this.extractPackRisks(readinessResult);
 
     // 生成摘要
     const blockers = findings.filter(f => f.type === 'blocker').length;
@@ -1351,7 +1333,6 @@ export class CoverageMapService {
       guardianNegotiation,
       coverageDisclosure: buildCoverageDisclosureFromCoverageMap(coverageData),
       causalPreAnalysis,
-      cascadeUiHints: buildReadinessCascadeUiHints(causalPreAnalysis),
     };
   }
 
@@ -1398,32 +1379,17 @@ export class CoverageMapService {
     const coverageFull = await this.getCoverageMap(tripId);
     const dayCoverage = filterCoverageMapForDay(coverageFull, day);
 
-    let readinessResult: any;
-    try {
-      readinessResult = await this.readinessService.checkFromDestination(trip.destination, {
-        traveler: {},
-        trip: {
-          startDate: trip.startDate.toISOString().split('T')[0],
-          endDate: trip.endDate.toISOString().split('T')[0],
-        },
-        itinerary: { countries: [trip.destination] },
-      });
-    } catch (error) {
-      this.logger.warn(`获取准备度数据失败: ${(error as Error).message}`);
-      readinessResult = { findings: [], summary: {} };
-    }
-
-    const score = this.calculateScoreBreakdown(trip, dayCoverage, readinessResult);
-    const allFindings = this.extractFindings(trip, dayCoverage, readinessResult);
+    const allFindings = this.extractTodayScopedFindings(dayCoverage);
     const findings = allFindings.filter((f) => findingAppliesToDay(f, day));
-    const risks = this.extractRisks(dayCoverage, readinessResult).filter((r) =>
+    const risks = this.extractTodayScopedRisks(dayCoverage).filter((r) =>
       riskAppliesToDay(r, dayCoverage),
     );
 
     const blockers = findings.filter((f) => f.type === 'blocker').length;
     const must = findings.filter((f) => f.type === 'must' || f.type === 'warning').length;
     const should = findings.filter((f) => f.type === 'should' || f.type === 'suggestion').length;
-    const status = deriveTodayReadinessStatus(blockers, must, score.overall);
+    const todayOverall = this.computeTodayExecutionScore(findings);
+    const status = deriveTodayReadinessStatus(blockers, must, todayOverall);
 
     const severityRank = { high: 0, medium: 1, low: 2 };
     const topFindings = [...findings]
@@ -1447,13 +1413,15 @@ export class CoverageMapService {
       dayNumber: day,
       date,
       status,
-      score: score.overall,
+      score: todayOverall,
       summary: { blockers, must, should },
       dimensions: {
-        evidenceCoverage: score.evidenceCoverage,
-        scheduleFeasibility: score.scheduleFeasibility,
-        transportCertainty: score.transportCertainty,
-        safetyRisk: score.safetyRisk,
+        entryTransit: todayOverall,
+        healthInsurance: todayOverall,
+        gearPacking: todayOverall,
+        bookingsCredentials: todayOverall,
+        logisticsComms: todayOverall,
+        emergency: todayOverall,
       },
       topFindings,
       readinessPhase: 'in_trip',
@@ -1472,189 +1440,41 @@ export class CoverageMapService {
    * 缺口项 id 使用 `coverage-gap:${gap.id}`，与 {@link extractFindings} 中对应条目一致。
    */
   async mergeHighSeverityCoverageGapBlockersIntoTripReadiness(
-    tripId: string,
-    destinationId: string,
+    _tripId: string,
+    _destinationId: string,
     result: ReadinessCheckResult,
   ): Promise<ReadinessCheckResult> {
-    let coverageData: CoverageMapData;
-    try {
-      coverageData = await this.getCoverageMap(tripId);
-    } catch (e) {
-      this.logger.warn(
-        `mergeHighSeverityCoverageGapBlockersIntoTripReadiness: getCoverageMap failed: ${(e as Error).message}`,
-      );
-      return result;
-    }
-
-    const gapBlockers = this.highSeverityGapsToBlockerItems(coverageData);
-    if (gapBlockers.length === 0) {
-      return result;
-    }
-
-    const existingIds = new Set<string>();
-    for (const f of result.findings) {
-      for (const item of [...f.blockers, ...f.must, ...f.should, ...f.optional]) {
-        existingIds.add(item.id);
-      }
-    }
-
-    const toAdd = gapBlockers.filter((b) => !existingIds.has(b.id));
-    if (toAdd.length === 0) {
-      return result;
-    }
-
-    let findings: ReadinessFinding[];
-    if (result.findings.length === 0) {
-      findings = [
-        {
-          destinationId,
-          packId: 'internal.coverage-map',
-          packVersion: '1',
-          blockers: toAdd,
-          must: [],
-          should: [],
-          optional: [],
-          risks: [],
-        },
-      ];
-    } else {
-      const matchIdx = result.findings.findIndex((f) => f.destinationId === destinationId);
-      const idx = matchIdx >= 0 ? matchIdx : 0;
-      findings = result.findings.map((f, i) =>
-        i === idx ? { ...f, blockers: [...f.blockers, ...toAdd] } : f,
-      );
-    }
-
-    const summary = {
-      ...result.summary,
-      totalBlockers: findings.reduce((sum, f) => sum + f.blockers.length, 0),
-      totalMust: findings.reduce((sum, f) => sum + f.must.length, 0),
-      totalShould: findings.reduce((sum, f) => sum + f.should.length, 0),
-      totalOptional: findings.reduce((sum, f) => sum + f.optional.length, 0),
-      totalRisks: findings.reduce((sum, f) => sum + (f.risks?.length ?? 0), 0),
-    };
-
-    return {
-      ...result,
-      findings,
-      summary,
-    };
+    // PR-1：覆盖缺口阻塞项已迁至 feasibility-report，不再合并进 Pack 树形 readiness
+    return result;
   }
 
   /**
-   * 将 POI Access / Experience Regret 扁平 findings 合并进树形
-   * `findings[].blockers|must|should`，与 `/score` 列表 id 对齐。
+   * P2：从 TripPrerequisite SSOT 投影出发准备项，替代 POI Access bridge 双写。
    */
   async mergePoiAccessFindingsIntoTripReadiness(
     tripId: string,
     destinationId: string,
     result: ReadinessCheckResult,
   ): Promise<ReadinessCheckResult> {
-    if (!this.poiAccessReadiness) return result;
+    if (!this.tripPrerequisites) return result;
 
-    let trip: {
-      id: string;
-      destination: string;
-      status: string | null;
-      startDate: Date;
-      metadata: unknown;
-    };
+    let prepItems: Awaited<ReturnType<TripPrerequisiteService['projectDeparturePrepItems']>>;
     try {
-      trip = await this.prisma.trip.findUniqueOrThrow({
-        where: { id: tripId },
-        select: {
-          id: true,
-          destination: true,
-          status: true,
-          startDate: true,
-          metadata: true,
-        },
-      });
+      prepItems = await this.tripPrerequisites.projectDeparturePrepItems(tripId);
     } catch (e) {
       this.logger.warn(
-        `mergePoiAccessFindingsIntoTripReadiness: trip load failed: ${(e as Error).message}`,
+        `mergePoiAccessFindingsIntoTripReadiness: prerequisite projection failed: ${(e as Error).message}`,
       );
       return result;
     }
 
-    let accessFindings: ReadinessScoreFinding[] = [];
-    try {
-      accessFindings = await this.poiAccessReadiness.buildReadinessFindings(trip);
-    } catch (e) {
-      this.logger.warn(
-        `mergePoiAccessFindingsIntoTripReadiness: build failed: ${(e as Error).message}`,
-      );
-      return result;
-    }
+    if (prepItems.length === 0) return result;
 
-    if (accessFindings.length === 0) return result;
-
-    const existingIds = new Set<string>();
-    for (const f of result.findings) {
-      for (const item of [...f.blockers, ...f.must, ...f.should, ...f.optional]) {
-        existingIds.add(item.id);
-      }
-    }
-
-    const blockers: ReadinessFindingItem[] = [];
-    const must: ReadinessFindingItem[] = [];
-    const should: ReadinessFindingItem[] = [];
-
-    for (const sf of accessFindings) {
-      if (existingIds.has(sf.id)) continue;
-      const item = scoreFindingToTreeItem(sf);
-      if (item.level === 'blocker') blockers.push(item);
-      else if (item.level === 'must') must.push(item);
-      else should.push(item);
-    }
-
-    if (blockers.length === 0 && must.length === 0 && should.length === 0) {
-      return result;
-    }
-
-    let findings: ReadinessFinding[];
-    if (result.findings.length === 0) {
-      findings = [
-        {
-          destinationId,
-          packId: 'internal.poi-access',
-          packVersion: '1',
-          blockers,
-          must,
-          should,
-          optional: [],
-          risks: [],
-        },
-      ];
-    } else {
-      const matchIdx = result.findings.findIndex((f) => f.destinationId === destinationId);
-      const idx = matchIdx >= 0 ? matchIdx : 0;
-      findings = result.findings.map((f, i) =>
-        i === idx
-          ? {
-              ...f,
-              blockers: [...f.blockers, ...blockers],
-              must: [...f.must, ...must],
-              should: [...f.should, ...should],
-            }
-          : f,
-      );
-    }
-
-    const summary = {
-      ...result.summary,
-      totalBlockers: findings.reduce((sum, f) => sum + f.blockers.length, 0),
-      totalMust: findings.reduce((sum, f) => sum + f.must.length, 0),
-      totalShould: findings.reduce((sum, f) => sum + f.should.length, 0),
-      totalOptional: findings.reduce((sum, f) => sum + (f.optional?.length ?? 0), 0),
-      totalRisks: findings.reduce((sum, f) => sum + (f.risks?.length ?? 0), 0),
-    };
-
-    return {
-      ...result,
-      findings,
-      summary,
-    };
+    return mergePrerequisitePrepItemsIntoReadinessTree({
+      destinationId,
+      result,
+      prepItems,
+    });
   }
 
   /**
@@ -1733,218 +1553,75 @@ export class CoverageMapService {
   }
 
   /**
-   * 计算分数详情
+   * 出发准备完成度（Pack only — 不含方案 schedule/transport/buffers）
    */
   private calculateScoreBreakdown(
-    trip: any,
-    coverageData: CoverageMapData,
-    readinessResult: any,
+    _trip: unknown,
+    _coverageData: CoverageMapData,
+    readinessResult: ReadinessCheckResult | null | undefined,
   ): ReadinessScoreBreakdown {
-    // 1. 证据覆盖率 (0-100)
-    const evidenceCoverage = this.calculateEvidenceCoverageScore(coverageData);
-
-    // 2. 时间可行性 (0-100)
-    const scheduleFeasibility = this.calculateScheduleFeasibilityScore(trip, coverageData);
-
-    // 3. 交通确定性 (0-100) — 规划期不计入临行路况/长驾提醒
-    const phase = getTripReadinessPhase(trip.startDate, {
-      endDate: trip.endDate,
-      status: trip.status,
-    });
-    const transportCertainty = calculateTransportCertaintyForPhase(
-      coverageData.segments,
-      phase,
-      coverageData.pois.length,
-    );
-
-    // 4. 安全风险分数 (0-100, 越高越安全) — 规划期过滤临行风险
-    const risks = readinessResult?.findings?.flatMap((f: any) => f.risks || []) || [];
-    const safetyRisk = calculateSafetyRiskForPhase(
-      coverageData.gaps,
-      risks,
-      trip.startDate,
-      coverageData.segments,
-    );
-
-    // 5. 缓冲时间分数 (0-100)
-    const buffers = this.calculateBuffersScore(trip, coverageData);
-
-    // 总体分数（加权平均）
-    const overall = Math.round(
-      evidenceCoverage * 0.25 +
-      scheduleFeasibility * 0.25 +
-      transportCertainty * 0.20 +
-      safetyRisk * 0.15 +
-      buffers * 0.15
-    );
-
-    return {
-      overall,
-      evidenceCoverage,
-      scheduleFeasibility,
-      transportCertainty,
-      safetyRisk,
-      buffers,
-    };
+    return buildDeparturePreparationScore(readinessResult ?? undefined);
   }
 
   /**
-   * 计算证据覆盖率分数
+   * Pack 出发准备 findings → score API 形态
    */
-  private calculateEvidenceCoverageScore(coverageData: CoverageMapData): number {
-    const { pois } = coverageData;
-    if (pois.length === 0) return 100;
-
-    const coveredPois = pois.filter((p) => p.coverageStatus === 'covered').length;
-    const partialPois = pois.filter((p) => p.coverageStatus === 'partial').length;
-    const poiCoverageRate =
-      pois.length > 0 ? (coveredPois + partialPois * 0.5) / pois.length : 1;
-    const baseScore = poiCoverageRate * 100;
-
-    let criticalMissingPenalty = 0;
-    for (const poi of pois) {
-      if (poi.missingEvidence?.includes('road_closure')) criticalMissingPenalty += 5;
-      if (poi.missingEvidence?.includes('weather')) criticalMissingPenalty += 3;
-    }
-
-    return Math.max(0, Math.min(100, Math.round(baseScore - criticalMissingPenalty)));
+  private extractDeparturePrepFindings(
+    readinessResult: ReadinessCheckResult,
+  ): ReadinessScoreFinding[] {
+    return collectDeparturePrepItems(readinessResult).map((item) => ({
+      id: item.id,
+      type:
+        item.level === 'blocker'
+          ? 'blocker'
+          : item.level === 'must'
+            ? 'must'
+            : 'should',
+      category: item.category,
+      message: item.message,
+      severity:
+        item.severity === 'high'
+          ? 'high'
+          : item.severity === 'medium'
+            ? 'medium'
+            : 'low',
+      actionRequired: item.tasks
+        ?.map((t) =>
+          typeof t.title === 'string' ? t.title : (t.title as { zh?: string }).zh ?? '',
+        )
+        .filter(Boolean)
+        .join('；'),
+    }));
   }
 
   /**
-   * 计算时间可行性分数
+   * Pack 风险（不含路段/覆盖缺口 — 已迁至 feasibility）
    */
-  private calculateScheduleFeasibilityScore(trip: any, coverageData: CoverageMapData): number {
-    let score = 100;
-
-    // 检查每天的 POI 数量
-    const poisPerDay = new Map<number, number>();
-    for (const poi of coverageData.pois) {
-      poisPerDay.set(poi.day, (poisPerDay.get(poi.day) || 0) + 1);
-    }
-
-    // 扣分：每天 POI 过多（>5 个扣分）
-    for (const [, count] of poisPerDay) {
-      if (count > 7) score -= 15;
-      else if (count > 5) score -= 8;
-    }
-
-    // 扣分：路段时间过长
-    for (const segment of coverageData.segments) {
-      if (segment.duration > 300) score -= 10; // >5小时
-      else if (segment.duration > 180) score -= 5; // >3小时
-    }
-
-    // 扣分：跨天路段
-    const crossDaySegments = coverageData.segments.filter(s => {
-      const fromPoi = coverageData.pois.find(p => p.id === s.fromPoiId);
-      const toPoi = coverageData.pois.find(p => p.id === s.toPoiId);
-      return fromPoi && toPoi && fromPoi.day !== toPoi.day;
-    });
-    score -= crossDaySegments.length * 5;
-
-    return Math.max(0, Math.min(100, score));
-  }
-
-  /**
-   * @deprecated 使用 calculateTransportCertaintyForPhase
-   */
-  private calculateTransportCertaintyScore(trip: any, coverageData: CoverageMapData): number {
-    let score = 100;
-
-    // 基于路段覆盖状态
-    for (const segment of coverageData.segments) {
-      if (segment.coverageStatus === 'blocked') score -= 20;
-      else if (segment.coverageStatus === 'warning') score -= 10;
-    }
-
-    // 基于路段风险
-    for (const segment of coverageData.segments) {
-      for (const hazard of segment.hazards) {
-        if (hazard.severity === 'high') score -= 8;
-        else if (hazard.severity === 'medium') score -= 4;
+  private extractPackRisks(readinessResult: unknown): ReadinessScoreRisk[] {
+    const risks: ReadinessScoreRisk[] = [];
+    let riskIndex = 0;
+    for (const finding of (readinessResult as ReadinessCheckResult)?.findings || []) {
+      for (const risk of finding.risks || []) {
+        if (!risk.summary && !(risk as { message?: string }).message) continue;
+        riskIndex++;
+        risks.push({
+          id: `pack-risk-${riskIndex}`,
+          type: String(risk.type || 'unknown'),
+          severity: risk.severity || 'medium',
+          message: risk.summary || (risk as { message?: string }).message || `${risk.type} 风险`,
+          mitigation: risk.mitigations || [],
+        });
       }
     }
-
-    // 没有路段数据时给予基础分
-    if (coverageData.segments.length === 0 && coverageData.pois.length > 1) {
-      score = 70; // 有多个 POI 但无路段数据，给予基础分
-    }
-
-    return Math.max(0, Math.min(100, score));
+    return risks;
   }
 
   /**
-   * @deprecated 使用 calculateSafetyRiskForPhase
+   * 行中今日 — 当日 coverage 缺口/路段（方案可执行性 scoped，不进全局 /score）
    */
-  private calculateSafetyRiskScore(coverageData: CoverageMapData, readinessResult: any): number {
-    let score = 100;
-
-    // 基于覆盖缺口
-    for (const gap of coverageData.gaps) {
-      if (gap.severity === 'high') score -= 15;
-      else if (gap.severity === 'medium') score -= 8;
-      else score -= 3;
-    }
-
-    // 基于准备度风险
-    const risks = readinessResult?.findings?.flatMap((f: any) => f.risks || []) || [];
-    for (const risk of risks) {
-      if (risk.severity === 'high') score -= 12;
-      else if (risk.severity === 'medium') score -= 6;
-      else score -= 2;
-    }
-
-    // 基于路段风险
-    for (const segment of coverageData.segments) {
-      if (segment.hazards.some(h => h.type === 'road_closure')) score -= 10;
-    }
-
-    return Math.max(0, Math.min(100, score));
-  }
-
-  /**
-   * 计算缓冲时间分数
-   */
-  private calculateBuffersScore(trip: any, coverageData: CoverageMapData): number {
-    let score = 85; // 默认给予较高基础分
-
-    // 计算行程天数
-    const totalDays = trip.TripDay?.length || 1;
-    const poisPerDay = coverageData.pois.length / totalDays;
-
-    // POI 密度过高扣分
-    if (poisPerDay > 6) score -= 25;
-    else if (poisPerDay > 4) score -= 15;
-    else if (poisPerDay > 3) score -= 5;
-
-    // 长距离行驶扣分（消耗缓冲时间）
-    const longSegments = coverageData.segments.filter(s => s.distance > 150);
-    score -= longSegments.length * 10;
-
-    // 总行驶时间过长扣分
-    const totalDrivingTime = coverageData.segments.reduce((sum, s) => sum + s.duration, 0);
-    const avgDrivingPerDay = totalDrivingTime / totalDays;
-    if (avgDrivingPerDay > 240) score -= 20; // >4小时/天
-    else if (avgDrivingPerDay > 180) score -= 10; // >3小时/天
-
-    return Math.max(0, Math.min(100, score));
-  }
-
-  /**
-   * 提取发现项
-   */
-  private extractFindings(
-    trip: any,
-    coverageData: CoverageMapData,
-    readinessResult: any,
-  ): ReadinessScoreFinding[] {
+  private extractTodayScopedFindings(coverageData: CoverageMapData): ReadinessScoreFinding[] {
     const findings: ReadinessScoreFinding[] = [];
-    let findingIndex = 0;
-
-    // 从覆盖缺口提取（id 与 mergeHighSeverityCoverageGapBlockersIntoTripReadiness / 树形 blockers 对齐）
     for (const gap of coverageData.gaps) {
-      findingIndex++;
-      // 🆕 统一类型命名：high severity → blocker, medium/low → must
       const findingType = gap.severity === 'high' ? 'blocker' : 'must';
       const category =
         gap.type === 'poi'
@@ -1963,279 +1640,169 @@ export class CoverageMapService {
           : gap.type === 'poi'
             ? [coverageData.pois.find((p) => p.id === gap.relatedId)?.day || 1]
             : undefined,
-        actionRequired: gap.missingEvidence 
-          ? `补充: ${gap.missingEvidence.join(', ')}` 
-          : undefined,
         tripScope: this.gapToTripScope(gap, coverageData),
       });
     }
-
-    // 从准备度结果提取
-    for (const finding of readinessResult?.findings || []) {
-      for (const blocker of finding.blockers || []) {
-        findingIndex++;
-        findings.push({
-          id: `finding-${findingIndex}`,
-          type: 'blocker',
-          category: blocker.category || 'readiness',
-          message: blocker.message,
-          severity: 'high',
-          actionRequired: blocker.tasks?.map((t: any) => t.action).join(', '),
-        });
-      }
-
-      for (const must of finding.must || []) {
-        findingIndex++;
-        findings.push({
-          id: `finding-${findingIndex}`,
-          type: 'must',  // 🆕 统一类型命名：warning → must
-          category: must.category || 'readiness',
-          message: must.message,
-          severity: 'medium',
-          actionRequired: must.tasks?.map((t: any) => t.action).join(', '),
-        });
-      }
-
-      // 🆕 处理 should 项
-      for (const should of finding.should || []) {
-        findingIndex++;
-        findings.push({
-          id: `finding-${findingIndex}`,
-          type: 'should',  // 🆕 统一类型命名：suggestion → should
-          category: should.category || 'readiness',
-          message: should.message,
-          severity: 'low',
-          actionRequired: should.tasks?.map((t: any) => t.action).join(', '),
-        });
-      }
-    }
-
-    // 路段风险由 supplementScoreDimensionFindings 统一写入（含中低风险，避免弹窗空白）
-
-    this.supplementScoreDimensionFindings(findings, trip, coverageData);
-
-    return findings;
-  }
-
-  /**
-   * 为各分数维度补充可解释的发现项（避免「有分数、弹窗空白」）
-   */
-  private supplementScoreDimensionFindings(
-    findings: ReadinessScoreFinding[],
-    trip: any,
-    coverageData: CoverageMapData,
-  ): void {
-    const hasEvidenceForPoi = (poiName: string) =>
-      findings.some((f) => f.category === 'evidence' && f.message.includes(poiName));
-    const hasScheduleHint = (day: number) =>
-      findings.some((f) => f.category === 'schedule' && f.message.includes(`第${day}天`));
-    const hasTransportMessage = (message: string) =>
-      findings.some((f) => f.category === 'transport' && f.message === message);
-
-    for (const poi of coverageData.pois) {
-      if (poi.coverageStatus === 'covered' || hasEvidenceForPoi(poi.name)) {
-        continue;
-      }
-      const missingLabel = poi.missingEvidence?.length
-        ? poi.missingEvidence.join(', ')
-        : '关键证据';
-      const isCoreBookingBlocker = this.isCorePoiBookingBlocker(poi);
-      findings.push({
-        id: `evidence-poi-${poi.id}`,
-        type: poi.coverageStatus === 'uncovered' || isCoreBookingBlocker ? 'blocker' : 'must',
-        category: isCoreBookingBlocker ? 'booking' : 'evidence',
-        message: `第${poi.day}天 · ${poi.name}：缺少证据（${missingLabel}）`,
-        severity: poi.coverageStatus === 'uncovered' || isCoreBookingBlocker ? 'high' : 'medium',
-        affectedDays: [poi.day],
-        actionRequired: poi.missingEvidence?.length
-          ? `补充: ${poi.missingEvidence.join(', ')}`
-          : undefined,
-      });
-    }
-
-    const poisPerDay = new Map<number, number>();
-    for (const poi of coverageData.pois) {
-      poisPerDay.set(poi.day, (poisPerDay.get(poi.day) || 0) + 1);
-    }
-    for (const [day, count] of poisPerDay) {
-      if (count <= 5 || hasScheduleHint(day)) continue;
-      findings.push({
-        id: `schedule-busy-day-${day}`,
-        type: 'must',
-        category: 'schedule',
-        message:
-          count > 7
-            ? `第${day}天安排 ${count} 个景点，行程过满`
-            : `第${day}天安排 ${count} 个景点，建议留出缓冲`,
-        severity: count > 7 ? 'high' : 'medium',
-        affectedDays: [day],
-      });
-    }
-
     for (const segment of coverageData.segments) {
       const fromPoi = coverageData.pois.find((p) => p.id === segment.fromPoiId);
       const toPoi = coverageData.pois.find((p) => p.id === segment.toPoiId);
       if (!fromPoi || !toPoi) continue;
-
-      if (segment.duration > 180 && !hasScheduleHint(segment.day)) {
-        const maxKm =
-          coverageData.segmentDistanceThresholds?.maxSegmentDistanceKm ??
-          GLOBAL_SEGMENT_DISTANCE_THRESHOLDS.maxSegmentDistanceKm;
-        const hasRoadClass = segment.hazards.some((h) =>
-          isRoadClassHazard(h, segment.distance, maxKm),
-        );
-        if (!hasRoadClass) {
-          findings.push({
-            id: `schedule-long-drive-${segment.id}`,
-            type: 'must',
-            category: 'schedule',
-            message:
-              segment.duration > 300
-                ? `第${segment.day}天 · ${fromPoi.name} → ${toPoi.name} 驾车约 ${Math.round(segment.duration)} 分钟，建议拆分`
-                : `第${segment.day}天 · ${fromPoi.name} → ${toPoi.name} 驾车约 ${Math.round(segment.duration)} 分钟，偏长`,
-            severity: segment.duration > 300 ? 'high' : 'medium',
-            affectedDays: [segment.day],
-          });
-        }
-      }
-
       for (const hazard of segment.hazards) {
-        const message = `第${segment.day}天 · ${fromPoi.name} → ${toPoi.name} · ${hazard.message}`;
-        if (hasTransportMessage(message)) continue;
-        const maxKm =
-          coverageData.segmentDistanceThresholds?.maxSegmentDistanceKm ??
-          GLOBAL_SEGMENT_DISTANCE_THRESHOLDS.maxSegmentDistanceKm;
-        const isRoadClass = isRoadClassHazard(hazard, segment.distance, maxKm);
-        const isRoadClosureBlocker =
-          hazard.type === 'road_closure' && hazard.severity === 'high';
-        const highlightIds = [fromPoi.itemId, toPoi.itemId].filter(Boolean) as string[];
         findings.push({
           id: `transport-${segment.id}-${hazard.type}`,
-          type: isRoadClosureBlocker
-            ? 'blocker'
-            : hazard.severity === 'high'
-              ? 'must'
-              : 'should',
+          type: hazard.severity === 'high' ? 'blocker' : hazard.severity === 'medium' ? 'must' : 'should',
           category: 'transport',
-          message,
+          message: `第${segment.day}天 · ${fromPoi.name} → ${toPoi.name} · ${hazard.message}`,
           severity: hazard.severity,
           affectedDays: [segment.day],
-          ...(isRoadClass
-            ? {
-                issueKind: 'road_class',
-                fromItemId: fromPoi.itemId,
-                toItemId: toPoi.itemId,
-                anchors: {
-                  segmentId: segment.id,
-                  fromPoiId: fromPoi.id,
-                  toPoiId: toPoi.id,
-                  fromItemId: fromPoi.itemId,
-                  toItemId: toPoi.itemId,
-                  fromPlaceLabel: fromPoi.name,
-                  toPlaceLabel: toPoi.name,
-                  distanceKm: segment.distance,
-                  durationMinutes: segment.duration,
-                  hazardType: hazard.type,
-                },
-                uiHints: {
-                  primaryAction: 'open_repair',
-                  deepLink: {
-                    tab: 'schedule',
-                    dayIndex: Math.max(0, segment.day - 1),
-                    highlightItemIds: highlightIds,
-                  },
-                },
-                tripScope: {
-                  kind: 'segment',
-                  day: segment.day,
-                  segmentId: segment.id,
-                  fromPoi: { id: fromPoi.id, name: fromPoi.name },
-                  toPoi: { id: toPoi.id, name: toPoi.name },
-                  distanceKm: segment.distance,
-                },
-              }
-            : {}),
+          tripScope: {
+            kind: 'segment',
+            day: segment.day,
+            segmentId: segment.id,
+            fromPoi: { id: fromPoi.id, name: fromPoi.name },
+            toPoi: { id: toPoi.id, name: toPoi.name },
+            distanceKm: segment.distance,
+          },
         });
       }
     }
-
-    const totalDays = Math.max(1, trip.TripDay?.length || 1);
-    const totalDrivingMinutes = coverageData.segments.reduce((sum, s) => sum + s.duration, 0);
-    const avgDrivingPerDay = totalDrivingMinutes / totalDays;
-    if (
-      avgDrivingPerDay > 180 &&
-      !findings.some((f) => f.category === 'buffer' && f.id === 'buffer-driving-load')
-    ) {
-      findings.push({
-        id: 'buffer-driving-load',
-        type: 'must',
-        category: 'buffer',
-        message: `日均驾车约 ${Math.round(avgDrivingPerDay)} 分钟，行程缓冲偏紧`,
-        severity: avgDrivingPerDay > 240 ? 'high' : 'medium',
-      });
-    }
+    return findings;
   }
 
-  /**
-   * 提取风险项
-   */
-  private extractRisks(
-    coverageData: CoverageMapData,
-    readinessResult: any,
-  ): ReadinessScoreRisk[] {
+  private extractTodayScopedRisks(coverageData: CoverageMapData): ReadinessScoreRisk[] {
     const risks: ReadinessScoreRisk[] = [];
     let riskIndex = 0;
-
-    // 从准备度结果提取
-    for (const finding of readinessResult?.findings || []) {
-      for (const risk of finding.risks || []) {
-        // 只添加有内容的风险
-        if (risk.summary || risk.message) {
-          riskIndex++;
-          risks.push({
-            id: `risk-${riskIndex}`,
-            type: risk.type || 'unknown',
-            severity: risk.severity || 'medium',
-            message: risk.summary || risk.message || `${risk.type} 风险`,
-            mitigation: risk.mitigations || [],
-          });
-        }
-      }
-    }
-
-    // 从路段风险提取
     for (const segment of coverageData.segments) {
       for (const hazard of segment.hazards) {
         riskIndex++;
-        const affectedPois = [segment.fromPoiId, segment.toPoiId];
         risks.push({
-          id: `risk-${riskIndex}`,
+          id: `today-risk-${riskIndex}`,
           type: hazard.type,
           severity: hazard.severity,
           message: hazard.message,
-          affectedPois,
+          affectedPois: [segment.fromPoiId, segment.toPoiId],
         });
       }
     }
-
-    // 从覆盖缺口提取高风险项
     for (const gap of coverageData.gaps) {
-      if (gap.severity === 'high') {
-        riskIndex++;
-        risks.push({
-          id: `risk-${riskIndex}`,
-          type: gap.type === 'poi' ? 'evidence_gap' : 'transport_gap',
-          severity: gap.severity,
-          message: gap.message,
-          affectedPois: gap.relatedId ? [gap.relatedId] : undefined,
-        });
-      }
+      if (gap.severity !== 'high') continue;
+      riskIndex++;
+      risks.push({
+        id: `today-risk-${riskIndex}`,
+        type: gap.type === 'poi' ? 'evidence_gap' : 'transport_gap',
+        severity: gap.severity,
+        message: gap.message,
+        affectedPois: gap.relatedId ? [gap.relatedId] : undefined,
+      });
     }
-
     return risks;
   }
 
+  private computeTodayExecutionScore(findings: ReadinessScoreFinding[]): number {
+    let score = 100;
+    for (const f of findings) {
+      if (f.type === 'blocker') score -= 25;
+      else if (f.type === 'must' || f.type === 'warning') score -= 10;
+      else score -= 3;
+    }
+    return Math.max(0, Math.min(100, score));
+  }
+
   // ==================== 修复选项接口 ====================
+
+  /**
+   * P4 — 为 feasibility repair-options 补全级联 / Guardian（readiness score 不再返回 cascadeUiHints）
+   */
+  async enrichRepairOptionsForFeasibility(
+    tripId: string,
+    blockerId: string,
+    response: RepairOptionsResponse,
+  ): Promise<RepairOptionsResponse> {
+    if (response.cascadeUiHints?.length && response.guardianNegotiation) {
+      return response;
+    }
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: {
+          include: {
+            ItineraryItem: {
+              include: { Place: true },
+              orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
+            },
+          },
+          orderBy: { date: 'asc' },
+        },
+      },
+    });
+    if (!trip) return response;
+
+    const scoreData = await this.getReadinessScore(tripId);
+    const coverageData = await this.getCoverageMap(tripId);
+    const blocker =
+      scoreData.findings.find((f) => f.id === blockerId) ??
+      resolveRoadClassFindingForRepair(blockerId, scoreData.findings, coverageData) ?? {
+        id: blockerId,
+        type: 'blocker' as const,
+        category: 'access_capacity',
+        message: response.blockerMessage ?? '',
+        severity: 'high' as const,
+      };
+
+    const itineraryItems = trip.TripDay.flatMap((day) =>
+      (day.ItineraryItem ?? []).map((item) => ({
+        id: item.id,
+        type: item.type,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        note: item.note,
+        metadata: (item.Place?.metadata as Record<string, unknown> | undefined) ?? undefined,
+        dayDate: day.date?.toISOString().slice(0, 10),
+        placeName: item.Place?.nameCN || item.Place?.nameEN || undefined,
+        placeId: item.placeId ?? undefined,
+      })),
+    );
+
+    const physicalSnapshot = extractTripPhysicalValidationSnapshot(trip.metadata);
+    const causalPreAnalysis =
+      response.causalPreAnalysis ??
+      buildReadinessCausalPreanalysis({
+        tripId,
+        blocker,
+        itineraryItems,
+        physicalViolations: physicalSnapshot?.violations,
+        physicalContext: physicalSnapshot?.context,
+      });
+
+    if (causalPreAnalysis && this.causalPreanalysisService && !response.causalPreAnalysis) {
+      await this.causalPreanalysisService.persistResult(tripId, causalPreAnalysis, blockerId);
+    }
+
+    const guardianSummary =
+      response.guardianNegotiation != null
+        ? undefined
+        : await this.resolveGuardianSummaryForRepairOptions(
+            tripId,
+            blockerId,
+            trip.metadata,
+            response.options,
+          );
+
+    return {
+      ...response,
+      dependencyImpact: response.dependencyImpact ?? causalPreAnalysis ?? undefined,
+      causalPreAnalysis: response.causalPreAnalysis ?? causalPreAnalysis ?? undefined,
+      cascadeUiHints:
+        response.cascadeUiHints ??
+        buildReadinessCascadeUiHints(causalPreAnalysis ?? undefined),
+      guardianNegotiation:
+        response.guardianNegotiation ??
+        (guardianSummary
+          ? mapSummaryToRepairOptionsGuardianNegotiation(guardianSummary)
+          : undefined),
+    };
+  }
 
   /**
    * 获取阻塞项的修复选项

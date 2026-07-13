@@ -40,6 +40,7 @@ import { PhysicalActionPlanEnricherService } from '../domain/spatial/physical-ac
 import { RouteAndRunTaskStreamService } from './services/route-and-run-task-stream.service';
 import { normalizeRouteAndRunRequestMessage, resolveRouteAndRunUserMessage } from './utils/resolve-route-and-run-message.util';
 import { attachOtelTraceContextToRouteAndRunRequest } from '../harness/tracing/harness-otel-correlation.util';
+import { EXPOSED_AGENT_TRANSPORT_MODES } from '../common/constants/travel-mode-scope.constants';
 
 /**
  * Agent Controller
@@ -56,13 +57,7 @@ import { attachOtelTraceContextToRouteAndRunRequest } from '../harness/tracing/h
 export class AgentController {
   private readonly logger = new Logger(AgentController.name);
   private static readonly CONSTRAINTS_META_VERSION = '2026-05-01';
-  private static readonly TRANSPORT_MODES_META = [
-    { value: 'TRANSIT', label_zh: '公共交通', label_en: 'Transit', aliases: ['公交', '地铁'] },
-    { value: 'RAIL', label_zh: '火车', label_en: 'Rail', aliases: ['铁路'] },
-    { value: 'DRIVE', label_zh: '自驾', label_en: 'Drive', aliases: ['开车'] },
-    { value: 'MOTORCYCLE', label_zh: '摩托', label_en: 'Motorcycle', aliases: ['摩托车'] },
-    { value: 'FERRY', label_zh: '轮渡', label_en: 'Ferry', aliases: ['渡轮'] },
-  ] as const;
+  private static readonly TRANSPORT_MODES_META = EXPOSED_AGENT_TRANSPORT_MODES;
 
   constructor(
     private readonly agentService: AgentService,

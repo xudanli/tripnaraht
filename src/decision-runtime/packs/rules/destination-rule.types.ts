@@ -22,6 +22,8 @@ export interface DestinationRuleResult {
 
 export interface DestinationPackRule {
   ruleId: string;
+  /** TEP P0 — stable Self-Drive rule id (e.g. SDR-001) */
+  sdrRuleId?: string;
   semanticKey: DecisionSemanticKey;
   appliesWhen?: {
     country?: string;

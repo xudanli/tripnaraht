@@ -302,6 +302,14 @@ export interface DecisionOptionRoutePreview {
   placeNames: string[];
 }
 
+/** Execution slip — structured preview for consumer decision cards (Slice 3.1) */
+export interface ExecutionSlipRepairOptionPreview {
+  scheduleContext?: import('../../guardian-decision-core/contracts/execution-slip-option-preview.types').ExecutionSlipScheduleContext;
+  changePreview?: import('../../guardian-decision-core/contracts/execution-slip-option-preview.types').ExecutionSlipChangePreview;
+  preserves?: string[];
+  sacrifices?: string[];
+}
+
 export interface DecisionOption {
   id: string;
   problemId: string;
@@ -324,6 +332,8 @@ export interface DecisionOption {
   executionCapability?: ExecutionCapability;
   /** Decision Space — 2–4 place names in itinerary order */
   routePreview?: DecisionOptionRoutePreview;
+  /** Execution slip repair card — POI / schedule preview */
+  executionSlipPreview?: ExecutionSlipRepairOptionPreview;
 }
 
 // ─── Repair command (P1) ────────────────────────────────────────────────────

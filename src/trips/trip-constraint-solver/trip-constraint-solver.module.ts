@@ -7,6 +7,7 @@ import { OptimizationModule } from '../decision/optimization/optimization.module
 import { SkillsModule } from '../../skills/skills.module';
 import { LoopsModule } from '../../loops/loops.module';
 import { PoiAccessCapacityModule } from '../../poi-access-capacity/poi-access-capacity.module';
+import { TripPrerequisitesModule } from '../prerequisites/trip-prerequisites.module';
 import { CausalProtocolModule } from '../../causal-protocol/causal-protocol.module';
 import { TripConflictsService } from '../services/trip-conflicts.service';
 import { FeasibilityReportController } from './controllers/feasibility-report.controller';
@@ -14,6 +15,8 @@ import { PreTripReadinessP0Controller } from './controllers/pre-trip-readiness-p
 import { ExecutionAdvisoryController } from './controllers/execution-advisory.controller';
 import { PlanningConflictsController } from './controllers/planning-conflicts.controller';
 import { DecisionCheckerController } from './controllers/decision-checker.controller';
+import { DepartureGateController } from './controllers/departure-gate.controller';
+import { DepartureGateService } from './services/departure-gate.service';
 import { TripWishModule } from '../wishlist/trip-wish.module';
 import { ConstraintsSummaryController, ConstraintsLegacyController } from './controllers/constraints.controller';
 import { TripConstraintsController } from './controllers/trip-constraints.controller';
@@ -45,6 +48,7 @@ import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/e
     TransportModule,
     ReadinessModule,
     PoiAccessCapacityModule,
+    TripPrerequisitesModule,
     TripBudgetOsModule,
     EffectivePlanExecutionModule,
     TripWishModule,
@@ -65,6 +69,7 @@ import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/e
     TripConstraintsController,
     PlanningCommandsController,
     SplitPlanController,
+    DepartureGateController,
   ],
   providers: [
     ConstraintSolverAccessService,
@@ -85,9 +90,11 @@ import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/e
     TripConstraintRegistryService,
     TripConstraintPreviewService,
     TripConstraintCommandsService,
+    DepartureGateService,
   ],
   exports: [
     FeasibilityReportService,
+    DepartureGateService,
     PreTripReadinessP0Service,
     ExecutionAdvisoryService,
     ConstraintSolverAccessService,

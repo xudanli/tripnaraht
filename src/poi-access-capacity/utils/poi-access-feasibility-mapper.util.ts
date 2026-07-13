@@ -12,6 +12,12 @@ import {
 } from '../types/poi-access-readiness.types';
 import type { PoiAccessRule } from '../interfaces/poi-access-capacity.interface';
 import { ICELAND_A_TIER_POI_SLUGS } from '../fixtures/is-a-tier.rules';
+import {
+  buildExperienceRegretFeasibilityIssueId,
+  buildExperienceRegretPrerequisiteId,
+  buildPoiAccessFeasibilityIssueId,
+  buildPoiAccessPrerequisiteId,
+} from '../../trips/prerequisites/utils/prerequisite-id.util';
 
 function issuePriority(kind: FeasibilityPoiAccessIssueKind): FeasibilityIssueDto['priority'] {
   switch (kind) {
@@ -95,10 +101,12 @@ export function poiAccessEvaluationToFeasibilityIssue(
     hasReservationEvidence: evalRow.hasReservationEvidence,
   };
 
-  const issueId = `poi-access:${evalRow.tripItemId}:${kind}`;
+  const issueId = buildPoiAccessFeasibilityIssueId(evalRow.tripItemId, kind);
+  const prerequisiteId = buildPoiAccessPrerequisiteId(evalRow.tripItemId, kind);
 
   return {
     id: issueId,
+    prerequisiteId,
     priority: issuePriority(kind),
     category: 'access_capacity',
     issueKind: kind,
@@ -176,7 +184,8 @@ export function buildExperienceRegretIssue(input: {
   }
 
   return {
-    id: `experience-regret:unconfirmed:${input.tripId}`,
+    id: buildExperienceRegretFeasibilityIssueId(input.tripId),
+    prerequisiteId: buildExperienceRegretPrerequisiteId(input.tripId),
     priority: 'must_handle',
     category: 'experience_expectation',
     issueKind: 'experience_regret_unconfirmed',

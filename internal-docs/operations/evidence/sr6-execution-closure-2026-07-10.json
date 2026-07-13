@@ -1,0 +1,91 @@
+{
+  "evidenceType": "SR6_EXECUTION_CLOSURE_STAGING",
+  "acceptanceMode": "DEVBOX_ENGINEERING_SELF_ACCEPTANCE",
+  "startedAt": "2026-07-10T16:21:22.796Z",
+  "endedAt": "2026-07-10T16:21:36.082Z",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "userId": "c0a55555-5555-4555-8555-555555555501",
+  "useLiveVedur": true,
+  "liveSource": "replay-after-live-probe",
+  "liveProbeNotes": [
+    "vedur: North Star: Vedur-like fetchAndResolveWeatherIfChanged returned null",
+    "open-meteo: North Star: Vedur-like fetchAndResolveWeatherIfChanged returned null",
+    "execution completed via vedur-like replay after live probe"
+  ],
+  "problemId": "problem_weather_c0a55555_1783700495140",
+  "preferredOptionId": "cand_indoor",
+  "repairCount": 3,
+  "effectivePlanVersionId": "plan_v2_00495554",
+  "resolutionStatus": "VERIFIED",
+  "revalidationStatus": "PASSED",
+  "writeChain": "EVALUATE_AUTHORIZE_EXECUTE",
+  "problemResolved": true,
+  "checks": [
+    {
+      "id": "SR6-000-env",
+      "pass": true,
+      "detail": "staging env matrix satisfied"
+    },
+    {
+      "id": "SR6-001-trip",
+      "pass": true,
+      "detail": "destination=IS icelandCanary=true effectivePlan=plan_1"
+    },
+    {
+      "id": "SR6-001b-live-source",
+      "pass": true,
+      "detail": "replay-after-live-probe (vedur: North Star: Vedur-like fetchAndResolveWeatherIfChanged returned null; open-meteo: North Star: Vedur-like fetchAndResolveWeatherIfChanged returned null; execution completed via vedur-like replay after live probe)"
+    },
+    {
+      "id": "SR6-002-weather-evidence",
+      "pass": true,
+      "detail": "source=iceland_met wind=95km/h"
+    },
+    {
+      "id": "SR6-003-repair-candidates",
+      "pass": true,
+      "detail": "count=3 preferred=cand_indoor"
+    },
+    {
+      "id": "SR6-004-constraint-gateway",
+      "pass": true,
+      "detail": "executable=1/3"
+    },
+    {
+      "id": "SR6-005-attention-gate",
+      "pass": true,
+      "detail": "requiresConfirmation=true option=cand_indoor"
+    },
+    {
+      "id": "SR6-006-w01-apply",
+      "pass": true,
+      "detail": "resolution=VERIFIED revalidation=PASSED"
+    },
+    {
+      "id": "SR6-007-effective-plan",
+      "pass": true,
+      "detail": "planVersionId=plan_v2_00495554"
+    },
+    {
+      "id": "SR6-008-write-chain",
+      "pass": true,
+      "detail": "writeChain=EVALUATE_AUTHORIZE_EXECUTE"
+    },
+    {
+      "id": "SR6-009-problem-resolved",
+      "pass": true,
+      "detail": "problemId=problem_weather_c0a55555_1783700495140 status=RESOLVED"
+    },
+    {
+      "id": "SR6-010-causal-trace",
+      "pass": true,
+      "detail": "rules=iceland.wind_to_p90,iceland.p90_to_miss"
+    },
+    {
+      "id": "SR6-011-indoor-repair-selected",
+      "pass": true,
+      "detail": "selected=cand_indoor"
+    }
+  ],
+  "result": "READY"
+}

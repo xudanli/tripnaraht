@@ -111,9 +111,11 @@ async function main() {
     const { status, json } = await getJson('/attraction-explore/map?includeInsertHints=true&dayIndex=1');
     const pois = json.data?.pois ?? [];
     const hints = pois.filter((p: { insertHint?: unknown }) => p.insertHint).length;
-    isSuccess(json) && pois.length > 0
-      ? pass('GET map + insertHints', status, `pois=${pois.length} hints=${hints}`)
-      : fail('GET map', status, `pois=${pois.length}`);
+    const lodgingPois = pois.filter((p: { kind?: string }) => String(p.kind).includes('lodging')).length;
+    const lodgingLegs = json.data?.lodgingLegs?.length ?? 0;
+    isSuccess(json) && pois.length > 0 && lodgingPois > 0 && lodgingLegs > 0
+      ? pass('GET map + insertHints', status, `pois=${pois.length} hints=${hints} lodgingPois=${lodgingPois} lodgingLegs=${lodgingLegs}`)
+      : fail('GET map', status, `pois=${pois.length} lodgingPois=${lodgingPois} lodgingLegs=${lodgingLegs}`);
   }
 
   // ── P3 意图编译 ───────────────────────────────────────────
@@ -261,9 +263,14 @@ async function main() {
   {
     const { status, json } = await getJson('/arrange-itinerary/planning-workbench-snapshot');
     const d = json.data;
-    isSuccess(json) && d?.orchestration
-      ? pass('GET planning-workbench-snapshot', status, `conflicts=${d.conflicts?.total} suggestions=${d.copilot?.suggestionCount}`)
-      : fail('GET planning-workbench-snapshot', status, JSON.stringify(json.message));
+    const lodgingCount = d?.lodgingSuggestions?.length ?? 0;
+    isSuccess(json) && d?.orchestration && lodgingCount > 0
+      ? pass(
+          'GET planning-workbench-snapshot',
+          status,
+          `conflicts=${d.conflicts?.total} suggestions=${d.copilot?.suggestionCount} lodging=${lodgingCount}`,
+        )
+      : fail('GET planning-workbench-snapshot', status, JSON.stringify(json.message ?? { lodgingCount }));
   }
 
   {

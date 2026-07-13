@@ -31,6 +31,13 @@ describe('constraint-template-registry.util', () => {
     expect(isLegacyPatchOnlyTemplate('earliest_departure')).toBe(false);
   });
 
+  it('no_bad_weather defaults to ROUTE_SEGMENT scope like no_unpaved_road', () => {
+    const badWeather = getConstraintTemplate('no_bad_weather')!;
+    const unpaved = getConstraintTemplate('no_unpaved_road')!;
+    expect(badWeather.scope).toEqual({ type: 'ROUTE_SEGMENT' });
+    expect(unpaved.scope).toEqual(badWeather.scope);
+  });
+
   it('projectCatalogTemplateForBff builds judgmentRule', () => {
     const def = getConstraintTemplate('max_daily_activity')!;
     const projected = projectCatalogTemplateForBff(

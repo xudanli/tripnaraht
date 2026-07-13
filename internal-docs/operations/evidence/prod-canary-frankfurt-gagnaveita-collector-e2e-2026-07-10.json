@@ -1,0 +1,17 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_FRANKFURT_GAGNAVEITA_COLLECTOR_E2E",
+  "probedAt": "2026-07-10T20:34:52.528627Z",
+  "collectorHost": "47.87.131.183",
+  "tunnel": {
+    "remoteBindPort": 19080,
+    "devboxIngestPort": 3000,
+    "healthViaTunnel": "ok",
+    "healthBody": "{\"ok\":true,\"service\":\"collector-ingest\",\"routes\":[\"/internal/evidence/weather/vedur\",\"/internal/evidence/road/gagnaveita\"]}"
+  },
+  "ingestOutput": "[gagnaveita-e2e] probe tunnel health\n{\"ok\":true,\"service\":\"collector-ingest\",\"routes\":[\"/internal/evidence/weather/vedur\",\"/internal/evidence/road/gagnaveita\"]}[gagnaveita-e2e] run collector\n[gagnaveita-collector] fetching https://gagnaveita.vegagerdin.is/api/faerd2017_1\n[gagnaveita-collector] POST http://127.0.0.1:19080/internal/evidence/road/gagnaveita trip=a0a99999-9999-4999-8999-999999999999 road=F208 bytes=357975 records=701\n{\n    \"ok\": true,\n    \"ingestId\": \"gci_b6d76c85-4228-4a69-861c-5b7827d6bc2c\",\n    \"requestId\": \"req_c92f8c87-62b5-4d10-afb5-e94512da252d\",\n    \"outcome\": \"ASSERTION_EMITTED\",\n    \"transport\": \"remote_collector\",\n    \"authoritative\": true,\n    \"sourceProvider\": \"vegagerdin_gagnaveita\",\n    \"roadSource\": \"gagnaveita.vegagerdin.is\",\n    \"canonicalProcessed\": true,\n    \"roadId\": \"F208\",\n    \"currentStatus\": \"limited\",\n    \"detail\": \"assertion emitted status=LIMITED\"\n}\n[gagnaveita-collector] http=200 sha256=513052dd1b148a0d486d76596359daae4c9c4fc7a74d71525e261b10747e849f",
+  "verdict": "FRANKFURT_GAGNAVEITA_COLLECTOR_E2E_PASS",
+  "roadAuthority": "gagnaveita_live_collector",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "roadId": "F208",
+  "note": "Frankfurt fetched live Gagnaveita faerd2017_1, signed POST via reverse tunnel to devbox road ingest."
+}

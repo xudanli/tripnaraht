@@ -1,8 +1,14 @@
-import type { TripInstantiationStrategy } from '../../match-square/types/trip-instantiation.types';
 import {
   inferHikingProfile,
   parseHikingSegments,
 } from './embedded-hiking-trip-metadata.util';
+
+/** Trip instantiation strategies stored on trip.metadata.matchSquareInstantiation */
+export type TripInstantiationStrategy =
+  | 'reuse_trekking_spawn'
+  | 'trekking_spawn'
+  | 'route_template'
+  | 'minimal_trip';
 
 /** 行程内容交付模式 — 供前端决定展示 POI 时间轴 vs 徒步骨架 vs 空态 */
 export type TripContentMode =

@@ -1,0 +1,49 @@
+{
+  "label": "EXECUTION_SLIP_PROD_CANARY_ENGINEERING_EVIDENCE",
+  "evidenceType": "EXECUTION_SLIP_CANARY_TRIP_SEED",
+  "date": "2026-07-11",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "environment": "tripnara_prod",
+  "drillStatus": "Execution Slip A/B/C Engineering Drill",
+  "goStatus": "Slice 3 Production GO: NOT YET ELIGIBLE",
+  "seedStatus": "Execution Slip Canary Trip Seed = PASS",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "planVersionId": "plan_1",
+  "activityA": "c0c77777-7777-4777-8777-777777777631",
+  "activityB": "c0c77777-7777-4777-8777-777777777632",
+  "substituteC": "c0c77777-7777-4777-8777-777777777633",
+  "setupAt": "2026-07-11T18:08:00.563Z",
+  "checks": [
+    {
+      "id": "SEED-PLAN",
+      "pass": true,
+      "detail": "effectivePlanVersionId=plan_1 expected=plan_1"
+    },
+    {
+      "id": "SEED-ACTIVITY-A",
+      "pass": true,
+      "detail": "activityA=c0c77777-7777-4777-8777-777777777631"
+    },
+    {
+      "id": "SEED-ACTIVITY-B",
+      "pass": true,
+      "detail": "activityB=c0c77777-7777-4777-8777-777777777632 lastEntryAt=16:00"
+    },
+    {
+      "id": "SEED-SUBSTITUTE-C",
+      "pass": true,
+      "detail": "substituteC=c0c77777-7777-4777-8777-777777777633"
+    },
+    {
+      "id": "SEED-NO-OPEN-PROBLEM",
+      "pass": true,
+      "detail": "openProblems=0"
+    },
+    {
+      "id": "SEED-NOT-WEATHER-ROAD-ALLOWLIST",
+      "pass": true,
+      "detail": "onWeatherRoadAllowlist=false allowlist=(empty)"
+    }
+  ],
+  "result": "PASS"
+}

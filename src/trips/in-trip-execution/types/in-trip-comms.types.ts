@@ -5,6 +5,9 @@ export interface IntercomMessageAudio {
   durationSec?: number;
   mimeType?: string;
   transcriptId?: string;
+  /** 持久化用 — 读时签名，API 不暴露 */
+  storageKey?: string;
+  fileUrl?: string | null;
 }
 
 export interface IntercomMessageLocation {

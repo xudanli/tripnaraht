@@ -1,0 +1,401 @@
+{
+  "evidenceType": "WEATHER_AUTO_PROMOTION_LIMITED_LIVE_CANARY",
+  "completedAt": "2026-07-11T19:11:19.975Z",
+  "shadowMode": false,
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "prerequisites": {
+    "formalVedurSoak": "OPERATOR_CONFIRMED_PASS",
+    "weatherOwnerSignoff": "OPERATOR_CONFIRMED_PASS",
+    "assertionPromotionShadowObservation": "PASS",
+    "roadPromotion": "OFF",
+    "primarySso": "OFF"
+  },
+  "drills": {
+    "retry": {
+      "dayIndex": 10,
+      "failedEntry": {
+        "detail": "no_plan_item_impact",
+        "signal": "ASSERTION_EMITTED",
+        "status": "SKIPPED",
+        "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_10_1783797085353",
+        "attempts": 1,
+        "ingestId": "vci_e1291c69-a511-4bfe-bda1-26ed1bb11d62",
+        "ledgerId": "apl_ba015d2a-c0e0-4801-93d8-7b4aca1ee28c",
+        "shadowMode": false,
+        "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_10_1783797085353",
+        "promotionKey": "weather:hazard:day:10:WEATHER_ACTIVITY_PROHIBITED",
+        "lastAttemptAt": "2026-07-11T19:11:25.786Z"
+      },
+      "before": {
+        "phase": "retry_before",
+        "at": "2026-07-11T19:11:24.864Z",
+        "problemCount": 1,
+        "openProblemCount": 0,
+        "decisionQueueOpenCount": 2,
+        "decisionQueueItems": [
+          {
+            "schemaId": "tripnara.consumer_decision_item@v1",
+            "problemId": "dp_id:plan_object_plan_object_stay_missing_day_2",
+            "headline": "住宿衔接不完整",
+            "impact": "影响：有晚间活动但未安排 STAY",
+            "explanation": "Day 2 有晚间活动但未安排 STAY，需确认住宿衔接",
+            "severity": "CONFLICT",
+            "affectedDayNumbers": [
+              2
+            ],
+            "affectedScopeLabel": "Day 2",
+            "affectedActivities": [
+              {
+                "activityId": "day-2-0",
+                "title": "有晚间活动但未安排 STAY",
+                "dayIndex": 2
+              }
+            ],
+            "recommendation": {
+              "title": "补充当日住宿锚点",
+              "summary": "在 Day 末或晚间活动后安排 STAY，确保住宿衔接。",
+              "keeps": [
+                "尽量保留当前行程目标"
+              ],
+              "costs": [
+                "可能需要调整部分安排以消除阻断"
+              ],
+              "recommendedActionId": "add_stay_anchor"
+            },
+            "repairOptions": [
+              {
+                "optionId": "add_stay_anchor",
+                "title": "补充当日住宿锚点",
+                "summary": "在 Day 末或晚间活动后安排 STAY，确保住宿衔接。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              },
+              {
+                "optionId": "move_stay_terminal",
+                "title": "将住宿移至日末",
+                "summary": "调整 STAY 顺序，使其成为当日最后一项。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              }
+            ],
+            "actions": {
+              "acceptRecommended": {
+                "enabled": true,
+                "actionId": "add_stay_anchor"
+              },
+              "keepOriginal": {
+                "enabled": false
+              },
+              "viewAlternatives": {
+                "enabled": true,
+                "count": 1
+              },
+              "defer": {
+                "enabled": false
+              }
+            },
+            "requiredAcknowledgements": [
+              "我确认在了解阻断原因后仍执行该方案"
+            ],
+            "evidenceSummary": {
+              "sourceLabel": "可行性分析",
+              "confidence": "LOW",
+              "freshness": "UNKNOWN"
+            }
+          },
+          {
+            "schemaId": "tripnara.consumer_decision_item@v1",
+            "problemId": "dp_id:plan_object_plan_object_meal_late_arrival_po_a0a99999-9999-4999-8999-999999999602_meal_windo",
+            "headline": "午餐窗冲突",
+            "impact": "可能影响当前可执行行程",
+            "explanation": "预计 [PROD-CANARY] 室内备选 结束于 20:00，晚于午餐窗 12:00",
+            "severity": "CONFLICT",
+            "recommendation": {
+              "title": "将午餐窗后移 30 分钟",
+              "summary": "推迟午餐开始时间，等待上一站结束后再用餐。",
+              "keeps": [
+                "尽量保留当前行程目标"
+              ],
+              "costs": [
+                "可能需要调整部分安排以消除阻断"
+              ],
+              "recommendedActionId": "shift_meal_later"
+            },
+            "repairOptions": [
+              {
+                "optionId": "shift_meal_later",
+                "title": "将午餐窗后移 30 分钟",
+                "summary": "推迟午餐开始时间，等待上一站结束后再用餐。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              },
+              {
+                "optionId": "add_travel_buffer",
+                "title": "在上一站与午餐之间增加缓冲",
+                "summary": "为转场预留更多时间，避免抵达晚于午餐窗。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              },
+              {
+                "optionId": "reorder_day_schedule",
+                "title": "调整当日活动顺序",
+                "summary": "重新排列 Day 行程，使午餐窗落在合理抵达时间之后。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              }
+            ],
+            "actions": {
+              "acceptRecommended": {
+                "enabled": true,
+                "actionId": "shift_meal_later"
+              },
+              "keepOriginal": {
+                "enabled": false
+              },
+              "viewAlternatives": {
+                "enabled": true,
+                "count": 2
+              },
+              "defer": {
+                "enabled": false
+              }
+            },
+            "requiredAcknowledgements": [
+              "我确认在了解阻断原因后仍执行该方案"
+            ],
+            "evidenceSummary": {
+              "sourceLabel": "可行性分析",
+              "confidence": "LOW",
+              "freshness": "UNKNOWN"
+            }
+          }
+        ]
+      },
+      "after": {
+        "phase": "retry_after",
+        "at": "2026-07-11T19:13:33.271Z",
+        "problemCount": 1,
+        "openProblemCount": 0,
+        "decisionQueueOpenCount": 2,
+        "decisionQueueItems": [
+          {
+            "schemaId": "tripnara.consumer_decision_item@v1",
+            "problemId": "dp_id:plan_object_plan_object_stay_missing_day_2",
+            "headline": "住宿衔接不完整",
+            "impact": "影响：有晚间活动但未安排 STAY",
+            "explanation": "Day 2 有晚间活动但未安排 STAY，需确认住宿衔接",
+            "severity": "CONFLICT",
+            "affectedDayNumbers": [
+              2
+            ],
+            "affectedScopeLabel": "Day 2",
+            "affectedActivities": [
+              {
+                "activityId": "day-2-0",
+                "title": "有晚间活动但未安排 STAY",
+                "dayIndex": 2
+              }
+            ],
+            "recommendation": {
+              "title": "补充当日住宿锚点",
+              "summary": "在 Day 末或晚间活动后安排 STAY，确保住宿衔接。",
+              "keeps": [
+                "尽量保留当前行程目标"
+              ],
+              "costs": [
+                "可能需要调整部分安排以消除阻断"
+              ],
+              "recommendedActionId": "add_stay_anchor"
+            },
+            "repairOptions": [
+              {
+                "optionId": "add_stay_anchor",
+                "title": "补充当日住宿锚点",
+                "summary": "在 Day 末或晚间活动后安排 STAY，确保住宿衔接。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              },
+              {
+                "optionId": "move_stay_terminal",
+                "title": "将住宿移至日末",
+                "summary": "调整 STAY 顺序，使其成为当日最后一项。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              }
+            ],
+            "actions": {
+              "acceptRecommended": {
+                "enabled": true,
+                "actionId": "add_stay_anchor"
+              },
+              "keepOriginal": {
+                "enabled": false
+              },
+              "viewAlternatives": {
+                "enabled": true,
+                "count": 1
+              },
+              "defer": {
+                "enabled": false
+              }
+            },
+            "requiredAcknowledgements": [
+              "我确认在了解阻断原因后仍执行该方案"
+            ],
+            "evidenceSummary": {
+              "sourceLabel": "可行性分析",
+              "confidence": "LOW",
+              "freshness": "UNKNOWN"
+            }
+          },
+          {
+            "schemaId": "tripnara.consumer_decision_item@v1",
+            "problemId": "dp_id:plan_object_plan_object_meal_late_arrival_po_a0a99999-9999-4999-8999-999999999602_meal_windo",
+            "headline": "午餐窗冲突",
+            "impact": "可能影响当前可执行行程",
+            "explanation": "预计 [PROD-CANARY] 室内备选 结束于 20:00，晚于午餐窗 12:00",
+            "severity": "CONFLICT",
+            "recommendation": {
+              "title": "将午餐窗后移 30 分钟",
+              "summary": "推迟午餐开始时间，等待上一站结束后再用餐。",
+              "keeps": [
+                "尽量保留当前行程目标"
+              ],
+              "costs": [
+                "可能需要调整部分安排以消除阻断"
+              ],
+              "recommendedActionId": "shift_meal_later"
+            },
+            "repairOptions": [
+              {
+                "optionId": "shift_meal_later",
+                "title": "将午餐窗后移 30 分钟",
+                "summary": "推迟午餐开始时间，等待上一站结束后再用餐。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              },
+              {
+                "optionId": "add_travel_buffer",
+                "title": "在上一站与午餐之间增加缓冲",
+                "summary": "为转场预留更多时间，避免抵达晚于午餐窗。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              },
+              {
+                "optionId": "reorder_day_schedule",
+                "title": "调整当日活动顺序",
+                "summary": "重新排列 Day 行程，使午餐窗落在合理抵达时间之后。",
+                "preserves": [
+                  "尽量保留当前行程目标"
+                ],
+                "sacrifices": [
+                  "可能需要调整部分安排以消除阻断"
+                ],
+                "canApply": true
+              }
+            ],
+            "actions": {
+              "acceptRecommended": {
+                "enabled": true,
+                "actionId": "shift_meal_later"
+              },
+              "keepOriginal": {
+                "enabled": false
+              },
+              "viewAlternatives": {
+                "enabled": true,
+                "count": 2
+              },
+              "defer": {
+                "enabled": false
+              }
+            },
+            "requiredAcknowledgements": [
+              "我确认在了解阻断原因后仍执行该方案"
+            ],
+            "evidenceSummary": {
+              "sourceLabel": "可行性分析",
+              "confidence": "LOW",
+              "freshness": "UNKNOWN"
+            }
+          }
+        ],
+        "hazardLedger": {
+          "detail": "no_plan_item_impact",
+          "signal": "ASSERTION_EMITTED",
+          "status": "SKIPPED",
+          "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_10_1783797085353",
+          "attempts": 1,
+          "ingestId": "vci_e1291c69-a511-4bfe-bda1-26ed1bb11d62",
+          "ledgerId": "apl_ba015d2a-c0e0-4801-93d8-7b4aca1ee28c",
+          "shadowMode": false,
+          "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_10_1783797085353",
+          "promotionKey": "weather:hazard:day:10:WEATHER_ACTIVITY_PROHIBITED",
+          "lastAttemptAt": "2026-07-11T19:11:25.786Z"
+        },
+        "ingest": {
+          "outcome": "ASSERTION_EMITTED",
+          "riskTier": "PROHIBITED",
+          "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_10_1783797085353",
+          "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_10_1783797085353",
+          "ingestId": "vci_e1291c69-a511-4bfe-bda1-26ed1bb11d62"
+        }
+      },
+      "verdict": {
+        "failed_ledger": false,
+        "scheduler_recovery": false,
+        "overall_pass": false
+      }
+    }
+  },
+  "closure": {
+    "weatherLimitedLiveCanaryDrill": "PENDING",
+    "weatherProductionCanaryGo": "PENDING",
+    "fullCutover": "NO"
+  }
+}

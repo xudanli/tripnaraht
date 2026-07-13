@@ -28,11 +28,48 @@ export interface ConsumerDecisionRecommendation {
   recommendedActionId?: string;
 }
 
+export interface ConsumerDecisionRepairOption {
+  optionId: string;
+  title: string;
+  summary?: string;
+  preserves: string[];
+  sacrifices: string[];
+  canApply: boolean;
+  changePreview?: {
+    remove?: { activityId?: string; title: string; lastEntryAt?: string; lastEntryAtLabel?: string };
+    add?: { activityId?: string; title: string; lastEntryAt?: string; lastEntryAtLabel?: string };
+    shortenMinutes?: number;
+  };
+  scheduleContext?: {
+    projectedEta?: string;
+    projectedEtaLabel?: string;
+    nextLastEntryAt?: string;
+    nextLastEntryAtLabel?: string;
+    slipMinutes?: number;
+    travelDurationMinutes?: number;
+    timezone?: string;
+  };
+}
+
 export interface ConsumerDecisionActions {
   acceptRecommended: { enabled: boolean; actionId?: string };
   keepOriginal: { enabled: boolean; actionId?: string };
   viewAlternatives: { enabled: boolean; count: number };
   defer: { enabled: boolean; actionId?: string };
+}
+
+export interface ConsumerDecisionEvidenceSummary {
+  sourceLabel?: string;
+  verifiedAt?: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+  freshness: 'FRESH' | 'STALE' | 'UNKNOWN';
+}
+
+/** 受影响的行程项（C 端展示用，含可读名称） */
+export interface ConsumerAffectedActivity {
+  activityId: string;
+  title: string;
+  dayIndex?: number;
 }
 
 export interface ConsumerDecisionItem {
@@ -44,8 +81,22 @@ export interface ConsumerDecisionItem {
   severity: 'BLOCK' | 'CONFLICT' | 'VERIFY' | 'OPTIMIZE';
   affectedDayNumbers?: number[];
   affectedScopeLabel?: string;
+  affectedActivities?: ConsumerAffectedActivity[];
   recommendation?: ConsumerDecisionRecommendation;
+  /** 全部 allowed 修复候选 — 「查看其他方案」列表数据源 */
+  repairOptions?: ConsumerDecisionRepairOption[];
+  scheduleContext?: {
+    projectedEta?: string;
+    projectedEtaLabel?: string;
+    nextLastEntryAt?: string;
+    nextLastEntryAtLabel?: string;
+    slipMinutes?: number;
+    travelDurationMinutes?: number;
+    timezone?: string;
+  };
   actions: ConsumerDecisionActions;
+  /** BLOCK 类决策 confirm 必填 — 与 unified options / preview 一致 */
+  requiredAcknowledgements?: string[];
   evidenceSummary?: {
     sourceLabel?: string;
     verifiedAt?: string;
@@ -248,9 +299,33 @@ export interface AcceptRecommendedResponse {
   apply?: { problemId: string; revalidation?: { status: string; message?: string } };
 }
 
-/** POST body for accept-recommended — actionId 可选，用于 keepOriginal / defer */
+/** POST /api/trips/:tripId/execution/departure-slip —「我晚了」上报 */
+export type DepartureSlipSource = 'USER_REPORT' | 'MOBILE_PRESENCE' | 'SYSTEM_INFERENCE';
+
+export interface DepartureSlipRequest {
+  /** 当前仍所在、即将离开的活动 ID（不是下一站） */
+  activityId: string;
+  /** ISO8601 — 快捷选项须为 plannedDepartAt + delayMinutes，勿用 new Date() */
+  observedAt: string;
+  stillAtPoi: boolean;
+  source: DepartureSlipSource;
+  idempotencyKey?: string;
+}
+
+export type DepartureSlipStatus = 'RECORDED' | 'NO_ACTION';
+
+export interface DepartureSlipResponse {
+  observationId: string;
+  status: DepartureSlipStatus;
+  /** status=RECORDED 时返回，用于跳转 decision-queue */
+  problemId?: string;
+  runId?: string;
+}
+
 export interface AcceptRecommendedRequest {
   actionId?: string;
+  /** BLOCK 决策必填 — 例：「我确认在了解阻断原因后仍执行该方案」 */
+  acknowledgement?: string[];
 }
 
 export interface TripContextSnapshotBindings {

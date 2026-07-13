@@ -15,15 +15,29 @@ import type { ResolvedSegmentDistanceThresholds } from '../../trip-constraint-so
 // ==================== 准备度分数类型 ====================
 
 /**
- * 准备度分数详情
+ * 准备度分数详情 — PR-1 起为「出发准备完成度」
  */
 export interface ReadinessScoreBreakdown {
-  overall: number;              // 总体分数 0-100
-  evidenceCoverage: number;     // 证据覆盖率 0-100
-  scheduleFeasibility: number;  // 时间可行性 0-100
-  transportCertainty: number;   // 交通确定性 0-100
-  safetyRisk: number;           // 安全风险分数 0-100 (越高越安全)
-  buffers: number;              // 缓冲时间分数 0-100
+  /** 出发准备总体完成度 0–100 */
+  overall: number;
+  entryTransit: number;
+  healthInsurance: number;
+  gearPacking: number;
+  bookingsCredentials: number;
+  logisticsComms: number;
+  emergency: number;
+  /**
+   * @deprecated PR-1 — 方案维度已迁至 feasibility-report；过渡期内可能缺省
+   */
+  evidenceCoverage?: number;
+  /** @deprecated 使用 feasibility-report.dimensions.schedule */
+  scheduleFeasibility?: number;
+  /** @deprecated 使用 feasibility-report.dimensions.transport */
+  transportCertainty?: number;
+  /** @deprecated 目的地风险见 emergency；路线风险见 feasibility */
+  safetyRisk?: number;
+  /** @deprecated 使用 feasibility-report issues */
+  buffers?: number;
 }
 
 /**
@@ -135,6 +149,7 @@ export interface ReadinessScoreResponse {
   /** 最近一次级联影响预分析（trip.metadata 持久化 + 实时计算） */
   causalPreAnalysis?: import('../../../travel-cognition').NonTransactionalReplanResult;
   /** 供准备度 UI 渲染的级联提示卡片 */
+  /** @deprecated P4 — 请从 feasibility-report repair-options 或 trip.metadata.readinessCausalPreAnalysis 读取 */
   cascadeUiHints?: ReadinessCascadeUiHint[];
 }
 
@@ -290,6 +305,11 @@ export interface ApplyRepairRequest {
   runGuardianNegotiation?: boolean;
   /** 为 true 时跳过 pre_repair 低共识 REJECT 门控，强制执行 Neptune 修复 */
   forceDecisionRepair?: boolean;
+  /**
+   * P4 — 写库 authority：`feasibility` 允许方案 mutate；`readiness_prep` 仅勾选/标记/刷新
+   * @default readiness_prep when called from legacy readiness API
+   */
+  repairAuthority?: 'feasibility' | 'readiness_prep';
 }
 
 /**

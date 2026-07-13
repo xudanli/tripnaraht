@@ -1,0 +1,20 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_OBSERVATIONAL_SOAK",
+  "soakMode": "OBSERVATIONAL_SOAK",
+  "signoffEligible": false,
+  "weatherAuthority": "open_meteo_fallback",
+  "startedAt": "2026-07-10T18:13:22.937Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "database": "tripnara_prod",
+  "note": "Non-signoff soak on existing monitoring/cron. Does NOT satisfy Production Canary GO. Formal 24h soak runs after VEDUR_LIVE collector path is live.",
+  "watchItems": [
+    "cron_miss",
+    "advisory_lock_stuck",
+    "memory_growth",
+    "db_connection_leak",
+    "fingerprint_duplicate",
+    "provider_transition_anomaly",
+    "legacy_write_nonzero",
+    "queue_pollution"
+  ]
+}

@@ -21,12 +21,18 @@ import {
 
 export function parseScheduleAffectedDayNumbers(values: string[] | undefined): number[] {
   if (!values?.length) return [];
-  return values
-    .map((v) => {
-      const m = String(v).match(/(\d+)/);
-      return m ? Number(m[1]) : NaN;
-    })
-    .filter((n) => Number.isFinite(n) && n > 0);
+  const days = new Set<number>();
+  for (const v of values) {
+    const s = String(v).trim();
+    if (!s) continue;
+    // Calendar ISO dates are not trip day indices (avoid parsing 2026 from 2026-07-19).
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) continue;
+    const m = s.match(/(?:day\s*)?(\d+)/i);
+    if (!m?.[1]) continue;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0 && n <= 60) days.add(n);
+  }
+  return [...days].sort((a, b) => a - b);
 }
 
 /** 与前端 isLunchValidationConflict 对齐：低优先级餐饮窗校验噪声 */

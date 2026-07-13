@@ -1,7 +1,7 @@
 // src/trips/services/trip-intent.service.ts
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto, ConstraintsDto } from '../dto/trip-intent.dto';
+import { TravelMode, UpdateIntentRequestDto, UpdateIntentResponseDto, IntentResponseDto, ConstraintsDto } from '../dto/trip-intent.dto';
 import {
   LUNCH_STRATEGY_LABELS,
   normalizeLunchStrategy,
@@ -37,6 +37,7 @@ export class TripIntentService {
       pacingConfig = {
         ...pacingConfig,
         ...dto.pacingConfig,
+        travelMode: TravelMode.DRIVING,
       };
 
       // 根据节奏等级计算最大每日活动数
@@ -49,6 +50,11 @@ export class TripIntentService {
         pacingConfig.maxDailyActivities = levelMap[dto.pacingConfig.level] || 5;
       }
     }
+
+    pacingConfig = {
+      ...pacingConfig,
+      travelMode: TravelMode.DRIVING,
+    };
 
     // 更新预算配置
     let budgetConfig = trip.budgetConfig as any || {};
@@ -150,7 +156,10 @@ export class TripIntentService {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
     }
 
-    const pacingConfig = trip.pacingConfig as any || {};
+    const pacingConfig = {
+      ...(trip.pacingConfig as Record<string, unknown> | null) ?? {},
+      travelMode: TravelMode.DRIVING,
+    };
     const budgetConfig = trip.budgetConfig as any || {};
     const metadata = (trip.metadata as Record<string, unknown>) || {};
     const lunch_strategy =

@@ -60,7 +60,9 @@ function mapProviderToSourceType(
 ): WorldStateAssertionSource['sourceType'] {
   if (provider === 'admin_injection') return 'INTERNAL';
   if (provider === 'static_seasonal_data') return 'MODEL';
-  if (provider === 'vegagerdin_gagnaveita_fallback') return 'PARTNER';
+  if (provider === 'vegagerdin_gagnaveita' || provider === 'vegagerdin_gagnaveita_fallback') {
+    return 'OFFICIAL';
+  }
   return 'OFFICIAL';
 }
 

@@ -28,6 +28,17 @@ import { Rfc001DecisionEngineRoutingService } from '../routing/decision-engine-r
 import type { TripDecisionRoutingView } from '../routing/decision-engine-routing.types';
 import { dedupeExcessiveDailyLoadProblemViews } from '../detection/excessive-daily-load-problem.util';
 import { buildImpactScopeViewForProblem } from '../adapters/impact-scope-view.util';
+import { resolveExecutionSlipOptionContext } from '../adapters/execution-slip-option-context.resolver';
+import { buildTraversabilityAssessmentForRoad } from '../assessment/road-traversability-trip-context.util';
+import { ROAD_TRAVERSABILITY_ASSESSOR_VERSION } from '../assessment/road-traversability.assessor';
+import {
+  loadRoadSegmentProfilesForCountry,
+  resolveRoadSegmentProfile,
+} from '../../../decision-runtime/packs/road/road-segment-profile.loader';
+import type { RoadStatusAssertionPayload } from '../adapters/road-status-to-assertion.adapter';
+import type { WorldStateAssertion } from '../contracts/world-state.types';
+import type { RoadTraversabilityWorkspaceSnapshot } from '../contracts/decision-workspace.types';
+import type { RoadStatusChangedEvent } from '../evidence/road-status-changed.event';
 import { isActionablePendingRecord } from '../cutover/cutover-reconciliation.util';
 
 @Injectable()
@@ -148,6 +159,42 @@ export class Rfc001DecisionCenterReadModelService {
     const runs = await this.ledgerStore.listRuns(tripId);
     const run = runs.find((r) => r.problemId === problemId);
 
+    const tripRow = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true, destination: true },
+    });
+
+    let traversabilitySnapshot: RoadTraversabilityWorkspaceSnapshot | undefined =
+      workspace?.roadTraversability;
+    const roadEvent = event as RoadStatusChangedEvent | undefined;
+    if (
+      !traversabilitySnapshot &&
+      assertion &&
+      roadEvent?.payload?.roadId
+    ) {
+      const assessment = buildTraversabilityAssessmentForRoad(
+        tripId,
+        roadEvent.payload.roadId,
+        assertion as WorldStateAssertion<RoadStatusAssertionPayload>,
+        (tripRow?.metadata ?? {}) as Record<string, unknown>,
+        tripRow?.destination,
+        { worldAssertions: worldStore.assertions },
+      );
+      if (assessment) {
+        const bundle = loadRoadSegmentProfilesForCountry(tripRow?.destination ?? 'IS');
+        const profile = bundle
+          ? resolveRoadSegmentProfile(roadEvent.payload.roadId, bundle)
+          : null;
+        traversabilitySnapshot = {
+          roadId: roadEvent.payload.roadId.toUpperCase(),
+          segmentId: profile?.segmentId,
+          assessment,
+          assessorVersion: ROAD_TRAVERSABILITY_ASSESSOR_VERSION,
+          evaluatedAt: new Date().toISOString(),
+        };
+      }
+    }
+
     const partialView = {
       schemaId: 'tripnara.rfc001_problem_view@v1' as const,
       tripId,
@@ -165,14 +212,28 @@ export class Rfc001DecisionCenterReadModelService {
       record,
       planVersion,
       options: workspace
-        ? bridgeCandidatesToOptions(problemId, workspace.repairCandidates, workspace, record, {
-            problem,
-          })
+        ? bridgeCandidatesToOptions(
+            problemId,
+            workspace.repairCandidates,
+            workspace,
+            record,
+            {
+              problem,
+              executionSlipContext: await resolveExecutionSlipOptionContext(this.prisma, {
+                tripId,
+                problem,
+                triggerEvent: event,
+                repairCandidates: workspace.repairCandidates,
+                tripMetadata: tripRow?.metadata,
+              }),
+            },
+          )
         : [],
       lineage: buildDecisionLineage({
         triggerEventId: problem.triggerEventId,
         snapshotId: problem.worldStateSnapshotId,
         assertionId: assertion?.assertionId,
+        traversability: traversabilitySnapshot,
         problem,
         workspace,
         record,
@@ -183,6 +244,7 @@ export class Rfc001DecisionCenterReadModelService {
 
     const impactScopeView = await buildImpactScopeViewForProblem(this.prisma, partialView, {
       triggerEvent: event,
+      traversability: traversabilitySnapshot,
     });
 
     return {

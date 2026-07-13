@@ -137,9 +137,6 @@ const SCENARIO_PLANNING_RE =
 const SUPPLY_CHAIN_RE =
   /充电|油(?:站)?|信号|有网|补给|能活|趴窝|100%|确保|无人区|避难所|离线地图/i;
 
-const PARTY_NEGOTIATION_RE =
-  /朋友|队友|搭子|群里|分歧|不合|意见|想法不同|遗憾度|特种兵|躺平/i;
-
 const SPATIAL_INTENT_RE =
   /小红书|轨迹|gpx|截图|插入|塞进|安排在|机位/i;
 
@@ -154,7 +151,7 @@ export class PlanningIntentProcessorUtil {
     return {
       scenario_planning_requested: SCENARIO_PLANNING_RE.test(t),
       supply_chain_verification_requested: SUPPLY_CHAIN_RE.test(t),
-      party_negotiation_requested: PARTY_NEGOTIATION_RE.test(t),
+      party_negotiation_requested: false,
       spatial_intent_capture_requested: SPATIAL_INTENT_RE.test(t),
     };
   }

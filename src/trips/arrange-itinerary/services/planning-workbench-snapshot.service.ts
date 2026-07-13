@@ -7,6 +7,8 @@ import { PlanningItemLockService } from './planning-item-lock.service';
 import { PlanningModeService } from './planning-mode.service';
 import { PlanningOrchestratorFacadeService } from './planning-orchestrator-facade.service';
 import { PlanProposalStoreService } from './plan-proposal-store.service';
+import { PlanningLodgingWorkbenchService } from '../../attraction-explore/services/planning-lodging-workbench.service';
+import type { PlanningLodgingSuggestion } from '../../attraction-explore/types/attraction-explore.types';
 import type { OrchestrationStateView } from '../types/plan-proposal.types';
 
 export interface PlanningWorkbenchSnapshot {
@@ -36,6 +38,7 @@ export interface PlanningWorkbenchSnapshot {
     }>;
   };
   activeProposals: number;
+  lodgingSuggestions: PlanningLodgingSuggestion[];
 }
 
 @Injectable()
@@ -48,15 +51,17 @@ export class PlanningWorkbenchSnapshotService {
     private readonly copilot: ArrangeItineraryCopilotService,
     private readonly proposalStore: PlanProposalStoreService,
     private readonly tripConflicts: TripConflictsService,
+    private readonly lodgingWorkbench: PlanningLodgingWorkbenchService,
   ) {}
 
   async getSnapshot(tripId: string, userId: string): Promise<PlanningWorkbenchSnapshot> {
-    const [mode, overview, locks, copilotView, conflicts] = await Promise.all([
+    const [mode, overview, locks, copilotView, conflicts, lodgingView] = await Promise.all([
       this.planningMode.getMode(tripId),
       this.overview.getOverview(tripId, userId),
       this.itemLocks.getTripItemLocks(tripId),
       this.copilot.getSuggestions(tripId),
       this.tripConflicts.getConflicts(tripId).catch(() => null),
+      this.lodgingWorkbench.buildView({ tripId }),
     ]);
 
     const conflictItems = conflicts?.conflicts ?? [];
@@ -106,6 +111,7 @@ export class PlanningWorkbenchSnapshotService {
         decisionClusters: [...clusterMap.values()].slice(0, 5),
       },
       activeProposals: activeProposals.length,
+      lodgingSuggestions: lodgingView.suggestions,
     };
   }
 }

@@ -1,0 +1,75 @@
+{
+  "evidenceType": "ROAD_PRE_SIGNOFF_WEATHER_SOAK_BASELINE",
+  "evidenceLabel": "ROAD_PROD_CANARY_PRE_SIGNOFF_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road A/B/C Pre-Signoff Drill",
+  "drillStatus": "Road A/B/C Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING WEATHER SOAK SIGN-OFF",
+  "label": "post-drill",
+  "capturedAt": "2026-07-10T20:46:49.990Z",
+  "formalSoak": {
+    "evidenceType": "PRODUCTION_CANARY_FORMAL_VEDUR_SOAK",
+    "soakMode": "FORMAL_24H_VEDUR_AUTHORITY",
+    "signoffEligible": false,
+    "signoffEligibleAfter": "2026-07-11T19:06:09.866Z",
+    "weatherAuthority": "vedur_live_collector",
+    "startedAt": "2026-07-10T19:06:09.866Z",
+    "endsAt": "2026-07-11T19:06:09.866Z",
+    "soakDurationHours": 24,
+    "tripId": "a0a99999-9999-4999-8999-999999999999",
+    "database": "tripnara_prod",
+    "collectorHost": "47.87.131.183",
+    "devboxIngestPort": 3000,
+    "frankfurtTunnelPort": 19080,
+    "cronSchedule": "*/15 * * * *",
+    "preflight": {
+      "devboxIngest": {
+        "ok": true,
+        "detail": "{\"ok\":true,\"service\":\"vedur-collector-ingest\"}"
+      },
+      "frankfurtTunnel": {
+        "ok": true,
+        "detail": "{\"ok\":true,\"service\":\"vedur-collector-ingest\"}"
+      },
+      "frankfurtCron": {
+        "ok": true,
+        "detail": "*/15 * * * * set -a && source /root/tripnara-collector/vedur-collector.runtime.env && set +a && bash /root/tripnara-collector/scripts/vedur-collector-minimal.sh >> /var/log/vedur-collector.log 2>&1 # "
+      }
+    },
+    "preflightPass": true,
+    "status": "RUNNING",
+    "watchItems": [
+      "cron_miss",
+      "tunnel_disconnect",
+      "ingest_server_restart_storm",
+      "advisory_lock_stuck",
+      "memory_growth",
+      "db_connection_leak",
+      "fingerprint_duplicate",
+      "provider_transition_anomaly",
+      "legacy_write_nonzero",
+      "vedur_ingest_http_non_200"
+    ],
+    "completionCriteria": [
+      "24h elapsed with preflightPass true at start",
+      "Frankfurt cron ran ~96 times (15min interval) with >=95% success",
+      "No sustained tunnel outage >15min",
+      "trip metadata rfc001VedurWeatherEvidence polls show INGESTED/UNCHANGED",
+      "No provider_transition_anomaly (Open-Meteo must not override active Vedur risk)"
+    ],
+    "note": "Formal sign-off soak on VEDUR_LIVE collector path. Does NOT require app launch or real user traffic. Run prod-canary-formal-vedur-soak-check.ts after endsAt."
+  },
+  "weatherSnapshot": {
+    "capturedAt": "2026-07-10T20:46:49.990Z",
+    "gitCommit": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+    "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+    "weatherEffectivePlanVersionId": "plan_1",
+    "weatherTripUpdatedAt": "2026-07-10T17:00:28.155Z",
+    "vedurPollCount": 6,
+    "lastVedurJobRunId": null,
+    "lastVedurOutcome": "UNCHANGED",
+    "pm2IngestStatus": "unknown",
+    "pm2IngestRestarts": 15,
+    "legacyWriteInvocations": 0
+  },
+  "note": "Snapshot only — does not modify Weather Soak process or env."
+}

@@ -9,6 +9,12 @@ export interface StandardResponse<T = any> {
   success: boolean;
   data?: T;
   error?: ErrorResponse;
+  /** Mobile BFF / 执行阶段增强信封（可选，向后兼容） */
+  requestId?: string;
+  tripId?: string;
+  contextVersion?: number;
+  planVersion?: number;
+  serverTime?: string;
 }
 
 /**

@@ -29,7 +29,7 @@ export class PacingConfigDto {
   @ApiPropertyOptional({ 
     description: '出行方式', 
     enum: TravelMode,
-    default: TravelMode.PUBLIC_TRANSIT,
+    default: TravelMode.DRIVING,
   })
   travelMode?: TravelMode;
 }

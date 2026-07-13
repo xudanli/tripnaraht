@@ -22,6 +22,8 @@ export interface ExplorationConditionsView {
   dateRange: { startDate: string; endDate: string };
   travelers: Array<{ type: string; age?: number }>;
   budget?: { currency: string; min?: number; max?: number };
+  mobilityMode?: 'self_drive_only';
+  mobilityModeLabel?: string;
   mobilityContext?: { vehicleType?: string };
   insuranceContext?: { coverageTier?: 'BASIC' | 'STANDARD' | 'FULL' | 'UNKNOWN' };
   rentalContext?: {
@@ -49,6 +51,9 @@ export interface ExplorationCandidatesStatus {
 export interface ConditionsCatalogView {
   destinationCode: string;
   destinationLabel: string;
+  mobilityMode: 'self_drive_only';
+  mobilityModeLabel: string;
+  transportModeEditable: false;
   vehicleTypes: Array<{ code: string; label: string }>;
   insuranceTiers?: Array<{ code: string; label: string; description: string }>;
   budgetPresets: Array<{ currency: string; min: number; max: number }>;

@@ -14,10 +14,7 @@ import { successResponse, errorResponse, ErrorCode } from '../common/dto/standar
 import { ApiErrorResponseDto, ApiSuccessResponseDto } from '../common/dto/api-response.dto';
 import { OdysseyIntakeService } from './odyssey-intake.service';
 import {
-  MatchCompanionsDto,
-  PeerFeedbackDto,
   SelectMbtiDto,
-  SubmitAndMatchDto,
   SubmitOdysseyIntakeDto,
   SubmitPremiumIntakeDto,
   SubmitPremiumStressTestDto,
@@ -122,7 +119,7 @@ export class OdysseyIntakeController {
   @Get('onboarding/status')
   @ApiOperation({
     summary: '入网流程状态',
-    description: 'v2：mbti_select → credentials → premium_stress_test → trust_verify → match',
+    description: 'v2：mbti_select → credentials → premium_stress_test → trust_verify → view_card',
   })
   @ApiResponse({ status: 200, type: ApiSuccessResponseDto })
   async getOnboardingStatus(@CurrentUser() user: CurrentUserPayload) {
@@ -218,37 +215,6 @@ export class OdysseyIntakeController {
       }
       const profile = await this.odysseyIntakeService.submitIntake(user.userId, dto.answers);
       return successResponse(profile);
-    } catch (error: unknown) {
-      if (error instanceof BadRequestException) {
-        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
-      }
-      return errorResponse(ErrorCode.INTERNAL_ERROR, (error as Error).message);
-    }
-  }
-
-  @Public()
-  @Post('submit-and-match')
-  @ApiOperation({
-    summary: '提交 Premium Intake 并返回契合旅伴',
-    description:
-      'MBTI 自选 + 3 道博弈题 → 生成名片 →（若已 trust verify）返回推荐列表。前端 loading ≤1.5s。',
-  })
-  @ApiResponse({ status: 200, type: ApiSuccessResponseDto })
-  async submitAndMatch(
-    @Body() dto: SubmitAndMatchDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    try {
-      if (!user?.userId) {
-        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
-      }
-      const result = await this.odysseyIntakeService.submitAndMatch(user.userId, {
-        mbtiType: dto.mbtiType,
-        answers: dto.answers,
-        tripMeta: dto.tripMeta,
-        matchLimit: dto.matchLimit,
-      });
-      return successResponse(result);
     } catch (error: unknown) {
       if (error instanceof BadRequestException) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
@@ -547,59 +513,6 @@ export class OdysseyIntakeController {
       }
       if (error instanceof BadRequestException) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
-      }
-      return errorResponse(ErrorCode.INTERNAL_ERROR, (error as Error).message);
-    }
-  }
-
-  @Public()
-  @Post('match')
-  @ApiOperation({
-    summary: '精准推荐契合旅伴列表',
-    description: '需先完成 trust verify；Hard Gate 过滤 + Soft Weight 排序，目标 300ms 内完成。',
-  })
-  @ApiResponse({ status: 200, type: ApiSuccessResponseDto })
-  async matchCompanions(
-    @Body() dto: MatchCompanionsDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    try {
-      if (!user?.userId) {
-        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
-      }
-      const result = await this.odysseyIntakeService.matchCompanions(user.userId, dto);
-      return successResponse(result);
-    } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        return errorResponse(ErrorCode.NOT_FOUND, error.message);
-      }
-      if (error instanceof BadRequestException) {
-        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
-      }
-      return errorResponse(ErrorCode.INTERNAL_ERROR, (error as Error).message);
-    }
-  }
-
-  @Public()
-  @Post('peer-feedback')
-  @ApiOperation({
-    summary: '行后互评（数据回哺）',
-    description: '行程结束后对搭子评价，动态修正消费带宽 / 计划硬度等分值。',
-  })
-  @ApiResponse({ status: 200, type: ApiSuccessResponseDto })
-  async peerFeedback(
-    @Body() dto: PeerFeedbackDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    try {
-      if (!user?.userId) {
-        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
-      }
-      const profile = await this.odysseyIntakeService.applyPeerFeedback(user.userId, dto);
-      return successResponse(profile);
-    } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       return errorResponse(ErrorCode.INTERNAL_ERROR, (error as Error).message);
     }

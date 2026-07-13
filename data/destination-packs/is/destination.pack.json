@@ -34,6 +34,9 @@
   "repairTemplateBundles": [
     { "path": "repair/is-road-repair-templates.json", "version": "1.0.0" }
   ],
+  "roadProfileBundles": [
+    { "path": "road/is-road-segment-profiles.json", "version": "1.0.0" }
+  ],
   "environmentModifiers": [
     { "path": "modifiers/is-driving.json", "version": "1.0.0" },
     { "path": "modifiers/is-outdoor-load.json", "version": "1.0.0" }

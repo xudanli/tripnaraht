@@ -1,0 +1,29 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_COLLECTOR_HTTP_E2E",
+  "probedAt": "2026-07-10T18:51:04.136Z",
+  "stack": {
+    "ingestServer": "scripts/vedur-collector-ingest-server.ts",
+    "port": 3000,
+    "health": "GET /health → ok",
+    "canonicalEnabled": true
+  },
+  "drill": {
+    "mode": "http",
+    "verdict": "COLLECTOR_INGEST_PASS",
+    "weatherAuthority": "vedur_live_collector",
+    "outcome": "SILENT"
+  },
+  "frankfurtTunnel": {
+    "status": "BLOCKED_SSH_KEY",
+    "frankfurtHost": "47.87.131.183",
+    "remoteBindPort": 19080,
+    "devboxPubkey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM1leAygyyCNk8e2Kzf6LuDExHejKu+X0DssbGujEVpC 2293028143@qq.com",
+    "unblockSteps": [
+      "Add devbox pubkey to Frankfurt ~/.ssh/authorized_keys (Aliyun Workbench)",
+      "bash scripts/start-collector-stack.sh all",
+      "bash scripts/sync-frankfurt-collector-bundle.sh",
+      "On Frankfurt: bash /root/tripnara-collector/scripts/frankfurt-collector-e2e.sh"
+    ]
+  },
+  "note": "Devbox ingest HTTP path verified. Frankfurt→TripNARA pending SSH key authorization for reverse tunnel."
+}

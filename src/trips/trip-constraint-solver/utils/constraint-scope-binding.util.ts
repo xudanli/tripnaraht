@@ -4,7 +4,9 @@
 
 import type { PlanningConflictItem } from '../types/planning-conflicts.types';
 import type {
+  ConstraintActivityScopeBinding,
   ConstraintMemberScopeBinding,
+  ConstraintPhaseScopeBinding,
   ConstraintScopeBinding,
   ConstraintTemporalScopeBinding,
   TripConstraint,
@@ -89,17 +91,17 @@ export function mergeConstraintValueOnPatch(
   return next;
 }
 
-export function inferCoarseScopeFromBinding(
-  binding: ConstraintScopeBinding | undefined,
-): TripConstraintScope | undefined {
-  if (!binding) return undefined;
-  const { temporal } = binding;
+function inferTemporalScopeFromBinding(
+  temporal: ConstraintTemporalScopeBinding,
+): TripConstraintScope {
   switch (temporal.kind) {
     case 'trip':
       return { type: 'TRIP' };
     case 'day': {
       const day = temporal.dayNumber;
-      return day != null ? { type: 'DAY', ids: [String(day)], dayIndex: day } : { type: 'DAY' };
+      return day != null
+        ? { type: 'DAY', ids: [String(day)], dayIndex: day }
+        : { type: 'DAY' };
     }
     case 'day_range': {
       const from = temporal.dayFrom;
@@ -109,12 +111,16 @@ export function inferCoarseScopeFromBinding(
         to != null && to !== from
           ? Array.from({ length: to - from + 1 }, (_, i) => String(from + i))
           : [String(from)];
-      return { type: 'DAY', ids, dayIndex: from };
+      return { type: 'DAY', ids, dayIndex: from, dayFrom: from, dayTo: to ?? from };
     }
     case 'route_segment':
       return {
         type: 'ROUTE_SEGMENT',
         ids: temporal.segmentId ? [temporal.segmentId] : undefined,
+        segmentId: temporal.segmentId,
+        fromItemId: temporal.fromItemId,
+        toItemId: temporal.toItemId,
+        dayIndex: temporal.dayNumber,
       };
     case 'destination':
       return {
@@ -124,6 +130,299 @@ export function inferCoarseScopeFromBinding(
     default:
       return { type: 'TRIP' };
   }
+}
+
+export function inferCoarseScopeFromBinding(
+  binding: ConstraintScopeBinding | undefined,
+): TripConstraintScope | undefined {
+  if (!binding) return undefined;
+
+  const { temporal, member } = binding;
+  const memberSpecific =
+    member.kind === 'members' && member.memberIds?.length
+      ? ({ type: 'MEMBER' as const, ids: [...member.memberIds] })
+      : member.kind === 'primary_driver'
+        ? ({
+            type: 'MEMBER' as const,
+            ids: member.resolvedMemberId ? [member.resolvedMemberId] : undefined,
+          })
+        : undefined;
+
+  if (temporal.kind !== 'trip') {
+    return inferTemporalScopeFromBinding(temporal);
+  }
+
+  if (memberSpecific) return memberSpecific;
+  return { type: 'TRIP' };
+}
+
+export function enrichScopeFromBinding(
+  scope: TripConstraintScope,
+  binding?: ConstraintScopeBinding,
+): TripConstraintScope {
+  if (!binding) return scope;
+
+  const enriched: TripConstraintScope = { ...scope };
+  const { temporal, member } = binding;
+
+  if (temporal.kind === 'route_segment' || scope.type === 'ROUTE_SEGMENT') {
+    if (temporal.segmentId) {
+      enriched.segmentId = temporal.segmentId;
+      enriched.ids = enriched.ids?.length ? enriched.ids : [temporal.segmentId];
+    }
+    if (temporal.fromItemId) enriched.fromItemId = temporal.fromItemId;
+    if (temporal.toItemId) enriched.toItemId = temporal.toItemId;
+    if (temporal.dayNumber != null) enriched.dayIndex = temporal.dayNumber;
+  }
+
+  if (temporal.kind === 'day' && temporal.dayNumber != null) {
+    enriched.dayIndex = temporal.dayNumber;
+    enriched.ids = enriched.ids?.length ? enriched.ids : [String(temporal.dayNumber)];
+  }
+
+  if (temporal.kind === 'day_range') {
+    if (temporal.dayFrom != null) {
+      enriched.dayFrom = temporal.dayFrom;
+      enriched.dayIndex = temporal.dayFrom;
+    }
+    if (temporal.dayTo != null) enriched.dayTo = temporal.dayTo;
+  }
+
+  if (member.kind === 'members' && member.memberIds?.length) {
+    enriched.ids = member.memberIds;
+    if (scope.type === 'MEMBER' || scope.type === 'MEMBER_GROUP') {
+      enriched.type = 'MEMBER';
+    }
+  }
+
+  return enriched;
+}
+
+function normalizeTemporalKind(raw: unknown): ConstraintTemporalScopeBinding['kind'] | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const k = raw.toLowerCase();
+  if (k === 'trip') return 'trip';
+  if (k === 'day') return 'day';
+  if (k === 'day_range' || k === 'dayrange') return 'day_range';
+  if (k === 'route_segment' || k === 'route segment') return 'route_segment';
+  if (k === 'destination') return 'destination';
+  return undefined;
+}
+
+function buildTemporalFromScope(scope?: TripConstraintScope): ConstraintTemporalScopeBinding {
+  if (!scope) return { kind: 'trip' };
+
+  switch (scope.type) {
+    case 'DAY': {
+      const dayFrom = scope.dayFrom ?? scope.dayIndex ?? parseDayFromIds(scope.ids);
+      const dayTo = scope.dayTo ?? dayFrom;
+      if (scope.dayFrom != null || (scope.dayTo != null && scope.dayTo !== dayFrom)) {
+        return { kind: 'day_range', dayFrom: dayFrom ?? scope.dayFrom, dayTo: dayTo ?? scope.dayTo };
+      }
+      return dayFrom != null ? { kind: 'day', dayNumber: dayFrom } : { kind: 'day' };
+    }
+    case 'ROUTE_SEGMENT': {
+      const segmentId =
+        scope.segmentId ?? scope.ids?.[0] ?? buildSegmentId(scope.fromItemId, scope.toItemId);
+      return {
+        kind: 'route_segment',
+        segmentId,
+        fromItemId: scope.fromItemId,
+        toItemId: scope.toItemId,
+        dayNumber: scope.dayIndex,
+      };
+    }
+    case 'DOMAIN':
+      return {
+        kind: 'destination',
+        destinationId: scope.ids?.[0],
+      };
+    case 'MEMBER':
+    case 'MEMBER_GROUP':
+    case 'TRIP':
+    default:
+      return { kind: 'trip' };
+  }
+}
+
+function parseDayFromIds(ids?: string[]): number | undefined {
+  if (!ids?.length) return undefined;
+  const n = Number(ids[0]);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function buildSegmentId(fromItemId?: string, toItemId?: string): string | undefined {
+  if (fromItemId && toItemId) return `${fromItemId}__${toItemId}`;
+  return undefined;
+}
+
+function buildMemberFromScope(scope?: TripConstraintScope): ConstraintMemberScopeBinding {
+  if (scope?.type === 'MEMBER' && scope.ids?.length) {
+    return { kind: 'members', memberIds: [...scope.ids] };
+  }
+  if (scope?.type === 'MEMBER') {
+    return { kind: 'primary_driver' };
+  }
+  return { kind: 'all' };
+}
+
+function coerceMemberBinding(raw: unknown, scope?: TripConstraintScope): ConstraintMemberScopeBinding {
+  if (!isRecord(raw)) return buildMemberFromScope(scope);
+  const kind = typeof raw.kind === 'string' ? raw.kind : undefined;
+  if (kind === 'primary_driver') {
+    return {
+      kind: 'primary_driver',
+      resolvedMemberId:
+        typeof raw.resolvedMemberId === 'string' ? raw.resolvedMemberId : undefined,
+    };
+  }
+  if (kind === 'members') {
+    const memberIds = Array.isArray(raw.memberIds)
+      ? raw.memberIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : scope?.type === 'MEMBER'
+        ? scope.ids
+        : undefined;
+    const labels = Array.isArray(raw.labels)
+      ? raw.labels.filter((l): l is string => typeof l === 'string')
+      : undefined;
+    return { kind: 'members', memberIds, labels };
+  }
+  return { kind: 'all' };
+}
+
+function coercePhaseBinding(raw: unknown): ConstraintPhaseScopeBinding {
+  if (!isRecord(raw)) {
+    return { planning: true, execution: true };
+  }
+  return {
+    planning: raw.planning !== false,
+    execution: raw.execution !== false,
+  };
+}
+
+function coerceActivityBinding(raw: unknown): ConstraintActivityScopeBinding {
+  if (!isRecord(raw)) return { kind: 'all' };
+  const kind = typeof raw.kind === 'string' && raw.kind ? raw.kind : 'all';
+  const labels = Array.isArray(raw.labels)
+    ? raw.labels.filter((l): l is string => typeof l === 'string')
+    : undefined;
+  const activityIds = Array.isArray(raw.activityIds)
+    ? raw.activityIds.filter((id): id is string => typeof id === 'string')
+    : undefined;
+  return { kind, labels, activityIds };
+}
+
+function coerceTemporalBinding(
+  raw: unknown,
+  scope?: TripConstraintScope,
+): ConstraintTemporalScopeBinding {
+  if (isRecord(raw)) {
+    const kind = normalizeTemporalKind(raw.kind) ?? buildTemporalFromScope(scope).kind;
+    return {
+      kind,
+      dayNumber: typeof raw.dayNumber === 'number' ? raw.dayNumber : scope?.dayIndex,
+      dayFrom:
+        typeof raw.dayFrom === 'number'
+          ? raw.dayFrom
+          : scope?.dayFrom ?? scope?.dayIndex,
+      dayTo: typeof raw.dayTo === 'number' ? raw.dayTo : scope?.dayTo,
+      segmentId:
+        typeof raw.segmentId === 'string'
+          ? raw.segmentId
+          : scope?.segmentId ?? scope?.ids?.[0],
+      fromItemId:
+        typeof raw.fromItemId === 'string' ? raw.fromItemId : scope?.fromItemId,
+      toItemId: typeof raw.toItemId === 'string' ? raw.toItemId : scope?.toItemId,
+      destinationId: typeof raw.destinationId === 'string' ? raw.destinationId : scope?.ids?.[0],
+      label: typeof raw.label === 'string' ? raw.label : undefined,
+    };
+  }
+  return buildTemporalFromScope(scope);
+}
+
+/** 将 PATCH 中不完整 scope / scopeBinding 规范化为可持久化结构 */
+export function coerceScopeBindingFromPatch(input: {
+  scope?: TripConstraintScope;
+  value?: unknown;
+  prevValue?: unknown;
+}): ConstraintScopeBinding | undefined {
+  const prevBinding = readScopeBindingFromValue(input.prevValue);
+  const rawBinding = isRecord(input.value) ? input.value.scopeBinding : undefined;
+
+  if (!isRecord(rawBinding) && !input.scope && !prevBinding) return undefined;
+
+  const scope = input.scope;
+  const temporal = coerceTemporalBinding(
+    isRecord(rawBinding) ? rawBinding.temporal : prevBinding?.temporal,
+    scope,
+  );
+  const member = coerceMemberBinding(
+    isRecord(rawBinding) ? rawBinding.member : prevBinding?.member,
+    scope,
+  );
+  const phase = coercePhaseBinding(
+    isRecord(rawBinding) ? rawBinding.phase : prevBinding?.phase,
+  );
+  const activity = coerceActivityBinding(
+    isRecord(rawBinding) ? rawBinding.activity : prevBinding?.activity,
+  );
+
+  return { temporal, member, phase, activity };
+}
+
+export interface ConstraintScopePatchResult {
+  scope: TripConstraintScope;
+  value: Record<string, unknown>;
+  errors?: ScopeBindingValidationError[];
+}
+
+/** PATCH 统一 scope + scopeBinding 持久化（unified / legacy extended value） */
+export function applyConstraintScopePatch(input: {
+  prevScope: TripConstraintScope;
+  prevValue: unknown;
+  dtoScope?: TripConstraintScope;
+  dtoValue?: unknown;
+  teamGovernance?: unknown;
+}): ConstraintScopePatchResult {
+  let mergedValue = mergeConstraintValueOnPatch(input.prevValue, input.dtoValue);
+  if (!isRecord(mergedValue)) {
+    mergedValue =
+      input.dtoValue != null && isRecord(input.dtoValue)
+        ? { ...input.dtoValue }
+        : input.dtoValue != null
+          ? { raw: input.dtoValue }
+          : {};
+  }
+
+  let scopeBinding = coerceScopeBindingFromPatch({
+    scope: input.dtoScope,
+    value: mergedValue,
+    prevValue: input.prevValue,
+  });
+
+  if (scopeBinding) {
+    const errors = validateScopeBinding(scopeBinding);
+    if (errors.length > 0) {
+      return { scope: input.prevScope, value: mergedValue, errors };
+    }
+    scopeBinding = enrichScopeBindingWithResolvedMember(scopeBinding, input.teamGovernance);
+    mergedValue = { ...mergedValue, scopeBinding };
+  }
+
+  const resolved =
+    resolveScopeFromPatch({
+      scopeBinding: scopeBinding ?? readScopeBindingFromValue(mergedValue),
+      scope: input.dtoScope,
+    }) ??
+    input.dtoScope ??
+    input.prevScope;
+
+  const scope = enrichScopeFromBinding(
+    resolved,
+    scopeBinding ?? readScopeBindingFromValue(mergedValue),
+  );
+
+  return { scope, value: mergedValue };
 }
 
 export function resolveScopeFromPatch(input: {

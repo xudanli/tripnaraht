@@ -1,0 +1,54 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_A_OBSERVE",
+  "acceptanceMode": "PRODUCTION_CANARY_PILOT",
+  "startedAt": "2026-07-10T16:45:35.603Z",
+  "endedAt": "2026-07-10T16:45:36.064Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "userId": "a0a99999-9999-4999-8999-999999999901",
+  "phase": "OBSERVE",
+  "liveSource": "replay-hazard-95kmh",
+  "problemId": "problem_weather_a0a99999_1783701935859",
+  "checks": [
+    {
+      "id": "PC-A-000-phase",
+      "pass": true,
+      "detail": "phase=OBSERVE"
+    },
+    {
+      "id": "PC-A-001-trip",
+      "pass": true,
+      "detail": "productionCanary=true destination=IS"
+    },
+    {
+      "id": "PC-A-002-evidence",
+      "pass": true,
+      "detail": "source=iceland_met liveSource=replay-hazard-95kmh"
+    },
+    {
+      "id": "PC-A-003-problem",
+      "pass": true,
+      "detail": "problemId=problem_weather_a0a99999_1783701935859"
+    },
+    {
+      "id": "PC-A-004-causal",
+      "pass": true,
+      "detail": "traceId=ct_d540450828067b1e storyNodes=4"
+    },
+    {
+      "id": "PC-A-005-user-hidden",
+      "pass": true,
+      "detail": "OBSERVE: problem not user-visible"
+    },
+    {
+      "id": "PC-A-006-apply-blocked",
+      "pass": true,
+      "detail": "W-01 apply blocked in OBSERVE"
+    },
+    {
+      "id": "PC-A-007-no-effective-write",
+      "pass": true,
+      "detail": "effective=plan_prod_canary_1 unchanged"
+    }
+  ],
+  "result": "READY"
+}

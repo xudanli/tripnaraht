@@ -6,6 +6,7 @@ import {
 } from '../constants/guide-to-plan-status.constants';
 import type { ConfirmGuideTravelContextDto } from '../dto/guide-to-plan.dto';
 import type { GuideToPlanSessionView, GuideTravelContext } from '../types/guide-to-plan.types';
+import { normalizeGuideTransportMode } from '../../common/constants/travel-mode-scope.constants';
 import { buildPendingConfirmations } from './guide-pending-confirmations.util';
 
 const MUTABLE_STATUSES = new Set<GuideToPlanSessionStatus>([
@@ -27,8 +28,9 @@ export function mergeTravelContext(
   if (patch.endDate !== undefined) merged.endDate = patch.endDate;
   if (patch.travelers !== undefined) merged.travelers = patch.travelers;
   if (patch.transportMode !== undefined) {
-    merged.transportMode = patch.transportMode as GuideTravelContext['transportMode'];
+    merged.transportMode = normalizeGuideTransportMode(patch.transportMode);
   }
+  merged.transportMode = normalizeGuideTransportMode(merged.transportMode);
   if (patch.vehicleType !== undefined) {
     merged.vehicleType = patch.vehicleType as GuideTravelContext['vehicleType'];
   }

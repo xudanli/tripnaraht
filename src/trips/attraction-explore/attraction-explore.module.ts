@@ -15,6 +15,7 @@ import { AttractionExploreOrchestratorService } from './services/attraction-expl
 import { AttractionExploreCandidatePrecheckService } from './services/attraction-explore-candidate-precheck.service';
 import { AttractionExploreRouteDetourService } from './services/attraction-explore-route-detour.service';
 import { AttractionExploreIntentCompileService } from './services/attraction-explore-intent-compile.service';
+import { PlanningLodgingWorkbenchService } from './services/planning-lodging-workbench.service';
 
 @Module({
   imports: [PrismaModule, TransportModule, forwardRef(() => LlmModule)],
@@ -32,6 +33,7 @@ import { AttractionExploreIntentCompileService } from './services/attraction-exp
     AttractionExploreCandidatePrecheckService,
     AttractionExploreRouteDetourService,
     AttractionExploreIntentCompileService,
+    PlanningLodgingWorkbenchService,
   ],
   exports: [
     AttractionExploreSeedService,
@@ -44,6 +46,7 @@ import { AttractionExploreIntentCompileService } from './services/attraction-exp
     AttractionExploreIntentCompileService,
     AttractionExploreMapService,
     AttractionExploreRecommendationsService,
+    PlanningLodgingWorkbenchService,
   ],
 })
 export class AttractionExploreModule {}

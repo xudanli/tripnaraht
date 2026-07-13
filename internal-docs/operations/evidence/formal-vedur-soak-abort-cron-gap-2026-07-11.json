@@ -1,0 +1,20 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_FORMAL_VEDUR_SOAK_ABORT",
+  "abortedAt": "2026-07-11T15:20:00Z",
+  "reason": "Frankfurt crontab used `source` under /bin/sh (dash) — scheduled collector did not run for ~8.8h after soak start",
+  "supersededEvidence": "internal-docs/operations/evidence/formal-vedur-soak-superseded-cron-gap-2026-07-11.json",
+  "repairEvidence": "internal-docs/operations/evidence/formal-vedur-soak-cron-repair-2026-07-11.json",
+  "originalStartedAt": "2026-07-11T06:29:09.443Z",
+  "originalEndsAt": "2026-07-12T06:29:09.443Z",
+  "verdict": "FORMAL_VEDUR_SOAK_ABORTED",
+  "signoffEligible": false,
+  "note": "24h scheduled collector continuity broken despite devbox PM2/tunnel online. Cron fixed via run-vedur-collector-cron.sh wrapper. Start new soak after repair verification.",
+  "recoveryVerifiedAt": "2026-07-11T15:16:00Z",
+  "recoveryChecks": {
+    "devboxIngest": "ok",
+    "frankfurtTunnel": "ok",
+    "cronWrapper": "ok",
+    "manualCollectorHttp": 200,
+    "vedurCollectorLog": "writable"
+  }
+}

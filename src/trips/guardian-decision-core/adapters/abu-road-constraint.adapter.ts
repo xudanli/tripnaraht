@@ -15,8 +15,10 @@ import {
   applyPackEvaluationToAssertionEnvelope,
   executePackRuleConstraint,
 } from '../../../decision-runtime/packs/rules/pack-rule-constraint.executor';
+import type { RoadTraversabilityAssessment } from '../assessment/road-traversability.types';
+import { buildAbuAssertionFromTraversability } from '../assessment/road-traversability-abu.util';
 
-export const ABU_ROAD_RULE_VERSION = 'abu-road-constraint-rfc001-0.2.0';
+export const ABU_ROAD_RULE_VERSION = 'abu-road-constraint-rfc001-0.3.0';
 
 export interface AbuRoadConstraintInput {
   tripId: string;
@@ -28,6 +30,8 @@ export interface AbuRoadConstraintInput {
   bindings?: RoadSegmentBindings;
   /** ISO country for pack rule resolution (Phase 2) */
   destinationCountry?: string;
+  /** Pre-computed traversability (T1); overrides generic LIMITED WARNING */
+  traversabilityAssessment?: RoadTraversabilityAssessment | null;
   /** When multiple ACTIVE assertions disagree on status for the same road */
   conflictingAssertion?: WorldStateAssertion<RoadStatusAssertionPayload>;
   now?: Date;
@@ -81,6 +85,11 @@ export function evaluateAbuRoadConstraintForCandidate(
     createdAt: now.toISOString(),
   };
 
+  const usesTraversabilityForLimited =
+    payload.status === 'LIMITED' &&
+    usesRoad &&
+    input.traversabilityAssessment != null;
+
   if (input.conflictingAssertion) {
     return {
       ...base,
@@ -115,7 +124,9 @@ export function evaluateAbuRoadConstraintForCandidate(
     };
   }
 
-  const packResult = tryEvaluatePackRoadRules(input, usesRoad);
+  const packResult = usesTraversabilityForLimited
+    ? undefined
+    : tryEvaluatePackRoadRules(input, usesRoad);
   if (packResult) {
     const withRecovery =
       packResult.verdict === 'WARNING'
@@ -163,29 +174,38 @@ export function evaluateAbuRoadConstraintForCandidate(
   }
 
   if (payload.status === 'LIMITED') {
-    if (usesRoad) {
+    if (!usesRoad) {
       return {
         ...base,
-        verdict: 'WARNING',
-        constraintCode: 'ROAD_RESTRICTED',
-        reasonCodes: [RFC001_REASON_CODES.ROAD_SEGMENT_RESTRICTED],
+        verdict: 'PASS',
+        constraintCode: 'ROAD_STATUS',
+        reasonCodes: [],
         overridable: true,
-        recoveryConditions: [
-          {
-            code: 'CONDITIONAL_PASSAGE',
-            description:
-              'Restricted passage may apply (vehicle class, season, or time window)',
-            evidenceRefs: input.roadAssertion.source.evidenceRefs,
-          },
-        ],
       };
     }
+
+    if (input.traversabilityAssessment) {
+      return buildAbuAssertionFromTraversability(
+        base,
+        input.traversabilityAssessment,
+        input.roadAssertion.source.evidenceRefs,
+      );
+    }
+
     return {
       ...base,
-      verdict: 'PASS',
-      constraintCode: 'ROAD_STATUS',
-      reasonCodes: [],
+      verdict: 'WARNING',
+      constraintCode: 'ROAD_RESTRICTED',
+      reasonCodes: [RFC001_REASON_CODES.ROAD_SEGMENT_RESTRICTED],
       overridable: true,
+      recoveryConditions: [
+        {
+          code: 'CONDITIONAL_PASSAGE',
+          description:
+            'Restricted passage may apply (vehicle class, season, or time window)',
+          evidenceRefs: input.roadAssertion.source.evidenceRefs,
+        },
+      ],
     };
   }
 

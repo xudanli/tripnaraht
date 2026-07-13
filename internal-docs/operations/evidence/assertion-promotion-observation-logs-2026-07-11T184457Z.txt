@@ -1,0 +1,5 @@
+=== Observation Drills 2026-07-11T184457Z ===
+Sat Jul 11 18:44:57 UTC 2026
+
+=== Phase 1: Hazard Lifecycle (normal shadow, no failpoint) ===
+/home/devbox/project/config/decision-runtime/assertion-promotion-drill.env: line 6: Dockerfile: command not found

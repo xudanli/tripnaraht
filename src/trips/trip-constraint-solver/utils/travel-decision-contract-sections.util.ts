@@ -23,7 +23,14 @@ function isTeamConstraint(c: TripConstraint): boolean {
   return false;
 }
 
+/** 用户可调硬约束 — 与 c_no_night_drive 一致，不归入 readonly_official */
+const USER_ADJUSTABLE_HARD_IDS = new Set<string>([
+  TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE,
+  TRIP_CONSTRAINT_LEGACY_IDS.NO_NIGHT_DRIVE,
+]);
+
 function isOfficialReadonly(c: TripConstraint): boolean {
+  if (USER_ADJUSTABLE_HARD_IDS.has(c.id)) return false;
   return c.source.type === 'OFFICIAL_RULE' || c.id.startsWith('c_official_');
 }
 

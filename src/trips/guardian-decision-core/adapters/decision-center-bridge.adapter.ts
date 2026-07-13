@@ -29,6 +29,9 @@ import { isEffectiveExecutable } from '../cutover/cutover-reconciliation.util';
 import type { TripDecisionRoutingView } from '../routing/decision-engine-routing.types';
 import type { ImpactScopeView } from '../../../decision-runtime/gateway/frontend/impact-scope-view.types';
 import { projectDecisionOptionsForSpaceView } from '../../decision-semantics/projections/decision-space-option-projection.util';
+import { buildExecutionSlipOptionCopy } from './execution-slip-option-copy.util';
+import type { ExecutionSlipOptionContext } from '../contracts/execution-slip-option-preview.types';
+import type { RoadTraversabilityWorkspaceSnapshot } from '../contracts/decision-workspace.types';
 
 export type Rfc001LeadingPersona = 'ABU' | 'DRDRE' | 'NEPTUNE' | 'DECISION_CORE';
 
@@ -37,6 +40,8 @@ export interface Rfc001DecisionLineageLink {
     | 'EVENT'
     | 'ASSERTION'
     | 'SNAPSHOT'
+    | 'TRAVERSABILITY_PROFILE'
+    | 'TRAVERSABILITY_ASSESSMENT'
     | 'PROBLEM'
     | 'WORKSPACE'
     | 'DECISION'
@@ -141,6 +146,7 @@ export function bridgeRfc001ProblemToAffectedScope(
   const scopes: AffectedScope[] = [];
   for (const itemId of problem.affectedPlanItemIds) {
     const isWeather = problem.semanticCapability === 'WEATHER_ACTIVITY_PROHIBITED';
+    const isExecutionSlip = problem.semanticCapability === 'EXECUTION_SCHEDULE_INFEASIBLE';
     scopes.push({
       scopeType: 'ITINERARY_ITEM',
       scopeId: itemId,
@@ -148,7 +154,9 @@ export function bridgeRfc001ProblemToAffectedScope(
       severity: 'HIGH',
       explanation: isWeather
         ? `行程项 ${itemId} 受恶劣天气/活动限制影响`
-        : `行程项 ${itemId} 受道路关闭影响`,
+        : isExecutionSlip
+          ? `行程项 ${itemId} 受执行偏差影响`
+          : `行程项 ${itemId} 受道路关闭影响`,
     });
   }
   for (const ref of problem.affectedEntityRefs) {
@@ -176,13 +184,16 @@ export function bridgeRfc001ProblemToDecisionProblemSummary(
   const isLoad =
     problem.semanticCapability === 'EXCESSIVE_DAILY_LOAD' ||
     problem.type === 'EXCESSIVE_LOAD';
+  const isExecutionSlip = problem.semanticCapability === 'EXECUTION_SCHEDULE_INFEASIBLE';
   const loadDayIndex = isLoad ? resolveExcessiveDailyLoadDisplayDayIndex(problem) : undefined;
   const itemCount = problem.affectedPlanItemIds.length;
   const title = isWeather
     ? `天气 / 活动限制：${itemCount} 个行程项受影响`
     : isLoad
       ? `行程负荷过高：第 ${loadDayIndex ?? '?'} 日驾驶超时`
-      : `道路 / 可行性：${itemCount} 个行程项受影响`;
+      : isExecutionSlip
+        ? `执行偏差：${itemCount} 个行程项受影响`
+        : `道路 / 可行性：${itemCount} 个行程项受影响`;
 
   return {
     id: problem.problemId,
@@ -193,7 +204,9 @@ export function bridgeRfc001ProblemToDecisionProblemSummary(
       ? `恶劣天气 · urgency ${problem.urgency}`
       : isLoad
         ? `Dr.Dre 日程负荷 · urgency ${problem.urgency}`
-        : `RFC-001 ${problem.type} · urgency ${problem.urgency}`,
+        : isExecutionSlip
+          ? `执行偏差 · urgency ${problem.urgency}`
+          : `RFC-001 ${problem.type} · urgency ${problem.urgency}`,
     status: RFC001_TO_V15_STATUS[problem.status] ?? 'OPEN',
     detectedBy: 'GUARDIAN',
     detectedAt: problem.detectedAt,
@@ -245,7 +258,10 @@ export function bridgeCandidatesToOptions(
   candidates: Rfc001RepairCandidate[],
   workspace?: DecisionWorkspace,
   record?: Rfc001DecisionRecord,
-  ctx?: { problem?: Rfc001DecisionProblem },
+  ctx?: {
+    problem?: Rfc001DecisionProblem;
+    executionSlipContext?: ExecutionSlipOptionContext;
+  },
 ): DecisionOption[] {
   const cutoverBlocked = record ? !isEffectiveExecutable(record) : false;
   const options: DecisionOption[] = candidates.map((c) => {
@@ -296,8 +312,25 @@ export function bridgeCandidatesToOptions(
     };
   });
 
+  const enrichedOptions = ctx?.executionSlipContext
+    ? options.map((option) => {
+        const copy = buildExecutionSlipOptionCopy(option.id, ctx.executionSlipContext!);
+        return {
+          ...option,
+          title: copy.title,
+          description: copy.summary,
+          executionSlipPreview: {
+            scheduleContext: ctx.executionSlipContext!.scheduleContext,
+            changePreview: copy.changePreview,
+            preserves: copy.preserves,
+            sacrifices: copy.sacrifices,
+          },
+        };
+      })
+    : options;
+
   const candidatesById = new Map(candidates.map((c) => [c.candidateId, c] as const));
-  return projectDecisionOptionsForSpaceView(options, {
+  return projectDecisionOptionsForSpaceView(enrichedOptions, {
     workspace,
     problem: ctx?.problem,
     candidatesById,
@@ -402,6 +435,7 @@ export function buildDecisionLineage(input: {
   triggerEventId?: string;
   snapshotId?: string;
   assertionId?: string;
+  traversability?: RoadTraversabilityWorkspaceSnapshot;
   problem: Rfc001DecisionProblem;
   workspace?: DecisionWorkspace;
   record?: Rfc001DecisionRecord;
@@ -417,6 +451,17 @@ export function buildDecisionLineage(input: {
   }
   if (input.snapshotId) {
     links.push({ kind: 'SNAPSHOT', id: input.snapshotId });
+  }
+  if (input.traversability) {
+    links.push({
+      kind: 'TRAVERSABILITY_PROFILE',
+      id: input.traversability.segmentId ?? input.traversability.roadId,
+    });
+    links.push({
+      kind: 'TRAVERSABILITY_ASSESSMENT',
+      id: input.traversability.assessment.result,
+      at: input.traversability.evaluatedAt,
+    });
   }
   links.push({
     kind: 'PROBLEM',

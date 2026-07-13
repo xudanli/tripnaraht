@@ -32,6 +32,20 @@ export interface ConsumerDecisionRecommendation {
   recommendedActionId?: string;
 }
 
+/** 可选修复方案（hydrate 时由 unified options 投影） */
+export interface ConsumerDecisionRepairOption {
+  optionId: string;
+  title: string;
+  summary?: string;
+  preserves: string[];
+  sacrifices: string[];
+  canApply: boolean;
+  /** Execution slip — per-option before/after preview */
+  changePreview?: import('../../guardian-decision-core/contracts/execution-slip-option-preview.types').ExecutionSlipChangePreview;
+  /** Execution slip — shared schedule evidence (duplicated per option for convenience) */
+  scheduleContext?: import('../../guardian-decision-core/contracts/execution-slip-option-preview.types').ExecutionSlipScheduleContext;
+}
+
 export interface ConsumerDecisionActions {
   acceptRecommended: { enabled: boolean; actionId?: string };
   keepOriginal: { enabled: boolean; actionId?: string };
@@ -46,6 +60,13 @@ export interface ConsumerDecisionEvidenceSummary {
   freshness: 'FRESH' | 'STALE' | 'UNKNOWN';
 }
 
+/** 受影响的行程项（C 端展示用，含可读名称） */
+export interface ConsumerAffectedActivity {
+  activityId: string;
+  title: string;
+  dayIndex?: number;
+}
+
 export interface ConsumerDecisionItem {
   schemaId: typeof CONSUMER_DECISION_ITEM_SCHEMA_ID;
   problemId: string;
@@ -55,9 +76,17 @@ export interface ConsumerDecisionItem {
   severity: 'BLOCK' | 'CONFLICT' | 'VERIFY' | 'OPTIMIZE';
   affectedDayNumbers?: number[];
   affectedScopeLabel?: string;
+  /** 受影响的行程项列表（decision-queue 已 hydrate 时返回） */
+  affectedActivities?: ConsumerAffectedActivity[];
   recommendation?: ConsumerDecisionRecommendation;
+  /** 全部 allowed 修复候选 — 「查看其他方案」列表数据源 */
+  repairOptions?: ConsumerDecisionRepairOption[];
   actions: ConsumerDecisionActions;
+  /** BLOCK 类决策 confirm 必填 — 与 unified options / preview 一致 */
+  requiredAcknowledgements?: string[];
   evidenceSummary?: ConsumerDecisionEvidenceSummary;
+  /** Execution slip — card-level schedule evidence */
+  scheduleContext?: import('../../guardian-decision-core/contracts/execution-slip-option-preview.types').ExecutionSlipScheduleContext;
 }
 
 export interface ConsumerDecisionQueueView {

@@ -134,27 +134,19 @@ describe('CoverageMapService', () => {
       expect(result.coverageDisclosure?.uncoveredCapabilities).toContain('BOOKABILITY');
     });
 
-    it('does not heavily penalize live road hazards during planning', async () => {
-      const planningStart = new Date();
-      planningStart.setDate(planningStart.getDate() + 120);
-      const preDepartureStart = new Date();
-      preDepartureStart.setDate(preDepartureStart.getDate() + 7);
+    it('returns departure preparation score for planning phase trips', async () => {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 120);
 
-      const coverage = makeCoverageMapData();
+      (prisma.trip.findUnique as jest.Mock).mockResolvedValue(makeTrip(startDate));
+      jest.spyOn(service, 'getCoverageMap').mockResolvedValue(makeCoverageMapData());
 
-      jest.spyOn(service, 'getCoverageMap').mockResolvedValue(coverage);
+      const result = await service.getReadinessScore('trip-1');
 
-      (prisma.trip.findUnique as jest.Mock).mockResolvedValue(makeTrip(planningStart));
-      const planningScore = await service.getReadinessScore('trip-1');
-
-      (prisma.trip.findUnique as jest.Mock).mockResolvedValue(makeTrip(preDepartureStart));
-      const preDepartureScore = await service.getReadinessScore('trip-1');
-
-      expect(planningScore.score.transportCertainty).toBeGreaterThan(
-        preDepartureScore.score.transportCertainty,
-      );
-      expect(planningScore.readinessPhase).toBe('planning');
-      expect(preDepartureScore.readinessPhase).toBe('pre_departure');
+      expect(result.readinessPhase).toBe('planning');
+      expect(result.score.overall).toBeGreaterThanOrEqual(0);
+      expect(result.score.entryTransit).toBeDefined();
+      expect(result.score.scheduleFeasibility).toBeUndefined();
     });
 
     it('throws when trip is missing', async () => {
@@ -375,9 +367,9 @@ describe('CoverageMapService', () => {
       expect(severity).toBe('medium');
     });
 
-    it('marks road_closure high hazards as blocker in supplement findings', () => {
-      const findings: any[] = [];
+    it('marks road_closure high hazards as blocker in today scoped findings', () => {
       const coverageData = {
+        gaps: [],
         pois: [
           { id: 'p1', day: 1, name: 'A', coordinates: { lat: 64, lng: -21 } },
           { id: 'p2', day: 1, name: 'B', coordinates: { lat: 64.1, lng: -21.1 } },
@@ -389,20 +381,21 @@ describe('CoverageMapService', () => {
             toPoiId: 'p2',
             day: 1,
             duration: 120,
+            distance: 120,
             hazards: [{ type: 'road_closure', severity: 'high', message: '道路可能封闭' }],
           },
         ],
       };
 
-      (service as any).supplementScoreDimensionFindings(findings, { TripDay: [{ dayNumber: 1 }] }, coverageData);
+      const findings = (service as any).extractTodayScopedFindings(coverageData);
 
-      const transport = findings.find((f) => f.id === 'transport-seg-1-road_closure');
+      const transport = findings.find((f: { id: string }) => f.id === 'transport-seg-1-road_closure');
       expect(transport?.type).toBe('blocker');
     });
 
-    it('tags ≥300km long_distance as road_class with open_repair uiHints', () => {
-      const findings: any[] = [];
+    it('includes long_distance hazards in today scoped transport findings', () => {
       const coverageData = {
+        gaps: [],
         pois: [
           { id: 'p1', day: 1, name: '蓝湖', itemId: 'item-1', coordinates: { lat: 64, lng: -22 } },
           { id: 'p2', day: 1, name: '塞济斯菲厄泽', itemId: 'item-2', coordinates: { lat: 65.26, lng: -14 } },
@@ -426,13 +419,11 @@ describe('CoverageMapService', () => {
         ],
       };
 
-      (service as any).supplementScoreDimensionFindings(findings, { TripDay: [{ dayNumber: 1 }] }, coverageData);
+      const findings = (service as any).extractTodayScopedFindings(coverageData);
 
-      const roadClass = findings.find((f) => f.id === 'transport-seg-1-long_distance');
-      expect(roadClass?.issueKind).toBe('road_class');
-      expect(roadClass?.uiHints?.primaryAction).toBe('open_repair');
-      expect(roadClass?.anchors?.distanceKm).toBe(620);
-      expect(findings.some((f) => f.id === 'schedule-long-drive-seg-1')).toBe(false);
+      const transport = findings.find((f: { id: string }) => f.id === 'transport-seg-1-long_distance');
+      expect(transport?.category).toBe('transport');
+      expect(transport?.type).toBe('blocker');
     });
   });
 
@@ -542,32 +533,13 @@ describe('CoverageMapService', () => {
   });
 
   describe('mergeHighSeverityCoverageGapBlockersIntoTripReadiness', () => {
-    it('merges high severity coverage gaps into destination blockers', async () => {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() + 30);
-
-      jest.spyOn(service, 'getCoverageMap').mockResolvedValue(
-        makeCoverageMapData({
-          gaps: [
-            {
-              id: 'gap-1',
-              type: 'segment',
-              relatedId: 'seg-1',
-              coordinates: { lat: 64, lng: -21 },
-              severity: 'high',
-              message: '路段缺少道路封闭证据',
-              affectedDays: [1],
-            },
-          ],
-        }),
-      );
-
+    it('PR-1: no longer merges coverage gaps into pack readiness', async () => {
       const baseResult: ReadinessCheckResult = {
-        destinationId: 'IS',
         findings: [
           {
             destinationId: 'IS',
-            destinationName: { en: 'Iceland', zh: '冰岛' },
+            packId: 'pack.is',
+            packVersion: '1',
             blockers: [],
             must: [],
             should: [],
@@ -590,9 +562,8 @@ describe('CoverageMapService', () => {
         baseResult,
       );
 
-      const blockers = merged.findings[0].blockers;
-      expect(blockers.some((b) => b.id === 'coverage-gap:gap-1')).toBe(true);
-      expect(merged.summary.totalBlockers).toBeGreaterThan(0);
+      expect(merged).toBe(baseResult);
+      expect(merged.summary.totalBlockers).toBe(0);
     });
   });
 });

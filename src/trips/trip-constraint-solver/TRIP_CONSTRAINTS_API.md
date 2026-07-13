@@ -324,7 +324,14 @@ PATCH /trips/:tripId/constraints/c_max_segment_distance
 |------|------|
 | `assessBefore` / `assessAfter` | 接入 `POST /trips/:id/assess` 摘要 |
 | `feasibilityBefore` / `feasibilityAfter` | 接入 feasibility-report |
-| `executeabilityDelta` | score / mustHandle 变化 |
+| `executeabilityDelta` | score / mustHandle 变化 + `scoreDeltaReason` / `blockingRuleIds` / `conflictsDeltaSummary` |
+| `userSummary` | 结论条：`verdict` / `verdictLabel` / `verdictReason` / `confidence` |
+| `diffBullets` | 用户可读差异摘要（与 `recommendations` 同源，禁 dev 术语） |
+| `affectedDayDetails` | 按天 schedule 明细；配合 `scheduleDetailLevel` / `scheduleDetailUnavailableReason` |
+| `structuredImpact.schedule.affectedDays` | 含 `tone: major \| minor` 的约束相关受影响天数 |
+| `conflictsBefore` / `conflictsAfter` | **约束域**冲突桶（非整趟 trip 总数）；trip 级见 `meta.debug.tripLevelConflicts*` |
+| `constraintAssessments` | 与 `GET /constraint-assessments` 对齐的改动约束快照 |
+| `suggestedFollowUp` | `{ label, action, deepLink }`；raw API 见 `meta.debug` |
 | `budgetDelta` | 预算 patch 与当前值差额 |
 
 `persist=true` + `deep` 时对首个受影响日调用 `validate-scope`。

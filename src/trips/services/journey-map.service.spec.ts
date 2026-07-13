@@ -38,6 +38,7 @@ describe('JourneyMapService', () => {
   const splitPlans = { projectDaySplits: jest.fn() };
   const routeGeometry = { resolveGeometry: jest.fn() };
   const decisionItems = { listForTrip: jest.fn().mockResolvedValue([]) };
+  const feasibilityReport = { getReport: jest.fn() };
 
   let service: JourneyMapService;
 
@@ -52,6 +53,7 @@ describe('JourneyMapService', () => {
       splitPlans as any,
       routeGeometry as any,
       decisionItems as any,
+      feasibilityReport as any,
     );
 
     prisma.trip.findUnique.mockResolvedValue({
@@ -115,6 +117,7 @@ describe('JourneyMapService', () => {
       risks: [{ id: 'risk-1' }],
       findings: [{ id: 'finding-1' }],
     });
+    feasibilityReport.getReport.mockResolvedValue({ overallScore: 72.4 });
     decisionChecker.getDecisionChecker.mockResolvedValue({
       evidence: { items: [] },
       impact: { summary: {}, constraints: [], cascade: [] },

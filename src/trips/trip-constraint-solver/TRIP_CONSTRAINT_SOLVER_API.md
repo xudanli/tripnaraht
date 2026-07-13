@@ -4,6 +4,14 @@
 > **Global prefix**: `/api`  
 > **响应**: `{ success, data, error }`
 
+## 出发门控 — Departure Gate
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/trips/:tripId/departure-gate` | 组合门控：计划 + 出发准备 + 验证时效 → `canStartExecution` |
+
+详见 [`DEPARTURE_GATE_API.md`](./DEPARTURE_GATE_API.md) · 产品 SSOT [`PRODUCT_READINESS_MODEL.md`](../../../internal-docs/product/PRODUCT_READINESS_MODEL.md)
+
 ## 行前 — Plan Validation
 
 | 方法 | 路径 | 说明 |

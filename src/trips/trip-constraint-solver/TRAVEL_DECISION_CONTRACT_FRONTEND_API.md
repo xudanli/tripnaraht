@@ -4,7 +4,8 @@
 > **前缀**: `/api/trips/:tripId/constraints`  
 > **响应壳**: `{ success, data, error }`  
 > **TypeScript**: `dto/frontend-travel-decision-contract-api.types.ts`  
-> **Client**: `dto/frontend-travel-decision-contract-api-client.ts`
+> **Client**: `dto/frontend-travel-decision-contract-api-client.ts`  
+> **Assessment 化（P1-A）**: [TEP-CONSTRAINT-CONSOLE-ASSESSMENT-INTEGRATION.md](../../../internal-docs/frontend/TEP-CONSTRAINT-CONSOLE-ASSESSMENT-INTEGRATION.md)
 
 ---
 
@@ -30,9 +31,15 @@
 ## 2. 推荐加载流程
 
 ```
-页面 mount
+页面 mount（Constraint Console — P1-A 起）
+  → fetchConstraintConsoleWithAssessments(tripId)
+      并行 GET /constraints + GET /constraint-assessments
+      → buildConstraintConsoleWithAssessments() → ConstraintCardView[]
+
+或分开加载：
   → GET  /trips/:tripId/constraints
-  → buildConstraintConsoleViewModel(data)   // 或 fetchConstraintConsole()
+  → GET  /trips/:tripId/constraint-assessments
+  → buildConstraintConsoleViewModel + buildConstraintCardView（按 constraintId join）
 
 用户改「旅行原则」排序
   → PATCH /trips/:tripId/constraints/contract
@@ -45,7 +52,39 @@
 
 进入页 / 改约束后
   → POST  /trips/:tripId/constraints/check            // 冲突列表 + contractConflicts
+  → POST  /trips/:tripId/feasibility-report/validate  // 可选：强制重算
+  → GET  /trips/:tripId/constraint-assessments?refresh=true
 ```
+
+### 2.1 GET `/constraint-assessments` — 验证读模型（P1-A）
+
+**职责**：每条约束在 planning / executability / runtime 各阶段的状态。  
+**不是** GO/NO-GO（那是 `GET /executability`）；**不是** 合同编辑（那是 `GET /constraints`）。
+
+```typescript
+// dto/frontend-constraint-assessment-api.types.ts
+interface ConstraintCardView {
+  constraintId: string;
+  name: string;
+  contractRequirement?: string;
+  assessment: UnifiedConstraintAssessmentView | null;
+  aggregateUi: { label; tone; isBlocking; accent };
+  laneBadges: Array<{ kind: 'planning'|'executability'|'runtime'; statusLabel; ruleId?; evidenceSummary? }>;
+}
+```
+
+**卡片状态色**：读 `aggregateUi`（`PASS` / `WARN` / `EXECUTION_BLOCK` …），**禁止** `type === 'HARD'` 推断红色。
+
+**双 lane 行**（Executability Badge）：
+
+| lane | 文案前缀 | 示例 |
+|------|----------|------|
+| planning | 规划 | ✓ 已满足 |
+| executability | 执行 | ✕ 不可执行 · SDR-101 · Day1 6h56m |
+| runtime | 当前 | Phase 0 恒 null |
+
+Client：`fetchConstraintAssessments(tripId)` / `fetchConstraintConsoleWithAssessments(tripId)`  
+Hooks 模板：`dto/frontend-constraint-assessments.hooks.example.ts`
 
 ---
 

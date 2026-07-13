@@ -1503,7 +1503,7 @@ export class ClaudeOrchestratorService {
     const bd = scoreData.score;
     if (bd) {
       lines.push(
-        `维度：证据覆盖 ${Math.round(bd.evidenceCoverage)}，时间可行 ${Math.round(bd.scheduleFeasibility)}，交通确定性 ${Math.round(bd.transportCertainty)}，安全 ${Math.round(bd.safetyRisk)}，缓冲 ${Math.round(bd.buffers)}`,
+        `维度：入境 ${Math.round(bd.entryTransit)}，保险 ${Math.round(bd.healthInsurance)}，装备 ${Math.round(bd.gearPacking)}，预订 ${Math.round(bd.bookingsCredentials)}，后勤 ${Math.round(bd.logisticsComms)}，应急 ${Math.round(bd.emergency)}`,
       );
     }
     const blockers = (scoreData.findings ?? []).filter((f) => f.type === 'blocker').slice(0, 5);

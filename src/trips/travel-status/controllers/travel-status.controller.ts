@@ -9,7 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiProperty, ApiTags } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsArray, IsOptional, IsString } from 'class-validator';
 import { Public } from '../../../auth/decorators/public.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../../auth/decorators/current-user.decorator';
 import {
@@ -28,6 +28,13 @@ class AcceptRecommendedBodyDto {
   @IsOptional()
   @IsString()
   actionId?: string;
+
+  /** BLOCK 类决策必填 — 与 unified decision preview 的 requiredAcknowledgements 一致 */
+  @ApiProperty({ required: false, type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  acknowledgement?: string[];
 }
 
 @ApiTags('travel-status')
@@ -176,6 +183,7 @@ export class TravelStatusController {
         problemId,
         userId,
         body.actionId,
+        body.acknowledgement,
       );
       return successResponse(data);
     } catch (e) {

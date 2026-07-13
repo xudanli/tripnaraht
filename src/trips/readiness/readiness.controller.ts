@@ -105,6 +105,11 @@ import {
 } from './utils/trip-risk-enrichment.util';
 import { getLocalizedText } from './utils/i18n.utils';
 import { filterRisksForTripPhase, isActionableLiveRisk, getTripReadinessPhase, getDaysUntilTripStart, ACTIONABLE_READINESS_HORIZON_DAYS, type RelevanceFilterableRisk } from './utils/trip-readiness-relevance.util';
+import {
+  isPlanFeasibilityBlockerId,
+  resolveRepairTargetIssueId,
+} from '../trip-constraint-solver/utils/repair-authority.util';
+import type { FeasibilityReportService } from '../trip-constraint-solver/services/feasibility-report.service';
 
 class TravelerDto {
   @IsOptional()
@@ -349,6 +354,17 @@ export class ReadinessController {
       }
     }
     return this.tripConflictsService || null;
+  }
+
+  private getFeasibilityReportService(): FeasibilityReportService | undefined {
+    try {
+      const { FeasibilityReportService: Svc } = require('../trip-constraint-solver/services/feasibility-report.service') as {
+        FeasibilityReportService: new (...args: never[]) => FeasibilityReportService;
+      };
+      return this.moduleRef.get(Svc, { strict: false });
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -2181,6 +2197,19 @@ export class ReadinessController {
   async getRepairOptions(@Body() body: { tripId: string; blockerId: string }): Promise<any> {
     try {
       const { tripId, blockerId } = body;
+      const feasibility = this.getFeasibilityReportService();
+      if (feasibility && isPlanFeasibilityBlockerId(blockerId)) {
+        const issueId = resolveRepairTargetIssueId(blockerId);
+        try {
+          const result = await feasibility.getRepairOptions(tripId, issueId);
+          return successResponse(result);
+        } catch (error) {
+          const err = error as Error;
+          if (!(err instanceof NotFoundException)) {
+            throw err;
+          }
+        }
+      }
       const result = await this.coverageMapService.getRepairOptions(tripId, blockerId);
       return successResponse(result);
     } catch (error) {
@@ -2230,6 +2259,11 @@ export class ReadinessController {
   ): Promise<any> {
     try {
       if (body.blockerId && !body.blockerIds?.length) {
+        if (isPlanFeasibilityBlockerId(body.blockerId)) {
+          throw new BadRequestException(
+            '单阻塞项 auto-repair 已弃用：方案类请使用 POST /api/trips/:tripId/feasibility-report/issues/:issueId/apply-repair',
+          );
+        }
         const result = await this.readinessRepairService.autoRepair({
           tripId: body.tripId,
           blockerId: body.blockerId,
@@ -2261,7 +2295,9 @@ export class ReadinessController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '应用阻塞项修复',
-    description: '根据 repair-options 返回的 optionId 执行修复（本地标记、刷新分数、或 executeDecision 时调用决策引擎）',
+    description:
+      '【C 端已弃用】方案类修复请改用 POST /api/trips/:tripId/feasibility-report/issues/:issueId/apply-repair。本接口仅保留出发准备域（勾选/标记/刷新）。',
+    deprecated: true,
   })
   @ApiBody({
     schema: {
@@ -2306,6 +2342,48 @@ export class ReadinessController {
     @CurrentUser() user?: CurrentUserPayload,
   ): Promise<any> {
     try {
+      const feasibility = this.getFeasibilityReportService();
+      if (feasibility && isPlanFeasibilityBlockerId(body.blockerId)) {
+        const issueId = resolveRepairTargetIssueId(body.blockerId);
+        const report = await feasibility.getReport(body.tripId);
+        const issue = report.issues.find(
+          (i) => i.id === issueId || i.prerequisiteId === body.blockerId,
+        );
+        if (issue) {
+          const dispatched = await dispatchManualRepairFromModule(this.moduleRef, {
+            tripId: body.tripId,
+            userId: user?.userId,
+            entryPointId: 'user.readiness-apply-repair.proxy-feasibility',
+            issueId: issue.id,
+            metadata: {
+              repairOptionId: body.optionId,
+              intent: 'manual_repair',
+              executeDecision: body.executeDecision,
+            },
+          });
+          const decisionRunId = resolveDecisionRunId(dispatched);
+          const result = await feasibility.applyRepair(
+            body.tripId,
+            issue.id,
+            {
+              optionId: body.optionId,
+              reason: body.reason,
+              executeDecision: body.executeDecision,
+              persistDecision: body.persistDecision,
+              runGuardianNegotiation: body.runGuardianNegotiation,
+              forceDecisionRepair: body.forceDecisionRepair,
+            },
+            user?.userId,
+          );
+          return successResponse({
+            ...result,
+            ...(decisionRunId ? { decisionRunId } : {}),
+            repairAuthority: 'feasibility',
+            proxiedFrom: 'readiness.apply-repair',
+          });
+        }
+      }
+
       const dispatched = await dispatchManualRepairFromModule(this.moduleRef, {
         tripId: body.tripId,
         userId: user?.userId,
@@ -2318,7 +2396,10 @@ export class ReadinessController {
         },
       });
       const decisionRunId = resolveDecisionRunId(dispatched);
-      const result = await this.readinessRepairService.applyRepair(body);
+      const result = await this.readinessRepairService.applyRepair({
+        ...body,
+        repairAuthority: 'readiness_prep',
+      });
       return successResponse({
         ...result,
         ...(decisionRunId ? { decisionRunId } : {}),

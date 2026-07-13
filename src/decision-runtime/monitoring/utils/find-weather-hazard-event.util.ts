@@ -59,11 +59,11 @@ function weatherPayloadImpliesHazard(payload: {
 
 export function findExistingWeatherProblemId(
   problems: Array<{ problemId: string; status: string; semanticCapability?: string }>,
-  dayIndex: number,
+  _dayIndex: number,
 ): string | undefined {
   const matches = problems.filter(
     (p) =>
-      p.status !== 'FAILED' &&
+      p.status === 'OPEN' &&
       (p.semanticCapability === 'WEATHER_ACTIVITY_PROHIBITED' ||
         p.problemId.startsWith('problem_weather_')),
   );

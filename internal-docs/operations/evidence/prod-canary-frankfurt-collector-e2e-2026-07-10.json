@@ -1,0 +1,24 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_FRANKFURT_COLLECTOR_E2E",
+  "probedAt": "2026-07-10T18:57:48.050Z",
+  "collectorHost": "47.87.131.183",
+  "tunnel": {
+    "remoteBindPort": 19080,
+    "devboxIngestPort": 3000,
+    "healthViaTunnel": "ok"
+  },
+  "ingestResponse": {
+    "ok": true,
+    "outcome": "SILENT",
+    "transport": "remote_collector",
+    "authoritative": true,
+    "sourceProvider": "iceland_met",
+    "weatherSource": "vedur.is",
+    "canonicalProcessed": true,
+    "detail": "anti-noise gate — live Vedur Reykjavík calm"
+  },
+  "verdict": "FRANKFURT_COLLECTOR_E2E_PASS",
+  "weatherAuthority": "vedur_live_collector",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "note": "Frankfurt fetched live Vedur XML, signed POST via reverse tunnel to devbox ingest. Formal 24h soak still required before Production Canary GO."
+}

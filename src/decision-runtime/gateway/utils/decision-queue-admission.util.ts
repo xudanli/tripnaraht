@@ -6,10 +6,12 @@ import type {
   ConstraintEnforcement,
   DecisionProblemStatus,
 } from '../../../trips/decision-semantics/types/decision-semantics.types';
+import { isPlanningLayerDecisionProblem } from './plan-object-execution-admission.util';
 
 export interface DecisionQueueAdmissionInput {
   enforcement: ConstraintEnforcement;
   workflowStatus: DecisionProblemStatus | 'DECIDED';
+  problemId?: string;
   semanticKey?: string;
   title?: string;
   summary?: string;
@@ -18,6 +20,8 @@ export interface DecisionQueueAdmissionInput {
   requiresAdjustment?: boolean;
   requiresConfirmation?: boolean;
   blocksPlan?: boolean;
+  /** When true, Plan Object assessment rows are excluded (execution phase only). */
+  excludePlanObjectPlanning?: boolean;
 }
 
 const TERMINAL_STATUSES = new Set<string>(['RESOLVED', 'DISMISSED']);
@@ -42,6 +46,16 @@ export function inferEnforcementForQueue(
 
 export function qualifiesForDecisionQueue(input: DecisionQueueAdmissionInput): boolean {
   if (TERMINAL_STATUSES.has(input.workflowStatus)) return false;
+
+  if (
+    input.excludePlanObjectPlanning &&
+    isPlanningLayerDecisionProblem({
+      problemId: input.problemId,
+      semanticKey: input.semanticKey,
+    })
+  ) {
+    return false;
+  }
 
   const enforcement = inferEnforcementForQueue(input.enforcement, input);
 

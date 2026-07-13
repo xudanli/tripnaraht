@@ -25,13 +25,13 @@ import type { PrismaService } from '../../../prisma/prisma.service';
 export const HARNESS_TRIP_ID = 'trip_iceland_harness';
 export const HARNESS_ITEM_DRIVE = 'item_day3_drive';
 
-export function createHarnessMockPrisma(tripRows: Record<string, unknown>) {
+function buildHarnessPrismaImpl(tripRows: Record<string, unknown>) {
   const stores = new Map<string, Record<string, unknown>>(
     Object.entries(tripRows) as [string, Record<string, unknown>][],
   );
   return {
     trip: {
-      findUnique: jest.fn(async (args: { where: { id: string }; select?: unknown }) => {
+      findUnique: async (args: { where: { id: string }; select?: unknown }) => {
         const row = stores.get(args.where.id);
         if (!row) return null;
         if ((args.select as any)?.TripDay) return row.trip;
@@ -40,15 +40,15 @@ export function createHarnessMockPrisma(tripRows: Record<string, unknown>) {
           metadata: row.metadata,
           updatedAt: row.updatedAt ?? new Date(),
         };
-      }),
-      update: jest.fn(async ({ where, data }: { where: { id: string }; data: { metadata?: unknown } }) => {
+      },
+      update: async ({ where, data }: { where: { id: string }; data: { metadata?: unknown } }) => {
         const prev = stores.get(where.id) ?? {};
         stores.set(where.id, { ...prev, metadata: data.metadata ?? prev.metadata });
         return { metadata: data.metadata };
-      }),
+      },
     },
     itineraryItem: {
-      findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) => {
+      findMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         const ids = where?.id?.in ?? [];
         return ids.map((id) => ({
           id,
@@ -64,10 +64,30 @@ export function createHarnessMockPrisma(tripRows: Record<string, unknown>) {
             },
           },
         }));
-      }),
+      },
     },
     stores,
   };
+}
+
+/** Jest-compatible mock (specs). */
+export function createHarnessMockPrisma(tripRows: Record<string, unknown>) {
+  const impl = buildHarnessPrismaImpl(tripRows);
+  return {
+    trip: {
+      findUnique: jest.fn(impl.trip.findUnique),
+      update: jest.fn(impl.trip.update),
+    },
+    itineraryItem: {
+      findMany: jest.fn(impl.itineraryItem.findMany),
+    },
+    stores: impl.stores,
+  };
+}
+
+/** Standalone script mock (no jest). */
+export function createHarnessScriptPrisma(tripRows: Record<string, unknown>) {
+  return buildHarnessPrismaImpl(tripRows);
 }
 
 export function harnessTripRow() {

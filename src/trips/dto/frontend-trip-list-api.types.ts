@@ -56,10 +56,6 @@ export interface TripListSummaryDto {
   memberCount: number;
   memberAvatars?: TripListMemberAvatar[];
   progressPercent?: number | null;
-  feasibilityScore?: number | null;
-  feasibilityLabel?: string | null;
-  hardConflictCount?: number | null;
-  pendingConfirmCount?: number | null;
   budgetPerPerson?: number | null;
   traveling?: TripListTravelingSnapshot;
   primaryAction?: TripListPrimaryAction;

@@ -177,6 +177,24 @@ export class TripInTripCommsController {
     }
   }
 
+  @Get('messages/:messageId/audio')
+  @ApiOperation({ summary: '对讲语音播放 URL（短期签名续期）' })
+  @ApiParam({ name: 'messageId', description: '消息 ID' })
+  async getVoiceAudioUrl(
+    @Param('tripId') tripId: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const userId = this.resolveUserId(user);
+      return successResponse(
+        await this.comms.getVoiceAudioSignedUrl(tripId, userId, messageId),
+      );
+    } catch (e) {
+      return this.handleError(e);
+    }
+  }
+
   @Get('summary')
   @ApiOperation({ summary: '对讲 AI 摘要（规则聚合，LLM 可后续替换）' })
   @ApiQuery({ name: 'since', required: false })

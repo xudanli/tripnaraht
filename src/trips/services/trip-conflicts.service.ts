@@ -40,6 +40,8 @@ import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution
 import {
   accumulateDailyDrivingMinutes,
   buildDailyDriveExceededConflicts,
+  recordDailyDrivingLeg,
+  type DailyDriveLegRecord,
 } from '../trip-constraint-solver/utils/daily-drive-conflicts.util';
 import {
   isSelfDriveTrip,
@@ -132,6 +134,7 @@ export class TripConflictsService {
     const useRouteApi = opts?.useRouteApi !== false;
     const dailyDriveMinutes = new Map<number, number>();
     const dailyDriveItemIds = new Map<number, string[]>();
+    const dailyDriveLegs = new Map<number, DailyDriveLegRecord[]>();
     const maxDailyDrive = resolveMaxDailyDrivingHours({
       metadata: trip.metadata,
       pacingConfig: trip.pacingConfig,
@@ -157,6 +160,7 @@ export class TripConflictsService {
         defaultTravelMode,
         useRouteApi,
         trackDailyDrive ? dailyDriveMinutes : undefined,
+        trackDailyDrive ? dailyDriveLegs : undefined,
         noNightPolicy,
         noNightScopeBinding,
       );
@@ -176,6 +180,7 @@ export class TripConflictsService {
           defaultTravelMode,
           useRouteApi,
           trackDailyDrive ? dailyDriveMinutes : undefined,
+        trackDailyDrive ? dailyDriveLegs : undefined,
           noNightPolicy,
           noNightScopeBinding,
         )),
@@ -188,6 +193,7 @@ export class TripConflictsService {
           dailyDriveMinutes,
           maxDailyDrivingHours: maxDailyDrive.maxDailyDrivingHours,
           dayItemIds: dailyDriveItemIds,
+          dayLegs: dailyDriveLegs,
           shouldApplyToDay: maxDailyScopeBinding ? shouldApplyDailyDriveDay : undefined,
         }),
       );
@@ -328,6 +334,7 @@ export class TripConflictsService {
     defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
     useRouteApi = true,
     dailyDriveAccumulator?: Map<number, number>,
+    dailyDriveLegs?: Map<number, DailyDriveLegRecord[]>,
     noNightPolicy?: NoNightDrivePolicy,
     noNightScopeBinding?: import('../trip-constraint-solver/types/trip-constraint.types').ConstraintScopeBinding,
   ): Promise<ConflictDto[]> {
@@ -469,7 +476,25 @@ export class TripConflictsService {
         defaultTravelMode,
         useRouteApi,
       );
-      if (dailyDriveAccumulator) {
+      const fromName = this.getItemPlaceLabel(current);
+      const toName = this.getItemPlaceLabel(next);
+      if (dailyDriveAccumulator && dailyDriveLegs) {
+        const currentEnd = current.endTime ? DateTime.fromJSDate(current.endTime) : null;
+        recordDailyDrivingLeg(
+          dailyDriveAccumulator,
+          dailyDriveLegs,
+          _dayIndex,
+          {
+            fromItemId: current.id,
+            toItemId: next.id,
+            fromPlaceLabel: fromName,
+            toPlaceLabel: toName,
+            travelMinutes: estimate.travelMinutes,
+            departAt: currentEnd?.toISO() ?? undefined,
+          },
+          estimate.travelMode,
+        );
+      } else if (dailyDriveAccumulator) {
         accumulateDailyDrivingMinutes(
           dailyDriveAccumulator,
           _dayIndex,
@@ -479,8 +504,6 @@ export class TripConflictsService {
       }
       const currentEnd = current.endTime ? DateTime.fromJSDate(current.endTime) : null;
       const nextStart = next.startTime ? DateTime.fromJSDate(next.startTime) : null;
-      const fromName = this.getItemPlaceLabel(current);
-      const toName = this.getItemPlaceLabel(next);
       const distanceKm = Math.round((estimate.travelDistanceMeters / 1000) * 10) / 10;
 
       if (!currentEnd || !nextStart) {
@@ -722,6 +745,7 @@ export class TripConflictsService {
     defaultTravelMode: TripDefaultTravelMode = 'DRIVING',
     useRouteApi = true,
     dailyDriveAccumulator?: Map<number, number>,
+    dailyDriveLegs?: Map<number, DailyDriveLegRecord[]>,
     noNightPolicy?: NoNightDrivePolicy,
     noNightScopeBinding?: import('../trip-constraint-solver/types/trip-constraint.types').ConstraintScopeBinding,
   ): Promise<ConflictDto[]> {
@@ -754,7 +778,25 @@ export class TripConflictsService {
         defaultTravelMode,
         useRouteApi,
       );
-      if (dailyDriveAccumulator) {
+      const fromName = this.getItemPlaceLabel(fromItem);
+      const toName = this.getItemPlaceLabel(toItem);
+      if (dailyDriveAccumulator && dailyDriveLegs) {
+        const fromEnd = fromItem.endTime ? DateTime.fromJSDate(fromItem.endTime) : null;
+        recordDailyDrivingLeg(
+          dailyDriveAccumulator,
+          dailyDriveLegs,
+          i + 2,
+          {
+            fromItemId: fromItem.id,
+            toItemId: toItem.id,
+            fromPlaceLabel: fromName,
+            toPlaceLabel: toName,
+            travelMinutes: estimate.travelMinutes,
+            departAt: fromEnd?.toISO() ?? undefined,
+          },
+          estimate.travelMode,
+        );
+      } else if (dailyDriveAccumulator) {
         accumulateDailyDrivingMinutes(
           dailyDriveAccumulator,
           i + 2,
@@ -764,8 +806,6 @@ export class TripConflictsService {
       }
       const fromEnd = fromItem.endTime ? DateTime.fromJSDate(fromItem.endTime) : null;
       const toStart = toItem.startTime ? DateTime.fromJSDate(toItem.startTime) : null;
-      const fromName = this.getItemPlaceLabel(fromItem);
-      const toName = this.getItemPlaceLabel(toItem);
       const distanceKm = Math.round((estimate.travelDistanceMeters / 1000) * 10) / 10;
 
       if (!fromEnd || !toStart) {

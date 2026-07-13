@@ -46,6 +46,11 @@ export interface RepairTemplateBundleRef {
   version?: string;
 }
 
+export interface RoadProfileBundleRef {
+  path: string;
+  version?: string;
+}
+
 export interface PackDependency {
   packId: string;
   version?: string;
@@ -64,6 +69,7 @@ export interface DestinationPackManifest {
   environmentModifiers?: ModifierBundleRef[];
   ontologyMappings?: OntologyMappingRef[];
   repairTemplateBundles?: RepairTemplateBundleRef[];
+  roadProfileBundles?: RoadProfileBundleRef[];
   dependencies?: PackDependency[];
   fallbackPackId?: string;
   validFrom: string;

@@ -10,27 +10,38 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
 import { isRfc001IcelandRoadCloseEnabled } from '../config/rfc001-iceland.config';
 import { Rfc001AuthorizationService } from '../authorization/authorization.service';
 import { Rfc001PlanVersionApplyExecutor } from '../execution/plan-version-apply.executor';
 import { buildPlanVersionIdempotencyKey } from '../plan-version/plan-version.service';
 
 class AuthorizeDecisionDto {
+  @ApiProperty()
+  @IsString()
   tripId!: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
   choice?: string;
 }
 
 class ExecuteDecisionDto {
+  @ApiProperty()
+  @IsString()
   tripId!: string;
 }
 
 class RollbackDecisionDto {
+  @ApiProperty()
+  @IsString()
   tripId!: string;
 }
 
 @ApiTags('RFC-001 Decisions')
-@Controller('api/rfc001/decisions')
+@Controller('rfc001/decisions')
 export class Rfc001DecisionsController {
   constructor(
     private readonly authorization: Rfc001AuthorizationService,

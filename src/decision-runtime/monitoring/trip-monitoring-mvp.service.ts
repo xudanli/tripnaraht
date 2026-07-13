@@ -39,6 +39,7 @@ import {
   MONITORING_MVP_METADATA_KEY,
   TRIP_MONITORING_SCAN_SCHEMA_ID,
 } from './trip-monitoring-mvp.types';
+import { AssertionPromotionService } from './assertion-promotion/assertion-promotion.service';
 
 const MVP_KINDS: TripMonitoringMvpKind[] = [
   'ROAD_CLOSURE',
@@ -69,6 +70,7 @@ export class TripMonitoringMvpService {
     @Optional() private readonly roadRunner?: RoadSegmentUnavailableRunnerService,
     @Optional() private readonly weatherRunner?: WeatherActivityProhibitedRunnerService,
     @Optional() private readonly problemStore?: Rfc001DecisionProblemStoreService,
+    @Optional() private readonly assertionPromotion?: AssertionPromotionService,
   ) {}
 
   async listItems(tripId: string): Promise<TripMonitoringItemView[]> {
@@ -120,6 +122,17 @@ export class TripMonitoringMvpService {
     const activeAlertCount = items.filter((i) => i.status === 'ALERT').length;
 
     await this.persistState(tripId, { lastScanAt: scannedAt, items });
+
+    if (this.assertionPromotion?.isEnabled()) {
+      try {
+        await this.assertionPromotion.reconcileTripAssertions(tripId);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `[MonitoringMVP] assertion promotion reconcile failed trip=${tripId}: ${message}`,
+        );
+      }
+    }
 
     return {
       schemaId: TRIP_MONITORING_SCAN_SCHEMA_ID,

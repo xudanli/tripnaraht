@@ -3,6 +3,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
 import { CoverageMapService } from '../readiness/services/coverage-map.service';
+import { buildReadinessCascadeUiHints } from '../readiness/utils/readiness-causal-preanalysis.util';
 import {
   TripInsightResponseDto,
   TripSummaryDto,
@@ -443,11 +444,12 @@ export class TripInsightService {
         warnings: must,
         suggestions: should,
         overall: score.overall,
-        evidenceCoverage: score.evidenceCoverage,
-        scheduleFeasibility: score.scheduleFeasibility,
-        transportCertainty: score.transportCertainty,
-        safetyRisk: score.safetyRisk,
-        buffers: score.buffers,
+        entryTransit: score.entryTransit,
+        healthInsurance: score.healthInsurance,
+        gearPacking: score.gearPacking,
+        bookingsCredentials: score.bookingsCredentials,
+        logisticsComms: score.logisticsComms,
+        emergency: score.emergency,
         guardianNegotiation: scoreResult.guardianNegotiation
           ? {
               latest: scoreResult.guardianNegotiation.latest
@@ -461,7 +463,7 @@ export class TripInsightService {
                 : undefined,
             }
           : undefined,
-        cascadeUiHints: scoreResult.cascadeUiHints,
+        cascadeUiHints: buildReadinessCascadeUiHints(scoreResult.causalPreAnalysis),
         causalPreAnalysis: scoreResult.causalPreAnalysis
           ? {
               triggerFactType: scoreResult.causalPreAnalysis.trigger?.factType,

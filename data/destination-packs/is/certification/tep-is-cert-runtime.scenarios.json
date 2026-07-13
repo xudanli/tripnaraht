@@ -1,0 +1,301 @@
+[
+  {
+    "scenarioId": "IS-CERT-301",
+    "description": "道路 OPEN→CLOSED → Hook 匹配 → DecisionProblem 草稿 → 影响链",
+    "input": {
+      "tripId": "cert_301",
+      "planVersionId": "plan_cert_301_v1",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "EXPERIENCED" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-09",
+          "dayIndex": 3,
+          "origin": { "ref": "anchor_a", "label": "Base" },
+          "destination": { "ref": "anchor_b", "label": "Glacier" },
+          "legs": [
+            {
+              "legId": "drive_leg_3_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 90,
+              "roadRefs": ["segment:cert_301:F208"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [
+            {
+              "ref": "activity_glacier_hike",
+              "importance": "MANDATORY",
+              "flexibility": "FIXED",
+              "weatherSensitive": true,
+              "reservationRequired": true,
+              "durationMinutes": 180,
+              "bufferMinutes": 30,
+              "fixedStartAt": "2026-08-09T10:00:00.000Z"
+            }
+          ],
+          "accommodation": {
+            "ref": "accommodation_day3_hotel",
+            "latestArrival": "22:00"
+          },
+          "buffers": []
+        }
+      ],
+      "previousObservation": { "road.status": "OPEN" },
+      "currentObservation": { "road.status": "CLOSED" },
+      "triggerEventId": "evt_road_cert_301",
+      "worldStateSnapshotId": "ws_cert_301"
+    },
+    "expect": {
+      "hookPrefix": "HOOK-ROAD",
+      "problemType": "RESOURCE_UNAVAILABLE",
+      "semanticCapability": "ROAD_SEGMENT_UNAVAILABLE",
+      "impactRefs": [
+        "drive_leg_3_1",
+        "activity_glacier_hike",
+        "accommodation_day3_hotel",
+        "segment:cert_301:F208"
+      ],
+      "affectedPlanItemIds": ["activity_glacier_hike", "accommodation_day3_hotel"]
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-302",
+    "description": "HIGH load → RecoveryGraph 删 OPTIONAL → 重评估 → 可执行",
+    "input": {
+      "tripId": "cert_302",
+      "planVersionId": "plan_cert_302_v1",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "EXPERIENCED" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-05",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "Reykjavik" },
+          "destination": { "ref": "anchor_b", "label": "Hofn" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 330,
+              "roadRefs": ["segment:cert_302:ring"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [
+            {
+              "ref": "activity_stop_1",
+              "importance": "OPTIONAL",
+              "flexibility": "REMOVABLE",
+              "weatherSensitive": false,
+              "reservationRequired": false,
+              "durationMinutes": 30,
+              "bufferMinutes": 0
+            }
+          ],
+          "buffers": []
+        }
+      ]
+    },
+    "expect": {
+      "statusBefore": "REQUIRES_REPAIR",
+      "repairTargetRef": "activity_stop_1",
+      "loadTierBefore": "HIGH",
+      "loadTierAfter": "MEDIUM",
+      "statusAfterRepair": "EXECUTABLE_WITH_CAUTION",
+      "minutesReleased": 40
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-303",
+    "description": "天气失效 → Hook → fallback → 用户确认 → PlanVersion 写回",
+    "input": {
+      "tripId": "cert_303",
+      "planVersionId": "plan_cert_303_v1",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "EXPERIENCED" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": true,
+          "nightDrivingPreference": "ALLOW_WITH_CAUTION"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-08-10",
+          "dayIndex": 2,
+          "origin": { "ref": "anchor_a", "label": "Base" },
+          "destination": { "ref": "anchor_b", "label": "Coast" },
+          "legs": [
+            {
+              "legId": "drive_leg_2_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 60,
+              "roadRefs": ["segment:cert_303:ring"],
+              "importance": "RECOMMENDED",
+              "flexibility": "REMOVABLE"
+            }
+          ],
+          "activities": [
+            {
+              "ref": "activity_coastal_walk",
+              "importance": "RECOMMENDED",
+              "flexibility": "REPLACEABLE",
+              "weatherSensitive": true,
+              "reservationRequired": false,
+              "durationMinutes": 90,
+              "bufferMinutes": 15,
+              "weatherFallbackRef": "activity_indoor_museum_fallback",
+              "weatherFallbackPoiId": "poi_indoor_museum"
+            }
+          ],
+          "buffers": []
+        }
+      ],
+      "previousObservation": { "weather.windSpeedKmh": 45 },
+      "currentObservation": { "weather.windSpeedKmh": 95 },
+      "triggerEventId": "evt_weather_cert_303",
+      "worldStateSnapshotId": "ws_cert_303"
+    },
+    "expect": {
+      "hookPrefix": "HOOK-WEATHER",
+      "problemType": "FEASIBILITY_FAILURE",
+      "semanticCapability": "WEATHER_ACTIVITY_PROHIBITED",
+      "fallbackTriggerRuleId": "SDR-302",
+      "fallbackAction": "REPLACE",
+      "fallbackTargetRef": "activity_coastal_walk",
+      "planVersionWriteback": true
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-304",
+    "description": "Runtime daylight hook — driveMinutesAfterCivilDusk → SCHEDULE_RISK",
+    "input": {
+      "tripId": "cert_304",
+      "planVersionId": "plan_cert_304_v1",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "INTERMEDIATE" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": false,
+          "nightDrivingPreference": "AVOID"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-01-15",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "A" },
+          "destination": { "ref": "anchor_b", "label": "B" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 600,
+              "roadRefs": ["segment:cert_304:ring"],
+              "importance": "MANDATORY",
+              "flexibility": "FIXED"
+            }
+          ],
+          "activities": [],
+          "buffers": []
+        }
+      ],
+      "previousObservation": { "daylight.driveMinutesAfterCivilDusk": 0 },
+      "currentObservation": { "daylight.driveMinutesAfterCivilDusk": 30 },
+      "triggerEventId": "evt_daylight_cert_304",
+      "worldStateSnapshotId": "ws_cert_304"
+    },
+    "expect": {
+      "hookPrefix": "HOOK-DAYLIGHT",
+      "problemType": "SCHEDULE_RISK",
+      "semanticCapability": "WEATHER_ROUTE_RISK"
+    }
+  },
+  {
+    "scenarioId": "IS-CERT-405",
+    "description": "执行晚点 → 日照风险 → Hook → REMOVE → 写回 → 日照窗口恢复",
+    "input": {
+      "tripId": "cert_405",
+      "planVersionId": "plan_cert_405_v1",
+      "countryCode": "IS",
+      "profile": {
+        "vehicle": { "vehicleType": "4WD", "vehicleSource": "EXPLORATION" },
+        "drivers": [{ "driverId": "primary", "experienceLevel": "INTERMEDIATE" }],
+        "drivingPolicy": {
+          "nightDrivingAllowed": false,
+          "nightDrivingPreference": "AVOID"
+        }
+      },
+      "dailyDrivePlans": [
+        {
+          "date": "2026-01-15",
+          "dayIndex": 1,
+          "origin": { "ref": "anchor_a", "label": "A" },
+          "destination": { "ref": "anchor_b", "label": "B" },
+          "legs": [
+            {
+              "legId": "drive_leg_1_1",
+              "fromRef": "item_a",
+              "toRef": "item_b",
+              "baseNavigationMinutes": 520,
+              "roadRefs": ["segment:cert_405:ring"],
+              "importance": "MANDATORY",
+              "flexibility": "FIXED"
+            }
+          ],
+          "activities": [
+            {
+              "ref": "activity_stop_405",
+              "importance": "OPTIONAL",
+              "flexibility": "REMOVABLE",
+              "weatherSensitive": false,
+              "reservationRequired": false,
+              "durationMinutes": 30,
+              "bufferMinutes": 0
+            }
+          ],
+          "buffers": []
+        }
+      ],
+      "executionSlip": {
+        "slipMinutes": 90,
+        "currentActivityId": "item_a",
+        "nextActivityId": "item_b",
+        "plannedDepartAt": "2026-01-15T10:00:00.000Z",
+        "observedAt": "2026-01-15T11:30:00.000Z",
+        "triggerEventId": "evt_slip_cert_405",
+        "worldStateSnapshotId": "ws_cert_405"
+      }
+    },
+    "expect": {
+      "hookPrefix": "HOOK-DAYLIGHT",
+      "statusBefore": "REQUIRES_CONFIRMATION",
+      "repairTargetRef": "activity_stop_405",
+      "slipDriveMinutesAfterCivilDuskMin": 1,
+      "driveMinutesAfterCivilDuskAfterRepair": 0
+    }
+  }
+]

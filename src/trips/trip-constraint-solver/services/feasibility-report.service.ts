@@ -83,6 +83,7 @@ import {
 } from '../../../decision-runtime/execution/effective-plan-write-guard.service';
 import { assertPlanMutationAllowedOrThrow } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { buildMcpoiBenchmarkFeasibilityIssues } from '../../benchmarks/multi-constraint-poi/mcpoi-benchmark-runtime.util';
+import { TripPrerequisiteService } from '../../prerequisites/services/trip-prerequisite.service';
 
 @Injectable()
 export class FeasibilityReportService {
@@ -98,6 +99,7 @@ export class FeasibilityReportService {
     private readonly moduleRef: ModuleRef,
     @Optional() private readonly pomdpMonteCarlo?: FeasibilityPomdpMonteCarloService,
     @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
+    @Optional() private readonly tripPrerequisites?: TripPrerequisiteService,
   ) {}
 
   private getFeasibilityProjection():
@@ -178,20 +180,23 @@ export class FeasibilityReportService {
     p0ProjectionApplied: boolean;
   }> {
     const projection = this.getFeasibilityProjection();
+    let issues: FeasibilityIssueDto[];
+    let p0ProjectionApplied: boolean;
     if (projection?.isProjectionEnabled()) {
       const { mergeProjectedP0Issues } = await import(
         '../../../decision-runtime/constraints/services/feasibility-projection.service'
       );
       const result = await projection.projectP0Issues(trip);
-      return {
-        issues: mergeProjectedP0Issues(result),
-        p0ProjectionApplied: result.projectionApplied,
-      };
+      issues = mergeProjectedP0Issues(result);
+      p0ProjectionApplied = result.projectionApplied;
+    } else {
+      issues = await this.preTripP0.buildP0Issues(trip);
+      p0ProjectionApplied = false;
     }
-    return {
-      issues: await this.preTripP0.buildP0Issues(trip),
-      p0ProjectionApplied: false,
-    };
+    if (this.tripPrerequisites) {
+      issues = await this.tripPrerequisites.enrichFeasibilityIssues(trip.id, issues);
+    }
+    return { issues, p0ProjectionApplied };
   }
 
   private async buildGuardianIssuesForReport(
@@ -605,11 +610,15 @@ export class FeasibilityReportService {
       response = resolved ?? (await this.coverageMap.getRepairOptions(tripId, issueId));
     }
 
-    return {
-      ...response,
-      issueId: canonicalIssueId,
-      blockerId: response.blockerId,
-    };
+    return this.coverageMap.enrichRepairOptionsForFeasibility(
+      tripId,
+      resolveIssueIdToBlockerId(canonicalIssueId),
+      {
+        ...response,
+        issueId: canonicalIssueId,
+        blockerId: response.blockerId,
+      },
+    );
   }
 
   async validateScope(
@@ -990,6 +999,7 @@ export class FeasibilityReportService {
       persistDecision: body.persistDecision,
       runGuardianNegotiation: body.runGuardianNegotiation,
       forceDecisionRepair: body.forceDecisionRepair,
+      repairAuthority: 'feasibility',
     });
 
     if (

@@ -1,0 +1,17 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_FORMAL_VEDUR_SOAK_ABORT",
+  "abortedAt": "2026-07-11T06:28:00Z",
+  "reason": "Frankfurt ECS (47.87.131.183) powered off mid-soak; collector chain interrupted",
+  "supersededEvidence": "internal-docs/operations/evidence/formal-vedur-soak-2026-07-10.json",
+  "originalStartedAt": "2026-07-10T19:06:09.866Z",
+  "originalEndsAt": "2026-07-11T19:06:09.866Z",
+  "verdict": "FORMAL_VEDUR_SOAK_ABORTED",
+  "signoffEligible": false,
+  "note": "24h continuity broken. Do not sign off on superseded soak. Start new soak after chain restored.",
+  "recoveryVerifiedAt": "2026-07-11T06:28:33Z",
+  "recoveryChecks": {
+    "devboxIngest": "ok",
+    "frankfurtTunnel": "ok",
+    "manualCollectorHttp": 200
+  }
+}

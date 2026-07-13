@@ -10,6 +10,8 @@ import { Rfc001PlanVersionApplyExecutor } from '../../../trips/guardian-decision
 import { RoadSegmentUnavailableRunnerService } from '../../../trips/guardian-decision-core/execution/road-segment-unavailable-runner.service';
 import { WeatherActivityProhibitedRunnerService } from '../../../trips/guardian-decision-core/execution/weather-activity-prohibited-runner.service';
 import { ExcessiveDailyLoadRunnerService } from '../../../trips/guardian-decision-core/execution/excessive-daily-load-runner.service';
+import { ExecutionSlipRunnerService } from '../../../trips/guardian-decision-core/execution/execution-slip-runner.service';
+import { EXECUTION_SCHEDULE_INFEASIBLE_CAPABILITY } from '../../../trips/guardian-decision-core/contracts/execution-slip.types';
 import { EvidenceResolverService } from '../../../trips/guardian-decision-core/evidence/evidence-resolver.service';
 import { WeatherActivityProhibitedPipelineService } from '../../../trips/guardian-decision-core/detection/weather-activity-prohibited-pipeline.service';
 import { ExcessiveDailyLoadPipelineService } from '../../../trips/guardian-decision-core/detection/excessive-daily-load-pipeline.service';
@@ -84,6 +86,7 @@ export class CanonicalDecisionEngineAdapter {
     private readonly roadRunner: RoadSegmentUnavailableRunnerService,
     private readonly weatherRunner: WeatherActivityProhibitedRunnerService,
     private readonly loadRunner: ExcessiveDailyLoadRunnerService,
+    private readonly executionSlipRunner: ExecutionSlipRunnerService,
     private readonly evidenceResolver: EvidenceResolverService,
     private readonly weatherPipeline: WeatherActivityProhibitedPipelineService,
     private readonly loadPipeline: ExcessiveDailyLoadPipelineService,
@@ -219,6 +222,8 @@ export class CanonicalDecisionEngineAdapter {
       run = await this.weatherRunner.evaluateAndFinalizeByProblemId(tripId, problemId);
     } else if (problem.semanticCapability === 'EXCESSIVE_DAILY_LOAD') {
       run = await this.loadRunner.evaluateAndFinalizeByProblemId(tripId, problemId);
+    } else if (problem.semanticCapability === EXECUTION_SCHEDULE_INFEASIBLE_CAPABILITY) {
+      run = await this.executionSlipRunner.finalizeByProblemId(tripId, problemId);
     } else {
       run = await this.roadRunner.evaluateAndFinalizeByProblemId(tripId, problemId);
     }

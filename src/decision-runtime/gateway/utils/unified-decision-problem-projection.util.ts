@@ -383,8 +383,9 @@ export function aggregateRowsByInstanceKey(rows: InternalUnifiedProblemRow[]): I
       byKey.set(row.instanceKey, row);
       continue;
     }
+    const primary = pickNewerUnifiedProblemRow(existing, row);
     byKey.set(row.instanceKey, {
-      ...existing,
+      ...primary,
       occurrenceCount: existing.occurrenceCount + row.occurrenceCount,
       occurrences: [...existing.occurrences, ...row.occurrences],
       evidenceCount: existing.evidenceCount + row.evidenceCount,
@@ -393,14 +394,40 @@ export function aggregateRowsByInstanceKey(rows: InternalUnifiedProblemRow[]): I
       detectors: mergeDetectors(existing.detectors, row.detectors),
       origin: mergeOrigins(existing.origin, row.origin),
       affectedDayNumbers: mergeAffectedDayNumbers(existing.affectedDayNumbers, row.affectedDayNumbers),
-      affectedScopeSummary: existing.affectedScopeSummary || row.affectedScopeSummary,
+      affectedScopeSummary: primary.affectedScopeSummary || existing.affectedScopeSummary,
       queueDescription:
-        existing.queueDescription && existing.queueDescription !== existing.queueTitle
-          ? existing.queueDescription
-          : row.queueDescription ?? existing.queueDescription,
+        primary.queueDescription && primary.queueDescription !== primary.queueTitle
+          ? primary.queueDescription
+          : existing.queueDescription ?? primary.queueDescription,
     });
   }
   return [...byKey.values()];
+}
+
+/** Same instanceKey merge must expose the latest slip problemId (POST ↔ queue SSOT). */
+export function pickNewerUnifiedProblemRow(
+  a: InternalUnifiedProblemRow,
+  b: InternalUnifiedProblemRow,
+): InternalUnifiedProblemRow {
+  return unifiedProblemRowRecency(b) >= unifiedProblemRowRecency(a) ? b : a;
+}
+
+export function unifiedProblemRowRecency(row: InternalUnifiedProblemRow): number {
+  const fromId = parseExecSlipProblemTimestamp(row.problemId);
+  if (fromId != null) return fromId;
+  const detected = row.rawCanonical?.rfc001Problem?.detectedAt;
+  if (detected) {
+    const t = Date.parse(detected);
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+}
+
+export function parseExecSlipProblemTimestamp(problemId: string): number | undefined {
+  const match = /^problem_exec_slip_[^_]+_(\d+)$/.exec(problemId);
+  if (!match) return undefined;
+  const t = Number(match[1]);
+  return Number.isFinite(t) ? t : undefined;
 }
 
 export function projectRowToListItem(
@@ -456,6 +483,8 @@ export function buildUnifiedDecisionProblemListView(input: {
   rows: InternalUnifiedProblemRow[];
   includeDebug?: boolean;
   queueOnly?: boolean;
+  /** Exclude Plan Object assessment during TRAVELING (execution phase). */
+  excludePlanObjectForExecution?: boolean;
   /** Raw feasibility diagnosis count — meta.occurrenceCount SSOT */
   diagnosisOccurrenceCount?: number;
 }): UnifiedDecisionProblemListView {
@@ -465,6 +494,7 @@ export function buildUnifiedDecisionProblemListView(input: {
         qualifiesForDecisionQueue({
           enforcement: row.enforcement,
           workflowStatus: row.workflowStatus,
+          problemId: row.problemId,
           semanticKey: row.semanticKey,
           title: row.title,
           summary: row.summary,
@@ -472,6 +502,7 @@ export function buildUnifiedDecisionProblemListView(input: {
           blocksPlan: row.enforcement === 'BLOCK',
           requiresAdjustment: row.enforcement === 'REQUIRE_ADJUSTMENT',
           requiresConfirmation: row.enforcement === 'REQUIRE_CONFIRMATION',
+          excludePlanObjectPlanning: input.excludePlanObjectForExecution === true,
         }),
       )
     : aggregated;
@@ -607,9 +638,24 @@ function buildImpactScopeView(
         });
   if (!days.length) return undefined;
   const label = legacy.affectedScopeSummary || row.queueTitle || row.title;
+  const tripDays = days.filter((dayIndex) => dayIndex > 0 && dayIndex <= 60);
+  if (!tripDays.length) return undefined;
+  const arrangements = tripDays.map((dayIndex) => ({ label, dayIndex }));
   return {
-    arrangements: days.map((dayIndex) => ({ label, dayIndex })),
+    arrangements: dedupeImpactScopeArrangements(arrangements),
   };
+}
+
+function dedupeImpactScopeArrangements(
+  arrangements: Array<{ label: string; dayIndex: number }>,
+): Array<{ label: string; dayIndex: number }> {
+  const seen = new Set<string>();
+  return arrangements.filter((entry) => {
+    const key = `${entry.dayIndex}:${entry.label}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function mergeAffectedDayNumbers(a?: number[], b?: number[]): number[] | undefined {

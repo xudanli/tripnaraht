@@ -50,6 +50,7 @@ export function projectDecisionOptionToAction(
         ? '当前方案不可执行'
         : undefined,
     navigationTarget: buildNavigationTarget(option, ctx),
+    ...(option.executionSlipPreview ? { executionSlipPreview: option.executionSlipPreview } : {}),
   };
 }
 

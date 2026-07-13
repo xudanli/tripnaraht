@@ -1,0 +1,30 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_GAGNAVEITA_COLLECTOR_INGEST_DRILL",
+  "probedAt": "2026-07-10T20:29:11.031Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "roadId": "F208",
+  "mode": "http",
+  "fixture": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+  "verdict": "GAGNAVEITA_COLLECTOR_INGEST_PASS",
+  "roadAuthority": "gagnaveita_live_collector",
+  "response": {
+    "ok": true,
+    "ingestId": "gci_839587f2-c2f4-4c73-89f7-a8940515e565",
+    "requestId": "drill_8b5e045a-d48d-494f-9a66-c897e395ec17",
+    "outcome": "SILENT",
+    "transport": "remote_collector",
+    "authoritative": true,
+    "sourceProvider": "vegagerdin_gagnaveita",
+    "roadSource": "gagnaveita.vegagerdin.is",
+    "canonicalProcessed": true,
+    "roadId": "F208",
+    "currentStatus": "closed",
+    "detail": "anti-noise gate — status=closed stored=false"
+  },
+  "metadata": {
+    "rawRecordCount": 2,
+    "roadEvidenceCount": 1,
+    "assertionCount": 2
+  },
+  "note": "REAL-SHAPE Gagnaveita ingest drill. Does NOT trigger road-close pipeline or Effective Plan write."
+}

@@ -35,9 +35,14 @@
     "dist",
     "**/*.spec.ts",
     "**/*.test.ts",
+    "**/*.hooks.example.ts",
     "src/mcp/**/*",
     "scripts/test-chain-of-work-admin.ts",
     "scripts/test-airbnb-accommodation-search.ts",
-    "scripts/verify-rollback-drill.ts"
+    "scripts/verify-rollback-drill.ts",
+    "src/match-square/**",
+    "src/match-learning/**",
+    "src/reputation-os/**",
+    "src/odyssey-intake/engine/companion-matching.engine.ts"
   ]
 }

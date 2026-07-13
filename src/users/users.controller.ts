@@ -1,6 +1,7 @@
 // src/users/users.controller.ts
-import { Controller, Get, Put, Delete, Body, BadRequestException, NotFoundException, Query, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Put, Delete, Post, Body, BadRequestException, NotFoundException, Query, Param, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery, ApiConsumes } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserProfileDto } from './dto/user-profile.dto';
 import { UpdateDecisionDnaConsentDto } from './dto/decision-dna-consent.dto';
@@ -11,6 +12,15 @@ import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-re
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { DecisionDnaComplianceService } from '../agent/memory/governance/decision-dna-compliance.service';
+
+interface MulterFile {
+  buffer: Buffer;
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+}
 
 @ApiTags('users')
 @Controller('users')
@@ -85,6 +95,81 @@ export class UsersController {
       }
       const updatedUser = await this.usersService.updateCurrentUser(user.userId, dto);
       return successResponse(updatedUser);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Post('me/avatar')
+  @ApiOperation({
+    summary: '上传当前用户头像',
+    description:
+      '上传图片并自动更新当前用户的 avatarUrl。\n\n需要认证：JWT Bearer token。\n\n表单字段 `file` 为图片文件（JPEG/PNG/WebP/GIF，最大 5MB）。上传成功后旧头像若为本服务 OSS 上的 avatars/ 路径会自动清理。',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary', description: '头像图片' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: '上传成功，返回 OSS URL 与更新后的用户信息',
+    type: ApiSuccessResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: '未选择文件、格式不支持或 OSS 未配置',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: '未认证或 token 无效',
+    type: ApiErrorResponseDto,
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!allowed.includes(file.mimetype)) {
+          cb(new BadRequestException('仅支持 JPEG、PNG、WebP、GIF 格式'), false);
+        } else {
+          cb(null, true);
+        }
+      },
+    }),
+  )
+  async uploadAvatar(
+    @UploadedFile() file: MulterFile,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    try {
+      if (!user || !user.userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+      }
+      if (!file) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, '请选择要上传的头像图片');
+      }
+      const result = await this.usersService.uploadAvatar(user.userId, file);
+      return successResponse({
+        url: result.upload.url,
+        key: result.upload.key,
+        size: result.upload.size,
+        mimeType: result.upload.mimeType,
+        user: result.user,
+      });
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);

@@ -1,0 +1,20 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_FORMAL_VEDUR_SOAK_CHECK",
+  "checkedAt": "2026-07-12T15:40:54.627Z",
+  "sourceEvidence": "internal-docs/operations/evidence/formal-vedur-soak-2026-07-11.json",
+  "elapsedHours": 24.3,
+  "durationMet": true,
+  "ingestHealth": "down",
+  "tunnelHealth": "down",
+  "collectorHttp200": 76,
+  "collectorLogLines": 1281,
+  "expectedCronRuns": 97,
+  "cronSuccessRate": 0.784,
+  "tripMetadata": {
+    "rawCount": 96,
+    "pollCount": 48,
+    "ingestedPolls": 48
+  },
+  "verdict": "FORMAL_VEDUR_SOAK_FAIL",
+  "signoffEligible": false
+}

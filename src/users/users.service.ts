@@ -1,14 +1,27 @@
 // src/users/users.service.ts
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadService, UploadResult } from '../upload/upload.service';
 import { UpdateUserProfileDto, GetUserProfileResponseDto } from './dto/user-profile.dto';
 import { GetUsersQueryDto, UserListResponseDto, UserResponseDto, UpdateUserDto } from './dto/admin-user.dto';
 import { CurrentUserResponseDto, UpdateCurrentUserDto, DeleteAccountResponseDto } from './dto/current-user.dto';
 import { UserStatsResponseDto, UserDetailResponseDto } from './dto/user-stats.dto';
 
+interface MulterFile {
+  buffer: Buffer;
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploadService: UploadService,
+  ) {}
 
   // ==================== 当前用户接口 ====================
 
@@ -66,6 +79,71 @@ export class UsersService {
       createdAt: updatedUser.createdAt,
       updatedAt: updatedUser.updatedAt,
     };
+  }
+
+  /**
+   * 上传并更新当前用户头像（OSS）
+   */
+  async uploadAvatar(
+    userId: string,
+    file: MulterFile,
+  ): Promise<{ upload: UploadResult; user: CurrentUserResponseDto }> {
+    if (!this.uploadService.isAvailable()) {
+      throw new BadRequestException('图片上传服务未配置，请联系管理员');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`用户不存在: ${userId}`);
+    }
+
+    const upload = await this.uploadService.uploadImage(file, `avatars/${userId}`).catch((error: Error) => {
+      throw new BadRequestException(error.message || '头像上传失败');
+    });
+    const previousAvatarUrl = user.avatarUrl;
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl: upload.url },
+    });
+
+    await this.tryDeletePreviousAvatar(previousAvatarUrl, upload.key);
+
+    return {
+      upload,
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        emailVerified: updatedUser.emailVerified,
+        displayName: updatedUser.displayName,
+        avatarUrl: updatedUser.avatarUrl,
+        googleSub: updatedUser.googleSub,
+        createdAt: updatedUser.createdAt,
+        updatedAt: updatedUser.updatedAt,
+      },
+    };
+  }
+
+  /** 若旧头像是本服务 OSS 上的 avatars/ 路径，上传成功后尝试删除旧文件 */
+  private async tryDeletePreviousAvatar(previousUrl: string | null | undefined, newKey: string): Promise<void> {
+    if (!previousUrl) return;
+    const key = this.extractOssKeyFromAvatarUrl(previousUrl);
+    if (!key || !key.startsWith('avatars/') || key === newKey) return;
+    try {
+      await this.uploadService.deleteImage(key);
+    } catch {
+      /* 旧图删除失败不影响主流程 */
+    }
+  }
+
+  private extractOssKeyFromAvatarUrl(url: string): string | null {
+    try {
+      const parsed = new URL(url);
+      const path = parsed.pathname.replace(/^\/+/, '');
+      return path || null;
+    } catch {
+      return null;
+    }
   }
 
   /**

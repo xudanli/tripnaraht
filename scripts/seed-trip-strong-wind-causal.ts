@@ -140,6 +140,19 @@ async function main() {
     },
   });
 
+  const collaborators = await prisma.tripCollaborator.findMany({
+    where: { tripId: TRIP_ID },
+    select: { userId: true },
+  });
+  const users =
+    collaborators.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: collaborators.map((c) => c.userId) } },
+          select: { id: true, displayName: true, email: true },
+        })
+      : [];
+  const memberLabels = users.map((u) => u.displayName ?? u.email ?? u.id);
+
   const envEvent = await prisma.tripEnvironmentEvent.create({
     data: {
       tripId: TRIP_ID,
@@ -213,7 +226,12 @@ async function main() {
         guardianHeadline: guardian.headline,
         causalChainTitles: neutral.chain.map((n) => n.title),
         environmentEventId: envEvent.id,
+        tripMemberCount: collaborators.length,
+        affectedMembersHint: memberLabels,
         verify: {
+          adjustmentQueue: `GET /api/mobile/trips/${TRIP_ID}/execution/adjustment-queue`,
+          recommendations: `GET /api/trips/${TRIP_ID}/execution-risks/{riskId}/recommendations`,
+          applyPreview: `POST /api/trips/{tripId}/execution-risks/{riskId}/recommendations/{recommendationId}/apply`,
           decisionProblems: `GET /api/trips/${TRIP_ID}/decision-problems`,
           causalTrace: `GET /api/trips/${TRIP_ID}/decision-problems/${encodeURIComponent(PROBLEM_ID)}/causal-trace`,
           executionAdvisory: `GET /api/trips/${TRIP_ID}/in-trip/execution-advisory`,

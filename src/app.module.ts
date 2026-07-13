@@ -74,9 +74,6 @@ import { HikingPlansModule } from './hiking-plans/hiking-plans.module';
 import { HikingTrailBookmarksModule } from './hiking-trail-bookmarks/hiking-trail-bookmarks.module';
 import { HikingRouteShareModule } from './hiking-route-share/hiking-route-share.module';
 import { OdysseyIntakeModule } from './odyssey-intake/odyssey-intake.module';
-import { MatchSquareModule } from './match-square/match-square.module';
-import { ReputationOsModule } from './reputation-os/reputation-os.module';
-import { MatchLearningModule } from './match-learning/match-learning.module';
 import { IdentityGovernanceModule } from './identity-governance/identity-governance.module';
 import { Gate1Module } from './gate1/gate1.module';
 import { GuideToPlanModule } from './guide-to-plan/guide-to-plan.module';
@@ -87,6 +84,7 @@ import { ResearchModule } from './research/research.module';
 import { TravelContextModule } from './travel-context/travel-context.module';
 import { CanonicalPoiResolutionModule } from './canonical-poi-resolution/canonical-poi-resolution.module';
 import { TravelCompilerModule } from './travel-compiler/travel-compiler.module';
+import { MobileModule } from './mobile/mobile.module';
 
 @Module({
   imports: [
@@ -118,9 +116,6 @@ import { TravelCompilerModule } from './travel-compiler/travel-compiler.module';
     ContactModule, // 联系我们模块
     UsersModule, // 用户画像模块
     OdysseyIntakeModule, // Decision OS Odyssey Intake（旅行人格冷启动）
-    MatchSquareModule, // Match Square P0（搭子广场招募帖）
-    ReputationOsModule, // Reputation OS P2（行后互评与信用资产）
-    MatchLearningModule, // Match Learning P3（每周 Soft Weights 自迭代）
     CountriesModule, // 国家档案模块
     CitiesModule, // 城市模块
     WeatherModule, // 天气模块
@@ -195,6 +190,7 @@ import { TravelCompilerModule } from './travel-compiler/travel-compiler.module';
     ArrangeItineraryModule, // 编排行程 BFF（/trips/:id/arrange-itinerary + explore place/ai-actions）
     ResearchModule, // 产品发现研究 Session / 事件
     TravelContextModule, // RFC-003 Travel Context Protocol
+    MobileModule, // iOS 执行阶段 Mobile BFF
   ],
   providers: [
     {

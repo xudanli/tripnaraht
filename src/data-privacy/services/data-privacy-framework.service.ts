@@ -326,8 +326,6 @@ export class DataPrivacyFrameworkService {
       TRIP_PLANNING: ['destination', 'travelDates', 'travelers'],
       PERSONALIZATION: ['preferences', 'history'],
       ANALYTICS: ['userId', 'timestamp'],
-      COMPANION_MATCH_REVEAL: ['display_name', 'age_band', 'party_detail', 'contact_hint'],
-      COMPANION_MATCH_ESCROW: ['amount_cents', 'currency', 'request_id'],
     };
 
     return fieldMap[purpose] || [];
@@ -344,8 +342,6 @@ export class DataPrivacyFrameworkService {
       TRIP_PLANNING: '行程规划',
       PERSONALIZATION: '个性化推荐',
       ANALYTICS: '数据分析',
-      COMPANION_MATCH_REVEAL: '智能搭子双向解密（Privacy Shield）',
-      COMPANION_MATCH_ESCROW: '智能搭子拼团意向金托管',
     };
 
     const purpose = purposeText[dataUsage.purpose] || dataUsage.purpose;

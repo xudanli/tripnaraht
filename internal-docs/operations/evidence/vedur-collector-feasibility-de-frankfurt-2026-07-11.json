@@ -1,0 +1,41 @@
+{
+  "evidenceType": "VEDUR_COLLECTOR_FEASIBILITY_SPIKE",
+  "probedAt": "2026-07-10T18:37:35Z",
+  "collectorCandidate": "de-frankfurt",
+  "collectorHost": "47.87.131.183",
+  "collectorEgressIp": "47.87.131.183",
+  "cloudProvider": "alibaba-cloud-ecs",
+  "region": "eu-central-1-frankfurt",
+  "vedurHost": "xmlweather.vedur.is",
+  "dns": "130.208.87.200",
+  "spikePass": true,
+  "verdict": "SPIKE_PASS",
+  "checks": {
+    "tcp443": true,
+    "http200": true,
+    "validVedurXml": true,
+    "stabilityRuns3of3": true
+  },
+  "httpRuns": [
+    { "run": 1, "code": 200, "bytes": 371 },
+    { "run": 2, "code": 200, "bytes": 371 },
+    { "run": 3, "code": 200, "bytes": 371 }
+  ],
+  "sampleXmlSha256": "e738ba74bf8acd102061b74e6a536142f8047c4b599c60b109b7fccde5d74c6f",
+  "sampleObservation": {
+    "stationId": "1",
+    "stationName": "Reykjavík",
+    "observedAt": "2026-07-10 18:00:00",
+    "windSpeedMs": 5,
+    "windGustMs": 8,
+    "temperatureC": 11.3,
+    "condition": "Overcast"
+  },
+  "contrastDevboxNegativeControl": {
+    "egressIp": "114.55.244.12",
+    "verdict": "SPIKE_FAIL",
+    "failureStage": "TCP"
+  },
+  "nextStep": "Freeze Scheme A on de-frankfurt ECS; implement minimal collector + enable Evidence Ingest API",
+  "note": "Calm weather (F=5 m/s) — expected NO_ACTION if ingested as VEDUR_LIVE"
+}

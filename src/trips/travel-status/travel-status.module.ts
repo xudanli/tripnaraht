@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { DecisionGatewayModule } from '../../decision-runtime/gateway/decision-gateway.module';
 import { GuardianDecisionCoreModule } from '../guardian-decision-core/guardian-decision-core.module';
@@ -13,8 +13,8 @@ import { AiActivityLogService } from './services/ai-activity-log.service';
 @Module({
   imports: [
     PrismaModule,
-    DecisionGatewayModule,
-    GuardianDecisionCoreModule,
+    forwardRef(() => DecisionGatewayModule),
+    forwardRef(() => GuardianDecisionCoreModule),
     TripConstraintSolverModule,
     WorldStateSnapshotModule,
     TripMonitoringModule,

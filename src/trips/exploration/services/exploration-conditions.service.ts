@@ -7,6 +7,10 @@ import {
   type ExplorationVehicleTypeCode,
 } from '../config/exploration-conditions.config';
 import {
+  DEFAULT_EXPLORATION_VEHICLE_TYPE,
+  TRANSPORT_CONSTRAINT_BFF,
+} from '../../../common/constants/travel-mode-scope.constants';
+import {
   EXPLORATION_INSURANCE_TIERS,
   isExplorationInsuranceCoverageTier,
 } from '../config/exploration-insurance.config';
@@ -89,10 +93,10 @@ export class ExplorationConditionsService {
         : current.dateRange,
       travelers: patch.travelers ?? current.travelers,
       budget: patch.budget !== undefined ? patch.budget : current.budget,
-      mobilityContext: {
+      mobilityContext: this.normalizeMobilityContext({
         ...current.mobilityContext,
         ...(patch.mobilityContext ?? {}),
-      },
+      }),
       insuranceContext: {
         ...current.insuranceContext,
         ...(patch.insuranceContext ?? {}),
@@ -115,7 +119,9 @@ export class ExplorationConditionsService {
       dateRange: input.dateRange,
       travelers: input.travelers,
       budget: input.budget,
-      mobilityContext: input.mobilityContext,
+      mobilityMode: TRANSPORT_CONSTRAINT_BFF.scope,
+      mobilityModeLabel: TRANSPORT_CONSTRAINT_BFF.label,
+      mobilityContext: this.normalizeMobilityContext(input.mobilityContext),
       insuranceContext: input.insuranceContext,
       rentalContext: input.rentalContext,
     };
@@ -135,6 +141,9 @@ export class ExplorationConditionsService {
     return {
       destinationCode: code,
       destinationLabel: preset?.label ?? code,
+      mobilityMode: TRANSPORT_CONSTRAINT_BFF.scope,
+      mobilityModeLabel: TRANSPORT_CONSTRAINT_BFF.label,
+      transportModeEditable: false,
       vehicleTypes,
       insuranceTiers: EXPLORATION_INSURANCE_TIERS.map((t) => ({ ...t })),
       budgetPresets: preset?.budgetPresets ?? [{ currency: 'USD', min: 2000, max: 8000 }],
@@ -216,7 +225,7 @@ export class ExplorationConditionsService {
       dateRange: dto.dateRange ?? { startDate: '', endDate: '' },
       travelers: dto.travelers ?? [],
       budget: dto.budget,
-      mobilityContext: dto.mobilityContext,
+      mobilityContext: this.normalizeMobilityContext(dto.mobilityContext),
       insuranceContext: dto.insuranceContext,
       rentalContext: dto.rentalContext,
       source: protocolId ? 'RESEARCH_PROTOCOL' : 'USER_CREATED',
@@ -249,5 +258,14 @@ export class ExplorationConditionsService {
     if (patch.rentalContext !== undefined && locked.has('rentalContext')) {
       throw new BadRequestException('rentalContext is locked by research protocol');
     }
+  }
+
+  private normalizeMobilityContext(
+    mobilityContext?: ExplorationInput['mobilityContext'],
+  ): ExplorationInput['mobilityContext'] {
+    return {
+      ...mobilityContext,
+      vehicleType: mobilityContext?.vehicleType ?? DEFAULT_EXPLORATION_VEHICLE_TYPE,
+    };
   }
 }

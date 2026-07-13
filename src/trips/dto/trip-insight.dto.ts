@@ -132,23 +132,46 @@ export class ReadinessSummaryDto {
   @ApiPropertyOptional({ description: '建议项数量（已废弃，使用should）', example: 5, deprecated: true })
   suggestions?: number;
 
-  /** 综合准备度分数 0-100（来自 coverage-map /score） */
-  @ApiPropertyOptional({ description: '综合准备度分数', example: 41 })
+  /** 出发准备总体完成度 0-100（PR-1：Pack only） */
+  @ApiPropertyOptional({ description: '出发准备总体完成度', example: 82 })
   overall?: number;
 
-  @ApiPropertyOptional({ description: '证据覆盖分数', example: 76 })
+  @ApiPropertyOptional({ description: '入境/签证准备度', example: 90 })
+  entryTransit?: number;
+
+  @ApiPropertyOptional({ description: '医疗/保险准备度', example: 75 })
+  healthInsurance?: number;
+
+  @ApiPropertyOptional({ description: '装备准备度', example: 80 })
+  gearPacking?: number;
+
+  @ApiPropertyOptional({ description: '预订/凭证准备度', example: 70 })
+  bookingsCredentials?: number;
+
+  @ApiPropertyOptional({ description: '支付/通信准备度', example: 85 })
+  logisticsComms?: number;
+
+  @ApiPropertyOptional({ description: '应急/目的地风险准备度', example: 88 })
+  emergency?: number;
+
+  /** @deprecated PR-1 — 方案维度见 feasibility-report */
+  @ApiPropertyOptional({ description: '证据覆盖分数（已废弃）', example: 76, deprecated: true })
   evidenceCoverage?: number;
 
-  @ApiPropertyOptional({ description: '日程可行性分数', example: 55 })
+  /** @deprecated 使用 feasibility-report.dimensions.schedule */
+  @ApiPropertyOptional({ description: '日程可行性分数（已废弃）', example: 55, deprecated: true })
   scheduleFeasibility?: number;
 
-  @ApiPropertyOptional({ description: '交通确定性分数', example: 0 })
+  /** @deprecated 使用 feasibility-report.dimensions.transport */
+  @ApiPropertyOptional({ description: '交通确定性分数（已废弃）', example: 0, deprecated: true })
   transportCertainty?: number;
 
-  @ApiPropertyOptional({ description: '安全风险分数', example: 0 })
+  /** @deprecated 见 emergency / feasibility */
+  @ApiPropertyOptional({ description: '安全风险分数（已废弃）', example: 0, deprecated: true })
   safetyRisk?: number;
 
-  @ApiPropertyOptional({ description: '缓冲时间分数', example: 55 })
+  /** @deprecated 使用 feasibility-report issues */
+  @ApiPropertyOptional({ description: '缓冲时间分数（已废弃）', example: 55, deprecated: true })
   buffers?: number;
 
   @ApiPropertyOptional({ description: '三人格博弈最新快照（修复后协商结果）' })

@@ -1,0 +1,75 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_B_SUGGEST",
+  "acceptanceMode": "PRODUCTION_CANARY_PILOT",
+  "startedAt": "2026-07-10T16:48:32.173Z",
+  "endedAt": "2026-07-10T16:48:33.010Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "userId": "a0a99999-9999-4999-8999-999999999901",
+  "phase": "SUGGEST",
+  "problemId": "problem_weather_a0a99999_1783702112433",
+  "selectedOptionId": "cand_indoor",
+  "repairCount": 3,
+  "checks": [
+    {
+      "id": "PC-B-000-phase",
+      "pass": true,
+      "detail": "phase=SUGGEST"
+    },
+    {
+      "id": "PC-B-001-trip",
+      "pass": true,
+      "detail": "effective=plan_prod_canary_1"
+    },
+    {
+      "id": "PC-B-002-problem",
+      "pass": true,
+      "detail": "problemId=problem_weather_a0a99999_1783702112433 liveSource=REAL-SHAPE-HAZARD-REPLAY-95kmh"
+    },
+    {
+      "id": "PC-B-003-repair-candidates",
+      "pass": true,
+      "detail": "total=3 executable=1 preferred=cand_indoor"
+    },
+    {
+      "id": "PC-B-004-internal-visible",
+      "pass": true,
+      "detail": "internal user can see canary problem"
+    },
+    {
+      "id": "PC-B-005-external-hidden",
+      "pass": true,
+      "detail": "external user cannot see canary problem"
+    },
+    {
+      "id": "PC-B-006-external-read-blocked",
+      "pass": true,
+      "detail": "detail gate throws for external"
+    },
+    {
+      "id": "PC-B-007-external-list-empty",
+      "pass": true,
+      "detail": "filtered=0"
+    },
+    {
+      "id": "PC-B-008-submit",
+      "pass": true,
+      "detail": "selected=cand_indoor resolution submitted"
+    },
+    {
+      "id": "PC-B-009-apply-blocked",
+      "pass": true,
+      "detail": "W-01 apply blocked in SUGGEST"
+    },
+    {
+      "id": "PC-B-010-apply-rejected",
+      "pass": true,
+      "detail": "applyResolution rejected"
+    },
+    {
+      "id": "PC-B-011-no-effective-write",
+      "pass": true,
+      "detail": "effective=plan_prod_canary_1 unchanged"
+    }
+  ],
+  "result": "READY"
+}

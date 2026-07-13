@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   PayloadTooLargeException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -14,11 +15,13 @@ import type {
   CommsSyncRequest,
   CommsSyncResult,
   CommsSyncWarning,
+  IntercomMessageDto,
 } from '../types/in-trip-comms.types';
 import {
   buildCommsPayload,
   isValidMessageType,
   isValidUuid,
+  parseCommsPayload,
   toIntercomMessageDto,
 } from '../utils/comms-message-mapper.util';
 import { assertCommsSyncMessagePayloadAllowed } from '../utils/comms-sync-guard.util';
@@ -31,6 +34,11 @@ import {
 } from '../utils/in-trip-comms-config.util';
 import { AnchorHandoffService } from './anchor-handoff.service';
 import { InTripAccessService } from './in-trip-access.service';
+import { InTripCommsAudioStorageService } from './in-trip-comms-audio-storage.service';
+import {
+  enrichIntercomMessageAudio,
+  enrichIntercomMessagesAudio,
+} from '../utils/comms-audio-enrich.util';
 
 @Injectable()
 export class InTripCommsService {
@@ -38,6 +46,7 @@ export class InTripCommsService {
     private readonly prisma: PrismaService,
     private readonly access: InTripAccessService,
     private readonly anchorHandoff: AnchorHandoffService,
+    private readonly audioStorage: InTripCommsAudioStorageService,
   ) {}
 
   async sync(tripId: string, userId: string, request: CommsSyncRequest): Promise<CommsSyncResult> {
@@ -145,6 +154,67 @@ export class InTripCommsService {
     };
   }
 
+  async getMessageByClientId(
+    tripId: string,
+    senderId: string,
+    clientId: string,
+  ): Promise<IntercomMessageDto | null> {
+    this.assertCommsEnabled();
+    const row = await this.prisma.tripInTripCommsMessage.findUnique({
+      where: {
+        tripId_senderId_clientId: { tripId, senderId, clientId },
+      },
+    });
+    if (!row) return null;
+    const nameMap = await this.resolveMemberNameMap(tripId);
+    const dto = toIntercomMessageDto(row, nameMap.get(row.senderId));
+    return enrichIntercomMessageAudio(row, dto, this.audioStorage);
+  }
+
+  async getVoiceAudioSignedUrl(
+    tripId: string,
+    userId: string,
+    messageId: string,
+  ): Promise<{
+    audioUrl: string;
+    expiresAt: string;
+    ttlSec: number;
+    mimeType?: string;
+    durationSeconds?: number;
+  }> {
+    this.assertCommsEnabled();
+    await this.access.assertInTripPhase(tripId);
+    await this.access.assertTripMember(tripId, userId);
+
+    const row = await this.prisma.tripInTripCommsMessage.findFirst({
+      where: { id: messageId, tripId, messageType: 'voice' },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'INTERCOM_AUDIO_NOT_FOUND',
+        message: '语音消息不存在或不可播放',
+      });
+    }
+
+    const payload = parseCommsPayload(row.payload);
+    const audio = payload.audio as { storageKey?: string; fileUrl?: string | null; mimeType?: string; durationSec?: number } | undefined;
+    if (!audio?.storageKey) {
+      throw new BadRequestException({
+        code: 'INTERCOM_AUDIO_NOT_STORED',
+        message: '该语音消息无云端录音（历史消息或近场本地发送）',
+      });
+    }
+
+    const signed = await this.audioStorage.signDownloadUrl(audio.storageKey, audio.fileUrl ?? null);
+    return {
+      audioUrl: signed.url,
+      expiresAt: signed.expiresAt,
+      ttlSec: signed.ttlSec,
+      mimeType: audio.mimeType,
+      durationSeconds: audio.durationSec,
+    };
+  }
+
   async listMessages(
     tripId: string,
     userId: string,
@@ -203,8 +273,11 @@ export class InTripCommsService {
     const latestServerSeq = await this.getLatestServerSeq(tripId);
     const oldest = page[0];
 
+    const dtos = page.map((row) => toIntercomMessageDto(row, nameMap.get(row.senderId)));
+    const messages = await enrichIntercomMessagesAudio(page, dtos, this.audioStorage);
+
     return {
-      messages: page.map((row) => toIntercomMessageDto(row, nameMap.get(row.senderId))),
+      messages,
       latestServerSeq,
       hasMore,
       nextBefore: hasMore && oldest ? String(oldest.serverSeq) : null,

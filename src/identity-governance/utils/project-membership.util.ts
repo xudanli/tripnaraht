@@ -2,11 +2,17 @@ import { PROJECT_ROLES, ProjectRole } from '../constants/identity-governance.con
 
 export function mapCollaboratorRoleToProjectRoles(collaboratorRole: string): ProjectRole[] {
   const normalized = collaboratorRole.trim().toUpperCase();
-  if (normalized === 'OWNER') {
+  if (normalized === 'OWNER' || normalized === 'ADVISOR') {
     return ['organizer', 'payer'];
   }
-  if (normalized === 'LEADER') {
+  if (normalized === 'LEADER' || normalized === 'FINAL_CONFIRMER') {
     return ['organizer'];
+  }
+  if (normalized === 'PAYER') {
+    return ['payer'];
+  }
+  if (normalized === 'PRIMARY_CONTACT') {
+    return ['participant'];
   }
   return ['participant'];
 }

@@ -5,6 +5,7 @@ import type { AttractionExploreMapView } from '../types/attraction-explore.types
 import { parseCsvIds } from '../dto/attraction-explore.dto';
 import { loadPlaceCoordinatesBatch } from '../utils/attraction-explore-place-coordinates.util';
 import { AttractionExploreRouteDetourService } from './attraction-explore-route-detour.service';
+import { PlanningLodgingWorkbenchService } from './planning-lodging-workbench.service';
 import { resolveTripDayByIndex } from '../../utils/arrange-itinerary-day.util';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class AttractionExploreMapService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly routeDetour: AttractionExploreRouteDetourService,
+    private readonly lodgingWorkbench: PlanningLodgingWorkbenchService,
   ) {}
 
   async getMap(input: {
@@ -172,11 +174,24 @@ export class AttractionExploreMapService {
         .filter((coords): coords is NonNullable<typeof coords> => Boolean(coords))
         .map((coords) => ({ lat: coords.lat, lng: coords.lng })) ?? [];
 
+    const lodgingView = await this.lodgingWorkbench.buildView({
+      tripId: input.tripId,
+      dayIndex: input.dayIndex,
+      highlightItemId: input.highlightItemId,
+    });
+
+    const allPois = [...pois, ...lodgingView.lodgingPois];
+    const boundsCoords = [
+      ...allPois.map((p) => p.coordinates),
+      ...lodgingView.lodgingLegs.flatMap((leg) => [leg.from, leg.to]),
+    ];
+
     return {
       tripId: input.tripId,
       routePolyline: routePolyline.length >= 2 ? routePolyline : null,
-      pois,
-      bounds: computeBounds(pois.map((p) => p.coordinates)),
+      pois: allPois,
+      lodgingLegs: lodgingView.lodgingLegs,
+      bounds: computeBounds(boundsCoords),
     };
   }
 }

@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import {
   runPackCertification,
@@ -34,6 +34,9 @@ describe('pack-certification.harness (CERT)', () => {
     expect(summary.drivingEnvironment.baseSafeHours).toBe(7);
     expect(summary.activityLoad.windExposureMultiplier).toBe(1.15);
     expect(summary.effectiveDailyLoadThresholdHours).toBeCloseTo(6.364, 3);
+    expect(
+      existsSync(join(process.cwd(), 'data/destination-packs/is/modifiers/is-driving-load.json')),
+    ).toBe(true);
   });
 
   it('CERT-006: IS pack loads road repair templates', () => {

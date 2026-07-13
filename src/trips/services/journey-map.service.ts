@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CoverageMapService } from '../readiness/services/coverage-map.service';
+import { FeasibilityReportService } from '../trip-constraint-solver/services/feasibility-report.service';
 import { DecisionCheckerService } from '../trip-constraint-solver/services/decision-checker.service';
 import { SplitPlanService } from '../trip-constraint-solver/services/split-plan.service';
 import { RouteGeometryService } from '../../transport/services/route-geometry.service';
@@ -72,6 +73,7 @@ export class JourneyMapService {
     private readonly splitPlans: SplitPlanService,
     private readonly routeGeometry: RouteGeometryService,
     private readonly decisionItems: JourneyMapDecisionItemsService,
+    private readonly feasibilityReport: FeasibilityReportService,
   ) {}
 
   async getJourneyMap(
@@ -118,6 +120,7 @@ export class JourneyMapService {
       itineraryItemsRaw,
       collaborators,
       readinessScore,
+      feasibilityReport,
       decisionCheckerData,
       daySplits,
       ownerUser,
@@ -130,6 +133,7 @@ export class JourneyMapService {
             this.coverageMap.getReadinessScore(tripId, { coverageData: coverage }),
           )
         : this.coverageMap.getReadinessScore(tripId),
+      this.feasibilityReport.getReport(tripId).catch(() => null),
       wantInspector ? this.decisionChecker.getDecisionChecker(tripId) : Promise.resolve(null),
       this.splitPlans.projectDaySplits(tripId, { lightweight: true }),
       ownerId
@@ -209,7 +213,9 @@ export class JourneyMapService {
       trip,
       coverage: coverageRaw,
       itineraryItems,
-      feasibilityScore: Math.round(readinessScore.score.overall),
+      feasibilityScore: feasibilityReport
+        ? Math.round(feasibilityReport.overallScore)
+        : undefined,
       travelerCount: members.length,
       members,
       memberGroups,

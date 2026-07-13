@@ -1,0 +1,26 @@
+=== SR#5 Step 0 — runtime configuration ===
+
+{
+  "capturedAt": "2026-07-10T16:00:28.688Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "deploymentId": "(unset — set on staging pod)",
+  "deployedAt": "(unset)",
+  "instanceCount": "(unset — set on staging)",
+  "databaseEnvironment": "postgresql://***@pgm-bp11qeau0n455339mo.pg.rds.aliyuncs.com/tripnara_staging?sslmode=disable",
+  "databaseName": "tripnara_staging"
+}
+
+--- Critical env ---
+OK  DECISION_RUNTIME_MODE=CANARY (expected CANARY)
+OK  DECISION_TRIGGER_GATEWAY_ENABLED=1 (expected 1)
+OK  EFFECTIVE_PLAN_WRITE_GUARD=ENFORCE (expected ENFORCE)
+OK  ICELAND_VEDUR_MONITORING_ENABLED=1 (expected 1)
+OK  ICELAND_VEDUR_MONITORING_ENV=staging (expected staging)
+OK  ICELAND_VEDUR_RECOVERY_CALM_POLLS=2 (expected 2)
+OK  VEDUR_FAILURE_THRESHOLD=3 (expected 3)
+OK  VEDUR_CIRCUIT_OPEN_SECONDS=300 (expected 300)
+OK  ICELAND_VEDUR_MONITORING_LOCK_BYPASS=(unset)
+OK  ICELAND_VEDUR_STAGING_WIND_THRESHOLD_KMH=(unset)
+
+--- Step 0 verdict ---
+PASS (env only — confirm values match running staging pods, not just this shell)

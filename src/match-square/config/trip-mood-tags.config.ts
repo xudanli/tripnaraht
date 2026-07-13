@@ -1,3 +1,4 @@
+import { EXPOSED_TRAVEL_MODE_OPTIONS } from '../../common/constants/travel-mode-scope.constants';
 import type { TripMoodTag } from '../types/match-square.types';
 
 export const TRIP_MOOD_TAG_OPTIONS: Array<{ id: TripMoodTag; label: string }> = [
@@ -7,12 +8,7 @@ export const TRIP_MOOD_TAG_OPTIONS: Array<{ id: TripMoodTag; label: string }> = 
   { id: 'social', label: '社交' },
 ];
 
-export const TRAVEL_MODE_OPTIONS = [
-  { id: 'self_drive' as const, label: '自驾' },
-  { id: 'public_transit' as const, label: '公共交通' },
-  { id: 'mixed' as const, label: '混合出行' },
-  { id: 'other' as const, label: '其他' },
-];
+export const TRAVEL_MODE_OPTIONS = [...EXPOSED_TRAVEL_MODE_OPTIONS];
 
 const VALID_MOOD_IDS = new Set(TRIP_MOOD_TAG_OPTIONS.map((t) => t.id));
 

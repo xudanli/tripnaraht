@@ -11,6 +11,7 @@
     "**/*.spec.ts",
     "**/*.e2e-spec.ts",
     "**/*.test.ts",
+    "**/*.hooks.example.ts",
     "src/mcp/mcp-skills-server.ts",
     "src/mcp/mcp-schema-builders.ts",
     "src/mcp/run-server-direct.ts",
@@ -22,6 +23,10 @@
     "src/mcp/google-maps-bridge-server.ts",
     "src/mcp/mcp-schema-builders.ts",
     "src/mcp/debug-startup.ts",
-    "src/mcp/verify-skills-registration.ts"
+    "src/mcp/verify-skills-registration.ts",
+    "src/match-square/**",
+    "src/match-learning/**",
+    "src/reputation-os/**",
+    "src/odyssey-intake/engine/companion-matching.engine.ts"
   ]
 }

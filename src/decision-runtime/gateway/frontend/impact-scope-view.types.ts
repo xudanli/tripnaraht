@@ -5,6 +5,7 @@
 export type ImpactScopeNodeKind =
   | 'TRIGGER'
   | 'ROUTE'
+  | 'TRAVERSABILITY'
   | 'PLAN_ITEM'
   | 'DOWNSTREAM'
   | 'CONSEQUENCE';

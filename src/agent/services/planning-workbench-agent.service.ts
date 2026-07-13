@@ -13,6 +13,7 @@
 
 import { Injectable, Logger, Optional, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { DEFAULT_WORKBENCH_TRAVEL_MODE } from '../../common/constants/travel-mode-scope.constants';
 import type { OptionComparisonBffDto } from '../dto/option-comparison.dto';
 import { PlanState, PlanContext, PlanSkeletonSet, OptionComparison, PlanSkeleton } from '../../skills/plan/shared/plan-state.types';
 import { ContextBuildSkill } from '../../skills/context/context-build.skill';
@@ -1556,7 +1557,7 @@ export class PlanningWorkbenchAgentService {
         ...(planState.constraints?.budget ?? {}),
       },
       fitness: planState.constraints?.fitness ?? context.constraints?.fitness ?? {},
-      travelMode: planState.constraints?.travelMode ?? context.travelMode,
+      travelMode: planState.constraints?.travelMode ?? context.travelMode ?? DEFAULT_WORKBENCH_TRAVEL_MODE,
       accommodation: planState.constraints?.accommodation ?? context.constraints?.accommodation,
       mustDo: planState.constraints?.mustDo ?? context.mustDo,
       mustAvoid: planState.constraints?.mustAvoid ?? context.mustAvoid,
@@ -1607,7 +1608,7 @@ export class PlanningWorkbenchAgentService {
         },
         budget: context.constraints?.budget || {},
         fitness: context.constraints?.fitness || {},
-        travelMode: context.travelMode,
+        travelMode: context.travelMode ?? DEFAULT_WORKBENCH_TRAVEL_MODE,
         accommodation: context.constraints?.accommodation,
         mustDo: context.mustDo,
         mustAvoid: context.mustAvoid,
@@ -1737,8 +1738,7 @@ export class PlanningWorkbenchAgentService {
                 const demPromise = this.demEffortMetadataService.calculateEffortMetadata(
                   routePoints,
                   {
-                    activityType: context.travelMode === 'self_drive' ? 'driving' : 
-                                 context.travelMode === 'walking' ? 'walking' : 'walking',
+                    activityType: 'driving',
                     includeElevationProfile: false, // 不需要详细剖面，节省性能
                   }
                 );

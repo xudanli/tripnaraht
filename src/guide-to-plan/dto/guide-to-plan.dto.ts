@@ -110,8 +110,9 @@ export class ConfirmGuideTravelContextDto {
   travelers?: GuideTravelersDto;
 
   @ApiPropertyOptional({
-    enum: ['self_drive', 'bus', 'tour', 'mixed', 'unknown'],
+    enum: ['self_drive'],
     example: 'self_drive',
+    description: '当前仅支持自驾',
   })
   @IsOptional()
   @IsString()

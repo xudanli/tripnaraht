@@ -251,32 +251,7 @@ export async function prepareDecisionRuntimeTick(
   }
   recordPhase(tickObs, 'LEDGER_RECONCILE', ledgerStart);
 
-  const freezeStart = Date.now();
-  void deps.memorySnapshotPersistence?.persistSerializableSnapshot(memory);
-  freezeAgentMemorySnapshot(memory);
-  let memContractObs = deps.memoryContextAssembler.buildObservability(memory) as import('../../agent/memory/services/memory-context-assembler.service').MemoryContractObservabilityV1;
-  const tripIdForCausality = String(request.trip_id ?? '').trim();
-  if (tripIdForCausality && deps.memoryContextAssembler.loadDecisionLedgerCausalityForTrip) {
-    const causality = await deps.memoryContextAssembler.loadDecisionLedgerCausalityForTrip(
-      tripIdForCausality,
-      memory.decisionLedger,
-      memory.snapshotVersion,
-    );
-    if (causality) {
-      memContractObs = mergeDecisionLedgerCausalityIntoMemoryContractObs(memContractObs, causality);
-      const healingKey = '__ledgerHealingObs' as const;
-      const reqExt = request as RouteAndRunRequestDto & { [healingKey]?: import('../memory/decision-ledger/ledger-healing-observability.util').LedgerHealingObservabilityV1 };
-      if (reqExt[healingKey]) {
-        reqExt[healingKey] = enrichLedgerHealingObsWithDecisionCausality(reqExt[healingKey]!, causality);
-      }
-    }
-  }
-  (request as RouteAndRunRequestDto & { __memoryContractObs?: unknown }).__memoryContractObs = memContractObs;
-  const execCtxBase = deps.agentExecutionContextFactory.createFromFrozenMemory(memory);
-  const goldenChainSpanId = randomUUID();
-  const execCtx: AgentExecutionContext = { ...execCtxBase, activeParentSpanId: goldenChainSpanId };
-  recordPhase(tickObs, 'MVCC_FREEZE', freezeStart);
-
+  // Decision trigger hints mutate memory.observability.layers — must run before MVCC freeze.
   const triggerInput = buildRouteAndRunDecisionTriggerInput(request);
   if (triggerInput) {
     let runRequest: DecisionRunRequest | undefined;
@@ -308,6 +283,32 @@ export async function prepareDecisionRuntimeTick(
     ).__decisionTriggerObs = tickObs.decision_trigger;
     memory.observability.layers.push('decision_trigger_hint');
   }
+
+  const freezeStart = Date.now();
+  void deps.memorySnapshotPersistence?.persistSerializableSnapshot(memory);
+  freezeAgentMemorySnapshot(memory);
+  let memContractObs = deps.memoryContextAssembler.buildObservability(memory) as import('../../agent/memory/services/memory-context-assembler.service').MemoryContractObservabilityV1;
+  const tripIdForCausality = String(request.trip_id ?? '').trim();
+  if (tripIdForCausality && deps.memoryContextAssembler.loadDecisionLedgerCausalityForTrip) {
+    const causality = await deps.memoryContextAssembler.loadDecisionLedgerCausalityForTrip(
+      tripIdForCausality,
+      memory.decisionLedger,
+      memory.snapshotVersion,
+    );
+    if (causality) {
+      memContractObs = mergeDecisionLedgerCausalityIntoMemoryContractObs(memContractObs, causality);
+      const healingKey = '__ledgerHealingObs' as const;
+      const reqExt = request as RouteAndRunRequestDto & { [healingKey]?: import('../memory/decision-ledger/ledger-healing-observability.util').LedgerHealingObservabilityV1 };
+      if (reqExt[healingKey]) {
+        reqExt[healingKey] = enrichLedgerHealingObsWithDecisionCausality(reqExt[healingKey]!, causality);
+      }
+    }
+  }
+  (request as RouteAndRunRequestDto & { __memoryContractObs?: unknown }).__memoryContractObs = memContractObs;
+  const execCtxBase = deps.agentExecutionContextFactory.createFromFrozenMemory(memory);
+  const goldenChainSpanId = randomUUID();
+  const execCtx: AgentExecutionContext = { ...execCtxBase, activeParentSpanId: goldenChainSpanId };
+  recordPhase(tickObs, 'MVCC_FREEZE', freezeStart);
 
   return {
     bundle: {

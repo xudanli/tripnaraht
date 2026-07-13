@@ -108,7 +108,6 @@ export interface OdysseyIntakeProfile {
   /** 行后互评触发卡片流光刷新 */
   profileRefreshPending?: boolean;
   profileRefreshMessage?: string;
-  lastPeerFeedbackAt?: string;
 }
 
 export interface OdysseyQuestionOption {
@@ -136,30 +135,4 @@ export interface PremiumStressQuestion {
 
 export interface ScoreDelta {
   [key: string]: number;
-}
-
-export interface CompanionMatchCandidate {
-  userId: string;
-  mbtiType: string;
-  cardTitle: string;
-  compatibilityScore: number;
-  dimensionBreakdown: {
-    eiFit: number;
-    tfFit: number;
-    energyFit: number;
-    ambiguityFit: number;
-  };
-}
-
-export interface CompanionMatchQuery {
-  destination?: string;
-  startDate?: string;
-  endDate?: string;
-  limit?: number;
-}
-
-export interface PeerFeedbackPayload {
-  targetUserId: string;
-  tags: Array<'too_stingy' | 'always_late' | 'conflict_prone' | 'great_communicator'>;
-  tripId?: string;
 }

@@ -28,6 +28,7 @@ import {
 } from './rfc001-execution-lock.util';
 import { isRfc001ItineraryMaterializeEnabled } from '../config/rfc001-iceland.config';
 import { EffectivePlanWriteGuardService } from '../../../decision-runtime/execution/effective-plan-write-guard.service';
+import { planShiftOperationToMaterialization } from '../../execution-risk-center/materialization/shift-time-materialization.service';
 
 const JOURNAL_KEY = 'rfc001MaterializationJournal';
 
@@ -227,6 +228,99 @@ export class Rfc001ItineraryMaterializerService {
         continue;
       }
 
+      if (op.kind === 'SHIFT_TIME') {
+        const targetItemId =
+          itemId ??
+          (op.targetRefs.find((r) => r.kind === 'PLAN_ITEM')?.id as string | undefined);
+        if (!targetItemId) continue;
+
+        const target = await this.prisma.itineraryItem.findUnique({
+          where: { id: targetItemId },
+        });
+        if (!target) {
+          throw new BadRequestException(`ItineraryItem ${targetItemId} not found`);
+        }
+
+        const tripDay = await this.prisma.tripDay.findUnique({
+          where: { id: target.tripDayId },
+        });
+        if (!tripDay) {
+          throw new BadRequestException(`TripDay ${target.tripDayId} not found`);
+        }
+
+        const dayItems = await this.prisma.itineraryItem.findMany({
+          where: { tripDayId: target.tripDayId },
+          orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
+        });
+
+        const materialization = planShiftOperationToMaterialization({
+          operation: op,
+          dayItems,
+          tripDays: [tripDay],
+        });
+
+        if (materialization.blocked) {
+          throw new BadRequestException({
+            code: materialization.blockReason ?? 'SHIFT_BLOCKED',
+            message: materialization.conflicts[0]?.message ?? 'SHIFT_TIME materialization blocked',
+            conflicts: materialization.conflicts,
+          });
+        }
+
+        for (const update of materialization.updates) {
+          const existing = dayItems.find((row) => row.id === update.itemId);
+          if (!existing) continue;
+
+          const data: {
+            startTime?: Date;
+            endTime?: Date;
+            travelFromPreviousDuration?: number;
+            bookedAt?: Date;
+            bookingStatus?: string;
+            bookingConfirmation?: string;
+            note?: string;
+          } = {};
+          if (update.startTimeMs !== null) data.startTime = new Date(update.startTimeMs);
+          if (update.endTimeMs !== null) data.endTime = new Date(update.endTimeMs);
+          if (update.travelFromPreviousDurationMinutes !== undefined) {
+            data.travelFromPreviousDuration = update.travelFromPreviousDurationMinutes;
+          }
+          if (update.bookedAtMs !== undefined && update.bookedAtMs !== null) {
+            data.bookedAt = new Date(update.bookedAtMs);
+          }
+          if (update.bookingStatus !== undefined) data.bookingStatus = update.bookingStatus;
+          if (update.bookingConfirmation !== undefined) {
+            data.bookingConfirmation = update.bookingConfirmation;
+          }
+          if (update.note !== undefined) data.note = update.note;
+
+          await this.prisma.itineraryItem.update({
+            where: { id: update.itemId },
+            data,
+          });
+          updatedItemIds.push(update.itemId);
+          journalEntries.push({
+            operationId: `${op.operationId}_${update.itemId}`,
+            kind: 'SHIFT_TIME',
+            entityId: update.itemId,
+            before: existing as unknown as Record<string, unknown>,
+            after: {
+              ...existing,
+              startTime: data.startTime ?? existing.startTime,
+              endTime: data.endTime ?? existing.endTime,
+              travelFromPreviousDuration:
+                data.travelFromPreviousDuration ?? existing.travelFromPreviousDuration,
+              bookedAt: data.bookedAt ?? existing.bookedAt,
+              bookingStatus: data.bookingStatus ?? existing.bookingStatus,
+              bookingConfirmation: data.bookingConfirmation ?? existing.bookingConfirmation,
+              note: data.note ?? existing.note,
+            },
+            appliedAt: new Date().toISOString(),
+          });
+        }
+        continue;
+      }
+
       if (op.kind === 'CHANGE_ROUTE') {
         const bypassRoadId = String(op.parameters.bypassRoadId ?? '');
         const targetItemId =
@@ -376,6 +470,24 @@ export class Rfc001ItineraryMaterializerService {
 
       if (entry.kind === 'CHANGE_ROUTE' && entry.before?.rfc001IcelandRoadBindings) {
         meta.rfc001IcelandRoadBindings = entry.before.rfc001IcelandRoadBindings;
+      }
+
+      if (entry.kind === 'SHIFT_TIME' && entry.before) {
+        const row = entry.before as {
+          id: string;
+          startTime?: Date | string | null;
+          endTime?: Date | string | null;
+        };
+        await this.prisma.itineraryItem
+          .update({
+            where: { id: row.id },
+            data: {
+              startTime: row.startTime ? new Date(row.startTime) : null,
+              endTime: row.endTime ? new Date(row.endTime) : null,
+            },
+          })
+          .catch(() => undefined);
+        restoredItemIds.push(row.id);
       }
     }
 

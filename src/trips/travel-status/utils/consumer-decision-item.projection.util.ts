@@ -14,35 +14,61 @@ import type {
   ConsumerDecisionEvidenceSummary,
   ConsumerDecisionItem,
   ConsumerDecisionRecommendation,
+  ConsumerDecisionRepairOption,
+  ConsumerAffectedActivity,
 } from '../types/travel-status.types';
 import { CONSUMER_DECISION_ITEM_SCHEMA_ID } from '../types/travel-status.types';
 
 export function projectListItemToConsumerDecision(
   item: UnifiedDecisionProblemListItem,
-  options?: { actions?: DecisionAction[] },
+  options?: {
+    actions?: DecisionAction[];
+    affectedActivities?: ConsumerAffectedActivity[];
+    requiredAcknowledgements?: string[];
+  },
 ): ConsumerDecisionItem {
   const severity = mapEnforcementToConsumerSeverity(item.enforcement);
   const repairOptions = options?.actions?.length
     ? mapDecisionActionsToConsumerRepairOptions(options.actions)
     : [];
+  const consumerRepairOptions = toConsumerRepairOptions(repairOptions);
+  const scheduleContext = consumerRepairOptions.find((o) => o.scheduleContext)?.scheduleContext;
   const recommended = pickRecommendedOption(item, options?.actions ?? [], repairOptions);
   const consumerActions = buildConsumerActions(
     item,
     options?.actions ?? [],
     recommended?.recommendedActionId,
   );
+  const affectedActivities = options?.affectedActivities?.length
+    ? options.affectedActivities
+    : buildAffectedActivitiesFromScope(item);
+
+  const affectedDayNumbers =
+    item.scope.dayIds?.length
+      ? item.scope.dayIds
+      : affectedActivities
+          ?.map((a) => a.dayIndex)
+          .filter((d): d is number => typeof d === 'number' && d > 0);
 
   return {
     schemaId: CONSUMER_DECISION_ITEM_SCHEMA_ID,
     problemId: item.problemId,
     headline: item.title,
-    impact: buildImpactCopy(item),
+    impact: buildImpactCopy(item, affectedActivities),
     explanation: item.summary,
     severity,
-    affectedDayNumbers: item.scope.dayIds,
-    affectedScopeLabel: formatScopeLabel(item),
+    affectedDayNumbers: affectedDayNumbers?.length
+      ? [...new Set(affectedDayNumbers)].sort((a, b) => a - b)
+      : item.scope.dayIds,
+    affectedScopeLabel: formatScopeLabel(item, affectedActivities),
+    affectedActivities: affectedActivities?.length ? affectedActivities : undefined,
     recommendation: recommended,
+    ...(consumerRepairOptions.length ? { repairOptions: consumerRepairOptions } : {}),
+    ...(scheduleContext ? { scheduleContext } : {}),
     actions: consumerActions,
+    ...(options?.requiredAcknowledgements?.length
+      ? { requiredAcknowledgements: options.requiredAcknowledgements }
+      : {}),
     evidenceSummary: buildEvidenceSummary(item),
   };
 }
@@ -100,7 +126,15 @@ function mapEnforcementToConsumerSeverity(
   }
 }
 
-function buildImpactCopy(item: UnifiedDecisionProblemListItem): string {
+function buildImpactCopy(
+  item: UnifiedDecisionProblemListItem,
+  affectedActivities?: ConsumerAffectedActivity[],
+): string {
+  if (affectedActivities?.length) {
+    const names = affectedActivities.map((a) => a.title).join('、');
+    return `影响：${names}`;
+  }
+
   const days = item.scope.dayIds;
   if (days?.length) {
     const dayLabel = days.length === 1 ? `第 ${days[0]} 天` : `第 ${days.join('、')} 天`;
@@ -112,11 +146,38 @@ function buildImpactCopy(item: UnifiedDecisionProblemListItem): string {
   return '可能影响部分行程安排';
 }
 
-function formatScopeLabel(item: UnifiedDecisionProblemListItem): string | undefined {
-  const days = item.scope.dayIds;
+function buildAffectedActivitiesFromScope(
+  item: UnifiedDecisionProblemListItem,
+): ConsumerAffectedActivity[] | undefined {
+  const fromImpactScope = item.impactScopeView?.arrangements;
+  if (fromImpactScope?.length) {
+    return fromImpactScope.map((a, index) => ({
+      activityId: item.scope.itemIds?.[index] ?? `day-${a.dayIndex}-${index}`,
+      title: a.label,
+      dayIndex: a.dayIndex,
+    }));
+  }
+  const itemIds = item.scope.itemIds;
+  if (!itemIds?.length) return undefined;
+  return itemIds.map((activityId) => ({
+    activityId,
+    title: activityId,
+  }));
+}
+
+function formatScopeLabel(
+  item: UnifiedDecisionProblemListItem,
+  affectedActivities?: ConsumerAffectedActivity[],
+): string | undefined {
+  const days =
+    item.scope.dayIds ??
+    affectedActivities
+      ?.map((a) => a.dayIndex)
+      .filter((d): d is number => typeof d === 'number' && d > 0);
   if (!days?.length) return undefined;
-  if (days.length === 1) return `Day ${days[0]}`;
-  return `Day ${days.join(', ')}`;
+  const unique = [...new Set(days)].sort((a, b) => a - b);
+  if (unique.length === 1) return `Day ${unique[0]}`;
+  return `Day ${unique.join(', ')}`;
 }
 
 function buildEvidenceSummary(
@@ -210,4 +271,19 @@ function resolveKeepOriginalAction(actions: DecisionAction[]): DecisionAction | 
 
 function resolveDeferAction(actions: DecisionAction[]): DecisionAction | undefined {
   return pickAllowedAction(actions, (action) => action.type === 'DEFER');
+}
+
+function toConsumerRepairOptions(
+  repairOptions: ReturnType<typeof mapDecisionActionsToConsumerRepairOptions>,
+): ConsumerDecisionRepairOption[] {
+  return repairOptions.map((o) => ({
+    optionId: o.optionId,
+    title: o.title,
+    summary: o.summary,
+    preserves: o.preserves,
+    sacrifices: o.sacrifices,
+    canApply: o.canApply,
+    ...(o.changePreview ? { changePreview: o.changePreview } : {}),
+    ...(o.scheduleContext ? { scheduleContext: o.scheduleContext } : {}),
+  }));
 }

@@ -59,6 +59,9 @@ import { CanonicalCausalTraceService } from '../../../causal-protocol/services/c
 import {
   isTravelOrTransportProblem,
 } from '../../../causal-protocol/adapters/iceland-causal-trace.adapter';
+import {
+  isTripInExecutionPhase,
+} from '../utils/plan-object-execution-admission.util';
 
 const COLLECT_ROWS_CACHE_TTL_MS = 10_000;
 
@@ -208,10 +211,11 @@ export class UnifiedDecisionProblemReadModelService {
     tripId: string,
     opts?: { includeDebug?: boolean; queueOnly?: boolean },
   ): Promise<UnifiedDecisionProblemListView> {
-    const [rows, resolutions, collected] = await Promise.all([
+    const [rows, resolutions, collected, tripStatus] = await Promise.all([
       this.collectRowsCached(tripId),
       this.resolutionStore.listForTrip(tripId),
       this.collector.collect(tripId).catch(() => undefined),
+      this.loadTripStatus(tripId),
     ]);
     const diagnosisOccurrenceCount = collected
       ? resolveFeasibilityDiagnosisOccurrenceCount(collected.feasibilityIssues)
@@ -221,6 +225,7 @@ export class UnifiedDecisionProblemReadModelService {
       rows,
       includeDebug: opts?.includeDebug,
       queueOnly: opts?.queueOnly ?? true,
+      excludePlanObjectForExecution: isTripInExecutionPhase(tripStatus),
       diagnosisOccurrenceCount,
     });
     const baseItems = view.items.map((item) =>
@@ -444,6 +449,16 @@ export class UnifiedDecisionProblemReadModelService {
 
     const rawOptions = await this.resolveLegacyOrCanonicalOptions(tripId, row);
     const detail = await this.buildProblemDetailView(tripId, row, rawOptions, opts);
+    const recommendedAction =
+      detail.actions.find(
+        (a) => a.type === detail.actionability.recommendedAction && a.allowed && !a.blockedReason,
+      ) ?? detail.actions.find((a) => a.allowed && !a.blockedReason);
+    const requiredAcknowledgements = await this.resolveRequiredAcknowledgements(
+      tripId,
+      row.problemId,
+      detail.problem,
+      recommendedAction?.requiresConfirmation,
+    );
     return {
       schemaId: 'tripnara.unified_decision_options@v2',
       tripId,
@@ -451,8 +466,48 @@ export class UnifiedDecisionProblemReadModelService {
       generatedAt: new Date().toISOString(),
       actions: detail.actions,
       actionability: detail.actionability,
+      ...(requiredAcknowledgements?.length ? { requiredAcknowledgements } : {}),
       ...(detail.debug ? { debug: detail.debug } : {}),
     };
+  }
+
+  /** Problem-level ack templates — same SSOT as preview/submit resolution. */
+  private async resolveRequiredAcknowledgements(
+    tripId: string,
+    problemId: string,
+    problem: UnifiedDecisionProblemListItem,
+    requiresConfirmation?: boolean,
+  ): Promise<string[] | undefined> {
+    let assertions: DecisionProblemDetail['assertions'] = [];
+    try {
+      const legacy = await this.legacy.getProblem(tripId, problemId);
+      assertions = legacy.assertions;
+    } catch {
+      assertions = [
+        {
+          id: `${problemId}:ack`,
+          sourceSystem: 'FEASIBILITY',
+          sourceRefId: problemId,
+          nature: 'HARD_CONSTRAINT',
+          domain: 'TIME',
+          enforcement: problem.enforcement,
+          overridable: problem.enforcement !== 'BLOCK',
+          condition: problem.semanticKey,
+          conclusion: 'ack-fallback',
+          proofs: [],
+        },
+      ];
+    }
+    const required = buildRequiredAcknowledgements({
+      requiresConfirmation,
+      enforcement: problem.enforcement,
+      detail: {
+        type: problem.type,
+        semanticKey: problem.semanticKey,
+        assertions,
+      },
+    });
+    return required.length ? required : undefined;
   }
 
   private async resolveLegacyOrCanonicalOptions(
@@ -770,7 +825,8 @@ export class UnifiedDecisionProblemReadModelService {
     return Promise.all(
       items.map(async (item) => {
         const row = rowByProblemId.get(item.problemId);
-        if (!row || !isTravelOrTransportProblem(row)) return item;
+        if (!row || ['RESOLVED', 'DISMISSED'].includes(item.workflowStatus)) return item;
+        if (item.causalStoryView?.chain?.length) return item;
         try {
           const trace = await this.causalTrace.ensureProblemTrace({
             tripId,
@@ -802,6 +858,14 @@ export class UnifiedDecisionProblemReadModelService {
         r.semanticKey === problemId ||
         r.instanceKey === problemId,
     );
+  }
+
+  private async loadTripStatus(tripId: string): Promise<string | undefined> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { status: true },
+    });
+    return trip?.status ?? undefined;
   }
 
   private async buildRouteContext(tripId: string) {

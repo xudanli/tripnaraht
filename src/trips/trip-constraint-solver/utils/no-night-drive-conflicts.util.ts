@@ -88,7 +88,7 @@ export function buildNoNightDriveViolationConflict(input: {
     severity: ConflictSeverity.HIGH,
     title: '不夜驾',
     description: `${judgmentRule}。Day ${input.dayNumber}「${input.fromName} → ${input.toName}」预计 ${input.arriveAt.toFormat('HH:mm')} 抵达，晚于截止 ${cutoffLabel}（日落 ${sunsetLabel}）。驾驶约 ${formatDriveDurationZhLong(input.travelMinutes)}。`,
-    affectedDays: [input.dateIso, String(input.dayNumber)],
+    affectedDays: [String(input.dayNumber)],
     affectedItemIds: [input.fromItemId, input.toItemId],
     fromItemId: input.fromItemId,
     toItemId: input.toItemId,

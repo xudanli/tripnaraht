@@ -51,7 +51,7 @@ export const ODYSSEY_CARD_MAPPING_RULES: CardMappingRule[] = [
   {
     mbtiPrefix: 'ENTP',
     title: '特立独行的无证导游',
-    subtitle: 'Plan B 才是你的 Plan A。专门带搭子走无人区和没有路标的荒野，嘴里永远挂着：「别慌，抄近道」。',
+    subtitle: 'Plan B 才是你的 Plan A。专门带同伴走无人区和没有路标的荒野，嘴里永远挂着：「别慌，抄近道」。',
     when: (ctx) => ctx.mbtiType === 'ENTP' && ctx.scores.ambiguity_tolerance >= 2,
   },
   {
@@ -65,7 +65,7 @@ export const ODYSSEY_CARD_MAPPING_RULES: CardMappingRule[] = [
     mbtiPrefix: 'INFJ',
     title: '神隐于世的宿命论朝圣者',
     subtitle:
-      '默默做好了全套攻略，却在旅途中极度敏感于周遭的氛围。你总能一眼看出搭子的疲惫并递上一张纸巾。',
+      '默默做好了全套攻略，却在旅途中极度敏感于周遭的氛围。你总能一眼看出同伴的疲惫并递上一张纸巾。',
     when: (ctx) => ctx.mbtiType === 'INFJ' && ctx.percents.J >= 75,
   },
   {
@@ -121,7 +121,7 @@ export const ODYSSEY_CARD_MAPPING_RULES: CardMappingRule[] = [
     mbtiPrefix: 'ISFJ',
     title: '旅行团队的温柔后勤保障',
     subtitle:
-      '你的背包是个百宝箱：藿香正气水、充电宝、湿纸巾、甚至还有一次性雨衣。永远默默打理好一切的无私搭子。',
+      '你的背包是个百宝箱：藿香正气水、充电宝、湿纸巾、甚至还有一次性雨衣。永远默默打理好一切的无私同伴。',
     when: (ctx) => ctx.mbtiType === 'ISFJ' && ctx.scores.compromise_index >= 2,
   },
   {

@@ -433,7 +433,6 @@ async function bootstrap() {
     .addTag('exa', 'Exa 搜索服务接口（实时信息、风险检查、政策更新）')
     .addTag('airbnb', 'Airbnb 住宿服务接口（可用性检查、价格估算、偏好匹配）')
     .addTag('world-model-evidence', '世界模型证据接口（DEM证据、道路状态、天气窗口、路线哲学、失败画像）')
-    .addTag('match-square', '搭子广场接口（招募帖、申请流、匹配校准）')
     .addTag('identity-governance', '账号身份治理（验证、上下文、发布权限、Professional/Agency）')
     .addTag('project-fit', '项目准入、Project Fit、团队影响与申请审核')
     .addTag('trusted-projects', '可信旅行项目（发布、审核、申请加入）')
