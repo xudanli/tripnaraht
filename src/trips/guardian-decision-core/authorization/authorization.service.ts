@@ -22,6 +22,8 @@ import { stampExecutionLock } from '../execution/rfc001-execution-lock.util';
 import { isRfc001ItineraryMaterializeEnabled } from '../config/rfc001-iceland.config';
 import { Rfc001DecisionSemanticsProjectorService } from '../read-model/rfc001-decision-semantics-projector.service';
 import { assertRecordExecutableForAuthorize } from '../cutover/cutover-reconciliation.util';
+import { assertOrtToolsCanaryAllowsAuthorizeOrExecute } from '../../../decision-runtime/solver/lab/planning-signoff/ortools-canary-authorization.guard';
+import { OrToolsCanaryDashboardCollector } from '../../../decision-runtime/solver/observability/ortools-canary-dashboard.metrics';
 
 export interface AuthorizeDecisionInput {
   tripId: string;
@@ -42,6 +44,7 @@ export class Rfc001AuthorizationService {
     private readonly planVersionService: Rfc001PlanVersionService,
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly v15Projector?: Rfc001DecisionSemanticsProjectorService,
+    @Optional() private readonly ortoolsCanaryDashboard?: OrToolsCanaryDashboardCollector,
   ) {}
 
   async authorize(input: AuthorizeDecisionInput): Promise<AuthorizeDecisionResult> {
@@ -74,6 +77,19 @@ export class Rfc001AuthorizationService {
         `Candidate ${candidateId} has non-overridable BLOCK`,
       );
     }
+
+    const candidate = workspace.repairCandidates.find(
+      (c) => c.candidateId === candidateId,
+    );
+    assertOrtToolsCanaryAllowsAuthorizeOrExecute({
+      tripId: input.tripId,
+      candidateId,
+      candidate,
+      ortoolsShadow: workspace.ortoolsShadow,
+      currentEvidenceVersionId: workspace.worldStateSnapshotId,
+      phase: 'authorize',
+      dashboard: this.ortoolsCanaryDashboard,
+    });
 
     const now = new Date().toISOString();
     let finalAction = record.finalAction;

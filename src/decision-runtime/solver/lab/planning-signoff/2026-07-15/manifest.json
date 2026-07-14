@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_signoff.bundle@v1",
+  "bundleId": "planning-signoff-2026-07-15",
+  "date": "2026-07-15",
+  "generatedAt": "2026-07-14T16:45:29.046Z",
+  "artifacts": [
+    "stability",
+    "locality",
+    "gateway",
+    "rollback",
+    "authority"
+  ],
+  "notes": "Engineering sealed from gold replay; authority.json remains WAIT until release"
+}

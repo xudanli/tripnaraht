@@ -8,6 +8,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { TripRevisionModule } from './trips/trip-revision.module';
 import { PlacesModule } from './places/places.module';
+import { TravelProductCatalogModule } from './travel-product-catalog/travel-product-catalog.module';
 import { TripsModule } from './trips/trips.module';
 import { ItineraryItemsModule } from './itinerary-items/itinerary-items.module';
 import { CountriesModule } from './countries/countries.module';
@@ -122,6 +123,7 @@ import { MobileModule } from './mobile/mobile.module';
     IcelandInfoModule, // 冰岛信息源模块（vedur.is, safetravel.is, road.is）
     LlmModule, // LLM 通用服务模块
     PlacesModule, // 地点相关模块
+    TravelProductCatalogModule, // 旅行产品库（Admin CRUD + C 端只读）
     CanonicalPoiResolutionModule, // CPRE — Travel Primary Key resolution (P0)
     TravelCompilerModule, // Travel Compiler — Planner Draft → CanonicalTravelGraph (P0)
     FlightPricesModule, // 机票价格参考模块

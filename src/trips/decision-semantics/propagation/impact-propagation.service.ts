@@ -2,6 +2,10 @@
  * Impact propagation — direct + derived member attribution (P1).
  */
 
+import {
+  formatClockLabel,
+  parseClockHour,
+} from '../../../common/utils/format-clock-label.util';
 import type {
   AffectedScope,
   ConstraintAssertion,
@@ -117,12 +121,13 @@ function deriveMemberImpactsFromLegDelay(
     });
   }
 
-  if (arriveAt && /2[0-9]:|2[0-9]/.test(arriveAt)) {
+  const arriveHour = parseClockHour(arriveAt);
+  if (arriveHour != null && arriveHour >= 20) {
     impacts.push({
       memberId: '__derived:late_rest_sensitive__',
       derivedFrom: legId ? [`leg:${legId}`, 'rule:late_arrival'] : ['rule:late_arrival'],
       impactType: 'DELAYED',
-      explanation: `预计到达 ${arriveAt}，可能晚于成员休息/入住偏好`,
+      explanation: `预计到达 ${formatClockLabel(arriveAt)}，可能晚于成员休息/入睡偏好`,
       confidence: 0.65,
     });
   }

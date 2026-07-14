@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.08_seljalandsfoss_replace_gljufrabui",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "Seljalandsfoss lot full \u2014 REPLACE to Glj\u00fafrab\u00fai alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/parking_full/problems/08_seljalandsfoss_replace_gljufrabui.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

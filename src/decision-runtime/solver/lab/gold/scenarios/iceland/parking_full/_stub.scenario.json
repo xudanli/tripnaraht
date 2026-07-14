@@ -1,0 +1,10 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.stub_slot_01",
+  "status": "stub",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "STUB — parking capacity full (fill later)",
+  "seed": 42,
+  "notes": ["placeholder for Gold Dataset target count"]
+}

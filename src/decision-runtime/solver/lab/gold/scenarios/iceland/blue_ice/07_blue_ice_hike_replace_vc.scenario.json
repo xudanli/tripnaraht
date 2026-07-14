@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.blue_ice.07_blue_ice_hike_replace_vc",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "blue_ice",
+  "title": "Blue-ice hike cancelled \u2014 REPLACE to visitor-center alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/blue_ice/problems/07_blue_ice_hike_replace_vc.problem.json",
+  "notes": [
+    "REPLACE_POOL a2\u2192is.skaftafell_visitor_alt"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

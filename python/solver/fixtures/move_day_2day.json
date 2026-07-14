@@ -1,0 +1,135 @@
+{
+  "schemaId": "tripnara.solver_problem@v1",
+  "requestId": "req-move-day-2",
+  "tripId": "trip-move-day",
+  "planVersionId": "pv-1",
+  "evidenceVersionId": "ev-hotel-md-1",
+  "snapshotId": "ev-hotel-md-1",
+  "operation": "MOVE_DAY",
+  "scope": {
+    "dayIds": ["day-1", "day-2"],
+    "dayAnchors": [
+      { "dayId": "day-1", "anchorNodeId": "depot" },
+      { "dayId": "day-2", "anchorNodeId": "depot" }
+    ],
+    "dayCapacities": [
+      { "dayId": "day-1", "maxActivities": 4, "maxServiceMin": 240 },
+      { "dayId": "day-2", "maxActivities": 4, "maxServiceMin": 240 }
+    ]
+  },
+  "nodes": [
+    {
+      "nodeId": "depot",
+      "serviceDurationMin": 0,
+      "timeWindows": [{ "startMin": 480, "endMin": 480 }],
+      "fixedStartMin": 480,
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a1",
+      "sourceActivityId": "act-a1",
+      "poiId": "is.reynisfjara",
+      "serviceDurationMin": 60,
+      "timeWindows": [{ "startMin": 480, "endMin": 1200 }],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": true,
+      "assignedDayId": "day-1"
+    },
+    {
+      "nodeId": "a2",
+      "sourceActivityId": "act-a2",
+      "poiId": "is.dyrholaey",
+      "serviceDurationMin": 50,
+      "timeWindows": [{ "startMin": 480, "endMin": 1200 }],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": true,
+      "assignedDayId": "day-1"
+    },
+    {
+      "nodeId": "a3",
+      "sourceActivityId": "act-a3",
+      "poiId": "is.skogafoss",
+      "serviceDurationMin": 70,
+      "timeWindows": [{ "startMin": 480, "endMin": 1200 }],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": true,
+      "assignedDayId": "day-1"
+    },
+    {
+      "nodeId": "a4",
+      "sourceActivityId": "act-a4",
+      "poiId": "is.lunch_booking",
+      "serviceDurationMin": 60,
+      "timeWindows": [{ "startMin": 600, "endMin": 780 }],
+      "fixedStartMin": 660,
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false,
+      "assignedDayId": "day-1"
+    },
+    {
+      "nodeId": "b1",
+      "sourceActivityId": "act-b1",
+      "poiId": "is.vik",
+      "serviceDurationMin": 40,
+      "timeWindows": [{ "startMin": 480, "endMin": 1200 }],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": true,
+      "assignedDayId": "day-2"
+    },
+    {
+      "nodeId": "b2",
+      "sourceActivityId": "act-b2",
+      "poiId": "is.seljalandsfoss",
+      "serviceDurationMin": 45,
+      "timeWindows": [{ "startMin": 480, "endMin": 1200 }],
+      "isMandatory": false,
+      "isBooked": false,
+      "canRemove": true,
+      "canMoveDay": true,
+      "assignedDayId": "day-2"
+    }
+  ],
+  "travelMatrix": {
+    "nodeIds": ["depot", "a1", "a2", "a3", "a4", "b1", "b2"],
+    "costsMin": [
+      [0, 20, 25, 30, 15, 22, 28],
+      [20, 0, 12, 18, 14, 24, 26],
+      [25, 12, 0, 16, 18, 22, 24],
+      [30, 18, 16, 0, 20, 26, 22],
+      [15, 14, 18, 20, 0, 18, 20],
+      [22, 24, 22, 26, 18, 0, 14],
+      [28, 26, 24, 22, 20, 14, 0]
+    ]
+  },
+  "constraints": [
+    {
+      "constraintId": "depot-fixed",
+      "kind": "DEPOT_FIXED",
+      "hard": true,
+      "payload": { "nodeId": "depot" }
+    }
+  ],
+  "objectives": [
+    { "objectiveId": "min-travel", "kind": "MINIMIZE_TRAVEL", "weight": 1 },
+    { "objectiveId": "preserve", "kind": "MAXIMIZE_PRESERVE_BASE", "weight": 0.5 }
+  ],
+  "solverConfig": {
+    "maxCandidates": 3,
+    "timeLimitMs": 1500,
+    "seed": 42,
+    "maxMovedActivities": 2
+  }
+}

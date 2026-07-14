@@ -1,0 +1,10 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.reservation_delay.stub_slot_01",
+  "status": "stub",
+  "countryCode": "IS",
+  "family": "reservation_delay",
+  "title": "STUB — reservation / booked start delay (fill later)",
+  "seed": 42,
+  "notes": ["placeholder — exercises FIXED_START / booked locality"]
+}

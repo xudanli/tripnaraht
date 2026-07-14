@@ -1,0 +1,18 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.02_f208_swap_a1_a2",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "F208 closed \u2014 SWAP avoid a1\u2192a2",
+  "seed": 42,
+  "stabilityRuns": 100,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/02_f208_swap_a1_a2.problem.json",
+  "notes": [
+    "SWAP prefers local order churn over global re-opt (repair locality)",
+    "staging_replay evidence pack bound for M4 real_gold_replay gate"
+  ],
+  "provenance": "staging_replay",
+  "maxChangedActivities": 4,
+  "evidencePackRef": "src/decision-runtime/solver/lab/gold/evidence/iceland/road_close/02_f208_swap_a1_a2.evidence.json"
+}

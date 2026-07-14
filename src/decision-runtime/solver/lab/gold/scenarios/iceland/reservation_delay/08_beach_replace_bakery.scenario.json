@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.reservation_delay.08_beach_replace_bakery",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "reservation_delay",
+  "title": "Delay after show \u2014 REPLACE beach with bakery alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/reservation_delay/problems/08_beach_replace_bakery.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

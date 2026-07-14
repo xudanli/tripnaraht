@@ -1,0 +1,344 @@
+{
+  "schemaId": "tripnara.solver_problem@v1",
+  "requestId": "req-fixture-10",
+  "tripId": "trip-gold-iceland",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-f208-3",
+  "snapshotId": "ev-f208-3",
+  "operation": "SHIFT",
+  "scope": {
+    "dayIds": [
+      "day-1"
+    ]
+  },
+  "nodes": [
+    {
+      "nodeId": "depot",
+      "serviceDurationMin": 0,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 480
+        }
+      ],
+      "fixedStartMin": 480,
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a1",
+      "sourceActivityId": "act-1",
+      "poiId": "poi-1",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a2",
+      "sourceActivityId": "act-2",
+      "poiId": "poi-2",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a3",
+      "sourceActivityId": "act-3",
+      "poiId": "poi-3",
+      "serviceDurationMin": 45,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a4",
+      "sourceActivityId": "act-4",
+      "poiId": "poi-4",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a5",
+      "sourceActivityId": "act-5",
+      "poiId": "poi-5",
+      "serviceDurationMin": 30,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a6",
+      "sourceActivityId": "act-6",
+      "poiId": "poi-6",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a7",
+      "sourceActivityId": "act-7",
+      "poiId": "poi-7",
+      "serviceDurationMin": 45,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a8",
+      "sourceActivityId": "act-8",
+      "poiId": "poi-8",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a9",
+      "sourceActivityId": "act-9",
+      "poiId": "poi-9",
+      "serviceDurationMin": 30,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    }
+  ],
+  "travelMatrix": {
+    "nodeIds": [
+      "depot",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "a6",
+      "a7",
+      "a8",
+      "a9"
+    ],
+    "costsMin": [
+      [
+        0,
+        20,
+        35,
+        40,
+        55,
+        50,
+        25,
+        45,
+        60,
+        30
+      ],
+      [
+        20,
+        0,
+        15,
+        25,
+        40,
+        35,
+        10,
+        30,
+        45,
+        20
+      ],
+      [
+        35,
+        15,
+        0,
+        12,
+        28,
+        22,
+        18,
+        20,
+        35,
+        25
+      ],
+      [
+        40,
+        25,
+        12,
+        0,
+        18,
+        15,
+        22,
+        14,
+        30,
+        28
+      ],
+      [
+        55,
+        40,
+        28,
+        18,
+        0,
+        10,
+        35,
+        20,
+        16,
+        32
+      ],
+      [
+        50,
+        35,
+        22,
+        15,
+        10,
+        0,
+        30,
+        18,
+        12,
+        28
+      ],
+      [
+        25,
+        10,
+        18,
+        22,
+        35,
+        30,
+        0,
+        25,
+        40,
+        15
+      ],
+      [
+        45,
+        30,
+        20,
+        14,
+        20,
+        18,
+        25,
+        0,
+        22,
+        24
+      ],
+      [
+        60,
+        45,
+        35,
+        30,
+        16,
+        12,
+        40,
+        22,
+        0,
+        26
+      ],
+      [
+        30,
+        20,
+        25,
+        28,
+        32,
+        28,
+        15,
+        24,
+        26,
+        0
+      ]
+    ]
+  },
+  "constraints": [
+    {
+      "constraintId": "depot-fixed",
+      "kind": "DEPOT_FIXED",
+      "hard": true,
+      "payload": {
+        "nodeId": "depot"
+      }
+    },
+    {
+      "constraintId": "edge-forbidden-0",
+      "kind": "EDGE_FORBIDDEN",
+      "hard": true,
+      "canonicalConstraintId": "road.close.F208",
+      "payload": {
+        "fromNodeId": "a1",
+        "toNodeId": "a2",
+        "roadId": "F208"
+      }
+    }
+  ],
+  "objectives": [
+    {
+      "objectiveId": "min-travel",
+      "kind": "MINIMIZE_TRAVEL",
+      "weight": 1
+    }
+  ],
+  "solverConfig": {
+    "maxCandidates": 3,
+    "timeLimitMs": 1500,
+    "seed": 42
+  }
+}

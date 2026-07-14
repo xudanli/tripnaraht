@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.wind.05_dual_gust_reroute",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "wind",
+  "title": "Dual coastal gust \u2014 REROUTE two forbidden edges",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/wind/problems/05_dual_gust_reroute.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1"
+}

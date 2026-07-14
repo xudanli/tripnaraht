@@ -1,0 +1,27 @@
+{
+  "schemaId": "tripnara.ortools_selected_trips_whitelist@v1",
+  "signoffId": "m4-ra01-2026-07-15",
+  "destinations": ["IS"],
+  "selectionCriteria": [
+    "iceland_destination",
+    "complete_trip_data",
+    "no_payment_or_irreversible_ops",
+    "no_high_risk_member_inference",
+    "ops_limited_to_SHIFT_SWAP_SHORTEN_REROUTE",
+    "human_reviewable",
+    "instant_neptune_fallback"
+  ],
+  "tripIds": [
+    "WHITELIST_PLACEHOLDER_IS_01",
+    "WHITELIST_PLACEHOLDER_IS_02",
+    "WHITELIST_PLACEHOLDER_IS_03",
+    "WHITELIST_PLACEHOLDER_IS_04",
+    "WHITELIST_PLACEHOLDER_IS_05",
+    "WHITELIST_PLACEHOLDER_IS_06",
+    "WHITELIST_PLACEHOLDER_IS_07",
+    "WHITELIST_PLACEHOLDER_IS_08",
+    "WHITELIST_PLACEHOLDER_IS_09",
+    "WHITELIST_PLACEHOLDER_IS_10"
+  ],
+  "notes": "Replace placeholders with 10–20 internal/staging tripIds before selected_trips canary. Never random production traffic."
+}

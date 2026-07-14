@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.reservation_delay.07_late_replace_short_alt",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "reservation_delay",
+  "title": "Running late \u2014 REPLACE optional post-leg with caf\u00e9 alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/reservation_delay/problems/07_late_replace_short_alt.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

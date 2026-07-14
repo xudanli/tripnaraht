@@ -18,6 +18,17 @@ import type {
 import type { UnifiedDecisionActionPreviewView } from '../../../decision-runtime/gateway/contracts/unified-decision-ui.types';
 import type { TripMutationSet } from '../../decision-semantics/types/decision-semantics.types';
 import type { FeasibilityIssueAnchorsDto } from '../../trip-constraint-solver/types/trip-constraint-solver.types';
+import { formatClockLabelOptional } from '../../../common/utils/format-clock-label.util';
+
+type InspectorShiftIntent =
+  | { kind: 'earlier'; minutes: number }
+  | { kind: 'later'; minutes?: number }
+  | { kind: 'unknown' };
+
+function readPositiveMinutes(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  return Math.round(value);
+}
 
 function parseHHmm(value: string): number {
   const match = value.match(/(\d{1,2}):(\d{2})/);
@@ -31,7 +42,7 @@ function extractHm(text: string): string | undefined {
 }
 
 function formatDeltaLabel(minutes: number): string {
-  const sign = minutes > 0 ? '+' : minutes < 0 ? '' : '';
+  const sign = minutes > 0 ? '+' : minutes < 0 ? '-' : '';
   const abs = Math.abs(Math.round(minutes));
   if (abs < 60) return `${sign}${abs} 分钟`;
   const h = Math.floor(abs / 60);
@@ -495,13 +506,56 @@ function buildPlanDiffBannerText(changeRows: PlanningInspectorChangeRow[]): stri
 }
 
 function formatIsoToHm(iso?: string): string | undefined {
-  if (!iso) return undefined;
-  const extracted = extractHm(iso);
-  if (extracted) return extracted;
-  const parsed = Date.parse(iso);
-  if (Number.isNaN(parsed)) return undefined;
-  const d = new Date(parsed);
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+  return formatClockLabelOptional(iso);
+}
+
+/**
+ * 方案标题（提前离开）与反事实 diff（顺延下一站 suggestedTime）曾各走各的，导致「提前 120 分」对上「+5h15」。
+ * 必须以 option/payload 极性为准，不能无脑用 suggestedTime - activityStart。
+ */
+function resolveInspectorShiftIntent(
+  preview: UnifiedDecisionActionPreviewView,
+): InspectorShiftIntent {
+  const repairPreview = coerceRepairPreview(preview.repairPreview);
+  const option = repairPreview?.option as
+    | { actionType?: string; type?: string; payload?: Record<string, unknown> }
+    | undefined;
+  const payloads: Array<Record<string, unknown> | undefined> = [option?.payload];
+  const mutations = (preview.proposedMutations as TripMutationSet | undefined)?.operations ?? [];
+  for (const op of mutations) {
+    const after = op.after as Record<string, unknown> | undefined;
+    payloads.push(after?.payload as Record<string, unknown> | undefined);
+  }
+
+  for (const payload of payloads) {
+    if (!payload) continue;
+    const actionType = String(option?.actionType ?? option?.type ?? payload.actionType ?? '');
+    const advance = readPositiveMinutes(payload.advanceMinutes);
+    const shift =
+      typeof payload.shiftMinutes === 'number' && Number.isFinite(payload.shiftMinutes)
+        ? Math.round(payload.shiftMinutes)
+        : undefined;
+
+    if (actionType === 'shift_earlier' || (advance != null && advance > 0) || (shift != null && shift < 0)) {
+      const minutes = advance ?? (shift != null ? Math.abs(shift) : undefined);
+      if (minutes != null && minutes > 0) return { kind: 'earlier', minutes };
+    }
+    if (
+      actionType === 'shift_departure' ||
+      actionType === 'adjust_time' ||
+      (shift != null && shift > 0)
+    ) {
+      return { kind: 'later', minutes: shift ?? readPositiveMinutes(payload.shortfallMinutes) };
+    }
+  }
+
+  if (/提前\s*\d+\s*分钟|提早\s*\d+\s*分钟|提前离开|提前出发/i.test(preview.action.title)) {
+    const fromTitle = /提前\s*(\d+)\s*分钟/.exec(preview.action.title);
+    const minutes = fromTitle ? Number(fromTitle[1]) : undefined;
+    if (minutes && minutes > 0) return { kind: 'earlier', minutes };
+  }
+
+  return { kind: 'unknown' };
 }
 
 function resolvePreviewDeltaMinutes(preview: UnifiedDecisionActionPreviewView): number | undefined {
@@ -558,28 +612,45 @@ function expandSameDayTravelPlanDiff(
   const anchors = extractTravelAnchors(preview);
   if (!anchors?.toPlaceLabel && anchors?.gapMinutes == null) return changeRows;
 
+  const intent = resolveInspectorShiftIntent(preview);
   const timedRow = changeRows.find(
     (r) => r.deltaMinutes != null && /:\d{2}/.test(r.before) && /:\d{2}/.test(r.after),
   );
+
   const beforeArrive =
     formatIsoToHm(anchors?.activityStartAt ?? anchors?.toTime) ??
     (timedRow ? extractHm(timedRow.before) : undefined);
-  const afterArrive =
-    formatIsoToHm(anchors?.suggestedTime) ??
-    (timedRow ? extractHm(timedRow.after) : undefined);
+  const beforeDepart = formatIsoToHm(anchors?.departAt ?? anchors?.fromTime);
 
-  let delta = timedRow?.deltaMinutes;
-  if (delta == null && beforeArrive && afterArrive) {
-    delta = parseHHmm(afterArrive) - parseHHmm(beforeArrive);
+  let delta: number | undefined;
+  let afterArrive: string | undefined;
+  let afterDepart: string | undefined;
+
+  if (intent.kind === 'earlier') {
+    delta = -intent.minutes;
+    afterDepart = beforeDepart ? shiftHm(beforeDepart, delta) : undefined;
+    afterArrive = beforeArrive ? shiftHm(beforeArrive, delta) : undefined;
+  } else {
+    afterArrive =
+      formatIsoToHm(anchors?.suggestedTime) ??
+      (timedRow ? extractHm(timedRow.after) : undefined);
+    delta = timedRow?.deltaMinutes;
+    if (delta == null && beforeArrive && afterArrive) {
+      delta = parseHHmm(afterArrive) - parseHHmm(beforeArrive);
+    }
+    if (intent.kind === 'later' && intent.minutes != null && (delta == null || Math.sign(delta) < 0)) {
+      // 顺延应以正位移为准；避免 suggestedTime 缺省时落成提前
+      delta = intent.minutes;
+    }
+    afterDepart = beforeDepart && delta != null ? shiftHm(beforeDepart, delta) : undefined;
   }
+
   if (delta == null || delta === 0) return changeRows;
 
   const rows: PlanningInspectorChangeRow[] = [];
   const turnaroundMinutes = anchors?.bufferMinutes ?? 5;
-  const beforeDepart = formatIsoToHm(anchors?.departAt ?? anchors?.fromTime);
 
   if (beforeDepart && anchors?.fromPlaceLabel) {
-    const afterDepart = shiftHm(beforeDepart, delta);
     const fromEndBefore = shiftHm(beforeDepart, -turnaroundMinutes);
     const fromEndAfter = afterDepart ? shiftHm(afterDepart, -turnaroundMinutes) : undefined;
     if (fromEndBefore && fromEndAfter) {
@@ -641,6 +712,7 @@ export function buildInspectorPlanDiffFromPreview(
   let changeRows = rowsFromItineraryDiff(itineraryDiff);
 
   if (!changeRows.length) {
+    const intent = resolveInspectorShiftIntent(preview);
     const mutations =
       (preview.proposedMutations as TripMutationSet | undefined)?.operations ?? [];
     for (const [idx, op] of mutations.entries()) {
@@ -648,22 +720,44 @@ export function buildInspectorPlanDiffFromPreview(
       const payload = after?.payload as Record<string, unknown> | undefined;
       const anchors = payload?.anchors as FeasibilityIssueAnchorsDto | undefined;
       const label =
-        anchors?.toPlaceLabel?.trim() ||
-        anchors?.fromPlaceLabel?.trim() ||
+        (intent.kind === 'earlier'
+          ? anchors?.fromPlaceLabel?.trim()
+          : anchors?.toPlaceLabel?.trim() || anchors?.fromPlaceLabel?.trim()) ||
         preview.action.title;
-      const beforeHm =
-        formatIsoToHm(anchors?.activityStartAt) ??
-        formatIsoToHm(anchors?.toTime) ??
-        formatIsoToHm(anchors?.fromTime);
-      const afterHm =
-        formatIsoToHm(anchors?.suggestedTime) ??
-        formatIsoToHm(String(payload?.suggestedValue ?? ''));
 
+      let beforeHm =
+        formatIsoToHm(anchors?.departAt) ??
+        formatIsoToHm(anchors?.fromTime) ??
+        formatIsoToHm(anchors?.activityStartAt) ??
+        formatIsoToHm(anchors?.toTime);
+      let afterHm: string | undefined;
       let deltaMinutes: number | undefined;
-      if (beforeHm && afterHm) {
-        deltaMinutes = parseHHmm(afterHm) - parseHHmm(beforeHm);
+
+      if (intent.kind === 'earlier') {
+        deltaMinutes = -intent.minutes;
+        afterHm = beforeHm ? shiftHm(beforeHm, deltaMinutes) : undefined;
       } else {
-        deltaMinutes = resolvePreviewDeltaMinutes(preview);
+        beforeHm =
+          formatIsoToHm(anchors?.activityStartAt) ??
+          formatIsoToHm(anchors?.toTime) ??
+          formatIsoToHm(anchors?.fromTime) ??
+          beforeHm;
+        afterHm =
+          formatIsoToHm(anchors?.suggestedTime) ??
+          formatIsoToHm(String(payload?.suggestedValue ?? ''));
+        if (beforeHm && afterHm) {
+          deltaMinutes = parseHHmm(afterHm) - parseHHmm(beforeHm);
+        } else {
+          deltaMinutes = resolvePreviewDeltaMinutes(preview);
+        }
+        if (
+          intent.kind === 'later' &&
+          intent.minutes != null &&
+          (deltaMinutes == null || Math.sign(deltaMinutes) <= 0)
+        ) {
+          deltaMinutes = intent.minutes;
+          afterHm = beforeHm ? shiftHm(beforeHm, deltaMinutes) : afterHm;
+        }
       }
 
       changeRows.push({

@@ -21,6 +21,45 @@
 |------|------|------|
 | `OPTIMIZATION_STRATEGY_MODE` | `AUTO` | `LEGACY` / `WEIGHTED` / `CPSAT_LEX` / `CPSAT_EPSILON`；生产 AUTO 暂选 legacy-frozen |
 | `DECISION_LAB_ENABLED` | off | 启用 `decision-lab` benchmark（不写生产行程） |
+| `OR_TOOLS_SOLVER_URL` | unset | Python OR-Tools sidecar base URL（如 `http://127.0.0.1:8091`）；未设则 `ortools-repair` 空跑 |
+| `OR_TOOLS_REPAIR_SHADOW` | URL 已设则为 on | `1`/`0` — shadow 候选；**签核前禁止**作为 authoritative |
+| `OR_TOOLS_SOLVER_TIMEOUT_MS` | `5000` | Nest → solver HTTP 超时 |
+
+OR-Tools Shadow（`OrToolsRepairShadowService.compare` / `OrToolsRoadEvaluateShadowBridge`）产出报告恒含 `writeAttempted=false`、`gatewayRequired=true`；权威提案仍来自 Neptune / legacy。
+
+Evaluate 主链：`RoadSegmentUnavailableEvaluateService` 在 Neptune 候选完成后挂接 `ortoolsShadow`（不并入 `repairCandidates`）。单日节点 `<2` 时记 `insufficient_day_nodes_for_routing`，不阻塞 Neptune。  
+P2：prior shadow 相对 `worldStateSnapshotId` stale 时丢弃并强制重算（`staleDiscardTotal` / `evidenceFreshness`）。
+
+```bash
+# M2 MOVE_DAY multi-day shadow (default off). Set on Nest *and* Python sidecar.
+OR_TOOLS_MOVE_DAY_SHADOW=1
+
+# M3 Native CP-SAT SHIFT (default off). Set on Nest *and* Python sidecar.
+OR_TOOLS_NATIVE_CPSAT=1
+
+# M4 Release Authorization (default shadow — see M4_RA_01_SELECTED_TRIPS_PILOT.md)
+# Prefer planning-signoff artifacts + structured Authority Token.
+OR_TOOLS_AUTHORITATIVE_CANARY=0
+OR_TOOLS_CANARY_STAGE=shadow
+# selected_trips | 5% | 20% | 50% | 100%  — percent requires OR_TOOLS_CANARY_PERCENT_APPROVED=1
+OR_TOOLS_CANARY_PERCENT_APPROVED=0
+OR_TOOLS_AUTHORITY_ENVIRONMENT=staging
+OR_TOOLS_AUTHORITY_TOKEN=
+OR_TOOLS_AUTHORITY_TOKEN_SECRET=
+OR_TOOLS_PRODUCT_SIGNOFF=0
+OR_TOOLS_STABILITY_SIGNOFF=0
+OR_TOOLS_LOCALITY_SIGNOFF=0
+# legacy token equality (discouraged):
+OR_TOOLS_AUTHORITY_SIGNOFF_REQUIRED=
+OR_TOOLS_AUTHORITY_SIGNOFF=
+OR_TOOLS_REAL_GOLD_MIN=5
+```
+
+Planning S4：`OPTIMIZE_ROUTE` / `AUTO_ARRANGE` 经 `OrToolsPlanningOrchestratorShadowBridge` 挂 `PlanProposal.ortoolsShadow`；`apply` 只写 `proposal.changes`。  
+Lab 对照：`ortoolsShadow.labCompare`；汇总 `GET /decision-engine/v1/ortools-shadow/planning-lab/compare`。
+
+| `OR_TOOLS_SHADOW_OBSERVABILITY_ENABLED` | on（除非 metrics disabled） | `GET /decision-engine/v1/ortools-shadow/*` |
+| `OR_TOOLS_SHADOW_METRICS_DISABLED` | off | `1` 关闭 in-memory shadow 计数 |
 
 ## Decision Trigger Gateway（P1 治理收敛）
 

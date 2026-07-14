@@ -161,6 +161,18 @@ export function buildFeasibilitySemanticKey(issue: FeasibilityIssueDto): string 
   if (issue.issueKind === 'buffer_insufficient' || /缓冲/.test(issue.title)) {
     return 'INSUFFICIENT_TRANSFER_BUFFER';
   }
+  if (issue.issueKind === 'meeting_point_buffer') {
+    return 'MEETING_POINT_BUFFER_INSUFFICIENT';
+  }
+  if (issue.issueKind === 'product_session_time_window') {
+    return 'PRODUCT_SESSION_LOCK_VIOLATION';
+  }
+  if (issue.issueKind === 'product_participant_eligibility') {
+    return 'PRODUCT_ELIGIBILITY_FAILED';
+  }
+  if (issue.issueKind === 'product_weather_dependency') {
+    return 'PRODUCT_WEATHER_HOLD_REQUIRED';
+  }
   if (issue.issueKind?.includes('daily_drive') || /驾驶/.test(issue.title)) {
     return 'EXCESSIVE_DAILY_LOAD';
   }

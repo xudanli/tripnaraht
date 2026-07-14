@@ -205,6 +205,11 @@ export interface UnifiedDecisionProblemDetailView {
   };
   resolution?: DecisionResolutionSummary;
   negotiation?: import('../../../trips/decision-semantics/types/decision-semantics.types').DecisionProblemNegotiationView;
+  /**
+   * ADR-008 — OR-Tools evaluate shadow from DecisionWorkspace (product path).
+   * Observational only (`shadowAuthority: false`). Present after evaluate when sidecar on.
+   */
+  ortoolsShadow?: import('../../solver/bridge/ortools-road-evaluate-shadow.bridge').OrtToolsEvaluateShadowAttachment;
   /** Canonical causal trace identity (v1) */
   causalTraceRef?: CausalTraceReference;
   /** Neutral narrative projection from canonical trace (P2) */

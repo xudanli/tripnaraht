@@ -1,0 +1,15 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.01_lodge_shift_reroute_a2_a3",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "Hotel change southwest \u2014 REROUTE forbid stale a2\u2192a3 hop",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/hotel_change/problems/01_lodge_shift_reroute_a2_a3.problem.json",
+  "notes": [
+    "single-day proxy; MOVE_DAY not used"
+  ],
+  "provenance": "synthetic_template_v1"
+}

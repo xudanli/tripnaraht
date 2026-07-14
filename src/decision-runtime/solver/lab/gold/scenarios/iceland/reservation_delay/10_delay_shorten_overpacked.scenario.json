@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.reservation_delay.10_delay_shorten_overpacked",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "reservation_delay",
+  "title": "Reservation delay overpacked \u2014 SHORTEN drop optional posts",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/reservation_delay/problems/10_delay_shorten_overpacked.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

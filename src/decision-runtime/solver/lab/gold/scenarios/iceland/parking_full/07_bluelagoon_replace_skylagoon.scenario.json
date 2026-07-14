@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.07_bluelagoon_replace_skylagoon",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "Blue Lagoon lot full \u2014 REPLACE to Sky Lagoon alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/parking_full/problems/07_bluelagoon_replace_skylagoon.problem.json",
+  "notes": [
+    "REPLACE_POOL a1\u2192is.sky_lagoon_alt"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

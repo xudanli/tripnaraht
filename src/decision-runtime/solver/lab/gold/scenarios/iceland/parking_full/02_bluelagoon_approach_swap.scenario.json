@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.02_bluelagoon_approach_swap",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "Blue Lagoon parking full \u2014 SWAP avoid a1\u2192a2",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/parking_full/problems/02_bluelagoon_approach_swap.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

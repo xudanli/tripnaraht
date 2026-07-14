@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "pilot_iceland_road_close_05_dual_forbid_reroute",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-dual-1",
+  "environment": "staging-test",
+  "destination": "IS",
+  "intendedOperation": "REROUTE",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "gold_replay",
+  "deidentified": true,
+  "eligibility": "pending"
+}

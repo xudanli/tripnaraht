@@ -1,0 +1,194 @@
+{
+  "schemaId": "tripnara.solver_problem@v1",
+  "requestId": "req-fixture-hotel",
+  "tripId": "trip-gold-iceland",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-hotel-03",
+  "snapshotId": "ev-hotel-03",
+  "operation": "SHIFT",
+  "scope": {
+    "dayIds": [
+      "day-1"
+    ]
+  },
+  "nodes": [
+    {
+      "nodeId": "depot",
+      "serviceDurationMin": 0,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 480
+        }
+      ],
+      "fixedStartMin": 480,
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a1",
+      "sourceActivityId": "act-a1",
+      "poiId": "is.vik_hotel_breakfast",
+      "serviceDurationMin": 30,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false,
+      "fixedStartMin": 540
+    },
+    {
+      "nodeId": "a2",
+      "sourceActivityId": "act-a2",
+      "poiId": "is.reynisfjara",
+      "serviceDurationMin": 50,
+      "timeWindows": [
+        {
+          "startMin": 560,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a3",
+      "sourceActivityId": "act-a3",
+      "poiId": "is.skogafoss",
+      "serviceDurationMin": 55,
+      "timeWindows": [
+        {
+          "startMin": 580,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a4",
+      "sourceActivityId": "act-a4",
+      "poiId": "is.seljalandsfoss",
+      "serviceDurationMin": 55,
+      "timeWindows": [
+        {
+          "startMin": 600,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a5",
+      "sourceActivityId": "act-a5",
+      "poiId": "is.vik",
+      "serviceDurationMin": 40,
+      "timeWindows": [
+        {
+          "startMin": 620,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    }
+  ],
+  "travelMatrix": {
+    "nodeIds": [
+      "depot",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5"
+    ],
+    "costsMin": [
+      [
+        0,
+        22,
+        26,
+        33,
+        34,
+        38
+      ],
+      [
+        22,
+        0,
+        25,
+        26,
+        30,
+        37
+      ],
+      [
+        26,
+        25,
+        0,
+        22,
+        29,
+        30
+      ],
+      [
+        33,
+        26,
+        22,
+        0,
+        22,
+        26
+      ],
+      [
+        34,
+        30,
+        29,
+        22,
+        0,
+        25
+      ],
+      [
+        38,
+        37,
+        30,
+        26,
+        25,
+        0
+      ]
+    ]
+  },
+  "constraints": [
+    {
+      "constraintId": "depot-fixed",
+      "kind": "DEPOT_FIXED",
+      "hard": true,
+      "payload": {
+        "nodeId": "depot"
+      }
+    }
+  ],
+  "objectives": [
+    {
+      "objectiveId": "min-travel",
+      "kind": "MINIMIZE_TRAVEL",
+      "weight": 1
+    }
+  ],
+  "solverConfig": {
+    "maxCandidates": 3,
+    "timeLimitMs": 1500,
+    "seed": 42
+  }
+}

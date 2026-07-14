@@ -3,6 +3,7 @@
  */
 
 import { DateTime } from 'luxon';
+import { formatClockLabelOptional } from '../../../common/utils/format-clock-label.util';
 import {
   EXECUTION_SLIP_CANDIDATE_IDS,
 } from '../contracts/execution-slip.types';
@@ -18,21 +19,16 @@ export function formatExecutionSlipClockLabel(
   referenceIso?: string,
 ): string | undefined {
   if (!isoOrClock) return undefined;
-  if (/^\d{1,2}:\d{2}$/.test(isoOrClock.trim())) {
-    return isoOrClock.trim();
-  }
-  const dt = DateTime.fromISO(isoOrClock, { setZone: true });
-  if (dt.isValid) {
-    return dt.setZone(timezone).toFormat('HH:mm');
-  }
+  const direct = formatClockLabelOptional(isoOrClock, { timezone });
+  if (direct) return direct;
   if (referenceIso) {
     const ref = DateTime.fromISO(referenceIso, { setZone: true }).setZone(timezone);
     const [hour, minute] = isoOrClock.split(':').map(Number);
-    if (Number.isFinite(hour) && Number.isFinite(minute)) {
+    if (ref.isValid && Number.isFinite(hour) && Number.isFinite(minute)) {
       return ref.set({ hour, minute, second: 0, millisecond: 0 }).toFormat('HH:mm');
     }
   }
-  return isoOrClock;
+  return formatClockLabelOptional(isoOrClock);
 }
 
 export function buildExecutionSlipOptionCopy(
@@ -67,7 +63,8 @@ export function buildExecutionSlipOptionCopy(
     const substituteTitle =
       ctx.substituteActivityTitle ?? '附近备选体验';
     const substituteEntryLabel =
-      ctx.substituteLastEntryAtLabel ?? ctx.substituteLastEntryAt;
+      ctx.substituteLastEntryAtLabel ??
+      formatClockLabelOptional(ctx.substituteLastEntryAt, { timezone: ctx.timezone });
     const changePreview: ExecutionSlipChangePreview = {
       remove: {
         activityId: ctx.nextActivityId,

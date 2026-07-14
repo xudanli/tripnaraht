@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import {
+  IsArray,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Matches,
+  Min,
+} from 'class-validator';
 import type { PlanningIntent } from '../types/plan-proposal.types';
 
 export class PlanProposalCommitModeDto {
@@ -38,8 +47,28 @@ export class CreatePlanProposalDto {
   ])
   intent!: PlanningIntent;
 
-  @ApiProperty({ description: '与 intent 对应的请求体' })
-  payload!: Record<string, unknown>;
+  /**
+   * Must have a class-validator decorator — global ValidationPipe whitelist
+   * strips undecorated properties (broke AUTO_ARRANGE payload.candidateIds).
+   */
+  @ApiPropertyOptional({
+    description:
+      '与 intent 对应的请求体。AUTO_ARRANGE 使用 payload.candidateIds?: string[]',
+    example: { candidateIds: ['uuid'] },
+  })
+  @IsOptional()
+  @IsObject()
+  payload?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      '兼容：AUTO_ARRANGE 也可把 candidateIds 放在顶层；优先读 payload.candidateIds',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  candidateIds?: string[];
 }
 
 export class ApplyPlanProposalDto {

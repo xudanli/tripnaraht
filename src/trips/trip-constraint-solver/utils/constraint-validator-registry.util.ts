@@ -69,6 +69,38 @@ export const PHASE0_CONSTRAINT_VALIDATOR_BINDINGS: Record<string, ConstraintVali
       resultMapper: 'tep.sdr203.schedule',
     },
   ],
+  PRODUCT_SESSION_TIME_WINDOW: [
+    {
+      engine: 'FEASIBILITY',
+      ruleId: 'product_session_time_window',
+      phase: 'PLANNING',
+      severity: 'BLOCK',
+    },
+  ],
+  MEETING_POINT_BUFFER: [
+    {
+      engine: 'FEASIBILITY',
+      ruleId: 'meeting_point_buffer',
+      phase: 'PLANNING',
+      severity: 'BLOCK',
+    },
+  ],
+  PRODUCT_PARTICIPANT_ELIGIBILITY: [
+    {
+      engine: 'FEASIBILITY',
+      ruleId: 'product_participant_eligibility',
+      phase: 'PLANNING',
+      severity: 'BLOCK',
+    },
+  ],
+  PRODUCT_WEATHER_DEPENDENCY: [
+    {
+      engine: 'FEASIBILITY',
+      ruleId: 'product_weather_dependency',
+      phase: 'PLANNING',
+      severity: 'WARN',
+    },
+  ],
 };
 
 const SDR_TO_CONSTRAINT_KEY = new Map<string, string>();
@@ -84,6 +116,10 @@ const FEASIBILITY_RULE_TO_CONSTRAINT_KEY: Record<string, string> = {
   max_daily_drive: 'MAX_DAILY_DRIVE',
   no_night_drive: 'NO_NIGHT_DRIVE',
   fixed_appointments: 'FIXED_APPOINTMENTS',
+  product_session_time_window: 'PRODUCT_SESSION_TIME_WINDOW',
+  meeting_point_buffer: 'MEETING_POINT_BUFFER',
+  product_participant_eligibility: 'PRODUCT_PARTICIPANT_ELIGIBILITY',
+  product_weather_dependency: 'PRODUCT_WEATHER_DEPENDENCY',
 };
 
 const FEASIBILITY_SEMANTIC_TO_CONSTRAINT_KEY: Record<string, string> = {
@@ -93,6 +129,10 @@ const FEASIBILITY_SEMANTIC_TO_CONSTRAINT_KEY: Record<string, string> = {
   RENTAL_CONTRACT_VIOLATION: 'NO_UNPAVED_ROAD',
   EXECUTION_SCHEDULE_INFEASIBLE: 'FIXED_APPOINTMENTS',
   TIME_WINDOW_INFEASIBLE: 'FIXED_APPOINTMENTS',
+  PRODUCT_SESSION_LOCK_VIOLATION: 'PRODUCT_SESSION_TIME_WINDOW',
+  MEETING_POINT_BUFFER_INSUFFICIENT: 'MEETING_POINT_BUFFER',
+  PRODUCT_ELIGIBILITY_FAILED: 'PRODUCT_PARTICIPANT_ELIGIBILITY',
+  PRODUCT_WEATHER_HOLD_REQUIRED: 'PRODUCT_WEATHER_DEPENDENCY',
 };
 
 export function resolveConstraintKeyForSdrRule(ruleId: string): string | undefined {
@@ -122,6 +162,12 @@ export function resolveConstraintKeyForFeasibilityIssue(input: {
   if (issueKind === 'inter_day_travel' || issueKind === 'poi_access_blocked') {
     return 'FIXED_APPOINTMENTS';
   }
+  if (issueKind === 'product_session_time_window') return 'PRODUCT_SESSION_TIME_WINDOW';
+  if (issueKind === 'meeting_point_buffer') return 'MEETING_POINT_BUFFER';
+  if (issueKind === 'product_participant_eligibility') {
+    return 'PRODUCT_PARTICIPANT_ELIGIBILITY';
+  }
+  if (issueKind === 'product_weather_dependency') return 'PRODUCT_WEATHER_DEPENDENCY';
 
   return undefined;
 }

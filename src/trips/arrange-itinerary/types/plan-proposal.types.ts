@@ -128,6 +128,11 @@ export interface PlanProposal {
   source: PlanProposalSource;
   /** P0/P1 决策语义包 */
   decisionPack?: import('./planning-decision-pack.types').PlanningDecisionPack;
+  /**
+   * ADR-008 S4 — OR-Tools OPTIMIZE_ROUTE shadow (observational only).
+   * Never merges into `changes` / apply path.
+   */
+  ortoolsShadow?: import('../../../decision-runtime/solver/bridge/ortools-planning-orchestrator-shadow.bridge').OrtToolsPlanningShadowAttachment;
 }
 
 export interface OrchestrationStateView {

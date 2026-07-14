@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.wind.09_booked_lunch_pin_preserved",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "wind",
+  "title": "Wind reorder \u2014 booked lunch pin preserved",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/wind/problems/09_booked_lunch_pin_preserved.problem.json",
+  "notes": [
+    "require booked a3 in all candidates"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

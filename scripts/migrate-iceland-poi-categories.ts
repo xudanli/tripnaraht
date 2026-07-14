@@ -110,22 +110,23 @@ const CATEGORY_TO_CANONICAL_TYPE: Record<string, string> = {
   ferry_terminal: 'PORT_FERRY_TERMINAL',
   bus_station: 'BUS_STATION',
   
-  // 活动
+  // 活动 — tour-like 旧词映射到 Place 地理实体；可履约 SKU 走 Travel Product Catalog
   trailhead: 'TRAILHEAD',
   hiking: 'TRAILHEAD',
   swimming_pool: 'SWIMMING_POOL',
   spa: 'SPA_POOL',
   hot_tub: 'HOT_TUB',
-  whale_watching: 'WHALE_WATCHING',
+  // 观鲸/冰川徒步等不再写入 Place：迁移脚本将落地理热点/设施，产品另种
+  whale_watching: 'ATTRACTION_NATURE_WHALE_AREA',
   puffin_watching: 'PUFFIN_WATCHING',
-  glacier_walk: 'GLACIER_WALK',
-  ice_cave: 'ICE_CAVE',
-  snowmobile: 'SNOWMOBILE',
-  horse_riding: 'HORSE_RIDING',
-  diving: 'DIVING_SNORKELING',
-  snorkeling: 'DIVING_SNORKELING',
-  kayaking: 'KAYAKING',
-  northern_lights: 'NORTHERN_LIGHTS_TOUR',
+  glacier_walk: 'ATTRACTION_NATURE_GLACIER',
+  ice_cave: 'ATTRACTION_NATURE_CAVE',
+  snowmobile: 'ATTRACTION_NATURE_GLACIER',
+  horse_riding: 'FARM_STAY',
+  diving: 'ATTRACTION_NATURE_LAKE',
+  snorkeling: 'ATTRACTION_NATURE_LAKE',
+  kayaking: 'ATTRACTION_NATURE_FJORD',
+  northern_lights: 'AURORA_VIEWING',
   aurora: 'AURORA_VIEWING',
 };
 
@@ -152,6 +153,7 @@ const CANONICAL_TO_PLACE_CATEGORY: Record<string, PlaceCategory> = {
   ATTRACTION_NATURE_GLACIER_LAGOON: PlaceCategory.ATTRACTION,
   ATTRACTION_NATURE_LAVA_FIELD: PlaceCategory.ATTRACTION,
   ATTRACTION_NATURE_BIRD_CLIFF: PlaceCategory.ATTRACTION,
+  ATTRACTION_NATURE_WHALE_AREA: PlaceCategory.ATTRACTION,
   
   // 人文景观 -> ATTRACTION
   MUSEUM: PlaceCategory.ATTRACTION,

@@ -23,6 +23,7 @@ import {
   toZeroBasedDayIndex,
 } from '../../utils/arrange-itinerary-day.util';
 import { buildExecutionSteps } from '../utils/plan-proposal-decision-projection.util';
+import { selectAuthoritativePlanProposalChanges } from '../../../decision-runtime/solver/lab/ortools-planning-shadow-apply.guard';
 
 @Injectable()
 export class PlanProposalApplyService {
@@ -64,8 +65,11 @@ export class PlanProposalApplyService {
     const createdItems: Array<Record<string, unknown>> = [];
     const removedCandidateIds = new Set<string>();
 
+    // ADR-008 S4: never apply ortoolsShadow.shadowChanges — only proposal.changes
+    const authoritativeChanges = selectAuthoritativePlanProposalChanges(proposal);
+
     await this.prisma.$transaction(async () => {
-      for (const change of proposal.changes) {
+      for (const change of authoritativeChanges) {
         if (change.operation === 'ADD') {
           const item = await this.applyAdd(change, tripDays);
           if (item) createdItems.push(item);
@@ -110,7 +114,7 @@ export class PlanProposalApplyService {
         message: '草案已写入正式行程',
         updatedAt: new Date().toISOString(),
       },
-      appliedChangeCount: proposal.changes.filter(
+      appliedChangeCount: authoritativeChanges.filter(
         (c) => c.operation === 'ADD' || c.operation === 'MOVE',
       ).length,
       scheduleTimeline,

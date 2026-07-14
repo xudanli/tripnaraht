@@ -62,6 +62,7 @@ import {
 import {
   isTripInExecutionPhase,
 } from '../utils/plan-object-execution-admission.util';
+import { DecisionWorkspaceService } from '../../../trips/guardian-decision-core/workspace/decision-workspace.service';
 
 const COLLECT_ROWS_CACHE_TTL_MS = 10_000;
 
@@ -87,6 +88,7 @@ export class UnifiedDecisionProblemReadModelService {
     private readonly collector: DecisionProblemCollectorService,
     private readonly resolutionStore: DecisionProblemResolutionStoreService,
     private readonly causalTrace: CanonicalCausalTraceService,
+    private readonly workspaceService: DecisionWorkspaceService,
   ) {}
 
   invalidateCache(tripId: string): void {
@@ -643,6 +645,14 @@ export class UnifiedDecisionProblemReadModelService {
         rawCanonical: row.rawCanonical,
         ...(suppressedActions?.length ? { suppressedActions } : {}),
       };
+    }
+
+    // Product path: lift workspace.ortoolsShadow (no includeDebug required).
+    const workspace =
+      (await this.workspaceService.getByProblemId(tripId, row.problemId)) ??
+      row.rawCanonical?.workspace;
+    if (workspace?.ortoolsShadow) {
+      detail.ortoolsShadow = workspace.ortoolsShadow;
     }
 
     detail.causalTraceRef = await this.attachCausalTraceRef(tripId, row);

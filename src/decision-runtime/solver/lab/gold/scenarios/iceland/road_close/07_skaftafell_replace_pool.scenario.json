@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.07_skaftafell_replace_pool",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "Skaftafell trail closed \u2014 REPLACE via REPLACE_POOL",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/07_skaftafell_replace_pool.problem.json",
+  "notes": [
+    "REPLACE_POOL to visitor_center / svinafellsjokull",
+    "locality \u22643"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

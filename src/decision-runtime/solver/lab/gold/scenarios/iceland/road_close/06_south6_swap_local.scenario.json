@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.06_south6_swap_local",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "South coast 6-POI SWAP after Dyrh\u00f3laey access issue",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/06_south6_swap_local.problem.json",
+  "notes": [
+    "Repair Locality target 2\u20134 on small day"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

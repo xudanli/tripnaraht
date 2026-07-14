@@ -24,6 +24,7 @@ import { PlanProposalBuilderService } from './plan-proposal-builder.service';
 import { PlanProposalApplyService } from './plan-proposal-apply.service';
 import { ArrangeItineraryItemsService } from './arrange-itinerary-items.service';
 import { AttractionExploreAiConsultService } from '../../attraction-explore/services/attraction-explore-ai-consult.service';
+import { resolveProposalCandidateIds } from '../utils/resolve-proposal-candidate-ids.util';
 
 @Injectable()
 export class PlanningOrchestratorFacadeService {
@@ -74,8 +75,12 @@ export class PlanningOrchestratorFacadeService {
     userId: string;
     intent: PlanningIntent;
     payload: Record<string, unknown>;
+    /** AUTO_ARRANGE fallback when FE puts ids next to intent/payload */
+    topLevelCandidateIds?: string[];
   }): Promise<PlanProposal> {
     this.setPhase(input.tripId, 'GENERATING');
+
+    const payload = input.payload ?? {};
 
     let proposal: PlanProposal;
     switch (input.intent) {
@@ -83,43 +88,61 @@ export class PlanningOrchestratorFacadeService {
         proposal = await this.builder.buildPlaceCandidateProposal({
           tripId: input.tripId,
           userId: input.userId,
-          candidateId: String(input.payload.candidateId),
-          body: input.payload as unknown as PlaceAttractionExploreCandidateDto,
+          candidateId: String(payload.candidateId),
+          body: payload as unknown as PlaceAttractionExploreCandidateDto,
         });
         break;
       case 'ADD_ITEM':
         proposal = await this.builder.buildCreateItemProposal({
           tripId: input.tripId,
           userId: input.userId,
-          body: input.payload as unknown as ArrangeItineraryItemDto,
+          body: payload as unknown as ArrangeItineraryItemDto,
         });
         break;
       case 'INSERT_REST_GAP':
         proposal = await this.builder.buildCreateGapProposal({
           tripId: input.tripId,
           userId: input.userId,
-          body: input.payload as unknown as ArrangeItineraryGapDto,
+          body: payload as unknown as ArrangeItineraryGapDto,
         });
         break;
       case 'AUTO_ARRANGE':
         proposal = await this.builder.buildAutoArrangeProposal({
           tripId: input.tripId,
           userId: input.userId,
-          candidateIds: input.payload.candidateIds as string[] | undefined,
+          candidateIds: resolveProposalCandidateIds(
+            payload,
+            input.topLevelCandidateIds,
+          ),
         });
         break;
       case 'FILL_GAP':
       case 'OPTIMIZE_ROUTE':
       case 'ARRANGE_LUNCH':
       case 'REDUCE_INTENSITY': {
-        const actionBody = input.payload as unknown as AttractionExploreAiActionDto;
+        // createProposal sends intent at top-level; payload often omits `action`.
+        const actionByIntent: Record<
+          'FILL_GAP' | 'OPTIMIZE_ROUTE' | 'ARRANGE_LUNCH' | 'REDUCE_INTENSITY',
+          AttractionExploreAiActionDto['action']
+        > = {
+          FILL_GAP: 'fill_gaps',
+          OPTIMIZE_ROUTE: 'optimize_route',
+          ARRANGE_LUNCH: 'arrange_lunch',
+          REDUCE_INTENSITY: 'reduce_intensity',
+        };
+        const actionBody = {
+          ...payload,
+          action:
+            (typeof payload.action === 'string' && payload.action) ||
+            actionByIntent[input.intent],
+        } as AttractionExploreAiActionDto;
         const answer =
-          typeof input.payload.answer === 'string'
-            ? input.payload.answer
+          typeof payload.answer === 'string'
+            ? payload.answer
             : (
                 await this.aiConsult.consult({
                   tripId: input.tripId,
-                  question: String(input.payload.question ?? ''),
+                  question: String(payload.question ?? ''),
                   candidateIds: actionBody.candidateIds,
                 })
               ).answer;

@@ -7,6 +7,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import type { DecisionProviderId } from './contracts/decision-providers';
 import { LegacyCandidateGenerationProvider } from './providers/legacy-candidate-generation.provider';
 import { NeptuneRepairProvider } from './providers/neptune-repair.provider';
+import { OrToolsRepairProvider } from '../solver/providers/ortools-repair.provider';
 import { ConstraintCriticProvider } from './providers/constraint-critic.provider';
 import { AgenticResearchProvider } from './providers/agentic-research.provider';
 import { AgenticNarrationProvider } from './providers/agentic-narration.provider';
@@ -83,6 +84,7 @@ export class DecisionProviderRegistryService {
   constructor(
     @Optional() private readonly legacyCandidate?: LegacyCandidateGenerationProvider,
     @Optional() private readonly neptuneRepair?: NeptuneRepairProvider,
+    @Optional() private readonly ortoolsRepair?: OrToolsRepairProvider,
     @Optional() private readonly constraintCritic?: ConstraintCriticProvider,
     @Optional() private readonly agenticResearch?: AgenticResearchProvider,
     @Optional() private readonly agenticNarration?: AgenticNarrationProvider,
@@ -118,6 +120,18 @@ export class DecisionProviderRegistryService {
         version: '1.0.0',
         outputSchemaId: 'tripnara.repair_provider_result@v1',
         scenarios: ['road_segment_unavailable', 'guardian_l2_evaluate'],
+        status: 'ACTIVE',
+        runtimeBound: true,
+      });
+    }
+
+    if (this.ortoolsRepair) {
+      bound.push({
+        providerId: this.ortoolsRepair.providerId,
+        kind: 'repair',
+        version: '0.1.0-s1',
+        outputSchemaId: 'tripnara.repair_provider_result@v1',
+        scenarios: ['ortools_shift_swap_shadow', 'local_repair_shadow'],
         status: 'ACTIVE',
         runtimeBound: true,
       });

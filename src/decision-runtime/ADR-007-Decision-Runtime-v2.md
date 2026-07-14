@@ -139,6 +139,7 @@ NSGA-III / POMDP / Decision OS **不进入**生产 Strategy Selector。
 
 ## References
 
+- ADR-008: `ADR-008-OR-Tools-Candidate-Provider.md` — OR-Tools 作为非权威 Candidate Provider（SolverProblem ≠ OptimizationProblem）
 - ADR-006: `constraints/ADR-006-Unified-Decision-Runtime.md`
 - **Maturity & governance:** `DECISION_RUNTIME_MATURITY.md`（六层映射、`legacy-frozen` vs Legacy Runtime、成熟度与收敛优先级）
 - Contracts: `contracts/index.ts`

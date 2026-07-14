@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.wind.02_coast_gust_swap_a1_a2",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "wind",
+  "title": "Coast gust \u2014 SWAP avoid a1\u2192a2",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/wind/problems/02_coast_gust_swap_a1_a2.problem.json",
+  "notes": [
+    "Repair locality: churn-first SWAP ranking"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

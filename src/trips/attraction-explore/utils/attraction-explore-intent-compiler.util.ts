@@ -132,6 +132,33 @@ export function compileAttractionExploreIntent(query: string): AttractionExplore
   };
 }
 
+/**
+ * 像在搜具体地名（而非「雨天室内/亲子顺路」这类意图句）时，规则结果已够用，不应再让 LLM 扩主题。
+ */
+export function isAttractionExplorePlaceNameLookup(
+  intent: AttractionExploreCompiledIntent,
+): boolean {
+  if (intent.themes.length > 0 || intent.suitableFor.length > 0) return false;
+  if (intent.weatherMode || intent.maxDetourMinutes != null || intent.excludeVisited) {
+    return false;
+  }
+  if (intent.mobilityRequirement || intent.parkingRequired) return false;
+
+  const q = intent.rawQuery.trim();
+  if (q.length < 2) return false;
+
+  // 含明确筛选意图词则不是纯地名查询
+  if (
+    /雨天|下雨|室内|顺路|附近|绕路|第一次|必去|亲子|家庭|情侣|独行|老人|冒险|轻松|摄影|温泉|瀑布|冰川|高地|博物馆/i.test(
+      q,
+    )
+  ) {
+    return false;
+  }
+
+  return intent.keywords.length >= 1 || intent.routeContext != null;
+}
+
 export function mergeCompiledIntentWithFilters(input: {
   compiled: AttractionExploreCompiledIntent;
   themeIds?: string[];

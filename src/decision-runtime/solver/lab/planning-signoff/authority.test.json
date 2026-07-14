@@ -1,0 +1,38 @@
+{
+  "schemaId": "tripnara.planning_signoff.authority@v1",
+  "kind": "authority",
+  "status": "APPROVED",
+  "approved": true,
+  "approvedAt": "2026-07-15T00:00:00.000Z",
+  "approvedBy": "ci-preflight-bot",
+  "signoffId": "m4-ra01-test-local",
+  "authorityScope": {
+    "operations": ["SHIFT", "SWAP", "SHORTEN", "REROUTE"],
+    "excludedOperations": ["MOVE_DAY", "REPLACE", "AUTO_ARRANGE"],
+    "tripSelectionMode": "selected_trips",
+    "destinations": ["IS"],
+    "maxRiskLevel": "MEDIUM",
+    "requiresUserConfirmation": true,
+    "forbiddenBehaviors": [
+      "high_risk_road_selection",
+      "booked_activity_cancel",
+      "booked_cross_day_move",
+      "payment_or_irreversible_ops"
+    ]
+  },
+  "rollbackProvider": "neptune-repair",
+  "evidenceArtifactRefs": {
+    "stability": "2026-07-15/stability.json",
+    "locality": "2026-07-15/locality.json",
+    "gateway": "2026-07-15/gateway.json",
+    "rollback": "2026-07-15/rollback.json"
+  },
+  "accountability": {
+    "failureOwner": "ci-preflight",
+    "escalation": "ci-preflight",
+    "rollbackOwner": "ci-preflight"
+  },
+  "environment": "staging-test",
+  "detail": "TEST ONLY — never copy status=APPROVED into production authority.json",
+  "summary": "Mechanism dry-run package for M4-RA-01A Preflight"
+}

@@ -60,12 +60,14 @@ import { TepModule } from '../tep/tep.module';
 import { Rfc001InternalDeprecationInterceptor } from './api/rfc001-internal-deprecation.interceptor';
 import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/effective-plan-execution.module';
 import { NeptuneRepairProvider } from '../../decision-runtime/candidates/providers/neptune-repair.provider';
+import { SolverModule } from '../../decision-runtime/solver/solver.module';
 
 @Module({
   imports: [
     PrismaModule,
     DataContractsModule,
     EffectivePlanExecutionModule,
+    SolverModule,
     forwardRef(() => SkillsModule),
     forwardRef(() => DecisionModule),
     DecisionSemanticsModule,

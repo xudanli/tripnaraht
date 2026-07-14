@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.09_booked_pin_preserved",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "Booked lunch pin a3 \u2014 SWAP must keep booked",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/09_booked_pin_preserved.problem.json",
+  "notes": [
+    "booked a3 fixedStartMin=600; must appear in every candidate"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

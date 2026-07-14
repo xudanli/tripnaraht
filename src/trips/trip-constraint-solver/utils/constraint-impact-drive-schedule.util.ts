@@ -1,6 +1,7 @@
 import type { DailyDrivePlan } from '../../tep/contracts/tep-self-drive.types';
 import type { ConstraintImpactAffectedDayDetail } from '../types/trip-constraint.types';
 import type { FeasibilityIssueAnchorsDto } from '../types/trip-constraint-solver.types';
+import { formatClockLabelOptional } from '../../../common/utils/format-clock-label.util';
 import { formatDriveDurationZh, formatDriveDurationZhLong } from './daily-drive-threshold.util';
 
 export interface DailyDriveLegAnchor {
@@ -13,9 +14,7 @@ export interface DailyDriveLegAnchor {
 }
 
 function formatClockLabel(value?: string): string | undefined {
-  if (!value) return undefined;
-  const match = /T(\d{2}:\d{2})/.exec(value);
-  return match?.[1];
+  return formatClockLabelOptional(value);
 }
 
 function hasRouteLabel(leg: DailyDriveLegAnchor): boolean {

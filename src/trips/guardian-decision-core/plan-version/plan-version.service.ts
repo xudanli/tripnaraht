@@ -25,6 +25,15 @@ export class Rfc001PlanVersionService {
     workspace: DecisionWorkspace;
     candidateId?: string;
   }): Promise<PlanVersion> {
+    // RD-08: same decisionId must not create a second Plan Version
+    const existing = await this.store.findBySourceDecision(
+      input.tripId,
+      input.record.decisionId,
+    );
+    if (existing) {
+      return existing;
+    }
+
     const candidateId =
       input.candidateId ?? input.record.selectedCandidateId ?? ORIGINAL_CANDIDATE_ID;
     const operations = this.resolveOperations(input.workspace, candidateId);

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -26,15 +26,34 @@ import { PlanProposalValidationService } from './plan-proposal-validation.servic
 import { PlanningItemLockService } from './planning-item-lock.service';
 import { canPlanningAgentMove } from '../utils/planning-item-lock.util';
 import { PlanningDecisionPackService } from './planning-decision-pack.service';
+import {
+  buildOrtToolsPlanningShadowSkippedAttachment,
+  OrToolsPlanningOrchestratorShadowBridge,
+} from '../../../decision-runtime/solver/bridge/ortools-planning-orchestrator-shadow.bridge';
+import type { DayVrptwItemInput } from '../../../decision-runtime/solver/projection/build-solver-problem-from-day-items.util';
+import { formatOrtToolsPlanningLabTradeoff } from '../../../decision-runtime/solver/lab/ortools-planning-lab-compare.util';
+import {
+  isOrToolsRepairShadowEnabled,
+  resolveOrToolsSolverBaseUrl,
+} from '../../../decision-runtime/solver/ortools-solver.config';
+import {
+  pickDensestArrangeDay,
+  planProposalAddsToDayItems,
+} from '../../../decision-runtime/solver/projection/plan-proposal-adds-to-day-items.util';
 
 @Injectable()
 export class PlanProposalBuilderService {
+  private readonly logger = new Logger(PlanProposalBuilderService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly context: PlanProposalContextService,
     private readonly validation: PlanProposalValidationService,
     private readonly itemLocks: PlanningItemLockService,
     private readonly decisionPack: PlanningDecisionPackService,
+    /** ADR-008 S4 — OPTIMIZE_ROUTE shadow only */
+    @Optional()
+    private readonly ortoolsPlanningShadow?: OrToolsPlanningOrchestratorShadowBridge,
   ) {}
 
   async build(input: {
@@ -286,7 +305,7 @@ export class PlanProposalBuilderService {
       }
     }
 
-    return this.build({
+    const proposal = await this.build({
       tripId: input.tripId,
       userId: input.userId,
       intent: 'AUTO_ARRANGE',
@@ -296,6 +315,119 @@ export class PlanProposalBuilderService {
       tradeoffs: ['自动编排按优先级均匀分配到各天，确认后可再微调'],
       answer: `已为 ${rows.length} 个候选生成自动编排草案，请预览后确认写入。`,
     });
+
+    return this.attachAutoArrangeOrtToolsShadow(proposal, changes);
+  }
+
+  /**
+   * ADR-008 S4 — densest-day VRPTW shadow; never mutates changes.
+   * Always attaches ortoolsShadow when Shadow env is on (diagnostic stub if VRPTW cannot run).
+   */
+  private async attachAutoArrangeOrtToolsShadow(
+    proposal: PlanProposal,
+    changes: PlanProposalChange[],
+  ): Promise<PlanProposal> {
+    if (!isOrToolsRepairShadowEnabled() || !resolveOrToolsSolverBaseUrl()) {
+      return proposal;
+    }
+
+    const addCount = changes.filter((c) => c.operation === 'ADD').length;
+    const dayIndex = pickDensestArrangeDay(changes, 1);
+    const legacyAdds = dayIndex != null
+      ? changes.filter((c) => c.operation === 'ADD' && c.dayIndex === dayIndex)
+      : [];
+
+    const withShadow = (
+      ortoolsShadow: NonNullable<PlanProposal['ortoolsShadow']>,
+    ): PlanProposal => {
+      const labNote = formatOrtToolsPlanningLabTradeoff(ortoolsShadow.labCompare);
+      return {
+        ...proposal,
+        ortoolsShadow,
+        tradeoffs: labNote
+          ? [...proposal.tradeoffs, labNote]
+          : proposal.tradeoffs,
+      };
+    };
+
+    if (dayIndex == null || addCount === 0) {
+      this.logger.warn(
+        `ortools AUTO_ARRANGE shadow stub: no_add_changes trip=${proposal.tripId}`,
+      );
+      return withShadow(
+        buildOrtToolsPlanningShadowSkippedAttachment({
+          tripId: proposal.tripId,
+          planningIntent: 'AUTO_ARRANGE',
+          authorityProviderId: 'legacy-auto-arrange',
+          dayIndex: 0,
+          contextVersion: proposal.contextVersion,
+          legacyChangeCount: changes.length,
+          reason: 'no_add_changes',
+        }),
+      );
+    }
+
+    if (!this.ortoolsPlanningShadow) {
+      this.logger.warn(
+        `ortools AUTO_ARRANGE shadow stub: bridge_not_injected trip=${proposal.tripId}`,
+      );
+      return withShadow(
+        buildOrtToolsPlanningShadowSkippedAttachment({
+          tripId: proposal.tripId,
+          planningIntent: 'AUTO_ARRANGE',
+          authorityProviderId: 'legacy-auto-arrange',
+          dayIndex,
+          contextVersion: proposal.contextVersion,
+          legacyChangeCount: legacyAdds.length,
+          reason: 'bridge_not_injected',
+        }),
+      );
+    }
+
+    const items = planProposalAddsToDayItems({ changes, dayIndex });
+    try {
+      const ortoolsShadow = await this.ortoolsPlanningShadow.runForAutoArrange({
+        tripId: proposal.tripId,
+        dayIndex,
+        contextVersion: proposal.contextVersion,
+        planVersionId: String(proposal.basePlanVersion),
+        legacyChanges: legacyAdds,
+        items,
+      });
+      if (ortoolsShadow) return withShadow(ortoolsShadow);
+
+      return withShadow(
+        buildOrtToolsPlanningShadowSkippedAttachment({
+          tripId: proposal.tripId,
+          planningIntent: 'AUTO_ARRANGE',
+          authorityProviderId: 'legacy-auto-arrange',
+          dayIndex,
+          contextVersion: proposal.contextVersion,
+          legacyChangeCount: legacyAdds.length,
+          reason:
+            items.length < 2
+              ? 'insufficient_day_nodes_for_routing'
+              : 'solver_shadow_null',
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `ortools AUTO_ARRANGE shadow skipped: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return withShadow(
+        buildOrtToolsPlanningShadowSkippedAttachment({
+          tripId: proposal.tripId,
+          planningIntent: 'AUTO_ARRANGE',
+          authorityProviderId: 'legacy-auto-arrange',
+          dayIndex,
+          contextVersion: proposal.contextVersion,
+          legacyChangeCount: legacyAdds.length,
+          reason: 'solver_shadow_error',
+        }),
+      );
+    }
   }
 
   async buildAiActionProposal(input: {
@@ -318,6 +450,8 @@ export class PlanProposalBuilderService {
     let changes: PlanProposalChange[] = [];
     let tradeoffs: string[] = [];
     let benefits: PlanProposalBenefits | undefined;
+    let optimizeDayIndex: number | undefined;
+    let optimizeItems: DayVrptwItemInput[] | undefined;
 
     if (input.body.action === 'fill_gaps') {
       const result = await this.buildFillGapChanges(input.tripId, input.body.dayIndex);
@@ -329,6 +463,8 @@ export class PlanProposalBuilderService {
       changes = result.changes;
       tradeoffs = result.tradeoffs;
       benefits = result.benefits;
+      optimizeDayIndex = result.dayIndex;
+      optimizeItems = result.movableItems;
     } else if (input.body.action === 'arrange_lunch') {
       const result = await this.buildLunchChanges(input.tripId, input.body.dayIndex);
       changes = result.changes;
@@ -340,7 +476,7 @@ export class PlanProposalBuilderService {
       benefits = result.benefits;
     }
 
-    return this.build({
+    const proposal = await this.build({
       tripId: input.tripId,
       userId: input.userId,
       intent,
@@ -350,6 +486,115 @@ export class PlanProposalBuilderService {
       tradeoffs,
       answer: input.answer,
     });
+
+    if (intent === 'OPTIMIZE_ROUTE') {
+      return this.attachOptimizeRouteOrtToolsShadow(proposal, {
+        dayIndex: optimizeDayIndex,
+        items: optimizeItems ?? [],
+        legacyChanges: changes,
+      });
+    }
+
+    return proposal;
+  }
+
+  /** ADR-008 S4 — OPTIMIZE_ROUTE shadow; always attach when Shadow env is on. */
+  private async attachOptimizeRouteOrtToolsShadow(
+    proposal: PlanProposal,
+    input: {
+      dayIndex?: number;
+      items: DayVrptwItemInput[];
+      legacyChanges: PlanProposalChange[];
+    },
+  ): Promise<PlanProposal> {
+    if (!isOrToolsRepairShadowEnabled() || !resolveOrToolsSolverBaseUrl()) {
+      return proposal;
+    }
+
+    const dayIndex = input.dayIndex ?? 0;
+    const withShadow = (
+      ortoolsShadow: NonNullable<PlanProposal['ortoolsShadow']>,
+    ): PlanProposal => {
+      const labNote = formatOrtToolsPlanningLabTradeoff(ortoolsShadow.labCompare);
+      return {
+        ...proposal,
+        ortoolsShadow,
+        tradeoffs: labNote
+          ? [...proposal.tradeoffs, labNote]
+          : proposal.tradeoffs,
+      };
+    };
+
+    if (!this.ortoolsPlanningShadow) {
+      return withShadow(
+        buildOrtToolsPlanningShadowSkippedAttachment({
+          tripId: proposal.tripId,
+          planningIntent: 'OPTIMIZE_ROUTE',
+          authorityProviderId: 'legacy-optimize-route',
+          dayIndex,
+          contextVersion: proposal.contextVersion,
+          legacyChangeCount: input.legacyChanges.length,
+          reason: 'bridge_not_injected',
+        }),
+      );
+    }
+
+    if (input.dayIndex == null || input.items.length === 0) {
+      return withShadow(
+        buildOrtToolsPlanningShadowSkippedAttachment({
+          tripId: proposal.tripId,
+          planningIntent: 'OPTIMIZE_ROUTE',
+          authorityProviderId: 'legacy-optimize-route',
+          dayIndex,
+          contextVersion: proposal.contextVersion,
+          legacyChangeCount: input.legacyChanges.length,
+          reason: 'no_movable_day_items',
+        }),
+      );
+    }
+
+    try {
+      const ortoolsShadow = await this.ortoolsPlanningShadow.runForOptimizeRoute({
+        tripId: proposal.tripId,
+        dayIndex: input.dayIndex,
+        contextVersion: proposal.contextVersion,
+        planVersionId: String(proposal.basePlanVersion),
+        legacyChanges: input.legacyChanges,
+        items: input.items,
+      });
+      if (ortoolsShadow) return withShadow(ortoolsShadow);
+      return withShadow(
+        buildOrtToolsPlanningShadowSkippedAttachment({
+          tripId: proposal.tripId,
+          planningIntent: 'OPTIMIZE_ROUTE',
+          authorityProviderId: 'legacy-optimize-route',
+          dayIndex: input.dayIndex,
+          contextVersion: proposal.contextVersion,
+          legacyChangeCount: input.legacyChanges.length,
+          reason:
+            input.items.length < 2
+              ? 'insufficient_day_nodes_for_routing'
+              : 'solver_shadow_null',
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `ortools planning shadow skipped: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return withShadow(
+        buildOrtToolsPlanningShadowSkippedAttachment({
+          tripId: proposal.tripId,
+          planningIntent: 'OPTIMIZE_ROUTE',
+          authorityProviderId: 'legacy-optimize-route',
+          dayIndex: input.dayIndex,
+          contextVersion: proposal.contextVersion,
+          legacyChangeCount: input.legacyChanges.length,
+          reason: 'solver_shadow_error',
+        }),
+      );
+    }
   }
 
   private async buildFillGapChanges(
@@ -424,6 +669,8 @@ export class PlanProposalBuilderService {
     changes: PlanProposalChange[];
     tradeoffs: string[];
     benefits?: PlanProposalBenefits;
+    dayIndex?: number;
+    movableItems?: DayVrptwItemInput[];
   }> {
     const tripDays = await this.loadTripDays(tripId);
     const targetDay = dayIndex
@@ -450,6 +697,7 @@ export class PlanProposalBuilderService {
         order: true,
         note: true,
         placeId: true,
+        travelFromPreviousDuration: true,
         Place: { select: { nameCN: true } },
       },
     });
@@ -468,6 +716,18 @@ export class PlanProposalBuilderService {
     if (timedItems.length < 2) {
       return { changes: [], tradeoffs: ['当天活动不足 2 个，暂无可优化顺序'] };
     }
+
+    const movableItems: DayVrptwItemInput[] = timedItems.map((item) => ({
+      itemId: item.id,
+      label: item.Place?.nameCN ?? item.note ?? '活动',
+      startTime: item.startTime,
+      endTime: item.endTime,
+      placeId: item.placeId ?? undefined,
+      travelFromPreviousDurationMin:
+        item.travelFromPreviousDuration ?? undefined,
+      isBooked: false,
+      isMandatory: false,
+    }));
 
     const sorted = [...timedItems].reverse();
 
@@ -505,6 +765,8 @@ export class PlanProposalBuilderService {
         changes.length > 0
           ? { drivingTimeReducedMinutes: Math.min(42, changes.length * 10) }
           : undefined,
+      dayIndex: dayNum,
+      movableItems,
     };
   }
 

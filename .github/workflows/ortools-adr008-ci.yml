@@ -1,0 +1,68 @@
+name: OR-Tools ADR-008 Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'python/solver/**'
+      - 'src/decision-runtime/solver/**'
+      - 'src/decision-runtime/ADR-008-OR-Tools-Candidate-Provider.md'
+      - 'src/trips/guardian-decision-core/orchestration/road-segment-unavailable-evaluate*.ts'
+      - 'scripts/ci/run-ortools-adr008-gate.sh'
+      - '.github/workflows/ortools-adr008-ci.yml'
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'python/solver/**'
+      - 'src/decision-runtime/solver/**'
+      - 'src/decision-runtime/ADR-008-OR-Tools-Candidate-Provider.md'
+      - 'src/trips/guardian-decision-core/orchestration/road-segment-unavailable-evaluate*.ts'
+      - 'scripts/ci/run-ortools-adr008-gate.sh'
+      - '.github/workflows/ortools-adr008-ci.yml'
+
+concurrency:
+  group: ortools-adr008-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab-and-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Python solver deps
+        working-directory: python/solver
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -r requirements.txt -r requirements-dev.txt
+
+      - name: ADR-008 gate (pytest + lab_signoff + Nest)
+        env:
+          ORTOOLS_LAB_REPEATS: '3'
+          ORTOOLS_LAB_OUT_DIR: artifacts/ortools-adr008
+        run: bash scripts/ci/run-ortools-adr008-gate.sh
+
+      - name: Upload Lab Sign-off report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ortools-lab-signoff
+          path: artifacts/ortools-adr008/
+          if-no-files-found: warn

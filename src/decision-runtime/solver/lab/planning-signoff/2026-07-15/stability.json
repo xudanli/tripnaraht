@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_signoff.stability@v1",
+  "kind": "stability",
+  "status": "PASS",
+  "approved": true,
+  "approvedAt": "2026-07-14T16:45:29.046Z",
+  "approvedBy": "lab:seal-planning-signoff",
+  "evidenceRef": "artifacts/planning-gold-replay/latest.json",
+  "criteria": {
+    "minScenarios": 5,
+    "hashConsistencyRequired": 1,
+    "perScenarioStabilityOk": true,
+    "distinctCandidateHashes": 4
+  },
+  "summary": "5 scenarios stabilityOk; sealed from gold replay"
+}

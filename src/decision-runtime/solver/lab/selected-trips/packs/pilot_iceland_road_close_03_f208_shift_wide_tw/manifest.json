@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "pilot_iceland_road_close_03_f208_shift_wide_tw",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-f208-3",
+  "environment": "staging-test",
+  "destination": "IS",
+  "intendedOperation": "SHIFT",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "gold_replay",
+  "deidentified": true,
+  "eligibility": "pending"
+}

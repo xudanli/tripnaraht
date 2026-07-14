@@ -17,6 +17,7 @@ import {
   poiNameMatchesDraftSchedule,
 } from './filter-stale-verify-violations.util';
 import { applyPacingRelaxToAdjustTargetState } from '../../skills/itinerary/experience-curator-pacing-relax.util';
+import { formatClockLabelOptional } from '../../common/utils/format-clock-label.util';
 
 export type ItineraryAdjustRunContext = {
   active: boolean;
@@ -209,15 +210,7 @@ export function extractPoiNamesFromScoredRows(scored: unknown[]): string[] {
 }
 
 function formatTripAnchorItemHhmm(time: Date | string | null | undefined): string | undefined {
-  if (!time) return undefined;
-  if (time instanceof Date && !Number.isNaN(time.getTime())) {
-    return time.toISOString().slice(11, 16);
-  }
-  const s = String(time);
-  const iso = s.match(/T(\d{2}:\d{2})/);
-  if (iso?.[1]) return iso[1];
-  const plain = s.match(/^(\d{2}:\d{2})/);
-  return plain?.[1];
+  return formatClockLabelOptional(time);
 }
 
 /** 改排前快照：优先绑定 Trip 库内正式行程，避免 PLAN_GEN 草案覆盖对比基准 */

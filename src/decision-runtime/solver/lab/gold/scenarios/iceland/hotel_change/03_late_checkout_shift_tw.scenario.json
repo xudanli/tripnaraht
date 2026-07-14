@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.03_late_checkout_shift_tw",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "Late hotel checkout \u2014 SHIFT day windows",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/hotel_change/problems/03_late_checkout_shift_tw.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

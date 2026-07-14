@@ -37,6 +37,7 @@ import {
   synthesizeRoadClassIssueFromCoverage,
 } from '../utils/road-class-repair-options.util';
 import { DateTime } from 'luxon';
+import { formatClockLabel } from '../utils/format-clock-label.util';
 import { FeasibilityPomdpMonteCarloService } from './feasibility-pomdp-monte-carlo.service';
 import { TeamFitAssessmentService } from './team-fit-assessment.service';
 import { PreTripReadinessP0Service } from './pre-trip-readiness-p0.service';
@@ -57,6 +58,10 @@ import {
 import {
   buildBufferInsufficientRepairOptions,
 } from '../utils/buffer-insufficient-repair.util';
+import {
+  buildProductCatalogFeasibilityIssues,
+  mapBoundItemRowToInput,
+} from '../../../travel-product-catalog/utils/build-product-catalog-feasibility-issues.util';
 import {
   applyMinuteTimingShiftRepair,
   applySuggestedStartTimeRepair,
@@ -283,6 +288,10 @@ export class FeasibilityReportService {
         conflicts: conflictsResp.conflicts,
       }),
     );
+    const productCatalogIssues = await this.buildProductCatalogIssuesForReport(
+      tripId,
+      trip.tripDays,
+    );
     return assembleFeasibilityReport({
       trip,
       tripDays: trip.tripDays,
@@ -292,6 +301,7 @@ export class FeasibilityReportService {
       conflicts: conflictAssembly.conflicts,
       projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
       projectedGuardianIssues,
+      productCatalogIssues,
       gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
         p0ProjectionApplied,
         scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
@@ -359,6 +369,10 @@ export class FeasibilityReportService {
         conflicts: conflictsResp.conflicts,
       }),
     );
+    const productCatalogIssues = await this.buildProductCatalogIssuesForReport(
+      tripId,
+      trip.tripDays,
+    );
     return assembleFeasibilityReport({
       trip,
       tripDays: trip.tripDays,
@@ -366,6 +380,7 @@ export class FeasibilityReportService {
       conflicts: conflictAssembly.conflicts,
       projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
       projectedGuardianIssues,
+      productCatalogIssues,
       gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
         p0ProjectionApplied: false,
         scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
@@ -480,6 +495,10 @@ export class FeasibilityReportService {
       projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
       conflicts: conflictsResp.conflicts,
     });
+    const productCatalogIssues = await this.buildProductCatalogIssuesForReport(
+      tripId,
+      ctx.tripDays,
+    );
     return assembleFeasibilityReport({
       trip: ctx,
       tripDays: ctx.tripDays,
@@ -489,6 +508,7 @@ export class FeasibilityReportService {
       conflicts: conflictAssembly.conflicts,
       projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
       projectedGuardianIssues,
+      productCatalogIssues,
       gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
         p0ProjectionApplied,
         scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
@@ -926,7 +946,7 @@ export class FeasibilityReportService {
         optionId: body.optionId,
         actionType: 'adjust_time',
         status: 'applied' as const,
-        message: `已将开始时间调整到 ${result.newStartTime}`,
+        message: `已将开始时间调整到 ${formatClockLabel(result.newStartTime)}`,
         metadata: { ...result, readinessHint: { reportVerdict: refreshed.verdict.status } },
       };
     }
@@ -1062,6 +1082,72 @@ export class FeasibilityReportService {
     const mcpoiIssues = await buildMcpoiBenchmarkFeasibilityIssues(this.prisma, tripId);
     if (!mcpoiIssues.length) return guardianIssues;
     return [...mcpoiIssues, ...guardianIssues];
+  }
+
+  private async buildProductCatalogIssuesForReport(
+    tripId: string,
+    tripDays: Array<{ id: string; dayNumber: number }>,
+  ): Promise<FeasibilityIssueDto[]> {
+    const dayNumberById = new Map(tripDays.map((d) => [d.id, d.dayNumber]));
+    const rows = await this.prisma.itineraryItem.findMany({
+      where: {
+        TripDay: { tripId },
+        OR: [{ productSessionId: { not: null } }, { productOfferingId: { not: null } }],
+      },
+      select: {
+        id: true,
+        tripDayId: true,
+        startTime: true,
+        endTime: true,
+        travelFromPreviousDuration: true,
+        productOfferingId: true,
+        productSessionId: true,
+        note: true,
+        ProductSession: {
+          select: {
+            meetTimeLocal: true,
+            startTimeLocal: true,
+            endTimeLocal: true,
+            status: true,
+            weatherStatus: true,
+          },
+        },
+        ProductOffering: {
+          select: {
+            minAge: true,
+            maxAge: true,
+            maxWeightKg: true,
+            fitnessRequirement: true,
+          },
+        },
+        ExperienceDefinition: {
+          select: { weatherDependency: true },
+        },
+      },
+    });
+
+    const inputs = rows
+      .map((row) => {
+        const dayNumber = dayNumberById.get(row.tripDayId);
+        if (dayNumber == null) return null;
+        return mapBoundItemRowToInput({
+          id: row.id,
+          dayNumber,
+          tripDayId: row.tripDayId,
+          startTime: row.startTime,
+          endTime: row.endTime,
+          travelFromPreviousDuration: row.travelFromPreviousDuration,
+          productOfferingId: row.productOfferingId,
+          productSessionId: row.productSessionId,
+          note: row.note,
+          ProductSession: row.ProductSession,
+          ProductOffering: row.ProductOffering,
+          ExperienceDefinition: row.ExperienceDefinition,
+        });
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+
+    return buildProductCatalogFeasibilityIssues(tripId, inputs);
   }
 
   private async loadTripContext(tripId: string) {
@@ -1395,7 +1481,7 @@ function buildTravelTimingRepairOptions(
         id: 'adjust_time',
         title: adjustTitle,
         description: suggestedTime
-          ? `将${toLabel}开始时间调整到 ${suggestedTime}，补足交通衔接。`
+          ? `将${toLabel}开始时间调整到 ${formatClockLabel(suggestedTime)}，补足交通衔接。`
           : `顺延${toLabel}开始时间，补足交通衔接。`,
         impact: 'high',
         timeEstimate: '1分钟',

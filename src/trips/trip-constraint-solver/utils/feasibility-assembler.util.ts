@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon';
 import type { ConflictDto } from '../../dto/trip-conflicts.dto';
+import { formatClockLabel } from './format-clock-label.util';
 import { ConflictSeverity, ConflictType } from '../../dto/trip-conflicts.dto';
 import type {
   CoverageGap,
@@ -586,9 +587,7 @@ function formatMinutesZh(minutes: number | undefined): string {
 }
 
 function formatClock(value: string | undefined): string {
-  if (!value) return '待确认';
-  const dt = DateTime.fromISO(value, { setZone: true });
-  return dt.isValid ? dt.toFormat('HH:mm') : value;
+  return formatClockLabel(value);
 }
 
 function buildTravelTimingProofs(c: ConflictDto, issueId: string): FeasibilityProofDto[] {
@@ -1214,6 +1213,8 @@ export function assembleFeasibilityReport(input: {
   projectedScheduleIssues?: FeasibilityIssueDto[];
   /** Phase 2c — supplemental Guardian workspace assertions */
   projectedGuardianIssues?: FeasibilityIssueDto[];
+  /** Travel Product Catalog — session / meeting / eligibility / weather */
+  productCatalogIssues?: FeasibilityIssueDto[];
   /** Phase 6 slice-7 — Gateway PLAN_VERIFY domain coverage (strip legacy duplicate rules) */
   gatewayDomainCoverage?: AssemblerGatewayDomainCoverage;
 }): TripFeasibilityReportDto {
@@ -1237,6 +1238,7 @@ export function assembleFeasibilityReport(input: {
     ...(input.p0Issues ?? []),
     ...(input.projectedScheduleIssues ?? []),
     ...(input.projectedGuardianIssues ?? []),
+    ...(input.productCatalogIssues ?? []),
   ];
   const filteredFindingIssues = filterAssemblerLegacyIssuesWhenProjected(
     findingIssues,
@@ -1250,6 +1252,7 @@ export function assembleFeasibilityReport(input: {
   );
   const teamFitIssues = input.teamFitIssues ?? [];
   const itineraryIssues = input.itineraryCompletenessIssues ?? [];
+  const productCatalogIssues = input.productCatalogIssues ?? [];
   const issues = dedupeFeasibilityIssues([
     ...filteredFindingIssues,
     ...filteredConflictIssues,
@@ -1258,6 +1261,7 @@ export function assembleFeasibilityReport(input: {
     ...itineraryIssues,
     ...(input.p0Issues ?? []),
     ...(input.projectedGuardianIssues ?? []),
+    ...productCatalogIssues,
   ]).map((issue) =>
     enrichTravelScopeBffFields({
       ...issue,

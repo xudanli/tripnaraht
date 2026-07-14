@@ -270,7 +270,9 @@ export class ArrangeItineraryController {
         tripId,
         userId: this.resolveUserId(user),
         intent: body.intent,
-        payload: body.payload,
+        // whitelist-safe: payload now decorated; still default {} if client omits
+        payload: body.payload ?? {},
+        topLevelCandidateIds: body.candidateIds,
       });
       return successResponse({
         mode: 'proposal' as const,

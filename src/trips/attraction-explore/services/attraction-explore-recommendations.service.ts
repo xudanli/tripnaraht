@@ -26,6 +26,7 @@ import {
   matchesTheme,
   rainyDayFriendlyScore,
   resolvePlaceCoordsOrNull,
+  scoreAttractionExploreNameMatch,
 } from '../utils/attraction-explore-place.util';
 import {
   estimateDetourMinutes,
@@ -108,13 +109,9 @@ export class AttractionExploreRecommendationsService {
     }
 
     if (q) {
-      const keywordHits = places.filter((p) => {
-        const hay = `${p.nameCN} ${p.nameEN ?? ''} ${p.description ?? ''}`.toLowerCase();
-        return (
-          hay.includes(q.toLowerCase()) ||
-          compiledIntent.keywords.some((k) => hay.includes(k.toLowerCase()))
-        );
-      });
+      const keywordHits = places.filter(
+        (p) => scoreAttractionExploreNameMatch(p, q, compiledIntent.keywords) > 0,
+      );
       const mergedIds = new Set(filtered.map((p) => p.id));
       for (const place of keywordHits) {
         if (!mergedIds.has(place.id)) filtered.push(place);
@@ -135,7 +132,34 @@ export class AttractionExploreRecommendationsService {
       maxDetourMinutes: compiledIntent.maxDetourMinutes,
     };
 
-    const ranked = rankAttractionExplorePlaces(filtered, scoringCtx, input.limit ?? 20);
+    const limit = input.limit ?? 20;
+    const nameMatchedIds = new Set(
+      q
+        ? filtered
+            .filter((p) => scoreAttractionExploreNameMatch(p, q, compiledIntent.keywords) > 0)
+            .map((p) => p.id)
+        : [],
+    );
+    // 名称命中必须进入排序池，不能被推荐分 topN 截掉
+    const rankedPool = rankAttractionExplorePlaces(filtered, scoringCtx, filtered.length);
+    const ranked = [...rankedPool]
+      .sort((a, b) => {
+        const nameDelta =
+          scoreAttractionExploreNameMatch(b.place, q, compiledIntent.keywords) -
+          scoreAttractionExploreNameMatch(a.place, q, compiledIntent.keywords);
+        if (nameDelta !== 0) return nameDelta;
+        return b.score - a.score;
+      })
+      .slice(0, limit)
+      .map((row) => {
+        if (!nameMatchedIds.has(row.place.id)) return row;
+        const nameMatch = scoreAttractionExploreNameMatch(row.place, q, compiledIntent.keywords);
+        return {
+          ...row,
+          score: Math.min(1, row.score + 0.15 * nameMatch),
+          reasons: [...row.reasons, nameMatch >= 2 ? '名称精确匹配' : '名称关键词匹配'],
+        };
+      });
 
     const detourBatch =
       input.useLiveRoutes && routeContext.routeAnchors.length >= 2

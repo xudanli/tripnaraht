@@ -252,6 +252,42 @@ export function isCoreAttraction(place: Place): boolean {
   return metadata.isCoreAttraction === true || metadata.mustSee === true;
 }
 
+/**
+ * 地名检索强度（0–3）。搜索结果应优先按此排序，否则会淹没在推荐分里。
+ * 3=精确全名；2=名称双向包含；1=关键词命中名称；0=未命中名称。
+ */
+export function scoreAttractionExploreNameMatch(
+  place: Place,
+  query: string,
+  keywords: string[] = [],
+): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+
+  const nameCN = (place.nameCN ?? '').trim().toLowerCase();
+  const nameEN = (place.nameEN ?? '').trim().toLowerCase();
+  if (!nameCN && !nameEN) return 0;
+
+  if (nameCN === q || nameEN === q) return 3;
+
+  if (
+    (nameCN && (nameCN.includes(q) || q.includes(nameCN))) ||
+    (nameEN && (nameEN.includes(q) || q.includes(nameEN)))
+  ) {
+    return 2;
+  }
+
+  const tokens = [
+    ...keywords.map((k) => k.trim().toLowerCase()).filter((k) => k.length >= 2),
+    ...q.split(/[\s,，、；;/\-_|]+/).filter((k) => k.length >= 2),
+  ];
+  const unique = [...new Set(tokens)];
+  for (const token of unique) {
+    if (nameCN.includes(token) || nameEN.includes(token)) return 1;
+  }
+  return 0;
+}
+
 export function matchesTheme(place: Place, themeId: string): boolean {
   const metadata = readMetadata(place);
   const tags = [

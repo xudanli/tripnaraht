@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.05_dual_stale_hop_reroute",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "Hotel change \u2014 REROUTE dual stale hops",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/hotel_change/problems/05_dual_stale_hop_reroute.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1"
+}

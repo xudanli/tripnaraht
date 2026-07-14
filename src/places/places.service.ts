@@ -17,6 +17,10 @@ import { PhysicalMetadataGenerator } from './utils/physical-metadata-generator.u
 import { EmbeddingService } from './services/embedding.service';
 import { PlaceTrailEnrichmentService } from './services/place-trail-enrichment.service';
 import { MetadataEnricher } from './utils/metadata-enricher.util';
+import {
+  assertPlaceCanonicalTypeAllowed,
+  PlaceProductCanonicalBlockedError,
+} from './utils/place-canonical-guard.util';
 
 @Injectable()
 export class PlacesService {
@@ -128,6 +132,20 @@ export class PlacesService {
    */
   async createPlace(dto: CreatePlaceDto) {
     const { lat, lng, ...rest } = dto;
+
+    try {
+      assertPlaceCanonicalTypeAllowed(dto.metadata);
+    } catch (err) {
+      if (err instanceof PlaceProductCanonicalBlockedError) {
+        throw new BadRequestException({
+          code: err.code,
+          message: err.message,
+          canonicalType: err.canonicalType,
+          targetHint: err.targetHint,
+        });
+      }
+      throw err;
+    }
     
     // 规范化 googlePlaceId：空字符串或只包含空白字符的字符串转换为 null
     const normalizedGooglePlaceId = dto.googlePlaceId?.trim() || null;
@@ -1287,6 +1305,22 @@ export class PlacesService {
 
     if (!place) {
       throw new NotFoundException(`Place not found: ${id}`);
+    }
+
+    if (dto.metadata !== undefined) {
+      try {
+        assertPlaceCanonicalTypeAllowed(dto.metadata);
+      } catch (err) {
+        if (err instanceof PlaceProductCanonicalBlockedError) {
+          throw new BadRequestException({
+            code: err.code,
+            message: err.message,
+            canonicalType: err.canonicalType,
+            targetHint: err.targetHint,
+          });
+        }
+        throw err;
+      }
     }
 
     const updateData: any = {};

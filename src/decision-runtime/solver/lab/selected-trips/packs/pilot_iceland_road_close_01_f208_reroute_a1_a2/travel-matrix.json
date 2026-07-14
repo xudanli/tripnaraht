@@ -1,0 +1,47 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "pilot_iceland_road_close_01_f208_reroute_a1_a2",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "poi-1",
+      "to": "poi-2",
+      "durationMin": 30
+    },
+    {
+      "from": "poi-2",
+      "to": "poi-3",
+      "durationMin": 35
+    },
+    {
+      "from": "poi-3",
+      "to": "poi-4",
+      "durationMin": 40
+    },
+    {
+      "from": "poi-4",
+      "to": "poi-5",
+      "durationMin": 45
+    },
+    {
+      "from": "poi-5",
+      "to": "poi-6",
+      "durationMin": 50
+    },
+    {
+      "from": "poi-6",
+      "to": "poi-7",
+      "durationMin": 55
+    },
+    {
+      "from": "poi-7",
+      "to": "poi-8",
+      "durationMin": 60
+    },
+    {
+      "from": "poi-8",
+      "to": "poi-9",
+      "durationMin": 65
+    }
+  ]
+}

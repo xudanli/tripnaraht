@@ -6,6 +6,7 @@ import type { Rfc001ConstraintAssertion } from './guardian-outputs.types';
 import type { Rfc001LoadAssessment } from './guardian-outputs.types';
 import type { Rfc001RepairCandidate } from './guardian-outputs.types';
 import type { RoadTraversabilityAssessment } from '../assessment/road-traversability.types';
+import type { OrtToolsEvaluateShadowAttachment } from '../../../decision-runtime/solver/bridge/ortools-road-evaluate-shadow.bridge';
 
 export type DecisionWorkspaceStatus =
   | 'COLLECTING'
@@ -31,6 +32,11 @@ export interface DecisionWorkspace {
   constraintAssertions: Rfc001ConstraintAssertion[];
   loadAssessments: Rfc001LoadAssessment[];
   repairCandidates: Rfc001RepairCandidate[];
+  /**
+   * ADR-008 — OR-Tools shadow on evaluate path (never authoritative).
+   * Neptune remains the authority repairCandidates set.
+   */
+  ortoolsShadow?: OrtToolsEvaluateShadowAttachment;
   /** T1 — frozen traversability verdict for causal lineage / impact chain */
   roadTraversability?: RoadTraversabilityWorkspaceSnapshot;
   createdAt: string;

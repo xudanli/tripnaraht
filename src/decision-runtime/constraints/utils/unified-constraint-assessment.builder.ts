@@ -145,6 +145,28 @@ function inferFeasibilityIssueKind(assessment: ConstraintAssessment): string | u
   if (assessment.explanationCode === 'daily_drive') return 'daily_drive';
   if (assessment.explanationCode === 'no_night_drive') return 'no_night_drive';
   if (assessment.semanticKey === 'EXCESSIVE_DAILY_LOAD') return 'daily_drive';
+  if (assessment.explanationCode === 'product_session_time_window') {
+    return 'product_session_time_window';
+  }
+  if (assessment.explanationCode === 'meeting_point_buffer') return 'meeting_point_buffer';
+  if (assessment.explanationCode === 'product_participant_eligibility') {
+    return 'product_participant_eligibility';
+  }
+  if (assessment.explanationCode === 'product_weather_dependency') {
+    return 'product_weather_dependency';
+  }
+  if (assessment.semanticKey === 'PRODUCT_SESSION_LOCK_VIOLATION') {
+    return 'product_session_time_window';
+  }
+  if (assessment.semanticKey === 'MEETING_POINT_BUFFER_INSUFFICIENT') {
+    return 'meeting_point_buffer';
+  }
+  if (assessment.semanticKey === 'PRODUCT_ELIGIBILITY_FAILED') {
+    return 'product_participant_eligibility';
+  }
+  if (assessment.semanticKey === 'PRODUCT_WEATHER_HOLD_REQUIRED') {
+    return 'product_weather_dependency';
+  }
   return undefined;
 }
 
@@ -245,6 +267,14 @@ export function formatContractRequirement(constraintKey: string, value: unknown)
       return '租车合同禁 F-road / 碎石限制';
     case 'FIXED_APPOINTMENTS':
       return '固定预约可达';
+    case 'PRODUCT_SESSION_TIME_WINDOW':
+      return '班次硬时间窗';
+    case 'MEETING_POINT_BUFFER':
+      return '集合点交通缓冲';
+    case 'PRODUCT_PARTICIPANT_ELIGIBILITY':
+      return '产品参与资格';
+    case 'PRODUCT_WEATHER_DEPENDENCY':
+      return '天气依赖须有 Plan B';
     default:
       return undefined;
   }

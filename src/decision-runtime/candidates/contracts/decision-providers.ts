@@ -17,7 +17,12 @@ export const CRITIC_PROVIDER = Symbol('CRITIC_PROVIDER');
 export type DecisionProviderId =
   | 'legacy-trip-planning'
   | 'guide-plan-variants'
+  /** Planning Orchestrator day VRPTW shadow authority (ADR-008 S4) */
+  | 'legacy-optimize-route'
+  | 'legacy-auto-arrange'
   | 'neptune-repair'
+  /** ADR-008 — shadow until Lab sign-off; never writes Effective Plan */
+  | 'ortools-repair'
   | 'agentic-research'
   | 'agentic-narration'
   | 'constraint-critic';

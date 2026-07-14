@@ -1,0 +1,15 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.reservation_delay.01_late_show_reroute_pre",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "reservation_delay",
+  "title": "Reservation delayed \u2014 REROUTE avoid a1\u2192a2 pre-leg squeeze",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/reservation_delay/problems/01_late_show_reroute_pre.problem.json",
+  "notes": [
+    "booked late show at a3; pin required"
+  ],
+  "provenance": "synthetic_template_v1"
+}

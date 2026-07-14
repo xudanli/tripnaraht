@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.blue_ice.06_glacier6_swap_local",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "blue_ice",
+  "title": "Glacier day 6-POI \u2014 SWAP local around closed hop",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/blue_ice/problems/06_glacier6_swap_local.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.constraints@v1",
+  "tripId": "pilot_iceland_road_close_04_f235_reroute_mid_edge",
+  "planVersionId": "pv-gold",
+  "constraints": [
+    {
+      "canonicalId": "constraint_0",
+      "kind": "UNKNOWN",
+      "hard": true
+    },
+    {
+      "canonicalId": "constraint_1",
+      "kind": "UNKNOWN",
+      "hard": true
+    }
+  ]
+}

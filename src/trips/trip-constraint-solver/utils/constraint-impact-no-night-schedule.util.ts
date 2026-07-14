@@ -12,6 +12,7 @@ import {
   formatNoNightDriveDetail,
   parseSdr202RuleMetadata,
 } from '../../tep/utils/sdr-202-rule-metadata.util';
+import { formatClockLabelOptional } from '../../../common/utils/format-clock-label.util';
 
 function asArray<T>(value: T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [];
@@ -22,11 +23,7 @@ function safeText(value: unknown): string {
 }
 
 function formatClockLabel(value?: string): string | undefined {
-  if (!value) return undefined;
-  const isoMatch = /T(\d{2}:\d{2})/.exec(value);
-  if (isoMatch) return isoMatch[1];
-  const plainMatch = /^(\d{2}:\d{2})$/.exec(value.trim());
-  return plainMatch?.[1];
+  return formatClockLabelOptional(value);
 }
 
 function parseSunsetFromText(text: string): string | undefined {

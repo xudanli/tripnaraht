@@ -44,6 +44,39 @@ export function applyProposedOperationsToPlan(
         );
       }
     }
+    if (op.kind === 'MOVE_ITEM' && Array.isArray(op.parameters.orderedNodeIds)) {
+      const dayIndex =
+        typeof op.parameters.dayIndex === 'number' ? op.parameters.dayIndex : 0;
+      const orderedNodeIds = op.parameters.orderedNodeIds as string[];
+      const daySegs = segments.filter((s) => s.dayIndex === dayIndex);
+      const others = segments.filter((s) => s.dayIndex !== dayIndex);
+      const keyOf = (s: (typeof segments)[number]) => {
+        const meta = (s.metadata ?? {}) as Record<string, unknown>;
+        return (
+          (typeof meta.itineraryItemId === 'string' && meta.itineraryItemId) ||
+          (typeof meta.poiId === 'string' && meta.poiId) ||
+          s.segmentId
+        );
+      };
+      const byKey = new Map(daySegs.map((s) => [keyOf(s), s]));
+      const used = new Set<string>();
+      const ordered: typeof segments = [];
+      for (const nodeId of orderedNodeIds) {
+        if (nodeId === 'depot') continue;
+        const seg = byKey.get(nodeId);
+        if (seg && !used.has(seg.segmentId)) {
+          ordered.push({
+            ...seg,
+            metadata: { ...(seg.metadata as object), ortoolsReordered: true },
+          });
+          used.add(seg.segmentId);
+        }
+      }
+      for (const s of daySegs) {
+        if (!used.has(s.segmentId)) ordered.push(s);
+      }
+      segments = [...others, ...ordered];
+    }
   }
   return { ...base, segments };
 }

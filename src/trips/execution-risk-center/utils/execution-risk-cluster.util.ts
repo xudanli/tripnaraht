@@ -3,6 +3,7 @@
  */
 
 import type { ExecutionInterventionType } from '../../../mobile/dto/mobile-execution.types';
+import { formatClockLabel } from '../../../common/utils/format-clock-label.util';
 import type { ActiveRisk, ActiveRiskCode } from '../types/execution-risk.types';
 import type {
   ExecutionRiskCluster,
@@ -275,9 +276,7 @@ export function buildClusterHeadline(primary: ActiveRisk): string {
 }
 
 function formatHm(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toISOString().slice(11, 16);
+  return formatClockLabel(iso, { emptyLabel: iso });
 }
 
 function compareClusters(a: ExecutionRiskCluster, b: ExecutionRiskCluster): number {

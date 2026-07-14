@@ -101,3 +101,6 @@ data/routing/
 docs/
 .env.backup
 .env.backup.*
+
+# M4 lab authority token (never commit)
+**/planning-signoff/.lab-authority-token.env

@@ -1,0 +1,226 @@
+{
+  "schemaId": "tripnara.solver_problem@v1",
+  "requestId": "req-fixture-resv",
+  "tripId": "trip-gold-iceland",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-resv-10",
+  "snapshotId": "ev-resv-10",
+  "operation": "SHORTEN",
+  "scope": {
+    "dayIds": [
+      "day-1"
+    ]
+  },
+  "nodes": [
+    {
+      "nodeId": "depot",
+      "serviceDurationMin": 0,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 480
+        }
+      ],
+      "fixedStartMin": 480,
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a1",
+      "sourceActivityId": "act-a1",
+      "poiId": "is.seljalandsfoss",
+      "serviceDurationMin": 70,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a2",
+      "sourceActivityId": "act-a2",
+      "poiId": "is.skogafoss",
+      "serviceDurationMin": 70,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a3",
+      "sourceActivityId": "act-a3",
+      "poiId": "is.lava_show_booking",
+      "serviceDurationMin": 90,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false,
+      "fixedStartMin": 700
+    },
+    {
+      "nodeId": "a4",
+      "sourceActivityId": "act-a4",
+      "poiId": "is.reynisfjara",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": false,
+      "isBooked": false,
+      "canRemove": true,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a5",
+      "sourceActivityId": "act-a5",
+      "poiId": "is.dyrholaey",
+      "serviceDurationMin": 55,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": false,
+      "isBooked": false,
+      "canRemove": true,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a6",
+      "sourceActivityId": "act-a6",
+      "poiId": "is.vik",
+      "serviceDurationMin": 45,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    }
+  ],
+  "travelMatrix": {
+    "nodeIds": [
+      "depot",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "a6"
+    ],
+    "costsMin": [
+      [
+        0,
+        39,
+        43,
+        50,
+        51,
+        55,
+        62
+      ],
+      [
+        39,
+        0,
+        42,
+        43,
+        47,
+        54,
+        55
+      ],
+      [
+        43,
+        42,
+        0,
+        39,
+        46,
+        47,
+        51
+      ],
+      [
+        50,
+        43,
+        39,
+        0,
+        39,
+        43,
+        50
+      ],
+      [
+        51,
+        47,
+        46,
+        39,
+        0,
+        42,
+        43
+      ],
+      [
+        55,
+        54,
+        47,
+        43,
+        42,
+        0,
+        39
+      ],
+      [
+        62,
+        55,
+        51,
+        50,
+        43,
+        39,
+        0
+      ]
+    ]
+  },
+  "constraints": [
+    {
+      "constraintId": "depot-fixed",
+      "kind": "DEPOT_FIXED",
+      "hard": true,
+      "payload": {
+        "nodeId": "depot"
+      }
+    }
+  ],
+  "objectives": [
+    {
+      "objectiveId": "min-travel",
+      "kind": "MINIMIZE_TRAVEL",
+      "weight": 1
+    }
+  ],
+  "solverConfig": {
+    "maxCandidates": 3,
+    "timeLimitMs": 1500,
+    "seed": 42
+  }
+}

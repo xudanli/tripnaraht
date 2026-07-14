@@ -12,3 +12,4 @@ export * from './optimization-result';
 export * from './decision-candidate';
 export * from './decision-run-request';
 export * from '../candidates/contracts/decision-providers';
+export * from '../solver/contracts';

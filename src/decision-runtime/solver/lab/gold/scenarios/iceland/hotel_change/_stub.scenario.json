@@ -1,0 +1,10 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.stub_slot_01",
+  "status": "stub",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "STUB — hotel / overnight anchor change (fill later)",
+  "seed": 42,
+  "notes": ["placeholder — related to M2 hotel anchors, not MOVE_DAY alone"]
+}

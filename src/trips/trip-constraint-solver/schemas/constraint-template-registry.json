@@ -324,6 +324,97 @@
       "judgmentRuleSample": "仅使用已通过道路/证据验证的路线"
     },
     {
+      "templateId": "product_session_time_window",
+      "constraintId": "c_tpl_product_session_time_window",
+      "defaultName": "产品班次硬时间窗",
+      "description": "已绑定 ProductSession 的行程项必须落在班次开始–结束窗内（冰川徒步、时段票、游船等）",
+      "category": "TIME",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "ITEM"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "enforceMeetTime": true,
+        "allowEarlyArrivalMinutes": 0,
+        "lockToSession": true,
+        "templateId": "product_session_time_window"
+      },
+      "allowRelaxation": false,
+      "unit": "minute",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "产品班次硬锁：须在集合时间前到位，活动占用整段班次时间窗"
+    },
+    {
+      "templateId": "meeting_point_buffer",
+      "constraintId": "c_tpl_meeting_point_buffer",
+      "defaultName": "集合点交通缓冲",
+      "description": "抵达集合点的前序交通须预留缓冲，避免迟到导致取消",
+      "category": "TRANSPORT",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "ITEM"
+      },
+      "operator": "GTE",
+      "defaultValue": {
+        "minBufferMinutes": 30,
+        "includeParkingMinutes": 10,
+        "lateConsequence": "FORFEIT",
+        "templateId": "meeting_point_buffer"
+      },
+      "allowRelaxation": true,
+      "unit": "minute",
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "集合前至少预留 30 分钟（含停车 10 分钟）"
+    },
+    {
+      "templateId": "product_participant_eligibility",
+      "constraintId": "c_tpl_product_participant_eligibility",
+      "defaultName": "产品参与资格",
+      "description": "按 Offering / ExperienceDefinition 校验年龄、身高、体重与体能等级",
+      "category": "ACTIVITY",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "ITEM"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "enforceMinAge": true,
+        "enforceFitness": true,
+        "enforcePhysicalLimits": true,
+        "source": "PRODUCT_OFFERING",
+        "templateId": "product_participant_eligibility"
+      },
+      "allowRelaxation": false,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "参与成员须满足产品年龄 / 体能 / 身体限制要求"
+    },
+    {
+      "templateId": "product_weather_dependency",
+      "constraintId": "c_tpl_product_weather_dependency",
+      "defaultName": "产品天气依赖门禁",
+      "description": "天气依赖度高的产品在预警期不得硬锁班次，须允许改期/Plan B",
+      "category": "SAFETY",
+      "type": "HARD",
+      "sectionKey": "hard_must_satisfy",
+      "scope": {
+        "type": "ITEM"
+      },
+      "operator": "CUSTOM",
+      "defaultValue": {
+        "minWeatherDependency": "HIGH",
+        "requireFallbackOrHold": true,
+        "cancelOnWeatherHold": false,
+        "templateId": "product_weather_dependency"
+      },
+      "allowRelaxation": true,
+      "legacyPatchOnly": false,
+      "judgmentRuleSample": "高天气依赖产品须具备改期 / 候补或替代方案，不得静默硬锁"
+    },
+    {
       "templateId": "minimize_hotel_changes",
       "constraintId": "c_tpl_minimize_hotel_changes",
       "defaultName": "少换酒店",

@@ -184,6 +184,35 @@ const REGISTRY: Record<string, TripConstraintCapability> = {
     stages: { planning: false, feasibility: true, execution: false, tep: false, optimizer: false },
     phase0UiPolicy: 'HIDDEN',
   },
+  // Travel Product Catalog — registered + pure evaluator; hot-path enforce 渐进接入
+  PRODUCT_SESSION_TIME_WINDOW: {
+    constraintKey: 'PRODUCT_SESSION_TIME_WINDOW',
+    enforcementLevel: 'PARTIAL',
+    stages: { planning: true, feasibility: true, execution: false, tep: false, optimizer: false },
+    phase0UiPolicy: 'HIDDEN',
+    validators: PHASE0_CONSTRAINT_VALIDATOR_BINDINGS.PRODUCT_SESSION_TIME_WINDOW,
+  },
+  MEETING_POINT_BUFFER: {
+    constraintKey: 'MEETING_POINT_BUFFER',
+    enforcementLevel: 'PARTIAL',
+    stages: { planning: true, feasibility: true, execution: false, tep: false, optimizer: false },
+    phase0UiPolicy: 'HIDDEN',
+    validators: PHASE0_CONSTRAINT_VALIDATOR_BINDINGS.MEETING_POINT_BUFFER,
+  },
+  PRODUCT_PARTICIPANT_ELIGIBILITY: {
+    constraintKey: 'PRODUCT_PARTICIPANT_ELIGIBILITY',
+    enforcementLevel: 'PARTIAL',
+    stages: { planning: true, feasibility: true, execution: false, tep: false, optimizer: false },
+    phase0UiPolicy: 'HIDDEN',
+    validators: PHASE0_CONSTRAINT_VALIDATOR_BINDINGS.PRODUCT_PARTICIPANT_ELIGIBILITY,
+  },
+  PRODUCT_WEATHER_DEPENDENCY: {
+    constraintKey: 'PRODUCT_WEATHER_DEPENDENCY',
+    enforcementLevel: 'PARTIAL',
+    stages: { planning: true, feasibility: true, execution: false, tep: false, optimizer: false },
+    phase0UiPolicy: 'HIDDEN',
+    validators: PHASE0_CONSTRAINT_VALIDATOR_BINDINGS.PRODUCT_WEATHER_DEPENDENCY,
+  },
 };
 
 const LEGACY_ID_TO_KEY: Record<string, string> = {
@@ -221,6 +250,10 @@ const TEMPLATE_ID_TO_KEY: Record<string, string> = {
   fixed_appointments: 'FIXED_APPOINTMENTS',
   activity_budget: 'ACTIVITY_BUDGET',
   budget_overrun_tolerance: 'BUDGET_OVERRUN_TOLERANCE',
+  product_session_time_window: 'PRODUCT_SESSION_TIME_WINDOW',
+  meeting_point_buffer: 'MEETING_POINT_BUFFER',
+  product_participant_eligibility: 'PRODUCT_PARTICIPANT_ELIGIBILITY',
+  product_weather_dependency: 'PRODUCT_WEATHER_DEPENDENCY',
 };
 
 function templateIdFromConstraint(c: TripConstraint): string | undefined {

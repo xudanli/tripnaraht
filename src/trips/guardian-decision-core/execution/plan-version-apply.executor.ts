@@ -45,6 +45,8 @@ import { buildTripMutationSetFromPlanOperations } from '../adapters/plan-operati
 import { EffectivePlanWriteGuardService } from '../../../decision-runtime/execution/effective-plan-write-guard.service';
 import { assertRecordExecutableForExecute } from '../cutover/cutover-reconciliation.util';
 import type { PlanDiff } from '../../../generated/execution-risk-contracts';
+import { assertOrtToolsCanaryAllowsAuthorizeOrExecute } from '../../../decision-runtime/solver/lab/planning-signoff/ortools-canary-authorization.guard';
+import { OrToolsCanaryDashboardCollector } from '../../../decision-runtime/solver/observability/ortools-canary-dashboard.metrics';
 
 export interface ExecutePlanVersionInput {
   tripId: string;
@@ -81,6 +83,7 @@ export class Rfc001PlanVersionApplyExecutor {
     private readonly itineraryMaterializer: Rfc001ItineraryMaterializerService,
     private readonly effectivePlanWriteGuard: EffectivePlanWriteGuardService,
     @Optional() private readonly v15Projector?: Rfc001DecisionSemanticsProjectorService,
+    @Optional() private readonly ortoolsCanaryDashboard?: OrToolsCanaryDashboardCollector,
   ) {}
 
   async execute(input: ExecutePlanVersionInput): Promise<ExecutePlanVersionResult> {
@@ -190,9 +193,21 @@ export class Rfc001PlanVersionApplyExecutor {
       throw new NotFoundException(`Workspace ${record.workspaceId} not found`);
     }
 
-    await this.assertPreExecuteGuards(input.tripId, record, planVersion);
-
     const candidateId = record.selectedCandidateId ?? ORIGINAL_CANDIDATE_ID;
+    const selected = workspace.repairCandidates.find(
+      (c) => c.candidateId === candidateId,
+    );
+    assertOrtToolsCanaryAllowsAuthorizeOrExecute({
+      tripId: input.tripId,
+      candidateId,
+      candidate: selected,
+      ortoolsShadow: workspace.ortoolsShadow,
+      currentEvidenceVersionId: workspace.worldStateSnapshotId,
+      phase: 'execute',
+      dashboard: this.ortoolsCanaryDashboard,
+    });
+
+    await this.assertPreExecuteGuards(input.tripId, record, planVersion);
     const basePlan = await synthesizeRoutePlanDraftFromTrip(this.prisma, input.tripId);
     if (!basePlan) {
       throw new BadRequestException(`Cannot synthesize plan for trip ${input.tripId}`);

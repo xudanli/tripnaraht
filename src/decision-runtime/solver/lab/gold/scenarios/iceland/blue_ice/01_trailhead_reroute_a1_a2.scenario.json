@@ -1,0 +1,15 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.blue_ice.01_trailhead_reroute_a1_a2",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "blue_ice",
+  "title": "Glacier trailhead closed \u2014 REROUTE avoid a1\u2192a2",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/blue_ice/problems/01_trailhead_reroute_a1_a2.problem.json",
+  "notes": [
+    "blue_ice / glacier access \u2192 EDGE_FORBIDDEN projection"
+  ],
+  "provenance": "synthetic_template_v1"
+}

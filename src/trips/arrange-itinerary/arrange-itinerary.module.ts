@@ -3,6 +3,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { ItineraryItemsModule } from '../../itinerary-items/itinerary-items.module';
 import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/effective-plan-execution.module';
 import { DecisionGatewayModule } from '../../decision-runtime/gateway/decision-gateway.module';
+import { SolverModule } from '../../decision-runtime/solver/solver.module';
 import { TripsModule } from '../trips.module';
 import { TripConstraintSolverModule } from '../trip-constraint-solver/trip-constraint-solver.module';
 import { ReadinessModule } from '../readiness/readiness.module';
@@ -44,6 +45,7 @@ import { DecisionSpaceBundleService } from './services/decision-space-bundle.ser
     ItineraryItemsModule,
     EffectivePlanExecutionModule,
     DecisionGatewayModule,
+    SolverModule,
     forwardRef(() => TripsModule),
     forwardRef(() => AttractionExploreModule),
     TripConstraintSolverModule,

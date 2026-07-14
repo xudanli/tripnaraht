@@ -4,6 +4,7 @@
 
 import type { ActiveRisk, ExecutionGate, RiskLevel } from '../types/execution-risk.types';
 import type { ExecutionAlertLevel } from '../../../mobile/dto/mobile-execution.types';
+import { formatClockLabel } from '../../../common/utils/format-clock-label.util';
 import {
   alertLevelSortWeight,
   isExecutionAlertEligibleRisk,
@@ -49,7 +50,5 @@ export function buildAlertImpactSummary(risk: ActiveRisk): string {
 }
 
 function formatTimeLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toISOString().slice(11, 16);
+  return formatClockLabel(iso, { emptyLabel: iso });
 }

@@ -3,6 +3,7 @@ import { LlmService } from '../../../llm/services/llm.service';
 import { parseJsonFromLlmText } from '../../../llm/utils/parse-llm-json.util';
 import {
   compileAttractionExploreIntent,
+  isAttractionExplorePlaceNameLookup,
   type AttractionExploreCompiledIntent,
 } from '../utils/attraction-explore-intent-compiler.util';
 
@@ -53,7 +54,8 @@ export class AttractionExploreIntentCompileService {
     const base = compileAttractionExploreIntent(query);
     const rulesSufficient =
       base.matchedPhrases.length >= 2 ||
-      (base.themes.length > 0 && base.suitableFor.length > 0);
+      (base.themes.length > 0 && base.suitableFor.length > 0) ||
+      isAttractionExplorePlaceNameLookup(base);
 
     if (!options?.useLlm || !this.llm || rulesSufficient) {
       return { ...base, source: 'rules' };

@@ -34,6 +34,7 @@
  * - 替换后 check：核心标签/体验仍然覆盖
  */
 
+import { formatClockLabel } from '../../../common/utils/format-clock-label.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
 import {
@@ -906,7 +907,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
           type: 'SEGMENT_BLOCKED',
           segmentId: segment.segmentId,
           severity: 'HARD',
-          reason: `日落安全窗限制（end=${end.toISOString()} > threshold=${safetyThreshold.toISOString()}）`,
+          reason: `日落安全窗限制（结束 ${formatClockLabel(end)} 晚于安全阈值 ${formatClockLabel(safetyThreshold)}）`,
           metadata: {
             rule_id: 'solar_safety_v1',
             details: {

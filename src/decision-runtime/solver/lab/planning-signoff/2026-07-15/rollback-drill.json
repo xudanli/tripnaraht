@@ -1,0 +1,57 @@
+{
+  "schemaId": "tripnara.planning_signoff.rollback_drill@v1",
+  "kind": "rollback_drill",
+  "status": "HARNESS_PASS",
+  "approved": true,
+  "liveDrill": false,
+  "harnessPass": true,
+  "drillKind": "local_harness",
+  "approvedAt": "2026-07-14T17:27:13.820Z",
+  "approvedBy": "lab:run-rollback-drill-harness",
+  "environment": "lab",
+  "signoffId": "m4-ra01-test-local",
+  "steps": [
+    {
+      "id": "RD-TOKEN",
+      "pass": true,
+      "detail": "token verified against authority.test.json"
+    },
+    {
+      "id": "RD-01",
+      "pass": true,
+      "detail": "gate mode=canary_authoritative"
+    },
+    {
+      "id": "RD-01b",
+      "pass": true,
+      "detail": "merged=true"
+    },
+    {
+      "id": "RD-06",
+      "pass": true,
+      "detail": "stale attachment void"
+    },
+    {
+      "id": "RD-03/04",
+      "pass": true,
+      "detail": "provider=neptune-repair"
+    },
+    {
+      "id": "RD-05",
+      "pass": true,
+      "detail": "discarded=ortools_c1"
+    },
+    {
+      "id": "RD-05b",
+      "pass": true,
+      "detail": "authorize rejected ortools after canary off"
+    },
+    {
+      "id": "RD-08",
+      "pass": true,
+      "detail": "idempotent plan version"
+    }
+  ],
+  "note": "Mechanism drill complete. Remote staging soak with real tripIds still recommended before public canary.",
+  "detail": "Harness PASS — engineering rollback drill GO"
+}

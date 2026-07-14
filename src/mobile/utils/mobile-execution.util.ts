@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { formatClockLabel } from '../../common/utils/format-clock-label.util';
 import { TripStatus, normalizeTripStatus } from '../../trips/dto/trip-status.dto';
 import type {
   MobileExecutionItemStatus,
@@ -69,13 +70,7 @@ export function resolveDayNumber(
 }
 
 export function formatTimeHHmm(isoOrDate?: string | Date | null): string {
-  if (!isoOrDate) return '--:--';
-  const dt =
-    isoOrDate instanceof Date
-      ? DateTime.fromJSDate(isoOrDate)
-      : DateTime.fromISO(isoOrDate);
-  if (!dt.isValid) return '--:--';
-  return dt.toFormat('HH:mm');
+  return formatClockLabel(isoOrDate, { emptyLabel: '--:--' });
 }
 
 export function formatDurationMinutes(start?: Date | null, end?: Date | null): string | undefined {

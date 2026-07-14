@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.reservation_delay.05_dual_buffer_reroute",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "reservation_delay",
+  "title": "Buffer fail \u2014 REROUTE dual forbidden edges around show",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/reservation_delay/problems/05_dual_buffer_reroute.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1"
+}

@@ -1,0 +1,15 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.01_bluelagoon_approach_reroute",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "Blue Lagoon parking full \u2014 REROUTE avoid a1\u2192a2 approach queue",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/parking_full/problems/01_bluelagoon_approach_reroute.problem.json",
+  "notes": [
+    "parking full projected as EDGE_FORBIDDEN on queued approach"
+  ],
+  "provenance": "synthetic_template_v1"
+}

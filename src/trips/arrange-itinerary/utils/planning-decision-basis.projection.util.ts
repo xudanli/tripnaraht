@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { formatClockLabel } from '../../../common/utils/format-clock-label.util';
 import type { ConflictDto } from '../../dto/trip-conflicts.dto';
 import { ConflictType } from '../../dto/trip-conflicts.dto';
 import type {
@@ -37,10 +38,7 @@ function formatMinutesLabel(minutes: number): string {
 }
 
 function formatTimeHm(isoOrDate: Date | string, zone = 'utc'): string {
-  return DateTime.fromJSDate(
-    isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate),
-    { zone },
-  ).toFormat('HH:mm');
+  return formatClockLabel(isoOrDate, { timezone: zone });
 }
 
 export function buildWhatHappenedFromConflict(conflict: ConflictDto): PlanningWhatHappened {

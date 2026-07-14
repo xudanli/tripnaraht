@@ -1,0 +1,205 @@
+{
+  "schemaId": "tripnara.solver_problem@v1",
+  "requestId": "req-fixture-wind",
+  "tripId": "trip-gold-iceland",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-wind-09",
+  "snapshotId": "ev-wind-09",
+  "operation": "SWAP",
+  "scope": {
+    "dayIds": [
+      "day-1"
+    ]
+  },
+  "nodes": [
+    {
+      "nodeId": "depot",
+      "serviceDurationMin": 0,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 480
+        }
+      ],
+      "fixedStartMin": 480,
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a1",
+      "sourceActivityId": "act-a1",
+      "poiId": "is.seljalandsfoss",
+      "serviceDurationMin": 50,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a2",
+      "sourceActivityId": "act-a2",
+      "poiId": "is.skogafoss",
+      "serviceDurationMin": 50,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a3",
+      "sourceActivityId": "act-a3",
+      "poiId": "is.lunch_booking",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false,
+      "fixedStartMin": 600
+    },
+    {
+      "nodeId": "a4",
+      "sourceActivityId": "act-a4",
+      "poiId": "is.reynisfjara",
+      "serviceDurationMin": 50,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": false,
+      "isBooked": false,
+      "canRemove": true,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a5",
+      "sourceActivityId": "act-a5",
+      "poiId": "is.vik",
+      "serviceDurationMin": 40,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    }
+  ],
+  "travelMatrix": {
+    "nodeIds": [
+      "depot",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5"
+    ],
+    "costsMin": [
+      [
+        0,
+        22,
+        26,
+        33,
+        34,
+        38
+      ],
+      [
+        22,
+        0,
+        25,
+        26,
+        30,
+        37
+      ],
+      [
+        26,
+        25,
+        0,
+        22,
+        29,
+        30
+      ],
+      [
+        33,
+        26,
+        22,
+        0,
+        22,
+        26
+      ],
+      [
+        34,
+        30,
+        29,
+        22,
+        0,
+        25
+      ],
+      [
+        38,
+        37,
+        30,
+        26,
+        25,
+        0
+      ]
+    ]
+  },
+  "constraints": [
+    {
+      "constraintId": "depot-fixed",
+      "kind": "DEPOT_FIXED",
+      "hard": true,
+      "payload": {
+        "nodeId": "depot"
+      }
+    },
+    {
+      "constraintId": "wind-edge-0",
+      "kind": "EDGE_FORBIDDEN",
+      "hard": true,
+      "canonicalConstraintId": "weather.wind.coast_gust.ROAD1",
+      "payload": {
+        "fromNodeId": "a1",
+        "toNodeId": "a2",
+        "roadId": "ROAD1-coast"
+      }
+    }
+  ],
+  "objectives": [
+    {
+      "objectiveId": "min-travel",
+      "kind": "MINIMIZE_TRAVEL",
+      "weight": 1
+    }
+  ],
+  "solverConfig": {
+    "maxCandidates": 3,
+    "timeLimitMs": 1500,
+    "seed": 42
+  }
+}

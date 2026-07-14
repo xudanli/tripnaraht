@@ -1,0 +1,22 @@
+{
+  "schemaId": "tripnara.selected_trip.constraints@v1",
+  "tripId": "pilot_iceland_road_close_05_dual_forbid_reroute",
+  "planVersionId": "pv-gold",
+  "constraints": [
+    {
+      "canonicalId": "constraint_0",
+      "kind": "UNKNOWN",
+      "hard": true
+    },
+    {
+      "canonicalId": "constraint_1",
+      "kind": "UNKNOWN",
+      "hard": true
+    },
+    {
+      "canonicalId": "constraint_2",
+      "kind": "UNKNOWN",
+      "hard": true
+    }
+  ]
+}

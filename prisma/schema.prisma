@@ -196,15 +196,25 @@ model ItineraryItem {
   travelFromPreviousDuration Int?
   travelMode                 String?
   order                      Int?
+  /// Travel Product Catalog binding (optional). Place stays geographic; product is bookable.
+  productOfferingId          String?      @map("product_offering_id") @db.VarChar(64)
+  productSessionId           String?      @map("product_session_id") @db.VarChar(64)
+  experienceDefinitionId     String?      @map("experience_definition_id") @db.VarChar(64)
   Place                      Place?       @relation(fields: [placeId], references: [id])
   Trail                      Trail?       @relation(fields: [trailId], references: [id])
   TripDay                    TripDay      @relation(fields: [tripDayId], references: [id])
   RailSegment                RailSegment?
+  ProductOffering            ProductOffering?        @relation(fields: [productOfferingId], references: [id], onDelete: SetNull)
+  ProductSession             ProductSession?         @relation(fields: [productSessionId], references: [id], onDelete: SetNull)
+  ExperienceDefinition       ExperienceDefinition?   @relation(fields: [experienceDefinitionId], references: [id], onDelete: SetNull)
 
   @@index([costCategory])
   @@index([isPaid])
   @@index([bookingStatus])
   @@index([tripDayId, order])
+  @@index([productOfferingId])
+  @@index([productSessionId])
+  @@index([experienceDefinitionId])
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -248,6 +258,8 @@ model Place {
   PoiAccessStatusOverride         PoiAccessStatusOverride[]
   PoiExecutionFeedback            PoiExecutionFeedback[]
   TripAttractionExploreCandidate  TripAttractionExploreCandidate[]
+  ProductPlaceLink                ProductPlaceLink[]
+  PlaceExperienceLink             PlaceExperienceLink[]
 
   @@index([metadata(ops: JsonbPathOps)], type: Gin)
   @@index([lastVerifiedAt])
@@ -6624,4 +6636,276 @@ model DecisionBenchmarkInstanceExecution {
   @@index([benchmarkRunId, status])
   @@index([benchmarkRunId, createdAt])
   @@map("decision_benchmark_instance_execution")
+}
+
+// ========== Travel Product Catalog（地点库之外的可履约产品五层模型）==========
+// Place → ExperienceDefinition → ProductOffering → ProductSession → RatePlan
+// + Operator Directory + ProductPlaceLink（多空间角色）
+
+enum TravelProductType {
+  ACTIVITY_EXPERIENCE
+  SCENIC_FLIGHT
+  CRUISE_BOAT_TOUR
+  GUIDED_TOUR
+  ADMISSION_TICKET
+  TRANSPORT_SERVICE
+  RENTAL
+  DINING_RESERVATION
+}
+
+enum ProductOfferingStatus {
+  DRAFT
+  PUBLISHED
+  SUSPENDED
+  RETIRED
+}
+
+enum ProductSessionStatus {
+  SCHEDULED
+  CONFIRMED
+  ON_HOLD
+  CANCELLED
+  COMPLETED
+  WEATHER_HOLD
+}
+
+enum OperatorTrustLevel {
+  UNVERIFIED
+  BASIC
+  VERIFIED
+  PREFERRED
+}
+
+/// 产品空间挂靠角色（一产品多 Place）
+enum ProductPlaceSpatialRole {
+  MEETING_POINT
+  START_POINT
+  END_POINT
+  PICKUP_POINT
+  OPERATING_AREA
+  RELATED_PLACE
+  FALLBACK_POINT
+  PARKING
+}
+
+/// Layer 2 — 体验定义（稳定通用知识，非供应商 SKU）
+model ExperienceDefinition {
+  id                         String            @id @default(cuid())
+  code                       String            @unique @db.VarChar(64)
+  productType                TravelProductType @map("product_type")
+  /// 平台维护二级分类码（非固定 DB enum）
+  categoryCode               String            @map("category_code") @db.VarChar(64)
+  /// 可扩展三级 subtype 字典码
+  subtypeCode                String            @map("subtype_code") @db.VarChar(64)
+  displayNameZh              String            @map("display_name_zh") @db.VarChar(128)
+  displayNameEn              String            @map("display_name_en") @db.VarChar(128)
+  typicalDurationMin         Int?              @map("typical_duration_min")
+  fitnessLevel               String?           @map("fitness_level") @db.VarChar(32)
+  riskLevel                  String?           @map("risk_level") @db.VarChar(32)
+  recommendedMinAge          Int?              @map("recommended_min_age")
+  recommendedMaxAge          Int?              @map("recommended_max_age")
+  equipmentTypical           String[]          @default([]) @map("equipment_typical")
+  seasonalityNotes           String?           @map("seasonality_notes") @db.Text
+  weatherDependency          String?           @map("weather_dependency") @db.VarChar(32)
+  commonCancelReasons        String[]          @default([]) @map("common_cancel_reasons")
+  requiresGuide              Boolean           @default(false) @map("requires_guide")
+  requiresLicense            Boolean           @default(false) @map("requires_license")
+  relatedExperienceAtomCodes String[]          @default([]) @map("related_experience_atom_codes")
+  countryCodes               String[]          @default([]) @map("country_codes")
+  metadata                   Json?
+  createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offerings       ProductOffering[]
+  itineraryItems  ItineraryItem[]
+  placeLinks      PlaceExperienceLink[]
+
+  @@index([productType, categoryCode, subtypeCode])
+  @@index([countryCodes], type: Gin)
+  @@map("experience_definition")
+}
+
+/// Place ↔ 体验项目（规划层，无供应商）。后台维护「此地点可做什么」。
+model PlaceExperienceLink {
+  id                       String   @id @default(cuid())
+  placeId                  Int      @map("place_id")
+  experienceDefinitionId   String   @map("experience_definition_id")
+  sortOrder                Int      @default(0) @map("sort_order")
+  /// 地点语境下的展示名覆盖（可选）；空则用体验定义名
+  label                    String?  @db.VarChar(128)
+  isFeatured               Boolean  @default(false) @map("is_featured")
+  isActive                 Boolean  @default(true) @map("is_active")
+  notes                    String?  @db.Text
+  metadata                 Json?
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  place                  Place                 @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  experienceDefinition   ExperienceDefinition  @relation(fields: [experienceDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, experienceDefinitionId])
+  @@index([placeId, isActive, sortOrder])
+  @@index([experienceDefinitionId])
+  @@map("place_experience_link")
+}
+
+/// 供应商目录（履约主体）
+model Operator {
+  id                       String             @id @default(cuid())
+  brandName                String             @map("brand_name") @db.VarChar(128)
+  legalName                String?            @map("legal_name") @db.VarChar(256)
+  countryCode              String?            @map("country_code") @db.VarChar(8)
+  operatingRegions         String[]           @default([]) @map("operating_regions")
+  contactEmail             String?            @map("contact_email") @db.VarChar(256)
+  contactPhone             String?            @map("contact_phone") @db.VarChar(64)
+  website                  String?            @db.VarChar(512)
+  licenses                 String[]           @default([])
+  insuranceSummary         String?            @map("insurance_summary") @db.Text
+  languages                String[]           @default([])
+  cancellationPolicySummary String?           @map("cancellation_policy_summary") @db.Text
+  dataSources              String[]           @default([]) @map("data_sources")
+  distributionChannels     String[]           @default([]) @map("distribution_channels")
+  externalOperatorId       String?            @map("external_operator_id") @db.VarChar(128)
+  trustLevel               OperatorTrustLevel @default(UNVERIFIED) @map("trust_level")
+  metadata                 Json?
+  createdAt                DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offerings ProductOffering[]
+
+  @@index([countryCode])
+  @@index([brandName])
+  @@index([externalOperatorId])
+  @@map("travel_operator")
+}
+
+/// Layer 3 — 供应商具体在售产品
+model ProductOffering {
+  id                   String                @id @default(cuid())
+  experienceDefinitionId String              @map("experience_definition_id")
+  operatorId           String                @map("operator_id")
+  nameEN               String                @map("name_en") @db.VarChar(256)
+  nameCN               String?               @map("name_cn") @db.VarChar(256)
+  description          String?               @db.Text
+  productType          TravelProductType     @map("product_type")
+  categoryCode         String                @map("category_code") @db.VarChar(64)
+  subtypeCode          String                @map("subtype_code") @db.VarChar(64)
+  defaultDurationMin   Int?                  @map("default_duration_min")
+  included             String[]              @default([])
+  excluded             String[]              @default([])
+  minAge               Int?                  @map("min_age")
+  maxAge               Int?                  @map("max_age")
+  minHeightCm          Int?                  @map("min_height_cm")
+  maxWeightKg          Float?                @map("max_weight_kg")
+  fitnessRequirement   String?               @map("fitness_requirement") @db.VarChar(64)
+  equipmentRequired    String[]              @default([]) @map("equipment_required")
+  languages            String[]              @default([])
+  cancellationPolicy   String?               @map("cancellation_policy") @db.Text
+  safetyRules          String[]              @default([]) @map("safety_rules")
+  bookingChannels      String[]              @default([]) @map("booking_channels")
+  externalProductId    String?               @map("external_product_id") @db.VarChar(128)
+  status               ProductOfferingStatus @default(DRAFT)
+  countryCode          String?               @map("country_code") @db.VarChar(8)
+  metadata             Json?
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  experienceDefinition ExperienceDefinition @relation(fields: [experienceDefinitionId], references: [id], onDelete: Restrict)
+  operator             Operator             @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  sessions             ProductSession[]
+  ratePlans            RatePlan[]
+  placeLinks           ProductPlaceLink[]
+  itineraryItems       ItineraryItem[]
+
+  @@index([experienceDefinitionId])
+  @@index([operatorId])
+  @@index([productType, categoryCode, subtypeCode])
+  @@index([status, countryCode])
+  @@index([externalProductId])
+  @@map("product_offering")
+}
+
+/// 产品 ↔ Place 多角色空间关系
+model ProductPlaceLink {
+  id         String                  @id @default(cuid())
+  offeringId String                  @map("offering_id")
+  placeId    Int                     @map("place_id")
+  role       ProductPlaceSpatialRole
+  sortOrder  Int                     @default(0) @map("sort_order")
+  label      String?                 @db.VarChar(128)
+  /// GeoJSON 等非点状几何（航线 / 活动区近似）
+  geometry   Json?
+  metadata   Json?
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offering ProductOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  place    Place           @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([offeringId, placeId, role, sortOrder])
+  @@index([placeId, role])
+  @@index([offeringId, role])
+  @@map("product_place_link")
+}
+
+/// Layer 4 — 班次 / 入场时段
+model ProductSession {
+  id                        String               @id @default(cuid())
+  offeringId                String               @map("offering_id")
+  localDate                 DateTime             @map("local_date") @db.Date
+  startTimeLocal            String?              @map("start_time_local") @db.VarChar(16)
+  endTimeLocal              String?              @map("end_time_local") @db.VarChar(16)
+  meetTimeLocal             String?              @map("meet_time_local") @db.VarChar(16)
+  latestCheckInLocal        String?              @map("latest_check_in_local") @db.VarChar(16)
+  timezone                  String?              @db.VarChar(64)
+  capacityTotal             Int?                 @map("capacity_total")
+  capacityRemaining         Int?                 @map("capacity_remaining")
+  status                    ProductSessionStatus @default(SCHEDULED)
+  minParticipants           Int?                 @map("min_participants")
+  isGuaranteedDeparture     Boolean              @default(false) @map("is_guaranteed_departure")
+  weatherStatus             String?              @map("weather_status") @db.VarChar(64)
+  postponementOrCancelStatus String?             @map("postponement_or_cancel_status") @db.VarChar(64)
+  externalSessionId         String?              @map("external_session_id") @db.VarChar(128)
+  metadata                  Json?
+  createdAt                 DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offering       ProductOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  ratePlans      RatePlan[]
+  itineraryItems ItineraryItem[]
+
+  @@index([offeringId, localDate])
+  @@index([status, localDate])
+  @@index([externalSessionId])
+  @@map("product_session")
+}
+
+/// Layer 5 — 价格方案（禁止只在 Offering 放单一 price）
+model RatePlan {
+  id               String    @id @default(cuid())
+  offeringId       String    @map("offering_id")
+  sessionId        String?   @map("session_id")
+  code             String    @db.VarChar(64)
+  nameEN           String    @map("name_en") @db.VarChar(128)
+  nameCN           String?   @map("name_cn") @db.VarChar(128)
+  currency         String    @db.VarChar(8)
+  amount           Decimal   @db.Decimal(12, 2)
+  travelerType     String?   @map("traveler_type") @db.VarChar(32)
+  refundable       Boolean?
+  includesTransfer Boolean?  @map("includes_transfer")
+  validFrom        DateTime? @map("valid_from") @db.Timestamptz(6)
+  validTo          DateTime? @map("valid_to") @db.Timestamptz(6)
+  inventoryCap     Int?      @map("inventory_cap")
+  bookingRules     Json?     @map("booking_rules")
+  metadata         Json?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offering ProductOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  session  ProductSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([offeringId, code, sessionId])
+  @@index([sessionId])
+  @@index([offeringId, travelerType])
+  @@map("rate_plan")
 }

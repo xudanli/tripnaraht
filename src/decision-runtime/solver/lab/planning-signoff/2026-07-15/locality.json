@@ -1,0 +1,35 @@
+{
+  "schemaId": "tripnara.planning_signoff.locality@v1",
+  "kind": "locality",
+  "status": "PASS",
+  "approved": true,
+  "approvedAt": "2026-07-14T16:45:29.046Z",
+  "approvedBy": "lab:seal-planning-signoff",
+  "evidenceRef": "artifacts/planning-gold-replay/latest.json",
+  "criteria": {
+    "localityOkAll": true,
+    "maxChangedSample": [
+      {
+        "scenarioId": "iceland.road_close.01_f208_reroute_a1_a2",
+        "maxChanged": 0
+      },
+      {
+        "scenarioId": "iceland.road_close.02_f208_swap_a1_a2",
+        "maxChanged": 2
+      },
+      {
+        "scenarioId": "iceland.road_close.03_f208_shift_wide_tw",
+        "maxChanged": 2
+      },
+      {
+        "scenarioId": "iceland.road_close.04_f235_reroute_mid_edge",
+        "maxChanged": 0
+      },
+      {
+        "scenarioId": "iceland.road_close.05_dual_forbid_reroute",
+        "maxChanged": 0
+      }
+    ]
+  },
+  "summary": "5 scenarios localityOk"
+}

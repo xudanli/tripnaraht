@@ -63,9 +63,29 @@ POST /api/trips/:tripId/arrange-itinerary/proposals
 ```json
 {
   "intent": "PLACE_CANDIDATE | ADD_ITEM | INSERT_REST_GAP | AUTO_ARRANGE | FILL_GAP | OPTIMIZE_ROUTE | ARRANGE_LUNCH | REDUCE_INTENSITY",
-  "payload": { "...": "与 intent 对应的请求体" }
+  "payload": { "...": "与 intent 对应的请求体" },
+  "candidateIds": ["optional — AUTO_ARRANGE 顶层兼容；优先 payload.candidateIds"]
 }
 ```
+
+**AUTO_ARRANGE**（`POST .../proposals`）读取顺序：
+
+1. `payload.candidateIds`（推荐）
+2. 顶层 `candidateIds`（兼容）
+3. 都没有 → 编排该 trip 全部探索候选
+
+示例：
+
+```json
+{
+  "intent": "AUTO_ARRANGE",
+  "payload": { "candidateIds": ["uuid-1", "uuid-2"] }
+}
+```
+
+**OR-Tools Shadow（ADR-008）**：`intent` 为 `OPTIMIZE_ROUTE` / `AUTO_ARRANGE` 且 `OR_TOOLS_SOLVER_URL` 已配置时，响应 **`proposal.ortoolsShadow` 必带**（`shadowAuthority: false`）。节点不足或 sidecar 不可达时仍挂 stub，见 `solverUnavailableReason`。**Apply 只认 `changes`，禁止把 `ortoolsShadow.shadowChanges` 当写入源。**  
+`OPTIMIZE_ROUTE`：`payload.dayIndex`（1-based）可选；不必再传 `payload.action`（由 intent 映射）。  
+详见：[FRONTEND_SHADOW_INTEGRATION.md](../../decision-runtime/solver/FRONTEND_SHADOW_INTEGRATION.md)
 
 ---
 

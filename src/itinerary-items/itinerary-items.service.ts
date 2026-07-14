@@ -279,6 +279,11 @@ export class ItineraryItemsService {
         ...(dto.currency != null && { currency: dto.currency }),
         ...(dto.travelFromPreviousDuration != null && { travelFromPreviousDuration: dto.travelFromPreviousDuration }),
         ...(dto.travelFromPreviousDistance != null && { travelFromPreviousDistance: dto.travelFromPreviousDistance }),
+        ...(dto.experienceDefinitionId !== undefined && {
+          experienceDefinitionId: dto.experienceDefinitionId,
+        }),
+        ...(dto.productOfferingId !== undefined && { productOfferingId: dto.productOfferingId }),
+        ...(dto.productSessionId !== undefined && { productSessionId: dto.productSessionId }),
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
       include: {
         Place: {
@@ -1106,6 +1111,21 @@ export class ItineraryItemsService {
         ...(updateDto.note !== undefined && { note: updateDto.note }),
         // 更新 tripDayId（如果跨天或明确提供）
         ...(targetTripDayId !== existing.tripDayId && { tripDayId: targetTripDayId }),
+        ...(updateDto.travelFromPreviousDuration !== undefined && {
+          travelFromPreviousDuration: updateDto.travelFromPreviousDuration,
+        }),
+        ...(updateDto.travelFromPreviousDistance !== undefined && {
+          travelFromPreviousDistance: updateDto.travelFromPreviousDistance,
+        }),
+        ...(updateDto.experienceDefinitionId !== undefined && {
+          experienceDefinitionId: updateDto.experienceDefinitionId,
+        }),
+        ...(updateDto.productOfferingId !== undefined && {
+          productOfferingId: updateDto.productOfferingId,
+        }),
+        ...(updateDto.productSessionId !== undefined && {
+          productSessionId: updateDto.productSessionId,
+        }),
         // 费用相关字段
         ...(updateDto.estimatedCost !== undefined && { estimatedCost: updateDto.estimatedCost }),
         ...(updateDto.actualCost !== undefined && { actualCost: updateDto.actualCost }),

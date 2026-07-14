@@ -1,0 +1,53 @@
+{
+  "schemaId": "tripnara.planning_signoff.authority@v1",
+  "kind": "authority",
+  "status": "READY_FOR_APPROVAL",
+  "approved": false,
+  "signoffId": "m4-ra01-2026-07-15",
+  "authorityScope": {
+    "operations": ["SHIFT", "SWAP", "SHORTEN", "REROUTE"],
+    "excludedOperations": ["MOVE_DAY", "REPLACE", "AUTO_ARRANGE"],
+    "tripSelectionMode": "selected_trips",
+    "destinations": ["IS"],
+    "maxRiskLevel": "MEDIUM",
+    "requiresUserConfirmation": true,
+    "forbiddenBehaviors": [
+      "high_risk_road_selection",
+      "booked_activity_cancel",
+      "booked_cross_day_move",
+      "payment_or_irreversible_ops"
+    ]
+  },
+  "rollbackProvider": "neptune-repair",
+  "evidenceArtifactRefs": {
+    "stability": "stability.json",
+    "locality": "locality.json",
+    "gateway": "gateway.json",
+    "rollback": "rollback.json"
+  },
+  "accountability": {
+    "failureOwner": "TBD-product-owner",
+    "escalation": "TBD-oncall-decision-runtime",
+    "rollbackOwner": "TBD-release-engineer-canary-killswitch"
+  },
+  "policy": {
+    "selectedTripsMinObserveDays": 3,
+    "selectedTripsMaxObserveDays": 5,
+    "promoteTo5pctRequires": [
+      "zero_safety_incidents",
+      "human_spot_check_pass",
+      "dashboard_hard_zeros"
+    ],
+    "immediateRollbackTriggers": [
+      "gateway_bypass",
+      "unauthorized_plan_version_write",
+      "evidence_stale_continued_execute",
+      "booked_content_mutated",
+      "auto_fallback_failed",
+      "duplicate_plan_version"
+    ]
+  },
+  "selectedTripRefs": [],
+  "detail": "Policy frozen for product review — fill accountability names; leave approvedAt/approvedBy/selectedTripRefs until RA-01B",
+  "summary": "M4-RA-01 READY_FOR_APPROVAL — restricted scope; not production-approved"
+}

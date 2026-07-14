@@ -13,6 +13,7 @@ import {
   ConflictResolutionResultDto,
   ConflictResolutionStrategy,
 } from '../dto/trip-conflicts.dto';
+import { formatClockLabel } from '../trip-constraint-solver/utils/format-clock-label.util';
 import { SmartRoutesService } from '../../transport/services/smart-routes.service';
 import { TravelTimeEstimatorService } from '../../transport/services/travel-time-estimator.service';
 import {
@@ -1142,7 +1143,7 @@ export class TripConflictsService {
         {
           action: 'adjust_time',
           description: suggestedIso
-            ? `将「${input.toName}」开始时间调整到 ${suggestedIso}`
+            ? `将「${input.toName}」开始时间调整到 ${formatClockLabel(suggestedIso)}`
             : `确认「${input.fromName}」和「${input.toName}」的时间锚点`,
           impact: input.isStartTooEarly ? '消除交通时间不足' : '补足交通衔接缓冲',
           payload: {

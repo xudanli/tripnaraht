@@ -2,6 +2,7 @@ import type { Place } from '@prisma/client';
 import {
   isRainyDayFriendlyPlace,
   rainyDayFriendlyScore,
+  scoreAttractionExploreNameMatch,
 } from './attraction-explore-place.util';
 
 function place(input: Partial<Place> & Pick<Place, 'nameCN'>): Place {
@@ -124,5 +125,25 @@ describe('isRainyDayFriendlyPlace', () => {
     const museum = place({ nameCN: '冰岛国家博物馆', nameEN: 'National Museum of Iceland', rating: 4 });
     const spa = place({ nameCN: '蓝湖温泉', nameEN: 'Blue Lagoon', rating: 5 });
     expect(rainyDayFriendlyScore(museum)).toBeGreaterThan(rainyDayFriendlyScore(spa) - 2);
+  });
+});
+
+describe('scoreAttractionExploreNameMatch', () => {
+  it('scores exact Thingvellir national park query highest', () => {
+    const tv = place({
+      nameCN: '辛格维利尔国家公园',
+      nameEN: 'Thingvellir National Park',
+    });
+    expect(scoreAttractionExploreNameMatch(tv, '辛格维利尔国家公园')).toBe(3);
+    expect(scoreAttractionExploreNameMatch(tv, '辛格维利尔')).toBe(2);
+    expect(scoreAttractionExploreNameMatch(tv, 'Thingvellir')).toBe(2);
+  });
+
+  it('does not score unrelated attractions for a park name query', () => {
+    const museum = place({
+      nameCN: '西峡湾历史博物馆',
+      nameEN: 'Westfjords Heritage Museum',
+    });
+    expect(scoreAttractionExploreNameMatch(museum, '辛格维利尔国家公园')).toBe(0);
   });
 });

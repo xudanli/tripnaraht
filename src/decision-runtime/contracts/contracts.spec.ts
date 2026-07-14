@@ -116,4 +116,21 @@ describe('decision-runtime contracts', () => {
     };
     expect(problem.snapshotId).toBe('ws1');
   });
+
+  it('keeps SolverProblem distinct from OptimizationProblem (ADR-008)', async () => {
+    const {
+      SOLVER_MVP_OPERATIONS,
+      SOLVER_PROBLEM_SCHEMA_ID,
+      SOLVER_RESPONSE_SCHEMA_ID,
+    } = await import('../solver/contracts');
+    expect(SOLVER_MVP_OPERATIONS).toEqual([
+      'SHIFT',
+      'SWAP',
+      'REROUTE',
+      'SHORTEN',
+      'REPLACE',
+    ]);
+    expect(SOLVER_PROBLEM_SCHEMA_ID).toBe('tripnara.solver_problem@v1');
+    expect(SOLVER_RESPONSE_SCHEMA_ID).toBe('tripnara.solver_response@v1');
+  });
 });

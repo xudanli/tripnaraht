@@ -9,7 +9,9 @@ import type { PlanVariant } from '../../../trips/decision/services/multi-plan-ge
 export type DecisionCandidateSource =
   | 'LEGACY_TRIP_PLANNING'
   | 'NEPTUNE_REPAIR'
-  | 'RULE_BASED_REPAIR';
+  | 'RULE_BASED_REPAIR'
+  /** Mapped from SolverResponse — never authoritative write source */
+  | 'OR_TOOLS_REPAIR';
 
 export interface DecisionCandidate {
   candidateId: string;

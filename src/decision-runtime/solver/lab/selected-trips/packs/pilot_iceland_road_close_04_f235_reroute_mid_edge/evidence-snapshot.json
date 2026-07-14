@@ -1,0 +1,19 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "pilot_iceland_road_close_04_f235_reroute_mid_edge",
+  "evidenceVersionId": "ev-f235-1",
+  "frozenAt": "2026-07-14T17:00:06.944Z",
+  "sources": [
+    {
+      "provider": "vegagerdin_staging_fixture",
+      "ref": "vegagerdin_notice_staging_f235_2026-06-18"
+    }
+  ],
+  "event": {
+    "kind": "ROAD_STATUS_CHANGED",
+    "roadId": "F235",
+    "status": "CLOSED",
+    "canonicalConstraintId": "road.close.F235",
+    "effectiveFrom": "2026-06-18T11:40:00Z"
+  }
+}

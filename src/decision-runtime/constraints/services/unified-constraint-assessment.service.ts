@@ -28,6 +28,10 @@ const LEGACY_ID_BY_KEY: Record<string, string> = {
   OFFICIAL_IS_FROAD_2WD: 'c_official_is_froad_2wd',
   NO_UNPAVED_ROAD: 'c_tpl_no_unpaved_road',
   FIXED_APPOINTMENTS: 'c_tpl_fixed_appointments',
+  PRODUCT_SESSION_TIME_WINDOW: 'c_tpl_product_session_time_window',
+  MEETING_POINT_BUFFER: 'c_tpl_meeting_point_buffer',
+  PRODUCT_PARTICIPANT_ELIGIBILITY: 'c_tpl_product_participant_eligibility',
+  PRODUCT_WEATHER_DEPENDENCY: 'c_tpl_product_weather_dependency',
 };
 
 @Injectable()

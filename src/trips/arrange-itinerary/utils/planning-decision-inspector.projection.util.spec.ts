@@ -240,6 +240,92 @@ describe('planning-decision-inspector.projection.util', () => {
     expect(planDiff.timelineCompare.milestones.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('shift_earlier ignores misleading suggestedTime delay when building planDiff', () => {
+    const planDiff = buildInspectorPlanDiffFromPreview({
+      schemaId: 'tripnara.unified_decision_action_preview@v2',
+      tripId: 'trip_iceland_demo',
+      problemId: 'dp_day3_traffic',
+      actionId: 'shift_earlier',
+      generatedAt: new Date().toISOString(),
+      action: {
+        actionId: 'shift_earlier',
+        type: 'REPAIR',
+        source: 'CONSTRAINT_SOLVER',
+        title: '提前 120 分钟从 迪寇拉里海岬 出发',
+        summary: '将 迪寇拉里海岬 出发时间前移 120 分钟，为下一段交通预留更多时间。',
+        requiresConfirmation: false,
+        allowed: true,
+      },
+      tradeoffs: [{ dimension: 'TIME', direction: 'IMPROVE', value: 120, unit: 'MINUTE' }],
+      repairPreview: {
+        option: {
+          id: 'shift_earlier',
+          actionType: 'shift_earlier',
+          payload: {
+            advanceMinutes: 120,
+            shiftMinutes: -120,
+            fromItemId: 'item-djupalon',
+            anchors: {
+              fromPlaceLabel: '迪寇拉里海岬',
+              toPlaceLabel: '黄金瀑布',
+              departAt: '2026-07-16T08:30:00.000+00:00',
+              activityStartAt: '2026-07-16T08:30:00.000+00:00',
+              // 下一站顺延建议时刻 —— 不可用于「提前出发」diff 极性
+              suggestedTime: '2026-07-16T13:45:00.000+00:00',
+              gapMinutes: -310,
+              bufferMinutes: 5,
+              travelMinutes: 9,
+            },
+          },
+        },
+      },
+      proposedMutations: {
+        mutationId: 'm_shift_earlier',
+        tripId: 'trip_iceland_demo',
+        createdAt: new Date().toISOString(),
+        createdBy: 'test',
+        versionBefore: '1',
+        operations: [
+          {
+            operation: 'UPDATE',
+            entityType: 'ITINERARY_ITEM',
+            entityId: 'item-djupalon',
+            after: {
+              payload: {
+                advanceMinutes: 120,
+                shiftMinutes: -120,
+                actionType: 'shift_earlier',
+                anchors: {
+                  fromPlaceLabel: '迪寇拉里海岬',
+                  toPlaceLabel: '黄金瀑布',
+                  departAt: '2026-07-16T08:30:00.000+00:00',
+                  activityStartAt: '2026-07-16T08:30:00.000+00:00',
+                  suggestedTime: '2026-07-16T13:45:00.000+00:00',
+                  gapMinutes: -310,
+                  bufferMinutes: 5,
+                  travelMinutes: 9,
+                },
+              },
+            },
+            semanticEffects: [],
+          },
+        ],
+      },
+    });
+
+    const depart = planDiff.changeRows.find((r) => r.itemLabel === '出发时间');
+    expect(depart?.before).toBe('08:30');
+    expect(depart?.after).toBe('06:30');
+    expect(depart?.deltaMinutes).toBe(-120);
+    expect(depart?.deltaLabel).toBe('-2 小时');
+    expect(planDiff.changeRows.every((r) => (r.deltaMinutes ?? 0) <= 0 || r.itemLabel === '交通缓冲')).toBe(
+      true,
+    );
+    const buffer = planDiff.changeRows.find((r) => r.itemLabel === '交通缓冲');
+    // gapAfter = -310 - (-120) = -190
+    expect(buffer?.deltaMinutes).toBe(120);
+  });
+
   it('buildInspectorTabEmptyState flags problem mode tabs', () => {
     expect(
       buildInspectorTabEmptyState({

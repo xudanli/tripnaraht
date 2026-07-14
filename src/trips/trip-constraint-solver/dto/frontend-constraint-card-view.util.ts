@@ -23,6 +23,10 @@ const TEMPLATE_ID_TO_CONSTRAINT_KEY: Record<string, string> = {
   f_road_vehicle_access: 'OFFICIAL_IS_FROAD_2WD',
   no_unpaved_road: 'NO_UNPAVED_ROAD',
   fixed_appointments: 'FIXED_APPOINTMENTS',
+  product_session_time_window: 'PRODUCT_SESSION_TIME_WINDOW',
+  meeting_point_buffer: 'MEETING_POINT_BUFFER',
+  product_participant_eligibility: 'PRODUCT_PARTICIPANT_ELIGIBILITY',
+  product_weather_dependency: 'PRODUCT_WEATHER_DEPENDENCY',
 };
 
 const LEGACY_ID_TO_CONSTRAINT_KEY: Record<string, string> = {
@@ -31,6 +35,10 @@ const LEGACY_ID_TO_CONSTRAINT_KEY: Record<string, string> = {
   c_official_is_froad_2wd: 'OFFICIAL_IS_FROAD_2WD',
   c_tpl_no_unpaved_road: 'NO_UNPAVED_ROAD',
   c_tpl_fixed_appointments: 'FIXED_APPOINTMENTS',
+  c_tpl_product_session_time_window: 'PRODUCT_SESSION_TIME_WINDOW',
+  c_tpl_meeting_point_buffer: 'MEETING_POINT_BUFFER',
+  c_tpl_product_participant_eligibility: 'PRODUCT_PARTICIPANT_ELIGIBILITY',
+  c_tpl_product_weather_dependency: 'PRODUCT_WEATHER_DEPENDENCY',
 };
 
 const LANE_STATUS_LABELS: Record<ConstraintEvaluationStatus, string> = {

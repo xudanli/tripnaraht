@@ -50,6 +50,14 @@ import {
   readBudgetCapFromTripMetadata,
 } from '../adapters/neptune-road-repair.adapter';
 import { NeptuneRepairProvider } from '../../../decision-runtime/candidates/providers/neptune-repair.provider';
+import { OrToolsRoadEvaluateShadowBridge } from '../../../decision-runtime/solver/bridge/ortools-road-evaluate-shadow.bridge';
+import { OrToolsShadowMetricsCollector } from '../../../decision-runtime/solver/observability/ortools-shadow-metrics.collector';
+import { OrToolsCanaryDashboardCollector } from '../../../decision-runtime/solver/observability/ortools-canary-dashboard.metrics';
+import { wireOrtToolsEvaluateCanary } from '../../../decision-runtime/solver/observability/ortools-canary-evaluate.wire';
+import {
+  isOrtToolsShadowEvidenceStale,
+  stampOrtToolsShadowFreshness,
+} from '../../../decision-runtime/solver/lab/ortools-shadow-evidence-freshness.util';
 import { buildMinimalEvaluateWorld } from './minimal-evaluate-world.util';
 import { resolveTripDestinationCountry } from '../../../decision-runtime/packs/loader/country-pack-registry.util';
 import {
@@ -78,6 +86,10 @@ export class RoadSegmentUnavailableEvaluateService {
     @Optional() private readonly abu?: AbuStrategy,
     @Optional() private readonly dre?: DrDreStrategy,
     @Optional() private readonly neptuneRepairProvider?: NeptuneRepairProvider,
+    /** ADR-008 — OR-Tools shadow; canary merge only when Release Gate + scope allow */
+    @Optional() private readonly ortoolsShadowBridge?: OrToolsRoadEvaluateShadowBridge,
+    @Optional() private readonly ortoolsShadowMetrics?: OrToolsShadowMetricsCollector,
+    @Optional() private readonly ortoolsCanaryDashboard?: OrToolsCanaryDashboardCollector,
   ) {}
 
   async evaluateByProblemId(
@@ -185,7 +197,7 @@ export class RoadSegmentUnavailableEvaluateService {
       roadStatus: roadAssertion.payload.status,
     });
 
-    const repairCandidates = await this.resolveNeptuneRepairCandidates({
+    let repairCandidates = await this.resolveNeptuneRepairCandidates({
       tripId,
       workspaceId: workspace.workspaceId,
       problem,
@@ -197,6 +209,7 @@ export class RoadSegmentUnavailableEvaluateService {
       ),
       evidenceRefs: roadAssertion.source.evidenceRefs,
     });
+    const neptuneRepairCandidates = repairCandidates;
 
     const constraintAssertions: Rfc001ConstraintAssertion[] = [];
     const loadAssessments = [];
@@ -303,11 +316,99 @@ export class RoadSegmentUnavailableEvaluateService {
       );
     }
 
+    const currentEvidenceId = problem.worldStateSnapshotId;
+    const priorShadow = workspace.ortoolsShadow;
+    const discardedStalePrior = Boolean(
+      priorShadow &&
+        isOrtToolsShadowEvidenceStale({
+          attachmentEvidenceVersionId: priorShadow.evidenceVersionId,
+          attachmentSnapshotId: priorShadow.snapshotId,
+          currentEvidenceVersionId: currentEvidenceId,
+          currentSnapshotId: currentEvidenceId,
+        }),
+    );
+    if (discardedStalePrior) {
+      this.ortoolsShadowMetrics?.recordStaleDiscard({
+        tripId,
+        priorEvidenceVersionId: priorShadow?.evidenceVersionId,
+        currentEvidenceVersionId: currentEvidenceId,
+      });
+      this.logger.log(
+        `ortools shadow discarded stale prior trip=${tripId} ` +
+          `priorEv=${priorShadow?.evidenceVersionId} currentEv=${currentEvidenceId}`,
+      );
+    }
+
+    let ortoolsShadow =
+      (await this.ortoolsShadowBridge?.run({
+        tripId,
+        workspaceId: workspace.workspaceId,
+        problem,
+        impact,
+        basePlan: plan,
+        bindings,
+        neptuneCandidates: repairCandidates,
+        evidenceRefs: roadAssertion.source.evidenceRefs,
+        // Gateway expects TripWorldState; bridge falls back to minimalWorld(tripId).
+      })) ?? undefined;
+
+    if (ortoolsShadow) {
+      // M4: write-side shadowAuthority stays false; canary may merge Gateway-PASS candidates
+      ortoolsShadow = stampOrtToolsShadowFreshness({
+        attachment: {
+          ...ortoolsShadow,
+          shadowAuthority: false as const,
+          evidenceVersionId:
+            ortoolsShadow.evidenceVersionId ?? currentEvidenceId,
+          snapshotId: ortoolsShadow.snapshotId ?? currentEvidenceId,
+        },
+        currentEvidenceVersionId: currentEvidenceId,
+        currentSnapshotId: currentEvidenceId,
+        discardedStalePrior,
+      });
+
+      const wired = wireOrtToolsEvaluateCanary({
+        tripId,
+        operation: ortoolsShadow.solverOperation ?? 'REROUTE',
+        planVersionId: problem.planVersionId,
+        evidenceVersionAtSolve: ortoolsShadow.evidenceVersionId,
+        evidenceVersionAtExecute: currentEvidenceId,
+        neptuneCandidates: neptuneRepairCandidates,
+        ortoolsShadow,
+        dashboard: this.ortoolsCanaryDashboard,
+      });
+      repairCandidates = wired.repairCandidates;
+      ortoolsShadow = wired.ortoolsShadow;
+
+      for (const candidate of repairCandidates) {
+        if (neptuneRepairCandidates.some((c) => c.candidateId === candidate.candidateId)) {
+          continue;
+        }
+        assertGuardianPayloadHasNoDecisionFields(
+          candidate as unknown as Record<string, unknown>,
+          'NEPTUNE',
+        );
+      }
+
+      this.logger.log(
+        `ortools shadow attached trip=${tripId} neptune=${ortoolsShadow.neptuneCandidateCount} ` +
+          `shadow=${ortoolsShadow.shadowCandidateCount} freshness=${ortoolsShadow.evidenceFreshness} ` +
+          `canaryProvider=${ortoolsShadow.canary?.authoritativeProviderId} ` +
+          `merged=${ortoolsShadow.canary?.mergedIntoRepairCandidates} ` +
+          `writeAttempted=${ortoolsShadow.report.writeAttempted}`,
+      );
+    } else if (discardedStalePrior) {
+      // Evidence moved — do not leave a stale attachment on the workspace
+      ortoolsShadow = undefined;
+    }
+
     workspace = await this.workspaceService.save(tripId, {
       ...workspace,
+      worldStateSnapshotId: currentEvidenceId,
       constraintAssertions,
       loadAssessments,
       repairCandidates,
+      ortoolsShadow,
       roadTraversability: traversabilityAssessment
         ? {
             roadId: evidence.event.payload.roadId.toUpperCase(),
