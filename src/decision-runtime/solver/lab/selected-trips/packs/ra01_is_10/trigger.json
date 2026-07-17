@@ -1,0 +1,11 @@
+{
+  "schemaId": "tripnara.selected_trip.trigger@v1",
+  "tripId": "ra01_is_10",
+  "planVersionId": "plan_pilot_is_10_v1",
+  "evidenceVersionId": "ev_ra01_is_10_20260716",
+  "operation": "REROUTE",
+  "kind": "STAGING_NEGATIVE_SAMPLE",
+  "notes": [
+    "mapped from staging metadata intendedOperation=REJECT"
+  ]
+}

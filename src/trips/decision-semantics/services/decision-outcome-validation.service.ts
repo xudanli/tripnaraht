@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { FeasibilityReportService } from '../../trip-constraint-solver/services/feasibility-report.service';
 import { DecisionProblemCollectorService } from '../collectors/decision-problem.collector';
@@ -17,6 +17,9 @@ import {
   evaluateOutcomeValidation,
   validationStatusFromVerdict,
 } from '../validation/evaluate-outcome-validation.util';
+import { CanonicalCausalTraceService } from '../../../causal-protocol/services/canonical-causal-trace.service';
+import { actualOutcomeFromObservedOutcomes } from '../../../travel-causal-decision/observations/ingest-execution-observation.util';
+import { applyObservationToCausalTrace } from '../../../travel-causal-decision/observations/apply-observation-to-causal-trace.util';
 
 @Injectable()
 export class DecisionOutcomeValidationService {
@@ -26,6 +29,7 @@ export class DecisionOutcomeValidationService {
     private readonly feasibility: FeasibilityReportService,
     private readonly collector: DecisionProblemCollectorService,
     private readonly ledgerBridge: DecisionLedgerBridgeService,
+    @Optional() private readonly causalTrace?: CanonicalCausalTraceService,
   ) {}
 
   async validateDecision(tripId: string, decisionId: string): Promise<DecisionOutcomeValidation> {
@@ -90,7 +94,42 @@ export class DecisionOutcomeValidationService {
       });
     }
 
+    // Push GPS / check-in / navigation observations into TravelCausalDecision reconciliation
+    this.pushObservationsToCausalTrace(tripId, record.problemId, observedOutcomes, validation);
+
     return validation;
+  }
+
+  private pushObservationsToCausalTrace(
+    tripId: string,
+    problemId: string,
+    observedOutcomes: import('../types/decision-semantics.types').ObservedOutcome[],
+    validation: DecisionOutcomeValidation,
+  ): void {
+    if (!this.causalTrace) return;
+    const actual = actualOutcomeFromObservedOutcomes(observedOutcomes);
+    if (!actual) return;
+
+    const hasTrust =
+      actual.sources?.some((s) =>
+        ['GPS', 'BOOKING_CHECKIN', 'USER_ARRIVAL_CLICK', 'NAVIGATION_EVENT'].includes(s),
+      ) ?? false;
+    if (!hasTrust && validation.verdict === 'PENDING') return;
+
+    try {
+      applyObservationToCausalTrace(this.causalTrace, {
+        tripId,
+        problemId,
+        actual,
+        calibrate:
+          validation.verdict === 'CONFIRMED' ||
+          validation.verdict === 'REFUTED' ||
+          validation.verdict === 'PARTIALLY_CONFIRMED',
+        outcomeRef: validation.id,
+      });
+    } catch {
+      // Observation push must not break validation SSOT path
+    }
   }
 
   async capturePostDecisionBaseline(

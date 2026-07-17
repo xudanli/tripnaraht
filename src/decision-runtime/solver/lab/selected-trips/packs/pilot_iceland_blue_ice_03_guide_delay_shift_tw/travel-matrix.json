@@ -1,0 +1,27 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "pilot_iceland_blue_ice_03_guide_delay_shift_tw",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "is.svinafellsjokull",
+      "to": "is.skaftafell",
+      "durationMin": 30
+    },
+    {
+      "from": "is.skaftafell",
+      "to": "is.jokulsarlon",
+      "durationMin": 35
+    },
+    {
+      "from": "is.jokulsarlon",
+      "to": "is.diamond_beach",
+      "durationMin": 40
+    },
+    {
+      "from": "is.diamond_beach",
+      "to": "is.hofn",
+      "durationMin": 45
+    }
+  ]
+}

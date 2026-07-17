@@ -13,6 +13,8 @@ import { cloneResearchRecord } from '../../../utils/research-asset-scope.util';
 import { ensureHarnessResearchEvidenceSnapshot } from '../../../utils/harness-research-evidence-snapshot.util';
 import { TRANSPORT_SEARCH_SUGGESTED_ACTION_CLARIFY } from '../../../execution/shared/transport-evidence-messages';
 import type { ResearchPhaseHost, RunResearchPhaseParams } from './research-phase.host';
+import { emitPhaseExecutionPath } from '../../phase-execution-path.telemetry.util';
+import { isReturnToResearchForbidFull } from '../../return-to-research-context.util';
 
 /**
  * RESEARCH 内核/降级执行体（自 claude-orchestrator 迁出）。
@@ -30,6 +32,12 @@ export async function runResearchPhase(
     state.trip_plan_request
   ) {
     const stepStartTime = Date.now();
+    emitPhaseExecutionPath(state, {
+      phase: 'RESEARCH',
+      path: 'kernel_native',
+      reason: 'native_enabled',
+      step: 'RESEARCH',
+    });
     const transportFollowup = (state.metadata as Record<string, unknown>)?.transport_research_followup === true;
     let priorResearch: Record<string, unknown> | undefined =
       transportFollowup &&
@@ -77,6 +85,34 @@ export async function runResearchPhase(
       scopesToRecompute.length > 0 &&
       !!priorForScoped &&
       Object.keys(priorForScoped).length > 0;
+    const metaR2r = state.metadata as Record<string, unknown>;
+    const r2rForbidFull = isReturnToResearchForbidFull(metaR2r);
+    if (r2rForbidFull && !didRunTransportOnly && !scopedPartial) {
+      const allowForcedFull = metaR2r.r2r_allow_forced_full_empty_prior === true;
+      if (!allowForcedFull) {
+        const msg =
+          'RETURN_TO_RESEARCH requires targeted scoped_partial; refusing aimless full research';
+        host.logger.warn(`[Claude Orchestrator] ${msg} request_id=${state.request_id}`);
+        state.errors.push({
+          step: 'RESEARCH',
+          error_code: 'RETURN_TO_RESEARCH_AIMLESS_FULL_REFUSED',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        throw new Error(msg);
+      }
+      emitPhaseExecutionPath(state, {
+        phase: 'RESEARCH',
+        path: 'kernel_native',
+        reason: 'r2r_forced_full_empty_prior',
+        step: 'RESEARCH',
+        loggerWarn: (m) => host.logger.warn(m),
+      });
+    }
+    if (r2rForbidFull) {
+      metaR2r.forbid_scoped_partial_degrade_to_full = true;
+      state.metadata = metaR2r as OrchestratorState['metadata'];
+    }
     const rollbackSnap = (state.metadata as Record<string, unknown>)?.research_atomic_rollback_snapshot as
       | Record<string, unknown>
       | undefined;
@@ -101,6 +137,7 @@ export async function runResearchPhase(
                 : {}),
             }
           : {}),
+      ...(r2rForbidFull ? { forbidScopedPartialDegradeToFull: true as const } : {}),
     };
     const researchExecutionKind = didRunTransportOnly
       ? 'TRANSPORT_ONLY'
@@ -116,6 +153,15 @@ export async function runResearchPhase(
       newState = out.newState;
       researchData = out.researchData;
       teamAuditLog = out.teamAuditLog;
+      if ((ctx as { __scopedPartialDegradedToFull?: boolean }).__scopedPartialDegradedToFull) {
+        emitPhaseExecutionPath(state, {
+          phase: 'RESEARCH',
+          path: 'kernel_native',
+          reason: 'scoped_partial_degraded_to_full',
+          step: 'RESEARCH',
+          loggerWarn: (m) => host.logger.warn(m),
+        });
+      }
     } catch (kernelErr: unknown) {
       const msg = kernelErr instanceof Error ? kernelErr.message : String(kernelErr);
       if (researchCloneBeforeKernel && Object.keys(researchCloneBeforeKernel).length > 0) {
@@ -262,6 +308,18 @@ export async function runResearchPhase(
     await host.researchPriorSnapshot?.save(request, researchData as Record<string, unknown>);
     return newState;
   }
+  const legacyReason =
+    (process.env.KERNEL_NATIVE_EXECUTION ?? 'true') === 'true' ||
+    (process.env.KERNEL_NATIVE_EXECUTION ?? 'true') === '1'
+      ? 'gray_miss'
+      : 'flag_off';
+  emitPhaseExecutionPath(state, {
+    phase: 'RESEARCH',
+    path: 'legacy_callback',
+    reason: legacyReason,
+    step: 'RESEARCH',
+    loggerWarn: (m) => host.logger.warn(m),
+  });
   if ((state.metadata as Record<string, unknown>)?.pending_research_prior_for_kernel) {
     host.logger.warn(
       `[Claude Orchestrator] RESEARCH 降级路径：KERNEL_NATIVE_EXECUTION 关闭，丢弃 pending COW 元数据 request_id=${state.request_id}`,

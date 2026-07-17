@@ -1,0 +1,12 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "pilot_iceland_road_close_10_shorten_overpacked_day",
+  "evidenceVersionId": "ev-short-1",
+  "frozenAt": "2026-07-16T09:53:46.003Z",
+  "sources": [
+    {
+      "provider": "gold_export",
+      "ref": "iceland.road_close.10_shorten_overpacked_day"
+    }
+  ]
+}

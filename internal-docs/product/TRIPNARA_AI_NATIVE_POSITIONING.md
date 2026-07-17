@@ -15,6 +15,7 @@
 - [Exploration API 清单](../../src/trips/exploration/EXPLORATION_API.md)
 - [RFC-003 Travel Context Protocol](./rfc-travel-context-protocol-v1.md)（含 Harness 一体化 §9）
 - [旅行决策基础设施 — 产品叙事与融资框架](./tripnara-decision-infrastructure-narrative-v1.md)（VC 叙事 / Compiler+Runtime / 算法栈）
+- [ADR-010 Nara Contextual Copilot — Page Insight](../../src/trips/copilot/ADR-010-Nara-Contextual-Copilot-Page-Insight.md)（跨页解释/建议层工程契约；产品 SSOT 待后冻结）
 
 ---
 

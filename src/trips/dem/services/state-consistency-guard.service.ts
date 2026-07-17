@@ -6,12 +6,18 @@
  * Elevation**：走 `DEMElevationService` 多级 Fallback + `DEMEffortMetadataService`
  * 按日 polyline 回填 `ascentM` / `slopePct`，并写入 `metadata.avgElevationM` 供
  * 生理/时间余量非线性使用。
+ *
+ * Prefer Gate-2 `metadata.terrain` / `travelEta.terrain` when present (no re-query).
  */
 
 import { Injectable, Logger } from '@nestjs/common';
 import type { RoutePlanDraft, RouteSegment } from '../../decision/shared/world-model.types';
 import { DEMElevationService } from './dem-elevation.service';
 import { DEMEffortMetadataService, type RoutePoint } from './dem-effort-metadata.service';
+import {
+  applyTerrainToSegmentPhysics,
+  extractTerrainFromItemMetadata,
+} from '../utils/map-travel-terrain.util';
 
 function parseCoord(raw: unknown): { lat: number; lng: number } | null {
   if (raw == null || typeof raw !== 'object') return null;
@@ -46,23 +52,47 @@ export class StateConsistencyGuardService {
   }
 
   /**
-   * TerrainAudit：凡当日有 ≥2 个可解析坐标且存在「有距离无爬升」的 segment，即调用 DEM 回填；
-   * 不限冰岛（冰岛仍走 DEM 内高精度表）。单点日可尝试首末段起终点拼成 2 点 shadow polyline。
+   * TerrainAudit：优先消费 Gate-2 terrain；其余「有距离无爬升」段再 Shadow DEM。
    */
   async enrichRoutePlanDraftIfNeeded(plan: RoutePlanDraft): Promise<{ plan: RoutePlanDraft; patched: boolean }> {
     if (!plan?.segments?.length) {
       return { plan, patched: false };
     }
 
+    const newSegments = plan.segments.map((s) => ({ ...s }));
+    let patched = false;
+
+    // Pass 1 — apply eta.terrain / metadata.terrain without DEM re-query
+    for (let i = 0; i < newSegments.length; i++) {
+      const seg = newSegments[i];
+      const a = Number(seg.ascentM);
+      const km = Number(seg.distanceKm) || 0;
+      if (!(km > 0.01 && (!Number.isFinite(a) || a <= 0))) continue;
+
+      const terrain = extractTerrainFromItemMetadata(seg.metadata);
+      if (!terrain) continue;
+
+      const physics = applyTerrainToSegmentPhysics(terrain);
+      newSegments[i] = {
+        ...seg,
+        ascentM: physics.ascentM,
+        slopePct: physics.slopePct,
+        metadata: {
+          ...(seg.metadata ?? {}),
+          terrain,
+          terrainAuditSource: 'travel-eta-terrain',
+          demSource: terrain.demSource,
+        },
+      };
+      patched = true;
+    }
+
     const byDay = new Map<number, RouteSegment[]>();
-    for (const s of plan.segments) {
+    for (const s of newSegments) {
       const d = s.dayIndex ?? 0;
       if (!byDay.has(d)) byDay.set(d, []);
       byDay.get(d)!.push(s);
     }
-
-    const newSegments = plan.segments.map((s) => ({ ...s }));
-    let patched = false;
 
     for (const [, segs] of byDay) {
       const needsPatch = segs.some((s) => {
@@ -93,6 +123,9 @@ export class StateConsistencyGuardService {
         for (const seg of segs) {
           const idx = newSegments.findIndex((x) => x.segmentId === seg.segmentId);
           if (idx === -1) continue;
+          const curA = Number(newSegments[idx].ascentM);
+          if (Number.isFinite(curA) && curA > 0) continue;
+
           const km = Number(newSegments[idx].distanceKm) || 0;
           const share = totalKm > 1e-6 ? km / totalKm : 1 / Math.max(1, segs.length);
           newSegments[idx] = {

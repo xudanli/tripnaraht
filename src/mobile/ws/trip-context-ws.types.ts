@@ -7,7 +7,11 @@ export type TripContextChangedSection =
   | 'notifications'
   | 'events'
   | 'navigation'
-  | 'intercom';
+  | 'intercom'
+  /** Spatial / Active Plan 变更（客户端应重拉 spatial-route） */
+  | 'plan'
+  | 'worldFacts'
+  | 'readiness';
 
 export interface TripContextChangedEvent {
   type: 'trip_context_changed';

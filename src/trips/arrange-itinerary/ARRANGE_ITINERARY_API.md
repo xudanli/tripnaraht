@@ -2,7 +2,8 @@
 
 **Base**: `/api/trips/:tripId`  
 **模块**: `src/trips/arrange-itinerary/`  
-**关联**: `attraction-explore`（候选放置、AI 动作、自动编排）
+**关联**: `attraction-explore`（候选放置、AI 动作、自动编排）  
+**iOS 对接（优先分级 + DoD）**：[`ARRANGE_ITINERARY_IOS_HANDOFF.md`](./ARRANGE_ITINERARY_IOS_HANDOFF.md)
 
 ## 核心原则（P1）
 
@@ -203,16 +204,28 @@ POST /api/trips/:tripId/attraction-explore/candidates/:candidateId/place
 POST /api/trips/:tripId/attraction-explore/auto-arrange
 ```
 
-**Body**
+可选 mobile 别名（契约相同）：`POST /api/mobile/trips/:tripId/planning/auto-arrange`
+
+**Body**（空 `{}` 仍可用）
 
 ```json
 {
   "candidateIds": ["optional"],
-  "commitMode": "proposal"
+  "dayIndex": 1,
+  "mode": "proposal",
+  "commitMode": "proposal",
+  "options": {
+    "respectNoNightDrive": true,
+    "preferWeekendBuffer": false
+  }
 }
 ```
 
-proposal 模式返回 `proposal`；direct 模式返回 `{ taskId, status, itemCount }`。
+- 默认 / 推荐：`mode|commitMode=proposal` → 返回 `proposal`（`intent=AUTO_ARRANGE`，`requiresConfirmation=true`），**未 Apply 不写 Active Plan**
+- 空候选 → `400` + `NO_CANDIDATES`
+- Proposal 含 `schemePreview`（方案页）以及既有 `diff` / `validation`
+
+`direct` 仅兼容旧行为；iOS / 规划 Dock 请勿默认开启。
 
 ---
 
@@ -247,14 +260,25 @@ POST /api/trips/:tripId/arrange-itinerary/ai-actions
 
 ```json
 {
-  "action": "fill_gaps | optimize_route | arrange_lunch | reduce_intensity",
+  "action": "fill_gaps | optimize_route | arrange_lunch | reduce_intensity | reduce_driving | resolve_conflicts",
   "dayIndex": 2,
   "candidateIds": ["optional"],
   "commitMode": "proposal"
 }
 ```
 
-**proposal 模式 Response** — 含 `proposal` + `answer` + `suggestedActions`。
+| action | 用途 |
+|--------|------|
+| `fill_gaps` | 用候选补空档 |
+| `optimize_route` | 优化当日驾驶/顺序 |
+| `arrange_lunch` | 安排午餐 |
+| `reduce_intensity` | 降低行程强度 |
+| `reduce_driving` | 压缩驾驶负荷（实现上映射 optimize_route） |
+| `resolve_conflicts` | 消解当日冲突（实现上映射 optimize_route） |
+
+**注意：** `action` 必须小写蛇形；`OPTIMIZE_ROUTE` 会 400。
+
+**proposal 模式 Response** — 含 `proposal`（含 `schemePreview`）+ `answer` + `suggestedActions`。
 
 ---
 

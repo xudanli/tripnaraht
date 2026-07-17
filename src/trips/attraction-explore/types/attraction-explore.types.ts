@@ -2,6 +2,19 @@ export type AttractionExplorePriority = 'must_go' | 'very_interested' | 'alterna
 
 export type AttractionExploreViewTab = 'recommended' | 'map' | 'along_route';
 
+export type AttractionExploreSortId = 'smart' | 'distance' | 'match' | 'open_now';
+
+export type AttractionExploreQuickFilterId =
+  | 'nearby'
+  | 'indoor'
+  | 'supply'
+  | 'easy'
+  | 'team';
+
+export type AttractionExploreOpenStatus = 'open' | 'closed' | 'unknown';
+
+export type AttractionExplorePrimaryAction = 'add_to_day' | 'add';
+
 export type { AttractionExploreCompiledIntent } from '../utils/attraction-explore-intent-compiler.util';
 
 export type AttractionExploreCandidateSource =
@@ -15,6 +28,22 @@ export interface AttractionExploreFilters {
   themeIds: string[];
   suitabilityIds: string[];
   viewTab: AttractionExploreViewTab;
+  /** 快捷 Chip：nearby | indoor | supply | easy | team */
+  quickFilterIds?: string[];
+  /** smart | distance | match | open_now */
+  sort?: AttractionExploreSortId;
+}
+
+export interface AttractionExploreQuickFilterChip {
+  id: string;
+  label: string;
+  icon?: string;
+  selected: boolean;
+}
+
+export interface AttractionExploreSortOption {
+  id: string;
+  label: string;
 }
 
 export interface AttractionExploreTravelConditions {
@@ -32,10 +61,17 @@ export interface AttractionExploreMemberPreferenceSummary {
 
 export interface AttractionExploreContextView {
   tripId: string;
+  /** 1-based；添加活动页必传 dayIndex 时回显 */
+  dayIndex?: number;
+  dayLabel?: string;
+  subtitle?: string;
   destination: string;
+  /** 设计稿横滑 Chips */
+  quickFilters: AttractionExploreQuickFilterChip[];
   themes: Array<{ id: string; label: string }>;
   suitabilities: Array<{ id: string; label: string }>;
   selectedFilters: AttractionExploreFilters;
+  sortOptions: AttractionExploreSortOption[];
   travelConditions: AttractionExploreTravelConditions;
   memberPreferences: AttractionExploreMemberPreferenceSummary;
 }
@@ -54,15 +90,34 @@ export interface AttractionExploreRecommendationItem {
   placeId: number;
   attractionId?: string;
   name: string;
+  /** iOS 卡片标题别名（= name） */
+  title?: string;
   nameEN?: string | null;
   category: string;
   region?: string | null;
   description?: string | null;
+  /** iOS 摘要别名（= description） */
+  summary?: string | null;
   imageUrl?: string | null;
   badge?: string | null;
+  isAiRecommended?: boolean;
+  openStatus?: AttractionExploreOpenStatus;
+  /** 「驾车 12 分钟 · 距离 8.6 km」 */
+  travelInfo?: string;
+  driveMinutes?: number;
+  distanceKm?: number;
+  tags?: string[];
+  /** 团队匹配 0–100 */
+  matchPercent?: number;
   meta: AttractionExplorePlaceMeta;
   recommendationReasons?: string[];
   score?: number;
+  /** 已在本行程 Active Plan（任意日）出现 */
+  alreadyInItinerary?: boolean;
+  /** 已在请求 dayIndex 当日出现（通常会被过滤，保留字段便于兼容） */
+  alreadyInDay?: boolean;
+  /** 大按钮「加入今天」vs 「+」 */
+  primaryAction?: AttractionExplorePrimaryAction;
 }
 
 export interface AttractionExploreRecommendationGroup {
@@ -77,6 +132,14 @@ export interface AttractionExploreRecommendationGroup {
 export interface AttractionExploreRecommendationsView {
   tripId: string;
   viewTab: AttractionExploreViewTab;
+  /** 1-based；请求带 dayIndex 时回显 */
+  dayIndex?: number;
+  /** 绿条场景提示（天气/风况等） */
+  contextTip?: string;
+  /** 兼容旧字段；可与 contextTip 并存 */
+  aiTip?: string;
+  /** 扁平列表（添加活动页主列表）；groups 仍保留兼容 Web */
+  items?: AttractionExploreRecommendationItem[];
   groups: AttractionExploreRecommendationGroup[];
 }
 
@@ -209,6 +272,8 @@ export interface AttractionExploreTripMetadataSlice {
   themeIds?: string[];
   suitabilityIds?: string[];
   viewTab?: AttractionExploreViewTab;
+  quickFilterIds?: string[];
+  sort?: AttractionExploreSortId;
   seededFrom?: string;
   suggestAttractionExplore?: boolean;
 }

@@ -2,10 +2,20 @@ import { Injectable, Optional } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CausalRuntimeSessionService } from '../../trips/causal-runtime/causal-runtime-session.service';
+import type { ActualOutcomeSnapshot } from '../../travel-causal-decision';
+import {
+  applyExecutionActualToTravelCausalDecision,
+  applySelectionToTravelCausalDecision,
+  actualOutcomeFromCalibration,
+  buildTravelCausalDecisionForTrace,
+  optionsFromTravelCausalDecision,
+  type TraceScheduleOverrides,
+} from '../adapters/attach-travel-causal-decision.util';
 import {
   buildIcelandCausalTraceSeed,
   extractTravelHintsFromMessage,
-  isTravelOrTransportProblem,
+  hasIcelandWindTravelFacts,
+  shouldSeedIcelandWindTravelCausal,
 } from '../adapters/iceland-causal-trace.adapter';
 import {
   CAUSAL_TRACE_PROTOCOL_VERSION,
@@ -38,6 +48,8 @@ export interface EnsureProblemTraceInput {
   dimension?: string;
   diagnosticMessage?: string;
   destination?: string | null;
+  /** Optional wall-clock anchors for TravelCausalDecision temporal forecast. */
+  schedule?: TraceScheduleOverrides;
 }
 
 @Injectable()
@@ -82,6 +94,16 @@ export class CanonicalCausalTraceService {
 
   getTrace(traceId: string): CanonicalCausalTraceV1 | undefined {
     return this.store.get(traceId);
+  }
+
+  /** Convenience: product decision card attached to an active problem trace. */
+  getTravelCausalDecision(
+    tripId: string,
+    problemId: string,
+  ): import('../../travel-causal-decision').TravelCausalDecision | undefined {
+    const ref = this.getActiveRef(tripId, problemId);
+    if (!ref) return undefined;
+    return this.getTrace(ref.traceId)?.travelCausalDecision;
   }
 
   buildStoryView(
@@ -165,8 +187,16 @@ export class CanonicalCausalTraceService {
     if (activeId) {
       const existing = this.store.get(activeId);
       if (existing) {
-        if (existing.worldStateVersion !== input.worldStateVersion) {
-          if (existing.status === 'CALIBRATED' || existing.status === 'EXECUTED') {
+        const windSeedWanted = shouldSeedIcelandWindTravelCausal(input);
+        const windSeedAttached = hasIcelandWindTravelFacts(existing.facts);
+        // 修复误挂：车型等 DecisionCase 曾因 dimension=TRANSPORT 被种上强风链
+        const wronglyBoundWind = windSeedAttached && !windSeedWanted;
+
+        if (existing.worldStateVersion !== input.worldStateVersion || wronglyBoundWind) {
+          if (
+            !wronglyBoundWind &&
+            (existing.status === 'CALIBRATED' || existing.status === 'EXECUTED')
+          ) {
             return existing;
           }
           this.store.markStale(activeId);
@@ -189,8 +219,12 @@ export class CanonicalCausalTraceService {
     const strongWindSeed = tripMeta.inTripStrongWindSeed as
       | { problemId?: string; windMps?: number; routeLabel?: string }
       | undefined;
+    const matchedStrongWindProblem =
+      Boolean(strongWindSeed?.problemId) &&
+      strongWindSeed!.problemId === input.problemId &&
+      !input.problemId.startsWith('dc_');
     const windMpsOverride =
-      strongWindSeed?.problemId === input.problemId && typeof strongWindSeed.windMps === 'number'
+      matchedStrongWindProblem && typeof strongWindSeed?.windMps === 'number'
         ? strongWindSeed.windMps
         : undefined;
 
@@ -199,8 +233,9 @@ export class CanonicalCausalTraceService {
       ?.getForTrip(input.tripId)
       ?.state.signals.icelandSelfDriveCausalAssessment;
 
+    // 禁止：只要 session 有冰岛评估就给所有 problem 挂强风链
     const icelandSeed =
-      isTravelOrTransportProblem(input) || sessionAssessment
+      matchedStrongWindProblem || shouldSeedIcelandWindTravelCausal(input)
         ? buildIcelandCausalTraceSeed({
             tripId: input.tripId,
             problemId: input.problemId,
@@ -209,9 +244,28 @@ export class CanonicalCausalTraceService {
             distanceKm: travelHints.distanceKm,
             durationMinutes: travelHints.durationMinutes,
             windMps: windMpsOverride,
-            sessionAssessment,
+            sessionAssessment: shouldSeedIcelandWindTravelCausal(input)
+              ? sessionAssessment
+              : matchedStrongWindProblem
+                ? sessionAssessment
+                : undefined,
           })
         : undefined;
+
+    let travelCausalDecision: CanonicalCausalTraceV1['travelCausalDecision'];
+    let seededOptions: CausalOptionRef[] = [];
+    if (icelandSeed?.assessment) {
+      travelCausalDecision = buildTravelCausalDecisionForTrace({
+        tripId: input.tripId,
+        decisionId: `dec_${input.problemId}`,
+        assessment: icelandSeed.assessment,
+        detectedAt: now,
+        worldStateVersion: input.worldStateVersion,
+        canonicalTraceId: traceId,
+        schedule: input.schedule,
+      });
+      seededOptions = optionsFromTravelCausalDecision(travelCausalDecision, input.problemId);
+    }
 
     const trace: CanonicalCausalTraceV1 = {
       schema: CANONICAL_CAUSAL_TRACE_SCHEMA,
@@ -234,10 +288,11 @@ export class CanonicalCausalTraceService {
           problemId: input.problemId,
           problemType: input.problemType,
           severity: 'WARNING',
-          assessmentKey: input.diagnosticMessage,
+          assessmentKey: input.diagnosticMessage ?? input.semanticKey,
         },
       ],
-      options: [],
+      options: seededOptions,
+      travelCausalDecision,
       status: 'PREVIEW',
     };
 
@@ -261,10 +316,15 @@ export class CanonicalCausalTraceService {
       metricsAfter: input.metricsAfter,
     };
     const others = trace.options.filter((o) => o.optionId !== input.optionId);
+    const travelCausalDecision = applySelectionToTravelCausalDecision(
+      trace.travelCausalDecision,
+      input.optionId,
+    );
     const updated: CanonicalCausalTraceV1 = {
       ...trace,
       options: [...others, option],
       selectedOptionId: input.optionId,
+      travelCausalDecision,
       status: 'PREVIEW',
       updatedAt: new Date().toISOString(),
     };
@@ -278,10 +338,15 @@ export class CanonicalCausalTraceService {
   }): CanonicalCausalTraceV1 | undefined {
     const trace = this.store.get(input.traceId);
     if (!trace) return undefined;
+    const travelCausalDecision = applySelectionToTravelCausalDecision(
+      trace.travelCausalDecision,
+      input.optionId,
+    );
     const updated: CanonicalCausalTraceV1 = {
       ...trace,
       selectedOptionId: input.optionId,
       executionRef: input.executionRef,
+      travelCausalDecision,
       status: 'SELECTED',
       updatedAt: new Date().toISOString(),
     };
@@ -303,13 +368,21 @@ export class CanonicalCausalTraceService {
     traceId: string;
     executionRef: string;
     outcomeRef?: string;
+    /** When provided, advances DecisionOutcome reconciliation off PENDING. */
+    actualOutcome?: ActualOutcomeSnapshot;
   }): CanonicalCausalTraceV1 | undefined {
     const trace = this.store.get(input.traceId);
     if (!trace) return undefined;
+    const travelCausalDecision = applyExecutionActualToTravelCausalDecision(
+      trace.travelCausalDecision,
+      input.actualOutcome,
+      trace.selectedOptionId,
+    );
     const updated: CanonicalCausalTraceV1 = {
       ...trace,
       executionRef: input.executionRef,
       outcomeRef: input.outcomeRef,
+      travelCausalDecision,
       status: 'EXECUTED',
       updatedAt: new Date().toISOString(),
     };
@@ -322,6 +395,9 @@ export class CanonicalCausalTraceService {
     predictedMinutes?: number;
     actualMinutes?: number;
     verdict?: string;
+    /** Optional explicit product outcome; otherwise derived from minutes. */
+    actualOutcome?: ActualOutcomeSnapshot;
+    completed?: boolean;
   }): CanonicalCausalTraceV1 | undefined {
     const trace = this.store.get(input.traceId);
     if (!trace) return undefined;
@@ -332,6 +408,20 @@ export class CanonicalCausalTraceService {
       Number.isFinite(input.actualMinutes)
         ? Math.round(input.actualMinutes - input.predictedMinutes)
         : undefined;
+
+    const actual =
+      input.actualOutcome ??
+      actualOutcomeFromCalibration({
+        predictedMinutes: input.predictedMinutes,
+        actualMinutes: input.actualMinutes,
+        completed: input.completed,
+      });
+    const travelCausalDecision = applyExecutionActualToTravelCausalDecision(
+      trace.travelCausalDecision,
+      actual,
+      trace.selectedOptionId,
+    );
+
     const updated: CanonicalCausalTraceV1 = {
       ...trace,
       outcomeRef: input.outcomeRef,
@@ -343,6 +433,7 @@ export class CanonicalCausalTraceService {
         verdict: input.verdict,
         evaluatedAt: new Date().toISOString(),
       },
+      travelCausalDecision,
       status: 'CALIBRATED',
       updatedAt: new Date().toISOString(),
     };

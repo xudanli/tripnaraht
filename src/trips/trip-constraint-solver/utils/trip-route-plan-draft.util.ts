@@ -4,6 +4,10 @@ import {
   coordsFromPlaceMetadata,
   loadPlaceCoordinatesMap,
 } from './split-plan-place-coords.util';
+import {
+  applyTerrainToSegmentPhysics,
+  extractTerrainFromItemMetadata,
+} from '../../dem/utils/map-travel-terrain.util';
 
 type ItemRow = {
   id: string;
@@ -11,6 +15,7 @@ type ItemRow = {
   travelFromPreviousDistance: number | null;
   travelFromPreviousDuration: number | null;
   trailId: number | null;
+  metadata?: unknown;
   Trail: {
     distanceKm: number | null;
     elevationGainM: number | null;
@@ -26,14 +31,27 @@ function resolveSegmentPhysics(item: ItemRow): {
   distanceKm: number;
   ascentM: number;
   slopePct: number;
-  distanceSource: 'trail' | 'travelFromPrevious' | 'none';
+  distanceSource: 'trail' | 'travelFromPrevious' | 'travel-eta-terrain' | 'none';
+  terrain?: ReturnType<typeof extractTerrainFromItemMetadata>;
 } {
+  const terrain = extractTerrainFromItemMetadata(item.metadata);
   if (item.Trail?.distanceKm != null && item.Trail.distanceKm > 0) {
     return {
       distanceKm: item.Trail.distanceKm,
       ascentM: item.Trail.elevationGainM ?? 0,
       slopePct: item.Trail.averageSlope ?? 0,
       distanceSource: 'trail',
+      ...(terrain ? { terrain } : {}),
+    };
+  }
+  if (terrain && item.travelFromPreviousDistance != null && item.travelFromPreviousDistance > 0) {
+    const physics = applyTerrainToSegmentPhysics(terrain);
+    return {
+      distanceKm: item.travelFromPreviousDistance / 1000,
+      ascentM: physics.ascentM,
+      slopePct: physics.slopePct,
+      distanceSource: 'travel-eta-terrain',
+      terrain,
     };
   }
   if (item.travelFromPreviousDistance != null && item.travelFromPreviousDistance > 0) {
@@ -42,9 +60,10 @@ function resolveSegmentPhysics(item: ItemRow): {
       ascentM: 0,
       slopePct: 0,
       distanceSource: 'travelFromPrevious',
+      ...(terrain ? { terrain } : {}),
     };
   }
-  return { distanceKm: 0, ascentM: 0, slopePct: 0, distanceSource: 'none' };
+  return { distanceKm: 0, ascentM: 0, slopePct: 0, distanceSource: 'none', ...(terrain ? { terrain } : {}) };
 }
 
 /**
@@ -74,6 +93,7 @@ export async function synthesizeRoutePlanDraftFromTrip(
                 travelFromPreviousDistance: true,
                 travelFromPreviousDuration: true,
                 trailId: true,
+                metadata: true,
                 Place: {
                   select: { id: true, metadata: true },
                 },
@@ -141,6 +161,13 @@ export async function synthesizeRoutePlanDraftFromTrip(
                   : {}),
                 ...(item.travelFromPreviousDuration != null
                   ? { travelFromPreviousDurationMin: item.travelFromPreviousDuration }
+                  : {}),
+                ...(physics.terrain
+                  ? {
+                      terrain: physics.terrain,
+                      terrainAuditSource: 'travel-eta-terrain',
+                      demSource: physics.terrain.demSource,
+                    }
                   : {}),
               },
             });

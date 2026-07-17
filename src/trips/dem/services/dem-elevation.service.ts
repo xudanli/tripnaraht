@@ -14,6 +14,33 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 
+/** Raster table that produced the sample — travel / DEM Gate 1 provenance */
+export type DemRasterSource =
+  | 'geo_dem_iceland_20m'
+  | 'geo_dem_cities_merged'
+  | 'geo_dem_global'
+  | 'geo_dem_xizang'
+  | 'NONE';
+
+export interface DemElevationProvenance {
+  elevationM: number | null;
+  source: DemRasterSource;
+  resolutionM: number | null;
+  srid: number | null;
+  /** 0–1; iceland_20m highest, global fallback lower */
+  confidence: number;
+}
+
+const DEM_SOURCE_META: Record<
+  Exclude<DemRasterSource, 'NONE'>,
+  { resolutionM: number | null; srid: number; confidence: number }
+> = {
+  geo_dem_iceland_20m: { resolutionM: 20, srid: 5327, confidence: 0.98 },
+  geo_dem_cities_merged: { resolutionM: null, srid: 4326, confidence: 0.85 },
+  geo_dem_xizang: { resolutionM: null, srid: 4326, confidence: 0.75 },
+  geo_dem_global: { resolutionM: 90, srid: 4326, confidence: 0.55 },
+};
+
 @Injectable()
 export class DEMElevationService {
   private readonly logger = new Logger(DEMElevationService.name);
@@ -87,7 +114,33 @@ export class DEMElevationService {
     lng: number,
     fallbackTable: string = 'geo_dem_xizang'
   ): Promise<number | null> {
-    // 1. 如果坐标在冰岛范围内，优先查询冰岛专用高精度DEM表（20m精度）
+    const sample = await this.getElevationWithProvenance(lat, lng, fallbackTable);
+    return sample.elevationM;
+  }
+
+  /**
+   * Gate 1 — point elevation with explicit raster provenance
+   * (proves iceland_20m vs global fallback).
+   */
+  async getElevationWithProvenance(
+    lat: number,
+    lng: number,
+    fallbackTable: string = 'geo_dem_xizang',
+  ): Promise<DemElevationProvenance> {
+    const pack = (
+      source: Exclude<DemRasterSource, 'NONE'>,
+      elevationM: number,
+    ): DemElevationProvenance => {
+      const meta = DEM_SOURCE_META[source];
+      return {
+        elevationM,
+        source,
+        resolutionM: meta.resolutionM,
+        srid: meta.srid,
+        confidence: meta.confidence,
+      };
+    };
+
     if (this.isInIcelandBounds(lat, lng)) {
       try {
         const icelandTableExists = await this.checkDEMTableExists('geo_dem_iceland_20m');
@@ -95,56 +148,59 @@ export class DEMElevationService {
           const elevation = await this.queryElevationFromTable(lat, lng, 'geo_dem_iceland_20m', 5327);
           if (elevation !== null) {
             this.logger.debug(`从冰岛20m DEM表获取海拔: ${elevation}m`);
-            return elevation;
+            return pack('geo_dem_iceland_20m', elevation);
           }
         }
-      } catch (error) {
+      } catch {
         this.logger.debug(`冰岛DEM表查询失败，尝试其他表`);
       }
     }
 
-    // 2. 优先查询合并的城市 DEM 表（性能最佳）
     try {
       const mergedTableExists = await this.checkDEMTableExists('geo_dem_cities_merged');
       if (mergedTableExists) {
         const elevation = await this.queryElevationFromTable(lat, lng, 'geo_dem_cities_merged');
         if (elevation !== null) {
           this.logger.debug(`从合并城市DEM表获取海拔: ${elevation}m`);
-          return elevation;
+          return pack('geo_dem_cities_merged', elevation);
         }
       }
-    } catch (error) {
+    } catch {
       this.logger.debug(`合并城市DEM表查询失败，尝试后备表`);
     }
 
-    // 3. 如果合并表查询失败，使用区域后备表
-    if (fallbackTable) {
+    if (fallbackTable === 'geo_dem_xizang' || fallbackTable === 'geo_dem_global') {
       try {
         const elevation = await this.queryElevationFromTable(lat, lng, fallbackTable);
         if (elevation !== null) {
           this.logger.debug(`从区域后备表 ${fallbackTable} 获取海拔: ${elevation}m`);
-          return elevation;
+          return pack(fallbackTable as 'geo_dem_xizang' | 'geo_dem_global', elevation);
         }
-      } catch (error) {
+      } catch {
         this.logger.debug(`区域后备表 ${fallbackTable} 查询失败`);
       }
     }
 
-    // 4. 最终后备：全球 DEM 表（如果存在）
     try {
       const globalTableExists = await this.checkDEMTableExists('geo_dem_global');
       if (globalTableExists) {
         const elevation = await this.queryElevationFromTable(lat, lng, 'geo_dem_global');
         if (elevation !== null) {
           this.logger.debug(`从全球DEM表获取海拔: ${elevation}m`);
-          return elevation;
+          return pack('geo_dem_global', elevation);
         }
       }
-    } catch (error) {
+    } catch {
       this.logger.debug(`全球DEM表查询失败`);
     }
 
-    return null;
+    return {
+      elevationM: null,
+      source: 'NONE',
+      resolutionM: null,
+      srid: null,
+      confidence: 0,
+    };
   }
 
   /**

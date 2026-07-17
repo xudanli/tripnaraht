@@ -129,6 +129,11 @@ export interface PlanProposal {
   /** P0/P1 决策语义包 */
   decisionPack?: import('./planning-decision-pack.types').PlanningDecisionPack;
   /**
+   * iOS AISchedulingSchemeView — structured preview (optional).
+   * Always prefer this when present; otherwise render `diff` + `validation`.
+   */
+  schemePreview?: import('../utils/scheme-preview.projection.util').SchemePreview;
+  /**
    * ADR-008 S4 — OR-Tools OPTIMIZE_ROUTE shadow (observational only).
    * Never merges into `changes` / apply path.
    */

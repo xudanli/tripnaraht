@@ -1,0 +1,12 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "pilot_iceland_blue_ice_10_ice_day_shorten_overpacked",
+  "evidenceVersionId": "ev-ice-10",
+  "frozenAt": "2026-07-16T09:53:48.021Z",
+  "sources": [
+    {
+      "provider": "gold_export",
+      "ref": "iceland.blue_ice.10_ice_day_shorten_overpacked"
+    }
+  ]
+}

@@ -151,6 +151,7 @@ export interface EnvironmentState {
 
 /** PLAN_GEN 空草案或无法进入生成器时的终止信号（写入 DSO.systemState） */
 export interface PlanGenTerminalFailure {
+  /** 冻结码见 `plan-gen-node-protocol.constants.ts` */
   code: string;
   message: string;
   detail?: string;

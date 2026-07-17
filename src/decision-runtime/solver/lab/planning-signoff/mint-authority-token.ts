@@ -96,11 +96,16 @@ async function main(): Promise<number> {
   const token = mintAuthorityToken(claims, secret);
 
   if (useTestPkg || process.argv.includes('--write-env')) {
-    const envPath = join(PLANNING_SIGNOFF_ROOT, '.lab-authority-token.env');
+    const envPath = join(
+      PLANNING_SIGNOFF_ROOT,
+      useTestPkg ? '.lab-authority-token.env' : '.staging-authority-token.env',
+    );
     writeFileSync(
       envPath,
       [
-        '# Lab token — bound to authority.test.json only',
+        useTestPkg
+          ? '# Lab token — bound to authority.test.json only'
+          : '# Staging product token — bound to CURRENT authority.json',
         `OR_TOOLS_AUTHORITY_TOKEN_SECRET=${secret}`,
         `OR_TOOLS_AUTHORITY_TOKEN=${token}`,
         `OR_TOOLS_AUTHORITY_ENVIRONMENT=${environment}`,

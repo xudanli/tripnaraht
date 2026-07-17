@@ -12,16 +12,19 @@
     "instant_neptune_fallback"
   ],
   "tripIds": [
-    "WHITELIST_PLACEHOLDER_IS_01",
-    "WHITELIST_PLACEHOLDER_IS_02",
-    "WHITELIST_PLACEHOLDER_IS_03",
-    "WHITELIST_PLACEHOLDER_IS_04",
-    "WHITELIST_PLACEHOLDER_IS_05",
-    "WHITELIST_PLACEHOLDER_IS_06",
-    "WHITELIST_PLACEHOLDER_IS_07",
-    "WHITELIST_PLACEHOLDER_IS_08",
-    "WHITELIST_PLACEHOLDER_IS_09",
-    "WHITELIST_PLACEHOLDER_IS_10"
+    "ra01_is_01",
+    "ra01_is_02",
+    "ra01_is_03",
+    "ra01_is_04",
+    "ra01_is_05",
+    "ra01_is_06",
+    "ra01_is_07",
+    "ra01_is_08",
+    "ra01_is_09",
+    "ra01_is_10"
   ],
-  "notes": "Replace placeholders with 10–20 internal/staging tripIds before selected_trips canary. Never random production traffic."
+  "ownerEmail": "2293028143@qq.com",
+  "environment": "staging",
+  "packSource": "staging_export",
+  "notes": "Staging intake 2026-07-16 — packs under selected-trips/packs/ra01_is_*. Product must still APPROVE authority.json before opening selected_trips canary."
 }

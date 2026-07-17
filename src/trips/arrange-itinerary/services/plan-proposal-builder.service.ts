@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -40,6 +46,7 @@ import {
   pickDensestArrangeDay,
   planProposalAddsToDayItems,
 } from '../../../decision-runtime/solver/projection/plan-proposal-adds-to-day-items.util';
+import { projectSchemePreview } from '../utils/scheme-preview.projection.util';
 
 @Injectable()
 export class PlanProposalBuilderService {
@@ -99,9 +106,13 @@ export class PlanProposalBuilderService {
       source: input.source,
     };
 
-    return {
+    const withPack: PlanProposal = {
       ...draft,
       decisionPack: await this.decisionPack.buildForProposal(draft),
+    };
+    return {
+      ...withPack,
+      schemePreview: projectSchemePreview(withPack),
     };
   }
 
@@ -233,6 +244,12 @@ export class PlanProposalBuilderService {
     tripId: string;
     userId: string;
     candidateIds?: string[];
+    dayIndex?: number;
+    options?: {
+      respectNoNightDrive?: boolean;
+      maxDailyDriveMinutes?: number;
+      preferWeekendBuffer?: boolean;
+    };
   }): Promise<PlanProposal> {
     const rows = await this.prisma.tripAttractionExploreCandidate.findMany({
       where: {
@@ -255,20 +272,34 @@ export class PlanProposalBuilderService {
     );
 
     const tripDays = await this.loadTripDays(input.tripId);
-    if (rows.length === 0 || tripDays.length === 0) {
-      return this.build({
-        tripId: input.tripId,
-        userId: input.userId,
-        intent: 'AUTO_ARRANGE',
-        source: { type: 'auto_arrange', payload: { candidateIds: input.candidateIds ?? [] } },
-        changes: [],
-        tradeoffs: ['候选清单为空，无可编排项'],
-        answer: '当前没有可自动编排的候选景点。',
+    if (rows.length === 0) {
+      throw new BadRequestException({
+        code: 'NO_CANDIDATES',
+        errorCode: 'NO_CANDIDATES',
+        message: '当前没有可自动编排的候选景点，请先添加候选',
+      });
+    }
+    if (tripDays.length === 0) {
+      throw new BadRequestException({
+        code: 'NO_TRIP_DAYS',
+        errorCode: 'NO_TRIP_DAYS',
+        message: '行程尚无日程天，无法自动编排',
       });
     }
 
-    let dayIndex = 0;
-    let slotHour = 9;
+    const preferDayOffset =
+      input.dayIndex != null && input.dayIndex >= 1
+        ? Math.min(input.dayIndex - 1, tripDays.length - 1)
+        : 0;
+    const eveningCap = input.options?.respectNoNightDrive === false ? 20 : 17;
+    const morningStart = (dayDate: Date) => {
+      if (!input.options?.preferWeekendBuffer) return 9;
+      const weekday = DateTime.fromJSDate(dayDate, { zone: 'utc' }).weekday; // 1=Mon … 7=Sun
+      return weekday >= 6 ? 10 : 9;
+    };
+
+    let dayIndex = preferDayOffset;
+    let slotHour = morningStart(tripDays[dayIndex % tripDays.length]!.date);
     const changes: PlanProposalChange[] = [];
 
     for (const row of rows) {
@@ -299,20 +330,30 @@ export class PlanProposalBuilderService {
       });
 
       slotHour = endHour;
-      if (slotHour >= 17) {
+      if (slotHour >= eveningCap) {
         dayIndex += 1;
-        slotHour = 9;
+        slotHour = morningStart(tripDays[dayIndex % tripDays.length]!.date);
       }
     }
+
+    const sourcePayload: Record<string, unknown> = {
+      candidateIds: input.candidateIds ?? [],
+      dayIndex: input.dayIndex,
+      options: input.options,
+    };
 
     const proposal = await this.build({
       tripId: input.tripId,
       userId: input.userId,
       intent: 'AUTO_ARRANGE',
-      source: { type: 'auto_arrange', payload: { candidateIds: input.candidateIds ?? [] } },
+      source: { type: 'auto_arrange', payload: sourcePayload },
       changes,
       benefits: { itemsAdded: rows.length },
-      tradeoffs: ['自动编排按优先级均匀分配到各天，确认后可再微调'],
+      tradeoffs: [
+        input.dayIndex != null
+          ? `优先落入第 ${input.dayIndex} 天起分配，确认后可再微调`
+          : '自动编排按优先级均匀分配到各天，确认后可再微调',
+      ],
       answer: `已为 ${rows.length} 个候选生成自动编排草案，请预览后确认写入。`,
     });
 
@@ -444,32 +485,40 @@ export class PlanProposalBuilderService {
       optimize_route: 'OPTIMIZE_ROUTE',
       arrange_lunch: 'ARRANGE_LUNCH',
       reduce_intensity: 'REDUCE_INTENSITY',
+      reduce_driving: 'OPTIMIZE_ROUTE',
+      resolve_conflicts: 'OPTIMIZE_ROUTE',
     };
 
     const intent = intentMap[input.body.action];
+    const builderAction =
+      input.body.action === 'reduce_driving' ||
+      input.body.action === 'resolve_conflicts'
+        ? 'optimize_route'
+        : input.body.action;
+
     let changes: PlanProposalChange[] = [];
     let tradeoffs: string[] = [];
     let benefits: PlanProposalBenefits | undefined;
     let optimizeDayIndex: number | undefined;
     let optimizeItems: DayVrptwItemInput[] | undefined;
 
-    if (input.body.action === 'fill_gaps') {
+    if (builderAction === 'fill_gaps') {
       const result = await this.buildFillGapChanges(input.tripId, input.body.dayIndex);
       changes = result.changes;
       tradeoffs = result.tradeoffs;
       benefits = result.benefits;
-    } else if (input.body.action === 'optimize_route') {
+    } else if (builderAction === 'optimize_route') {
       const result = await this.buildOptimizeRouteChanges(input.tripId, input.body.dayIndex);
       changes = result.changes;
       tradeoffs = result.tradeoffs;
       benefits = result.benefits;
       optimizeDayIndex = result.dayIndex;
       optimizeItems = result.movableItems;
-    } else if (input.body.action === 'arrange_lunch') {
+    } else if (builderAction === 'arrange_lunch') {
       const result = await this.buildLunchChanges(input.tripId, input.body.dayIndex);
       changes = result.changes;
       tradeoffs = result.tradeoffs;
-    } else if (input.body.action === 'reduce_intensity') {
+    } else if (builderAction === 'reduce_intensity') {
       const result = await this.buildReduceIntensityChanges(input.tripId, input.body.dayIndex);
       changes = result.changes;
       tradeoffs = result.tradeoffs;

@@ -78,6 +78,10 @@ export interface PhaseExecutorContext {
    */
   researchAtomicRollbackSnapshot?: Record<string, unknown>;
   /**
+   * RETURN_TO_RESEARCH：禁止 scoped_partial 因缺 prior/scopes 静默降级为 full。
+   */
+  forbidScopedPartialDegradeToFull?: boolean;
+  /**
    * 4.0 Experience Replay：由 `MemoryKernelService` 在 `MEMORY_KERNEL_LOAD_BUDGET_MS` 内注入的非 PII 认知侧写；
    * 缺省或未加载成功时不存在（走 3.0 无记忆路径）。
    */

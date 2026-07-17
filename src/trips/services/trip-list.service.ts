@@ -1,16 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { DateTime } from 'luxon';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TripListQueryDto } from '../dto/trip-list.dto';
-import type { TripListPageResponse } from '../dto/frontend-trip-list-api.types';
-import { parseBudgetConfig, resolveBudgetIntent } from '../budget-os/utils/budget-config.util';
+import type { TripListCardDto, TripListPageResponse } from '../dto/frontend-trip-list-api.types';
 import { TripStatus } from '../dto/trip-status.dto';
 import {
-  buildTripListSummary,
   expandStatusFilter,
-  mapTripRowToListCard,
-  sortTripsForListPage,
+  resolveDisplayStatusLabel,
+  resolvePrimaryAction,
+  resolveTripListDisplayStatus,
+  toApiTripStatus,
 } from '../utils/trip-list-bff.projection.util';
-import { resolveTripCoverImageUrl } from '../utils/cover-image.util';
 
 type LiteTripRow = {
   id: string;
@@ -19,17 +19,28 @@ type LiteTripRow = {
   startDate: Date;
   endDate: Date;
   status: string | null;
-  budgetConfig: unknown;
-  metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
-  TripDay: Array<{ id: string; date: Date; _count: { ItineraryItem: number } }>;
-  _count: { TripCollaborator: number };
 };
 
+type CountryListProfile = {
+  isoCode: string;
+  nameCN: string;
+  coverImageUrl: string | null;
+};
+
+/**
+ * Home trip list BFF — intentionally thin for <300ms.
+ *
+ * Dropped vs full detail: metadata, TripDay, collaborators, budget, progress/readiness.
+ * Cover = country profile; duration/status derived from trip dates + status only.
+ */
 @Injectable()
 export class TripListService {
   private readonly logger = new Logger(TripListService.name);
+  private static countryByCode: Map<string, CountryListProfile> | null = null;
+  private static countryCacheAt = 0;
+  private static readonly COUNTRY_CACHE_TTL_MS = 10 * 60 * 1000;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -37,90 +48,61 @@ export class TripListService {
     userId: string | undefined,
     query: TripListQueryDto,
   ): Promise<TripListPageResponse> {
+    const started = Date.now();
     const limit = query.limit ?? 50;
     const offset = query.offset ?? 0;
     const includeCancelled = query.includeCancelled ?? true;
-
     const where = this.buildWhereClause(userId, query.status, includeCancelled);
-    const [total, indexRows] = await Promise.all([
+
+    const [total, pageRows, countryByCode] = await Promise.all([
       this.prisma.trip.count({ where }),
       this.prisma.trip.findMany({
         where,
-        select: { id: true, status: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          destination: true,
+          startDate: true,
+          endDate: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
       }),
+      this.loadCountryIndex(),
     ]);
 
-    const pageIds = sortTripsForListPage(indexRows)
-      .slice(offset, offset + limit)
-      .map((row) => row.id);
-
-    if (pageIds.length === 0) {
+    if (pageRows.length === 0) {
+      this.logTiming(started, 0, total);
       return { trips: [], total };
     }
 
-    const tripRows = await this.prisma.trip.findMany({
-      where: { id: { in: pageIds } },
-      select: {
-        id: true,
-        name: true,
-        destination: true,
-        startDate: true,
-        endDate: true,
-        status: true,
-        budgetConfig: true,
-        metadata: true,
-        createdAt: true,
-        updatedAt: true,
-        TripDay: {
-          select: {
-            id: true,
-            date: true,
-            _count: { select: { ItineraryItem: true } },
-          },
-          orderBy: { date: 'asc' },
-        },
-        _count: { select: { TripCollaborator: true } },
-      },
+    const trips = pageRows.map((trip) => this.toCard(trip, countryByCode));
+    this.logTiming(started, trips.length, total);
+    return { trips, total };
+  }
+
+  private async loadCountryIndex(): Promise<Map<string, CountryListProfile>> {
+    const now = Date.now();
+    if (
+      TripListService.countryByCode &&
+      now - TripListService.countryCacheAt < TripListService.COUNTRY_CACHE_TTL_MS
+    ) {
+      return TripListService.countryByCode;
+    }
+
+    const rows = await this.prisma.countryProfile.findMany({
+      select: { isoCode: true, nameCN: true, coverImageUrl: true },
     });
-
-    const rowById = new Map(tripRows.map((trip) => [trip.id, trip]));
-    const pageRows = pageIds
-      .map((id) => rowById.get(id))
-      .filter((trip) => trip != null) as LiteTripRow[];
-
-    const destinationCodes = [...new Set(pageRows.map((trip) => trip.destination.toUpperCase()))];
-
-    const [countryProfiles, collaboratorMap] = await Promise.all([
-      destinationCodes.length > 0
-        ? this.prisma.countryProfile.findMany({
-            where: { isoCode: { in: destinationCodes } },
-            select: { isoCode: true, nameCN: true, currencyCode: true, coverImageUrl: true },
-          })
-        : Promise.resolve([]),
-      this.loadCollaboratorsForTrips(pageIds),
-    ]);
-
-    const countryByCode = new Map(
-      countryProfiles.map((profile) => [profile.isoCode.toUpperCase(), profile]),
+    const map = new Map(
+      rows.map((row) => [row.isoCode.toUpperCase(), row] as const),
     );
-
-    const cards = pageRows.map((trip) => {
-      const country = countryByCode.get(trip.destination.toUpperCase());
-      const countryCover =
-        typeof country?.coverImageUrl === 'string' && country.coverImageUrl.trim().length > 0
-          ? country.coverImageUrl.trim()
-          : null;
-      const coverImageUrl = resolveTripCoverImageUrl(trip.id, trip.metadata, [], countryCover);
-
-      return this.buildTripListCard(
-        trip,
-        countryByCode,
-        collaboratorMap.get(trip.id) ?? [],
-        coverImageUrl,
-      );
-    });
-
-    return { trips: cards, total };
+    TripListService.countryByCode = map;
+    TripListService.countryCacheAt = now;
+    return map;
   }
 
   private buildWhereClause(
@@ -149,95 +131,57 @@ export class TripListService {
     return where;
   }
 
-  private async loadCollaboratorsForTrips(tripIds: string[]) {
-    const map = new Map<
-      string,
-      Array<{ userId: string; name?: string; avatarUrl?: string | null }>
-    >();
-    if (tripIds.length === 0) return map;
-
-    const collaborators = await this.prisma.tripCollaborator.findMany({
-      where: { tripId: { in: tripIds } },
-      orderBy: { createdAt: 'asc' },
-      select: { tripId: true, userId: true },
+  private toCard(
+    trip: LiteTripRow,
+    countryByCode: Map<string, CountryListProfile>,
+  ): TripListCardDto {
+    const country = countryByCode.get(trip.destination.toUpperCase());
+    const coverImageUrl =
+      typeof country?.coverImageUrl === 'string' && country.coverImageUrl.trim().length > 0
+        ? country.coverImageUrl.trim()
+        : null;
+    const displayStatus = resolveTripListDisplayStatus({
+      status: trip.status,
+      startDate: trip.startDate,
     });
+    const durationDays = Math.max(
+      1,
+      Math.ceil(
+        DateTime.fromJSDate(trip.endDate)
+          .startOf('day')
+          .diff(DateTime.fromJSDate(trip.startDate).startOf('day'), 'days').days,
+      ) + 1,
+    );
 
-    const userIds = [...new Set(collaborators.map((row) => row.userId))];
-    const users =
-      userIds.length > 0
-        ? await this.prisma.user.findMany({
-            where: { id: { in: userIds } },
-            select: { id: true, displayName: true, avatarUrl: true },
-          })
-        : [];
-    const userById = new Map(users.map((user) => [user.id, user]));
-
-    for (const row of collaborators) {
-      const user = userById.get(row.userId);
-      const entry = {
-        userId: row.userId,
-        name: user?.displayName ?? undefined,
-        avatarUrl: user?.avatarUrl ?? null,
-      };
-      const existing = map.get(row.tripId) ?? [];
-      existing.push(entry);
-      map.set(row.tripId, existing);
-    }
-
-    return map;
+    return {
+      id: trip.id,
+      name: trip.name ?? undefined,
+      destination: trip.destination,
+      destinationLabel: country?.nameCN ?? undefined,
+      startDate: trip.startDate.toISOString(),
+      endDate: trip.endDate.toISOString(),
+      status: toApiTripStatus(trip.status),
+      totalBudget: 0,
+      days: [],
+      createdAt: trip.createdAt.toISOString(),
+      updatedAt: trip.updatedAt.toISOString(),
+      listSummary: {
+        displayStatus,
+        displayStatusLabel: resolveDisplayStatusLabel(displayStatus),
+        coverImageUrl,
+        durationDays,
+        memberCount: 1,
+        primaryAction: resolvePrimaryAction(displayStatus),
+      },
+    };
   }
 
-  private buildTripListCard(
-    trip: LiteTripRow,
-    countryByCode: Map<
-      string,
-      { isoCode: string; nameCN: string; currencyCode: string | null; coverImageUrl: string | null }
-    >,
-    collaborators: Array<{ userId: string; name?: string; avatarUrl?: string | null }>,
-    coverImageUrl: string | null,
-  ) {
-    const budgetIntent = resolveBudgetIntent(parseBudgetConfig(trip.budgetConfig));
-    const totalBudget = budgetIntent?.total ?? 0;
-    const country = countryByCode.get(trip.destination.toUpperCase());
-    const currency = budgetIntent?.currency ?? country?.currencyCode ?? undefined;
-    const memberCount = Math.max(collaborators.length, trip._count.TripCollaborator, 1);
-    const memberAvatars = collaborators.slice(0, 4).map((member) => ({
-      userId: member.userId,
-      name: member.name,
-      avatarUrl: member.avatarUrl,
-    }));
-
-    let listSummary = null;
-    try {
-      listSummary = buildTripListSummary({
-        destination: trip.destination,
-        status: trip.status,
-        startDate: trip.startDate,
-        endDate: trip.endDate,
-        metadata: trip.metadata,
-        coverImageUrl,
-        totalItems: trip.TripDay.reduce((sum, day) => sum + day._count.ItineraryItem, 0),
-        daysWithItems: trip.TripDay.filter((day) => day._count.ItineraryItem > 0).length,
-        totalDays: trip.TripDay.length,
-        memberCount,
-        memberAvatars,
-        totalBudget,
-        currency,
-      });
-    } catch (error: unknown) {
-      this.logger.warn(
-        `trip-list summary failed for ${trip.id}: ${error instanceof Error ? error.message : error}`,
-      );
+  private logTiming(started: number, count: number, total: number) {
+    const ms = Date.now() - started;
+    if (ms >= 200) {
+      this.logger.warn(`trip-list slow: ${ms}ms count=${count} total=${total}`);
+    } else {
+      this.logger.debug(`trip-list ${ms}ms count=${count} total=${total}`);
     }
-
-    return mapTripRowToListCard({
-      trip,
-      destinationLabel: country?.nameCN ?? undefined,
-      currency,
-      totalBudget,
-      memberCount,
-      memberAvatars,
-      listSummary,
-    });
   }
 }

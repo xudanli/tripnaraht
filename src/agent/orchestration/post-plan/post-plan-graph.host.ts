@@ -1,9 +1,10 @@
 import type { OrchestrationResult } from '../../interfaces/claude-orchestration.interface';
 import type { AgentContext } from '../../interfaces/claude-orchestration.interface';
-import type { OrchestratorState } from '../../interfaces/trip-plan.interface';
+import type { OrchestratorState, OrchestrationStep } from '../../interfaces/trip-plan.interface';
 import type { DecisionState } from '../../../decision/kernel/decision-state.types';
 import type { RunFeedbackPhaseParams } from './feedback-phase.host';
 import type { RunHallucinationPhaseParams } from './hallucination-phase.host';
+import type { HallucinationPhaseOutcome } from './hallucination-phase.executor';
 import type { NarrateNodeHost } from './narrate-node.host';
 
 /**
@@ -12,12 +13,22 @@ import type { NarrateNodeHost } from './narrate-node.host';
 export interface PostPlanGraphHost extends NarrateNodeHost {
   runFeedbackPhase(params: RunFeedbackPhaseParams): Promise<DecisionState | undefined>;
 
-  runHallucinationPhase(params: RunHallucinationPhaseParams): Promise<void>;
+  runHallucinationPhase(params: RunHallucinationPhaseParams): Promise<HallucinationPhaseOutcome>;
 
   buildSuccessResult(
     state: OrchestratorState,
     startTime: number,
     decisionState: DecisionState | undefined,
     context: AgentContext,
+  ): OrchestrationResult;
+
+  buildErrorResult(
+    state: OrchestratorState,
+    error: Error,
+    startTime: number,
+    decisionState: DecisionState | undefined,
+    failingStep?: OrchestrationStep | string,
+    robust?: unknown,
+    context?: AgentContext,
   ): OrchestrationResult;
 }

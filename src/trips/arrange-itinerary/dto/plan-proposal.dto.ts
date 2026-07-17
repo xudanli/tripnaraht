@@ -80,6 +80,20 @@ export class ApplyPlanProposalDto {
   @ApiPropertyOptional({ description: '强制应用（忽略 WARN）', default: false })
   @IsOptional()
   force?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: '方案页开关：仅应用这些 executableItem id（对应 schemePreview.executableItems）',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  enabledItemIds?: string[];
+
+  @ApiPropertyOptional({ description: '用户确认备注' })
+  @IsOptional()
+  @IsString()
+  comment?: string;
 }
 
 export class UpdatePlanningModeDto {

@@ -6,6 +6,10 @@ import type {
   FlawedDraftReasonV1,
 } from '../delivery/types/flawed-draft-v1.type';
 import { parseMaxRepairCount } from '../orchestration/orchestration-governance-matrix.constants';
+import {
+  extractVerifyIssueCodesFromState,
+  isFlawedDraftForbidden,
+} from '../orchestration/flawed-draft-allow-matrix.constants';
 
 export function buildFlawedDraftDescriptorV1(input: {
   orchestrationResult: OrchestrationResult;
@@ -17,12 +21,22 @@ export function buildFlawedDraftDescriptorV1(input: {
     return undefined;
   }
 
-  const reasons: FlawedDraftReasonV1[] = [];
   const gate = input.gateResult ?? input.orchestrationResult.result?.gate_result;
-  const gateStatus = gate?.gate_result;
   const meta = (input.state?.metadata ?? input.orchestrationResult.result?.state?.metadata) as
     | Record<string, unknown>
     | undefined;
+  const verifyCodes = [
+    ...extractVerifyIssueCodesFromState(meta),
+    ...(input.decisionState?.verification?.issues?.map((i) => String(i.code)).filter(Boolean) ?? []),
+  ];
+  const forbid = isFlawedDraftForbidden({ gateResult: gate, verifyIssueCodes: verifyCodes });
+  if (forbid.forbidden) {
+    // 安全/道路/核心交通/硬时间窗：即使上游误标 flawed_draft_narrate 也不交付瑕疵描述符
+    return undefined;
+  }
+
+  const reasons: FlawedDraftReasonV1[] = [];
+  const gateStatus = gate?.gate_result;
   const repairCount =
     input.decisionState?.systemState?.repairCount ??
     (typeof meta?.repair_count === 'number' ? meta.repair_count : undefined);

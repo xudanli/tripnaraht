@@ -53,8 +53,12 @@ async function request<T>(url: string, token: string, options: RequestInit = {})
 export async function fetchAttractionExploreContext(
   token: string,
   tripId: string,
+  query?: { dayIndex?: number },
 ): Promise<AttractionExploreContextView> {
-  return request(`${base(tripId)}/context`, token);
+  const params = new URLSearchParams();
+  if (query?.dayIndex != null) params.set('dayIndex', String(query.dayIndex));
+  const qs = params.toString();
+  return request(`${base(tripId)}/context${qs ? `?${qs}` : ''}`, token);
 }
 
 export async function patchAttractionExploreContext(
@@ -64,6 +68,16 @@ export async function patchAttractionExploreContext(
     themeIds?: string[];
     suitabilityIds?: string[];
     viewTab?: AttractionExploreViewTab;
+    quickFilterIds?: string[];
+    sort?: string;
+    dayIndex?: number;
+    selectedFilters?: {
+      themeIds?: string[];
+      suitabilityIds?: string[];
+      viewTab?: AttractionExploreViewTab;
+      quickFilterIds?: string[];
+      sort?: string;
+    };
   },
 ): Promise<AttractionExploreContextView> {
   return request(`${base(tripId)}/context`, token, {
@@ -72,15 +86,47 @@ export async function patchAttractionExploreContext(
   });
 }
 
+/** 与 PATCH 等价（iOS 常用 PUT） */
+export async function putAttractionExploreContext(
+  token: string,
+  tripId: string,
+  body: Parameters<typeof patchAttractionExploreContext>[2],
+): Promise<AttractionExploreContextView> {
+  return request(`${base(tripId)}/context`, token, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function fetchAttractionExploreRecommendations(
   token: string,
   tripId: string,
-  query?: { themeIds?: string[]; suitabilityIds?: string[]; viewTab?: AttractionExploreViewTab },
+  query?: {
+    themeIds?: string[];
+    suitabilityIds?: string[];
+    viewTab?: AttractionExploreViewTab;
+    dayIndex?: number;
+    useLiveRoutes?: boolean;
+    quickFilter?: string;
+    quickFilterIds?: string[];
+    sort?: string;
+    q?: string;
+    lat?: number;
+    lng?: number;
+  },
 ): Promise<AttractionExploreRecommendationsView> {
   const params = new URLSearchParams();
   if (query?.themeIds?.length) params.set('themeIds', query.themeIds.join(','));
   if (query?.suitabilityIds?.length) params.set('suitabilityIds', query.suitabilityIds.join(','));
   if (query?.viewTab) params.set('viewTab', query.viewTab);
+  if (query?.dayIndex != null) params.set('dayIndex', String(query.dayIndex));
+  if (query?.useLiveRoutes) params.set('useLiveRoutes', 'true');
+  if (query?.quickFilter) params.set('quickFilter', query.quickFilter);
+  if (query?.quickFilterIds?.length) params.set('quickFilterIds', query.quickFilterIds.join(','));
+  if (query?.sort) params.set('sort', query.sort);
+  if (query?.q) params.set('q', query.q);
+  if (query?.lat != null) params.set('lat', String(query.lat));
+  if (query?.lng != null) params.set('lng', String(query.lng));
   const qs = params.toString();
   return request(`${base(tripId)}/recommendations${qs ? `?${qs}` : ''}`, token);
 }

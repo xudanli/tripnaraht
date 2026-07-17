@@ -1,0 +1,41 @@
+{
+  "schemaId": "tripnara.selected_trip.effective_plan@v1",
+  "tripId": "ra01_is_10",
+  "planVersionId": "plan_pilot_is_10_v1",
+  "days": [
+    {
+      "dayId": "ra01_is_10_pilot_is_10_day1",
+      "date": "2026-08-07",
+      "activities": [
+        {
+          "activityId": "ra01_is_10_pilot_is_10_start",
+          "poiId": "poi_ra01_is_10_pilot_is_10_start",
+          "dayId": "ra01_is_10_pilot_is_10_day1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 540,
+            "endMin": 600
+          },
+          "lat": 64.1466,
+          "lng": -21.9426
+        },
+        {
+          "activityId": "ra01_is_10_pilot_is_10_end",
+          "poiId": "poi_ra01_is_10_pilot_is_10_end",
+          "dayId": "ra01_is_10_pilot_is_10_day1",
+          "isBooked": false,
+          "canRemove": true,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 630,
+            "endMin": 690
+          },
+          "lat": 63.6156,
+          "lng": -19.991
+        }
+      ]
+    }
+  ]
+}

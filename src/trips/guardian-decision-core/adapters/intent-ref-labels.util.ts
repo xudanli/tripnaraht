@@ -10,6 +10,7 @@ const DEFAULT_INTENT_LABELS: Record<string, string> = {
   intent_wilderness: '荒野感',
   intent_highland: '高地探索',
   intent_indoor_alternative: '室内备选体验',
+  intent_still_open_alternative: '仍赶得上开放时间的替补',
   intent_split_overloaded_day: '可完成的日行程节奏',
   intent_coast: '海岸景观',
   intent_photography: '摄影体验',

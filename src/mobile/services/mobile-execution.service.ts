@@ -23,6 +23,9 @@ import type {
   MobileTeamStatusDto,
   MobileTodayItineraryDto,
   MobileTodayItineraryItemDto,
+  MobileItineraryCalendarDto,
+  MobileItineraryCalendarDayDto,
+  MobileActivityExecutionDetailDto,
 } from '../dto/mobile-execution.types';
 import {
   attentionTypeIcon,
@@ -37,7 +40,13 @@ import {
   mapTripLifecycle,
   resolveDayNumber,
   severityToRiskLevel,
+  formatCalendarWeekday,
+  formatCalendarDateRangeLabel,
+  formatWeatherTempRange,
 } from '../utils/mobile-execution.util';
+import {
+  readActivityContextFromTripMetadata,
+} from '../../trips/guardian-decision-core/utils/execution-activity-context.util';
 import {
   buildExecutionAlert,
   EXECUTION_ADJUSTMENT_QUEUE_SCHEMA_ID,
@@ -423,6 +432,263 @@ export class MobileExecutionService {
       participantCount: (await this.loadMembers(tripId)).length,
       merchantName: activeItem?.merchantName ?? '',
       confirmationCode: activeItem?.confirmationCode ?? '',
+    };
+  }
+
+  /** P1 — 行程日历（执行期按天总览；切天复用 today-itinerary?dayIndex=） */
+  async getItineraryCalendar(
+    tripId: string,
+    userId: string,
+  ): Promise<MobileItineraryCalendarDto> {
+    const trip = await this.access.assertTripMember(tripId, userId);
+    const contextVersion = (await this.getContextSnapshot(tripId, userId)).contextVersion;
+    const now = DateTime.now().startOf('day');
+
+    const days = await this.prisma.tripDay.findMany({
+      where: { tripId },
+      orderBy: { date: 'asc' },
+      include: {
+        ItineraryItem: {
+          orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
+          include: { Place: { select: { nameCN: true, nameEN: true } } },
+        },
+      },
+    });
+
+    let todayWeather: {
+      tempMin: number | null;
+      tempMax: number | null;
+    } | null = null;
+    try {
+      const today = await this.tripToday.getToday(tripId, userId);
+      todayWeather = today.weather;
+    } catch {
+      // optional — planning / pre-travel may not have today dashboard
+    }
+
+    const currentDayIndex = resolveDayNumber(trip.startDate, trip.endDate, DateTime.now());
+    const tripMeta = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const meta = (tripMeta?.metadata as Record<string, unknown>) ?? {};
+    const dayThemes =
+      meta.dayThemes && typeof meta.dayThemes === 'object' && !Array.isArray(meta.dayThemes)
+        ? (meta.dayThemes as Record<string | number, string>)
+        : {};
+    const mobileExecution =
+      (meta.mobileExecution as {
+        completedActivities?: Record<string, unknown>;
+      }) ?? {};
+    const completedIds = new Set(Object.keys(mobileExecution.completedActivities ?? {}));
+
+    type DayRow = {
+      dayIndex: number;
+      date: DateTime;
+      activityCount: number;
+      locationSummary: string;
+      itemIds: string[];
+      endTimes: Array<Date | null>;
+    };
+
+    let dayRows: DayRow[];
+    if (days.length > 0) {
+      dayRows = days.map((day, idx) => {
+        const dayIndex = idx + 1;
+        const placeNames = day.ItineraryItem.map(
+          (i) => i.Place?.nameCN ?? i.Place?.nameEN ?? i.note,
+        ).filter((n): n is string => !!n?.trim());
+        const uniquePlaces = [...new Set(placeNames)].slice(0, 3);
+        const theme = dayThemes[dayIndex] ?? dayThemes[String(dayIndex)] ?? '';
+        return {
+          dayIndex,
+          date: DateTime.fromJSDate(day.date).startOf('day'),
+          activityCount: day.ItineraryItem.length,
+          locationSummary:
+            uniquePlaces.length > 0
+              ? uniquePlaces.join(' · ')
+              : theme.trim() || `Day ${dayIndex}`,
+          itemIds: day.ItineraryItem.map((i) => i.id),
+          endTimes: day.ItineraryItem.map((i) => i.endTime),
+        };
+      });
+    } else {
+      // TripDay 尚未物化时，按起止日合成空天，保证日历页可渲染
+      const start = DateTime.fromJSDate(trip.startDate).startOf('day');
+      const end = DateTime.fromJSDate(trip.endDate).startOf('day');
+      const total = Math.max(1, Math.floor(end.diff(start, 'days').days) + 1);
+      dayRows = Array.from({ length: total }, (_, idx) => {
+        const dayIndex = idx + 1;
+        const theme = dayThemes[dayIndex] ?? dayThemes[String(dayIndex)] ?? '';
+        return {
+          dayIndex,
+          date: start.plus({ days: idx }),
+          activityCount: 0,
+          locationSummary: theme.trim() || `Day ${dayIndex}`,
+          itemIds: [],
+          endTimes: [],
+        };
+      });
+    }
+
+    const resultDays: MobileItineraryCalendarDayDto[] = dayRows.map((row) => {
+      let status: MobileItineraryCalendarDayDto['status'] = 'upcoming';
+      if (row.dayIndex < currentDayIndex || row.date < now) {
+        const allDone =
+          row.itemIds.length > 0 &&
+          row.itemIds.every(
+            (id, i) =>
+              completedIds.has(id) ||
+              (row.endTimes[i] != null && DateTime.fromJSDate(row.endTimes[i]!) < DateTime.now()),
+          );
+        status = allDone || row.dayIndex < currentDayIndex ? 'completed' : 'executing';
+      } else if (row.dayIndex === currentDayIndex) {
+        status = 'executing';
+      }
+
+      const tempRange = formatWeatherTempRange(todayWeather?.tempMin, todayWeather?.tempMax);
+      const weather =
+        row.dayIndex === currentDayIndex && tempRange
+          ? { tempRange, wind: '' }
+          : undefined;
+
+      return {
+        dayIndex: row.dayIndex,
+        date: row.date.toISODate() ?? row.date.toFormat('yyyy-MM-dd'),
+        weekday: formatCalendarWeekday(row.date),
+        locationSummary: row.locationSummary,
+        activityCount: row.activityCount,
+        status,
+        ...(weather ? { weather } : {}),
+      };
+    });
+
+    const totalActivities = resultDays.reduce((sum, d) => sum + d.activityCount, 0);
+    const tripTitle = trip.name?.trim() || '未命名行程';
+
+    return {
+      contextVersion,
+      tripTitle,
+      dateRangeLabel: formatCalendarDateRangeLabel({
+        totalDays: resultDays.length,
+        destination: trip.destination,
+        startDate: trip.startDate,
+      }),
+      currentDayIndex,
+      days: resultDays,
+      overview: {
+        totalDays: resultDays.length,
+        totalActivities,
+      },
+    };
+  }
+
+  /** P1 — 活动执行详情 */
+  async getActivityExecutionDetail(
+    tripId: string,
+    userId: string,
+    activityId: string,
+  ): Promise<MobileActivityExecutionDetailDto> {
+    const trip = await this.access.assertTripMember(tripId, userId);
+    const contextVersion = (await this.getContextSnapshot(tripId, userId)).contextVersion;
+
+    const item = await this.prisma.itineraryItem.findFirst({
+      where: { id: activityId, TripDay: { tripId } },
+      include: {
+        Place: true,
+        TripDay: true,
+      },
+    });
+    if (!item) {
+      throw new NotFoundException(`活动 ${activityId} 不存在或不属于该行程`);
+    }
+
+    const allDays = await this.prisma.tripDay.findMany({
+      where: { tripId },
+      orderBy: { date: 'asc' },
+      select: { id: true },
+    });
+    const dayIndex = Math.max(1, allDays.findIndex((d) => d.id === item.tripDayId) + 1);
+
+    const tripRow = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const meta = (tripRow?.metadata as Record<string, unknown>) ?? {};
+    const mobileExecution =
+      (meta.mobileExecution as {
+        completedActivities?: Record<string, unknown>;
+        activityOverrides?: Record<
+          string,
+          { title?: string; notes?: string; plannedDepartAt?: string }
+        >;
+      }) ?? {};
+    const override = mobileExecution.activityOverrides?.[activityId];
+    const activityCtx = readActivityContextFromTripMetadata(meta, activityId);
+    const delayMinutes = typeof meta.inTripDelayMinutes === 'number' ? meta.inTripDelayMinutes : 0;
+
+    const state = await this.tripsService.getTripState(tripId).catch(() => null);
+    const isCurrent = state?.currentItemId === activityId;
+    const isManuallyCompleted = !!mobileExecution.completedActivities?.[activityId];
+    const status = isManuallyCompleted
+      ? ('completed' as const)
+      : inferExecutionItemStatus({
+          startTime: item.startTime,
+          endTime: item.endTime,
+          now: DateTime.now(),
+          isCurrent,
+          isDelayed: delayMinutes > 15 && isCurrent,
+        });
+
+    const placeMeta = (item.Place?.metadata as Record<string, unknown>) ?? {};
+    const lat =
+      (placeMeta.lat as number | undefined) ??
+      (placeMeta.latitude as number | undefined) ??
+      null;
+    const lng =
+      (placeMeta.lng as number | undefined) ??
+      (placeMeta.longitude as number | undefined) ??
+      null;
+
+    const title =
+      override?.title ??
+      item.Place?.nameCN ??
+      item.Place?.nameEN ??
+      item.note ??
+      '行程项';
+    const merchantName = item.Place?.nameEN ?? item.Place?.nameCN ?? '';
+    const members = await this.loadMembers(tripId);
+
+    return {
+      contextVersion,
+      id: item.id,
+      title,
+      time: formatTimeHHmm(item.startTime),
+      endTime: item.endTime ? formatTimeHHmm(item.endTime) : '',
+      location: title,
+      status,
+      merchantName: merchantName || '',
+      confirmationCode: item.bookingConfirmation ?? '',
+      notes: override?.notes ?? item.note ?? '',
+      plannedDepartAt:
+        override?.plannedDepartAt ??
+        activityCtx.plannedDepartAt ??
+        item.startTime?.toISOString() ??
+        null,
+      experienceType: item.type ?? '',
+      duration: formatDurationMinutes(item.startTime, item.endTime) ?? '',
+      dayIndex,
+      members: members.map((m) => ({
+        id: m.id,
+        name: m.displayName,
+        role: m.role,
+      })),
+      navigationPoint:
+        lat != null && lng != null
+          ? { lat, lng, label: title }
+          : null,
+      bookingStatus: item.bookingStatus ?? '',
+      bookingUrl: item.bookingUrl ?? '',
     };
   }
 
@@ -1383,11 +1649,21 @@ export class MobileExecutionService {
     const raw = await this.loadTodayRawItems(tripId, startDate, endDate, dayIndex);
     const meta = (tripRow?.metadata as Record<string, unknown>) ?? {};
     const delayMinutes = typeof meta.inTripDelayMinutes === 'number' ? meta.inTripDelayMinutes : 0;
-    const mobileExecution = (meta.mobileExecution as { completedActivities?: Record<string, unknown> }) ?? {};
+    const mobileExecution =
+      (meta.mobileExecution as {
+        completedActivities?: Record<string, unknown>;
+        activityOverrides?: Record<
+          string,
+          { title?: string; notes?: string; plannedDepartAt?: string }
+        >;
+      }) ?? {};
     const completedIds = new Set(Object.keys(mobileExecution.completedActivities ?? {}));
+    const overrides = mobileExecution.activityOverrides ?? {};
 
     return raw.map((item) => {
       const itemMeta = item.meta;
+      const override = overrides[item.id];
+      const activityCtx = readActivityContextFromTripMetadata(meta, item.id);
       const isCurrent = state?.currentItemId === item.id;
       const isManuallyCompleted = completedIds.has(item.id);
       const status = isManuallyCompleted
@@ -1399,19 +1675,25 @@ export class MobileExecutionService {
             isCurrent,
             isDelayed: delayMinutes > 15 && isCurrent,
           });
+      const title = override?.title ?? item.title;
       return {
         id: item.id,
         time: formatTimeHHmm(item.startTime),
         endTime: item.endTime ? formatTimeHHmm(item.endTime) : undefined,
-        title: item.title,
-        location: item.title,
+        title,
+        location: title,
         duration: formatDurationMinutes(item.startTime, item.endTime),
         experienceType: String(itemMeta.experienceType ?? itemMeta.category ?? ''),
         memberCount: undefined,
-        impactNote: (delayMinutes > 0 ? `延误约 ${delayMinutes} 分钟` : undefined),
+        impactNote: delayMinutes > 0 ? `延误约 ${delayMinutes} 分钟` : undefined,
         status,
-        merchantName: itemMeta.merchantName as string | undefined,
-        confirmationCode: itemMeta.confirmationCode as string | undefined,
+        merchantName: String(itemMeta.merchantName ?? ''),
+        confirmationCode: String(itemMeta.confirmationCode ?? ''),
+        plannedDepartAt:
+          override?.plannedDepartAt ??
+          activityCtx.plannedDepartAt ??
+          item.startTime?.toISOString() ??
+          null,
       };
     });
   }

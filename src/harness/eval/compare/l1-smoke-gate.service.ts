@@ -76,9 +76,17 @@ export class L1SmokeGateService {
     } else {
       baselineMatch = pathFingerprint === baseline;
       if (!baselineMatch) {
-        errors.push(
-          `suite pathFingerprint mismatch: expected=${baseline} actual=${pathFingerprint}`,
-        );
+        if (process.env.HARNESS_EVAL_RECORD_BASELINE === '1') {
+          this.writeBaseline(suite, pathFingerprint);
+          warnings.push(
+            `Recorded updated baseline ${pathFingerprint} (was ${baseline}) → ${this.suiteLoader.resolveSuitePath(suiteId)}`,
+          );
+          baselineMatch = true;
+        } else {
+          errors.push(
+            `suite pathFingerprint mismatch: expected=${baseline} actual=${pathFingerprint}`,
+          );
+        }
       }
     }
 

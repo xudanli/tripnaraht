@@ -12,6 +12,8 @@ import {
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto, PlanningPhaseIntentDto } from '../dto/route-and-run.dto';
 import { enrichClientUiDisplay, type ClientUiEnrichmentInput } from '../utils/client-ui-enrichment.util';
 import { buildFlawedDraftDescriptorV1 } from '../utils/build-flawed-draft-descriptor.util';
+import { buildAgentRunTraceV1 } from '../orchestration/agent-run-trace.util';
+import { projectTrustedDeliveryV1 } from '../delivery/utils/trusted-delivery.project.util';
 import type { DecisionCandidateDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import type { OrchestrationResult, RoutingDecision } from '../interfaces/claude-orchestration.interface';
@@ -2517,6 +2519,35 @@ export class RouteAndRunResponseAssemblerService {
       state: stateWithVerdict as OrchestratorState | undefined,
     });
 
+    const agentRunTraceForTrusted = this.resolveAgentRunTraceObservability(
+      request,
+      orchestrationResult,
+    ).agent_run_trace_v1;
+    // resultStatus computed below — preliminary for trusted delivery
+    const preliminaryStatus = isTimeout
+      ? 'TIMEOUT'
+      : needsUserConfirmation
+        ? 'NEED_MORE_INFO'
+        : actionFailed
+          ? 'FAILED'
+          : orchestrationResult.success
+            ? 'OK'
+            : 'FAILED';
+    const trustedDeliveryV1 = projectTrustedDeliveryV1({
+      currentStep: String(
+        orchestrationResult.result?.state?.current_step ??
+          (orchestrationResult.success ? 'DONE' : 'FAILED'),
+      ),
+      resultStatus: preliminaryStatus,
+      agentRunTrace: agentRunTraceForTrusted,
+      flawedDraft: flawedDraftV1,
+      clarificationCount: Array.isArray(
+        (stateWithVerdict as OrchestratorState | undefined)?.clarification_questions,
+      )
+        ? ((stateWithVerdict as OrchestratorState).clarification_questions?.length ?? 0)
+        : 0,
+    });
+
     const resultStatus = isTimeout
       ? 'TIMEOUT'
       : needsUserConfirmation
@@ -2687,6 +2718,7 @@ export class RouteAndRunResponseAssemblerService {
           ...this.resolveHotelAccommodationPayloadBlocks(orchestrationResult),
           ...(consultationDashboard ? { consultation_dashboard: consultationDashboard } : {}),
           ...(flawedDraftV1 ? { flawed_draft_v1: flawedDraftV1 } : {}),
+          trusted_delivery_v1: trustedDeliveryV1,
         } as any,
       },
       explain: {
@@ -2748,6 +2780,7 @@ export class RouteAndRunResponseAssemblerService {
         trace: traceInfo,
         ...this.computeP4ObservabilityMetrics(orchestrationResult),
         ...this.resolveHarnessObservability(request, orchestrationResult),
+        ...this.resolveAgentRunTraceObservability(request, orchestrationResult),
         ...this.resolveExecutionPolicyGatewayObservability(request),
         ...this.resolveShadowGraderObservability(request),
         ...this.resolveSubagentPermissionSandboxObservability(request),
@@ -3325,6 +3358,7 @@ export class RouteAndRunResponseAssemblerService {
           trace: traceInfo,
           ...this.computeP4ObservabilityMetrics(orchestrationResult),
           ...this.resolveHarnessObservability(request, orchestrationResult),
+          ...this.resolveAgentRunTraceObservability(request, orchestrationResult),
           ...this.resolveExecutionPolicyGatewayObservability(request),
           ...this.resolveShadowGraderObservability(request),
           ...this.resolveSubagentPermissionSandboxObservability(request),
@@ -3867,6 +3901,7 @@ export class RouteAndRunResponseAssemblerService {
         trace: traceInfo,
         ...this.computeP4ObservabilityMetrics(orchestrationResult),
         ...this.resolveHarnessObservability(request, orchestrationResult),
+        ...this.resolveAgentRunTraceObservability(request, orchestrationResult),
         ...this.resolveExecutionPolicyGatewayObservability(request),
         ...this.resolveShadowGraderObservability(request),
         ...this.resolveSubagentPermissionSandboxObservability(request),
@@ -3993,6 +4028,27 @@ export class RouteAndRunResponseAssemblerService {
     return { gap_behavior_observation: raw };
   }
 
+  private resolveAgentRunTraceObservability(
+    request: RouteAndRunRequestDto,
+    orchestrationResult: OrchestrationResult,
+  ): { agent_run_trace_v1?: import('../orchestration/agent-run-trace.util').AgentRunTraceV1 } {
+    const state = orchestrationResult.result?.state;
+    const meta = state?.metadata as Record<string, unknown> | undefined;
+    let status: string = 'UNKNOWN';
+    if (orchestrationResult.success) status = 'OK';
+    else if (orchestrationResult.result?.needsUserConfirmation) status = 'NEED_CONFIRMATION';
+    else if (state?.clarification_questions?.length) status = 'NEED_MORE_INFO';
+    else if (!orchestrationResult.success) status = 'FAILED';
+
+    const trace = buildAgentRunTraceV1({
+      requestId: request.request_id,
+      decisionLog: state?.decision_log ?? orchestrationResult.decisionLog,
+      metadata: meta,
+      finalDeliveryStatus: status,
+    });
+    return { agent_run_trace_v1: trace };
+  }
+
   private resolveHarnessObservability(
     request: RouteAndRunRequestDto,
     orchestrationResult: OrchestrationResult,
@@ -4004,12 +4060,16 @@ export class RouteAndRunResponseAssemblerService {
     otel_span_id: string | null;
     verify_return_to_research_count?: number;
     research_scope_invalidation_reason?: string;
+    return_to_research_context_v1?: import('../orchestration/return-to-research-context.util').ReturnToResearchContextV1;
   } {
     const ds = orchestrationResult.result?.decisionState as DecisionState | undefined;
     const hr = ds?.harnessRuntime;
     const stMeta = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
     const retryCount = stMeta?.verify_return_to_research_count;
     const inv = stMeta?.research_scope_invalidation as { reason?: string } | undefined;
+    const r2rCtx = stMeta?.return_to_research_context_v1 as
+      | import('../orchestration/return-to-research-context.util').ReturnToResearchContextV1
+      | undefined;
     const otel = resolveHarnessOtelObservabilityFields(
       hr,
       readOtelTraceContextFromRouteAndRunRequest(request),
@@ -4022,6 +4082,7 @@ export class RouteAndRunResponseAssemblerService {
       otel_span_id: string | null;
       verify_return_to_research_count?: number;
       research_scope_invalidation_reason?: string;
+      return_to_research_context_v1?: import('../orchestration/return-to-research-context.util').ReturnToResearchContextV1;
     } = {
       harness_active_trace_id: hr?.activeTraceId ?? null,
       harness_trace_export_path: hr?.traceExportRelativePath ?? null,
@@ -4033,6 +4094,9 @@ export class RouteAndRunResponseAssemblerService {
     }
     if (typeof inv?.reason === 'string' && inv.reason.trim()) {
       out.research_scope_invalidation_reason = inv.reason.trim();
+    }
+    if (r2rCtx?.schemaId === 'tripnara.return_to_research_context@v1') {
+      out.return_to_research_context_v1 = r2rCtx;
     }
     return out;
   }

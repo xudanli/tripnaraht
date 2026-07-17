@@ -25,12 +25,23 @@ function readAuthorityStatus(): string {
   return a.status ?? 'UNKNOWN';
 }
 
+const REAL_SOURCES = new Set(['staging_export', 'production_export']);
+
 async function main(): Promise<number> {
   const gate = evaluateOrtToolsAuthorityCanaryGate();
   const ids = listPackTripIds();
   let eligible = 0;
+  let realEligible = 0;
+  let syntheticEligible = 0;
   for (const id of ids) {
-    if (validateSelectedTripPack(join(PACKS_ROOT, id)).eligible) eligible += 1;
+    const report = validateSelectedTripPack(join(PACKS_ROOT, id));
+    if (!report.eligible) continue;
+    eligible += 1;
+    if (report.source && REAL_SOURCES.has(report.source)) {
+      realEligible += 1;
+    } else {
+      syntheticEligible += 1;
+    }
   }
 
   const authStatus = readAuthorityStatus();
@@ -42,10 +53,10 @@ async function main(): Promise<number> {
         : 'WAIT';
 
   const dataset =
-    eligible >= 10
+    realEligible >= 10
       ? 'READY'
       : ids.length > 0
-        ? `WAIT (${eligible} eligible / ${ids.length} packs — need 10 real)`
+        ? `WAIT (${realEligible} real / ${syntheticEligible} synthetic / ${eligible} eligible — need 10 real)`
         : 'WAIT (no packs)';
 
   const preflightReady =
@@ -72,7 +83,8 @@ async function main(): Promise<number> {
     Release: gate.releaseAuthorized ? 'AUTHORIZED' : 'BLOCKED',
     notes: [
       'Preflight READY means mechanisms + schema + fault tests exist',
-      'Dataset WAIT is expected until 10 real deidentified trips land',
+      'Dataset WAIT until 10 real deidentified trips (staging_export / production_export)',
+      'Synthetic/gold packs seal mechanism only — they do not clear Dataset',
       'Do not APPROVE production authority.json until RA-01B',
     ],
   };

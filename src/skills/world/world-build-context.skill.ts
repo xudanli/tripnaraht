@@ -30,6 +30,7 @@ import {
   projectPartyPersonasFromTripRequest,
 } from '../../trips/decision/persona/project-party-from-request.util';
 import { mapCountryPhysicalData } from './utils/country-physical-data.mapper';
+import { collectDemEvidenceFromTripTerrain } from './utils/collect-dem-evidence-from-trip-terrain.util';
 
 /**
  * 错误严重级别
@@ -311,9 +312,20 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
       // 4. 构建 PhysicalRealityModel
       // 4.1 尝试生成 DEM 证据
       let demEvidence: PhysicalRealityModel['demEvidence'] = [];
+
+      // 4.1.0 优先：行程项上已盖章的 Gate-2 terrain → DemDecisionEvidence（供 Abu）
+      if (trip && trip.TripDay?.length) {
+        const stamped = collectDemEvidenceFromTripTerrain(trip, { tripId: input.tripId });
+        if (stamped.length > 0) {
+          demEvidence = stamped;
+          this.logger.debug(
+            `使用行程 stamped terrain 生成 ${stamped.length} 条 DEM 证据（跳过即时栅格重算）`,
+          );
+        }
+      }
       
-      // 4.1.1 优先：从实际行程路线生成 DEM 证据
-      if (trip && trip.TripDay && trip.TripDay.length > 0 && this.demEffortMetadataService) {
+      // 4.1.1 其次：从实际行程路线生成 DEM 证据
+      if (demEvidence.length === 0 && trip && trip.TripDay && trip.TripDay.length > 0 && this.demEffortMetadataService) {
         try {
           // 提取所有行程项的坐标
           const routePoints: Array<{ lat: number; lng: number }> = [];

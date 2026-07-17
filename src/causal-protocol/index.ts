@@ -6,6 +6,8 @@ export * from './causal-source.registry';
 export * from './causal-explanation.registry';
 export * from './errors/causal-trace-stale.error';
 export * from './adapters/iceland-causal-trace.adapter';
+export * from './adapters/iceland-to-travel-causal-decision.bridge';
+export * from './adapters/attach-travel-causal-decision.util';
 export * from './services/canonical-causal-trace.service';
 export * from './services/canonical-causal-trace.store';
 export * from './projectors/causal-story-view.projector';

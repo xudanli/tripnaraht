@@ -20,6 +20,7 @@ import { icelandStormIcecaveFailureCase } from './iceland-storm-icecave-failure.
 import { icelandStormRecoveryExperienceFirstCase } from './iceland-storm-recovery-experience-first.example';
 import { icelandDecisionClosureStormF208Case } from './iceland-decision-closure-storm-f208.example';
 import { icelandDecisionClosureRingStableCase } from './iceland-decision-closure-ring-stable.example';
+import { ICELAND_TRAVEL_DEM_GOLD_FIXTURES } from './iceland-f208-travel-eta-dem-gold.example';
 import { nzDecisionClosureMilfordRainCase } from './nz-decision-closure-milford-rain.example';
 import { auDecisionClosureGreatOceanFireCase } from './au-decision-closure-great-ocean-fire.example';
 import { jpDecisionClosureIzuTyphoonCase } from './jp-decision-closure-izu-typhoon.example';
@@ -88,6 +89,12 @@ export const ICELAND_DECISION_CLOSURE_FIXTURES: readonly E2ECase[] = [
   icelandDecisionClosureRingStableCase,
   ...(stormDecisionClosureCase ? [stormDecisionClosureCase] : []),
 ];
+
+/**
+ * P0：F208 travel-eta + DEM + F-road 金样（dem harness，非 TD mock replay）
+ * 门禁：`npm run test:f208-travel-dem-gold` / `test:td-p0`
+ */
+export { ICELAND_TRAVEL_DEM_GOLD_FIXTURES };
 
 /** P0：新西兰 decision-closure golden（国家包扩展样板） */
 export const NZ_DECISION_CLOSURE_FIXTURES: readonly E2ECase[] = [nzDecisionClosureMilfordRainCase];

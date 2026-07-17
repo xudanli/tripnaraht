@@ -37,7 +37,9 @@
 行中持续验证（Today Execution Status）
 ```
 
-**禁止：** 将三者加权合成「旅行总分」或三个并列圆环分数。
+**禁止：** 将 PlanningReadiness / Feasibility / TravelReadiness 三者加权合成「旅行总分」或三个并列圆环分数作为 SSOT。
+
+**允许：** C 端首页使用 **Overall Trip Readiness**（见 [`OVERALL_TRIP_READINESS.md`](./OVERALL_TRIP_READINESS.md)）作为 **解释投影卡片**，聚合路线/住宿/交通/活动/成员五维；底层事实仍以本文件三概念 + DepartureGate 为准。
 
 ---
 
@@ -257,6 +259,7 @@ TripNARA 核心差异化能力。检查**当前计划版本**：
 
 ## 10. 相关文档
 
+- [`OVERALL_TRIP_READINESS.md`](./OVERALL_TRIP_READINESS.md) — C 端整体准备度投影
 - [`src/trips/READINESS_FEASIBILITY_MIGRATION.md`](../../src/trips/READINESS_FEASIBILITY_MIGRATION.md)
 - [`src/trips/trip-constraint-solver/TRIP_CONSTRAINT_SOLVER_API.md`](../../src/trips/trip-constraint-solver/TRIP_CONSTRAINT_SOLVER_API.md)
 - [`src/trips/trip-constraint-solver/DECISION_CHECKER_API.md`](../../src/trips/trip-constraint-solver/DECISION_CHECKER_API.md)

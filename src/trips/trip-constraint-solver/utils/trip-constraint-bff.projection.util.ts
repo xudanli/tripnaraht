@@ -35,6 +35,46 @@ function violationLabel(code: ViolationResultCode): string {
   return VIOLATION_LABELS[code];
 }
 
+function readFiniteNumber(...candidates: unknown[]): number | undefined {
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) return candidate;
+    if (typeof candidate === 'string' && candidate.trim() !== '') {
+      const n = Number(candidate);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return undefined;
+}
+
+/** Never emit "NaN km" / "NaNkm" / "Infinity …" into contract displayValue. */
+export function sanitizeConstraintDisplayValue(
+  value: string | undefined | null,
+): string | undefined {
+  if (value == null) return undefined;
+  const trimmed = String(value).trim();
+  if (!trimmed) return undefined;
+  // Match standalone or glued to units: "NaN km", "NaNkm", "Infinitykm"
+  if (/(?:^|[^A-Za-z0-9_])(?:NaN|Infinity)(?:[^A-Za-z0-9_]|$)/i.test(trimmed)) {
+    return undefined;
+  }
+  if (/^(?:NaN|Infinity)/i.test(trimmed)) return undefined;
+  return trimmed;
+}
+
+function formatQuantityDisplay(
+  amount: number | undefined,
+  unitSuffix: string,
+): string | undefined {
+  if (amount == null || !Number.isFinite(amount)) return undefined;
+  return `${amount}${unitSuffix}`;
+}
+
+function readRawRecord(raw: unknown): Record<string, unknown> | null {
+  return raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : null;
+}
+
 function resolveViolation(c: TripConstraint): ViolationResultCode {
   if (c.source.type === 'OFFICIAL_RULE') {
     const raw = c.value as { destinationRuleTier?: DestinationRuleTier; severity?: string } | undefined;
@@ -140,7 +180,7 @@ function projectByTemplate(c: TripConstraint, templateId: string): TemplateProje
         raw && typeof raw === 'object'
           ? (raw as Record<string, unknown>)
           : { maxMinutesAfterSunset: 30 };
-      const mins = Number(cfg.maxMinutesAfterSunset ?? 30);
+      const mins = readFiniteNumber(cfg.maxMinutesAfterSunset) ?? 30;
       const rule = `日落后 ${mins} 分钟不得继续驾驶`;
       return {
         judgmentRule: rule,
@@ -149,56 +189,93 @@ function projectByTemplate(c: TripConstraint, templateId: string): TemplateProje
       };
     }
     case 'max_daily_drive': {
-      const hours =
-        typeof raw === 'number'
-          ? raw
-          : Number((raw as Record<string, unknown>)?.maxHours ?? raw);
-      const rule = `单日驾驶时长不超过 ${hours} 小时`;
+      const obj = readRawRecord(raw);
+      const hours = readFiniteNumber(
+        typeof raw === 'number' ? raw : undefined,
+        obj?.maxHours,
+        obj?.hours,
+        obj?.maxDailyDrivingHours,
+      );
+      const rule =
+        hours != null
+          ? `单日驾驶时长不超过 ${hours} 小时`
+          : '单日驾驶时长上限待确认';
       return {
         judgmentRule: rule,
-        displayValue: `${hours} 小时/天`,
-        value: mergeValue({ maxHours: hours }, rule, violation),
+        displayValue: formatQuantityDisplay(hours, ' 小时/天'),
+        value: mergeValue(hours != null ? { maxHours: hours } : {}, rule, violation),
       };
     }
     case 'budget_total': {
-      const total = typeof raw === 'number' ? raw : Number((raw as Record<string, unknown>)?.total);
-      const currency = c.unit ?? (raw as Record<string, unknown>)?.currency ?? 'CNY';
-      const tolerance = Number((raw as Record<string, unknown>)?.overrunTolerancePct ?? 0);
+      const obj = readRawRecord(raw);
+      const total = readFiniteNumber(typeof raw === 'number' ? raw : undefined, obj?.total);
+      const currency = String(c.unit ?? obj?.currency ?? 'CNY');
+      const tolerance = readFiniteNumber(obj?.overrunTolerancePct) ?? 0;
       const rule =
-        tolerance > 0
-          ? `总预算不超过 ${total} ${currency}（允许临时超支 ${tolerance}%）`
-          : `总预算不超过 ${total} ${currency}`;
+        total == null
+          ? '总预算上限待确认'
+          : tolerance > 0
+            ? `总预算不超过 ${total} ${currency}（允许临时超支 ${tolerance}%）`
+            : `总预算不超过 ${total} ${currency}`;
       return {
         judgmentRule: rule,
-        displayValue: `${total} ${currency}`,
+        displayValue: total != null ? formatQuantityDisplay(total, ` ${currency}`) : undefined,
         value: mergeValue(
-          { total, currency, overrunTolerancePct: tolerance || undefined },
+          {
+            ...(total != null ? { total } : {}),
+            currency,
+            overrunTolerancePct: tolerance || undefined,
+          },
           rule,
           violation,
         ),
       };
     }
     case 'max_segment_distance': {
-      const km = typeof raw === 'number' ? raw : Number((raw as Record<string, unknown>)?.maxKm);
-      const rule = `相邻活动间单次驾驶距离不超过 ${km} km`;
+      const obj = readRawRecord(raw);
+      // Aggregate / PATCH SSOT uses maxSegmentDistanceKm; maxKm is a legacy alias.
+      const km = readFiniteNumber(
+        typeof raw === 'number' ? raw : undefined,
+        obj?.maxKm,
+        obj?.maxSegmentDistanceKm,
+        obj?.value,
+      );
+      const rule =
+        km != null
+          ? `相邻活动间单次驾驶距离不超过 ${km} km`
+          : '相邻活动间单次驾驶距离上限待确认';
       return {
         judgmentRule: rule,
-        displayValue: `${km} km`,
-        value: mergeValue({ maxSegmentDistanceKm: km }, rule, violation),
+        displayValue: formatQuantityDisplay(km, ' km'),
+        value: mergeValue(
+          km != null ? { maxSegmentDistanceKm: km, maxKm: km } : {},
+          rule,
+          violation,
+        ),
       };
     }
     case 'time_range': {
       const v = raw as Record<string, unknown>;
-      const rule = `行程日期 ${v.startDate ?? ''} 至 ${v.endDate ?? ''}（${v.dayCount ?? '?'} 天）`;
-      return { judgmentRule: rule, displayValue: `${v.dayCount ?? '?'} 天`, value: mergeValue(v, rule, violation) };
-    }
-    case 'daily_walk_limit': {
-      const km = typeof raw === 'number' ? raw : Number(raw);
-      const rule = `每日步行不超过 ${km} km`;
+      const dayCount = readFiniteNumber(v?.dayCount);
+      const rule = `行程日期 ${v?.startDate ?? ''} 至 ${v?.endDate ?? ''}（${dayCount ?? '?'} 天）`;
       return {
         judgmentRule: rule,
-        displayValue: `${km} km/天`,
-        value: mergeValue({ maxKm: km }, rule, violation),
+        displayValue: dayCount != null ? `${dayCount} 天` : undefined,
+        value: mergeValue(v ?? {}, rule, violation),
+      };
+    }
+    case 'daily_walk_limit': {
+      const obj = readRawRecord(raw);
+      const km = readFiniteNumber(
+        typeof raw === 'number' ? raw : undefined,
+        obj?.maxKm,
+        obj?.dailyWalkLimit,
+      );
+      const rule = km != null ? `每日步行不超过 ${km} km` : '每日步行上限待确认';
+      return {
+        judgmentRule: rule,
+        displayValue: formatQuantityDisplay(km, ' km/天'),
+        value: mergeValue(km != null ? { maxKm: km } : {}, rule, violation),
       };
     }
     case 'must_places': {
@@ -224,6 +301,8 @@ function projectByTemplate(c: TripConstraint, templateId: string): TemplateProje
 const USER_ADJUSTABLE_HARD_IDS = new Set<string>([
   LEGACY_IDS.MAX_DAILY_DRIVE,
   LEGACY_IDS.NO_NIGHT_DRIVE,
+  /** Keep numeric km display via template projection (not destination-rule scope text). */
+  LEGACY_IDS.MAX_SEGMENT_DISTANCE,
 ]);
 
 export function projectTripConstraintForBff(c: TripConstraint): TripConstraint {
@@ -286,7 +365,7 @@ export function projectTripConstraintForBff(c: TripConstraint): TripConstraint {
     ...c,
     enabled,
     scope: enrichedScope,
-    displayValue: templated?.displayValue,
+    displayValue: sanitizeConstraintDisplayValue(templated?.displayValue),
     value,
     description: c.description ?? softConstraintDescription(c) ?? getConstraintTemplate(templateId ?? '')?.description,
     source: {

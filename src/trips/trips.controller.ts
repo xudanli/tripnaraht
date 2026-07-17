@@ -84,6 +84,7 @@ import { TripListService } from './services/trip-list.service';
 import { TripAdvisorCreateService } from './services/trip-advisor-create.service';
 import { TripListQueryDto } from './dto/trip-list.dto';
 import { AccommodationOverviewService } from './services/accommodation-overview.service';
+import { OverallTripReadinessService } from './overall-readiness/services/overall-trip-readiness.service';
 import { JourneyMapService, parseJourneyMapInclude } from './services/journey-map.service';
 import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
 import type { CreateJourneyMapDecisionItemDto } from './dto/journey-map-decision-item.dto';
@@ -277,6 +278,7 @@ export class TripsController {
     private readonly tripListService: TripListService,
     private readonly tripAdvisorCreateService: TripAdvisorCreateService,
     private readonly accommodationOverviewService: AccommodationOverviewService,
+    private readonly overallTripReadinessService: OverallTripReadinessService,
     private readonly journeyMapService: JourneyMapService,
     private readonly journeyMapDecisionItems: JourneyMapDecisionItemsService,
     private readonly tripConflictsService: TripConflictsService,
@@ -5551,20 +5553,21 @@ export class TripsController {
   @ApiOperation({
     summary: '行程详情 · 时间轴 Tab 聚合 BFF（P1）',
     description:
-      '一次返回时间轴侧栏与顶部统计：可行性/节奏/冲突数、规划进度、待办、今日提醒、新建议数。' +
-      '替代分别请求 metrics + health + tasks + persona-alerts + conflicts + pipeline-status。',
+      '一次返回时间轴侧栏与顶部统计：可行性/节奏/冲突数、整体准备度卡片、规划进度（兼容）、待办、今日提醒、新建议数。' +
+      '主分数请读 overallReadiness；planning.progressPercent 仅为内部 pipeline 进度。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
   @ApiQuery({
     name: 'include',
     required: false,
-    description: 'stats,pipeline,tasks,reminders,suggestions,health（逗号分隔，默认前五项）',
+    description:
+      'stats,pipeline,tasks,reminders,readiness,suggestions,health（逗号分隔；默认含 readiness）',
   })
   @ApiQuery({
     name: 'preset',
     required: false,
     enum: ['shell', 'full'],
-    description: 'shell=首屏 stats；full=全量。显式 include 优先于 preset',
+    description: 'shell=stats+readiness；full=phase-2。显式 include 优先于 preset',
   })
   @ApiResponse({
     status: 200,
@@ -5586,6 +5589,45 @@ export class TripsController {
       const data = await this.timelineOverviewService.getTimelineOverview(id, user?.userId, {
         include: resolvedInclude,
       });
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/overall-readiness')
+  @ApiOperation({
+    summary: '整体准备度报告（Overall Trip Readiness）',
+    description:
+      '五维度加权得分 + 全局阻塞门禁 + 证据可信度。分数与是否就绪分离；' +
+      '存在 blocker 时 state=BLOCKED，即使 score 较高。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({
+    name: 'view',
+    required: false,
+    enum: ['full', 'card'],
+    description: 'full=完整报告；card=首页卡片投影（默认 full）',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回整体准备度',
+    type: ApiSuccessResponseDto,
+  })
+  async getOverallReadiness(
+    @Param('id') id: string,
+    @Query('view') view?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      if (view === 'card') {
+        const data = await this.overallTripReadinessService.getCard(id, user?.userId);
+        return successResponse(data);
+      }
+      const data = await this.overallTripReadinessService.getSnapshot(id, user?.userId);
       return successResponse(data);
     } catch (error: any) {
       if (error instanceof NotFoundException) {

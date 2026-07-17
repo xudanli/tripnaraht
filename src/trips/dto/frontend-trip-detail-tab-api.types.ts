@@ -336,7 +336,8 @@ export type TimelineOverviewInclude =
   | 'reminders'
   | 'health'
   | 'suggestions'
-  | 'planobjects';
+  | 'planobjects'
+  | 'readiness';
 
 export type TimelineConflictCountSource = 'ssot_planning_conflicts' | 'schedule_conflicts';
 
@@ -361,11 +362,141 @@ export interface PipelineStage {
 }
 
 export interface TimelineOverviewPlanning {
+  /** @deprecated 主分数请用 overallReadiness.score；本字段为 pipeline 内部进度 */
   progressPercent: number;
   completedStages: number;
   totalStages: number;
   currentStageName?: string;
   stages: PipelineStage[];
+}
+
+export type OverallReadinessState =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'NEAR_READY'
+  | 'READY'
+  | 'BLOCKED'
+  | 'NEEDS_REVALIDATION';
+
+export type ReadinessDimensionCode =
+  | 'ROUTE'
+  | 'ACCOMMODATION'
+  | 'TRANSPORT'
+  | 'ACTIVITY'
+  | 'MEMBER';
+
+/** 整体准备度首页卡片 — timeline-overview.overallReadiness */
+export interface TimelineOverviewReadinessCard {
+  score: number;
+  state: OverallReadinessState;
+  /** 细粒度：接近就绪 / 准备中 … */
+  stateLabelZh: string;
+  /** 首页主词：尚未就绪 / 已准备好 / 已阻塞 / 需要重新验证 */
+  displayLabelZh: string;
+  /** 如「整体准备度 78% · 尚未就绪」 */
+  headline: string;
+  evidenceConfidence: number;
+  blockerCount: number;
+  pendingConfirmationCount: number;
+  whyNotReady?: string;
+  potentialScoreLift?: number;
+  dimensions: Array<{
+    code: ReadinessDimensionCode;
+    labelZh: string;
+    score: number;
+  }>;
+  topPriority?: {
+    title: string;
+    actionCode?: string;
+    estimatedScoreLift?: number;
+  };
+  reportDeepLink: string;
+}
+
+/** GET /trips/:id/overall-readiness 完整报告（子集字段 FE 够用即可） */
+export interface OverallTripReadinessReport {
+  tripId: string;
+  score: number;
+  state: OverallReadinessState;
+  stateLabelZh: string;
+  displayLabelZh: string;
+  evidenceConfidence: number;
+  weightTemplateId: string;
+  weights: Record<string, number>;
+  dimensions: Record<
+    string,
+    {
+      code: string;
+      score: number;
+      weight: number;
+      state: string;
+      primaryIssue?: string;
+      blockerCount: number;
+      checks: Array<{
+        checkCode: string;
+        title: string;
+        result: string;
+        score: number;
+        weight: number;
+        severity: string;
+      }>;
+    }
+  >;
+  blockers: Array<{
+    issueCode: string;
+    title: string;
+    dimension: string;
+    severity: string;
+    impact?: string;
+    recommendedAction?: {
+      actionCode: string;
+      title: string;
+      estimatedScoreLift?: number;
+      deepLink?: string;
+    };
+  }>;
+  pendingConfirmations: OverallTripReadinessReport['blockers'];
+  recommendations: Array<{
+    actionCode: string;
+    title: string;
+    description?: string;
+    deepLink?: string;
+    estimatedScoreLift?: number;
+  }>;
+  homepage: {
+    headline: string;
+    whyNotReady: string[];
+    mustHandleNow: Array<{
+      title: string;
+      actionCode?: string;
+      estimatedScoreLift?: number;
+    }>;
+    canHandleLater: Array<{
+      title: string;
+      actionCode?: string;
+      estimatedScoreLift?: number;
+    }>;
+    potentialScoreLift: number;
+    dimensionRows: Array<{
+      code: string;
+      labelZh: string;
+      score: number;
+      state: string;
+      primaryIssue?: string;
+    }>;
+  };
+  evidence: Array<{
+    id: string;
+    dimension: string;
+    evidenceType: string;
+    sourceName: string;
+    statement: string;
+    confidence: number;
+    observedAt: string;
+    expiresAt?: string;
+  }>;
+  expiredEvidenceCount: number;
+  calculatedAt: string;
 }
 
 export type TaskPriority = 'high' | 'medium' | 'low';
@@ -429,7 +560,10 @@ export interface TripHealth {
 export interface TimelineOverviewResponse {
   tripId: string;
   stats: TimelineOverviewStats;
+  /** 原规划进度（内部兼容）；主 UI 用 overallReadiness */
   planning: TimelineOverviewPlanning;
+  /** 整体准备度卡片（include 含 readiness，默认 / shell / full 均含） */
+  overallReadiness?: TimelineOverviewReadinessCard;
   tasks: TripTask[];
   incompleteTaskCount: number;
   todayReminders: PersonaAlert[];
@@ -447,9 +581,9 @@ export interface TimelineOverviewQuery {
 
 /** BFF include 字符串 — 与后端 `bff-include-preset.util` 对齐 */
 export const TRIP_DETAIL_TAB_BFF_INCLUDES = {
-  timelineShell: 'stats',
-  timelinePhase2: 'stats,pipeline,tasks,reminders',
-  timelineWithSuggestions: 'stats,pipeline,tasks,reminders,suggestions',
+  timelineShell: 'stats,readiness',
+  timelinePhase2: 'stats,pipeline,tasks,reminders,readiness',
+  timelineWithSuggestions: 'stats,pipeline,tasks,reminders,readiness,suggestions',
   collabShell: 'members,health',
   collabFull: 'members,tasks,domain,votes,profiling,wishes,health',
 } as const;

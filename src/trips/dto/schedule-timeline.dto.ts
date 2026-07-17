@@ -64,8 +64,28 @@ export class ScheduleTimelineDayDto {
   @ApiProperty({ description: 'YYYY-MM-DD' })
   date!: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: '0-based 窗口日索引（与历史契约一致）' })
   dayIndex!: number;
+
+  @ApiPropertyOptional({
+    description: '当日叙事主题（来自 trip.metadata.dayThemes，1-based 键）',
+  })
+  theme?: string | null;
+
+  @ApiPropertyOptional({
+    description: '兼容别名：与 theme 同值',
+  })
+  title?: string | null;
+
+  @ApiPropertyOptional({
+    description: '区域短名（来自 trip.metadata.dayLabels）',
+  })
+  label?: string | null;
+
+  @ApiPropertyOptional({
+    description: '区域短名别名（与 label 同值）',
+  })
+  locationLabel?: string | null;
 
   @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
   itineraryItems?: unknown[];

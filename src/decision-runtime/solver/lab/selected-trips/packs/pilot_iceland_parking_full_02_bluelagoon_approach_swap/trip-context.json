@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.selected_trip.context@v1",
+  "tripId": "pilot_iceland_parking_full_02_bluelagoon_approach_swap",
+  "planVersionId": "pv-gold",
+  "timezone": "Atlantic/Reykjavik",
+  "dateRange": {
+    "startDate": "2026-06-12",
+    "endDate": "2026-06-12"
+  },
+  "destination": "IS",
+  "deidentified": true,
+  "notes": [
+    "exported from gold iceland.parking_full.02_bluelagoon_approach_swap",
+    "frozen copy — not live"
+  ]
+}

@@ -1,25 +1,27 @@
 {
   "schemaId": "tripnara.planning_signoff.rollback_drill@v1",
   "kind": "rollback_drill",
-  "status": "HARNESS_PASS",
+  "status": "PASS",
   "approved": true,
-  "liveDrill": false,
+  "liveDrill": true,
   "harnessPass": true,
-  "drillKind": "local_harness",
-  "approvedAt": "2026-07-14T17:27:13.820Z",
-  "approvedBy": "lab:run-rollback-drill-harness",
-  "environment": "lab",
-  "signoffId": "m4-ra01-test-local",
+  "drillKind": "staging_live",
+  "approvedAt": "2026-07-16T10:31:48.232Z",
+  "approvedBy": "lab:run-staging-rollback-drill",
+  "environment": "staging",
+  "signoffId": "m4-ra01-2026-07-15",
+  "tripId": "ra01_is_01",
+  "whitelistSize": 10,
   "steps": [
     {
       "id": "RD-TOKEN",
       "pass": true,
-      "detail": "token verified against authority.test.json"
+      "detail": "token verified hash=449d90df1bf6981874a85193851b3f03"
     },
     {
       "id": "RD-01",
       "pass": true,
-      "detail": "gate mode=canary_authoritative"
+      "detail": "mode=canary_authoritative provider=ortools-repair trip=ra01_is_01"
     },
     {
       "id": "RD-01b",
@@ -27,14 +29,14 @@
       "detail": "merged=true"
     },
     {
-      "id": "RD-06",
+      "id": "RD-02/06",
       "pass": true,
-      "detail": "stale attachment void"
+      "detail": "stale attachment void after evidence drift"
     },
     {
       "id": "RD-03/04",
       "pass": true,
-      "detail": "provider=neptune-repair"
+      "detail": "provider=neptune-repair mode=shadow"
     },
     {
       "id": "RD-05",
@@ -44,14 +46,24 @@
     {
       "id": "RD-05b",
       "pass": true,
-      "detail": "authorize rejected ortools after canary off"
+      "detail": "authorize rejected ortools after canary kill"
+    },
+    {
+      "id": "RD-07",
+      "pass": true,
+      "detail": "regen provider=neptune-repair merged=false"
     },
     {
       "id": "RD-08",
       "pass": true,
-      "detail": "idempotent plan version"
+      "detail": "idempotent plan version (no duplicate)"
+    },
+    {
+      "id": "RD-09",
+      "pass": true,
+      "detail": "no duplicate decision cards in drill scope (mechanism)"
     }
   ],
-  "note": "Mechanism drill complete. Remote staging soak with real tripIds still recommended before public canary.",
-  "detail": "Harness PASS — engineering rollback drill GO"
+  "note": "Staging live drill against APPROVED authority.json + staging token + whitelist trip. Canary left OFF after drill.",
+  "detail": "Live/staging rollback drill passed — safe to proceed to selected_trips canary"
 }

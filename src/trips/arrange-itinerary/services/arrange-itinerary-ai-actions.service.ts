@@ -7,6 +7,12 @@ import type {
   PlanProposalMutationResponse,
 } from '../types/arrange-itinerary.types';
 
+type CanonicalAiAction =
+  | 'fill_gaps'
+  | 'optimize_route'
+  | 'arrange_lunch'
+  | 'reduce_intensity';
+
 const ACTION_PROMPTS: Record<
   AttractionExploreAiActionDto['action'],
   (dayIndex?: number) => string
@@ -19,6 +25,10 @@ const ACTION_PROMPTS: Record<
       : '请为行程中尚未安排午餐的日子建议午餐方案。',
   reduce_intensity: () =>
     '请降低行程强度：识别高体力活动，建议调整时段、降级候选优先级或增加休息空档。',
+  reduce_driving: () =>
+    '请压缩当日驾驶负荷：合并同区景点、减少折返，必要时建议改日或降级绕路候选。',
+  resolve_conflicts: () =>
+    '请消解当日行程冲突：调整重叠时段顺序，优先保留必去项并标注需人工确认的冲突。',
 };
 
 const INTENT_MAP: Record<
@@ -29,7 +39,19 @@ const INTENT_MAP: Record<
   optimize_route: 'OPTIMIZE_ROUTE',
   arrange_lunch: 'ARRANGE_LUNCH',
   reduce_intensity: 'REDUCE_INTENSITY',
+  reduce_driving: 'OPTIMIZE_ROUTE',
+  resolve_conflicts: 'OPTIMIZE_ROUTE',
 };
+
+/** Alias → builder action used inside PlanProposalBuilderService */
+export function resolveCanonicalAiAction(
+  action: AttractionExploreAiActionDto['action'],
+): CanonicalAiAction {
+  if (action === 'reduce_driving' || action === 'resolve_conflicts') {
+    return 'optimize_route';
+  }
+  return action;
+}
 
 @Injectable()
 export class ArrangeItineraryAiActionsService {
@@ -62,6 +84,7 @@ export class ArrangeItineraryAiActionsService {
           payload: {
             ...input.body,
             action: input.body.action,
+            canonicalAction: resolveCanonicalAiAction(input.body.action),
             question,
             answer: consult.answer,
           },

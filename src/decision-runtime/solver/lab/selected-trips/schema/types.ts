@@ -135,4 +135,7 @@ export interface ValidationReport {
   eligible: boolean;
   issues: ValidationIssue[];
   intendedOperation?: string;
+  /** From manifest.source — synthetic/gold do not count toward Dataset READY. */
+  source?: SelectedTripManifest['source'];
+  expectation?: ExpectedOutcomeFile['expectation'];
 }

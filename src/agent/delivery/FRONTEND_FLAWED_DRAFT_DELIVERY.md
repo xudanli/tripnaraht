@@ -13,6 +13,10 @@
 |------|----------|----------|
 | 默认（`allow_flawed_draft_narrate` 未设） | REPAIR/效用预算耗尽 → **澄清终端**，通常无 SUCCESS 草案 | 走 clarification / actionExecution |
 | `options.allow_flawed_draft_narrate: true` | 继续 NARRATE → SUCCESS + `flawed_draft_v1` | **必须**展示瑕疵 Banner |
+| **禁止矩阵**（即使 opt-in） | HARD `SAFETY` / `REACHABILITY`/`DEM` / 核心交通 / 硬时间窗 / access blocked | **仍走澄清**；不得瑕疵 SUCCESS |
+
+禁止矩阵 SSOT：`src/agent/orchestration/flawed-draft-allow-matrix.constants.ts`。
+
 | `allow_partial` 降级 | 日期等硬缺口放宽 | Banner + 补充确认 CTA |
 | GATE `ADJUST_REQUIRED` / 未消解 VERIFY | 草案仍交付但带 reason | Banner + explain 面板 |
 

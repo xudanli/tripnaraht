@@ -28,6 +28,7 @@ import {
 import { isDecisionTriggerGatewayEnabled } from '../../trigger/decision-trigger.config';
 import { DecisionTriggerGatewayService } from '../../trigger/decision-trigger.gateway.service';
 import { evaluateRevalidationFromRows } from '../utils/decision-problem-revalidation.util';
+import { extractActualOutcomeFromDecisionValidation } from '../utils/extract-actual-outcome-from-validation.util';
 import type { ConstraintAssertion } from '../../../trips/decision-semantics/types/decision-semantics.types';
 import { buildSuggestedSubTasks } from '../utils/decision-collaborative-subtask-suggestions.util';
 import { PlanningConflictsService } from '../../../trips/trip-constraint-solver/services/planning-conflicts.service';
@@ -46,6 +47,9 @@ import {
   CausalTraceStaleError,
   type CausalTraceReference,
 } from '../../../causal-protocol';
+import { DecisionCaseApplyWritebackService } from '../../decision-cases/services/decision-case-apply-writeback.service';
+import { DecisionCaseService } from '../../decision-cases/services/decision-case.service';
+import { isDecisionCaseProblemId } from '../../decision-cases/projections/decision-case.projection';
 
 type ApplyResolutionOptions = {
   /** 跳过 collectRows revalidation（异步 apply 第二阶段再跑） */
@@ -69,6 +73,8 @@ export class UnifiedDecisionResolutionService {
     @Optional() private readonly collaborativeSubTasks?: DecisionCollaborativeSubTaskService,
     @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
     @Optional() private readonly causalTrace?: CanonicalCausalTraceService,
+    @Optional() private readonly decisionCaseWriteback?: DecisionCaseApplyWritebackService,
+    @Optional() private readonly decisionCases?: DecisionCaseService,
   ) {}
 
   async submitResolution(
@@ -149,6 +155,18 @@ export class UnifiedDecisionResolutionService {
       });
     }
 
+    if (writeChain === 'CONSTRAINT_WRITEBACK') {
+      return this.submitConstraintWritebackResolution({
+        tripId,
+        problemId,
+        userId,
+        body: normalized,
+        resolutionId,
+        idempotencyKey,
+        decidedAt,
+      });
+    }
+
     throw new BadRequestException('DECISION_PROBLEM_DOES_NOT_REQUIRE_RESOLUTION');
   }
 
@@ -182,6 +200,13 @@ export class UnifiedDecisionResolutionService {
 
     if (stored.writeChain === 'EVALUATE_AUTHORIZE_EXECUTE') {
       return this.applyCanonicalResolution(tripId, problemId, userId, stored, {
+        ...opts,
+        causalTraceRef,
+      });
+    }
+
+    if (stored.writeChain === 'CONSTRAINT_WRITEBACK' || this.decisionCaseWriteback?.canHandle(problemId)) {
+      return this.applyConstraintWritebackResolution(tripId, problemId, userId, stored, {
         ...opts,
         causalTraceRef,
       });
@@ -535,6 +560,92 @@ export class UnifiedDecisionResolutionService {
     };
   }
 
+  private async submitConstraintWritebackResolution(input: {
+    tripId: string;
+    problemId: string;
+    userId: string;
+    body: SubmitDecisionProblemResolutionRequest;
+    resolutionId: string;
+    idempotencyKey: string;
+    decidedAt: string;
+  }): Promise<SubmitDecisionProblemResolutionResponse> {
+    if (!isDecisionCaseProblemId(input.problemId)) {
+      throw new BadRequestException('CONSTRAINT_WRITEBACK_REQUIRES_DECISION_CASE');
+    }
+
+    const stored = await this.resolutionStore.upsert(input.tripId, {
+      resolutionId: input.resolutionId,
+      problemId: input.problemId,
+      selectedActionId: input.body.selectedActionId,
+      writeChain: 'CONSTRAINT_WRITEBACK',
+      status: 'AUTHORIZED',
+      decidedAt: input.decidedAt,
+      decidedByUserId: input.userId,
+      idempotencyKey: input.idempotencyKey,
+      acknowledgement: input.body.acknowledgement,
+    });
+
+    return {
+      schemaId: 'tripnara.decision_problem_resolution_submit@v1',
+      tripId: input.tripId,
+      problemId: input.problemId,
+      generatedAt: new Date().toISOString(),
+      resolution: toResolutionSummary(stored),
+      problem: {
+        workflowStatus: 'DECIDED',
+        executionStatus: 'NOT_STARTED',
+      },
+      nextStep: 'APPLY',
+    };
+  }
+
+  private async applyConstraintWritebackResolution(
+    tripId: string,
+    problemId: string,
+    userId: string,
+    stored: StoredDecisionProblemResolution,
+    opts?: ApplyResolutionOptions,
+  ): Promise<ApplyDecisionProblemResponse> {
+    if (!this.decisionCaseWriteback) {
+      throw new BadRequestException('DECISION_CASE_WRITEBACK_UNAVAILABLE');
+    }
+
+    await this.resolutionStore.upsert(tripId, { ...stored, status: 'APPLYING' });
+    try {
+      const result = await this.decisionCaseWriteback.applyOption({
+        tripId,
+        problemId,
+        optionId: stored.selectedActionId,
+      });
+
+      const updated = await this.resolutionStore.upsert(tripId, {
+        ...stored,
+        status: result.applied ? 'APPLIED' : 'FAILED',
+        failureMessage: result.applied ? undefined : 'DECISION_CASE_WRITEBACK_FAILED',
+        automationMeta: {
+          changeSummary: `写回 ${result.writebackTargets.join(', ')}`,
+          actionTitle: stored.selectedActionId,
+          appliedAt: new Date().toISOString(),
+        },
+      });
+
+      // Re-ensure downstream cases (e.g. F-road after vehicle) then revalidate
+      await this.decisionCases?.ensureAndCollectRows(tripId);
+      this.planningConflicts?.invalidateCache(tripId);
+      this.readModel.invalidateCache(tripId);
+
+      return this.finalizeApplyResponse(tripId, updated, userId, opts);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'APPLY_FAILED';
+      await this.resolutionStore.upsert(tripId, {
+        ...stored,
+        status: 'AUTHORIZED',
+        failureMessage: message,
+      });
+      throw e;
+    }
+  }
+
   private bindSubmitCausalTrace(
     body: SubmitDecisionProblemResolutionRequest,
     detail: Awaited<ReturnType<UnifiedDecisionProblemReadModelService['getProblemDetail']>>,
@@ -793,6 +904,27 @@ export class UnifiedDecisionResolutionService {
       suggestedSubTasks,
       collaborativeTask,
       ...(opts?.causalTraceRef ? { causalTraceRef: opts.causalTraceRef } : {}),
+      ...this.readOutcomeReconciliation(tripId, nextStored.problemId, opts?.causalTraceRef),
+    };
+  }
+
+  private readOutcomeReconciliation(
+    tripId: string,
+    problemId: string,
+    ref?: CausalTraceReference,
+  ): Pick<ApplyDecisionProblemResponse, 'outcomeReconciliation'> {
+    if (!this.causalTrace) return {};
+    const traceId = ref?.traceId ?? this.causalTrace.getActiveRef(tripId, problemId)?.traceId;
+    if (!traceId) return {};
+    const outcome = this.causalTrace.getTrace(traceId)?.travelCausalDecision?.outcome;
+    if (!outcome) return {};
+    return {
+      outcomeReconciliation: {
+        status: outcome.reconciliation,
+        decisionId: outcome.decisionId,
+        selectedOptionId: outcome.selectedOptionId,
+        explanation: outcome.explanation,
+      },
     };
   }
 
@@ -800,6 +932,8 @@ export class UnifiedDecisionResolutionService {
     ref: CausalTraceReference,
     executionRef: string,
   ): CausalTraceReference {
+    // EXECUTE: bind execution without inventing observations — reconciliation stays PENDING
+    // until calibrateCausalTraceAfterVerify supplies ActualOutcomeSnapshot.
     this.causalTrace?.bindExecuted({ traceId: ref.traceId, executionRef });
     return ref;
   }
@@ -829,12 +963,23 @@ export class UnifiedDecisionResolutionService {
     const drivingObserved = validation?.observedOutcomes?.find((o) => o.metric === 'DRIVING_DURATION');
     const actualMinutes = drivingObserved ? Number(drivingObserved.actualValue) : undefined;
 
+    const actualOutcome = extractActualOutcomeFromDecisionValidation(validation);
+    const completed =
+      actualOutcome?.completed ??
+      (validation?.verdict === 'CONFIRMED'
+        ? true
+        : validation?.verdict === 'REFUTED'
+          ? false
+          : undefined);
+
     this.causalTrace.bindCalibrated({
       traceId: ref.traceId,
       outcomeRef: stored.resolutionId,
       predictedMinutes,
       actualMinutes: Number.isFinite(actualMinutes) ? actualMinutes : undefined,
       verdict: validation?.verdict,
+      actualOutcome,
+      completed,
     });
   }
 

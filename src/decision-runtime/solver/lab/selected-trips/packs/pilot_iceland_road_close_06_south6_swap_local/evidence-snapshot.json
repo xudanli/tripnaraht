@@ -1,0 +1,12 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "pilot_iceland_road_close_06_south6_swap_local",
+  "evidenceVersionId": "ev-south-1",
+  "frozenAt": "2026-07-16T09:53:45.003Z",
+  "sources": [
+    {
+      "provider": "gold_export",
+      "ref": "iceland.road_close.06_south6_swap_local"
+    }
+  ]
+}

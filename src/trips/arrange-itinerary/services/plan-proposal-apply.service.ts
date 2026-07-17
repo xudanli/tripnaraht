@@ -24,6 +24,7 @@ import {
 } from '../../utils/arrange-itinerary-day.util';
 import { buildExecutionSteps } from '../utils/plan-proposal-decision-projection.util';
 import { selectAuthoritativePlanProposalChanges } from '../../../decision-runtime/solver/lab/ortools-planning-shadow-apply.guard';
+import { filterChangesByEnabledItemIds } from '../utils/scheme-preview.projection.util';
 
 @Injectable()
 export class PlanProposalApplyService {
@@ -39,6 +40,8 @@ export class PlanProposalApplyService {
     proposal: PlanProposal;
     userId: string;
     force?: boolean;
+    enabledItemIds?: string[];
+    comment?: string;
   }): Promise<PlanProposalApplyResult> {
     if (input.proposal.validation.status === 'BLOCK' && !input.force) {
       throw new BadRequestException('当前草案存在阻塞性冲突，无法写入');
@@ -54,6 +57,8 @@ export class PlanProposalApplyService {
   private async executeProposal(input: {
     proposal: PlanProposal;
     userId: string;
+    enabledItemIds?: string[];
+    comment?: string;
   }): Promise<PlanProposalApplyResult> {
     const { proposal, userId } = input;
     const tripDays = await this.prisma.tripDay.findMany({
@@ -66,7 +71,14 @@ export class PlanProposalApplyService {
     const removedCandidateIds = new Set<string>();
 
     // ADR-008 S4: never apply ortoolsShadow.shadowChanges — only proposal.changes
-    const authoritativeChanges = selectAuthoritativePlanProposalChanges(proposal);
+    const authoritativeChanges = filterChangesByEnabledItemIds(
+      selectAuthoritativePlanProposalChanges(proposal),
+      input.enabledItemIds,
+    );
+
+    if (authoritativeChanges.length === 0) {
+      throw new BadRequestException('未选择任何可执行项，无法写入');
+    }
 
     await this.prisma.$transaction(async () => {
       for (const change of authoritativeChanges) {

@@ -23,7 +23,10 @@ import { DecisionCollaborativeSubTaskService } from './services/decision-collabo
 import { DecisionProblemResolutionStoreService } from './persistence/decision-problem-resolution.store';
 import { DecisionCollaborativeSubTaskStoreService } from './persistence/decision-collaborative-subtask.store';
 import { CausalProtocolModule } from '../../causal-protocol/causal-protocol.module';
+import { DecisionCasesModule } from '../decision-cases/decision-cases.module';
 import { UnifiedDecisionController } from './controllers/unified-decision.controller';
+import { CausalDecisionController } from './controllers/causal-decision.controller';
+import { CausalDecisionProductService } from './services/causal-decision-product.service';
 
 @Module({
   imports: [
@@ -40,8 +43,9 @@ import { UnifiedDecisionController } from './controllers/unified-decision.contro
     AuthorizationPolicyModule,
     EffectivePlanExecutionModule,
     CausalProtocolModule,
+    DecisionCasesModule,
   ],
-  controllers: [UnifiedDecisionController],
+  controllers: [UnifiedDecisionController, CausalDecisionController],
   providers: [
     DecisionEngineRegistryService,
     DecisionRouteResolverService,
@@ -54,6 +58,7 @@ import { UnifiedDecisionController } from './controllers/unified-decision.contro
     DecisionProblemResolutionStoreService,
     DecisionCollaborativeSubTaskService,
     DecisionCollaborativeSubTaskStoreService,
+    CausalDecisionProductService,
   ],
   exports: [
     DecisionEngineGatewayService,
@@ -63,6 +68,7 @@ import { UnifiedDecisionController } from './controllers/unified-decision.contro
     DecisionCollaborativeSubTaskService,
     DecisionCollaborativeSubTaskStoreService,
     DecisionEngineRegistryService,
+    CausalDecisionProductService,
     forwardRef(() => ConstraintEvaluationModule),
     forwardRef(() => CanonicalPlanSelectionModule),
     forwardRef(() => DecisionTriggerModule),

@@ -119,20 +119,25 @@ export function projectNeutralCausalStoryView(trace: CanonicalCausalTraceV1): Ca
   }
 
   const severity = problem?.severity ?? 'WARNING';
-  const headline =
-    severity === 'BLOCKER'
+  const hasWindCausal = windMps > 0 || trace.facts.some((f) => f.factType === 'WEATHER_WIND_GUST');
+  const headline = hasWindCausal
+    ? severity === 'BLOCKER'
       ? `${routeLabel}：强风导致预约高风险`
       : severity === 'WARNING'
         ? `${routeLabel}：通行缓冲偏紧`
-        : `${routeLabel}：天气需留意`;
+        : `${routeLabel}：天气需留意`
+    : problem?.assessmentKey?.trim() ||
+      (inputSemanticHeadline(trace) ?? '决策依据待确认');
 
   const assessment =
     problem?.assessmentKey?.trim() ||
-    (missProbability != null && missProbability >= 0.1
+    (hasWindCausal && missProbability != null && missProbability >= 0.1
       ? resolveCausalExplanation(CAUSAL_EXPLANATION_KEYS.ICELAND_APPOINTMENT_MISS_RISK, {
           missProbability,
         })
-      : resolveCausalExplanation(CAUSAL_EXPLANATION_KEYS.TRAVEL_BUFFER_TIGHT));
+      : hasWindCausal
+        ? resolveCausalExplanation(CAUSAL_EXPLANATION_KEYS.TRAVEL_BUFFER_TIGHT)
+        : problem?.assessmentKey?.trim() || '请根据选项与写回目标完成确认。');
 
   return {
     traceId: trace.traceId,
@@ -147,11 +152,26 @@ export function projectNeutralCausalStoryView(trace: CanonicalCausalTraceV1): Ca
           expectedImprovement:
             selected.metricsBefore?.timeMinutes != null && selected.metricsAfter?.timeMinutes != null
               ? `通行时间 ${Math.round(selected.metricsBefore.timeMinutes)} → ${Math.round(selected.metricsAfter.timeMinutes)} 分钟`
-              : '改善预约可达性',
+              : hasWindCausal
+                ? '改善预约可达性'
+                : '确认后写回行程约束',
         }
       : undefined,
     technicalTraceRef: trace.traceId,
   };
+}
+
+function inputSemanticHeadline(trace: CanonicalCausalTraceV1): string | undefined {
+  const pid = trace.problems[0]?.problemId ?? '';
+  if (pid.startsWith('dc_vehicle')) return '车型与路况匹配待确认';
+  if (pid.startsWith('dc_insurance')) return '租车保险覆盖待确认';
+  if (pid.startsWith('dc_froad')) return '车型与 F-road 不匹配';
+  if (pid.startsWith('dc_landing')) return '落地后首日长驾风险';
+  if (pid.startsWith('dc_ring')) return '环岛范围与天数冲突';
+  if (pid.startsWith('dc_glacier')) return '冰川体验取舍';
+  if (pid.startsWith('dc_exp_')) return '高影响体验取舍';
+  if (pid.startsWith('dc_drive')) return '单日驾驶负荷过高';
+  return undefined;
 }
 
 export function projectCausalStoryView(
@@ -169,9 +189,25 @@ function projectAbuCausalStoryView(
 ): CausalStoryView {
   const ctx = windFactContext(trace.facts);
   const windMps = Number(ctx.windMps ?? 0);
+  const hasWindCausal =
+    windMps > 0 || trace.facts.some((f) => f.factType === 'WEATHER_WIND_GUST');
   const routeLabel = String(ctx.routeLabel ?? '路段');
   const missEffect = trace.effects.find((e) => e.effectType === 'APPOINTMENT_MISS_PROBABILITY');
   const missProbability = missEffect ? Number(missEffect.predictedValue) : 0;
+
+  // 非强风行程缓冲问题：Abu 只改措辞，不伪造「强风不建议出发」
+  if (!hasWindCausal) {
+    return {
+      ...neutral,
+      headline: neutral.headline.startsWith('安全')
+        ? neutral.headline
+        : `安全提示：${neutral.headline}`,
+      chain: neutral.chain.map((node) => ({
+        ...node,
+        title: abuChainTitle(node.type, node.title),
+      })),
+    };
+  }
 
   const safetyHeadline =
     windMps >= 20 || missProbability >= 0.5

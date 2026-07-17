@@ -18,7 +18,8 @@
 |--------|--------|
 | 冲突 → 可行性分数 | `GET /trips/:id/conflicts` |
 | 指标 → 节奏分数 | `GET /trips/:id/metrics` |
-| 规划进度 | `GET /trips/:id/pipeline-status` |
+| **整体准备度** | `GET /trips/:id/overall-readiness`（五维投影） |
+| 规划进度（兼容内部） | `GET /trips/:id/pipeline-status` |
 | 待办 | `GET /trips/:id/tasks` |
 | 提醒 | `GET /trips/:id/persona-alerts` |
 | 新建议数 | `GET /trips/:id/suggestions?status=new` |
@@ -33,12 +34,12 @@
 
 | 参数 | 必填 | 默认 | 说明 |
 |------|------|------|------|
-| `include` | 否 | `stats,pipeline,tasks,reminders` | 逗号分隔：`stats` `pipeline` `tasks` `reminders` `suggestions` `health` |
-| `preset` | 否 | — | `shell` → `include=stats`；`full` → phase-2（无 suggestions 列表）。显式 `include` 优先 |
+| `include` | 否 | `stats,pipeline,tasks,reminders,readiness` | 逗号分隔：`stats` `pipeline` `tasks` `reminders` `readiness` `suggestions` `health` |
+| `preset` | 否 | — | `shell` → `stats,readiness`；`full` → phase-2（含 readiness，无 suggestions 列表）。显式 `include` 优先 |
 
-**首屏推荐：** `?preset=shell`（冰岛 fixture p95 ~550ms）
+**首屏推荐：** `?preset=shell`（含整体准备度卡片）
 
-**Suggestions 列表：** 默认不含；角标用 `stats.newSuggestionCount`。需要列表时 `?include=stats,pipeline,tasks,reminders,suggestions` 或 client `getOverviewWithSuggestions()`。
+**Suggestions 列表：** 默认不含；角标用 `stats.newSuggestionCount`。需要列表时追加 `suggestions`。
 
 ### 响应 `data`
 
@@ -53,17 +54,29 @@ interface TimelineOverviewResponse {
     filesPendingCount?: number;     // trip_files PENDING（模块可用时）
     newSuggestionCount: number;
   };
+  /** 内部 pipeline；主 UI 用 overallReadiness */
   planning: {
-    progressPercent: number;        // pipeline 已完成阶段占比
+    progressPercent: number;
     completedStages: number;
     totalStages: number;
     currentStageName?: string;
-    stages: PipelineStage[];        // 同 pipeline-status
+    stages: PipelineStage[];
   };
-  tasks: Task[];                    // 最多 10 条
+  overallReadiness?: {
+    score: number;
+    state: string;
+    stateLabelZh: string;
+    evidenceConfidence: number;
+    blockerCount: number;
+    pendingConfirmationCount: number;
+    dimensions: Array<{ code: string; labelZh: string; score: number }>;
+    topPriority?: { title: string; actionCode?: string };
+    reportDeepLink: string;
+  };
+  tasks: Task[];
   incompleteTaskCount: number;
-  todayReminders: PersonaAlert[];   // 最多 5 条，过滤 internal
-  health?: TripHealth;              // include=health 时
+  todayReminders: PersonaAlert[];
+  health?: TripHealth;
   generatedAt: string;
 }
 ```
@@ -74,7 +87,8 @@ interface TimelineOverviewResponse {
 |------|------|
 | `feasibilityScore` | 100 − Σ(冲突扣分)；HIGH −25、MEDIUM −15、LOW −5，上限扣 95 |
 | `paceScore` | `100 − avg(每日 fatigue)`，fatigue 来自 metrics |
-| `progressPercent` | `completedStages / totalStages × 100` |
+| `overallReadiness.score` | 五维加权；见 [OVERALL_TRIP_READINESS_API.md](./overall-readiness/OVERALL_TRIP_READINESS_API.md) |
+| `planning.progressPercent` | 内部：`completedStages / totalStages × 100`（非主分数） |
 | `pendingConfirmationCount` | `NEED_BOOKING`/`PENDING`/`UNBOOKED`，或需预订类型且无确认状态 |
 
 ### 示例
@@ -103,6 +117,26 @@ curl -s "http://localhost:3000/api/trips/{tripId}/timeline-overview?include=stat
       "totalStages": 6,
       "currentStageName": "风险评估与缓冲",
       "stages": []
+    },
+    "overallReadiness": {
+      "score": 78,
+      "state": "NEAR_READY",
+      "stateLabelZh": "接近就绪",
+      "evidenceConfidence": 81,
+      "blockerCount": 0,
+      "pendingConfirmationCount": 3,
+      "dimensions": [
+        { "code": "ROUTE", "labelZh": "路线", "score": 84 },
+        { "code": "ACCOMMODATION", "labelZh": "住宿", "score": 100 },
+        { "code": "TRANSPORT", "labelZh": "交通", "score": 68 },
+        { "code": "ACTIVITY", "labelZh": "活动", "score": 72 },
+        { "code": "MEMBER", "labelZh": "成员", "score": 60 }
+      ],
+      "topPriority": {
+        "title": "租车保险方案尚未确认",
+        "actionCode": "CONFIRM_RENTAL_INSURANCE"
+      },
+      "reportDeepLink": "/api/trips/trip-uuid/overall-readiness"
     },
     "tasks": [],
     "incompleteTaskCount": 2,
@@ -136,9 +170,10 @@ const [trip, overview] = await Promise.all([
 overview.stats.feasibilityScore  // 原 62%
 overview.stats.paceScore         // 原 76
 overview.stats.conflictCount     // 原 3
+overview.overallReadiness        // 主卡片：整体准备度
 overview.tasks                   // 侧栏待办
 overview.todayReminders          // 侧栏提醒
-overview.planning.progressPercent
+overview.planning.progressPercent // 仅内部兼容，勿作主分数
 ```
 
 ---

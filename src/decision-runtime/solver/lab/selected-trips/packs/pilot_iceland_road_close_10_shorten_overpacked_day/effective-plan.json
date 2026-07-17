@@ -1,0 +1,69 @@
+{
+  "schemaId": "tripnara.selected_trip.effective_plan@v1",
+  "tripId": "pilot_iceland_road_close_10_shorten_overpacked_day",
+  "planVersionId": "pv-gold",
+  "days": [
+    {
+      "dayId": "day-1",
+      "date": "2026-06-12",
+      "activities": [
+        {
+          "activityId": "act-a1",
+          "poiId": "is.seljalandsfoss",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 90,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.4,
+          "lng": -19
+        },
+        {
+          "activityId": "act-a2",
+          "poiId": "is.skogafoss",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 80,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.41,
+          "lng": -19.01
+        },
+        {
+          "activityId": "act-a3",
+          "poiId": "is.reynisfjara",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 70,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.42,
+          "lng": -19.02
+        },
+        {
+          "activityId": "act-a4",
+          "poiId": "is.vik",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.43,
+          "lng": -19.03
+        }
+      ]
+    }
+  ]
+}

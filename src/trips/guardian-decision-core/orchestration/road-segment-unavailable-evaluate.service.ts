@@ -49,6 +49,12 @@ import {
   buildNeptuneRoadRepairCandidates,
   readBudgetCapFromTripMetadata,
 } from '../adapters/neptune-road-repair.adapter';
+import { evaluateAbuRoadOpeningWindowConstraintForCandidate } from '../adapters/abu-road-opening-window-constraint.adapter';
+import { buildRoadOpeningWindowEvaluationContext } from '../adapters/road-opening-window-context.util';
+import {
+  buildStillOpenRoadSubstituteCandidates,
+  shouldGenerateStillOpenRoadSubstitutes,
+} from '../adapters/still-open-road-substitute.adapter';
 import { NeptuneRepairProvider } from '../../../decision-runtime/candidates/providers/neptune-repair.provider';
 import { OrToolsRoadEvaluateShadowBridge } from '../../../decision-runtime/solver/bridge/ortools-road-evaluate-shadow.bridge';
 import { OrToolsShadowMetricsCollector } from '../../../decision-runtime/solver/observability/ortools-shadow-metrics.collector';
@@ -167,7 +173,7 @@ export class RoadSegmentUnavailableEvaluateService {
     const roadAssertion = evidence.assertion as WorldStateAssertion<RoadStatusAssertionPayload>;
     const tripRow = await this.prisma.trip.findUnique({
       where: { id: tripId },
-      select: { metadata: true, destination: true },
+      select: { metadata: true, destination: true, status: true },
     });
     const bindings = readBindingsFromTripMetadata(
       (tripRow?.metadata ?? {}) as Record<string, unknown>,
@@ -211,6 +217,45 @@ export class RoadSegmentUnavailableEvaluateService {
     });
     const neptuneRepairCandidates = repairCandidates;
 
+    let openingWindowContext = buildRoadOpeningWindowEvaluationContext({
+      tripMetadata: tripMetadata,
+      tripStatus: tripRow?.status,
+      basePlan: plan,
+      affectedPlanItemIds: impact.affectedPlanItemIds,
+    });
+
+    if (
+      shouldGenerateStillOpenRoadSubstitutes(
+        repairCandidates,
+        openingWindowContext,
+      )
+    ) {
+      const stillOpen = buildStillOpenRoadSubstituteCandidates({
+        workspaceId: workspace.workspaceId,
+        problem,
+        impact,
+        basePlan: plan,
+        openingContext: openingWindowContext,
+        existingCandidates: repairCandidates,
+        countryCode: destinationCountry,
+        tripMetadata,
+        evidenceRefs: roadAssertion.source.evidenceRefs,
+      });
+      if (stillOpen.candidates.length > 0) {
+        repairCandidates = [...repairCandidates, ...stillOpen.candidates];
+        openingWindowContext = {
+          ...openingWindowContext,
+          windowsByPoiId: {
+            ...openingWindowContext.windowsByPoiId,
+            ...stillOpen.windowsByPoiId,
+          },
+        };
+        this.logger.debug(
+          `still-open substitutes trip=${tripId} added=${stillOpen.candidates.length}`,
+        );
+      }
+    }
+
     const constraintAssertions: Rfc001ConstraintAssertion[] = [];
     const loadAssessments = [];
 
@@ -220,13 +265,11 @@ export class RoadSegmentUnavailableEvaluateService {
     ];
 
     for (const candidateId of candidateIds) {
+      const repair = repairCandidates.find((c) => c.candidateId === candidateId);
       const candidatePlan =
         candidateId === ORIGINAL_CANDIDATE_ID
           ? plan
-          : planForCandidate(
-              plan,
-              repairCandidates.find((c) => c.candidateId === candidateId)!,
-            );
+          : planForCandidate(plan, repair!);
 
       const roadConstraint = evaluateAbuRoadConstraintForCandidate({
         tripId,
@@ -240,6 +283,17 @@ export class RoadSegmentUnavailableEvaluateService {
         traversabilityAssessment,
       });
       constraintAssertions.push(roadConstraint);
+
+      constraintAssertions.push(
+        evaluateAbuRoadOpeningWindowConstraintForCandidate({
+          workspaceId: workspace.workspaceId,
+          targetCandidateId: candidateId,
+          affectedPlanItemIds: impact.affectedPlanItemIds,
+          evidenceRefs: roadAssertion.source.evidenceRefs,
+          context: openingWindowContext,
+          repairCandidate: repair,
+        }),
+      );
 
       if (candidateId !== ORIGINAL_CANDIDATE_ID && this.abu) {
         const abuResult = await this.abu.evaluate(world, candidatePlan);
@@ -260,7 +314,6 @@ export class RoadSegmentUnavailableEvaluateService {
         const dreResult = stripDreUpdatedPlan(
           await this.dre.evaluate(world, candidatePlan),
         );
-        const repair = repairCandidates.find((c) => c.candidateId === candidateId);
         const roadLoad = evaluateDreRoadLoadForCandidate({
           workspaceId: workspace.workspaceId,
           targetCandidateId: candidateId,
@@ -286,7 +339,6 @@ export class RoadSegmentUnavailableEvaluateService {
           }),
         );
       } else {
-        const repair = repairCandidates.find((c) => c.candidateId === candidateId);
         loadAssessments.push(
           evaluateDreRoadLoadForCandidate({
             workspaceId: workspace.workspaceId,

@@ -14,7 +14,7 @@ export const EXPLORATION_INSURANCE_TIERS = [
   {
     code: 'FULL',
     label: '全险 / 零起赔',
-    description: '碰撞、碎石、底盘、涉水均声明覆盖',
+    description: '碰撞、碎石、底盘等声明覆盖；涉水过河损坏通常不在普通保险范围内',
   },
   {
     code: 'UNKNOWN',

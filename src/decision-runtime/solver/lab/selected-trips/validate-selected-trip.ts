@@ -366,6 +366,8 @@ export function validateSelectedTripPack(packDir: string): ValidationReport {
     eligible: errors.length === 0,
     issues,
     intendedOperation: op || undefined,
+    source: manifest?.source,
+    expectation: expected?.expectation,
   };
 }
 

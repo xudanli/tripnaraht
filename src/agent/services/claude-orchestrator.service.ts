@@ -336,10 +336,12 @@ import {
 import {
   dedupeResearchScopes,
   invalidateResearchScopesInPlace,
-  isResearchAssetScope,
   cloneResearchRecord,
 } from '../utils/research-asset-scope.util';
-import { resolveResearchInvalidation } from '../runtime/resolve-research-invalidation.util';
+import { planResearchScopes } from '../runtime/research-scope-planner.util';
+import { buildReturnToResearchContextV1 } from '../orchestration/return-to-research-context.util';
+import { emitPhaseExecutionPath } from '../orchestration/phase-execution-path.telemetry.util';
+
 import {
   sanitizeOrchestrationHandoffForRequest,
   type RouteAndRunSubagentSandboxCarrier,
@@ -10668,17 +10670,15 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
     state: OrchestratorState,
   ): Promise<void> {
-    const optInv = request.options?.research_invalidate_scopes;
     const dosCtx = this.resolveDosExecutionContext(request);
-    const invalidation = resolveResearchInvalidation(request, dosCtx);
-    const nluInv = invalidation.assetScopes;
-    const combinedInv = dedupeResearchScopes([
-      ...(Array.isArray(optInv) ? optInv.filter(isResearchAssetScope) : []),
-      ...nluInv,
-    ]);
-    if (combinedInv.length === 0) return;
+    const scopePlan = planResearchScopes({
+      request,
+      dosContext: dosCtx,
+      metadata: state.metadata as Record<string, unknown>,
+    });
+    const scopes = scopePlan.assetScopes;
+    if (scopes.length === 0) return;
 
-    const scopes = combinedInv;
     let rdBase: Record<string, unknown> | undefined =
       state.research_data && typeof state.research_data === 'object'
         ? cloneResearchRecord(state.research_data as Record<string, unknown>)
@@ -10700,15 +10700,20 @@ ${JSON.stringify(routingDecision, null, 2)}
     const { clearedKeys } = invalidateResearchScopesInPlace(
       draftRd,
       scopes,
-      'research_invalidate_scopes+nlu',
+      `research_scope_plan:${scopePlan.source}`,
     );
     const m0 = { ...(state.metadata as Record<string, unknown>) };
     m0.research_scopes_to_recompute = scopes;
+    m0.research_scope_plan_v1 = scopePlan;
     m0.research_scope_invalidation = {
       scopes,
       cleared_keys: clearedKeys,
-      at: new Date().toISOString(),
+      at: scopePlan.at,
+      source: scopePlan.source,
     };
+    if (scopePlan.forbid_full_research) {
+      m0.forbid_scoped_partial_degrade_to_full = true;
+    }
     m0.pending_research_prior_for_kernel = draftRd;
     m0.research_atomic_rollback_snapshot = researchAtomicRollbackSnapshot;
     state.metadata = m0 as OrchestratorState['metadata'];
@@ -10717,15 +10722,14 @@ ${JSON.stringify(routingDecision, null, 2)}
       step: 'RESEARCH',
       actor: 'Orchestrator',
       inputs_summary: 'Harness：研究资产作用域局部无效化（COW 副本，主干未提交）',
-      outputs_summary: `INVALIDATE_SCOPES scopes=${scopes.join(',')} cleared_key_count=${clearedKeys.length}`,
+      outputs_summary: `INVALIDATE_SCOPES source=${scopePlan.source} scopes=${scopes.join(',')} cleared_key_count=${clearedKeys.length}`,
       evidence_refs: [],
       timestamp: new Date().toISOString(),
       metadata: {
         system_action: 'RESEARCH_SCOPE_INVALIDATION',
         scopes,
+        research_scope_plan_v1: scopePlan,
         cleared_keys_sample: clearedKeys.slice(0, 32),
-        nlu_scopes: nluInv.length ? nluInv : undefined,
-        option_scopes: Array.isArray(optInv) ? optInv.filter(isResearchAssetScope) : undefined,
       },
     });
   }
@@ -13075,6 +13079,13 @@ ${JSON.stringify(routingDecision, null, 2)}
     executeFn: () => Promise<void>,
   ): Promise<DecisionState | undefined> {
     if (!this.decisionKernel || !decisionState) {
+      emitPhaseExecutionPath(state, {
+        phase: phaseName,
+        path: !this.decisionKernel ? 'kernel_missing_service' : 'kernel_missing_dso',
+        reason: !this.decisionKernel ? 'missing_kernel' : 'missing_dso',
+        step: phaseName as OrchestrationStep,
+        loggerWarn: (m) => this.logger.warn(m),
+      });
       await executeFn();
       return this.executeStateUpdateStep(state, decisionState) ?? decisionState;
     }
@@ -14549,6 +14560,8 @@ ${JSON.stringify(routingDecision, null, 2)}
       runHallucinationPhase: (params) => runHallucinationPhase(hallucinationHost, params),
       buildSuccessResult: (st, start, dso, ctx) =>
         this.buildSuccessResult(st, start, dso, ctx),
+      buildErrorResult: (st, error, start, dso, failingStep, robust, ctx) =>
+        this.buildErrorResult(st, error, start, dso, failingStep as any, robust as any, ctx),
     };
   }
 
@@ -14820,6 +14833,10 @@ ${JSON.stringify(routingDecision, null, 2)}
     request: RouteAndRunRequestDto,
   ): Promise<DecisionState | undefined> {
     let ds = decisionState;
+    const harnessEvents = ds?.harnessRuntime?.last_harness_failure_events;
+    const r2rContext = buildReturnToResearchContextV1({ events: harnessEvents });
+    const scopes = dedupeResearchScopes(r2rContext.scopes);
+
     if (this.decisionKernel && ds) {
       ds = this.decisionKernel.updateState(ds, {
         harnessRuntime: {
@@ -14829,39 +14846,68 @@ ${JSON.stringify(routingDecision, null, 2)}
         },
       });
     }
-    const scopes = dedupeResearchScopes([
-      'hotel',
-      'flight',
-      'destination',
-      'transport',
-      'compliance',
-      'common',
-    ]);
-    if (state.research_data && typeof state.research_data === 'object') {
-      const { clearedKeys } = invalidateResearchScopesInPlace(
-        state.research_data as Record<string, unknown>,
-        scopes,
-        'RETURN_TO_RESEARCH',
-      );
-      const m0 = { ...(state.metadata as Record<string, unknown>) };
-      m0.research_scope_invalidation = {
-        scopes,
-        cleared_keys: clearedKeys,
-        at: new Date().toISOString(),
-        reason: 'RETURN_TO_RESEARCH',
-      };
-      state.metadata = m0 as OrchestratorState['metadata'];
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'VERIFY',
-        actor: 'Orchestrator',
-        inputs_summary: 'Harness RETURN_TO_RESEARCH → invalidate research evidence snapshot',
-        outputs_summary: `RESEARCH_SCOPE_INVALIDATION scopes=${scopes.join(',')}`,
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: { system_action: 'RETURN_TO_RESEARCH', scopes },
-      });
+
+    // 定向 COW：保留未失效域作为 prior，强制后续 RESEARCH 走 scoped_partial
+    let rdBase: Record<string, unknown> | undefined =
+      state.research_data && typeof state.research_data === 'object'
+        ? cloneResearchRecord(state.research_data as Record<string, unknown>)
+        : undefined;
+    if ((!rdBase || Object.keys(rdBase).length === 0) && this.researchPriorSnapshot) {
+      const loaded = await this.researchPriorSnapshot.load(request);
+      if (loaded && typeof loaded === 'object' && Object.keys(loaded).length > 0) {
+        rdBase = cloneResearchRecord(loaded as Record<string, unknown>);
+      }
     }
+
+    const m0 = { ...(state.metadata as Record<string, unknown>) };
+    m0.return_to_research_context_v1 = r2rContext;
+    m0.research_scopes_to_recompute = scopes;
+
+    let clearedKeys: string[] = [];
+    if (rdBase && Object.keys(rdBase).length > 0) {
+      const rollback = cloneResearchRecord(rdBase);
+      const draftRd = cloneResearchRecord(rdBase);
+      if (draftRd) {
+        const inv = invalidateResearchScopesInPlace(draftRd, scopes, 'RETURN_TO_RESEARCH');
+        clearedKeys = inv.clearedKeys;
+        m0.pending_research_prior_for_kernel = draftRd;
+        m0.research_atomic_rollback_snapshot = rollback;
+        // 主干 research_data 暂不清空：Kernel scoped_partial 以 pending prior 为准
+      }
+    } else {
+      // 无 prior 时允许后续显式 forced full，但必须可观测
+      m0.r2r_allow_forced_full_empty_prior = true;
+      this.logger.warn(
+        `[Claude Orchestrator] RETURN_TO_RESEARCH 无 prior research，允许显式 forced full request_id=${state.request_id} codes=${r2rContext.failure_codes.join(',')}`,
+      );
+    }
+
+    m0.research_scope_invalidation = {
+      scopes,
+      cleared_keys: clearedKeys,
+      at: r2rContext.at,
+      reason: 'RETURN_TO_RESEARCH',
+      failure_codes: r2rContext.failure_codes,
+      missing_evidence: r2rContext.missing_evidence,
+      forbid_full_research: r2rContext.forbid_full_research,
+    };
+    state.metadata = m0 as OrchestratorState['metadata'];
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'VERIFY',
+      actor: 'Orchestrator',
+      inputs_summary: 'Harness RETURN_TO_RESEARCH → targeted research scope invalidation',
+      outputs_summary: `RESEARCH_SCOPE_INVALIDATION scopes=${scopes.join(',')} codes=${r2rContext.failure_codes.join(',') || '∅'}`,
+      evidence_refs: [],
+      timestamp: r2rContext.at,
+      metadata: {
+        system_action: 'RETURN_TO_RESEARCH',
+        scopes,
+        return_to_research_context_v1: r2rContext,
+        failure_codes: r2rContext.failure_codes,
+        missing_evidence: r2rContext.missing_evidence,
+      },
+    });
     return ds;
   }
 

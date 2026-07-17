@@ -122,10 +122,32 @@ export class ArrangeItineraryGapDto extends PlanProposalCommitModeDto {
 
 export class AttractionExploreAiActionDto extends PlanProposalCommitModeDto {
   @ApiProperty({
-    enum: ['fill_gaps', 'optimize_route', 'arrange_lunch', 'reduce_intensity'],
+    enum: [
+      'fill_gaps',
+      'optimize_route',
+      'arrange_lunch',
+      'reduce_intensity',
+      'reduce_driving',
+      'resolve_conflicts',
+    ],
+    description:
+      '必须小写蛇形。reduce_driving / resolve_conflicts 映射到路线优化语义',
   })
-  @IsIn(['fill_gaps', 'optimize_route', 'arrange_lunch', 'reduce_intensity'])
-  action!: 'fill_gaps' | 'optimize_route' | 'arrange_lunch' | 'reduce_intensity';
+  @IsIn([
+    'fill_gaps',
+    'optimize_route',
+    'arrange_lunch',
+    'reduce_intensity',
+    'reduce_driving',
+    'resolve_conflicts',
+  ])
+  action!:
+    | 'fill_gaps'
+    | 'optimize_route'
+    | 'arrange_lunch'
+    | 'reduce_intensity'
+    | 'reduce_driving'
+    | 'resolve_conflicts';
 
   @ApiPropertyOptional({ description: '1-based 目标日（arrange_lunch 等）' })
   @IsOptional()

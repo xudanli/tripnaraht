@@ -83,6 +83,11 @@ import { DecisionSpaceBundleService } from './services/decision-space-bundle.ser
     PlanningDecisionInspectorService,
     DecisionSpaceBundleService,
   ],
-  exports: [PlanningOrchestratorFacadeService, PlanningModeService],
+  exports: [
+    PlanningOrchestratorFacadeService,
+    PlanningModeService,
+    ArrangeItineraryItemsService,
+    PlanProposalBuilderService,
+  ],
 })
 export class ArrangeItineraryModule {}

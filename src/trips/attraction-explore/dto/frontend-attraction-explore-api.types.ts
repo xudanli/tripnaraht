@@ -1,8 +1,12 @@
 export type {
   AttractionExplorePriority,
   AttractionExploreViewTab,
+  AttractionExploreSortId,
+  AttractionExploreQuickFilterId,
   AttractionExploreCandidateSource,
   AttractionExploreFilters,
+  AttractionExploreQuickFilterChip,
+  AttractionExploreSortOption,
   AttractionExploreTravelConditions,
   AttractionExploreMemberPreferenceSummary,
   AttractionExploreContextView,

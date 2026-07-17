@@ -55,7 +55,12 @@ export interface TripListSummaryDto {
   durationDays: number;
   memberCount: number;
   memberAvatars?: TripListMemberAvatar[];
+  /** @deprecated 列表轻量模式通常省略 */
   progressPercent?: number | null;
+  /** 整体准备度得分（来自 metadata.overallReadinessCache）；轻量列表可省略 */
+  readinessScore?: number | null;
+  readinessState?: string | null;
+  readinessStateLabelZh?: string | null;
   budgetPerPerson?: number | null;
   traveling?: TripListTravelingSnapshot;
   primaryAction?: TripListPrimaryAction;
@@ -66,6 +71,11 @@ export interface TripListDayRef {
   date: string;
 }
 
+/**
+ * 首页行程卡片（轻量 BFF）。
+ * 当前服务端刻意省略：days 明细、budget、collaborators、raw metadata、
+ * planningAvailability / generatingItems / tripContentMode、progress/readiness。
+ */
 export interface TripListCardDto {
   id: string;
   name?: string;
@@ -82,6 +92,9 @@ export interface TripListCardDto {
   planningAvailability?: TripPlanningAvailability;
   generatingItems?: boolean;
   tripContentMode?: TripListContentMode;
+  /**
+   * 列表白名单投影；轻量模式下通常省略。
+   */
   metadata?: Record<string, unknown>;
   listSummary: TripListSummaryDto | null;
 }

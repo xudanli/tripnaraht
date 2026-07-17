@@ -186,10 +186,17 @@ export interface ExecutionRiskMemberImpactDto {
 export interface ExecutionRiskRecommendationDto {
   id: string;
   riskId: string;
+  /** Client card title — preferred over label */
+  title?: string;
   label: string;
   description: string;
   isRecommended?: boolean;
   impactSummary?: string;
+  /** Short benefit chips for scheme cards (e.g. 推荐 / -30min / 提升安全) */
+  benefitTags?: string[];
+  /** Knowledge three-plan type when sourced from cluster generator */
+  planType?: string;
+  actionCodes?: string[];
   /** Per-member impact projection for recommendation cards / preview */
   memberImpacts?: ExecutionRiskMemberImpactDto[];
   sourceSystem: RiskSourceSystem;
@@ -227,6 +234,9 @@ export interface ExecutionRiskApplyResponseDto {
   confirmHint?: string;
   /** Per-member impact preview after adopting this recommendation */
   memberImpacts?: ExecutionRiskMemberImpactDto[];
+  /** Bumped after Active Plan write — clients refresh when greater than local cache */
+  contextVersion?: number;
+  planVersion?: number;
   validation?: {
     gate: ExecutionGate;
     newRisks: string[];

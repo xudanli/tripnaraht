@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ItemType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { DateTime } from 'luxon';
@@ -39,7 +39,11 @@ export class AttractionExploreAutoArrangeService {
     );
 
     if (rows.length === 0) {
-      return { taskId, status: 'completed', itemCount: 0 };
+      throw new BadRequestException({
+        code: 'NO_CANDIDATES',
+        errorCode: 'NO_CANDIDATES',
+        message: '当前没有可自动编排的候选景点，请先添加候选',
+      });
     }
 
     const tripDays = await this.prisma.tripDay.findMany({
@@ -47,7 +51,11 @@ export class AttractionExploreAutoArrangeService {
       orderBy: { date: 'asc' },
     });
     if (tripDays.length === 0) {
-      return { taskId, status: 'completed', itemCount: 0 };
+      throw new BadRequestException({
+        code: 'NO_TRIP_DAYS',
+        errorCode: 'NO_TRIP_DAYS',
+        message: '行程尚无日程天，无法自动编排',
+      });
     }
 
     let dayIndex = 0;

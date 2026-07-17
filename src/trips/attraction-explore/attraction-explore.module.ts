@@ -46,6 +46,7 @@ import { PlanningLodgingWorkbenchService } from './services/planning-lodging-wor
     AttractionExploreIntentCompileService,
     AttractionExploreMapService,
     AttractionExploreRecommendationsService,
+    AttractionExploreOrchestratorService,
     PlanningLodgingWorkbenchService,
   ],
 })

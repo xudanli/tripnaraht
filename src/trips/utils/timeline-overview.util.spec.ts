@@ -13,6 +13,7 @@ describe('timeline-overview.util', () => {
   it('defaults exclude suggestions list (stats.newSuggestionCount still populated)', () => {
     const include = parseTimelineOverviewInclude();
     expect(include.has('stats')).toBe(true);
+    expect(include.has('readiness')).toBe(true);
     expect(include.has('suggestions')).toBe(false);
   });
 

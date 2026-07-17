@@ -5,6 +5,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { isEffectivePlanWriteChainEnabled } from '../../../decision-runtime/execution/effective-plan-write-chain.config';
 import { EnvironmentRadarService } from '../../in-trip-execution/services/environment-radar.service';
 import { InTripAccessService } from '../../in-trip-execution/services/in-trip-access.service';
@@ -35,6 +36,8 @@ import {
 } from './execution-risk-idempotency.store';
 import { guardAutoExternalTransaction } from '../utils/execution-risk-automation-boundary.util';
 import { loadExecutionRiskKnowledgeFromPackage } from '../knowledge/execution-risk-knowledge.loader';
+import { materializeRecommendationPlanDiff } from '../utils/execution-risk-active-plan-materialize.util';
+import { executionRiskPlanAppliedBus } from '../ports/execution-risk-plan-applied.bus';
 
 export function parseEnvironmentRecommendationId(
   recommendationId: string,
@@ -73,6 +76,7 @@ export class ExecutionRiskApplyService {
     private readonly aggregation: ActiveRiskAggregationService,
     private readonly recommendations: ExecutionRiskRecommendationService,
     private readonly confirmWrite: ExecutionRiskConfirmWriteService,
+    @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly planVersionStore?: Rfc001PlanVersionStoreService,
     @Optional() private readonly travelStatus?: TravelStatusService,
     @Optional() private readonly advisoryApply?: ExecutionAdvisoryApplyService,
@@ -141,8 +145,13 @@ export class ExecutionRiskApplyService {
       affectedMembersScope: resolveAffectedMembersScope({ risks: [risk] }),
     });
 
-    const response: ExecutionRiskApplyResponseDto = {
-      executionStatus: 'PREVIEW',
+    // Write-chain enforcement: keep preview-only (confirm via decision-queue).
+    // Otherwise write Active Plan immediately so mobile can drop hardcoded A/B/C.
+    const canWriteActivePlan =
+      !isEffectivePlanWriteChainEnabled() && Boolean(this.prisma);
+
+    let response: ExecutionRiskApplyResponseDto = {
+      executionStatus: canWriteActivePlan ? 'APPLIED' : 'PREVIEW',
       riskId,
       recommendationId,
       decisionProblemId,
@@ -152,15 +161,38 @@ export class ExecutionRiskApplyService {
       idempotencyKey,
       expectedPlanVersionId: planDiff.beforePlanVersionId,
       projectedRisks,
-      requiresConfirmation: true,
-      confirmHint: this.buildConfirmHint(decisionProblemId, recommendationId),
+      requiresConfirmation: !canWriteActivePlan,
+      confirmHint: canWriteActivePlan
+        ? undefined
+        : this.buildConfirmHint(decisionProblemId, recommendationId),
       memberImpacts,
       validation: {
         gate: (risk.executionGate ?? 'AT_RISK') as ExecutionGate,
         newRisks: [],
-        resolvedRiskIds: isEffectivePlanWriteChainEnabled() ? [] : [],
+        resolvedRiskIds: [],
       },
     };
+
+    if (canWriteActivePlan && this.prisma) {
+      const written = await materializeRecommendationPlanDiff({
+        prisma: this.prisma,
+        tripId,
+        planDiff,
+      });
+      response = {
+        ...response,
+        executionStatus: 'APPLIED',
+        contextVersion: written.contextVersion,
+        planVersion: written.contextVersion,
+        requiresConfirmation: false,
+      };
+      executionRiskPlanAppliedBus.emitApplied({
+        tripId,
+        contextVersion: written.contextVersion,
+        changedSections: ['plan', 'itinerary', 'execution'],
+        planVersion: written.contextVersion,
+      });
+    }
 
     if (idempotencyKey) {
       const storeKey = buildIdempotencyStoreKey({
@@ -230,7 +262,24 @@ export class ExecutionRiskApplyService {
     });
     const { risk, rec } = await this.requireRiskAndRecommendation(tripId, riskId, recommendationId, userId);
 
-    const actionCodes = await this.resolveRecommendationActionCodes(tripId, riskId, userId);
+    // apply already wrote Active Plan (write-chain off) — treat confirm as idempotent success
+    if (prepared.executionStatus === 'APPLIED' && prepared.contextVersion != null) {
+      const confirmed: ConfirmExecutionRiskApplyResponseDto = {
+        ...prepared,
+        applied: true,
+        itineraryMaterialized: true,
+        updatedRisks: await this.aggregation.listRisks(tripId, userId),
+      };
+      this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
+      return confirmed;
+    }
+
+    const actionCodes = await this.resolveRecommendationActionCodes(
+      tripId,
+      riskId,
+      userId,
+      recommendationId,
+    );
     guardAutoExternalTransaction({
       actionCodes,
       actionsByCode: loadExecutionRiskKnowledgeFromPackage().actionsByCode,
@@ -256,10 +305,27 @@ export class ExecutionRiskApplyService {
       });
       if (writeResult) {
         const updatedRisks = await this.aggregation.listRisks(tripId, userId);
+        let contextVersion = prepared.contextVersion;
+        if (this.prisma && contextVersion == null) {
+          const bumpedAt = new Date();
+          await this.prisma.trip.update({
+            where: { id: tripId },
+            data: { updatedAt: bumpedAt },
+          });
+          contextVersion = bumpedAt.getTime();
+          executionRiskPlanAppliedBus.emitApplied({
+            tripId,
+            contextVersion,
+            changedSections: ['plan', 'itinerary', 'execution'],
+            planVersion: contextVersion,
+          });
+        }
         const confirmed: ConfirmExecutionRiskApplyResponseDto = {
           ...prepared,
           executionStatus: 'APPLIED',
           applied: true,
+          contextVersion,
+          planVersion: contextVersion,
           newPlanVersionId: writeResult.newPlanVersionId,
           ledgerRef: writeResult.ledgerRef,
           effectivePlanVersionId: writeResult.effectivePlanVersionId,
@@ -422,8 +488,19 @@ export class ExecutionRiskApplyService {
     tripId: string,
     riskId: string,
     userId: string,
+    recommendationId?: string,
   ): Promise<string[]> {
+    const recs = await this.recommendations.listForRisk(tripId, riskId, userId);
+    const matched = recommendationId
+      ? recs.find((r) => r.id === recommendationId)
+      : undefined;
+    if (matched?.actionCodes?.length) return matched.actionCodes;
+
     const plans = await this.recommendations.listThreePlansForRisk(tripId, riskId, userId);
+    if (matched?.planType) {
+      const byType = plans.find((p) => String(p.planType) === matched.planType);
+      if (byType?.actionCodes?.length) return byType.actionCodes;
+    }
     const recommended = plans.find((p) => p.planType === 'RECOMMENDED');
     return recommended?.actionCodes ?? [];
   }

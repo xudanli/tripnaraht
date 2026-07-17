@@ -3580,6 +3580,12 @@ export class RouteAndRunResponseDto {
         headline_zh?: string;
         headline_en?: string;
       };
+      /**
+       * 前端可信交付面：`tripnara.trusted_delivery@v1`
+       * 进度 / 确认 / 降级说明 / 瑕疵披露 / AI 操作记录（不暴露内部节点名）
+       * @see FRONTEND_TRUSTED_DELIVERY.md
+       */
+      trusted_delivery_v1?: import('../delivery/types/trusted-delivery-v1.type').TrustedDeliveryV1;
     };
   };
 

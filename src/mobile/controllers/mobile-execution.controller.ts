@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Query,
@@ -116,6 +117,53 @@ export class MobileExecutionController {
       this.mobile.getTodayItinerary(tripId, this.access.resolveUserId(user), {
         dayIndex: Number.isFinite(parsedDay) ? parsedDay : undefined,
       }),
+    );
+  }
+
+  @Get('itinerary-calendar')
+  @ApiOperation({
+    summary: 'iOS 行程日历聚合（执行期按天总览；切天用 today-itinerary?dayIndex）',
+  })
+  async getItineraryCalendar(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.mobile.getItineraryCalendar(tripId, this.access.resolveUserId(user)),
+    );
+  }
+
+  @Get('activities/:activityId/execution-detail')
+  @ApiOperation({ summary: 'iOS 活动执行详情（确认码/商家/成员/导航点）' })
+  @ApiParam({ name: 'activityId', description: 'ItineraryItem UUID' })
+  async getActivityExecutionDetail(
+    @Param('tripId') tripId: string,
+    @Param('activityId') activityId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.mobile.getActivityExecutionDetail(
+        tripId,
+        this.access.resolveUserId(user),
+        activityId,
+      ),
+    );
+  }
+
+  @Get('activities/:activityId')
+  @ApiOperation({ summary: 'iOS 活动详情（等价 execution-detail）' })
+  @ApiParam({ name: 'activityId', description: 'ItineraryItem UUID' })
+  async getActivityDetail(
+    @Param('tripId') tripId: string,
+    @Param('activityId') activityId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.mobile.getActivityExecutionDetail(
+        tripId,
+        this.access.resolveUserId(user),
+        activityId,
+      ),
     );
   }
 
@@ -336,6 +384,33 @@ export class MobileExecutionController {
   ) {
     return this.runWrite(tripId, user, (userId) =>
       this.mobileWrite.sendTeamNotification(tripId, userId, body, {
+        idempotencyKey,
+        ifMatch: parseIfMatch(ifMatch),
+      }),
+    );
+  }
+
+  @Patch('activities/:activityId')
+  @ApiOperation({ summary: 'iOS 单项调整行程（写 Active Plan）' })
+  @ApiParam({ name: 'activityId', description: 'ItineraryItem UUID' })
+  async patchActivity(
+    @Param('tripId') tripId: string,
+    @Param('activityId') activityId: string,
+    @Body()
+    body: {
+      startTime?: string;
+      endTime?: string;
+      plannedDepartAt?: string;
+      title?: string;
+      notes?: string;
+      cascadeMode?: 'auto' | 'none';
+    },
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('if-match') ifMatch?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.runWrite(tripId, user, (userId) =>
+      this.mobileWrite.patchActivity(tripId, userId, activityId, body, {
         idempotencyKey,
         ifMatch: parseIfMatch(ifMatch),
       }),

@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "pilot_iceland_parking_full_02_bluelagoon_approach_swap",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-park-02",
+  "environment": "staging-test",
+  "destination": "IS",
+  "intendedOperation": "SWAP",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "synthetic",
+  "deidentified": true,
+  "eligibility": "pending"
+}

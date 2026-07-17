@@ -1,0 +1,21 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "ra01_is_06",
+  "evidenceVersionId": "ev_ra01_is_06_20260716",
+  "frozenAt": "2026-07-16T10:27:17.742Z",
+  "sources": [
+    {
+      "provider": "staging_db",
+      "ref": "ra01_is_06"
+    },
+    {
+      "provider": "m4_ra01_seed",
+      "ref": "pilot_is_06"
+    }
+  ],
+  "event": {
+    "kind": "SHORTEN",
+    "intendedOperation": "SHORTEN",
+    "expectation": "accept"
+  }
+}

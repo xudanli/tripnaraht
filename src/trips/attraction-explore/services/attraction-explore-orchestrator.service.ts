@@ -21,7 +21,7 @@ import type {
   PatchAttractionExploreCandidatesDto,
   UpdateAttractionExploreContextDto,
 } from '../dto/attraction-explore.dto';
-import { parseCsvIds } from '../dto/attraction-explore.dto';
+import { parseCsvIds, parseSortId } from '../dto/attraction-explore.dto';
 
 function withRecommendationAliases<T extends AttractionExploreRecommendationsView>(view: T): T {
   return {
@@ -30,6 +30,11 @@ function withRecommendationAliases<T extends AttractionExploreRecommendationsVie
       ...group,
       attractions: group.items,
     })),
+    ...(view.items
+      ? {
+          items: view.items,
+        }
+      : {}),
   };
 }
 
@@ -47,9 +52,9 @@ export class AttractionExploreOrchestratorService {
     private readonly intentCompile: AttractionExploreIntentCompileService,
   ) {}
 
-  async getContext(tripId: string, userId: string) {
+  async getContext(tripId: string, userId: string, opts?: { dayIndex?: number }) {
     await this.access.assertTripMember(tripId, userId);
-    return this.context.getContext(tripId);
+    return this.context.getContext(tripId, opts);
   }
 
   async updateContext(tripId: string, userId: string, body: UpdateAttractionExploreContextDto) {
@@ -59,9 +64,19 @@ export class AttractionExploreOrchestratorService {
 
   async getRecommendations(tripId: string, userId: string, query: AttractionExploreRecommendationsQueryDto) {
     const trip = await this.access.assertTripMember(tripId, userId);
-    const ctx = await this.context.getContext(tripId);
+    const ctx = await this.context.getContext(tripId, { dayIndex: query.dayIndex });
     const themeIds = parseCsvIds(query.themeIds);
     const suitabilityIds = parseCsvIds(query.suitabilityIds);
+    const quickFromQuery = [
+      ...parseCsvIds(query.quickFilterIds),
+      ...(query.quickFilter?.trim() ? [query.quickFilter.trim()] : []),
+    ];
+    const quickFilterIds = quickFromQuery.length
+      ? [...new Set(quickFromQuery)]
+      : (ctx.selectedFilters.quickFilterIds ?? []);
+    const sort =
+      parseSortId(query.sort) ?? ctx.selectedFilters.sort ?? 'smart';
+
     return withRecommendationAliases(
       await this.recommendations.getRecommendations({
         tripId,
@@ -71,6 +86,12 @@ export class AttractionExploreOrchestratorService {
         viewTab: query.viewTab ?? ctx.selectedFilters.viewTab,
         weatherHint: ctx.travelConditions.weatherHint,
         useLiveRoutes: query.useLiveRoutes,
+        dayIndex: query.dayIndex,
+        quickFilterIds,
+        sort,
+        q: query.q,
+        lat: query.lat,
+        lng: query.lng,
       }),
     );
   }
@@ -81,7 +102,7 @@ export class AttractionExploreOrchestratorService {
 
   async search(tripId: string, userId: string, body: AttractionExploreSearchDto) {
     const trip = await this.access.assertTripMember(tripId, userId);
-    const ctx = await this.context.getContext(tripId);
+    const ctx = await this.context.getContext(tripId, { dayIndex: body.dayIndex });
     return withRecommendationAliases(
       await this.recommendations.search({
         tripId,
@@ -94,6 +115,9 @@ export class AttractionExploreOrchestratorService {
         weatherHint: ctx.travelConditions.weatherHint,
         useLiveRoutes: body.useLiveRoutes,
         useLlmIntent: body.useLlmIntent,
+        dayIndex: body.dayIndex,
+        quickFilterIds: ctx.selectedFilters.quickFilterIds,
+        sort: ctx.selectedFilters.sort,
       }),
     ) as AttractionExploreSearchView;
   }

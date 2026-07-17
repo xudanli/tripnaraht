@@ -2,7 +2,7 @@
  * Unified Decision Problem SSOT read model — canonical + legacy merge with stable dedupe.
  */
 
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { isRfc001CanonicalSliceEnabled } from '../../../trips/guardian-decision-core/config/rfc001-iceland.config';
 import { DecisionProblemCollectorService } from '../../../trips/decision-semantics/collectors/decision-problem.collector';
@@ -21,6 +21,9 @@ import {
   projectRowToListItem,
   resolveLinkedFeasibilityIssue,
 } from '../utils/unified-decision-problem-projection.util';
+import { DecisionCaseService } from '../../decision-cases/services/decision-case.service';
+import type { StoredDecisionCase } from '../../decision-cases/contracts/decision-case.types';
+import { isDecisionCaseProblemId } from '../../decision-cases/projections/decision-case.projection';
 import type { ConstraintEnforcement } from '../../../trips/decision-semantics/types/decision-semantics.types';
 import type {
   UnifiedDecisionActionPreviewView,
@@ -56,9 +59,7 @@ import { findFeasibilityIssueForCanonicalRow } from '../utils/canonical-fallback
 import { buildCanonicalCapabilityStubOptions } from '../utils/canonical-capability-stub-options.util';
 import { resolveFeasibilityDiagnosisOccurrenceCount } from '../utils/decision-problem-queue-display.util';
 import { CanonicalCausalTraceService } from '../../../causal-protocol/services/canonical-causal-trace.service';
-import {
-  isTravelOrTransportProblem,
-} from '../../../causal-protocol/adapters/iceland-causal-trace.adapter';
+import { attachTravelCausalDecisionFromTrace } from '../utils/attach-travel-causal-decision-from-trace.util';
 import {
   isTripInExecutionPhase,
 } from '../utils/plan-object-execution-admission.util';
@@ -89,7 +90,11 @@ export class UnifiedDecisionProblemReadModelService {
     private readonly resolutionStore: DecisionProblemResolutionStoreService,
     private readonly causalTrace: CanonicalCausalTraceService,
     private readonly workspaceService: DecisionWorkspaceService,
+    @Optional() private readonly decisionCases?: DecisionCaseService,
   ) {}
+
+  /** Published DecisionCase rows merged into the SSOT queue (IS self-drive). */
+  private decisionCaseByProblemId = new Map<string, Map<string, StoredDecisionCase>>();
 
   invalidateCache(tripId: string): void {
     this.collectRowsCache.delete(tripId);
@@ -206,6 +211,37 @@ export class UnifiedDecisionProblemReadModelService {
       await this.lineageStore.appendBatch(tripId, lineageBatch);
     }
 
+    if (this.decisionCases) {
+      try {
+        const ensured = await this.decisionCases.ensureAndCollectRows(tripId);
+        const tripMap = new Map(Object.entries(ensured.caseByProblemId));
+        this.decisionCaseByProblemId.set(tripId, tripMap);
+        const existingIds = new Set(rows.map((r) => r.problemId));
+        for (const row of ensured.rows) {
+          if (!existingIds.has(row.problemId)) rows.push(row);
+        }
+
+        // 去重：Canonical EXCESSIVE_DAILY_LOAD 已在队列时，不双开 DecisionCase 日驾 SELECT
+        const hasCanonicalDailyLoad = rows.some(
+          (r) =>
+            r.authority === 'CANONICAL' &&
+            (r.semanticKey === 'EXCESSIVE_DAILY_LOAD' ||
+              r.semanticKey?.startsWith('EXCESSIVE_DAILY_LOAD')),
+        );
+        if (hasCanonicalDailyLoad) {
+          for (let i = rows.length - 1; i >= 0; i -= 1) {
+            if (rows[i].semanticKey === 'RULE_TRIGGER.EXCESSIVE_DAILY_DRIVE') {
+              rows.splice(i, 1);
+            }
+          }
+        }
+      } catch (e) {
+        this.logger.warn(
+          `decision_cases_merge_failed trip=${tripId} err=${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
     return aggregateRowsByInstanceKey(rows);
   }
 
@@ -233,7 +269,8 @@ export class UnifiedDecisionProblemReadModelService {
     const baseItems = view.items.map((item) =>
       overlayStoredResolutionOnListItem(item, resolutions[item.problemId]),
     );
-    const items = await this.enrichListItemsWithCausalNarrative(tripId, baseItems, rows);
+    const withCaseFields = baseItems.map((item) => this.attachDecisionCaseFields(tripId, item));
+    const items = await this.enrichListItemsWithCausalNarrative(tripId, withCaseFields, rows);
 
     const byEnforcement: Partial<Record<ConstraintEnforcement, number>> = {};
     let actionableCount = 0;
@@ -516,6 +553,11 @@ export class UnifiedDecisionProblemReadModelService {
     tripId: string,
     row: InternalUnifiedProblemRow,
   ) {
+    if (this.decisionCases && isDecisionCaseProblemId(row.problemId)) {
+      const caseOptions = await this.decisionCases.getCaseOptions(tripId, row.problemId);
+      if (caseOptions?.length) return caseOptions;
+    }
+
     const isCanonical =
       row.authority === 'CANONICAL' &&
       row.route?.engineId === 'CANONICAL_DECISION_RUNTIME' &&
@@ -581,27 +623,40 @@ export class UnifiedDecisionProblemReadModelService {
       row.route?.engineId === 'CANONICAL_DECISION_RUNTIME' &&
       row.route?.resolution === 'PRIMARY';
 
+    const isDecisionCase = isDecisionCaseProblemId(row.problemId);
+    const optionAuthority = isCanonical
+      ? 'CANONICAL'
+      : isDecisionCase
+        ? 'DECISION_CASE'
+        : 'LEGACY';
     const projectedActions = projectDecisionOptionsToActions(actions, {
       tripId,
       problemId: row.problemId,
       enforcement: row.enforcement,
-      authority: isCanonical ? 'CANONICAL' : 'LEGACY',
+      authority: optionAuthority,
     });
-    const { actions: productActions, suppressedActions } = partitionActionsForProductView(
+    const { actions: rawProductActions, suppressedActions } = partitionActionsForProductView(
       projectedActions,
       opts?.includeDebug,
     );
+    const productActions = await this.attachDecisionCaseConstraintHints(
+      tripId,
+      row.problemId,
+      rawProductActions,
+    );
 
-    const problem = projectRowToListItem(row, opts?.includeDebug === true);
+    const baseItem = this.attachDecisionCaseFields(
+      tripId,
+      projectRowToListItem(row, opts?.includeDebug === true),
+    );
     const actionability = buildActionabilityWithWriteChain({
       enforcement: row.enforcement,
-      requiresAction: problem.actionability.requiresAction,
-      allowedActions: problem.actionability.allowedActions,
-      authority: isCanonical ? 'CANONICAL' : 'LEGACY',
+      requiresAction: baseItem.actionability.requiresAction,
+      allowedActions: baseItem.actionability.allowedActions,
+      authority: optionAuthority,
     });
 
     const storedResolution = await this.resolutionStore.getForProblem(tripId, row.problemId);
-    const baseItem = projectRowToListItem(row, opts?.includeDebug === true);
     const problemItem = overlayStoredResolutionOnListItem(
       {
         ...baseItem,
@@ -661,6 +716,18 @@ export class UnifiedDecisionProblemReadModelService {
       if (trace) {
         detail.causalStoryView = this.causalTrace.buildStoryView(trace, 'neutral');
         detail.guardianCausalStoryView = this.causalTrace.buildStoryView(trace, 'abu');
+        const causalProduct = attachTravelCausalDecisionFromTrace(trace);
+        detail.travelCausalDecision = causalProduct.travelCausalDecision;
+        detail.causalDecisionCard = causalProduct.causalDecisionCard;
+        // Mirror onto nested problem item for Copilot selector consumers
+        detail.problem = {
+          ...detail.problem,
+          travelCausalDecision: causalProduct.travelCausalDecision,
+          causalDecisionCard: causalProduct.causalDecisionCard,
+          causalTraceRef: detail.causalTraceRef,
+          causalStoryView: detail.causalStoryView,
+          guardianCausalStoryView: detail.guardianCausalStoryView,
+        };
       }
     }
 
@@ -836,7 +903,7 @@ export class UnifiedDecisionProblemReadModelService {
       items.map(async (item) => {
         const row = rowByProblemId.get(item.problemId);
         if (!row || ['RESOLVED', 'DISMISSED'].includes(item.workflowStatus)) return item;
-        if (item.causalStoryView?.chain?.length) return item;
+        if (item.causalStoryView?.chain?.length && item.travelCausalDecision) return item;
         try {
           const trace = await this.causalTrace.ensureProblemTrace({
             tripId,
@@ -847,17 +914,60 @@ export class UnifiedDecisionProblemReadModelService {
             dimension: row.dimension,
             diagnosticMessage: row.queueDescription ?? row.summary,
           });
+          const causalProduct = attachTravelCausalDecisionFromTrace(trace);
           return {
             ...item,
-            causalTraceRef: this.causalTrace.toRef(trace),
-            causalStoryView: this.causalTrace.buildStoryView(trace, 'neutral'),
-            guardianCausalStoryView: this.causalTrace.buildStoryView(trace, 'abu'),
+            causalTraceRef: item.causalTraceRef ?? this.causalTrace.toRef(trace),
+            causalStoryView:
+              item.causalStoryView ?? this.causalTrace.buildStoryView(trace, 'neutral'),
+            guardianCausalStoryView:
+              item.guardianCausalStoryView ??
+              this.causalTrace.buildStoryView(trace, 'abu'),
+            travelCausalDecision:
+              item.travelCausalDecision ?? causalProduct.travelCausalDecision,
+            causalDecisionCard:
+              item.causalDecisionCard ?? causalProduct.causalDecisionCard,
           };
         } catch {
           return item;
         }
       }),
     );
+  }
+
+  private async attachDecisionCaseConstraintHints(
+    tripId: string,
+    problemId: string,
+    actions: import('../contracts/unified-decision-ui.types').DecisionAction[],
+  ) {
+    if (!this.decisionCases || !isDecisionCaseProblemId(problemId)) return actions;
+    const stored = await this.decisionCases.getCase(tripId, problemId);
+    if (!stored) return actions;
+    return actions.map((action) => {
+      const opt = stored.options.find((o) => o.optionId === action.actionId);
+      if (!opt?.writebackPayload) return action;
+      const fordingExcluded = opt.writebackPayload.fordingExcluded === true;
+      return {
+        ...action,
+        constraintHints: {
+          ...(fordingExcluded ? { fordingExcluded: true } : {}),
+          writebackPayload: opt.writebackPayload,
+        },
+      };
+    });
+  }
+
+  private attachDecisionCaseFields(
+    tripId: string,
+    item: UnifiedDecisionProblemListItem,
+  ): UnifiedDecisionProblemListItem {
+    if (!this.decisionCases || !isDecisionCaseProblemId(item.problemId)) return item;
+    const cached = this.decisionCaseByProblemId.get(tripId)?.get(item.problemId);
+    if (!cached) return item;
+    return {
+      ...item,
+      decisionCase: this.decisionCases.productProjection(cached),
+    };
   }
 
   private async findRow(tripId: string, problemId: string): Promise<InternalUnifiedProblemRow | undefined> {

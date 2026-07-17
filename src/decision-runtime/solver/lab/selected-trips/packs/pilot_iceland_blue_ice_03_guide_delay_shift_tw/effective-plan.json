@@ -1,0 +1,83 @@
+{
+  "schemaId": "tripnara.selected_trip.effective_plan@v1",
+  "tripId": "pilot_iceland_blue_ice_03_guide_delay_shift_tw",
+  "planVersionId": "pv-gold",
+  "days": [
+    {
+      "dayId": "day-1",
+      "date": "2026-06-12",
+      "activities": [
+        {
+          "activityId": "act-a1",
+          "poiId": "is.svinafellsjokull",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 90,
+          "timeWindow": {
+            "startMin": 600,
+            "endMin": 1200
+          },
+          "lat": 63.4,
+          "lng": -19
+        },
+        {
+          "activityId": "act-a2",
+          "poiId": "is.skaftafell",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 620,
+            "endMin": 1200
+          },
+          "lat": 63.41,
+          "lng": -19.01
+        },
+        {
+          "activityId": "act-a3",
+          "poiId": "is.jokulsarlon",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 70,
+          "timeWindow": {
+            "startMin": 640,
+            "endMin": 1200
+          },
+          "lat": 63.42,
+          "lng": -19.02
+        },
+        {
+          "activityId": "act-a4",
+          "poiId": "is.diamond_beach",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 40,
+          "timeWindow": {
+            "startMin": 660,
+            "endMin": 1200
+          },
+          "lat": 63.43,
+          "lng": -19.03
+        },
+        {
+          "activityId": "act-a5",
+          "poiId": "is.hofn",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 40,
+          "timeWindow": {
+            "startMin": 680,
+            "endMin": 1200
+          },
+          "lat": 63.44,
+          "lng": -19.04
+        }
+      ]
+    }
+  ]
+}

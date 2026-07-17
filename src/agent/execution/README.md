@@ -31,9 +31,10 @@ Conductor (claude-orchestrator.service.ts)
 
 ```bash
 KERNEL_NATIVE_EXECUTION=true
+# 可选灰度：KERNEL_NATIVE_EXECUTION_GRAY_PERCENT=50
 ```
 
-默认 `false`，保持 callback 降级路径，便于回滚。
+默认 **`true`**（Kernel Phase Executors 为主路径）。设为 `false` 可回退到 orchestrator callback；**任何降级必须**写入 `phase_execution_path_v1`（`KERNEL_LEGACY_FALLBACK` / `NARRATOR_AGENT_FALLBACK`），禁止静默。
 
 ## 测试
 

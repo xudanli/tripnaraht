@@ -1,11 +1,26 @@
 # Unified Decision — 前端联调 Handoff
 
-**日期：** 2026-06-30  
-**后端基线：** RFC-002 Gateway + Canonical L2（道路 / 天气 / 日负荷）  
+**日期：** 2026-06-30（DecisionCase 增量：2026-07-15）  
+**后端基线：** RFC-002 Gateway + Canonical L2（道路 / 天气 / 日负荷） + DecisionCase publish  
 **完整 API 文档：** [UNIFIED_DECISION_FRONTEND_INTEGRATION.md](./UNIFIED_DECISION_FRONTEND_INTEGRATION.md)  
+**DecisionCase 契约：** [DECISION_CASE_BACKEND_HANDOFF.md](../../decision-runtime/decision-cases/DECISION_CASE_BACKEND_HANDOFF.md)  
 **六层 ↔ 前端读法：** [DECISION_RUNTIME_MATURITY.md §11](../../decision-runtime/DECISION_RUNTIME_MATURITY.md#11-前端与决策中心如何读六层)
 
 ---
+
+## 0. DecisionCase（后端先行 · FE 可不改架构）
+
+| 接口 | 用途 |
+|------|------|
+| `GET decision-problems` | 队列 SSOT；IS 自驾会合并车型/保险 BLOCKING case（带 `decisionCase` 字段） |
+| `GET decision-opportunities` | 未过门槛机会；**不进**决策空间 |
+| `POST …/decision-opportunities/:id/publish` | 「加入比较」升级 |
+| apply `writeChain=CONSTRAINT_WRITEBACK` | 写回车型/保险约束并 re-validate |
+
+详见 DecisionCase handoff。
+
+---
+
 
 ## 1. 环境
 

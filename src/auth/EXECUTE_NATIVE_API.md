@@ -5,7 +5,7 @@
 > **本阶段目标：** `TripLifecycle = traveling` 时三个 Tab（总览 / 今日行程 / 路线地图）  
 > **响应格式：** `{ success, data, error }`  
 > **Base URL（真机联调）：** `http://192.168.8.153:8080/api`  
-> **最后更新：** 2026-07-09（联系我们 `/api/contact/message` 移动端对接）
+> **最后更新：** 2026-07-17（P0 单项调整 / P1 日历·活动详情 / execution-risks recommendations 填满 + apply 写 Active Plan）
 
 **文档路径：** [`src/auth/EXECUTE_NATIVE_API.md`](./EXECUTE_NATIVE_API.md)  
 **实现代码：** `src/mobile/`（`MobileExecutionController` + `MobileExecutionService` + `MobileExecutionWriteService`）  
@@ -28,6 +28,9 @@
 
 | 方法 | 路径 | 用途 |
 |------|------|------|
+| GET | `/api/mobile/trips/{tripId}/itinerary-calendar` | **行程日历** — tripTitle / dateRange / 天列表（weekday·地点·活动数·status·天气）+ overview；切天用 today-itinerary?dayIndex |
+| GET | `/api/mobile/trips/{tripId}/activities/{activityId}` | **活动详情**（确认码/商家/成员/导航点） |
+| GET | `/api/mobile/trips/{tripId}/activities/{activityId}/execution-detail` | 同上（执行态别名） |
 | GET | `/api/mobile/trips/{tripId}/execution/execution-alerts` | **执行预警（第一层）** — STOP / REPLAN_REQUIRED / AT_RISK |
 | GET | `/api/mobile/trips/{tripId}/execution/adjustment-queue` | **待调整事项（第二层）** — `ExecutionIntervention[]` + `causalChain` |
 | GET | `/api/mobile/trips/{tripId}/execution/interventions/{id}/causal-trace` | 单个调整项因果链完整回放 |
@@ -44,6 +47,7 @@
 
 | 方法 | 路径 | 用途 | 状态 |
 |------|------|------|------|
+| **PATCH** | `/api/mobile/trips/{tripId}/activities/{activityId}` | **单项调整行程**（改计划时间/标题/备注） | ✅ |
 | POST | `/api/mobile/trips/{tripId}/decisions/{decisionId}/accept` | 接受决策/调整 | ✅ |
 | POST | `/api/mobile/trips/{tripId}/decisions/{decisionId}/defer` | 延后决策 | ✅ |
 | PUT | `/api/mobile/trips/{tripId}/members/{memberId}/presence` | 位置心跳 | ✅ |
@@ -447,7 +451,9 @@ completed | inProgress | upcoming | delayed | risk | cancelled
         "duration": "3h",
         "experienceType": "ACTIVITY",
         "status": "inProgress",
-        "confirmationCode": "BK-123"
+        "merchantName": "",
+        "confirmationCode": "BK-123",
+        "plannedDepartAt": "2026-07-08T09:00:00.000Z"
       }
     ],
     "activeItem": { "...": "同 items 元素" },
@@ -457,6 +463,128 @@ completed | inProgress | upcoming | delayed | risk | cancelled
   }
 }
 ```
+
+### 4.4 iOS 解码契约（勿破）
+
+| 字段 | 规则 |
+|------|------|
+| `dayTitle` / `warningTitle` / `warningDetail` / `warningImpact` / `warningRecommendation` | **必填字符串**，始终返回 |
+| `merchantName` / `confirmationCode` | **根级与 items[] 均必填**；没有就给 `""`，**勿省略**（否则 iOS 解码失败） |
+| `status` | camelCase：`completed` \| `inProgress` \| `upcoming` \| `delayed` \| `risk` \| `cancelled` |
+| `activeItem` | 可为 `null`（客户端已兜底） |
+| `plannedDepartAt` | 可选；延误单用，无则 `null` |
+| `?dayIndex=` | 已支持；日历点某天后复用本接口 |
+
+---
+
+## 4A. GET /api/mobile/trips/{tripId}/itinerary-calendar
+
+执行期**行程日历**聚合读口：整趟按天总览 + 天气摘要 + 默认选中天。  
+点某天后**勿新开详情口**，复用：
+
+```http
+GET /api/mobile/trips/{tripId}/today-itinerary?dayIndex={n}
+```
+
+与规划期日程编排 / day-theme **不是同一页**；本口只服务执行日历（`TodayItineraryRoute.calendar`）。
+
+### 4A.1 成功响应 200
+
+```json
+{
+  "success": true,
+  "data": {
+    "contextVersion": 300012345,
+    "tripTitle": "冰岛环岛自驾",
+    "dateRangeLabel": "Day 1 - Day 7 · 冰岛 2026-07-16",
+    "currentDayIndex": 2,
+    "days": [
+      {
+        "dayIndex": 1,
+        "date": "2026-07-16",
+        "weekday": "周四",
+        "locationSummary": "蓝湖 · 雷克雅未克",
+        "activityCount": 4,
+        "status": "completed"
+      },
+      {
+        "dayIndex": 2,
+        "date": "2026-07-17",
+        "weekday": "周五",
+        "locationSummary": "瓦特纳冰川营地",
+        "activityCount": 3,
+        "status": "executing",
+        "weather": {
+          "tempRange": "8°C ~ 12°C",
+          "wind": ""
+        }
+      },
+      {
+        "dayIndex": 3,
+        "date": "2026-07-18",
+        "weekday": "周六",
+        "locationSummary": "冰川徒步",
+        "activityCount": 2,
+        "status": "upcoming"
+      }
+    ],
+    "overview": {
+      "totalDays": 7,
+      "totalActivities": 21
+    }
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `tripTitle` | 页头 / 副标题 |
+| `dateRangeLabel` | `Day 1 - Day N · {destination} {startDate}` |
+| `currentDayIndex` | 1-based，默认选中天（按行程起止与今天推算） |
+| `days[].weekday` | 中文短星期，如 `周四` |
+| `days[].status` | `executing` \| `upcoming` \| `completed`（天级；活动级仍用 `inProgress`） |
+| `days[].weather` | 可选；当前日尽量带回 `tempRange` / `wind`（无风速时 `wind` 为 `""`） |
+| `overview` | 底部「行程概览」统计 |
+| `contextVersion` | 与其它执行读口一致，供缓存 / If-Match |
+
+`TripDay` 尚未物化时仍按 `startDate`–`endDate` 合成空天，保证日历可渲染。
+
+---
+
+## 4B. GET /api/mobile/trips/{tripId}/activities/{activityId}
+
+等价路径：`GET .../activities/{activityId}/execution-detail`
+
+列表字段不够时再拉（确认码、商家、成员、导航点）。
+
+```json
+{
+  "success": true,
+  "data": {
+    "contextVersion": 300012345,
+    "id": "item-uuid",
+    "title": "冰川徒步",
+    "time": "09:00",
+    "endTime": "12:00",
+    "location": "冰川徒步",
+    "status": "inProgress",
+    "merchantName": "Glacier Guides",
+    "confirmationCode": "BK-123",
+    "notes": "记得带钉鞋",
+    "plannedDepartAt": "2026-07-08T09:00:00.000Z",
+    "experienceType": "ACTIVITY",
+    "duration": "3h",
+    "dayIndex": 1,
+    "members": [{ "id": "u1", "name": "张三", "role": "leader" }],
+    "navigationPoint": { "lat": 64.32, "lng": -17.12, "label": "冰川徒步" },
+    "bookingStatus": "CONFIRMED",
+    "bookingUrl": ""
+  }
+}
+```
+
+`merchantName` / `confirmationCode` / `notes` / `bookingStatus` / `bookingUrl` 无值时给 `""`。  
+`navigationPoint` / `plannedDepartAt` 可为 `null`。
 
 ---
 
@@ -622,14 +750,15 @@ Mobile `execution-alerts` 为 BFF 投影；**Canonical 活跃风险 Read Model**
 | GET | `/api/trips/{tripId}/execution-risks` | 活跃风险列表 |
 | GET | `/api/trips/{tripId}/execution-risks/{riskId}` | 风险详情 |
 | POST | `/api/trips/{tripId}/execution-risks/{riskId}/acknowledge` | 确认已阅读 |
-| GET | `/api/trips/{tripId}/execution-risks/{riskId}/recommendations` | 关联建议 |
-| POST | `/api/trips/{tripId}/execution-risks/{riskId}/recommendations/{recommendationId}/apply` | 预览采用（返回 `REQUIRES_CONFIRMATION`） |
-| POST | `/api/trips/{tripId}/execution-risks/{riskId}/recommendations/{recommendationId}/confirm` | 确认采用（桥接 decision-queue / advisory / environment resolve） |
+| GET | `/api/trips/{tripId}/execution-risks/{riskId}/recommendations` | 关联建议（`items[]` 至少 1～N；含 id / title / isRecommended / benefitTags / memberImpacts） |
+| POST | `/api/trips/{tripId}/execution-risks/{riskId}/recommendations/{recommendationId}/apply` | **采用方案** — 写回 Active Plan，bump `contextVersion`，WS `plan` / `itinerary` / `execution`（write-chain 开启时仍为预览，需 confirm） |
+| POST | `/api/trips/{tripId}/execution-risks/{riskId}/recommendations/{recommendationId}/confirm` | 确认采用（write-chain / 决策队列 / advisory / environment） |
 
 **采用建议闭环：**
 
-1. `apply` → `{ executionStatus: "REQUIRES_CONFIRMATION", decisionProblemId, planDiffId, memberImpacts[] }`
-2. `confirm` + `{ confirm: true }` → 有 `decisionProblemId` 时桥接 `decision-queue/accept-recommended`；环境方案由组织者 `resolve`；否则返回 `confirmHint`
+1. `GET …/recommendations` → `{ riskId, items[], count }` — 有活跃风险时 **items 非空**；每项含 `id` / `title` / `isRecommended` / `benefitTags[]` / 可选 `memberImpacts[]`
+2. `apply` → 默认写回 Active Plan，返回 `{ executionStatus: "APPLIED", contextVersion, planDiff, memberImpacts[] }`；客户端应停止硬编码方案 A/B/C
+3. write-chain 开启时 `apply` 仍为预览 `{ executionStatus: "PREVIEW", requiresConfirmation: true }`，再 `confirm` + `{ confirm: true }` 完成采用
 
 **`affectedMembers` / `memberImpacts`（环境风险 + 决策队列项）：**
 
@@ -640,6 +769,46 @@ Mobile `execution-alerts` 为 BFF 投影；**Canonical 活跃风险 Read Model**
 | `memberImpacts[]` | `GET …/recommendations`、`POST …/apply` 预览 | 按成员展开 `impactType` + `explanation`（如 `SAFETY_EXPOSURE` / `DELAYED` / `BLOCKED`） |
 
 强风 `impactType` 默认为 `SAFETY_EXPOSURE`；封路为 `BLOCKED`；带 `timeAdjustment`（如 `-30min`）的方案预览为 `DELAYED`。
+
+#### GET …/recommendations 响应示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "riskId": "risk_a1b2c3d4e5f67890",
+    "count": 3,
+    "items": [
+      {
+        "id": "rec_cluster_wind_RECOMMENDED",
+        "riskId": "risk_a1b2c3d4e5f67890",
+        "title": "推荐方案：平衡安全与体验",
+        "label": "推荐方案：平衡安全与体验",
+        "description": "调整动作：缩短徒步、推迟出发",
+        "isRecommended": true,
+        "benefitTags": ["推荐", "-25min", "提升安全", "体验大部分保留"],
+        "impactSummary": "-25min",
+        "planType": "RECOMMENDED",
+        "memberImpacts": []
+      },
+      {
+        "id": "rec_cluster_wind_CONSERVATIVE",
+        "title": "稳妥方案：优先避险",
+        "isRecommended": false,
+        "benefitTags": ["更稳妥", "显著提升安全", "体验有取舍"]
+      },
+      {
+        "id": "rec_cluster_wind_MINIMAL_CHANGE",
+        "title": "最小改动：尽量保留原计划",
+        "isRecommended": false,
+        "benefitTags": ["改动小", "+22min", "体验保留高"]
+      }
+    ]
+  }
+}
+```
+
+`riskId` 由 `tripId + riskKey` 稳定派生（`risk_[16 hex]`），可与 `execution-alerts` / `adjustment-queue` 的 `primaryRiskId` / `linkedRiskIds` 互查。
 
 #### 数据层级（避免前端重复展示）
 
@@ -1246,6 +1415,74 @@ Content-Type: application/json
   }
 }
 ```
+
+---
+
+### 7.4A PATCH /api/mobile/trips/{tripId}/activities/{activityId}
+
+**P0 — 单项调整行程（点「调整行程」真正改计划）**
+
+```
+PATCH /api/mobile/trips/{tripId}/activities/{activityId}
+Authorization: Bearer <accessToken>
+If-Match: <contextVersion>
+Idempotency-Key: <uuid>
+Content-Type: application/json
+```
+
+**路径参数：** `activityId` = ItineraryItem UUID
+
+**请求体（与规划期对齐，至少一项）：**
+
+```json
+{
+  "startTime": "10:30",
+  "endTime": "13:00",
+  "plannedDepartAt": "2026-07-08T10:30:00.000Z",
+  "title": "冰川徒步（改期）",
+  "notes": "延误后顺延"
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `startTime` / `endTime` | `HH:mm`（相对该 TripDay）或 ISO8601；只传 `startTime` 时保持原时长顺延 `endTime` |
+| `plannedDepartAt` | 延误单用；写入 metadata + 投影 |
+| `title` / `notes` | 可选；`title` 覆盖展示名 |
+
+**成功响应 200：**
+
+```json
+{
+  "success": true,
+  "data": {
+    "contextVersion": 300012349,
+    "planVersion": 5,
+    "activityId": "item-uuid",
+    "startTime": "2026-07-08T10:30:00.000Z",
+    "endTime": "2026-07-08T13:00:00.000Z",
+    "title": "冰川徒步（改期）",
+    "notes": "延误后顺延",
+    "plannedDepartAt": "2026-07-08T10:30:00.000Z",
+    "replay": false,
+    "patched": true
+  }
+}
+```
+
+成功后：
+
+1. 根级 / `data` 带回新 `contextVersion`
+2. WS `trip_context_changed`，`changedSections: ['plan', 'itinerary', 'execution']`
+3. 客户端应刷新 `today-itinerary`
+
+**错误：**
+
+| 场景 | HTTP | code |
+|------|------|------|
+| 缺 If-Match / Idempotency-Key | 400 | `VALIDATION_ERROR` |
+| 版本过期 | 409 | `CONTEXT_VERSION_CONFLICT` |
+| 活动不存在 | 404 | `NOT_FOUND` |
 
 ---
 

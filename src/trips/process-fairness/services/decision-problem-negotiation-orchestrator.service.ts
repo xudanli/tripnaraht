@@ -20,6 +20,7 @@ import { TripDomainInfluenceService } from '../../domain-influence/services/trip
 import { getDomainDecisionRule } from '../../domain-influence/utils/domain-cross-level.util';
 import { isDecisionGatewayUnifiedEnabled } from '../../../decision-runtime/gateway/config/decision-gateway.config';
 import { DecisionEngineGatewayService } from '../../../decision-runtime/gateway/services/decision-engine-gateway.service';
+import { isDecisionCaseProblemId } from '../../../decision-runtime/decision-cases/projections/decision-case.projection';
 import { readDecisionProblemResolutionsFromMetadata } from '../../../decision-runtime/gateway/persistence/decision-problem-resolution.store';
 import { readCollaborativeSubTasksFromMetadata } from '../../../decision-runtime/gateway/utils/decision-collaborative-subtask-metadata.util';
 import {
@@ -77,6 +78,25 @@ export class DecisionProblemNegotiationOrchestratorService {
     focusConflictId?: string,
   ): Promise<NegotiationPreflightResult> {
     await this.access.assertTripMember(tripId, userId);
+
+    // DecisionCase（车型/保险等）为 CONSTRAINT_WRITEBACK 个人拍板，不作团队协商
+    if (isDecisionCaseProblemId(problemId)) {
+      return {
+        canStart: false,
+        blockReason: 'PROBLEM_NOT_ELIGIBLE',
+        blockMessageCN: '该决策由行程约束写回确认，无需团队结构化协商',
+        suggestedDomain: 'activities',
+        suggestedDecisionNode: 'activity',
+        crossLevel: 'low',
+        requiresDomainClaim: false,
+        userHasDomainClaim: false,
+        existingRoundId: null,
+        negotiationTaskId: negotiationTaskIdForProblem(problemId),
+        existingProblemIdForRound: null,
+        existingTaskStatus: null,
+      };
+    }
+
     const ctx = await this.resolveProblemContext(tripId, problemId, focusConflictId);
     const domain = resolveNegotiationWishDomain(ctx);
     const decisionNode = resolveNegotiationDecisionNode(ctx);
@@ -788,10 +808,19 @@ export class DecisionProblemNegotiationOrchestratorService {
 
     if (isDecisionGatewayUnifiedEnabled() && gateway) {
       const detail = await gateway.getProblemWithDebug(tripId, problemId);
-      if (detail.actionability.writeChain === 'EVALUATE_AUTHORIZE_EXECUTE') {
-        ctx = fromCanonicalView(detail.debug?.rawCanonical as Rfc001DecisionCenterProblemView);
+      const writeChain = detail.actionability.writeChain;
+      const rawCanonical = detail.debug?.rawCanonical as
+        | Rfc001DecisionCenterProblemView
+        | undefined;
+      const rawLegacy = detail.debug?.rawLegacy as DecisionProblemDetail | undefined;
+
+      if (writeChain === 'EVALUATE_AUTHORIZE_EXECUTE' && rawCanonical) {
+        ctx = fromCanonicalView(rawCanonical);
+      } else if (rawLegacy?.id) {
+        ctx = fromLegacyDetail(rawLegacy);
       } else {
-        ctx = fromLegacyDetail(detail.debug?.rawLegacy as DecisionProblemDetail);
+        // DecisionCase / CONSTRAINT_WRITEBACK 等无 rawLegacy 的问题
+        ctx = fromUnifiedProblemDetail(detail, tripId, problemId);
       }
     } else {
       try {
@@ -835,6 +864,44 @@ function fromLegacyDetail(detail: DecisionProblemDetail): DecisionProblemNegotia
     authority: detail.authority,
     assertions: detail.assertions,
   };
+}
+
+function fromUnifiedProblemDetail(
+  detail: {
+    problem: {
+      problemId: string;
+      title: string;
+      summary: string;
+      type: DecisionProblemType;
+      workflowStatus: string;
+    };
+  },
+  tripId: string,
+  problemId: string,
+): DecisionProblemNegotiationContext {
+  const status = normalizeNegotiationProblemStatus(detail.problem.workflowStatus);
+  return {
+    problemId: detail.problem.problemId || problemId,
+    tripId,
+    title: detail.problem.title,
+    description: detail.problem.summary,
+    type: detail.problem.type,
+    status,
+  };
+}
+
+function normalizeNegotiationProblemStatus(workflowStatus: string): DecisionProblemStatus {
+  switch (workflowStatus) {
+    case 'OPEN':
+    case 'ASSESSING':
+    case 'WAITING_DECISION':
+    case 'DECIDED':
+    case 'RESOLVED':
+    case 'DISMISSED':
+      return workflowStatus === 'DECIDED' ? 'WAITING_DECISION' : workflowStatus;
+    default:
+      return 'OPEN';
+  }
 }
 
 function fromCanonicalView(

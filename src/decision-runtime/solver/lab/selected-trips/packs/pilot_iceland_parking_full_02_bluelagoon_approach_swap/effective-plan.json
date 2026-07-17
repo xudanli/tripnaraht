@@ -1,0 +1,97 @@
+{
+  "schemaId": "tripnara.selected_trip.effective_plan@v1",
+  "tripId": "pilot_iceland_parking_full_02_bluelagoon_approach_swap",
+  "planVersionId": "pv-gold",
+  "days": [
+    {
+      "dayId": "day-1",
+      "date": "2026-06-12",
+      "activities": [
+        {
+          "activityId": "act-a1",
+          "poiId": "is.blue_lagoon",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": true,
+          "serviceDurationMin": 90,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.4,
+          "lng": -19
+        },
+        {
+          "activityId": "act-a2",
+          "poiId": "is.seljalandsfoss",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 55,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.41,
+          "lng": -19.01
+        },
+        {
+          "activityId": "act-a3",
+          "poiId": "is.skogafoss",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 55,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.42,
+          "lng": -19.02
+        },
+        {
+          "activityId": "act-a4",
+          "poiId": "is.reynisfjara",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 50,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.43,
+          "lng": -19.03
+        },
+        {
+          "activityId": "act-a5",
+          "poiId": "is.vik",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 40,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.44,
+          "lng": -19.04
+        },
+        {
+          "activityId": "act-a6",
+          "poiId": "is.skaftafell",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": true,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.449999999999996,
+          "lng": -19.05
+        }
+      ]
+    }
+  ]
+}

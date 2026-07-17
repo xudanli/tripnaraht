@@ -2,6 +2,7 @@ import {
   projectTripConstraintForBff,
   projectTripConstraintsForBff,
   buildScopeLabel,
+  sanitizeConstraintDisplayValue,
 } from './trip-constraint-bff.projection.util';
 import {
   TRIP_CONSTRAINT_LEGACY_IDS,
@@ -76,6 +77,40 @@ describe('trip-constraint-bff.projection.util', () => {
     expect(projected.displayValue).toBe('4 小时/天');
   });
 
+  it('projects max_segment_distance from maxSegmentDistanceKm without NaNkm', () => {
+    const projected = projectTripConstraintForBff(
+      baseConstraint({
+        id: TRIP_CONSTRAINT_LEGACY_IDS.MAX_SEGMENT_DISTANCE,
+        name: '单段最长行驶距离',
+        category: 'TRANSPORT',
+        unit: 'km',
+        value: { maxSegmentDistanceKm: 200 },
+        source: { type: 'USER', templateId: 'max_segment_distance' },
+      }),
+    );
+
+    expect(projected.displayValue).toBe('200 km');
+    expect(projected.contractMeta?.judgmentRule).toContain('200');
+    expect((projected.value as Record<string, unknown>).maxSegmentDistanceKm).toBe(200);
+    expect(projected.displayValue).not.toMatch(/NaN/i);
+  });
+
+  it('omits displayValue when segment distance is missing/invalid', () => {
+    const projected = projectTripConstraintForBff(
+      baseConstraint({
+        id: TRIP_CONSTRAINT_LEGACY_IDS.MAX_SEGMENT_DISTANCE,
+        name: '单段最长行驶距离',
+        category: 'TRANSPORT',
+        unit: 'km',
+        value: { maxKm: Number.NaN },
+        source: { type: 'USER' },
+      }),
+    );
+
+    expect(projected.displayValue).toBeUndefined();
+    expect(projected.contractMeta?.judgmentRule).toContain('待确认');
+  });
+
   it('projects budget_total with currency', () => {
     const projected = projectTripConstraintForBff(
       baseConstraint({
@@ -129,5 +164,12 @@ describe('trip-constraint-bff.projection.util', () => {
     ]);
     expect(items).toHaveLength(1);
     expect(items[0].contractMeta?.judgmentRule).toContain('3 小时');
+  });
+
+  it('sanitizeConstraintDisplayValue drops NaN/Infinity tokens', () => {
+    expect(sanitizeConstraintDisplayValue('NaNkm')).toBeUndefined();
+    expect(sanitizeConstraintDisplayValue('NaN km')).toBeUndefined();
+    expect(sanitizeConstraintDisplayValue('Infinity km')).toBeUndefined();
+    expect(sanitizeConstraintDisplayValue('200 km')).toBe('200 km');
   });
 });

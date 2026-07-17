@@ -5,6 +5,7 @@ import type {
   CausalOptionRef,
   CausalProblemRef,
 } from './causal-trace-node.types';
+import type { TravelCausalDecision } from '../travel-causal-decision';
 
 export const CANONICAL_CAUSAL_TRACE_SCHEMA = 'tripnara.canonical_causal_trace@v1' as const;
 
@@ -39,6 +40,12 @@ export interface CanonicalCausalTraceV1 {
   executionRef?: string;
   outcomeRef?: string;
   calibration?: CausalCalibrationV1;
+
+  /**
+   * Product-facing causal decision card (Loop 1–2).
+   * Attached when Iceland wind-travel seed is present.
+   */
+  travelCausalDecision?: TravelCausalDecision;
 
   status: CanonicalCausalTraceStatus;
 }

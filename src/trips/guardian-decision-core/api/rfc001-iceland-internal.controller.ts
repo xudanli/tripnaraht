@@ -13,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { IsBoolean, IsIn, IsObject, IsOptional, IsString } from 'class-validator';
 import { isRfc001IcelandRoadCloseEnabled, isRfc001IcelandWeatherActivityEnabled, isRfc001IcelandExcessiveDailyLoadEnabled } from '../config/rfc001-iceland.config';
 import {
   buildRoadStatusChangedEvent,
@@ -49,16 +50,35 @@ import { Rfc001InternalDeprecationInterceptor } from './rfc001-internal-deprecat
 import type { Rfc001DecisionProblem } from '../contracts/decision-problem.types';
 
 class SimulateRoadCloseDto {
+  @IsString()
   roadId!: string;
+
+  @IsIn(['CLOSED', 'LIMITED', 'OPEN', 'UNKNOWN'])
   status!: RoadStatusChangedStatus;
+
+  @IsOptional()
+  @IsString()
   segmentId?: string;
+
+  @IsOptional()
+  @IsIn(['CLOSED', 'LIMITED', 'OPEN', 'UNKNOWN'])
   previousStatus?: RoadStatusChangedStatus;
+
+  @IsOptional()
+  @IsString()
   sourceProvider?: RoadStatusSourceProvider;
+
   /** Optional F-road bindings when trip.metadata lacks rfc001IcelandRoadBindings */
+  @IsOptional()
+  @IsObject()
   roadBindings?: RoadSegmentBindings;
+
   /** PR-D: run evaluate + finalize after problem detection */
+  @IsOptional()
+  @IsBoolean()
   runFull?: boolean;
 }
+
 
 class SimulateWeatherHazardDto {
   windSpeedKmh!: number;

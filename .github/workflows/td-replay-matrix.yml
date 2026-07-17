@@ -5,10 +5,14 @@ on:
   push:
     paths:
       - "src/trips/decision/evaluation/**"
+      - "src/trips/dem/harness/**"
+      - "src/skills/world/utils/collect-dem-evidence-from-trip-terrain.util.ts"
       - ".github/workflows/td-replay-matrix.yml"
   pull_request:
     paths:
       - "src/trips/decision/evaluation/**"
+      - "src/trips/dem/harness/**"
+      - "src/skills/world/utils/collect-dem-evidence-from-trip-terrain.util.ts"
       - ".github/workflows/td-replay-matrix.yml"
 
 jobs:
@@ -36,3 +40,16 @@ jobs:
         env:
           TD_REPLAY_MATRIX_ID: ${{ matrix.fixture_id }}
         run: npx jest src/trips/decision/evaluation/e2e-replay.fixtures-matrix.spec.ts --runInBand
+
+  f208-travel-dem-gold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: F208 travel-eta + DEM gold gate
+        run: npm run test:f208-travel-dem-gold

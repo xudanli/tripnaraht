@@ -1,8 +1,10 @@
 {
   "schemaId": "tripnara.planning_signoff.authority@v1",
   "kind": "authority",
-  "status": "READY_FOR_APPROVAL",
-  "approved": false,
+  "status": "APPROVED",
+  "approved": true,
+  "approvedAt": "2026-07-16T10:29:00.000Z",
+  "approvedBy": "Danny1",
   "signoffId": "m4-ra01-2026-07-15",
   "authorityScope": {
     "operations": ["SHIFT", "SWAP", "SHORTEN", "REROUTE"],
@@ -26,9 +28,9 @@
     "rollback": "rollback.json"
   },
   "accountability": {
-    "failureOwner": "TBD-product-owner",
-    "escalation": "TBD-oncall-decision-runtime",
-    "rollbackOwner": "TBD-release-engineer-canary-killswitch"
+    "failureOwner": "Danny1",
+    "escalation": "Danny2",
+    "rollbackOwner": "Danny3"
   },
   "policy": {
     "selectedTripsMinObserveDays": 3,
@@ -47,7 +49,18 @@
       "duplicate_plan_version"
     ]
   },
-  "selectedTripRefs": [],
-  "detail": "Policy frozen for product review — fill accountability names; leave approvedAt/approvedBy/selectedTripRefs until RA-01B",
-  "summary": "M4-RA-01 READY_FOR_APPROVAL — restricted scope; not production-approved"
+  "selectedTripRefs": [
+    "ra01_is_01",
+    "ra01_is_02",
+    "ra01_is_03",
+    "ra01_is_04",
+    "ra01_is_05",
+    "ra01_is_06",
+    "ra01_is_07",
+    "ra01_is_08",
+    "ra01_is_09",
+    "ra01_is_10"
+  ],
+  "detail": "Product approved for staging selected_trips canary — IS only; scope frozen; Danny1/2/3 accountability",
+  "summary": "M4-RA-01 APPROVED — staging selected_trips; not 5%+"
 }

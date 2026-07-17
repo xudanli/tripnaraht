@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UnauthorizedException,
   BadRequestException,
@@ -26,6 +27,7 @@ import { AttractionExploreOrchestratorService } from './services/attraction-expl
 import {
   AddAttractionExploreCandidateDto,
   AttractionExploreAiConsultDto,
+  AttractionExploreContextQueryDto,
   AttractionExploreIntentDto,
   AttractionExploreMapQueryDto,
   AttractionExploreRecommendationsQueryDto,
@@ -42,21 +44,28 @@ export class AttractionExploreController {
   constructor(private readonly orchestrator: AttractionExploreOrchestratorService) {}
 
   @Get('context')
-  @ApiOperation({ summary: '探索上下文（左栏）— 主题/筛选/旅行条件/成员偏好' })
+  @ApiOperation({
+    summary: '探索上下文（页头 Chips / 排序 / 副标题）— 添加活动页建议带 dayIndex',
+  })
   @ApiParam({ name: 'tripId' })
   async getContext(
     @Param('tripId') tripId: string,
+    @Query() query: AttractionExploreContextQueryDto,
     @CurrentUser() user?: CurrentUserPayload,
   ) {
     try {
-      return successResponse(await this.orchestrator.getContext(tripId, this.resolveUserId(user)));
+      return successResponse(
+        await this.orchestrator.getContext(tripId, this.resolveUserId(user), {
+          dayIndex: query.dayIndex,
+        }),
+      );
     } catch (e) {
       return this.handleError(e);
     }
   }
 
   @Patch('context')
-  @ApiOperation({ summary: '更新探索筛选（主题/适合谁/viewTab）' })
+  @ApiOperation({ summary: '更新探索筛选（Chip / 排序 / 主题 / viewTab）' })
   async patchContext(
     @Param('tripId') tripId: string,
     @Body() body: UpdateAttractionExploreContextDto,
@@ -71,8 +80,18 @@ export class AttractionExploreController {
     }
   }
 
+  @Put('context')
+  @ApiOperation({ summary: '更新探索筛选（PUT 别名，与 PATCH 等价；iOS 点 Chip / 改排序）' })
+  async putContext(
+    @Param('tripId') tripId: string,
+    @Body() body: UpdateAttractionExploreContextDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.patchContext(tripId, body, user);
+  }
+
   @Get('recommendations')
-  @ApiOperation({ summary: '分组推荐（中栏）' })
+  @ApiOperation({ summary: '推荐列表（扁平 items + 分组 groups；含 contextTip）' })
   async getRecommendations(
     @Param('tripId') tripId: string,
     @Query() query: AttractionExploreRecommendationsQueryDto,

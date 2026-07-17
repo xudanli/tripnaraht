@@ -219,12 +219,12 @@ export const tripTimelineApi = {
     return unwrap(await requestJson<TimelineOverviewResponse>(url));
   },
 
-  /** 首屏壳层 — preset=shell（stats only，~550ms p95 冰岛 fixture） */
+  /** 首屏壳层 — preset=shell（stats + overallReadiness） */
   getShellOverview(tripId: string) {
     return this.getOverview(tripId, { preset: 'shell' });
   },
 
-  /** Phase-2 — pipeline/tasks/reminders + stats.newSuggestionCount，不含 suggestions 列表 */
+  /** Phase-2 — pipeline/tasks/reminders/readiness + stats.newSuggestionCount，不含 suggestions 列表 */
   getPhase2Overview(tripId: string) {
     return this.getOverview(tripId, { preset: 'full' });
   },
@@ -234,6 +234,25 @@ export const tripTimelineApi = {
     return this.getOverview(tripId, {
       include: TRIP_DETAIL_TAB_BFF_INCLUDES.timelineWithSuggestions,
     });
+  },
+};
+
+/** 整体准备度报告 — GET /trips/:id/overall-readiness */
+export const tripOverallReadinessApi = {
+  async getReport(
+    tripId: string,
+  ): Promise<import('./frontend-trip-detail-tab-api.types').OverallTripReadinessReport> {
+    return unwrap(await requestJson(`${tripsBase(tripId)}/overall-readiness`));
+  },
+
+  async getCard(
+    tripId: string,
+  ): Promise<import('./frontend-trip-detail-tab-api.types').TimelineOverviewReadinessCard> {
+    return unwrap(
+      await requestJson(
+        `${tripsBase(tripId)}/overall-readiness` + buildQuery({ view: 'card' }),
+      ),
+    );
   },
 };
 

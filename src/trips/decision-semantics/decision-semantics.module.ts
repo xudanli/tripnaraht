@@ -6,6 +6,7 @@ import { TripConstraintSolverModule } from '../trip-constraint-solver/trip-const
 import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/effective-plan-execution.module';
 import { DecisionProblemSsotModule } from '../../decision-runtime/decision-problems/decision-problem-ssot.module';
 import { shouldUseUnifiedDecisionReadModel } from '../../decision-runtime/decision-problems/decision-problem-ssot.config';
+import { CausalProtocolModule } from '../../causal-protocol/causal-protocol.module';
 import { DecisionSemanticsController } from './controllers/decision-semantics.controller';
 import { DecisionSemanticsL1Controller } from './controllers/decision-semantics-l1.controller';
 import { DecisionSemanticsService } from './services/decision-semantics.service';
@@ -24,6 +25,7 @@ import { DestinationInsightService } from './services/destination-insight.servic
     forwardRef(() => RagModule),
     DecisionProblemSsotModule,
     EffectivePlanExecutionModule,
+    forwardRef(() => CausalProtocolModule),
   ],
   controllers: shouldUseUnifiedDecisionReadModel()
     ? [DecisionSemanticsL1Controller]

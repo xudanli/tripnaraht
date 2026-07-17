@@ -11,6 +11,7 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
@@ -409,6 +410,8 @@ export class ArrangeItineraryController {
           userId: this.resolveUserId(user),
           contextVersion: body.contextVersion,
           force: body.force,
+          enabledItemIds: body.enabledItemIds,
+          comment: body.comment,
         }),
       );
     } catch (e) {
@@ -555,7 +558,8 @@ export class ArrangeItineraryController {
       e instanceof UnauthorizedException ||
       e instanceof BadRequestException ||
       e instanceof NotFoundException ||
-      e instanceof ForbiddenException
+      e instanceof ForbiddenException ||
+      e instanceof ConflictException
     ) {
       throw e;
     }
@@ -604,7 +608,10 @@ export class AttractionExploreArrangeController {
 
   @Post('auto-arrange')
   @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({ summary: '自动编排 — 默认生成草案，commitMode=direct 直写' })
+  @ApiOperation({
+    summary:
+      '自动编排候选 → PlanProposal（mode=proposal；未确认不写 Active Plan）',
+  })
   async autoArrange(
     @Param('tripId') tripId: string,
     @Body() body: AttractionExploreAutoArrangeDto,
@@ -613,17 +620,22 @@ export class AttractionExploreArrangeController {
     try {
       await this.access.assertTripMember(tripId, this.resolveUserId(user));
       const userId = this.resolveUserId(user);
+      const commitMode = body.mode === 'proposal' ? 'proposal' : body.commitMode;
       return successResponse(
         await this.orchestrator.mutateWithMode({
           tripId,
           userId,
-          commitMode: body.commitMode,
+          commitMode,
           buildProposal: () =>
             this.orchestrator.createProposal({
               tripId,
               userId,
               intent: 'AUTO_ARRANGE',
-              payload: { candidateIds: body.candidateIds ?? [] },
+              payload: {
+                candidateIds: body.candidateIds ?? [],
+                dayIndex: body.dayIndex,
+                options: body.options,
+              },
             }),
           applyDirect: () =>
             this.autoArrangeLegacy.autoArrange({
@@ -714,7 +726,8 @@ export class AttractionExploreArrangeController {
       e instanceof UnauthorizedException ||
       e instanceof BadRequestException ||
       e instanceof NotFoundException ||
-      e instanceof ForbiddenException
+      e instanceof ForbiddenException ||
+      e instanceof ConflictException
     ) {
       throw e;
     }

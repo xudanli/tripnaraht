@@ -12,6 +12,7 @@ import { CollabOverviewService } from './services/collab-overview.service';
 import { TripListService } from './services/trip-list.service';
 import { CoverImageService } from './services/cover-image.service';
 import { AccommodationOverviewService } from './services/accommodation-overview.service';
+import { OverallTripReadinessService } from './overall-readiness/services/overall-trip-readiness.service';
 import { JourneyMapService } from './services/journey-map.service';
 import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
 import { ActionHistoryService } from './services/action-history.service';
@@ -174,6 +175,7 @@ import { TripAdvisorCreateService } from './services/trip-advisor-create.service
     TripAdvisorCreateService,
     CoverImageService,
     AccommodationOverviewService,
+    OverallTripReadinessService,
     JourneyMapService,
     JourneyMapDecisionItemsService,
     TripConflictsService, 

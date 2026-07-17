@@ -29,8 +29,37 @@ export async function runPostPlanHallucinationSegment(
 ): Promise<NodeExecutionResult> {
   const { request, context: agentContext, state, decisionState, startTime } = context;
 
-  await host.runHallucinationPhase({ request, context: agentContext, state });
+  const outcome = await host.runHallucinationPhase({ request, context: agentContext, state });
   host.maybeSnapshot(state, 'AUTO');
+
+  if (outcome.blocked) {
+    state.current_step = 'HALLUCINATION_DETECTION';
+    state.metadata.last_updated_at = new Date().toISOString();
+    host.maybeSnapshot(state, 'CHECKPOINT');
+    const err = new Error(
+      outcome.errorMessage ?? 'Hallucination delivery gate blocked DONE',
+    );
+    const graphOutcome: GraphNodeOutcome = {
+      kind: 'terminal',
+      terminal: 'terminal_failed',
+      result: host.buildErrorResult(
+        state,
+        err,
+        startTime,
+        decisionState,
+        'HALLUCINATION_DETECTION',
+        undefined,
+        agentContext,
+      ),
+      decisionState,
+    };
+    return {
+      success: false,
+      decisionState,
+      graphOutcome,
+      error: new Error('terminal:terminal_failed'),
+    };
+  }
 
   state.current_step = 'DONE';
   state.metadata.last_updated_at = new Date().toISOString();

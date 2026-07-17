@@ -54,7 +54,6 @@ import {
   applyOffBeatBoostToScoreRows,
   enforceOffBeatQuotaInTopN,
 } from '../../../../planning-policy/utils/poi-selection-offbeat.util';
-import { filterPoisByRejectedIds } from '../../../../planning-policy/utils/contextual-poi-search-query.util';
 import {
   applyDiversityPenaltyToSortedRows,
   applySelectedPoiPenalty,
@@ -79,6 +78,7 @@ import type {
   RunPoiSelectionPhaseParams,
 } from './poi-selection-phase.host';
 import { persistSelectedPoisToResearchData } from '../../../utils/harness-research-evidence-snapshot.util';
+import { runPoiCandidatePipeline } from './poi-candidate-pipeline.util';
 
 /**
  * POI_SELECTION 执行体：仅消费 research_data + DSO 空间约束；工作区键在漏斗口熔断。
@@ -124,7 +124,6 @@ async function runPoiSelectionPhaseCore(
     const destinationCountry = host.inferCountryFromDestination(destinationRaw);
     const destinationCity = host.normalizeText(destinationRaw);
 
-    let deduped = host.dedupePois(asArray);
     const routeIntent = (state.metadata as Record<string, unknown>)
       ?.route_and_run_intent as RouteAndRunIntentAnalysis | undefined;
     const metaRecord = state.metadata as Record<string, unknown>;
@@ -168,12 +167,13 @@ async function runPoiSelectionPhaseCore(
         }
       }
     }
+    let candidatePool: any[] = [...asArray];
     let boundTripPoiSeedCount = 0;
     if (tripId) {
       const tripPois = await host.loadTripPlacePoiEvidenceForAdjust(tripId, userId);
       boundTripPoiSeedCount = tripPois.length;
       if (tripPois.length) {
-        deduped = host.dedupePois([...tripPois, ...deduped]);
+        candidatePool = [...tripPois, ...candidatePool];
         (state.metadata as Record<string, unknown>).bound_trip_poi_seed_count = tripPois.length;
         if (routeIntent?.primary === 'ITINERARY_ADJUST') {
           (state.metadata as Record<string, unknown>).itinerary_adjust_trip_poi_seed_count =
@@ -184,9 +184,14 @@ async function runPoiSelectionPhaseCore(
     const rejectedIds = (decisionState?.userIntent?.excludePoiIds ?? [])
       .map((x) => String(x).trim().toLowerCase())
       .filter(Boolean);
-    if (rejectedIds.length) {
-      deduped = filterPoisByRejectedIds(deduped as any[], rejectedIds) as any[];
-    }
+    const pipeline = runPoiCandidatePipeline(candidatePool as any[], { rejectedIds });
+    (state.metadata as Record<string, unknown>).poi_candidate_pipeline_v1 = {
+      schemaId: pipeline.schemaId,
+      version: pipeline.version,
+      stage_audit: pipeline.stage_audit,
+      er_catalog_hits: pipeline.er_catalog_hits,
+    };
+    let deduped = pipeline.pois as any[];
     const planningAug = host.applyPoiPlanningToResearchPois(
       deduped,
       decisionState,

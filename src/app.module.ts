@@ -80,6 +80,8 @@ import { Gate1Module } from './gate1/gate1.module';
 import { GuideToPlanModule } from './guide-to-plan/guide-to-plan.module';
 import { ExplorationModule } from './trips/exploration/exploration.module';
 import { AttractionExploreModule } from './trips/attraction-explore/attraction-explore.module';
+import { ContextualRecommendationsModule } from './trips/contextual-recommendations/contextual-recommendations.module';
+import { CopilotModule } from './trips/copilot/copilot.module';
 import { ArrangeItineraryModule } from './trips/arrange-itinerary/arrange-itinerary.module';
 import { ResearchModule } from './research/research.module';
 import { TravelContextModule } from './travel-context/travel-context.module';
@@ -189,6 +191,8 @@ import { MobileModule } from './mobile/mobile.module';
     GuideToPlanModule, // 从攻略开始规划（Guide-to-Plan Pipeline）
     ExplorationModule, // Consumer Exploration Pipeline（/api/exploration）
     AttractionExploreModule, // 景点探索 BFF（/trips/:id/attraction-explore）
+    ContextualRecommendationsModule, // 情境化当天微规划（ADR-009）
+    CopilotModule, // Nara Contextual Copilot — Page Insight (ADR-010)
     ArrangeItineraryModule, // 编排行程 BFF（/trips/:id/arrange-itinerary + explore place/ai-actions）
     ResearchModule, // 产品发现研究 Session / 事件
     TravelContextModule, // RFC-003 Travel Context Protocol

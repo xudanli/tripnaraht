@@ -1,0 +1,22 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "pilot_iceland_road_close_10_shorten_overpacked_day",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "is.seljalandsfoss",
+      "to": "is.skogafoss",
+      "durationMin": 30
+    },
+    {
+      "from": "is.skogafoss",
+      "to": "is.reynisfjara",
+      "durationMin": 35
+    },
+    {
+      "from": "is.reynisfjara",
+      "to": "is.vik",
+      "durationMin": 40
+    }
+  ]
+}

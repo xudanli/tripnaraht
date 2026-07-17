@@ -1,0 +1,22 @@
+{
+  "schemaId": "tripnara.selected_trip.constraints@v1",
+  "tripId": "pilot_negative_gateway_block_reject",
+  "planVersionId": "pv_pilot_negative_gateway_block_reject",
+  "constraints": [
+    {
+      "canonicalId": "constraint_0",
+      "kind": "UNKNOWN",
+      "hard": true
+    },
+    {
+      "canonicalId": "constraint_1",
+      "kind": "UNKNOWN",
+      "hard": true
+    },
+    {
+      "canonicalId": "constraint_2",
+      "kind": "UNKNOWN",
+      "hard": true
+    }
+  ]
+}

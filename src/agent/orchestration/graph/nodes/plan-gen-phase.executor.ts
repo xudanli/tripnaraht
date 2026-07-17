@@ -15,6 +15,7 @@ import {
   formatPlanGenOutputsAdjustZh,
   resolveItineraryAdjustRunContext,
 } from '../../../utils/itinerary-adjust-decision-log.util';
+import { emitPhaseExecutionPath } from '../../phase-execution-path.telemetry.util';
 
 /**
  * PLAN_GEN 执行体：消费 context_build 后的 DSO，经 Kernel.executePlanGen 产出行程草案。
@@ -32,6 +33,12 @@ export async function runPlanGenPhase(
     dsoForHarness &&
     state.trip_plan_request
   ) {
+    emitPhaseExecutionPath(state, {
+      phase: 'PLAN_GEN',
+      path: 'kernel_native',
+      reason: 'native_enabled',
+      step: 'PLAN_GEN',
+    });
     const stepStartTime = Date.now();
     let dsoForPlan = dsoForHarness;
     if (
@@ -132,6 +139,18 @@ export async function runPlanGenPhase(
     await host.collectTrajectoryAfterPlanGen({ request, state });
     return newState;
   }
+  const legacyReason =
+    (process.env.KERNEL_NATIVE_EXECUTION ?? 'true') === 'true' ||
+    (process.env.KERNEL_NATIVE_EXECUTION ?? 'true') === '1'
+      ? 'gray_miss'
+      : 'flag_off';
+  emitPhaseExecutionPath(state, {
+    phase: 'PLAN_GEN',
+    path: 'legacy_callback',
+    reason: legacyReason,
+    step: 'PLAN_GEN',
+    loggerWarn: (m) => host.logger.warn(m),
+  });
   const legacyDso = await host.executePhaseViaKernel(dsoForHarness, state, 'PLAN_GEN', () =>
     host.executePlanGenStep(request, context, state, llmProvider),
   );

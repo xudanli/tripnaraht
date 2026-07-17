@@ -7,7 +7,7 @@
     "ORCHESTRATOR_CONTEXT_LINT_STRICT": "1",
     "HARNESS_TRACE_MODE": "on-failure"
   },
-  "pathFingerprintBaseline": "0537ff978954174142a770d18fbadddaad23743b3850b82c9d224fbaf9b965cf",
+  "pathFingerprintBaseline": "dd861088ab96d58cff4aa450be04d8bcd6a3b4ac0c714ffaf1ba158fcf292d66",
   "cases": [
     {
       "caseId": "orchestrator-context-lint",
@@ -39,6 +39,12 @@
       "caseId": "kernel-on-failure-trace",
       "kind": "jest",
       "jestPattern": "src/decision/kernel/decision-kernel.harness-on-failure-trace.spec.ts"
+    },
+    {
+      "caseId": "full-chain-certification",
+      "kind": "jest",
+      "jestPattern": "src/agent/orchestration/full-chain-certification.contract.spec.ts",
+      "description": "Phase-2 全链固定 fixture：节点序 + 幻觉门 / 瑕疵禁令 / R2R / 空草案（非 LLM e2e）"
     }
   ]
 }

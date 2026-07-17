@@ -17,6 +17,10 @@ import {
   resolveTripContentMode,
   type TripContentMode,
 } from './trip-content-mode.util';
+import {
+  isOverallReadinessCacheFresh,
+  readOverallReadinessCache,
+} from '../overall-readiness/utils/overall-readiness-cache.util';
 
 const DISPLAY_STATUS_LABELS: Record<TripListDisplayStatus, string> = {
   planning: '规划中',
@@ -209,6 +213,8 @@ export type BuildTripListSummaryInput = {
   memberAvatars: TripListSummaryDto['memberAvatars'];
   totalBudget: number;
   currency?: string;
+  /** 用于 readiness 缓存新鲜度 */
+  updatedAt?: Date;
 };
 
 export function buildTripListSummary(input: BuildTripListSummaryInput): TripListSummaryDto {
@@ -230,6 +236,11 @@ export function buildTripListSummary(input: BuildTripListSummaryInput): TripList
       ? Math.round(input.totalBudget / input.memberCount)
       : null;
 
+  const readinessCache = readOverallReadinessCache(input.metadata);
+  const readinessFresh =
+    readinessCache != null &&
+    isOverallReadinessCacheFresh(readinessCache, input.updatedAt);
+
   const summary: TripListSummaryDto = {
     displayStatus,
     displayStatusLabel: resolveDisplayStatusLabel(displayStatus),
@@ -246,6 +257,9 @@ export function buildTripListSummary(input: BuildTripListSummaryInput): TripList
       daysWithItems: input.daysWithItems,
       totalDays: input.totalDays,
     }),
+    readinessScore: readinessFresh ? readinessCache!.score : null,
+    readinessState: readinessFresh ? readinessCache!.state : null,
+    readinessStateLabelZh: readinessFresh ? readinessCache!.stateLabelZh : null,
     budgetPerPerson,
     primaryAction: resolvePrimaryAction(displayStatus),
   };
@@ -255,6 +269,37 @@ export function buildTripListSummary(input: BuildTripListSummaryInput): TripList
   }
 
   return summary;
+}
+
+/** Keys safe to echo on list cards. Full Trip.metadata often holds MB-scale collector evidence. */
+const TRIP_LIST_METADATA_ALLOWLIST = [
+  'coverImageUrl',
+  'coverImageSource',
+  'progressPercent',
+  'planningProgress',
+  'nextStop',
+  'nextStopName',
+  'weatherCelsius',
+  'weatherLabel',
+  'overallReadinessCache',
+  'generationProgress',
+  'tripContentMode',
+] as const;
+
+export function projectTripListCardMetadata(
+  metadata: unknown,
+): Record<string, unknown> | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined;
+  }
+  const source = metadata as Record<string, unknown>;
+  const projected: Record<string, unknown> = {};
+  for (const key of TRIP_LIST_METADATA_ALLOWLIST) {
+    if (source[key] !== undefined) {
+      projected[key] = source[key];
+    }
+  }
+  return Object.keys(projected).length > 0 ? projected : undefined;
 }
 
 export function mapTripRowToListCard(input: {
@@ -284,11 +329,6 @@ export function mapTripRowToListCard(input: {
   const generatingItems = isTripGeneratingItems(trip.metadata, totalItems);
   const daysWithItems = trip.TripDay.filter((day) => day._count.ItineraryItem > 0).length;
 
-  const metadata =
-    trip.metadata && typeof trip.metadata === 'object' && !Array.isArray(trip.metadata)
-      ? (trip.metadata as Record<string, unknown>)
-      : undefined;
-
   return {
     id: trip.id,
     name: trip.name ?? undefined,
@@ -316,7 +356,7 @@ export function mapTripRowToListCard(input: {
     }),
     generatingItems,
     tripContentMode,
-    metadata,
+    metadata: projectTripListCardMetadata(trip.metadata),
     listSummary: input.listSummary,
   };
 }

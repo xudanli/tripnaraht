@@ -40,4 +40,41 @@ describe('plan-verify-loop-repair-guards — flawed draft narrate', () => {
     expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBe(true);
     expect(host.buildClarificationResult).not.toHaveBeenCalled();
   });
+
+  it('refuses flawed bypass when HARD SAFETY gate violation present', () => {
+    const host = mockHost();
+    const decisionState = { systemState: { repairCount: 3 } } as PlanVerifyLoopRunParams['decisionState'];
+    const loop: PlanVerifyTransientLoopState = createPlanVerifyTransientState(decisionState);
+    const params = {
+      request: {
+        request_id: 'fd-safe',
+        user_id: 'u',
+        message: 'plan',
+        options: { allow_flawed_draft_narrate: true },
+      },
+      context: {},
+      state: {
+        request_id: 'fd-safe',
+        metadata: {},
+        decision_log: [],
+        errors: [],
+        gate_result: {
+          gate_result: 'ADJUST_REQUIRED',
+          violations: [{ type: 'SAFETY', severity: 'HARD', detail: 'storm' }],
+          required_adjustments: [],
+          confidence: 0.2,
+          evidence_refs: [],
+        },
+      },
+      decisionState,
+      llmProvider: 'deepseek',
+      startTime: Date.now(),
+      loop,
+    } as PlanVerifyLoopRunParams & { loop: PlanVerifyTransientLoopState };
+
+    const terminal = checkRepairCountExceededIfNeeded(host, params);
+    expect(terminal).not.toBeNull();
+    expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBeUndefined();
+    expect(host.buildClarificationResult).toHaveBeenCalled();
+  });
 });

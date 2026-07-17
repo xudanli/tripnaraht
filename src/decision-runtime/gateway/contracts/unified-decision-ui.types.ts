@@ -40,6 +40,12 @@ export type DecisionProblemExecutionStatus =
 
 export type DecisionEvidenceFreshness = 'FRESH' | 'STALE' | 'UNKNOWN';
 
+export type DecisionWriteChain =
+  | 'EVALUATE_AUTHORIZE_EXECUTE'
+  | 'APPLY_AND_POLL'
+  | 'CONSTRAINT_WRITEBACK'
+  | 'NONE';
+
 export interface DecisionProblemScope {
   tripId: string;
   dayIds?: number[];
@@ -75,6 +81,8 @@ export interface UnifiedDecisionProblemActionability {
   requiresAction: boolean;
   recommendedAction?: DecisionOptionType;
   allowedActions: DecisionOptionType[];
+  /** List + detail；DecisionCase 为 CONSTRAINT_WRITEBACK */
+  writeChain?: DecisionWriteChain;
 }
 
 export interface UnifiedDecisionProblemDebugMeta {
@@ -134,6 +142,18 @@ export interface UnifiedDecisionProblemListItem {
   causalStoryView?: CausalStoryView;
   /** Guardian Abu safety narrative — same facts/numbers as causalStoryView */
   guardianCausalStoryView?: CausalStoryView;
+  /**
+   * Frozen product causal decision (Loop 1–2). Present when Iceland wind-travel
+   * seed attached a TravelCausalDecision on the canonical trace.
+   */
+  travelCausalDecision?: import('../../../travel-causal-decision').TravelCausalDecision;
+  /** Frontend decision-card projection — prefer over raw causal graphs. */
+  causalDecisionCard?: import('../../../travel-causal-decision').CausalDecisionCardView;
+  /**
+   * DecisionCase product fields — UI 分组用 requiredness / uiGroup；
+   * 勿直接展示 type=INFEASIBILITY 等技术枚举。
+   */
+  decisionCase?: import('../../decision-cases/contracts/decision-case.types').DecisionCaseProductProjection;
   debug?: UnifiedDecisionProblemDebugMeta;
 }
 
@@ -156,8 +176,6 @@ export type DecisionActionCommand =
   | 'OPEN_CONSTRAINT'
   | 'OPEN_SCHEDULE_ITEM'
   | 'OPEN_PLAN_GATE';
-
-export type DecisionWriteChain = 'EVALUATE_AUTHORIZE_EXECUTE' | 'APPLY_AND_POLL' | 'NONE';
 
 export interface DecisionActionNavigationTarget {
   command: DecisionActionCommand;
@@ -185,6 +203,11 @@ export interface DecisionAction {
   navigationTarget?: DecisionActionNavigationTarget;
   /** Execution slip — structured preview (Slice 3.1) */
   executionSlipPreview?: import('../../../trips/decision-semantics/types/decision-semantics.types').ExecutionSlipRepairOptionPreview;
+  /** DecisionCase 写回/风险提示（如保险涉水排除） */
+  constraintHints?: {
+    fordingExcluded?: boolean;
+    writebackPayload?: Record<string, unknown>;
+  };
 }
 
 import type { CausalTraceReference } from '../../../causal-protocol/causal-trace-reference.types';
@@ -216,6 +239,10 @@ export interface UnifiedDecisionProblemDetailView {
   causalStoryView?: CausalStoryView;
   /** Guardian Abu safety narrative — same trace, safety framing */
   guardianCausalStoryView?: CausalStoryView;
+  /** Product TravelCausalDecision from trace (when Iceland seed present). */
+  travelCausalDecision?: import('../../../travel-causal-decision').TravelCausalDecision;
+  /** Decision-card projection for frontend. */
+  causalDecisionCard?: import('../../../travel-causal-decision').CausalDecisionCardView;
   debug?: UnifiedDecisionProblemDebugMeta & {
     rawLegacy?: unknown;
     rawCanonical?: unknown;
@@ -341,6 +368,16 @@ export interface ApplyDecisionProblemResponse {
     problemResolution?: unknown;
   };
   causalTraceRef?: CausalTraceReference;
+  /**
+   * Product outcome reconciliation after apply/verify (from TravelCausalDecision).
+   * PENDING until observations exist; advances on calibrate.
+   */
+  outcomeReconciliation?: {
+    status: import('../../../travel-causal-decision').OutcomeReconciliationStatus;
+    decisionId?: string;
+    selectedOptionId?: string;
+    explanation?: string;
+  };
 }
 
 export type DecisionProblemApplyTaskStatus =

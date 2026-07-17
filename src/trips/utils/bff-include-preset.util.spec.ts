@@ -4,7 +4,7 @@ describe('resolveBffIncludeFromPreset', () => {
   it('maps timeline shell preset', () => {
     expect(
       resolveBffIncludeFromPreset({ preset: 'shell', kind: 'timeline' }),
-    ).toBe('stats');
+    ).toBe('stats,readiness');
   });
 
   it('maps collab shell preset', () => {
@@ -35,6 +35,6 @@ describe('resolveBffIncludeFromPreset', () => {
   it('maps timeline full preset without suggestions list', () => {
     expect(
       resolveBffIncludeFromPreset({ preset: 'full', kind: 'timeline' }),
-    ).toBe('stats,pipeline,tasks,reminders');
+    ).toBe('stats,pipeline,tasks,reminders,readiness');
   });
 });

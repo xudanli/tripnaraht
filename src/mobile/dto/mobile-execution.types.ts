@@ -152,8 +152,12 @@ export interface MobileTodayItineraryItemDto {
   memberCount?: number;
   impactNote?: string;
   status: MobileExecutionItemStatus;
-  merchantName?: string;
-  confirmationCode?: string;
+  /** iOS 解码必填：无值时给 ""，勿省略 */
+  merchantName: string;
+  /** iOS 解码必填：无值时给 ""，勿省略 */
+  confirmationCode: string;
+  /** 延误单 / 出发观测用；无则 null */
+  plannedDepartAt?: string | null;
 }
 
 export interface MobileTodayItineraryDto {
@@ -168,6 +172,81 @@ export interface MobileTodayItineraryDto {
   participantCount: number;
   merchantName: string;
   confirmationCode: string;
+}
+
+/** 行程日历 — 按 dayIndex 的天摘要（执行期总览，非规划期 day-theme） */
+export type MobileItineraryCalendarDayStatus = 'executing' | 'upcoming' | 'completed';
+
+export interface MobileItineraryCalendarDayDto {
+  dayIndex: number;
+  date: string;
+  /** 如 "周四" */
+  weekday: string;
+  locationSummary: string;
+  activityCount: number;
+  status: MobileItineraryCalendarDayStatus;
+  weather?: {
+    /** 如 "8°C ~ 12°C" */
+    tempRange: string;
+    /** 如 "微风 2 m/s"；无数据时 "" */
+    wind: string;
+  };
+}
+
+export interface MobileItineraryCalendarDto {
+  contextVersion: number;
+  /** 副标题 / 页头 */
+  tripTitle: string;
+  /** 如 "Day 1 - Day 7 · 冰岛 2026-07-16" */
+  dateRangeLabel: string;
+  /** 1-based，默认选中天 */
+  currentDayIndex: number;
+  days: MobileItineraryCalendarDayDto[];
+  overview: {
+    totalDays: number;
+    totalActivities: number;
+  };
+}
+
+/** 活动执行详情 — 列表字段不够时再拉 */
+export interface MobileActivityExecutionDetailDto {
+  contextVersion: number;
+  id: string;
+  title: string;
+  time: string;
+  endTime: string;
+  location: string;
+  status: MobileExecutionItemStatus;
+  merchantName: string;
+  confirmationCode: string;
+  notes: string;
+  plannedDepartAt: string | null;
+  experienceType: string;
+  duration: string;
+  dayIndex: number;
+  members: Array<{
+    id: string;
+    name: string;
+    role: MobileMemberRole;
+  }>;
+  navigationPoint: {
+    lat: number;
+    lng: number;
+    label: string;
+  } | null;
+  bookingStatus: string;
+  bookingUrl: string;
+}
+
+/** PATCH 单项调整行程 body */
+export interface MobilePatchActivityBodyDto {
+  startTime?: string;
+  endTime?: string;
+  plannedDepartAt?: string;
+  title?: string;
+  notes?: string;
+  /** 默认 none：只改当前项 */
+  cascadeMode?: 'auto' | 'none';
 }
 
 export interface MobileLiveRouteDto {

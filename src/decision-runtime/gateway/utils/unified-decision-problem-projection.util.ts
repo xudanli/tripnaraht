@@ -682,10 +682,15 @@ function buildActionability(
       requiresConfirmation: enforcement === 'REQUIRE_CONFIRMATION',
     }) && allowedActions.length > 0;
 
+  const isDecisionCase =
+    row.problemId.startsWith('dc_') ||
+    row.origin?.engineId === 'DECISION_CASE_PUBLISHER';
+
   return {
     requiresAction,
     allowedActions,
     recommendedAction: allowedActions[0],
+    ...(isDecisionCase ? { writeChain: 'CONSTRAINT_WRITEBACK' as const } : {}),
   };
 }
 

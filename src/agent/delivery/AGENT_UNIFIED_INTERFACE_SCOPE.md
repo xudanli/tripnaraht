@@ -234,7 +234,11 @@ Client
 ```
 
 **治理预算**（默认）：REPAIR max **3** · VERIFY 子图 max **8** 步 · RETURN_TO_RESEARCH max **1** 次。  
-超预算默认 → **澄清终端**（非静默瑕疵 SUCCESS）。详见 [ORCHESTRATION_GOVERNANCE_MATRIX.md](../orchestration/ORCHESTRATION_GOVERNANCE_MATRIX.md)。
+超预算默认 → **澄清终端**（非静默瑕疵 SUCCESS）。详见 [ORCHESTRATION_GOVERNANCE_MATRIX.md](../orchestration/ORCHESTRATION_GOVERNANCE_MATRIX.md)。  
+**主链协议（节点序 / 短路 / 确认点）**：[ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md](../orchestration/ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md)。  
+**Run Trace**：`observability.agent_run_trace_v1`（节点 IO / 降级 / 修复 / 幻觉门）。  
+**可信交付面**：`result.payload.trusted_delivery_v1` — [FRONTEND_TRUSTED_DELIVERY.md](./FRONTEND_TRUSTED_DELIVERY.md)。  
+**全链认证 fixture**：[FULL_CHAIN_CERTIFICATION.md](../orchestration/FULL_CHAIN_CERTIFICATION.md)。
 
 **路由观测**（Shadow，不影响线上路由）：
 

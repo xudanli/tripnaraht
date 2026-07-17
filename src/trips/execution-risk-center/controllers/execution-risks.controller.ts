@@ -240,7 +240,9 @@ export class ExecutionRisksController {
   }
 
   @Post(':riskId/recommendations/:recommendationId/apply')
-  @ApiOperation({ summary: '采用建议（预览 planDiff，不写有效计划）' })
+  @ApiOperation({
+    summary: '采用建议（写回 Active Plan；write-chain 开启时为预览）',
+  })
   async applyRecommendation(
     @Param('tripId') tripId: string,
     @Param('riskId') riskId: string,

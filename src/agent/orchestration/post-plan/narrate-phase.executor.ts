@@ -8,6 +8,7 @@ import {
   resolveItineraryAdjustRunContext,
   scopeOrchestratorNarrationToAdjustTarget,
 } from '../../utils/itinerary-adjust-decision-log.util';
+import { emitPhaseExecutionPath } from '../phase-execution-path.telemetry.util';
 
 /**
  * NARRATE 执行体：Kernel.executeNarrate + NarratorAgent 降级 + Manifest 合并 + decision_log 审计。
@@ -58,7 +59,24 @@ export async function runNarratePhase(
       const result = await host.decisionKernel.executeNarrate(dso, narrateCtx);
       state.narration = result.narration as OrchestratorState['narration'];
       kernelPathUsed = true;
+      emitPhaseExecutionPath(state, {
+        phase: 'NARRATE',
+        path: 'kernel_native',
+        reason: 'native_enabled',
+        step: 'NARRATE',
+      });
     } else {
+      emitPhaseExecutionPath(state, {
+        phase: 'NARRATE',
+        path: !host.decisionKernel ? 'kernel_missing_service' : 'legacy_callback',
+        reason: !host.decisionKernel
+          ? 'missing_kernel'
+          : !state.itinerary || !state.gate_result
+            ? 'missing_gate_or_itinerary'
+            : 'explicit_legacy',
+        step: 'NARRATE',
+        loggerWarn: (m) => host.logger.warn(m),
+      });
       state.narration = {
         user_friendly_summary: '',
         day_by_day_narrative: [],
@@ -71,6 +89,15 @@ export async function runNarratePhase(
     const itineraryDayCount = Array.isArray(state.itinerary?.days) ? state.itinerary!.days.length : 0;
     if (host.narratorAgent && itineraryDayCount > 0 && narrativeDays === 0) {
       fallbackUsed = await runNarratorAgentFallback(host, state, narrateEbpReport);
+      if (fallbackUsed) {
+        emitPhaseExecutionPath(state, {
+          phase: 'NARRATE',
+          path: 'narrator_agent',
+          reason: 'empty_narrative',
+          step: 'NARRATE',
+          loggerWarn: (m) => host.logger.warn(m),
+        });
+      }
     }
 
     const audit = applyResearchManifestToNarration(state);

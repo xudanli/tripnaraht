@@ -74,6 +74,7 @@ export class CanonicalCausalTracePersistenceService {
       executionRef: incoming.executionRef ?? existing.executionRef,
       outcomeRef: incoming.outcomeRef ?? existing.outcomeRef,
       selectedOptionId: incoming.selectedOptionId ?? existing.selectedOptionId,
+      travelCausalDecision: incoming.travelCausalDecision ?? existing.travelCausalDecision,
       updatedAt:
         incoming.updatedAt >= existing.updatedAt ? incoming.updatedAt : existing.updatedAt,
     };

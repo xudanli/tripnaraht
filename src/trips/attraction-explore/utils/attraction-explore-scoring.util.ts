@@ -13,6 +13,10 @@ import {
   type ExperienceCoverageSnapshot,
 } from './attraction-explore-experience-coverage.util';
 import { estimatePlaceDetourToRoute } from './attraction-explore-route-detour.util';
+import {
+  dayContextFitScore,
+  type DayRecommendationContext,
+} from './attraction-explore-day-context.util';
 
 export interface AttractionExploreScoringContext {
   themeIds?: string[];
@@ -24,6 +28,8 @@ export interface AttractionExploreScoringContext {
   weatherHint?: string | null;
   countryCode?: string;
   maxDetourMinutes?: number;
+  /** Focus-day context for ranking when dayIndex is provided */
+  dayContext?: DayRecommendationContext;
 }
 
 export interface AttractionExploreScoredPlace {
@@ -107,14 +113,19 @@ export function scoreAttractionExplorePlace(
 ): AttractionExploreScoredPlace {
   const gapBoost = experienceGapScore(place, ctx.experienceCoverage.gaps) / 100;
   const reasons: string[] = [];
+  const dayFit = dayContextFitScore(place, ctx.dayContext, ctx.countryCode);
+  const dayWeight = ctx.dayContext ? 0.22 : 0;
+  const interestW = ctx.dayContext ? 0.2 : 0.25;
+  const routeW = ctx.dayContext ? 0.15 : 0.2;
   const base =
-    interestMatch(place, ctx.themeIds) * 0.25 +
-    routeMatch(place, ctx.routePlaceIds, ctx.routeAnchors, ctx.countryCode) * 0.2 +
+    interestMatch(place, ctx.themeIds) * interestW +
+    routeMatch(place, ctx.routePlaceIds, ctx.routeAnchors, ctx.countryCode) * routeW +
     memberFit(place, ctx.suitabilityIds) * 0.15 +
     insertability(ctx.scheduledPlaceIds, place) * 0.15 +
     scarcity(place, ctx.scheduledPlaceIds) * 0.1 +
     weatherFit(place, ctx.weatherHint) * 0.1 +
-    popularity(place) * 0.05;
+    popularity(place) * 0.05 +
+    dayFit.score * dayWeight;
 
   const score = Math.min(1, base + gapBoost);
   const coords = resolvePlaceCoordsOrNull(place);
@@ -132,6 +143,7 @@ export function scoreAttractionExplorePlace(
   if (isCoreAttraction(place)) reasons.push('首次旅行代表性');
   if (ctx.routePlaceIds.has(place.id)) reasons.push('已在路线中');
   if (gapBoost > 0) reasons.push('补足行程体验结构');
+  reasons.push(...dayFit.reasons);
   const meta = extractPlaceMeta(place);
   if (meta.physicalLevel === 'LOW') reasons.push('低强度友好');
 

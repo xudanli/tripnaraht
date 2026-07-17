@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "ra01_is_02",
+  "planVersionId": "plan_pilot_is_02_v1",
+  "evidenceVersionId": "ev_ra01_is_02_20260716",
+  "environment": "staging",
+  "destination": "IS",
+  "intendedOperation": "SHIFT",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "staging_export",
+  "deidentified": true,
+  "eligibility": "pending"
+}

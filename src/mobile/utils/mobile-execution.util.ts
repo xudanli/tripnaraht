@@ -146,3 +146,33 @@ export function attentionTypeIcon(type?: string): string {
       return 'bell.fill';
   }
 }
+
+const ZH_WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] as const;
+
+/** 日历页 weekday，如 "周四" */
+export function formatCalendarWeekday(date: DateTime): string {
+  return ZH_WEEKDAYS[date.weekday - 1] ?? '';
+}
+
+/** 如 "Day 1 - Day 7 · 冰岛 2026-07-16" */
+export function formatCalendarDateRangeLabel(input: {
+  totalDays: number;
+  destination?: string | null;
+  startDate: Date;
+}): string {
+  const start = DateTime.fromJSDate(input.startDate).toISODate() ?? '';
+  const dest = input.destination?.trim() || '行程';
+  const total = Math.max(1, input.totalDays);
+  return `Day 1 - Day ${total} · ${dest} ${start}`;
+}
+
+/** 如 "8°C ~ 12°C"；无数据返回 "" */
+export function formatWeatherTempRange(
+  tempMin?: number | null,
+  tempMax?: number | null,
+): string {
+  if (tempMin != null && tempMax != null) return `${tempMin}°C ~ ${tempMax}°C`;
+  if (tempMin != null) return `${tempMin}°C`;
+  if (tempMax != null) return `${tempMax}°C`;
+  return '';
+}

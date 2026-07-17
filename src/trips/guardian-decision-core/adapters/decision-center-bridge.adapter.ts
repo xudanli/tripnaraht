@@ -32,6 +32,8 @@ import { projectDecisionOptionsForSpaceView } from '../../decision-semantics/pro
 import { buildExecutionSlipOptionCopy } from './execution-slip-option-copy.util';
 import type { ExecutionSlipOptionContext } from '../contracts/execution-slip-option-preview.types';
 import type { RoadTraversabilityWorkspaceSnapshot } from '../contracts/decision-workspace.types';
+import { ROAD_OPENING_WINDOW_CONSTRAINT_CODE } from './abu-road-opening-window-constraint.adapter';
+import { STILL_OPEN_GENERATOR_VERSION } from './still-open-road-substitute.adapter';
 
 export type Rfc001LeadingPersona = 'ABU' | 'DRDRE' | 'NEPTUNE' | 'DECISION_CORE';
 
@@ -265,24 +267,35 @@ export function bridgeCandidatesToOptions(
 ): DecisionOption[] {
   const cutoverBlocked = record ? !isEffectiveExecutable(record) : false;
   const options: DecisionOption[] = candidates.map((c) => {
-    const blocked = cutoverBlocked
-      ? true
-      : workspace
-        ? workspace.constraintAssertions.some(
-            (a) =>
-              a.targetCandidateId === c.candidateId &&
-              a.verdict === 'BLOCK' &&
-              !a.overridable,
-          )
-        : false;
+    const blockAssertion = workspace?.constraintAssertions.find(
+      (a) =>
+        a.targetCandidateId === c.candidateId &&
+        a.verdict === 'BLOCK' &&
+        !a.overridable,
+    );
+    const blocked = cutoverBlocked || Boolean(blockAssertion);
+    const openingWindowBlocked =
+      blockAssertion?.constraintCode === ROAD_OPENING_WINDOW_CONSTRAINT_CODE;
+    const stillOpen =
+      c.generatorVersion?.startsWith(STILL_OPEN_GENERATOR_VERSION) === true ||
+      c.preservedIntentRefs?.includes('intent_still_open_alternative');
+    const substituteTitle = c.proposedOperations.find(
+      (op) => op.kind === 'REPLACE_ITEM' && typeof op.parameters?.title === 'string',
+    )?.parameters?.title;
     const durationDirection: TradeoffDirection =
       c.estimatedAddedDurationMinutes >= 0 ? 'WORSEN' : 'IMPROVE';
     return {
       id: c.candidateId,
       problemId,
       type: 'REPAIR' as const,
-      title: `候选 ${c.candidateId}`,
-      description: `${c.generationMethod} · 意图保留 ${Math.round(c.estimatedIntentPreservation * 100)}%`,
+      title: stillOpen
+        ? String(substituteTitle ?? '仍在开放的替补体验')
+        : `候选 ${c.candidateId}`,
+      description: stillOpen
+        ? `今日仍赶得上开放时间 · 意图保留 ${Math.round(c.estimatedIntentPreservation * 100)}%`
+        : openingWindowBlocked
+          ? `绕路后可能赶不上开放时间 · ${c.generationMethod}`
+          : `${c.generationMethod} · 意图保留 ${Math.round(c.estimatedIntentPreservation * 100)}%`,
       source: 'ALTERNATIVE_GENERATOR' as const,
       resolves: c.replacesPlanItemIds,
       tradeoffs: [
@@ -306,6 +319,11 @@ export function bridgeCandidatesToOptions(
           : []),
       ],
       executable: !blocked,
+      blockedReason: openingWindowBlocked
+        ? '绕路后可能赶不上开放时间'
+        : blocked
+          ? '当前方案不可执行'
+          : undefined,
       requiresConfirmation: true,
       executionCapability: resolveRepairCandidateExecutionCapability(c),
       sourceRefId: c.candidateId,

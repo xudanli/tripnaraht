@@ -13,9 +13,13 @@ import {
 } from './validate-selected-trip';
 import { APPROVED_PILOT_OPERATIONS } from './schema/types';
 
+const REAL_SOURCES = new Set(['staging_export', 'production_export']);
+
 async function main(): Promise<number> {
   const ids = listPackTripIds();
   const eligible: string[] = [];
+  const realEligible: string[] = [];
+  const syntheticEligible: string[] = [];
   const blocked: Array<{ tripId: string; reasons: string[] }> = [];
   const byOp: Record<string, string[]> = {
     SHIFT: [],
@@ -24,6 +28,7 @@ async function main(): Promise<number> {
     REROUTE: [],
     OTHER: [],
   };
+  const rejectOrFallback: string[] = [];
 
   for (const tripId of ids) {
     const report = validateSelectedTripPack(join(PACKS_ROOT, tripId));
@@ -36,6 +41,17 @@ async function main(): Promise<number> {
     if (report.eligible) {
       eligible.push(tripId);
       byOp[bucket].push(tripId);
+      if (report.source && REAL_SOURCES.has(report.source)) {
+        realEligible.push(tripId);
+      } else {
+        syntheticEligible.push(tripId);
+      }
+      if (
+        report.expectation === 'reject' ||
+        report.expectation === 'fallback'
+      ) {
+        rejectOrFallback.push(tripId);
+      }
     } else {
       blocked.push({
         tripId,
@@ -57,14 +73,18 @@ async function main(): Promise<number> {
   const summary = {
     schemaId: 'tripnara.selected_pilot_assemble@v1',
     eligible: eligible.length,
+    realEligible: realEligible.length,
+    syntheticEligible: syntheticEligible.length,
     blocked: blocked.length,
     eligibleTripIds: eligible,
+    realEligibleTripIds: realEligible,
     blockedReasons: blocked,
     distribution: {
       SHIFT: byOp.SHIFT.length,
       SWAP: byOp.SWAP.length,
       SHORTEN: byOp.SHORTEN.length,
       REROUTE: byOp.REROUTE.length,
+      reject_or_fallback: rejectOrFallback.length,
     },
     samplingTarget: target,
     samplingGaps: {
@@ -72,14 +92,27 @@ async function main(): Promise<number> {
       SWAP: Math.max(0, target.SWAP - byOp.SWAP.length),
       SHORTEN: Math.max(0, target.SHORTEN - byOp.SHORTEN.length),
       REROUTE: Math.max(0, target.REROUTE - byOp.REROUTE.length),
+      reject_or_fallback: Math.max(
+        0,
+        target.reject_or_fallback - rejectOrFallback.length,
+      ),
     },
     next:
-      blocked.length === 0 && eligible.length >= 10
-        ? ['Update selected-trips.whitelist.json', 'Product APPROVE authority.json']
-        : [
-            'npm run lab:export-selected-trip -- --from-gold <scenario>',
-            'Fix blocked packs / fill expected-outcome reviews',
-          ],
+      blocked.length === 0 && realEligible.length >= 10
+        ? [
+            'Update selected-trips.whitelist.json',
+            'Product APPROVE authority.json',
+          ]
+        : realEligible.length < 10
+          ? [
+              'Import ≥10 real deidentified trips (staging_export / production_export)',
+              'Synthetic/gold packs only seal mechanism — they do not clear Dataset WAIT',
+              'Fill expected-outcome reviews on real packs',
+            ]
+          : [
+              'npm run lab:export-selected-trip -- --from-gold <scenario>',
+              'Fix blocked packs / fill expected-outcome reviews',
+            ],
   };
 
   const outDir = join(
@@ -92,7 +125,7 @@ async function main(): Promise<number> {
     `${JSON.stringify(summary, null, 2)}\n`,
   );
 
-  console.log(`eligible: ${summary.eligible}`);
+  console.log(`eligible: ${summary.eligible} (real=${summary.realEligible}, synthetic=${summary.syntheticEligible})`);
   console.log(`blocked: ${summary.blocked}`);
   if (blocked.length) {
     console.log('blocked reasons:');

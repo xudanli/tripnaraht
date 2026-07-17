@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "pilot_iceland_blue_ice_10_ice_day_shorten_overpacked",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-ice-10",
+  "environment": "staging-test",
+  "destination": "IS",
+  "intendedOperation": "SHORTEN",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "synthetic",
+  "deidentified": true,
+  "eligibility": "pending"
+}

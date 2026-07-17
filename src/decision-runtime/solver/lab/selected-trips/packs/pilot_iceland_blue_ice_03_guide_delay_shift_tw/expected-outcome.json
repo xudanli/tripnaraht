@@ -1,0 +1,11 @@
+{
+  "schemaId": "tripnara.selected_trip.expected_outcome@v1",
+  "tripId": "pilot_iceland_blue_ice_03_guide_delay_shift_tw",
+  "expectation": "accept",
+  "maxChangedActivities": 4,
+  "mustPreserveBooked": true,
+  "gateway": "PASS",
+  "notes": [
+    "TODO: human review before RA-01B"
+  ]
+}

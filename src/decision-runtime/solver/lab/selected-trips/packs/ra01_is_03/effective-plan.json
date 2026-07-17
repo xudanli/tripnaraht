@@ -1,0 +1,41 @@
+{
+  "schemaId": "tripnara.selected_trip.effective_plan@v1",
+  "tripId": "ra01_is_03",
+  "planVersionId": "plan_pilot_is_03_v1",
+  "days": [
+    {
+      "dayId": "ra01_is_03_pilot_is_03_day2",
+      "date": "2026-08-10",
+      "activities": [
+        {
+          "activityId": "ra01_is_03_pilot_is_03_start",
+          "poiId": "poi_ra01_is_03_pilot_is_03_start",
+          "dayId": "ra01_is_03_pilot_is_03_day2",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 540,
+            "endMin": 600
+          },
+          "lat": 64.1466,
+          "lng": -21.9426
+        },
+        {
+          "activityId": "ra01_is_03_coastal_walk",
+          "poiId": "poi_ra01_is_03_coastal_walk",
+          "dayId": "ra01_is_03_pilot_is_03_day2",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 90,
+          "timeWindow": {
+            "startMin": 630,
+            "endMin": 720
+          },
+          "lat": 63.6156,
+          "lng": -19.991
+        }
+      ]
+    }
+  ]
+}

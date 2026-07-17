@@ -114,6 +114,16 @@ export class PlanningOrchestratorFacadeService {
             payload,
             input.topLevelCandidateIds,
           ),
+          dayIndex:
+            typeof payload.dayIndex === 'number' ? payload.dayIndex : undefined,
+          options:
+            payload.options && typeof payload.options === 'object'
+              ? (payload.options as {
+                  respectNoNightDrive?: boolean;
+                  maxDailyDriveMinutes?: number;
+                  preferWeekendBuffer?: boolean;
+                })
+              : undefined,
         });
         break;
       case 'FILL_GAP':
@@ -205,6 +215,8 @@ export class PlanningOrchestratorFacadeService {
     userId: string;
     contextVersion?: number;
     force?: boolean;
+    enabledItemIds?: string[];
+    comment?: string;
   }): Promise<PlanProposalApplyResult> {
     const proposal = this.store.require(input.proposalId);
     const snapshot = await this.context.snapshot(proposal.tripId);
@@ -215,13 +227,23 @@ export class PlanningOrchestratorFacadeService {
     ) {
       this.store.updateStatus(proposal.proposalId, 'STALE');
       this.setPhase(proposal.tripId, 'CONTEXT_STALE', proposal.proposalId);
-      throw new ConflictException('行程上下文已变化，请重新生成草案');
+      throw new ConflictException({
+        code: 'CONTEXT_VERSION_CONFLICT',
+        errorCode: 'CONTEXT_VERSION_CONFLICT',
+        message: '行程上下文已变化，请重新生成草案',
+        currentContextVersion: snapshot.contextVersion,
+      });
     }
 
     if (this.context.isStale(proposal.contextVersion, snapshot)) {
       this.store.updateStatus(proposal.proposalId, 'STALE');
       this.setPhase(proposal.tripId, 'CONTEXT_STALE', proposal.proposalId);
-      throw new ConflictException('草案已过期，请重新生成');
+      throw new ConflictException({
+        code: 'CONTEXT_VERSION_CONFLICT',
+        errorCode: 'CONTEXT_VERSION_CONFLICT',
+        message: '草案已过期，请重新生成',
+        currentContextVersion: snapshot.contextVersion,
+      });
     }
 
     if (proposal.changes.length === 0) {
@@ -236,13 +258,17 @@ export class PlanningOrchestratorFacadeService {
         proposal,
         userId: input.userId,
         force: input.force,
+        enabledItemIds: input.enabledItemIds,
+        comment: input.comment,
       });
       this.store.updateStatus(proposal.proposalId, 'APPLIED');
       this.setPhase(proposal.tripId, 'COMPLETED');
+      const nextSnapshot = await this.context.snapshot(proposal.tripId);
       result.orchestrationState = {
         ...result.orchestrationState,
-        contextVersion: snapshot.contextVersion,
-        activeProposalId: proposal.proposalId,
+        phase: 'COMPLETED',
+        contextVersion: nextSnapshot.contextVersion,
+        activeProposalId: undefined,
       };
       return result;
     } catch (error) {

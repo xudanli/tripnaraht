@@ -1,0 +1,40 @@
+{
+  "schemaId": "tripnara.selected_trip.effective_plan@v1",
+  "tripId": "ra01_is_06",
+  "planVersionId": "plan_pilot_is_06_v1_tep_REPAIR-SDR101-D1-activity_stop_6",
+  "days": [
+    {
+      "dayId": "ra01_is_06_pilot_is_06_day1",
+      "date": "2026-08-05",
+      "activities": [
+        {
+          "activityId": "ra01_is_06_pilot_is_06_start",
+          "poiId": "poi_ra01_is_06_pilot_is_06_start",
+          "dayId": "ra01_is_06_pilot_is_06_day1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 30,
+          "timeWindow": {
+            "startMin": 540,
+            "endMin": 570
+          },
+          "lat": 64.1466,
+          "lng": -21.9426
+        },
+        {
+          "activityId": "ra01_is_06_pilot_is_06_day1_anchor_end",
+          "poiId": "ra01_is_06_pilot_is_06_day1_poi_end",
+          "dayId": "ra01_is_06_pilot_is_06_day1",
+          "isBooked": false,
+          "serviceDurationMin": 45,
+          "timeWindow": {
+            "startMin": 720,
+            "endMin": 780
+          },
+          "lat": 63.5321,
+          "lng": -19.511
+        }
+      ]
+    }
+  ]
+}

@@ -26,6 +26,7 @@ import {
 } from '../utils/timeline-overview.util';
 import { buildTimelinePlanObjectsSummary } from '../utils/timeline-plan-objects.util';
 import type { PlanObjectProjectionService } from '../../decision-runtime/plan-objects/services/plan-object-projection.service';
+import { OverallTripReadinessService } from '../overall-readiness/services/overall-trip-readiness.service';
 
 const MAX_TASKS = 10;
 const MAX_REMINDERS = 5;
@@ -59,6 +60,7 @@ export class TimelineOverviewService {
     @Optional() private readonly tripFiles?: TripFileService,
     @Optional() private readonly planningConflicts?: PlanningConflictsService,
     @Optional() private readonly planObjectProjection?: PlanObjectProjectionService,
+    @Optional() private readonly overallReadiness?: OverallTripReadinessService,
   ) {}
 
   async getTimelineOverview(
@@ -186,6 +188,16 @@ export class TimelineOverviewService {
       todayReminders,
       generatedAt: new Date().toISOString(),
     };
+
+    if (include.has('readiness') && this.overallReadiness) {
+      try {
+        response.overallReadiness = await this.overallReadiness.getCard(tripId, userId);
+      } catch (err) {
+        this.logger.warn(
+          `overall readiness card failed trip=${tripId}: ${(err as Error).message}`,
+        );
+      }
+    }
 
     if (include.has('health')) {
       response.health = buildHealthSnapshot(

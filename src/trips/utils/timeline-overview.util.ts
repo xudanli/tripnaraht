@@ -4,7 +4,7 @@ import type { TripMetricsResponseDto } from '../dto/trip-metrics.dto';
 import type { TripHealth } from '../../skills/detail/shared/detail-state.types';
 
 export function parseTimelineOverviewInclude(raw?: string): Set<string> {
-  const defaults = ['stats', 'pipeline', 'tasks', 'reminders'];
+  const defaults = ['stats', 'pipeline', 'tasks', 'reminders', 'readiness'];
   if (!raw?.trim()) return new Set(defaults);
   const out = new Set<string>();
   for (const part of raw.split(',')) {

@@ -323,6 +323,8 @@ export interface DecisionOption {
   predictedImpact?: SemanticImpactDeclaration;
   executable: boolean;
   requiresConfirmation: boolean;
+  /** When executable=false — user-facing reason (Unified action.blockedReason) */
+  blockedReason?: string;
   authority?: DecisionAuthority;
   /** Original repair/alternative ref for traceability */
   sourceRefId?: string;

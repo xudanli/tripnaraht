@@ -18,8 +18,12 @@ import { ENFORCEMENT_ALLOWED_ACTIONS } from './decision-queue-admission.util';
 import type { ConstraintEnforcement } from '../../../trips/decision-semantics/types/decision-semantics.types';
 import { normalizeDecisionOptionSource } from './decision-option-source.util';
 
-export function inferWriteChain(authority: 'CANONICAL' | 'LEGACY'): DecisionWriteChain {
-  return authority === 'CANONICAL' ? 'EVALUATE_AUTHORIZE_EXECUTE' : 'APPLY_AND_POLL';
+export function inferWriteChain(
+  authority: 'CANONICAL' | 'LEGACY' | 'DECISION_CASE',
+): DecisionWriteChain {
+  if (authority === 'CANONICAL') return 'EVALUATE_AUTHORIZE_EXECUTE';
+  if (authority === 'DECISION_CASE') return 'CONSTRAINT_WRITEBACK';
+  return 'APPLY_AND_POLL';
 }
 
 export function projectDecisionOptionToAction(
@@ -28,7 +32,7 @@ export function projectDecisionOptionToAction(
     tripId: string;
     problemId: string;
     enforcement: ConstraintEnforcement;
-    authority: 'CANONICAL' | 'LEGACY';
+    authority: 'CANONICAL' | 'LEGACY' | 'DECISION_CASE';
   },
 ): DecisionAction {
   const allowedTypes = ENFORCEMENT_ALLOWED_ACTIONS[ctx.enforcement] ?? [];
@@ -47,7 +51,7 @@ export function projectDecisionOptionToAction(
     blockedReason: !typeAllowed
       ? `${ctx.enforcement} 不允许 ${option.type}`
       : option.executable === false
-        ? '当前方案不可执行'
+        ? option.blockedReason ?? '当前方案不可执行'
         : undefined,
     navigationTarget: buildNavigationTarget(option, ctx),
     ...(option.executionSlipPreview ? { executionSlipPreview: option.executionSlipPreview } : {}),
@@ -60,7 +64,7 @@ export function projectDecisionOptionsToActions(
     tripId: string;
     problemId: string;
     enforcement: ConstraintEnforcement;
-    authority: 'CANONICAL' | 'LEGACY';
+    authority: 'CANONICAL' | 'LEGACY' | 'DECISION_CASE';
   },
 ): DecisionAction[] {
   return options.map((opt) => projectDecisionOptionToAction(opt, ctx));
@@ -83,7 +87,7 @@ export function buildActionabilityWithWriteChain(input: {
   enforcement: ConstraintEnforcement;
   requiresAction: boolean;
   allowedActions: DecisionOptionType[];
-  authority: 'CANONICAL' | 'LEGACY';
+  authority: 'CANONICAL' | 'LEGACY' | 'DECISION_CASE';
 }): UnifiedDecisionProblemActionability & { writeChain: DecisionWriteChain } {
   return {
     requiresAction: input.requiresAction,
@@ -163,7 +167,11 @@ function resolveActionExternalUrl(option: DecisionOption): string | undefined {
 
 function buildNavigationTarget(
   option: DecisionOption,
-  ctx: { tripId: string; problemId: string; authority: 'CANONICAL' | 'LEGACY' },
+  ctx: {
+    tripId: string;
+    problemId: string;
+    authority: 'CANONICAL' | 'LEGACY' | 'DECISION_CASE';
+  },
 ): DecisionAction['navigationTarget'] {
   const externalUrl = resolveActionExternalUrl(option);
   const withExternalUrl = (
@@ -171,7 +179,7 @@ function buildNavigationTarget(
   ): NonNullable<DecisionAction['navigationTarget']> =>
     externalUrl ? { ...target, params: { ...target.params, externalUrl } } : target;
 
-  if (ctx.authority === 'CANONICAL') {
+  if (ctx.authority === 'CANONICAL' || ctx.authority === 'DECISION_CASE') {
     return withExternalUrl({
       command: 'OPEN_DECISION_SPACE',
       params: {

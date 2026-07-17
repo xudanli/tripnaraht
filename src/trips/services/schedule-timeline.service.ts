@@ -174,12 +174,34 @@ export class ScheduleTimelineService {
       (metricsBundle?.days ?? []).map((d) => [d.date, d]),
     );
 
+    const meta = tripRow.metadata as Record<string, unknown> | null;
+    const dayThemes =
+      meta?.dayThemes && typeof meta.dayThemes === 'object' && !Array.isArray(meta.dayThemes)
+        ? (meta.dayThemes as Record<string, unknown>)
+        : {};
+    const dayLabels =
+      meta?.dayLabels && typeof meta.dayLabels === 'object' && !Array.isArray(meta.dayLabels)
+        ? (meta.dayLabels as Record<string, unknown>)
+        : {};
+
+    const readThemeMap = (map: Record<string, unknown>, dayNumber1Based: number): string | null => {
+      const raw = map[String(dayNumber1Based)] ?? map[dayNumber1Based as unknown as string];
+      return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+    };
+
     const dayPayloads = await Promise.all(
       days.map(async (day) => {
+        const dayNumber1Based = day.dayIndex + 1;
+        const theme = readThemeMap(dayThemes, dayNumber1Based);
+        const label = readThemeMap(dayLabels, dayNumber1Based);
         const payload: ScheduleTimelineResponseDto['days'][number] = {
           dayId: day.dayId,
           date: day.date,
           dayIndex: day.dayIndex,
+          theme,
+          title: theme,
+          label,
+          locationLabel: label,
         };
 
         if (include.has('items')) {
@@ -216,7 +238,6 @@ export class ScheduleTimelineService {
       }),
     );
 
-    const meta = tripRow.metadata as Record<string, unknown> | null;
     const pipelineStatus =
       typeof meta?.pipelineStatus === 'string'
         ? meta.pipelineStatus

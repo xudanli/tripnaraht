@@ -55,9 +55,29 @@ async function main(): Promise<number> {
     PLANNING_SIGNOFF_ROOT,
     '.lab-authority-token.env',
   );
+  const stagingTokenFile = join(
+    PLANNING_SIGNOFF_ROOT,
+    '.staging-authority-token.env',
+  );
   const labTokenPresent =
     existsSync(labTokenFile) &&
     readFileSync(labTokenFile, 'utf8').includes('OR_TOOLS_AUTHORITY_TOKEN=');
+  const stagingTokenEnv = existsSync(stagingTokenFile)
+    ? readFileSync(stagingTokenFile, 'utf8')
+    : '';
+  const stagingTokenPresent =
+    stagingTokenEnv.includes('OR_TOOLS_AUTHORITY_TOKEN=') &&
+    /OR_TOOLS_AUTHORITY_ENVIRONMENT=staging/.test(stagingTokenEnv);
+  // Prefer explicit process env; fall back to sealed staging token file for board status
+  if (
+    !process.env.OR_TOOLS_AUTHORITY_TOKEN?.trim() &&
+    stagingTokenPresent
+  ) {
+    for (const line of stagingTokenEnv.split('\n')) {
+      const m = line.match(/^(OR_TOOLS_AUTHORITY_(?:TOKEN|TOKEN_SECRET|ENVIRONMENT))=(.*)$/);
+      if (m) process.env[m[1]] = m[2];
+    }
+  }
   const wl = readJson<{ tripIds?: string[] }>(
     join(PLANNING_SIGNOFF_ROOT, 'selected-trips.whitelist.json'),
   );
@@ -65,10 +85,20 @@ async function main(): Promise<number> {
     (id) => !id.includes('PLACEHOLDER'),
   );
 
+  const REAL_SOURCES = new Set(['staging_export', 'production_export']);
   const ids = listPackTripIds();
   let eligible = 0;
+  let realEligible = 0;
+  let syntheticEligible = 0;
   for (const id of ids) {
-    if (validateSelectedTripPack(join(PACKS_ROOT, id)).eligible) eligible += 1;
+    const report = validateSelectedTripPack(join(PACKS_ROOT, id));
+    if (!report.eligible) continue;
+    eligible += 1;
+    if (report.source && REAL_SOURCES.has(report.source)) {
+      realEligible += 1;
+    } else {
+      syntheticEligible += 1;
+    }
   }
 
   const accountabilityFilled = Boolean(
@@ -133,9 +163,9 @@ async function main(): Promise<number> {
     },
     {
       id: 'dataset',
-      label: 'Eligible trip packs (≥10)',
-      status: eligible >= 10 ? 'GO' : 'WAIT',
-      detail: `${eligible} eligible / ${ids.length} packs`,
+      label: 'Real eligible trip packs (≥10)',
+      status: realEligible >= 10 ? 'GO' : 'WAIT',
+      detail: `${realEligible} real / ${syntheticEligible} synthetic / ${eligible} eligible`,
     },
     {
       id: 'whitelist',

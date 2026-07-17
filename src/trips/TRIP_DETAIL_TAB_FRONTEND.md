@@ -51,7 +51,18 @@ overview.stats.paceScore;         // 节奏
 overview.stats.conflictCount;
 overview.tasks;                   // 侧栏待办
 overview.todayReminders;
+// 主卡片：整体准备度（替代 planning.progressPercent）
+overview.overallReadiness?.headline;
+overview.overallReadiness?.displayLabelZh;
+overview.overallReadiness?.score;
+overview.overallReadiness?.topPriority?.title;
+overview.overallReadiness?.potentialScoreLift;
+// 准备报告
+// import { tripOverallReadinessApi } from '@/api/trip-detail-tab-client'
+// await tripOverallReadinessApi.getReport(tripId)
+// 兼容内部 pipeline 进度（勿作主分数）
 overview.planning.progressPercent;
+
 ```
 
 ### 成员 Tab

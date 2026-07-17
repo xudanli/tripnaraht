@@ -98,6 +98,8 @@ export function mapPlaceToRecommendationItem(
     detourMethod?: string;
     recommendationReasons?: string[];
     score?: number;
+    alreadyInItinerary?: boolean;
+    alreadyInDay?: boolean;
   },
 ): AttractionExploreRecommendationItem {
   const metadata = readMetadata(place);
@@ -126,6 +128,8 @@ export function mapPlaceToRecommendationItem(
     meta,
     recommendationReasons: extras?.recommendationReasons,
     score: extras?.score,
+    alreadyInItinerary: extras?.alreadyInItinerary === true ? true : undefined,
+    alreadyInDay: extras?.alreadyInDay === true ? true : undefined,
   };
 }
 

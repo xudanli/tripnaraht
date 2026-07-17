@@ -10,6 +10,10 @@ export interface ActivityExecutionWindow {
 
 export interface ActivityExecutionContext {
   plannedDepartAt?: string;
+  /** Planned arrival at this activity (preferred reference for road opening-window gate) */
+  plannedArrivalAt?: string;
+  /** Live observation timestamp when traveling */
+  observedAt?: string;
   remainingStayMinutes?: number;
   executionWindow?: ActivityExecutionWindow;
   poiKey?: string;

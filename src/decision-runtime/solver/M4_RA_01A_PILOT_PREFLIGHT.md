@@ -10,7 +10,7 @@
 | Engineering | READY |
 | Pilot Preflight | READY |
 | Product Policy | READY_FOR_APPROVAL |
-| Dataset | WAIT（真实 10 条） |
+| Dataset | WAIT（真实 10 条；synthetic 仅密封机制） |
 | Release | BLOCKED |
 
 ## 本包交付
@@ -51,3 +51,5 @@ npm run lab:pilot-preflight-status
 ## RA-01B（数据到位后）
 
 导入 10 条 → 复核 expected-outcome → whitelist → 产品 APPROVED → mint token → 运行态 Rollback Drill → `selected_trips`。
+
+**测试阶段无生产流量时怎么造数：** [DATA_INTAKE_REQUIREMENTS.md](./lab/selected-trips/DATA_INTAKE_REQUIREMENTS.md)

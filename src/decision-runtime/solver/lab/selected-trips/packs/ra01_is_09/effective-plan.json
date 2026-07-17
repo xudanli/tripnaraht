@@ -1,0 +1,41 @@
+{
+  "schemaId": "tripnara.selected_trip.effective_plan@v1",
+  "tripId": "ra01_is_09",
+  "planVersionId": "plan_pilot_is_09_v1",
+  "days": [
+    {
+      "dayId": "ra01_is_09_pilot_is_09_day1",
+      "date": "2026-08-04",
+      "activities": [
+        {
+          "activityId": "ra01_is_09_pilot_is_09_start",
+          "poiId": "poi_ra01_is_09_pilot_is_09_start",
+          "dayId": "ra01_is_09_pilot_is_09_day1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 540,
+            "endMin": 600
+          },
+          "lat": 64.1466,
+          "lng": -21.9426
+        },
+        {
+          "activityId": "ra01_is_09_lagoon_booking",
+          "poiId": "poi_ra01_is_09_lagoon_booking",
+          "dayId": "ra01_is_09_pilot_is_09_day1",
+          "isBooked": true,
+          "canRemove": false,
+          "serviceDurationMin": 90,
+          "timeWindow": {
+            "startMin": 0,
+            "endMin": 90
+          },
+          "lat": 63.6156,
+          "lng": -19.991
+        }
+      ]
+    }
+  ]
+}

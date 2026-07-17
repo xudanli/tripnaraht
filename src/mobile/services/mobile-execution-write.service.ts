@@ -25,6 +25,7 @@ import {
   formatTimeHHmm,
   resolveDayNumber,
 } from '../utils/mobile-execution.util';
+import { resolvePatchDateTime } from '../utils/activity-patch-time.util';
 import type { MobileExecutionItemStatus, MobileIntercomMessageResultDto, MobileNavigationSessionDto } from '../dto/mobile-execution.types';
 import {
   EMERGENCY_SOS_TYPE_LABELS,
@@ -49,8 +50,18 @@ import { MobileEmergencyContactsService } from './mobile-emergency-contacts.serv
 import { MobilePushNotificationService } from './mobile-push-notification.service';
 import type { NotifyTripPushInput } from './mobile-push-notification.service';
 
+interface MobileActivityOverride {
+  title?: string;
+  notes?: string;
+  plannedDepartAt?: string;
+  patchedAt?: string;
+  patchedBy?: string;
+}
+
 interface MobileExecutionMetadata {
   idempotencyKeys?: Record<string, string>;
+  /** 幂等重放缓存：key → JSON 序列化的写结果 */
+  idempotencyResults?: Record<string, string>;
   events?: MobileStoredEvent[];
   notifications?: MobileStoredNotification[];
   navigationSessions?: Record<string, MobileNavigationSessionDto>;
@@ -72,6 +83,8 @@ interface MobileExecutionMetadata {
       completedBy: string;
     }
   >;
+  /** 单项调整覆盖（title / notes / plannedDepartAt） */
+  activityOverrides?: Record<string, MobileActivityOverride>;
   memberPresence?: Record<
     string,
     {
@@ -426,6 +439,204 @@ export class MobileExecutionWriteService {
     });
     await this.emitIntercomMessageWs(tripId, userId, clientId, result.contextVersion);
     return result;
+  }
+
+  /**
+   * P0 — 单项调整行程（真正写 Active Plan）
+   * PATCH /api/mobile/trips/:tripId/activities/:activityId
+   */
+  async patchActivity(
+    tripId: string,
+    userId: string,
+    activityId: string,
+    body: {
+      startTime?: string;
+      endTime?: string;
+      plannedDepartAt?: string;
+      title?: string;
+      notes?: string;
+      cascadeMode?: 'auto' | 'none';
+    },
+    opts: { idempotencyKey?: string; ifMatch?: number },
+  ) {
+    this.assertWriteHeaders(opts);
+    await this.assertWrite(tripId, userId, opts.ifMatch);
+
+    const mobile = await this.loadMobileMeta(tripId);
+    const idemKey = opts.idempotencyKey!.trim();
+    const cached = mobile.idempotencyResults?.[idemKey];
+    if (cached) {
+      try {
+        return JSON.parse(cached) as {
+          contextVersion: number;
+          planVersion?: number;
+          activityId: string;
+          startTime: string | null;
+          endTime: string | null;
+          title: string;
+          notes: string;
+          plannedDepartAt: string | null;
+          replay: boolean;
+          patched: true;
+        };
+      } catch {
+        // fall through and re-apply
+      }
+    }
+
+    const item = await this.prisma.itineraryItem.findFirst({
+      where: { id: activityId, TripDay: { tripId } },
+      include: { TripDay: true, Place: true },
+    });
+    if (!item) {
+      throw new NotFoundException(`活动 ${activityId} 不存在或不属于该行程`);
+    }
+
+    const hasTimePatch =
+      body.startTime != null || body.endTime != null || body.plannedDepartAt != null;
+    const hasTextPatch = body.title != null || body.notes != null;
+    if (!hasTimePatch && !hasTextPatch) {
+      throw new BadRequestException(
+        '至少提供 startTime / endTime / plannedDepartAt / title / notes 之一',
+      );
+    }
+
+    const dayDate = item.TripDay.date;
+    let nextStart = item.startTime;
+    let nextEnd = item.endTime;
+
+    if (body.startTime != null) {
+      nextStart = resolvePatchDateTime(dayDate, body.startTime, item.startTime);
+    }
+    if (body.endTime != null) {
+      nextEnd = resolvePatchDateTime(dayDate, body.endTime, item.endTime);
+    } else if (body.startTime != null && item.startTime && item.endTime && nextStart) {
+      const durationMs = item.endTime.getTime() - item.startTime.getTime();
+      if (durationMs > 0) {
+        nextEnd = new Date(nextStart.getTime() + durationMs);
+      }
+    }
+
+    if (nextStart && nextEnd && nextStart >= nextEnd) {
+      throw new BadRequestException('结束时间必须晚于开始时间');
+    }
+
+    const notePatch =
+      body.notes !== undefined
+        ? body.notes
+        : body.title !== undefined && !item.Place
+          ? body.title
+          : undefined;
+
+    if (body.startTime != null || body.endTime != null || notePatch !== undefined) {
+      await this.prisma.itineraryItem.update({
+        where: { id: activityId },
+        data: {
+          ...(body.startTime != null || body.endTime != null
+            ? { startTime: nextStart, endTime: nextEnd }
+            : {}),
+          ...(notePatch !== undefined ? { note: notePatch } : {}),
+        },
+      });
+    }
+
+    const plannedDepartAtIso =
+      body.plannedDepartAt != null
+        ? resolvePatchDateTime(dayDate, body.plannedDepartAt, item.endTime ?? item.startTime)?.toISOString() ??
+          null
+        : undefined;
+
+    const override: MobileActivityOverride = {
+      ...(mobile.activityOverrides?.[activityId] ?? {}),
+      patchedAt: new Date().toISOString(),
+      patchedBy: userId,
+    };
+    if (body.title !== undefined) override.title = body.title;
+    if (body.notes !== undefined) override.notes = body.notes;
+    if (plannedDepartAtIso !== undefined) {
+      override.plannedDepartAt = plannedDepartAtIso ?? undefined;
+    }
+
+    mobile.activityOverrides = {
+      ...(mobile.activityOverrides ?? {}),
+      [activityId]: override,
+    };
+    mobile.idempotencyKeys = {
+      ...(mobile.idempotencyKeys ?? {}),
+      [idemKey]: activityId,
+    };
+
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) throw new NotFoundException(`行程 ${tripId} 不存在`);
+    const metadata = (trip.metadata as Record<string, unknown>) ?? {};
+    const rfcBlock =
+      (metadata.rfc001ExecutionActivityContext as {
+        byActivityId?: Record<string, { plannedDepartAt?: string }>;
+      }) ?? {};
+    const byActivityId = { ...(rfcBlock.byActivityId ?? {}) };
+    if (plannedDepartAtIso) {
+      byActivityId[activityId] = {
+        ...(byActivityId[activityId] ?? {}),
+        plannedDepartAt: plannedDepartAtIso,
+      };
+    }
+
+    const bumpedAt = new Date();
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        updatedAt: bumpedAt,
+        metadata: toInputJsonValue({
+          ...metadata,
+          mobileExecution: mobile,
+          rfc001ExecutionActivityContext: { byActivityId },
+        }),
+      },
+    });
+
+    const displayTitle =
+      override.title ??
+      item.Place?.nameCN ??
+      item.Place?.nameEN ??
+      (typeof notePatch === 'string' ? notePatch : item.note) ??
+      '行程项';
+
+    const resultPayload = {
+      activityId,
+      startTime: nextStart?.toISOString() ?? null,
+      endTime: nextEnd?.toISOString() ?? null,
+      title: displayTitle,
+      notes: override.notes ?? notePatch ?? item.note ?? '',
+      plannedDepartAt:
+        override.plannedDepartAt ??
+        plannedDepartAtIso ??
+        nextStart?.toISOString() ??
+        null,
+      replay: false,
+      patched: true as const,
+    };
+
+    const written = await this.writeResult(tripId, resultPayload);
+
+    // 幂等缓存写入时固定 updatedAt，避免 contextVersion 相对响应漂移
+    mobile.idempotencyResults = {
+      ...(mobile.idempotencyResults ?? {}),
+      [idemKey]: JSON.stringify({ ...written, replay: true }),
+    };
+    const after = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    const afterMeta = (after?.metadata as Record<string, unknown>) ?? {};
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        updatedAt: bumpedAt,
+        metadata: toInputJsonValue({
+          ...afterMeta,
+          mobileExecution: mobile,
+        }),
+      },
+    });
+
+    return written;
   }
 
   async completeActivity(
@@ -945,6 +1156,21 @@ export class MobileExecutionWriteService {
     };
   }
 
+  private assertWriteHeaders(opts: { ifMatch?: number; idempotencyKey?: string }) {
+    if (opts.ifMatch == null || !Number.isFinite(opts.ifMatch)) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '写操作需要 If-Match: <contextVersion>',
+      });
+    }
+    if (!opts.idempotencyKey?.trim()) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '写操作需要 Idempotency-Key',
+      });
+    }
+  }
+
   private async assertWrite(tripId: string, userId: string, ifMatch?: number) {
     await this.access.assertTripMember(tripId, userId);
     if (ifMatch == null) return;
@@ -1086,6 +1312,7 @@ function mapItemStatusToMilestone(
 function inferChangedSections(payload: Record<string, unknown>): TripContextChangedSection[] {
   if ('event' in payload) return ['execution', 'events'];
   if ('notification' in payload) return ['execution', 'notifications', 'team', 'intercom'];
+  if ('activityId' in payload && 'patched' in payload) return ['plan', 'itinerary', 'execution'];
   if ('activityId' in payload && 'completedAt' in payload) return ['execution', 'itinerary'];
   if ('sos' in payload) return ['execution', 'risks', 'team', 'notifications'];
   if ('sosResolved' in payload || 'activeSos' in payload) {

@@ -51,6 +51,8 @@ import { LegacyV15EngineAdapter } from '../engines/legacy-v15-engine.adapter';
 import { DecisionTriggerGatewayService } from '../../trigger/decision-trigger.gateway.service';
 import { isDecisionTriggerGatewayEnabled } from '../../trigger/decision-trigger.config';
 import { MonitoringReplanningContextService } from '../../trigger/monitoring-replanning-context.service';
+import { DecisionCaseService } from '../../decision-cases/services/decision-case.service';
+import type { DecisionOpportunityListView } from '../../decision-cases/contracts/decision-case.types';
 
 @Injectable()
 export class DecisionEngineGatewayService {
@@ -90,6 +92,7 @@ export class DecisionEngineGatewayService {
     private readonly collaborativeSubTasks: DecisionCollaborativeSubTaskService,
     @Optional() private readonly triggerGateway?: DecisionTriggerGatewayService,
     @Optional() private readonly monitoringReplanning?: MonitoringReplanningContextService,
+    @Optional() private readonly decisionCases?: DecisionCaseService,
   ) {}
 
   assertGatewayEnabled(): void {
@@ -152,6 +155,33 @@ export class DecisionEngineGatewayService {
       includeDebug: opts?.includeDebug,
       queueOnly: true,
     });
+  }
+
+  async listDecisionOpportunities(tripId: string): Promise<DecisionOpportunityListView> {
+    this.assertGatewayEnabled();
+    if (!this.decisionCases) {
+      return {
+        schemaId: 'tripnara.decision_opportunities@v1',
+        tripId,
+        generatedAt: new Date().toISOString(),
+        meta: { total: 0, eligibleCount: 0 },
+        items: [],
+      };
+    }
+    return this.decisionCases.listOpportunities(tripId);
+  }
+
+  async publishDecisionOpportunity(tripId: string, opportunityId: string) {
+    this.assertGatewayEnabled();
+    if (!this.decisionCases) {
+      throw new BadRequestException('DECISION_CASE_SERVICE_UNAVAILABLE');
+    }
+    const published = await this.decisionCases.publishOpportunityAsCase(tripId, opportunityId);
+    if (!published) {
+      throw new BadRequestException('OPPORTUNITY_NOT_ELIGIBLE_OR_BELOW_MATERIALITY');
+    }
+    this.readModel.invalidateCache(tripId);
+    return published;
   }
 
   /**
@@ -314,6 +344,10 @@ export class DecisionEngineGatewayService {
     options?: { userId?: string; focusConflictId?: string },
   ): Promise<DecisionProblemNegotiationHints | null> {
     if (!options?.userId) {
+      return null;
+    }
+    // DecisionCase 无 legacy/canonical raw；协商层跳过，避免详情 500
+    if (problemId.startsWith('dc_')) {
       return null;
     }
     try {

@@ -127,14 +127,60 @@ export function isTravelOrTransportProblem(input: {
   semanticKey?: string;
   type?: string;
   dimension?: string;
+  problemId?: string;
 }): boolean {
+  return shouldSeedIcelandWindTravelCausal(input);
+}
+
+/**
+ * 冰岛「强风 → P90 → 预约违约」因果种子仅挂行程缓冲 / 天气类问题。
+ * DecisionCase 车型/保险等虽可能是 TRANSPORT 域，但不是该因果链。
+ */
+export function shouldSeedIcelandWindTravelCausal(input: {
+  semanticKey?: string;
+  type?: string;
+  dimension?: string;
+  problemId?: string;
+  diagnosticMessage?: string;
+}): boolean {
+  const pid = (input.problemId ?? '').toLowerCase();
+  // dc_* DecisionCase 一律不挂强风行程缓冲链（车型/保险/环岛/冰川等）
+  if (pid.startsWith('dc_')) {
+    return false;
+  }
+
   const hay = `${input.semanticKey ?? ''} ${input.type ?? ''} ${input.dimension ?? ''}`.toLowerCase();
-  return (
-    hay.includes('travel') ||
-    hay.includes('transport') ||
+
+  if (
     hay.includes('buffer') ||
-    hay.includes('same_day')
-  );
+    hay.includes('same_day') ||
+    hay.includes('strong_wind') ||
+    hay.includes('weather') ||
+    hay.includes('travel_time') ||
+    hay.includes('appointment') ||
+    hay.includes('wind_gust') ||
+    hay.includes('environment_event')
+  ) {
+    return true;
+  }
+
+  // 显式 travel / transport_buffer；裸 dimension=TRANSPORT 不够（会误伤车型选择）
+  if (/\btransport[_.\s-]?buffer\b/.test(hay)) return true;
+  if (hay.includes('travel') && !hay.includes('transport')) return true;
+
+  const msg = (input.diagnosticMessage ?? '').toLowerCase();
+  if (
+    (msg.includes('→') || msg.includes('->')) &&
+    (msg.includes('min') || msg.includes('分钟') || msg.includes('缓冲'))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function hasIcelandWindTravelFacts(facts: Array<{ factType: string }>): boolean {
+  return facts.some((f) => f.factType === 'WEATHER_WIND_GUST');
 }
 
 function parseDistanceKm(text: string): number | undefined {

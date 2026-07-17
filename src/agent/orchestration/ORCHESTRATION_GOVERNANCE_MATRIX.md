@@ -8,12 +8,16 @@
 
 ## 0. 状态机位置
 
+完整节点序（含中间节点 / 短路 / 确认点）见 **[ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md](./ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md)**（协议 v1.0.0）。
+
 ```
 INTAKE → RESEARCH → GATE_EVAL → … → PLAN_GEN → VERIFY ⇄ REPAIR → NARRATE → DONE
                          │                      │
                          │                      └─ plan-verify 子图（预算环）
                          └─ 硬门 + 三人格 + Readiness
 ```
+
+本文件专注 **GATE / VERIFY / REPAIR 治理预算与裁决语义**；主链协议负责冻结节点与确认点。
 
 ---
 

@@ -241,10 +241,18 @@ export class ResearchPipelineService implements IResearchExecutor {
         Object.keys(ctx.priorResearchData).length === 0 ||
         scopesToRecompute.length === 0)
     ) {
+      if (ctx.forbidScopedPartialDegradeToFull) {
+        const msg =
+          'scoped_partial missing prior/scopes under RETURN_TO_RESEARCH; refusing silent degrade to full';
+        this.logger.warn(`[ResearchPipeline] ${msg} requestId=${ctx.requestId}`);
+        throw new Error(msg);
+      }
       this.logger.warn(
         `[ResearchPipeline] scoped_partial 缺少 priorResearchData 或 scopes，回退为 full requestId=${ctx.requestId}`,
       );
       effectiveMode = 'full';
+      // 显式标记：调用方可写入 phase_execution_path（禁止静默）
+      (ctx as { __scopedPartialDegradedToFull?: boolean }).__scopedPartialDegradedToFull = true;
     }
 
     const isTransportOnly = effectiveMode === 'transport_only';

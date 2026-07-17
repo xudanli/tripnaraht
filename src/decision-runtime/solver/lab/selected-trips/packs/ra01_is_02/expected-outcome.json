@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.expected_outcome@v1",
+  "tripId": "ra01_is_02",
+  "expectation": "accept",
+  "maxChangedActivities": 4,
+  "mustPreserveBooked": true,
+  "gateway": "PASS",
+  "reviewedBy": "lab-staging-export",
+  "reviewedAt": "2026-07-16",
+  "notes": [
+    "Auto-reviewed staging export — product re-review before whitelist"
+  ]
+}

@@ -8,6 +8,10 @@ import {
   type PlanVerifyTransientLoopState,
 } from './plan-verify-loop-transient.util';
 import type { PlanVerifyLoopRunParams } from './plan-verify-loop.types';
+import {
+  extractVerifyIssueCodesFromState,
+  isFlawedDraftForbidden,
+} from '../flawed-draft-allow-matrix.constants';
 
 export interface PlanVerifyLoopRepairGuardHost {
   readonly logger: Logger;
@@ -28,6 +32,45 @@ export type RepairGuardParams = PlanVerifyLoopRunParams & {
   loop: PlanVerifyTransientLoopState;
 };
 
+function tryAllowFlawedDraftBypass(
+  host: PlanVerifyLoopRepairGuardHost,
+  params: RepairGuardParams,
+  reason: 'UTILITY_DECAY_BYPASSED' | 'REPAIR_BUDGET_EXCEEDED',
+  extraMeta: Record<string, unknown>,
+): boolean {
+  const { state, request, decisionState } = params;
+  if (request.options?.allow_flawed_draft_narrate !== true) {
+    return false;
+  }
+  const verifyCodes = [
+    ...extractVerifyIssueCodesFromState(state.metadata as Record<string, unknown>),
+    ...(decisionState?.verification?.issues?.map((i) => i.code).filter(Boolean) ?? []),
+  ];
+  const forbid = isFlawedDraftForbidden({
+    gateResult: state.gate_result,
+    verifyIssueCodes: verifyCodes,
+  });
+  if (forbid.forbidden) {
+    host.logger.warn(
+      `[PlanVerifyLoop] allow_flawed_draft_narrate blocked by allow-matrix hits=${forbid.hits
+        .map((h) => h.category)
+        .join(',')} reason=${reason}`,
+    );
+    (state.metadata as Record<string, unknown>).flawed_draft_forbid_hits = forbid.hits;
+    return false;
+  }
+  const now = new Date().toISOString();
+  state.metadata = {
+    ...(state.metadata ?? {}),
+    started_at: state.metadata?.started_at ?? now,
+    last_updated_at: now,
+    flawed_draft_narrate: true,
+    flawed_draft_reason: reason,
+    ...extraMeta,
+  };
+  return true;
+}
+
 /**
  * REPAIR 后效用递减守卫：连续 E[U] 下降达预算 → 澄清终端。
  */
@@ -35,7 +78,7 @@ export async function applyUtilityDecayAfterRepairIfNeeded(
   host: PlanVerifyLoopRepairGuardHost,
   params: RepairGuardParams,
 ): Promise<{ terminal: OrchestrationResult | null; loop: PlanVerifyTransientLoopState; decisionState: DecisionState | undefined }> {
-  const { state, context, startTime, euBefore, request } = params;
+  const { state, context, startTime, euBefore } = params;
   let decisionState = params.decisionState;
   let loop = params.loop;
 
@@ -67,16 +110,11 @@ export async function applyUtilityDecayAfterRepairIfNeeded(
     loop = consumeUtilityDecline(loop, decline);
     const { maxUtilityDeclines } = loop.config;
     if (maxUtilityDeclines > 0 && nextDeclines >= maxUtilityDeclines) {
-      if (request.options?.allow_flawed_draft_narrate === true) {
-        const now = new Date().toISOString();
-        state.metadata = {
-          ...(state.metadata ?? {}),
-          started_at: state.metadata?.started_at ?? now,
-          last_updated_at: now,
-          flawed_draft_narrate: true,
-          flawed_draft_reason: 'UTILITY_DECAY_BYPASSED',
+      if (
+        tryAllowFlawedDraftBypass(host, { ...params, decisionState }, 'UTILITY_DECAY_BYPASSED', {
           consecutive_utility_declines: nextDeclines,
-        };
+        })
+      ) {
         host.logger.log(
           `[PlanVerifyLoop] Utility decay budget exceeded (${nextDeclines}/${maxUtilityDeclines}) → allow_flawed_draft_narrate`,
         );
@@ -115,20 +153,15 @@ export function checkRepairCountExceededIfNeeded(
   host: PlanVerifyLoopRepairGuardHost,
   params: RepairGuardParams,
 ): OrchestrationResult | null {
-  const { state, context, startTime, decisionState, loop, request } = params;
+  const { state, context, startTime, decisionState, loop } = params;
   const repairCount = decisionState?.systemState?.repairCount ?? 0;
   const { maxRepairs } = loop.config;
   if (maxRepairs > 0 && repairCount >= maxRepairs) {
-    if (request.options?.allow_flawed_draft_narrate === true) {
-      const now = new Date().toISOString();
-      state.metadata = {
-        ...(state.metadata ?? {}),
-        started_at: state.metadata?.started_at ?? now,
-        last_updated_at: now,
-        flawed_draft_narrate: true,
-        flawed_draft_reason: 'REPAIR_BUDGET_EXCEEDED',
+    if (
+      tryAllowFlawedDraftBypass(host, params, 'REPAIR_BUDGET_EXCEEDED', {
         repair_count: repairCount,
-      };
+      })
+    ) {
       host.logger.log(
         `[PlanVerifyLoop] REPAIR budget exceeded (${repairCount}/${maxRepairs}) → allow_flawed_draft_narrate, continue to NARRATE`,
       );

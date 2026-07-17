@@ -103,6 +103,26 @@ export async function loadLightExecutionSignals(
         });
       }
     }
+
+    // GPS geofence / arrival fix (offline queue)
+    if (
+      op.operationType === 'gps_arrival' ||
+      op.operationType === 'gps_geofence_enter' ||
+      op.operationType === 'location_fix'
+    ) {
+      signals.push({
+        kind: 'user_arrival_click',
+        observedAt: at,
+        entityId: String(payload.poiId ?? payload.placeId ?? payload.entityId ?? ''),
+        value: JSON.stringify({
+          lat: payload.lat ?? payload.latitude,
+          lng: payload.lng ?? payload.longitude,
+          accuracyM: payload.accuracyM ?? payload.accuracy,
+          arrivalTime: payload.arrivalTime ?? at,
+        }),
+        rawSource: `gps:${op.operationType}`,
+      });
+    }
   }
 
   for (const item of items) {

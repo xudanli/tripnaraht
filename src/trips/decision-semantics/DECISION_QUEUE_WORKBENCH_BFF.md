@@ -13,7 +13,8 @@
 
 | 数据源 | 职责 |
 |--------|------|
-| `decision-problems` | **列表 SSOT** — 每一行 = 一个待处理决策问题 |
+| `decision-problems` | **列表 SSOT** — 每一行 = 一个待处理决策问题（含已 publish 的 DecisionCase） |
+| `decision-opportunities` | **机会 inbox** — 未过门槛；默认不进决策空间（见 [DECISION_CASE_BACKEND_HANDOFF](../../decision-runtime/decision-cases/DECISION_CASE_BACKEND_HANDOFF.md)） |
 | `planning-conflicts` | 文案 enrich（category / priority / message）与数量对齐验收 |
 | `planning-workbench-snapshot` | **草案级**决策簇标题（来自待确认 `PlanProposal`） |
 | `decision-center/overview` | 角标、headline、进度摘要 |

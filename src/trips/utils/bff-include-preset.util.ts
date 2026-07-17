@@ -4,10 +4,10 @@
 
 export type BffIncludePreset = 'shell' | 'full';
 
-const TIMELINE_SHELL = 'stats';
+const TIMELINE_SHELL = 'stats,readiness';
 /** Phase-2 tab body — no suggestions list (use stats.newSuggestionCount + lazy suggestions). */
-const TIMELINE_FULL = 'stats,pipeline,tasks,reminders';
-const TIMELINE_WITH_SUGGESTIONS = 'stats,pipeline,tasks,reminders,suggestions';
+const TIMELINE_FULL = 'stats,pipeline,tasks,reminders,readiness';
+const TIMELINE_WITH_SUGGESTIONS = 'stats,pipeline,tasks,reminders,readiness,suggestions';
 
 const COLLAB_SHELL = 'members,health';
 const COLLAB_FULL = 'members,tasks,domain,votes,profiling,wishes,health';

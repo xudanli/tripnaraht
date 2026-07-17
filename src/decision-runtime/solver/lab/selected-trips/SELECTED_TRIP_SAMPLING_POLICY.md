@@ -2,6 +2,8 @@
 
 在真实 tripId 到来前锁定选样标准，避免最后随便抓 10 条。
 
+> 测试阶段造数与交付清单见：[DATA_INTAKE_REQUIREMENTS.md](./DATA_INTAKE_REQUIREMENTS.md)
+
 ## 纳入条件
 
 - 冰岛行程（`destination = IS`）

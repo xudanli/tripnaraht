@@ -94,6 +94,41 @@ export class UnifiedDecisionController {
     }
   }
 
+  @Get('decision-opportunities')
+  @ApiOperation({
+    summary:
+      'Decision opportunity inbox (未过门槛候选；默认不进决策空间队列)',
+  })
+  async listOpportunities(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      await this.assertMember(tripId, user);
+      const data = await this.gateway.listDecisionOpportunities(tripId);
+      return successResponse(data);
+    } catch (e) {
+      return this.handleError(e);
+    }
+  }
+
+  @Post('decision-opportunities/:opportunityId/publish')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Upgrade opportunity → published DecisionCase（加入比较）' })
+  async publishOpportunity(
+    @Param('tripId') tripId: string,
+    @Param('opportunityId') opportunityId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      await this.assertMember(tripId, user);
+      const data = await this.gateway.publishDecisionOpportunity(tripId, opportunityId);
+      return successResponse(data);
+    } catch (e) {
+      return this.handleError(e);
+    }
+  }
+
   @Get('decision-problems/:problemId')
   @ApiOperation({ summary: 'RFC-002 Unified problem detail (routed by Gateway)' })
   async getProblem(

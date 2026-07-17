@@ -54,6 +54,27 @@ describe('causal-story-view.projector', () => {
     expect(abu.traceId).toBe(neutral.traceId);
   });
 
+  it('does not invent strong-wind Abu framing for DecisionCase vehicle traces', () => {
+    const vehicleTrace = {
+      ...trace,
+      facts: [],
+      effects: [],
+      problems: [
+        {
+          problemId: 'dc_vehicle_trip-1',
+          problemType: 'PREFERENCE_CONFLICT',
+          severity: 'WARNING' as const,
+          assessmentKey: '车型待确认。路线含碎石与高风暴露。',
+        },
+      ],
+      options: [],
+    };
+    const abu = projectCausalStoryView(vehicleTrace, 'abu');
+    expect(abu.headline).not.toMatch(/强风下不建议按原计划出发/);
+    expect(abu.headline).toMatch(/车型|安全提示/);
+    expect(abu.chain.every((n) => !n.description?.includes('P90'))).toBe(true);
+  });
+
   it('includes OUTCOME node when trace is CALIBRATED', () => {
     const calibrated = {
       ...trace,

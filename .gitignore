@@ -104,3 +104,5 @@ docs/
 
 # M4 lab authority token (never commit)
 **/planning-signoff/.lab-authority-token.env
+**/planning-signoff/.staging-authority-token.env
+**/planning-signoff/.staging-canary-enable.env
