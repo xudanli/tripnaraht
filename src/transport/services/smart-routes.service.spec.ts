@@ -62,6 +62,7 @@ describe('SmartRoutesService', () => {
     );
     expect(result).toHaveLength(1);
     expect(result[0].durationMinutes).toBe(95);
+    expect(result[0].routeProvider).toBe('MAPBOX');
   });
 
   it('returns Google result without calling Mapbox when Google succeeds', async () => {
@@ -80,5 +81,29 @@ describe('SmartRoutesService', () => {
 
     expect(mapboxDirections.getRoutes).not.toHaveBeenCalled();
     expect(result[0].durationMinutes).toBe(88);
+    expect(result[0].routeProvider).toBe('GOOGLE');
+    expect(result[0].fallbackUsed).toBe(false);
+  });
+
+  it('force-stamps MAPBOX even if option already had a stale provider field', async () => {
+    locationDetector.areBothInChina.mockReturnValue(false);
+    locationDetector.areBothOverseas.mockReturnValue(true);
+    googleRoutes.getRoutes.mockResolvedValue([]);
+    mapboxDirections.isConfigured.mockReturnValue(true);
+    mapboxDirections.getRoutes.mockResolvedValue([
+      {
+        mode: TransportMode.TAXI,
+        durationMinutes: 95,
+        cost: 12,
+        walkDistance: 0,
+        // stale / wrong — SmartRoutes must overwrite
+        routeProvider: undefined as any,
+      },
+    ]);
+
+    const result = await service.getRoutes(64.13, -21.82, 63.42, -19.01, 'DRIVING');
+    expect(result[0].routeProvider).toBe('MAPBOX');
+    expect(result[0].fallbackUsed).toBe(true);
+    expect(result[0].fallbackReason).toBe('GOOGLE_EMPTY_FALLBACK_MAPBOX');
   });
 });

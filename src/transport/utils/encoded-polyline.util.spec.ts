@@ -1,19 +1,13 @@
-import { encodePolyline, parseAmapPolyline } from './encoded-polyline.util';
+import { encodePolyline, decodePolyline } from './encoded-polyline.util';
 
-describe('encoded-polyline.util', () => {
-  it('encodes two coordinates', () => {
-    const encoded = encodePolyline([
-      { lat: 63.5, lng: -19.5 },
-      { lat: 63.6, lng: -19.4 },
-    ]);
-    expect(encoded.length).toBeGreaterThan(0);
-  });
-
-  it('parses amap polyline pairs', () => {
-    const coords = parseAmapPolyline('-19.5,63.5;-19.4,63.6');
-    expect(coords).toEqual([
-      { lat: 63.5, lng: -19.5 },
-      { lat: 63.6, lng: -19.4 },
-    ]);
+describe('encoded-polyline.util decode', () => {
+  it('decodes what encode produces', () => {
+    const pts = [
+      { lat: 64.1466, lng: -21.9426 },
+      { lat: 64.15, lng: -21.95 },
+    ];
+    const again = decodePolyline(encodePolyline(pts));
+    expect(again[0].lat).toBeCloseTo(pts[0].lat, 4);
+    expect(again[1].lng).toBeCloseTo(pts[1].lng, 4);
   });
 });

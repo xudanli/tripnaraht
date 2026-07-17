@@ -119,6 +119,9 @@ export class MapboxDirectionsService {
         durationMinutes: geometry.durationMinutes,
         cost: travelMode === 'WALKING' ? 0 : this.estimateDrivingCost(geometry.distanceMeters),
         walkDistance: travelMode === 'WALKING' ? geometry.distanceMeters : 0,
+        distanceMeters: geometry.distanceMeters,
+        encodedPolyline: geometry.polyline,
+        routeProvider: 'MAPBOX',
         description:
           travelMode === 'TRANSIT'
             ? 'Mapbox 驾车估算（公共交通不可用时的降级）'

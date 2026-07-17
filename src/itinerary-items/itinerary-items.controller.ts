@@ -899,6 +899,12 @@ export class ItineraryItemsController {
     enum: ['live', 'cached'],
     description: 'cached 只读 DB 段；live（默认）可能触发路由计算',
   })
+  @ApiQuery({
+    name: 'includeTerrain',
+    required: false,
+    description:
+      'Legacy: 1/true → terrainPolicy=REQUIRED. Default is server AUTO (Iceland/F-road/highland auto DEM). Prefer omitting.',
+  })
   @ApiResponse({ 
     status: 200, 
     description: '交通信息',
@@ -917,9 +923,22 @@ export class ItineraryItemsController {
               toItemId: { type: 'string' },
               fromPlace: { type: 'string' },
               toPlace: { type: 'string' },
-              duration: { type: 'number', description: '分钟' },
+              duration: {
+                type: 'number',
+                description: '分钟 — equals eta.schedulableDurationMin (Shadow=base)',
+              },
               distance: { type: 'number', description: '米' },
               travelMode: { type: 'string', enum: ['DRIVING', 'WALKING', 'TRANSIT', 'FLIGHT', 'TRAIN', 'FERRY', 'BICYCLE', 'TAXI'] },
+              eta: {
+                type: 'object',
+                description:
+                  'tripnara/travel-eta/v1 — baseDurationMin / planningDurationMin / schedulableDurationMin / shadowPlanningDurationMin / adjustments / terrain',
+              },
+              userEvidence: {
+                type: 'object',
+                description:
+                  'tripnara/travel-eta-user-evidence/v1 — 基础车程/建议预留/阻断文案（Web/iOS 直接渲染）',
+              },
             },
           },
         },
@@ -938,12 +957,18 @@ export class ItineraryItemsController {
     @Param('tripId') tripId: string,
     @Param('dayId') dayId: string,
     @Query('mode') mode?: 'live' | 'cached',
+    @Query('includeTerrain') includeTerrain?: string,
   ) {
     try {
+      const wantTerrain = includeTerrain === '1' || includeTerrain === 'true';
       const result =
         mode === 'cached'
           ? await this.itineraryItemsService.getDayTravelInfoFromCache(tripId, dayId)
-          : await this.itineraryItemsService.getDayTravelInfo(tripId, dayId);
+          : await this.itineraryItemsService.getDayTravelInfo(tripId, dayId, {
+              // Server AUTO by default; legacy flag forces REQUIRED
+              terrainPolicy: wantTerrain ? 'REQUIRED' : 'AUTO',
+              includeTerrain: wantTerrain,
+            });
       return successResponse(result);
     } catch (error: any) {
       if (error instanceof NotFoundException) {

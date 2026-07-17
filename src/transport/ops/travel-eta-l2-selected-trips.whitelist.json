@@ -1,0 +1,12 @@
+{
+  "schemaId": "tripnara.travel_eta_l2_selected_trips@v1",
+  "tripIds": [
+    "5945a3ab-75d2-4911-ae82-9647c8c29e96",
+    "15a7f7aa-d26b-41ff-ba94-b3de488214f3"
+  ],
+  "destinations": [
+    "IS_south_coast",
+    "IS_highlands_froad"
+  ],
+  "notes": "Canary cohort: 冰岛南岸 (paved control) + 内陆高地F路模板 (highland contrast). Synced via lab:eta-l2-sync-authoritative-eta."
+}

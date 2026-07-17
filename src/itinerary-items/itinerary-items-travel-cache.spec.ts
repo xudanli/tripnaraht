@@ -68,6 +68,7 @@ describe('ItineraryItemsService travel cache batch', () => {
       'd2',
       expect.any(Date),
       expect.any(Array),
+      expect.any(Object),
     );
   });
 

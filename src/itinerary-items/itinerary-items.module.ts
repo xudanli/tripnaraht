@@ -8,6 +8,7 @@ import { TravelTimeValidator } from './validators/travel-time.validator';
 import { BufferTimeValidator } from './validators/buffer-time.validator';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TransportModule } from '../transport/transport.module';
+import { DemModule } from '../trips/dem/dem.module';
 import { PlacesModule } from '../places/places.module';
 import { GoogleMapsDirectModule } from '../mcp/google-maps-direct.module';
 import { TripBudgetOsModule } from '../trips/budget-os/budget-os.module';
@@ -16,6 +17,7 @@ import { TripBudgetOsModule } from '../trips/budget-os/budget-os.module';
   imports: [
     PrismaModule, 
     TransportModule,
+    DemModule,
     forwardRef(() => PlacesModule),
     forwardRef(() => TripBudgetOsModule),
     GoogleMapsDirectModule,

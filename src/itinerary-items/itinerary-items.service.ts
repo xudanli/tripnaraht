@@ -8,6 +8,19 @@ import { randomUUID } from 'crypto';
 import { SmartRoutesService } from '../transport/services/smart-routes.service';
 import { TravelTimeEstimatorService } from '../transport/services/travel-time-estimator.service';
 import { PoiHopTravelSegmentService } from '../transport/services/poi-hop-travel-segment.service';
+import { TravelSegmentEnrichmentService } from '../transport/services/travel-segment-enrichment.service';
+import {
+  ITINERARY_ITEM_TRAVEL_ETA_METADATA_KEY,
+  isTravelEtaEnvelopeV1,
+  projectLegacyDurationToEtaEnvelope,
+  type TerrainPolicyMode,
+  type TravelEtaEnvelopeV1,
+} from '../transport/contracts/travel-eta.contract';
+import {
+  projectTravelEtaUserEvidence,
+  type TravelEtaUserEvidenceV1,
+} from '../transport/contracts/travel-eta-user-evidence.contract';
+import { DemProfileFromGeometryService } from '../trips/dem/services/dem-profile-from-geometry.service';
 import { PlacesService } from '../places/places.service';
 import { GoogleMapsDirectService } from '../mcp/google-maps-direct.service';
 import { SearchNearbyPoiQueryDto, NearbyPoiResultDto, NearbyPoiCategory } from './dto/search-nearby-poi.dto';
@@ -25,6 +38,8 @@ export class ItineraryItemsService {
     @Optional() private readonly smartRoutesService?: SmartRoutesService,
     @Optional() private readonly travelTimeEstimator?: TravelTimeEstimatorService,
     @Optional() private readonly poiHopTravelSegment?: PoiHopTravelSegmentService,
+    @Optional() private readonly travelSegmentEnrichment?: TravelSegmentEnrichmentService,
+    @Optional() private readonly demProfileFromGeometry?: DemProfileFromGeometryService,
     @Optional() @Inject(forwardRef(() => PlacesService)) private readonly placesService?: PlacesService,
     @Optional() private readonly googleMapsService?: GoogleMapsDirectService,
     @Optional() private readonly tripRevisionBump?: TripRevisionBumpService,
@@ -690,6 +705,7 @@ export class ItineraryItemsService {
     dayId: string,
     date: Date,
     items: any[],
+    tripEtaByToItemId?: Record<string, TravelEtaEnvelopeV1>,
   ) {
     const sorted = [...items].sort((a, b) => {
       const ta = a.startTime ? new Date(a.startTime).getTime() : 0;
@@ -706,6 +722,8 @@ export class ItineraryItemsService {
       distance: number | null;
       travelMode: string | null;
       crossDay?: boolean;
+      eta?: TravelEtaEnvelopeV1;
+      userEvidence?: TravelEtaUserEvidenceV1;
     }> = [];
 
     const firstItem = sorted.find((item) => item.placeId);
@@ -713,29 +731,33 @@ export class ItineraryItemsService {
       firstItem &&
       (firstItem.travelFromPreviousDuration != null || firstItem.travelFromPreviousDistance != null)
     ) {
+      const eta = this.resolveEtaFromItemCache(firstItem, tripEtaByToItemId);
       travelSegments.push({
         fromItemId: 'cross-day',
         toItemId: firstItem.id,
         fromPlace: '上一日',
         toPlace: firstItem.Place?.nameCN || firstItem.Place?.nameEN || '未知地点',
-        duration: firstItem.travelFromPreviousDuration,
+        duration: eta?.schedulableDurationMin ?? firstItem.travelFromPreviousDuration,
         distance: firstItem.travelFromPreviousDistance,
         travelMode: firstItem.travelMode,
         crossDay: true,
+        ...(eta ? { eta, userEvidence: projectTravelEtaUserEvidence(eta) } : {}),
       });
     }
 
     for (let i = 0; i < sorted.length - 1; i++) {
       const fromItem = sorted[i];
       const toItem = sorted[i + 1];
+      const eta = this.resolveEtaFromItemCache(toItem, tripEtaByToItemId);
       travelSegments.push({
         fromItemId: fromItem.id,
         toItemId: toItem.id,
         fromPlace: fromItem.Place?.nameCN || fromItem.Place?.nameEN || '未知地点',
         toPlace: toItem.Place?.nameCN || toItem.Place?.nameEN || '未知地点',
-        duration: toItem.travelFromPreviousDuration,
+        duration: eta?.schedulableDurationMin ?? toItem.travelFromPreviousDuration,
         distance: toItem.travelFromPreviousDistance,
         travelMode: toItem.travelMode,
+        ...(eta ? { eta, userEvidence: projectTravelEtaUserEvidence(eta) } : {}),
       });
     }
 
@@ -754,6 +776,37 @@ export class ItineraryItemsService {
       },
       source: 'cached' as const,
     };
+  }
+
+  /** Prefer Trip.metadata.travelEtaByToItemId / item metadata; else project legacy duration. */
+  private resolveEtaFromItemCache(
+    item: {
+      id?: string;
+      travelFromPreviousDuration?: number | null;
+      travelFromPreviousDistance?: number | null;
+      metadata?: unknown;
+    },
+    tripEtaByToItemId?: Record<string, TravelEtaEnvelopeV1>,
+  ): TravelEtaEnvelopeV1 | undefined {
+    if (item.id && tripEtaByToItemId?.[item.id] && isTravelEtaEnvelopeV1(tripEtaByToItemId[item.id])) {
+      return tripEtaByToItemId[item.id];
+    }
+    const meta = item.metadata as Record<string, unknown> | null | undefined;
+    const stored = meta?.[ITINERARY_ITEM_TRAVEL_ETA_METADATA_KEY];
+    if (isTravelEtaEnvelopeV1(stored)) {
+      return stored;
+    }
+    if (item.travelFromPreviousDuration == null || !Number.isFinite(item.travelFromPreviousDuration)) {
+      return undefined;
+    }
+    return projectLegacyDurationToEtaEnvelope({
+      durationMin: item.travelFromPreviousDuration,
+      distanceM: item.travelFromPreviousDistance,
+      sourceKind: 'CACHED',
+      provider: 'UNKNOWN',
+      cacheHit: true,
+      geometry: null,
+    });
   }
 
   /** 供 Trip 详情等场景：仅取应在指定日期展示的退房项（不含当日常规项） */
@@ -2252,12 +2305,55 @@ export class ItineraryItemsService {
     defaultMode: 'DRIVING' | 'TRANSIT';
     fallbackDuration?: number | null;
     fallbackDistance?: number | null;
-  }): Promise<{ duration: number | null; distance: number | null; travelMode: string | null }> {
+    tripId?: string;
+    terrainPolicy?: TerrainPolicyMode;
+    includeTerrain?: boolean;
+  }): Promise<{
+    duration: number | null;
+    distance: number | null;
+    travelMode: string | null;
+    eta?: TravelEtaEnvelopeV1;
+  }> {
     if (!input.fromCoords || !input.toCoords) {
+      const duration = input.fallbackDuration ?? null;
+      const distance = input.fallbackDistance ?? null;
+      const eta =
+        duration != null
+          ? projectLegacyDurationToEtaEnvelope({
+              durationMin: duration,
+              distanceM: distance,
+              sourceKind: 'CACHED',
+              provider: 'UNKNOWN',
+              cacheHit: true,
+              geometry: null,
+            })
+          : undefined;
       return {
-        duration: input.fallbackDuration ?? null,
-        distance: input.fallbackDistance ?? null,
+        duration,
+        distance,
         travelMode: input.preferredMode ?? input.defaultMode,
+        ...(eta ? { eta } : {}),
+      };
+    }
+
+    // ETA-L2-PROD-01: single enrichment entry (base → terrain policy → L2 shadow/auth)
+    if (this.travelSegmentEnrichment) {
+      const enriched = await this.travelSegmentEnrichment.enrich({
+        origin: input.fromCoords,
+        destination: input.toCoords,
+        travelMode: input.preferredMode,
+        defaultMode: input.defaultMode,
+        tripContext: {
+          tripId: input.tripId,
+          terrainPolicy: input.terrainPolicy ?? 'AUTO',
+          includeTerrain: input.includeTerrain,
+        },
+      });
+      return {
+        duration: enriched.eta.schedulableDurationMin,
+        distance: enriched.distanceMeters,
+        travelMode: enriched.travelMode,
+        eta: enriched.eta,
       };
     }
 
@@ -2269,9 +2365,10 @@ export class ItineraryItemsService {
         defaultMode: input.defaultMode,
       });
       return {
-        duration: seg.durationMinutes,
+        duration: seg.eta.schedulableDurationMin ?? seg.eta.baseDurationMin,
         distance: seg.distanceMeters,
         travelMode: seg.travelMode,
+        eta: seg.eta,
       };
     }
 
@@ -2295,15 +2392,25 @@ export class ItineraryItemsService {
     const duration = this.travelTimeEstimator
       ? this.travelTimeEstimator.estimateDurationMinutes(routeDistanceKm, mode)
       : Math.round((routeDistanceKm / 60) * 60);
+    const distance = Math.round(routeDistanceKm * 1000);
+    const eta = projectLegacyDurationToEtaEnvelope({
+      durationMin: duration,
+      distanceM: distance,
+      sourceKind: 'HEURISTIC',
+      provider: 'HEURISTIC',
+      geometry: null,
+    });
     return {
-      duration,
-      distance: Math.round(routeDistanceKm * 1000),
+      duration: eta.planningDurationMin,
+      distance,
       travelMode: mode,
+      eta,
     };
   }
 
   /**
    * 将 GET travel-info 计算结果写回 ItineraryItem.travelFromPrevious*（与 feasibility 同源）
+   * travelEta 快照写入 Trip.metadata.travelEtaByToItemId（ItineraryItem 无 metadata 列）
    */
   async syncTravelDurationsFromDayTravelInfo(tripId: string): Promise<{ updated: number }> {
     const days = await this.prisma.tripDay.findMany({
@@ -2311,6 +2418,20 @@ export class ItineraryItemsService {
       select: { id: true },
       orderBy: { date: 'asc' },
     });
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const tripMeta = (trip?.metadata as Record<string, unknown> | null) ?? {};
+    const etaByItem: Record<string, unknown> = {
+      ...((tripMeta.travelEtaByToItemId as Record<string, unknown> | undefined) ?? {}),
+    };
+    const evidenceByItem: Record<string, unknown> = {
+      ...((tripMeta.travelEtaUserEvidenceByToItemId as Record<string, unknown> | undefined) ??
+        {}),
+    };
+    let etaMetaDirty = false;
 
     let updated = 0;
     for (const day of days) {
@@ -2326,11 +2447,22 @@ export class ItineraryItemsService {
           },
         });
         if (!row) continue;
+
+        const prevEta = etaByItem[seg.toItemId];
+        const etaChanged =
+          !!seg.eta && JSON.stringify(prevEta) !== JSON.stringify(seg.eta);
         const needsUpdate =
           row.travelFromPreviousDuration !== seg.duration ||
           row.travelFromPreviousDistance !== seg.distance ||
-          (seg.travelMode && row.travelMode !== seg.travelMode);
+          (seg.travelMode && row.travelMode !== seg.travelMode) ||
+          etaChanged;
         if (!needsUpdate) continue;
+
+        if (seg.eta) {
+          etaByItem[seg.toItemId] = seg.eta;
+          evidenceByItem[seg.toItemId] = projectTravelEtaUserEvidence(seg.eta);
+          etaMetaDirty = true;
+        }
 
         await this.prisma.itineraryItem.update({
           where: { id: seg.toItemId },
@@ -2344,6 +2476,20 @@ export class ItineraryItemsService {
       }
     }
 
+    if (etaMetaDirty) {
+      await this.prisma.trip.update({
+        where: { id: tripId },
+        data: {
+          metadata: {
+            ...tripMeta,
+            travelEtaByToItemId: etaByItem,
+            travelEtaUserEvidenceByToItemId: evidenceByItem,
+            travelEtaSyncedAt: new Date().toISOString(),
+          } as object,
+        },
+      });
+    }
+
     if (updated > 0) {
       await this.tripRevisionBump?.bump(tripId);
     }
@@ -2355,7 +2501,11 @@ export class ItineraryItemsService {
    * 获取某天所有行程项之间的交通信息
    * 推断交通方式时尊重行程意图（pacingConfig.travelMode），避免「自驾游」出现公交/驾车混用
    */
-  async getDayTravelInfo(tripId: string, dayId: string) {
+  async getDayTravelInfo(
+    tripId: string,
+    dayId: string,
+    options?: { includeTerrain?: boolean; terrainPolicy?: TerrainPolicyMode },
+  ) {
     // 验证 TripDay 存在且属于该 Trip
     const tripDay = await this.prisma.tripDay.findFirst({
       where: {
@@ -2405,6 +2555,13 @@ export class ItineraryItemsService {
       }
     }
 
+    const tripEtaRow = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const tripEtaByToItemId = ((tripEtaRow?.metadata as Record<string, unknown> | null)
+      ?.travelEtaByToItemId ?? {}) as Record<string, TravelEtaEnvelopeV1>;
+
     const items = tripDay.ItineraryItem;
     const travelSegments: Array<{
       fromItemId: string;
@@ -2415,6 +2572,8 @@ export class ItineraryItemsService {
       distance: number | null;
       travelMode: string | null;
       crossDay?: boolean;
+      eta?: TravelEtaEnvelopeV1;
+      userEvidence?: TravelEtaUserEvidenceV1;
     }> = [];
 
     const firstItem = items.find((item) => item.placeId);
@@ -2447,6 +2606,7 @@ export class ItineraryItemsService {
         let duration: number | null = null;
         let distance: number | null = null;
         let travelMode: string | null = firstItem.travelMode || defaultMode;
+        let eta: TravelEtaEnvelopeV1 | undefined;
 
         if (fromCoords && toCoords) {
           const resolved = await this.resolveTravelSegmentBetweenItems({
@@ -2456,13 +2616,18 @@ export class ItineraryItemsService {
             defaultMode,
             fallbackDuration: firstItem.travelFromPreviousDuration,
             fallbackDistance: firstItem.travelFromPreviousDistance,
+            tripId,
+            terrainPolicy: options?.terrainPolicy ?? 'AUTO',
+            includeTerrain: options?.includeTerrain,
           });
           duration = resolved.duration;
           distance = resolved.distance;
           travelMode = resolved.travelMode;
+          eta = resolved.eta;
         } else {
           duration = firstItem.travelFromPreviousDuration;
           distance = firstItem.travelFromPreviousDistance;
+          eta = this.resolveEtaFromItemCache(firstItem, tripEtaByToItemId);
         }
 
         travelSegments.push({
@@ -2474,6 +2639,9 @@ export class ItineraryItemsService {
           distance,
           travelMode,
           crossDay: true,
+          ...(eta
+            ? { eta, userEvidence: projectTravelEtaUserEvidence(eta) }
+            : {}),
         });
       }
     }
@@ -2498,6 +2666,10 @@ export class ItineraryItemsService {
       let duration: number | null = toItem.travelFromPreviousDuration;
       let distance: number | null = toItem.travelFromPreviousDistance;
       let travelMode: string | null = toItem.travelMode;
+      let eta: TravelEtaEnvelopeV1 | undefined = this.resolveEtaFromItemCache(
+        toItem,
+        tripEtaByToItemId,
+      );
 
       if (fromCoords && toCoords) {
         const resolved = await this.resolveTravelSegmentBetweenItems({
@@ -2507,10 +2679,14 @@ export class ItineraryItemsService {
           defaultMode,
           fallbackDuration: toItem.travelFromPreviousDuration,
           fallbackDistance: toItem.travelFromPreviousDistance,
+          tripId,
+          terrainPolicy: options?.terrainPolicy ?? 'AUTO',
+          includeTerrain: options?.includeTerrain,
         });
         duration = resolved.duration;
         distance = resolved.distance;
         travelMode = resolved.travelMode;
+        eta = resolved.eta;
       }
 
       travelSegments.push({
@@ -2521,12 +2697,24 @@ export class ItineraryItemsService {
         duration,
         distance,
         travelMode,
+        ...(eta
+          ? { eta, userEvidence: projectTravelEtaUserEvidence(eta) }
+          : {}),
       });
     }
 
-    // 计算总时间和距离
+    // 计算总时间和距离（schedulableDurationMin — Shadow 下仍为 base）
     const totalDuration = travelSegments.reduce((sum, s) => sum + (s.duration || 0), 0);
     const totalDistance = travelSegments.reduce((sum, s) => sum + (s.distance || 0), 0);
+
+    // Legacy fallback: enrichment absent but includeTerrain=1 → attach DEM only
+    if (
+      !this.travelSegmentEnrichment &&
+      options?.includeTerrain &&
+      this.demProfileFromGeometry
+    ) {
+      await this.attachTerrainToSegments(travelSegments);
+    }
 
     return {
       dayId,
@@ -2541,6 +2729,29 @@ export class ItineraryItemsService {
     };
   }
 
+  /** Legacy DEM attach when TravelSegmentEnrichmentService is unavailable */
+  private async attachTerrainToSegments(
+    segments: Array<{ eta?: TravelEtaEnvelopeV1 }>,
+  ): Promise<void> {
+    if (!this.demProfileFromGeometry) return;
+    for (const seg of segments) {
+      const geometry = seg.eta?.geometry;
+      if (!geometry?.value || geometry.encoding === 'NONE') continue;
+      try {
+        const terrain = await this.demProfileFromGeometry.profile({
+          geometry,
+          sampleIntervalM: 100,
+          activityType: 'driving',
+        });
+        if (terrain && seg.eta) {
+          seg.eta = { ...seg.eta, terrain };
+        }
+      } catch {
+        // keep segment without terrain
+      }
+    }
+  }
+
   /**
    * 只读缓存交通段（不触发路由重算 / 外部 API）— schedule-timeline BFF 首屏用
    */
@@ -2552,13 +2763,22 @@ export class ItineraryItemsService {
           include: { Place: true },
           orderBy: { startTime: 'asc' },
         },
+        Trip: { select: { metadata: true } },
       },
     });
     if (!tripDay) {
       throw new NotFoundException(`找不到指定的行程日期 (tripId: ${tripId}, dayId: ${dayId})`);
     }
 
-    return this.buildDayTravelInfoFromLoadedItems(dayId, tripDay.date, tripDay.ItineraryItem);
+    const tripEtaByToItemId = ((tripDay.Trip?.metadata as Record<string, unknown> | null)
+      ?.travelEtaByToItemId ?? {}) as Record<string, TravelEtaEnvelopeV1>;
+
+    return this.buildDayTravelInfoFromLoadedItems(
+      dayId,
+      tripDay.date,
+      tripDay.ItineraryItem,
+      tripEtaByToItemId,
+    );
   }
 
   /**
@@ -2572,6 +2792,7 @@ export class ItineraryItemsService {
       where: { id: tripId },
       select: {
         id: true,
+        metadata: true,
         TripDay: {
           orderBy: { date: 'asc' },
           select: { id: true, date: true },
@@ -2581,6 +2802,9 @@ export class ItineraryItemsService {
     if (!trip) {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
     }
+
+    const tripEtaByToItemId = ((trip.metadata as Record<string, unknown> | null)
+      ?.travelEtaByToItemId ?? {}) as Record<string, TravelEtaEnvelopeV1>;
 
     let days = trip.TripDay;
     if (options?.dates?.length) {
@@ -2594,7 +2818,12 @@ export class ItineraryItemsService {
     const dayIds = days.map((d) => d.id);
     const itemsByDayId = await this.loadItemsGroupedByTripDayIds(tripId, dayIds);
     const dayResults = days.map((d) =>
-      this.buildDayTravelInfoFromLoadedItems(d.id, d.date, itemsByDayId.get(d.id) ?? []),
+      this.buildDayTravelInfoFromLoadedItems(
+        d.id,
+        d.date,
+        itemsByDayId.get(d.id) ?? [],
+        tripEtaByToItemId,
+      ),
     );
 
     return {

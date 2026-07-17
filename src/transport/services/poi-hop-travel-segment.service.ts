@@ -4,11 +4,20 @@
 
 import { Injectable, Optional } from '@nestjs/common';
 import { SmartRoutesService } from './smart-routes.service';
+import { RouteGeometryService } from './route-geometry.service';
 import {
   TravelTimeEstimatorService,
   type PoiTravelMode,
 } from './travel-time-estimator.service';
 import { isImplausibleTravelDuration } from '../utils/travel-duration-sanity.util';
+import { encodePolyline } from '../utils/encoded-polyline.util';
+import {
+  mapPoiHopSourceToKind,
+  projectLegacyDurationToEtaEnvelope,
+  type TravelEtaEnvelopeV1,
+  type TravelEtaRouteProvider,
+  type TravelRouteGeometryV1,
+} from '../contracts/travel-eta.contract';
 
 export type TripDefaultTravelMode = 'DRIVING' | 'TRANSIT';
 
@@ -26,6 +35,8 @@ export interface PoiHopTravelSegmentResult {
   distanceMeters: number;
   travelMode: PoiTravelMode;
   source: 'route_api' | 'heuristic';
+  /** L1/L2 ETA envelope — durationMinutes === eta.planningDurationMin (L2 not applied yet) */
+  eta: TravelEtaEnvelopeV1;
 }
 
 export function resolveTripDefaultTravelMode(
@@ -68,11 +79,21 @@ export function inferPoiHopTravelMode(
   return 'DRIVING';
 }
 
+function straightLineGeometry(from: { lat: number; lng: number }, to: { lat: number; lng: number }): TravelRouteGeometryV1 {
+  return {
+    encoding: 'ENCODED_POLYLINE',
+    value: encodePolyline([from, to]),
+    pointCount: 2,
+    source: 'STRAIGHT_LINE',
+  };
+}
+
 @Injectable()
 export class PoiHopTravelSegmentService {
   constructor(
     private readonly travelTimeEstimator: TravelTimeEstimatorService,
     @Optional() private readonly smartRoutesService?: SmartRoutesService,
+    @Optional() private readonly routeGeometryService?: RouteGeometryService,
   ) {}
 
   async resolveSegment(input: PoiHopTravelSegmentInput): Promise<PoiHopTravelSegmentResult> {
@@ -98,8 +119,56 @@ export class PoiHopTravelSegmentService {
     let durationMinutes: number | null = null;
     let distanceMeters: number | null = null;
     let source: PoiHopTravelSegmentResult['source'] = 'heuristic';
+    let provider: TravelEtaRouteProvider = 'HEURISTIC';
+    let geometry: TravelRouteGeometryV1 | null = null;
+    let cacheHit = false;
+    let fallbackUsed = false;
+    let fallbackReason: string | undefined;
+    let providerRequestId: string | undefined;
+    const routeProfile =
+      travelMode === 'WALKING' ? 'WALKING' : travelMode === 'TRANSIT' ? 'TRANSIT' : 'DRIVING';
 
-    if (input.useRouteApi !== false && this.smartRoutesService) {
+    if (input.useRouteApi !== false && this.routeGeometryService) {
+      try {
+        const geo = await this.routeGeometryService.resolveGeometry({
+          from: input.from,
+          to: input.to,
+          travelMode,
+          useRouteApi: true,
+        });
+        if (geo.geometrySource === 'route_api' && geo.durationMinutes) {
+          durationMinutes = geo.durationMinutes;
+          distanceMeters =
+            geo.distanceMeters != null
+              ? Math.round(geo.distanceMeters)
+              : Math.round(routeDistanceKm * 1000);
+          source = 'route_api';
+          provider =
+            geo.provider === 'GOOGLE' || geo.provider === 'AMAP' || geo.provider === 'MAPBOX'
+              ? geo.provider
+              : geo.provider === 'HEURISTIC'
+                ? 'HEURISTIC'
+                : 'UNKNOWN';
+          cacheHit = !!geo.cacheHit;
+          fallbackUsed = !!geo.fallbackUsed;
+          fallbackReason = geo.fallbackReason;
+          providerRequestId = geo.providerRequestId;
+          geometry = {
+            encoding: 'ENCODED_POLYLINE',
+            value: geo.polyline,
+            source: 'ROUTE_API',
+          };
+        }
+      } catch {
+        // fall through to SmartRoutes / heuristic
+      }
+    }
+
+    if (
+      durationMinutes == null &&
+      input.useRouteApi !== false &&
+      this.smartRoutesService
+    ) {
       try {
         const routes = await this.smartRoutesService.getRoutes(
           input.from.lat,
@@ -108,22 +177,37 @@ export class PoiHopTravelSegmentService {
           input.to.lng,
           travelMode,
         );
-        const route = routes[0] as
-          | {
-              durationMinutes?: number;
-              distanceMeters?: number;
-              distanceKm?: number;
-            }
-          | undefined;
+        const route = routes[0];
         if (route?.durationMinutes) {
           durationMinutes = route.durationMinutes;
           distanceMeters =
             route.distanceMeters != null
               ? Math.round(route.distanceMeters)
-              : route.distanceKm != null
-                ? Math.round(route.distanceKm * 1000)
+              : route.walkDistance > 0 && travelMode === 'WALKING'
+                ? Math.round(route.walkDistance)
                 : Math.round(routeDistanceKm * 1000);
           source = 'route_api';
+          if (
+            route.routeProvider === 'GOOGLE' ||
+            route.routeProvider === 'AMAP' ||
+            route.routeProvider === 'MAPBOX'
+          ) {
+            provider = route.routeProvider;
+          } else {
+            // Should not happen after SmartRoutes tagProvider force-stamp; treat as gap metric
+            provider = 'UNKNOWN';
+            fallbackReason = fallbackReason ?? 'SMART_ROUTES_MISSING_PROVIDER';
+          }
+          fallbackUsed = route.fallbackUsed ?? fallbackUsed;
+          fallbackReason = route.fallbackReason ?? fallbackReason;
+          providerRequestId = route.providerRequestId ?? providerRequestId;
+          if (route.encodedPolyline?.trim()) {
+            geometry = {
+              encoding: 'ENCODED_POLYLINE',
+              value: route.encodedPolyline.trim(),
+              source: 'ROUTE_API',
+            };
+          }
         }
       } catch {
         // fallback to heuristic
@@ -136,13 +220,48 @@ export class PoiHopTravelSegmentService {
         travelMode,
       );
       distanceMeters = Math.round(routeDistanceKm * 1000);
+      source = 'heuristic';
+      provider = 'HEURISTIC';
+      fallbackUsed = true;
+      fallbackReason = fallbackReason ?? 'NO_ROUTE_API_RESULT';
+      geometry = straightLineGeometry(input.from, input.to);
+    } else if (!geometry) {
+      geometry = straightLineGeometry(input.from, input.to);
+      if (!fallbackReason) {
+        fallbackUsed = true;
+        fallbackReason = 'DURATION_WITHOUT_POLYLINE_STRAIGHT_LINE';
+      }
     }
 
+    const durationRounded = Math.max(1, Math.round(durationMinutes));
+    const distanceRounded = Math.max(0, Math.round(distanceMeters));
+    const eta = projectLegacyDurationToEtaEnvelope({
+      durationMin: durationRounded,
+      distanceM: distanceRounded,
+      sourceKind: mapPoiHopSourceToKind(source),
+      provider,
+      geometry,
+      cacheHit,
+      fallbackUsed,
+      fallbackReason,
+      providerRequestId,
+      routeProfile,
+      confidence:
+        source === 'route_api'
+          ? provider === 'UNKNOWN'
+            ? 0.55
+            : geometry?.source === 'ROUTE_API'
+              ? 0.88
+              : 0.8
+          : 0.55,
+    });
+
     return {
-      durationMinutes: Math.max(1, Math.round(durationMinutes)),
-      distanceMeters: Math.max(0, Math.round(distanceMeters)),
+      durationMinutes: durationRounded,
+      distanceMeters: distanceRounded,
       travelMode,
       source,
+      eta,
     };
   }
 }

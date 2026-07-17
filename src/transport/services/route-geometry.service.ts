@@ -7,8 +7,18 @@ import { RouteCacheService } from './route-cache.service';
 import { encodePolyline } from '../utils/encoded-polyline.util';
 import type {
   RouteGeometryInput,
+  RouteGeometryProvider,
   RouteGeometryResult,
 } from '../types/route-geometry.types';
+
+const KNOWN_PROVIDERS = new Set<RouteGeometryProvider>(['GOOGLE', 'AMAP', 'MAPBOX', 'HEURISTIC']);
+
+function normalizeCachedProvider(raw: unknown): RouteGeometryProvider {
+  if (typeof raw === 'string' && KNOWN_PROVIDERS.has(raw as RouteGeometryProvider)) {
+    return raw as RouteGeometryProvider;
+  }
+  return 'UNKNOWN';
+}
 
 @Injectable()
 export class RouteGeometryService {
@@ -28,9 +38,15 @@ export class RouteGeometryService {
     const travelMode = input.travelMode ?? 'DRIVING';
 
     if (input.cachedPolyline?.trim()) {
+      const provider = normalizeCachedProvider(input.cachedProvider);
       return {
         polyline: input.cachedPolyline.trim(),
         geometrySource: 'cached_metadata',
+        provider,
+        cacheHit: true,
+        fallbackUsed: provider === 'UNKNOWN',
+        fallbackReason:
+          provider === 'UNKNOWN' ? 'CACHED_POLYLINE_NO_PROVIDER' : undefined,
       };
     }
 
@@ -40,6 +56,10 @@ export class RouteGeometryService {
         { lat: to.lat, lng: to.lng },
       ]),
       geometrySource: 'straight_line',
+      provider: 'HEURISTIC',
+      cacheHit: false,
+      fallbackUsed: true,
+      fallbackReason: 'STRAIGHT_LINE_NO_ROUTE_API',
     };
 
     if (input.useRouteApi === false) {
@@ -56,11 +76,20 @@ export class RouteGeometryService {
         `geometry_${cacheKeyMode}`,
       );
       if (cached?.polyline) {
+        const provider = normalizeCachedProvider(
+          (cached as { provider?: RouteGeometryProvider }).provider,
+        );
         return {
           polyline: cached.polyline,
           geometrySource: 'route_api',
           distanceMeters: cached.distanceMeters,
           durationMinutes: cached.durationMinutes,
+          provider,
+          cacheHit: true,
+          fallbackUsed: provider === 'UNKNOWN',
+          fallbackReason:
+            provider === 'UNKNOWN' ? 'CACHE_ENTRY_MISSING_PROVIDER' : undefined,
+          providerRequestId: (cached as { providerRequestId?: string }).providerRequestId,
         };
       }
     } catch {
@@ -75,6 +104,8 @@ export class RouteGeometryService {
     );
 
     let resolved: RouteGeometryResult | null = null;
+    let fallbackUsed = false;
+    let fallbackReason: string | undefined;
 
     if (bothInChina) {
       const amapMode =
@@ -95,6 +126,8 @@ export class RouteGeometryService {
           geometrySource: 'route_api',
           distanceMeters: amap.distanceMeters,
           durationMinutes: amap.durationMinutes,
+          provider: 'AMAP',
+          cacheHit: false,
         };
       }
     }
@@ -113,6 +146,8 @@ export class RouteGeometryService {
           geometrySource: 'route_api',
           distanceMeters: google.distanceMeters,
           durationMinutes: google.durationMinutes,
+          provider: 'GOOGLE',
+          cacheHit: false,
         };
       }
     }
@@ -126,17 +161,27 @@ export class RouteGeometryService {
         travelMode,
       );
       if (mapbox?.polyline) {
+        fallbackUsed = true;
+        fallbackReason = 'GOOGLE_EMPTY_FALLBACK_MAPBOX';
         resolved = {
           polyline: mapbox.polyline,
           geometrySource: 'route_api',
           distanceMeters: mapbox.distanceMeters,
           durationMinutes: mapbox.durationMinutes,
+          provider: 'MAPBOX',
+          cacheHit: false,
+          fallbackUsed,
+          fallbackReason,
         };
       }
     }
 
     if (!resolved) {
       return straightLine;
+    }
+
+    if (fallbackUsed && !resolved.fallbackUsed) {
+      resolved = { ...resolved, fallbackUsed, fallbackReason };
     }
 
     try {
@@ -146,7 +191,14 @@ export class RouteGeometryService {
         to.lat,
         to.lng,
         `geometry_${cacheKeyMode}`,
-        resolved,
+        {
+          polyline: resolved.polyline,
+          distanceMeters: resolved.distanceMeters,
+          durationMinutes: resolved.durationMinutes,
+          provider: resolved.provider,
+          providerRequestId: resolved.providerRequestId,
+          geometrySource: resolved.geometrySource,
+        },
       );
     } catch (error) {
       this.logger.debug(`route geometry cache save failed: ${(error as Error).message}`);

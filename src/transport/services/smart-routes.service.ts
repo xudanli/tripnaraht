@@ -4,7 +4,10 @@ import { GoogleRoutesService } from './google-routes.service';
 import { AmapRoutesService } from './amap-routes.service';
 import { MapboxDirectionsService } from './mapbox-directions.service';
 import { LocationDetectorService } from './location-detector.service';
-import { TransportOption } from '../interfaces/transport.interface';
+import {
+  TransportOption,
+  type TransportRouteProvider,
+} from '../interfaces/transport.interface';
 
 /**
  * 智能路线服务
@@ -77,11 +80,11 @@ export class SmartRoutesService {
       );
 
       if (options.length > 0) {
-        return options;
+        return this.tagProvider(options, 'AMAP', { fallbackUsed: false });
       }
 
       this.logger.warn('高德地图 API 无结果，降级 Google Routes → Mapbox');
-      return this.getGoogleRoutesWithMapboxFallback(
+      const fallback = await this.getGoogleRoutesWithMapboxFallback(
         fromLat,
         fromLng,
         toLat,
@@ -89,6 +92,11 @@ export class SmartRoutesService {
         travelMode,
         preferences,
       );
+      return fallback.map((opt) => ({
+        ...opt,
+        fallbackUsed: true,
+        fallbackReason: opt.fallbackReason ?? 'AMAP_EMPTY_FALLBACK_GOOGLE_OR_MAPBOX',
+      }));
     }
 
     const now = Date.now();
@@ -128,7 +136,9 @@ export class SmartRoutesService {
       preferences,
     );
     if (googleOptions.length > 0) {
-      return googleOptions;
+      return this.tagProvider(googleOptions, 'GOOGLE', {
+        fallbackUsed: false,
+      });
     }
 
     if (!this.mapboxDirectionsService?.isConfigured()) {
@@ -136,13 +146,31 @@ export class SmartRoutesService {
     }
 
     this.logger.warn('Google Routes 无结果，降级使用 Mapbox Directions');
-    return this.mapboxDirectionsService.getRoutes(
+    const mapboxOptions = await this.mapboxDirectionsService.getRoutes(
       fromLat,
       fromLng,
       toLat,
       toLng,
       travelMode,
     );
+    return this.tagProvider(mapboxOptions, 'MAPBOX', {
+      fallbackUsed: true,
+      fallbackReason: 'GOOGLE_EMPTY_FALLBACK_MAPBOX',
+    });
+  }
+
+  private tagProvider(
+    options: TransportOption[],
+    provider: TransportRouteProvider,
+    meta?: { fallbackUsed?: boolean; fallbackReason?: string },
+  ): TransportOption[] {
+    return options.map((opt) => ({
+      ...opt,
+      // Always stamp — never leave UNKNOWN on a known Directions path
+      routeProvider: provider,
+      fallbackUsed: meta?.fallbackUsed ?? opt.fallbackUsed,
+      fallbackReason: meta?.fallbackReason ?? opt.fallbackReason,
+    }));
   }
 
   private convertTravelModeToAmap(
