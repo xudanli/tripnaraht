@@ -17,16 +17,19 @@
 | Merge Record | **FILLED** |
 | Release Readiness Review | **SIGNED** |
 | Release Decision | **GO** |
-| Further Coding | **NOT REQUIRED** |
+| Further Coding (V3.1 train) | **NOT REQUIRED** |
+| Follow-on: UWC v1 | **STARTED** (`feat/unified-writeback-contract-v1`) |
 | release_commit / rc1 | `b5127ae942f81ea32216c073d7814db5e37b4e8a` |
 | post_merge_documentation_commit | `0f50ca864` (docs only) |
 | Evidence freeze tag | `claim-evidence-matrix-v2.0` → `c76fff367…` (**unchanged**) |
 
 ## Remaining execution
 
-1. ~~Merge / backfill / rc1 tag / RRR~~  
-2. **Publish** from `v31-agent-interface-hardening-rc1`  
-3. **7–14 day observation** ([`POST_RELEASE_MONITORING.md`](./POST_RELEASE_MONITORING.md))  
+1. ~~Merge / backfill / rc1 tag / RRR~~ → **GO signed**  
+2. Publish from `v31-agent-interface-hardening-rc1` + 7–14d observe  
+3. **Follow-on track (new):** Unified Writeback Contract v1 — `evidence/work-packages/UWC-01-unified-writeback-contract/`  
+
+V3.1 train coding remains closed. UWC is a **separate** scoped track (min writeback safety contract only).
 
 ## Hard prohibitions
 

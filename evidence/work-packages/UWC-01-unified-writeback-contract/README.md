@@ -1,0 +1,67 @@
+# UWC-01 — Unified Writeback Contract v1
+
+**Status:** STARTED (first batch)  
+**Parent train:** Post–V3.1 Agent Interface Hardening (GO signed; this is a **new** scoped track)  
+**Not:** global TravelContext SSOT · Proposal 大一统 · microservice/CQRS/GraphQL · OR-Tools Apply · Iceland/Mobile expansion  
+
+## Goal
+
+Unify the **minimum safety contract** for authoritative writes — not a global write bus or single persistence store (`MIXED_WRITE_UNIFICATION_FORBIDDEN`).
+
+## First batch (landed in code)
+
+| Item | Path |
+|------|------|
+| Types / errors / results | `src/decision-runtime/execution/authoritative-write/authoritative-write.types.ts` |
+| WriteTarget profiles | `write-target.registry.ts` (mirrors audit matrix mixedTargets) |
+| Gateway | `authoritative-write-gateway.service.ts` |
+| Contract tests | `authoritative-write-gateway.contract.spec.ts` |
+
+### Corridors (v1 batch only)
+
+1. **ITINERARY_ADJUST** → delegate `executeItineraryAdjustDraftApply`  
+2. **UNIFIED_EXECUTE** → delegate `Rfc001PlanVersionApplyExecutor.execute`  
+3. **ACTIONS_COMMIT** → delegate `ActionExecutionService.commit`  
+
+Handlers are **not auto-bound** yet (`HANDLER_NOT_BOUND` until explicit adapter wiring). Existing HTTP paths remain source of truth.
+
+## Shared stages
+
+Authority → Verification Proof → Freshness shape → Idempotency key → WriteTarget profile → Audit → (handler) Transaction/Audit persistence
+
+### Unified outcomes (client protocol)
+
+`APPLIED` | `CONFLICT` | `VERIFICATION_REQUIRED` | `REJECTED` | `IDEMPOTENT_REPLAY`
+
+### Compensation model (v1)
+
+- **pre_commit_abort** — fail before effective  
+- **post_effective_compensating_plan_version** — Unified rollback path  
+- **revision_chain_rollback** — itinerary adjust  
+- **stub_no_side_effects** — Actions (unchanged product stance)  
+
+**Out of scope:** hotel / activity / car rental external commercial compensation.
+
+## Next tickets (ordered)
+
+| ID | Work | Notes |
+|----|------|-------|
+| UWC-1a | ✅ Types + gateway + registry + contract | this package |
+| UWC-1b | Bind handlers for 3 corridors (feature-flagged) | no HTTP rewrite yet |
+| UWC-1c | Require `basePlanVersionId` / `contextVersion` OCC where applicable | forbid silent overwrite of effective plan / context |
+| UWC-1d | Dual-layer rollback documentation + Unified compensating PlanVersion alignment | Actions stays stub |
+| UWC-1e | Web/iOS protocol: Preview → Confirm → Apply mapping to unified outcomes | BFF contract index update only |
+
+## Hard prohibitions
+
+- global TravelContext SSOT  
+- Proposal 大一统  
+- microservice / CQRS / GraphQL redesign  
+- OR-Tools authoritative Apply  
+- Iceland / Mobile writeback expansion  
+- mixed-write single-store unification  
+
+## Relation to V3.1 release
+
+V3.1 **GO** remains on tag `v31-agent-interface-hardening-rc1` → `b5127ae9…`.  
+UWC v1 is a **follow-on engineering track**; do not move evidence tag `claim-evidence-matrix-v2.0`.
