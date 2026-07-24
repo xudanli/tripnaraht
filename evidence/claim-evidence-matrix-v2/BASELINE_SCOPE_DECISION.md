@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|--------|
 | **V3.1 feature tip** | `bc6e2e6d5a087a6a20c47576ebdba295370ebec1` |
-| **Matrix v2 freeze delivery** | _(filled at freeze commit; equals tip of `feat/v31-engineering-hardening` when tagged)_ |
+| **Matrix v2 freeze delivery** | `a50acf7fe3fed65b0330001cdb86026fdc625a63` |
 | **Annotated tag** | `claim-evidence-matrix-v2.0` |
 | **Parent OpenAPI / v1 research freeze** | `a7e9bdca588431143e04e98d7c1c1204299c6e54` |
 | **v1 Matrix** | Remains FROZEN; still valid for historical citation |

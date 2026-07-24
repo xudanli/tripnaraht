@@ -1,7 +1,7 @@
 {
   "schema": "CLAIM_EVIDENCE_MATRIX",
   "version": "2.0",
-  "status": "PENDING_SIGN",
+  "status": "FROZEN",
   "parent_matrix": "CLAIM_EVIDENCE_MATRIX_v1.0",
   "engineering_baseline_commit": "bc6e2e6d5a087a6a20c47576ebdba295370ebec1",
   "fact_pack_openapi_freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
@@ -535,5 +535,6 @@
         "notes": "Updated on freeze delivery commit."
       }
     }
-  ]
+  ],
+  "matrix_v2_freeze_delivery_commit": "a50acf7fe3fed65b0330001cdb86026fdc625a63"
 }
