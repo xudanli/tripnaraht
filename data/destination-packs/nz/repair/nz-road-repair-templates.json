@@ -1,0 +1,38 @@
+{
+  "schemaId": "tripnara.road_repair_templates@v1",
+  "countryCode": "NZ",
+  "roadRegions": {
+    "SH6": ["NZ_SOUTH_ISLAND", "NZ_FIORLAND"],
+    "SH94": ["NZ_SOUTH_ISLAND", "NZ_FIORLAND"]
+  },
+  "poiIntent": {
+    "nz.milford-sound": { "intents": ["intent_fjord"], "categories": ["COAST", "GLACIER"] },
+    "nz.te-anau": { "intents": ["intent_lakeside"], "categories": ["COAST"] }
+  },
+  "templates": [
+    {
+      "templateId": "nz_local_te_anau",
+      "generationMethod": "LOCAL_SUBSTITUTION",
+      "regionCodes": ["NZ_SOUTH_ISLAND", "NZ_FIORLAND"],
+      "experienceCategories": ["COAST"],
+      "intentRefs": ["intent_lakeside", "intent_fjord"],
+      "requiresOpenRoadIds": [],
+      "substitutePoiId": "nz.te-anau",
+      "estimatedIntentPreservation": 0.86,
+      "estimatedAddedDurationMinutes": 15,
+      "estimatedAddedCostIsk": 0
+    },
+    {
+      "templateId": "nz_route_bypass_inland",
+      "generationMethod": "ROUTE_REPAIR",
+      "regionCodes": ["NZ_SOUTH_ISLAND"],
+      "experienceCategories": ["COAST", "GLACIER"],
+      "intentRefs": ["intent_fjord"],
+      "requiresOpenRoadIds": [],
+      "routeBypassRoadId": "SH73_INLAND",
+      "estimatedIntentPreservation": 0.9,
+      "estimatedAddedDurationMinutes": 120,
+      "estimatedAddedCostIsk": 800
+    }
+  ]
+}

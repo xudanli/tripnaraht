@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.constraints@v1",
+  "tripId": "pilot_iceland_parking_full_02_bluelagoon_approach_swap",
+  "planVersionId": "pv-gold",
+  "constraints": [
+    {
+      "canonicalId": "constraint_0",
+      "kind": "UNKNOWN",
+      "hard": true
+    },
+    {
+      "canonicalId": "constraint_1",
+      "kind": "UNKNOWN",
+      "hard": true
+    }
+  ]
+}

@@ -4,7 +4,24 @@ import type { RouteDirectionDecisionMemory } from './route-direction-decision-me
 import type { TripTaskMemory, TripTaskRecoveryAuditLine } from '../../context-engine/interfaces/trip-task-memory.interface';
 import type { DecisionMemory } from '../decision-memory/decision-memory.types';
 import type { DecisionLedgerSnapshot, LedgerRecomputePlanV1 } from '../decision-ledger/decision-ledger.types';
+import type { ActiveRouteHealthSnapshot } from '../utils/route-health-memory.util';
 import type { DomainInfluenceDigestV1, WishConstraintDigestV1, PrivateWishDigestV1, DecisionProfilingDigestV1, NegotiationDigestV1 } from './trip-intent-digest.types';
+
+export type { ActiveRouteHealthSnapshot };
+
+/**
+ * L0：设置页 / `UserProfile.preferences` 中的静态事实与显式偏好（与 L1 `UserTravelProfile` 分轨，装配层左连接）。
+ */
+export type AgentMemoryUserBasics = Readonly<{
+  nationality?: string;
+  residencyCountry?: string;
+  tags?: readonly string[];
+  preferredAttractionTypes?: readonly string[];
+  dietaryRestrictions?: readonly string[];
+  preferOffbeatAttractions?: boolean;
+  /** `user_profile` 行 `updatedAt`（ISO8601），供 audit */
+  profilePreferencesUpdatedAt?: string;
+}>;
 
 /** 单请求 route_and_run 显式提交的同行/体能（不写入 L1 DB；供本链路 Memory / TripPlanRequest 只读消费） */
 export interface RouteRunPartyProfileSnapshot {
@@ -14,6 +31,20 @@ export interface RouteRunPartyProfileSnapshot {
   has_children?: boolean;
   has_elderly?: boolean;
   mobility_note_zh?: string;
+}
+
+/** L4：单次行程结果反馈的运行时快照（Tail 装配；不写入 L1） */
+export interface TripFeedbackSnapshot {
+  tripId: string;
+  /** 1–5 分；缺省映射为 3 */
+  satisfactionScore: number;
+  fatigueLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  overallSuccess: boolean;
+  abandoned: boolean;
+  /** ISO8601，保持 Redis 序列化一致性 */
+  createdAt: string;
+  /** 来自 `failurePoints` 等可解释标签 */
+  primaryTags: string[];
 }
 
 /**
@@ -31,6 +62,8 @@ export interface AgentMemoryContext {
   tripId: string | null;
 
   userProfile: UserTravelProfile | null;
+  /** L0：`UserProfile.preferences` 扁平字段快照（国籍、标签、景点类型等）；无数据时为 null */
+  userBasics: AgentMemoryUserBasics | null;
   /** 从 L1 画像摘要出的偏好（供路由/策略快速消费） */
   travelPreference: Record<string, unknown> | null;
 
@@ -54,8 +87,23 @@ export interface AgentMemoryContext {
   recentWorldDecisions: DecisionMemory[];
   activeTripState: TripTaskMemory | null;
   recoveryHistory: TripTaskRecoveryAuditLine[];
-  /** L3/L4 演化占位：当前仅占位，避免各服务私拉字段 */
+  /**
+   * L3 路线健康映射的确定性失败模式摘要（`${reason_token}:${count}`，如 `fatigue_overload:1`）。
+   * 来自 activeRouteHealthSnapshot；无 L3 数据时为空数组。
+   */
   failurePatterns: string[];
+  /**
+   * 当前行程已选路线方向的 L3 快照；Injector / Replay 只读，禁止运行时直读 DB。
+   */
+  activeRouteHealthSnapshot?: ActiveRouteHealthSnapshot | null;
+  /**
+   * L3 按 `${routeDirectionId}_${countryCode}` 索引的快照表（含 L2 近期决策路线，cap=8）。
+   */
+  routeHealthByKey?: Record<string, ActiveRouteHealthSnapshot>;
+  /**
+   * L4 经验库：最近 3 次非放弃行程的反馈事实快照；只读注入 DecisionParams，不覆盖 L1。
+   */
+  recentTripFeedbacks: TripFeedbackSnapshot[];
 
   /**
    * Trip 域投影：领域影响力治理摘要（主导者/权重/规则确认），供 replay 审计；不含私密愿望正文。
@@ -79,5 +127,7 @@ export interface AgentMemoryContext {
   loadedAt: string;
   observability: {
     layers: string[];
+    /** 装配层降级/错误元数据（如 L3_load_error_* / L4_load_error），供 audit / Tier-0 diff */
+    metadata?: Record<string, unknown>;
   };
 }

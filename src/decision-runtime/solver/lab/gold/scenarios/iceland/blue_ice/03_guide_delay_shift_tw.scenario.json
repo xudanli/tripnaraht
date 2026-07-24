@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.blue_ice.03_guide_delay_shift_tw",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "blue_ice",
+  "title": "Blue-ice guide delayed \u2014 SHIFT later TW",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/blue_ice/problems/03_guide_delay_shift_tw.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

@@ -1,0 +1,6 @@
+# TripNARA OR-Tools Solver Service (ADR-008 / S0–S1)
+ortools>=9.10,<10
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+httpx>=0.27

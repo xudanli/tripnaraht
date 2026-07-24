@@ -1,0 +1,26 @@
+{
+  "schemaId": "tripnara.planning_gold_evidence_pack@v1",
+  "packId": "evpack.iceland.road_close.04_f235_reroute_mid_edge",
+  "countryCode": "IS",
+  "family": "road_close",
+  "provenance": "staging_replay",
+  "capturedAt": "2026-06-18T11:40:00Z",
+  "event": {
+    "kind": "ROAD_STATUS_CHANGED",
+    "roadId": "F235",
+    "status": "CLOSED",
+    "canonicalConstraintId": "road.close.F235",
+    "effectiveFrom": "2026-06-18T11:40:00Z"
+  },
+  "sourceRefs": [
+    {
+      "provider": "vegagerdin_staging_fixture",
+      "ref": "vegagerdin_notice_staging_f235_2026-06-18",
+      "url": "https://staging.example.local/road-notices/vegagerdin_notice_staging_f235_2026-06-18"
+    }
+  ],
+  "replayNotes": [
+    "Curated staging fixture for M4 readiness \u2014 not live production telemetry",
+    "SolverProblem remains synthetic matrix; Evidence binding is what upgrades provenance"
+  ]
+}

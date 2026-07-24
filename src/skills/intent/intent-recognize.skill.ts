@@ -47,7 +47,7 @@ export class IntentRecognizeSkill implements Skill<IntentRecognizeInput, IntentR
   metadata = {
     name: 'intent.recognize',
     description:
-      '基于用户自然语言识别路由任务类型（与 orchestration TaskType 对齐），用于减少关键词规则维护成本',
+      'intent.recognize：基于用户自然语言识别路由任务类型（与 orchestration TaskType 对齐），用于减少关键词规则维护成本',
     version: '1.0.0',
     category: 'rag' as const,
     toolGroup: 'CONTEXT' as const,

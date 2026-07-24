@@ -1,0 +1,62 @@
+{
+  "evidenceType": "SR5_AUTHORITY_AUTOMATED",
+  "acceptanceMode": "DEVBOX_ENGINEERING_SELF_ACCEPTANCE",
+  "rolesNote": "No tripartite ops owners — solo devbox run; formal named sign-off deferred.",
+  "startedAt": "2026-07-10T16:03:58.257Z",
+  "endedAt": "2026-07-10T16:04:06.439Z",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "checks": [
+    {
+      "id": "AUTH-001-circuit-drill-evidence",
+      "pass": true,
+      "detail": "circuit result=READY"
+    },
+    {
+      "id": "AUTH-002-replay-lifecycle-evidence",
+      "pass": true,
+      "detail": "replay result=READY"
+    },
+    {
+      "id": "AUTH-003-unavailable-no-false-resolve",
+      "pass": true,
+      "detail": "before=RESOLVED after=RESOLVED"
+    },
+    {
+      "id": "AUTH-004-single-open-problem-upgrade",
+      "pass": true,
+      "detail": "root=problem_weather_c0a55555_1783699050162"
+    },
+    {
+      "id": "AUTH-010-write-entry-inventory-ci",
+      "pass": true,
+      "detail": "test:write-entry-inventory PASS"
+    },
+    {
+      "id": "AUTH-011-legacy-not-in-drill-lineage",
+      "pass": true,
+      "detail": "Live Drill §10: Legacy path invoked=false (iceland_met, no LEGACY_* triggers) — see evidence pack"
+    },
+    {
+      "id": "AUTH-012-effective-write-guard-enforced",
+      "pass": true,
+      "detail": "EFFECTIVE_PLAN_WRITE_GUARD=ENFORCE"
+    },
+    {
+      "id": "AUTH-005-problems-canonical-ssot",
+      "pass": true,
+      "detail": "problems=2 legacySourced=0"
+    }
+  ],
+  "ciGates": [
+    "test:write-entry-inventory",
+    "test:canonical-staging-ready (see CI — not re-run here)",
+    "test:vedur-gateway-closure (see CI)"
+  ],
+  "authorityChainObserved": [
+    "EvidenceResolver → WorldStateAssertion (iceland_met, not admin_injection)",
+    "CANONICAL_MONITORING_POLL → DecisionTriggerGateway",
+    "WeatherActivityProhibitedPipeline → Rfc001DecisionFinalizeService",
+    "No LEGACY_DECISION_ENGINE route in drill lineage"
+  ],
+  "result": "READY"
+}

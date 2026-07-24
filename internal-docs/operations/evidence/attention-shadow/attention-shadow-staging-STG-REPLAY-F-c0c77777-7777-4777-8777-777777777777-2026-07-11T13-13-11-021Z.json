@@ -1,0 +1,240 @@
+{
+  "schemaId": "tripnara.attention_shadow_staging_replay@v1",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "runId": "07b06996-4da4-4b6a-9cb4-ab9c109fdc0a",
+  "scenarioId": "STG-REPLAY-F",
+  "scenarioTitle": "全部 resolved — visible 移除，underlying 保留",
+  "setupHint": "将 wind chain 相关 problems 标 RESOLVED（或 ACKNOWLEDGED 按产品定义）；Read Model 仍返回 underlying rows。",
+  "runAt": "2026-07-11T13:13:11.021Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "featureFlags": {
+    "attentionOrchestration": true,
+    "primarySso": false
+  },
+  "inputRows": [
+    {
+      "problemId": "stg_attn_wind",
+      "authority": "CANONICAL",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "instanceKey": "WEATHER_STRONG_WIND:stg_attn_wind",
+      "workflowStatus": "RESOLVED",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "weather strong wind",
+      "summary": "weather strong wind",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "weather strong wind",
+      "queueDescription": "weather strong wind"
+    },
+    {
+      "problemId": "stg_attn_infeasible",
+      "authority": "CANONICAL",
+      "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+      "instanceKey": "EXECUTION_SCHEDULE_INFEASIBLE:stg_attn_infeasible",
+      "workflowStatus": "RESOLVED",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "execution schedule infeasible",
+      "summary": "execution schedule infeasible",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "execution schedule infeasible",
+      "queueDescription": "execution schedule infeasible"
+    },
+    {
+      "problemId": "stg_attn_night",
+      "authority": "CANONICAL",
+      "semanticKey": "NIGHT_DRIVING_RISK",
+      "instanceKey": "NIGHT_DRIVING_RISK:stg_attn_night",
+      "workflowStatus": "RESOLVED",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "night driving risk",
+      "summary": "night driving risk",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "night driving risk",
+      "queueDescription": "night driving risk"
+    },
+    {
+      "problemId": "stg_attn_road",
+      "authority": "CANONICAL",
+      "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
+      "instanceKey": "ROAD_SEGMENT_UNAVAILABLE:stg_attn_road",
+      "workflowStatus": "RESOLVED",
+      "enforcement": "BLOCK",
+      "title": "road segment unavailable",
+      "summary": "road segment unavailable",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:road_f208"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "road segment unavailable",
+      "queueDescription": "road segment unavailable"
+    }
+  ],
+  "normalizedInputs": [
+    {
+      "problemId": "stg_attn_wind",
+      "semanticCapability": "WEATHER_STRONG_WIND",
+      "status": "RESOLVED",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    },
+    {
+      "problemId": "stg_attn_infeasible",
+      "semanticCapability": "EXECUTION_SCHEDULE_INFEASIBLE",
+      "status": "RESOLVED",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "causedByProblemId": "stg_attn_slip",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    },
+    {
+      "problemId": "stg_attn_night",
+      "semanticCapability": "NIGHT_DRIVING_RISK",
+      "status": "RESOLVED",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "causedByProblemId": "stg_attn_infeasible",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    }
+  ],
+  "clusters": [
+    {
+      "clusterId": "cluster_weather_strong_wind_c0c77777_7777_4777_8777_777777777777_segment_c0c77777_7777_4777_8777_777777777777_drive_day2_vedur_ep_exec_slip_staging_20260712",
+      "tripId": "c0c77777-7777-4777-8777-777777777777",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "rootCauseType": "WEATHER_STRONG_WIND",
+      "primaryProblemId": "stg_attn_infeasible",
+      "relatedProblemIds": [
+        "stg_attn_wind",
+        "stg_attn_night"
+      ],
+      "causalChain": [
+        {
+          "code": "WEATHER_STRONG_WIND",
+          "label": "强风",
+          "problemId": "stg_attn_wind",
+          "order": 0
+        },
+        {
+          "code": "EXECUTION_SCHEDULE_INFEASIBLE",
+          "label": "行程不可执行",
+          "problemId": "stg_attn_infeasible",
+          "order": 3
+        },
+        {
+          "code": "NIGHT_DRIVING_RISK",
+          "label": "夜间驾驶风险",
+          "problemId": "stg_attn_night",
+          "order": 5
+        }
+      ],
+      "attentionLevel": "SILENT",
+      "status": "OPEN",
+      "firstObservedAt": "2026-07-11T13:13:11.021Z",
+      "lastUpdatedAt": "2026-07-11T13:13:11.021Z"
+    }
+  ],
+  "primaryItems": [],
+  "legacyVisibleItems": [],
+  "comparison": {
+    "expectedClusterCount": 1,
+    "actualClusterCount": 1,
+    "actualPrimary": "EXECUTION_SCHEDULE_INFEASIBLE",
+    "primarySelectionReason": "selected EXECUTION_SCHEDULE_INFEASIBLE (stg_attn_infeasible) by decision-driving > root-cause priority",
+    "actualAttention": "SILENT",
+    "attentionReason": "attention=SILENT from capabilities [WEATHER_STRONG_WIND, EXECUTION_SCHEDULE_INFEASIBLE, NIGHT_DRIVING_RISK] clusterStatus=OPEN",
+    "expectedVisibleItemCount": 0,
+    "actualVisibleItemCount": 0,
+    "verdict": "NO_OP",
+    "reviewStatus": "AUTO_PASS",
+    "reason": "[TRIP_METADATA_RFC001] Sample STG-REPLAY-F PASS",
+    "underlyingProblemCount": 3
+  },
+  "humanAdjudication": {
+    "shouldMerge": "PENDING",
+    "rootCauseKeyCorrect": "PENDING",
+    "primaryCorrect": "PENDING",
+    "attentionCorrect": "PENDING",
+    "visibleCardCountCorrect": "PENDING",
+    "resolutionBehaviorCorrect": "PENDING",
+    "eligibleForCanary": "PENDING"
+  }
+}

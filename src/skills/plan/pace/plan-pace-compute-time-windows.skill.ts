@@ -30,7 +30,7 @@ export class PlanPaceComputeTimeWindowsSkill implements Skill<PlanPaceComputeTim
 
   metadata = {
     name: 'plan.pace.computeTimeWindows',
-    description: '计算每天的可用时间窗（入住退房、交通耗时、缓冲）',
+    description: '计算 plan 每日可用 time windows（入住退房、交通、缓冲）。在 pace 评估或 architect 排程前需时间窗约束时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -40,9 +40,10 @@ export class PlanPaceComputeTimeWindowsSkill implements Skill<PlanPaceComputeTim
     this.logger.debug(`执行 plan.pace.computeTimeWindows: planId=${input.planState.plan_id}`);
 
     try {
-      const days = input.planState.constraints.time.days;
+      const days = this.resolvePlanDays(input.planState);
       const bufferPolicy = input.bufferPolicy || 'standard';
-      const availableHoursPerDay = input.planState.constraints.time.availableHoursPerDay || 10;
+      const availableHoursPerDay =
+        input.planState.constraints?.time?.availableHoursPerDay ?? 10;
       
       // 计算每天的时间窗
       const timeWindows: TimeWindow[] = [];
@@ -89,5 +90,14 @@ export class PlanPaceComputeTimeWindowsSkill implements Skill<PlanPaceComputeTim
       this.logger.error(`计算时间窗失败: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  private resolvePlanDays(planState: PlanState): number {
+    const days = planState.constraints?.time?.days;
+    if (typeof days === 'number' && days > 0) {
+      return days;
+    }
+    const fromSegments = planState.itinerary?.segments?.length ?? 0;
+    return fromSegments > 0 ? fromSegments : 1;
   }
 }

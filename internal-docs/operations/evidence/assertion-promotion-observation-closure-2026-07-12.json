@@ -1,0 +1,41 @@
+{
+  "evidenceType": "ASSERTION_PROMOTION_SHADOW_OBSERVATION_CLOSURE",
+  "completedAt": "2026-07-11T18:54:00Z",
+  "shadowMode": true,
+  "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+  "closure": {
+    "weatherAutoPromotionShadowObservationClosure": "PASS",
+    "weatherHazardLifecycleDrill": "PASS",
+    "weatherRecoveryShadowClosure": "PASS",
+    "retrySchedulerOperationalDrill": "PASS",
+    "retrySchedulerWiring": "PRESENT",
+    "livePromotion": "OFF",
+    "roadPromotion": "OFF",
+    "visibleQueueImpact": "ZERO",
+    "decisionProblemWrites": "ZERO"
+  },
+  "drills": {
+    "hazardLifecycle": {
+      "evidenceFile": "assertion-promotion-observation-2026-07-11T18-47-46.json",
+      "dayIndex": 5,
+      "weatherEpisodeId": "obs-episode-2026-07-11T18-47-46-d5",
+      "verdict": "PASS"
+    },
+    "retryScheduler": {
+      "evidenceFile": "assertion-promotion-observation-2026-07-11T18-53-48.json",
+      "dayIndex": 7,
+      "failpoint": "ASSERTION_PROMOTION_TEST_FAIL_ONCE=1",
+      "verdict": "PASS",
+      "failedThenRecovered": {
+        "attempts": "1 → 2",
+        "status": "FAILED → SHADOW_OBSERVED",
+        "scheduler": "AssertionPromotionRetryScheduler auto-retry"
+      }
+    }
+  },
+  "invariants": {
+    "ledgerRetention": "historical entries preserved (day 1–7); no ledger wipe",
+    "problemCount": 0,
+    "decisionQueueOpenCount": 2
+  }
+}

@@ -1,5 +1,5 @@
 // src/route-directions/route-directions.module.ts
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { RouteDirectionsController } from './route-directions.controller';
 import { RouteDirectionsService } from './route-directions.service';
 import { RouteDirectionSelectorService } from './services/route-direction-selector.service';
@@ -16,7 +16,6 @@ import { CompliancePluginService } from './plugins/compliance-plugin.service';
 import { TransportPluginService } from './plugins/transport-plugin.service';
 import { RouteDecisionEngineService } from './services/route-decision-engine.service';
 import { ActionDispatcherService } from './services/action-dispatcher.service';
-import { forwardRef } from '@nestjs/common';
 import { DecisionModule } from '../trips/decision/decision.module';
 import { SharedMemoryModule } from '../agent/memory/shared-memory.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -24,8 +23,9 @@ import { POIModule } from '../poi/poi.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisService } from '../redis/redis.service';
 import { WorldFactsModule } from '../world-facts/world-facts.module';
+import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
+import { HikingDetailOverrideController } from './hiking-detail-override.controller';
 import { TransportModule } from '../transport/transport.module';
-import { MatchSquareModule } from '../match-square/match-square.module';
 import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
 
 // 检查是否在 MCP 模式下
@@ -58,13 +58,13 @@ class MockRedisService {
         })(),
     POIModule,
     WorldFactsModule,
-    MatchSquareModule,
+    HikingDemoModule,
     TransportModule,
     IdentityGovernanceModule,
     forwardRef(() => DecisionModule), // 用于RhythmMatchingService和ThreeLayerExplanationService - 使用 forwardRef 避免循环依赖
     SharedMemoryModule,
   ],
-  controllers: [RouteDirectionsController],
+  controllers: [RouteDirectionsController, HikingDetailOverrideController],
   providers: [
     // 在 MCP 模式下，提供假的 RedisService
     ...(disableRedis ? [{ provide: RedisService, useClass: MockRedisService }] : []),

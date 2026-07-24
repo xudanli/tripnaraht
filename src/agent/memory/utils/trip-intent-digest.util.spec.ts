@@ -41,6 +41,29 @@ describe('trip-intent-digest.util', () => {
     expect(digest!.mustAvoid).not.toContain('应忽略');
   });
 
+  it('buildWishConstraintDigest excludes other members private structured hints', () => {
+    const digest = buildWishConstraintDigest(
+      [
+        {
+          userId: 'member-a',
+          visibility: 'private',
+          agentEligible: true,
+          structuredHints: { must_avoid: ['恐高', '玻璃栈道'] },
+        },
+        {
+          userId: 'member-b',
+          visibility: 'signed',
+          agentEligible: true,
+          structuredHints: { must_do: ['看极光'] },
+        },
+      ],
+      'member-b',
+    );
+    expect(digest!.mustAvoid).not.toContain('恐高');
+    expect(digest!.mustAvoid).not.toContain('玻璃栈道');
+    expect(digest!.mustDo).toContain('看极光');
+  });
+
   it('buildDomainInfluenceDigestFromSnapshot omits solo empty trips', () => {
     const digest = buildDomainInfluenceDigestFromSnapshot({
       tripId: 't1',

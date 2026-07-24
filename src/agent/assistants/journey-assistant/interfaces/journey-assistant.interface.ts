@@ -122,6 +122,21 @@ export interface EmergencyOption {
   }[];
 }
 
+import type { EmotionalContext } from '../../../narrator/types/emotional-context.type';
+import type { EmotionalContextClientProjection } from '../../../narrator/emotional-context-client-projection.util';
+
+/**
+ * 行中陪伴感知信号（供 EmotionNarratorOrchestrator 投影 proactivityGate）
+ */
+export interface JourneyPresenceSignals {
+  lastUserMessage?: string;
+  lastUserMessageAt?: string;
+  lastLocationUpdatedAt?: string;
+  lastKnownLocation?: { lat: number; lng: number };
+  timezone?: string;
+  continuousDrivingSeconds?: number;
+}
+
 /**
  * 行程状态
  */
@@ -137,6 +152,10 @@ export interface JourneyState {
     lng: number;
     name?: string;
   };
+  /** P1：行中感知 + 情绪投影（只读 Data Projector 输出） */
+  presenceSignals?: JourneyPresenceSignals;
+  /** P1：行中情绪矩阵（进程内 tripnara.emotional_context@v1） */
+  emotionalContext?: EmotionalContext;
   todaySchedule: ScheduleItem[];
   upcomingReminders: Reminder[];
   activeEvents: TripEvent[];
@@ -186,6 +205,8 @@ export interface JourneyAssistantRequest {
   context?: {
     currentLocation?: { lat: number; lng: number };
     timezone?: string;
+    /** 客户端上报：连续驾驶秒数（供 fatigue / proactivityGate 投影） */
+    continuousDrivingSeconds?: number;
   };
   eventId?: string;
   selectedOptionId?: string;

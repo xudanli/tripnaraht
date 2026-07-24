@@ -9,6 +9,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { TransportRoutingService } from '../../transport/transport-routing.service';
 import { EntityResolutionService } from '../../places/services/entity-resolution.service';
+import { inferEntityResolutionCountryCode } from '../../canonical-poi-resolution/adapters/cpre-entity-resolution.bridge';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 
 let TRANSPORT_EVIDENCE_SEQ = 0;
@@ -28,6 +29,8 @@ export interface TransportSearchInput extends SkillInput {
   origin: string | { lat: number; lng: number };
   destination: string | { lat: number; lng: number };
   mode?: 'walk' | 'drive' | 'transit' | 'mixed';
+  /** ISO 3166-1 alpha-2；冰岛场景经 CPRE 解析地名坐标 */
+  countryCode?: string;
 }
 
 export interface TransportSearchOutput extends SkillOutput {
@@ -49,7 +52,7 @@ export interface TransportSearchOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'transport.search',
-  description: '搜索两点之间的交通路线（POI 跳点优先驾车/步行，不走城际大交通分支）',
+  description: '搜索 transport 两点间路线与耗时。POI 跳点优先驾车/步行；在 RESEARCH/VERIFY/REPAIR 阶段计算转场或校验可达性时调用。',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -60,7 +63,7 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
 
   metadata = {
     name: 'transport.search',
-    description: '搜索两点之间的交通路线',
+    description: '搜索 transport 两点间路线与耗时。在 RESEARCH/VERIFY/REPAIR 阶段计算转场或校验可达性时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -87,11 +90,11 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
       // Coordinates required. Accept either structured coords or a parseable "lat,lng" string.
       const origin =
         typeof input.origin === 'string'
-          ? await this.resolveToCoords(input.origin)
+          ? await this.resolveToCoords(input.origin, input.countryCode)
           : { lat: input.origin.lat, lng: input.origin.lng };
       const destination =
         typeof input.destination === 'string'
-          ? await this.resolveToCoords(input.destination)
+          ? await this.resolveToCoords(input.destination, input.countryCode)
           : { lat: input.destination.lat, lng: input.destination.lng };
 
       if (!origin || !destination) {
@@ -139,9 +142,17 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
   }
 
   /** Best-effort: accept coords strings; otherwise resolve to a place with coordinates. */
-  private async resolveToCoords(s: string): Promise<{ lat: number; lng: number } | undefined> {
+  private async resolveToCoords(
+    s: string,
+    countryCode?: string,
+  ): Promise<{ lat: number; lng: number } | undefined> {
     const parsed = tryParseLatLngPairFromString(s);
     if (parsed) return parsed;
+
+    const resolvedCountryCode = inferEntityResolutionCountryCode({
+      countryCode,
+      query: s,
+    });
 
     // Devbox / MCP mode often disables PlacesModule, which means EntityResolutionService may be absent.
     // Provide a minimal deterministic fallback for common Iceland anchors so orchestration can proceed.
@@ -157,6 +168,7 @@ export class TransportSearchSkill implements Skill<TransportSearchInput, Transpo
         undefined,
         undefined,
         10,
+        resolvedCountryCode ? { countryCode: resolvedCountryCode } : undefined,
       );
       const list = Array.isArray(pack?.results) ? pack.results : [];
       const r = list.find((x) => Number.isFinite(x?.lat) && Number.isFinite(x?.lng));

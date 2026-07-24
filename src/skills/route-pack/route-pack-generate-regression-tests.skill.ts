@@ -62,7 +62,7 @@ export class RoutePackGenerateRegressionTestsSkill
 
   metadata = {
     name: 'routePack.generateRegressionTests',
-    description: '为 RoutePack 生成回归测试用例，确保 Pack 变更不会破坏现有功能',
+    description: '为 routePack 生成回归测试用例，防止 Pack 变更破坏现有块。在 routePack validate 后或 CI 维护 RouteDirection Pack 契约时调用。',
     version: '1.0.0',
     category: 'countryPack' as const,
   };

@@ -1,0 +1,79 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_C_EXECUTE",
+  "acceptanceMode": "PRODUCTION_CANARY_PILOT",
+  "startedAt": "2026-07-10T16:51:40.506Z",
+  "endedAt": "2026-07-10T16:51:41.565Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "userId": "a0a99999-9999-4999-8999-999999999901",
+  "phase": "EXECUTE",
+  "problemId": "problem_weather_a0a99999_1783702300764",
+  "selectedOptionId": "cand_indoor",
+  "effectivePlanVersionId": "plan_v2_02301135",
+  "resolutionStatus": "VERIFIED",
+  "revalidationStatus": "PASSED",
+  "writeChain": "EVALUATE_AUTHORIZE_EXECUTE",
+  "problemResolved": true,
+  "checks": [
+    {
+      "id": "PC-C-000-phase",
+      "pass": true,
+      "detail": "phase=EXECUTE canonicalExec=1"
+    },
+    {
+      "id": "PC-C-001-trip",
+      "pass": true,
+      "detail": "effectiveBefore=plan_1"
+    },
+    {
+      "id": "PC-C-002-apply-gate",
+      "pass": true,
+      "detail": "EXECUTE phase allows W-01 apply"
+    },
+    {
+      "id": "PC-C-003-problem",
+      "pass": true,
+      "detail": "problemId=problem_weather_a0a99999_1783702300764 liveSource=REAL-SHAPE-HAZARD-REPLAY-95kmh"
+    },
+    {
+      "id": "PC-C-004-repair-candidates",
+      "pass": true,
+      "detail": "total=3 executable=1"
+    },
+    {
+      "id": "PC-C-005-w01-apply",
+      "pass": true,
+      "detail": "resolution=VERIFIED revalidation=PASSED"
+    },
+    {
+      "id": "PC-C-006-effective-changed",
+      "pass": true,
+      "detail": "effectiveAfter=plan_v2_02301135"
+    },
+    {
+      "id": "PC-C-007-write-chain",
+      "pass": true,
+      "detail": "writeChain=EVALUATE_AUTHORIZE_EXECUTE"
+    },
+    {
+      "id": "PC-C-008-problem-resolved",
+      "pass": true,
+      "detail": "status=RESOLVED"
+    },
+    {
+      "id": "PC-C-009-causal-trace",
+      "pass": true,
+      "detail": "rules=iceland.wind_to_p90,iceland.p90_to_miss"
+    },
+    {
+      "id": "PC-C-010-internal-visible",
+      "pass": true,
+      "detail": "internal user visible in EXECUTE"
+    },
+    {
+      "id": "PC-C-011-external-hidden",
+      "pass": true,
+      "detail": "external user still isolated"
+    }
+  ],
+  "result": "READY"
+}

@@ -13,3 +13,20 @@ export const LEDGER_RECONCILE_POLICY = {
 export function isLedgerReconcileBlockingPhase(phase: MemoryLedgerPhaseV1): boolean {
   return (LEDGER_RECONCILE_POLICY.BLOCKING_PHASES as readonly string[]).includes(phase);
 }
+
+/** Robustness Rollout — physical + organizational simulation on successful planning responses. */
+export const ROBUSTNESS_ROLLOUT_POLICY = {
+  maxSampleCount: 100,
+  minItineraryItems: 1,
+  organizationalStressThreshold: 0.72,
+  defaultPerturbations: ['WEATHER', 'TRANSPORT', 'FATIGUE', 'SOCIAL'] as const,
+} as const;
+
+export function isRobustnessRolloutEnabled(): boolean {
+  return process.env.ROBUSTNESS_ROLLOUT_ENABLED !== '0';
+}
+
+export function robustnessRolloutDefaultSampleCount(): number {
+  const n = Number(process.env.ROBUSTNESS_ROLLOUT_SAMPLES ?? 50);
+  return Number.isFinite(n) && n > 0 ? n : 50;
+}

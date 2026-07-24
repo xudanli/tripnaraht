@@ -9,10 +9,10 @@ import { RecruitingDecisionReason, RecruitingSignal, AttributionConfidence } fro
  */
 export class ReviewApplicationRequest {
   @IsString()
-  applicationId: string;
+  applicationId!: string;
 
   @IsEnum(['approved', 'rejected'])
-  decision: 'approved' | 'rejected';
+  decision!: 'approved' | 'rejected';
 
   @IsOptional()
   @IsNumber()
@@ -75,11 +75,11 @@ export class ReviewApplicationRequest {
  * 招募归因响应
  */
 export class RecruitingAttributionResponse {
-  causeType: string;
-  primaryReason: RecruitingDecisionReason;
-  reasonCodes: string[];
-  signalScores: Record<RecruitingSignal, number>;
-  confidence: AttributionConfidence;
+  causeType!: string;
+  primaryReason!: RecruitingDecisionReason;
+  reasonCodes!: string[];
+  signalScores!: Record<RecruitingSignal, number>;
+  confidence!: AttributionConfidence;
   metadata?: {
     ruleId?: string;
     alternativeReasons?: RecruitingDecisionReason[];
@@ -88,19 +88,19 @@ export class RecruitingAttributionResponse {
     scheduleMatchScore?: number;
     budgetMatchScore?: number;
   };
-  alternatives: RecruitingAttributionResponse[];
-  timestamp: Date;
+  alternatives!: RecruitingAttributionResponse[];
+  timestamp!: Date;
 }
 
 /**
  * 招募结果响应
  */
 export class RecruitingOutcomeResponse {
-  id: string;
-  postId: string;
+  id!: string;
+  postId!: string;
   tripId?: string;
-  successLevel: string;
-  metrics: {
+  successLevel!: string;
+  metrics!: {
     timeToFill: number;
     applicationCount: number;
     approvedCount: number;
@@ -110,39 +110,39 @@ export class RecruitingOutcomeResponse {
     teamPerformance: number;
     attritionRate: number;
   };
-  factors: Array<{
+  factors!: Array<{
     type: string;
     impact: number;
     description: string;
     details?: Record<string, any>;
   }>;
-  recommendations: string[];
-  computedAt: Date;
-  dataQuality: number;
-  confidence: number;
+  recommendations!: string[];
+  computedAt!: Date;
+  dataQuality!: number;
+  confidence!: number;
 }
 
 /**
  * 招募洞察响应
  */
 export class RecruitingInsightsResponse {
-  postId: string;
-  attributionSummary: {
+  postId!: string;
+  attributionSummary!: {
     primaryReasons: Record<string, number>;
     signalDistribution: Record<string, number>;
     confidenceDistribution: Record<string, number>;
   };
   outcomeSummary?: RecruitingOutcomeResponse;
-  recommendations: string[];
+  recommendations!: string[];
 }
 
 /**
  * 招募优化响应
  */
 export class RecruitingOptimizationResponse {
-  type: 'compatibility' | 'exposure' | 'diversity' | 'screening' | 'communication';
-  priority: 'high' | 'medium' | 'low';
-  description: string;
-  actionItems: string[];
-  expectedImpact: string;
+  type!: 'compatibility' | 'exposure' | 'diversity' | 'screening' | 'communication';
+  priority!: 'high' | 'medium' | 'low';
+  description!: string;
+  actionItems!: string[];
+  expectedImpact!: string;
 }

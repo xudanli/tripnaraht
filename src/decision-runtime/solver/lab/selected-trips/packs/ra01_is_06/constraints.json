@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.constraints@v1",
+  "tripId": "ra01_is_06",
+  "planVersionId": "plan_pilot_is_06_v1_tep_REPAIR-SDR101-D1-activity_stop_6",
+  "constraints": [
+    {
+      "canonicalId": "vehicle.type",
+      "kind": "VEHICLE_TYPE",
+      "hard": true
+    },
+    {
+      "canonicalId": "pace.max_daily_drive",
+      "kind": "MAX_DAILY_DRIVE",
+      "hard": true
+    }
+  ]
+}

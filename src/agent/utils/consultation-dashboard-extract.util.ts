@@ -20,6 +20,8 @@ import type {
 
 const MARK_START = '<<<CONSULTATION_UI_JSON>>>';
 const MARK_END = '<<<END_CONSULTATION_UI_JSON>>>';
+/** 模型偶发少写一个 `>` */
+const MARK_END_LOOSE = /<<<END_CONSULTATION_UI_JSON>{2,3}/;
 
 const MAX_HEADLINE = 280;
 const MAX_SHORT = 120;
@@ -287,25 +289,55 @@ export function sanitizeConsultationDashboard(raw: unknown): ConsultationDashboa
   };
 }
 
+function findConsultationDashboardEnd(raw: string, afterStart: number): { idx: number; len: number } | null {
+  const strict = raw.indexOf(MARK_END, afterStart);
+  if (strict !== -1) {
+    return { idx: strict, len: MARK_END.length };
+  }
+  const m = raw.slice(afterStart).match(MARK_END_LOOSE);
+  if (!m || m.index == null) return null;
+  return { idx: afterStart + m.index, len: m[0].length };
+}
+
+/** 去掉残留的起止标记与夹在标记间的孤儿 JSON */
+export function stripOrphanConsultationDashboardMarkers(text: string): string {
+  if (!text?.trim()) return text;
+  let t = text;
+  t = t.replace(/<<<CONSULTATION_UI_JSON>>>[\s\S]*?(?:<<<END_CONSULTATION_UI_JSON>{2,3}|$)/g, '');
+  t = t.replace(/<<<CONSULTATION_UI_JSON>>>/g, '');
+  t = t.replace(/<<<END_CONSULTATION_UI_JSON>{2,3}/g, '');
+  return t.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function extractConsultationDashboardFromAnswer(raw: string): {
   cleanText: string;
   dashboard: ConsultationDashboardV1 | undefined;
 } {
   const idx = raw.indexOf(MARK_START);
-  const idxEnd = raw.indexOf(MARK_END);
-  if (idx === -1 || idxEnd === -1 || idxEnd <= idx) {
-    return { cleanText: raw.trim(), dashboard: undefined };
+  if (idx === -1) {
+    return { cleanText: stripOrphanConsultationDashboardMarkers(raw.trim()), dashboard: undefined };
   }
-  const jsonStr = raw.slice(idx + MARK_START.length, idxEnd).trim();
+  const end = findConsultationDashboardEnd(raw, idx + MARK_START.length);
+  if (!end || end.idx <= idx) {
+    // 有起始无结束：从起始标记起丢弃，避免机读 JSON 漏进 answer_text
+    const before = raw.slice(0, idx).trim();
+    return {
+      cleanText: stripOrphanConsultationDashboardMarkers(before || ''),
+      dashboard: undefined,
+    };
+  }
+  const jsonStr = raw.slice(idx + MARK_START.length, end.idx).trim();
   const before = raw.slice(0, idx).trim();
-  const after = raw.slice(idxEnd + MARK_END.length).trim();
-  const cleanText = [before, after].filter(Boolean).join('\n\n').trim();
+  const after = raw.slice(end.idx + end.len).trim();
+  const cleanText = stripOrphanConsultationDashboardMarkers(
+    [before, after].filter(Boolean).join('\n\n').trim(),
+  );
 
   try {
     const parsed = JSON.parse(jsonStr);
     const dashboard = sanitizeConsultationDashboard(parsed);
-    return { cleanText: cleanText || raw.trim(), dashboard };
+    return { cleanText: cleanText || before || after, dashboard };
   } catch {
-    return { cleanText: cleanText || raw.trim(), dashboard: undefined };
+    return { cleanText: cleanText || before || after || raw.trim(), dashboard: undefined };
   }
 }

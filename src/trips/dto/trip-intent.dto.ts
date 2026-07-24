@@ -29,7 +29,7 @@ export class PacingConfigDto {
   @ApiPropertyOptional({ 
     description: '出行方式', 
     enum: TravelMode,
-    default: TravelMode.PUBLIC_TRANSIT,
+    default: TravelMode.DRIVING,
   })
   travelMode?: TravelMode;
 }
@@ -40,6 +40,12 @@ export class PacingConfigDto {
 export class ConstraintsDto {
   @ApiPropertyOptional({ description: '每日步行限制（公里）' })
   dailyWalkLimit?: number;
+
+  @ApiPropertyOptional({ description: '单段最长行驶距离（公里），超过即 road_class 冲突' })
+  maxSegmentDistanceKm?: number;
+
+  @ApiPropertyOptional({ description: '单段长距离提醒阈值（公里），默认随国家/上限推导' })
+  warnSegmentDistanceKm?: number;
 
   @ApiPropertyOptional({ description: '早起者' })
   earlyRiser?: boolean;
@@ -72,6 +78,12 @@ export class UpdateIntentRequestDto {
 
   @ApiPropertyOptional({ description: '总预算' })
   totalBudget?: number;
+
+  @ApiPropertyOptional({
+    description: '午餐时间窗策略：staggered（错峰）| rigid（卡点）| route_driven（路性）| balanced（均衡）',
+    enum: ['staggered', 'rigid', 'route_driven', 'balanced'],
+  })
+  lunch_strategy?: 'staggered' | 'rigid' | 'route_driven' | 'balanced';
 }
 
 /**
@@ -103,6 +115,8 @@ export class IntentResponseDto {
     preferences?: string[];
     constraints?: ConstraintsDto;
     planningPolicy?: string;
+    lunch_strategy?: string;
+    lunch_strategy_label?: string;
   };
 }
 
@@ -121,6 +135,15 @@ export class UpdateIntentResponseDto {
     preferences?: string[];
     constraints?: ConstraintsDto;
     planningPolicy?: string;
+    lunch_strategy?: string;
+    lunch_strategy_label?: string;
+  };
+
+  @ApiPropertyOptional({ description: '约束版本快照（写后）' })
+  constraints?: {
+    constraintsVersion: number;
+    constraintsConfirmedAt: string | null;
+    constraintsConfirmedBy: string | null;
   };
 }
 

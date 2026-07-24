@@ -28,6 +28,9 @@ export enum TransportMode {
  * 
  * 包含一种交通方式的完整信息
  */
+/** Which Directions backend produced this option (travel-eta provenance). */
+export type TransportRouteProvider = 'GOOGLE' | 'AMAP' | 'MAPBOX';
+
 export interface TransportOption {
   /** 交通方式 */
   mode: TransportMode;
@@ -55,6 +58,20 @@ export interface TransportOption {
   
   /** 详细描述 */
   description?: string;
+
+  /** L1 provenance — set by SmartRoutes / Mapbox when known */
+  routeProvider?: TransportRouteProvider;
+
+  /** Route distance in meters when known (Mapbox / geometry paths) */
+  distanceMeters?: number;
+
+  /** Encoded polyline when the provider returned geometry in the same call */
+  encodedPolyline?: string;
+
+  /** True when a secondary provider was used after primary failure */
+  fallbackUsed?: boolean;
+  fallbackReason?: string;
+  providerRequestId?: string;
 }
 
 /**

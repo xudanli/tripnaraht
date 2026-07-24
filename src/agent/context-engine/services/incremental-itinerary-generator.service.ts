@@ -28,6 +28,9 @@ import {
 } from '../../../skills/itinerary/itinerary-execution-policy-hook.util';
 import { mapGovernanceRuntimeStateToPlannerMode } from '../../../governance/runtime-state-machine/map-runtime-state-to-planner-mode.util';
 
+/** 同一参考 POI 在全程最多落槽次数（避免 2 个证据点写满 7 天） */
+const MAX_GLOBAL_POI_PLACEMENTS_PER_KEY = 2;
+
 /** 单日行程摘要（用于下一日的 Context 注入） */
 export interface DaySummary {
   day: number;
@@ -161,9 +164,22 @@ export class IncrementalItineraryGeneratorService {
       `[分段规划 POC] 启用 Day1→Day2→...→Day${days} 迭代生成, request_id=${requestId}`,
     );
 
+    const isFullTripReplan = researchData?.__itinerary_full_trip_replan === true;
+    const adjustTargetIso =
+      !isFullTripReplan &&
+      typeof researchData?.__itinerary_adjust_target_date_iso === 'string'
+        ? String(researchData.__itinerary_adjust_target_date_iso).slice(0, 10)
+        : undefined;
     const itineraryDays: ItineraryDay[] = [];
-    const itemsPerDay =
+    let itemsPerDay =
       pois.length === 0 ? 0 : Math.max(1, Math.ceil(pois.length / days));
+    if (adjustTargetIso && pois.length > 0) {
+      itemsPerDay = Math.min(4, Math.max(2, pois.length));
+      this.logger.log(
+        `[ITINERARY_ADJUST] corridor day replan target=${adjustTargetIso} pois=${pois.length} itemsPerDay=${itemsPerDay} request_id=${requestId}`,
+      );
+    }
+    const globalPoiPlacementCounts = new Map<string, number>();
 
     let prevDayLeadPoiKey: string | null = null;
 
@@ -182,6 +198,7 @@ export class IncrementalItineraryGeneratorService {
         prevDayLeadPoiKey,
         research_data: researchData,
         sparsePoiDayAllocation,
+        globalPoiPlacementCounts,
       });
 
       itineraryDays.push(dayContent);
@@ -257,6 +274,7 @@ export class IncrementalItineraryGeneratorService {
     const itemsPerDay =
       pois.length === 0 ? 0 : Math.max(1, Math.ceil(pois.length / days));
     const result: ItineraryDay[] = [];
+    const globalPoiPlacementCounts = new Map<string, number>();
     let prevDayLeadPoiKey: string | null = null;
 
     for (let dayIndex = 0; dayIndex < days; dayIndex++) {
@@ -272,6 +290,7 @@ export class IncrementalItineraryGeneratorService {
         prevDayLeadPoiKey,
         research_data,
         sparsePoiDayAllocation,
+        globalPoiPlacementCounts,
       });
       result.push(dayContent);
       const firstPoi = dayContent.items.find((it) => it.type === 'POI');
@@ -299,6 +318,7 @@ export class IncrementalItineraryGeneratorService {
     /** 研究侧数据：按日槽位、POI 自带时间窗、opening_hours_evidence 等 */
     research_data?: Record<string, any>;
     sparsePoiDayAllocation?: SparsePoiDayAllocation;
+    globalPoiPlacementCounts?: Map<string, number>;
   }): ItineraryDay {
     const {
       request,
@@ -311,6 +331,7 @@ export class IncrementalItineraryGeneratorService {
       prevDayLeadPoiKey,
       research_data,
       sparsePoiDayAllocation = 'block',
+      globalPoiPlacementCounts,
     } = params;
     const requestId = (request as any).request_id ?? 'unknown';
     const currentDate = startDate.plus({ days: dayIndex });
@@ -391,6 +412,12 @@ export class IncrementalItineraryGeneratorService {
       const poiIndex = resolved.poiIndex;
       const slotFromResearch = resolved.fromResearchSchedule;
       const poiStableKey = String(poi.poi_id ?? poi.id ?? poiIndex);
+      if (!slotFromResearch && globalPoiPlacementCounts) {
+        const placed = globalPoiPlacementCounts.get(poiStableKey) ?? 0;
+        if (placed >= MAX_GLOBAL_POI_PLACEMENTS_PER_KEY) {
+          continue;
+        }
+      }
       const isRepeatFill =
         itemsPerDay > 1
           ? globalSlot >= pois.length
@@ -434,6 +461,12 @@ export class IncrementalItineraryGeneratorService {
           time_source: timeSource,
         },
       });
+      if (globalPoiPlacementCounts) {
+        globalPoiPlacementCounts.set(
+          poiStableKey,
+          (globalPoiPlacementCounts.get(poiStableKey) ?? 0) + 1,
+        );
+      }
     }
     }
 

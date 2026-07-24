@@ -1,0 +1,11 @@
+{
+  "schemaId": "tripnara.selected_trip.trigger@v1",
+  "tripId": "pilot_iceland_road_close_06_south6_swap_local",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-south-1",
+  "operation": "SWAP",
+  "kind": "ROAD_OR_SCHEDULE_STRESS",
+  "notes": [
+    "template from gold — refine for pilot"
+  ]
+}

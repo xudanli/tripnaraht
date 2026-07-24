@@ -1,0 +1,112 @@
+# TEP Iceland Pilot — PG smoke (seed + writeback + runtime hooks)
+#
+# PR: mock-db unit slice when TEP / pilot scripts change
+# Nightly + workflow_dispatch: full PostgreSQL E2E via scripts/tep-pilot-ci-smoke.sh
+#
+# Local:
+#   DATABASE_URL=postgresql://tripnara:tripnara@localhost:5432/tripnara_staging npm run tep:pilot-ci
+
+name: TEP Pilot Smoke CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/trips/tep/**'
+      - 'scripts/tep-pilot-*.ts'
+      - 'scripts/tep-pilot-*.sh'
+      - 'scripts/tep-pilot-is-seed.constants.ts'
+      - 'data/destination-packs/is/certification/**'
+      - 'prisma/migrations/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/tep-pilot-smoke-ci.yml'
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'src/trips/tep/**'
+      - 'scripts/tep-pilot-*.ts'
+      - 'scripts/tep-pilot-*.sh'
+      - 'scripts/tep-pilot-is-seed.constants.ts'
+      - 'data/destination-packs/is/certification/**'
+      - 'prisma/migrations/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/tep-pilot-smoke-ci.yml'
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: tep-pilot-smoke-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-mock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TEP certification unit tests (mock DB)
+        run: |
+          npm test -- \
+            src/trips/tep/projectors/planning-tep-decision-problem.projector.spec.ts \
+            src/trips/tep/certification/is-cert-writeback.integration.spec.ts \
+            src/trips/tep/certification/is-cert-runtime.harness.spec.ts \
+            --no-cache
+
+  pg-pilot-smoke:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: unit-mock
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tripnara
+          POSTGRES_PASSWORD: tripnara
+          POSTGRES_DB: tripnara_staging
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tripnara -d tripnara_staging"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply Prisma migrations
+        env:
+          DATABASE_URL: postgresql://tripnara:tripnara@localhost:5432/tripnara_staging
+        run: npx prisma migrate deploy
+
+      - name: TEP pilot full CI smoke
+        env:
+          DATABASE_URL: postgresql://tripnara:tripnara@localhost:5432/tripnara_staging
+          RFC001_ITINERARY_MATERIALIZE: '1'
+        run: bash scripts/tep-pilot-ci-smoke.sh

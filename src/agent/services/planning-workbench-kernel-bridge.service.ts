@@ -36,6 +36,23 @@ import {
   computeBridgeSessionConsistencyScore,
   emitDecisionOsAuditReport,
 } from '../contracts/decision-os-audit-emitter';
+import {
+  applyKernelVerifyIssuesToGateStatus,
+  buildWorkbenchRepairGateResult,
+  buildWorkbenchVerifyPhaseContext,
+  projectKernelVerifyConflicts,
+  summarizeKernelRepairMetadata,
+  summarizeKernelVerifyMetadata,
+  verificationIssuesFromSummary,
+  workbenchVerifyNeedsRepair,
+  type PlanningWorkbenchKernelVerifyOutcome,
+  type PlanningWorkbenchKernelVerifyRepairOutcome,
+  type PlanningWorkbenchKernelVerifyMetadata,
+  type PlanningWorkbenchKernelRepairMetadata,
+} from '../orchestration/travel-compile/planning-workbench-kernel-verify.util';
+import { applyRepairedItineraryToPlanState } from '../orchestration/travel-compile/apply-repaired-itinerary-to-plan-state.util';
+import type { VerificationIssue } from '../../decision/kernel/decision-state.types';
+import type { Itinerary } from '../interfaces/trip-plan.interface';
 
 const GATE_SEVERITY: Record<GateStatus['status'], number> = {
   ALLOW: 0,
@@ -66,6 +83,400 @@ export class PlanningWorkbenchKernelBridgeService {
 
   isActive(): boolean {
     return this.resolveMode() !== 'legacy' && Boolean(this.decisionKernel);
+  }
+
+  isVerifyAvailable(): boolean {
+    return Boolean(this.decisionKernel);
+  }
+
+  /**
+   * CTRE VERIFY SSOT 后：Decision Kernel VERIFY（Graph 投影 itinerary 输入）
+   */
+  async runNativeVerifyPipeline(
+    input: PlanningWorkbenchKernelBridgeInput & { priorGateStatus?: GateStatus },
+  ): Promise<PlanningWorkbenchKernelVerifyOutcome> {
+    const outcome = await this.executeWorkbenchVerify(input);
+    return {
+      skipped: outcome.skipped,
+      reason: outcome.reason,
+      gateStatus: outcome.gateStatus,
+      metadata: outcome.metadata,
+    };
+  }
+
+  /**
+   * VERIFY → REPAIR（CONFLICT 可修复项）→ 回写 PlanState；由编排层触发 CTRE 增量 re-compile + 可选 re-verify。
+   */
+  async runNativeVerifyRepairPipeline(
+    input: PlanningWorkbenchKernelBridgeInput & {
+      priorGateStatus?: GateStatus;
+      enableRepair?: boolean;
+    },
+  ): Promise<PlanningWorkbenchKernelVerifyRepairOutcome> {
+    const verifyOutcome = await this.executeWorkbenchVerify(input);
+    const base: PlanningWorkbenchKernelVerifyRepairOutcome = {
+      skipped: verifyOutcome.skipped,
+      reason: verifyOutcome.reason,
+      gateStatus: verifyOutcome.gateStatus,
+      metadata: verifyOutcome.metadata,
+    };
+
+    if (
+      verifyOutcome.skipped ||
+      input.enableRepair === false ||
+      !this.decisionKernel ||
+      !verifyOutcome.verifyCtx ||
+      !workbenchVerifyNeedsRepair(verifyOutcome.issues)
+    ) {
+      base.repair = summarizeKernelRepairMetadata({
+        applied: false,
+        skipped: true,
+        reason: verifyOutcome.skipped
+          ? verifyOutcome.reason
+          : input.enableRepair === false
+            ? 'verify_repair_disabled'
+            : !workbenchVerifyNeedsRepair(verifyOutcome.issues)
+              ? 'no_repairable_conflicts'
+              : 'verify_context_unavailable',
+      });
+      return base;
+    }
+
+    base.repair = await this.executeWorkbenchRepair(input, {
+      gateStatus: verifyOutcome.gateStatus,
+      issues: verifyOutcome.issues,
+      verifyCtx: verifyOutcome.verifyCtx,
+      requestId: verifyOutcome.requestId,
+      verifyDso: verifyOutcome.verifyDso,
+    });
+    return base;
+  }
+
+  /** 在已有 VERIFY 结果上执行 Kernel REPAIR（VERIFY⇄REPAIR 循环后续轮次） */
+  async runNativeRepairPipeline(
+    input: PlanningWorkbenchKernelBridgeInput & {
+      priorGateStatus?: GateStatus;
+      verifyIssues?: VerificationIssue[];
+    },
+  ): Promise<PlanningWorkbenchKernelRepairMetadata> {
+    if (!this.decisionKernel) {
+      return summarizeKernelRepairMetadata({
+        applied: false,
+        skipped: true,
+        reason: 'decision_kernel_unavailable',
+      });
+    }
+
+    const meta = (input.planState.metadata ?? {}) as Record<string, unknown>;
+    const kernelVerify = meta.kernelVerify as PlanningWorkbenchKernelVerifyMetadata | undefined;
+    const issues =
+      input.verifyIssues ??
+      verificationIssuesFromSummary(kernelVerify?.issues);
+
+    if (!workbenchVerifyNeedsRepair(issues)) {
+      return summarizeKernelRepairMetadata({
+        applied: false,
+        skipped: true,
+        reason: 'no_repairable_conflicts',
+      });
+    }
+
+    const requestId =
+      (meta.kernelBridge as PlanningWorkbenchKernelMetadata | undefined)?.requestId ??
+      input.requestId ??
+      `pwb-repair-${randomUUID()}`;
+
+    const verifyCtx = buildWorkbenchVerifyPhaseContext({
+      request: input.request,
+      planState: input.planState,
+      requestId,
+      tripRunId: input.tripRunId,
+    });
+
+    if (!verifyCtx) {
+      return summarizeKernelRepairMetadata({
+        applied: false,
+        skipped: true,
+        reason: 'no_graph_projected_itinerary',
+      });
+    }
+
+    const priorGate = input.priorGateStatus ??
+      input.planState.gate ?? {
+        status: 'NEED_CONFIRM' as const,
+        reasons: [],
+        missingEvidence: [],
+      };
+
+    return this.executeWorkbenchRepair(input, {
+      gateStatus: applyKernelVerifyIssuesToGateStatus(priorGate, issues),
+      issues,
+      verifyCtx,
+      requestId,
+      verifyDso: this.decisionKernel.updateState(
+        this.buildInitialDso(input.request, input.planState, requestId),
+        {
+          systemState: {
+            requestId,
+            currentPhase: 'REPAIR',
+            lastUpdatedAt: new Date().toISOString(),
+          },
+        },
+      ),
+    });
+  }
+
+  private async executeWorkbenchRepair(
+    input: PlanningWorkbenchKernelBridgeInput,
+    verifyOutcome: {
+      gateStatus: GateStatus;
+      issues: VerificationIssue[];
+      verifyCtx: PhaseExecutorContext;
+      requestId: string;
+      verifyDso?: DecisionState;
+    },
+  ): Promise<PlanningWorkbenchKernelRepairMetadata> {
+    if (!this.decisionKernel) {
+      return summarizeKernelRepairMetadata({
+        applied: false,
+        skipped: true,
+        reason: 'decision_kernel_unavailable',
+      });
+    }
+
+    const repairCtx = {
+      ...verifyOutcome.verifyCtx,
+      gateResult: buildWorkbenchRepairGateResult(verifyOutcome.gateStatus, verifyOutcome.issues),
+    };
+
+    try {
+      const repairDso =
+        verifyOutcome.verifyDso ??
+        this.decisionKernel.updateState(
+          this.buildInitialDso(input.request, input.planState, verifyOutcome.requestId),
+          {
+            systemState: {
+              requestId: verifyOutcome.requestId,
+              currentPhase: 'REPAIR',
+              lastUpdatedAt: new Date().toISOString(),
+            },
+          },
+        );
+
+      const { itinerary, repairApplied } = await this.decisionKernel.executeRepair(
+        repairDso,
+        repairCtx,
+      );
+
+      if (!repairApplied || !itinerary?.days?.length) {
+        return summarizeKernelRepairMetadata({
+          applied: false,
+          skipped: true,
+          reason: repairApplied ? 'empty_repaired_itinerary' : 'repair_not_applied',
+        });
+      }
+
+      const writeback = applyRepairedItineraryToPlanState({
+        planState: input.planState,
+        repairedItinerary: itinerary as Itinerary,
+      });
+
+      input.planState.metadata = {
+        ...(input.planState.metadata ?? {}),
+        kernelRepair: summarizeKernelRepairMetadata({
+          applied: true,
+          segmentsUpdated: writeback.segmentsUpdated,
+          itemsApplied: writeback.itemsApplied,
+        }),
+      };
+
+      return summarizeKernelRepairMetadata({
+        applied: true,
+        segmentsUpdated: writeback.segmentsUpdated,
+        itemsApplied: writeback.itemsApplied,
+      });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[KernelBridge] executeRepair 失败: ${msg}`);
+      return summarizeKernelRepairMetadata({
+        applied: false,
+        skipped: true,
+        reason: `repair_failed:${msg}`,
+      });
+    }
+  }
+
+  private async executeWorkbenchVerify(
+    input: PlanningWorkbenchKernelBridgeInput & { priorGateStatus?: GateStatus },
+  ): Promise<
+    PlanningWorkbenchKernelVerifyOutcome & {
+      issues: VerificationIssue[];
+      verifyCtx?: PhaseExecutorContext;
+      requestId: string;
+      verifyDso?: DecisionState;
+    }
+  > {
+    const priorGate = input.priorGateStatus ??
+      input.planState.gate ?? {
+        status: 'NEED_CONFIRM' as const,
+        reasons: [],
+        missingEvidence: [],
+      };
+
+    if (!this.decisionKernel) {
+      return {
+        skipped: true,
+        reason: 'decision_kernel_unavailable',
+        gateStatus: priorGate,
+        metadata: summarizeKernelVerifyMetadata({
+          issues: [],
+          confidenceDelta: 0,
+          applied: false,
+          skipped: true,
+          reason: 'decision_kernel_unavailable',
+        }),
+        issues: [],
+        requestId: input.requestId ?? `pwb-verify-${randomUUID()}`,
+      };
+    }
+
+    const meta = (input.planState.metadata ?? {}) as Record<string, unknown>;
+    if (meta.verify_ssot_applied !== true && !meta.graph_projected_itinerary) {
+      return {
+        skipped: true,
+        reason: 'verify_ssot_not_applied',
+        gateStatus: priorGate,
+        metadata: summarizeKernelVerifyMetadata({
+          issues: [],
+          confidenceDelta: 0,
+          applied: false,
+          skipped: true,
+          reason: 'verify_ssot_not_applied',
+        }),
+        issues: [],
+        requestId: input.requestId ?? `pwb-verify-${randomUUID()}`,
+      };
+    }
+
+    const requestId =
+      (meta.kernelBridge as PlanningWorkbenchKernelMetadata | undefined)?.requestId ??
+      input.requestId ??
+      `pwb-verify-${randomUUID()}`;
+
+    const ctx = buildWorkbenchVerifyPhaseContext({
+      request: input.request,
+      planState: input.planState,
+      requestId,
+      tripRunId: input.tripRunId,
+    });
+
+    if (!ctx) {
+      return {
+        skipped: true,
+        reason: 'no_graph_projected_itinerary',
+        gateStatus: priorGate,
+        metadata: summarizeKernelVerifyMetadata({
+          issues: [],
+          confidenceDelta: 0,
+          applied: false,
+          skipped: true,
+          reason: 'no_graph_projected_itinerary',
+        }),
+        issues: [],
+        requestId,
+      };
+    }
+
+    let dso = this.buildInitialDso(input.request, input.planState, requestId);
+    dso = this.decisionKernel.updateState(dso, {
+      systemState: {
+        requestId,
+        currentPhase: 'VERIFY',
+        lastUpdatedAt: new Date().toISOString(),
+      },
+    });
+
+    try {
+      const { newState, issues, confidenceDelta } = await this.decisionKernel.executeVerify(dso, ctx);
+      const projected = meta.graph_projected_itinerary as { days?: Array<{ items?: unknown[] }> } | undefined;
+      const graphProjectedItemCount = projected?.days?.reduce(
+        (count, day) => count + (day.items?.length ?? 0),
+        0,
+      );
+
+      const gateStatus = applyKernelVerifyIssuesToGateStatus(priorGate, issues);
+      const verifyMeta = summarizeKernelVerifyMetadata({
+        issues,
+        confidenceDelta,
+        verifyItinerarySource: String(meta.verify_itinerary_source ?? 'canonical_travel_graph@v0'),
+        graphProjectedItemCount,
+        applied: true,
+      });
+
+      const audit = emitDecisionOsAuditReport(this.logger, {
+        request_id: requestId,
+        phase: 'PLANNING_WORKBENCH_VERIFY',
+        terminal: issues.some((i) => i.class === 'FATAL'),
+        dominant_cid: issues.find((i) => i.class === 'FATAL')?.code ??
+          issues.find((i) => i.class === 'CONFLICT')?.code ??
+          'ALIGNED',
+        session_consistency_score: issues.length === 0 ? 95 : Math.max(55, 90 - issues.length * 5),
+        delta_reason: issues.length === 0 ? 'aligned' : 'kernel_verify_issues',
+        delta_utility: confidenceDelta,
+        extra: {
+          issue_count: issues.length,
+          fatal_count: verifyMeta.fatalCount,
+          verify_itinerary_source: verifyMeta.verifyItinerarySource,
+        },
+      });
+
+      input.planState.metadata = {
+        ...input.planState.metadata,
+        ...projectKernelVerifyConflicts(issues),
+        kernelVerify: {
+          ...verifyMeta,
+          decisionOsAudit: audit.audit_report,
+        },
+      };
+
+      return {
+        skipped: false,
+        gateStatus,
+        metadata: {
+          ...verifyMeta,
+          decisionOsAudit: audit.audit_report,
+        },
+        issues,
+        verifyCtx: ctx,
+        requestId,
+        verifyDso: newState,
+      };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[KernelBridge] executeVerify 失败: ${msg}`);
+      const issues: VerificationIssue[] = [
+        {
+          code: 'UNKNOWN',
+          class: 'CONFLICT',
+          message: `Kernel VERIFY 异常: ${msg}`,
+          source: 'OTHER',
+          at: new Date().toISOString(),
+        },
+      ];
+      const gateStatus = applyKernelVerifyIssuesToGateStatus(priorGate, issues);
+      return {
+        skipped: false,
+        gateStatus,
+        metadata: summarizeKernelVerifyMetadata({
+          issues,
+          confidenceDelta: -0.05,
+          applied: true,
+        }),
+        issues,
+        verifyCtx: ctx,
+        requestId,
+      };
+    }
   }
 
   /**
@@ -176,13 +587,7 @@ export class PlanningWorkbenchKernelBridgeService {
 
     try {
       const explained = await this.decisionExplainForHuman.execute({
-        decisionLog: logs.map((log) => ({
-          persona: log.persona,
-          action: log.action,
-          explanation: log.explanation,
-          reasonCodes: log.reasonCodes,
-          timestamp: log.timestamp,
-        })),
+        decisionLog: logs,
         world: planState.world,
         tripId: planState.itinerary?.tripId,
       });
@@ -769,7 +1174,7 @@ export class PlanningWorkbenchKernelBridgeService {
       case 'mixed':
         return 'mixed';
       default:
-        return undefined;
+        return 'drive';
     }
   }
 

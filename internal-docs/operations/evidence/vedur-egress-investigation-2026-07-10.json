@@ -1,0 +1,82 @@
+{
+  "evidenceType": "VEDUR_EGRESS_INVESTIGATION",
+  "probedAt": "2026-07-10T17:25:11.640Z",
+  "host": "xmlweather.vedur.is",
+  "targetIp": "130.208.87.200",
+  "environment": "production-canary-devbox",
+  "vedurDirectPass": false,
+  "openMeteoControlPass": true,
+  "failureStage": "TCP",
+  "diagnosis": "TCP connect timeout to 130.208.87.200:443 — egress/firewall or destination IP allowlist. www.vedur.is uses different IP and may succeed.",
+  "recommendedPath": "Scheme A — Vedur collector/proxy reachable to 130.208.87.200; Open-Meteo remains OPEN_METEO_FALLBACK only",
+  "authorityPolicy": {
+    "VEDUR_LIVE": "create / upgrade / recover weather risk",
+    "OPEN_METEO_FALLBACK": "NO_ACTION + assist; cannot alone clear active Vedur high risk",
+    "REAL_SHAPE_REPLAY": "canary/drill only"
+  },
+  "statusLabels": {
+    "liveApiIngestion": "GO (fallback path)",
+    "vedurAuthoritativeIngestion": "NO-GO"
+  },
+  "investigationDeadlineHours": 72,
+  "probes": [
+    {
+      "name": "DNS-xmlweather",
+      "ok": true,
+      "stage": "DNS",
+      "detail": "130.208.87.200"
+    },
+    {
+      "name": "DNS-www",
+      "ok": true,
+      "stage": "DNS",
+      "detail": "94.142.156.174"
+    },
+    {
+      "name": "PROXY-env",
+      "ok": true,
+      "detail": "none set"
+    },
+    {
+      "name": "curl-xmlweather-api",
+      "ok": false,
+      "stage": "TCP",
+      "detail": "Command failed: curl -4 -sS -o /dev/null -w \"code=%{http_code} connect=%{time_connect} tls=%{time_appconnect} total=%{time_total}\" --connect-timeout 10 --max-time 30 \"https://xmlweather.vedur.is/?op_w=xml&type=obs&lang=en&view=xml&ids=1\"",
+      "ms": 10012
+    },
+    {
+      "name": "curl-xmlweather-base",
+      "ok": false,
+      "stage": "TCP",
+      "detail": "Command failed: curl -4 -sS -o /dev/null -w \"code=%{http_code} connect=%{time_connect} tls=%{time_appconnect} total=%{time_total}\" --connect-timeout 10 --max-time 30 \"https://xmlweather.vedur.is/\"",
+      "ms": 10010
+    },
+    {
+      "name": "curl-www-vedur",
+      "ok": true,
+      "stage": "HTTP",
+      "detail": "code=200 connect=2.121847 tls=2.634226 total=7.532933",
+      "ms": 7544
+    },
+    {
+      "name": "curl-open-meteo-control",
+      "ok": true,
+      "stage": "HTTP",
+      "detail": "code=200 connect=0.180657 tls=0.528397 total=0.703351",
+      "ms": 716
+    },
+    {
+      "name": "tcp-443-xmlweather",
+      "ok": false,
+      "stage": "TCP",
+      "detail": "Command failed: timeout 12 bash -c 'echo | nc -w10 xmlweather.vedur.is 443'"
+    },
+    {
+      "name": "node-xmlweather-api",
+      "ok": false,
+      "stage": "NODE",
+      "detail": "node_timeout",
+      "ms": 15037
+    }
+  ]
+}

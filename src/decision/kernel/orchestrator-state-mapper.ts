@@ -23,6 +23,7 @@ import {
   GateViolation,
   RequiredAdjustment,
 } from '../../agent/interfaces/trip-plan.interface';
+import { mergeTripPlanDebateCarryover } from '../../agent/utils/marathon-intake-signals.util';
 import { inferDecisionMeta, DecisionMetaInput } from './decision-meta-inference';
 import {
   buildTravelOntologyStateFromOrchestrator,
@@ -119,6 +120,11 @@ export function orchestratorStateToDecisionStatePatch(
     ...((os.metadata as any)?.emergency_constraints
       ? { emergency_constraints: (os.metadata as any).emergency_constraints }
       : {}),
+    ...((os.metadata as any)?.persona_closure_audit
+      ? { personaClosureAudit: (os.metadata as any).persona_closure_audit }
+      : os.gate_result?.persona_closure_audit
+        ? { personaClosureAudit: os.gate_result.persona_closure_audit }
+        : {}),
   };
 
   const metaInput: DecisionMetaInput = {
@@ -182,6 +188,13 @@ export function buildPatchFromDSOPrimary(
       : (os.metadata as any)?.emergency_constraints
         ? { emergency_constraints: (os.metadata as any).emergency_constraints }
         : {}),
+    ...(dso.systemState?.personaClosureAudit
+      ? { personaClosureAudit: dso.systemState.personaClosureAudit }
+      : (os.metadata as any)?.persona_closure_audit
+        ? { personaClosureAudit: (os.metadata as any).persona_closure_audit }
+        : os.gate_result?.persona_closure_audit
+          ? { personaClosureAudit: os.gate_result.persona_closure_audit }
+          : {}),
   };
 
   patch.decisionMeta = dso.decisionMeta ?? fromO.decisionMeta;
@@ -283,6 +296,17 @@ function tripPlanRequestToUserIntent(req: TripPlanRequest): UserIntent {
   if (req.style_tags?.length) {
     intent.styleTags = [...req.style_tags];
   }
+  const preferredUuids = (req.ontology_context as { preferred_route_direction_uuids?: string[] } | undefined)
+    ?.preferred_route_direction_uuids;
+  if (preferredUuids?.length) {
+    intent.preferredRouteDirectionUuids = preferredUuids.filter(
+      (u): u is string => typeof u === 'string' && u.trim().length > 0,
+    );
+  }
+  const odysseyTier = (req.ontology_context as { odyssey_tier?: number } | undefined)?.odyssey_tier;
+  if (odysseyTier === 1 || odysseyTier === 2 || odysseyTier === 3) {
+    intent.odysseyTier = odysseyTier;
+  }
   if (req.constraints?.daily_time_window) {
     intent.availableStartTime = req.constraints.daily_time_window.start;
     intent.availableEndTime = req.constraints.daily_time_window.end;
@@ -336,8 +360,17 @@ function extractEnvironmentFromResearchData(
   if (researchData.crowd_level !== undefined || researchData.crowdLevel !== undefined) {
     const c = researchData.crowd_level ?? researchData.crowdLevel;
     env.crowdLevel = typeof c === 'number' ? Math.min(1, Math.max(0, c)) : undefined;
-  } else if (researchData.crowd_score !== undefined || researchData.crowdScore !== undefined) {
+  } else   if (researchData.crowd_score !== undefined || researchData.crowdScore !== undefined) {
     env.crowdLevel = Math.min(1, Math.max(0, researchData.crowd_score ?? researchData.crowdScore ?? 0));
+  }
+  const wmMeta = researchData.worldModelMeta as
+    | { physicalRealityIncomplete?: boolean; dataRegion?: string; subregion?: string }
+    | undefined;
+  if (wmMeta?.physicalRealityIncomplete === true || researchData.physicalRealityIncomplete === true) {
+    env.physicalRealityIncomplete = true;
+  }
+  if (typeof wmMeta?.dataRegion === 'string') {
+    env.physicalDataRegion = wmMeta.dataRegion;
   }
   return env;
 }
@@ -370,11 +403,21 @@ export function decisionStateToOrchestratorState(
       started_at: base?.metadata?.started_at ?? dso.systemState?.startedAt ?? new Date().toISOString(),
       last_updated_at: dso.systemState?.lastUpdatedAt ?? new Date().toISOString(),
       ...(dso.systemState?.earlyWarningAcknowledged ? { early_warning_acknowledged: true } : {}),
+      ...(dso.systemState?.personaClosureAudit
+        ? { persona_closure_audit: dso.systemState.personaClosureAudit }
+        : {}),
     },
   };
 
   if (dso.userIntent && Object.keys(dso.userIntent).length > 0) {
-    out.trip_plan_request = userIntentToTripPlanRequest(dso.userIntent, requestId);
+    const projected = userIntentToTripPlanRequest(dso.userIntent, requestId);
+    out.trip_plan_request = base?.trip_plan_request
+      ? mergeTripPlanDebateCarryover(
+          projected,
+          base.trip_plan_request,
+          (base.metadata as { intake_user_message?: string } | undefined)?.intake_user_message,
+        )
+      : projected;
     out.gaps = dso.userIntent.gaps as OrchestratorState['gaps'];
   }
 

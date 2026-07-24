@@ -1,0 +1,127 @@
+{
+  "evidenceType": "ROAD_TRAVERSABILITY_PRE_SIGNOFF_A_OBSERVE",
+  "evidenceLabel": "ROAD_TRAVERSABILITY_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road Traversability T2 Pre-Signoff Drill",
+  "drillStatus": "Road Traversability T2 Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING TRAVERSABILITY T1 + WEATHER SOAK",
+  "acceptanceMode": "TRAVERSABILITY_REPLAY_SKELETON",
+  "replay": true,
+  "live": false,
+  "sourceProvider": "vegagerdin_gagnaveita",
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-LIMITED",
+  "vehicleProfile": "2WD",
+  "scenarioId": "RT-F208-001",
+  "rfc001VehicleCapability": {
+    "scenarioId": "RT-F208-001",
+    "driveType": "2WD",
+    "vehicleClass": "COMPACT",
+    "riverCrossingAllowed": false,
+    "gravelRoadExperience": false
+  },
+  "startedAt": "2026-07-11T06:32:03.463Z",
+  "endedAt": "2026-07-11T06:32:03.730Z",
+  "tripId": "b0b88888-8888-4888-8888-888888888888",
+  "userId": "b0b88888-8888-4888-8888-888888888801",
+  "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+  "phase": "OBSERVE",
+  "canaryPhase": "OBSERVE",
+  "problemId": "problem_road_F208_b0b88888_1783751523617",
+  "ingestResponse": {
+    "ok": true,
+    "ingestId": "gci_bf2e5278-166d-4289-98d9-16d40bc872da",
+    "requestId": "road_traversability_ae9f96da-ba4e-4d74-b065-48481010520b",
+    "outcome": "ASSERTION_EMITTED",
+    "transport": "remote_collector",
+    "authoritative": true,
+    "sourceProvider": "vegagerdin_gagnaveita",
+    "roadSource": "gagnaveita.vegagerdin.is",
+    "canonicalProcessed": true,
+    "roadId": "F208",
+    "currentStatus": "limited",
+    "detail": "assertion emitted status=LIMITED"
+  },
+  "assessor": {
+    "evidenceRefs": [],
+    "result": "VEHICLE_INCOMPATIBLE",
+    "gate": "SUGGEST_REPLACE",
+    "hardConstraints": [
+      "F_ROAD_REQUIRES_4WD"
+    ],
+    "risks": [
+      "LIMITED passage requires capable vehicle for this surface"
+    ],
+    "expectedSpeedKph": 0
+  },
+  "fixture": "scripts/fixtures/gagnaveita-f208-real-shape.json",
+  "fixtureMeta": {
+    "fixtureId": "gagnaveita-f208-live-v1",
+    "replay": true,
+    "live": false,
+    "sourceUrl": "https://gagnaveita.vegagerdin.is/api/faerd2017_1",
+    "sourceProvider": "vegagerdin_gagnaveita",
+    "fetchedAt": "2026-07-11T06:32:03.464Z",
+    "egressHost": "47.87.131.183",
+    "egressRegion": "de-frankfurt",
+    "httpStatus": 200,
+    "contentType": "application/json; charset=utf-8",
+    "payloadSha256": "2fed5b6e76f3a1dfa082c5a9cf6d6dda2748d039a3982328633e10163bdd4c4b",
+    "roadId": "F208",
+    "replayObservedAtPatched": "2026-07-11T06:32:03.464Z"
+  },
+  "checks": [
+    {
+      "id": "RT-A-001",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "assertion.status=LIMITED (expect LIMITED, not CLOSED)"
+    },
+    {
+      "id": "RT-A-002",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "assessor.result=VEHICLE_INCOMPATIBLE gate=SUGGEST_REPLACE (expect VEHICLE_INCOMPATIBLE)"
+    },
+    {
+      "id": "RT-A-003",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "openProblems=1"
+    },
+    {
+      "id": "RT-A-004",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "lineageNodes=6 (RT1-RT3 nodes after T1)"
+    },
+    {
+      "id": "RT-A-005",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "effectivePlan=plan_1"
+    },
+    {
+      "id": "RT-A-006",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "userVisible=false"
+    },
+    {
+      "id": "RT-A-007",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "fixture must not be CLOSED replay (traversability/LIMITED only)"
+    },
+    {
+      "id": "RT-A-008",
+      "scenarioId": "RT-F208-001",
+      "pass": true,
+      "detail": "replay=true live=false sourceProvider=vegagerdin_gagnaveita"
+    }
+  ],
+  "t1PendingCount": 0,
+  "assessorResult": "VEHICLE_INCOMPATIBLE",
+  "assessorGate": "SUGGEST_REPLACE",
+  "structuralResult": "PASS",
+  "traversabilityResult": "ASSESSOR_PASS",
+  "result": "SKELETON_PASS"
+}

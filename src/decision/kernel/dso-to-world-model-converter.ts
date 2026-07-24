@@ -12,12 +12,17 @@ import type { WorldModelContext } from '../../trips/decision/shared/world-model.
 import type { PhysicalRealityModel } from '../../trips/decision/models/physical-reality.model';
 import type { HumanCapabilityModel, PreferredPace } from '../../trips/decision/models/human-capability.model';
 import type { RouteDirectionWithPhilosophy } from '../../trips/decision/shared/world-model.types';
-
 /**
  * 从 DSO 构建最小可用的 WorldModelContext
  * 用于 Monte Carlo 概率期望效用计算
  */
 export function dsoToMinimalWorldModelContext(state: DecisionState): WorldModelContext | null {
+  const rd = state.research_data as Record<string, unknown> | undefined;
+  const fromBuild = rd?.worldModel as WorldModelContext | undefined;
+  if (fromBuild?.physical && fromBuild?.human && fromBuild?.routeDirection) {
+    return fromBuild;
+  }
+
   const env = state.environmentState ?? {};
   const intent = state.userIntent ?? {};
   const routeDirectionId = env.routeDirectionId ?? (state as any).research_data?.route_direction_id ?? 'unknown';
@@ -26,19 +31,35 @@ export function dsoToMinimalWorldModelContext(state: DecisionState): WorldModelC
   const countryCode = env.countryCode ?? 'IS'; // 默认冰岛
   const weatherRisk = env.weatherRisk ?? (env.failureRiskLevel === 'HIGH' ? 0.6 : env.failureRiskLevel === 'MEDIUM' ? 0.35 : 0.15);
 
+  const envIncomplete = (env as { physicalRealityIncomplete?: boolean }).physicalRealityIncomplete === true;
+
   const physical: PhysicalRealityModel = {
-    demEvidence: [
-      {
-        segmentId: 'stub-1',
-        elevationProfile: [0, 100, 200],
-        cumulativeAscent: 200,
-        maxSlopePct: 5,
-        rollingAscent3Days: 400,
-        fatigueIndex: 20,
-        violation: 'NONE',
-        explanation: 'Stub from DSO',
-      },
-    ],
+    demEvidence: envIncomplete
+      ? [
+          {
+            segmentId: 'placeholder_dso_stub',
+            elevationProfile: [],
+            cumulativeAscent: -1,
+            maxSlopePct: -1,
+            rollingAscent3Days: -1,
+            fatigueIndex: -1,
+            violation: 'UNKNOWN',
+            dataProvenance: 'PLACEHOLDER',
+            explanation: 'DSO stub：物理现实不完整',
+          },
+        ]
+      : [
+          {
+            segmentId: 'stub-1',
+            elevationProfile: [0, 100, 200],
+            cumulativeAscent: 200,
+            maxSlopePct: 5,
+            rollingAscent3Days: 400,
+            fatigueIndex: 20,
+            violation: 'NONE',
+            explanation: 'Stub from DSO',
+          },
+        ],
     roadStates: [],
     hazardZones: [],
     ferryStates: [],

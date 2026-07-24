@@ -1,0 +1,50 @@
+{
+  "schemaId": "tripnara.destination.rules@v1",
+  "rules": [
+    {
+      "ruleId": "IS_DAILY_LOAD_SPLIT_PARTIAL_WARN",
+      "sdrRuleId": "SDR-101",
+      "semanticKey": "EXCESSIVE_DAILY_LOAD",
+      "appliesWhen": { "country": "IS" },
+      "whenCandidateUsesRoute": true,
+      "conditions": [
+        {
+          "field": "driving.excessive",
+          "operator": "EQ",
+          "value": true
+        },
+        {
+          "field": "candidate.isSplitDay",
+          "operator": "EQ",
+          "value": true
+        }
+      ],
+      "result": {
+        "verdict": "WARNING",
+        "reasonCode": "EXCESSIVE_DAILY_LOAD",
+        "constraintCode": "DAILY_DRIVING_LOAD",
+        "overridable": true
+      }
+    },
+    {
+      "ruleId": "IS_DAILY_LOAD_EXCESSIVE_BLOCK",
+      "sdrRuleId": "SDR-101",
+      "semanticKey": "EXCESSIVE_DAILY_LOAD",
+      "appliesWhen": { "country": "IS" },
+      "whenCandidateUsesRoute": true,
+      "conditions": [
+        {
+          "field": "driving.excessive",
+          "operator": "EQ",
+          "value": true
+        }
+      ],
+      "result": {
+        "verdict": "BLOCK",
+        "reasonCode": "EXCESSIVE_DAILY_LOAD",
+        "constraintCode": "DAILY_DRIVING_LOAD",
+        "overridable": false
+      }
+    }
+  ]
+}

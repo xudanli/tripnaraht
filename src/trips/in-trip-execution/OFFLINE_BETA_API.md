@@ -40,9 +40,25 @@
   "vulnerability": { "severity": "yellow", "stabilityScore": 0.72 },
   "budgetSnapshot": { "overallUsagePercent": 58, "currency": "CNY", "dailyBudget": 800 },
   "walletBalances": { "currency": "CNY", "edges": [] },
-  "pendingOperations": []
+  "pendingOperations": [],
+  "poiAccessAlerts": [
+    {
+      "itemId": "item-bl",
+      "poiId": "is.blue_lagoon",
+      "poiName": "Blue Lagoon",
+      "arrivalTime": "14:00",
+      "verdict": "BLOCKED",
+      "reason": "Blue Lagoon：入场需要预约",
+      "planB": [
+        { "action": "BOOK_NOW", "detail": "前往官方预订" },
+        { "action": "USE_ALTERNATIVE", "detail": "改选 Sky Lagoon", "alternativePoiId": "is.sky_lagoon" }
+      ]
+    }
+  ]
 }
 ```
+
+`poiAccessAlerts` **可选字段**：仅当当日存在非 `FEASIBLE` 的冰岛 POI 时出现；全可行时不返回该 key。详见 `src/poi-access-capacity/FRONTEND_API.md` §六。
 
 `anchorSummary` 为脱敏摘要；完整锚点仍走 `GET .../anchor-snapshot`。
 
@@ -81,6 +97,17 @@
       "operationType": "mood_check",
       "recordedAt": "2026-06-18T20:00:00.000Z",
       "payload": { "score": 4 }
+    },
+    {
+      "clientSeq": 3,
+      "operationType": "poi_execution_feedback",
+      "recordedAt": "2026-07-15T14:20:00.000Z",
+      "payload": {
+        "poiId": "is.gullfoss",
+        "dateISO": "2026-07-15",
+        "parkingWaitMin": 15,
+        "crowdLevelSubjective": "MEDIUM"
+      }
     }
   ]
 }
@@ -95,6 +122,7 @@
 | `motion_signal` | `POST .../pulse/signals/motion` |
 | `micro_feedback` | `POST .../pulse/micro-feedback` |
 | `experience_pulse` | `POST .../experience/pulses` |
+| `poi_execution_feedback` | `POST /api/poi-access-capacity/feedback`（payload 同 §POI 反馈） |
 
 **响应 `data`**：
 

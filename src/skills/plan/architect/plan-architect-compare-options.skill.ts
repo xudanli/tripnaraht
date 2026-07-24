@@ -32,7 +32,7 @@ export class PlanArchitectCompareOptionsSkill implements Skill<PlanArchitectComp
 
   metadata = {
     name: 'plan.architect.compareOptions',
-    description: '对多个行程骨架方案进行可解释对比，输出推荐与取舍理由',
+    description: 'plan.architect.compareOptions：对多个行程骨架方案进行可解释对比，输出推荐与取舍理由',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

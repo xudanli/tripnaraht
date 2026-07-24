@@ -1,0 +1,41 @@
+{
+  "evidenceType": "FORMAL_VEDUR_SOAK_NON_INVASIVE_WATCH",
+  "purpose": "Read-only checkpoint during soak freeze — does not modify runtime",
+  "checkedAt": "2026-07-11T06:43:17Z",
+  "activeSoakFile": "internal-docs/operations/evidence/formal-vedur-soak-2026-07-11.json",
+  "soakStartedAt": "2026-07-11T06:29:09.443Z",
+  "soakEndsAt": "2026-07-12T06:29:09.443Z",
+  "soakEndsAtTaipei": "2026-07-12T14:29:09+08:00",
+  "gitCommit": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "pm2": {
+    "vedur-collector-ingest": { "status": "online", "restarts": 0 },
+    "vedur-collector-tunnel": { "status": "online", "restarts": 0 }
+  },
+  "devboxIngestHealth": {
+    "ok": true,
+    "routes": ["/internal/evidence/weather/vedur", "/internal/evidence/road/gagnaveita"]
+  },
+  "frankfurtTunnelHealth": {
+    "ok": true,
+    "via": "ssh root@47.87.131.183 curl http://127.0.0.1:19080/health"
+  },
+  "weatherCanary": {
+    "tripId": "a0a99999-9999-4999-8999-999999999999",
+    "tripUpdatedAt": "2026-07-10T17:00:28.155Z",
+    "effectivePlanVersionId": "plan_1",
+    "vedurPollCount": 7,
+    "lastVedurOutcome": "INGESTED",
+    "legacyWriteInvocations": 0
+  },
+  "watchNotes": [
+    "vedurPollCount unchanged vs pre-drill baseline — expected until post-soak-start cron cycles complete monitoring poll",
+    "No PM2 restart, no tunnel outage observed at checkpoint",
+    "No Road drill or Effective Plan write executed during watch"
+  ],
+  "signoffOwners": {
+    "weatherEngineeringOwner": "TBD — name required before formal sign-off",
+    "opsObserverOwner": "TBD — name required before formal sign-off",
+    "releaseSignoffOwner": "TBD — name required before formal sign-off",
+    "interimStatus": "ENGINEERING SELF-ACCEPTANCE / FORMAL MULTI-OWNER SIGN-OFF = DEFERRED"
+  }
+}

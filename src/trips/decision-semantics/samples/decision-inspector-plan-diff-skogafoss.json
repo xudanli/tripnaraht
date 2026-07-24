@@ -1,0 +1,39 @@
+{
+  "schema": "tripnara.planning_decision_inspector@v1",
+  "tripId": "trip_iceland_demo",
+  "problemId": "dp_day2_skogafoss_skew",
+  "optionId": "adjust_time",
+  "planDiff": {
+    "optionBadge": "方案 A",
+    "optionTitle": "提前离开上一站",
+    "changeRows": [
+      {
+        "id": "row_skogafoss_start",
+        "itemLabel": "斯科加瀑布",
+        "before": "11:53",
+        "after": "11:32",
+        "deltaLabel": "-21 分钟",
+        "deltaMinutes": -21
+      }
+    ],
+    "impactTags": [
+      { "id": "tag_time", "label": "修改 1 个时间点", "tone": "good" }
+    ],
+    "unchangedItems": [
+      "后续景点不会被删除",
+      "酒店与预算不受影响"
+    ],
+    "timelineCompare": {
+      "milestones": [
+        {
+          "id": "ms_skogafoss",
+          "label": "斯科加瀑布",
+          "originalTime": "11:53",
+          "newTime": "11:32",
+          "deltaMinutes": -21
+        }
+      ],
+      "bannerText": "共节省约 21 分钟缓冲时间"
+    }
+  }
+}

@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 2,
+  "isoCode": "NZ",
+  "nameCN": "新西兰",
+  "nameEN": "New Zealand",
+  "currencyCode": "NZD",
+  "currencyName": "新西兰元",
+  "exchangeRateToCNY": 4.3521,
+  "exchangeRateToUSD": 0.6123,
+  "paymentType": "HYBRID_DIGITAL_PREFER",
+  "paymentInfo": {
+    "paymentProfile": "HYBRID_DIGITAL_PREFER",
+    "contactlessUbiquitous": true,
+    "cashBackupRecommendedNZD": { "min": 50, "max": 100 },
+    "notes": "数字化普及率极高，绝大多数商户支持 EFTPOS、Apple Pay 及主流信用卡。但在极少数偏远南岛无人区（如西海岸部分徒步点），或周末市集，可能需要极少现金备用。",
+    "tipping": "无需小费。餐厅账单不包含强制服务费，给小费纯属自愿。",
+    "atm_network": "各大银行（ANZ, BNZ, ASB, Westpac）ATM 广泛分布，大城市中心支持银联卡取现。",
+    "wallet_apps": ["Apple Pay", "Google Pay"],
+    "cash_preparation": "建议准备 50-100 NZD 现金备用，其余全线刷卡。"
+  },
+  "powerInfo": {
+    "plugs": ["I"],
+    "plugTypes": ["I"],
+    "voltage": 230,
+    "voltageUnit": "V",
+    "frequency": 50,
+    "frequencyUnit": "Hz"
+  },
+  "emergency": {
+    "fire": "111",
+    "police": "111",
+    "rescue": "111",
+    "ambulance": "111",
+    "unifiedNumber": "111"
+  },
+  "entryRequirements": {
+    "officialLink": "https://www.immigration.govt.nz/new-zealand-visas",
+    "byNationality": {
+      "CN": {
+        "cost": 1500,
+        "link": "https://www.immigration.govt.nz/",
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Visitor visa / eVisa",
+        "statusLabelCN": "需要签证",
+        "requirementSummary": "Chinese passport holders need a New Zealand visitor visa (eVisa) unless exempt.",
+        "requirementSummaryCN": "中国公民通常需申请新西兰访客签证（电子签）。",
+        "nzetaAvailableForPassports": ["HKG", "TWN", "USA", "GBR", "SGP"],
+        "visaApplicationLeadTimeDays": 25
+      },
+      "US": {
+        "status": "EVISA",
+        "statusLabel": "NZeTA",
+        "requirementSummary": "US citizens: NZeTA required before travel (visa waiver).",
+        "nzetaAvailableForPassports": ["USA"],
+        "visaApplicationLeadTimeDays": 7
+      },
+      "GB": {
+        "status": "EVISA",
+        "statusLabel": "NZeTA",
+        "requirementSummary": "UK citizens: NZeTA required before travel (visa waiver).",
+        "nzetaAvailableForPassports": ["GBR"],
+        "visaApplicationLeadTimeDays": 7
+      },
+      "AU": {
+        "status": "VISA_FREE",
+        "statusLabel": "Visa waiver (check NZeTA rules)",
+        "requirementSummary": "Australian citizens: generally visa-free; confirm current NZ entry rules.",
+        "allowedStay": "Check Immigration NZ"
+      },
+      "SG": {
+        "status": "EVISA",
+        "statusLabel": "NZeTA",
+        "requirementSummary": "Singapore passport: NZeTA under visa waiver programme.",
+        "nzetaAvailableForPassports": ["SGP"],
+        "visaApplicationLeadTimeDays": 7
+      }
+    }
+  },
+  "complianceInfo": {
+    "droneRules": {
+      "allowed": true,
+      "maxAltitudeMeter": 120,
+      "requiresRegistration": false,
+      "restrictions": [
+        "禁止在未获得土地所有者或管理机构明确许可的情况下飞越其领地",
+        "禁止在夜间飞行",
+        "必须与人、车辆、建筑保持至少 8 米的水平距离",
+        "禁止在环保局（DOC）管辖的国家公园和自然保护区内擅自飞行（需要申请昂贵的商业特许状）"
+      ],
+      "prohibitedPoiCategories": ["DOC_CONSERVATION_PARK", "AIRPORT_ZONE", "MARINE_RESERVE"],
+      "prohibitedPoiIds": ["POI_MILFORD_SOUND", "POI_HOBBITON_MOVIE_SET"]
+    },
+    "drivingRules": {
+      "minAge": 21,
+      "drivingSide": "LEFT",
+      "requiresInternationalLicense": true,
+      "gravelRoadPresent": true,
+      "leftHandDrivingEtaBuffer": 0.15,
+      "acceptedLicenseTypes": ["IDP", "CHINESE_LICENSE_WITH_NZTA_TRANSLATION"],
+      "speedLimits": {
+        "urban": 50,
+        "gravelRoad": 50,
+        "asphaltHighway": 100,
+        "algorithmEtaPenaltyCoefficients": {
+          "mountainPassRoad": 1.5,
+          "gravelRoad": 1.6,
+          "winterBlackIceRoad": 1.8,
+          "fRoad": 1.0
+        }
+      },
+      "specialRules": [
+        "严格遵循‘让右’原则，进入环岛前必须彻底停下让行右侧驶来的车辆",
+        "单车道桥梁（One-lane Bridge）必须严格按照路口红色/黑色箭头指示的优先权让行",
+        "严禁跨越道路中央的黄色双实线超车",
+        "南岛多山路，弯道极多。路旁黄色标牌上的‘建议时速’（如 35km/h）具有极高参考价值"
+      ],
+      "infrastructure": {
+        "selfServiceGasStation": true,
+        "gasBrandRequiredApp": ["Z", "Gull", "Mobil"],
+        "tollRoads": [
+          "Northern Gateway Toll Road",
+          "Tauranga Eastern Link Toll Road",
+          "Takitimu Drive Toll Road"
+        ]
+      }
+    },
+    "biosecurityPolicy": {
+      "strictBorderControl": true,
+      "declarationPlatform": "New Zealand Traveller Declaration (NZTD)",
+      "declarationRequired": true,
+      "instantFineAmountNZD": 400,
+      "prohibitedItems": ["新鲜水果、蔬菜", "肉类制品、蜂蜜、蛋类", "中草药、植物种子"],
+      "inspectionRequiredItems": [
+        "使用过的徒步鞋、露营帐篷（必须申报检查是否携带异国土壤与病菌）"
+      ]
+    },
+    "alcoholPolicy": {
+      "bacLimit": 0.05,
+      "legalAge": 18,
+      "specialRules": [
+        "超市只允许售卖啤酒和葡萄酒，烈酒（Spirits）必须前往专门的 Liquor Store 购买"
+      ],
+      "publicDrinking": false
+    }
+  },
+  "timeBoundaries": {
+    "daylightFluctuation": true,
+    "seasons": [
+      {
+        "name": "SUMMER_PEAK_LIGHT_SOUTH",
+        "months": [12, 1, 2],
+        "avgDaylightHours": 15,
+        "outdoorRoutingWindow": { "start": "06:00", "end": "21:00" },
+        "recommendedCarType": "ANY"
+      },
+      {
+        "name": "WINTER_SKI_SHUTDOWN",
+        "months": [6, 7, 8],
+        "avgDaylightHours": 9,
+        "outdoorRoutingWindow": { "start": "08:00", "end": "17:00" },
+        "recommendedCarType": "2WD_WITH_SNOW_CHAINS_OR_4WD"
+      }
+    ],
+    "environmentalTriggers": {
+      "weatherAlertSource": "https://www.metservice.com/",
+      "roadStatusSource": "https://www.journeys.nzta.govt.nz/",
+      "autoRerouteTriggers": [
+        "HEAVY_RAIN_FLOODING",
+        "SHUT_DOWN_SH94_MILFORD_ROAD",
+        "SNOW_CLOSURE_CROWN_RANGE"
+      ]
+    }
+  },
+  "travelCulture": {
+    "tippingHabits": {
+      "level": "NONE",
+      "description": "新西兰没有固定的小费文化，账单金额即为最终支付金额"
+    },
+    "experienceRules": [
+      {
+        "targetPoiCategory": "MAORI_CULTURE_SITE",
+        "requirementsCN": [
+          "进入毛利会堂（Marae）前通常需要脱鞋",
+          "未获许可前严禁触摸木雕或进入神圣区域",
+          "严肃对待欢迎仪式（Powhiri），期间请勿大声喧哗"
+        ],
+        "smartTipsCN": ["拍照前先询问当地向导以示尊重"]
+      },
+      {
+        "targetPoiCategory": "FREEDOM_CAMPING",
+        "requirementsCN": [
+          "车辆必须具备官方‘自主循环认证（Self-Containment）’蓝色标签",
+          "严禁在指定禁营区（No Camping）过夜",
+          "必须将所有垃圾与车载废水带走处理"
+        ],
+        "smartTipsCN": [
+          "强烈建议下载 CamperMate App 核对合规营地边界，违规将面临最高 400 NZD 的罚款"
+        ]
+      }
+    ]
+  }
+}

@@ -10,6 +10,12 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import type { DecisionState } from '../../../../decision/kernel/decision-state.types';
+import type { ExperienceFlowModel } from '../../models/experience-flow.model';
+import {
+  resolveExperienceRoutingWeights,
+  resolveExplorationBetaFromExperienceFlow,
+  type ExperienceRoutingMode,
+} from '../../policies/experience-routing-policy';
 import {
   IMetaPolicyService,
   MetaPolicyOutput,
@@ -65,6 +71,24 @@ export class MetaPolicyService implements IMetaPolicyService {
       useWorldModelRollout = false;
       useExploration = false;
       explorationBeta = 0;
+    } else if (
+      uncertaintyLevel > 0.85 ||
+      (env.failureRiskLevel === 'HIGH' && uncertaintyLevel > 0.5)
+    ) {
+      // 极高不确定：拉高 MC 总预算（≈200×候选数 可达千～两千量级）
+      sampleSize = 2000;
+      horizon = 3;
+      strategy = 'CGUS';
+      useWorldModelRollout = true;
+      useExploration = true;
+      explorationBeta = 0.2;
+    } else if (uncertaintyLevel > 0.75 || (dso.uncertaintyProfile?.entropy01 ?? 0) > 0.7) {
+      sampleSize = 1000;
+      horizon = 3;
+      strategy = 'CGUS';
+      useWorldModelRollout = true;
+      useExploration = true;
+      explorationBeta = 0.18;
     } else if (uncertaintyLevel > 0.6 || hasUncertainty) {
       sampleSize = 500;
       horizon = 2;
@@ -97,11 +121,64 @@ export class MetaPolicyService implements IMetaPolicyService {
       explorationBeta,
     };
 
+    const final = this.applyExperienceFlowOverrides(output, dso);
     this.logger.debug(
-      `[MetaPolicy] H=${horizon} N=${sampleSize} strategy=${strategy} rollout=${useWorldModelRollout} exploration=${useExploration}`,
+      `[MetaPolicy] H=${final.horizon} N=${final.sampleSize} strategy=${final.strategy} rollout=${final.useWorldModelRollout} exploration=${final.useExploration}`,
     );
+    return final;
+  }
+
+  /**
+   * ExperienceFlow 第四投影覆盖：EMPATHY_RECOVERY 压制探索，EXPLORATION 对齐 β。
+   */
+  private applyExperienceFlowOverrides(
+    output: MetaPolicyOutput,
+    dso: DecisionState,
+  ): MetaPolicyOutput {
+    const flow = (dso.tripState as { experienceFlow?: ExperienceFlowModel } | undefined)
+      ?.experienceFlow;
+    if (!flow) {
+      return output;
+    }
+
+    if (flow.tempo === 'EMPATHY_RECOVERY') {
+      return {
+        ...output,
+        useExploration: false,
+        explorationBeta: resolveExplorationBetaFromExperienceFlow(flow, 'EMPATHY_RECOVERY'),
+      };
+    }
+
+    if (output.useExploration) {
+      const beta = resolveExplorationBetaFromExperienceFlow(flow, 'EXPLORATION');
+      return {
+        ...output,
+        explorationBeta: Math.max(output.explorationBeta, beta),
+      };
+    }
 
     return output;
+  }
+
+  /**
+   * ExperienceRoutingPolicy 动态权重矩阵 [w1, w2, β]（与 ExperienceFlow 第四投影对齐）。
+   */
+  getDynamicWeights(
+    flowContext?: ExperienceFlowModel,
+    mode?: ExperienceRoutingMode,
+  ): { w1: number; w2: number; beta: number } {
+    const tempo = flowContext?.tempo;
+    const resolvedMode =
+      mode ?? (tempo === 'EMPATHY_RECOVERY' ? 'EMPATHY_RECOVERY' : 'DEFAULT');
+    const w = resolveExperienceRoutingWeights({
+      experienceFlow: flowContext,
+      mode: resolvedMode,
+    });
+    return {
+      w1: w.wPhysicalTime,
+      w2: w.wFriction,
+      beta: w.betaInformationGain,
+    };
   }
 
   /**

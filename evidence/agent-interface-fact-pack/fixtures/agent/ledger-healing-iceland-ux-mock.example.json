@@ -1,0 +1,28 @@
+{
+  "_comment": "Optional UX-only mock: same metrics as production, steps rewritten for marketing copy / design comps (not emitted by API).",
+  "status": "CONVERGED",
+  "reconcile_status": "CONVERGED",
+  "affected_node_ids": ["POI_REYNISFJARA"],
+  "metrics": {
+    "initial_invalidated": 1,
+    "secondary_invalidated": 1,
+    "loops": 2
+  },
+  "steps": [
+    {
+      "phase": "recomputing",
+      "action": "Re-evaluating Reynisfjara slot after south coast wind advisory",
+      "target_nodes": ["POI_REYNISFJARA"]
+    },
+    {
+      "phase": "secondary_invalidation",
+      "action": "Timeline consistency: Vik hotel check-in no longer aligns",
+      "target_nodes": ["HOTEL_VIK"]
+    },
+    {
+      "phase": "recomputing",
+      "action": "Re-aligning hotel logistics with updated arrival window",
+      "target_nodes": ["HOTEL_VIK"]
+    }
+  ]
+}

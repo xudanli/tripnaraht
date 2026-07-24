@@ -5,6 +5,18 @@ on:
   pull_request:
     paths:
       - "src/trips/decision/**/*.ts"
+      - "src/decision/kernel/**/*.ts"
+      - "src/world/**/*.ts"
+      - "data/rag/**/*.json"
+      - "data/country-profiles/**/*.json"
+      - "docs/iceland-decision-closure-v1.md"
+      - "docs/decision-os-env-gates.md"
+      - "docs/rag-chunk-road-constraint-metadata.md"
+      - "docs/schemas/rag-chunk-road-constraint-metadata.schema.json"
+      - "scripts/run-decision-closure-gate.ts"
+      - "scripts/lib/decision-closure-gate.ts"
+      - "scripts/validate-country-road-constraint-seeds.ts"
+      - "scripts/lib/validate-road-constraint-seed.util.ts"
       - "src/agent/context-engine/**/*.ts"
       - "src/agent/utils/**/*.ts"
       - "src/agent/services/agent.service.ts"
@@ -20,6 +32,18 @@ on:
       - master
     paths:
       - "src/trips/decision/**/*.ts"
+      - "src/decision/kernel/**/*.ts"
+      - "src/world/**/*.ts"
+      - "data/rag/**/*.json"
+      - "data/country-profiles/**/*.json"
+      - "docs/iceland-decision-closure-v1.md"
+      - "docs/decision-os-env-gates.md"
+      - "docs/rag-chunk-road-constraint-metadata.md"
+      - "docs/schemas/rag-chunk-road-constraint-metadata.schema.json"
+      - "scripts/run-decision-closure-gate.ts"
+      - "scripts/lib/decision-closure-gate.ts"
+      - "scripts/validate-country-road-constraint-seeds.ts"
+      - "scripts/lib/validate-road-constraint-seed.util.ts"
       - "src/agent/context-engine/**/*.ts"
       - "src/agent/utils/**/*.ts"
       - "src/agent/services/agent.service.ts"
@@ -35,6 +59,8 @@ jobs:
   td-p0:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PHYSICAL_EVIDENCE_GATE: error_critical_stages
 
     steps:
       - name: Checkout
@@ -49,8 +75,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate country road-constraint RAG seeds (AU/JP/NZ)
+        run: npm run validate:country-road-constraint-seeds
+
       - name: Decision OS unit (normalize + traceability + LangGraph PRD + task memory)
         run: npm run test:decision-os:unit
 
       - name: Run Trips Decision P0 (complex samples + replan VERIFY→REPAIR)
         run: npm run test:td-p0
+
+      - name: DS calibration dashboard (ScoreRisk + country closure gate)
+        run: npm run report:ds-calibration

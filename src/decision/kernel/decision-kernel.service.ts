@@ -50,7 +50,12 @@ import {
   evaluateTravelOntologyConstraints,
   mergeOntologyViolationsIntoGateResult,
 } from './travel-ontology-constraints';
+import {
+  attachDecisionContextToConstraintReport,
+  buildPseudoOrchestratorForDecisionContext,
+} from '../../planning-policy/open-world/decision-context-sync.util';
 import { buildWorldStateSummaryFromDso } from './world-state-summary.types';
+import { applyTopologyLockedOptimizePersist } from './optimize-topology-persist.util';
 import type { OrchestratorState } from '../../agent/interfaces/trip-plan.interface';
 import type {
   PhaseExecutorContext,
@@ -72,8 +77,18 @@ import { VerifyExecutorService } from '../../agent/execution/verify-executor.ser
 import { MemoryContextAssemblerService } from '../../agent/memory/services/memory-context-assembler.service';
 import { MemoryKernelService } from '../../agent/memory/experience-replay/memory-kernel.service';
 import { RepairExecutorService } from '../../agent/execution/repair-executor.service';
-import { HarnessStepRunnerService } from '../../harness/runtime/harness-step-runner.service';
+import { resolvePersonaClosureAudit } from '../../agent/utils/persona-closure-repair-skip.util';
+import {
+  HarnessStepRunnerService,
+  type HarnessStepExecutionResult,
+} from '../../harness/runtime/harness-step-runner.service';
 import { HarnessTraceFilesystemExportService } from '../../harness/tracing/harness-trace-filesystem-export.service';
+import { HarnessTraceRecorderService } from '../../harness/tracing/harness-trace-recorder.service';
+import {
+  shouldFinalizeHarnessTraceOnOrchestrationExit,
+  shouldRecordOnFailureRetrofit,
+  shouldSkipHarnessTraceAppend,
+} from '../../harness/tracing/harness-trace-mode.util';
 import { HarnessStepName } from '../../harness/contracts/harness-step.types';
 import type { HarnessStepAdmissionResult } from '../../harness/runtime/harness-step-admission.types';
 import { HarnessShadowMetricsCollector } from './harness-shadow-metrics.collector';
@@ -91,6 +106,16 @@ import {
   isUserRepairResolutionLabel,
 } from './utils/decision-feedback-correlation.util';
 import type { HardRuleFact } from '../../trips/decision/shared/hard-rule-snapshot.types';
+import { ObservationHarnessService } from './observation/observation-harness.service';
+import { integratePassabilityIntoBeliefSamples } from './observation/belief-observation-integrator';
+import { OrchestratorContextLintService } from '../../agent/orchestration/context/orchestrator-context-lint.service';
+import { MultiPersonDecisionService } from '../../trips/decision/services/multi-person-decision.service';
+import {
+  attachPartyCoordinationToResearchData,
+  buildTravelersFromParty,
+  resolveRoutePlanDraftForPartyCoordination,
+  shouldRunPartyCoordination,
+} from './party-coordination-bridge.util';
 import {
   attachPatentParticlesViewToEnvironment,
   mapDsoToPatentEnvironmentParticles,
@@ -100,22 +125,28 @@ import {
   patentCandidatesToDsoField,
 } from './patent/plan-gen-candidate-pool.util';
 import { applyPatentFeedbackLearning } from './patent/patent-feedback-learning.util';
+import {
+  parseHarnessKernelHardEnabled,
+  parseHarnessKernelShadowStrictEnabled,
+  parseHarnessShadowAfterPhaseEnabled,
+} from './harness-kernel-hard-mode.util';
 
 @Injectable()
 export class DecisionKernelService {
   private readonly logger = new Logger(DecisionKernelService.name);
   private readonly strictAtomicity = process.env.DECISION_OS_ATOMIC_STRICT === '1';
   /**
-   * 每阶段 commit 后追加影子 Harness（不阻断；`HARNESS_SHADOW_AFTER_PHASE=1` 开启）。
+   * 每阶段 commit 后追加影子 Harness（不阻断；`HARNESS_SHADOW_AFTER_PHASE=1` 或 `HARNESS_KERNEL_HARD=1` 开启）。
    * 产物写入 `harnessRuntime.shadow_harness_events`，供监控与 `explain.kernel_explainability`。
-   *  rollout：先在 STRICT 下积累「无差」样本（如连续 100 请求），再考虑将硬门设为默认；见类型侧对指标 A/B 的注释。
+   *  rollout：先在 shadow 下积累「无差」样本（如连续 100 请求），运维签字后 `HARNESS_KERNEL_HARD=1`。
    * 指标：`HarnessShadowMetricsCollector`（`HARNESS_SHADOW_METRICS_DISABLED=1` 关闭；`HARNESS_SHADOW_CONSECUTIVE_THRESHOLD` 默认 100）。
    */
-  private readonly shadowHarnessAfterPhase = process.env.HARNESS_SHADOW_AFTER_PHASE === '1';
+  private readonly kernelHard = parseHarnessKernelHardEnabled();
+  private readonly shadowHarnessAfterPhase = parseHarnessShadowAfterPhaseEnabled();
   /**
-   * 影子 Harness 失败时抛错中断（`HARNESS_KERNEL_SHADOW_STRICT=1`）。用于演练硬门，不等同于生产默认拦截。
+   * 影子 Harness 失败时抛错中断（`HARNESS_KERNEL_HARD=1` 或演练 `HARNESS_KERNEL_SHADOW_STRICT=1`）。
    */
-  private readonly shadowHarnessStrict = process.env.HARNESS_KERNEL_SHADOW_STRICT === '1';
+  private readonly shadowHarnessStrict = parseHarnessKernelShadowStrictEnabled();
   private readonly commitWindowMs = Number(process.env.DECISION_OS_COMMIT_WINDOW_MS ?? 20);
   private readonly metaBudget = new MetaDecisionBudgetAllocatorService();
   private readonly failSafeMetaBudgetMinSampleSize = (() => {
@@ -157,40 +188,133 @@ export class DecisionKernelService {
     @Optional() private readonly probabilisticWorldModel?: ProbabilisticWorldModelService,
     @Optional() private readonly beliefUpdate?: BeliefUpdateService,
     @Optional() private readonly harnessStepRunner?: HarnessStepRunnerService,
+    @Optional() private readonly harnessTraceRecorder?: HarnessTraceRecorderService,
     @Optional() private readonly harnessTraceFilesystemExport?: HarnessTraceFilesystemExportService,
     @Optional() private readonly harnessShadowMetrics?: HarnessShadowMetricsCollector,
     @Optional() private readonly memoryContextAssembler?: MemoryContextAssemblerService,
     @Optional() private readonly researchTeamLeader?: ResearchTeamLeaderService,
     @Optional() private readonly memoryKernel?: MemoryKernelService,
-  ) {}
-
-  /**
-   * 默认不向 Harness 内存 trace 追加步骤；设置 HARNESS_RECORD_TRACE=1 开启（回放/nightly）。
-   */
-  private shouldSkipHarnessTrace(): boolean {
-    return process.env.HARNESS_RECORD_TRACE !== '1';
+    @Optional() private readonly observationHarness?: ObservationHarnessService,
+    @Optional() private readonly contextLint?: OrchestratorContextLintService,
+    @Optional() private readonly multiPersonDecision?: MultiPersonDecisionService,
+  ) {
+    if (this.kernelHard) {
+      this.logger.warn(
+        '[Harness] HARNESS_KERNEL_HARD=1 — post-phase shadow harness failures BLOCK main chain',
+      );
+    }
   }
 
   /**
-   * 当 `HARNESS_RECORD_TRACE=1` 且本步 harness 已将失败写入 trace 时，将整条 trace 标为终态（避免 `finalStatus` 长期停在默认 DONE）。
+   * Phase 4a：进入 Kernel phase 执行器前的上下文边界检查（`ORCHESTRATOR_CONTEXT_LINT_ENABLED=1`）。
+   * `ORCHESTRATOR_CONTEXT_LINT_STRICT=1` 时校验失败抛错；默认仅 warn。
+   */
+  private runContextLintBeforePhase(
+    phase: HarnessStepName,
+    dso: DecisionState,
+    ctx?: { requestId?: string },
+  ): void {
+    if (!this.contextLint?.isEnabled()) return;
+    const requestId = ctx?.requestId ?? dso.systemState?.requestId ?? dso.requestId;
+    const result = this.contextLint.lintBeforePhase(phase, dso, { requestId });
+    if (result.ok) return;
+    const msg = `[ContextLint] phase=${String(phase)} code=${result.code ?? 'LINT'} ${result.message ?? ''}`;
+    if (this.contextLint.isStrict()) {
+      throw new Error(msg);
+    }
+    this.logger.warn(msg);
+  }
+
+  /** 仅 `full` 模式逐步 append；`on-failure` / `off` 为零 append 开销 */
+  private shouldSkipHarnessTrace(): boolean {
+    return shouldSkipHarnessTraceAppend();
+  }
+
+  /**
+   * `full` 模式：本步 harness 失败后将整条 trace 标为终态。
+   * `on-failure` 由 `buildOnFailureHarnessRuntimePatch` 逆向合成，不在此 finalize 空 trace。
    */
   private maybeFinalizeHarnessTraceAfterStepFailure(
     traceId: string,
     harnessStatus: HarnessStepRunStatus,
   ): void {
-    if (this.shouldSkipHarnessTrace() || !this.harnessStepRunner) return;
+    if (!shouldFinalizeHarnessTraceOnOrchestrationExit() || !this.harnessStepRunner) return;
     if (harnessStatus === 'PASSED' || harnessStatus === 'REPAIRED') return;
     const finalStatus: HarnessTraceFinalStatus =
       harnessStatus === 'BLOCKED' ? 'BLOCKED' : 'FAILED';
     this.harnessStepRunner.finalizeRecordedTrace(traceId, finalStatus);
   }
 
+  private mapHarnessFailureEventsToDso(
+    events: HarnessStepExecutionResult['failureEvents'],
+  ): NonNullable<HarnessRuntimeState['last_harness_failure_events']> {
+    return (events ?? []).map((e) => ({
+      step: e.step,
+      code: e.code,
+      severity: e.level,
+      suggestedAction: e.suggestedAction,
+      message: e.message,
+    }));
+  }
+
   /**
-   * 编排返回前调用：在 `HARNESS_RECORD_TRACE=1` 下为仍开放的内存 trace 写入 `endedAt` 与业务终态。
-   * harness 已失败收口时 trace 已闭合，本方法不会覆盖。
+   * `HARNESS_TRACE_MODE=on-failure`：失败点逆向合成黑匣子 trace 并按需落盘。
+   */
+  private buildOnFailureHarnessRuntimePatch(
+    dso: DecisionState,
+    step: HarnessStepName,
+    traceId: string,
+    requestId: string,
+    harnessOutcome: HarnessStepExecutionResult,
+  ): Partial<HarnessRuntimeState> | undefined {
+    if (!shouldRecordOnFailureRetrofit() || !this.harnessTraceRecorder) return undefined;
+    if (harnessOutcome.status === 'PASSED' || harnessOutcome.status === 'REPAIRED') return undefined;
+
+    const prior = dso.harnessRuntime?.last_harness_failure_events ?? [];
+    const failureEvents = harnessOutcome.failureEvents ?? [];
+    const trace = this.harnessTraceRecorder.retrofitTrajectoryOnFailure({
+      traceId,
+      requestId,
+      failedPhase: step,
+      runStatus: harnessOutcome.status,
+      failureEvents,
+      validationResults: harnessOutcome.validationResults,
+      graderResults: harnessOutcome.graderResults,
+      dsoSnapshot: dso,
+      priorFailuresSummary: prior,
+      decisionJustification: harnessOutcome.decisionJustification,
+      evaluationRunId: dso.harnessRuntime?.evaluationRunId,
+    });
+
+    const exportPath =
+      this.harnessTraceFilesystemExport?.exportHarnessTraceIfConfigured(trace) ?? null;
+
+    const mapped = this.mapHarnessFailureEventsToDso(failureEvents);
+    return {
+      activeTraceId: traceId,
+      last_harness_failure_events: mapped.length > 0 ? mapped : prior,
+      ...(exportPath ? { traceExportRelativePath: exportPath } : {}),
+    };
+  }
+
+  /** 单点：full 模式 finalize + on-failure 逆向合成与 DSO 补丁 */
+  private handleHarnessStepFailure(
+    dso: DecisionState,
+    step: HarnessStepName,
+    traceId: string,
+    requestId: string,
+    harnessOutcome: HarnessStepExecutionResult,
+  ): Partial<HarnessRuntimeState> | undefined {
+    this.maybeFinalizeHarnessTraceAfterStepFailure(traceId, harnessOutcome.status);
+    return this.buildOnFailureHarnessRuntimePatch(dso, step, traceId, requestId, harnessOutcome);
+  }
+
+  /**
+   * 编排返回前调用：在 `full` 模式下为仍开放的内存 trace 写入 `endedAt` 与业务终态。
+   * `on-failure` 成功路径零开销；失败已在 `handleHarnessStepFailure` 闭合。
    */
   finalizeHarnessTraceIfRecorded(dso: DecisionState, finalStatus: HarnessTraceFinalStatus): void {
-    if (this.shouldSkipHarnessTrace() || !this.harnessStepRunner) return;
+    if (!shouldFinalizeHarnessTraceOnOrchestrationExit() || !this.harnessStepRunner) return;
     const requestId = dso.systemState?.requestId ?? dso.requestId ?? '';
     if (!requestId) return;
     const traceId = dso.harnessRuntime?.activeTraceId ?? `harness-${requestId}`;
@@ -281,11 +405,6 @@ export class DecisionKernelService {
       },
     );
     const passed = out.status === 'PASSED' || out.status === 'REPAIRED';
-    if (!passed && this.shadowHarnessStrict) {
-      throw new Error(
-        `HARNESS_KERNEL_SHADOW_STRICT: shadow harness failed phase=${phaseName} step=${String(harnessStep)} status=${out.status}`,
-      );
-    }
 
     this.harnessShadowMetrics?.recordShadowCheck({
       kernel_phase: phaseName,
@@ -296,6 +415,12 @@ export class DecisionKernelService {
       request_id: requestId,
     });
 
+    if (!passed && this.shadowHarnessStrict) {
+      throw new Error(
+        `${this.kernelHard ? 'HARNESS_KERNEL_HARD' : 'HARNESS_KERNEL_SHADOW_STRICT'}: shadow harness failed phase=${phaseName} step=${String(harnessStep)} status=${out.status}`,
+      );
+    }
+
     const failedCodes = out.validationResults.filter((v) => !v.passed).map((v) => v.code);
     const event = {
       kernel_phase: phaseName,
@@ -304,7 +429,9 @@ export class DecisionKernelService {
       shadow_enforcement: true as const,
       harness_warning: passed
         ? undefined
-        : `[SHADOW_HARNESS] 阶段 ${phaseName} 提交后复验 Harness(${String(harnessStep)})=${out.status}；主链未阻断。失败码: ${failedCodes.join(',') || 'n/a'}`,
+        : this.shadowHarnessStrict
+          ? `[SHADOW_HARNESS] 阶段 ${phaseName} Harness(${String(harnessStep)})=${out.status}；硬门禁已阻断主链。失败码: ${failedCodes.join(',') || 'n/a'}`
+          : `[SHADOW_HARNESS] 阶段 ${phaseName} 提交后复验 Harness(${String(harnessStep)})=${out.status}；主链未阻断。失败码: ${failedCodes.join(',') || 'n/a'}`,
       validation_results: out.validationResults.map((v) => ({
         passed: v.passed,
         code: v.code,
@@ -336,16 +463,20 @@ export class DecisionKernelService {
    * @param opts.evaluationRunId — 与 Evaluation Harness `runFingerprint.runId` / `route_and_run.meta.run_id` 对齐，供 Harness trace 关联
    * @param opts.replanLineage — PRD I3：与 `OrchestratorState.metadata.replan_context` 对齐，写入 harnessRuntime
    * @param opts.orchestratorPlanVersion — 与 `OrchestratorState.plan_version` 对齐，写入 tripState.planVersion
+   * @param opts.userId — 与编排 `user_id` 对齐，供 P1 持久化权重加载（`systemState.userId`）
    */
   createInitialState(
     requestId: string,
     opts?: {
       evaluationRunId?: string;
+      otelTraceId?: string;
+      otelSpanId?: string;
       replanLineage?: {
         previous_plan_version?: number;
         previous_world_snapshot_hash?: string;
       };
       orchestratorPlanVersion?: number;
+      userId?: string;
     },
   ): DecisionState {
     const base: DecisionState = {
@@ -357,6 +488,7 @@ export class DecisionKernelService {
         startedAt: new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString(),
         version: 0,
+        ...(opts?.userId ? { userId: opts.userId } : {}),
       },
       requestId,
     };
@@ -364,6 +496,14 @@ export class DecisionKernelService {
     const runId = opts?.evaluationRunId?.trim();
     if (runId) {
       harnessRuntime.evaluationRunId = runId;
+    }
+    const otelTraceId = opts?.otelTraceId?.trim();
+    if (otelTraceId) {
+      harnessRuntime.otelTraceId = otelTraceId;
+    }
+    const otelSpanId = opts?.otelSpanId?.trim();
+    if (otelSpanId) {
+      harnessRuntime.otelSpanId = otelSpanId;
     }
     if (opts?.replanLineage) {
       const rl = opts.replanLineage;
@@ -604,6 +744,46 @@ export class DecisionKernelService {
           },
         });
       }
+
+      if (hints.optimizationFlags?.freezeRouteSelection) {
+        const topologyPersist = applyTopologyLockedOptimizePersist(current, hints);
+        current = this.updateState(current, {
+          tripState: topologyPersist.state.tripState,
+          environmentState: topologyPersist.state.environmentState,
+          research_data: topologyPersist.state.research_data,
+        });
+        if (topologyPersist.lock) {
+          current = this.appendHistoryDelta(current, {
+            type: 'route_topology_lock',
+            summary: `OPTIMIZE topology lock: segments=${topologyPersist.lock.lockedSegmentIds.length} match=${topologyPersist.lock.topologyMatch} rejected=${topologyPersist.lock.recommendedPlanRejected ?? false}`,
+            at: new Date().toISOString(),
+            payload: {
+              phase: 'OPTIMIZE',
+              lock: topologyPersist.lock,
+              appliedRecommended: topologyPersist.appliedRecommended,
+            },
+          });
+        }
+      }
+    }
+    if (shouldRunPartyCoordination(current) && this.multiPersonDecision) {
+      try {
+        const routePlan = resolveRoutePlanDraftForPartyCoordination(current);
+        if (routePlan) {
+          const coordination = await this.multiPersonDecision.supportMultiPersonDecision(
+            buildTravelersFromParty(current),
+            routePlan,
+          );
+          current = this.updateState(current, {
+            research_data: attachPartyCoordinationToResearchData(current, coordination),
+          });
+          this.logger.log(
+            `[Kernel] OPTIMIZE party coordination: conflicts=${coordination.conflictAreas.length} strategy=${coordination.optionsForCoordination[0]?.strategy ?? 'n/a'}`,
+          );
+        }
+      } catch (e) {
+        this.logger.warn(`[Kernel] OPTIMIZE party coordination skipped: ${(e as Error)?.message}`);
+      }
     }
     const planDraft = current.tripState?.planDraft;
     if (!current.constraints && planDraft) {
@@ -729,6 +909,7 @@ export class DecisionKernelService {
       this.logger.warn('[Kernel] IResearchExecutor 未注入，无法执行 executeResearch');
       return { newState: dso, researchData: {} };
     }
+    this.runContextLintBeforePhase(HarnessStepName.RESEARCH, dso, ctx);
     const harnessTraceId = dso.harnessRuntime?.activeTraceId ?? `harness-${ctx.requestId}`;
     if (this.harnessStepRunner) {
       const pre = await this.harnessStepRunner.runStep(
@@ -749,8 +930,19 @@ export class DecisionKernelService {
         this.logger.warn(
           `[Kernel] Harness RESEARCH 预检未通过: status=${pre.status} codes=${pre.failureEvents?.map((e) => e.code).join(',') ?? 'n/a'}`,
         );
-        this.maybeFinalizeHarnessTraceAfterStepFailure(harnessTraceId, pre.status);
-        return { newState: dso, researchData: {} };
+        const hrPatch = this.handleHarnessStepFailure(
+          dso,
+          HarnessStepName.RESEARCH,
+          harnessTraceId,
+          ctx.requestId,
+          pre,
+        );
+        return {
+          newState: hrPatch
+            ? this.stateManager.merge(dso, { harnessRuntime: { ...(dso.harnessRuntime ?? {}), ...hrPatch } })
+            : dso,
+          researchData: {},
+        };
       }
     }
     const startMs = Date.now();
@@ -791,6 +983,54 @@ export class DecisionKernelService {
     const worldStateSummary = buildWorldStateSummaryFromDso(newState, researchData);
     if (Object.keys(worldStateSummary).length > 0) {
       newState = this.stateManager.merge(newState, { worldStateSummary });
+    }
+
+    let observationPassabilityEvidence: { passability01: number; evidenceWeight: number } | undefined;
+    let observationHarnessSummary: Record<string, unknown> | undefined;
+    if (this.observationHarness) {
+      const obsOut = await this.observationHarness.handleObservations(newState);
+      if (obsOut.researchDataPatch && Object.keys(obsOut.researchDataPatch).length > 0) {
+        researchData = { ...researchData, ...obsOut.researchDataPatch };
+      }
+      if (obsOut.environmentPatch && Object.keys(obsOut.environmentPatch).length > 0) {
+        newState = this.stateManager.merge(newState, { environmentState: obsOut.environmentPatch });
+      }
+      if (obsOut.excludedPoiIds?.length) {
+        const prev = newState.userIntent?.excludePoiIds ?? [];
+        const merged = [...new Set([...prev.map(String), ...obsOut.excludedPoiIds.map(String)])];
+        newState = this.stateManager.merge(newState, {
+          userIntent: { ...newState.userIntent, excludePoiIds: merged },
+        });
+      }
+      observationPassabilityEvidence = obsOut.passabilityEvidence;
+      if (obsOut.audit.length > 0 || obsOut.executedActions.length > 0) {
+        observationHarnessSummary = {
+          executedActionCount: obsOut.executedActions.length,
+          excludedPoiIds: obsOut.excludedPoiIds,
+          passabilityEvidence: obsOut.passabilityEvidence,
+          auditEntryCount: obsOut.audit.length,
+        };
+      }
+      const wsObs = buildWorldStateSummaryFromDso(newState, researchData);
+      if (Object.keys(wsObs).length > 0) {
+        newState = this.stateManager.merge(newState, { worldStateSummary: wsObs });
+      }
+      const obsHarness = researchData.observationHarness as
+        | { suggestDilemmaElicitation?: { reason?: string; crossSpread?: number; hint?: string } }
+        | undefined;
+      const sug = obsHarness?.suggestDilemmaElicitation;
+      if (sug && typeof sug === 'object') {
+        newState = this.stateManager.merge(newState, {
+          optimizationHints: {
+            ...newState.optimizationHints,
+            dilemmaElicitationHint: {
+              reason: typeof sug.reason === 'string' ? sug.reason : 'EVIDENCE_CONTRADICTION',
+              crossSpread: typeof sug.crossSpread === 'number' ? sug.crossSpread : undefined,
+              hint: typeof sug.hint === 'string' ? sug.hint : undefined,
+            },
+          },
+        });
+      }
     }
 
     // 专利证据链（最小闭环）：RESEARCH 写入 uncertaintyProfile + beliefSamples
@@ -838,6 +1078,11 @@ export class DecisionKernelService {
         beliefRefinement = 'POMDP';
       }
 
+      if (observationPassabilityEvidence) {
+        beliefSamples = integratePassabilityIntoBeliefSamples(beliefSamples, observationPassabilityEvidence);
+        uncertaintyProfile = this.metaBudget.finalizeUncertaintyProfile(budgetDraft, beliefSamples);
+      }
+
       newState = this.stateManager.merge(newState, {
         uncertaintyProfile,
         beliefSamples,
@@ -863,6 +1108,7 @@ export class DecisionKernelService {
           uncertaintyProfile,
           beliefSampleCount: beliefSamples.length,
           beliefRefinement,
+          ...(observationHarnessSummary ? { observationHarness: observationHarnessSummary } : {}),
           pomdp:
             beliefRefinement === 'POMDP'
               ? {
@@ -1047,6 +1293,7 @@ export class DecisionKernelService {
         gateResult: { gate_result: 'ALLOW', violations: [], required_adjustments: [], confidence: 0.8 },
       };
     }
+    this.runContextLintBeforePhase(HarnessStepName.GATE_EVAL, dso, ctx);
     const startMs = Date.now();
     if (this.harnessStepRunner) {
       const traceId = dso.harnessRuntime?.activeTraceId ?? `harness-${ctx.requestId}`;
@@ -1060,7 +1307,13 @@ export class DecisionKernelService {
         },
       );
       if (harnessGate.status !== 'PASSED') {
-        this.maybeFinalizeHarnessTraceAfterStepFailure(traceId, harnessGate.status);
+        const hrPatch = this.handleHarnessStepFailure(
+          dso,
+          HarnessStepName.GATE_EVAL,
+          traceId,
+          ctx.requestId,
+          harnessGate,
+        );
         const detail =
           harnessGate.failureEvents?.map((e) => e.message).join('; ') ??
           harnessGate.validationResults.filter((r) => !r.passed).map((r) => r.message).join('; ') ??
@@ -1095,6 +1348,7 @@ export class DecisionKernelService {
             currentPhase: 'GATE_EVAL',
             lastUpdatedAt: new Date().toISOString(),
           },
+          ...(hrPatch ? { harnessRuntime: { ...(dso.harnessRuntime ?? {}), ...hrPatch } } : {}),
         });
         return { newState: blockedState, constraints: blockedConstraints, gateResult: blockedGate };
       }
@@ -1147,6 +1401,22 @@ export class DecisionKernelService {
         `[Kernel] travelOntology constraints merged: +${ontologyViolations.length} violation(s), gate=${gateResult.gate_result}`,
       );
     }
+
+    constraints = attachDecisionContextToConstraintReport(
+      constraints,
+      dso,
+      buildPseudoOrchestratorForDecisionContext(
+        {
+          requestId: ctx.requestId,
+          researchData: ctx.researchData,
+          tripPlanRequest: ctx.tripPlanRequest,
+          itinerary: ctx.itinerary,
+          gateResult,
+        },
+        dso,
+      ),
+    );
+
     const tripStatePatch: Partial<TripState> =
       gateResult.gate_result === 'BLOCK'
         ? { orchestratorAlternatives: normalizeBlockAlternativesForDso(gateResult, alternatives) }
@@ -1215,6 +1485,7 @@ export class DecisionKernelService {
         itinerary: emptyItin(),
       };
     }
+    this.runContextLintBeforePhase(HarnessStepName.PLAN_GEN, dso, ctx);
     if (this.harnessStepRunner) {
       const traceId = dso.harnessRuntime?.activeTraceId ?? `harness-${ctx.requestId}`;
       const harnessOutcome = await this.harnessStepRunner.runStep(
@@ -1232,7 +1503,13 @@ export class DecisionKernelService {
         },
       );
       if (harnessOutcome.status !== 'PASSED') {
-        this.maybeFinalizeHarnessTraceAfterStepFailure(traceId, harnessOutcome.status);
+        const hrPatch = this.handleHarnessStepFailure(
+          dso,
+          HarnessStepName.PLAN_GEN,
+          traceId,
+          ctx.requestId,
+          harnessOutcome,
+        );
         this.logger.warn(
           `[Kernel] Harness PLAN_GEN 未通过: status=${harnessOutcome.status} codes=${harnessOutcome.failureEvents?.map((e) => e.code).join(',') ?? 'n/a'}`,
         );
@@ -1250,6 +1527,7 @@ export class DecisionKernelService {
               currentPhase: 'PLAN_GEN',
               planGenTerminalFailure: failure,
             } as any,
+            ...(hrPatch ? { harnessRuntime: { ...(dso.harnessRuntime ?? {}), ...hrPatch } } : {}),
           }),
           itinerary: emptyItin(),
         };
@@ -1367,6 +1645,7 @@ export class DecisionKernelService {
       return { newState, issues: [issue], confidenceDelta };
     }
 
+    this.runContextLintBeforePhase(HarnessStepName.VERIFY, dso, ctx);
     if (this.harnessStepRunner) {
       const traceId = dso.harnessRuntime?.activeTraceId ?? `harness-${ctx.requestId}`;
       const harnessOutcome = await this.harnessStepRunner.runStep(
@@ -1379,7 +1658,13 @@ export class DecisionKernelService {
         },
       );
       if (harnessOutcome.status !== 'PASSED') {
-        this.maybeFinalizeHarnessTraceAfterStepFailure(traceId, harnessOutcome.status);
+        const hrPatch = this.handleHarnessStepFailure(
+          dso,
+          HarnessStepName.VERIFY,
+          traceId,
+          ctx.requestId,
+          harnessOutcome,
+        );
         const valMsgs = harnessOutcome.validationResults
           .filter((r) => !r.passed)
           .map((r) => r.message);
@@ -1412,6 +1697,13 @@ export class DecisionKernelService {
           newState: this.stateManager.merge(dso, {
             verification: report,
             systemState: { requestId: ctx.requestId, currentPhase: 'VERIFY', lastUpdatedAt: new Date().toISOString() },
+            harnessRuntime: {
+              ...(dso.harnessRuntime ?? {}),
+              ...hrPatch,
+              last_harness_failure_events:
+                hrPatch?.last_harness_failure_events ??
+                this.mapHarnessFailureEventsToDso(harnessOutcome.failureEvents),
+            },
           }),
           issues,
           confidenceDelta: 0,
@@ -1598,6 +1890,7 @@ export class DecisionKernelService {
       };
     }
 
+    this.runContextLintBeforePhase(HarnessStepName.REPAIR, dso, ctx);
     if (this.harnessStepRunner) {
       const traceId = dso.harnessRuntime?.activeTraceId ?? `harness-${ctx.requestId}`;
       const dsoVersion = dso.systemState?.version ?? 0;
@@ -1616,11 +1909,22 @@ export class DecisionKernelService {
         },
       );
       if (harnessRepair.status !== 'PASSED') {
-        this.maybeFinalizeHarnessTraceAfterStepFailure(traceId, harnessRepair.status);
+        const hrPatch = this.handleHarnessStepFailure(
+          dso,
+          HarnessStepName.REPAIR,
+          traceId,
+          ctx.requestId,
+          harnessRepair,
+        );
         this.logger.warn(
           `[Kernel] Harness REPAIR 未通过: status=${harnessRepair.status} codes=${harnessRepair.failureEvents?.map((e) => e.code).join(',') ?? 'n/a'}`,
         );
-        return { newState: dso, repairApplied: false };
+        return {
+          newState: hrPatch
+            ? this.stateManager.merge(dso, { harnessRuntime: { ...(dso.harnessRuntime ?? {}), ...hrPatch } })
+            : dso,
+          repairApplied: false,
+        };
       }
     }
     // REPAIR 处于临界区末端：执行完成后释放锁（若存在）
@@ -1633,6 +1937,14 @@ export class DecisionKernelService {
     let repairRecoverySignal: 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION' | undefined =
       dso.systemState?.recoverySignal as 'FAILED_RECOVERABLE' | 'NEED_USER_INTERVENTION' | undefined;
     const hadPendingAtStart = (dso.systemState?.pendingMigrations?.length ?? 0) > 0;
+    ctx = {
+      ...ctx,
+      personaClosureAudit: resolvePersonaClosureAudit({
+        personaClosureAudit: ctx.personaClosureAudit,
+        gateResult: ctx.gateResult,
+        systemState: dso.systemState,
+      }),
+    };
     try {
       const out = await this.repairExecutor.execute(dso, ctx);
       itinerary = out.itinerary;
@@ -1790,6 +2102,7 @@ export class DecisionKernelService {
         clarificationQuestions: [],
       };
     }
+    this.runContextLintBeforePhase(HarnessStepName.INTAKE, dso, ctx);
     if (this.harnessStepRunner) {
       const traceId = dso.harnessRuntime?.activeTraceId ?? `harness-${ctx.requestId}`;
       const harnessIntake = await this.harnessStepRunner.runStep(
@@ -1807,12 +2120,20 @@ export class DecisionKernelService {
         },
       );
       if (harnessIntake.status !== 'PASSED') {
-        this.maybeFinalizeHarnessTraceAfterStepFailure(traceId, harnessIntake.status);
+        const hrPatch = this.handleHarnessStepFailure(
+          dso,
+          HarnessStepName.INTAKE,
+          traceId,
+          ctx.requestId,
+          harnessIntake,
+        );
         this.logger.warn(
           `[Kernel] Harness INTAKE 未通过: status=${harnessIntake.status} codes=${harnessIntake.failureEvents?.map((e) => e.code).join(',') ?? 'n/a'}`,
         );
         return {
-          newState: dso,
+          newState: hrPatch
+            ? this.stateManager.merge(dso, { harnessRuntime: { ...(dso.harnessRuntime ?? {}), ...hrPatch } })
+            : dso,
           tripPlanRequest: ctx.tripPlanRequest ?? {},
           gaps: [],
           clarificationQuestions: [],
@@ -1862,6 +2183,7 @@ export class DecisionKernelService {
         },
       };
     }
+    this.runContextLintBeforePhase(HarnessStepName.NARRATE, dso, ctx);
     if (this.harnessStepRunner) {
       const traceId = dso.harnessRuntime?.activeTraceId ?? `harness-${ctx.requestId}`;
       const harnessNarrate = await this.harnessStepRunner.runStep(
@@ -1879,7 +2201,7 @@ export class DecisionKernelService {
         },
       );
       if (harnessNarrate.status !== 'PASSED') {
-        this.maybeFinalizeHarnessTraceAfterStepFailure(traceId, harnessNarrate.status);
+        this.handleHarnessStepFailure(dso, HarnessStepName.NARRATE, traceId, ctx.requestId, harnessNarrate);
         this.logger.warn(
           `[Kernel] Harness NARRATE 未通过: status=${harnessNarrate.status} codes=${harnessNarrate.failureEvents?.map((e) => e.code).join(',') ?? 'n/a'}`,
         );

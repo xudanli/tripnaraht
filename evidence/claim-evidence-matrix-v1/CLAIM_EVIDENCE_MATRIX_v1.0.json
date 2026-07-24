@@ -1,0 +1,1220 @@
+{
+  "schema": "CLAIM_EVIDENCE_MATRIX",
+  "version": "1.0",
+  "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+  "freeze_commit_short": "a7e9bdca5",
+  "generated_at_utc": "2026-07-24T07:39:02Z",
+  "purpose": "Machine-verifiable code facts only. Research may cite claim_id only; must not invent paths/snippets/test results.",
+  "candidate_policy": "C001–C017 treated as candidates: rewritten/split/extended (C001b,C010b,C018–C020) from reverse extraction at freeze commit.",
+  "prohibited_in_this_document": [
+    "architecture scores",
+    "vulnerability inference",
+    "P0/P1 recommendations",
+    "target architecture proposals"
+  ],
+  "test_run": {
+    "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+    "console_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.console.txt",
+    "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+    "suite_exit_code": 1,
+    "suites_passed": 20,
+    "suites_failed": 1,
+    "tests_passed": 113,
+    "tests_failed": 0,
+    "run_at_utc": "2026-07-24T07:35:00Z",
+    "worktree_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54"
+  },
+  "claims": [
+    {
+      "claim_id": "C001",
+      "category": "main_entry",
+      "statement": "AgentController exposes @Post(\"route_and_run\") which invokes agentService.routeAndRun; with global prefix api the HTTP path is POST /api/agent/route_and_run.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/agent.controller.ts",
+          "blob_sha": "6e784105491de4251b0e095ff55e4ae38fa96d76",
+          "symbols": [
+            "AgentController.routeAndRun",
+            "@Post('route_and_run')"
+          ],
+          "lines": "221-345"
+        },
+        {
+          "path": "src/main.ts",
+          "blob_sha": "e068a576e90d551326775fa50974ac5afca2ce0f",
+          "symbols": [
+            "app.setGlobalPrefix('api')"
+          ],
+          "lines": "95-95"
+        }
+      ],
+      "evidence": {
+        "status": "FAIL",
+        "test_file": "src/agent/agent.controller.ao-p0.contract.spec.ts",
+        "test_names": [],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": "Suite failed to load at freeze commit: route-and-run-trip-id-merge.util.ts imports missing iceland-self-drive util (see C018). Contract file claude-exec-route-and-run.contract.spec.ts PASSED independently."
+      }
+    },
+    {
+      "claim_id": "C001b",
+      "category": "main_entry",
+      "statement": "Claude-exec route_and_run contract validators/fixtures for CLAUDE_SM assembly exist and pass at freeze commit without loading AgentController.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/contracts/claude-exec-route-and-run.contract.spec.ts",
+          "blob_sha": "bfb83468676a69b620a1aa85bb7ba63ffc1237e6",
+          "symbols": [
+            "claude-exec-route-and-run.contract.spec"
+          ],
+          "lines": "1-end"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/claude-exec-route-and-run.contract.spec.ts",
+        "test_names": [
+          "(16 tests in suite)"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": "Suite exit aggregated; this suite status=passed in claim-matrix-jest.json"
+      }
+    },
+    {
+      "claim_id": "C002",
+      "category": "state_machine",
+      "statement": "MAIN_CHAIN_PRE_PLAN_NODES order is intake→state_update→research→poi_selection→gate_eval→context_build; MAIN_CHAIN_PLAN_GEN_NODE is plan_gen after pre_plan; MAIN_CHAIN_SHORT_CIRCUITS gate_block summarizes GATE BLOCK → 禁止 PLAN_GEN.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/orchestration/orchestration-main-chain-protocol.constants.ts",
+          "blob_sha": "09fd12ce184cd1da35e7ee10f375ffdaccd96d38",
+          "symbols": [
+            "MAIN_CHAIN_PRE_PLAN_NODES",
+            "MAIN_CHAIN_PLAN_GEN_NODE",
+            "MAIN_CHAIN_SHORT_CIRCUITS[id=gate_block]"
+          ],
+          "lines": "14-24;94-98"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts",
+        "test_names": [
+          "pre_plan order matches runner PRE_PLAN_NODE_ORDER",
+          "static edges cover pre_plan happy path and post_plan"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C003",
+      "category": "state_machine",
+      "statement": "When host.isGateBlocked(state) is true, runGateEvalPrePlanSegment returns prePlanTerminal terminal_blocked.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/orchestration/graph/nodes/gate-eval.node.ts",
+          "blob_sha": "99be9960b158a5d97572bfb1727e5a49626544ab",
+          "symbols": [
+            "runGateEvalPrePlanSegment",
+            "prePlanTerminal('terminal_blocked')"
+          ],
+          "lines": "71-77"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts",
+        "test_names": [
+          "returns terminal_blocked when gate is BLOCK"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C004",
+      "category": "core_dto",
+      "statement": "RouteAndRunOptionsDto declares allow_flawed_draft_narrate?: boolean and execution_mode enum ADVICE_ONLY|SEMI_AUTO|AUTO with default ADVICE_ONLY.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/dto/route-and-run.dto.ts",
+          "blob_sha": "e0bb0236d0fde22af2675cb5befb1c3d482fd28e",
+          "symbols": [
+            "RouteAndRunOptionsDto.allow_flawed_draft_narrate",
+            "RouteAndRunOptionsDto.execution_mode"
+          ],
+          "lines": "375-383;441-449"
+        }
+      ],
+      "evidence": {
+        "status": "CODE_ONLY",
+        "test_file": null,
+        "test_names": [],
+        "repro_cmd": null,
+        "exit_code": null,
+        "result_file": null,
+        "notes": "No dedicated DTO unit spec at freeze commit; field presence verified by blob lines."
+      }
+    },
+    {
+      "claim_id": "C005",
+      "category": "delivery_status",
+      "statement": "resolveDeliveryVerdict returns FLAWED_DRAFT when flawedDraft.is_flawed is true (ahead of OK); DELIVERY_VERDICTS includes FLAWED_DRAFT.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/delivery/types/delivery-verdict.types.ts",
+          "blob_sha": "025ac75debd92afcb8659379521a996819613ea5",
+          "symbols": [
+            "DELIVERY_VERDICTS",
+            "resolveDeliveryVerdict"
+          ],
+          "lines": "8-14;29-49"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/delivery/types/delivery-verdict.types.spec.ts",
+        "test_names": [
+          "maps flawed draft ahead of OK"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C006",
+      "category": "delivery_status",
+      "statement": "projectTrustedDeliveryV1 projects delivery_verdict including FLAWED_DRAFT onto TrustedDeliveryV1.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/delivery/utils/trusted-delivery.project.util.ts",
+          "blob_sha": "c27a387bf65420eedeb9baafd9e78417952fefa5",
+          "symbols": [
+            "projectTrustedDeliveryV1"
+          ],
+          "lines": "106-123"
+        },
+        {
+          "path": "src/agent/delivery/types/trusted-delivery-v1.type.ts",
+          "blob_sha": "87af55942415b2d65e5b2004aab7afa6f3725910",
+          "symbols": [
+            "TrustedDeliveryV1.delivery_verdict"
+          ],
+          "lines": "41-45"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/delivery/utils/trusted-delivery.project.util.spec.ts",
+        "test_names": [
+          "projects FLAWED_DRAFT delivery_verdict on OK + flawed draft"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C007",
+      "category": "authority_boundary",
+      "statement": "AUTO_CORRIDOR_PRODUCT_RULES / buildAutoCorridorUiFlagsV1 treat missing execution mode as ADVICE_ONLY and disable auto UI when ADVICE_ONLY.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/contracts/auto-corridor-product.contract.ts",
+          "blob_sha": "eccb6cef5b26053c49917e6481f9a150a350979e",
+          "symbols": [
+            "AUTO_CORRIDOR_PRODUCT_RULES",
+            "buildAutoCorridorUiFlagsV1"
+          ],
+          "lines": "36-72"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/auto-corridor-product.contract.spec.ts",
+        "test_names": [
+          "freezes LLM cannot write DB and flawed blocks AUTO"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C008",
+      "category": "authority_boundary",
+      "statement": "tryAllowFlawedDraftBypass returns false unless request.options.allow_flawed_draft_narrate === true; on success sets metadata.flawed_draft_narrate=true and flawed_draft_opt_in=explicit.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.ts",
+          "blob_sha": "e04a4cc9e0b011f6177500c989aec1552797b879",
+          "symbols": [
+            "tryAllowFlawedDraftBypass"
+          ],
+          "lines": "35-75"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts",
+        "test_names": [
+          "bound trip without explicit opt-in clarifies (P0-1)",
+          "continues without clarification when allow_flawed_draft_narrate"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C009",
+      "category": "authority_boundary",
+      "statement": "shouldBlockAutoApplyForFlawedDraft is true when metadata.flawed_draft_narrate===true; maybeAutoApplyItineraryAdjustCorridor records reason flawed_draft_forbidden and forces ADVICE_ONLY without applying.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/utils/itinerary-adjust-flawed-auto-block.util.ts",
+          "blob_sha": "2ac9a71151e7c28b391a349ee5090b5bde7a282b",
+          "symbols": [
+            "shouldBlockAutoApplyForFlawedDraft",
+            "FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON"
+          ],
+          "lines": "6-12"
+        },
+        {
+          "path": "src/agent/services/claude-orchestrator.service.ts",
+          "blob_sha": "8acf97923d3d26c1edf320658f2c9721a68ca074",
+          "symbols": [
+            "ClaudeOrchestratorService.maybeAutoApplyItineraryAdjustCorridor"
+          ],
+          "lines": "8652-8675"
+        }
+      ],
+      "evidence": {
+        "status": "PARTIAL",
+        "test_file": "src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts",
+        "test_names": [
+          "blocks when flawed_draft_narrate is true"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": "Helper PASS; orchestrator wiring CODE_ONLY at freeze (no dedicated maybeAutoApplyItineraryAdjustCorridor unit name in this run)."
+      }
+    },
+    {
+      "claim_id": "C010",
+      "category": "corridor_iceland",
+      "statement": "WRITEBACK_CORRIDOR_AUDIT_MATRIX row iceland_apply documents entry POST /iceland-self-drive/trips/:tripId/initial-plan/proposals/:proposalId/apply with confirm required, auto never, persistence plan_version; GATE_VERIFY row marks usesMainChainGateEval=false and auditStatus=needs_audit.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/contracts/writeback-corridor-audit.matrix.ts",
+          "blob_sha": "72b7883e5739c55c69d2c0a3d46b6aa51034bf42",
+          "symbols": [
+            "WRITEBACK_CORRIDOR_AUDIT_MATRIX[id=iceland_apply]"
+          ],
+          "lines": "32-43"
+        },
+        {
+          "path": "src/agent/contracts/gate-verify-corridor-audit.matrix.ts",
+          "blob_sha": "3c5073a249287e7b27f0bdb21ec7b05da69b40fd",
+          "symbols": [
+            "GATE_VERIFY_CORRIDOR_AUDIT_MATRIX[corridorId=iceland_apply]"
+          ],
+          "lines": "42-50"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts",
+        "test_names": [
+          "marks Iceland apply as plan_version without AUTO"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C010b",
+      "category": "corridor_iceland",
+      "statement": "At freeze commit a7e9bdca5, directory src/trips/iceland-self-drive is absent from the git tree; therefore the HTTP Confirm/Apply implementation path documented by C010 is not present as committed source.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "(absent) src/trips/iceland-self-drive/**",
+          "blob_sha": null,
+          "symbols": [],
+          "lines": "n/a"
+        }
+      ],
+      "evidence": {
+        "status": "NEEDS_MORE_EVIDENCE",
+        "test_file": null,
+        "test_names": [],
+        "repro_cmd": null,
+        "exit_code": null,
+        "result_file": null,
+        "notes": "Verified via git ls-tree a7e9bdca5 src/trips/iceland-self-drive → empty. Untracked working-tree files outside freeze commit are not admissible."
+      }
+    },
+    {
+      "claim_id": "C011",
+      "category": "corridor_arrange",
+      "statement": "PlanProposalApplyService.executeProposal applies only selectAuthoritativePlanProposalChanges(proposal) (proposal.changes), not ortoolsShadow.shadowChanges; ArrangeItineraryController exposes POST proposals/:proposalId/apply.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/trips/arrange-itinerary/services/plan-proposal-apply.service.ts",
+          "blob_sha": "06f734f73f639d9bd5565ce6c2dd52e07a4aacdd",
+          "symbols": [
+            "PlanProposalApplyService.executeProposal",
+            "selectAuthoritativePlanProposalChanges"
+          ],
+          "lines": "73-77"
+        },
+        {
+          "path": "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.ts",
+          "blob_sha": "be0973fa24811861731e3ae0c4b58b5f69050c3d",
+          "symbols": [
+            "selectAuthoritativePlanProposalChanges"
+          ],
+          "lines": "11-21"
+        },
+        {
+          "path": "src/trips/arrange-itinerary/arrange-itinerary.controller.ts",
+          "blob_sha": "473f036a2233ba6939feeb03a828c266ea320617",
+          "symbols": [
+            "ArrangeItineraryController.applyProposal",
+            "@Post('proposals/:proposalId/apply')"
+          ],
+          "lines": "391-415"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts",
+        "test_names": [
+          "selects only proposal.changes",
+          "detects shadow-only apply leak"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": "Controller apply HTTP handler CODE_ONLY in this run; guard PASS."
+      }
+    },
+    {
+      "claim_id": "C012",
+      "category": "corridor_unified",
+      "statement": "UnifiedDecisionController exposes POST decisions/:decisionId/authorize, execute, and rollback under Controller trips/:tripId.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/decision-runtime/gateway/controllers/unified-decision.controller.ts",
+          "blob_sha": "3191c3e73b32517bf6fb838db71ab5f59474fe2a",
+          "symbols": [
+            "UnifiedDecisionController.authorize",
+            "UnifiedDecisionController.execute",
+            "UnifiedDecisionController.rollback"
+          ],
+          "lines": "402-458"
+        }
+      ],
+      "evidence": {
+        "status": "CODE_ONLY",
+        "test_file": null,
+        "test_names": [],
+        "repro_cmd": null,
+        "exit_code": null,
+        "result_file": null,
+        "notes": "No UnifiedDecisionController spec in claim-matrix jest set at freeze."
+      }
+    },
+    {
+      "claim_id": "C013",
+      "category": "corridor_actions",
+      "statement": "ActionsController @Post(commit) delegates to actionExecutionService.commit; OpenAPI text references idempotency key dedupe.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/actions.controller.ts",
+          "blob_sha": "77358aefd7bd0bf606968682cee84cd27363e38a",
+          "symbols": [
+            "ActionsController.commit",
+            "@Post('commit')"
+          ],
+          "lines": "238-300"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/actions.controller.integration.spec.ts",
+        "test_names": [
+          "compensation policy upsert is idempotent by business pair",
+          "POST /agent/actions/commit returns service response"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C014",
+      "category": "corridor_itinerary_adjust",
+      "statement": "maybeAutoApplyItineraryAdjustCorridor runs only when routeIntent.primary===ITINERARY_ADJUST and blocks AUTO when shouldBlockAutoApplyForFlawedDraft; writeback matrix lists itinerary_adjust_apply auto=narrow_corridor persistence=trip_itinerary_item.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/services/claude-orchestrator.service.ts",
+          "blob_sha": "8acf97923d3d26c1edf320658f2c9721a68ca074",
+          "symbols": [
+            "maybeAutoApplyItineraryAdjustCorridor"
+          ],
+          "lines": "8652-8675"
+        },
+        {
+          "path": "src/agent/contracts/writeback-corridor-audit.matrix.ts",
+          "blob_sha": "72b7883e5739c55c69d2c0a3d46b6aa51034bf42",
+          "symbols": [
+            "WRITEBACK_CORRIDOR_AUDIT_MATRIX[id=itinerary_adjust_apply]"
+          ],
+          "lines": "80-91"
+        }
+      ],
+      "evidence": {
+        "status": "PARTIAL",
+        "test_file": "src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "test_names": [
+          "(suite passed, 6 tests)"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": "Auto-apply util PASS; orchestrator method CODE_ONLY; flawed block covered by C009."
+      }
+    },
+    {
+      "claim_id": "C015",
+      "category": "corridor_mobile",
+      "statement": "WRITEBACK/GATE matrices document mobile_verified_apply corridor (Verification Snapshot, auto never, needs_audit). At freeze commit, mobile-execution.controller has POST execution/tep-repairs/:interventionId/accept calling TepLocalRepairApplyService.applyRecoveryOption; no verified-proposals/:proposalId/apply handler string in that file.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/contracts/writeback-corridor-audit.matrix.ts",
+          "blob_sha": "72b7883e5739c55c69d2c0a3d46b6aa51034bf42",
+          "symbols": [
+            "WRITEBACK_CORRIDOR_AUDIT_MATRIX[id=mobile_verified_apply]"
+          ],
+          "lines": "92-103"
+        },
+        {
+          "path": "src/mobile/controllers/mobile-execution.controller.ts",
+          "blob_sha": "612a4b5cd969cc24316574a5932d0d6489d1ddfe",
+          "symbols": [
+            "@Post('execution/tep-repairs/:interventionId/accept')"
+          ],
+          "lines": "241-261"
+        }
+      ],
+      "evidence": {
+        "status": "NEEDS_MORE_EVIDENCE",
+        "test_file": null,
+        "test_names": [],
+        "repro_cmd": null,
+        "exit_code": null,
+        "result_file": null,
+        "notes": "Matrix row PASS via writeback/gate matrix specs (C010/C017 family). verified-proposals apply handler absent at freeze. tep-repairs accept is CODE_ONLY (no mobile spec in claim run)."
+      }
+    },
+    {
+      "claim_id": "C016",
+      "category": "corridor_tep",
+      "statement": "TepLocalRepairApplyService.applyRecoveryOption uses idempotency key coalescing; assertTepRepairOptionFresh throws STALE_REPAIR_OPTION when basePlanVersionId !== currentEffectivePlanVersionId.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/trips/tep/services/tep-local-repair-apply.service.ts",
+          "blob_sha": "5c88cbfd089725caaed82612c20e448947669539",
+          "symbols": [
+            "TepLocalRepairApplyService.applyRecoveryOption"
+          ],
+          "lines": "82-96"
+        },
+        {
+          "path": "src/trips/tep/utils/tep-repair-stale-guard.util.ts",
+          "blob_sha": "10199398a01b1ed526020cae7cf97e0722afc238",
+          "symbols": [
+            "assertTepRepairOptionFresh",
+            "STALE_REPAIR_OPTION"
+          ],
+          "lines": "3-21"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/trips/tep/services/tep-local-repair-apply.service.spec.ts",
+        "test_names": [
+          "(8 tests passed including stale rejection paths in suite)"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C017",
+      "category": "corridor_ortools_shadow",
+      "statement": "selectAuthoritativePlanProposalChanges returns filtered proposal.changes only; isOrtToolsPlanningShadowApplyLeak detects shadow-only apply; OrtTools planning shadow bridge stamps shadowAuthority:false; GATE matrix marks ortools_shadow auditStatus=shadow_only.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.ts",
+          "blob_sha": "be0973fa24811861731e3ae0c4b58b5f69050c3d",
+          "symbols": [
+            "selectAuthoritativePlanProposalChanges",
+            "isOrtToolsPlanningShadowApplyLeak"
+          ],
+          "lines": "11-21;62-85"
+        },
+        {
+          "path": "src/decision-runtime/solver/bridge/ortools-planning-orchestrator-shadow.bridge.ts",
+          "blob_sha": "d860b96f5a80c084dcee09880fb17155ad3122cb",
+          "symbols": [
+            "shadowAuthority: false"
+          ],
+          "lines": "300-314"
+        },
+        {
+          "path": "src/agent/contracts/gate-verify-corridor-audit.matrix.ts",
+          "blob_sha": "3c5073a249287e7b27f0bdb21ec7b05da69b40fd",
+          "symbols": [
+            "GATE_VERIFY_CORRIDOR_AUDIT_MATRIX[corridorId=ortools_shadow]"
+          ],
+          "lines": "102-111"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts",
+        "test_names": [
+          "selects only proposal.changes",
+          "detects shadow-only apply leak"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C018",
+      "category": "freeze_integrity",
+      "statement": "At freeze commit, src/agent/utils/route-and-run-trip-id-merge.util.ts imports ../../trips/iceland-self-drive/utils/iceland-memory-shell-trip-id.util but that module path is absent from the commit tree.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/utils/route-and-run-trip-id-merge.util.ts",
+          "blob_sha": "75630babc2bf2861aefcf82c0427de1ac702bc48",
+          "symbols": [
+            "isMemoryShellTripId import"
+          ],
+          "lines": "2-2"
+        }
+      ],
+      "evidence": {
+        "status": "FAIL",
+        "test_file": "src/agent/agent.controller.ao-p0.contract.spec.ts",
+        "test_names": [],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": "Cannot find module iceland-memory-shell-trip-id.util — observed in claim-matrix-jest.console.txt | CLASSIFICATION: 基线不完整 (dangling import); not test/env/removal. | CLASSIFICATION: BASELINE_INCOMPLETE."
+      },
+      "classification": {
+        "primary": "BASELINE_INCOMPLETE",
+        "primary_zh": "基线不完整",
+        "alias": [
+          "incomplete_baseline"
+        ],
+        "secondary": "dangling_import_code_defect",
+        "not": [
+          "test_defect",
+          "feature_removal",
+          "environment_block",
+          "security_vuln_of_absent_impl"
+        ],
+        "decided_in": "BASELINE_SCOPE_DECISION.md",
+        "research_may_evaluate": [
+          "baseline_integrity_governance",
+          "branch_wip_governance",
+          "dangling_dependency_reproducibility",
+          "claim_vs_commit_governance"
+        ],
+        "research_must_not_evaluate": [
+          "security_or_architecture_quality_of_absent_iceland_apply_impl"
+        ]
+      }
+    },
+    {
+      "claim_id": "C019",
+      "category": "state_machine",
+      "statement": "Decision kernel verify-repair loop tests pass at freeze commit (VERIFY issues drive REPAIR path in kernel specs).",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts",
+          "blob_sha": "5f9f42acfd440038b346d97f1e2235a4b1bce009",
+          "symbols": [
+            "decision-kernel.verify-repair-loop"
+          ],
+          "lines": "suite"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts",
+        "test_names": [
+          "(5 tests passed)"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    },
+    {
+      "claim_id": "C020",
+      "category": "audit_ssot",
+      "statement": "GATE_VERIFY_CORRIDOR_AUDIT_MATRIX and WRITEBACK_CORRIDOR_AUDIT_MATRIX version 1.0.0 are committed SSOT listing per-corridor gate reuse and writeback fields; MAIN_CHAIN_GATE_BLOCK_SCOPE states main-chain-only GATE BLOCK proof.",
+      "freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+      "anchors": [
+        {
+          "path": "src/agent/contracts/gate-verify-corridor-audit.matrix.ts",
+          "blob_sha": "3c5073a249287e7b27f0bdb21ec7b05da69b40fd",
+          "symbols": [
+            "GATE_VERIFY_CORRIDOR_AUDIT_MATRIX",
+            "MAIN_CHAIN_GATE_BLOCK_SCOPE"
+          ],
+          "lines": "8-112"
+        },
+        {
+          "path": "src/agent/contracts/writeback-corridor-audit.matrix.ts",
+          "blob_sha": "72b7883e5739c55c69d2c0a3d46b6aa51034bf42",
+          "symbols": [
+            "WRITEBACK_CORRIDOR_AUDIT_MATRIX"
+          ],
+          "lines": "6-104"
+        }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts",
+        "test_names": [
+          "scopes main-chain GATE BLOCK narrowly",
+          "marks independent apply corridors as canWriteWithoutMainChainGate"
+        ],
+        "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
+        "exit_code": 1,
+        "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
+        "notes": null
+      }
+    }
+  ],
+  "writeback_corridor_profiles": [
+    {
+      "corridor_id": "iceland_apply",
+      "claim_refs": [
+        "C010",
+        "C010b"
+      ],
+      "Gate": {
+        "value": "corridor_own_guard; usesMainChainGateEval=false",
+        "source_claim": "C010",
+        "status": "PASS"
+      },
+      "VERIFY": {
+        "value": "Iceland proposal verification / preview bridge (matrix text)",
+        "source_claim": "C010",
+        "status": "PASS"
+      },
+      "Confirm": {
+        "value": "required (confirm opens apply) — matrix text",
+        "source_claim": "C010",
+        "status": "PASS"
+      },
+      "Freshness": {
+        "value": "proposal status — matrix text",
+        "source_claim": "C010",
+        "status": "PASS"
+      },
+      "Idempotency": {
+        "value": "Idempotency-Key — matrix text",
+        "source_claim": "C010",
+        "status": "PASS"
+      },
+      "Write_Target": {
+        "value": "plan_version — matrix text",
+        "source_claim": "C010",
+        "status": "PASS"
+      },
+      "AUTO": {
+        "value": "never — matrix text",
+        "source_claim": "C010",
+        "status": "PASS"
+      },
+      "Rollback": {
+        "value": "not stated in writeback matrix row",
+        "source_claim": "C010",
+        "status": "NEEDS_MORE_EVIDENCE"
+      },
+      "Audit": {
+        "value": "auditStatus=needs_audit",
+        "source_claim": "C010",
+        "status": "PASS"
+      },
+      "implementation_at_freeze": "ABSENT (C010b)"
+    },
+    {
+      "corridor_id": "arrange_apply",
+      "claim_refs": [
+        "C011"
+      ],
+      "Gate": {
+        "value": "corridor_own_guard; not main-chain GATE_EVAL",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "VERIFY": {
+        "value": "PlanProposal.validation + write guard; never shadowChanges",
+        "source_claim": "C011",
+        "status": "PASS"
+      },
+      "Confirm": {
+        "value": "explicit apply HTTP",
+        "source_claim": "C011",
+        "status": "CODE_ONLY"
+      },
+      "Freshness": {
+        "value": "proposal / contextVersion — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Idempotency": {
+        "value": "corridor-specific — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Write_Target": {
+        "value": "plan_version / itinerary items via executeProposal",
+        "source_claim": "C011",
+        "status": "PASS"
+      },
+      "AUTO": {
+        "value": "never",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Rollback": {
+        "value": "discard endpoint exists; rollback semantics NEEDS_MORE_EVIDENCE",
+        "source_claim": "C011",
+        "status": "NEEDS_MORE_EVIDENCE"
+      },
+      "Audit": {
+        "value": "needs_audit",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "implementation_at_freeze": "PRESENT"
+    },
+    {
+      "corridor_id": "unified_execute",
+      "claim_refs": [
+        "C012"
+      ],
+      "Gate": {
+        "value": "unified_assessment; usesMainChainGateEval=false",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "VERIFY": {
+        "value": "Unified Assessment / authorize — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Confirm": {
+        "value": "authorize then execute endpoints present",
+        "source_claim": "C012",
+        "status": "CODE_ONLY"
+      },
+      "Freshness": {
+        "value": "decision revision — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Idempotency": {
+        "value": "idempotencyKey passed to gateway.execute",
+        "source_claim": "C012",
+        "status": "CODE_ONLY"
+      },
+      "Write_Target": {
+        "value": "mixed — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "AUTO": {
+        "value": "policy_controlled — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Rollback": {
+        "value": "POST decisions/:decisionId/rollback present",
+        "source_claim": "C012",
+        "status": "CODE_ONLY"
+      },
+      "Audit": {
+        "value": "needs_audit",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "implementation_at_freeze": "PRESENT"
+    },
+    {
+      "corridor_id": "actions_commit",
+      "claim_refs": [
+        "C013"
+      ],
+      "Gate": {
+        "value": "corridor_own_guard",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "VERIFY": {
+        "value": "preview + side-effect rules — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Confirm": {
+        "value": "commit endpoint",
+        "source_claim": "C013",
+        "status": "PASS"
+      },
+      "Freshness": {
+        "value": "action plan — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Idempotency": {
+        "value": "idempotency_key",
+        "source_claim": "C013",
+        "status": "PASS"
+      },
+      "Write_Target": {
+        "value": "mixed",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "AUTO": {
+        "value": "policy_controlled",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Rollback": {
+        "value": "ActionsController rollback operation documented in controller (~line 856)",
+        "source_claim": "C013",
+        "status": "CODE_ONLY"
+      },
+      "Audit": {
+        "value": "needs_audit",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "implementation_at_freeze": "PRESENT"
+    },
+    {
+      "corridor_id": "itinerary_adjust_apply",
+      "claim_refs": [
+        "C009",
+        "C014"
+      ],
+      "Gate": {
+        "value": "usesMainChainGateEval=true",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "VERIFY": {
+        "value": "main-chain Kernel VERIFY (advice segment)",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Confirm": {
+        "value": "utterance / apply flag",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Freshness": {
+        "value": "bound trip + pending draft",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Idempotency": {
+        "value": "request_id",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Write_Target": {
+        "value": "trip_itinerary_item",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "AUTO": {
+        "value": "narrow_corridor; FLAWED_DRAFT blocks AUTO",
+        "source_claim": "C009",
+        "status": "PARTIAL"
+      },
+      "Rollback": {
+        "value": "not in writeback matrix row",
+        "source_claim": "C014",
+        "status": "NEEDS_MORE_EVIDENCE"
+      },
+      "Audit": {
+        "value": "proven (gate matrix)",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "implementation_at_freeze": "PRESENT"
+    },
+    {
+      "corridor_id": "mobile_verified_apply",
+      "claim_refs": [
+        "C015"
+      ],
+      "Gate": {
+        "value": "verification_snapshot; usesMainChainGateEval=false",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "VERIFY": {
+        "value": "Mobile Verification Snapshot — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Confirm": {
+        "value": "explicit mobile action — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Freshness": {
+        "value": "snapshot freshness — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Idempotency": {
+        "value": "corridor-specific — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Write_Target": {
+        "value": "mixed — matrix",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "AUTO": {
+        "value": "never",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Rollback": {
+        "value": "not stated",
+        "source_claim": "C015",
+        "status": "NEEDS_MORE_EVIDENCE"
+      },
+      "Audit": {
+        "value": "needs_audit",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "implementation_at_freeze": "MATRIX_ONLY; live mobile writeback observed: tep-repairs accept (C015)"
+    },
+    {
+      "corridor_id": "tep_repair_apply",
+      "claim_refs": [
+        "C016"
+      ],
+      "Gate": {
+        "value": "not listed as main-chain GATE_EVAL; corridor stale guard",
+        "source_claim": "C016",
+        "status": "PASS"
+      },
+      "VERIFY": {
+        "value": "TEP recovery option / executability path",
+        "source_claim": "C016",
+        "status": "PARTIAL"
+      },
+      "Confirm": {
+        "value": "applyRecoveryOption invocation (mobile accept / trip executability)",
+        "source_claim": "C016",
+        "status": "PASS"
+      },
+      "Freshness": {
+        "value": "assertTepRepairOptionFresh / STALE_REPAIR_OPTION",
+        "source_claim": "C016",
+        "status": "PASS"
+      },
+      "Idempotency": {
+        "value": "buildTepRepairIdempotencyKey + inflight coalesce",
+        "source_claim": "C016",
+        "status": "PASS"
+      },
+      "Write_Target": {
+        "value": "effective plan via planVersionStore.setEffective",
+        "source_claim": "C016",
+        "status": "PASS"
+      },
+      "AUTO": {
+        "value": "not AUTO corridor in writeback matrix (explicit apply)",
+        "source_claim": "C016",
+        "status": "CODE_ONLY"
+      },
+      "Rollback": {
+        "value": "not evidenced in claim run",
+        "source_claim": "C016",
+        "status": "NEEDS_MORE_EVIDENCE"
+      },
+      "Audit": {
+        "value": "not a row in GATE matrix; treat as independent",
+        "source_claim": "C016",
+        "status": "CODE_ONLY"
+      },
+      "implementation_at_freeze": "PRESENT"
+    },
+    {
+      "corridor_id": "ortools_shadow",
+      "claim_refs": [
+        "C017"
+      ],
+      "Gate": {
+        "value": "none_or_unknown",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "VERIFY": {
+        "value": "lab/compare only",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "Confirm": {
+        "value": "n/a — shadow not authoritative apply",
+        "source_claim": "C017",
+        "status": "PASS"
+      },
+      "Freshness": {
+        "value": "selectUsableOrtToolsPlanningShadow contextVersion match",
+        "source_claim": "C017",
+        "status": "CODE_ONLY"
+      },
+      "Idempotency": {
+        "value": "n/a for shadow authority",
+        "source_claim": "C017",
+        "status": "CODE_ONLY"
+      },
+      "Write_Target": {
+        "value": "must not write shadowChanges; Arrange uses proposal.changes",
+        "source_claim": "C011",
+        "status": "PASS"
+      },
+      "AUTO": {
+        "value": "shadow_only; shadowAuthority false",
+        "source_claim": "C017",
+        "status": "PASS"
+      },
+      "Rollback": {
+        "value": "n/a",
+        "source_claim": "C017",
+        "status": "CODE_ONLY"
+      },
+      "Audit": {
+        "value": "shadow_only",
+        "source_claim": "C020",
+        "status": "PASS"
+      },
+      "implementation_at_freeze": "PRESENT (guard+bridge)"
+    }
+  ],
+  "baseline_scope_decision": {
+    "document": "evidence/claim-evidence-matrix-v1/BASELINE_SCOPE_DECISION.md",
+    "retain_freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+    "regenerate_matrix": false,
+    "decision_utc": "2026-07-24",
+    "verdict": "RETAIN_a7e9bdca5",
+    "out_of_scope_implementations": [
+      "iceland_confirm_apply_http",
+      "mobile_verified_proposals_apply_http"
+    ],
+    "narrative_conflict_rule": "CLAIM_EVIDENCE_MATRIX_v1.0 Claim IDs supersede prior human descriptions",
+    "c018_classification": {
+      "primary": "BASELINE_INCOMPLETE",
+      "primary_zh": "基线不完整",
+      "secondary": "dangling_import_code_defect",
+      "not": [
+        "test_defect",
+        "feature_removal",
+        "environment_block",
+        "security_vuln_of_absent_impl"
+      ],
+      "alias": [
+        "incomplete_baseline"
+      ]
+    },
+    "approvals": {
+      "engineering_lead": "APPROVE+AFFIRM",
+      "tech_architect": "APPROVE+AFFIRM",
+      "qa_lead": "APPROVE+AFFIRM"
+    },
+    "fact_layer": "FROZEN",
+    "research_input": "APPROVED",
+    "matrix_regeneration": "NOT_REQUIRED",
+    "baseline": "AFFIRMED"
+  },
+  "engineering_status": {
+    "ENGINEERING_FACT_LAYER": "FROZEN",
+    "BASELINE": "AFFIRMED",
+    "BASELINE_COMMIT": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+    "MATRIX_REGENERATION": "NOT_REQUIRED",
+    "RESEARCH_INPUT": "APPROVED",
+    "research_pause": "LIFTED",
+    "documents": [
+      "FINAL_STATUS.md",
+      "RESEARCH_KICKOFF_NOTICE.md",
+      "BASELINE_SCOPE_DECISION.md",
+      "SIGNATURES.md"
+    ]
+  }
+}

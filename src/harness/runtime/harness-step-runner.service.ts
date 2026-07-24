@@ -17,23 +17,15 @@ import type {
   HarnessTraceCorrelationMeta,
   HarnessTraceFinalStatus,
 } from '../tracing/harness-trace.types';
+import { harnessTraceCorrelationMetaFromRuntime } from '../tracing/harness-otel-correlation.util';
 import type { HarnessFailureEvent } from '../failures/failure-event.types';
 import type { HarnessGraderResult } from '../inferential/harness-inferential-grader.interface';
 import { getAtPath } from '../lib/dso-path.util';
 import type { HarnessStepAdmissionResult } from './harness-step-admission.types';
+import { suggestPreviousHarnessStep } from '../lib/harness-step-order';
 
 export type { HarnessStepRunStatus };
 export type { HarnessStepAdmissionResult } from './harness-step-admission.types';
-
-const HARNESS_STEP_ORDER: HarnessStepName[] = [
-  HarnessStepName.INTAKE,
-  HarnessStepName.RESEARCH,
-  HarnessStepName.GATE_EVAL,
-  HarnessStepName.PLAN_GEN,
-  HarnessStepName.VERIFY,
-  HarnessStepName.REPAIR,
-  HarnessStepName.NARRATE,
-];
 
 export interface HarnessStepExecutionResult {
   step: HarnessStepName;
@@ -83,9 +75,7 @@ export class HarnessStepRunnerService {
   ) {}
 
   private suggestHarnessFallback(step: HarnessStepName): HarnessStepName {
-    const i = HARNESS_STEP_ORDER.indexOf(step);
-    if (i <= 0) return HarnessStepName.INTAKE;
-    return HARNESS_STEP_ORDER[i - 1]!;
+    return suggestPreviousHarnessStep(step);
   }
 
   /**
@@ -115,8 +105,7 @@ export class HarnessStepRunnerService {
   }
 
   private traceCorrelationFromState(fullState: DecisionState): HarnessTraceCorrelationMeta | undefined {
-    const id = fullState.harnessRuntime?.evaluationRunId;
-    return typeof id === 'string' && id.trim() ? { evaluationRunId: id.trim() } : undefined;
+    return harnessTraceCorrelationMetaFromRuntime(fullState.harnessRuntime);
   }
 
   /** 契约 `requiredInputPaths`：在完整 DSO 上检查路径存在（非 null/undefined）。 */

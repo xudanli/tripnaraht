@@ -196,7 +196,7 @@ describe('AgentService - Planning Request Interception (Integration)', () => {
 
       // 验证重定向信息
       expect(response.result.payload.redirectInfo).toBeDefined();
-      expect(response.result.payload.redirectInfo?.redirect_to).toBe('/planning-workbench/execute');
+      expect(response.result.payload.redirectInfo?.redirect_to).toBe('/dashboard/plan-studio');
       expect(response.result.payload.redirectInfo?.redirect_reason).toBe('PLANNING_REQUEST_DETECTED');
       expect(response.result.payload.redirectInfo?.original_request.message).toBe('规划一个5天冰岛行程');
       expect(response.result.payload.redirectInfo?.original_request.user_id).toBe('user-123');

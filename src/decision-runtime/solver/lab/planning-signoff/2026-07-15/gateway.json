@@ -1,0 +1,11 @@
+{
+  "schemaId": "tripnara.planning_signoff.gateway@v1",
+  "kind": "gateway",
+  "status": "PASS",
+  "approved": true,
+  "approvedAt": "2026-07-14T16:45:29.046Z",
+  "approvedBy": "policy:shadow-apply-guard",
+  "evidenceRef": "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.ts",
+  "detail": "OR-Tools shadowChanges never land in authoritative apply; writeAttempted must stay 0",
+  "summary": "Gateway / apply isolation verified by policy + Lab metrics"
+}

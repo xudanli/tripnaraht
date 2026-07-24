@@ -67,6 +67,8 @@ export interface FitnessProfile {
   recommendedDailyDistanceKm: number;
   /** 已完成行程数 */
   completedTripCount: number;
+  /** 问卷最长连续徒步天数档位 0–4（徒步详情 longestHike 对齐） */
+  longestHike?: 0 | 1 | 2 | 3 | 4;
   /** 年龄修正信息 */
   ageInfo?: {
     ageGroup: AgeGroup;
@@ -301,6 +303,7 @@ export class FitnessAssessmentService {
       recommendedDailyAscentM: model.maxDailyAscentM,
       recommendedDailyDistanceKm,
       completedTripCount,
+      longestHike: model.questionnaireLongestHike,
       ageInfo,
     };
   }

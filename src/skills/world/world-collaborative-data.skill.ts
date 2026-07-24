@@ -10,6 +10,7 @@ import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
 import { CollaborativeWorldModelService } from './services/collaborative-world-model.service';
 import { UserContribution } from './services/collaborative-world-model.service';
+import { markWorldSkillDegraded } from './utils/world-skill-degraded.util';
 
 export interface WorldCollaborativeDataInput extends SkillInput {
   /** 目标ID（roadId, poiId, routeDirectionId等） */
@@ -31,11 +32,14 @@ export interface WorldCollaborativeDataOutput extends SkillOutput {
   
   /** 数据源 */
   source: string;
+
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 @SkillDecorator({
   name: 'world.collaborativeData',
-  description: '获取协作世界模型数据（用户贡献、专家验证）',
+  description: 'world.collaborativeData：获取协作 world 模型数据（用户贡献、专家验证）。在 world.buildContext 需补充众包/专家字段时调用。',
   version: '1.0.0',
   category: 'world',
   toolGroup: 'DOMAIN',
@@ -46,7 +50,7 @@ export class WorldCollaborativeDataSkill implements Skill<WorldCollaborativeData
 
   metadata = {
     name: 'world.collaborativeData',
-    description: '获取协作世界模型数据（用户贡献、专家验证）',
+    description: 'world.collaborativeData：获取协作 world 模型数据（用户贡献、专家验证）。在 world.buildContext 需补充众包/专家字段时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,
@@ -92,14 +96,17 @@ export class WorldCollaborativeDataSkill implements Skill<WorldCollaborativeData
         };
       }
 
-      // 降级策略：返回空数据
+      // 降级策略：返回空数据（显式 degraded）
       this.logger.warn(`[WorldCollaborativeDataSkill] CollaborativeWorldModelService不可用，返回空数据`);
-      return {
-        contributions: [],
-        averageQualityScore: 0,
-        evidence_id: `world_collaborative_data_fallback_${Date.now()}`,
-        source: 'fallback',
-      };
+      return markWorldSkillDegraded(
+        {
+          contributions: [],
+          averageQualityScore: 0,
+          evidence_id: `world_collaborative_data_fallback_${Date.now()}`,
+          source: 'fallback',
+        },
+        'CollaborativeWorldModelService unavailable',
+      );
     } catch (error: any) {
       this.logger.error(
         `world.collaborativeData 失败: ${error?.message}`,

@@ -1,0 +1,20 @@
+/** 冰岛 A/B/C 级 POI WGS84 坐标 — Agent CPRE bridge 降级用 */
+export const ICELAND_CANONICAL_POI_COORDS: Record<string, { lat: number; lng: number }> = {
+  'is.landmannalaugar': { lat: 63.992, lng: -19.061 },
+  'is.blue_lagoon': { lat: 63.8804, lng: -22.4495 },
+  'is.sky_lagoon': { lat: 64.1167, lng: -22.0167 },
+  'is.skaftafell': { lat: 64.0704, lng: -16.9753 },
+  'is.dyrholaey': { lat: 63.4026, lng: -19.1264 },
+  'is.reynisfjara': { lat: 63.4026, lng: -19.0441 },
+  'is.dettifoss': { lat: 65.8147, lng: -16.3847 },
+  'is.gullfoss': { lat: 64.3271, lng: -20.1212 },
+  'is.geysir': { lat: 64.3104, lng: -20.3024 },
+  'is.seljalandsfoss': { lat: 63.6156, lng: -19.9886 },
+  'is.skogafoss': { lat: 63.5321, lng: -19.5113 },
+  'is.jokulsarlon': { lat: 64.0475, lng: -16.1783 },
+  'is.thingvellir': { lat: 64.255, lng: -21.129 },
+  'is.kerid_crater': { lat: 64.0413, lng: -20.8851 },
+  'is.secret_lagoon': { lat: 64.1374, lng: -20.3094 },
+  'is.fridheimar': { lat: 64.2569, lng: -20.2986 },
+  'is.bruarfoss': { lat: 64.2639, lng: -20.5153 },
+};

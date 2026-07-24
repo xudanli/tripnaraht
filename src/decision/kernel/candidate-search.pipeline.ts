@@ -15,6 +15,20 @@ import {
 import type { Itinerary } from '../../agent/interfaces/trip-plan.interface';
 import { convertRoutePlanDraftToTripPlan } from '../../trips/decision/tot/plan-converter';
 import { ConstraintEngineService } from '../../trips/decision/constraints/constraint-engine.service';
+import { dsoToMinimalWorldModelContext } from './dso-to-world-model-converter';
+import {
+  applyTopologyMutation,
+  REPAIR_SPATIAL_POI_V2_ID,
+  resolveClosedRoadIdsFromContext,
+  type TopologyMutationContext,
+} from '../../trips/decision/constraint-graph/topology-mutation.util';
+
+function resolvePipelineCandidateId(variantId: string, repairCandidateId?: string): string {
+  if (repairCandidateId) return repairCandidateId;
+  if (variantId === 'base') return 'base';
+  if (variantId.startsWith('op-') || variantId.startsWith('repair-')) return variantId;
+  return `plan-${variantId}`;
+}
 
 export interface CandidateSearchOptions {
   /** Max candidates returned to CGUS */
@@ -99,7 +113,7 @@ export class CandidateSearchPipeline {
     }
 
     let pool: CandidateSearchCandidate[] = initialVariants.map((v) => ({
-      id: `plan-${v.id}`,
+      id: resolvePipelineCandidateId(v.id),
       plan: v.plan,
       feasible: true,
       constraintViolations: [],
@@ -107,6 +121,22 @@ export class CandidateSearchPipeline {
       summary: v.summary,
       diversitySignature: this.planFeatures.extract(v.plan).diversitySignature,
     }));
+
+    const topologyContext = this.buildTopologyContext(state);
+
+    if (topologyContext && resolveClosedRoadIdsFromContext(topologyContext).length > 0) {
+      const mutation = applyTopologyMutation(basePlan, topologyContext);
+      if (mutation) {
+        pool.push({
+          id: REPAIR_SPATIAL_POI_V2_ID,
+          plan: mutation.plan,
+          feasible: true,
+          constraintViolations: [],
+          summary: mutation.summary,
+          diversitySignature: this.planFeatures.extract(mutation.plan).diversitySignature,
+        });
+      }
+    }
 
     const tripWorldState = decisionStateToTripWorldState(state, {
       prismaTripId: resolveKernelTripIdHint(state),
@@ -187,7 +217,12 @@ export class CandidateSearchPipeline {
         const hardCodes =
           c.violationDetails?.filter((v) => v.severity === 'HARD').map((v) => v.type) ?? [];
         if (hardCodes.length === 0) continue;
-        const repairs = this.repairOps.repairForViolationCodes(c.plan, hardCodes, c.violationDetails);
+        const repairs = this.repairOps.repairForViolationCodes(
+          c.plan,
+          hardCodes,
+          c.violationDetails,
+          topologyContext,
+        );
         repairsGenerated += repairs.length;
 
         // Rank repairs by (1) targeted violation type match, (2) structure improvement,
@@ -216,6 +251,8 @@ export class CandidateSearchPipeline {
             score += 2.0;
           }
           if (cset.has('ROAD_CLOSED') && s.has('ROAD_CLOSED')) score += 1.8;
+          if (cset.has('WORLD_ROAD_CLOSED') && (s.has('ROAD_CLOSED') || s.has('WORLD_ROAD'))) score += 3.0;
+          if (Array.from(cset).some((c) => c.startsWith('WORLD_ROAD_')) && s.has('WORLD_ROAD')) score += 2.8;
 
           // Weak matches
           if (Array.from(s).some((t) => cset.has(t))) score += 0.8;
@@ -246,7 +283,7 @@ export class CandidateSearchPipeline {
             ? this.exposureAnnotation.annotatePlan(r.plan, tripWorldState, dayIndexToDate)
             : r.plan;
           nextPool.push({
-            id: `plan-repair-${iter + 1}-${c.id}-${r.id}`,
+            id: resolvePipelineCandidateId(r.id, r.candidateId),
             plan,
             feasible: true,
             constraintViolations: [],
@@ -311,7 +348,7 @@ export class CandidateSearchPipeline {
     };
 
     const selected: typeof feats = [];
-    const base = feats.find((x) => x.c.id === 'plan-base') ?? feats[0];
+    const base = feats.find((x) => x.c.id === 'base' || x.c.id === 'plan-base') ?? feats[0];
     if (base) selected.push(base);
 
     const minDist = 0.18;
@@ -334,6 +371,32 @@ export class CandidateSearchPipeline {
     }
 
     return selected.map((x) => x.c);
+  }
+
+  private buildTopologyContext(state: DecisionState): TopologyMutationContext | undefined {
+    const world = dsoToMinimalWorldModelContext(state);
+    if (!world?.physical) return undefined;
+    const env = state.environmentState ?? {};
+    const human = world.partyAggregation?.effectiveCapability ?? world.human;
+    const constraints = state.userIntent?.constraints as { vehicle_type?: '2WD' | '4WD' } | undefined;
+    const closedFromViolations =
+      (state.constraints?.violations ?? [])
+        .filter((v) => String(v.type).toUpperCase().includes('WORLD_ROAD') || String(v.type).toUpperCase().includes('ROAD_CLOSED'))
+        .flatMap((v) => {
+          const m = String((v as { detail?: string; message?: string }).detail ?? (v as { message?: string }).message ?? '').match(/F\d{2,3}|IS-[A-Z0-9-]+/i);
+          return m ? [m[0]] : [];
+        }) ?? [];
+
+    return {
+      physical: world.physical,
+      month: world.physical.month ?? (env as { month?: number }).month ?? new Date().getMonth() + 1,
+      vehicleType: constraints?.vehicle_type ?? '2WD',
+      maxSlopePct: human.maxSlopePct,
+      maxDailyAscentM: human.maxDailyAscentM,
+      closedRoadIds: closedFromViolations.length
+        ? closedFromViolations.map((r) => (r.startsWith('road:') ? r : `road:${r}`))
+        : undefined,
+    };
   }
 }
 

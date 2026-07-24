@@ -1,0 +1,70 @@
+{
+  "schemaId": "tripnara.road_repair_templates@v1",
+  "countryCode": "IS",
+  "roadRegions": {
+    "F208": ["IS_CENTRAL_HIGHLANDS", "IS_SOUTH"],
+    "F26": ["IS_CENTRAL_HIGHLANDS"],
+    "F225": ["IS_CENTRAL_HIGHLANDS"],
+    "F862": ["IS_NORTH"],
+    "F88": ["IS_NORTH"]
+  },
+  "poiIntent": {
+    "is.skaftafell": { "intents": ["intent_glacier"], "categories": ["GLACIER", "HIGHLAND"] },
+    "is.svinafellsjokull": { "intents": ["intent_glacier"], "categories": ["GLACIER"] },
+    "is.jokulsarlon": { "intents": ["intent_glacier"], "categories": ["GLACIER"] },
+    "is.skogafoss": { "intents": ["intent_waterfall"], "categories": ["WATERFALL"] },
+    "is.seljalandsfoss": { "intents": ["intent_waterfall"], "categories": ["WATERFALL"] },
+    "is.landmannalaugar": { "intents": ["intent_highland"], "categories": ["HIGHLAND"] }
+  },
+  "templates": [
+    {
+      "templateId": "eq_glacier_svinafellsjokull",
+      "generationMethod": "ONTOLOGY_EQUIVALENCE",
+      "regionCodes": ["IS_SOUTH", "IS_CENTRAL_HIGHLANDS"],
+      "experienceCategories": ["GLACIER"],
+      "intentRefs": ["intent_glacier"],
+      "requiresOpenRoadIds": [],
+      "substitutePoiId": "is.svinafellsjokull",
+      "estimatedIntentPreservation": 0.91,
+      "estimatedAddedDurationMinutes": 25,
+      "estimatedAddedCostIsk": 0
+    },
+    {
+      "templateId": "local_waterfall_skogafoss",
+      "generationMethod": "LOCAL_SUBSTITUTION",
+      "regionCodes": ["IS_SOUTH"],
+      "experienceCategories": ["WATERFALL", "GLACIER"],
+      "intentRefs": ["intent_waterfall", "intent_wilderness"],
+      "requiresOpenRoadIds": [],
+      "substitutePoiId": "is.skogafoss",
+      "estimatedIntentPreservation": 0.84,
+      "estimatedAddedDurationMinutes": -10,
+      "estimatedAddedCostIsk": 0
+    },
+    {
+      "templateId": "route_bypass_ring_road",
+      "generationMethod": "ROUTE_REPAIR",
+      "regionCodes": ["IS_SOUTH", "IS_CENTRAL_HIGHLANDS", "IS_NORTH"],
+      "experienceCategories": ["GLACIER", "HIGHLAND", "WATERFALL"],
+      "intentRefs": ["intent_glacier", "intent_wilderness"],
+      "requiresOpenRoadIds": [],
+      "routeBypassRoadId": "RING_ROAD",
+      "estimatedIntentPreservation": 0.94,
+      "estimatedAddedDurationMinutes": 90,
+      "estimatedAddedCostIsk": 1500
+    },
+    {
+      "templateId": "eq_highland_bus_landmannalaugar",
+      "generationMethod": "ONTOLOGY_EQUIVALENCE",
+      "regionCodes": ["IS_CENTRAL_HIGHLANDS"],
+      "experienceCategories": ["HIGHLAND"],
+      "intentRefs": ["intent_highland"],
+      "requiresOpenRoadIds": ["F208"],
+      "substitutePoiId": "is.landmannalaugar.bus",
+      "estimatedIntentPreservation": 0.88,
+      "estimatedAddedDurationMinutes": 40,
+      "estimatedAddedCostIsk": 12000,
+      "maxBudgetIsk": 50000
+    }
+  ]
+}

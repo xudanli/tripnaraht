@@ -195,6 +195,8 @@ import { ReadinessAgentService } from './readiness/readiness-agent.service';
 import { TravelReadinessResult } from './readiness/types/readiness-checklist.types';
 import { EcoIdentityLedgerPersistenceService } from './services/eco-identity-ledger-persistence.service';
 import { enrichTripWorldStateInventoryPlaceholders } from './inventory-ontology/inventory-candidate-enrichment';
+import { TrailPlanningAdapter } from './adapters/trail-planning.adapter';
+import { attachHardTrekTrailPlanToState } from './adapters/hard-trek-trail-planning.hook';
 import { buildShadowRealitySnapshotV0 } from '../reality-kernel/build-shadow-reality-snapshot-v0';
 import {
   buildDecisionContextV0,
@@ -281,6 +283,7 @@ export class TripDecisionEngineService {
     @Optional() private readonly promMetrics?: PrometheusMetricsService,
     @Optional() private readonly opsRealityAudit?: OpsRealityAuditService,
     @Optional() private readonly operationalPolicy?: OperationalPolicyService,
+    @Optional() private readonly trailPlanningAdapter?: TrailPlanningAdapter,
     @Optional() private readonly causalTravelEventEmitter?: CausalTravelEventEmitterService,
     @Optional() private readonly causalRuntimeSession?: CausalRuntimeSessionService,
   ) {
@@ -680,6 +683,13 @@ export class TripDecisionEngineService {
     return repaired;
   }
 
+  private isGuideToPlanDraft(state: TripWorldState): boolean {
+    const intents = state.context.preferences?.intents as Record<string, unknown> | undefined;
+    if (!intents) return false;
+    const flag = intents.guide_to_plan;
+    return flag === true || (typeof flag === 'number' && flag > 0);
+  }
+
   private getReadinessService(): ReadinessService | null {
     if (!this.readinessService) {
       try {
@@ -994,7 +1004,8 @@ export class TripDecisionEngineService {
 
     // 可选：运行准备度检查（使用 Pack + 能力包 + 地理特征增强）
     const readinessService = this.getReadinessService();
-    if (readinessService) {
+    const skipReadinessForGuideDraft = this.isGuideToPlanDraft(state);
+    if (readinessService && !skipReadinessForGuideDraft) {
       try {
         const context = readinessService.extractTripContext(state);
         
@@ -1240,6 +1251,18 @@ export class TripDecisionEngineService {
                 0
               );
               this.observabilityService.recordPoiPoolSize(traceRequestId, afterMergeSize, 'afterConstraints');
+            }
+
+            if (this.trailPlanningAdapter && selectedRouteDirection?.routeDirection) {
+              try {
+                await attachHardTrekTrailPlanToState(
+                  state,
+                  selectedRouteDirection.routeDirection,
+                  this.trailPlanningAdapter,
+                );
+              } catch (trailErr) {
+                this.logger.warn(`Hard trek trail plan attach skipped: ${trailErr}`);
+              }
             }
           }
         }
@@ -2219,6 +2242,7 @@ export class TripDecisionEngineService {
       strategyLogs: strategyLogs,
       // RouteDirection 解释
       routeDirectionExplanation: routeDirectionExplanation,
+      hardTrekTrailPlan: state.signals.hardTrekTrailPlan,
       ...(cgusDsoSnapshot ? { cgusDsoSnapshot, cgusDsoSnapshotNote } : {}),
       ...(state.signals.opsOperationalGovernance
         ? { opsOperationalGovernance: state.signals.opsOperationalGovernance }

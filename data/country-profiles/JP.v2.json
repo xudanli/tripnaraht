@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 2,
+  "isoCode": "JP",
+  "nameCN": "日本",
+  "nameEN": "Japan",
+  "currencyCode": "JPY",
+  "currencyName": "日元",
+  "exchangeRateToCNY": 0.048,
+  "exchangeRateToUSD": 0.0067,
+  "paymentType": "HYBRID_DIGITAL_PREFER",
+  "paymentInfo": {
+    "contactlessUbiquitous": true,
+    "notes": "现金仍常见；Suica/PASMO 与信用卡广泛可用。",
+    "tipping": "无需小费。"
+  },
+  "powerInfo": {
+    "plugs": ["A", "B"],
+    "plugTypes": ["A", "B"],
+    "voltage": 100,
+    "voltageUnit": "V",
+    "frequency": 50,
+    "frequencyUnit": "Hz"
+  },
+  "emergency": {
+    "fire": "119",
+    "police": "110",
+    "ambulance": "119",
+    "unifiedNumber": "110/119"
+  },
+  "entryRequirements": {
+    "officialLink": "https://www.mofa.go.jp/",
+    "byNationality": {
+      "CN": {
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Short-stay visa",
+        "requirementSummaryCN": "中国公民需申请短期停留签证（视政策更新）。"
+      },
+      "US": {
+        "status": "VISA_FREE",
+        "statusLabel": "Visa waiver",
+        "requirementSummary": "美国护照短期停留免签（需 Visit Japan Web 等登记）。"
+      }
+    }
+  },
+  "complianceInfo": {
+    "drivingRules": {
+      "minAge": 18,
+      "drivingSide": "LEFT",
+      "requiresInternationalLicense": true,
+      "gravelRoadPresent": false,
+      "leftHandDrivingEtaBuffer": 0.1,
+      "speedLimits": {
+        "urban": 40,
+        "gravelRoad": 50,
+        "asphaltHighway": 100
+      },
+      "specialRules": [
+        "左侧通行；冬季部分山区需防滑链",
+        "台风季沿海公路可能临时封闭"
+      ]
+    }
+  },
+  "timeBoundaries": {
+    "daylightFluctuation": true,
+    "seasons": [
+      {
+        "name": "TYPHOON_SEASON_PACIFIC",
+        "months": [8, 9, 10],
+        "avgDaylightHours": 12,
+        "outdoorRoutingWindow": { "start": "07:00", "end": "18:00" },
+        "recommendedCarType": "ANY"
+      }
+    ],
+    "environmentalTriggers": {
+      "weatherAlertSource": "https://www.jma.go.jp/",
+      "roadStatusSource": "https://www.mlit.go.jp/",
+      "autoRerouteTriggers": [
+        "TYPHOON_RAIN",
+        "WORLD_ROAD_CLOSED (ROUTE134)",
+        "LANDSLIDE_WARNING"
+      ]
+    }
+  },
+  "travelCulture": {
+    "tippingHabits": { "level": "NONE", "description": "日本无小费文化" },
+    "experienceRules": []
+  }
+}

@@ -48,7 +48,7 @@ export class ReadinessSummarizeRisksSkill implements Skill<ReadinessSummarizeRis
 
   metadata = {
     name: 'readiness.summarizeRisks',
-    description: '从世界模型和决策结果中提炼旅程的关键风险点，并提供缓解建议',
+    description: '从 world 模型与决策结果提炼 readiness 关键风险与缓解建议。在 readiness 阶段向用户展示行前风险摘要时调用。',
     version: '1.0.0',
     category: 'readiness' as const,
   };

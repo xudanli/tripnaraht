@@ -9,7 +9,9 @@ import { AgentOpsAdminController } from './controllers/agent-ops-admin.controlle
 import { AdminAuthController } from './controllers/admin-auth.controller';
 import { PhysicalDomainAdminController } from './controllers/physical-domain-admin.controller';
 import { SpatialDomainAdminController } from './controllers/spatial-domain-admin.controller';
+import { SkillsAdminController } from './controllers/skills-admin.controller';
 import { DataQualityModule } from '../data-quality/data-quality.module';
+import { SkillsModule } from '../skills/skills.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TripsModule } from '../trips/trips.module';
 import { AgentModule } from '../agent/agent.module';
@@ -20,6 +22,9 @@ import { AdminAuthService } from './services/admin-auth.service';
 import { AdminQualityMarkService } from './services/admin-quality-mark.service';
 import { AutoDriftSamplerService } from './services/auto-drift-sampler.service';
 import { AdminStrictAuthGuard } from './guards/admin-strict-auth.guard';
+import { CountriesModule } from '../countries/countries.module';
+import { CountriesAdminController } from '../countries/countries-admin.controller';
+import { TrainingModule } from '../agent/training/training.module';
 
 /**
  * Admin模块
@@ -31,8 +36,18 @@ import { AdminStrictAuthGuard } from './guards/admin-strict-auth.guard';
  * - 会话管理
  */
 @Module({
-  imports: [DataQualityModule, PrismaModule, TripsModule, forwardRef(() => AgentModule), AuthModule],
+  imports: [
+    DataQualityModule,
+    PrismaModule,
+    TripsModule,
+    forwardRef(() => AgentModule),
+    forwardRef(() => SkillsModule),
+    AuthModule,
+    CountriesModule,
+    TrainingModule,
+  ],
   controllers: [
+    CountriesAdminController,
     DataQualityAdminController,
     ConversationAdminController,
     HarnessDiagnosticsAdminController,
@@ -41,6 +56,7 @@ import { AdminStrictAuthGuard } from './guards/admin-strict-auth.guard';
     AdminAuthController,
     PhysicalDomainAdminController,
     SpatialDomainAdminController,
+    SkillsAdminController,
   ],
   providers: [
     AdminActivityLogService,

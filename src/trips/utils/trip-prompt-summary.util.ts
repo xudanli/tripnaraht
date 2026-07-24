@@ -1,3 +1,11 @@
+import { isDiningRecommendationQuery } from '../../agent/utils/trip-dining-consultation.util';
+import {
+  isBoundTripLodgingDiningPlanQuery,
+  isTripStatusOverviewQuery,
+  isWeatherRoadConditionFocusedQuery,
+  isWestfjordsLegTransportPreferenceConsultation,
+} from '../../agent/utils/orchestration-signals.util';
+
 /**
  * 根据出发月份与目的地代码给出「季节带」中文标签（供装备/路况叙述锚定，非气象预报）。
  */
@@ -34,6 +42,63 @@ export const CONSULTATION_DAY_SKELETON_FOOTER_ZH =
 /** 紧随「草案地点速览」块：要求模型点名相关 POI，同时保留「陈旧草案」免责。 */
 export const CONSULTATION_NAMED_DRAFT_APPENDIX_FOOTER_ZH =
   '\n\n【说明】上文「草案地点速览」来自用户当前入库行程（Place 登记名或备注）。回答接驳/改走法时**应点名**与问题相关的日期与地点，说明影响哪几天；若某点明显不在用户所述路段或常识上不合理，须提示草案可能陈旧并建议工作台核对，勿把无关点当主论据。';
+
+function isPreparationGearTravelQuery(msg: string): boolean {
+  const m = msg.trim();
+  if (!m) return false;
+  return (
+    /准备|行前|装备|清单|穿搭|冰爪|要带|打包|衣物|注意事项|睡袋|冲锋衣|洋葱式|层叠穿法|登山鞋|雨靴|暖宝宝|无人机|报备|转换插头|欧标|电话卡|e\s*[Ss]im|无人机报备|电源转换/i.test(
+      m,
+    ) ||
+    /checklist|packing|crampon|tips|建议.*带|注意.*安全/i.test(m) ||
+    /\b(layer(?:ing)?|hiking\s+boots|rain\s+gear|windproof|sim\s+card|esim)\b/i.test(m.toLowerCase())
+  );
+}
+
+function isCarRentalOrDrivingTravelQuery(msg: string): boolean {
+  const m = msg.trim();
+  if (!m) return false;
+  const lower = m.toLowerCase();
+  const transportZh =
+    /租车|自驾|包车|提车|还车|租车行|用车|车型|四驱|SUV|交规|碎石路|碎石险|火山灰|风沙险|车门.*风|驾照|开车|保险|SAAP|ASH|涉水|拖车|闭路|封路|加油卡|加油|充电桩|停车费|气象官网|路况官网|能开吗/i.test(
+      m,
+    );
+  const fRoadOrNumber = /f\s*路|f-road|\bf\s*\d{2,4}\b/i.test(lower);
+  const icelandRoadBrand = /\bN1\b|olis|ölis/i.test(m);
+  const transportEn =
+    /\b(car\s+rental|rent(?:ing)?\s+a\s+car|self[- ]drive|driving\s+in|road\s+rules|rental\s+car|gravel\s+protection|sand\s+and\s+ash|insurance|gas\s+station|charging\s+station|river\s+crossing)\b/i.test(
+      lower,
+    );
+  const roadDotIs = /road\.is|vedur\.is|\bvedur\b/i.test(lower);
+  return transportZh || fRoadOrNumber || icelandRoadBrand || transportEn || roadDotIs;
+}
+
+/**
+ * 轻量咨询是否在「按日骨架」外附带「草案地点速览」（Place 名/备注）。
+ *
+ * 产品决策（Danny / 工作台 P0）：已绑定 trip 且前端声明 `active_trip_summary` 时，
+ * 须与 UI 草案一致地注入具名 POI；骨架仍保留用于活动密度对齐。
+ */
+export function shouldIncludeNamedDraftAppendixForLightweightConsultation(params: {
+  message: string;
+  msgLower?: string;
+  contextType?: string | null;
+}): boolean {
+  const m = (params.message ?? '').trim();
+  if (!m) return false;
+  const msgLower = params.msgLower ?? m.toLowerCase();
+
+  if (params.contextType?.trim() === 'active_trip_summary') return true;
+  if (isBoundTripLodgingDiningPlanQuery(m, msgLower)) return true;
+  if (isTripStatusOverviewQuery(m, msgLower)) return true;
+  if (isDiningRecommendationQuery(m)) return true;
+  if (isWeatherRoadConditionFocusedQuery(m)) return true;
+  if (/路况|封路|天气|风速|能开吗|condition|road\s*status/i.test(msgLower)) return true;
+  if (isWestfjordsLegTransportPreferenceConsultation(m, msgLower)) return true;
+  if (isPreparationGearTravelQuery(m)) return true;
+  if (isCarRentalOrDrivingTravelQuery(m)) return true;
+  return /徒步|登山|爬山|步道|长线|\b(hiking|trekking|trail)\b/i.test(m);
+}
 
 export type ConsultationTripDaySkeletonInput = {
   date: Date;

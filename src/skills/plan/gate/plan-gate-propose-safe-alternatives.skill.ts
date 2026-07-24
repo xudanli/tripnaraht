@@ -40,7 +40,7 @@ export class PlanGateProposeSafeAlternativesSkill implements Skill<PlanGatePropo
 
   metadata = {
     name: 'plan.gate.proposeSafeAlternatives',
-    description: '为被拒绝或需确认的方案生成安全替代方案（Neptune 风格）',
+    description: 'plan.gate.proposeSafeAlternatives：为被拒绝或需确认的方案生成安全替代方案（Neptune 风格）',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

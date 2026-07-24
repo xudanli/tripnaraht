@@ -16,6 +16,7 @@ export interface TripConsultationSuggestedOperation {
   payload?: {
     message?: string;
     route?: string;
+    action?: string;
     trip_id?: string;
     [key: string]: unknown;
   };
@@ -31,7 +32,48 @@ const ALLOWED_NAV_ROUTES = new Set([
   'itinerary',
   'decision_cockpit',
   'structured_negotiation',
+  'silent_vote',
+  'silent_vote_create',
 ]);
+
+const ALLOWED_NAV_ACTIONS = new Set([
+  'silent_vote_create',
+  'start_vote',
+  'team.start_vote',
+]);
+
+/** 用户显式要发起投票 / 匿名投票 / 团队投票 */
+export function isSilentVoteCreateIntentMessage(message: string): boolean {
+  const m = message.trim();
+  if (!m) return false;
+  return /(?:发起|创建|开启)(?:一次|一个)?(?:匿名)?(?:投票|表决)|团队投票|silent\s*vote|start\s+(?:a\s+)?vote/i.test(
+    m,
+  );
+}
+
+/** 前端打开 SilentVoteCreateDialog；不替用户创建投票 */
+export function buildSilentVoteCreateSuggestedOperation(
+  tripId: string,
+): TripConsultationSuggestedOperation | null {
+  const tid = tripId.trim();
+  if (!tid) return null;
+  return {
+    id: 'start_silent_vote',
+    label: '发起投票',
+    kind: 'client_navigation',
+    payload: {
+      trip_id: tid,
+      route: 'silent_vote_create',
+      action: 'silent_vote_create',
+    },
+  };
+}
+
+function looksLikeHotelSearchLabel(label: string): boolean {
+  return /搜索.{0,12}酒店|酒店.{0,8}搜索|查.{0,8}住宿|搜.{0,8}民宿|search\s+hotels?|find\s+hotels?/i.test(
+    label,
+  );
+}
 
 function sanitizeOperation(
   raw: unknown,
@@ -41,11 +83,26 @@ function sanitizeOperation(
   const o = raw as Record<string, unknown>;
   const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim().slice(0, 64) : '';
   const label = typeof o.label === 'string' && o.label.trim() ? o.label.trim().slice(0, 36) : '';
-  const kind = o.kind === 'route_and_run_message' || o.kind === 'client_navigation' ? o.kind : null;
+  let kind: TripConsultationSuggestedOperationKind | null =
+    o.kind === 'route_and_run_message' || o.kind === 'client_navigation' ? o.kind : null;
   if (!id || !label || !kind) return null;
 
   const payloadIn = o.payload && typeof o.payload === 'object' ? (o.payload as Record<string, unknown>) : {};
   const payload: TripConsultationSuggestedOperation['payload'] = { ...payloadIn };
+
+  // 模型易把「搜索酒店」误标成 client_navigation + silent_vote_* → 前端弹投票窗
+  const labelImpliesVote = /发起投票|创建投票|发起匿名投票|团队投票/.test(label);
+  const hotelSearchLabel = looksLikeHotelSearchLabel(label);
+  if (kind === 'client_navigation' && hotelSearchLabel && !labelImpliesVote) {
+    kind = 'route_and_run_message';
+    const existingMsg =
+      typeof payload.message === 'string' && payload.message.trim()
+        ? payload.message.trim()
+        : '';
+    payload.message = (existingMsg || `请帮我${label}`).slice(0, 4000);
+    delete payload.route;
+    delete payload.action;
+  }
 
   if (kind === 'route_and_run_message') {
     const msg =
@@ -55,12 +112,48 @@ function sanitizeOperation(
     if (!msg) return null;
     payload.message = msg;
     payload.trip_id = fallbackTripId;
+    delete payload.route;
+    delete payload.action;
   }
 
   if (kind === 'client_navigation') {
     const route = typeof payload.route === 'string' ? payload.route.trim() : '';
-    if (!route || !ALLOWED_NAV_ROUTES.has(route)) return null;
-    payload.route = route;
+    const action = typeof payload.action === 'string' ? payload.action.trim() : '';
+    const isVoteRoute = route === 'silent_vote' || route === 'silent_vote_create';
+    const isVoteAction = Boolean(action && ALLOWED_NAV_ACTIONS.has(action));
+    const voteAllowed = labelImpliesVote || id === 'start_silent_vote';
+
+    // 非投票按钮禁止挂 silent_vote_*（否则「搜索酒店」会打开创建投票弹窗）
+    if ((isVoteRoute || isVoteAction) && !voteAllowed) {
+      delete payload.route;
+      delete payload.action;
+    }
+
+    const routeAfter = typeof payload.route === 'string' ? payload.route.trim() : '';
+    const actionAfter = typeof payload.action === 'string' ? payload.action.trim() : '';
+    const routeOk = Boolean(routeAfter && ALLOWED_NAV_ROUTES.has(routeAfter));
+    const actionOk = Boolean(actionAfter && ALLOWED_NAV_ACTIONS.has(actionAfter));
+
+    if (!routeOk && !actionOk && !labelImpliesVote) return null;
+    if (routeOk) {
+      payload.route = routeAfter;
+    } else if (voteAllowed) {
+      payload.route = 'silent_vote_create';
+    }
+    if (actionOk && voteAllowed) {
+      payload.action = actionAfter;
+    } else if (voteAllowed) {
+      payload.action = 'silent_vote_create';
+    } else {
+      delete payload.action;
+    }
+    // 再次保险：非投票不得残留 vote action
+    if (!voteAllowed) {
+      delete payload.action;
+      if (payload.route === 'silent_vote' || payload.route === 'silent_vote_create') {
+        return null;
+      }
+    }
     payload.trip_id = fallbackTripId;
   }
 
@@ -131,6 +224,8 @@ export type BuildDefaultTripConsultationSuggestedOperationsOpts = {
    * `payload.intent_mode=TRIP_PLANNING` 供客户端下一轮 route_and_run 透传。
    */
   planning_handoff_message?: string;
+  /** 用户要发起投票时下发 SilentVoteCreateDialog CTA（不替用户创建） */
+  include_silent_vote?: boolean;
 };
 
 export function buildDefaultTripConsultationSuggestedOperations(
@@ -150,7 +245,13 @@ export function buildDefaultTripConsultationSuggestedOperations(
       : '';
 
   const out: TripConsultationSuggestedOperation[] = [];
-  if (handoffMessage) {
+
+  if (opts?.include_silent_vote || (userAsk && isSilentVoteCreateIntentMessage(userAsk))) {
+    const voteOp = buildSilentVoteCreateSuggestedOperation(tid);
+    if (voteOp) out.push(voteOp);
+  }
+
+  if (handoffMessage && !isSilentVoteCreateIntentMessage(userAsk)) {
     out.push({
       id: 'handoff_trip_planning_same_ask',
       label: '用行程规划改稿',
@@ -163,8 +264,8 @@ export function buildDefaultTripConsultationSuggestedOperations(
     });
   }
 
-  out.push(
-    {
+  if (!isSilentVoteCreateIntentMessage(userAsk)) {
+    out.push({
       id: 'apply_analysis_to_plan',
       label: '按上述建议调整行程',
       kind: 'route_and_run_message',
@@ -174,14 +275,15 @@ export function buildDefaultTripConsultationSuggestedOperations(
         message:
           '【请使用行程规划模式】请根据上文分析与建议，帮我优化当前行程草稿：按优先级落实你提到的改动（可直接修改日程）。',
       },
-    },
-    {
-      id: 'open_timeline',
-      label: '查看行程时间轴',
-      kind: 'client_navigation',
-      payload: { trip_id: tid, route: 'timeline' },
-    },
-  );
+    });
+  }
+
+  out.push({
+    id: 'open_timeline',
+    label: '查看行程时间轴',
+    kind: 'client_navigation',
+    payload: { trip_id: tid, route: 'timeline' },
+  });
 
   return out;
 }
@@ -189,7 +291,9 @@ export function buildDefaultTripConsultationSuggestedOperations(
 function clientNavigationRouteKey(op: TripConsultationSuggestedOperation): string | null {
   if (op.kind !== 'client_navigation') return null;
   const r = typeof op.payload?.route === 'string' ? op.payload.route.trim() : '';
-  return r.length ? r : null;
+  if (r.length) return r;
+  const a = typeof op.payload?.action === 'string' ? op.payload.action.trim() : '';
+  return a.length ? `action:${a}` : null;
 }
 
 /** 模型输出优先，不足时用默认补齐（按 id 去重；`client_navigation` 另按 route 去重避免双「时间线」按钮）。 */

@@ -91,7 +91,7 @@ interface CacheEntry {
 
 @SkillDecorator({
   name: 'web.browse',
-  description: '浏览网页并提取结构化内容（用于 RAG Level 4 降级）',
+  description: 'web.browse：浏览网页并提取结构化内容（用于 RAG Level 4 降级）',
   version: '1.0.0',
   category: 'rag',
   toolGroup: 'DOMAIN',
@@ -106,7 +106,7 @@ export class WebBrowseSkill implements Skill<WebBrowseInput, WebBrowseOutput> {
 
   metadata = {
     name: 'web.browse',
-    description: '浏览网页并提取结构化内容（用于 RAG Level 4 降级）',
+    description: 'web.browse：浏览网页并提取结构化内容（用于 RAG Level 4 降级）',
     version: '1.0.0',
     category: 'rag' as const,
     toolGroup: 'DOMAIN' as const,

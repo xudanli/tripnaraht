@@ -1,0 +1,139 @@
+{
+  "schemaId": "tripnara.selected_trip.effective_plan@v1",
+  "tripId": "pilot_iceland_road_close_02_f208_swap_a1_a2",
+  "planVersionId": "pv-gold",
+  "days": [
+    {
+      "dayId": "day-1",
+      "date": "2026-06-12",
+      "activities": [
+        {
+          "activityId": "act-1",
+          "poiId": "poi-1",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.4,
+          "lng": -19
+        },
+        {
+          "activityId": "act-2",
+          "poiId": "poi-2",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.41,
+          "lng": -19.01
+        },
+        {
+          "activityId": "act-3",
+          "poiId": "poi-3",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 45,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.42,
+          "lng": -19.02
+        },
+        {
+          "activityId": "act-4",
+          "poiId": "poi-4",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.43,
+          "lng": -19.03
+        },
+        {
+          "activityId": "act-5",
+          "poiId": "poi-5",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 30,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.44,
+          "lng": -19.04
+        },
+        {
+          "activityId": "act-6",
+          "poiId": "poi-6",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.449999999999996,
+          "lng": -19.05
+        },
+        {
+          "activityId": "act-7",
+          "poiId": "poi-7",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 45,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.46,
+          "lng": -19.06
+        },
+        {
+          "activityId": "act-8",
+          "poiId": "poi-8",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 60,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.47,
+          "lng": -19.07
+        },
+        {
+          "activityId": "act-9",
+          "poiId": "poi-9",
+          "dayId": "day-1",
+          "isBooked": false,
+          "canRemove": false,
+          "serviceDurationMin": 30,
+          "timeWindow": {
+            "startMin": 480,
+            "endMin": 1200
+          },
+          "lat": 63.48,
+          "lng": -19.08
+        }
+      ]
+    }
+  ]
+}

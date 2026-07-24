@@ -1,0 +1,19 @@
+{
+  "schema": "tripnara.fixture.m2_plan_studio@v1",
+  "description": "Gate BLOCK → relaxation_suggestions → accept write chain",
+  "gate_block_orchestrator_state": {
+    "gate_result": {
+      "gate_result": "BLOCK",
+      "violations": [
+        {
+          "type": "REACHABILITY",
+          "severity": "HARD",
+          "detail": "Route requires 4x4/4WD (highlands), but vehicle_type is 2WD."
+        }
+      ]
+    },
+    "expected_relaxation_question_id": "gate_eval_relax_constraints",
+    "expected_action_ids": ["upgrade_vehicle_to_4wd"]
+  },
+  "option_comparison_min_options": 2
+}

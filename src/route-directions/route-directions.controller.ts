@@ -13,6 +13,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  UseGuards,
   HttpCode,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
@@ -31,7 +32,6 @@ import { ScoreBreakdown } from './interfaces/route-direction-explanation.interfa
 import { CreateRouteTemplateDto } from './dto/create-route-template.dto';
 import { UpdateRouteTemplateDto } from './dto/update-route-template.dto';
 import { CreateTripFromRouteTemplateDto } from './dto/create-trip-from-template.dto';
-import { LaunchRecruitmentFromTemplateDto } from './dto/launch-recruitment-from-template.dto';
 import { AddPoiToTemplateDto } from './dto/add-poi-to-template.dto';
 import { RemovePoiFromTemplateDto } from './dto/remove-poi-from-template.dto';
 import { QueryRouteDirectionDto } from './dto/query-route-direction.dto';
@@ -40,13 +40,16 @@ import { ImportCountryPackDto, ImportCountryPackResultDto } from './dto/import-c
 import { AvailablePoisQueryDto } from './dto/available-pois-query.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import {
+  CurrentUser,
+  CurrentUserPayload,
+} from '../auth/decorators/current-user.decorator';
 import { DecisionAwarenessAugmentationService } from '../world-facts/decision-awareness-augmentation.service';
 import { DecisionActionExecutorService } from '../world-facts/decision-action-executor.service';
 import { ActionDispatcherService } from './services/action-dispatcher.service';
 import { RouteDecisionEngineService } from './services/route-decision-engine.service';
 import { DecisionExecutionReconciliationService } from '../world-facts/decision-execution-reconciliation.service';
-import { MatchSquareService } from '../match-square/services/match-square.service';
 
 function parseBooleanQueryParam(value: unknown): boolean | undefined {
   if (value === undefined || value === null || value === '') return undefined;
@@ -57,30 +60,6 @@ function parseBooleanQueryParam(value: unknown): boolean | undefined {
     if (normalized === 'false') return false;
   }
   return undefined;
-}
-
-function buildTemplateItinerarySummary(dayPlans: any[] | undefined): string {
-  if (!Array.isArray(dayPlans) || dayPlans.length === 0) return '';
-  return dayPlans
-    .slice(0, 6)
-    .map(day => {
-      const dayNo = day?.day ?? '';
-      const theme = typeof day?.theme === 'string' ? day.theme.trim() : '';
-      return theme ? `D${dayNo} ${theme}` : `D${dayNo}`;
-    })
-    .join(' · ');
-}
-
-function resolveRouteTemplateCatalogId(template: any, body: LaunchRecruitmentFromTemplateDto): string {
-  const metadata = template?.metadata && typeof template.metadata === 'object' ? template.metadata : {};
-  const fromBody = body.routeTemplateCatalogId?.trim();
-  const fromMetadata =
-    typeof metadata.catalogId === 'string'
-      ? metadata.catalogId
-      : typeof metadata.routeTemplateCatalogId === 'string'
-        ? metadata.routeTemplateCatalogId
-        : undefined;
-  return fromBody || fromMetadata || `route_template_${template.id}`;
 }
 
 @ApiTags('route-directions')
@@ -99,7 +78,6 @@ export class RouteDirectionsController {
     private readonly actionDispatcher: ActionDispatcherService,
     private readonly routeDecisionEngine: RouteDecisionEngineService,
     private readonly executionReconciliation: DecisionExecutionReconciliationService,
-    private readonly matchSquareService: MatchSquareService,
   ) {}
 
   @Public()
@@ -128,6 +106,11 @@ export class RouteDirectionsController {
   @ApiQuery({ name: 'tags', required: false, description: '标签数组', type: [String] })
   @ApiQuery({ name: 'isActive', required: false, description: '是否激活', type: Boolean })
   @ApiQuery({ name: 'month', required: false, description: '月份（1-12）', type: Number })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description: '列表扩展：hikingList（tag=徒步 时自动附带卡片字段，也可显式指定）',
+  })
   @ApiResponse({ status: 200, description: '成功返回路线方向列表' })
   async findRouteDirections(
     @Query() query: QueryRouteDirectionDto,
@@ -275,14 +258,49 @@ export class RouteDirectionsController {
   }
 
   @Public()
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
-  @ApiOperation({ summary: '获取路线方向详情', description: '根据 ID 获取路线方向详情' })
+  @ApiOperation({
+    summary: '获取路线方向详情',
+    description:
+      '根据 ID 获取路线方向详情。tags 含「徒步」时自动返回完整 hikingDetail（详情页用）；也可用 include=hikingDetail 强制附带。',
+  })
   @ApiParam({ name: 'id', description: '路线方向 ID', type: Number })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description:
+      '扩展块，逗号分隔。hikingDetail=强制附带；非徒步线仅在使用该参数时尝试构建',
+  })
+  @ApiQuery({
+    name: 'longestHike',
+    required: false,
+    description: '体能问卷档位 0–4（含 hikingDetail 时影响 fitnessMatch）',
+    type: Number,
+  })
   @ApiResponse({ status: 200, description: '成功返回路线方向详情' })
   @ApiResponse({ status: 404, description: '路线方向不存在' })
-  async getRouteDirectionById(@Param('id', ParseIntPipe) id: number) {
+  async getRouteDirectionById(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('include') include?: string,
+    @Query('longestHike') longestHike?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
     try {
-      const result = await this.routeDirectionsService.findRouteDirectionById(id);
+      const includes = include?.split(',').map((s) => s.trim()) ?? [];
+      const hikeLevel =
+        longestHike != null && longestHike !== ''
+          ? Math.min(4, Math.max(0, parseInt(longestHike, 10)))
+          : undefined;
+      const result = await this.routeDirectionsService.findRouteDirectionById(id, {
+        includeHikingDetail: includes.includes('hikingDetail')
+          ? true
+          : includes.includes('noHikingDetail')
+            ? false
+            : undefined,
+        longestHike: hikeLevel,
+        userId: user?.userId,
+      });
       return successResponse(result);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
@@ -753,107 +771,6 @@ export class RouteDirectionsController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         error instanceof Error ? error.message : 'Failed to create trip from template',
-        { originalError: error instanceof Error ? error.message : String(error) }
-      );
-    }
-  }
-
-  @Post('templates/:id/launch-recruitment')
-  @HttpCode(200)
-  @ApiOperation({
-    summary: '从路线模板发起搭子广场招募',
-    description: '强绑定路线模板，创建真实招募帖并返回广场详情路径',
-  })
-  @ApiParam({ name: 'id', description: '路线模板 ID', type: Number })
-  @ApiBody({ type: LaunchRecruitmentFromTemplateDto })
-  @ApiResponse({ status: 200, description: '成功创建招募帖' })
-  async launchRecruitmentFromTemplate(
-    @Param('id', ParseIntPipe) templateId: number,
-    @Body() dto: LaunchRecruitmentFromTemplateDto,
-    @CurrentUser() user: any,
-  ) {
-    try {
-      const userId = user?.userId;
-      const template = await this.routeDirectionsService.findRouteTemplateById(templateId);
-      const routeDirection = template.routeDirection;
-      const titleZh =
-        dto.routeTemplateTitleZh?.trim() ||
-        template.nameCN ||
-        template.name ||
-        routeDirection?.nameCN ||
-        `路线模板 #${template.id}`;
-      const catalogId = resolveRouteTemplateCatalogId(template, dto);
-      const itinerarySummary = buildTemplateItinerarySummary(template.dayPlans);
-      const destination = routeDirection?.nameCN || template.nameCN || template.name || titleZh;
-      const routeTemplateBinding = {
-        catalogId,
-        routeTemplateId: template.id,
-        titleZh,
-      };
-      const routeTemplateMatch = {
-        version: 'route_template_intent_v1',
-        associationHint: `🗺️ 已绑定路线模板：《${titleZh}》`,
-        primaryMatch: {
-          catalogId,
-          routeDirectionName: routeDirection?.nameCN || template.nameCN || titleZh,
-          durationDays: template.durationDays,
-          titleZh,
-          matchPercent: 95,
-          confidence: 'highlight',
-          launchRecruitmentAction: 'confirm_template',
-          slotAugmentations: [],
-        },
-        suggestions: [],
-      };
-
-      const captainMessage =
-        dto.captainMessage?.trim() ||
-        `以路线模板《${titleZh}》发起招募，计划 ${template.durationDays} 天同行。`;
-      const vision = `${captainMessage}${itinerarySummary ? ` 日计划：${itinerarySummary}` : ''}`;
-
-      const post = await this.matchSquareService.createPost(userId, {
-        destination,
-        departureLabel: dto.departureLabel?.trim() || routeDirection?.entryHubs?.[0] || undefined,
-        startDate: dto.startDate,
-        endDate: dto.endDate,
-        itinerarySummary: itinerarySummary || captainMessage,
-        budgetMinCents: dto.budgetMinCents,
-        budgetMaxCents: dto.budgetMaxCents,
-        slotsNeeded: dto.slotsNeeded,
-        planningStyle: dto.planningStyle,
-        captainMessage,
-        vibeFreeText: vision,
-        routeDirectionId: template.routeDirectionId,
-        routeDirectionName: routeDirection?.nameCN || routeDirection?.name || undefined,
-        vibeParse: {
-          source: 'route_template_launch',
-          routeTemplateCatalogId: catalogId,
-          routeTemplateId: template.id,
-          routeTemplateBinding,
-          routeTemplateMatch,
-          templateName: template.nameCN || template.name,
-          durationDays: template.durationDays,
-        },
-      });
-
-      return successResponse({
-        recruitmentPostId: post.id,
-        matchSquarePath: `/dashboard/tripnara/plaza/${post.id}`,
-        post,
-        routeTemplateMatch,
-      });
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return errorResponse(
-          ErrorCode.NOT_FOUND,
-          error.message,
-          { statusCode: 404 }
-        );
-      }
-      this.logger.error('Failed to launch recruitment from route template', error);
-      return errorResponse(
-        ErrorCode.INTERNAL_ERROR,
-        error instanceof Error ? error.message : 'Failed to launch recruitment from route template',
         { originalError: error instanceof Error ? error.message : String(error) }
       );
     }

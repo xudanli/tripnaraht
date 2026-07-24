@@ -1,3 +1,4 @@
+import type { DecisionState } from '../../../decision/kernel/decision-state.types';
 import type { PhaseExecutorContext } from '../../../decision/kernel/interfaces/phase-executor.interface';
 import type { ResearchAssetScope } from '../../utils/research-asset-scope.util';
 import type { UserCognitiveProfile } from '../../memory/experience-replay/user-cognitive-profile.types';
@@ -19,6 +20,8 @@ export type ResearchMemberScopedCommerceInput = {
   userCognitiveProfile?: UserCognitiveProfile;
   /** 6.x：心理账户快照；高 `frustration_score` 时 Member 切换 `STABILITY_FIRST` Skill 策略 */
   userEmotionalAccount?: UserEmotionalAccount;
+  /** 可选：DSO 快照（与并行总线 `ResearchParallelAssignmentPayload.dso` 对齐），供住宿窄轨读取信念/不确定性概要 */
+  dso?: DecisionState;
   /** 5.0.1：预算仲裁触发的降级重跑（紧缩 Skill 偏好 / 记录收紧后的桶） */
   budgetRerunHints?: Readonly<{
     austerityMode?: boolean;

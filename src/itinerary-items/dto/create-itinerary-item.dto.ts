@@ -144,6 +144,33 @@ export class CreateItineraryItemDto {
   @Min(0)
   travelFromPreviousDistance?: number;
 
+  /** Travel Product Catalog — 体验定义 ID */
+  @ApiPropertyOptional({
+    description: '体验定义 ID（ExperienceDefinition.id）',
+    example: 'cmrke27wu0000vfn5xdnbrcja',
+  })
+  @IsString()
+  @IsOptional()
+  experienceDefinitionId?: string | null;
+
+  /** Travel Product Catalog — 供应商产品 ID */
+  @ApiPropertyOptional({
+    description: '旅行产品 Offering ID（ProductOffering.id）',
+    example: 'offer_demo_solheim_glacier_discovery',
+  })
+  @IsString()
+  @IsOptional()
+  productOfferingId?: string | null;
+
+  /** Travel Product Catalog — 班次 / 时段 ID */
+  @ApiPropertyOptional({
+    description: '产品班次 Session ID（ProductSession.id）',
+    example: 'sess_demo_solheim_20260718_0900',
+  })
+  @IsString()
+  @IsOptional()
+  productSessionId?: string | null;
+
   // ========== 费用相关字段 ==========
 
   @ApiPropertyOptional({

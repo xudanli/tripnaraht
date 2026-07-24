@@ -1,5 +1,5 @@
 // src/trips/trips.controller.ts
-import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Req, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Req, BadRequestException, NotFoundException, ForbiddenException, ConflictException, Logger, Headers, Res, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { DateTime } from 'luxon';
@@ -12,6 +12,11 @@ import { TripAdjustmentService, TripModificationRequest } from './services/trip-
 import { LlmService } from '../llm/services/llm.service';
 import { LlmResponseTransformerService } from '../llm/services/llm-response-transformer.service';
 import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
+import {
+  extractHttpErrorCode,
+  extractHttpErrorMessage,
+} from './utils/embedded-hiking-trip-metadata.util';
+import { EmbeddedHikingTripSummaryService } from './services/embedded-hiking-trip-summary.service';
 import { CreateTripFromNaturalLanguageDto } from './dto/create-trip-from-nl.dto';
 import { InitializeTripPlanningDto } from './dto/initialize-trip-planning.dto';
 import { nlDiscussionDraftGuidance } from './constants/nl-discussion-draft-guidance';
@@ -39,6 +44,7 @@ import {
   RegenerateTripDto,
 } from './dto/trip-draft.dto';
 import { UnifiedBootstrapTripDto } from './dto/unified-bootstrap-trip.dto';
+import { AdvisorCreateTripDto } from './dto/advisor-create-trip.dto';
 import { EnrichTripDto } from './dto/enrich-trip.dto';
 import { buildTripDraftContract } from './draft-synthesis/contract';
 import { TripDraftService } from './services/trip-draft.service';
@@ -53,16 +59,39 @@ import {
   BatchUpdateEvidenceRequestDto,
 } from './dto/evidence.dto';
 import { GetAttentionQueueQueryDto } from './dto/attention-queue.dto';
+import { GetPersonaAlertsQueryDto } from './dto/persona-alerts.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { mapWriteChainBlockedToErrorResponse } from '../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { AssessTripRequestDto } from './dto/trip-metrics.dto';
 import { ConflictSeverity, ResolveConflictsRequestDto } from './dto/trip-conflicts.dto';
 import { UpdateIntentRequestDto } from './dto/trip-intent.dto';
+import {
+  buildLunchStrategyClarificationQuestion,
+  buildTripLunchMetadataFromParams,
+  extractLunchStrategySignalsFromParams,
+  shouldPromptLunchStrategyQuestion,
+} from '../planning-policy/utils/lunch-strategy.util';
 import { ApplyOptimizationRequestDto } from './dto/trip-optimization.dto';
 import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/trip-items.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripMetricsService } from './services/trip-metrics.service';
+import { ScheduleTimelineService } from './services/schedule-timeline.service';
+import { TimelineOverviewService } from './services/timeline-overview.service';
+import { CollabOverviewService } from './services/collab-overview.service';
+import { TripListService } from './services/trip-list.service';
+import { TripAdvisorCreateService } from './services/trip-advisor-create.service';
+import { TripListQueryDto } from './dto/trip-list.dto';
+import { AccommodationOverviewService } from './services/accommodation-overview.service';
+import { OverallTripReadinessService } from './overall-readiness/services/overall-trip-readiness.service';
+import { JourneyMapService, parseJourneyMapInclude } from './services/journey-map.service';
+import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
+import type { CreateJourneyMapDecisionItemDto } from './dto/journey-map-decision-item.dto';
+import {
+  computeJourneyMapEtag,
+  ifNoneMatchMatches,
+} from './utils/journey-map-etag.util';
 import { TripConflictsService } from './services/trip-conflicts.service';
 import { TripIntentService } from './services/trip-intent.service';
 import { TripOptimizationService } from './services/trip-optimization.service';
@@ -79,12 +108,16 @@ import {
 import { CurrentUser, CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { TokenService } from '../auth/services/token.service';
 import { JwtService } from '@nestjs/jwt';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+import { formatEtagHeader } from './utils/schedule-timeline-etag.util';
+import { resolveBffIncludeFromPreset } from './utils/bff-include-preset.util';
 import { ContextEngineerService } from '../agent/context-engine/services/context-engineer.service';
 import { SkillsRegistryService } from '../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../skills/services/skills-registry.token';
 import { Inject, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ContextBlock } from '../agent/context-engine/types/context-package.types';
+import { dispatchUserIntentFromModule } from '../decision-runtime/trigger/record-trigger-lineage-from-module.util';
 import { DecisionDraftGeneratorService } from '../decision-draft/services/decision-draft-generator.service';
 import { DecisionDraftStorageService } from '../decision-draft/storage/decision-draft-storage.service';
 import { TripPlanRequest } from '../agent/interfaces/trip-plan.interface';
@@ -239,6 +272,15 @@ export class TripsController {
     private readonly llmService: LlmService,
     private readonly llmResponseTransformer: LlmResponseTransformerService,
     private readonly tripMetricsService: TripMetricsService,
+    private readonly scheduleTimelineService: ScheduleTimelineService,
+    private readonly timelineOverviewService: TimelineOverviewService,
+    private readonly collabOverviewService: CollabOverviewService,
+    private readonly tripListService: TripListService,
+    private readonly tripAdvisorCreateService: TripAdvisorCreateService,
+    private readonly accommodationOverviewService: AccommodationOverviewService,
+    private readonly overallTripReadinessService: OverallTripReadinessService,
+    private readonly journeyMapService: JourneyMapService,
+    private readonly journeyMapDecisionItems: JourneyMapDecisionItemsService,
     private readonly tripConflictsService: TripConflictsService,
     private readonly tripIntentService: TripIntentService,
     private readonly tripOptimizationService: TripOptimizationService,
@@ -248,6 +290,8 @@ export class TripsController {
     private readonly prisma: PrismaService,
     private readonly tokenService: TokenService,
     private readonly jwtService: JwtService,
+    private readonly embeddedHikingSummary: EmbeddedHikingTripSummaryService,
+    private readonly moduleRef: ModuleRef,
     @Optional() private readonly hotelRecommendationService?: HotelRecommendationService,
     @Optional() private readonly contextEngineerService?: ContextEngineerService,
     @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
@@ -369,7 +413,8 @@ export class TripsController {
       }
     } catch (error: any) {
       if (error instanceof BadRequestException) {
-        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+        const code = extractHttpErrorCode(error) ?? ErrorCode.VALIDATION_ERROR;
+        return errorResponse(code, extractHttpErrorMessage(error));
       }
       throw error;
     }
@@ -486,6 +531,53 @@ export class TripsController {
       }
       this.logger.error(`bootstrapUnified failed: ${error?.message}`, error?.stack);
       return errorResponse(ErrorCode.BUSINESS_ERROR, error?.message || 'bootstrap 失败');
+    }
+  }
+
+  /**
+   * 顾问代客创建行程，并为各干系人角色生成成员邀请码。
+   */
+  @Post('advisor-create')
+  @ApiOperation({
+    summary: '顾问创建行程（B 端）',
+    description:
+      '顾问/机构为用户创建行程壳，并返回各角色（主要联系人、付款人、最终确认人、顾问、领队）的成员邀请码。',
+  })
+  @ApiBody({ type: AdvisorCreateTripDto })
+  @ApiResponse({ status: 200, description: '创建成功', type: ApiSuccessResponseDto })
+  async advisorCreateTrip(
+    @Body() body: AdvisorCreateTripDto,
+    @CurrentUser() user?: CurrentUserPayload,
+    @Req() req?: Request,
+  ) {
+    try {
+      let userId = user?.userId;
+      if (!userId && req?.headers?.authorization) {
+        const authHeader = req.headers.authorization;
+        if (authHeader?.startsWith('Bearer ')) {
+          try {
+            const payload = await this.jwtService.verifyAsync(authHeader.substring(7));
+            userId = payload.sub;
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
+      }
+
+      const data = await this.tripAdvisorCreateService.createFromAdvisor(body, userId);
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      if (error instanceof ForbiddenException) {
+        return errorResponse(ErrorCode.FORBIDDEN, error.message);
+      }
+      this.logger.error(`advisorCreateTrip failed: ${error?.message}`, error?.stack);
+      return errorResponse(ErrorCode.BUSINESS_ERROR, error?.message || '顾问创建行程失败');
     }
   }
 
@@ -1744,8 +1836,8 @@ export class TripsController {
       // Create trip when required fields are present; otherwise clarify missing fields
       let params = { ...(existingContext?.partialParams || {}), ...(parseResult.params || {}) };
       const sourceTextsV2 = this.collectNlSourceTexts(dto.text, existingContext, params);
-      params = await this.postProcessNlMergedParams(params, userId, sourceTextsV2);
-      params = reconcileInferredFieldsFromUserInput(params, dto.text);
+      params = await this.postProcessNlMergedParams(params, userId, sourceTextsV2) as typeof params;
+      params = reconcileInferredFieldsFromUserInput(params, dto.text) as typeof params;
       const missing: string[] = [];
       if (!params.destination && !detectedCountryCode) missing.push('destination');
       if (!params.startDate) missing.push('startDate');
@@ -2911,7 +3003,17 @@ export class TripsController {
 
     // 🆕 P0修复：优先使用 destinationCode（ISO），避免 params.destination 为「东京」「杭州」等导致创建失败
     const isoDestination = destinationCode || this.extractCountryCode(params.destination) || params.destination;
-    const tripMetadata: Record<string, any> = {};
+    const lunchMeta = buildTripLunchMetadataFromParams(params, isoDestination);
+    const tripMetadata: Record<string, any> = {
+      lunch_strategy: lunchMeta.lunch_strategy,
+      tripParams: {
+        ...lunchMeta.tripParams,
+        destination: params.destination,
+        startDate,
+        endDate,
+        totalBudget: params.totalBudget,
+      },
+    };
     if (params.origin) tripMetadata.origin = params.origin;
     if (params.drivingFatiguePreferences) {
       tripMetadata.drivingFatiguePreferences = params.drivingFatiguePreferences;
@@ -2945,7 +3047,7 @@ export class TripsController {
       currency,
       pace: tripPace as any,
       preferences: uniquePrefTags.length > 0 ? uniquePrefTags : undefined,
-      metadata: Object.keys(tripMetadata).length > 0 ? tripMetadata : undefined,
+      metadata: tripMetadata,
     } as CreateTripDto;
 
     // 创建行程（TripsService.create 会写入初始 DSO 到 Trip.metadata）
@@ -3561,6 +3663,14 @@ export class TripsController {
       });
     }
     
+    // Phase 3：条件追问午餐时间窗策略（老人/小孩/自驾/无人区等场景）
+    if (
+      questions.length < MAX_SUPPLEMENTARY_QUESTIONS &&
+      shouldPromptLunchStrategyQuestion(extractLunchStrategySignalsFromParams(params, destinationCode))
+    ) {
+      questions.push(buildLunchStrategyClarificationQuestion());
+    }
+
     // 🆕 P1优化：如果已达到限制，不再添加安全问题
     if (questions.length >= MAX_SUPPLEMENTARY_QUESTIONS) {
       return questions;
@@ -4803,6 +4913,30 @@ export class TripsController {
     return successResponse(trips);
   }
 
+  @Get('list')
+  @ApiOperation({
+    summary: '行程列表 BFF',
+    description:
+      '返回带 listSummary 投影的行程卡片列表。前端优先调用此接口；不可用时降级 GET /trips。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回行程列表卡片（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getTripListPage(
+    @Query() query: TripListQueryDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const data = await this.tripListService.getTripListPage(user?.userId, query);
+      return successResponse(data);
+    } catch (error: any) {
+      this.logger.error(`获取行程列表 BFF 失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
   @Get('attention-queue')
   @ApiOperation({
     summary: '获取关注队列',
@@ -4984,6 +5118,59 @@ export class TripsController {
     }
   }
 
+  @Get(':id/hiking-summary')
+  @ApiOperation({
+    summary: '混合出行徒步摘要（embedded）',
+    description:
+      '返回 hikingProfile、hikingPhase、metadata.hikingSegments 及关联 HikePlan 状态。需为行程协作者。',
+  })
+  async getHikingSummary(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    try {
+      const data = await this.embeddedHikingSummary.getSummary(id, user.userId);
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/hiking-segments/:segmentId/evaluate')
+  @ApiOperation({
+    summary: '评估单个徒步片段',
+    description: '返回 Readiness、许可清单与费用提示（供 embedded 片段卡片）',
+  })
+  async evaluateHikingSegment(
+    @Param('id') id: string,
+    @Param('segmentId') segmentId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('longestHike') longestHike?: string,
+    @Query('plannedDate') plannedDate?: string,
+  ) {
+    try {
+      const hikeLevel =
+        longestHike != null && longestHike !== ''
+          ? Math.min(4, Math.max(0, parseInt(longestHike, 10)))
+          : undefined;
+      const data = await this.embeddedHikingSummary.evaluateSegment(
+        id,
+        segmentId,
+        user.userId,
+        { longestHike: hikeLevel, plannedDate },
+      );
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
   @Get(':id/insight')
   @ApiOperation({
     summary: '获取行程洞察摘要',
@@ -5048,7 +5235,8 @@ export class TripsController {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
       if (error instanceof BadRequestException) {
-        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+        const code = extractHttpErrorCode(error) ?? ErrorCode.VALIDATION_ERROR;
+        return errorResponse(code, extractHttpErrorMessage(error));
       }
       this.logger.error(`更新行程失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
@@ -5064,7 +5252,8 @@ export class TripsController {
                  '- 所有协作者（TripCollaborator）\n' +
                  '- 所有收藏（TripCollection）\n' +
                  '- 所有点赞（TripLike）\n' +
-                 '- 所有分享（TripShare）\n\n' +
+                 '- 所有分享（TripShare）\n' +
+                 '- 关联 HikePlan 与 GPS 轨迹（HikeTrackPoint）\n\n' +
                  '**安全确认**：为防止误删，需要输入目的地国家代码（如：JP、IS）来确认删除。\n\n' +
                  '**警告**：此操作不可恢复，请谨慎使用。'
   })
@@ -5123,10 +5312,402 @@ export class TripsController {
     }
   }
 
+  @Post(':id/decision-items')
+  @ApiOperation({
+    summary: '全程地图检查器 · 创建决策事项',
+    description: '从 Inspector 风险 Tab 创建待办决策项，持久化至 trip.metadata.journeyMapDecisionItems',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  async createJourneyMapDecisionItem(
+    @Param('id') id: string,
+    @Body() body: CreateJourneyMapDecisionItemDto,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const userId = user?.userId ?? 'anonymous';
+      const data = await this.journeyMapDecisionItems.create(id, body, userId);
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.BAD_REQUEST, error.message);
+      }
+      if (error instanceof ConflictException) {
+        const payload = error.getResponse();
+        const row =
+          typeof payload === 'object' && payload !== null
+            ? (payload as { code?: string; message?: string })
+            : { message: error.message };
+        return errorResponse(row.code ?? 'CONSTRAINTS_STALE', row.message ?? error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/journey-map/inspector/activities/:activityId')
+  @ApiOperation({
+    summary: '全程地图检查器 · 单活动懒加载',
+    description:
+      '返回单个 JourneyMapInspectorActivityContext + 共享 evidence/impact。' +
+      'BFF 二段过慢时可按 activity 懒加载；支持 If-None-Match。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiParam({ name: 'activityId', description: '活动 ID（item-uuid 或 uuid）' })
+  @ApiQuery({
+    name: 'fields',
+    required: false,
+    enum: ['full', 'minimal'],
+    description: 'coverage 裁剪；默认 full',
+  })
+  @ApiResponse({ status: 304, description: 'If-None-Match 与 ETag 一致，无 body' })
+  async getJourneyMapInspectorActivity(
+    @Param('id') id: string,
+    @Param('activityId') activityId: string,
+    @Query('fields') fields?: 'full' | 'minimal',
+    @Headers('if-none-match') ifNoneMatch?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    try {
+      const data = await this.journeyMapService.getJourneyMapInspectorActivity(id, activityId, {
+        fields: fields ?? 'full',
+      });
+
+      if (data.etag && ifNoneMatchMatches(ifNoneMatch, data.etag)) {
+        res?.status(HttpStatus.NOT_MODIFIED);
+        res?.setHeader('ETag', formatEtagHeader(data.etag));
+        res?.setHeader('Cache-Control', 'private, max-age=60');
+        return;
+      }
+
+      if (data.etag) {
+        res?.setHeader('ETag', formatEtagHeader(data.etag));
+      }
+      res?.setHeader('Cache-Control', 'private, max-age=60');
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/journey-map')
+  @ApiOperation({
+    summary: '全程地图聚合 BFF',
+    description:
+      '一次返回 Journey Map 首屏：trip 摘要、coverage-map、全 trip itineraryItems、feasibilityScore、travelerCount。' +
+      'include=inspector 二段加载 decision-checker evidence/impact 与 score 分解。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'include', required: false, description: 'shell（默认）, inspector' })
+  @ApiQuery({
+    name: 'fields',
+    required: false,
+    enum: ['full', 'minimal'],
+    description: 'coverage 裁剪；minimal 省略 gaps 与 deduplicatedWarnings',
+  })
+  @ApiResponse({ status: 304, description: 'If-None-Match 与 ETag 一致，无 body' })
+  async getJourneyMap(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @Query('fields') fields?: 'full' | 'minimal',
+    @Headers('if-none-match') ifNoneMatch?: string,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    try {
+      const fieldsResolved = fields ?? 'full';
+      const includeInspector = parseJourneyMapInclude(include).has('inspector');
+      const data = await this.journeyMapService.getJourneyMap(id, {
+        include,
+        fields: fieldsResolved,
+      });
+
+      const etag = computeJourneyMapEtag({
+        tripId: id,
+        tripUpdatedAt: data.trip.updatedAt,
+        coverageCalculatedAt: data.coverage.calculatedAt,
+        itemCount: data.itineraryItems.length,
+        fields: fieldsResolved,
+        includeInspector,
+      });
+
+      if (ifNoneMatchMatches(ifNoneMatch, etag)) {
+        res?.status(HttpStatus.NOT_MODIFIED);
+        res?.setHeader('ETag', formatEtagHeader(etag));
+        res?.setHeader('Cache-Control', 'private, max-age=60');
+        return;
+      }
+
+      data.etag = etag;
+      res?.setHeader('ETag', formatEtagHeader(etag));
+      res?.setHeader('Cache-Control', 'private, max-age=60');
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/accommodation-overview')
+  @ApiOperation({
+    summary: '行程详情 · 住宿 Tab 聚合 BFF（P2）',
+    description:
+      '一次返回住宿 Tab 首屏：按晚卡片、预订状态、资料、路线影响、提醒与统计。' +
+      '替代从 GET /trips/:id 全量行程中前端推导 accommodation。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description: 'stats,nights,reminders,travel,files（逗号分隔，默认全部）',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回住宿概览（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getAccommodationOverview(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const data = await this.accommodationOverviewService.getAccommodationOverview(
+        id,
+        user?.userId,
+        { include },
+      );
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof ForbiddenException) {
+        return errorResponse(ErrorCode.FORBIDDEN, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/collab-overview')
+  @ApiOperation({
+    summary: '行程详情 · 成员 Tab 协作聚合 BFF（P1）',
+    description:
+      '一次返回协作者、协商任务、领域主张、Silent Vote、决策画像 onboarding、摩擦雷达摘要、心愿摘要与 teamHealth。' +
+      '替代 useCollabOverview 多路请求与前端 heuristic。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description: 'members,tasks,domain,votes,profiling,wishes,health（逗号分隔，默认全部）',
+  })
+  @ApiQuery({
+    name: 'preset',
+    required: false,
+    enum: ['shell', 'full'],
+    description: 'shell=首屏 members+health；full=全量。显式 include 优先于 preset',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回协作概览（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getCollabOverview(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @Query('preset') preset?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const userId = user?.userId ?? (process.env.NODE_ENV !== 'production' ? 'anonymous-dev-user' : undefined);
+      if (!userId) {
+        return errorResponse(ErrorCode.UNAUTHORIZED, '未认证或 token 无效');
+      }
+      const resolvedInclude = resolveBffIncludeFromPreset({
+        preset,
+        include,
+        kind: 'collab',
+      });
+      const data = await this.collabOverviewService.getCollabOverview(id, userId, {
+        include: resolvedInclude,
+      });
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof ForbiddenException) {
+        return errorResponse(ErrorCode.FORBIDDEN, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/timeline-overview')
+  @ApiOperation({
+    summary: '行程详情 · 时间轴 Tab 聚合 BFF（P1）',
+    description:
+      '一次返回时间轴侧栏与顶部统计：可行性/节奏/冲突数、整体准备度卡片、规划进度（兼容）、待办、今日提醒、新建议数。' +
+      '主分数请读 overallReadiness；planning.progressPercent 仅为内部 pipeline 进度。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description:
+      'stats,pipeline,tasks,reminders,readiness,suggestions,health（逗号分隔；默认含 readiness）',
+  })
+  @ApiQuery({
+    name: 'preset',
+    required: false,
+    enum: ['shell', 'full'],
+    description: 'shell=stats+readiness；full=phase-2。显式 include 优先于 preset',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回时间轴概览（统一响应格式）',
+    type: ApiSuccessResponseDto,
+  })
+  async getTimelineOverview(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @Query('preset') preset?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      const resolvedInclude = resolveBffIncludeFromPreset({
+        preset,
+        include,
+        kind: 'timeline',
+      });
+      const data = await this.timelineOverviewService.getTimelineOverview(id, user?.userId, {
+        include: resolvedInclude,
+      });
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/overall-readiness')
+  @ApiOperation({
+    summary: '整体准备度报告（Overall Trip Readiness）',
+    description:
+      '五维度加权得分 + 全局阻塞门禁 + 证据可信度。分数与是否就绪分离；' +
+      '存在 blocker 时 state=BLOCKED，即使 score 较高。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({
+    name: 'view',
+    required: false,
+    enum: ['full', 'card'],
+    description: 'full=完整报告；card=首页卡片投影（默认 full）',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回整体准备度',
+    type: ApiSuccessResponseDto,
+  })
+  async getOverallReadiness(
+    @Param('id') id: string,
+    @Query('view') view?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    try {
+      if (view === 'card') {
+        const data = await this.overallTripReadinessService.getCard(id, user?.userId);
+        return successResponse(data);
+      }
+      const data = await this.overallTripReadinessService.getSnapshot(id, user?.userId);
+      return successResponse(data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get(':id/schedule-timeline')
+  @ApiOperation({
+    summary: '规划工作台时间轴聚合 BFF（P0）',
+    description:
+      '一次返回 ScheduleTab 首屏：items + schedule + metrics + travelInfo(cached)。' +
+      '替代 N×GET itinerary-items + N×GET schedule + metrics + calculate-all-travel。',
+  })
+  @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'include', required: false, description: 'items,schedule,metrics,travelInfo' })
+  @ApiQuery({ name: 'dates', required: false, description: 'YYYY-MM-DD 逗号分隔' })
+  @ApiQuery({ name: 'from', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({
+    name: 'travelInfoMode',
+    required: false,
+    enum: ['cached', 'none', 'recalculate'],
+    description: 'recalculate 在 GET 上拒绝；重算请 POST calculate-all-travel',
+  })
+  @ApiResponse({ status: 304, description: 'If-None-Match 与 ETag 一致，无 body' })
+  async getScheduleTimeline(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+    @Query('dates') dates?: string,
+    @Query('from') from?: string,
+    @Query('limit') limit?: string,
+    @Query('travelInfoMode') travelInfoMode?: 'cached' | 'none' | 'recalculate',
+    @Headers('if-none-match') ifNoneMatch?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    try {
+      const result = await this.scheduleTimelineService.getScheduleTimeline(id, user?.userId, {
+        include,
+        dates,
+        from: from != null ? Number(from) : undefined,
+        limit: limit != null ? Number(limit) : undefined,
+        travelInfoMode,
+        ifNoneMatch,
+      });
+
+      if (result.status === 'not_modified') {
+        res?.status(HttpStatus.NOT_MODIFIED);
+        res?.setHeader('ETag', formatEtagHeader(result.etag));
+        return;
+      }
+
+      if (result.data.etag) {
+        res?.setHeader('ETag', formatEtagHeader(result.data.etag));
+      }
+      return successResponse(result.data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        const resp = error.getResponse();
+        const payload =
+          typeof resp === 'object' && resp !== null
+            ? (resp as { code?: string; message?: string })
+            : { message: error.message };
+        return errorResponse(payload.code ?? ErrorCode.BAD_REQUEST, payload.message ?? error.message);
+      }
+      throw error;
+    }
+  }
+
   @Get(':id/schedule')
   @ApiOperation({
     summary: '获取指定日期的 Schedule',
-    description: '从数据库读取指定日期的 Schedule（DayScheduleResult 格式）。如果该日期没有 Schedule，返回 null。',
+    description:
+      '从数据库读取指定日期的 Schedule（DayScheduleResult）。`schedule.items` 为该日全部 ItineraryItem（含无地点项），并附带 `totalDuration`（活动分钟 + 段间 travelFromPreviousDuration）与 `totalCost`（actual/estimated 求和）。若当天无任何行程项则 `schedule` 为 null。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)', example: 'f3626ff1-7a9b-46d9-8b8b-7f53a14583b1' })
   @ApiQuery({ name: 'date', description: '日期（YYYY-MM-DD）', example: '2024-05-01', required: true })
@@ -5170,7 +5751,7 @@ export class TripsController {
     @Body() body: SaveScheduleDto,
   ) {
     try {
-      const result = await this.tripsService.saveSchedule(id, dateISO, body.schedule);
+      const result = await this.tripsService.saveSchedule(id, dateISO, body);
       return successResponse(result);
     } catch (error: any) {
       if (error.status === 404) {
@@ -6212,9 +6793,13 @@ export class TripsController {
   @Get(':id/persona-alerts')
   @ApiOperation({
     summary: '获取三人格提醒（Persona Alerts）',
-    description: '获取当前行程的三人格（Abu、Dr.Dre、Neptune）提醒列表',
+    description:
+      'C 端 BFF 人话投影：返回 Abu / Dr.Dre / Neptune 用户可见提醒（含 explanation、reasonCodesDisplayZh）；默认过滤编排 debug 串。',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
+  @ApiQuery({ name: 'audience', required: false, enum: ['user', 'internal'], description: '默认 user' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '默认 20' })
+  @ApiQuery({ name: 'phase', required: false, enum: ['planning', 'in_trip'] })
   @ApiResponse({
     status: 200,
     description: '成功返回提醒列表（统一响应格式）',
@@ -6225,9 +6810,9 @@ export class TripsController {
     description: '行程不存在（统一响应格式）',
     type: ApiErrorResponseDto,
   })
-  async getPersonaAlerts(@Param('id') id: string) {
+  async getPersonaAlerts(@Param('id') id: string, @Query() query: GetPersonaAlertsQueryDto) {
     try {
-      const alerts = await this.tripsService.getPersonaAlerts(id);
+      const alerts = await this.tripsService.getPersonaAlerts(id, query);
       return successResponse(alerts);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
@@ -6719,6 +7304,7 @@ export class TripsController {
 - **交通效率** (TRANSPORT): 交通时间占比、长途移动次数
 - **地理分布** (GEOGRAPHY): 路线是否顺畅、是否存在折返
 - **缓冲时间** (BUFFER): 活动间缓冲是否充足
+- **规划可执行性** (FEASIBILITY): 与 planning-conflicts 同源的 must / suggest / pending 冲突
 
 评估等级：
 - EXCELLENT (90-100): 非常合理
@@ -6822,6 +7408,8 @@ export class TripsController {
       const result = await this.tripConflictsService.resolveConflicts(id, dto);
       return successResponse(result);
     } catch (error: any) {
+      const writeChain = mapWriteChainBlockedToErrorResponse(error);
+      if (writeChain) return writeChain;
       if (error instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, error.message);
       }
@@ -6832,7 +7420,8 @@ export class TripsController {
   @Put(':id/intent')
   @ApiOperation({
     summary: '更新行程意图与约束',
-    description: '更新行程的意图与约束，包括节奏配置、偏好设置、约束条件、规划策略等',
+    description:
+      '更新行程的意图与约束，包括节奏配置、偏好设置、约束条件、规划策略、午餐时间窗策略（lunch_strategy）等',
   })
   @ApiParam({ name: 'id', description: '行程 ID (UUID)' })
   @ApiBody({ type: UpdateIntentRequestDto })
@@ -6990,7 +7579,8 @@ export class TripsController {
   })
   async batchUpdateItems(
     @Param('id') id: string,
-    @Body() dto: BatchUpdateItemsRequestDto
+    @Body() dto: BatchUpdateItemsRequestDto,
+    @CurrentUser() user?: CurrentUserPayload,
   ) {
     try {
       const errors: Array<{ itemId: string; error: string }> = [];
@@ -7048,6 +7638,27 @@ export class TripsController {
         failedCount: errors.length,
         errors: errors.length > 0 ? errors : undefined,
       };
+
+      if (updatedCount > 0) {
+        try {
+          await dispatchUserIntentFromModule(this.moduleRef, {
+            tripId: id,
+            userId: user?.userId,
+            entryPointId: 'user.trip-edit',
+            metadata: {
+              intent: 'batch_itinerary_update',
+              updatedCount,
+              itemCount: dto.updates.length,
+            },
+          });
+        } catch (dispatchErr: unknown) {
+          const message =
+            dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr);
+          this.logger.warn(
+            `[user.trip-edit] Trigger Gateway dispatch failed (edit persisted): ${message}`,
+          );
+        }
+      }
 
       return successResponse(result);
     } catch (error: any) {

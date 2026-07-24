@@ -21,11 +21,23 @@ import { DAGOrchestratorService } from '../plan-execute/orchestrator.service';
 import { ClaudeOrchestratorService } from './claude-orchestrator.service';
 import { EventTelemetryService } from './event-telemetry.service';
 import { RequestDeduplicationService } from './request-deduplication.service';
-import { TripRunManagerService, type TripRunDsoCheckpointPayload } from './trip-run-manager.service';
+import {
+  TripRunManagerService,
+  type TripRunDsoCheckpointPayload,
+} from './trip-run-manager.service';
+import { recordItineraryAdjustFunnel } from '../utils/itinerary-adjust-metrics.util';
+import { applyLegacyMutationCommitGuard } from '../../decision-runtime/execution/legacy-mutation-commit.adapter';
+import { applyAgenticRouteAndRunMutationGuard } from '../../decision-runtime/execution/agentic-route-and-run-mutation.adapter';
+import {
+  buildPendingItineraryAdjustDraft,
+  PENDING_ITINERARY_ADJUST_DRAFT_META_KEY,
+} from '../utils/itinerary-adjust-pending-draft.util';
 import { TripTaskMemoryService } from '../context-engine/services/trip-task-memory.service';
 import { PreferenceRoundOrchestratorService } from '../../trips/process-fairness/services/preference-round-orchestrator.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 import { tryBuildTeamStructuredDiscussionFastPath } from './execution-gateway.route-and-run.orchestration';
+
 import { TokenCalculator } from '../utils/token-calculator.util';
 import {
   AgentContext,
@@ -35,9 +47,12 @@ import {
 import {
   signalsFromRequest,
   routingSignalsWithResolvedTaskType,
+  shouldRouteBoundTripAsItineraryAdjust,
   type RoutingSignals,
   type TaskType,
 } from '../utils/orchestration-signals.util';
+import { applyRouteAndRunEntryRoutingInPlace } from '../routing/route-and-run-route-class-fork.util';
+import { applyRouteObservabilityMirror } from '../routing/mirror-route-and-run-observability.util';
 import {
   OrchestrationStep,
   SubAgentType,
@@ -66,6 +81,7 @@ import {
 import { replayLifecycleManager } from '../utils/replay-lifecycle.manager';
 import { attachFullResponseReplayArtifactDescriptor } from '../utils/replay-artifact-descriptor.builder';
 import { ExecutionGatewayService } from './execution-gateway.service';
+import { RouteAndRunAsyncDelegationService } from './route-and-run-async-delegation.service';
 import { attachFreshRuntimeMaterialization } from '../runtime/fresh-runtime-adapter.util';
 import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.service';
 import { mergeRuntimeExecutionAnomaliesByCode } from '../utils/runtime-execution-profile.validation';
@@ -96,22 +112,39 @@ import { TimelineInspectorService } from './timeline-inspector.service';
 import { ItineraryVersionService } from './itinerary-version.service';
 import { ItineraryRevisionTimelineService } from './itinerary-revision-timeline.service';
 import type { RevisionTimelineResponseDto } from '../dto/itinerary-revision-timeline.dto';
+import type { TripRobustnessDashboardResponseDto } from '../dto/trip-robustness-dashboard.dto';
+import { TripRobustnessDashboardService } from './trip-robustness-dashboard.service';
 import { ItineraryRollbackService } from './itinerary-rollback.service';
 import { ItineraryRevisionRegretService } from './itinerary-revision-regret.service';
 import { UserPreferenceLearningService } from './user-preference-learning.service';
 import { PreferenceEvolutionService } from './preference-evolution.service';
 import type { ItineraryRollbackRequestDto, ItineraryRollbackResponseDto } from '../dto/itinerary-rollback.dto';
 import { PrometheusMetricsService } from '../../monitoring/prometheus-metrics.service';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
 import { matchAxioms, pickDominantAxiom } from '../axioms/axiom-matchers';
+import {
+  axiomMatchSourceForMetrics,
+  normalizeAxiomCidForMetrics,
+} from '../axioms/axiom-prometheus.util';
 import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
 import { LogDecisionRequestDto } from '../dto/log-decision.dto';
+import {
+  ApplyBookingCartActionRequestDto,
+  ApplyBookingCartActionResponseDto,
+} from '../dto/booking-cart-checkout.dto';
+import { applyBookingCartAction as runBookingCartAction } from '../utils/booking-cart-checkout.util';
+import {
+  ApplyOpenWorldVerificationRequestDto,
+  ApplyOpenWorldVerificationResponseDto,
+} from '../dto/open-world-verification.dto';
+import { applyOpenWorldVerificationAction as runOpenWorldVerificationAction } from '../utils/open-world-verification-checkout.util';
+import type { OpenWorldDiscoveryUi } from '../delivery/utils/open-world-discovery-ui.builder.util';
+import { BookingComService } from '../../mcp/booking-com.service';
+import type { OptimizedBookingCartUi } from '../utils/booking-cart-optimizer.util';
+import type { BookingCartUiDto } from '../dto/route-and-run.dto';
 import { RouteAndRunContextEnricherService } from './route-and-run-context-enricher.service';
 import { UserStandingPreferenceService } from './user-standing-preference.service';
-import {
-  buildRouteAndRunPersistReasonCodes,
-  buildRouteAndRunTripsPersistMetadata,
-  resolveTripsStageForRouteAndRunPersist,
-} from '../utils/route-and-run-decision-persist.util';
+import { mapOrchestrationDecisionLogToTrips } from '../utils/orchestration-to-trips-decision-log.util';
 import {
   toOrchestrationFailureObservability,
   type OrchestratorRobustnessMetadata,
@@ -128,6 +161,7 @@ import {
 } from '../assistants/planning-assistant/services/mcp-agent-executor.service';
 import type { McpAgentExecutorRunResult } from '../assistants/planning-assistant/services/mcp-agent-executor.service';
 import type { OrchestrationPolicyDecision } from '../utils/orchestration-policy.util';
+import { isWorkbenchAssistantPlaceholderMessage } from '../utils/trip-plan-intake-message.util';
 import type { Skill } from '../../skills/interfaces/skill.interface';
 import { SKILL_INTENT_RECOGNIZE } from '../../skills/skills.tokens';
 import {
@@ -140,13 +174,41 @@ import {
 } from '../utils/agentic-tool-loop-dispatch.util';
 import { deriveAgenticMcpRuntimeAllowlist, extractAgenticSkillAllowlistForMcpCap } from '../runtime/agentic-mcp-runtime-cap.util';
 import {
-  mergeAgenticToolPolicies,
   mergeApprovedToolInvocations,
-  parseAgenticGovernanceHitlFlag,
 } from '../runtime/agentic-tool-governance.util';
+import { mergeExecutionToolPolicies } from '../runtime/agent-execution-policy-gateway.util';
+import {
+  hydrateRouteAndRunExecutionPolicyInPlace,
+  readExecutionPolicyGatewayApproved,
+  readExecutionPolicyGatewayPolicies,
+  type RouteAndRunExecutionPolicyCarrier,
+} from '../runtime/execution-policy-gateway-context.util';
+import {
+  applySubagentSandboxToMcpAllowlist,
+  hydrateSubagentPermissionSandboxInPlace,
+  readSubagentSandboxSanitizedMessage,
+  type RouteAndRunSubagentSandboxCarrier,
+} from '../runtime/subagent-permission-sandbox-context.util';
+import { resolveOrchestrationSubAgentFromRequest } from '../runtime/subagent-message-chain-sandbox.util';
+import { EpisodicMemorySummarizerService } from '../memory/services/episodic-memory-summarizer.service';
+import type {
+  EpisodicSummarizerObservabilityV1,
+  RouteAndRunEpisodicCarrier,
+} from '../memory/utils/episodic-memory-summarizer.util';
+import {
+  estimateUsdFromTokens,
+  mountRouteAndRunEstimatedCostUsd,
+} from '../runtime/cost-governance-observability.util';
 import type { ConflictStrategyOptionsResponseDto } from '../dto/conflict-strategy-options.dto';
 import { StrategyConflictOptionsService } from './strategy-conflict-options.service';
+import { AgentExecutionPolicyGatewayService } from './agent-execution-policy-gateway.service';
+import {
+  resolveAgenticResumeCheckpointFromRequestOptions,
+  type AgenticTaskRollbackObservabilityV1,
+} from '../runtime/agentic-task-rollback.util';
 import { MemoryContextAssemblerService } from '../memory/services/memory-context-assembler.service';
+import { RouteRunRequestFitnessHydratorService } from '../memory/services/route-run-request-fitness-hydrator.service';
+import { RouteRunIcelandMarketPriorHydratorService } from '../memory/services/route-run-iceland-market-prior-hydrator.service';
 import type { AgentMemoryContext } from '../memory/interfaces/agent-memory-context.interface';
 import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
 import { MemorySnapshotPersistenceService } from '../memory/persistence/memory-snapshot-persistence.service';
@@ -154,6 +216,9 @@ import { LedgerRecomputeExecutorService } from '../memory/decision-ledger/ledger
 import { IncrementalRecomputeOrchestratorService } from '../memory/decision-ledger/incremental-recompute-orchestrator.service';
 import { AgentExecutionContextStore } from '../runtime/agent-execution-context.store';
 import { AgentExecutionContextFactoryService } from '../runtime/agent-execution-context-factory.service';
+import { DecisionOsContextAssemblerService } from '../runtime/decision-os-context-assembler.service';
+import { DecisionOsExecutionContextStore } from '../runtime/decision-os-execution-context.store';
+import { DecisionRuntimeKernelService } from '../runtime/decision-runtime-kernel.service';
 import { ExecutionTimelineRecorderService } from '../runtime/execution-timeline-recorder.service';
 import {
   assertExecutionGatewayPostReturnContract,
@@ -192,12 +257,16 @@ export class AgentService {
     private stateService: AgentStateService,
     private system1Executor: System1ExecutorService,
     private orchestrator: OrchestratorService,
+    private readonly contextSlidingWindow: ContextSlidingWindowAdapter,
     private memoryContextAssembler: MemoryContextAssemblerService,
     private agentMemoryContextStore: AgentMemoryContextStore,
     private agentExecutionContextFactory: AgentExecutionContextFactoryService,
     private agentExecutionContextStore: AgentExecutionContextStore,
     @Inject(forwardRef(() => ExecutionGatewayService))
     private executionGateway: ExecutionGatewayService,
+    @Optional() private readonly decisionOsContextAssembler?: DecisionOsContextAssemblerService,
+    @Optional() private readonly decisionOsExecutionContextStore?: DecisionOsExecutionContextStore,
+    @Optional() private readonly decisionRuntimeKernel?: DecisionRuntimeKernelService,
     @Optional() private readonly executionTimelineRecorder?: ExecutionTimelineRecorderService,
     @Optional() private readonly memorySnapshotPersistence?: MemorySnapshotPersistenceService,
     @Optional() private readonly ledgerRecomputeExecutor?: LedgerRecomputeExecutorService,
@@ -226,6 +295,7 @@ export class AgentService {
     @Optional() private readonly itineraryRevisionTimeline?: ItineraryRevisionTimelineService,
     @Optional() private readonly itineraryRollback?: ItineraryRollbackService,
     @Optional() private readonly itineraryRevisionRegret?: ItineraryRevisionRegretService,
+    @Optional() private readonly tripRobustnessDashboard?: TripRobustnessDashboardService,
     @Optional() private readonly userPreferenceLearning?: UserPreferenceLearningService,
     @Optional() private readonly preferenceEvolution?: PreferenceEvolutionService,
     @Optional() private readonly promMetrics?: PrometheusMetricsService,
@@ -235,11 +305,40 @@ export class AgentService {
     @Optional() private readonly executionIntegration?: ExecutionIntegrationService,
     @Optional() private readonly configService?: ConfigService,
     @Optional() private readonly mcpAgentExecutor?: McpAgentExecutorService,
+    @Optional() private readonly executionPolicyGateway?: AgentExecutionPolicyGatewayService,
     @Optional() private readonly strategyConflictOptions?: StrategyConflictOptionsService,
     @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
     @Optional() private readonly governanceLedgerStore?: GovernanceLedgerStoreService,
     @Optional() @Inject(SKILL_INTENT_RECOGNIZE) private readonly intentRecognizeSkill?: Skill,
+    @Optional() private readonly routeRunRequestFitnessHydrator?: RouteRunRequestFitnessHydratorService,
+    @Optional() private readonly routeRunIcelandMarketPriorHydrator?: RouteRunIcelandMarketPriorHydratorService,
+    @Optional() private readonly routeAndRunAsyncService?: import('./route-and-run-async.service').RouteAndRunAsyncService,
+    @Optional() private readonly routeAndRunAsyncTaskStore?: import('./route-and-run-async-task.store').RouteAndRunAsyncTaskStore,
+    @Optional()
+    private readonly routeAndRunTaskProgress?: import('../runtime/route-and-run-task-progress.reporter').RouteAndRunTaskProgressReporter,
+    @Optional()
+    private readonly routeAndRunAsyncTaskLease?: import('./route-and-run-async-task-lease.service').RouteAndRunAsyncTaskLeaseService,
+    @Optional()
+    @Inject(forwardRef(() => RouteAndRunAsyncDelegationService))
+    private readonly routeAndRunAsyncDelegationService?: RouteAndRunAsyncDelegationService,
+    @Optional() private readonly bookingComService?: BookingComService,
+    @Optional() private readonly shadowRoutingEvaluator?: import('./shadow-routing-evaluator.service').ShadowRoutingEvaluatorService,
+    @Optional()
+    private readonly shadowRouteClassEvaluator?: import('./shadow-route-class-evaluator.service').ShadowRouteClassEvaluatorService,
+    @Optional() private readonly episodicMemorySummarizer?: EpisodicMemorySummarizerService,
   ) {}
+
+  /**
+   * route_and_run：在 Memory snapshot 冻结前，按 user_id 即时拉取体能画像并写回 request / memory（请求级，不落 L1）。
+   */
+  async hydrateRequestFitnessIfNeeded(request: RouteAndRunRequestDto, memory: AgentMemoryContext): Promise<void> {
+    if (this.routeRunRequestFitnessHydrator) {
+      await this.routeRunRequestFitnessHydrator.hydrate(request, memory);
+    }
+    if (this.routeRunIcelandMarketPriorHydrator) {
+      this.routeRunIcelandMarketPriorHydrator.hydrate(request, memory);
+    }
+  }
 
   private isValidIntentTaskType(x: string): x is TaskType {
     return (
@@ -258,6 +357,16 @@ export class AgentService {
    */
   private async resolveRoutingSignals(request: RouteAndRunRequestDto): Promise<RoutingSignals> {
     const base = signalsFromRequest(request);
+    if (shouldRouteBoundTripAsItineraryAdjust(request.trip_id, request.message ?? '')) {
+      if (base.taskType !== 'TRIP_PLANNING') {
+        this.logger.log(
+          `[AgentService] bound trip ITINERARY_ADJUST → TRIP_PLANNING（规则原为 ${base.taskType}）request_id=${request.request_id}`,
+        );
+      }
+      return base.taskType === 'TRIP_PLANNING'
+        ? base
+        : routingSignalsWithResolvedTaskType(request, 'TRIP_PLANNING');
+    }
     const mode = request.options?.intent_mode;
     if (mode && mode !== 'AUTO') {
       return base;
@@ -281,7 +390,10 @@ export class AgentService {
         message: request.message,
         trip_id: request.trip_id,
         rule_based_task_type: base.taskType,
-        recent_messages: request.conversation_context?.recent_messages?.slice(-6),
+        recent_messages: this.contextSlidingWindow.slice(
+          'agent_telemetry',
+          request.conversation_context?.recent_messages,
+        ),
         tokenContext: {
           request_id: request.request_id,
           state_machine_step: 'INTAKE',
@@ -706,6 +818,104 @@ export class AgentService {
     return { success: true, data: { logged: Boolean(storage) } };
   }
 
+  /** 预订购物车 checkout 状态流转（无持久化，客户端回传 cart 快照） */
+  async applyBookingCartAction(
+    input: ApplyBookingCartActionRequestDto,
+  ): Promise<ApplyBookingCartActionResponseDto> {
+    const cart = input.cart as OptimizedBookingCartUi;
+    const refreshCarRentalById =
+      this.bookingComService?.isAvailable()
+        ? async (rentalId: string) => {
+            const carItem = cart.items.find(
+              (i) =>
+                i.kind === 'car_rental' &&
+                (i.item_id === rentalId ||
+                  String(i.metadata?.id ?? '') === rentalId ||
+                  String(i.metadata?.offer_id ?? '') === rentalId),
+            );
+            const meta = carItem?.metadata ?? {};
+            const pickLat = Number(meta.pickup_lat ?? meta.pick_up_latitude);
+            const pickLng = Number(meta.pickup_lng ?? meta.pick_up_longitude);
+            if (!Number.isFinite(pickLat) || !Number.isFinite(pickLng)) return null;
+            const pickUp = String(
+              carItem?.date_range?.start ?? meta.pick_up_date ?? meta.pickup_date ?? '',
+            ).slice(0, 10);
+            const dropOff = String(
+              carItem?.date_range?.end ?? meta.drop_off_date ?? meta.dropoff_date ?? '',
+            ).slice(0, 10);
+            if (!pickUp || !dropOff) return null;
+            try {
+              const res = await this.bookingComService!.searchCarRentals({
+                pick_up_latitude: pickLat,
+                pick_up_longitude: pickLng,
+                drop_off_latitude: pickLat,
+                drop_off_longitude: pickLng,
+                pick_up_time: `${pickUp}T10:00:00`,
+                drop_off_time: `${dropOff}T10:00:00`,
+                driver_age: 30,
+              });
+              const row = (res.data ?? []).find(
+                (r: { id?: string }) => String(r.id ?? '') === rentalId || String(r.id ?? '').includes(rentalId),
+              ) as
+                | {
+                    id?: string;
+                    price?: { amount?: number; currency?: string };
+                    vehicle_type?: string;
+                    pickup_location?: { lat?: number; lng?: number; address?: string };
+                    dropoff_location?: { lat?: number; lng?: number; address?: string };
+                  }
+                | undefined;
+              if (!row?.price?.amount) return null;
+              return {
+                id: String(row.id ?? rentalId),
+                price_numeric: Number(row.price.amount),
+                currency: row.price.currency,
+                vehicle_type: row.vehicle_type,
+                pickup_location: row.pickup_location,
+                dropoff_location: row.dropoff_location,
+              };
+            } catch (e: unknown) {
+              this.logger.warn(
+                `[applyBookingCartAction] car rental refresh failed: ${e instanceof Error ? e.message : String(e)}`,
+              );
+              return null;
+            }
+          }
+        : undefined;
+
+    const result = await runBookingCartAction({
+      cart,
+      action: input.action,
+      payload: input.payload,
+      tripId: input.trip_id,
+      refreshCarRentalById,
+    });
+    return {
+      status: result.status,
+      booking_cart: result.booking_cart as BookingCartUiDto,
+      ...(result.checkout ? { checkout: result.checkout } : {}),
+      ...(result.rejection_reason_zh ? { rejection_reason_zh: result.rejection_reason_zh } : {}),
+    };
+  }
+
+  /** 开放世界核实任务状态流转（无持久化，客户端回传 open_world_discovery 快照） */
+  applyOpenWorldVerificationAction(
+    input: ApplyOpenWorldVerificationRequestDto,
+  ): ApplyOpenWorldVerificationResponseDto {
+    const discovery = input.open_world_discovery as unknown as OpenWorldDiscoveryUi;
+    const result = runOpenWorldVerificationAction({
+      discovery,
+      action: input.action,
+      payload: input.payload,
+    });
+    return {
+      status: result.status,
+      open_world_discovery: result.open_world_discovery as unknown as ApplyOpenWorldVerificationResponseDto['open_world_discovery'],
+      ...(result.rejection_reason_zh ? { rejection_reason_zh: result.rejection_reason_zh } : {}),
+      ...(result.updated_stub ? { updated_stub: result.updated_stub as unknown as Record<string, unknown> } : {}),
+    };
+  }
+
   /**
    * Read back a persisted negotiation revision (audit vector + patch summary) for UI timeline.
    */
@@ -749,6 +959,24 @@ export class AgentService {
     return { trip_id: tripId, revisions };
   }
 
+  /** P1-B: Physical + organizational robustness dashboard for trip detail UI. */
+  async getTripRobustnessDashboard(
+    tripId: string,
+    opts?: { forceRecompute?: boolean },
+  ): Promise<TripRobustnessDashboardResponseDto> {
+    if (!this.tripRobustnessDashboard) {
+      return {
+        trip_id: tripId,
+        schema: 'tripnara.trip_robustness_dashboard@v1',
+        status: 'computation_failed',
+        dual_curves: [],
+        alignment: { recent_tuples: [] },
+        computed_at: new Date().toISOString(),
+      };
+    }
+    return this.tripRobustnessDashboard.getTripRobustnessDashboard(tripId, opts);
+  }
+
   /** Physical rollback: restore a historical snapshot and append a ROLLBACK revision (causal closure). */
   async rollbackItinerary(body: ItineraryRollbackRequestDto): Promise<ItineraryRollbackResponseDto> {
     if (!this.itineraryRollback) {
@@ -783,38 +1011,15 @@ export class AgentService {
     return v === '1' || v === 'true';
   }
 
-  private resolveTripsPersonaFromAgentLog(log: DecisionLogEntry): TripsDecisionPersona {
-    const g = String((log.metadata as any)?.guardian ?? '').toUpperCase();
-    if (g === 'ABU' || g === 'DR_DRE' || g === 'NEPTUNE') return g as TripsDecisionPersona;
-    const actor = String(log.actor ?? '');
-    if (actor === 'Gatekeeper') return 'ABU';
-    if (actor === 'LocalInsight') return 'NEPTUNE';
-    if (actor === 'CoreDecision') return 'DR_DRE';
-    return 'USER_ACTION';
-  }
-
   private mapRouteAndRunDecisionLogToTrips(
     entries: DecisionLogEntry[],
     audit?: { tripRunId?: string; planVersion?: number },
   ): TripsDecisionLogEntry[] {
-    const out: TripsDecisionLogEntry[] = [];
-    for (const it of entries ?? []) {
-      if (!it || typeof it !== 'object') continue;
-      const ts = typeof it.timestamp === 'string' ? it.timestamp : new Date().toISOString();
-      const persistMeta = buildRouteAndRunTripsPersistMetadata(it, audit);
-      out.push({
-        persona: this.resolveTripsPersonaFromAgentLog(it),
-        action: 'EVALUATE',
-        explanation: String(it.outputs_summary ?? '').slice(0, 4000),
-        reasonCodes: buildRouteAndRunPersistReasonCodes(it),
-        evidenceRefs: Array.isArray(it.evidence_refs) ? it.evidence_refs.map((x) => String(x)) : [],
-        timestamp: ts,
-        decisionSource: 'HEURISTIC',
-        decisionStage: resolveTripsStageForRouteAndRunPersist(it),
-        metadata: persistMeta,
-      });
-    }
-    return out;
+    return mapOrchestrationDecisionLogToTrips(entries, {
+      forExplain: false,
+      tripRunId: audit?.tripRunId,
+      planVersion: audit?.planVersion,
+    });
   }
 
   private async persistRouteAndRunDecisionLogs(params: {
@@ -929,6 +1134,40 @@ export class AgentService {
   }
 
   /**
+   * DecisionRuntimeKernel tick 入口：挂载 Execution Policy Gateway 上下文（主链 SSOT）。
+   */
+  hydrateExecutionPolicyGatewayContext(
+    request: RouteAndRunRequestDto,
+    memory: AgentMemoryContext | undefined,
+  ): void {
+    if (this.executionPolicyGateway) {
+      this.executionPolicyGateway.hydrateRouteAndRunRequest(request, memory);
+    } else {
+      hydrateRouteAndRunExecutionPolicyInPlace(
+        request as RouteAndRunExecutionPolicyCarrier,
+        memory,
+        false,
+      );
+    }
+    hydrateSubagentPermissionSandboxInPlace(request as RouteAndRunSubagentSandboxCarrier);
+  }
+
+  /** State P3：memory hydrate 后压缩 conversation_context（若有 episodic summary） */
+  applyEpisodicMemoryCompactionInPlace(
+    request: RouteAndRunRequestDto,
+    memory: AgentMemoryContext | undefined,
+  ): void {
+    if (!this.episodicMemorySummarizer) return;
+    (request as RouteAndRunEpisodicCarrier).__episodicSummarizerIngressV1 =
+      this.episodicMemorySummarizer.applyCompactionFromMemoryInPlace(request, memory);
+  }
+
+  /** State P3：route_and_run 完成后异步 summarizer（不阻塞响应） */
+  scheduleEpisodicSummarizerAfterRouteAndRun(request: RouteAndRunRequestDto): void {
+    this.episodicMemorySummarizer?.scheduleAfterRouteAndRun(request);
+  }
+
+  /**
    * 路由并执行（集成稳定化层）
    *
    * **与多智能体共识协作（MultiAgentCollaborationService）的关系**：
@@ -938,7 +1177,49 @@ export class AgentService {
    *   是否调用带 `tripId` 的世界模型桥接及域 Agent 是否注入。
    */
   async routeAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
+    applyRouteAndRunEntryRoutingInPlace(request);
+    const asyncMode = String(request.options?.async_mode ?? 'OFF').trim().toUpperCase();
+    if (asyncMode === 'FORCE') {
+      if (!this.routeAndRunAsyncDelegationService) {
+        this.logger.warn(
+          `[AgentService] async_mode=FORCE 但 RouteAndRunAsyncDelegationService 未注入，回落同步 route_and_run request_id=${request.request_id}`,
+        );
+        return this.executionGateway.runRouteAndRun(request);
+      }
+      return this.routeAndRunAsyncDelegationService.delegate(request, {
+        delegation_reason: 'async_mode=FORCE：入口立即委托后台 Durable Task',
+      });
+    }
     return this.executionGateway.runRouteAndRun(request);
+  }
+
+  /** Durable Task Pattern：秒回 task_id，后台执行完整 route_and_run */
+  async routeAndRunAsync(request: RouteAndRunRequestDto) {
+    applyRouteAndRunEntryRoutingInPlace(request);
+    if (!this.routeAndRunAsyncService) {
+      throw new ServiceUnavailableException('RouteAndRunAsyncService is not configured');
+    }
+    return this.routeAndRunAsyncService.startRouteAndRunAsync(request);
+  }
+
+  async getRouteAndRunTaskStatus(taskId: string) {
+    if (!this.routeAndRunAsyncTaskStore) {
+      throw new ServiceUnavailableException('RouteAndRunAsyncTaskStore is not configured');
+    }
+    await this.routeAndRunAsyncTaskLease?.maybeResumeStaleTask(taskId);
+    const status = await this.routeAndRunAsyncTaskStore.getStatus(taskId);
+    if (!status) {
+      throw new NotFoundException(`Task not found: ${taskId}`);
+    }
+    return status;
+  }
+
+  async resumeRouteAndRunTask(taskId: string): Promise<{ task_id: string; resumed: boolean }> {
+    if (!this.routeAndRunAsyncTaskLease) {
+      throw new ServiceUnavailableException('RouteAndRunAsyncTaskLeaseService is not configured');
+    }
+    await this.routeAndRunAsyncTaskLease.resumeTaskExplicit(taskId);
+    return { task_id: taskId, resumed: true };
   }
 
   /**
@@ -1231,13 +1512,58 @@ export class AgentService {
       return this.routeAndRunWithClaude(request, startTime, traceInfo, deadline);
     }
 
+    if (
+      request.trip_id?.trim() &&
+      isWorkbenchAssistantPlaceholderMessage(request.message) &&
+      this.claudeOrchestrator
+    ) {
+      this.logger.log(
+        `[AgentService] 工作台占位欢迎语 → 短路（跳过状态机）request_id=${request.request_id}`,
+      );
+      const context: AgentContext = {
+        requestId: request.request_id,
+        userId: request.user_id,
+        tripId: request.trip_id,
+        tripRunId: tripRunId ?? undefined,
+        conversationHistory: this.contextSlidingWindow.slice(
+          'orchestrator_claude',
+          request.conversation_context?.recent_messages,
+        ),
+        abortSignal: orchestrationAbort?.signal,
+        routingTaskType: rt,
+        ...(recoveryInvocation ? { recoveryInvocation } : {}),
+      };
+      const orchestrationResult =
+        await this.claudeOrchestrator.orchestrateWorkbenchAssistantPlaceholder(
+          request,
+          context,
+          startTime,
+        );
+      return this.getResponseAssembler().assembleClaudeStateMachineResponse({
+        request,
+        startTime,
+        traceInfo,
+        orchestrationResult,
+        durableRun:
+          tripRunId || resumedCheckpoint
+            ? {
+                trip_run_id: tripRunId ?? undefined,
+                checkpoint_loaded: !!resumedCheckpoint,
+              }
+            : undefined,
+      });
+    }
+
     // 构建 AgentContext
     const context: AgentContext = {
       requestId: request.request_id,
       userId: request.user_id,
       tripId: request.trip_id,
       tripRunId: tripRunId ?? undefined,
-      conversationHistory: request.conversation_context?.recent_messages,
+      conversationHistory: this.contextSlidingWindow.slice(
+        'orchestrator_claude',
+        request.conversation_context?.recent_messages,
+      ),
       abortSignal: orchestrationAbort?.signal,
       routingTaskType: rt,
       ...(recoveryInvocation ? { recoveryInvocation } : {}),
@@ -1288,6 +1614,29 @@ export class AgentService {
         });
       }
 
+      if (tripRunId && this.tripRunManager && orchestrationResult.success) {
+        const orchState = orchestrationResult.result?.state as OrchestratorState | undefined;
+        const tripId = request.trip_id?.trim();
+        if (orchState && tripId) {
+          const pending = buildPendingItineraryAdjustDraft(orchState, tripId);
+          if (pending) {
+            await this.tripRunManager.updateTripRun({
+              runId: tripRunId,
+              metadata: { [PENDING_ITINERARY_ADJUST_DRAFT_META_KEY]: pending },
+            });
+            const md = orchState.metadata as Record<string, unknown>;
+            recordItineraryAdjustFunnel(this.promMetrics, {
+              stage: 'draft_created',
+              outcome: 'success',
+              sub_intent: String(md.itinerary_adjust_sub_intent ?? 'unknown'),
+              execution_mode: String(md.itinerary_adjust_execution_mode ?? 'ADVICE_ONLY'),
+              trip_id: tripId,
+              request_id: orchState.request_id,
+            });
+          }
+        }
+      }
+
       // 调试日志：记录状态机执行结果
       this.logger.log(`[AgentService] 状态机执行完成: success=${orchestrationResult.success}, decisionLog.length=${orchestrationResult.decisionLog?.length || 0}`);
       if (orchestrationResult.result?.state) {
@@ -1306,7 +1655,14 @@ export class AgentService {
         planVersion: orchState?.plan_version,
       }).catch((e: unknown) => {
         const errMsg = e instanceof Error ? e.message : String(e);
-        const matches = matchAxioms({ message: reqToPersist.message, constraints: (reqToPersist as any)?.constraints });
+        const matches = matchAxioms(
+          buildAxiomMatchContext({
+            message: reqToPersist.message,
+            constraints: (reqToPersist as any)?.constraints,
+            tripId: reqToPersist.trip_id,
+            clarificationAnswers: (reqToPersist as any)?.clarification_answers,
+          }),
+        );
         const dom = pickDominantAxiom(matches);
         const stage = 'decision_logs';
         const errorTypeRaw =
@@ -1362,7 +1718,21 @@ export class AgentService {
 
     const observeRuntimeProof = (reqToObserve: RouteAndRunRequestDto, orc: any, terminal: boolean) => {
       try {
-        const domAxiom = pickDominantAxiom(matchAxioms({ message: reqToObserve.message, constraints: undefined }));
+        const orchState = orc?.result?.state as { metadata?: Record<string, unknown>; trip_plan_request?: unknown } | undefined;
+        const orchStateMeta = orchState?.metadata;
+        const domAxiom = pickDominantAxiom(
+          matchAxioms(
+            buildAxiomMatchContext({
+              message: reqToObserve.message,
+              trip: orchState?.trip_plan_request as any,
+              tripId: reqToObserve.trip_id,
+              itinerary: (orchState as { itinerary?: unknown })?.itinerary as any,
+              routeAndRunIntent: orchStateMeta?.route_and_run_intent as any,
+              clarificationAnswers:
+                (reqToObserve as any)?.clarification_answers ?? (orchStateMeta?.clarification_answers as any),
+            }),
+          ),
+        );
         // If DecisionState/OrchestratorState is not available on this execution path, we still emit a
         // conservative observability sample so Scale Proof can compute P95 from runtime metrics.
         // This does not affect business decisions; it only fills a monitoring gap.
@@ -1384,6 +1754,7 @@ export class AgentService {
         const scoreRaw = audit_report?.session_consistency_score;
         const expectedCid = domAxiom?.axiom?.cid;
         const actualCid = audit_report?.dominant_cid ? String(audit_report.dominant_cid) : undefined;
+        const axiomMatchSource = axiomMatchSourceForMetrics(domAxiom);
         const score =
           typeof scoreRaw === 'number'
             ? scoreRaw
@@ -1405,17 +1776,20 @@ export class AgentService {
         if (domAxiom?.axiom_id && expectedCid && actualCid && expectedCid !== actualCid) {
           this.promMetrics?.recordAxiomDominantCidMismatch({
             axiom_id: domAxiom.axiom_id,
-            expected_cid: expectedCid,
-            actual_cid: actualCid,
+            expected_cid: normalizeAxiomCidForMetrics(expectedCid),
+            actual_cid: normalizeAxiomCidForMetrics(actualCid),
             stage: terminal ? 'TERMINAL' : 'REQUEST',
+            match_source: axiomMatchSource,
           });
         }
         if (delta_reason_kind === 'mismatch') {
           this.promMetrics?.recordAxiomSimRealMismatch({
             axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
-            expected_cid: expectedCid ?? 'UNKNOWN',
-            actual_cid: actualCid ?? 'UNKNOWN',
+            expected_cid: normalizeAxiomCidForMetrics(expectedCid),
+            actual_cid: normalizeAxiomCidForMetrics(actualCid),
             stage: terminal ? 'TERMINAL' : 'REQUEST',
+            match_source: axiomMatchSource,
+            severity: domAxiom?.axiom?.severity ?? 'UNKNOWN',
           });
         }
       } catch {
@@ -1532,7 +1906,10 @@ export class AgentService {
         requestId: request.request_id,
         userId: request.user_id,
         tripId: request.trip_id,
-        conversationHistory: request.conversation_context?.recent_messages,
+        conversationHistory: this.contextSlidingWindow.slice(
+          'orchestrator_claude',
+          request.conversation_context?.recent_messages,
+        ),
         userPreferences: {},
         routingTaskType: routeSignals.taskType,
       };
@@ -1673,7 +2050,10 @@ export class AgentService {
       request.message,
       {
         tripId: request.trip_id,
-        recentMessages: request.conversation_context?.recent_messages,
+        recentMessages: this.contextSlidingWindow.slice(
+          'default',
+          request.conversation_context?.recent_messages,
+        ),
         userId: request.user_id,
       },
       initialState.request_id
@@ -1785,7 +2165,9 @@ export class AgentService {
             evidence_refs: [],
             timestamp: new Date().toISOString(),
           })),
-          undefined
+          undefined,
+          undefined,
+          request.options,
         ),
       },
       observability: {
@@ -1830,7 +2212,7 @@ export class AgentService {
       );
     }
 
-    return response;
+    return applyLegacyMutationCommitGuard(request, response);
   }
 
   /**
@@ -1997,8 +2379,13 @@ export class AgentService {
       });
       runtimeMcpToolAllowlist = [...derived.allowedMcpToolNames];
       runtimeMcpCapProvenance = derived.provenance;
+      runtimeMcpToolAllowlist = applySubagentSandboxToMcpAllowlist(
+        request as RouteAndRunSubagentSandboxCarrier,
+        runtimeMcpToolAllowlist,
+        resolveOrchestrationSubAgentFromRequest(request.options),
+      );
       this.logger.debug(
-        `[AgenticRuntimeMcpCap] phase=${phase} provenance=${derived.provenance} tools=${runtimeMcpToolAllowlist.length}`,
+        `[AgenticRuntimeMcpCap] phase=${phase} provenance=${derived.provenance} tools=${runtimeMcpToolAllowlist?.length ?? 0}`,
       );
     }
 
@@ -2018,36 +2405,143 @@ export class AgentService {
         ? parseInt(String(envRetryBaseRaw), 10)
         : NaN;
 
-    const hitlGovEnabled = parseAgenticGovernanceHitlFlag(
-      this.configService?.get<string>('FEATURE_AGENTIC_GOVERNANCE_HITL') ??
-        process.env.FEATURE_AGENTIC_GOVERNANCE_HITL,
+    const toolGovernancePolicies =
+      readExecutionPolicyGatewayPolicies(request as RouteAndRunExecutionPolicyCarrier) ??
+      (this.executionPolicyGateway
+        ? this.executionPolicyGateway.mergeToolPolicies(
+            memory?.activeTripState?.constraints?.tool_policies,
+          )
+        : mergeExecutionToolPolicies(
+            false,
+            memory?.activeTripState?.constraints?.tool_policies,
+          ));
+    const governanceApprovedToolInvocations =
+      readExecutionPolicyGatewayApproved(request as RouteAndRunExecutionPolicyCarrier) ??
+      mergeApprovedToolInvocations(
+        memory?.activeTripState?.constraints?.approved_tool_invocations,
+        request.options?.agentic_approved_tool_invocations,
+      );
+
+    const maxTotalTokensRaw =
+      parseInt(
+        String(
+          this.configService?.get<string>('AGENTIC_LOOP_MAX_TOTAL_TOKENS') ??
+            process.env.AGENTIC_LOOP_MAX_TOTAL_TOKENS ??
+            '4000',
+        ),
+        10,
+      ) || 4000;
+
+    if (this.executionPolicyGateway) {
+      const admission = await this.executionPolicyGateway.checkAgenticAdmission(
+        request,
+        request.user_id,
+        maxTotalTokensRaw,
+      );
+      if (!admission.allowed) {
+        const quota = admission.quota;
+        this.logger.warn(
+          `[AgenticTokenQuota] fast-path blocked request_id=${request.request_id} scope=${quota.scope}`,
+        );
+        const assembler = this.getResponseAssembler();
+        const orch: OrchestrationResult = {
+          success: false,
+          answerText: quota.userMessage ?? '今日 Agent 推理额度已用尽。',
+          result: {
+            agentic_token_quota: {
+              scope: quota.scope,
+              used: quota.used,
+              limit: quota.limit,
+              remaining: quota.remaining,
+            },
+          },
+          stepsExecuted: [],
+          totalDuration: Date.now() - startTime,
+          decisionLog: [
+            {
+              request_id: request.request_id,
+              step: 'INTAKE' as OrchestrationStep,
+              actor: 'Orchestrator' as SubAgentType,
+              inputs_summary: 'AGENTIC_TOKEN_QUOTA',
+              outputs_summary: quota.scope,
+              evidence_refs: [],
+              timestamp: new Date().toISOString(),
+              metadata: { agentic_token_quota: quota },
+            },
+          ],
+        };
+        return assembler.assembleClaudeDynamicResponse({
+          request,
+          startTime,
+          traceInfo,
+          orchestrationResult: orch,
+          system1Result: {
+            success: false,
+            answerText: orch.answerText ?? '',
+            result: orch.result,
+          },
+          routingTaskType: signals.taskType,
+        });
+      }
+    }
+
+    const agenticMessage =
+      readSubagentSandboxSanitizedMessage(request as RouteAndRunSubagentSandboxCarrier) ??
+      request.message;
+
+    const checkpointResolution = resolveAgenticResumeCheckpointFromRequestOptions(
+      request.options,
+      agenticMessage,
     );
-    const toolGovernancePolicies = mergeAgenticToolPolicies(
-      hitlGovEnabled,
-      memory?.activeTripState?.constraints?.tool_policies,
-    );
-    const governanceApprovedToolInvocations = mergeApprovedToolInvocations(
-      memory?.activeTripState?.constraints?.approved_tool_invocations,
-      request.options?.agentic_approved_tool_invocations,
-    );
+    (request as RouteAndRunRequestDto & { __agenticTaskRollbackObservabilityV1?: AgenticTaskRollbackObservabilityV1 })
+      .__agenticTaskRollbackObservabilityV1 = checkpointResolution.rollbackObs;
+
+    if ('error' in checkpointResolution && checkpointResolution.error) {
+      this.logger.warn(
+        `[AgentService] agentic checkpoint/rollback invalid request_id=${request.request_id} reason=${checkpointResolution.error}`,
+      );
+      const assembler = this.getResponseAssembler();
+      const orch: OrchestrationResult = {
+        success: false,
+        answerText: '无法从所选 checkpoint 恢复 Agent 任务，请检查 message 与 rollback 参数。',
+        result: {
+          agentic_checkpoint_error: checkpointResolution.error,
+          agentic_tool_loop: {
+            stopped_reason: `resume_invalid:${checkpointResolution.error}`,
+            task_rollback_v1: checkpointResolution.rollbackObs,
+          },
+        },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+      return assembler.assembleClaudeDynamicResponse({
+        request,
+        startTime,
+        traceInfo,
+        orchestrationResult: orch,
+        system1Result: {
+          success: false,
+          answerText: orch.answerText ?? '',
+          result: orch.result,
+        },
+        routingTaskType: signals.taskType,
+      });
+    }
+
+    const resumeCheckpoint =
+      'checkpoint' in checkpointResolution ? checkpointResolution.checkpoint : null;
 
     let execResult: McpAgentExecutorRunResult;
     try {
       execResult = await withTimeout(
         this.mcpAgentExecutor.runLoop({
-          message: request.message,
+          message: agenticMessage,
           maxSteps,
           toolPacks,
+          tripId: request.trip_id?.trim(),
           budget: {
-            maxTotalTokens:
-              parseInt(
-                String(
-                  this.configService?.get<string>('AGENTIC_LOOP_MAX_TOTAL_TOKENS') ??
-                    process.env.AGENTIC_LOOP_MAX_TOTAL_TOKENS ??
-                    '4000',
-                ),
-                10,
-              ) || 4000,
+            maxTotalTokens: maxTotalTokensRaw,
             minRemainingMsForNextLlm:
               parseInt(
                 String(
@@ -2072,6 +2566,7 @@ export class AgentService {
             : {}),
           toolGovernancePolicies,
           governanceApprovedToolInvocations,
+          ...(resumeCheckpoint ? { resumeCheckpoint, taskRollbackV1: checkpointResolution.rollbackObs } : {}),
           ...(taskClosureBookingEnabled
             ? {
                 taskClosure: {
@@ -2091,6 +2586,15 @@ export class AgentService {
       return null;
     }
 
+    if (this.executionPolicyGateway && execResult.metrics?.total_tokens) {
+      mountRouteAndRunEstimatedCostUsd(request, estimateUsdFromTokens(execResult.metrics.total_tokens));
+      await this.executionPolicyGateway.recordAgenticTokenUsage(
+        request,
+        request.user_id,
+        execResult.metrics.total_tokens,
+      );
+    }
+
     const orch = this.buildOrchestrationResultFromAgentic(execResult, request.request_id);
 
     try {
@@ -2106,7 +2610,7 @@ export class AgentService {
     }
 
     const assembler = this.getResponseAssembler();
-    return await assembler.assembleClaudeDynamicResponse({
+    const assembled = await assembler.assembleClaudeDynamicResponse({
       request,
       startTime,
       traceInfo,
@@ -2120,16 +2624,25 @@ export class AgentService {
       },
       routingTaskType: signals.taskType,
     });
+    return applyAgenticRouteAndRunMutationGuard({
+      request,
+      response: assembled,
+      agenticTrace: execResult.trace,
+    });
   }
 
   private extractPrimaryRobustnessFromAgenticTrace(
     exec: McpAgentExecutorRunResult,
   ): OrchestratorRobustnessMetadata | undefined {
+    type AgenticToolEnvelope = {
+      success?: boolean;
+      orchestrator_robustness?: OrchestratorRobustnessMetadata;
+    };
     for (let i = exec.trace.steps.length - 1; i >= 0; i--) {
       const tr = exec.trace.steps[i]?.tool_results;
       if (!tr) continue;
       for (let j = tr.length - 1; j >= 0; j--) {
-        const env = tr[j]?.envelope;
+        const env = tr[j]?.envelope as AgenticToolEnvelope | undefined;
         if (env && env.success === false && env.orchestrator_robustness) {
           return env.orchestrator_robustness;
         }
@@ -2150,7 +2663,9 @@ export class AgentService {
       skillName: 'mcp.tool_loop',
       success:
         !st.tool_results?.length ||
-        !st.tool_results.some((t) => !t.envelope.success),
+        !st.tool_results.some(
+          (t) => !(t.envelope as { success?: boolean }).success,
+        ),
       duration: st.latency_ms ?? 0,
       result: st.tool_results,
     }));
@@ -2221,10 +2736,14 @@ export class AgentService {
     requestHash: string,
   ): RouteAndRunResponseDto {
     const attached = this.attachObservability(response, obsPayload, request);
+    const withRobustness = this.executionGateway.enrichResponseWithRobustnessRollout(
+      request,
+      attached,
+    );
     try {
-      const contractAck = assertExecutionGatewayPostReturnContract({ request, response: attached });
-      const obs = (attached.observability ?? {}) as Record<string, unknown>;
-      attached.observability = obs as RouteAndRunResponseDto['observability'];
+      const contractAck = assertExecutionGatewayPostReturnContract({ request, response: withRobustness });
+      const obs = (withRobustness.observability ?? {}) as Record<string, unknown>;
+      withRobustness.observability = obs as RouteAndRunResponseDto['observability'];
       if (contractAck.execution_trace_compatibility_v1) {
         obs.execution_trace_compatibility_v1 = contractAck.execution_trace_compatibility_v1;
       }
@@ -2241,7 +2760,7 @@ export class AgentService {
         `[UserStandingPreference] async merge failed: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
-    return this.finalizeSuccessfulFreshExecution(request, attached, requestHash);
+    return this.finalizeSuccessfulFreshExecution(request, withRobustness, requestHash);
   }
 
   private finalizeSuccessfulFreshExecution(
@@ -2254,6 +2773,9 @@ export class AgentService {
       return response;
     }
     const status = response.result?.status;
+    if (response.async_task?.is_async_delegated === true || status === 'PROCESSING') {
+      return response;
+    }
     if (status === 'NEED_MORE_INFO' || status === 'REDIRECT_REQUIRED') {
       return response;
     }
@@ -2341,6 +2863,7 @@ export class AgentService {
     const receivedRouteDirectionId = this.resolveRequestRouteDirectionId(request);
     const memContract = request ? (request as any).__memoryContractObs : undefined;
     const ledgerHealing = request ? (request as any).__ledgerHealingObs : undefined;
+    const decisionTriggerObs = request ? (request as any).__decisionTriggerObs : undefined;
     const execMemBinding =
       (request ? (request as any).__memoryExecutionBinding : undefined) ??
       this.agentExecutionContextStore.get()?.executionBinding;
@@ -2361,6 +2884,7 @@ export class AgentService {
       ...obs,
       ...(memContract ? { memory_contract: memContract } : {}),
       ...(ledgerHealing ? { ledger_healing: ledgerHealing } : {}),
+      ...(decisionTriggerObs ? { decision_trigger: decisionTriggerObs } : {}),
       ...(execMemBinding ? { execution_memory_binding: execMemBinding } : {}),
       ...(timelinePreview && timelinePreview.length > 0
         ? { execution_timeline_preview: timelinePreview }
@@ -2400,13 +2924,10 @@ export class AgentService {
     /** Dedup 命中以稳定化层 `obs.mode_final` 为准；缓存体可能仍带上一轮的 `orchestration_mode_final`。 */
     (resp.observability as RouteAndRunResponseDto['observability']).is_replayed =
       obs?.mode_final === 'DEDUP' || omfReplay === 'DEDUP';
-    if (
-      resp.observability &&
-      receivedRouteDirectionId &&
-      !('received_route_direction_id' in resp.observability)
-    ) {
+    if (resp.observability && receivedRouteDirectionId && !('received_route_direction_id' in resp.observability)) {
       (resp.observability as any).received_route_direction_id = receivedRouteDirectionId;
     }
+    applyRouteObservabilityMirror(resp.observability as Record<string, unknown>);
     // 与 CLI `--show-poi-trace` 对齐：把稳定化层证据同步进 payload.poiTrace
     const omf =
       (resp.observability as any).orchestration_mode_final ?? obs?.mode_final;

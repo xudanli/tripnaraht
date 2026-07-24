@@ -68,6 +68,30 @@ class TrainingConfig(BaseModel):
     num_epochs: int = Field(default=3, ge=1, le=10, description="训练轮数")
     batch_size: int = Field(default=2, ge=1, le=16, description="批次大小")
     dataset_name: str = Field(default="tripnara_decision", description="数据集名称")
+    training_stage: str = Field(
+        default="sft",
+        description="sft | dpo | sft_then_dpo",
+    )
+    dpo_dataset_path: Optional[str] = Field(
+        default=None,
+        description="DPO JSONL（Nest decision_trajectories 导出）",
+    )
+    sft_dataset_path: Optional[str] = Field(
+        default=None,
+        description="SFT repair JSONL（可选，覆盖 dataset_name 文件）",
+    )
+    dpo_pair_types: Optional[List[str]] = Field(
+        default=None,
+        description="planner_obedience | debate_narrator",
+    )
+    dpo_rejected_sources: Optional[List[str]] = Field(
+        default=None,
+        description="true_topology | violation_surrogate",
+    )
+    sft_num_epochs: Optional[int] = Field(default=None, ge=1, le=20)
+    dpo_num_epochs: Optional[int] = Field(default=None, ge=1, le=20)
+    sft_learning_rate: Optional[float] = Field(default=None, ge=1e-6, le=1e-2)
+    dpo_learning_rate: Optional[float] = Field(default=None, ge=1e-6, le=1e-2)
 
 
 class TrainingRequest(BaseModel):
@@ -92,6 +116,29 @@ class TrainingTask(BaseModel):
     loss: Optional[float] = None
     metrics: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    pipeline_stage: Optional[str] = None
+    checkpoint_sft_final: Optional[str] = None
+    production_adapter_path: Optional[str] = None
+
+
+class RegisterDecisionPackRequest(BaseModel):
+    """注册 Nest 导出的 decision-trajectory 训练包"""
+    dpo_jsonl_path: str
+    sft_sharegpt_jsonl_path: Optional[str] = None
+    sft_alpaca_jsonl_path: Optional[str] = None
+    dataset_dir: Optional[str] = Field(
+        default=None,
+        description="默认 /app/data 或 TRAINING_DATASET_DIR",
+    )
+
+
+class RegisterDecisionPackResponse(BaseModel):
+    dpo_registered_path: str
+    sft_train_registered_path: Optional[str] = None
+    manifest_path: str
+    line_count: int
+    by_pair_type: Dict[str, int]
+    by_rejected_source: Dict[str, int]
 
 
 class DatasetInfo(BaseModel):
@@ -188,6 +235,19 @@ async def gpu_info():
         return {"available": False, "reason": "PyTorch not installed"}
 
 
+@app.post("/training/pipeline/sft-then-dpo")
+async def start_sft_then_dpo_pipeline(
+    request: TrainingRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    显式启动 sft_then_dpo 两阶段串联（SFT Chain-of-Repair → DPO 真拓扑偏好）。
+    """
+    req = request.model_copy(deep=True)
+    req.config.training_stage = "sft_then_dpo"
+    return await start_training(req, background_tasks)
+
+
 @app.post("/training/start")
 async def start_training(request: TrainingRequest, background_tasks: BackgroundTasks):
     """启动训练任务"""
@@ -279,6 +339,36 @@ async def list_datasets():
     return datasets
 
 
+@app.post("/datasets/register-decision-pack", response_model=RegisterDecisionPackResponse)
+async def register_decision_pack(request: RegisterDecisionPackRequest):
+    """
+    将 TypeScript ETL 写出的 dpo_preferences_*.jsonl 安全复制到训练数据目录。
+    """
+    from decision_trajectory_ingest import register_decision_trajectory_pack
+
+    dataset_dir = request.dataset_dir or os.environ.get(
+        "TRAINING_DATASET_DIR", "/app/data",
+    )
+    try:
+        result = register_decision_trajectory_pack(
+            dpo_jsonl_path=request.dpo_jsonl_path,
+            sft_sharegpt_jsonl_path=request.sft_sharegpt_jsonl_path,
+            sft_alpaca_jsonl_path=request.sft_alpaca_jsonl_path,
+            dataset_dir=dataset_dir,
+        )
+    except (FileNotFoundError, PermissionError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return RegisterDecisionPackResponse(
+        dpo_registered_path=result.dpo_registered_path,
+        sft_train_registered_path=result.sft_train_registered_path,
+        manifest_path=result.manifest_path,
+        line_count=result.line_count,
+        by_pair_type=result.by_pair_type,
+        by_rejected_source=result.by_rejected_source,
+    )
+
+
 @app.post("/datasets/upload")
 async def upload_dataset(name: str, data: List[Dict[str, Any]]):
     """上传数据集"""
@@ -363,6 +453,45 @@ def torch_cuda_available() -> bool:
         return False
 
 
+def _task_config_to_pipeline_dict(task: TrainingTask, dataset_dir: str) -> Dict[str, Any]:
+    """将 API TrainingConfig 转为 pipeline_runner 使用的扁平配置。"""
+    cfg = task.config
+    out: Dict[str, Any] = {
+        "model_name": cfg.model_name,
+        "lora_rank": cfg.lora_rank,
+        "lora_alpha": cfg.lora_alpha,
+        "learning_rate": cfg.learning_rate,
+        "num_epochs": cfg.num_epochs,
+        "batch_size": cfg.batch_size,
+        "dataset_name": cfg.dataset_name,
+        "dataset_dir": dataset_dir,
+        "sft_dataset_path": cfg.sft_dataset_path,
+        "dpo_dataset_path": cfg.dpo_dataset_path,
+        "dpo_pair_types": cfg.dpo_pair_types,
+        "dpo_rejected_sources": cfg.dpo_rejected_sources,
+    }
+    if cfg.sft_num_epochs is not None:
+        out["sft_num_epochs"] = cfg.sft_num_epochs
+    if cfg.dpo_num_epochs is not None:
+        out["dpo_num_epochs"] = cfg.dpo_num_epochs
+    if cfg.sft_learning_rate is not None:
+        out["sft_learning_rate"] = cfg.sft_learning_rate
+    if cfg.dpo_learning_rate is not None:
+        out["dpo_learning_rate"] = cfg.dpo_learning_rate
+    return out
+
+
+def _apply_pipeline_metrics(task: TrainingTask, metrics_update: Dict[str, Any]) -> None:
+    task.metrics.update(metrics_update)
+    stage = metrics_update.get("pipeline_stage")
+    if stage:
+        task.pipeline_stage = stage
+    if metrics_update.get("checkpoint_sft_final"):
+        task.checkpoint_sft_final = metrics_update["checkpoint_sft_final"]
+    if metrics_update.get("production_adapter_path"):
+        task.production_adapter_path = metrics_update["production_adapter_path"]
+
+
 async def run_training_task(task: TrainingTask, resume_from_checkpoint: Optional[str] = None):
     """运行训练任务（后台）"""
     global current_training_process
@@ -371,7 +500,43 @@ async def run_training_task(task: TrainingTask, resume_from_checkpoint: Optional
         task.status = TrainingStatus.RUNNING
         task.started_at = datetime.now()
         
-        # 生成配置文件
+        stage = (task.config.training_stage or "sft").lower()
+        dataset_dir = os.environ.get("TRAINING_DATASET_DIR", "/app/data")
+
+        if stage == "sft_then_dpo":
+            from pipeline_runner import run_sft_then_dpo_pipeline
+
+            if not task.config.sft_dataset_path:
+                raise ValueError(
+                    "sft_then_dpo requires sft_dataset_path (Chain-of-Repair JSONL)",
+                )
+            if not task.config.dpo_dataset_path:
+                raise ValueError("sft_then_dpo requires dpo_dataset_path")
+
+            _apply_pipeline_metrics(task, {"pipeline_stage": "sft_running", "pipeline_mode": "sft_then_dpo"})
+
+            def on_stage_change(stage_name: str, payload: Dict[str, Any]) -> None:
+                _apply_pipeline_metrics(task, payload)
+                if stage_name == "sft_running":
+                    task.progress = 10.0
+                elif stage_name == "sft_completed":
+                    task.progress = 50.0
+                elif stage_name == "dpo_running":
+                    task.progress = 55.0
+                elif stage_name == "completed":
+                    task.progress = 100.0
+
+            result = await run_sft_then_dpo_pipeline(
+                task.task_id,
+                _task_config_to_pipeline_dict(task, dataset_dir),
+                on_stage_change=on_stage_change,
+            )
+            _apply_pipeline_metrics(task, result)
+            task.status = TrainingStatus.COMPLETED
+            task.progress = 100.0
+            return
+
+        # 单阶段：SFT 或 DPO
         config_path = Path("/tmp") / f"train_config_{task.task_id}.yaml"
         config_dict = {
             "model_name_or_path": task.config.model_name,
@@ -381,74 +546,81 @@ async def run_training_task(task: TrainingTask, resume_from_checkpoint: Optional
             "num_train_epochs": task.config.num_epochs,
             "per_device_train_batch_size": task.config.batch_size,
             "dataset": task.config.dataset_name,
+            "dataset_dir": dataset_dir,
             "output_dir": f"/app/outputs/{task.task_id}",
             "logging_dir": f"/app/logs/{task.task_id}",
+            "stage": stage,
         }
-        
+
+        if task.config.dpo_dataset_path:
+            config_dict["dpo_jsonl_path"] = task.config.dpo_dataset_path
+        if task.config.sft_dataset_path:
+            config_dict["sft_jsonl_path"] = task.config.sft_dataset_path
+        if task.config.dpo_pair_types:
+            config_dict["dpo_pair_types"] = task.config.dpo_pair_types
+        if task.config.dpo_rejected_sources:
+            config_dict["dpo_rejected_sources"] = task.config.dpo_rejected_sources
+
         import yaml
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             yaml.dump(config_dict, f)
-        
-        # 构建命令
-        cmd = ["python", "train_lora.py", "--config", str(config_path)]
+
+        if stage == "dpo":
+            cmd = ["python", "train_dpo.py", "--config", str(config_path)]
+        else:
+            cmd = ["python", "train_lora.py", "--config", str(config_path)]
         if resume_from_checkpoint:
             cmd.extend(["--resume_from_checkpoint", resume_from_checkpoint])
-        
-        logger.info(f"Starting training: {' '.join(cmd)}")
-        
-        # 启动训练进程
+
+        logger.info("Starting training: %s", " ".join(cmd))
+
         current_training_process = await asyncio.create_subprocess_exec(
             *cmd,
             cwd="/app/train",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-        
-        # 读取输出并更新状态
+
         async for line in current_training_process.stdout:
             line_str = line.decode().strip()
-            logger.info(f"[Training] {line_str}")
-            
-            # 解析进度（简单实现）
-            if "Epoch" in line_str:
-                # 尝试解析 epoch 信息
-                pass
-            if "loss" in line_str.lower():
-                # 尝试解析 loss
-                pass
-        
-        # 等待完成
+            logger.info("[Training] %s", line_str)
+
         await current_training_process.wait()
-        
+
         if current_training_process.returncode == 0:
             task.status = TrainingStatus.COMPLETED
             task.progress = 100.0
         else:
             task.status = TrainingStatus.FAILED
-            task.error = f"Training process exited with code {current_training_process.returncode}"
-        
+            task.error = (
+                f"Training process exited with code {current_training_process.returncode}"
+            )
+
     except Exception as e:
-        logger.error(f"Training failed: {e}")
+        logger.error("Training failed: %s", e)
         task.status = TrainingStatus.FAILED
         task.error = str(e)
-    
+        _apply_pipeline_metrics(task, {"pipeline_stage": "failed", "error": str(e)})
+
     finally:
         task.completed_at = datetime.now()
         current_training_process = None
-        
-        # 保存状态到 Redis
+
         if redis_client:
             try:
                 await redis_client.hset(
                     f"training:task:{task.task_id}",
                     mapping={
                         "status": task.status.value,
+                        "pipeline_stage": task.pipeline_stage or "",
+                        "checkpoint_sft_final": task.checkpoint_sft_final or "",
+                        "production_adapter_path": task.production_adapter_path or "",
                         "completed_at": task.completed_at.isoformat() if task.completed_at else "",
                         "error": task.error or "",
-                    }
+                    },
                 )
             except Exception as e:
-                logger.warning(f"Failed to save task state to Redis: {e}")
+                logger.warning("Failed to save task state to Redis: %s", e)
 
 
 # ============================================

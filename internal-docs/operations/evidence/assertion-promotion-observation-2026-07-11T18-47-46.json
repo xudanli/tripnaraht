@@ -1,0 +1,291 @@
+{
+  "evidenceType": "ASSERTION_PROMOTION_SHADOW_OBSERVATION",
+  "completedAt": "2026-07-11T18:47:46.760Z",
+  "shadowMode": true,
+  "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+  "weatherEpisodeId": "obs-episode-2026-07-11T18-47-46-d5",
+  "drills": {
+    "hazardLifecycle": {
+      "drill": "HazardLifecycle",
+      "weatherEpisodeId": "obs-episode-2026-07-11T18-47-46-d5",
+      "dayIndex": 5,
+      "before": {
+        "phase": "lifecycle_before",
+        "at": "2026-07-11T18:47:51.055Z",
+        "problemCount": 0,
+        "decisionQueueOpenCount": 2,
+        "promotionKeys": [
+          "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+          "weather:recovery:day:5:RECOVERY_OBSERVED"
+        ]
+      },
+      "phases": [
+        {
+          "phase": "initial_calm",
+          "at": "2026-07-11T18:47:54.235Z",
+          "ingest": {
+            "outcome": "SILENT",
+            "riskTier": "CALM",
+            "ingestId": "vci_35e81fdf-49f3-4488-a45e-bd23dcdfe87b",
+            "detail": "anti-noise gate — wind=14.4 gust=18 tier=CALM stored=true",
+            "windSemantic": "CALM"
+          },
+          "problemCount": 0,
+          "decisionQueueOpenCount": 2,
+          "calmStreak": 1,
+          "recoveryLedger": {
+            "detail": "recovery_observed calmStreak=1 tier=CALM",
+            "signal": "RECOVERY_OBSERVED",
+            "status": "RECOVERY_SHADOW",
+            "attempts": 1,
+            "ingestId": "vci_35e81fdf-49f3-4488-a45e-bd23dcdfe87b",
+            "ledgerId": "apl_31c9f2ac-95b9-4033-a58b-e5617277cb46",
+            "shadowMode": true,
+            "promotionKey": "weather:recovery:day:5:RECOVERY_OBSERVED",
+            "lastAttemptAt": "2026-07-11T18:47:51.669Z"
+          },
+          "semanticState": "SILENT/CALM",
+          "promotionKeys": [
+            "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "weather:recovery:day:5:RECOVERY_OBSERVED"
+          ]
+        },
+        {
+          "phase": "strong_wind_first",
+          "at": "2026-07-11T18:47:57.552Z",
+          "ingest": {
+            "outcome": "ASSERTION_EMITTED",
+            "riskTier": "PROHIBITED",
+            "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "ingestId": "vci_e5a9d6f3-b382-4cd3-b6ef-3cc3a9132f43",
+            "detail": "assertion emitted wind=93.6 tier=PROHIBITED",
+            "windSemantic": "STRONG_WIND"
+          },
+          "problemCount": 0,
+          "decisionQueueOpenCount": 2,
+          "calmStreak": 0,
+          "hazardLedger": {
+            "detail": "shadow dry-run items=0 wind=93.6",
+            "signal": "ASSERTION_EMITTED",
+            "status": "SHADOW_OBSERVED",
+            "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "attempts": 1,
+            "ingestId": "vci_e5a9d6f3-b382-4cd3-b6ef-3cc3a9132f43",
+            "ledgerId": "apl_b1aeee00-291e-46ae-b8bc-f10f845153f7",
+            "shadowMode": true,
+            "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "promotionKey": "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "lastAttemptAt": "2026-07-11T18:47:54.871Z"
+          },
+          "recoveryLedger": {
+            "detail": "recovery_observed calmStreak=1 tier=CALM",
+            "signal": "RECOVERY_OBSERVED",
+            "status": "RECOVERY_SHADOW",
+            "attempts": 1,
+            "ingestId": "vci_35e81fdf-49f3-4488-a45e-bd23dcdfe87b",
+            "ledgerId": "apl_31c9f2ac-95b9-4033-a58b-e5617277cb46",
+            "shadowMode": true,
+            "promotionKey": "weather:recovery:day:5:RECOVERY_OBSERVED",
+            "lastAttemptAt": "2026-07-11T18:47:51.669Z"
+          },
+          "semanticState": "ASSERTION_EMITTED/PROHIBITED",
+          "promotionKeys": [
+            "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "weather:recovery:day:5:RECOVERY_OBSERVED"
+          ]
+        },
+        {
+          "phase": "strong_wind_duplicate",
+          "at": "2026-07-11T18:48:01.262Z",
+          "ingest": {
+            "outcome": "SILENT",
+            "riskTier": "PROHIBITED",
+            "ingestId": "vci_89b0c532-a43e-4d0f-8755-e610e2c17822",
+            "detail": "anti-noise gate — wind=93.6 gust=100.8 tier=PROHIBITED stored=false",
+            "windSemantic": "STRONG_WIND"
+          },
+          "problemCount": 0,
+          "decisionQueueOpenCount": 2,
+          "calmStreak": 0,
+          "hazardLedger": {
+            "detail": "shadow dry-run items=0 wind=93.6",
+            "signal": "ASSERTION_EMITTED",
+            "status": "SHADOW_OBSERVED",
+            "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "attempts": 1,
+            "ingestId": "vci_e5a9d6f3-b382-4cd3-b6ef-3cc3a9132f43",
+            "ledgerId": "apl_b1aeee00-291e-46ae-b8bc-f10f845153f7",
+            "shadowMode": true,
+            "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "promotionKey": "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "lastAttemptAt": "2026-07-11T18:47:54.871Z"
+          },
+          "recoveryLedger": {
+            "detail": "recovery_observed calmStreak=1 tier=CALM",
+            "signal": "RECOVERY_OBSERVED",
+            "status": "RECOVERY_SHADOW",
+            "attempts": 1,
+            "ingestId": "vci_35e81fdf-49f3-4488-a45e-bd23dcdfe87b",
+            "ledgerId": "apl_31c9f2ac-95b9-4033-a58b-e5617277cb46",
+            "shadowMode": true,
+            "promotionKey": "weather:recovery:day:5:RECOVERY_OBSERVED",
+            "lastAttemptAt": "2026-07-11T18:47:51.669Z"
+          },
+          "semanticState": "SILENT/PROHIBITED",
+          "promotionKeys": [
+            "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "weather:recovery:day:5:RECOVERY_OBSERVED"
+          ]
+        },
+        {
+          "phase": "calm_recovery_1",
+          "at": "2026-07-11T18:48:04.837Z",
+          "ingest": {
+            "outcome": "ASSERTION_EMITTED",
+            "riskTier": "CALM",
+            "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795681630",
+            "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795681630",
+            "ingestId": "vci_52813004-1ce5-4e48-b9cb-b4195fddf003",
+            "detail": "assertion emitted wind=14.4 tier=CALM",
+            "windSemantic": "CALM"
+          },
+          "problemCount": 0,
+          "decisionQueueOpenCount": 2,
+          "calmStreak": 1,
+          "hazardLedger": {
+            "detail": "shadow dry-run items=0 wind=93.6",
+            "signal": "ASSERTION_EMITTED",
+            "status": "SHADOW_OBSERVED",
+            "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "attempts": 1,
+            "ingestId": "vci_e5a9d6f3-b382-4cd3-b6ef-3cc3a9132f43",
+            "ledgerId": "apl_b1aeee00-291e-46ae-b8bc-f10f845153f7",
+            "shadowMode": true,
+            "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "promotionKey": "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "lastAttemptAt": "2026-07-11T18:47:54.871Z"
+          },
+          "recoveryLedger": {
+            "detail": "recovery_observed calmStreak=1 tier=CALM",
+            "signal": "RECOVERY_OBSERVED",
+            "status": "RECOVERY_SHADOW",
+            "attempts": 1,
+            "ingestId": "vci_52813004-1ce5-4e48-b9cb-b4195fddf003",
+            "ledgerId": "apl_b89df8ed-e904-4327-9e37-8d932abbc69f",
+            "shadowMode": true,
+            "promotionKey": "weather:recovery:day:5:RECOVERY_OBSERVED",
+            "lastAttemptAt": "2026-07-11T18:48:02.248Z"
+          },
+          "semanticState": "ASSERTION_EMITTED/CALM",
+          "promotionKeys": [
+            "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "weather:recovery:day:5:RECOVERY_OBSERVED"
+          ]
+        },
+        {
+          "phase": "calm_recovery_2",
+          "at": "2026-07-11T18:48:07.902Z",
+          "ingest": {
+            "outcome": "SILENT",
+            "riskTier": "CALM",
+            "ingestId": "vci_119e4e96-4958-4b2c-af1a-b1d486c9d21b",
+            "detail": "anti-noise gate — wind=14.4 gust=18 tier=CALM stored=false",
+            "windSemantic": "CALM"
+          },
+          "problemCount": 0,
+          "decisionQueueOpenCount": 2,
+          "calmStreak": 2,
+          "hazardLedger": {
+            "detail": "shadow dry-run items=0 wind=93.6",
+            "signal": "ASSERTION_EMITTED",
+            "status": "SHADOW_OBSERVED",
+            "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "attempts": 1,
+            "ingestId": "vci_e5a9d6f3-b382-4cd3-b6ef-3cc3a9132f43",
+            "ledgerId": "apl_b1aeee00-291e-46ae-b8bc-f10f845153f7",
+            "shadowMode": true,
+            "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+            "promotionKey": "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "lastAttemptAt": "2026-07-11T18:47:54.871Z"
+          },
+          "recoveryLedger": {
+            "detail": "recovery_observed calmStreak=2 tier=CALM",
+            "signal": "RECOVERY_OBSERVED",
+            "status": "RECOVERY_SHADOW",
+            "attempts": 1,
+            "ingestId": "vci_119e4e96-4958-4b2c-af1a-b1d486c9d21b",
+            "ledgerId": "apl_d717fbff-4348-4ce7-b549-d1347e09cabe",
+            "shadowMode": true,
+            "promotionKey": "weather:recovery:day:5:RECOVERY_OBSERVED",
+            "lastAttemptAt": "2026-07-11T18:48:05.311Z"
+          },
+          "semanticState": "SILENT/CALM",
+          "promotionKeys": [
+            "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+            "weather:recovery:day:5:RECOVERY_OBSERVED"
+          ]
+        }
+      ],
+      "after": {
+        "phase": "calm_recovery_2",
+        "at": "2026-07-11T18:48:07.902Z",
+        "ingest": {
+          "outcome": "SILENT",
+          "riskTier": "CALM",
+          "ingestId": "vci_119e4e96-4958-4b2c-af1a-b1d486c9d21b",
+          "detail": "anti-noise gate — wind=14.4 gust=18 tier=CALM stored=false",
+          "windSemantic": "CALM"
+        },
+        "problemCount": 0,
+        "decisionQueueOpenCount": 2,
+        "calmStreak": 2,
+        "hazardLedger": {
+          "detail": "shadow dry-run items=0 wind=93.6",
+          "signal": "ASSERTION_EMITTED",
+          "status": "SHADOW_OBSERVED",
+          "eventId": "evt_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+          "attempts": 1,
+          "ingestId": "vci_e5a9d6f3-b382-4cd3-b6ef-3cc3a9132f43",
+          "ledgerId": "apl_b1aeee00-291e-46ae-b8bc-f10f845153f7",
+          "shadowMode": true,
+          "assertionId": "wsa_weather_a0a99999-9999-4999-8999-999999999999_day_5_1783795674618",
+          "promotionKey": "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+          "lastAttemptAt": "2026-07-11T18:47:54.871Z"
+        },
+        "recoveryLedger": {
+          "detail": "recovery_observed calmStreak=2 tier=CALM",
+          "signal": "RECOVERY_OBSERVED",
+          "status": "RECOVERY_SHADOW",
+          "attempts": 1,
+          "ingestId": "vci_119e4e96-4958-4b2c-af1a-b1d486c9d21b",
+          "ledgerId": "apl_d717fbff-4348-4ce7-b549-d1347e09cabe",
+          "shadowMode": true,
+          "promotionKey": "weather:recovery:day:5:RECOVERY_OBSERVED",
+          "lastAttemptAt": "2026-07-11T18:48:05.311Z"
+        },
+        "semanticState": "SILENT/CALM",
+        "promotionKeys": [
+          "weather:hazard:day:5:WEATHER_ACTIVITY_PROHIBITED",
+          "weather:recovery:day:5:RECOVERY_OBSERVED"
+        ]
+      },
+      "verdict": {
+        "initial_calm_recovery": true,
+        "first_strong_wind_shadow_observed": true,
+        "duplicate_strong_wind_suppressed": true,
+        "calm_1_streak_at_least_1": true,
+        "calm_2_recovery_shadow": true,
+        "problem_store_unchanged": true,
+        "visible_queue_unchanged": true,
+        "overall_pass": true
+      }
+    }
+  },
+  "closure": {
+    "weatherAutoPromotionShadowObservationClosure": "PASS",
+    "weatherHazardLifecycleDrill": "PASS",
+    "weatherRecoveryShadowClosure": "PASS",
+    "retrySchedulerOperationalDrill": "PASS"
+  }
+}

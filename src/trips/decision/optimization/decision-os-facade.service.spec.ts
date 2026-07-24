@@ -67,6 +67,7 @@ describe('DecisionOSFacadeService', () => {
       auditService,
       metricsService,
       lockService,
+      undefined, // rlhfPersistence
     );
 
     await facade.onModuleInit();
@@ -163,6 +164,55 @@ describe('DecisionOSFacadeService', () => {
 
       const result2 = await facade.processFeedback(feedback2);
       expect(result2.processed).toBe(true);
+    });
+
+    it('应在同时提供 predictedUtility 与 actualUtility 时返回 predictionRegret01', async () => {
+      learningLoop.configure({ minFeedbackCount: 99 });
+      const res = await facade.processFeedback({
+        decisionId: 'd-pred',
+        userId: 'u1',
+        predictedUtility: 0.9,
+        actualUtility: 0.55,
+      });
+      expect(res.processed).toBe(true);
+      expect(res.predictionRegret01).toBeCloseTo(0.35, 5);
+    });
+
+    it('应在注入 RlhfPersistence 时用 PREDICTION_REGRET 持久化 regret', async () => {
+      const rlhfPersistence = { recordFeedback: jest.fn().mockResolvedValue(undefined) };
+      learningLoop.configure({ minFeedbackCount: 99 });
+      const f = new DecisionOSFacadeService(
+        undefined,
+        undefined,
+        undefined,
+        policyNetwork,
+        learningLoop,
+        undefined,
+        differentiable,
+        auditService,
+        metricsService,
+        lockService,
+        rlhfPersistence as any,
+      );
+      await f.processFeedback({
+        decisionId: 'd-rlhf-pred',
+        userId: 'u-rlhf',
+        predictedUtility: 0.8,
+        actualUtility: 0.3,
+      });
+      expect(rlhfPersistence.recordFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u-rlhf',
+          tripId: 'd-rlhf-pred',
+          feedbackType: 'PREDICTION_REGRET',
+          feedbackData: expect.objectContaining({
+            predictionRegret01: expect.any(Number),
+            predictedUtility: 0.8,
+            actualUtility: 0.3,
+            decisionId: 'd-rlhf-pred',
+          }),
+        }),
+      );
     });
 
     it('should return processed false when learning loop unavailable', async () => {

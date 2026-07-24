@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "d0cd3a79-71a7-4cbb-b573-7270eb9c1de5",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "proactive-local-fallback-002",
+  "strategy": {
+    "strategyId": "proactive-local-fallback-002",
+    "philosophy": "局部降级保通，但严守拒绝底线",
+    "approach": "当 DEM 证据缺失时，先尝试在本地缓存或邻近路段（同 `countryCode=IS` 的已验证区域）查找替代海拔证据。若找到可信任的局部替代，则允许进入候选；若完全无替代，则执行 REJECT，并记录 `recovery-wind` 类 audit 片段说明局部搜索失败。",
+    "emphasis": "在保证规则不被突破的前提下，通过局部数据复用提升任务完成率，减少不必要的拒绝。",
+    "risk": "局部替代证据可能不准确（如海拔差异大于 50m），导致误判地形可通行性。若替代证据来源被污染，可能违反 `Abu 门禁` 的原始意图，引发合规审计问题。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户意图是7月去冰岛高地，但DEM证据缺失，根据规则必须REJECT，不能静默降级。当前没有本地缓存或邻近路段的海拔替代数据，因此执行REJECT，并记录recovery-wind审计片段。",
+      "action": "REJECT 请求：DEM 证据缺失，高地路段不可用。记录 audit 片段：recovery-wind 局部搜索失败，无替代海拔数据。",
+      "result": "[完成] REJECT 请求：DEM 证据缺失，高地路段不可用。记录 audit 片段：recovery-wind 局部搜索失败，无替代海拔数据。",
+      "isError": true,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:11:17.571Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:11:17.571Z",
+  "score": 95.5,
+  "evalMode": "fixture"
+}

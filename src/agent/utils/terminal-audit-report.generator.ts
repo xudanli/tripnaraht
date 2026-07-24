@@ -1,6 +1,8 @@
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { OrchestratorState } from '../interfaces/trip-plan.interface';
 import { itineraryToRoutePlanDraft } from '../../decision/kernel/dso-to-trips-converter';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
+import { buildL3ProofPrefixFromMatch } from '../axioms/axiom-l3-proof.util';
 import { matchAxioms } from '../axioms/axiom-matchers';
 import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 
@@ -459,9 +461,16 @@ export class AuditReportGenerator {
       }
 
       // 2) Last-resort: semantic intent projection from TripPlanRequest (closes evidence-chain breaks in online paths)
-      const msg = String((state as any)?.trip_plan_request?.message ?? '').trim();
-      const constraints = (state as any)?.trip_plan_request?.constraints as Record<string, any> | undefined;
-      const matchedTerrain = matchAxioms({ message: msg, constraints }).some((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
+      const axiomCtx = buildAxiomMatchContext({
+        message: (state as any)?.trip_plan_request?.message,
+        constraints: (state as any)?.trip_plan_request?.constraints,
+        trip: (state as any)?.trip_plan_request,
+        tripId: (state as any)?.trip_plan_request?.trip_id,
+        itinerary: (state as any)?.itinerary,
+        routeAndRunIntent: (state.metadata as any)?.route_and_run_intent,
+        clarificationAnswers: (state.metadata as any)?.clarification_answers,
+      });
+      const matchedTerrain = matchAxioms(axiomCtx).some((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
       const simTerrainHint =
         pfrCard &&
         Array.isArray((pfrCard as any).simulated_repair_traces) &&
@@ -525,9 +534,16 @@ export class AuditReportGenerator {
       // 当用户意图命中公理（Axiom）但验证链未落盘时，将一条 proof-carrying issue 注入候选池。
       // 注意：这里只影响“审计归因”，不改变执行链路。
       try {
-        const msg = String((state as any)?.trip_plan_request?.message ?? '').trim();
-        const constraints = (state as any)?.trip_plan_request?.constraints as Record<string, any> | undefined;
-        const matches = matchAxioms({ message: msg, constraints });
+        const axiomCtx = buildAxiomMatchContext({
+          message: (state as any)?.trip_plan_request?.message,
+          constraints: (state as any)?.trip_plan_request?.constraints,
+          trip: (state as any)?.trip_plan_request,
+          tripId: (state as any)?.trip_plan_request?.trip_id,
+          itinerary: (state as any)?.itinerary,
+          routeAndRunIntent: (state.metadata as any)?.route_and_run_intent,
+          clarificationAnswers: (state.metadata as any)?.clarification_answers,
+        });
+        const matches = matchAxioms(axiomCtx);
         const matchedTerrain = matches.some((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
         const matchedFatigue = matches.some((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
         const matchedEta = matches.some((m) => m.axiom_id === 'ETA_INFEASIBLE');
@@ -557,28 +573,55 @@ export class AuditReportGenerator {
         );
 
         const injected: any[] = [];
+        const terrainMatch = matches.find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
+        const fatigueMatch = matches.find((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
+        const etaMatch = matches.find((m) => m.axiom_id === 'ETA_INFEASIBLE');
         if ((matchedTerrain || simTerrainHint) && !existingCids.has(AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.cid)) {
+          const proof = terrainMatch
+            ? buildL3ProofPrefixFromMatch(terrainMatch, `DESTINATION:${state.request_id}`)
+            : buildL3ProofPrefixFromMatch(
+                {
+                  axiom: AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT,
+                  axiom_id: 'TERRAIN_F_ROAD_UNFIT',
+                  evidence: { match_source: 'HEURISTIC' },
+                },
+                `DESTINATION:${state.request_id}`,
+              );
           injected.push({
             class: 'CONFLICT',
-            message:
-              `[L3-PROOF|${AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.cid}|DESTINATION:${state.request_id}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-1|evidence:MODEL:intent_froad] ` +
-              `意图要求 F-road/高地，但车辆为 2WD（通常要求 4WD）。`,
+            message: `${proof} 意图要求 F-road/高地，但车辆为 2WD（通常要求 4WD）。`,
           });
         }
         if (matchedFatigue && !existingCids.has(AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid)) {
+          const proof = fatigueMatch
+            ? buildL3ProofPrefixFromMatch(fatigueMatch, 'DAY:INTAKE')
+            : buildL3ProofPrefixFromMatch(
+                {
+                  axiom: AXIOM_REGISTRY.FATIGUE_OVERLOAD,
+                  axiom_id: 'FATIGUE_OVERLOAD',
+                  evidence: { match_source: 'HEURISTIC' },
+                },
+                'DAY:INTAKE',
+              );
           injected.push({
             class: 'CONFLICT',
-            message:
-              `[L3-PROOF|${AXIOM_REGISTRY.FATIGUE_OVERLOAD.cid}|DAY:INTAKE|cmp:LEQ|actual:10|limit:8|unit:h|slack:-2|evidence:MODEL:intent_fatigue] ` +
-              `行程强度/驾驶时长超过疲劳承载上限。`,
+            message: `${proof} 行程强度/驾驶时长超过疲劳承载上限。`,
           });
         }
         if (matchedEta && !existingCids.has(AXIOM_REGISTRY.ETA_INFEASIBLE.cid)) {
+          const proof = etaMatch
+            ? buildL3ProofPrefixFromMatch(etaMatch, 'DAY:INTAKE')
+            : buildL3ProofPrefixFromMatch(
+                {
+                  axiom: AXIOM_REGISTRY.ETA_INFEASIBLE,
+                  axiom_id: 'ETA_INFEASIBLE',
+                  evidence: { match_source: 'HEURISTIC' },
+                },
+                'DAY:INTAKE',
+              );
           injected.push({
             class: 'CONFLICT',
-            message:
-              `[L3-PROOF|${AXIOM_REGISTRY.ETA_INFEASIBLE.cid}|DAY:INTAKE|cmp:LEQ|actual:1|limit:0|unit:bool|slack:-1|evidence:MODEL:intent_eta] ` +
-              `到达时间/时间窗约束不可满足（ETA infeasible）。`,
+            message: `${proof} 到达时间/时间窗约束不可满足（ETA infeasible）。`,
           });
         }
         if (injected.length > 0) {

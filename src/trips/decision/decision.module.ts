@@ -24,11 +24,20 @@ import { MemoryUpdaterService } from './feedback/memory-updater.service';
 import { DecisionController } from './decision.controller';
 import { DecisionStatsController } from './decision-stats.controller';
 import { DecisionEngineController } from './decision-engine.controller';
+import { BenchmarkPreflightGuard } from '../../decision-runtime/observability/benchmark-preflight.guard';
 import { TransportModule } from '../../transport/transport.module';
 import { RouteDirectionsModule } from '../../route-directions/route-directions.module';
 import { ContextEngineModule } from '../../agent/context-engine/context-engine.module';
 import { SkillsModule } from '../../skills/skills.module';
 import { DemModule } from '../dem/dem.module';
+import { TrailsModule } from '../../trails/trails.module';
+import { TrailPlanningAdapter } from './adapters/trail-planning.adapter';
+import { HardTrekTripMetadataService } from '../../hiking-demo/services/hard-trek-trip-metadata.service';
+import { ConstraintEvaluationModule } from '../../decision-runtime/constraints/constraint-evaluation.module';
+import { CanonicalPlanSelectionModule } from '../../decision-runtime/core/canonical-plan-selection.module';
+import { DecisionTriggerModule } from '../../decision-runtime/trigger/decision-trigger.module';
+import { CandidateProvidersModule } from '../../decision-runtime/candidates/candidate-providers.module';
+import { DecisionLabModule } from '../../decision-lab/decision-lab.module';
 
 // 使用 forwardRef 来解决循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
 // 注意：DecisionModule 现在主要通过 DemModule 获取 DEM 服务，而不是直接依赖 ReadinessModule
@@ -42,6 +51,7 @@ const enableContextEngineModule = process.env.ENABLE_CONTEXT_ENGINE_MODULE === '
 const enableSkillsModule = process.env.ENABLE_SKILLS_MODULE === 'true';
 // import { PoiFeaturesAdapterService } from './services/poi-features-adapter.service';
 import { StrategyOrchestratorService } from './services/strategy-orchestrator.service';
+import { PersonaClosureLoopService } from './services/persona-closure-loop.service';
 import { SpatialReplacementService } from './services/spatial-replacement.service';
 import { SpatialIssueDetectorService } from './services/spatial-issue-detector.service';
 import { FatigueCalculatorService } from './services/fatigue-calculator.service';
@@ -77,6 +87,7 @@ import { WearableIntegrationService } from './services/wearable-integration.serv
 import { FitnessAnalyticsController } from './controllers/fitness-analytics.controller';
 import { DecisionStateManagerService } from './services/decision-state-manager.service';
 import { EcoIdentityLedgerPersistenceService } from './services/eco-identity-ledger-persistence.service';
+import { AlignmentTier3PersistenceService } from './services/alignment-tier3-persistence.service';
 import { DsoLatestStateFromTripProvider } from './services/dso-latest-state-from-trip.provider';
 import { DSO_LATEST_STATE_PROVIDER } from '../../decision/kernel/dso-latest-state-provider.interface';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -96,6 +107,13 @@ import { OptimizationModule } from './optimization/optimization.module';
 // Phase 2: 数据飞轮（Decision → Outcome → Parameter Update → Better Decision）
 import { FlywheelModule } from './flywheel/flywheel.module';
 import { DecisionFlywheelController } from './flywheel/decision-flywheel.controller';
+import { DecisionExplainController } from './controllers/decision-explain.controller';
+import { DecisionTelemetryController } from './telemetry/decision-telemetry.controller';
+import { DecisionTelemetryService } from './telemetry/decision-telemetry.service';
+import { TravelDnaInferenceService } from './telemetry/travel-dna-inference.service';
+import { FulfillmentCapabilityService } from './telemetry/fulfillment-capability.service';
+import { DecisionFeedbackLoopService } from './telemetry/decision-feedback-loop.service';
+import { DecisionTelemetryReplayService } from './telemetry/decision-telemetry-replay.service';
 import { InterventionEngine } from '../../decision/actuator/intervention-engine';
 import { SharedMemoryModule } from '../../agent/memory/shared-memory.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -119,6 +137,7 @@ try {
     PrismaModule, // DsoLatestStateFromTripProvider 需要
     TransportModule, // 必需：SenseToolsAdapter 需要 SmartRoutesService
     DemModule, // 恢复：DemModule 不是问题
+    TrailsModule, // Phase 2.5：硬徒步 Trail 段编排
     ...(DataQualityModule ? [forwardRef(() => DataQualityModule)] : []), // 数据质量模块（用于信息源标注）
     ...(DataModelingModule ? [DataModelingModule] : []), // 数据建模模块（用于不确定性建模）
     // forwardRef(() => ReadinessModule), // 暂时禁用，使用懒加载获取 ReadinessService（打破循环依赖）
@@ -137,7 +156,12 @@ try {
     FlywheelModule, // Phase 2: 数据飞轮
     IcelandRoadModule, // 冰岛路网约束图 MVP → ROAD_CONSTRAINT_UPDATE / semantic delta
     CausalRuntimeModule, // P0: Causal Travel Runtime — intervention schema + travel event dual-write
-  ], // 使用 forwardRef 避免与 ReadinessModule 和 SkillsModule 的循环依赖（ReadinessModule -> TripsModule -> DecisionModule -> ReadinessModule）
+    forwardRef(() => ConstraintEvaluationModule), // ADR-006: unified constraint gateway (optional via env)
+    forwardRef(() => CanonicalPlanSelectionModule), // ADR-006 P1: full plan canonical finalize
+    forwardRef(() => DecisionTriggerModule), // P1: Decision Trigger Gateway (opt-in via env)
+    CandidateProvidersModule, // P1: provider registry
+    DecisionLabModule, // ADR-007: solver lab benchmark (read-only)
+  ],
   controllers: [
     DecisionController, // 恢复：决策控制器（Abu/Dr.Dre/Neptune 策略）
     DecisionEngineController, // 决策引擎统一 API：/api/decision-engine/v1/*
@@ -146,10 +170,16 @@ try {
     FitnessAssessmentController, // Phase 1：体能评估控制器
     FitnessAnalyticsController, // Phase 2：体能数据分析控制器
     DecisionFlywheelController, // Phase 2+: Live preview + risk feedback gateway
+    DecisionExplainController, // unified explainability counterfactual API
+    DecisionTelemetryController, // 决策埋点 + Travel DNA + B 端履约 MVP
   ],
   providers: [
+    BenchmarkPreflightGuard,
     InterventionEngine,
     EcoIdentityLedgerPersistenceService,
+    AlignmentTier3PersistenceService,
+    TrailPlanningAdapter,
+    HardTrekTripMetadataService,
     TripDecisionEngineService,
     SenseToolsAdapter,
     // 二分法：暂时禁用最后2个服务，测试是否导致阻塞
@@ -190,6 +220,7 @@ try {
     WeatherDecisionEvidenceService,
     // PersonaExplanationService,
     StrategyOrchestratorService, // 恢复：DecisionRunThreeGuardiansSkill 需要它（所有依赖都已提供，应该不会导致阻塞）
+    PersonaClosureLoopService,
     SpatialReplacementService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     SpatialIssueDetectorService, // 必需：NeptuneStrategy 需要它（DecisionNeptuneRepairSkill 需要 NeptuneStrategy）
     FatigueCalculatorService, // 必需：DrDreStrategy 需要它（DecisionDrdrePaceSkill 需要 DrDreStrategy）
@@ -207,6 +238,11 @@ try {
     OpsRealityAuditService, // P-OPS-2：reality audit snapshots（需 OPS_REALITY_AUDIT=1 + DB migration）
     OperationalPolicyService, // P-OPS-3：versioned operational policy（OPS_OPERATIONAL_POLICY_JSON）
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
+    DecisionTelemetryService, // 决策埋点四元组统一入口
+    TravelDnaInferenceService, // 行为反推 Travel DNA
+    FulfillmentCapabilityService, // B 端履约能力画像（冰岛 MVP）
+    DecisionFeedbackLoopService, // 偏好 → 履约 → 满意度闭环
+    DecisionTelemetryReplayService, // 反事实决策回放
     DecisionStateManagerService, // 决策状态管理服务
     { provide: DSO_LATEST_STATE_PROVIDER, useClass: DsoLatestStateFromTripProvider },
     ThreeLayerExplanationService, // 三层解释服务
@@ -238,6 +274,7 @@ try {
   ],
   exports: [
     EcoIdentityLedgerPersistenceService,
+    AlignmentTier3PersistenceService,
     TripDecisionEngineService,
     DSO_LATEST_STATE_PROVIDER,
     // 二分法：暂时禁用最后2个服务，测试是否导致阻塞
@@ -298,6 +335,11 @@ try {
     DecisionLogStorageService, // 必需：TripsService 需要它
     OpsRealityAuditService, // P-OPS-2 + Agent OPS bridge
     DecisionLoggingService, // 决策日志记录服务（logDecision、logOutcome）
+    DecisionTelemetryService, // 决策埋点四元组统一入口
+    TravelDnaInferenceService,
+    FulfillmentCapabilityService,
+    DecisionFeedbackLoopService,
+    DecisionTelemetryReplayService,
     DecisionStateManagerService, // 决策状态管理服务
     ThreeLayerExplanationService, // 三层解释服务
     RhythmMatchingService, // 节奏匹配服务（路线节奏特性提取、用户节奏容量提取、动态节奏调整）
@@ -320,6 +362,7 @@ try {
     CalibrationSchedulerService,
     WearableIntegrationService,
     TripClosedLoopService,
+    DecisionTriggerModule,
     // Phase 1/2/3: 优化模块服务（通过 re-export）
     // OptimizationModule 已通过 imports 导入，相关服务通过该模块获取
   ],

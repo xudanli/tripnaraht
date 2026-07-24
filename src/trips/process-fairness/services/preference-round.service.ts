@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import type { WishCategory } from '../../wishlist/types/trip-wish.types';
@@ -44,6 +45,7 @@ const DEFAULT_ROUND_MS = 2 * 60 * 60 * 1000;
 @Injectable()
 export class PreferenceRoundService {
   constructor(
+    private readonly moduleRef: ModuleRef,
     private readonly prisma: PrismaService,
     private readonly access: TripPreferenceRoundAccessService,
   ) {}
@@ -86,6 +88,27 @@ export class PreferenceRoundService {
       select: { id: true },
     });
     return row?.id ?? null;
+  }
+
+  /** One query for all in-flight rounds — avoids N+1 in collaborative task lists. */
+  async listActiveRoundsForTrip(
+    tripId: string,
+  ): Promise<Map<string, { id: string; closesAt: Date | null }>> {
+    const rows = await this.prisma.tripPreferenceRound.findMany({
+      where: {
+        tripId,
+        status: { in: ['collecting', 'synthesizing'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, domain: true, closesAt: true },
+    });
+    const map = new Map<string, { id: string; closesAt: Date | null }>();
+    for (const row of rows) {
+      if (!map.has(row.domain)) {
+        map.set(row.domain, { id: row.id, closesAt: row.closesAt });
+      }
+    }
+    return map;
   }
 
   /**
@@ -338,6 +361,9 @@ export class PreferenceRoundService {
     });
 
     const updated = await this.requireRound(tripId, roundId);
+    if (updated.status === 'closed') {
+      await this.notifyNegotiationClosed(tripId, roundId);
+    }
     return this.toDetail(updated, userId);
   }
 
@@ -366,7 +392,22 @@ export class PreferenceRoundService {
     );
 
     const updated = await this.requireRound(tripId, roundId);
+    await this.notifyNegotiationClosed(tripId, roundId);
     return this.toDetail(updated, userId);
+  }
+
+  private async notifyNegotiationClosed(tripId: string, roundId: string): Promise<void> {
+    try {
+      const { DecisionProblemNegotiationOrchestratorService } = await import(
+        './decision-problem-negotiation-orchestrator.service'
+      );
+      const orchestrator = this.moduleRef.get(DecisionProblemNegotiationOrchestratorService, {
+        strict: false,
+      });
+      await orchestrator?.onRoundClosed(tripId, roundId);
+    } catch {
+      // negotiation binding optional
+    }
   }
 
   private allVotersSubmitted(

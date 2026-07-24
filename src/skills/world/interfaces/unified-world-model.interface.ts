@@ -7,6 +7,7 @@
  */
 
 import { WorldModelContext } from '../../../trips/decision/shared/world-model.types';
+import type { DataProvenance } from '../world-model-provenance.types';
 
 /**
  * 实时天气预警
@@ -41,7 +42,10 @@ export interface RoadStatusUpdate {
  */
 export interface PoiStatusUpdate {
   poiId: string;
-  currentStatus: 'OPEN' | 'CLOSED' | 'CROWDED';
+  /** @deprecated 使用 status；保留以兼容旧消费者 */
+  currentStatus?: 'OPEN' | 'CLOSED' | 'CROWDED' | 'UNKNOWN';
+  status: 'OPEN' | 'CLOSED' | 'CROWDED' | 'UNKNOWN';
+  provenance: DataProvenance;
   waitTime?: number; // 等待时间（分钟）
   lastUpdate: Date;
 }

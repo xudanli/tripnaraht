@@ -1,0 +1,229 @@
+{
+  "schemaId": "tripnara.destination.ontology.road_types@v1",
+  "countryCode": "IS",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "ontologyNodeId": "ontology:region:IS:SNAEFELLSNES",
+      "kind": "Region",
+      "labelZh": "斯奈山半岛",
+      "labelEn": "Snæfellsnes",
+      "roadRefsZh": "54、56、574（半岛骨架多为铺装；观景点岔路偶见碎石，以 road.is 为准）",
+      "roadIsKeys": ["54", "56", "574"],
+      "roadIds": [],
+      "messageTriggersLower": [
+        "斯奈山",
+        "斯奈山半岛",
+        "snaefellsnes",
+        "snæfellsnes",
+        "教会山",
+        "草帽山",
+        "kirkjufell",
+        "格伦达菲厄泽",
+        "grundarfjordur",
+        "djúpalón",
+        "djupalon",
+        "阿尔纳斯塔皮",
+        "arnarstapi",
+        "斯蒂基斯霍尔米",
+        "stýkkishólmur",
+        "stykkisholmur"
+      ],
+      "tripDraftSignals": [
+        "教会山",
+        "草帽山",
+        "格伦达菲厄泽",
+        "斯奈山",
+        "斯奈菲尔",
+        "Djúpalón",
+        "Djupalon",
+        "阿尔纳斯塔皮",
+        "斯蒂基斯",
+        "Snæfells",
+        "Snaefells"
+      ]
+    },
+    {
+      "ontologyNodeId": "ontology:corridor:IS:SOUTH_COAST",
+      "kind": "Corridor",
+      "labelZh": "冰岛南岸走廊",
+      "labelEn": "South Coast (Route 1 corridor)",
+      "roadRefsZh": "一号公路（Route 1）为主轴；支线含 218、249 等，以 road.is 为准",
+      "roadIsKeys": ["1", "218", "249"],
+      "roadIds": ["IS-R1-SOUTH"],
+      "messageTriggersLower": [
+        "南岸",
+        "南部海岸",
+        "维克",
+        "vik",
+        "斯科加",
+        "skoga",
+        "塞里雅兰",
+        "seljalands",
+        "黑沙滩",
+        "冰河湖",
+        "杰古沙龙",
+        "钻石沙滩"
+      ],
+      "tripDraftSignals": [
+        "维克",
+        "斯科加",
+        "塞里雅兰",
+        "冰河湖",
+        "杰古沙龙",
+        "黑沙滩",
+        "斯卡夫塔",
+        "钻石沙"
+      ]
+    },
+    {
+      "ontologyNodeId": "ontology:road:IS:F208",
+      "kind": "Road",
+      "labelZh": "F208 高地路（Kjölur）",
+      "labelEn": "F208 Kjölur highland route",
+      "roadRefsZh": "F 路；冬季常封闭，开放时需 4WD 与高地驾驶经验",
+      "roadIsKeys": ["F208"],
+      "roadIds": ["F208"],
+      "regionCodes": ["IS_CENTRAL_HIGHLANDS", "IS_SOUTH"],
+      "segmentType": "F_ROAD",
+      "spatialSegmentId": "seg-is-f208",
+      "messageTriggersLower": ["f208", "kjölur", "kjolur", "中央高地"],
+      "tripDraftSignals": ["F208", "Kjölur", "Landmannalaugar", "兰德曼纳"]
+    },
+    {
+      "ontologyNodeId": "ontology:road:IS:F206",
+      "kind": "Road",
+      "labelZh": "F206 高地路",
+      "labelEn": "F206 highland route",
+      "roadRefsZh": "F 路；路况多变，出发前查 wind/road.is",
+      "roadIsKeys": ["F206"],
+      "roadIds": ["F206"],
+      "regionCodes": ["IS_CENTRAL_HIGHLANDS"],
+      "segmentType": "F_ROAD",
+      "spatialSegmentId": "seg-is-f206",
+      "messageTriggersLower": ["f206"],
+      "tripDraftSignals": ["F206"]
+    },
+    {
+      "ontologyNodeId": "ontology:road:IS:F35",
+      "kind": "Road",
+      "labelZh": "F35 高地路（Kjalvegur）",
+      "labelEn": "F35 Kjalvegur",
+      "roadRefsZh": "F 路；季节性开放，夏季常见 ADVISORY",
+      "roadIsKeys": ["F35"],
+      "roadIds": ["F35"],
+      "regionCodes": ["IS_CENTRAL_HIGHLANDS"],
+      "segmentType": "F_ROAD",
+      "spatialSegmentId": "seg-is-f35",
+      "messageTriggersLower": ["f35", "kjalvegur"],
+      "tripDraftSignals": ["F35", "Kjalvegur"]
+    },
+    {
+      "ontologyNodeId": "ontology:road:IS:R1_SOUTH",
+      "kind": "Road",
+      "labelZh": "一号公路南岸段",
+      "labelEn": "Route 1 South Coast segment",
+      "roadRefsZh": "Route 1 Selfoss–Vík 段；风暴季易 LIMITED/CLOSED",
+      "roadIsKeys": ["1"],
+      "roadIds": ["IS-R1-SOUTH"],
+      "regionCodes": ["IS_SOUTH"],
+      "segmentType": "HIGHWAY",
+      "spatialSegmentId": "seg-is-r1-south",
+      "messageTriggersLower": ["route 1", "一号公路", "selfoss", "vik"],
+      "tripDraftSignals": ["Selfoss", "Vík", "Route 1"]
+    }
+  ],
+  "spatialSeed": {
+    "pois": [
+      {
+        "id": "poi-is-f208-west",
+        "name": "F208 West (Hrauneyjar area)",
+        "coordinates": { "lat": 64.0, "lng": -19.2 },
+        "closed": false
+      },
+      {
+        "id": "poi-is-f208-east",
+        "name": "F208 East (Kerlingarfjöll approach)",
+        "coordinates": { "lat": 64.3, "lng": -19.8 },
+        "closed": false
+      },
+      {
+        "id": "poi-is-f206-south",
+        "name": "F206 South junction",
+        "coordinates": { "lat": 63.9, "lng": -18.5 },
+        "closed": false
+      },
+      {
+        "id": "poi-is-f206-north",
+        "name": "F206 North highland",
+        "coordinates": { "lat": 64.1, "lng": -18.9 },
+        "closed": false
+      },
+      {
+        "id": "poi-is-f35-south",
+        "name": "F35 South (Gullfoss area)",
+        "coordinates": { "lat": 64.3, "lng": -20.1 },
+        "closed": false
+      },
+      {
+        "id": "poi-is-f35-north",
+        "name": "F35 North (Hveravellir approach)",
+        "coordinates": { "lat": 64.8, "lng": -19.5 },
+        "closed": false
+      },
+      {
+        "id": "poi-is-r1-selfoss",
+        "name": "Selfoss (Route 1)",
+        "coordinates": { "lat": 63.933, "lng": -21.003 },
+        "closed": false
+      },
+      {
+        "id": "poi-is-r1-vik",
+        "name": "Vík (Route 1)",
+        "coordinates": { "lat": 63.419, "lng": -19.007 },
+        "closed": false
+      }
+    ],
+    "segments": [
+      {
+        "id": "seg-is-f208",
+        "from_poi_id": "poi-is-f208-west",
+        "to_poi_id": "poi-is-f208-east",
+        "segment_type": "F_ROAD",
+        "ontologyNodeId": "ontology:road:IS:F208",
+        "rules": { "road_is_road_code": "F208", "road_id": "F208" },
+        "seasonal_closures": [
+          {
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-04-30T23:59:59Z",
+            "reason": "Winter highland closure (typical)"
+          }
+        ]
+      },
+      {
+        "id": "seg-is-f206",
+        "from_poi_id": "poi-is-f206-south",
+        "to_poi_id": "poi-is-f206-north",
+        "segment_type": "F_ROAD",
+        "ontologyNodeId": "ontology:road:IS:F206",
+        "rules": { "road_is_road_code": "F206", "road_id": "F206" }
+      },
+      {
+        "id": "seg-is-f35",
+        "from_poi_id": "poi-is-f35-south",
+        "to_poi_id": "poi-is-f35-north",
+        "segment_type": "F_ROAD",
+        "ontologyNodeId": "ontology:road:IS:F35",
+        "rules": { "road_is_road_code": "F35", "road_id": "F35" }
+      },
+      {
+        "id": "seg-is-r1-south",
+        "from_poi_id": "poi-is-r1-selfoss",
+        "to_poi_id": "poi-is-r1-vik",
+        "segment_type": "HIGHWAY",
+        "ontologyNodeId": "ontology:road:IS:R1_SOUTH",
+        "rules": { "road_is_road_code": "1", "road_id": "IS-R1-SOUTH" }
+      }
+    ]
+  }
+}

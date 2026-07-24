@@ -56,8 +56,19 @@ describe('OpeningHoursUtil', () => {
       expect(OpeningHoursUtil.isOpenNow('24 Hours')).toBe(true);
     });
 
+    it('should return true for "全天开放"', () => {
+      expect(OpeningHoursUtil.isOpenNow('全天开放')).toBe(true);
+    });
+
     it('should return false for "Closed"', () => {
       expect(OpeningHoursUtil.isOpenNow('Closed')).toBe(false);
+    });
+  });
+
+  describe('isOpenAt', () => {
+    it('should return true for "全天开放" at any planned time', () => {
+      const at = new Date('2026-06-03T14:55:00.000Z');
+      expect(OpeningHoursUtil.isOpenAt('全天开放', at, 'Atlantic/Reykjavik')).toBe(true);
     });
   });
 });

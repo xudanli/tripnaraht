@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.wind.07_dyrholaey_replace_indoor",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "wind",
+  "title": "Dyrh\u00f3laey unsafe wind \u2014 REPLACE to V\u00edk museum alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/wind/problems/07_dyrholaey_replace_indoor.problem.json",
+  "notes": [
+    "REPLACE_POOL a3\u2192is.vik_museum_alt"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

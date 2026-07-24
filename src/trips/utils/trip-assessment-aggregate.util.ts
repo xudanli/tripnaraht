@@ -121,3 +121,9 @@ export function scoreToAssessmentGrade(score: number): AssessmentGrade {
   if (score >= 40) return AssessmentGrade.POOR;
   return AssessmentGrade.BAD;
 }
+
+export function scoreToAssessmentStatus(score: number): AssessmentStatus {
+  if (score >= 75) return AssessmentStatus.REASONABLE;
+  if (score >= 50) return AssessmentStatus.NEEDS_ATTENTION;
+  return AssessmentStatus.HAS_ISSUES;
+}

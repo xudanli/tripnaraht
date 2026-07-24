@@ -17,6 +17,7 @@ import type { RepairTrace, SimulatedRepairTrace } from '../../../agent/services/
 import type { ResearchAssetScope } from '../../../agent/utils/research-asset-scope.util';
 import type { UserCognitiveProfile } from '../../../agent/memory/experience-replay/user-cognitive-profile.types';
 import type { ResearchConflictNegotiationReport } from '../../../agent/teams/research/research-conflict-negotiation.types';
+import type { PersonaClosureAudit } from '../../../trips/decision/shared/persona-closure.types';
 
 /** 阶段执行上下文 */
 export interface PhaseExecutorContext {
@@ -77,10 +78,20 @@ export interface PhaseExecutorContext {
    */
   researchAtomicRollbackSnapshot?: Record<string, unknown>;
   /**
+   * RETURN_TO_RESEARCH：禁止 scoped_partial 因缺 prior/scopes 静默降级为 full。
+   */
+  forbidScopedPartialDegradeToFull?: boolean;
+  /**
    * 4.0 Experience Replay：由 `MemoryKernelService` 在 `MEMORY_KERNEL_LOAD_BUDGET_MS` 内注入的非 PII 认知侧写；
    * 缺省或未加载成功时不存在（走 3.0 无记忆路径）。
    */
   userCognitiveProfile?: UserCognitiveProfile;
+  /** Persona closure 收敛审计（FINALIZE / three-guardians 写入） */
+  personaClosureAudit?: PersonaClosureAudit;
+  /** Phase D：Travel Compiler 产物；VERIFY 可读 Graph SSOT */
+  canonicalTravelGraph?: import('../../../travel-compiler/contracts/canonical-travel-graph.types').CanonicalTravelGraph;
+  /** Phase D：VERIFY 输入 itinerary 来源 */
+  verifyItinerarySource?: 'planner_draft' | 'canonical_travel_graph@v0';
 }
 
 /** GateResult 兼容结构（避免直接依赖 trip-plan.interface） */
@@ -287,6 +298,99 @@ export interface NarrationLike {
   visual_hint?: string;
   /** BFF：语音韵律 / TTS 建议（多模态语音） */
   audio_prosody?: string;
+  /** OPTIMIZE/CGUS 决策判决书中文摘要 */
+  optimization_decision_narration_zh?: string;
+  /** 因果保护叙事（内核 trace 编译） */
+  causal_protection_summary_zh?: string;
+  /** 结构化因果链（UI / 审计） */
+  causal_chain?: import('../../../trips/decision/narration/causal-chain.types').CausalChain;
+  /** Decision OS v2：稀疏区 / 开放世界 / 留白叙事摘要 */
+  decision_context_summary?: {
+    sparse_profile_id?: string;
+    intentional_slack_count?: number;
+    open_world_stub_count?: number;
+    mention_count?: number;
+  };
+  /** unified-explainability@v1（与 explain.unified / decision.explainForHuman 同源） */
+  unified_explainability?: import('../../../trips/decision/explainability/unified-explainability.types').UnifiedExplainabilityEnvelopeV1;
+  /** 客户端 payload：envelope 仅在 explain.unified */
+  unified_explainability_ref?: import('../../../trips/decision/explainability/dedupe-unified-explainability-client-payload.util').UnifiedExplainabilityClientRef;
+  /** 三人格确定性叙事（envelope 投影） */
+  guardian_narrative_zh?: {
+    abu: string;
+    drdre: string;
+    neptune: string;
+  };
+  /** 锚定 reasonCodes / evidenceRefs 的风险摘要 */
+  risk_highlights?: Array<{
+    risk: string;
+    severity: 'high' | 'medium' | 'low';
+    explanation: string;
+    reason_codes?: string[];
+    evidence_refs?: string[];
+  }>;
+  /** 路段级证据卡片（坡度/步行/避坑；schema tripnara.leg_evidence@v1） */
+  leg_evidence_cards?: Array<{
+    schema: 'tripnara.leg_evidence@v1';
+    leg_id: string;
+    day_index: number;
+    day_date: string;
+    from_label: string;
+    to_label: string;
+    eta_minutes?: number;
+    distance_meters?: number;
+    transport_mode?: 'walk' | 'drive' | 'transit' | 'mixed';
+    summary_zh: string;
+    pitfall_tips_zh?: string[];
+    severity?: 'info' | 'warn';
+  }>;
+  /** POI 级避坑卡片（入口/排队/预约；schema tripnara.poi_pitfall@v1） */
+  poi_pitfall_cards?: Array<{
+    schema: 'tripnara.poi_pitfall@v1';
+    poi_id: string;
+    place_id?: string;
+    label_zh: string;
+    day_index?: number;
+    day_date?: string;
+    tips_zh: string[];
+    source: 'heuristic' | 'rag_snippet' | 'item_notes';
+    confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  }>;
+  /** 订票优先级清单（schema tripnara.booking_priority_list@v1；与 ui_display 同源） */
+  booking_priority_list?: {
+    schema: 'tripnara.booking_priority_list@v1';
+    tripId: string;
+    generatedAt: string;
+    items: Array<{
+      id: string;
+      category: string;
+      title: string;
+      associatedDayNumber: number;
+      urgencyLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+      timing: {
+        bookByDate: string;
+        opensAtLocal?: string;
+        countdownSeconds: number;
+      };
+      actionPayload: {
+        officialBookingUrl: string;
+        bookingGuideHtml?: string;
+        calendarReminderDeeplink: string;
+      };
+    }>;
+  };
+  /** TTS 口语叙事（schema tripnara.voice_payload@v1） */
+  voice_payload?: {
+    schema: 'tripnara.voice_payload@v1';
+    text: string;
+    tone_modifier: string;
+    audio_config: {
+      voice_id?: string;
+      speed_factor: number;
+      pitch_setting: 'low' | 'medium' | 'high';
+      emotions: string[];
+    };
+  };
 }
 
 /** NARRATE 阶段执行器上下文（P3 C：orchestratorState 含 itinerary/gate_result/decision_log） */

@@ -1,0 +1,106 @@
+{
+  "evidenceType": "EXECUTION_SLIP_STAGING_A_OBSERVE",
+  "phase": "A",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "environment": "http://localhost:3001",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "planVersionId": "plan_1",
+  "problemId": "problem_exec_slip_c0c77777_1783760517728",
+  "decisionId": null,
+  "writeCount": 0,
+  "legacyWriteCount": 0,
+  "timestamps": {
+    "startedAt": "2026-07-11T09:01:57.400Z",
+    "endedAt": "2026-07-11T09:01:58.144Z"
+  },
+  "shadowMetrics": {
+    "source": "EXECUTION_SCHEDULE_INFEASIBLE",
+    "triggerCount": 9,
+    "problemCreatedCount": 6,
+    "noActionCount": 3,
+    "duplicateProblemCount": 0,
+    "candidateCount": 12,
+    "rejectedCandidateCount": 6,
+    "writeCount": 0,
+    "legacyWriteCount": 0,
+    "revalidationPassCount": 0,
+    "unresolvedAfterApplyCount": 0,
+    "idempotentReplayCount": 3,
+    "lastUpdatedAt": "2026-07-11T09:01:58.122Z"
+  },
+  "http": {
+    "feasible": {
+      "success": true,
+      "data": {
+        "observationId": "obs_c0c77777-7777-4777-8777-777777777631_1783760517603",
+        "status": "NO_ACTION"
+      }
+    },
+    "infeasible": {
+      "success": true,
+      "data": {
+        "observationId": "exec-slip-staging-idem-a",
+        "status": "RECORDED",
+        "problemId": "problem_exec_slip_c0c77777_1783760517728",
+        "runId": "run_dec_problem_exec_slip_c0c77777_1783760517728_1783760517800"
+      }
+    },
+    "idem": {
+      "success": true,
+      "data": {
+        "observationId": "exec-slip-staging-idem-a",
+        "status": "RECORDED",
+        "problemId": "problem_exec_slip_c0c77777_1783760517728",
+        "runId": "run_dec_problem_exec_slip_c0c77777_1783760517728_1783760518027"
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "ES-A-001",
+      "pass": true,
+      "detail": "feasible HTTP=201 status=NO_ACTION"
+    },
+    {
+      "id": "ES-A-002",
+      "pass": true,
+      "detail": "infeasible HTTP=201 problemId=problem_exec_slip_c0c77777_1783760517728"
+    },
+    {
+      "id": "ES-A-003",
+      "pass": true,
+      "detail": "observationsPersisted=2"
+    },
+    {
+      "id": "ES-A-004",
+      "pass": true,
+      "detail": "worldStateAssertions.execution.departure_slip=3"
+    },
+    {
+      "id": "ES-A-005",
+      "pass": true,
+      "detail": "canonicalProblems=1"
+    },
+    {
+      "id": "ES-A-006",
+      "pass": true,
+      "detail": "effectivePlan unchanged=plan_1 draftPlanVersions=3"
+    },
+    {
+      "id": "ES-A-007",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    },
+    {
+      "id": "ES-A-008",
+      "pass": true,
+      "detail": "idempotentReplay observationId match=true"
+    },
+    {
+      "id": "ES-A-009",
+      "pass": true,
+      "detail": "shadow.triggerCount=9"
+    }
+  ],
+  "result": "PASS"
+}

@@ -3,6 +3,8 @@
  * structures so the UI can render cards without parsing markdown.
  */
 
+import { parseTripDayNumber } from './itinerary-item-add.util';
+
 export type RouteAndRunAccommodationCard = {
   id: string;
   source: 'airbnb' | 'hotel';
@@ -34,6 +36,16 @@ export type RouteAndRunAccommodationCard = {
    * 住宿决策辅助说明：L1 规则模版 + 可选 L2 管家叙事（见 hotel-decision-support.signals / orchestrator enrich）。
    */
   decision_support_zh?: string;
+  /** 入住/退房（YYYY-MM-DD），由 enrichHotelRouteRunUiForClientApply 从 night_groups 补齐 */
+  checkIn?: string;
+  checkOut?: string;
+  /** 「查看 / 加入行程」操作，与 planning-assistant apply 接口对齐 */
+  actions?: Array<{
+    action: string;
+    label: string;
+    labelCN: string;
+    params?: Record<string, unknown>;
+  }>;
 };
 
 /** 按晚聚合：便于前端「每晚一块」与正文策略同屏整合 */
@@ -56,7 +68,7 @@ export type HotelRouteRunUiPayload = {
   airbnbListings: unknown[];
   routing: { target: 'hotel' };
   hotel_search_meta?: {
-    strategy: 'single_stay' | 'per_night_sample';
+    strategy: 'single_stay' | 'per_night_sample' | 'per_night_full_trip_replan';
     /** 本次 MCP 检索入住窗（解析后的 checkIn→checkOut）间夜数 */
     total_nights?: number;
     /** 绑定行程时可选：整段 Trip 间夜数；与卡片「第 M/N 晚」分母 N 对齐 */
@@ -80,6 +92,10 @@ const PER_NIGHT_DISCLAIMER_ZH =
 /** 用户明确只问某一晚时：不暗示整段行程均适用 */
 const SINGLE_NIGHT_USER_SCOPE_DISCLAIMER_ZH =
   '您指定了单晚/部分晚的住宿检索；以下仅覆盖所询间夜，非整段行程每晚推荐。价格与可订性以平台实时为准。';
+
+/** 整段多日重规划：逐晚检索（非采样） */
+const FULL_TRIP_REPLAN_PER_NIGHT_DISCLAIMER_ZH =
+  '整段行程重规划：按每晚上一间独立检索示意（锚点为当日行程末站周边）；环岛/多地请分段预订不同城镇，勿默认全程同一房源。价格与可订性以平台实时为准。';
 
 function clampYmdToTripWindow(
   checkIn: string,
@@ -113,20 +129,180 @@ export function narrowHotelStayWindowWithNlMessage(params: {
     tripStartYmd: params.tripStartYmd,
     tripEndYmd: params.tripEndYmd,
   });
-  if (!fromNl) return { checkIn: baseCi, checkOut: baseCo };
 
-  const nlCi = fromNl.checkIn;
-  const nlCo = fromNl.checkOut;
-  const ts = params.tripStartYmd?.slice(0, 10);
-  const te = params.tripEndYmd?.slice(0, 10);
-  const insideTrip =
-    !ts || !te || (nlCi >= ts && nlCo <= te);
-  const narrowsWindow = nlCi >= baseCi && nlCo <= baseCo && (nlCi > baseCi || nlCo < baseCo);
+  if (fromNl) {
+    const nlCi = fromNl.checkIn;
+    const nlCo = fromNl.checkOut;
+    const ts = params.tripStartYmd?.slice(0, 10);
+    const te = params.tripEndYmd?.slice(0, 10);
+    const insideTrip =
+      !ts || !te || (nlCi >= ts && nlCo <= te);
+    const narrowsWindow = nlCi >= baseCi && nlCo <= baseCo && (nlCi > baseCi || nlCo < baseCo);
 
-  if (insideTrip && narrowsWindow) {
-    return { checkIn: nlCi, checkOut: nlCo };
+    if (insideTrip && narrowsWindow) {
+      return { checkIn: nlCi, checkOut: nlCo };
+    }
   }
+
+  if (params.tripStartYmd && params.tripEndYmd) {
+    const totalNights = countStayNightsBetweenInclusive(params.tripStartYmd, params.tripEndYmd);
+    const scope = parseExplicitHotelNightScopeIndices(params.message, totalNights);
+    const fromScope = scope?.length
+      ? deriveHotelStayWindowFromNightScope(params.tripStartYmd, scope)
+      : null;
+    if (fromScope) {
+      const inside =
+        fromScope.checkIn >= (params.tripStartYmd.slice(0, 10)) &&
+        fromScope.checkOut <= (params.tripEndYmd.slice(0, 10));
+      const narrows =
+        fromScope.checkIn >= baseCi &&
+        fromScope.checkOut <= baseCo &&
+        (fromScope.checkIn > baseCi || fromScope.checkOut < baseCo);
+      if (inside && narrows) return fromScope;
+    }
+  }
+
   return { checkIn: baseCi, checkOut: baseCo };
+}
+
+/** 从 0-based 间夜下标推导 MCP 入住/退房窗（每间夜 checkOut = 末晚 +1 日） */
+export function deriveHotelStayWindowFromNightScope(
+  tripStartYmd: string,
+  scopeIndices0: number[],
+): { checkIn: string; checkOut: string } | null {
+  if (!scopeIndices0.length) return null;
+  const sorted = [...scopeIndices0].sort((a, b) => a - b);
+  const contiguous = sorted[sorted.length - 1] - sorted[0] === sorted.length - 1;
+  if (sorted.length > 1 && !contiguous) return null;
+  const minN = sorted[0];
+  const maxN = sorted[sorted.length - 1];
+  const ci = addDaysYmd(tripStartYmd, minN);
+  const co = addDaysYmd(tripStartYmd, maxN + 1);
+  if (co > ci) return { checkIn: ci, checkOut: co };
+  return null;
+}
+
+const HOTEL_RECOMMEND_RE =
+  /(?:推荐|找|查|搜索|看看|有没有|帮我).{0,24}(?:酒店|住宿|民宿|宾馆|旅馆)|(?:酒店|住宿|民宿|宾馆|旅馆).{0,24}(?:推荐|找|查|搜索)/;
+
+/** 用户是否在已有行程语境下直接请求住宿推荐（非整段规划类话术） */
+export function messageExpressesBoundTripHotelRecommendIntent(message: string): boolean {
+  const m = message.trim();
+  if (!m || messageExpressesMultiNightStayPlanningIntent(m)) return false;
+  return HOTEL_RECOMMEND_RE.test(m);
+}
+
+/**
+ * 「离第 N 天行程近 / 靠近第三天」→ 用作距离排序锚点的行程日（1-based）。
+ * 取消息中最后一个显式 proximity 表述，避免「第二天酒店 + 离第三天近」误用第二天。
+ */
+export function parseHotelProximityAnchorDayNumber(message: string): number | undefined {
+  const m = message.trim();
+  if (!m) return undefined;
+
+  let lastDay: number | undefined;
+  const patterns = [
+    /(?:离|靠近|接近|挨着|距).{0,12}第\s*(\d+)\s*天(?:的)?(?:行程|活动|安排|计划)?/g,
+    /(?:离|靠近|接近|挨着|距).{0,12}第\s*([一二三四五六七八九十]{1,2})\s*天(?:的)?(?:行程|活动|安排|计划)?/g,
+    /第\s*(\d+)\s*天(?:的)?(?:行程|活动).{0,16}(?:近|方便|顺路)/g,
+    /第\s*([一二三四五六七八九十]{1,2})\s*天(?:的)?(?:行程|活动).{0,16}(?:近|方便|顺路)/g,
+  ];
+
+  for (const re of patterns) {
+    for (const match of m.matchAll(re)) {
+      const raw = match[1];
+      const n =
+        /^\d+$/.test(raw) ? Number(raw) : parseTripDayNumber(`第${raw}天`);
+      if (n != null && n >= 1) lastDay = n;
+    }
+  }
+  return lastDay;
+}
+
+/**
+ * 绑定行程语境下解析住宿 MCP 入住窗：用户话术「第 N 天/晚」优先于路由 extractedParams 里的整段日期。
+ */
+export function resolveHotelStayDatesForBoundTrip(params: {
+  message: string;
+  paramsCheckIn?: string;
+  paramsCheckOut?: string;
+  tripStartYmd?: string;
+  tripEndYmd?: string;
+}): { checkIn?: string; checkOut?: string } {
+  const msg = params.message.trim();
+  const tripStart = params.tripStartYmd?.slice(0, 10);
+  const tripEnd = params.tripEndYmd?.slice(0, 10);
+
+  const fromNl = parseExplicitStayWindowFromUserMessage(msg, {
+    tripStartYmd: tripStart,
+    tripEndYmd: tripEnd,
+  });
+  if (fromNl?.checkIn && fromNl?.checkOut) {
+    return { checkIn: fromNl.checkIn, checkOut: fromNl.checkOut };
+  }
+
+  if (tripStart && tripEnd) {
+    const totalNights = countStayNightsBetweenInclusive(tripStart, tripEnd);
+    const scope = parseExplicitHotelNightScopeIndices(msg, totalNights);
+    if (scope?.length) {
+      const derived = deriveHotelStayWindowFromNightScope(tripStart, scope);
+      if (derived) return derived;
+    }
+  }
+
+  const paramCi = params.paramsCheckIn?.slice(0, 10);
+  const paramCo = params.paramsCheckOut?.slice(0, 10);
+  if (paramCi && paramCo) {
+    const narrowed = narrowHotelStayWindowWithNlMessage({
+      baseCheckIn: paramCi,
+      baseCheckOut: paramCo,
+      message: msg,
+      tripStartYmd: tripStart,
+      tripEndYmd: tripEnd,
+    });
+    return { checkIn: narrowed.checkIn, checkOut: narrowed.checkOut };
+  }
+
+  if (tripStart && tripEnd) {
+    return { checkIn: tripStart, checkOut: tripEnd };
+  }
+
+  return {};
+}
+
+/** 绑定 Trip 且已解析到入住窗时，是否应跳过「是否用这几天查酒店」二次确认 */
+export function shouldSkipHotelDateClarification(params: {
+  message: string;
+  tripId?: string | null;
+  checkIn?: string;
+  checkOut?: string;
+  tripStartYmd?: string;
+  tripEndYmd?: string;
+  phaseAlreadyRecommended?: boolean;
+}): boolean {
+  if (params.phaseAlreadyRecommended && params.checkIn && params.checkOut) return true;
+  if (!params.checkIn || !params.checkOut) return false;
+
+  const tripStart = params.tripStartYmd?.slice(0, 10);
+  const tripEnd = params.tripEndYmd?.slice(0, 10);
+  const isNarrowerThanFullTrip =
+    !!tripStart &&
+    !!tripEnd &&
+    (params.checkIn !== tripStart || params.checkOut !== tripEnd);
+
+  if (isNarrowerThanFullTrip) return true;
+
+  if (tripStart && tripEnd) {
+    const totalNights = countStayNightsBetweenInclusive(tripStart, tripEnd);
+    const scope = parseExplicitHotelNightScopeIndices(params.message, totalNights);
+    if (scope?.length) return true;
+  }
+
+  if (params.tripId && tripStart && tripEnd) {
+    if (messageExpressesBoundTripHotelRecommendIntent(params.message)) return true;
+  }
+
+  return false;
 }
 
 /**
@@ -284,10 +460,32 @@ export function parseExplicitHotelNightScopeIndices(message: string, totalNights
     if (n >= 1 && n <= totalNights) indices.add(n - 1);
   }
 
-  const dayStay = msg.match(/第\s*(\d+)\s*天(?:[^。！？\n]{0,40}住|晚上)/);
-  if (dayStay) {
-    const d = parseInt(dayStay[1], 10);
+  for (const m of msg.matchAll(/第\s*([一二三四五六七八九十]{1,2})\s*晚/g)) {
+    const n = parseTripDayNumber(`第${m[1]}天`);
+    if (n != null && n >= 1 && n <= totalNights) indices.add(n - 1);
+  }
+
+  const dayStayDigit = msg.match(/第\s*(\d+)\s*天(?:[^。！？\n]{0,40}住|晚上)/);
+  if (dayStayDigit) {
+    const d = parseInt(dayStayDigit[1], 10);
     if (d >= 1 && d <= totalNights) indices.add(d - 1);
+  }
+
+  const dayStayCn = msg.match(/第\s*([一二三四五六七八九十]{1,2})\s*天(?:[^。！？\n]{0,40}住|晚上)/);
+  if (dayStayCn) {
+    const d = parseTripDayNumber(`第${dayStayCn[1]}天`);
+    if (d != null && d >= 1 && d <= totalNights) indices.add(d - 1);
+  }
+
+  if (
+    indices.size === 0 &&
+    HOTEL_RECOMMEND_RE.test(msg) &&
+    /(?:酒店|住宿|民宿|宾馆|旅馆|住哪|住哪里)/.test(msg)
+  ) {
+    const dayNum = parseTripDayNumber(msg);
+    if (dayNum != null && dayNum >= 1 && dayNum <= totalNights) {
+      indices.add(dayNum - 1);
+    }
   }
 
   if (indices.size === 0) return null;
@@ -422,6 +620,14 @@ export {
   buildTemplateHotelDecisionSupportZh,
 } from './hotel-decision-support.signals';
 
+/** 「周边住宿」卡片：直线距锚点超过此值视为坐标/Listing 异常，不展示误导性距离 */
+export const MAX_PLAUSIBLE_HOTEL_ANCHOR_KM = 250;
+
+/** 冰岛行程 Listing 合理范围（过远则多为 MCP 错坐标或错国别） */
+export function isPlausibleIcelandListingCoord(lat: number, lng: number): boolean {
+  return lat >= 63 && lat <= 67.8 && lng >= -24.9 && lng <= -12.5;
+}
+
 /**
  * 为住宿卡片写入相对当日行程锚点（与 segment label /「xxx周边」一致：当日最后一项行程点）的直线距离。
  */
@@ -435,7 +641,11 @@ export function attachDistanceToAnchorForCards(
     const lat = card.listing_lat;
     const lng = card.listing_lng;
     if (!anchor || lat == null || lng == null) return card;
+    if (!isPlausibleIcelandListingCoord(lat, lng) && isPlausibleIcelandListingCoord(anchor.lat, anchor.lng)) {
+      return card;
+    }
     const km = haversineKm(lat, lng, anchor.lat, anchor.lng);
+    if (km > MAX_PLAUSIBLE_HOTEL_ANCHOR_KM) return card;
     const rounded = Math.round(km * 10) / 10;
     return {
       ...card,
@@ -621,6 +831,13 @@ export function pickSpreadNightIndices(totalNights: number, cap: number): number
   return [...picks].sort((a, b) => a - b).slice(0, cap);
 }
 
+/** 整段多日重规划：尽量覆盖每一晚（有上限防 MCP 爆炸） */
+export function pickFullTripReplanNightIndices(totalNights: number, cap = 6): number[] {
+  if (totalNights <= 0) return [];
+  if (totalNights <= cap) return Array.from({ length: totalNights }, (_, i) => i);
+  return pickSpreadNightIndices(totalNights, cap);
+}
+
 /**
  * 合并多段「每晚上一间」检索结果，并为卡片打上中文锚点。
  */
@@ -643,6 +860,8 @@ export function mergeSegmentHotelSearchResults(
     sampledNightIndices: number[];
     /** 来自 parseExplicitHotelNightScopeIndices：用户只要特定晚，免责文案缩短 */
     userLimitedNightIntent?: boolean;
+    /** 整段多日重规划：逐晚检索（非采样免责） */
+    fullTripReplan?: boolean;
   },
 ): HotelRouteRunUiPayload | null {
   const defaultCap = 3;
@@ -662,6 +881,8 @@ export function mergeSegmentHotelSearchResults(
       accommodations.push({
         ...card,
         nightIndex: part.segment.nightIndex,
+        checkIn: part.segment.checkIn.slice(0, 10),
+        checkOut: part.segment.checkOut.slice(0, 10),
         itineraryHintZh: part.segment.labelZh,
         stayLabelZh: formatStayLabelZh(part.segment.checkIn, part.segment.checkOut),
       });
@@ -671,8 +892,9 @@ export function mergeSegmentHotelSearchResults(
 
   if (accommodations.length === 0) return null;
 
-  const disclaimer_zh =
-    opts.userLimitedNightIntent && opts.sampledNightIndices.length > 0
+  const disclaimer_zh = opts.fullTripReplan
+    ? FULL_TRIP_REPLAN_PER_NIGHT_DISCLAIMER_ZH
+    : opts.userLimitedNightIntent && opts.sampledNightIndices.length > 0
       ? SINGLE_NIGHT_USER_SCOPE_DISCLAIMER_ZH
       : PER_NIGHT_DISCLAIMER_ZH;
 
@@ -681,7 +903,7 @@ export function mergeSegmentHotelSearchResults(
     airbnbListings: airbnbRaw.slice(0, 36),
     routing: { target: 'hotel' },
     hotel_search_meta: {
-      strategy: 'per_night_sample',
+      strategy: opts.fullTripReplan ? 'per_night_full_trip_replan' : 'per_night_sample',
       total_nights: opts.stayWindowNightCount,
       ...(opts.itineraryTotalNights != null ? { itinerary_total_nights: opts.itineraryTotalNights } : {}),
       sampled_nights: opts.sampledNightIndices,
@@ -745,6 +967,8 @@ export function wrapSingleHotelPayload(
   const accommodations = mapped.accommodations.map((c) => ({
     ...c,
     nightIndex: 1,
+    ...(opts?.checkIn ? { checkIn: opts.checkIn.slice(0, 10) } : {}),
+    ...(opts?.checkOut ? { checkOut: opts.checkOut.slice(0, 10) } : {}),
     ...(opts?.hintZh ? { itineraryHintZh: opts.hintZh } : {}),
     ...(stay ? { stayLabelZh: stay } : {}),
   }));

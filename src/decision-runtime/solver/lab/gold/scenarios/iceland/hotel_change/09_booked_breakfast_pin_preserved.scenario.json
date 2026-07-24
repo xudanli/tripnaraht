@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.09_booked_breakfast_pin_preserved",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "Hotel reorder \u2014 booked breakfast pin preserved",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/hotel_change/problems/09_booked_breakfast_pin_preserved.problem.json",
+  "notes": [
+    "require booked a1 breakfast"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

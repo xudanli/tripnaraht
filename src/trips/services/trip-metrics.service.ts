@@ -1,8 +1,9 @@
 // src/trips/services/trip-metrics.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
+import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
 import {
   DayMetricsResponseDto,
   TripMetricsResponseDto,
@@ -19,12 +20,34 @@ import {
 } from '../dto/trip-metrics.dto';
 import { TripConflictsService } from './trip-conflicts.service';
 import {
+  buildMealsAssessmentCopy,
+  getMinLunchGapMinutes,
+  normalizeLunchStrategy,
+  resolveLunchStrategyFromTrip,
+  type LunchStrategy,
+} from '../../planning-policy/utils/lunch-strategy.util';
+import {
   aggregateTripAssessmentDays,
   collectTopSuggestions,
   pickActionableTopSuggestion,
   scoreToAssessmentGrade,
 } from '../utils/trip-assessment-aggregate.util';
 import { assessTimingForDay } from '../utils/trip-assessment-timing.util';
+import {
+  buildTravelSegmentMap,
+  resolveItemTravelMinutes,
+  resolveTripAssessmentTravelMode,
+  type ItemTravelSegment,
+} from '../utils/trip-assessment-travel-mode.util';
+import { PlanningConflictsService } from '../trip-constraint-solver/services/planning-conflicts.service';
+import {
+  buildAssessPlanningConflictsPayload,
+  buildTripDayIndexMaps,
+  capTripGradeForPlanningConflicts,
+  groupPlanningConflictsByDate,
+  integratePlanningConflictsIntoDay,
+  integratePlanningConflictsIntoDays,
+} from '../utils/trip-assessment-planning-conflicts.util';
 
 @Injectable()
 export class TripMetricsService {
@@ -32,7 +55,10 @@ export class TripMetricsService {
 
   constructor(
     private prisma: PrismaService,
-    private conflictsService: TripConflictsService
+    private conflictsService: TripConflictsService,
+    private readonly itineraryItems: ItineraryItemsService,
+    @Inject(forwardRef(() => PlanningConflictsService))
+    private readonly planningConflicts: PlanningConflictsService,
   ) {}
 
   /**
@@ -429,74 +455,80 @@ export class TripMetricsService {
    */
   private async resolveTravelMode(
     tripId: string,
-    pacingConfig: any,
-    requestTravelMode?: TravelMode
+    pacingConfig: unknown,
+    requestTravelMode?: TravelMode,
   ): Promise<TravelMode> {
-    // 1. 优先使用请求参数（临时覆盖）
-    if (requestTravelMode) {
-      return requestTravelMode;
-    }
-
-    // 2. 其次使用行程配置
-    const tripTravelMode = (pacingConfig as { travelMode?: TravelMode } | null)?.travelMode;
-    if (tripTravelMode) {
-      return tripTravelMode;
-    }
-
-    // 3. 尝试从用户偏好中获取
+    let userPreference: TravelMode | undefined;
     try {
-      // 获取行程的 OWNER 用户
       const collaborator = await this.prisma.tripCollaborator.findFirst({
         where: { tripId, role: 'OWNER' },
         select: { userId: true },
       });
-
       if (collaborator?.userId) {
-        // 获取用户偏好
         const userProfile = await this.prisma.userProfile.findUnique({
           where: { userId: collaborator.userId },
           select: { preferences: true },
         });
-
-        const preferences = userProfile?.preferences as {
-          travelPreferences?: { travelMode?: TravelMode };
-        } | null;
-
-        const userTravelMode = preferences?.travelPreferences?.travelMode;
-        if (userTravelMode) {
-          return userTravelMode;
-        }
+        userPreference = (
+          userProfile?.preferences as { travelPreferences?: { travelMode?: TravelMode } } | null
+        )?.travelPreferences?.travelMode;
       }
     } catch (error) {
-      // 获取用户偏好失败，静默忽略，使用默认值
       this.logger.debug(`Failed to get user travel mode preference: ${error}`);
     }
 
-    // 4. 默认使用公共交通
-    return TravelMode.PUBLIC_TRANSIT;
+    return resolveTripAssessmentTravelMode(pacingConfig, requestTravelMode, userPreference);
+  }
+
+  private async loadDayTravelSegments(
+    tripId: string,
+    dayId: string,
+  ): Promise<Map<string, ItemTravelSegment>> {
+    try {
+      const info = await this.itineraryItems.getDayTravelInfo(tripId, dayId);
+      return buildTravelSegmentMap(info.segments);
+    } catch (error) {
+      this.logger.debug(`assess: travel-info unavailable for day ${dayId}: ${error}`);
+      return new Map();
+    }
   }
 
   /**
    * 评估行程每日安排是否合理
    */
   async assessTrip(tripId: string, dto: AssessTripRequestDto = {}): Promise<AssessTripResponseDto> {
-    const trip = await this.prisma.trip.findUnique({
-      where: { id: tripId },
-      include: {
-        TripDay: {
-          where: dto.dates
-            ? { date: { in: dto.dates.map(d => DateTime.fromISO(d).toJSDate()) } }
-            : undefined,
-          include: {
-            ItineraryItem: {
-              include: { Place: true },
-              orderBy: { startTime: 'asc' },
+    const [trip, planningConflictsResp, allTripDays] = await Promise.all([
+      this.prisma.trip.findUnique({
+        where: { id: tripId },
+        include: {
+          TripDay: {
+            where: dto.dates
+              ? { date: { in: dto.dates.map(d => DateTime.fromISO(d).toJSDate()) } }
+              : undefined,
+            include: {
+              ItineraryItem: {
+                include: { Place: true },
+                orderBy: { startTime: 'asc' },
+              },
             },
+            orderBy: { date: 'asc' },
           },
-          orderBy: { date: 'asc' },
         },
-      },
-    });
+      }),
+      this.planningConflicts.getPlanningConflicts(tripId).catch((error) => {
+        this.logger.debug(`assess: planning-conflicts unavailable: ${error}`);
+        return null;
+      }),
+      this.prisma.tripDay.findMany({
+        where: { tripId },
+        select: {
+          id: true,
+          date: true,
+          ItineraryItem: { select: { id: true } },
+        },
+        orderBy: { date: 'asc' },
+      }),
+    ]);
 
     if (!trip) {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
@@ -504,9 +536,12 @@ export class TripMetricsService {
 
     // 获取出行方式，优先级：请求参数 > 行程配置 > 用户偏好 > 默认值
     const travelMode = await this.resolveTravelMode(tripId, trip.pacingConfig, dto.travelMode);
-    
-    // 将出行方式注入到 dto 中，供后续方法使用
-    const enrichedDto = { ...dto, travelMode };
+
+    const lunchStrategy: LunchStrategy =
+      normalizeLunchStrategy(dto.lunch_strategy) ?? resolveLunchStrategyFromTrip(trip);
+
+    // 将出行方式与午餐策略注入到 dto 中，供后续方法使用
+    const enrichedDto = { ...dto, travelMode, lunch_strategy: lunchStrategy };
 
     // 获取 Place 坐标用于地理分析
     const placeIds = trip.TripDay.flatMap(d =>
@@ -522,38 +557,89 @@ export class TripMetricsService {
       const isFirstDay = i === 0;
       const isLastDay = i === totalTripDays - 1;
 
-      const assessment = await this.assessDay(day, enrichedDto, coordsMap, isFirstDay, isLastDay);
+      const travelByToItem = await this.loadDayTravelSegments(tripId, day.id);
+
+      const assessment = await this.assessDay(
+        day,
+        enrichedDto,
+        coordsMap,
+        isFirstDay,
+        isLastDay,
+        travelByToItem,
+      );
       days.push(assessment);
     }
 
-    const aggregate = aggregateTripAssessmentDays(days);
-    const overallGrade = scoreToAssessmentGrade(aggregate.overallAverageScore);
+    const dayIndexMaps = buildTripDayIndexMaps(allTripDays);
+    const mergedConflicts = planningConflictsResp?.conflicts ?? [];
+    const conflictsByDate = groupPlanningConflictsByDate(mergedConflicts, dayIndexMaps);
+    const { days: adjustedDays, tripWideConflicts } = integratePlanningConflictsIntoDays(
+      days,
+      conflictsByDate,
+    );
+
+    const aggregate = aggregateTripAssessmentDays(adjustedDays);
+    const conflictSummary = planningConflictsResp?.summary ?? {
+      mustHandle: 0,
+      suggestAdjust: 0,
+      pendingConfirm: 0,
+      total: 0,
+      byCategory: {},
+    };
+    const gradeCap = capTripGradeForPlanningConflicts(aggregate.overallAverageScore, {
+      mustHandle: conflictSummary.mustHandle,
+      suggestAdjust: conflictSummary.suggestAdjust,
+    });
+    const overallGrade = gradeCap.overallGrade;
+    const overallAverageScore = gradeCap.overallAverageScore;
+    const overallReasonableRate = overallAverageScore;
+
+    const planningConflictsBlock = planningConflictsResp
+      ? buildAssessPlanningConflictsPayload({
+          summary: {
+            total: planningConflictsResp.summary.total,
+            mustHandle: planningConflictsResp.summary.mustHandle,
+            suggestAdjust: planningConflictsResp.summary.suggestAdjust,
+            pendingConfirm: planningConflictsResp.summary.pendingConfirm,
+            verdictStatus: planningConflictsResp.verdict?.status,
+          },
+          items: mergedConflicts,
+          tripWideItems: tripWideConflicts,
+        })
+      : undefined;
+
+    let tripSummary = this.generateTripSummaryV2(
+      adjustedDays,
+      aggregate.reasonableDays,
+      aggregate.needsAttentionDays,
+      aggregate.hasIssuesDays,
+      aggregate.unplannedDays,
+      aggregate.restDays,
+      aggregate.plannedDays,
+    );
+    if (tripWideConflicts.length > 0) {
+      const tripWideNote = `另有 ${tripWideConflicts.length} 项行程级规划事项（见 planningConflicts.tripWideItems）`;
+      tripSummary = tripSummary ? `${tripSummary}；${tripWideNote}` : tripWideNote;
+    }
 
     return {
       tripId,
-      totalDays: days.length,
+      totalDays: adjustedDays.length,
       reasonableDays: aggregate.reasonableDays,
       needsAttentionDays: aggregate.needsAttentionDays,
       hasIssuesDays: aggregate.hasIssuesDays,
       unplannedDays: aggregate.unplannedDays,
       restDays: aggregate.restDays,
       plannedDays: aggregate.plannedDays,
-      overallReasonableRate: aggregate.overallReasonableRate,
-      overallAverageScore: aggregate.overallAverageScore,
+      overallReasonableRate,
+      overallAverageScore,
       daysPassRate: aggregate.daysPassRate,
       overallGrade,
       effectiveTravelMode: travelMode,
-      days,
-      summary: this.generateTripSummaryV2(
-        days,
-        aggregate.reasonableDays,
-        aggregate.needsAttentionDays,
-        aggregate.hasIssuesDays,
-        aggregate.unplannedDays,
-        aggregate.restDays,
-        aggregate.plannedDays,
-      ),
-      topSuggestions: collectTopSuggestions(days),
+      days: adjustedDays,
+      summary: tripSummary,
+      topSuggestions: collectTopSuggestions(adjustedDays),
+      ...(planningConflictsBlock ? { planningConflicts: planningConflictsBlock } : {}),
     };
   }
 
@@ -565,7 +651,8 @@ export class TripMetricsService {
     dto: AssessTripRequestDto,
     coordsMap: Map<number, { lat: number; lng: number }>,
     isFirstDay: boolean = false,
-    isLastDay: boolean = false
+    isLastDay: boolean = false,
+    travelByToItem: Map<string, ItemTravelSegment> = new Map(),
   ): Promise<DayAssessmentDto> {
     const allItems = day.ItineraryItem || [];
     const items = allItems.filter((i: any) => i.type !== 'REST');
@@ -634,30 +721,35 @@ export class TripMetricsService {
     dimensions.push(this.assessDensityV2(items, activeDurationMinutes, dto, dayType, travelMode));
 
     // 3. 用餐安排评估（到达日/离开日宽松处理）
-    dimensions.push(this.assessMealsV2(items, day.date, dayType));
+    dimensions.push(
+      this.assessMealsV2(items, day.date, dayType, dto.lunch_strategy ?? 'balanced'),
+    );
 
     // 4. 体力负荷评估
     dimensions.push(this.assessPhysical(items, dto));
 
-    // 5. 交通效率评估（根据出行方式调整标准）
-    dimensions.push(this.assessTransport(items, travelMode));
+    // 5. 交通效率评估（根据出行方式调整标准；耗时与 travel-info 同源）
+    dimensions.push(this.assessTransport(items, travelMode, travelByToItem));
 
     // 6. 地理分布评估（根据出行方式调整阈值）
     dimensions.push(this.assessGeography(items, coordsMap, travelMode));
 
-    // 7. 缓冲时间评估
-    dimensions.push(this.assessBuffer(items));
+    // 7. 缓冲时间评估（交通耗时与 travel-info 同源）
+    dimensions.push(this.assessBuffer(items, travelByToItem));
 
     // 计算综合得分（加权平均）
     // 权重设计基于用户心智：景点密度和地理分布是核心关注点
-    const weights: Record<AssessmentDimension, number> = {
+    const mealsDim = dimensions.find((d) => d.dimension === AssessmentDimension.MEALS);
+    const mealsHasIssues = Boolean(mealsDim?.issues && mealsDim.issues.length > 0);
+
+    const weights: Partial<Record<AssessmentDimension, number>> = {
       [AssessmentDimension.TIMING]: 1.5,      // 时间合理性：高优先
       [AssessmentDimension.DENSITY]: 1.5,     // 活动密度：高优先
       [AssessmentDimension.GEOGRAPHY]: 1.5,   // 地理分布：高优先（用户关注"顺不顺路"）
       [AssessmentDimension.TRANSPORT]: 1.2,   // 交通效率：中高优先
       [AssessmentDimension.BUFFER]: 1.2,      // 缓冲时间：中高优先
       [AssessmentDimension.PHYSICAL]: 1.0,    // 体力负荷：中优先
-      [AssessmentDimension.MEALS]: 0.5,       // 用餐安排：低优先（用户通常"到时候再说"）
+      [AssessmentDimension.MEALS]: mealsHasIssues ? 1.2 : 0.5, // 有缺口时升级为中高优先
     };
 
     let totalWeight = 0;
@@ -895,10 +987,16 @@ export class TripMetricsService {
    * 1. 连续活动跨越午餐时段（11:00-14:00）且中间无空档
    * 2. 连续活动跨越晚餐时段（17:00-20:00）且中间无空档
    */
-  private assessMealsV2(items: any[], date: Date, _dayType: DayType): DimensionAssessmentDto {
+  private assessMealsV2(
+    items: any[],
+    date: Date,
+    _dayType: DayType,
+    lunchStrategy: LunchStrategy = 'balanced',
+  ): DimensionAssessmentDto {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+    const minLunchGap = getMinLunchGapMinutes(lunchStrategy);
 
     // 无活动或活动很少时，不评估用餐
     if (items.length < 2) {
@@ -935,11 +1033,15 @@ export class TripMetricsService {
     const lunchEnd = dayStart.set({ hour: 14, minute: 0 });
     const lunchGap = this.findMaxGapInWindow(sortedItems, lunchStart, lunchEnd);
     
-    if (lunchGap < 30) {
-      // 午餐时段空档不足30分钟
-      score -= 15;
-      issues.push(`午餐时段 (11:00-14:00) 空档不足，仅 ${lunchGap} 分钟`);
-      suggestions.push('建议在活动间预留至少 30 分钟用餐时间');
+    if (lunchGap < minLunchGap) {
+      score -= lunchStrategy === 'rigid' ? 25 : 15;
+      const copy = buildMealsAssessmentCopy({
+        strategy: lunchStrategy,
+        lunchGapMinutes: lunchGap,
+        minRequired: minLunchGap,
+      });
+      issues.push(copy.issue);
+      suggestions.push(copy.suggestion);
     }
 
     // 检查晚餐时段空档 (17:00-20:00)
@@ -1194,7 +1296,11 @@ export class TripMetricsService {
   /**
    * 评估交通效率（根据出行方式调整标准）
    */
-  private assessTransport(items: any[], travelMode: TravelMode): DimensionAssessmentDto {
+  private assessTransport(
+    items: any[],
+    travelMode: TravelMode,
+    travelByToItem: Map<string, ItemTravelSegment>,
+  ): DimensionAssessmentDto {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
@@ -1224,7 +1330,7 @@ export class TripMetricsService {
     let longTravelCount = 0;
 
     for (const item of items) {
-      const duration = item.travelFromPreviousDuration || 0;
+      const duration = resolveItemTravelMinutes(item, travelByToItem);
       totalTravelMinutes += duration;
 
       if (duration > longTravelThreshold) {
@@ -1386,7 +1492,10 @@ export class TripMetricsService {
   /**
    * 评估缓冲时间
    */
-  private assessBuffer(items: any[]): DimensionAssessmentDto {
+  private assessBuffer(
+    items: any[],
+    travelByToItem: Map<string, ItemTravelSegment>,
+  ): DimensionAssessmentDto {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
@@ -1414,7 +1523,7 @@ export class TripMetricsService {
       const end = DateTime.fromJSDate(current.endTime);
       const start = DateTime.fromJSDate(next.startTime);
       const gapMinutes = start.diff(end, 'minutes').minutes;
-      const travelMinutes = next.travelFromPreviousDuration || 0;
+      const travelMinutes = resolveItemTravelMinutes(next, travelByToItem);
       const bufferMinutes = gapMinutes - travelMinutes;
 
       if (gapMinutes < 0) {

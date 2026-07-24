@@ -2,7 +2,10 @@
 
 import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { JourneyAssistantService } from './services/journey-assistant.service';
+import {
+  JourneyAssistantService,
+} from './services/journey-assistant.service';
+import { mapJourneyApiContext } from './utils/journey-emotional-context.util';
 import { Public } from '../../../auth/decorators/public.decorator';
 import {
   JourneyChatRequestDto,
@@ -12,6 +15,7 @@ import {
   JourneyAssistantResponseDto,
   QuickActionsResponseDto,
 } from './dto/journey-assistant.dto';
+import type { JourneyAssistantResponse } from './interfaces/journey-assistant.interface';
 
 @ApiTags('行程助手智能体')
 @Controller('agent/journey-assistant')
@@ -33,20 +37,14 @@ export class JourneyAssistantController {
     description: '对话成功',
     type: JourneyAssistantResponseDto,
   })
-  async chat(@Body() dto: JourneyChatRequestDto): Promise<JourneyAssistantResponseDto> {
+  async chat(@Body() dto: JourneyChatRequestDto): Promise<JourneyAssistantResponse> {
     return await this.journeyAssistantService.handle({
       action: 'chat',
       tripId: dto.tripId,
       userId: dto.userId,
       message: dto.message,
       language: dto.language,
-      context: dto.context ? {
-        currentLocation: dto.context.currentLocation ? {
-          lat: dto.context.currentLocation.lat,
-          lng: dto.context.currentLocation.lng,
-        } : undefined,
-        timezone: dto.context.timezone,
-      } : undefined,
+      context: mapJourneyApiContext(dto.context),
     });
   }
 
@@ -86,7 +84,7 @@ export class JourneyAssistantController {
   })
   async getStatus(
     @Param('tripId') tripId: string,
-  ): Promise<JourneyAssistantResponseDto> {
+  ): Promise<JourneyAssistantResponse> {
     return await this.journeyAssistantService.handle({
       action: 'get_status',
       tripId,
@@ -110,7 +108,7 @@ export class JourneyAssistantController {
   })
   async getReminders(
     @Param('tripId') tripId: string,
-  ): Promise<JourneyAssistantResponseDto> {
+  ): Promise<JourneyAssistantResponse> {
     return await this.journeyAssistantService.handle({
       action: 'get_reminders',
       tripId,
@@ -133,7 +131,7 @@ export class JourneyAssistantController {
     description: '处理成功',
     type: JourneyAssistantResponseDto,
   })
-  async handleEvent(@Body() dto: HandleEventRequestDto): Promise<JourneyAssistantResponseDto> {
+  async handleEvent(@Body() dto: HandleEventRequestDto): Promise<JourneyAssistantResponse> {
     return await this.journeyAssistantService.handle({
       action: 'handle_event',
       tripId: dto.tripId,
@@ -141,13 +139,7 @@ export class JourneyAssistantController {
       eventId: dto.eventId,
       selectedOptionId: dto.selectedOptionId,
       language: dto.language,
-      context: dto.context ? {
-        currentLocation: dto.context.currentLocation ? {
-          lat: dto.context.currentLocation.lat,
-          lng: dto.context.currentLocation.lng,
-        } : undefined,
-        timezone: dto.context.timezone,
-      } : undefined,
+      context: mapJourneyApiContext(dto.context),
     });
   }
 
@@ -166,7 +158,7 @@ export class JourneyAssistantController {
     description: '调整成功',
     type: JourneyAssistantResponseDto,
   })
-  async adjustSchedule(@Body() dto: AdjustScheduleRequestDto): Promise<JourneyAssistantResponseDto> {
+  async adjustSchedule(@Body() dto: AdjustScheduleRequestDto): Promise<JourneyAssistantResponse> {
     return await this.journeyAssistantService.handle({
       action: 'adjust_schedule',
       tripId: dto.tripId,
@@ -178,13 +170,7 @@ export class JourneyAssistantController {
         replace: dto.adjustmentParams.replace,
       },
       language: dto.language,
-      context: dto.context ? {
-        currentLocation: dto.context.currentLocation ? {
-          lat: dto.context.currentLocation.lat,
-          lng: dto.context.currentLocation.lng,
-        } : undefined,
-        timezone: dto.context.timezone,
-      } : undefined,
+      context: mapJourneyApiContext(dto.context),
     });
   }
 
@@ -203,20 +189,14 @@ export class JourneyAssistantController {
     description: '获取成功',
     type: JourneyAssistantResponseDto,
   })
-  async emergencyHelp(@Body() dto: JourneyBaseRequestDto): Promise<JourneyAssistantResponseDto> {
+  async emergencyHelp(@Body() dto: JourneyBaseRequestDto): Promise<JourneyAssistantResponse> {
     return await this.journeyAssistantService.handle({
       action: 'chat',
       tripId: dto.tripId,
       userId: dto.userId,
       message: '紧急求助 SOS',
       language: dto.language,
-      context: dto.context ? {
-        currentLocation: dto.context.currentLocation ? {
-          lat: dto.context.currentLocation.lat,
-          lng: dto.context.currentLocation.lng,
-        } : undefined,
-        timezone: dto.context.timezone,
-      } : undefined,
+      context: mapJourneyApiContext(dto.context),
     });
   }
 
@@ -237,7 +217,7 @@ export class JourneyAssistantController {
   })
   async nearbySearch(
     @Body() dto: JourneyChatRequestDto,
-  ): Promise<JourneyAssistantResponseDto> {
+  ): Promise<JourneyAssistantResponse> {
     const searchMessage = dto.message || '附近有什么好吃的';
     return await this.journeyAssistantService.handle({
       action: 'nearby',
@@ -245,13 +225,7 @@ export class JourneyAssistantController {
       userId: dto.userId,
       message: searchMessage,
       language: dto.language,
-      context: dto.context ? {
-        currentLocation: dto.context.currentLocation ? {
-          lat: dto.context.currentLocation.lat,
-          lng: dto.context.currentLocation.lng,
-        } : undefined,
-        timezone: dto.context.timezone,
-      } : undefined,
+      context: mapJourneyApiContext(dto.context),
     });
   }
 }

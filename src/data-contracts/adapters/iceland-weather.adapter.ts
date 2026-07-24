@@ -7,6 +7,7 @@ import { WeatherAdapter } from './weather.adapter.interface';
 import { WeatherData, WeatherQuery, ExtendedWeatherData, WeatherAlert } from '../interfaces/weather.interface';
 import { BaseAdapter } from './base.adapter';
 import { AdapterMapper } from '../../common/utils/adapter-mapper.util';
+import { resolveVedurRequestTimeoutMs } from '../../decision-runtime/monitoring/circuit/vedur-circuit-breaker.config';
 
 /**
  * 冰岛天气适配器
@@ -32,7 +33,7 @@ export class IcelandWeatherAdapter extends BaseAdapter implements WeatherAdapter
   constructor(@Optional() private configService?: ConfigService) {
     super(IcelandWeatherAdapter.name, {
       baseURL: 'https://xmlweather.vedur.is',
-      timeout: 15000,
+      timeout: resolveVedurRequestTimeoutMs(process.env),
       headers: {
         'User-Agent': 'TripNARA/1.0 (+https://tripnara.com)',
         Accept: 'application/xml,text/xml,*/*',

@@ -1,0 +1,33 @@
+{
+  "fixtureVersion": "decision-closure-golden/v1",
+  "caseId": "iceland-decision-closure-ring-stable-001",
+  "description": "Golden optimizationHints: stable ring road, no RAG road closure; verdict with MC only.",
+  "optimizationHints": {
+    "method": "CGUS",
+    "recommendedAlternativeId": "base",
+    "metaDecisionAudit": "META_BUDGET(sample=500,topK=8,H=4,entropy=0.24,ESS=88.2) mcTotal=500 ragWorld=0 mcRerank=0",
+    "decisionVerdict": {
+      "chosen_plan_id": "base",
+      "rejected_plans": [
+        {
+          "id": "op-swap-day2",
+          "status": "rejected",
+          "hard_violation_count": 0,
+          "utility_delta_vs_chosen": -0.05,
+          "rejection_reasons": ["lower_expected_utility delta=-0.050"]
+        }
+      ],
+      "monte_carlo_summary": {
+        "used": true,
+        "total_samples": 500
+      }
+    },
+    "decisionVerdictNarrationZh": "**推荐方案：** `base`。已弃选 1 个备选；蒙特卡罗共 500 次采样。",
+    "worldConstraintMaterialization": {
+      "appliedEvents": 0,
+      "roadIds": [],
+      "weatherDates": [],
+      "storeVersion": 0
+    }
+  }
+}

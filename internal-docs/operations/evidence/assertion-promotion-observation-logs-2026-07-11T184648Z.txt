@@ -1,0 +1,35 @@
+=== Observation Drills 2026-07-11T184648Z ===
+Sat Jul 11 18:46:48 UTC 2026
+
+=== Phase 1: Hazard Lifecycle (normal shadow, no failpoint) ===
+[start-nest-3002-drill] building...
+✅ 构建成功，输出文件: dist/src/main.js（完整树）
+[start-nest-3002-drill] pid=46654 log=/tmp/nest3002-prod.log
+[start-nest-3002-drill] health ok SHADOW_MODE=1 FAIL_ONCE=0
+{
+  "outPath": "/home/devbox/project/internal-docs/operations/evidence/assertion-promotion-observation-2026-07-11T18-47-46.json",
+  "closure": {
+    "weatherAutoPromotionShadowObservationClosure": "PASS",
+    "weatherHazardLifecycleDrill": "PASS",
+    "weatherRecoveryShadowClosure": "PASS",
+    "retrySchedulerOperationalDrill": "PASS"
+  }
+}
+
+=== Phase 2: Retry Scheduler (fail-once on :3002) ===
+[start-nest-3002-drill] TEST_FAIL_ONCE=1
+[start-nest-3002-drill] building...
+✅ 构建成功，输出文件: dist/src/main.js（完整树）
+[start-nest-3002-drill] pid=47044 log=/tmp/nest3002-prod.log
+[start-nest-3002-drill] health ok SHADOW_MODE=1 FAIL_ONCE=1
+Error: Retry drill requires ASSERTION_PROMOTION_TEST_FAIL_ONCE=1 on Nest :3002 (restart with drill env)
+    at main (/home/devbox/project/scripts/run-assertion-promotion-observation-drills.ts:329:15)
+    at <anonymous> (/home/devbox/project/scripts/run-assertion-promotion-observation-drills.ts:357:1)
+    at Object.<anonymous> (/home/devbox/project/scripts/run-assertion-promotion-observation-drills.ts:360:2)
+    at Module._compile (node:internal/modules/cjs/loader:1469:14)
+    at Object.transformer (/home/devbox/project/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:3176)
+    at Module.load (node:internal/modules/cjs/loader:1288:32)
+    at Module._load (node:internal/modules/cjs/loader:1104:12)
+    at cjsLoader (node:internal/modules/esm/translators:346:17)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:286:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:234:25)

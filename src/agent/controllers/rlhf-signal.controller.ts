@@ -23,6 +23,7 @@ import {
   DecisionQualityAssessment,
   LearningSignal,
 } from '../services/rlhf-signal-collector.service';
+import type { RlhfTradeoffComparisonDwell } from '../services/rlhf-decision-context.types';
 import { DecisionOutput } from '../interfaces/decision-node.interface';
 import { DecisionKernelService } from '../../decision/kernel/decision-kernel.service';
 import type { IDsoFeedbackPersistence } from '../../decision/kernel/dso-feedback-persistence.interface';
@@ -130,6 +131,53 @@ export class RLHFSignalController {
   ) {
     this.rlhfService.recordDetailInteraction(body.trip_run_id, body.element_type, body.element_id, body.action);
     return { success: true, recorded: 'detail_interaction' };
+  }
+
+  @Post('behavior/tradeoff-dwell')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: '记录两难/方案对比停留',
+    description: '记录用户在两个候选（如省钱 vs 省时）之间的对比视图停留毫秒，供 RLHF 与专利两难叙事对齐',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['trip_run_id', 'option_a_id', 'option_b_id', 'dwell_ms'],
+      properties: {
+        trip_run_id: { type: 'string' },
+        user_id: { type: 'string' },
+        option_a_id: { type: 'string' },
+        option_b_id: { type: 'string' },
+        dwell_ms: { type: 'number' },
+        resolved_to: { type: 'string', enum: ['A', 'B', 'NONE'] },
+        tradeoff_axis: { type: 'string', example: 'cost_vs_time' },
+        decision_point_id: { type: 'string' },
+      },
+    },
+  })
+  recordTradeoffDwell(
+    @Body()
+    body: {
+      trip_run_id: string;
+      user_id?: string;
+      option_a_id: string;
+      option_b_id: string;
+      dwell_ms: number;
+      resolved_to?: 'A' | 'B' | 'NONE';
+      tradeoff_axis?: string;
+      decision_point_id?: string;
+    },
+  ): BehaviorSignal {
+    const dwell: RlhfTradeoffComparisonDwell = {
+      schemaVersion: 1,
+      option_a_id: body.option_a_id,
+      option_b_id: body.option_b_id,
+      dwell_ms: body.dwell_ms,
+      resolved_to: body.resolved_to,
+      tradeoff_axis: body.tradeoff_axis,
+      decision_point_id: body.decision_point_id,
+    };
+    return this.rlhfService.recordTradeoffComparisonDwell(body.trip_run_id, dwell, body.user_id);
   }
 
   // ============================================================================

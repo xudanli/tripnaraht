@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "e78a4cfe-6fcc-4c78-aa3c-decf0f5bd9e1",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "GLOBAL-LOCAL-HYBRID-V1",
+  "strategy": {
+    "strategyId": "GLOBAL-LOCAL-HYBRID-V1",
+    "philosophy": "全局规则驱动，局部上下文修正",
+    "approach": "首先在全局层应用原则：所有决策绑定 countryCode=IS 约束。针对 DEM 缺失，先检查全局上下文（如整体季节、F-road 开放状态）。若全局上下文显示当前处于非开放季，则直接 REJECT 并跳过局部检查。若全局为开放季，则进一步检查局部 Abu 门禁，输出 REJECT 并强制记录 repair 轨迹。强调在正文中引用 IS 标识。",
+    "emphasis": "全局与局部权衡，减少无效检查",
+    "risk": "全局上下文判断可能出错（如季节边界模糊），导致误判；局部修复轨迹记录可能增加执行开销。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户意图是7月去冰岛高地。根据冰岛Country Pack规则，所有决策必须绑定countryCode=IS。7月属于开放季，但高地（Highlands）与F-road仅在开放季且Abu允许时进入候选。当前DEM证据缺失，Abu门禁必须REJECT，不得静默降级。全局为开放季，但局部Abu检查因DEM缺失触发REJECT，并需记录repair轨迹。最终allowed=false。",
+      "action": "REJECT",
+      "result": "[完成] REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:09:58.351Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:09:58.351Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "106400a8-7876-4525-a31c-8a3ebbefde49",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "strict-adherence-001",
+  "strategy": {
+    "strategyId": "strict-adherence-001",
+    "philosophy": "绝对服从规则，零容忍缺失",
+    "approach": "检测到 DEM 证据缺失时，立即判定为 REJECT，不进行任何降级或回退检查。所有后续步骤（如 Dr.Dre 节奏、Neptune 修复）均跳过，直接输出拒绝轨迹，并确保 audit 片段包含 `IS` 标识。",
+    "emphasis": "准确性与合规性优先于执行速度。完全遵循《冰岛 Country Pack》原则，确保规则不被静默违反。",
+    "risk": "若 DEM 缺失是由于临时数据延迟导致，可能误拒合法高地请求，降低可用性。在极端情况下（如批量测试），拒绝率过高可能触发上游重试风暴。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求在7月去冰岛高地。根据冰岛Country Pack规则，高地仅在开放季且Abu允许时进入候选。当前DEM/海拔证据缺失，按照strict-adherence-001策略，必须立即REJECT，不进行任何降级或回退检查。跳过Dr.Dre节奏和Neptune修复步骤，直接输出拒绝轨迹，并在audit片段中包含IS标识。",
+      "action": "REJECT: 由于DEM证据缺失，Abu无法确认高地海拔安全性。根据冰岛Country Pack规则，拒绝包含F-road或高地的行程。audit: { rule: 'IS-HIGHLAND-DEM', decision: 'reject', reason: 'DEM evidence missing for highlands access in July', country: 'IS' }",
+      "result": "[完成] REJECT: 由于DEM证据缺失，Abu无法确认高地海拔安全性。根据冰岛Country Pack规则，拒绝包含F-road或高地的行程。audit: { rule: 'IS-HIGHLAND-DEM', decision: 'reject', reason: 'DEM evidence missing for highlands access in July', country: 'IS' }",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:11:15.795Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:11:15.795Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

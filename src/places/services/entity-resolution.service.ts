@@ -7,6 +7,10 @@ import { AdminDivisionService } from './admin-division.service';
 import { AmapPOIService } from './amap-poi.service';
 import { GooglePlacesService } from './google-places.service';
 import { PlacesService } from '../places.service';
+import {
+  CpreEntityResolutionBridge,
+  inferEntityResolutionCountryCode,
+} from '../../canonical-poi-resolution/adapters/cpre-entity-resolution.bridge';
 
 /**
  * 实体解析结果
@@ -21,7 +25,7 @@ export interface EntityResolutionResult {
   lat: number;
   lng: number;
   score: number;
-  source: 'keyword_match' | 'alias_match' | 'vector_search' | 'external_geocoding';
+  source: 'keyword_match' | 'alias_match' | 'vector_search' | 'external_geocoding' | 'cpre';
   matchReasons: string[];
   metadata?: any;
 }
@@ -57,6 +61,7 @@ export class EntityResolutionService {
     @Optional() private amapPOIService?: AmapPOIService,
     @Optional() private googlePlacesService?: GooglePlacesService,
     @Optional() private placesService?: PlacesService,
+    @Optional() private cpreBridge?: CpreEntityResolutionBridge,
   ) {}
 
   /**
@@ -75,7 +80,7 @@ export class EntityResolutionService {
     lat?: number,
     lng?: number,
     limit: number = 10,
-    options?: { keywordOnly?: boolean },
+    options?: { keywordOnly?: boolean; countryCode?: string },
   ): Promise<{
     results: EntityResolutionResult[];
     missingPois: string[];
@@ -86,20 +91,42 @@ export class EntityResolutionService {
     const results: EntityResolutionResult[] = [];
     const foundPoiNames = new Set<string>();
     const missingPois: string[] = [];
+    const needsClarification: Array<{ poi: string; options: string[] }> = [];
 
     // 步骤1: 结构化抽取（城市/县/POI列表）
     const extracted = this.extractStructuredEntities(query, mustHavePois);
     this.logger.debug(`[resolveEntities] 结构化抽取结果: ${JSON.stringify(extracted, null, 2)}`);
 
+    const countryCode = inferEntityResolutionCountryCode({
+      countryCode: options?.countryCode,
+      query,
+      cities: extracted.cities,
+      lat,
+      lng,
+    });
+
     // 步骤2: 对每个must-have POI，先做alias/关键词精确匹配
     for (const poiQuery of mustHavePois) {
-      const poiResult = await this.resolveMustHavePoi(poiQuery, extracted, lat, lng);
+      const poiResult = await this.resolveMustHavePoi(
+        poiQuery,
+        extracted,
+        lat,
+        lng,
+        countryCode,
+      );
       if (poiResult) {
         // 关键修复：如果must-have POI仅匹配到HOTEL，强制继续召回ATTRACTION
         if (poiResult.category === 'HOTEL') {
           this.logger.warn(`[resolveEntities] must-have POI "${poiQuery}" 仅匹配到HOTEL，强制继续召回ATTRACTION类别`);
           // 继续搜索ATTRACTION类别
-          const attractionResult = await this.resolveMustHavePoiWithCategory(poiQuery, extracted, lat, lng, ['ATTRACTION', 'SCENIC', 'PARK', 'MUSEUM', 'CULTURAL_SITE', 'HISTORICAL_SITE', 'NATURE_SITE']);
+          const attractionResult = await this.resolveMustHavePoiWithCategory(
+            poiQuery,
+            extracted,
+            lat,
+            lng,
+            ['ATTRACTION', 'SCENIC', 'PARK', 'MUSEUM', 'CULTURAL_SITE', 'HISTORICAL_SITE', 'NATURE_SITE'],
+            countryCode,
+          );
           if (attractionResult) {
             results.push(attractionResult);
             foundPoiNames.add(poiQuery);
@@ -188,9 +215,25 @@ export class EntityResolutionService {
       results.push(...otherResults);
     }
 
-    // 步骤4: 对缺失的must-have POI，尝试外部地理编码并自动创建
-    const needsClarification: Array<{ poi: string; options: string[] }> = [];
+    // 步骤4: 对缺失的must-have POI，尝试 CPRE（冰岛）或外部地理编码
     for (const missingPoi of missingPois) {
+      if (countryCode && this.cpreBridge?.isEnabledForCountry(countryCode)) {
+        const cpreAttempt = await this.cpreBridge.tryResolvePoiQuery(missingPoi, countryCode);
+        if (cpreAttempt.clarification) {
+          needsClarification.push({
+            poi: cpreAttempt.clarification.poi,
+            options: cpreAttempt.clarification.options,
+          });
+          continue;
+        }
+        if (cpreAttempt.result) {
+          results.push(cpreAttempt.result);
+          const idx = missingPois.indexOf(missingPoi);
+          if (idx >= 0) missingPois.splice(idx, 1);
+          continue;
+        }
+      }
+
       const externalResult = await this.tryExternalGeocoding(missingPoi, extracted, lat, lng);
       if (externalResult) {
         // 如果外部地理编码成功，尝试自动创建 Place 记录
@@ -358,8 +401,16 @@ export class EntityResolutionService {
     poiQuery: string,
     _extracted: { cities: string[]; counties: string[]; pois: string[] },
     _lat?: number,
-    _lng?: number
+    _lng?: number,
+    countryCode?: string,
   ): Promise<EntityResolutionResult | null> {
+    if (countryCode && this.cpreBridge?.isEnabledForCountry(countryCode)) {
+      const cpreAttempt = await this.cpreBridge.tryResolvePoiQuery(poiQuery, countryCode);
+      if (cpreAttempt.result) {
+        return cpreAttempt.result;
+      }
+    }
+
     // 2.1: 别名匹配
     const cityHint = this.adminDivisionService.mapPoiAliasToCity(poiQuery);
     const normalizedCity = cityHint ? await this.adminDivisionService.normalizeCityName(cityHint) : null;
@@ -395,8 +446,16 @@ export class EntityResolutionService {
     extracted: { cities: string[]; counties: string[]; pois: string[] },
     lat?: number,
     lng?: number,
-    categoryFilter?: string[]
+    categoryFilter?: string[],
+    countryCode?: string,
   ): Promise<EntityResolutionResult | null> {
+    if (countryCode && this.cpreBridge?.isEnabledForCountry(countryCode)) {
+      const cpreAttempt = await this.cpreBridge.tryResolvePoiQuery(poiQuery, countryCode);
+      if (cpreAttempt.result) {
+        return cpreAttempt.result;
+      }
+    }
+
     // 2.1: 别名匹配
     const cityHint = this.adminDivisionService.mapPoiAliasToCity(poiQuery);
     const normalizedCity = cityHint ? await this.adminDivisionService.normalizeCityName(cityHint) : null;

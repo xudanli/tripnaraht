@@ -35,6 +35,10 @@
         },
         "cgusDsoSnapshot": {
           "$ref": "#/definitions/MinimalCgusDsoSnapshot"
+        },
+        "decisionClosureGolden": {
+          "type": "object",
+          "description": "Optional frozen optimizationHints for P0 decision-closure gate"
         }
       },
       "additionalProperties": true

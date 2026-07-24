@@ -12,12 +12,10 @@
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { DetailUnderstandStatusSkill } from '../../skills/detail/detail-understand-status.skill';
-import { DetailAnalyzeHealthSkill } from '../../skills/detail/detail-analyze-health.skill';
-import { DetailExplainDecisionSkill } from '../../skills/detail/detail-explain-decision.skill';
-import { DetailShowEvidenceSkill } from '../../skills/detail/detail-show-evidence.skill';
 import { DetailState, TripHealth, TripStatusUnderstanding, DecisionExplanation } from '../../skills/detail/shared/detail-state.types';
 import { PersonaShellService, PersonaShellOutput } from './persona-shell.service';
+import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import type { Skill } from '../../skills/interfaces/skill.interface';
 
 export interface TripDetailAgentRequest {
   /** Trip ID */
@@ -60,10 +58,7 @@ export class TripDetailAgentService {
   private readonly logger = new Logger(TripDetailAgentService.name);
 
   constructor(
-    @Optional() private readonly detailUnderstandStatus?: DetailUnderstandStatusSkill,
-    @Optional() private readonly detailAnalyzeHealth?: DetailAnalyzeHealthSkill,
-    @Optional() private readonly detailExplainDecision?: DetailExplainDecisionSkill,
-    @Optional() private readonly detailShowEvidence?: DetailShowEvidenceSkill,
+    @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly personaShell?: PersonaShellService,
   ) {}
 
@@ -107,8 +102,11 @@ export class TripDetailAgentService {
 
       // 根据操作类型执行相应技能
       if (request.action === 'get_status' || request.action === 'get_full') {
-        if (this.detailUnderstandStatus) {
-          const statusResult = await this.detailUnderstandStatus.execute({
+        const skill = this.skillsRegistry?.getSkill('detail.understandStatus') as
+          | Skill<{ tripId: string; tripData: unknown }, { statusUnderstanding: TripStatusUnderstanding }>
+          | undefined;
+        if (skill) {
+          const statusResult = await skill.execute({
             tripId: request.tripId,
             tripData,
           });
@@ -118,8 +116,11 @@ export class TripDetailAgentService {
       }
 
       if (request.action === 'get_health' || request.action === 'get_full') {
-        if (this.detailAnalyzeHealth) {
-          const healthResult = await this.detailAnalyzeHealth.execute({
+        const skill = this.skillsRegistry?.getSkill('detail.analyzeHealth') as
+          | Skill<{ tripId: string; tripData: unknown; planState: null }, { health: TripHealth }>
+          | undefined;
+        if (skill) {
+          const healthResult = await skill.execute({
             tripId: request.tripId,
             tripData,
             planState,
@@ -130,8 +131,11 @@ export class TripDetailAgentService {
       }
 
       if (request.action === 'explain_decisions' || request.action === 'get_full') {
-        if (this.detailExplainDecision) {
-          const explainResult = await this.detailExplainDecision.execute({
+        const skill = this.skillsRegistry?.getSkill('detail.explainDecision') as
+          | Skill<{ tripId: string; decisionId?: string }, { explanations: DecisionExplanation[] }>
+          | undefined;
+        if (skill) {
+          const explainResult = await skill.execute({
             tripId: request.tripId,
             decisionId: request.decisionId,
           });
@@ -141,8 +145,14 @@ export class TripDetailAgentService {
       }
 
       if (request.action === 'show_evidence' || request.action === 'get_full') {
-        if (this.detailShowEvidence) {
-          const evidenceResult = await this.detailShowEvidence.execute({
+        const skill = this.skillsRegistry?.getSkill('detail.showEvidence') as
+          | Skill<
+              { tripId: string; evidenceRefs?: string[]; planState: null },
+              { evidence: DetailState['evidence'] }
+            >
+          | undefined;
+        if (skill) {
+          const evidenceResult = await skill.execute({
             tripId: request.tripId,
             evidenceRefs: request.evidenceRefs,
             planState,

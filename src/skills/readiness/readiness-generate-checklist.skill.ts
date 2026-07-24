@@ -64,7 +64,7 @@ export class ReadinessGenerateChecklistSkill implements Skill<ReadinessGenerateC
 
   metadata = {
     name: 'readiness.generateChecklist',
-    description: '基于世界模型和路线方向生成行前准备清单（证件、装备、健康、技能等）',
+    description: 'readiness.generateChecklist：基于世界模型和路线方向生成行前准备清单（证件、装备、健康、技能等）',
     version: '1.0.0',
     category: 'readiness' as const,
     inputSchema: {

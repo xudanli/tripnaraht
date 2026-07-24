@@ -16,6 +16,7 @@ import { extractTokenUsage } from '../utils/token-extractor.util';
 import { parseJsonFromLlmText, stripLlmJsonMarkdown } from '../utils/parse-llm-json.util';
 import type { OrchestrationStep, SubAgentType } from '../../agent/interfaces/trip-plan.interface';
 import { TokenStatsService } from '../../agent/services/token-stats.service';
+import { LlmUsageRecorderService } from './llm-usage-recorder.service';
 import type {
   ChatCompletionMessage,
   ChatCompletionsWithToolsResult,
@@ -23,6 +24,7 @@ import type {
   OpenAiFunctionToolDefinition,
   ToolChoice,
 } from '../interfaces/chat-completion-tools.interface';
+import { assertFreshLlmCallAllowedUnderReplayStrictSeal } from '../../agent/runtime/replay-strict-seal.util';
 
 /** P0: Skills 内 LLM 打点上下文 */
 export interface LlmTokenContext {
@@ -65,6 +67,7 @@ export class LlmService {
   constructor(
     @Optional() private configService?: ConfigService,
     @Optional() private tokenStatsService?: TokenStatsService,
+    @Optional() private llmUsageRecorder?: LlmUsageRecorderService,
   ) {
     // 强制 IPv4 优先（解决 IPv6 连接失败问题）
     dns.setDefaultResultOrder('ipv4first');
@@ -407,6 +410,7 @@ export class LlmService {
       response_format?: { type: 'json_object' };
     },
   ): Promise<ChatCompletionsWithToolsResult> {
+    assertFreshLlmCallAllowedUnderReplayStrictSeal();
     if (this.useMock) {
       throw new Error('callChatWithTools: mock LLM mode does not support tool calling');
     }
@@ -437,44 +441,31 @@ export class LlmService {
       const parsed = this.parseChatCompletionsToolResponse(rawResponse);
       const durationMs = Date.now() - startTime;
 
-      if (options?.tokenContext && this.tokenStatsService) {
-        const promptStr = JSON.stringify(messages);
-        let usage = extractTokenUsage(provider, (rawResponse as any) || {}, promptStr);
-        if (!(rawResponse as any)?.usage) {
-          usage = {
-            prompt_tokens: Math.ceil(promptStr.length / 4),
-            completion_tokens: Math.ceil((parsed.message.content || '').length / 4),
-            total_tokens: 0,
-          };
-          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
-        }
-        this.recordTokenUsage({
-          ...options.tokenContext,
-          provider,
-          prompt: promptStr,
-          response: JSON.stringify(parsed.message),
-          usage,
-          durationMs,
-          success: true,
-        });
-      }
+      const promptStr = JSON.stringify(messages);
+      this.emitLlmUsageLog({
+        provider,
+        prompt: promptStr,
+        response: JSON.stringify(parsed.message),
+        rawResponse: rawResponse as any,
+        durationMs,
+        success: true,
+        tokenContext: options?.tokenContext,
+      });
 
       this.circuitBreaker.recordSuccess();
       return parsed;
     } catch (error: any) {
       const durationMs = Date.now() - startTime;
-      if (options?.tokenContext && this.tokenStatsService) {
-        this.recordTokenUsage({
-          ...options.tokenContext,
-          provider,
-          prompt: JSON.stringify(messages),
-          response: '',
-          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-          durationMs,
-          success: false,
-          error: error?.message,
-        });
-      }
+      this.emitLlmUsageLog({
+        provider,
+        prompt: JSON.stringify(messages),
+        response: '',
+        rawResponse: undefined,
+        durationMs,
+        success: false,
+        error: error?.message,
+        tokenContext: options?.tokenContext,
+      });
       this.circuitBreaker.recordFailure();
       throw error;
     }
@@ -490,6 +481,7 @@ export class LlmService {
     schema?: any,
     tokenContext?: LlmTokenContext,
   ): Promise<string> {
+    assertFreshLlmCallAllowedUnderReplayStrictSeal();
     const startTime = Date.now();
     // 如果启用 Mock 模式，返回模拟响应
     if (this.useMock) {
@@ -526,41 +518,28 @@ export class LlmService {
           throw new Error(`Unsupported LLM provider: ${provider}`);
       }
       const durationMs = Date.now() - startTime;
-      if (tokenContext && this.tokenStatsService) {
-        let usage = extractTokenUsage(provider, result.rawResponse || {}, prompt);
-        if (result.rawResponse === undefined) {
-          usage = {
-            prompt_tokens: Math.ceil(prompt.length / 4),
-            completion_tokens: Math.ceil((result.content || '').length / 4),
-            total_tokens: 0,
-          };
-          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
-        }
-        this.recordTokenUsage({
-          ...tokenContext,
-          provider,
-          prompt,
-          response: result.content,
-          usage,
-          durationMs,
-          success: true,
-        });
-      }
+      this.emitLlmUsageLog({
+        provider,
+        prompt,
+        response: result.content,
+        rawResponse: result.rawResponse,
+        durationMs,
+        success: true,
+        tokenContext,
+      });
       return schema ? stripLlmJsonMarkdown(result.content) : result.content;
     } catch (error: any) {
       const durationMs = Date.now() - startTime;
-      if (tokenContext && this.tokenStatsService) {
-        this.recordTokenUsage({
-          ...tokenContext,
-          provider,
-          prompt,
-          response: '',
-          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-          durationMs,
-          success: false,
-          error: error?.message,
-        });
-      }
+      this.emitLlmUsageLog({
+        provider,
+        prompt,
+        response: '',
+        rawResponse: undefined,
+        durationMs,
+        success: false,
+        error: error?.message,
+        tokenContext,
+      });
       // 如果网络请求失败，自动回退到 Mock 模式
       const status = error.response?.status;
       const isNetworkError =
@@ -820,38 +799,84 @@ export class LlmService {
     return JSON.stringify({});
   }
 
-  /** P0: 记录 Token 使用到 TokenStatsService（Skills 内 LLM 打点） */
-  private recordTokenUsage(params: {
-    request_id: string;
-    state_machine_step: OrchestrationStep;
-    sub_agent: SubAgentType;
+  /**
+   * Unified usage sink: DB (LlmTokenLog) + in-memory TokenStats.
+   * Uses AsyncLocalStorage when explicit tokenContext is omitted.
+   */
+  private emitLlmUsageLog(params: {
     provider: LlmProvider;
     prompt: string;
     response: string;
-    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    rawResponse?: unknown;
     durationMs: number;
     success: boolean;
     error?: string;
+    tokenContext?: LlmTokenContext;
   }): void {
-    if (!this.tokenStatsService) return;
-    const spanId = `llm-${params.state_machine_step}-${Date.now()}`;
-    this.tokenStatsService.recordTokenUsage({
-      request_id: params.request_id,
-      trace_id: spanId,
+    if (!this.llmUsageRecorder && !this.tokenStatsService) {
+      return;
+    }
+
+    const resolved = this.llmUsageRecorder?.resolveContext(
+      params.tokenContext
+        ? {
+            request_id: params.tokenContext.request_id,
+            state_machine_step: params.tokenContext.state_machine_step,
+            sub_agent: params.tokenContext.sub_agent,
+          }
+        : undefined,
+    ) ?? {
+      request_id: params.tokenContext?.request_id ?? 'SYSTEM_INTERNAL',
+      step_name: String(params.tokenContext?.state_machine_step ?? 'UNKNOWN'),
+      sub_agent: String(params.tokenContext?.sub_agent ?? 'Orchestrator'),
+    };
+
+    let usage = extractTokenUsage(params.provider, params.rawResponse ?? {}, params.prompt);
+    const isEstimated = !(params.rawResponse as any)?.usage;
+
+    const model = this.getModelName(params.provider);
+    const spanId = `llm-${resolved.step_name}-${Date.now()}`;
+
+    const record = {
+      request_id: resolved.request_id,
       span_id: spanId,
-      sub_agent: params.sub_agent,
-      state_machine_step: params.state_machine_step,
-      task_type: params.state_machine_step,
       provider: params.provider,
-      model: this.getModelName(params.provider),
-      prompt_tokens: params.usage.prompt_tokens,
-      completion_tokens: params.usage.completion_tokens,
-      total_tokens: params.usage.total_tokens,
-      duration_ms: params.durationMs,
+      model,
+      step_name: resolved.step_name,
+      sub_agent: resolved.sub_agent,
+      prompt_tokens: usage.prompt_tokens,
+      completion_tokens: usage.completion_tokens,
+      total_tokens: usage.total_tokens || usage.prompt_tokens + usage.completion_tokens,
+      is_estimated: isEstimated,
       success: params.success,
+      duration_ms: params.durationMs,
       error: params.error,
-      timestamp: new Date().toISOString(),
-    });
+    };
+
+    if (this.llmUsageRecorder) {
+      this.llmUsageRecorder.record(record);
+      return;
+    }
+
+    if (this.tokenStatsService) {
+      void this.tokenStatsService.recordTokenUsage({
+        request_id: record.request_id,
+        trace_id: record.request_id,
+        span_id: record.span_id,
+        sub_agent: record.sub_agent as SubAgentType,
+        state_machine_step: record.step_name as OrchestrationStep,
+        task_type: record.step_name,
+        provider: params.provider,
+        model: record.model,
+        prompt_tokens: record.prompt_tokens,
+        completion_tokens: record.completion_tokens,
+        total_tokens: record.total_tokens,
+        duration_ms: record.duration_ms,
+        success: record.success,
+        error: record.error,
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
 
   private getModelName(provider: LlmProvider): string {

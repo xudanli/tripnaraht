@@ -3,10 +3,26 @@ import type { DecisionStyleType } from '../../decision-profiling/types/decision-
 import {
   assessTeamFit,
   deriveTeamFitChecklistStatus,
+  filterValidMemberUserIds,
   parseStoredTravelStyleCard,
 } from './team-fit-assessment.util';
 
 describe('team-fit-assessment.util', () => {
+  describe('filterValidMemberUserIds', () => {
+    it('drops anonymous and non-uuid ids', () => {
+      expect(
+        filterValidMemberUserIds([
+          'b950dbf2-7583-4b43-b0c6-ddd947719c54',
+          'anonymous',
+          'anonymous-dev-user',
+          'not-a-uuid',
+          '',
+          'b950dbf2-7583-4b43-b0c6-ddd947719c54',
+        ]),
+      ).toEqual(['b950dbf2-7583-4b43-b0c6-ddd947719c54']);
+    });
+  });
+
   it('returns perfect score for solo trips', () => {
     const result = assessTeamFit({
       tripId: 'trip-1',
@@ -27,7 +43,8 @@ describe('team-fit-assessment.util', () => {
       ],
       conflicts: [],
     });
-    expect(result.issues.some((i) => i.issueKind === 'profiling_incomplete')).toBe(true);
+    expect(result.issues.some((i) => i.issueKind === 'team_pacing_profiling')).toBe(true);
+    expect(result.issues[0]?.uiHints?.profilingSurface).toBe('decision_profiling');
     expect(result.issues[0]?.proofs?.[0]?.ruleId).toBe('team_fit.profiling.coverage');
     expect(deriveTeamFitChecklistStatus(result).result).toBe('pending');
   });
@@ -51,8 +68,9 @@ describe('team-fit-assessment.util', () => {
         },
       ],
     });
-    const fatigueIssue = result.issues.find((i) => i.issueKind === 'team_fatigue');
+    const fatigueIssue = result.issues.find((i) => i.issueKind === 'team_pacing_fatigue');
     expect(fatigueIssue?.category).toBe('team_fit');
+    expect(fatigueIssue?.uiHints?.profilingSurface).toBe('team_pacing');
     expect(fatigueIssue?.proofs?.[0]?.evidenceType).toBe('fatigue_exceeded');
   });
 
@@ -111,8 +129,10 @@ describe('team-fit-assessment.util', () => {
       conflicts: [],
     });
 
-    const friction = result.issues.filter((i) => i.issueKind === 'member_friction');
+    const friction = result.issues.filter((i) => i.issueKind?.startsWith('team_pacing_') && i.issueKind !== 'team_pacing_profiling');
     expect(friction.length).toBeGreaterThan(0);
+    expect(friction[0]?.uiHints?.affectedMemberIds?.length).toBeGreaterThanOrEqual(2);
+    expect(friction[0]?.uiHints?.copyVariant).toMatch(/^team_friction_/);
     expect(friction[0]?.proofs?.[0]?.evidenceSource).toBe('decision-profiling.friction-matrix');
   });
 });

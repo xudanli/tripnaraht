@@ -82,7 +82,7 @@ export class DecisionLogAppendSkill implements Skill<DecisionLogAppendInput, Dec
 
   metadata = {
     name: 'decision.logAppend',
-    description: '决策日志写入：把三人格输出写入可检索事件流',
+    description: 'decision.logAppend：追加三人格 decision 日志到可检索事件流。在 runThreeGuardians 或 gate 每次产生结构化决策后需审计留痕时调用。',
     version: '1.0.0',
     category: 'decision' as const,
   };

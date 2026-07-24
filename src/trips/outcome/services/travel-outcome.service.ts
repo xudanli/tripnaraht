@@ -17,7 +17,6 @@ import {
   TripSuccessLevel,
   BudgetPerformance,
   CompletionRate,
-  CompanionSatisfaction,
   OutcomeMetrics,
   OutcomeFactor,
   OutcomeFactorType,
@@ -42,36 +41,28 @@ export class TravelOutcomeService {
       // Calculate individual components
       const budgetOutcome = this.calculateBudgetOutcome(request.tripData);
       const completionOutcome = this.calculateCompletionOutcome(request.tripData);
-      const companionOutcome = this.calculateCompanionOutcome(request.tripData, request.userFeedback);
       const metrics = this.calculateMetrics(request.events);
       const factors = this.extractFactors(request, budgetOutcome, completionOutcome, metrics);
 
-      // Calculate satisfaction
       const satisfaction = this.calculateSatisfaction(request.userFeedback, factors);
 
-      // Calculate overall success level
       const success = this.calculateSuccessLevel(
         budgetOutcome,
         completionOutcome,
-        companionOutcome,
         satisfaction,
         metrics,
       );
 
-      // Calculate overall score
       const overallScore = this.calculateOverallScore(
         success,
         satisfaction,
         budgetOutcome.deviation,
         completionOutcome.percentage,
-        companionOutcome.matchScore,
       );
 
-      // Generate recommendations
       const recommendations = this.generateRecommendations(
         budgetOutcome,
         completionOutcome,
-        companionOutcome,
         factors,
       );
 
@@ -94,10 +85,6 @@ export class TravelOutcomeService {
         plannedActivities: request.tripData.plannedActivities || 0,
         completedActivities: request.tripData.completedActivities || 0,
         completionPercentage: completionOutcome.percentage,
-        companionSatisfaction: companionOutcome.satisfaction,
-        companionMatchScore: companionOutcome.matchScore,
-        companionCount: request.tripData.memberCount,
-        satisfiedCompanions: companionOutcome.satisfiedCount,
         overallScore,
         computedAt: new Date().toISOString(),
         metrics,
@@ -175,40 +162,6 @@ export class TravelOutcomeService {
     }
 
     return { rate, percentage };
-  }
-
-  /**
-   * Calculate companion outcome.
-   */
-  private calculateCompanionOutcome(
-    tripData: TripDataForOutcome,
-    userFeedback?: UserFeedback,
-  ): {
-    satisfaction: CompanionSatisfaction;
-    matchScore: number;
-    satisfiedCount: number;
-  } {
-    const memberCount = tripData.memberCount;
-    const companionSatisfactionScore = userFeedback?.companionSatisfaction ?? 7; // Default to good
-
-    // Calculate match score based on satisfaction
-    const matchScore = companionSatisfactionScore / 10;
-
-    // Estimate satisfied companions based on score
-    const satisfiedCount = Math.round(memberCount * matchScore);
-
-    let satisfaction: CompanionSatisfaction;
-    if (companionSatisfactionScore >= 9) {
-      satisfaction = CompanionSatisfaction.EXCELLENT;
-    } else if (companionSatisfactionScore >= 7) {
-      satisfaction = CompanionSatisfaction.GOOD;
-    } else if (companionSatisfactionScore >= 5) {
-      satisfaction = CompanionSatisfaction.MIXED;
-    } else {
-      satisfaction = CompanionSatisfaction.POOR;
-    }
-
-    return { satisfaction, matchScore, satisfiedCount };
   }
 
   /**
@@ -387,23 +340,19 @@ export class TravelOutcomeService {
   private calculateSuccessLevel(
     budgetOutcome: { performance: BudgetPerformance; deviation: number },
     completionOutcome: { percentage: number },
-    companionOutcome: { satisfaction: CompanionSatisfaction },
     satisfaction: number,
     metrics: OutcomeMetrics,
   ): TripSuccessLevel {
-    // Calculate weighted score
     const budgetScore = this.budgetPerformanceToScore(budgetOutcome.performance);
     const completionScore = completionOutcome.percentage / 100;
-    const companionScore = this.companionSatisfactionToScore(companionOutcome.satisfaction);
     const satisfactionScore = satisfaction / 10;
     const safetyScore = Math.max(0, 1 - metrics.safetyIncidents * 0.5);
 
     const weightedScore =
-      budgetScore * 0.2 +
-      completionScore * 0.3 +
-      companionScore * 0.2 +
-      satisfactionScore * 0.2 +
-      safetyScore * 0.1;
+      budgetScore * 0.25 +
+      completionScore * 0.35 +
+      satisfactionScore * 0.25 +
+      safetyScore * 0.15;
 
     // Map to success level
     if (weightedScore >= 0.9) {
@@ -438,24 +387,6 @@ export class TravelOutcomeService {
   }
 
   /**
-   * Convert companion satisfaction to score (0-1).
-   */
-  private companionSatisfactionToScore(satisfaction: CompanionSatisfaction): number {
-    switch (satisfaction) {
-      case CompanionSatisfaction.EXCELLENT:
-        return 1.0;
-      case CompanionSatisfaction.GOOD:
-        return 0.8;
-      case CompanionSatisfaction.MIXED:
-        return 0.6;
-      case CompanionSatisfaction.POOR:
-        return 0.3;
-      default:
-        return 0.5;
-    }
-  }
-
-  /**
    * Calculate overall outcome score (0-1).
    */
   private calculateOverallScore(
@@ -463,7 +394,6 @@ export class TravelOutcomeService {
     satisfaction: number,
     budgetDeviation: number,
     completionPercentage: number,
-    companionMatchScore: number,
   ): number {
     const successScore = this.successLevelToScore(success);
     const satisfactionScore = satisfaction / 10;
@@ -471,11 +401,10 @@ export class TravelOutcomeService {
     const completionScore = completionPercentage / 100;
 
     return (
-      successScore * 0.3 +
-      satisfactionScore * 0.3 +
-      budgetScore * 0.2 +
-      completionScore * 0.1 +
-      companionMatchScore * 0.1
+      successScore * 0.35 +
+      satisfactionScore * 0.35 +
+      budgetScore * 0.15 +
+      completionScore * 0.15
     );
   }
 
@@ -505,7 +434,6 @@ export class TravelOutcomeService {
   private generateRecommendations(
     budgetOutcome: { performance: BudgetPerformance; deviation: number },
     completionOutcome: { percentage: number },
-    companionOutcome: { satisfaction: CompanionSatisfaction },
     factors: OutcomeFactor[],
   ): string[] {
     const recommendations: string[] = [];
@@ -522,13 +450,6 @@ export class TravelOutcomeService {
       recommendations.push('Review activity planning to ensure realistic schedules');
     } else if (completionOutcome.percentage < 100) {
       recommendations.push('Consider building buffer time for unexpected delays');
-    }
-
-    // Companion recommendations
-    if (companionOutcome.satisfaction === CompanionSatisfaction.POOR) {
-      recommendations.push('Reconsider companion matching or group dynamics');
-    } else if (companionOutcome.satisfaction === CompanionSatisfaction.MIXED) {
-      recommendations.push('Improve communication and expectation alignment with companions');
     }
 
     // Factor-based recommendations

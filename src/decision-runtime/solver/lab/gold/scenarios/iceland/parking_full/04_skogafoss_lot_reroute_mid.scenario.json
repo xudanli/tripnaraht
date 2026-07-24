@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.04_skogafoss_lot_reroute_mid",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "Sk\u00f3gafoss lot full \u2014 REROUTE forbid a2\u2192a3",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/parking_full/problems/04_skogafoss_lot_reroute_mid.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1"
+}

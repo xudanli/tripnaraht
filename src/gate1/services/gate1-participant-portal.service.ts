@@ -66,7 +66,7 @@ export class Gate1ParticipantPortalService {
       title: n.title,
       severity: n.severity,
       summary: n.whatHappened,
-      actionRequired: n.actionRequired,
+      actionRequired: n.actionRequired ?? undefined,
       deadline: n.deadline?.toISOString(),
       needsAck: n.requiresAck && n.acks.length === 0,
     }));

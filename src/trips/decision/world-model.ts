@@ -293,6 +293,19 @@ export interface ExternalSignalsState {
   _decisionCausalityDraft?: import('../reality-kernel/decision-causality.types').DecisionCausalityDraftPayload;
   /** 最近一次写入因果链的 `causality_id`（供 outcome / telemetry 关联） */
   lastDecisionCausalityId?: string;
+  hardTrekTrailPlan?: import('./adapters/trail-planning.adapter').TrailPlanPreviewResult;
+  /** `trail_first` 当 hardTrekTrailPlan.mode === trail_segments */
+  planningMode?: 'poi_first' | 'trail_first';
+  /** MAT 6.x 本轮 research_data 共识镜像（供 decision_logs.metadata） */
+  planResearchDataMirror?: Record<string, unknown>;
+  /** 混合出行 embedded：generate-plan 按片段日期裁剪天数 */
+  embeddedHiking?: {
+    hikingProfile: 'embedded';
+    segmentCount: number;
+    effectiveDurationDays: number;
+    segmentIds: string[];
+    dateRange: { start: string; end: string };
+  };
   /** P2: 冰岛自驾因果评估（wind → P90 → miss prob + 用户可读结论） */
   icelandSelfDriveCausalAssessment?: import('../causal-runtime/domains/iceland-self-drive-causal.types').IcelandSelfDriveCausalOutput;
   /** P3: 三人格共享因果投影（Abu / Dr.Dre / Neptune 叙事唯一来源） */

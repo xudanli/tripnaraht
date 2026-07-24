@@ -23,7 +23,7 @@ export interface IcelandTunnelProtocolOutput {
 @SkillDecorator({
   name: 'iceland.tunnelProtocol',
   description:
-    '西峡湾路网单向隧道会让行提示（Vestfjarðagöng 等）：基于预设区域触发的轻量语义，非封闭裁决、非实时封路。',
+    '生成西峡湾 iceland 单车道 tunnel 会车与让行协议（启发式预设）。在西部 fjords 路线含隧道段、readiness/planning 需驾驶协议时调用。',
   version: '1.0.0',
   category: 'world',
   toolGroup: 'DOMAIN',
@@ -32,7 +32,7 @@ export interface IcelandTunnelProtocolOutput {
 export class IcelandTunnelProtocolSkill implements Skill<IcelandTunnelProtocolInput, IcelandTunnelProtocolOutput> {
   metadata = {
     name: 'iceland.tunnelProtocol',
-    description: 'Westfjords single-lane tunnel yielding protocol (heuristic, preset-based).',
+    description: '生成西峡湾 iceland 单车道 tunnel 会车与让行协议（启发式预设）。在西部 fjords 路线含隧道段、readiness/planning 需驾驶协议时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

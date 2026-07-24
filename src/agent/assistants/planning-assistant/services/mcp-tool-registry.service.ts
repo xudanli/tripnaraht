@@ -467,5 +467,6 @@ export class McpToolRegistryService implements OnModuleInit {
         authRequired: false,
       }
     ]);
+
   }
 }

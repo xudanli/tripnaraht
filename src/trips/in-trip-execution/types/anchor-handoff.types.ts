@@ -18,6 +18,8 @@ export interface AnchorItineraryItem {
   refundable: boolean;
   estimatedCost?: number;
   category: string;
+  /** 冰岛 POI Access Engine slug（来自 Place.metadata） */
+  poiAccessSlug?: string;
 }
 
 export interface AnchorItineraryDay {

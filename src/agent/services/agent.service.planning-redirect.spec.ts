@@ -190,7 +190,7 @@ describe('AgentService - Planning Request Interception', () => {
         expect(response.route.reasons).toContain(RouterReason.REDIRECT_TO_PLANNING_WORKBENCH);
         expect(response.route.ui_hint.status).toBe(UIStatus.REDIRECT_REQUIRED);
         expect(response.result.payload.redirectInfo).toBeDefined();
-        expect(response.result.payload.redirectInfo?.redirect_to).toBe('/planning-workbench/execute');
+        expect(response.result.payload.redirectInfo?.redirect_to).toBe('/dashboard/plan-studio');
       });
 
       it('应该拦截：包含"帮我规划"', async () => {
@@ -505,7 +505,7 @@ describe('AgentService - Planning Request Interception', () => {
 
       // 验证 redirectInfo
       expect(response.result.payload.redirectInfo).toBeDefined();
-      expect(response.result.payload.redirectInfo?.redirect_to).toBe('/planning-workbench/execute');
+      expect(response.result.payload.redirectInfo?.redirect_to).toBe('/dashboard/plan-studio');
       expect(response.result.payload.redirectInfo?.redirect_reason).toBe('PLANNING_REQUEST_DETECTED');
       expect(response.result.payload.redirectInfo?.original_request.message).toBe('规划一个5天冰岛行程');
       expect(response.result.payload.redirectInfo?.original_request.user_id).toBe('user-123');

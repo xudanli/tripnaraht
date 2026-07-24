@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { TripStatus } from '../dto/trip-status.dto';
 import { InTripMorningPackService } from '../in-trip-execution/services/in-trip-morning-pack.service';
 import { ProjectMembershipService } from '../../identity-governance/services/project-membership.service';
+import { bumpConstraintsVersion, snapshotConstraintsMeta } from '../trip-constraint-solver/utils/constraints-metadata.util';
 
 @Injectable()
 export class TripExtendedService {
@@ -111,6 +112,12 @@ export class TripExtendedService {
       await this.projectMembership.syncFromCollaborator(tripId, user.id, dto.role);
     }
 
+    const bumpedMeta = bumpConstraintsVersion(trip.metadata);
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { metadata: bumpedMeta as object },
+    });
+
     return {
       id: collaborator.id,
       tripId: collaborator.tripId,
@@ -119,6 +126,7 @@ export class TripExtendedService {
       displayName: user.displayName ?? null,
       role: collaborator.role,
       createdAt: collaborator.createdAt,
+      constraints: snapshotConstraintsMeta(bumpedMeta),
     };
   }
 
@@ -350,7 +358,13 @@ export class TripExtendedService {
       },
     });
 
-    return { success: true };
+    const bumpedMeta = bumpConstraintsVersion(trip.metadata);
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { metadata: bumpedMeta as object },
+    });
+
+    return { success: true, constraints: snapshotConstraintsMeta(bumpedMeta) };
   }
 
   /**

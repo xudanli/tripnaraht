@@ -6,7 +6,7 @@
 
 > **核心理念**：TripNARA 是一个以「旅行决策」为核心的 AI-native 系统。LLM 不在架构中心，它只是被调用的"推理器官"。
 
-## AI-Native 五层架构愿意
+## AI-Native 五层架构示意
 
 
 ```
@@ -38,13 +38,13 @@
 
 ### Core Decision Agents（决策内核）
 
-| Agent | 职责 | 人格映射 |
-|-------|------|----------|
-| **Planner** | Decision Node 拆解、缺口识别、方案结构设计 | - |
-| **Gatekeeper** | 约束守门（Hard/Soft）、Should-Exist Gate | **Abu** |
-| **CoreDecision** | 权衡模型、多方案评估、不确定性量化 | **Dr.Dre** |
-| **LocalInsight** | 世界模型注入、替代方案、空间修复 | **Neptune** |
-| **Compliance** | 风险分类、合规检查、免责留痕 | - |
+| Agent | 职责 | 人格映射（执行宿主） | 博弈角色（影子辩论 / 未来 LLM 层） |
+|-------|------|----------------------|-----------------------------------|
+| **Planner** | Decision Node 拆解、缺口识别、方案结构设计 | - | 提供可辩行程 JSON 与缺口上下文 |
+| **Gatekeeper** | 约束守门（Hard/Soft）、Should-Exist Gate | **Abu** | 安全叙事主辩方；**硬 BLOCK 仍由确定性门控保留一票否决权** |
+| **CoreDecision** | 权衡模型、多方案评估、不确定性量化 | **Dr.Dre** | 疲劳 / 节奏 / 可持续性主辩方 |
+| **LocalInsight** | 世界模型注入、替代方案、空间修复 | **Neptune** | Plan B / 改线 / 体面替补主辩方 |
+| **Compliance** | 风险分类、合规检查、免责留痕 | - | 输出合规留痕，不参与三方口吻辩论 |
 
 ### Domain Agents（世界模型层）
 
@@ -324,21 +324,70 @@ state.metadata.total_duration_ms = Date.now() - startTime;
 **构建响应**：
 - `RouteAndRunResponseDto` 包含完整的 `orchestrationResult`
 
-## 三人格映射规则
+## 三人格：人格映射表与人格博弈规则表
 
-### Abu（GatekeeperAgent）
+### A. 人格映射表（执行宿主，与代码路径对齐）
+
+| 人格 | 宿主 Agent / 步骤 | 当前工程落点（摘要） |
+|------|-------------------|----------------------|
+| **Abu** | Gatekeeper → `GATE_EVAL` | 硬门 / 软违规聚合；`GateResult.guardian_results.abu` |
+| **Dr.Dre** | CoreDecision 权衡 + `VERIFY` 节奏 | 疲劳、时间窗、人体可执行性；`guardian_results.drdre` |
+| **Neptune** | LocalInsight → `REPAIR` | 替代 POI、改线、buffer；`guardian_results.neptune` 与 `alternatives` |
+
+### B. 人格博弈规则表（影子辩论 / Guardians Debate，目标架构）
+
+> **原则**：不在业务代码里堆「if violation → 某句文案」的死映射；**结构化门控（Deterministic）** 与 **人格叙事/互搏（Probabilistic）** 分层。辩论层只消费 JSON + 约束 + 偏好，**输出仍须落回现有 `guardian_results` 契约**（含 `evidence` / `evidence_atoms`、`source`、`is_simulated`），并与聚合 `gate_result` 对齐。
+
+#### B.1 输入（Input）
+
+| 维度 | 内容 |
+|------|------|
+| 行程计划 | 结构化 Itinerary / Plan JSON（或草案切片） |
+| 物理约束 | Hard constraints（可达、封路、开放窗口、DEM、风等） |
+| 用户偏好 | `TripPlanRequest.persona_hint`（由 System 1 快路径**只透传、不跑辩论**；见 `RouteAndRunRequestDto.options.persona_hint`） |
+
+#### B.2 辩论顺序（Debate Order，单请求「左右互搏」版）
+
+1. **Abu 先发言**：列出合规 / 天气 / 地形 / 证据链上的**不可接受风险**（准则：安全第一，拒绝不可控不确定性）。
+2. **Neptune 回应**：针对 Abu 指出的每条风险，给出**体面替补**（备选 POI、改线段、Plan B；准则：凡事有退路）。
+3. **Dr.Dre 评估**：对「原计划」或「Neptune 补丁后方案」做**疲劳与节奏**核算（准则：拒绝特种兵式过载）。
+4. **共识回合**：三方对 `verdict` 收敛；**若与确定性硬门冲突，以硬门为准**（Abu 一票否决保留在 Gatekeeper 层，辩论层不得覆盖 BLOCK 的物理真值）。
+
+#### B.3 输出（Output，契约不变）
+
+- 必须符合 `orchestrationResult.gate_result.guardian_results` 形状。
+- **深度理由**：写入 `evidence_atoms[]`（`text` + `violation_code` + `tag`），便于前端戏剧化展示与审计。
+- **来源标记**：`source: 'llm_debate' | 'violation_projection_v1' | ...`，`is_simulated` 与实现一致，便于回放与 Seed Round 叙事。
+
+#### B.4 与当前代码的关系（平滑过渡）
+
+| 模式 | 行为 |
+|------|------|
+| **Surface v1（默认）** | `deriveGuardianPersonaVotes` / `attachGuardianPersonaSurface`：由 `violations` + `adjustments` 投影三人格，低成本、可测试。 |
+| **辩论引擎（规划中）** | 独立 `GuardiansDebateService`（建议路径：`src/agent/services/guardians-debate.service.ts`）：单 LLM 多角色 System Prompt 或将来多请求并行；门控后或门控前由 feature flag 选择；**失败则回退 Surface v1**。 |
+| **Skill 占位** | `PlanGateRunThreeGuardiansSkill` 与 Gatekeeper 内 TODO 对齐，作为与「纯 Prompt 辩论」或「多模型」并列的接入点。 |
+
+#### B.5 Prompt 灵魂（摘要，详版进 `prompts/agents/`）
+
+- **Role**：明确 Abu / Dr.Dre / Neptune 的独立价值观（与上表一致）。
+- **Task**：对给定行程 JSON 做**内部模拟辩论**（不要求输出中间自然语言长文，但必须能还原为结构化 `guardian_results`）。
+- **Output**：仅输出合法 JSON，字段与 `GateResult` / `guardian_results` 对齐，且每条 `evidence_atoms` 可追溯到约束或研究证据 ID（若可用）。
+
+### C. 各人格执行侧要点（与映射表对照）
+
+#### Abu（GatekeeperAgent）
 
 **调用时机**：GATE_EVAL 步骤
 
 **职责**：
 - 安全与现实守门（Should-Exist Gate）
 - 检查可达性、风险、合规性
-- 返回 `ALLOW` / `BLOCK` / `NEED_CONFIRM`
+- 返回 `ALLOW` / `BLOCK` / `NEED_USER_CONFIRM` 等
 
 **输出位置**：
 - `GateResult.guardian_results.abu`
 
-### Dr.Dre（PaceAgent / CoreDecisionAgent）
+#### Dr.Dre（PaceAgent / CoreDecisionAgent）
 
 **调用时机**：
 - VERIFY 步骤（疲劳评分、时间窗验证）
@@ -352,9 +401,9 @@ state.metadata.total_duration_ms = Date.now() - startTime;
 
 **输出位置**：
 - 疲劳评分存储在 `OrchestratorState` 的 pace 相关字段
-- 节奏调整建议
+- 节奏调整建议；`guardian_results.drdre`
 
-### Neptune（LocalInsightAgent）
+#### Neptune（LocalInsightAgent）
 
 **调用时机**：REPAIR 步骤
 
@@ -366,6 +415,7 @@ state.metadata.total_duration_ms = Date.now() - startTime;
 
 **输出位置**：
 - `OrchestratorState.alternatives`
+- `guardian_results.neptune`
 
 ## 数据流
 
@@ -600,6 +650,8 @@ const learningSignals = rlhfService.generateLearningSignals(tripRunId);
 
 ## 参考文件
 
+- `src/agent/utils/guardian-persona-surface.util.ts` - 三人格 Surface v1 投影（`violation_projection_v1`）；未来由 `GuardiansDebateService` 替换或并行
+- `src/agent/services/route-and-run-response-assembler.service.ts` - `attachGuardianPersonaSurface` 统一出口挂载
 - `prompts/agents/README.md` - AI-native 决策系统架构
 - `prompts/agents/*.md` - 各 Agent 详细定义
 - `src/agent/services/claude-orchestrator.service.ts` - 状态机实现

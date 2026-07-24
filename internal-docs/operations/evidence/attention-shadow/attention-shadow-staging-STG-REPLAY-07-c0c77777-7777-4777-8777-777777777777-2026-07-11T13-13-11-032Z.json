@@ -1,0 +1,182 @@
+{
+  "schemaId": "tripnara.attention_shadow_staging_replay@v1",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "runId": "64458e92-147f-4d58-97ad-f5320f63b83f",
+  "scenarioId": "STG-REPLAY-07",
+  "scenarioTitle": "双 weather episode — 不得跨 episode merge",
+  "setupHint": "同一 trip 上 AM / PM 两个独立 weatherEpisodeId 的 WEATHER_STRONG_WIND。",
+  "runAt": "2026-07-11T13:13:11.032Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "featureFlags": {
+    "attentionOrchestration": true,
+    "primarySso": false
+  },
+  "inputRows": [
+    {
+      "problemId": "stg_attn_wind",
+      "authority": "CANONICAL",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "instanceKey": "WEATHER_STRONG_WIND:stg_attn_wind",
+      "workflowStatus": "OPEN",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "weather strong wind",
+      "summary": "weather strong wind",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "weather strong wind",
+      "queueDescription": "weather strong wind"
+    },
+    {
+      "problemId": "stg_attn_wind_pm",
+      "authority": "CANONICAL",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "instanceKey": "WEATHER_STRONG_WIND:stg_attn_wind_pm",
+      "workflowStatus": "OPEN",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "weather strong wind",
+      "summary": "weather strong wind",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "weather strong wind",
+      "queueDescription": "weather strong wind"
+    }
+  ],
+  "normalizedInputs": [
+    {
+      "problemId": "stg_attn_wind",
+      "semanticCapability": "WEATHER_STRONG_WIND",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    },
+    {
+      "problemId": "stg_attn_wind_pm",
+      "semanticCapability": "WEATHER_STRONG_WIND",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712_pm",
+      "episodeSource": "LINEAGE",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712_pm",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    }
+  ],
+  "clusters": [
+    {
+      "clusterId": "cluster_weather_strong_wind_c0c77777_7777_4777_8777_777777777777_segment_c0c77777_7777_4777_8777_777777777777_drive_day2_vedur_ep_exec_slip_staging_20260712",
+      "tripId": "c0c77777-7777-4777-8777-777777777777",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "rootCauseType": "WEATHER_STRONG_WIND",
+      "primaryProblemId": "stg_attn_wind",
+      "relatedProblemIds": [],
+      "causalChain": [
+        {
+          "code": "WEATHER_STRONG_WIND",
+          "label": "强风",
+          "problemId": "stg_attn_wind",
+          "order": 0
+        }
+      ],
+      "attentionLevel": "LOG_ONLY",
+      "status": "OPEN",
+      "firstObservedAt": "2026-07-11T13:13:11.032Z",
+      "lastUpdatedAt": "2026-07-11T13:13:11.032Z"
+    },
+    {
+      "clusterId": "cluster_weather_strong_wind_c0c77777_7777_4777_8777_777777777777_segment_c0c77777_7777_4777_8777_777777777777_drive_day2_vedur_ep_exec_slip_staging_20260712_pm",
+      "tripId": "c0c77777-7777-4777-8777-777777777777",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712_pm",
+      "rootCauseType": "WEATHER_STRONG_WIND",
+      "primaryProblemId": "stg_attn_wind_pm",
+      "relatedProblemIds": [],
+      "causalChain": [
+        {
+          "code": "WEATHER_STRONG_WIND",
+          "label": "强风",
+          "problemId": "stg_attn_wind_pm",
+          "order": 0
+        }
+      ],
+      "attentionLevel": "LOG_ONLY",
+      "status": "OPEN",
+      "firstObservedAt": "2026-07-11T13:13:11.032Z",
+      "lastUpdatedAt": "2026-07-11T13:13:11.032Z"
+    }
+  ],
+  "primaryItems": [],
+  "legacyVisibleItems": [
+    {
+      "problemId": "stg_attn_wind",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "title": "weather strong wind",
+      "workflowStatus": "OPEN"
+    },
+    {
+      "problemId": "stg_attn_wind_pm",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "title": "weather strong wind",
+      "workflowStatus": "OPEN"
+    }
+  ],
+  "comparison": {
+    "expectedClusterCount": 2,
+    "actualClusterCount": 2,
+    "actualPrimary": "WEATHER_STRONG_WIND",
+    "primarySelectionReason": "selected WEATHER_STRONG_WIND (stg_attn_wind) by decision-driving > root-cause priority",
+    "actualAttention": "LOG_ONLY",
+    "attentionReason": "attention=LOG_ONLY from capabilities [WEATHER_STRONG_WIND] clusterStatus=OPEN",
+    "expectedVisibleItemCount": 0,
+    "actualVisibleItemCount": 0,
+    "verdict": "CORRECT_SEPARATION",
+    "reviewStatus": "AUTO_PASS",
+    "reason": "[TRIP_METADATA_RFC001] Sample STG-REPLAY-07 PASS",
+    "underlyingProblemCount": 2
+  },
+  "humanAdjudication": {
+    "shouldMerge": "PENDING",
+    "rootCauseKeyCorrect": "PENDING",
+    "primaryCorrect": "PENDING",
+    "attentionCorrect": "PENDING",
+    "visibleCardCountCorrect": "PENDING",
+    "resolutionBehaviorCorrect": "PENDING",
+    "eligibleForCanary": "PENDING"
+  }
+}

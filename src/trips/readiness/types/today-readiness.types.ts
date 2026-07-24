@@ -13,7 +13,12 @@ export interface TodayReadinessSnapshot {
   };
   dimensions: Pick<
     ReadinessScoreBreakdown,
-    'evidenceCoverage' | 'scheduleFeasibility' | 'transportCertainty' | 'safetyRisk'
+    | 'entryTransit'
+    | 'healthInsurance'
+    | 'gearPacking'
+    | 'bookingsCredentials'
+    | 'logisticsComms'
+    | 'emergency'
   >;
   topFindings: Array<
     Pick<ReadinessScoreFinding, 'id' | 'type' | 'category' | 'message' | 'actionRequired' | 'severity'>

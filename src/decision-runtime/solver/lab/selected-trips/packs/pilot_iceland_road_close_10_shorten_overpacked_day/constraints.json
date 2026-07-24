@@ -1,0 +1,12 @@
+{
+  "schemaId": "tripnara.selected_trip.constraints@v1",
+  "tripId": "pilot_iceland_road_close_10_shorten_overpacked_day",
+  "planVersionId": "pv-gold",
+  "constraints": [
+    {
+      "canonicalId": "constraint_0",
+      "kind": "UNKNOWN",
+      "hard": true
+    }
+  ]
+}

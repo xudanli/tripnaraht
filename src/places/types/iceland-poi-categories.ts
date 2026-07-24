@@ -154,21 +154,32 @@ export const IcelandCanonicalType = {
   PICNIC_AREA: 'PICNIC_AREA',                                       // 野餐区
   
   // ========== 活动体验 (ACTIVITY) ==========
-  TRAILHEAD: 'TRAILHEAD',                                           // 徒步起点
-  HIKING_TRAIL: 'HIKING_TRAIL',                                     // 徒步路线
-  BIKE_TRAIL: 'BIKE_TRAIL',                                         // 自行车道
-  SWIMMING_POOL: 'SWIMMING_POOL',                                   // 游泳池
-  SPA_POOL: 'SPA_POOL',                                             // 温泉泳池
-  HOT_TUB: 'HOT_TUB',                                               // 热水浴池
-  WHALE_WATCHING: 'WHALE_WATCHING',                                 // 观鲸点
-  PUFFIN_WATCHING: 'PUFFIN_WATCHING',                               // 观海鹦点
-  NORTHERN_LIGHTS_TOUR: 'NORTHERN_LIGHTS_TOUR',                     // 极光团
-  GLACIER_WALK: 'GLACIER_WALK',                                     // 冰川徒步
-  ICE_CAVE: 'ICE_CAVE',                                             // 冰洞探险
-  SNOWMOBILE: 'SNOWMOBILE',                                         // 雪地摩托
-  HORSE_RIDING: 'HORSE_RIDING',                                     // 骑马
-  DIVING_SNORKELING: 'DIVING_SNORKELING',                           // 潜水/浮潜
-  KAYAKING: 'KAYAKING',                                             // 皮划艇
+  // 设施/路线类保留为 Place；下列 tour-like 值已迁出到 Travel Product Catalog。
+  // 见: src/travel-product-catalog/data/iceland-poi-to-product-migration.ts
+  // 新 Place 导入请用 isCanonicalTypeBlockedForNewPlaces() 阻断 MIGRATE_TO_PRODUCT 类型。
+  TRAILHEAD: 'TRAILHEAD',                                           // 徒步起点（KEEP Place）
+  HIKING_TRAIL: 'HIKING_TRAIL',                                     // 徒步路线（KEEP Place）
+  BIKE_TRAIL: 'BIKE_TRAIL',                                         // 自行车道（KEEP Place）
+  SWIMMING_POOL: 'SWIMMING_POOL',                                   // 游泳池（SPLIT：地点 + 门票产品）
+  SPA_POOL: 'SPA_POOL',                                             // 温泉泳池（SPLIT：地点 + 时段票）
+  HOT_TUB: 'HOT_TUB',                                               // 热水浴池（SPLIT）
+  /** @deprecated Prefer Product Catalog CRUISE_BOAT_TOUR / WHALE_WATCHING; Place use WHALE_AREA + harbour */
+  WHALE_WATCHING: 'WHALE_WATCHING',                                 // 观鲸点 — 迁出至产品库
+  PUFFIN_WATCHING: 'PUFFIN_WATCHING',                               // 观海鹦点（KEEP Place）
+  /** @deprecated Prefer Product Catalog GUIDED_TOUR / NORTHERN_LIGHTS_HUNT; Place use AURORA_VIEWING */
+  NORTHERN_LIGHTS_TOUR: 'NORTHERN_LIGHTS_TOUR',                     // 极光团 — 迁出至产品库
+  /** @deprecated Prefer Product Catalog ACTIVITY_EXPERIENCE / GLACIER_HIKING; Place use ATTRACTION_NATURE_GLACIER */
+  GLACIER_WALK: 'GLACIER_WALK',                                     // 冰川徒步 — 迁出至产品库
+  /** @deprecated Prefer Product Catalog ICE_CAVE_TOUR */
+  ICE_CAVE: 'ICE_CAVE',                                             // 冰洞探险 — 迁出至产品库
+  /** @deprecated Prefer Product Catalog SNOWMOBILE */
+  SNOWMOBILE: 'SNOWMOBILE',                                         // 雪地摩托 — 迁出至产品库
+  /** @deprecated Prefer Product Catalog HORSE_RIDING */
+  HORSE_RIDING: 'HORSE_RIDING',                                     // 骑马 — 迁出至产品库
+  /** @deprecated Prefer Product Catalog SNORKELING / DIVING */
+  DIVING_SNORKELING: 'DIVING_SNORKELING',                           // 潜水/浮潜 — 迁出至产品库
+  /** @deprecated Prefer Product Catalog KAYAKING */
+  KAYAKING: 'KAYAKING',                                             // 皮划艇 — 迁出至产品库
   
   // ========== 其他 ==========
   OTHER: 'OTHER',                                                   // 其他

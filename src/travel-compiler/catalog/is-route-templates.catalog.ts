@@ -1,0 +1,153 @@
+import { ICELAND_C_TIER_POI_SLUGS } from '../../poi-access-capacity/fixtures/is-c-tier.crowding-profiles';
+import type { RouteTemplateDef } from '../contracts/route-resolution.types';
+
+/** Iceland route templates — CTRE Module 2 SSOT (MVP) */
+export const ICELAND_ROUTE_TEMPLATES: RouteTemplateDef[] = [
+  {
+    routeTemplateId: 'is.golden_circle',
+    countryCode: 'IS',
+    label: 'Golden Circle',
+    aliases: [/黄金圈/i, /golden\s+circle/i, /gullni\s+hringurinn/i],
+    waypointPoiIds: [
+      ICELAND_C_TIER_POI_SLUGS.THINGVELLIR,
+      ICELAND_C_TIER_POI_SLUGS.GEYSIR,
+      ICELAND_C_TIER_POI_SLUGS.GULLFOSS,
+    ],
+    waypointLabels: ['Þingvellir', 'Geysir', 'Gullfoss'],
+    segments: [
+      {
+        segmentId: 'gc_thingvellir_geysir',
+        fromPoiId: ICELAND_C_TIER_POI_SLUGS.THINGVELLIR,
+        toPoiId: ICELAND_C_TIER_POI_SLUGS.GEYSIR,
+        fromLabel: 'Þingvellir',
+        toLabel: 'Geysir',
+        distanceKm: 60,
+        durationMin: 55,
+        roadClass: 'primary',
+        transportMode: 'drive',
+        seasonRisk: 'low',
+        weatherRisk: 'medium',
+      },
+      {
+        segmentId: 'gc_geysir_gullfoss',
+        fromPoiId: ICELAND_C_TIER_POI_SLUGS.GEYSIR,
+        toPoiId: ICELAND_C_TIER_POI_SLUGS.GULLFOSS,
+        fromLabel: 'Geysir',
+        toLabel: 'Gullfoss',
+        distanceKm: 10,
+        durationMin: 12,
+        roadClass: 'primary',
+        transportMode: 'drive',
+        seasonRisk: 'low',
+        weatherRisk: 'low',
+      },
+    ],
+    evidenceSource: 'destination_pack:golden_circle_anchor_profile',
+  },
+  {
+    routeTemplateId: 'is.reykjavik_to_vik',
+    countryCode: 'IS',
+    label: 'Reykjavik to Vík',
+    aliases: [
+      /雷克雅未克.*维克/i,
+      /reykjavik.*vik/i,
+      /南岸.*维克/i,
+      /south\s+coast.*vik/i,
+    ],
+    waypointPoiIds: [
+      ICELAND_C_TIER_POI_SLUGS.SELJALANDSFOSS,
+      ICELAND_C_TIER_POI_SLUGS.SKOGAFOSS,
+      'is.reynisfjara',
+    ],
+    waypointLabels: ['Seljalandsfoss', 'Skógafoss', 'Reynisfjara / Vík'],
+    segments: [
+      {
+        segmentId: 'rv_seljalandsfoss',
+        fromPoiId: 'is.reykjavik',
+        toPoiId: ICELAND_C_TIER_POI_SLUGS.SELJALANDSFOSS,
+        fromLabel: 'Reykjavik',
+        toLabel: 'Seljalandsfoss',
+        distanceKm: 120,
+        durationMin: 95,
+        roadClass: 'ring-road',
+        transportMode: 'drive',
+        seasonRisk: 'low',
+        weatherRisk: 'medium',
+      },
+      {
+        segmentId: 'rv_selja_skoga',
+        fromPoiId: ICELAND_C_TIER_POI_SLUGS.SELJALANDSFOSS,
+        toPoiId: ICELAND_C_TIER_POI_SLUGS.SKOGAFOSS,
+        fromLabel: 'Seljalandsfoss',
+        toLabel: 'Skógafoss',
+        distanceKm: 30,
+        durationMin: 25,
+        roadClass: 'ring-road',
+        transportMode: 'drive',
+        seasonRisk: 'low',
+        weatherRisk: 'medium',
+      },
+      {
+        segmentId: 'rv_skoga_reynis',
+        fromPoiId: ICELAND_C_TIER_POI_SLUGS.SKOGAFOSS,
+        toPoiId: 'is.reynisfjara',
+        fromLabel: 'Skógafoss',
+        toLabel: 'Reynisfjara',
+        distanceKm: 35,
+        durationMin: 30,
+        roadClass: 'ring-road',
+        transportMode: 'drive',
+        seasonRisk: 'low',
+        weatherRisk: 'high',
+      },
+    ],
+    evidenceSource: 'destination_pack:iceland_south_coast_corridor',
+  },
+  {
+    routeTemplateId: 'is.south_coast_highlights',
+    countryCode: 'IS',
+    label: 'South Coast Highlights',
+    aliases: [/南岸/i, /south\s+coast/i, /南海岸/i],
+    waypointPoiIds: [
+      ICELAND_C_TIER_POI_SLUGS.SELJALANDSFOSS,
+      ICELAND_C_TIER_POI_SLUGS.SKOGAFOSS,
+      ICELAND_C_TIER_POI_SLUGS.JOKULSARLON,
+    ],
+    waypointLabels: ['Seljalandsfoss', 'Skógafoss', 'Jökulsárlón'],
+    segments: [
+      {
+        segmentId: 'sc_selja_skoga',
+        fromPoiId: ICELAND_C_TIER_POI_SLUGS.SELJALANDSFOSS,
+        toPoiId: ICELAND_C_TIER_POI_SLUGS.SKOGAFOSS,
+        fromLabel: 'Seljalandsfoss',
+        toLabel: 'Skógafoss',
+        distanceKm: 30,
+        durationMin: 25,
+        roadClass: 'ring-road',
+        transportMode: 'drive',
+        seasonRisk: 'low',
+        weatherRisk: 'medium',
+      },
+      {
+        segmentId: 'sc_skoga_jokul',
+        fromPoiId: ICELAND_C_TIER_POI_SLUGS.SKOGAFOSS,
+        toPoiId: ICELAND_C_TIER_POI_SLUGS.JOKULSARLON,
+        fromLabel: 'Skógafoss',
+        toLabel: 'Jökulsárlón',
+        distanceKm: 180,
+        durationMin: 150,
+        roadClass: 'ring-road',
+        transportMode: 'drive',
+        seasonRisk: 'medium',
+        weatherRisk: 'high',
+      },
+    ],
+    evidenceSource: 'destination_pack:iceland_region_template',
+  },
+];
+
+export function getRouteTemplatesForCountry(countryCode: string): RouteTemplateDef[] {
+  const cc = countryCode.toUpperCase();
+  if (cc === 'IS') return ICELAND_ROUTE_TEMPLATES;
+  return [];
+}

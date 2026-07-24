@@ -35,6 +35,8 @@ model CountryProfile {
   emergency         Json?
   paymentInfo       Json?
   visaForCN         Json?
+  /// 全球入境要求：{ officialLink?, byNationality: { US: {...}, CN: {...} } }
+  entryRequirements Json?
   updatedAt         DateTime
   currencyCode      String?
   currencyName      String?
@@ -46,6 +48,12 @@ model CountryProfile {
   complianceInfo    Json?
   /// 旅行文化（小费习惯、禁忌列表、着装提示、节庆日历等）
   travelCulture     Json?
+  /// 档案 schema 版本（仅 V2：算法决策就绪）
+  schemaVersion     Int          @default(2)
+  /// V2：极昼/极夜季节窗、环境触发器 Hook（与 complianceInfo 分工）
+  timeBoundaries    Json?
+  /// 目的地图（行程列表封面回退、GET /countries/:code/profile）
+  coverImageUrl     String?
 }
 
 model DayOfWeekFactor {
@@ -188,15 +196,25 @@ model ItineraryItem {
   travelFromPreviousDuration Int?
   travelMode                 String?
   order                      Int?
+  /// Travel Product Catalog binding (optional). Place stays geographic; product is bookable.
+  productOfferingId          String?      @map("product_offering_id") @db.VarChar(64)
+  productSessionId           String?      @map("product_session_id") @db.VarChar(64)
+  experienceDefinitionId     String?      @map("experience_definition_id") @db.VarChar(64)
   Place                      Place?       @relation(fields: [placeId], references: [id])
   Trail                      Trail?       @relation(fields: [trailId], references: [id])
   TripDay                    TripDay      @relation(fields: [tripDayId], references: [id])
   RailSegment                RailSegment?
+  ProductOffering            ProductOffering?        @relation(fields: [productOfferingId], references: [id], onDelete: SetNull)
+  ProductSession             ProductSession?         @relation(fields: [productSessionId], references: [id], onDelete: SetNull)
+  ExperienceDefinition       ExperienceDefinition?   @relation(fields: [experienceDefinitionId], references: [id], onDelete: SetNull)
 
   @@index([costCategory])
   @@index([isPaid])
   @@index([bookingStatus])
   @@index([tripDayId, order])
+  @@index([productOfferingId])
+  @@index([productSessionId])
+  @@index([experienceDefinitionId])
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -234,6 +252,14 @@ model Place {
   PlaceEdgeFrom                   PlaceEdge[]               @relation("PlaceEdgeFrom")
   PlaceEdgeTo                     PlaceEdge[]               @relation("PlaceEdgeTo")
   CrowdCurve                      CrowdCurve[]
+  PoiAccessRule                   PoiAccessRule[]
+  PoiCapacitySnapshot             PoiCapacitySnapshot[]
+  PoiCrowdingSnapshot             PoiCrowdingSnapshot[]
+  PoiAccessStatusOverride         PoiAccessStatusOverride[]
+  PoiExecutionFeedback            PoiExecutionFeedback[]
+  TripAttractionExploreCandidate  TripAttractionExploreCandidate[]
+  ProductPlaceLink                ProductPlaceLink[]
+  PlaceExperienceLink             PlaceExperienceLink[]
 
   @@index([metadata(ops: JsonbPathOps)], type: Gin)
   @@index([lastVerifiedAt])
@@ -297,6 +323,184 @@ model CrowdCurve {
 
   @@unique([placeId, hour, dayOfWeek])
   @@index([placeId])
+}
+
+/// POI Access & Capacity Engine — 准入规则（关闭/预约/车型/时段/步道等）
+model PoiAccessRule {
+  id                     String    @id @db.VarChar(191)
+  poiId                  String    @map("poi_id") @db.VarChar(191)
+  placeId                Int?      @map("place_id")
+  ruleType               String    @map("rule_type") @db.VarChar(64)
+  targetResource         String    @map("target_resource") @db.VarChar(32)
+  validFrom              DateTime? @map("valid_from") @db.Date
+  validTo                DateTime? @map("valid_to") @db.Date
+  dailyStartTime         String?   @map("daily_start_time") @db.VarChar(5)
+  dailyEndTime           String?   @map("daily_end_time") @db.VarChar(5)
+  quota                  Int?
+  reservationRequired    Boolean?  @map("reservation_required")
+  applicableVehicleTypes Json?     @map("applicable_vehicle_types")
+  status                 String    @db.VarChar(32)
+  sourceAuthority        String    @map("source_authority") @db.VarChar(255)
+  sourceUrl              String?   @map("source_url") @db.VarChar(1024)
+  sourceUpdatedAt        DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  lastVerifiedAt         DateTime  @map("last_verified_at") @db.Timestamptz(6)
+  confidence             String    @db.VarChar(16)
+  /** HARD=阻断求解器；SOFT=FEASIBLE_WITH_RISK 建议 */
+  enforcement            String    @default("HARD") @db.VarChar(16)
+  notes                  String?   @db.Text
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, status])
+  @@index([placeId])
+  @@map("poi_access_rules")
+}
+
+/// POI Access & Capacity Engine — 日期/班次级库存快照
+model PoiCapacitySnapshot {
+  id              String   @id @default(uuid()) @db.Uuid
+  poiId           String   @map("poi_id") @db.VarChar(191)
+  placeId         Int?     @map("place_id")
+  dateISO         String   @map("date_iso") @db.VarChar(10)
+  slotStartTime   String?  @map("slot_start_time") @db.VarChar(5)
+  slotEndTime     String?  @map("slot_end_time") @db.VarChar(5)
+  remaining       Int?
+  capacity        Int?
+  soldOut         Boolean  @default(false) @map("sold_out")
+  signalSource    String   @map("signal_source") @db.VarChar(32)
+  observedAt      DateTime @map("observed_at") @db.Timestamptz(6)
+  confidenceScore Float?   @map("confidence_score")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, dateISO])
+  @@index([placeId, dateISO])
+  @@map("poi_capacity_snapshots")
+}
+
+/// POI Access & Capacity Engine — 拥堵融合快照
+model PoiCrowdingSnapshot {
+  id                    String   @id @default(uuid()) @db.Uuid
+  poiId                 String   @map("poi_id") @db.VarChar(191)
+  placeId               Int?     @map("place_id")
+  observedAt            DateTime @map("observed_at") @db.Timestamptz(6)
+  parkingOccupancyRatio Float?   @map("parking_occupancy_ratio")
+  bookingRemaining      Int?     @map("booking_remaining")
+  bookingCapacity       Int?     @map("booking_capacity")
+  arrivalRatePerHour    Float?   @map("arrival_rate_per_hour")
+  predictedWaitP50      Int?     @map("predicted_wait_p50")
+  predictedWaitP90      Int?     @map("predicted_wait_p90")
+  crowdLevel            String   @map("crowd_level") @db.VarChar(16)
+  signalSources         Json     @map("signal_sources")
+  confidenceScore       Float    @map("confidence_score")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, observedAt])
+  @@index([placeId, observedAt])
+  @@map("poi_crowding_snapshots")
+}
+
+/// POI Access & Capacity Engine — 官方公告驱动的动态状态覆盖（步道关闭、临时管制等）
+model PoiAccessStatusOverride {
+  id              String    @id @db.VarChar(191)
+  poiId           String    @map("poi_id") @db.VarChar(191)
+  placeId         Int?      @map("place_id")
+  ruleType        String    @map("rule_type") @db.VarChar(64)
+  targetResource  String    @map("target_resource") @db.VarChar(32)
+  enforcement     String    @default("HARD") @db.VarChar(16)
+  effectiveFrom   DateTime  @map("effective_from") @db.Timestamptz(6)
+  effectiveTo     DateTime? @map("effective_to") @db.Timestamptz(6)
+  status          String    @db.VarChar(32)
+  sourceAuthority String    @map("source_authority") @db.VarChar(255)
+  sourceUrl       String?   @map("source_url") @db.VarChar(1024)
+  lastVerifiedAt  DateTime  @map("last_verified_at") @db.Timestamptz(6)
+  confidence      String    @db.VarChar(16)
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, status, effectiveFrom])
+  @@index([placeId])
+  @@map("poi_access_status_overrides")
+}
+
+/// POI 行中执行反馈 — 校准拥堵预测（匿名）
+model PoiExecutionFeedback {
+  id                  String   @id @default(uuid()) @db.Uuid
+  poiId               String   @map("poi_id") @db.VarChar(191)
+  placeId             Int?     @map("place_id")
+  tripId              String?  @map("trip_id") @db.VarChar(191)
+  dateISO             String   @map("date_iso") @db.VarChar(10)
+  arrivalTime         String?  @map("arrival_time") @db.VarChar(5)
+  parkingWaitMin      Int?     @map("parking_wait_min")
+  visitDurationMin    Int?     @map("visit_duration_min")
+  couldNotPark        Boolean  @default(false) @map("could_not_park")
+  abandonedDueToCrowd Boolean  @default(false) @map("abandoned_due_to_crowd")
+  crowdLevelSubjective String? @map("crowd_level_subjective") @db.VarChar(16)
+  notes               String?  @db.Text
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  place Place? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  @@index([poiId, dateISO])
+  @@index([tripId])
+  @@map("poi_execution_feedbacks")
+}
+
+model PoiAlias {
+  id         Int      @id @default(autoincrement())
+  poiId      String   @map("poi_id") @db.VarChar(191)
+  alias      String   @db.VarChar(500)
+  locale     String?  @db.VarChar(8)
+  source     String   @default("SYSTEM") @db.VarChar(32)
+  confidence Float    @default(1.0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([poiId, alias])
+  @@index([alias])
+  @@map("poi_aliases")
+}
+
+model PoiImportQueue {
+  id             String   @id @default(uuid()) @db.Uuid
+  queryName      String   @map("query_name") @db.VarChar(500)
+  externalSource String   @map("external_source") @db.VarChar(32)
+  externalId     String   @map("external_id") @db.VarChar(255)
+  lat            Float
+  lng            Float
+  address        String?  @db.Text
+  status         String   @default("PENDING") @db.VarChar(32)
+  resolvedPoiId  String?  @map("resolved_poi_id") @db.VarChar(191)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([queryName])
+  @@map("poi_import_queue")
+}
+
+model PoiResolutionLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  queryName  String   @map("query_name") @db.VarChar(500)
+  poiId      String?  @map("poi_id") @db.VarChar(191)
+  method     String?  @db.VarChar(32)
+  confidence Float    @default(0)
+  evidence   Json     @default("[]")
+  userId     String?  @map("user_id") @db.VarChar(191)
+  confirmed  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([queryName])
+  @@index([poiId])
+  @@map("poi_resolution_logs")
 }
 
 model RailPassProfile {
@@ -530,6 +734,9 @@ model RouteDirection {
   rolloutPercent    Int?                      @default(100)
   audienceFilter    Json?
   RouteTemplate     RouteTemplate[]
+  HikePlan                  HikePlan[]
+  HikeTrailBookmark         HikeTrailBookmark[]
+  HikeRouteDirectionShare   HikeRouteDirectionShare[]
 
   @@index([status], map: "route_direction_status_idx")
   @@index([corridorGeom], map: "idx_route_direction_corridor_geom", type: Gist)
@@ -635,6 +842,7 @@ model Trip {
   endDate                DateTime
   budgetConfig           Json?
   pacingConfig           Json?
+  psychographicVector    Unsupported("vector")?   @map("psychographic_vector")
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime
   metadata               Json?
@@ -672,6 +880,8 @@ model Trip {
   TripInTripAnchorSnapshot TripInTripAnchorSnapshot?
   TripMoodCheck           TripMoodCheck[]
   TripInTripOfflineQueueEntry TripInTripOfflineQueueEntry[]
+  TripInTripCommsMessage TripInTripCommsMessage[]
+  TripInTripCommsPeerPresence TripInTripCommsPeerPresence[]
   TripEnvironmentEvent        TripEnvironmentEvent[]
   TripDayVulnerabilityScore   TripDayVulnerabilityScore[]
   TripSmartTransaction        TripSmartTransaction[]
@@ -681,8 +891,136 @@ model Trip {
   TripSplitPartySession       TripSplitPartySession[]
   TripProtectiveIntervention  TripProtectiveIntervention[]
   TripExperiencePulse         TripExperiencePulse[]
+  GuideToPlanSession          GuideToPlanSession[]
+  ExplorationScenario         ExplorationScenario[]
+  TripFile                    TripFile[]
+  TripActivityFavorite        TripActivityFavorite[]
+  TripAttractionExploreCandidate TripAttractionExploreCandidate[]
+  TripExecutionRiskUserState   TripExecutionRiskUserState[]
+  TripMemberInvite             TripMemberInvite[]
+  TepRepairExecution           TepRepairExecution[]
 
   @@index([status])
+}
+
+/// WP-TEP-17 — TEP local repair writeback idempotency (DB SSOT; metadata executions retained for compat)
+model TepRepairExecution {
+  id             String    @id @default(uuid()) @db.Uuid
+  tripId         String    @map("trip_id") @db.Text
+  optionId       String    @map("option_id") @db.Text
+  idempotencyKey String    @unique @map("idempotency_key") @db.Text
+  planVersionId  String?   @map("plan_version_id") @db.Text
+  decisionId     String?   @map("decision_id") @db.Text
+  status         String    @db.VarChar(16)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  appliedAt      DateTime? @map("applied_at") @db.Timestamptz(6)
+  Trip           Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@index([tripId, optionId, status])
+  @@map("tep_repair_executions")
+}
+
+/// Advisor-created trip — per-role member invite links
+model TripMemberInvite {
+  id               String                     @id @default(uuid()) @db.Uuid
+  tripId           String                     @map("trip_id") @db.Text
+  inviteCode       String                     @unique @map("invite_code") @db.VarChar(64)
+  roleSlot         String                     @map("role_slot") @db.VarChar(32)
+  label            String                     @db.VarChar(64)
+  contactHint      String?                    @map("contact_hint") @db.VarChar(255)
+  invitedByUserId  String                     @map("invited_by_user_id") @db.Uuid
+  expiresAt        DateTime?                  @map("expires_at") @db.Timestamptz(6)
+  status           String                     @default("PENDING") @db.VarChar(16)
+  acceptedByUserId String?                    @map("accepted_by_user_id") @db.Text
+  acceptedAt       DateTime?                  @map("accepted_at") @db.Timestamptz(6)
+  collaboratorId   String?                    @map("collaborator_id") @db.Text
+  createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  Trip             Trip                       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  onboardingDraft  TripMemberOnboardingDraft?
+
+  @@index([tripId, roleSlot])
+  @@index([inviteCode])
+  @@map("trip_member_invites")
+}
+
+/// Member onboarding draft — step-by-step preference capture before trip join
+model TripMemberOnboardingDraft {
+  id            String           @id @default(uuid()) @db.Uuid
+  inviteId      String           @unique @map("invite_id") @db.Uuid
+  tripId        String           @map("trip_id") @db.Text
+  userId        String           @map("user_id") @db.Text
+  draft         Json
+  currentStepId String?          @map("current_step_id") @db.VarChar(64)
+  completedAt   DateTime?        @map("completed_at") @db.Timestamptz(6)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Invite        TripMemberInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, userId])
+  @@map("trip_member_onboarding_drafts")
+}
+
+/// Trip detail activities tab — per-user heart/favorite on activity items or POIs
+model TripActivityFavorite {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripId          String   @map("trip_id")
+  userId          String   @map("user_id") @db.Text
+  targetKey       String   @map("target_key") @db.VarChar(128)
+  itineraryItemId String?  @map("itinerary_item_id")
+  placeId         Int?     @map("place_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  Trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId, targetKey])
+  @@index([tripId, userId])
+  @@map("trip_activity_favorites")
+}
+
+/// Attraction explore workbench — persisted POI shortlist per trip (replaces sessionStorage seed)
+model TripAttractionExploreCandidate {
+  id            String   @id @default(uuid()) @db.Uuid
+  tripId        String   @map("trip_id")
+  placeId       Int      @map("place_id")
+  priority      String   @default("very_interested") @db.VarChar(32)
+  sortOrder     Int      @default(0) @map("sort_order")
+  source        String   @default("manual") @db.VarChar(32)
+  sourceRef     Json?    @map("source_ref")
+  addedByUserId String?  @map("added_by_user_id") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  Place         Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, placeId])
+  @@index([tripId, sortOrder])
+  @@map("trip_attraction_explore_candidates")
+}
+
+/// Trip detail files tab — booking vouchers, travel docs, insurance, etc.
+model TripFile {
+  id               String    @id @default(uuid()) @db.Uuid
+  tripId           String    @map("trip_id")
+  uploadedByUserId String    @map("uploaded_by_user_id") @db.Text
+  category         String    @db.VarChar(32)
+  status           String    @default("UPLOADED") @db.VarChar(16)
+  fileName         String?   @map("file_name") @db.VarChar(512)
+  mimeType         String?   @map("mime_type") @db.VarChar(128)
+  storageKey       String?   @map("storage_key") @db.Text
+  fileUrl          String?   @map("file_url") @db.Text
+  fileSizeBytes    Int       @default(0) @map("file_size_bytes")
+  title            String?   @db.VarChar(256)
+  description      String?   @db.Text
+  expiresAt        DateTime? @map("expires_at") @db.Timestamptz(6)
+  itineraryItemId  String?   @map("itinerary_item_id") @db.Uuid
+  metadata         Json?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip             Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, category])
+  @@index([tripId, status])
+  @@map("trip_files")
 }
 
 /// Private / team wishlist items for planning workbench context
@@ -971,10 +1309,6 @@ model TravelOutcome {
   plannedActivities     Int      @map("planned_activities")
   completedActivities   Int      @map("completed_activities")
   completionPercentage  Float    @map("completion_percentage")
-  companionSatisfaction String   @map("companion_satisfaction") @db.Text // excellent, good, mixed, poor
-  companionMatchScore   Float    @map("companion_match_score") // 0-1
-  companionCount        Int      @map("companion_count")
-  satisfiedCompanions   Int      @map("satisfied_companions")
   overallScore          Float    @map("overall_score") // 0-1
   metrics               Json? // Detailed outcome metrics
   factors               Json? // Factors that influenced outcome
@@ -984,18 +1318,16 @@ model TravelOutcome {
   confidence            Float // 0-1
   /// Round 3: Self-evolution architecture fields
   expectationGap        Float?   @map("expectation_gap") // 期望差距：实际 vs 预期
-  companionSatisfactionDetailed Json? @map("companion_satisfaction_detailed") // 搭子满意度细分
   stressEventCount      Int?     @map("stress_event_count") // 压力事件计数
   groupAggregationStrategy String? @map("group_aggregation_strategy") // 群组聚合策略
   shapleyAttribution    Json?    @map("shapley_attribution") // Shapley 归因结果
   memorySnapshot        Json?    @map("memory_snapshot") // 记忆快照
-  /// 6维评分分量
-  overallSatisfactionWeight  Float? @default(0.25) @map("overall_satisfaction_weight")
-  companionSatisfactionWeight Float? @default(0.20) @map("companion_satisfaction_weight")
-  budgetAccuracyWeight       Float? @default(0.15) @map("budget_accuracy_weight")
-  completionQualityWeight    Float? @default(0.15) @map("completion_quality_weight")
+  /// 5维评分分量
+  overallSatisfactionWeight  Float? @default(0.30) @map("overall_satisfaction_weight")
+  budgetAccuracyWeight       Float? @default(0.20) @map("budget_accuracy_weight")
+  completionQualityWeight    Float? @default(0.20) @map("completion_quality_weight")
   safetyWeight              Float? @default(0.15) @map("safety_weight")
-  repurchaseWeight           Float? @default(0.10) @map("repurchase_weight")
+  repurchaseWeight           Float? @default(0.15) @map("repurchase_weight")
   Trip                  Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@index([tripId])
@@ -1341,6 +1673,42 @@ model TripInTripOfflineQueueEntry {
   @@map("trip_in_trip_offline_queue")
 }
 
+/// P2: 行中团队对讲消息
+model TripInTripCommsMessage {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripId          String   @map("trip_id")
+  senderId        String   @map("sender_id") @db.Text
+  clientId        String   @map("client_id") @db.Uuid
+  clientSeq       BigInt   @map("client_seq")
+  serverSeq       BigInt   @map("server_seq")
+  messageType     String   @map("message_type") @db.VarChar(16)
+  body            String   @db.Text
+  payload         Json?
+  clientCreatedAt DateTime @map("client_created_at") @db.Timestamptz(6)
+  serverCreatedAt DateTime @default(now()) @map("server_created_at") @db.Timestamptz(6)
+  Trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, senderId, clientId])
+  @@index([tripId, serverSeq])
+  @@index([tripId, serverCreatedAt])
+  @@map("trip_in_trip_comms_messages")
+}
+
+/// P2: 行中成员位置 / 在线状态
+model TripInTripCommsPeerPresence {
+  tripId          String   @map("trip_id")
+  userId          String   @map("user_id") @db.Text
+  lastLat         Float?   @map("last_lat")
+  lastLng         Float?   @map("last_lng")
+  accuracyMeters  Float?   @map("accuracy_meters")
+  shareLocation   Boolean  @default(true) @map("share_location")
+  lastSeenAt      DateTime @map("last_seen_at") @db.Timestamptz(6)
+  Trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@id([tripId, userId])
+  @@map("trip_in_trip_comms_peer_presence")
+}
+
 /// M8: 行中环境突变事件
 model TripEnvironmentEvent {
   id               String    @id @default(uuid()) @db.Uuid
@@ -1505,6 +1873,135 @@ model TripProtectiveIntervention {
 
   @@index([tripId, status])
   @@map("trip_protective_interventions")
+}
+
+/// Execution Risk Center — per-user interaction state (not risk facts SSOT)
+model TripExecutionRiskUserState {
+  id             String    @id @default(uuid()) @db.Uuid
+  tripId         String    @map("trip_id")
+  riskKey        String    @map("risk_key") @db.VarChar(256)
+  userId         String    @map("user_id") @db.Text
+  acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz(6)
+  acknowledgedBy String?   @map("acknowledged_by") @db.Text
+  snoozedUntil   DateTime? @map("snoozed_until") @db.Timestamptz(6)
+  dismissedAt    DateTime? @map("dismissed_at") @db.Timestamptz(6)
+  lastViewedAt   DateTime? @map("last_viewed_at") @db.Timestamptz(6)
+  notificationState Json?  @map("notification_state")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip           Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, riskKey, userId])
+  @@index([tripId, userId])
+  @@map("trip_execution_risk_user_states")
+}
+
+/// Execution Risk Knowledge — versioned catalog (Package V1 SSOT after import)
+model ExecutionRiskKnowledgeVersion {
+  id              String   @id @db.VarChar(32)
+  packageVersion  String   @map("package_version") @db.VarChar(16)
+  status          String   @db.VarChar(32)
+  isActive        Boolean  @default(false) @map("is_active")
+  sourcePath      String   @map("source_path") @db.VarChar(512)
+  rowCounts       Json     @map("row_counts")
+  importedAt      DateTime @default(now()) @map("imported_at") @db.Timestamptz(6)
+  activatedAt     DateTime? @map("activated_at") @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  definitions     ExecutionRiskDefinition[]
+  severityRules   ExecutionRiskSeverityRule[]
+  causalChains    ExecutionRiskCausalChain[]
+  actions         ExecutionRiskInterventionAction[]
+  codeMappings    ExecutionRiskCodeMapping[]
+
+  @@map("execution_risk_knowledge_versions")
+}
+
+model ExecutionRiskDefinition {
+  id                 String   @id @db.VarChar(64)
+  knowledgeVersionId String   @map("knowledge_version_id") @db.VarChar(32)
+  canonicalCode      String   @map("canonical_code") @db.VarChar(128)
+  knowledgeCode      String   @map("knowledge_code") @db.VarChar(64)
+  riskType           String   @map("risk_type") @db.VarChar(64)
+  displayName        Json     @map("display_name")
+  definition         String   @db.Text
+  isRootCause        Boolean  @map("is_root_cause")
+  sourceAliases      Json     @map("source_aliases")
+  status             String   @db.VarChar(32)
+  since              String?  @db.VarChar(32)
+  generationMode     String?  @map("generation_mode") @db.VarChar(32)
+  capabilityStatus   String?  @map("capability_status") @db.VarChar(32)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeVersion   ExecutionRiskKnowledgeVersion @relation(fields: [knowledgeVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([knowledgeVersionId, knowledgeCode])
+  @@index([knowledgeCode])
+  @@index([canonicalCode])
+  @@map("execution_risk_definitions")
+}
+
+model ExecutionRiskSeverityRule {
+  id                 String   @id @db.VarChar(128)
+  knowledgeVersionId String   @map("knowledge_version_id") @db.VarChar(32)
+  knowledgeCode      String   @map("knowledge_code") @db.VarChar(64)
+  payload            Json
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeVersion   ExecutionRiskKnowledgeVersion @relation(fields: [knowledgeVersionId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeVersionId, knowledgeCode])
+  @@map("execution_risk_severity_rules")
+}
+
+model ExecutionRiskCausalChain {
+  id                 String   @id @db.VarChar(64)
+  knowledgeVersionId String   @map("knowledge_version_id") @db.VarChar(32)
+  knowledgeCode      String   @map("knowledge_code") @db.VarChar(64)
+  payload            Json
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeVersion   ExecutionRiskKnowledgeVersion @relation(fields: [knowledgeVersionId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeVersionId, knowledgeCode])
+  @@map("execution_risk_causal_chains")
+}
+
+model ExecutionRiskInterventionAction {
+  id                 String   @id @db.VarChar(128)
+  knowledgeVersionId String   @map("knowledge_version_id") @db.VarChar(32)
+  actionCategory     String   @map("action_category") @db.VarChar(32)
+  payload            Json
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeVersion   ExecutionRiskKnowledgeVersion @relation(fields: [knowledgeVersionId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeVersionId, actionCategory])
+  @@map("execution_risk_intervention_actions")
+}
+
+model ExecutionRiskCodeMapping {
+  id                 String   @id @db.VarChar(64)
+  knowledgeVersionId String   @map("knowledge_version_id") @db.VarChar(32)
+  canonicalCode      String   @map("canonical_code") @db.VarChar(128)
+  knowledgeCode      String   @map("knowledge_code") @db.VarChar(64)
+  riskType           String   @map("risk_type") @db.VarChar(64)
+  sourceAliases      Json     @map("source_aliases")
+  isRootCause        Boolean  @map("is_root_cause")
+  status             String   @db.VarChar(32)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeVersion   ExecutionRiskKnowledgeVersion @relation(fields: [knowledgeVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([knowledgeVersionId, knowledgeCode])
+  @@index([canonicalCode])
+  @@map("execution_risk_code_mappings")
 }
 
 /// M11: 行中体验微调查
@@ -2231,11 +2728,12 @@ model RefreshToken {
 }
 
 model UserProfile {
-  preferences Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime
-  userId      String   @id @db.Uuid
-  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferences         Json?
+  psychographicVector Unsupported("vector")? @map("psychographic_vector")
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime
+  userId              String                 @id @db.Uuid
+  User                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -2708,6 +3206,24 @@ model DecisionOutcome {
   @@index([decisionId])
   @@index([decisionCausalityId])
   @@map("decision_outcomes")
+}
+
+/// B 端履约能力画像 — 小规模高精度样本（冰岛 MVP：导游/车辆/路线/应急）
+model FulfillmentCapabilityRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  supplierId      String   @map("supplier_id") @db.VarChar(128)
+  supplierName    String?  @map("supplier_name") @db.VarChar(255)
+  countryCode     String   @map("country_code") @db.VarChar(2)
+  capabilityType  String   @map("capability_type") @db.VarChar(32)
+  capabilityKey   String   @map("capability_key") @db.VarChar(128)
+  metrics         Json
+  evidenceTripIds String[] @map("evidence_trip_ids") @db.Uuid
+  metadata        Json?
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+
+  @@index([countryCode, capabilityType])
+  @@index([supplierId])
+  @@map("fulfillment_capability_records")
 }
 
 model UserTravelProfile {
@@ -3244,6 +3760,27 @@ model DataRetentionPolicy {
   @@map("data_retention_policies")
 }
 
+/// Decision OS 级执行轨迹 SSOT（在线编排 → 离线 SFT/DPO），与 PLAN_GEN 快照型 ValidatedTrajectory 正交。
+model DecisionTrajectory {
+  id                          String   @id @default(uuid()) @db.Uuid
+  requestId                   String   @unique @map("request_id") @db.VarChar(255)
+  tripId                      String?  @map("trip_id") @db.Uuid
+  payload                     Json
+  status                      String   @default("PENDING") @db.VarChar(20)
+  totalReward                 Float?   @map("total_reward")
+  rewardSignals               Json     @default("[]") @map("reward_signals")
+  orchestrationOutcome        String?  @map("orchestration_outcome") @db.VarChar(32)
+  legacyValidatedTrajectoryId String?  @map("legacy_validated_trajectory_id") @db.VarChar(255)
+  legacyValidatedTrajectory   ValidatedTrajectory? @relation(fields: [legacyValidatedTrajectoryId], references: [trajectoryId], onDelete: SetNull)
+  createdAt                   DateTime @default(now()) @map("created_at")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  @@index([tripId])
+  @@index([status])
+  @@index([orchestrationOutcome])
+  @@map("decision_trajectories")
+}
+
 model ValidatedTrajectory {
   id                   String   @id @default(uuid()) @db.Uuid
   trajectoryId         String   @unique @map("trajectory_id") @db.VarChar(255)
@@ -3269,6 +3806,7 @@ model ValidatedTrajectory {
   usedForTrainingCount Int      @default(0) @map("used_for_training_count")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
+  decisionTrajectories DecisionTrajectory[]
 
   @@index([validationStatus])
   @@index([validationScore])
@@ -4383,6 +4921,55 @@ model AdminQualityMark {
   @@map("admin_quality_marks")
 }
 
+/// LLM token usage audit trail (route_and_run and all LlmService exits).
+model LlmTokenLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  requestId        String   @map("request_id") @db.VarChar(255)
+  spanId           String?  @map("span_id") @db.VarChar(255)
+  provider         String   @db.VarChar(32)
+  model            String   @db.VarChar(128)
+  stepName         String   @map("step_name") @db.VarChar(64)
+  subAgent         String?  @map("sub_agent") @db.VarChar(64)
+  promptTokens     Int      @map("prompt_tokens")
+  completionTokens Int      @map("completion_tokens")
+  totalTokens      Int      @map("total_tokens")
+  isEstimated      Boolean  @default(false) @map("is_estimated")
+  success          Boolean  @default(true)
+  durationMs       Int?     @map("duration_ms")
+  costUsd          Decimal  @map("cost_usd") @db.Decimal(12, 6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([requestId])
+  @@index([createdAt])
+  @@index([provider])
+  @@index([stepName])
+  @@map("llm_token_logs")
+}
+
+/// Skill execution audit trail (route_and_run via SkillsRegistry wrap).
+model SkillExecutionLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  requestId      String   @map("request_id") @db.VarChar(255)
+  spanId         String?  @map("span_id") @db.VarChar(255)
+  skillName      String   @map("skill_name") @db.VarChar(128)
+  canonicalName  String?  @map("canonical_name") @db.VarChar(128)
+  stepName       String   @map("step_name") @db.VarChar(64)
+  subAgent       String?  @map("sub_agent") @db.VarChar(64)
+  routePath      String?  @map("route_path") @db.VarChar(32)
+  category       String?  @db.VarChar(32)
+  success        Boolean  @default(true)
+  durationMs     Int      @map("duration_ms")
+  error          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([requestId])
+  @@index([skillName])
+  @@index([canonicalName])
+  @@index([createdAt])
+  @@index([routePath])
+  @@map("skill_execution_logs")
+}
+
 /// Physical Domain admin: Budget snapshot per account.
 model PhysicalDomainBudget {
   accountId String   @id @map("account_id") @db.VarChar(191)
@@ -4609,6 +5196,28 @@ model OpsRealityAuditSnapshot {
   @@map("ops_reality_audit_snapshots")
 }
 
+/// PRD 3.13 — Match Square 协同飞轮：拼团 decisionBrief（预测）vs 行后 Replay（观测）指纹对撞
+model CollabFlywheelAuditSnapshot {
+  id                    String    @id @default(uuid()) @db.Uuid
+  capturedAt            DateTime  @default(now()) @map("captured_at") @db.Timestamptz(6)
+  recruitmentPostId     String    @map("recruitment_post_id") @db.Uuid
+  applicationId         String    @unique @map("application_id") @db.Uuid
+  tripId                String?   @map("trip_id") @db.Uuid
+  schemaVersion         String    @default("collab-flywheel-audit/v1") @map("schema_version") @db.VarChar(40)
+  predictionFingerprint String    @map("prediction_fingerprint") @db.VarChar(64)
+  prediction            Json
+  outcome               Json?
+  outcomeFingerprint    String?   @map("outcome_fingerprint") @db.VarChar(64)
+  auditMatch            Boolean?  @map("audit_match")
+  outcomeRecordedAt     DateTime? @map("outcome_recorded_at") @db.Timestamptz(6)
+  outcomeSource         String?   @map("outcome_source") @db.VarChar(40)
+
+  @@index([capturedAt(sort: Desc)])
+  @@index([tripId])
+  @@index([recruitmentPostId])
+  @@map("collab_flywheel_audit_snapshots")
+}
+
 /// Append-only governance / execution audit (event sourcing). Application code must not UPDATE rows.
 model GovernanceLedgerEventRecord {
   id                 String   @id @map("id") @db.Text
@@ -4635,95 +5244,192 @@ model GovernanceLedgerEventRecord {
   @@map("governance_ledger_events")
 }
 
-/// Decision OS · Match Square P0 — 搭子广场招募帖
-model MatchSquarePost {
-  id                     String                   @id @default(uuid()) @db.Uuid
-  captainUserId          String                   @map("captain_user_id") @db.Uuid
-  status                 String                   @default("active") @db.VarChar(16)
-  destination            String
-  departureLabel         String?                  @map("departure_label")
-  startDate              DateTime                 @map("start_date") @db.Date
-  endDate                DateTime                 @map("end_date") @db.Date
-  itinerarySummary       String                   @default("") @map("itinerary_summary")
-  captainMessage         String                   @default("") @map("captain_message")
-  recruitmentVision      String?                  @map("recruitment_vision")
-  budgetMinCents         Int?                     @map("budget_min_cents")
-  budgetMaxCents         Int?                     @map("budget_max_cents")
-  slotsNeeded            Int                      @default(1) @map("slots_needed")
-  planningStyle          String?                  @map("planning_style") @db.VarChar(32)
-  tripMoodTag            String?                  @map("trip_mood_tag") @db.VarChar(16)
-  travelMode             String?                  @map("travel_mode") @db.VarChar(32)
-  vehicleInfo            String?                  @map("vehicle_info")
-  preferenceNotes        String?                  @map("preference_notes")
-  captainMbtiType        String?                  @map("captain_mbti_type") @db.VarChar(8)
-  captainCardTitle       String?                  @map("captain_card_title")
-  captainInteractionMode String?                  @map("captain_interaction_mode") @db.VarChar(32)
-  destinationLat         Float?                   @map("destination_lat")
-  destinationLng         Float?                   @map("destination_lng")
-  vibeSnapshot           Json?                    @map("vibe_snapshot")
-  routeDirectionId       Int?                     @map("route_direction_id")
-  routeDirectionName     String?                  @map("route_direction_name")
-  publishedAt            DateTime?                @map("published_at")
-  closedAt               DateTime?                @map("closed_at")
-  outcome                Json?                    @map("outcome")
-  tripId                 String?                  @map("trip_id") @db.Text
-  createdAt              DateTime                 @default(now()) @map("created_at")
-  updatedAt              DateTime                 @updatedAt @map("updated_at")
-  applications           MatchSquareApplication[]
+/// 徒步行前/执行/复盘计划（HikePlan 全生命周期，P1）
+model HikePlan {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  routeDirectionId Int       @map("route_direction_id")
+  tripId           String?   @map("trip_id") @db.Uuid
+  status           String    @default("draft")
+  plannedDate      DateTime? @map("planned_date") @db.Date
+  plannedStartTime String?   @map("planned_start_time")
+  prep             Json?
+  liveState        Json?     @map("live_state")
+  review           Json?
+  trackBatchIds    String[]  @default([]) @map("track_batch_ids")
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  @@index([status, startDate])
-  @@index([captainUserId])
-  @@index([tripId])
-  @@map("match_square_posts")
+  routeDirection RouteDirection   @relation(fields: [routeDirectionId], references: [id])
+  trackPoints    HikeTrackPoint[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([routeDirectionId])
+  @@map("hike_plan")
 }
 
-/// Decision OS · Match Square P0 — 招募申请
-model MatchSquareApplication {
-  id                         String          @id @default(uuid()) @db.Uuid
-  postId                     String          @map("post_id") @db.Uuid
-  applicantUserId            String          @map("applicant_user_id") @db.Uuid
-  status                     String          @default("pending") @db.VarChar(16)
-  message                    String          @default("")
-  planningCommitmentAccepted Boolean         @default(false) @map("planning_commitment_accepted")
-  teamworkCommitmentAccepted Boolean         @default(false) @map("teamwork_commitment_accepted")
-  targetSlotIndex            Int?            @map("target_slot_index")
-  targetSlotId               String?         @map("target_slot_id")
-  targetSlotLabel            String?         @map("target_slot_label")
-  applicantMbtiType          String?         @map("applicant_mbti_type") @db.VarChar(8)
-  applicantCardTitle         String?         @map("applicant_card_title")
-  applicantInteractionMode   String?         @map("applicant_interaction_mode") @db.VarChar(32)
-  decidedAt                  DateTime?       @map("decided_at")
-  attribution                Json?           @map("attribution")
-  createdAt                  DateTime        @default(now()) @map("created_at")
-  updatedAt                  DateTime        @updatedAt @map("updated_at")
-  post                       MatchSquarePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+/// 用户收藏的徒步路线（F3）
+model HikeTrailBookmark {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  routeDirectionId Int      @map("route_direction_id")
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  @@unique([postId, applicantUserId])
-  @@index([postId, status])
-  @@index([applicantUserId])
-  @@map("match_square_applications")
+  routeDirection RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, routeDirectionId])
+  @@index([userId])
+  @@map("hike_trail_bookmark")
 }
 
-/// Round 3: Companion calibration - pre-trip prediction vs post-trip satisfaction
-model CompanionCalibration {
-  id                  String   @id @default(uuid()) @db.Uuid
-  postId              String   @map("post_id") @db.Uuid
-  applicationId       String   @map("application_id") @db.Uuid
-  preTripPrediction   Float    @map("pre_trip_prediction") // 0-1
-  postTripSatisfaction Float   @map("post_trip_satisfaction") // 0-1
-  calibrationCurve    Json?    @map("calibration_curve")
-  dimensionScores     Json?    @map("dimension_scores") // 10维各自校准
-  calibrationAccuracy Float?   @map("calibration_accuracy")
-  needsRetraining     Boolean  @default(false) @map("needs_retraining")
-  tripId              String?  @map("trip_id") @db.Text
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+/// 徒步路线分享链接（权限 + 过期）
+model HikeRouteDirectionShare {
+  id               String    @id @default(uuid()) @db.Uuid
+  routeDirectionId Int       @map("route_direction_id")
+  createdByUserId  String?   @map("created_by_user_id") @db.Uuid
+  shareToken       String    @unique @map("share_token")
+  permission       String    @default("VIEW")
+  expiresAt        DateTime? @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  @@index([postId])
-  @@index([applicationId])
-  @@index([tripId])
-  @@index([createdAt(sort: Desc)])
-  @@map("companion_calibrations")
+  routeDirection RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
+
+  @@index([shareToken])
+  @@index([routeDirectionId])
+  @@map("hike_route_direction_share")
+}
+
+model HikeTrackPoint {
+  id            String   @id @default(uuid()) @db.Uuid
+  hikePlanId    String   @map("hike_plan_id") @db.Uuid
+  lat           Float
+  lng           Float
+  altitudeM     Float?   @map("altitude_m")
+  accuracyM     Float?   @map("accuracy_m")
+  recordedAt    DateTime @map("recorded_at")
+  clientBatchId String?  @map("client_batch_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  hikePlan HikePlan @relation(fields: [hikePlanId], references: [id], onDelete: Cascade)
+
+  @@index([hikePlanId, recordedAt])
+  @@index([hikePlanId, clientBatchId])
+  @@map("hike_track_point")
+}
+
+/// PRD v1.1 — 12 维隐式特征向量 SSOT（Intake / 决策共用）
+model UserPsychographicVector {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.VarChar(255)
+  tripRunId     String?  @map("trip_run_id") @db.Uuid
+  requestId     String?  @map("request_id") @db.VarChar(255)
+  schemaVersion Int      @default(11) @map("schema_version")
+  dimensionKeys Json     @map("dimension_keys")
+  vector        Json     @map("vector")
+  filledMask    Json     @map("filled_mask")
+  artifact      Json     @map("artifact")
+  embedding     Unsupported("vector")?
+  lockVersion   Int      @default(0) @map("lock_version")
+  intakeRound   Int      @default(0) @map("intake_round")
+  source        String   @db.VarChar(40)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId, requestId])
+  @@index([userId])
+  @@index([tripRunId])
+  @@map("user_psychographic_vectors")
+}
+
+/// PRD v1.1 — Intake 决策闭环样本（X1 口语 / X2 向量+规则标 / Y 选档+支付），供 3 个月后微调与 RAG 训练导出
+model IntakeDecisionClosure {
+  id                     String    @id @default(uuid()) @db.Uuid
+  decisionOsSessionId    String    @unique @map("decision_os_session_id") @db.VarChar(255)
+  userId                 String    @map("user_id") @db.VarChar(255)
+  userMessages           Json      @map("user_messages")
+  roundTexts             Json      @map("round_texts")
+  vectorContext          Json      @map("vector_context")
+  countryCode            String?   @map("country_code") @db.VarChar(12)
+  countryResolveSource   String?   @map("country_resolve_source") @db.VarChar(32)
+  geoParsed              Json?     @map("geo_parsed")
+  destinationScope       String?   @map("destination_scope") @db.VarChar(120)
+  compilerRulesetVersion String    @map("compiler_ruleset_version") @db.VarChar(32)
+  geoRulesetVersion      String    @map("geo_ruleset_version") @db.VarChar(32)
+  paretoRulesetVersion   String    @map("pareto_ruleset_version") @db.VarChar(32)
+  systemInferredTier     Int?      @map("system_inferred_tier")
+  tierAtIntakeComplete   Int?      @map("tier_at_intake_complete")
+  userSelectedTier       Int?      @map("user_selected_tier")
+  tierSelectedAt         DateTime? @map("tier_selected_at") @db.Timestamptz(6)
+  selectedRouteNodeIds   String[]  @default([]) @map("selected_route_node_ids")
+  paretoSolutionsSnapshot Json?    @map("pareto_solutions_snapshot")
+  preferredRouteNodeIds  String[]  @default([]) @map("preferred_route_node_ids")
+  depositPaidAt          DateTime? @map("deposit_paid_at") @db.Timestamptz(6)
+  depositCents           Int?      @map("deposit_cents")
+  orderId                String?   @map("order_id") @db.VarChar(255)
+  intakeCompletedAt      DateTime  @map("intake_completed_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([countryCode])
+  @@index([intakeCompletedAt])
+  @@map("intake_decision_closures")
+}
+
+/// PRD v1.1 — 后置拼团 Saga 状态机（Stripe 补偿步骤持久化）
+model PostBookingCompanionSaga {
+  id                String    @id @default(uuid()) @db.Uuid
+  orderId           String    @unique @map("order_id") @db.VarChar(255)
+  userId            String    @map("user_id") @db.VarChar(255)
+  tripId            String?   @map("trip_id") @db.Uuid
+  phase             String    @db.VarChar(40)
+  depositCents      Int       @map("deposit_cents")
+  totalPaidCents    Int?      @map("total_paid_cents")
+  currency          String    @default("cny") @db.VarChar(3)
+  paymentIntentId   String?   @map("payment_intent_id") @db.VarChar(255)
+  matchRequestId    String?   @map("match_request_id") @db.Uuid
+  refundCents       Int?      @map("refund_cents")
+  stripeRefundId    String?   @map("stripe_refund_id") @db.VarChar(255)
+  forfeitSplit      Json?     @map("forfeit_split")
+  compensationSteps Json?     @map("compensation_steps")
+  lockVersion       Int       @default(0) @map("lock_version")
+  departureAt       DateTime? @map("departure_at") @db.Timestamptz(6)
+  metadata          Json?
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([phase])
+  @@map("post_booking_companion_sagas")
+}
+
+/// B 端领队资产 HITL 三级确权持久化
+model LeaderAssetHitlReview {
+  id              String   @id @default(uuid()) @db.Uuid
+  leaderId        String   @map("leader_id") @db.VarChar(255)
+  assetId         String   @map("asset_id") @db.VarChar(255)
+  level           String   @db.VarChar(40)
+  zone            String   @db.VarChar(40)
+  blockAutoScheduling Boolean @default(false) @map("block_auto_scheduling")
+  notifyLeaderMobile Boolean @default(false) @map("notify_leader_mobile")
+  reason          String   @db.Text
+  extraction      Json
+  status          String   @default("PENDING") @db.VarChar(30)
+  reviewedAt      DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  reviewerId      String?  @map("reviewer_id") @db.VarChar(255)
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([leaderId])
+  @@index([assetId])
+  @@index([level])
+  @@index([status])
+  @@map("leader_asset_hitl_reviews")
 }
 
 /// Round 3: Decision memory - episodic and semantic memory for self-evolution
@@ -5396,4 +6102,810 @@ model Gate1NotificationOutbox {
   @@unique([eventType, dedupeKey])
   @@index([status, createdAt])
   @@map("gate1_notification_outbox")
+}
+
+// ─── Guide-to-Plan Pipeline（从攻略开始规划）────────────────────────────────
+
+/// 攻略导入会话：可累积多篇攻略，经理解确认后再生成行程草案
+model GuideToPlanSession {
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  /// collecting | parsing | understanding | awaiting_context | generating | draft_ready | accepted | abandoned
+  status               String   @default("collecting") @db.VarChar(32)
+  countryCode          String?  @map("country_code") @db.VarChar(8)
+  destination          String?  @db.VarChar(200)
+  /// 用户确认的出行条件：日期、成员、交通、保留体验等
+  travelContext        Json?    @map("travel_context")
+  /// 合并多篇攻略后的理解摘要（地点数、主线、风险等）
+  understandingSummary Json?    @map("understanding_summary")
+  themeNarrative       String?  @map("theme_narrative") @db.Text
+  /// 接受草案后关联的正式 Trip
+  tripId               String?  @map("trip_id")
+  /// 异步解析进度（步骤、百分比、实时计数、三人格思考）
+  parseProgress        Json?    @map("parse_progress")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  Trip             Trip?                      @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  importedGuides   ImportedGuide[]
+  claims           GuideClaim[]
+  candidates       GuideInspirationCandidate[]
+  planCandidates   GuidePlanCandidate[]
+
+  @@index([userId, status])
+  @@index([tripId])
+  @@map("guide_to_plan_sessions")
+}
+
+/// 单篇攻略导入单元
+model ImportedGuide {
+  id               String    @id @default(uuid()) @db.Uuid
+  sessionId        String    @map("session_id") @db.Uuid
+  title            String?   @db.VarChar(500)
+  /// link | screenshot | text | file | manual
+  sourceType       String    @map("source_type") @db.VarChar(16)
+  sourceUrl        String?   @map("source_url") @db.Text
+  /// xiaohongshu | douyin | wechat | blog | unknown
+  sourcePlatform   String?   @map("source_platform") @db.VarChar(32)
+  rawContent       String?   @map("raw_content") @db.Text
+  ocrText          String?   @map("ocr_text") @db.Text
+  imageUrl         String?   @map("image_url") @db.Text
+  /// 文件/链接元数据：fileName, mimeType, sizeBytes, pageCount, wordCount, author
+  sourceMetadata   Json?     @map("source_metadata")
+  /// pending | parsing | parsed | failed
+  parseStatus      String    @default("pending") @map("parse_status") @db.VarChar(16)
+  /// 0–1，攻略来源默认可信度偏低
+  sourceConfidence Float     @default(0.3) @map("source_confidence")
+  /// L1–L5 信息可信度等级
+  credibilityLevel String    @default("L1") @map("credibility_level") @db.VarChar(4)
+  extractedPlaces  Json?     @map("extracted_places")
+  extractedRoutes  Json?     @map("extracted_routes")
+  extractedTips    Json?     @map("extracted_tips")
+  implicitAssumptions Json?  @map("implicit_assumptions")
+  parseError       String?   @map("parse_error") @db.Text
+  importedAt       DateTime  @default(now()) @map("imported_at") @db.Timestamptz(6)
+  parsedAt         DateTime? @map("parsed_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session GuideToPlanSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  claims  GuideClaim[]
+
+  @@index([sessionId, parseStatus])
+  @@map("imported_guides")
+}
+
+/// 攻略作者经验/主张（≠ 官方事实 ≠ 可直接执行的硬约束）
+model GuideClaim {
+  id                 String   @id @default(uuid()) @db.Uuid
+  sessionId          String   @map("session_id") @db.Uuid
+  guideId            String?  @map("guide_id") @db.Uuid
+  claimType          String   @map("claim_type") @db.VarChar(64)
+  subjectType        String?  @map("subject_type") @db.VarChar(32)
+  subjectId          String?  @map("subject_id") @db.Text
+  subjectName        String?  @map("subject_name") @db.VarChar(200)
+  statement          String   @db.Text
+  source             String   @default("guide_author") @db.VarChar(32)
+  confidenceLevel    String   @default("L1") @map("confidence_level") @db.VarChar(4)
+  applicableSeason   String?  @map("applicable_season") @db.VarChar(32)
+  applicableTraveler String?  @map("applicable_traveler") @db.VarChar(64)
+  /// unverified | partially_verified | verified | contradicted
+  verificationStatus String   @default("unverified") @map("verification_status") @db.VarChar(32)
+  metadata           Json?
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session GuideToPlanSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  guide   ImportedGuide?     @relation(fields: [guideId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, claimType])
+  @@index([guideId])
+  @@map("guide_claims")
+}
+
+/// 攻略提取的灵感候选（POI / 餐厅 / 住宿 / 活动 / 路线主题）
+model GuideInspirationCandidate {
+  id               String   @id @default(uuid()) @db.Uuid
+  sessionId        String   @map("session_id") @db.Uuid
+  sourceGuideIds   String[] @default([]) @map("source_guide_ids") @db.Uuid
+  /// poi | restaurant | hotel | activity | route_theme
+  candidateType    String   @map("candidate_type") @db.VarChar(32)
+  rawName          String   @map("raw_name") @db.VarChar(200)
+  rawNameEn        String?  @map("raw_name_en") @db.VarChar(200)
+  placeId          Int?     @map("place_id")
+  /// unmatched | matched | ambiguous | rejected
+  matchStatus      String   @default("unmatched") @map("match_status") @db.VarChar(16)
+  suggestedDay     Int?     @map("suggested_day")
+  routeOrder       Int?     @map("route_order")
+  priority         String   @default("medium") @db.VarChar(16)
+  sourceConfidence Float    @default(0.3) @map("source_confidence")
+  /// L1 author opinion | L2 cross-guide | L3 POI matched | L4/L5 reserved
+  credibilityLevel String   @default("L1") @map("credibility_level") @db.VarChar(4)
+  metadata         Json?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session GuideToPlanSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, candidateType])
+  @@index([sessionId, matchStatus])
+  @@index([sessionId, credibilityLevel])
+  @@map("guide_inspiration_candidates")
+}
+
+/// 经三人格审议后生成的行程草案（非正式可执行计划，直到用户接受）
+model GuidePlanCandidate {
+  id              String   @id @default(uuid()) @db.Uuid
+  sessionId       String   @map("session_id") @db.Uuid
+  /// balanced | faithful | comfortable | risk_min | photography
+  variant         String   @default("balanced") @db.VarChar(32)
+  /// draft | verified | accepted | rejected
+  status          String   @default("draft") @db.VarChar(16)
+  sourceGuideIds  String[] @default([]) @map("source_guide_ids") @db.Uuid
+  retainedItems   Json     @default("[]") @map("retained_items")
+  modifiedItems   Json     @default("[]") @map("modified_items")
+  rejectedItems   Json     @default("[]") @map("rejected_items")
+  decisionReasons Json     @default("[]") @map("decision_reasons")
+  comparisonDiff  Json?    @map("comparison_diff")
+  personaOpinions Json?    @map("persona_opinions")
+  itineraryDraft  Json?    @map("itinerary_draft")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session GuideToPlanSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, status])
+  @@map("guide_plan_candidates")
+}
+
+/// Consumer Exploration — 探索规划会话（Scenario → Trip 物化）
+model ExplorationScenario {
+  id                 String    @id @default(uuid()) @db.Uuid
+  /// RFC-003 V1: stable Travel Context identity (defaults to scenario id at creation)
+  contextId          String    @unique @map("context_id") @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  /// DRAFT | MATERIALIZING | MATERIALIZED | COMPLETED | ABANDONED
+  status             String    @default("DRAFT") @db.VarChar(32)
+  researchProtocolId String?   @map("research_protocol_id") @db.VarChar(64)
+  participantCode    String?   @map("participant_code") @db.VarChar(64)
+  initialInput       Json      @map("initial_input")
+  assignedVariant    String?   @map("assigned_variant") @db.VarChar(32)
+  tripId             String?   @map("trip_id")
+  materializedAt     DateTime? @map("materialized_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  Trip            Trip?                      @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  researchSession ProductDiscoverySession?
+  routeVariants   ExplorationRouteVariant[]
+
+  @@index([userId, status])
+  @@index([tripId])
+  @@map("exploration_scenarios")
+}
+
+/// RFC-003 Phase 5+ — append-only Travel Context revision diff journal (survives process restart).
+model TravelContextRevisionJournalEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  contextId      String   @map("context_id") @db.VarChar(64)
+  fromRevision   BigInt   @map("from_revision")
+  toRevision     BigInt   @map("to_revision")
+  snapshotId     String?  @map("snapshot_id") @db.VarChar(128)
+  changedDomains Json     @map("changed_domains")
+  changes        Json
+  intentType     String?  @map("intent_type") @db.VarChar(64)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([contextId, fromRevision, toRevision])
+  @@index([contextId, fromRevision])
+  @@index([contextId, toRevision(sort: Desc)])
+  @@map("travel_context_revision_journal")
+}
+
+/// RFC-003 Phase 7 — point-in-time Travel Context snapshot archive (audit replay + cold-start cache).
+model TravelContextSnapshotArchiveEntry {
+  id                  String   @id @default(uuid()) @db.Uuid
+  contextId           String   @map("context_id") @db.VarChar(64)
+  revision            BigInt
+  snapshotId          String   @map("snapshot_id") @db.VarChar(128)
+  schemaId            String   @map("schema_id") @db.VarChar(64)
+  stage               String   @db.VarChar(32)
+  snapshot            Json
+  bindingsFingerprint String   @map("bindings_fingerprint") @db.VarChar(256)
+  archiveSource       String   @map("archive_source") @db.VarChar(32)
+  intentType          String?  @map("intent_type") @db.VarChar(64)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([contextId, revision])
+  @@index([contextId, createdAt(sort: Desc)])
+  @@map("travel_context_snapshot_archive")
+}
+
+/// 产品发现研究 Session（与 ExplorationScenario 1:1）
+model ProductDiscoverySession {
+  id              String    @id @default(uuid()) @db.Uuid
+  scenarioId      String    @unique @map("scenario_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  participantCode String?   @map("participant_code") @db.VarChar(64)
+  protocolId      String    @map("protocol_id") @db.VarChar(64)
+  entryVariant    String?   @map("entry_variant") @db.VarChar(32)
+  metadata        Json?
+  startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  scenario ExplorationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  events       ResearchEvent[]
+  commitments  ProductDiscoveryCommitment[]
+  contactInfo  ResearchContactInfo?
+  packageFeedback ProductDiscoveryPackageFeedback?
+  paymentRecords  ResearchPaymentRecord[]
+
+  @@index([userId])
+  @@index([protocolId])
+  @@map("product_discovery_sessions")
+}
+
+/// 研究行为事件（批量上报）
+model ResearchEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  sessionId  String   @map("session_id") @db.Uuid
+  eventName  String   @map("event_name") @db.VarChar(64)
+  payload    Json     @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  session ProductDiscoverySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, occurredAt])
+  @@map("research_events")
+}
+
+/// 研究商品包装反馈（排序 / 评分 / 价格 — 非 PII）
+model ProductDiscoveryPackageFeedback {
+  id                    String   @id @default(uuid()) @db.Uuid
+  sessionId             String   @unique @map("session_id") @db.Uuid
+  presentationOrder     Json     @map("presentation_order")
+  packageRankings       Json     @map("package_rankings")
+  valueScores           Json     @map("value_scores")
+  trustScores           Json     @map("trust_scores")
+  acceptablePriceUsd    Json?    @map("acceptable_price_usd")
+  leastPreferredPackageId String? @map("least_preferred_package_id") @db.VarChar(64)
+  preferredPackageId    String?  @map("preferred_package_id") @db.VarChar(64)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session ProductDiscoverySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("product_discovery_package_feedback")
+}
+
+/// 研究行为承诺（NOTIFY_ME / SELF_CHECK；4B: DEPOSIT / PRICE_LOCK）
+model ProductDiscoveryCommitment {
+  id             String   @id @default(uuid()) @db.Uuid
+  sessionId      String   @map("session_id") @db.Uuid
+  commitmentType String   @map("commitment_type") @db.VarChar(32)
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session ProductDiscoverySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, commitmentType])
+  @@map("product_discovery_commitments")
+}
+
+/// 研究联系方式（PII 分表）
+model ResearchContactInfo {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @unique @map("session_id") @db.Uuid
+  email     String?  @db.VarChar(320)
+  phone     String?  @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session ProductDiscoverySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("research_contact_info")
+}
+
+/// 研究支付记录（订金 / 价格锁定 — 与正式支付共用 Stripe，独立 SKU）
+model ResearchPaymentRecord {
+  id                    String    @id @default(uuid()) @db.Uuid
+  sessionId             String    @map("session_id") @db.Uuid
+  userId                String    @map("user_id") @db.Uuid
+  /// RESEARCH_DEPOSIT | RESEARCH_PRICE_LOCK
+  paymentKind           String    @map("payment_kind") @db.VarChar(32)
+  skuId                 String    @map("sku_id") @db.VarChar(64)
+  amountCents           Int       @default(0) @map("amount_cents")
+  currency              String    @default("usd") @db.VarChar(3)
+  /// PENDING | REQUIRES_ACTION | SUCCEEDED | REFUNDED | CANCELLED
+  status                String    @default("PENDING") @db.VarChar(32)
+  stripePaymentIntentId String?   @unique @map("stripe_payment_intent_id") @db.VarChar(128)
+  clientSecret          String?   @map("client_secret") @db.VarChar(256)
+  priceLockUsd          Int?      @map("price_lock_usd")
+  refundedAt            DateTime? @map("refunded_at") @db.Timestamptz(6)
+  metadata              Json?
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session ProductDiscoverySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, paymentKind])
+  @@index([userId])
+  @@map("research_payment_records")
+}
+
+/// 单 Trip 下的路线 variant branch（一 Scenario 一 Trip，多 variant）
+model ExplorationRouteVariant {
+  id                String   @id @default(uuid()) @db.Uuid
+  scenarioId        String   @map("scenario_id") @db.Uuid
+  tripId            String   @map("trip_id")
+  routeId           String   @map("route_id") @db.VarChar(64)
+  strategyId        String   @map("strategy_id") @db.VarChar(64)
+  variantBranchKey  String   @map("variant_branch_key") @db.VarChar(64)
+  itineraryVersion  Int      @default(1) @map("itinerary_version")
+  /// DRAFT | SELECTED | ARCHIVED
+  status            String   @default("DRAFT") @db.VarChar(16)
+  title             String?  @db.VarChar(200)
+  narrative         String?  @db.Text
+  metrics           Json?
+  gains             Json?
+  sacrifices        Json?
+  generationVersion Int      @default(1) @map("generation_version")
+  /// STATIC_CATALOG | PERSONALIZED | ENGINE_MAPBOX | LLM
+  generationSource  String?  @map("generation_source") @db.VarChar(32)
+  routeDetail       Json?    @map("route_detail")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  scenario ExplorationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  @@unique([scenarioId, routeId])
+  @@index([tripId])
+  @@map("exploration_route_variants")
+}
+
+/// Task E0 — Append-only shadow comparison evidence (Authority vs Lex shadow dual-run).
+model DecisionShadowComparison {
+  id                            String   @id @default(uuid()) @db.Uuid
+  comparisonId                  String   @unique @map("comparison_id") @db.VarChar(128)
+  decisionRunId                 String   @map("decision_run_id") @db.VarChar(256)
+  tripId                        String   @map("trip_id") @db.VarChar(128)
+  snapshotId                    String   @map("snapshot_id") @db.VarChar(128)
+  snapshotHash                  String   @map("snapshot_hash") @db.VarChar(64)
+  candidateSetHash              String   @map("candidate_set_hash") @db.VarChar(64)
+  constraintReportHash          String   @map("constraint_report_hash") @db.VarChar(64)
+  objectiveConfigHash           String   @map("objective_config_hash") @db.VarChar(64)
+  authorityStrategyId           String   @map("authority_strategy_id") @db.VarChar(64)
+  authorityStrategyVersion      String?  @map("authority_strategy_version") @db.VarChar(32)
+  shadowStrategyId              String   @map("shadow_strategy_id") @db.VarChar(64)
+  shadowStrategyVersion         String?  @map("shadow_strategy_version") @db.VarChar(32)
+  authorityWinnerId             String?  @map("authority_winner_id") @db.VarChar(128)
+  shadowWinnerId                String?  @map("shadow_winner_id") @db.VarChar(128)
+  eligibleForStrategyComparison Boolean  @map("eligible_for_strategy_comparison")
+  divergenceTypes               String[] @map("divergence_types")
+  divergenceSeverity            String   @map("divergence_severity") @db.VarChar(16)
+  eventJson                     Json     @map("event_json")
+  authorityResultJson           Json     @map("authority_result_json")
+  shadowResultJson              Json?    @map("shadow_result_json")
+  stageTracesJson               Json?    @map("stage_traces_json")
+  reviewArtifactsJson           Json?    @map("review_artifacts_json")
+  experimentId                  String?  @map("experiment_id") @db.VarChar(128)
+  scenarioId                    String?  @map("scenario_id") @db.VarChar(128)
+  benchmarkRunId                String?  @map("benchmark_run_id") @db.VarChar(128)
+  createdAt                     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  reviewCase DecisionShadowReviewCase?
+
+  @@index([tripId, createdAt(sort: Desc)])
+  @@index([decisionRunId])
+  @@index([benchmarkRunId])
+  @@map("decision_shadow_comparison")
+}
+
+/// Task E0 — Frozen blind A/B review case (one per comparisonId).
+model DecisionShadowReviewCase {
+  id                    String    @id @default(uuid()) @db.Uuid
+  reviewCaseId          String    @unique @map("review_case_id") @db.VarChar(128)
+  comparisonId          String    @unique @map("comparison_id") @db.VarChar(128)
+  tripId                String    @map("trip_id") @db.VarChar(128)
+  decisionRunId         String    @map("decision_run_id") @db.VarChar(256)
+  status                String    @db.VarChar(16)
+  blindedOptionAJson    Json      @map("blinded_option_a_json")
+  blindedOptionBJson    Json      @map("blinded_option_b_json")
+  frozenSnapshotsJson   Json      @map("frozen_snapshots_json")
+  blindingVersion       String    @map("blinding_version") @db.VarChar(16)
+  blindMappingEncrypted String    @map("blind_mapping_encrypted") @db.Text
+  divergenceTypes       String[]  @map("divergence_types")
+  divergenceSeverity    String    @map("divergence_severity") @db.VarChar(16)
+  eligibilityVersion    String    @map("eligibility_version") @db.VarChar(16)
+  exclusionReason       String?   @map("exclusion_reason") @db.VarChar(64)
+  expectedReviewCount   Int       @default(1) @map("expected_review_count")
+  completedReviewCount  Int       @default(0) @map("completed_review_count")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt           DateTime? @map("completed_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  comparison  DecisionShadowComparison       @relation(fields: [comparisonId], references: [comparisonId])
+  submissions DecisionShadowReviewSubmission[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([tripId])
+  @@map("decision_shadow_review_case")
+}
+
+/// Task E0 — Blind manual review submission (server-derived classification).
+model DecisionShadowReviewSubmission {
+  id                String   @id @default(uuid()) @db.Uuid
+  submissionId      String   @unique @map("submission_id") @db.VarChar(128)
+  reviewCaseId      String   @map("review_case_id") @db.VarChar(128)
+  reviewerId        String   @map("reviewer_id") @db.VarChar(128)
+  reviewerGroup     String?  @map("reviewer_group") @db.VarChar(32)
+  preferredOption   String   @map("preferred_option") @db.VarChar(32)
+  classification    String   @map("classification") @db.VarChar(32)
+  scoresJson        Json     @map("scores_json")
+  tradeOffSummary   String?  @map("trade_off_summary") @db.Text
+  confidence        Int?
+  reviewDurationMs  Int?     @map("review_duration_ms")
+  reviewFormVersion String   @default("v1") @map("review_form_version") @db.VarChar(16)
+  idempotencyKey    String?  @unique @map("idempotency_key") @db.VarChar(256)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  reviewCase DecisionShadowReviewCase @relation(fields: [reviewCaseId], references: [reviewCaseId])
+
+  @@unique([reviewCaseId, reviewerId])
+  @@index([reviewCaseId])
+  @@map("decision_shadow_review_submission")
+}
+
+/// Task E1 — Formal benchmark run registry (checkpoint/resume with frozen config).
+model DecisionBenchmarkRun {
+  id                      String    @id @default(uuid()) @db.Uuid
+  benchmarkRunId          String    @unique @map("benchmark_run_id") @db.VarChar(128)
+  benchmarkVersion        String    @map("benchmark_version") @db.VarChar(32)
+  datasetVersion          String    @map("dataset_version") @db.VarChar(32)
+  datasetChecksum         String    @map("dataset_checksum") @db.VarChar(64)
+  split                   String    @db.VarChar(16)
+  runtimeMode             String    @map("runtime_mode") @db.VarChar(32)
+  authorityStrategyId     String    @map("authority_strategy_id") @db.VarChar(64)
+  shadowStrategyId        String    @map("shadow_strategy_id") @db.VarChar(64)
+  solverEngine            String    @map("solver_engine") @db.VarChar(64)
+  objectiveRegistryVersion String   @map("objective_registry_version") @db.VarChar(32)
+  constraintPolicyVersion String   @map("constraint_policy_version") @db.VarChar(32)
+  configJson              Json      @map("config_json")
+  configHash              String    @map("config_hash") @db.VarChar(64)
+  status                  String    @default("CREATED") @db.VarChar(32)
+  totalInstances          Int       @map("total_instances")
+  completedInstances      Int       @default(0) @map("completed_instances")
+  failedInstances         Int       @default(0) @map("failed_instances")
+  excludedInstances       Int       @default(0) @map("excluded_instances")
+  concurrency             Int       @default(1)
+  maxAttempts             Int       @default(3) @map("max_attempts")
+  shadowWaitTimeoutMs     Int       @default(120000) @map("shadow_wait_timeout_ms")
+  gitCommit               String?   @map("git_commit") @db.VarChar(64)
+  environmentHash         String?   @map("environment_hash") @db.VarChar(64)
+  forkedFromRunId         String?   @map("forked_from_run_id") @db.VarChar(128)
+  startedAt               DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt             DateTime? @map("completed_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  instances DecisionBenchmarkInstanceExecution[]
+
+  @@index([status, startedAt(sort: Desc)])
+  @@map("decision_benchmark_run")
+}
+
+/// Task E1 — Per-instance staged execution checkpoint.
+model DecisionBenchmarkInstanceExecution {
+  id                            String    @id @default(uuid()) @db.Uuid
+  benchmarkRunId                String    @map("benchmark_run_id") @db.VarChar(128)
+  instanceId                    String    @map("instance_id") @db.VarChar(128)
+  strategyVariant               String    @default("default") @map("strategy_variant") @db.VarChar(32)
+  seed                          Int       @default(0)
+  partition                     String?   @db.VarChar(32)
+  status                        String    @default("PENDING") @db.VarChar(32)
+  attemptCount                  Int       @default(0) @map("attempt_count")
+  maxAttempts                   Int       @default(3) @map("max_attempts")
+  requestId                     String    @unique @map("request_id") @db.VarChar(256)
+  decisionRunId                 String?   @map("decision_run_id") @db.VarChar(256)
+  comparisonId                  String?   @map("comparison_id") @db.VarChar(128)
+  reviewCaseId                  String?   @map("review_case_id") @db.VarChar(128)
+  inputHash                     String    @map("input_hash") @db.VarChar(64)
+  requestHash                   String?   @map("request_hash") @db.VarChar(64)
+  authorityResponseHash         String?   @map("authority_response_hash") @db.VarChar(64)
+  shadowEventHash               String?   @map("shadow_event_hash") @db.VarChar(64)
+  authorityWinnerId             String?   @map("authority_winner_id") @db.VarChar(128)
+  shadowWinnerId                String?   @map("shadow_winner_id") @db.VarChar(128)
+  eligibleForStrategyComparison Boolean?  @map("eligible_for_strategy_comparison")
+  divergenceTypes               String[]  @map("divergence_types")
+  exclusionReason               String?   @map("exclusion_reason") @db.VarChar(64)
+  failureClass                  String?   @map("failure_class") @db.VarChar(32)
+  lastErrorCode                 String?   @map("last_error_code") @db.VarChar(64)
+  lastErrorMessage              String?   @map("last_error_message") @db.Text
+  lastErrorStage                String?   @map("last_error_stage") @db.VarChar(32)
+  lockedBy                      String?   @map("locked_by") @db.VarChar(128)
+  leaseExpiresAt                DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  heartbeatAt                   DateTime? @map("heartbeat_at") @db.Timestamptz(6)
+  artifactDirectory             String?   @map("artifact_directory") @db.VarChar(512)
+  startedAt                     DateTime? @map("started_at") @db.Timestamptz(6)
+  authorityCompletedAt          DateTime? @map("authority_completed_at") @db.Timestamptz(6)
+  shadowCompletedAt             DateTime? @map("shadow_completed_at") @db.Timestamptz(6)
+  completedAt                   DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt                     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  benchmarkRun DecisionBenchmarkRun @relation(fields: [benchmarkRunId], references: [benchmarkRunId])
+
+  @@unique([benchmarkRunId, instanceId, strategyVariant, seed])
+  @@index([benchmarkRunId, status])
+  @@index([benchmarkRunId, createdAt])
+  @@map("decision_benchmark_instance_execution")
+}
+
+// ========== Travel Product Catalog（地点库之外的可履约产品五层模型）==========
+// Place → ExperienceDefinition → ProductOffering → ProductSession → RatePlan
+// + Operator Directory + ProductPlaceLink（多空间角色）
+
+enum TravelProductType {
+  ACTIVITY_EXPERIENCE
+  SCENIC_FLIGHT
+  CRUISE_BOAT_TOUR
+  GUIDED_TOUR
+  ADMISSION_TICKET
+  TRANSPORT_SERVICE
+  RENTAL
+  DINING_RESERVATION
+}
+
+enum ProductOfferingStatus {
+  DRAFT
+  PUBLISHED
+  SUSPENDED
+  RETIRED
+}
+
+enum ProductSessionStatus {
+  SCHEDULED
+  CONFIRMED
+  ON_HOLD
+  CANCELLED
+  COMPLETED
+  WEATHER_HOLD
+}
+
+enum OperatorTrustLevel {
+  UNVERIFIED
+  BASIC
+  VERIFIED
+  PREFERRED
+}
+
+/// 产品空间挂靠角色（一产品多 Place）
+enum ProductPlaceSpatialRole {
+  MEETING_POINT
+  START_POINT
+  END_POINT
+  PICKUP_POINT
+  OPERATING_AREA
+  RELATED_PLACE
+  FALLBACK_POINT
+  PARKING
+}
+
+/// Layer 2 — 体验定义（稳定通用知识，非供应商 SKU）
+model ExperienceDefinition {
+  id                         String            @id @default(cuid())
+  code                       String            @unique @db.VarChar(64)
+  productType                TravelProductType @map("product_type")
+  /// 平台维护二级分类码（非固定 DB enum）
+  categoryCode               String            @map("category_code") @db.VarChar(64)
+  /// 可扩展三级 subtype 字典码
+  subtypeCode                String            @map("subtype_code") @db.VarChar(64)
+  displayNameZh              String            @map("display_name_zh") @db.VarChar(128)
+  displayNameEn              String            @map("display_name_en") @db.VarChar(128)
+  typicalDurationMin         Int?              @map("typical_duration_min")
+  fitnessLevel               String?           @map("fitness_level") @db.VarChar(32)
+  riskLevel                  String?           @map("risk_level") @db.VarChar(32)
+  recommendedMinAge          Int?              @map("recommended_min_age")
+  recommendedMaxAge          Int?              @map("recommended_max_age")
+  equipmentTypical           String[]          @default([]) @map("equipment_typical")
+  seasonalityNotes           String?           @map("seasonality_notes") @db.Text
+  weatherDependency          String?           @map("weather_dependency") @db.VarChar(32)
+  commonCancelReasons        String[]          @default([]) @map("common_cancel_reasons")
+  requiresGuide              Boolean           @default(false) @map("requires_guide")
+  requiresLicense            Boolean           @default(false) @map("requires_license")
+  relatedExperienceAtomCodes String[]          @default([]) @map("related_experience_atom_codes")
+  countryCodes               String[]          @default([]) @map("country_codes")
+  metadata                   Json?
+  createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offerings       ProductOffering[]
+  itineraryItems  ItineraryItem[]
+  placeLinks      PlaceExperienceLink[]
+
+  @@index([productType, categoryCode, subtypeCode])
+  @@index([countryCodes], type: Gin)
+  @@map("experience_definition")
+}
+
+/// Place ↔ 体验项目（规划层，无供应商）。后台维护「此地点可做什么」。
+model PlaceExperienceLink {
+  id                       String   @id @default(cuid())
+  placeId                  Int      @map("place_id")
+  experienceDefinitionId   String   @map("experience_definition_id")
+  sortOrder                Int      @default(0) @map("sort_order")
+  /// 地点语境下的展示名覆盖（可选）；空则用体验定义名
+  label                    String?  @db.VarChar(128)
+  isFeatured               Boolean  @default(false) @map("is_featured")
+  isActive                 Boolean  @default(true) @map("is_active")
+  notes                    String?  @db.Text
+  metadata                 Json?
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  place                  Place                 @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  experienceDefinition   ExperienceDefinition  @relation(fields: [experienceDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, experienceDefinitionId])
+  @@index([placeId, isActive, sortOrder])
+  @@index([experienceDefinitionId])
+  @@map("place_experience_link")
+}
+
+/// 供应商目录（履约主体）
+model Operator {
+  id                       String             @id @default(cuid())
+  brandName                String             @map("brand_name") @db.VarChar(128)
+  legalName                String?            @map("legal_name") @db.VarChar(256)
+  countryCode              String?            @map("country_code") @db.VarChar(8)
+  operatingRegions         String[]           @default([]) @map("operating_regions")
+  contactEmail             String?            @map("contact_email") @db.VarChar(256)
+  contactPhone             String?            @map("contact_phone") @db.VarChar(64)
+  website                  String?            @db.VarChar(512)
+  licenses                 String[]           @default([])
+  insuranceSummary         String?            @map("insurance_summary") @db.Text
+  languages                String[]           @default([])
+  cancellationPolicySummary String?           @map("cancellation_policy_summary") @db.Text
+  dataSources              String[]           @default([]) @map("data_sources")
+  distributionChannels     String[]           @default([]) @map("distribution_channels")
+  externalOperatorId       String?            @map("external_operator_id") @db.VarChar(128)
+  trustLevel               OperatorTrustLevel @default(UNVERIFIED) @map("trust_level")
+  metadata                 Json?
+  createdAt                DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offerings ProductOffering[]
+
+  @@index([countryCode])
+  @@index([brandName])
+  @@index([externalOperatorId])
+  @@map("travel_operator")
+}
+
+/// Layer 3 — 供应商具体在售产品
+model ProductOffering {
+  id                   String                @id @default(cuid())
+  experienceDefinitionId String              @map("experience_definition_id")
+  operatorId           String                @map("operator_id")
+  nameEN               String                @map("name_en") @db.VarChar(256)
+  nameCN               String?               @map("name_cn") @db.VarChar(256)
+  description          String?               @db.Text
+  productType          TravelProductType     @map("product_type")
+  categoryCode         String                @map("category_code") @db.VarChar(64)
+  subtypeCode          String                @map("subtype_code") @db.VarChar(64)
+  defaultDurationMin   Int?                  @map("default_duration_min")
+  included             String[]              @default([])
+  excluded             String[]              @default([])
+  minAge               Int?                  @map("min_age")
+  maxAge               Int?                  @map("max_age")
+  minHeightCm          Int?                  @map("min_height_cm")
+  maxWeightKg          Float?                @map("max_weight_kg")
+  fitnessRequirement   String?               @map("fitness_requirement") @db.VarChar(64)
+  equipmentRequired    String[]              @default([]) @map("equipment_required")
+  languages            String[]              @default([])
+  cancellationPolicy   String?               @map("cancellation_policy") @db.Text
+  safetyRules          String[]              @default([]) @map("safety_rules")
+  bookingChannels      String[]              @default([]) @map("booking_channels")
+  externalProductId    String?               @map("external_product_id") @db.VarChar(128)
+  status               ProductOfferingStatus @default(DRAFT)
+  countryCode          String?               @map("country_code") @db.VarChar(8)
+  metadata             Json?
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  experienceDefinition ExperienceDefinition @relation(fields: [experienceDefinitionId], references: [id], onDelete: Restrict)
+  operator             Operator             @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  sessions             ProductSession[]
+  ratePlans            RatePlan[]
+  placeLinks           ProductPlaceLink[]
+  itineraryItems       ItineraryItem[]
+
+  @@index([experienceDefinitionId])
+  @@index([operatorId])
+  @@index([productType, categoryCode, subtypeCode])
+  @@index([status, countryCode])
+  @@index([externalProductId])
+  @@map("product_offering")
+}
+
+/// 产品 ↔ Place 多角色空间关系
+model ProductPlaceLink {
+  id         String                  @id @default(cuid())
+  offeringId String                  @map("offering_id")
+  placeId    Int                     @map("place_id")
+  role       ProductPlaceSpatialRole
+  sortOrder  Int                     @default(0) @map("sort_order")
+  label      String?                 @db.VarChar(128)
+  /// GeoJSON 等非点状几何（航线 / 活动区近似）
+  geometry   Json?
+  metadata   Json?
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offering ProductOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  place    Place           @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([offeringId, placeId, role, sortOrder])
+  @@index([placeId, role])
+  @@index([offeringId, role])
+  @@map("product_place_link")
+}
+
+/// Layer 4 — 班次 / 入场时段
+model ProductSession {
+  id                        String               @id @default(cuid())
+  offeringId                String               @map("offering_id")
+  localDate                 DateTime             @map("local_date") @db.Date
+  startTimeLocal            String?              @map("start_time_local") @db.VarChar(16)
+  endTimeLocal              String?              @map("end_time_local") @db.VarChar(16)
+  meetTimeLocal             String?              @map("meet_time_local") @db.VarChar(16)
+  latestCheckInLocal        String?              @map("latest_check_in_local") @db.VarChar(16)
+  timezone                  String?              @db.VarChar(64)
+  capacityTotal             Int?                 @map("capacity_total")
+  capacityRemaining         Int?                 @map("capacity_remaining")
+  status                    ProductSessionStatus @default(SCHEDULED)
+  minParticipants           Int?                 @map("min_participants")
+  isGuaranteedDeparture     Boolean              @default(false) @map("is_guaranteed_departure")
+  weatherStatus             String?              @map("weather_status") @db.VarChar(64)
+  postponementOrCancelStatus String?             @map("postponement_or_cancel_status") @db.VarChar(64)
+  externalSessionId         String?              @map("external_session_id") @db.VarChar(128)
+  metadata                  Json?
+  createdAt                 DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offering       ProductOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  ratePlans      RatePlan[]
+  itineraryItems ItineraryItem[]
+
+  @@index([offeringId, localDate])
+  @@index([status, localDate])
+  @@index([externalSessionId])
+  @@map("product_session")
+}
+
+/// Layer 5 — 价格方案（禁止只在 Offering 放单一 price）
+model RatePlan {
+  id               String    @id @default(cuid())
+  offeringId       String    @map("offering_id")
+  sessionId        String?   @map("session_id")
+  code             String    @db.VarChar(64)
+  nameEN           String    @map("name_en") @db.VarChar(128)
+  nameCN           String?   @map("name_cn") @db.VarChar(128)
+  currency         String    @db.VarChar(8)
+  amount           Decimal   @db.Decimal(12, 2)
+  travelerType     String?   @map("traveler_type") @db.VarChar(32)
+  refundable       Boolean?
+  includesTransfer Boolean?  @map("includes_transfer")
+  validFrom        DateTime? @map("valid_from") @db.Timestamptz(6)
+  validTo          DateTime? @map("valid_to") @db.Timestamptz(6)
+  inventoryCap     Int?      @map("inventory_cap")
+  bookingRules     Json?     @map("booking_rules")
+  metadata         Json?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  offering ProductOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  session  ProductSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([offeringId, code, sessionId])
+  @@index([sessionId])
+  @@index([offeringId, travelerType])
+  @@map("rate_plan")
 }

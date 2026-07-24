@@ -1,6 +1,6 @@
 // src/agent/training/services/iterative-deployment-workflow.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { TrajectoryCollectionService } from './trajectory-collection.service';
 import { TrajectoryValidatorService } from './trajectory-validator.service';
 import { RewardSignalExtractorService } from './reward-signal-extractor.service';
@@ -12,6 +12,8 @@ import { EvalSuiteService } from './eval-suite.service';
 import { RegressionGateService } from './regression-gate.service';
 import { ReplayComparatorService } from './replay-comparator.service';
 import { TrajectoryETLService } from './trajectory-etl.service';
+import { ShadowDeploymentWorkflowService } from './shadow-deployment-workflow.service';
+import type { SftThenDpoPipelineStatus } from '../interfaces/fine-tune-pipeline.types';
 
 /**
  * IterativeDeploymentWorkflowService
@@ -45,7 +47,30 @@ export class IterativeDeploymentWorkflowService {
     private readonly regressionGate: RegressionGateService,
     private readonly replayComparator: ReplayComparatorService,
     private readonly trajectoryETL: TrajectoryETLService,
+    @Optional() private readonly shadowDeployment?: ShadowDeploymentWorkflowService,
   ) {}
+
+  /**
+   * 飞轮 pipeline 完成 → 阴影注册（委托 ShadowDeploymentWorkflowService）。
+   */
+  async registerShadowAdapterFromPipeline(
+    pipeline: SftThenDpoPipelineStatus,
+  ): Promise<{ shadowVersion?: string; registered: boolean; reason?: string }> {
+    if (!this.shadowDeployment) {
+      return { registered: false, reason: 'shadow_deployment_workflow_unavailable' };
+    }
+    return this.shadowDeployment.onFlywheelPipelineCompleted(pipeline);
+  }
+
+  /**
+   * 阴影评测达标后晋升生产 Planner。
+   */
+  async promoteShadowPlanner(shadowVersion: string, force = false) {
+    if (!this.shadowDeployment) {
+      return { shadowVersion, promoted: false, reason: 'shadow_deployment_workflow_unavailable' };
+    }
+    return this.shadowDeployment.promote(shadowVersion, { force });
+  }
 
   /**
    * 执行完整的迭代部署工作流

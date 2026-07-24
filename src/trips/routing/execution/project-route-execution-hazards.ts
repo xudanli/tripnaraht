@@ -184,7 +184,8 @@ function recommendVehicleUpgrade(
 export function projectRouteExecutionHazards(
   input: ProjectRouteExecutionHazardsInput,
 ): RouteExecutionProjection {
-  const baselineMinutes = input.baselineDurationMin ?? 60;
+  const countryBaselineEtaModifier = input.countryEtaPolicy?.baselineEtaModifier ?? 1;
+  const baselineMinutes = (input.baselineDurationMin ?? 60) * countryBaselineEtaModifier;
   const metas = segmentRouteCorridor({
     legId: input.legId,
     geometry: input.geometry,
@@ -275,11 +276,14 @@ export function projectRouteExecutionHazards(
     },
     roadAccessibility: {
       fRoad: roadFRoad,
-      requires4WD: input.roadCondition.requires4WD,
+      requires4WD: input.roadCondition.requires4WD ?? (roadFRoad && input.countryCode === 'IS'),
       seasonalClosureRisk: input.roadCondition.seasonalClosureRisk,
     },
     executionReliability,
-    estimatedDelayFactor: meanPenalty,
+    estimatedDelayFactor: meanPenalty * countryBaselineEtaModifier,
+    countryBaselineEtaModifier:
+      countryBaselineEtaModifier > 1.001 ? countryBaselineEtaModifier : undefined,
+    countryCode: input.countryCode,
     recommendedVehicleClass: recommendVehicleUpgrade(
       worstScenario,
       input.vehicleProfile.vehicleClass,

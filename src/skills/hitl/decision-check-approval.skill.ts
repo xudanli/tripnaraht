@@ -37,7 +37,7 @@ export interface DecisionCheckApprovalOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'decision.checkApproval',
-  description: '检查审批请求的状态',
+  description: '查询 HITL 审批任务状态（pending/approved/rejected）。在 decision 阶段续跑、用户追问审批进度或需按 approval_id 同步结果时调用。',
   version: '1.0.0',
   category: 'decision',
 })
@@ -47,7 +47,7 @@ export class DecisionCheckApprovalSkill implements Skill<DecisionCheckApprovalIn
 
   metadata = {
     name: 'decision.checkApproval',
-    description: '检查审批请求的状态',
+    description: '查询 HITL 审批任务状态（pending/approved/rejected）。在 decision 阶段续跑、用户追问审批进度或需按 approval_id 同步结果时调用。',
     version: '1.0.0',
     category: 'decision' as const,
   };

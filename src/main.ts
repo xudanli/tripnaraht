@@ -21,10 +21,19 @@ import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { SecurityMiddleware } from './common/middlewares/security.middleware';
+import { assertShadowEvidencePersistenceConfigOnStartup } from './decision-runtime/observability/shadow-evidence-persistence.config';
 
 async function bootstrap() {
   console.log('🚀 [Bootstrap] 开始启动应用...');
   console.log(`🔍 [Bootstrap] DISABLE_REDIS=${process.env.DISABLE_REDIS || 'false'}`);
+
+  try {
+    assertShadowEvidencePersistenceConfigOnStartup();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`❌ [Bootstrap] Shadow evidence persistence config invalid: ${message}`);
+    process.exit(1);
+  }
   
   // 根据环境变量设置日志级别（生产环境默认不显示 debug）
   const logLevels = process.env.LOG_LEVEL 
@@ -79,7 +88,7 @@ async function bootstrap() {
 
   // 自定义 body parser（支持更大 payload，避免 planning-assistant chat 等接口 "request entity too large"）
   const bodyLimit = process.env.BODY_PARSER_LIMIT || '2mb';
-  app.use(json({ limit: bodyLimit }));
+  app.use(json({ limit: bodyLimit, strict: false }));
   app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
   // 设置全局 API 前缀
@@ -424,7 +433,6 @@ async function bootstrap() {
     .addTag('exa', 'Exa 搜索服务接口（实时信息、风险检查、政策更新）')
     .addTag('airbnb', 'Airbnb 住宿服务接口（可用性检查、价格估算、偏好匹配）')
     .addTag('world-model-evidence', '世界模型证据接口（DEM证据、道路状态、天气窗口、路线哲学、失败画像）')
-    .addTag('match-square', '搭子广场接口（招募帖、申请流、匹配校准）')
     .addTag('identity-governance', '账号身份治理（验证、上下文、发布权限、Professional/Agency）')
     .addTag('project-fit', '项目准入、Project Fit、团队影响与申请审核')
     .addTag('trusted-projects', '可信旅行项目（发布、审核、申请加入）')

@@ -302,6 +302,23 @@ export class NeighborhoodOperators {
     };
   }
 
+  /** Swap segments between two day indices (topology neighborhood). */
+  swapDaySegments(plan: RoutePlanDraft, dayA: number, dayB: number): NeighborhoodVariant {
+    const segs = Array.isArray(plan?.segments) ? (plan.segments as RouteSegment[]) : [];
+    const rewritten = segs.map((s) => {
+      const d = (s as any).dayIndex ?? 0;
+      if (d === dayA) return { ...(s as any), dayIndex: dayB };
+      if (d === dayB) return { ...(s as any), dayIndex: dayA };
+      return s;
+    });
+    const next = withSegments(plan, rewritten as any, `swap${dayA}${dayB}`);
+    return {
+      id: `op-swap-day${dayA}`,
+      plan: next,
+      summary: `日结构交换：第 ${dayA} 天与第 ${dayB} 天活动对调`,
+    };
+  }
+
   generateAll(plan: RoutePlanDraft): NeighborhoodVariant[] {
     const variants: NeighborhoodVariant[] = [{ id: 'base', plan, summary: '原始方案（不做松弛）' }];
 
@@ -314,7 +331,17 @@ export class NeighborhoodOperators {
     for (const t of ['10:00', '11:00']) variants.push(this.shiftDayStart(plan, t, 60));
     for (const b of [10, 20]) variants.push(this.ensureConnectivityBuffer(plan, b));
 
+    const days = new Set(segsDayIndices(plan));
+    if (days.has(3)) {
+      variants.push(this.swapDaySegments(plan, 3, Math.max(1, [...days].filter((d) => d !== 3)[0] ?? 2)));
+    }
+
     return variants;
   }
+}
+
+function segsDayIndices(plan: RoutePlanDraft): number[] {
+  const segs = Array.isArray(plan?.segments) ? (plan.segments as RouteSegment[]) : [];
+  return segs.map((s) => (s as any).dayIndex ?? 0);
 }
 

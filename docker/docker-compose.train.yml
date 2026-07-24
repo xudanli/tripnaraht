@@ -23,6 +23,8 @@ services:
       - ../python/train:/app/train:ro
       - train-models:/app/models
       - train-data:/app/data
+      # Nest ETL 写出目录（与 TRAINING_DECISION_TRAJECTORY_OUTPUT_DIR 对齐）
+      - ../data/training/decision-trajectories:/app/data/host-training/decision-trajectories:ro
       - train-outputs:/app/outputs
       - train-logs:/app/logs
     ports:

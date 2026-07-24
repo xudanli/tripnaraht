@@ -2,7 +2,11 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
-import { buildBriefItineraryLinesFromTripDays } from '../../trips/utils/trip-prompt-summary.util';
+import { compressWorldStateToNarrative } from '../runtime/decision-os-narrative-projection.util';
+import {
+  formatDecisionOsTripTime,
+  type DecisionOsWorldState,
+} from '../runtime/decision-os-world-state.types';
 import { UserStandingPreferenceService } from './user-standing-preference.service';
 import { TripInsightService } from '../../trips/services/trip-insight.service';
 import { TripMetricsService } from '../../trips/services/trip-metrics.service';
@@ -13,6 +17,8 @@ import {
 import { loadWishlistPromptInjectionForAgent } from '../../trips/wishlist/utils/wish-prompt-injection.util';
 import { TripIntentDigestService } from '../memory/services/trip-intent-digest.service';
 import { formatTripIntentDigestPromptInjection } from '../memory/utils/trip-intent-context-blocks.util';
+import { TripBudgetProfileService } from '../../trips/budget-os/services/trip-budget-profile.service';
+import { formatBudgetProfilePromptBlock } from '../../trips/services/budget-comparison.util';
 
 /**
  * Enriches `route_and_run` conversation context before orchestration (e.g. active trip summary).
@@ -27,6 +33,7 @@ export class RouteAndRunContextEnricherService {
     @Optional() private readonly tripInsightService?: TripInsightService,
     @Optional() private readonly tripMetricsService?: TripMetricsService,
     @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
+    @Optional() private readonly budgetProfileService?: TripBudgetProfileService,
   ) {}
 
   /**
@@ -80,21 +87,47 @@ export class RouteAndRunContextEnricherService {
         return;
       }
 
-      const lines: string[] = [];
-      lines.push(`[active_trip_summary trip_id=${tripId}]`);
-      if (trip.name) lines.push(`名称: ${trip.name}`);
-      if (trip.status) lines.push(`状态: ${trip.status}`);
-      if (trip.destination) lines.push(`目的地代码: ${trip.destination}`);
-      if (trip.startDate) lines.push(`开始: ${trip.startDate.toISOString().slice(0, 10)}`);
-      if (trip.endDate) lines.push(`结束: ${trip.endDate.toISOString().slice(0, 10)}`);
-
-      lines.push(
-        ...await this.buildTripRiskAndMetricLines(request, tripId, trip.startDate ?? undefined),
+      const worldState: DecisionOsWorldState = {
+        revision: 'v1',
+        tripId,
+        name: trip.name,
+        status: trip.status,
+        destination: trip.destination,
+        startDate: trip.startDate?.toISOString().slice(0, 10) ?? null,
+        endDate: trip.endDate?.toISOString().slice(0, 10) ?? null,
+        days: (trip.TripDay ?? []).map((day) => ({
+          date: day.date?.toISOString().slice(0, 10) ?? '?',
+          items: (day.ItineraryItem ?? []).map((it) => ({
+            type: it.type,
+            note: it.note,
+            placeName: it.Place?.nameCN ?? it.Place?.nameEN ?? null,
+            startTime: formatDecisionOsTripTime(it.startTime),
+            endTime: formatDecisionOsTripTime(it.endTime),
+          })),
+        })),
+      };
+      let injected = compressWorldStateToNarrative(worldState, tripId);
+      const riskLines = await this.buildTripRiskAndMetricLines(
+        request,
+        tripId,
+        trip.startDate ?? undefined,
       );
-      lines.push(...buildBriefItineraryLinesFromTripDays(trip.TripDay));
-
-      const block = lines.join('\n');
-      const injected = `[系统注入·当前行程摘要]\n${block}`;
+      if (riskLines.length > 0 && injected.trim()) {
+        const prefix = '[系统注入·当前行程摘要]\n';
+        const body = injected.startsWith(prefix) ? injected.slice(prefix.length) : injected;
+        injected = `${prefix}${body}\n${riskLines.join('\n')}`;
+      } else       if (riskLines.length > 0 && !injected.trim()) {
+        injected = `[系统注入·当前行程摘要]\n${riskLines.join('\n')}`;
+      }
+      const budgetBlock = await this.buildBudgetProfileLines(tripId);
+      if (budgetBlock) {
+        injected = injected.trim()
+          ? `${injected}\n${budgetBlock}`
+          : budgetBlock;
+      }
+      if (!injected.trim()) {
+        return;
+      }
       const prev = request.conversation_context?.recent_messages ?? [];
       request.conversation_context = {
         ...request.conversation_context,
@@ -166,6 +199,32 @@ export class RouteAndRunContextEnricherService {
     }
 
     return lines;
+  }
+
+  private async buildBudgetProfileLines(tripId: string): Promise<string | null> {
+    if (!this.budgetProfileService) {
+      return null;
+    }
+    try {
+      const profile = await this.budgetProfileService.getProfile(tripId, ['actuals']);
+      if (!profile.intent && !profile.structure && !profile.actuals) {
+        return null;
+      }
+      return formatBudgetProfilePromptBlock({
+        intentTotal: profile.intent?.total,
+        currency: profile.intent?.currency ?? profile.actuals?.currency ?? 'CNY',
+        dailyBudget: profile.intent?.dailyBudget,
+        spendingPersona: profile.structure?.spendingPersona,
+        structureAllocations: profile.structure?.allocations,
+        actualsTotalEstimated: profile.actuals?.totalEstimated,
+        budgetUsagePercent: profile.actuals?.budgetUsagePercent,
+        gateVerdict: profile.gateStatus?.verdict,
+        unpaidCount: profile.actuals?.unpaidCount,
+      });
+    } catch (e: any) {
+      this.logger.debug(`[ContextEnricher] budget profile skipped: ${e?.message ?? e}`);
+      return null;
+    }
   }
 
   /**

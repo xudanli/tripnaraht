@@ -1,0 +1,7 @@
+{
+  "_comment": "TripNARA staging: observability.memory_contract.constraint_sink fragment for frontend typegen / Gate card mocks.",
+  "hydrated": true,
+  "applied_keys": ["destination", "pace", "guardian_debate_intent_hint"],
+  "patch_ids": ["patch-coastal-pivot-staging-001"],
+  "overridden_by_request_keys": []
+}

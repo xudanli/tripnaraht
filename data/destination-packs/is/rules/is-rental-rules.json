@@ -1,0 +1,25 @@
+{
+  "schemaId": "tripnara.destination.rental_rules@v1",
+  "destination": "IS",
+  "version": "1.0.0",
+  "restrictions": {
+    "NO_F_ROAD": {
+      "description": "标准租车合同禁止驶入 F-road（高地路）",
+      "match": {
+        "roadClasses": ["HIGHLAND_F_ROAD"]
+      },
+      "outcome": "REJECT",
+      "severity": "CRITICAL"
+    },
+    "GRAVEL_ROAD_LIMITED": {
+      "description": "碎石路行驶受合同里程/险种限制",
+      "gravelRatioThreshold": 0.25,
+      "outcomeAboveThreshold": "REJECT",
+      "severityAboveThreshold": "HIGH",
+      "outcomeBelowThreshold": "NEED_CONFIRM",
+      "severityBelowThreshold": "MEDIUM",
+      "unknownRoadOutcome": "NEED_CONFIRM",
+      "unknownRoadSeverity": "MEDIUM"
+    }
+  }
+}

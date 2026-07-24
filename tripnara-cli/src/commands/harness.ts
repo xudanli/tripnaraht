@@ -5,6 +5,13 @@ import { printReport, printAbReport } from "../harness/harness.reporter";
 import { replayFromArgs } from "../harness/harness.replay";
 import type { HarnessResult, HarnessRunOptions, HarnessVariant } from "../harness/harness.types";
 import { getConfig } from "../infra/config";
+import { registerHarnessTraceCommands } from "./harness-trace";
+import { registerHarnessShadowGraderCommands } from "./harness-shadow-grader";
+import { registerHarnessKernelHardCommands } from "./harness-kernel-hard";
+import { registerHarnessBadcaseCommands } from "./harness-badcase";
+import { registerHarnessQualityCommands } from "./harness-quality";
+import { registerHarnessShadowHarnessCommands, registerHarnessLlmRoutingCommands } from "./harness-shadow-harness";
+import { registerHarnessCostCommands } from "./harness-cost";
 
 function collectVariant(value: string, prev: string[]): string[] {
   return prev.concat([value]);
@@ -35,6 +42,15 @@ export function registerHarnessCommand(program: Command): void {
   const harness = program
     .command("harness")
     .description("Run verdict/risk harness cases (local Planner or API route_and_run)");
+
+  registerHarnessTraceCommands(harness);
+  registerHarnessShadowGraderCommands(harness);
+  registerHarnessKernelHardCommands(harness);
+  registerHarnessBadcaseCommands(harness);
+  registerHarnessQualityCommands(harness);
+  registerHarnessShadowHarnessCommands(harness);
+  registerHarnessLlmRoutingCommands(harness);
+  registerHarnessCostCommands(harness);
 
   harness
     .command("run")

@@ -51,6 +51,102 @@ npx prisma generate
 | `domain` 枚举 | `destination_route` / `accommodation` / `activities` / `dining` 等（见 `WISH_CATEGORIES`） |
 | 空列表 | 仅返回 **中/高交叉** 领域；全为 low 或未认领时可能 `tasks: []` |
 | `activeRoundId` | `status === "in_discussion"` 且成员≥2 时：**懒创建**活跃轮次并返回 ID |
+| `source` | `domain_influence`（F2.3 领域任务）或 `decision_problem`（决策问题预生成入口） |
+| `problemId` | 当 `source=decision_problem` 时，对应 `GET decision-problems/:problemId` |
+
+**决策问题预生成任务**（2026-07）：开放且需多人协商的 decision problem 会追加 `id: task:problem:{problemId}` 条目；前端选中后可用 `activeRoundId` 或下方 POST 进入讨论。
+
+### 2.1 从决策问题一键发起协商（P0 编排）
+
+`POST /api/trips/:tripId/decision-problems/:problemId/negotiations`
+
+`GET /api/trips/:tripId/decision-problems/:problemId/negotiations/preflight?focusConflictId=`
+
+**POST Request（可选 body）**
+
+```json
+{
+  "focusConflictId": "issue-gap-3",
+  "selectedOptionId": "opt-a",
+  "note": "希望团队先对齐节奏",
+  "closesAt": "2026-07-05T18:00:00Z",
+  "autoClaimDomain": true
+}
+```
+
+**POST Response `data.action`**
+
+| action | 含义 |
+|--------|------|
+| `created` | 新建轮次成功 → 直接开讨论弹窗 |
+| `enter_existing` | 该问题已有进行中协商 → 直接开弹窗 |
+| `claim_required` | 需先认领领域（`autoClaimDomain: false` 时） |
+
+**兼容接口：** `POST .../decision-problems/:problemId/preference-round`（Unified Gateway）仍可用，内部委托编排器。
+
+### 2.2 从决策问题创建/绑定协商轮次（兼容）
+
+`POST /api/trips/:tripId/decision-problems/:problemId/preference-round`
+
+幂等：若该问题映射的 wish `domain` 已有进行中轮次，则复用并返回 `boundExisting: true`。
+
+**响应 `data`**
+
+```json
+{
+  "problemId": "problem_xxx",
+  "tripId": "trip-uuid",
+  "domain": "activities",
+  "decisionNode": "activity",
+  "roundId": "round-uuid",
+  "created": true,
+  "boundExisting": false,
+  "memberCount": 3,
+  "clientNavigation": {
+    "route": "structured_negotiation",
+    "tripId": "trip-uuid",
+    "roundId": "round-uuid",
+    "domain": "activities",
+    "problemId": "problem_xxx"
+  }
+}
+```
+
+**前端推荐流程**
+
+1. Decision Center 打开问题 → `GET collaborative-tasks`，按 `problemId` 选中 `source=decision_problem` 任务；或
+2. 直接 `POST .../decision-problems/:problemId/negotiations` → 用 `clientNavigation.roundId` 加载 `GET preference-rounds/:roundId`
+
+### 2.3 P1 — 决策问题详情协商投影
+
+`GET /api/trips/:tripId/decision-problems/:problemId?focusConflictId=issue-gap-3`
+
+Legacy 流程：字段在 `data` 内；Unified Canonical：同名字段在响应顶层（与 `data` 并列）。
+
+```json
+{
+  "suggestedNegotiationDomain": "activities",
+  "suggestedDecisionNode": "activity",
+  "negotiation": {
+    "taskId": "nt:dp_id:coverage-gap:3",
+    "roundId": "round-uuid",
+    "roundDomain": "activities",
+    "status": "in_discussion",
+    "canStart": true,
+    "buttonLabel": "进入协商",
+    "focusConflictId": "issue-gap-3",
+    "closedOutcome": null
+  }
+}
+```
+
+| `negotiation.status` | `buttonLabel` |
+|----------------------|---------------|
+| `in_discussion` | 进入协商 |
+| `pending` / `none`（且 `canStart`） | 发起协商 |
+| `closed` | `null`（可读 `closedOutcome` 衔接方案草案） |
+
+轮次 `closed` 时后端写回 `trip.metadata.decisionProblemNegotiations.byProblemId[problemId].outcome`（含 `recommendedOptionId`、`summaryCN`）。
 
 **会出现在列表中的领域**（crossLevel ≠ low）：`destination_route`、`accommodation`、`activities`、`dining`。
 

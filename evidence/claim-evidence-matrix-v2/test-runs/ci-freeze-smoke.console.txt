@@ -1,0 +1,27 @@
+=== ci:freeze-smoke-gate ===
+
+> untitled2@0.1.0 ci:freeze-smoke-gate
+> npx tsx scripts/ci/freeze-smoke-gate.ts
+
+[freeze-smoke-gate] $ npx tsx scripts/ci/check-dangling-imports.ts
+[check-dangling-imports] OK — scope=agent scanned 1318 files, 0 dangling; C018 import path clear
+[freeze-smoke-gate] $ npx jest --runInBand --forceExit --ci src/agent/utils/memory-shell-trip-id.util.spec.ts src/agent/utils/route-and-run-trip-id-merge.util.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/contracts/route-and-run-options.openapi.freeze.spec.ts src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/orchestration-governance-matrix.contract.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/contracts/actions-commit-idempotency.contract.spec.ts src/decision-runtime/gateway/contracts/unified-execute-idempotency.contract.spec.ts
+PASS src/agent/orchestration/orchestration-governance-matrix.contract.spec.ts
+PASS src/agent/agent.controller.ao-p0.contract.spec.ts
+PASS src/agent/utils/route-and-run-trip-id-merge.util.spec.ts
+PASS src/decision-runtime/gateway/contracts/unified-execute-idempotency.contract.spec.ts
+PASS src/agent/contracts/actions-commit-idempotency.contract.spec.ts
+PASS src/agent/contracts/route-and-run-options.openapi.freeze.spec.ts
+PASS src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts
+PASS src/agent/contracts/claude-exec-route-and-run.contract.spec.ts
+PASS src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts
+PASS src/agent/utils/memory-shell-trip-id.util.spec.ts
+PASS src/agent/delivery/types/delivery-verdict.types.spec.ts
+
+Test Suites: 11 passed, 11 total
+Tests:       61 passed, 61 total
+Snapshots:   0 total
+Time:        6.135 s, estimated 10 s
+Ran all test suites matching src/agent/utils/memory-shell-trip-id.util.spec.ts|src/agent/utils/route-and-run-trip-id-merge.util.spec.ts|src/agent/agent.controller.ao-p0.contract.spec.ts|src/agent/contracts/claude-exec-route-and-run.contract.spec.ts|src/agent/contracts/route-and-run-options.openapi.freeze.spec.ts|src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts|src/agent/orchestration/orchestration-governance-matrix.contract.spec.ts|src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts|src/agent/delivery/types/delivery-verdict.types.spec.ts|src/agent/contracts/actions-commit-idempotency.contract.spec.ts|src/decision-runtime/gateway/contracts/unified-execute-idempotency.contract.spec.ts.
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?
+exit_code=0

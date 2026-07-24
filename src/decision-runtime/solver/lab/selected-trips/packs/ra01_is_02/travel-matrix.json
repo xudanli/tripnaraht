@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "ra01_is_02",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "poi_ra01_is_02_pilot_is_02_start",
+      "to": "poi_ra01_is_02_glacier_hike",
+      "durationMin": 35
+    },
+    {
+      "from": "poi_ra01_is_02_glacier_hike",
+      "to": "poi_ra01_is_02_pilot_is_02_start",
+      "durationMin": 35
+    }
+  ]
+}

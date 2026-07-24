@@ -43,6 +43,16 @@ import {
   PushNotification,
 } from '../interfaces/journey-assistant.interface';
 import { randomUUID as uuidv4 } from 'crypto';
+import { resolveTripTemporalAnchor } from '../../../utils/trip-temporal-anchor.util';
+import {
+  buildJourneyEmotionalContext,
+  syncJourneyPresenceSignals,
+  projectJourneyStateForClientResponse,
+} from '../utils/journey-emotional-context.util';
+import {
+  filterRemindersForProactivityGate,
+  proactivityGateStatusMessageZh,
+} from '../utils/proactivity-gate.util';
 
 @Injectable()
 export class JourneyAssistantService {
@@ -78,22 +88,30 @@ export class JourneyAssistantService {
     this.logger.debug(`[行程助手] 收到请求: tripId=${request.tripId}, action=${request.action}`);
 
     try {
+      let response: JourneyAssistantResponse;
       switch (request.action) {
         case 'chat':
-          return this.handleChat(request);
+          response = await this.handleChat(request);
+          break;
         case 'nearby':
-          return this.handleNearbyDirect(request);
+          response = await this.handleNearbyDirect(request);
+          break;
         case 'get_status':
-          return this.handleGetStatus(request);
+          response = await this.handleGetStatus(request);
+          break;
         case 'get_reminders':
-          return this.handleGetReminders(request);
+          response = await this.handleGetReminders(request);
+          break;
         case 'handle_event':
-          return this.handleEvent(request);
+          response = await this.handleEvent(request);
+          break;
         case 'adjust_schedule':
-          return this.handleAdjustSchedule(request);
+          response = await this.handleAdjustSchedule(request);
+          break;
         default:
-          return this.createErrorResponse('Unknown action');
+          response = this.createErrorResponse('Unknown action');
       }
+      return this.finalizeJourneyResponse(response);
     } catch (error: any) {
       this.logger.error(`[行程助手] 处理失败: ${error.message}`, error.stack);
       return this.createErrorResponse(error.message);
@@ -111,7 +129,8 @@ export class JourneyAssistantService {
     }
 
     // 加载行程状态
-    const state = await this.loadJourneyState(request.tripId, request.userId);
+    let state = await this.loadJourneyState(request.tripId, request.userId);
+    state = this.syncPresenceFromRequest(state, request);
     
     // 分析意图
     const intent = await this.analyzeIntent(request.message, state);
@@ -139,7 +158,8 @@ export class JourneyAssistantService {
    * 获取行程状态
    */
   private async handleGetStatus(request: JourneyAssistantRequest): Promise<JourneyAssistantResponse> {
-    const state = await this.loadJourneyState(request.tripId, request.userId);
+    let state = await this.loadJourneyState(request.tripId, request.userId);
+    state = this.syncPresenceFromRequest(state, request);
     
     const statusMessage = this.generateStatusMessage(state);
     
@@ -155,12 +175,20 @@ export class JourneyAssistantService {
    * 获取提醒列表
    */
   private async handleGetReminders(request: JourneyAssistantRequest): Promise<JourneyAssistantResponse> {
-    const state = await this.loadJourneyState(request.tripId, request.userId);
-    const reminders = await this.generateReminders(state);
-    
+    let state = await this.loadJourneyState(request.tripId, request.userId);
+    state = this.syncPresenceFromRequest(state, request);
+    const allReminders = await this.generateReminders(state, { raw: true });
+    const gate = state.emotionalContext?.proactivityGate;
+    const reminders = filterRemindersForProactivityGate(allReminders, gate);
+    const gateNote = proactivityGateStatusMessageZh(gate);
+
     return {
-      message: `You have ${reminders.length} upcoming reminders.`,
-      messageCN: `你有 ${reminders.length} 条待办提醒。`,
+      message: gateNote
+        ? `You have ${reminders.length} reminders (${gate} mode).`
+        : `You have ${reminders.length} upcoming reminders.`,
+      messageCN: gateNote
+        ? `你有 ${reminders.length} 条提醒（${gate} 模式）。${gateNote}`
+        : `你有 ${reminders.length} 条待办提醒。`,
       reminders,
       journeyState: state,
     };
@@ -303,7 +331,8 @@ export class JourneyAssistantService {
    * 直接处理附近搜索（POST /nearby 专用， bypass 意图分析）
    */
   private async handleNearbyDirect(request: JourneyAssistantRequest): Promise<JourneyAssistantResponse> {
-    const state = await this.loadJourneyState(request.tripId, request.userId);
+    let state = await this.loadJourneyState(request.tripId, request.userId);
+    state = this.syncPresenceFromRequest(state, request);
     return this.handleNearbySearch(request, state);
   }
 
@@ -786,18 +815,25 @@ What do you need?`,
     this.logger.debug('[行程助手] 执行主动提醒检查');
     
     try {
-      // 获取所有活跃行程
       const activeTrips = await this.getActiveTrips();
       
       for (const tripId of activeTrips) {
-        const state = this.journeyStates.get(tripId);
-        if (!state) continue;
-        
-        const reminders = await this.generateReminders(state);
-        const urgentReminders = reminders.filter(r => r.priority === 'urgent' || r.priority === 'high');
-        
-        if (urgentReminders.length > 0) {
-          await this.sendPushNotifications(state.userId, tripId, urgentReminders);
+        const cached = this.journeyStates.get(tripId);
+        if (!cached) continue;
+
+        const state = await this.loadJourneyState(tripId, cached.userId);
+        this.refreshEmotionalContext(state);
+
+        const gate = state.emotionalContext?.proactivityGate ?? 'GENTLE';
+        if (gate === 'SILENT') {
+          this.logger.debug(`[行程助手] tripId=${tripId} proactivityGate=SILENT，跳过非紧急 push`);
+        }
+
+        const allReminders = await this.generateReminders(state, { raw: true });
+        const gated = filterRemindersForProactivityGate(allReminders, gate);
+
+        if (gated.length > 0) {
+          await this.sendPushNotifications(state.userId, tripId, gated);
         }
       }
     } catch (error: any) {
@@ -808,11 +844,13 @@ What do you need?`,
   /**
    * 生成提醒
    */
-  private async generateReminders(state: JourneyState): Promise<Reminder[]> {
+  private async generateReminders(
+    state: JourneyState,
+    opts?: { raw?: boolean },
+  ): Promise<Reminder[]> {
     const reminders: Reminder[] = [];
     const now = new Date();
 
-    // 基于当前行程阶段生成提醒
     switch (state.phase) {
       case 'PRE_TRIP':
         reminders.push(...this.generatePreTripReminders(state, now));
@@ -828,8 +866,15 @@ What do you need?`,
         break;
     }
 
-    return reminders.sort((a, b) => 
-      new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+    const sorted = reminders.sort(
+      (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+    );
+
+    if (opts?.raw) return sorted;
+
+    return filterRemindersForProactivityGate(
+      sorted,
+      state.emotionalContext?.proactivityGate,
     );
   }
 
@@ -973,29 +1018,44 @@ What do you need?`,
         });
         if (trip) {
           const now = new Date();
-          const start = trip.startDate ? new Date(trip.startDate) : null;
-          const end = trip.endDate ? new Date(trip.endDate) : null;
+          const startYmd = trip.startDate?.toISOString().slice(0, 10);
+          const endYmd = trip.endDate?.toISOString().slice(0, 10);
           totalDays = trip.TripDay?.length || 1;
 
-          if (trip.status === 'COMPLETED' || (end && now > end)) {
+          if (trip.status === 'COMPLETED') {
             phase = 'POST_TRIP';
             isCompleted = true;
             currentDay = totalDays;
-            const endDate = end || new Date();
-            currentDate = endDate.toISOString().split('T')[0];
-          } else if (trip.status === 'PLANNING' || (start && now < start)) {
-            phase = 'PRE_TRIP';
-            isCompleted = false;
-            currentDay = 1;
-            currentDate = start ? start.toISOString().split('T')[0] : currentDate;
-          } else if (start && end) {
-            phase = now < start ? 'PRE_TRIP' : now > end ? 'POST_TRIP' : 'ON_TRIP';
-            isCompleted = phase === 'POST_TRIP';
-            const dayIndex = trip.TripDay?.findIndex((d) => {
-              const dDate = new Date(d.date).toISOString().split('T')[0];
-              return dDate === now.toISOString().split('T')[0];
+            currentDate = endYmd ?? currentDate;
+          } else {
+            const temporal = resolveTripTemporalAnchor({
+              startDateYmd: startYmd,
+              endDateYmd: endYmd,
+              now,
             });
-            if (dayIndex >= 0) currentDay = dayIndex + 1;
+            if (temporal?.phase === 'POST_TRIP') {
+              phase = 'POST_TRIP';
+              isCompleted = true;
+              currentDay = temporal.currentDayNumber;
+              currentDate = temporal.anchorYmd;
+            } else if (temporal?.phase === 'PRE_TRIP') {
+              phase = 'PRE_TRIP';
+              isCompleted = false;
+              currentDay = 1;
+              currentDate = temporal.anchorYmd;
+            } else if (temporal) {
+              phase = 'ON_TRIP';
+              isCompleted = false;
+              currentDate = temporal.todayYmd;
+              currentDay = temporal.currentDayNumber;
+              const dayIndex = trip.TripDay?.findIndex((d) => {
+                const dDate = new Date(d.date).toISOString().split('T')[0];
+                return dDate === temporal.todayYmd;
+              });
+              if (dayIndex != null && dayIndex >= 0) {
+                currentDay = dayIndex + 1;
+              }
+            }
           }
         }
       } catch (err: any) {
@@ -1033,7 +1093,34 @@ What do you need?`,
       state.currentDate = currentDate;
     }
 
+    this.refreshEmotionalContext(state);
     return state;
+  }
+
+  private syncPresenceFromRequest(
+    state: JourneyState,
+    request: JourneyAssistantRequest,
+  ): JourneyState {
+    const next = syncJourneyPresenceSignals(state, {
+      message: request.message,
+      currentLocation: request.context?.currentLocation,
+      timezone: request.context?.timezone,
+      continuousDrivingSeconds: request.context?.continuousDrivingSeconds,
+    });
+    void this.saveJourneyState(next);
+    return next;
+  }
+
+  private finalizeJourneyResponse(response: JourneyAssistantResponse): JourneyAssistantResponse {
+    if (!response.journeyState) return response;
+    return {
+      ...response,
+      journeyState: projectJourneyStateForClientResponse(response.journeyState),
+    };
+  }
+
+  private refreshEmotionalContext(state: JourneyState): void {
+    state.emotionalContext = buildJourneyEmotionalContext(state);
   }
 
   /**

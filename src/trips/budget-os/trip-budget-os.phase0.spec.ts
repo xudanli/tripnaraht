@@ -118,6 +118,8 @@ describe('Trip Budget OS Phase 0', () => {
       structureService,
       walletService,
       decisionLogService as never,
+      { remove: jest.fn() } as never,
+      { getProfile: jest.fn() } as never,
     );
   });
 

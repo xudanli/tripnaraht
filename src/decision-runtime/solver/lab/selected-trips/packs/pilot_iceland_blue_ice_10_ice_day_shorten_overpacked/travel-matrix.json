@@ -1,0 +1,32 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "pilot_iceland_blue_ice_10_ice_day_shorten_overpacked",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "is.skaftafell",
+      "to": "is.svinafellsjokull",
+      "durationMin": 30
+    },
+    {
+      "from": "is.svinafellsjokull",
+      "to": "is.jokulsarlon",
+      "durationMin": 35
+    },
+    {
+      "from": "is.jokulsarlon",
+      "to": "is.diamond_beach",
+      "durationMin": 40
+    },
+    {
+      "from": "is.diamond_beach",
+      "to": "is.fjallsarlon",
+      "durationMin": 45
+    },
+    {
+      "from": "is.fjallsarlon",
+      "to": "is.hofn",
+      "durationMin": 50
+    }
+  ]
+}

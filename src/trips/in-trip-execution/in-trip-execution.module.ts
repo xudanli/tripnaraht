@@ -6,6 +6,7 @@ import { TravelEventStoreModule } from '../event-store/travel-event-store.module
 import { TripSilentVoteModule } from '../silent-vote/trip-silent-vote.module';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { LoopsModule } from '../../loops/loops.module';
+import { PoiAccessCapacityModule } from '../../poi-access-capacity/poi-access-capacity.module';
 import { TripEnvironmentRadarController } from './controllers/trip-environment-radar.controller';
 import { TripMoneyBrainController } from './controllers/trip-money-brain.controller';
 import { TripInTripController } from './controllers/trip-in-trip.controller';
@@ -13,6 +14,7 @@ import { TripGroupPulseController } from './controllers/trip-group-pulse.control
 import { TripSplitOrchestratorController } from './controllers/trip-split-orchestrator.controller';
 import { TripExperienceLoopController } from './controllers/trip-experience-loop.controller';
 import { TripInTripBetaController } from './controllers/trip-in-trip-beta.controller';
+import { TripInTripCommsController } from './controllers/trip-in-trip-comms.controller';
 import { ExperienceWeightJob } from './jobs/experience-weight.job';
 import { ExperiencePulseService } from './services/experience-pulse.service';
 import { PostTripSummaryService } from './services/post-trip-summary.service';
@@ -29,6 +31,12 @@ import { AnchorHandoffService } from './services/anchor-handoff.service';
 import { InTripBetaMetricsService } from './services/in-trip-beta-metrics.service';
 import { InTripMorningPackService } from './services/in-trip-morning-pack.service';
 import { InTripOfflineSyncService } from './services/in-trip-offline-sync.service';
+import { InTripCommsPeersService } from './services/in-trip-comms-peers.service';
+import { InTripCommsService } from './services/in-trip-comms.service';
+import { InTripCommsSummaryService } from './services/in-trip-comms-summary.service';
+import { InTripCommsTranscribeService } from './services/in-trip-comms-transcribe.service';
+import { InTripCommsAudioStorageService } from './services/in-trip-comms-audio-storage.service';
+import { VoiceModule } from '../../voice/voice.module';
 import { BudgetRebalanceService } from './services/budget-rebalance.service';
 import { EnvironmentDataAdapter } from './services/environment-data.adapter';
 import { EnvironmentRadarService } from './services/environment-radar.service';
@@ -41,12 +49,14 @@ import { VulnerabilityScoreService } from './services/vulnerability-score.servic
 @Module({
   imports: [
     PrismaModule,
+    VoiceModule,
     TripBudgetOsModule,
     TripDecisionProfilingModule,
     TravelEventStoreModule,
     TripSilentVoteModule,
     forwardRef(() => ReadinessModule),
     forwardRef(() => LoopsModule),
+    PoiAccessCapacityModule,
   ],
   controllers: [
     TripInTripController,
@@ -56,12 +66,18 @@ import { VulnerabilityScoreService } from './services/vulnerability-score.servic
     TripSplitOrchestratorController,
     TripExperienceLoopController,
     TripInTripBetaController,
+    TripInTripCommsController,
   ],
   providers: [
     InTripAccessService,
     AnchorHandoffService,
     InTripMorningPackService,
     InTripOfflineSyncService,
+    InTripCommsService,
+    InTripCommsPeersService,
+    InTripCommsTranscribeService,
+    InTripCommsSummaryService,
+    InTripCommsAudioStorageService,
     InTripBetaMetricsService,
     TripTodayService,
     EnvironmentDataAdapter,
@@ -96,6 +112,11 @@ import { VulnerabilityScoreService } from './services/vulnerability-score.servic
     SplitOrchestratorService,
     ExperiencePulseService,
     PostTripSummaryService,
+    InTripCommsPeersService,
+    InTripCommsService,
+    InTripCommsTranscribeService,
+    InTripCommsSummaryService,
+    InTripCommsAudioStorageService,
   ],
 })
 export class InTripExecutionModule {}

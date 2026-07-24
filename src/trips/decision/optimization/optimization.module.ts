@@ -39,6 +39,7 @@ import { MultiStepPlanningService } from './planning/multi-step-planning.service
 import { DifferentiableDecisionService } from './differentiable/differentiable-decision.service';
 import { InformationGainService } from './exploration/information-gain.service';
 import { MetaPolicyService } from './meta/meta-policy.service';
+import { ExperienceRoutingPolicyService } from '../policies/experience-routing-policy.service';
 import { LagrangianConstraintService } from './theory/lagrangian-constraint.service';
 import { DecisionConfidenceService } from './theory/decision-confidence.service';
 import { LyapunovStabilityService } from './theory/lyapunov-stability.service';
@@ -63,6 +64,7 @@ import { PolicyLearningService } from './learning/policy-learning.service';
 import { OnlineLearningLoopService } from './learning/online-learning-loop.service';
 import { PolicyNetworkService } from './learning/policy-network.service';
 import { DSOSnapshotAuditService } from './learning/dso-snapshot-audit.service';
+import { RlhfPersistenceService } from './learning/rlhf-persistence.service';
 
 // 监控指标
 import { DecisionMetricsService } from './metrics/decision-metrics.service';
@@ -167,6 +169,7 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
     DifferentiableDecisionService,
     InformationGainService,
     MetaPolicyService,
+    ExperienceRoutingPolicyService,
 
     // 专利 3.13 理论实现：拉格朗日、置信度、Lyapunov、统一学习
     LagrangianConstraintService,
@@ -190,13 +193,14 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
     OnlineLearningLoopService,
     PolicyNetworkService,
     DSOSnapshotAuditService,
-    
+    RlhfPersistenceService,
+
     // 监控指标
     DecisionMetricsService,
-    
+
     // 门面服务
     DecisionOSFacadeService,
-    
+
     // 中期：多用户协同
     TeamCollaborationService,
     TeamInviteService,
@@ -240,6 +244,7 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
     DifferentiableDecisionService,
     InformationGainService,
     MetaPolicyService,
+    ExperienceRoutingPolicyService,
     LagrangianConstraintService,
     DecisionConfidenceService,
     LyapunovStabilityService,
@@ -260,13 +265,14 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
     OnlineLearningLoopService,
     PolicyNetworkService,
     DSOSnapshotAuditService,
-    
+    RlhfPersistenceService,
+
     // 监控指标
     DecisionMetricsService,
-    
+
     // 门面服务
     DecisionOSFacadeService,
-    
+
     // 中期
     TeamCollaborationService,
     TeamInviteService,

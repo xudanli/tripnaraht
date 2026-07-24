@@ -1,0 +1,58 @@
+{
+  "evidenceType": "ROAD_TRAVERSABILITY_PRE_SIGNOFF_B_SUGGEST",
+  "evidenceLabel": "ROAD_TRAVERSABILITY_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road Traversability T2 Pre-Signoff Drill",
+  "drillStatus": "Road Traversability T2 Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING TRAVERSABILITY T1 + WEATHER SOAK",
+  "acceptanceMode": "TRAVERSABILITY_REPLAY_SKELETON",
+  "replay": true,
+  "live": false,
+  "sourceProvider": "vegagerdin_gagnaveita",
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-LIMITED",
+  "vehicleProfile": "4WD",
+  "scenarioId": "RT-F208-002",
+  "startedAt": "2026-07-11T06:32:09.396Z",
+  "endedAt": "2026-07-11T06:32:09.661Z",
+  "tripId": "b0b88888-8888-4888-8888-888888888888",
+  "phase": "SUGGEST",
+  "problemId": "problem_road_F208_b0b88888_1783751529282",
+  "decisionId": "dec_problem_road_F208_b0b88888_1783751529282_1783751529506",
+  "repairCount": 3,
+  "selectedCandidateId": "cand_a",
+  "checks": [
+    {
+      "id": "RT-B-001",
+      "scenarioId": "RT-F208-002",
+      "pass": true,
+      "detail": "originalWarn=WARNING constraint=ROAD_RESTRICTED"
+    },
+    {
+      "id": "RT-B-002",
+      "scenarioId": "RT-F208-002",
+      "pass": true,
+      "detail": "gate=NEED_CONFIRM executable=3"
+    },
+    {
+      "id": "RT-B-003",
+      "scenarioId": "RT-F208-002",
+      "pass": true,
+      "detail": "executable=3"
+    },
+    {
+      "id": "RT-B-004",
+      "scenarioId": "RT-F208-002",
+      "pass": true,
+      "detail": "bypass=cand_c method=ROUTE_REPAIR"
+    },
+    {
+      "id": "RT-B-005",
+      "scenarioId": "RT-F208-002",
+      "pass": true,
+      "detail": "effectivePlan=plan_1"
+    }
+  ],
+  "t1PendingCount": 0,
+  "structuralResult": "PASS",
+  "traversabilityResult": "ABU_WIRED",
+  "result": "SKELETON_PASS"
+}

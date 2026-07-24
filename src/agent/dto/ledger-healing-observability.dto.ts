@@ -79,6 +79,12 @@ export class LedgerHealingObservabilityDto {
 
   @ApiProperty({ type: [LedgerHealingStepDto] })
   steps!: LedgerHealingStepDto[];
+
+  @ApiPropertyOptional({
+    description: 'Ledger nodeId → Decision Semantics decisionId（与 Memory Console decision_ledger_causality 对齐）',
+    example: { POI_REYNISFJARA: 'dec_1710000000_abc123' },
+  })
+  user_decision_by_node_id?: Record<string, string>;
 }
 
 /** Swagger / 静态 fixture 共用的「冰岛南岸 · 成功自愈」观测片段（与生产 trace 形态一致）。 */

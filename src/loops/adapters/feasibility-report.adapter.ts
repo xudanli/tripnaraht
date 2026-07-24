@@ -1,5 +1,4 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
-import { FeasibilityReportService } from '../../trips/trip-constraint-solver/services/feasibility-report.service';
 import type { TripFeasibilityReportDto } from '../../trips/trip-constraint-solver/types/trip-constraint-solver.types';
 import type { PreviewRepairResponse, RepairOptionsResponse } from '../../trips/readiness/types/coverage-map.types';
 import type { FeasibilityApplyRepairBodyDto, FeasibilityPreviewRepairBodyDto } from '../../trips/trip-constraint-solver/dto/feasibility-report.dto';
@@ -10,8 +9,14 @@ import { deriveFeasibilityChecklistFromReport } from '../../trips/trip-constrain
 @Injectable()
 export class FeasibilityReportAdapter {
   constructor(
-    @Inject(forwardRef(() => FeasibilityReportService))
-    private readonly feasibility: FeasibilityReportService,
+    @Inject(
+      forwardRef(() =>
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('../../trips/trip-constraint-solver/services/feasibility-report.service')
+          .FeasibilityReportService,
+      ),
+    )
+    private readonly feasibility: import('../../trips/trip-constraint-solver/services/feasibility-report.service').FeasibilityReportService,
   ) {}
 
   async validateAndSnapshot(

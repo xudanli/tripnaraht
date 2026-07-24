@@ -1,0 +1,65 @@
+{
+  "evidenceType": "SLICE4_INTERNAL_DUAL_READ_SMOKE_CLOSURE",
+  "testedAt": "2026-07-11T19:37:46.468Z",
+  "rollbackTestedAt": "2026-07-11T19:39:30.000Z",
+  "baseUrl": "http://127.0.0.1:3002/api",
+  "deploymentStatus": {
+    "Slice4InternalDualReadDeployment": "PASS",
+    "Slice4InternalDualReadSmokeTest": "PASS",
+    "WeatherContinuousLiveAllowlist": "ACTIVE",
+    "InternalPrimaryProjection": "NOT_STARTED"
+  },
+  "runtimeEnv": {
+    "ASSERTION_PROMOTION_SHADOW_MODE": "0",
+    "ASSERTION_PROMOTION_WEATHER_ENABLED": "1",
+    "ASSERTION_PROMOTION_ROAD_ENABLED": "0",
+    "ATTENTION_INTERNAL_DUAL_READ_ENABLED": "1",
+    "ATTENTION_ROOT_CAUSE_PRIMARY_SSO": "0"
+  },
+  "gateResults": {
+    "ServiceHealth": "PASS",
+    "InternalAccessControl": "PASS",
+    "CanaryTripRestriction": "PASS",
+    "ExecutionCanaryDualRead": "PASS",
+    "WeatherCanaryDualRead": "PASS",
+    "CanonicalProblemMutation": "ZERO",
+    "QueueMutation": "ZERO",
+    "Notification": "ZERO",
+    "RoadPromotion": "ZERO",
+    "Rollback": "PASS"
+  },
+  "rollbackVerification": {
+    "ASSERTION_PROMOTION_SHADOW_MODE": "1",
+    "ATTENTION_INTERNAL_DUAL_READ_ENABLED": "0",
+    "dualReadDisabledMessage": "ATTENTION_INTERNAL_DUAL_READ_DISABLED",
+    "weatherPromotionShadowMode": true,
+    "weatherProblemsPreserved": true,
+    "restartDualRead": "PASS"
+  },
+  "observationNotes": {
+    "execSlipCanary": {
+      "tripId": "c0c77777-7777-4777-8777-777777777777",
+      "currentVisibleCount": 3,
+      "attentionVisibleCount": 0,
+      "canonicalProblemCount": 1,
+      "shadowVerdict": "INCONCLUSIVE",
+      "note": "Legacy unified queue has 3 visible items; attention ingest sees 1 RFC001 canonical problem. Seed wind+execution chain for meaningful merge comparison during 24-48h observation."
+    },
+    "weatherCanary": {
+      "tripId": "a0a99999-9999-4999-8999-999999999999",
+      "currentVisibleCount": 2,
+      "attentionVisibleCount": 0,
+      "canonicalProblemCount": 1,
+      "note": "No ROAD items in current queue. Weather canonical present; visible queue items are plan-object conflicts. Continue observation with active wind episode."
+    }
+  },
+  "artifacts": [
+    "internal-docs/operations/evidence/slice4-internal-dual-read-smoke-2026-07-11T19-37-46-468Z.json",
+    "scripts/slice4-internal-dual-read-smoke.ts"
+  ],
+  "scripts": {
+    "start": "bash scripts/start-nest-3002-slice4-dual-read.sh",
+    "rollback": "bash scripts/start-nest-3002-slice4-rollback.sh",
+    "smoke": "EXEC_SLIP_DRILL_ALLOW_PROD=1 npx tsx scripts/slice4-internal-dual-read-smoke.ts"
+  }
+}

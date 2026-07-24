@@ -159,6 +159,13 @@ export class FitnessProfileResponseDto {
   @ApiProperty({ description: '建议的单日距离（公里）' })
   recommendedDailyDistanceKm!: number;
 
+  @ApiPropertyOptional({
+    description: '问卷最长连续徒步天数档位 0–4（与 GET route-directions/:id?longestHike= 对齐）',
+    minimum: 0,
+    maximum: 4,
+  })
+  longestHike?: 0 | 1 | 2 | 3 | 4;
+
   @ApiProperty({ description: '已完成行程数' })
   completedTripCount!: number;
 

@@ -11,7 +11,6 @@ import {
   TripSuccessLevel,
   BudgetPerformance,
   CompletionRate,
-  CompanionSatisfaction,
   OutcomeFactorType,
 } from '../types/travel-outcome.types';
 
@@ -49,7 +48,6 @@ describe('TravelOutcomeService', () => {
           overallSatisfaction: 9,
           budgetSatisfaction: 8,
           activitySatisfaction: 9,
-          companionSatisfaction: 10,
           wouldRecommend: true,
           wouldRepeat: true,
         },
@@ -84,7 +82,6 @@ describe('TravelOutcomeService', () => {
           overallSatisfaction: 6,
           budgetSatisfaction: 4,
           activitySatisfaction: 7,
-          companionSatisfaction: 7,
         },
       };
 
@@ -238,32 +235,6 @@ describe('TravelOutcomeService', () => {
       expect(result.outcome.overallScore).toBeGreaterThanOrEqual(0);
     });
 
-    it('should calculate companion satisfaction correctly', async () => {
-      const request: OutcomeCalculationRequest = {
-        tripId: 'trip-333',
-        tripData: {
-          status: 'COMPLETED',
-          destination: 'Germany',
-          startDate: new Date('2024-12-01'),
-          endDate: new Date('2024-12-07'),
-          plannedBudget: 4000,
-          actualSpent: 3900,
-          memberCount: 4,
-          plannedActivities: 20,
-          completedActivities: 19,
-        },
-        userFeedback: {
-          companionSatisfaction: 8,
-        },
-      };
-
-      const result = await service.calculate(request);
-
-      expect(result.outcome.companionSatisfaction).toBe(CompanionSatisfaction.GOOD);
-      expect(result.outcome.companionMatchScore).toBeCloseTo(0.8, 1);
-      expect(result.outcome.satisfiedCompanions).toBeCloseTo(3, 1); // 4 * 0.8 = 3.2
-    });
-
     it('should generate appropriate recommendations', async () => {
       const request: OutcomeCalculationRequest = {
         tripId: 'trip-444',
@@ -280,7 +251,6 @@ describe('TravelOutcomeService', () => {
         },
         userFeedback: {
           overallSatisfaction: 5,
-          companionSatisfaction: 4,
         },
       };
 
@@ -308,7 +278,6 @@ describe('TravelOutcomeService', () => {
         },
         userFeedback: {
           overallSatisfaction: 8,
-          companionSatisfaction: 9,
         },
       };
 

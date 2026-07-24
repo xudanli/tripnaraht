@@ -6,11 +6,12 @@
  * 让 DecisionLog 真的变成"学习系统"
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { TripWorldState } from '../world-model';
 import { TripPlan } from '../plan-model';
 import { DecisionRunLog } from '../decision-log';
 import { ConstraintCheckResult } from '../constraints';
+import { ConstraintEngineService } from '../constraints/constraint-engine.service';
 import { PlanDiff } from '../plan-diff';
 
 export interface PlanMetrics {
@@ -75,6 +76,10 @@ export interface ReplayResult {
 @Injectable()
 export class EvaluationService {
   private readonly logger = new Logger(EvaluationService.name);
+
+  constructor(
+    @Optional() private readonly constraintEngine?: ConstraintEngineService,
+  ) {}
 
   /**
    * 评估计划指标
@@ -285,10 +290,7 @@ export class EvaluationService {
 
     const { plan, log } = await planner(state, config);
 
-    // 评估计划
-    const constraintChecker = new (await import('../constraints'))
-      .ConstraintChecker();
-    const constraintResult = await constraintChecker.checkPlan(state, plan);
+    const constraintResult = await this.evaluateConstraints(state, plan);
 
     const metrics = this.evaluatePlan(state, plan, constraintResult);
 
@@ -406,6 +408,22 @@ export class EvaluationService {
       bestByCost,
       summary,
     };
+  }
+
+  /** Unified constraint entry via ConstraintEngineService. */
+  private async evaluateConstraints(
+    state: TripWorldState,
+    plan: TripPlan,
+  ): Promise<ConstraintCheckResult> {
+    if (!this.constraintEngine) {
+      return {
+        isValid: true,
+        violations: [],
+        summary: { errorCount: 0, warningCount: 0, infoCount: 0 },
+      };
+    }
+    const result = await this.constraintEngine.isFeasible(state, plan);
+    return result.rawCheckResult;
   }
 
   // 工具方法

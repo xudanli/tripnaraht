@@ -44,7 +44,7 @@ export class DecisionNeptuneRepairSkill implements Skill<DecisionNeptuneRepairIn
 
   metadata = {
     name: 'decision.neptuneRepair',
-    description: '在保持路线哲学的前提下，替换不可用的路段、入口或 POI。可以 REPLACE，但不能改变路线方向。',
+    description: 'decision.neptuneRepair：Neptune 修复：在保持路线哲学下替换不可用路段、入口或 POI（仅 REPLACE，不改方向）。在 VERIFY/REPAIR 阶段 verify 报不可达或需 Plan B 换段时调用。',
     version: '1.0.0',
     category: 'decision' as const,
     toolGroup: 'DOMAIN' as const,

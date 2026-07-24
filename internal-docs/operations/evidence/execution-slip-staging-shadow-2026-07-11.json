@@ -1,0 +1,87 @@
+{
+  "evidenceType": "EXECUTION_SLIP_STAGING_SHADOW",
+  "phase": "SHADOW",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "environment": "http://localhost:3001",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "metrics": {
+    "observationsReceived": 9,
+    "stillFeasibleCount": 3,
+    "problemCreatedCount": 6,
+    "duplicateProblemCount": 0,
+    "candidatesGenerated": 12,
+    "legacyWriteInvocations": 0,
+    "planVersionWriteCount": 1,
+    "revalidationPassCount": 1,
+    "unresolvedAfterApplyCount": 0,
+    "idempotentReplayCount": 3
+  },
+  "rawShadow": {
+    "source": "EXECUTION_SCHEDULE_INFEASIBLE",
+    "triggerCount": 9,
+    "problemCreatedCount": 6,
+    "noActionCount": 3,
+    "duplicateProblemCount": 0,
+    "candidateCount": 12,
+    "rejectedCandidateCount": 6,
+    "writeCount": 0,
+    "legacyWriteCount": 0,
+    "revalidationPassCount": 0,
+    "unresolvedAfterApplyCount": 0,
+    "idempotentReplayCount": 3,
+    "lastUpdatedAt": "2026-07-11T09:01:58.122Z"
+  },
+  "checks": [
+    {
+      "id": "ES-S-001",
+      "pass": true,
+      "detail": "observationsReceived=9"
+    },
+    {
+      "id": "ES-S-002",
+      "pass": true,
+      "detail": "stillFeasibleCount=3"
+    },
+    {
+      "id": "ES-S-003",
+      "pass": true,
+      "detail": "problemCreatedCount=6"
+    },
+    {
+      "id": "ES-S-004",
+      "pass": true,
+      "detail": "duplicateProblemCount=0"
+    },
+    {
+      "id": "ES-S-005",
+      "pass": true,
+      "detail": "candidatesGenerated=12"
+    },
+    {
+      "id": "ES-S-006",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    },
+    {
+      "id": "ES-S-007",
+      "pass": true,
+      "detail": "planVersionWriteCount=1"
+    },
+    {
+      "id": "ES-S-008",
+      "pass": true,
+      "detail": "revalidationPassCount=1"
+    },
+    {
+      "id": "ES-S-009",
+      "pass": true,
+      "detail": "unresolvedAfterApplyCount=0"
+    },
+    {
+      "id": "ES-S-010",
+      "pass": true,
+      "detail": "idempotentReplayCount=3"
+    }
+  ],
+  "result": "PASS"
+}

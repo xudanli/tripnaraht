@@ -34,7 +34,7 @@ export class PlanBudgetDetectOverrunSkill implements Skill<PlanBudgetDetectOverr
 
   metadata = {
     name: 'plan.budget.detectOverrun',
-    description: '实时检测预算是否超支，识别超支来源',
+    description: '检测 plan 预算超支并归因到交通/住宿/体验等类别。在 planning 阶段用户关注花费或 budget 子系统需实时预警时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

@@ -4,6 +4,14 @@
 > **Global prefix**: `/api`  
 > **响应**: `{ success, data, error }`
 
+## 出发门控 — Departure Gate
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/trips/:tripId/departure-gate` | 组合门控：计划 + 出发准备 + 验证时效 → `canStartExecution` |
+
+详见 [`DEPARTURE_GATE_API.md`](./DEPARTURE_GATE_API.md) · 产品 SSOT [`PRODUCT_READINESS_MODEL.md`](../../../internal-docs/product/PRODUCT_READINESS_MODEL.md)
+
 ## 行前 — Plan Validation
 
 | 方法 | 路径 | 说明 |
@@ -332,6 +340,31 @@ Issue 元数据（`report.issues[]`）：
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/trips/:tripId/in-trip/execution-advisory` | `TripExecutionAdvisoryDto` |
+| `POST` | `/trips/:tripId/in-trip/execution-advisory/recommendations/:recommendationId/apply` | 应用 Plan B 推荐方案 |
+
+**apply 请求体：** `{ "confirm": true, "clientTimestamp"?: ISO8601 }`
+
+**apply 响应：** `{ applied, executionAdvisory, scheduleMutations[], updatedSchedule }`
+
+**apply 错误码：** `RECOMMENDATION_NOT_FOUND` · `RECOMMENDATION_EXPIRED` · `RECOMMENDATION_NO_OP`（keep）· `WRITE_CHAIN_BLOCKED`
+
+**`causalInsight`（P0 — Canonical Causal Trace 投影）**
+
+当存在开放旅行类决策问题或行中天气信号时，响应可含：
+
+```typescript
+causalInsight?: {
+  guardianHeadline: string;           // Abu 安全标题
+  primaryEnforcement: 'ADJUST_REQUIRED' | 'NOT_EXECUTABLE';
+  causalStory: {
+    chain: Array<{ nodeId; type; title; description; sourceRefs? }>;
+    assessment: string;
+  };
+  linkedProblemId?: string;           // Tier-3 刷新 → GET decision-problems/:id/causal-trace
+};
+```
+
+数据来源：`DecisionEngineGateway.listProblems` 首个开放 travel 问题的 canonical trace；无 Gateway 问题时，由 `environmentEvents`（weather red/yellow）或 `routeSummary` 触发 `ensureProblemTrace` 兜底。
 
 要求：`IN_TRIP_EXECUTION_ENABLED=true` 且 `status=TRAVELING`。
 
@@ -350,6 +383,9 @@ Issue 元数据（`report.issues[]`）：
 |------|------|
 | `EXECUTION_ADVISORY_NOT_IN_TRIP` | 非 TRAVELING |
 | `EXECUTION_ADVISORY_DISABLED` | 行中模块未启用 |
+| `RECOMMENDATION_EXPIRED` | apply 时 validUntil 已过；GET 仍 200 且 headline 提示重评 |
+| `RECOMMENDATION_NOT_FOUND` | recommendationId 无效 |
+| `WRITE_CHAIN_BLOCKED` | 决策写链开启时应走 decision-problems apply |
 
 ## 联调示例
 

@@ -1,0 +1,15 @@
+{
+  "schemaId": "tripnara.destination.daylight_rules@v1",
+  "destination": "IS",
+  "policies": {
+    "highRiskRoadMustFinishBefore": "CIVIL_TWILIGHT_END",
+    "outdoorActivityMustFinishBefore": "SUNSET",
+    "nightDrivingDefaultPolicy": "NEED_CONFIRM",
+    "noNightDrivingProfilePolicy": "SUGGEST_REPAIR"
+  },
+  "computation": {
+    "mode": "LATITUDE_MONTHLY_TABLE",
+    "defaultLatitude": 64.13,
+    "fallbackTimezone": "Atlantic/Reykjavik"
+  }
+}

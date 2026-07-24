@@ -1,0 +1,1146 @@
+{
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "savedAt": "2026-07-11T18:08:00.563Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "metadata": {
+    "revision": 1,
+    "internalTest": true,
+    "canaryPurpose": "EXECUTION_SLIP_SLICE_3",
+    "mobileExecution": {
+      "memberPresence": {
+        "c0c77777-7777-4777-8777-777777777701": {
+          "batteryPercent": 95,
+          "lastReportedAt": "2026-07-11T18:04:26.561Z"
+        }
+      }
+    },
+    "productionCanary": true,
+    "rfc001WorldState": {
+      "events": [
+        {
+          "eventId": "evt_exec_slip_c0c77777-7777-4777-8777-777777777777_a566bc26-79bc-455f-9722-d63c90004e7d",
+          "payload": {
+            "source": "USER_REPORT",
+            "activityId": "c0c77777-7777-4777-8777-777777777631",
+            "observedAt": "2026-07-12T13:45:00.000Z",
+            "stillAtPoi": true,
+            "evidenceRef": "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13",
+            "lastEntryAt": "16:00",
+            "slipMinutes": 45,
+            "projectedEta": "2026-07-12T16:28:00.000+00:00",
+            "observationId": "a566bc26-79bc-455f-9722-d63c90004e7d",
+            "planVersionId": "plan_1",
+            "nextActivityId": "c0c77777-7777-4777-8777-777777777632",
+            "plannedDepartAt": "2026-07-12T13:00:00.000Z"
+          },
+          "eventType": "EXECUTION_DEPARTURE_SLIP",
+          "occurredAt": "2026-07-12T13:45:00.000Z",
+          "aggregateId": "c0c77777-7777-4777-8777-777777777777",
+          "aggregateType": "EXECUTION",
+          "correlationId": "corr_exec_slip_c0c77777-7777-4777-8777-777777777777_c0c77777-7777-4777-8777-777777777631",
+          "ontologyVersion": "rfc001-0.1.0"
+        },
+        {
+          "eventId": "evt_exec_slip_c0c77777-7777-4777-8777-777777777777_f0e7ad6c-fd32-4187-9b2c-9157d6eab26f",
+          "payload": {
+            "source": "USER_REPORT",
+            "activityId": "c0c77777-7777-4777-8777-777777777631",
+            "observedAt": "2026-07-12T13:45:00.000Z",
+            "stillAtPoi": true,
+            "evidenceRef": "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13",
+            "lastEntryAt": "16:00",
+            "slipMinutes": 45,
+            "projectedEta": "2026-07-12T16:28:00.000+00:00",
+            "observationId": "f0e7ad6c-fd32-4187-9b2c-9157d6eab26f",
+            "planVersionId": "plan_1",
+            "nextActivityId": "c0c77777-7777-4777-8777-777777777632",
+            "plannedDepartAt": "2026-07-12T13:00:00.000Z"
+          },
+          "eventType": "EXECUTION_DEPARTURE_SLIP",
+          "occurredAt": "2026-07-12T13:45:00.000Z",
+          "aggregateId": "c0c77777-7777-4777-8777-777777777777",
+          "aggregateType": "EXECUTION",
+          "correlationId": "corr_exec_slip_c0c77777-7777-4777-8777-777777777777_c0c77777-7777-4777-8777-777777777631",
+          "ontologyVersion": "rfc001-0.1.0"
+        }
+      ],
+      "snapshots": [
+        {
+          "revision": "1",
+          "capturedAt": "2026-07-11T18:04:08.550Z",
+          "snapshotId": "wss_c0c77777_1783793048550",
+          "assertionIds": [
+            "wsa_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_1783793048533"
+          ]
+        },
+        {
+          "revision": "2",
+          "capturedAt": "2026-07-11T18:04:21.820Z",
+          "snapshotId": "wss_c0c77777_1783793061820",
+          "assertionIds": [
+            "wsa_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_1783793061769"
+          ]
+        }
+      ],
+      "assertions": [
+        {
+          "source": {
+            "provider": "USER_REPORT",
+            "sourceType": "USER",
+            "evidenceRefs": [
+              "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+            ]
+          },
+          "status": "SUPERSEDED",
+          "payload": {
+            "factType": "EXECUTION_DEPARTURE_SLIP",
+            "activityId": "c0c77777-7777-4777-8777-777777777631",
+            "observedAt": "2026-07-12T13:45:00.000Z",
+            "stillAtPoi": true,
+            "lastEntryAt": "16:00",
+            "slipMinutes": 45,
+            "projectedEta": "2026-07-12T16:28:00.000+00:00",
+            "nextActivityId": "c0c77777-7777-4777-8777-777777777632",
+            "plannedDepartAt": "2026-07-12T13:00:00.000Z"
+          },
+          "version": 1,
+          "predicate": "execution.departure_slip",
+          "validFrom": "2026-07-12T13:45:00.000Z",
+          "confidence": 0.95,
+          "observedAt": "2026-07-12T13:45:00.000Z",
+          "subjectRef": {
+            "id": "c0c77777-7777-4777-8777-777777777631",
+            "kind": "PLAN_ITEM",
+            "label": "trip:c0c77777-7777-4777-8777-777777777777"
+          },
+          "validUntil": "2026-07-12T17:45:00.000Z",
+          "assertionId": "wsa_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_1783793048533"
+        },
+        {
+          "source": {
+            "provider": "USER_REPORT",
+            "sourceType": "USER",
+            "evidenceRefs": [
+              "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+            ]
+          },
+          "status": "ACTIVE",
+          "payload": {
+            "factType": "EXECUTION_DEPARTURE_SLIP",
+            "activityId": "c0c77777-7777-4777-8777-777777777631",
+            "observedAt": "2026-07-12T13:45:00.000Z",
+            "stillAtPoi": true,
+            "lastEntryAt": "16:00",
+            "slipMinutes": 45,
+            "projectedEta": "2026-07-12T16:28:00.000+00:00",
+            "nextActivityId": "c0c77777-7777-4777-8777-777777777632",
+            "plannedDepartAt": "2026-07-12T13:00:00.000Z"
+          },
+          "version": 1,
+          "predicate": "execution.departure_slip",
+          "validFrom": "2026-07-12T13:45:00.000Z",
+          "confidence": 0.95,
+          "observedAt": "2026-07-12T13:45:00.000Z",
+          "subjectRef": {
+            "id": "c0c77777-7777-4777-8777-777777777631",
+            "kind": "PLAN_ITEM",
+            "label": "trip:c0c77777-7777-4777-8777-777777777777"
+          },
+          "validUntil": "2026-07-12T17:45:00.000Z",
+          "assertionId": "wsa_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_1783793061769",
+          "supersedesAssertionId": "wsa_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_1783793048533"
+        }
+      ],
+      "lastUpdatedAt": "2026-07-11T18:04:21.824Z"
+    },
+    "rfc001DecisionRef": {
+      "runId": "run_dec_problem_exec_slip_c0c77777_1783793061839_1783793062029",
+      "problemId": "problem_exec_slip_c0c77777_1783793061839",
+      "updatedAt": "2026-07-11T18:04:22.151Z",
+      "decisionId": "dec_problem_exec_slip_c0c77777_1783793061839_1783793062029",
+      "shadowMode": false,
+      "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839"
+    },
+    "rfc001DecisionRuns": {
+      "items": [
+        {
+          "runId": "run_dec_problem_exec_slip_c0c77777_1783793048567_1783793048748",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "createdAt": "2026-07-11T18:04:08.832Z",
+          "problemId": "problem_exec_slip_c0c77777_1783793048567",
+          "decisionId": "dec_problem_exec_slip_c0c77777_1783793048567_1783793048748",
+          "shadowMode": false,
+          "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+          "humanDecisionRequired": true
+        },
+        {
+          "runId": "run_dec_problem_exec_slip_c0c77777_1783793061839_1783793062029",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "createdAt": "2026-07-11T18:04:22.130Z",
+          "problemId": "problem_exec_slip_c0c77777_1783793061839",
+          "decisionId": "dec_problem_exec_slip_c0c77777_1783793061839_1783793062029",
+          "shadowMode": false,
+          "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+          "humanDecisionRequired": true
+        }
+      ],
+      "lastUpdatedAt": "2026-07-11T18:04:22.137Z"
+    },
+    "rfc001PlanVersions": {
+      "items": [
+        {
+          "status": "EFFECTIVE",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "createdAt": "2026-07-11T17:54:01.120Z",
+          "createdBy": "EXEC_SLIP_PRE_SIGNOFF_SETUP",
+          "operations": [],
+          "effectiveAt": "2026-07-11T17:54:01.120Z",
+          "planVersionId": "plan_1",
+          "materializedPlanSnapshotRef": "snap_exec_slip_canary_baseline"
+        },
+        {
+          "status": "PENDING_AUTHORIZATION",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "createdAt": "2026-07-11T18:04:08.863Z",
+          "createdBy": "DECISION_CORE",
+          "operations": [
+            {
+              "kind": "REMOVE_ITEM",
+              "parameters": {
+                "action": "REMOVE_NEXT_ACTIVITY",
+                "itineraryItemId": "c0c77777-7777-4777-8777-777777777632"
+              },
+              "targetRefs": [
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777632",
+                  "kind": "PLAN_ITEM"
+                }
+              ],
+              "operationId": "op_remove_next"
+            }
+          ],
+          "planVersionId": "plan_v2_93048748",
+          "sourceDecisionId": "dec_problem_exec_slip_c0c77777_1783793048567_1783793048748",
+          "parentPlanVersionId": "plan_1",
+          "materializedPlanSnapshotRef": "snap_plan_v2_93048748"
+        },
+        {
+          "status": "PENDING_AUTHORIZATION",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "createdAt": "2026-07-11T18:04:22.224Z",
+          "createdBy": "DECISION_CORE",
+          "operations": [
+            {
+              "kind": "REMOVE_ITEM",
+              "parameters": {
+                "action": "REMOVE_NEXT_ACTIVITY",
+                "itineraryItemId": "c0c77777-7777-4777-8777-777777777632"
+              },
+              "targetRefs": [
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777632",
+                  "kind": "PLAN_ITEM"
+                }
+              ],
+              "operationId": "op_remove_next"
+            }
+          ],
+          "planVersionId": "plan_v2_93062029",
+          "sourceDecisionId": "dec_problem_exec_slip_c0c77777_1783793061839_1783793062029",
+          "parentPlanVersionId": "plan_1",
+          "materializedPlanSnapshotRef": "snap_plan_v2_93062029"
+        }
+      ],
+      "lastUpdatedAt": "2026-07-11T18:04:22.232Z",
+      "effectivePlanVersionId": "plan_1"
+    },
+    "rfc001DecisionLedger": {
+      "items": [
+        {
+          "createdAt": "2026-07-11T18:04:08.748Z",
+          "decidedAt": "2026-07-11T18:04:08.748Z",
+          "problemId": "problem_exec_slip_c0c77777_1783793048567",
+          "decisionId": "dec_problem_exec_slip_c0c77777_1783793048567_1783793048748",
+          "finalAction": "DEFER_TO_HUMAN",
+          "reasonCodes": [
+            "USER_PREFERENCE_INSUFFICIENT",
+            "HUMAN_CONFIRMATION_REQUIRED"
+          ],
+          "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+          "evidenceRefs": [
+            "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+          ],
+          "recordStatus": "PROPOSED",
+          "ruleVersions": [
+            "abu-exec-slip-0.1.0"
+          ],
+          "modelVersions": {
+            "drdre": "dre-road-load-rfc001-0.2.0",
+            "neptune": "neptune-rfc001-adapter-0.1.0"
+          },
+          "basePlanVersionId": "plan_1",
+          "utilityEvaluation": [
+            {
+              "vector": {
+                "timeStress": 0.06,
+                "fatigueCost": 0.076,
+                "monetaryCost": 0,
+                "residualRisk": 0.1,
+                "reversibility": 0.7,
+                "experienceValue": 0.65,
+                "intentPreservation": 0.65
+              },
+              "utility": 0.3658,
+              "candidateId": "cand_remove_next"
+            },
+            {
+              "vector": {
+                "timeStress": 0.264,
+                "fatigueCost": 0.335,
+                "monetaryCost": 0,
+                "residualRisk": 0.1,
+                "reversibility": 0.7,
+                "experienceValue": 0.75,
+                "intentPreservation": 0.75
+              },
+              "utility": 0.3333999999999999,
+              "candidateId": "cand_substitute_next"
+            }
+          ],
+          "rejectedCandidates": [
+            {
+              "rejectedBy": "HARD_CONSTRAINT",
+              "candidateId": "original",
+              "reasonCodes": [
+                "CANDIDATE_BLOCKED_BY_HARD_CONSTRAINT",
+                "EXEC_SLIP_ORIGINAL_INFEASIBLE"
+              ]
+            }
+          ],
+          "selectedCandidateId": "cand_remove_next",
+          "preferenceSnapshotId": "pref_c0c77777-7777-4777-8777-777777777777_default",
+          "worldStateSnapshotId": "wss_c0c77777_1783793048550",
+          "consideredCandidateIds": [
+            "original",
+            "cand_remove_next",
+            "cand_substitute_next"
+          ],
+          "authorizationRequirement": {
+            "level": "L2",
+            "reasons": [
+              "HUMAN_CONFIRMATION_REQUIRED"
+            ],
+            "externalSideEffects": [],
+            "requiresUserConfirmation": true
+          }
+        },
+        {
+          "createdAt": "2026-07-11T18:04:22.029Z",
+          "decidedAt": "2026-07-11T18:04:22.029Z",
+          "problemId": "problem_exec_slip_c0c77777_1783793061839",
+          "decisionId": "dec_problem_exec_slip_c0c77777_1783793061839_1783793062029",
+          "finalAction": "DEFER_TO_HUMAN",
+          "reasonCodes": [
+            "USER_PREFERENCE_INSUFFICIENT",
+            "HUMAN_CONFIRMATION_REQUIRED"
+          ],
+          "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+          "evidenceRefs": [
+            "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+          ],
+          "recordStatus": "PROPOSED",
+          "ruleVersions": [
+            "abu-exec-slip-0.1.0"
+          ],
+          "modelVersions": {
+            "drdre": "dre-road-load-rfc001-0.2.0",
+            "neptune": "neptune-rfc001-adapter-0.1.0"
+          },
+          "basePlanVersionId": "plan_1",
+          "utilityEvaluation": [
+            {
+              "vector": {
+                "timeStress": 0.06,
+                "fatigueCost": 0.076,
+                "monetaryCost": 0,
+                "residualRisk": 0.1,
+                "reversibility": 0.7,
+                "experienceValue": 0.65,
+                "intentPreservation": 0.65
+              },
+              "utility": 0.3658,
+              "candidateId": "cand_remove_next"
+            },
+            {
+              "vector": {
+                "timeStress": 0.264,
+                "fatigueCost": 0.335,
+                "monetaryCost": 0,
+                "residualRisk": 0.1,
+                "reversibility": 0.7,
+                "experienceValue": 0.75,
+                "intentPreservation": 0.75
+              },
+              "utility": 0.3333999999999999,
+              "candidateId": "cand_substitute_next"
+            }
+          ],
+          "rejectedCandidates": [
+            {
+              "rejectedBy": "HARD_CONSTRAINT",
+              "candidateId": "original",
+              "reasonCodes": [
+                "CANDIDATE_BLOCKED_BY_HARD_CONSTRAINT",
+                "EXEC_SLIP_ORIGINAL_INFEASIBLE"
+              ]
+            }
+          ],
+          "selectedCandidateId": "cand_remove_next",
+          "preferenceSnapshotId": "pref_c0c77777-7777-4777-8777-777777777777_default",
+          "worldStateSnapshotId": "wss_c0c77777_1783793061820",
+          "consideredCandidateIds": [
+            "original",
+            "cand_remove_next",
+            "cand_substitute_next"
+          ],
+          "authorizationRequirement": {
+            "level": "L2",
+            "reasons": [
+              "HUMAN_CONFIRMATION_REQUIRED"
+            ],
+            "externalSideEffects": [],
+            "requiresUserConfirmation": true
+          }
+        }
+      ],
+      "lastUpdatedAt": "2026-07-11T18:04:22.038Z"
+    },
+    "legacyWriteInvocations": 0,
+    "rfc001DecisionProblems": {
+      "items": [
+        {
+          "type": "FEASIBILITY_FAILURE",
+          "status": "FAILED",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "urgency": "HIGH",
+          "problemId": "problem_exec_slip_c0c77777_1783793048567",
+          "detectedAt": "2026-07-11T18:04:08.567Z",
+          "planVersionId": "plan_1",
+          "triggerEventId": "evt_exec_slip_c0c77777-7777-4777-8777-777777777777_a566bc26-79bc-455f-9722-d63c90004e7d",
+          "affectedEntityRefs": [
+            {
+              "id": "c0c77777-7777-4777-8777-777777777631",
+              "kind": "PLAN_ITEM"
+            },
+            {
+              "id": "c0c77777-7777-4777-8777-777777777632",
+              "kind": "PLAN_ITEM"
+            },
+            {
+              "id": "poi_b_timed",
+              "kind": "POI"
+            }
+          ],
+          "semanticCapability": "EXECUTION_SCHEDULE_INFEASIBLE",
+          "affectedPlanItemIds": [
+            "c0c77777-7777-4777-8777-777777777631",
+            "c0c77777-7777-4777-8777-777777777632"
+          ],
+          "worldStateSnapshotId": "wss_c0c77777_1783793048550"
+        },
+        {
+          "type": "FEASIBILITY_FAILURE",
+          "status": "WAITING_HUMAN",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "urgency": "HIGH",
+          "problemId": "problem_exec_slip_c0c77777_1783793061839",
+          "detectedAt": "2026-07-11T18:04:21.839Z",
+          "planVersionId": "plan_1",
+          "triggerEventId": "evt_exec_slip_c0c77777-7777-4777-8777-777777777777_f0e7ad6c-fd32-4187-9b2c-9157d6eab26f",
+          "affectedEntityRefs": [
+            {
+              "id": "c0c77777-7777-4777-8777-777777777631",
+              "kind": "PLAN_ITEM"
+            },
+            {
+              "id": "c0c77777-7777-4777-8777-777777777632",
+              "kind": "PLAN_ITEM"
+            },
+            {
+              "id": "poi_b_timed",
+              "kind": "POI"
+            }
+          ],
+          "semanticCapability": "EXECUTION_SCHEDULE_INFEASIBLE",
+          "affectedPlanItemIds": [
+            "c0c77777-7777-4777-8777-777777777631",
+            "c0c77777-7777-4777-8777-777777777632"
+          ],
+          "worldStateSnapshotId": "wss_c0c77777_1783793061820"
+        }
+      ],
+      "lastUpdatedAt": "2026-07-11T18:04:22.120Z"
+    },
+    "canonicalCausalTracesV1": {
+      "traces": [
+        {
+          "facts": [],
+          "schema": "tripnara.canonical_causal_trace@v1",
+          "status": "PREVIEW",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "effects": [],
+          "options": [],
+          "traceId": "ct_1ab0d8f14247e1e2",
+          "trigger": {
+            "type": "DECISION_PROBLEM_OPEN",
+            "source": "gateway.problem_assertion",
+            "observedAt": "2026-07-11T18:04:09.416Z"
+          },
+          "problems": [
+            {
+              "severity": "WARNING",
+              "problemId": "dp_anchor:environment:EXECUTION_SCHEDULE_INFEASIBLE:c0c77777-7777-4777-8777-777777777631::",
+              "problemType": "INFEASIBILITY",
+              "assessmentKey": "EXECUTION_SCHEDULE_FEASIBILITY"
+            }
+          ],
+          "createdAt": "2026-07-11T18:04:09.416Z",
+          "updatedAt": "2026-07-11T18:04:09.416Z",
+          "worldStateVersion": "ws_1"
+        },
+        {
+          "facts": [],
+          "schema": "tripnara.canonical_causal_trace@v1",
+          "status": "PREVIEW",
+          "tripId": "c0c77777-7777-4777-8777-777777777777",
+          "effects": [],
+          "options": [],
+          "traceId": "ct_f7fca89dc5bc26ad",
+          "trigger": {
+            "type": "DECISION_PROBLEM_OPEN",
+            "source": "gateway.problem_assertion",
+            "observedAt": "2026-07-11T18:04:22.816Z"
+          },
+          "problems": [
+            {
+              "severity": "WARNING",
+              "problemId": "problem_exec_slip_c0c77777_1783793061839",
+              "problemType": "INFEASIBILITY",
+              "assessmentKey": "执行偏差 · urgency HIGH"
+            }
+          ],
+          "createdAt": "2026-07-11T18:04:22.816Z",
+          "updatedAt": "2026-07-11T18:04:22.816Z",
+          "worldStateVersion": "ws_1"
+        }
+      ],
+      "lastUpdatedAt": "2026-07-11T18:04:22.827Z"
+    },
+    "executionSlipCanaryDrill": {
+      "scenarioA": {
+        "observedAt": "2026-07-12T13:35:00.000Z",
+        "projectedEta": "2026-07-12T16:18:00.000Z"
+      },
+      "scenarioB": {
+        "observedAt": "2026-07-12T13:10:00.000Z",
+        "projectedEta": "2026-07-12T15:45:00.000Z"
+      },
+      "substituteActivityId": "c0c77777-7777-4777-8777-777777777633"
+    },
+    "rfc001DecisionWorkspaces": {
+      "items": [
+        {
+          "status": "FINALIZED",
+          "revision": 4,
+          "createdAt": "2026-07-11T18:04:08.672Z",
+          "problemId": "problem_exec_slip_c0c77777_1783793048567",
+          "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+          "loadAssessments": [
+            {
+              "actor": "DRDRE",
+              "createdAt": "2026-07-11T18:04:08.690Z",
+              "confidence": 0.88,
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+              "assessmentId": "dre_road_ws_problem_exec_slip_c0c77777_1783793048567_original_1783793048690",
+              "modelVersion": "dre-road-load-rfc001-0.2.0",
+              "physicalLoad": 0.406,
+              "cognitiveLoad": 0.21112,
+              "scheduleStress": 0.264,
+              "recoveryDeficit": 0.15,
+              "inputSnapshotRef": "wss_c0c77777_1783793048550",
+              "targetCandidateId": "original",
+              "weakestMemberScore": 0.594,
+              "affectedTravelerIds": [
+                "party_default"
+              ],
+              "adjustmentRequirements": [],
+              "missedWindowProbability": 0
+            },
+            {
+              "actor": "DRDRE",
+              "createdAt": "2026-07-11T18:04:08.690Z",
+              "confidence": 0.88,
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+              "assessmentId": "dre_road_ws_problem_exec_slip_c0c77777_1783793048567_cand_remove_next_1783793048690",
+              "modelVersion": "dre-road-load-rfc001-0.2.0",
+              "physicalLoad": 0.092,
+              "cognitiveLoad": 0.04784,
+              "scheduleStress": 0.06,
+              "recoveryDeficit": 0.15,
+              "inputSnapshotRef": "wss_c0c77777_1783793048550",
+              "targetCandidateId": "cand_remove_next",
+              "weakestMemberScore": 0.908,
+              "affectedTravelerIds": [
+                "party_default"
+              ],
+              "adjustmentRequirements": [],
+              "missedWindowProbability": 0
+            },
+            {
+              "actor": "DRDRE",
+              "createdAt": "2026-07-11T18:04:08.690Z",
+              "confidence": 0.88,
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+              "assessmentId": "dre_road_ws_problem_exec_slip_c0c77777_1783793048567_cand_substitute_next_1783793048690",
+              "modelVersion": "dre-road-load-rfc001-0.2.0",
+              "physicalLoad": 0.406,
+              "cognitiveLoad": 0.21112,
+              "scheduleStress": 0.264,
+              "recoveryDeficit": 0.15,
+              "inputSnapshotRef": "wss_c0c77777_1783793048550",
+              "targetCandidateId": "cand_substitute_next",
+              "weakestMemberScore": 0.594,
+              "affectedTravelerIds": [
+                "party_default"
+              ],
+              "adjustmentRequirements": [],
+              "missedWindowProbability": 0
+            }
+          ],
+          "repairCandidates": [
+            {
+              "actor": "NEPTUNE",
+              "status": "PROPOSED",
+              "createdAt": "2026-07-11T18:04:08.685Z",
+              "candidateId": "cand_remove_next",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "lostIntentRefs": [],
+              "generationMethod": "LOCAL_SUBSTITUTION",
+              "generatorVersion": "neptune-rfc001-adapter-0.1.0",
+              "basePlanVersionId": "plan_1",
+              "degradedIntentRefs": [],
+              "estimatedAddedCost": {
+                "amount": 0,
+                "currency": "ISK"
+              },
+              "proposedOperations": [
+                {
+                  "kind": "REMOVE_ITEM",
+                  "parameters": {
+                    "action": "REMOVE_NEXT_ACTIVITY",
+                    "itineraryItemId": "c0c77777-7777-4777-8777-777777777632"
+                  },
+                  "targetRefs": [
+                    {
+                      "id": "c0c77777-7777-4777-8777-777777777632",
+                      "kind": "PLAN_ITEM"
+                    }
+                  ],
+                  "operationId": "op_remove_next"
+                }
+              ],
+              "preservedIntentRefs": [
+                "intent_schedule_recovery"
+              ],
+              "replacesPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777632"
+              ],
+              "estimatedIntentPreservation": 0.65,
+              "estimatedAddedDurationMinutes": 0
+            },
+            {
+              "actor": "NEPTUNE",
+              "status": "PROPOSED",
+              "createdAt": "2026-07-11T18:04:08.685Z",
+              "candidateId": "cand_substitute_next",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "lostIntentRefs": [],
+              "generationMethod": "LOCAL_SUBSTITUTION",
+              "generatorVersion": "neptune-rfc001-adapter-0.1.0",
+              "basePlanVersionId": "plan_1",
+              "degradedIntentRefs": [],
+              "estimatedAddedCost": {
+                "amount": 0,
+                "currency": "ISK"
+              },
+              "proposedOperations": [
+                {
+                  "kind": "REPLACE_ITEM",
+                  "parameters": {
+                    "action": "SUBSTITUTE_NEXT_ACTIVITY",
+                    "itineraryItemId": "c0c77777-7777-4777-8777-777777777632",
+                    "substitutePoiId": "poi_nearby_substitute"
+                  },
+                  "targetRefs": [
+                    {
+                      "id": "c0c77777-7777-4777-8777-777777777632",
+                      "kind": "PLAN_ITEM"
+                    }
+                  ],
+                  "operationId": "op_substitute_next"
+                }
+              ],
+              "preservedIntentRefs": [
+                "intent_substitute_nearby"
+              ],
+              "replacesPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777632"
+              ],
+              "estimatedIntentPreservation": 0.75,
+              "estimatedAddedDurationMinutes": 0
+            }
+          ],
+          "basePlanVersionId": "plan_1",
+          "constraintAssertions": [
+            {
+              "actor": "ABU",
+              "verdict": "BLOCK",
+              "createdAt": "2026-07-11T18:04:08.688Z",
+              "confidence": 0.9,
+              "assertionId": "abu_exec_slip_original_1783793048688",
+              "overridable": false,
+              "reasonCodes": [
+                "EXEC_SLIP_ORIGINAL_INFEASIBLE"
+              ],
+              "ruleVersion": "abu-exec-slip-0.1.0",
+              "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "constraintCode": "EXECUTION_SCHEDULE_FEASIBILITY",
+              "targetCandidateId": "original",
+              "affectedEntityRefs": [
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777631",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777632",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "poi_b_timed",
+                  "kind": "POI"
+                }
+              ],
+              "affectedPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777631",
+                "c0c77777-7777-4777-8777-777777777632"
+              ]
+            },
+            {
+              "actor": "ABU",
+              "verdict": "PASS",
+              "createdAt": "2026-07-11T18:04:08.688Z",
+              "confidence": 0.9,
+              "assertionId": "abu_exec_slip_cand_remove_next_1783793048688",
+              "overridable": false,
+              "reasonCodes": [
+                "EXEC_SLIP_REMOVE_NEXT_OK"
+              ],
+              "ruleVersion": "abu-exec-slip-0.1.0",
+              "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "constraintCode": "EXECUTION_SCHEDULE_FEASIBILITY",
+              "targetCandidateId": "cand_remove_next",
+              "affectedEntityRefs": [
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777631",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777632",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "poi_b_timed",
+                  "kind": "POI"
+                }
+              ],
+              "affectedPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777631",
+                "c0c77777-7777-4777-8777-777777777632"
+              ]
+            },
+            {
+              "actor": "ABU",
+              "verdict": "PASS",
+              "createdAt": "2026-07-11T18:04:08.688Z",
+              "confidence": 0.9,
+              "assertionId": "abu_exec_slip_cand_substitute_next_1783793048688",
+              "overridable": false,
+              "reasonCodes": [
+                "EXEC_SLIP_SUBSTITUTE_OK"
+              ],
+              "ruleVersion": "abu-exec-slip-0.1.0",
+              "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793048567",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "constraintCode": "EXECUTION_SCHEDULE_FEASIBILITY",
+              "targetCandidateId": "cand_substitute_next",
+              "affectedEntityRefs": [
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777631",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777632",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "poi_b_timed",
+                  "kind": "POI"
+                }
+              ],
+              "affectedPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777631",
+                "c0c77777-7777-4777-8777-777777777632"
+              ]
+            }
+          ],
+          "preferenceSnapshotId": "pref_c0c77777-7777-4777-8777-777777777777_default",
+          "worldStateSnapshotId": "wss_c0c77777_1783793048550"
+        },
+        {
+          "status": "FINALIZED",
+          "revision": 4,
+          "createdAt": "2026-07-11T18:04:21.931Z",
+          "problemId": "problem_exec_slip_c0c77777_1783793061839",
+          "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+          "loadAssessments": [
+            {
+              "actor": "DRDRE",
+              "createdAt": "2026-07-11T18:04:21.950Z",
+              "confidence": 0.88,
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+              "assessmentId": "dre_road_ws_problem_exec_slip_c0c77777_1783793061839_original_1783793061950",
+              "modelVersion": "dre-road-load-rfc001-0.2.0",
+              "physicalLoad": 0.406,
+              "cognitiveLoad": 0.21112,
+              "scheduleStress": 0.264,
+              "recoveryDeficit": 0.15,
+              "inputSnapshotRef": "wss_c0c77777_1783793061820",
+              "targetCandidateId": "original",
+              "weakestMemberScore": 0.594,
+              "affectedTravelerIds": [
+                "party_default"
+              ],
+              "adjustmentRequirements": [],
+              "missedWindowProbability": 0
+            },
+            {
+              "actor": "DRDRE",
+              "createdAt": "2026-07-11T18:04:21.950Z",
+              "confidence": 0.88,
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+              "assessmentId": "dre_road_ws_problem_exec_slip_c0c77777_1783793061839_cand_remove_next_1783793061950",
+              "modelVersion": "dre-road-load-rfc001-0.2.0",
+              "physicalLoad": 0.092,
+              "cognitiveLoad": 0.04784,
+              "scheduleStress": 0.06,
+              "recoveryDeficit": 0.15,
+              "inputSnapshotRef": "wss_c0c77777_1783793061820",
+              "targetCandidateId": "cand_remove_next",
+              "weakestMemberScore": 0.908,
+              "affectedTravelerIds": [
+                "party_default"
+              ],
+              "adjustmentRequirements": [],
+              "missedWindowProbability": 0
+            },
+            {
+              "actor": "DRDRE",
+              "createdAt": "2026-07-11T18:04:21.951Z",
+              "confidence": 0.88,
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+              "assessmentId": "dre_road_ws_problem_exec_slip_c0c77777_1783793061839_cand_substitute_next_1783793061951",
+              "modelVersion": "dre-road-load-rfc001-0.2.0",
+              "physicalLoad": 0.406,
+              "cognitiveLoad": 0.21112,
+              "scheduleStress": 0.264,
+              "recoveryDeficit": 0.15,
+              "inputSnapshotRef": "wss_c0c77777_1783793061820",
+              "targetCandidateId": "cand_substitute_next",
+              "weakestMemberScore": 0.594,
+              "affectedTravelerIds": [
+                "party_default"
+              ],
+              "adjustmentRequirements": [],
+              "missedWindowProbability": 0
+            }
+          ],
+          "repairCandidates": [
+            {
+              "actor": "NEPTUNE",
+              "status": "PROPOSED",
+              "createdAt": "2026-07-11T18:04:21.946Z",
+              "candidateId": "cand_remove_next",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "lostIntentRefs": [],
+              "generationMethod": "LOCAL_SUBSTITUTION",
+              "generatorVersion": "neptune-rfc001-adapter-0.1.0",
+              "basePlanVersionId": "plan_1",
+              "degradedIntentRefs": [],
+              "estimatedAddedCost": {
+                "amount": 0,
+                "currency": "ISK"
+              },
+              "proposedOperations": [
+                {
+                  "kind": "REMOVE_ITEM",
+                  "parameters": {
+                    "action": "REMOVE_NEXT_ACTIVITY",
+                    "itineraryItemId": "c0c77777-7777-4777-8777-777777777632"
+                  },
+                  "targetRefs": [
+                    {
+                      "id": "c0c77777-7777-4777-8777-777777777632",
+                      "kind": "PLAN_ITEM"
+                    }
+                  ],
+                  "operationId": "op_remove_next"
+                }
+              ],
+              "preservedIntentRefs": [
+                "intent_schedule_recovery"
+              ],
+              "replacesPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777632"
+              ],
+              "estimatedIntentPreservation": 0.65,
+              "estimatedAddedDurationMinutes": 0
+            },
+            {
+              "actor": "NEPTUNE",
+              "status": "PROPOSED",
+              "createdAt": "2026-07-11T18:04:21.946Z",
+              "candidateId": "cand_substitute_next",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "lostIntentRefs": [],
+              "generationMethod": "LOCAL_SUBSTITUTION",
+              "generatorVersion": "neptune-rfc001-adapter-0.1.0",
+              "basePlanVersionId": "plan_1",
+              "degradedIntentRefs": [],
+              "estimatedAddedCost": {
+                "amount": 0,
+                "currency": "ISK"
+              },
+              "proposedOperations": [
+                {
+                  "kind": "REPLACE_ITEM",
+                  "parameters": {
+                    "action": "SUBSTITUTE_NEXT_ACTIVITY",
+                    "itineraryItemId": "c0c77777-7777-4777-8777-777777777632",
+                    "substitutePoiId": "poi_nearby_substitute"
+                  },
+                  "targetRefs": [
+                    {
+                      "id": "c0c77777-7777-4777-8777-777777777632",
+                      "kind": "PLAN_ITEM"
+                    }
+                  ],
+                  "operationId": "op_substitute_next"
+                }
+              ],
+              "preservedIntentRefs": [
+                "intent_substitute_nearby"
+              ],
+              "replacesPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777632"
+              ],
+              "estimatedIntentPreservation": 0.75,
+              "estimatedAddedDurationMinutes": 0
+            }
+          ],
+          "basePlanVersionId": "plan_1",
+          "constraintAssertions": [
+            {
+              "actor": "ABU",
+              "verdict": "BLOCK",
+              "createdAt": "2026-07-11T18:04:21.949Z",
+              "confidence": 0.9,
+              "assertionId": "abu_exec_slip_original_1783793061949",
+              "overridable": false,
+              "reasonCodes": [
+                "EXEC_SLIP_ORIGINAL_INFEASIBLE"
+              ],
+              "ruleVersion": "abu-exec-slip-0.1.0",
+              "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "constraintCode": "EXECUTION_SCHEDULE_FEASIBILITY",
+              "targetCandidateId": "original",
+              "affectedEntityRefs": [
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777631",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777632",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "poi_b_timed",
+                  "kind": "POI"
+                }
+              ],
+              "affectedPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777631",
+                "c0c77777-7777-4777-8777-777777777632"
+              ]
+            },
+            {
+              "actor": "ABU",
+              "verdict": "PASS",
+              "createdAt": "2026-07-11T18:04:21.949Z",
+              "confidence": 0.9,
+              "assertionId": "abu_exec_slip_cand_remove_next_1783793061949",
+              "overridable": false,
+              "reasonCodes": [
+                "EXEC_SLIP_REMOVE_NEXT_OK"
+              ],
+              "ruleVersion": "abu-exec-slip-0.1.0",
+              "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "constraintCode": "EXECUTION_SCHEDULE_FEASIBILITY",
+              "targetCandidateId": "cand_remove_next",
+              "affectedEntityRefs": [
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777631",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777632",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "poi_b_timed",
+                  "kind": "POI"
+                }
+              ],
+              "affectedPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777631",
+                "c0c77777-7777-4777-8777-777777777632"
+              ]
+            },
+            {
+              "actor": "ABU",
+              "verdict": "PASS",
+              "createdAt": "2026-07-11T18:04:21.949Z",
+              "confidence": 0.9,
+              "assertionId": "abu_exec_slip_cand_substitute_next_1783793061949",
+              "overridable": false,
+              "reasonCodes": [
+                "EXEC_SLIP_SUBSTITUTE_OK"
+              ],
+              "ruleVersion": "abu-exec-slip-0.1.0",
+              "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+              "workspaceId": "ws_problem_exec_slip_c0c77777_1783793061839",
+              "evidenceRefs": [
+                "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+              ],
+              "constraintCode": "EXECUTION_SCHEDULE_FEASIBILITY",
+              "targetCandidateId": "cand_substitute_next",
+              "affectedEntityRefs": [
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777631",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "c0c77777-7777-4777-8777-777777777632",
+                  "kind": "PLAN_ITEM"
+                },
+                {
+                  "id": "poi_b_timed",
+                  "kind": "POI"
+                }
+              ],
+              "affectedPlanItemIds": [
+                "c0c77777-7777-4777-8777-777777777631",
+                "c0c77777-7777-4777-8777-777777777632"
+              ]
+            }
+          ],
+          "preferenceSnapshotId": "pref_c0c77777-7777-4777-8777-777777777777_default",
+          "worldStateSnapshotId": "wss_c0c77777_1783793061820"
+        }
+      ],
+      "lastUpdatedAt": "2026-07-11T18:04:22.059Z"
+    },
+    "executionSlipLiveWriteEnabled": false,
+    "executionDepartureObservations": {
+      "a566bc26-79bc-455f-9722-d63c90004e7d": {
+        "source": "USER_REPORT",
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "activityId": "c0c77777-7777-4777-8777-777777777631",
+        "observedAt": "2026-07-12T13:45:00.000Z",
+        "recordedAt": "2026-07-11T18:04:08.439Z",
+        "recordedBy": "c0c77777-7777-4777-8777-777777777701",
+        "stillAtPoi": true,
+        "observationId": "a566bc26-79bc-455f-9722-d63c90004e7d",
+        "planVersionId": "plan_1",
+        "plannedDepartAt": "2026-07-12T13:00:00.000Z"
+      },
+      "f0e7ad6c-fd32-4187-9b2c-9157d6eab26f": {
+        "source": "USER_REPORT",
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "activityId": "c0c77777-7777-4777-8777-777777777631",
+        "observedAt": "2026-07-12T13:45:00.000Z",
+        "recordedAt": "2026-07-11T18:04:21.734Z",
+        "recordedBy": "c0c77777-7777-4777-8777-777777777701",
+        "stillAtPoi": true,
+        "observationId": "f0e7ad6c-fd32-4187-9b2c-9157d6eab26f",
+        "planVersionId": "plan_1",
+        "plannedDepartAt": "2026-07-12T13:00:00.000Z"
+      }
+    },
+    "rfc001ExecutionActivityContext": {
+      "byActivityId": {
+        "c0c77777-7777-4777-8777-777777777631": {
+          "plannedDepartAt": "2026-07-12T13:00:00.000Z",
+          "remainingStayMinutes": 60
+        },
+        "c0c77777-7777-4777-8777-777777777632": {
+          "executionWindow": {
+            "closesAt": "18:00",
+            "timezone": "Atlantic/Reykjavik",
+            "lastEntryAt": "16:00"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "schemaId": "tripnara.tep.sdr_rule_mapping@v1",
+  "mappings": [
+    {
+      "packRuleId": "IS_ROAD_CLOSED_BLOCK",
+      "sdrRuleId": "SDR-002",
+      "semanticKey": "ROAD_SEGMENT_UNAVAILABLE"
+    },
+    {
+      "packRuleId": "IS_ROAD_LIMITED_WARN",
+      "sdrRuleId": "SDR-001",
+      "semanticKey": "ROAD_SEGMENT_RESTRICTED"
+    },
+    {
+      "packRuleId": "IS_DAILY_LOAD_EXCESSIVE_BLOCK",
+      "sdrRuleId": "SDR-101",
+      "semanticKey": "EXCESSIVE_DAILY_LOAD"
+    },
+    {
+      "packRuleId": "IS_DAILY_LOAD_SPLIT_PARTIAL_WARN",
+      "sdrRuleId": "SDR-101",
+      "semanticKey": "EXCESSIVE_DAILY_LOAD"
+    },
+    {
+      "packRuleId": "IS_WEATHER_HIGH_WIND_BLOCK",
+      "sdrRuleId": "SDR-302",
+      "semanticKey": "WEATHER_ACTIVITY_PROHIBITED"
+    },
+    {
+      "packRuleId": "IS_ACTIVITY_GLACIER_GUIDE_REQUIRED",
+      "sdrRuleId": "SDR-302",
+      "semanticKey": "WEATHER_ACTIVITY_PROHIBITED"
+    }
+  ],
+  "issueKindMappings": [
+    { "issueKind": "daily_drive", "sdrRuleId": "SDR-101" },
+    { "issueKind": "no_night_drive", "sdrRuleId": "SDR-202" },
+    { "issueKind": "road_class", "sdrRuleId": "SDR-001" },
+    { "issueKind": "rental_contract", "sdrRuleId": "SDR-003" },
+    { "issueKind": "inter_day_travel", "sdrRuleId": "SDR-203" },
+    { "issueKind": "poi_access_blocked", "sdrRuleId": "SDR-203" }
+  ],
+  "semanticKeyMappings": [
+    { "semanticKey": "ROAD_SEGMENT_UNAVAILABLE", "sdrRuleId": "SDR-002" },
+    { "semanticKey": "ROAD_SEGMENT_RESTRICTED", "sdrRuleId": "SDR-001" },
+    { "semanticKey": "EXCESSIVE_DAILY_LOAD", "sdrRuleId": "SDR-101" },
+    { "semanticKey": "WEATHER_ACTIVITY_PROHIBITED", "sdrRuleId": "SDR-302" },
+    { "semanticKey": "WEATHER_ROUTE_RISK", "sdrRuleId": "SDR-202" },
+    { "semanticKey": "RENTAL_CONTRACT_VIOLATION", "sdrRuleId": "SDR-003" },
+    { "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE", "sdrRuleId": "SDR-203" },
+    { "semanticKey": "TIME_WINDOW_INFEASIBLE", "sdrRuleId": "SDR-203" }
+  ]
+}

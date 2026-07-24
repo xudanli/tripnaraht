@@ -42,7 +42,7 @@ export class PlanArchitectGenerateSkeletonSkill implements Skill<PlanArchitectGe
 
   metadata = {
     name: 'plan.architect.generateSkeleton',
-    description: '从目标与约束生成 2-3 套行程骨架方案（紧凑/均衡/松弛），包含每天主题、锚点、移动日和取舍理由',
+    description: '从目标与约束生成 2-3 套 plan architect 骨架（紧凑/均衡/松弛）。在 PLAN_GEN 早期需多方案骨架对比时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

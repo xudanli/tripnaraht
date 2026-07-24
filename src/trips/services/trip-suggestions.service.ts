@@ -48,19 +48,25 @@ export class TripSuggestionsService {
       status?: SuggestionStatus;
       limit?: number;
       offset?: number;
-    }
+    },
+    preload?: {
+      trip?: { TripDay?: Array<{ id: string; date: Date }> };
+      personaAlerts?: PersonaAlertDto[];
+      conflictsResponse?: { conflicts: ConflictDto[] };
+    },
   ): Promise<SuggestionListResponseDto> {
-    // 验证行程存在
-    const trip = await this.prisma.trip.findUnique({
-      where: { id: tripId },
-      include: {
-        TripDay: {
-          include: {
-            ItineraryItem: true,
+    const trip =
+      preload?.trip ??
+      (await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        include: {
+          TripDay: {
+            include: {
+              ItineraryItem: true,
+            },
           },
         },
-      },
-    });
+      }));
 
     if (!trip) {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
@@ -69,11 +75,10 @@ export class TripSuggestionsService {
     const limit = filters?.limit || 100;
     const offset = filters?.offset || 0;
 
-    // 整合现有数据源
     const suggestions: SuggestionDto[] = [];
 
-    // 1. 从 PersonaAlerts 转换
-    const personaAlerts = await this.tripsService.getPersonaAlerts(tripId);
+    const personaAlerts =
+      preload?.personaAlerts ?? (await this.tripsService.getPersonaAlerts(tripId));
     for (const alert of personaAlerts) {
       const suggestion = this.convertPersonaAlertToSuggestion(alert, tripId, trip);
       if (this.matchesFilters(suggestion, filters)) {
@@ -81,8 +86,11 @@ export class TripSuggestionsService {
       }
     }
 
-    // 2. 从 Conflicts 转换
-    const conflicts = await this.conflictsService.getConflicts(tripId);
+    const conflicts =
+      preload?.conflictsResponse ??
+      (await this.conflictsService.getConflicts(tripId, undefined, undefined, {
+        useRouteApi: false,
+      }));
     for (const conflict of conflicts.conflicts) {
       const conflictSuggestions = this.convertConflictToSuggestions(conflict, tripId, trip);
       for (const suggestion of conflictSuggestions) {
@@ -92,10 +100,6 @@ export class TripSuggestionsService {
       }
     }
 
-    // 3. 从决策日志生成建议（如果需要）
-    // TODO: 可以从 DecisionLog 中提取更多建议
-
-    // 回填持久化状态，并应用状态过滤
     const statusMap = await this.getStatusMap(tripId, suggestions.map((s) => s.id));
     for (const s of suggestions) {
       s.status = statusMap.get(s.id) || SuggestionStatus.NEW;
@@ -106,7 +110,6 @@ export class TripSuggestionsService {
       filteredSuggestions = suggestions.filter((s) => s.status === filters.status);
     }
 
-    // 排序：按严重级别和创建时间
     filteredSuggestions.sort((a, b) => {
       const severityOrder = {
         [SuggestionSeverity.BLOCKER]: 3,
@@ -118,21 +121,39 @@ export class TripSuggestionsService {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-    // 分页
     const total = filteredSuggestions.length;
     const paginated = filteredSuggestions.slice(offset, offset + limit);
 
     return {
       items: paginated,
       total,
-      filters: filters ? {
-        persona: filters.persona,
-        scope: filters.scope,
-        scopeId: filters.scopeId,
-        severity: filters.severity,
-        status: filters.status,
-      } : undefined,
+      filters: filters
+        ? {
+            persona: filters.persona,
+            scope: filters.scope,
+            scopeId: filters.scopeId,
+            severity: filters.severity,
+            status: filters.status,
+          }
+        : undefined,
     };
+  }
+
+  /** BFF stats badge — reuses preloaded alerts/conflicts to avoid duplicate IO. */
+  async countNewSuggestions(
+    tripId: string,
+    preload?: {
+      trip?: { TripDay?: Array<{ id: string; date: Date }> };
+      personaAlerts?: PersonaAlertDto[];
+      conflictsResponse?: { conflicts: ConflictDto[] };
+    },
+  ): Promise<number> {
+    const list = await this.getSuggestions(
+      tripId,
+      { status: SuggestionStatus.NEW, limit: 1, offset: 0 },
+      preload,
+    );
+    return list.total;
   }
 
   /**
@@ -1021,8 +1042,8 @@ export class TripSuggestionsService {
       severity: severityMap[alert.severity] || SuggestionSeverity.INFO,
       status: SuggestionStatus.NEW,
       title: alert.title,
-      summary: alert.message.split('\n')[0] || alert.message,
-      description: alert.message,
+      summary: (alert.explanation ?? alert.message ?? '').split('\n')[0] || alert.title,
+      description: alert.explanation ?? alert.message ?? alert.title,
       evidence: evidence.length > 0 ? evidence : undefined,
       actions,
       createdAt: alert.createdAt,

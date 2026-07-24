@@ -1,0 +1,96 @@
+{
+  "schema": "rag-chunk-road-constraint-seed/v1",
+  "countryCode": "IS",
+  "description": "P0 Iceland road/weather constraint chunks for decision-closure RAG materialization (metadata contract).",
+  "chunks": [
+    {
+      "chunk_id": "is-road-f208-closed-winter",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "F208 (Kjölur highland route) is CLOSED in winter due to snow and ice. 4WD and experience required when open.",
+      "credibility_score": 0.92,
+      "keywords": ["F208", "Kjölur", "CLOSED", "highland", "Iceland"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "F208",
+        "countryCode": "IS",
+        "status": "CLOSED",
+        "affected_slot_ids": ["day2-drive-f208"],
+        "structured_data": { "f_road_required": { "roads": ["F208"] } },
+        "valid_from": "2026-01-01T00:00:00Z",
+        "valid_to": "2026-04-30T23:59:59Z",
+        "source": "road.is",
+        "confidence": 0.92
+      }
+    },
+    {
+      "chunk_id": "is-road-r1-south-storm",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "Route 1 (South Coast) segment Selfoss to Vik is CLOSED — winter storm impassable.",
+      "credibility_score": 0.9,
+      "keywords": ["IS-R1-SOUTH", "Route 1", "CLOSED", "storm"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "IS-R1-SOUTH",
+        "countryCode": "IS",
+        "status": "CLOSED",
+        "affected_slot_ids": ["day1-drive-south"],
+        "valid_from": "2026-01-14T00:00:00Z",
+        "valid_to": "2026-01-20T23:59:59Z",
+        "source": "safetravel.is",
+        "confidence": 0.9
+      }
+    },
+    {
+      "chunk_id": "is-road-f206-advisory",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "F206 highland road: ADVISORY — degraded conditions, check wind before departure.",
+      "credibility_score": 0.85,
+      "keywords": ["F206", "ADVISORY", "F-road"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "F206",
+        "countryCode": "IS",
+        "status": "ADVISORY",
+        "affected_slot_ids": ["day3-drive-f206"],
+        "structured_data": { "f_road_required": { "roads": ["F206"] } },
+        "source": "road.is",
+        "confidence": 0.85
+      }
+    },
+    {
+      "chunk_id": "is-weather-blizzard-south-2026-01-16",
+      "type": "RISK_INFO",
+      "category": "RISK_INFO",
+      "content": "BLIZZARD RED_ALERT for Iceland south coast. Heavy snow, wind gusts above 25 m/s.",
+      "credibility_score": 0.88,
+      "keywords": ["BLIZZARD", "storm", "south coast"],
+      "metadata": {
+        "category": "RISK_INFO",
+        "countryCode": "IS",
+        "weather_dates": ["2026-01-16"],
+        "date": "2026-01-16",
+        "source": "vedur.is",
+        "confidence": 0.88
+      }
+    },
+    {
+      "chunk_id": "is-road-f35-open-summer",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "F35 (Kjalvegur) OPEN in summer for ring-road connection; standard vehicle OK.",
+      "credibility_score": 0.8,
+      "keywords": ["F35", "OPEN", "ring-road"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "F35",
+        "countryCode": "IS",
+        "status": "OPEN",
+        "source": "road.is",
+        "confidence": 0.8
+      }
+    }
+  ]
+}

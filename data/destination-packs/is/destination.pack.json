@@ -1,0 +1,50 @@
+{
+  "packId": "destination.is",
+  "version": "1.0.0",
+  "layer": "COUNTRY",
+  "status": "ACTIVE",
+  "scope": {
+    "countries": ["IS", "ICELAND"]
+  },
+  "supportedSemanticKeys": [
+    "ROAD_SEGMENT_UNAVAILABLE",
+    "ROAD_SEGMENT_RESTRICTED",
+    "WEATHER_ACTIVITY_PROHIBITED",
+    "WEATHER_ROUTE_RISK",
+    "EXCESSIVE_DAILY_LOAD"
+  ],
+  "evidenceProviders": [
+    {
+      "domain": "road",
+      "primary": "ROAD_IS",
+      "fallback": "GENERIC_MAP"
+    },
+    {
+      "domain": "weather",
+      "primary": "ICELAND_MET",
+      "fallback": "GLOBAL_WEATHER"
+    }
+  ],
+  "ruleBundles": [
+    { "path": "rules/is-road-rules.json", "version": "1.0.0" },
+    { "path": "rules/is-weather-rules.json", "version": "1.0.0" },
+    { "path": "rules/is-activity-rules.json", "version": "1.0.0" },
+    { "path": "rules/is-load-rules.json", "version": "1.0.0" }
+  ],
+  "repairTemplateBundles": [
+    { "path": "repair/is-road-repair-templates.json", "version": "1.0.0" }
+  ],
+  "roadProfileBundles": [
+    { "path": "road/is-road-segment-profiles.json", "version": "1.0.0" }
+  ],
+  "environmentModifiers": [
+    { "path": "modifiers/is-driving.json", "version": "1.0.0" },
+    { "path": "modifiers/is-outdoor-load.json", "version": "1.0.0" }
+  ],
+  "ontologyMappings": [
+    { "path": "ontology/is-road-types.json", "version": "1.0.0" }
+  ],
+  "dependencies": [{ "packId": "destination.global", "version": "1.0.0" }],
+  "validFrom": "2026-01-01T00:00:00Z",
+  "owner": "tripnara-is-steward"
+}

@@ -1,0 +1,12 @@
+{
+  "schemaId": "tripnara.selected_trip.constraints@v1",
+  "tripId": "pilot_iceland_blue_ice_03_guide_delay_shift_tw",
+  "planVersionId": "pv-gold",
+  "constraints": [
+    {
+      "canonicalId": "constraint_0",
+      "kind": "UNKNOWN",
+      "hard": true
+    }
+  ]
+}

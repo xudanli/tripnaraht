@@ -9,7 +9,7 @@ Travel Readiness Checker 是一个可扩展到全球的旅行准备度检查系�
 ### 1. 架构分层
 
 - **Facts Layer（事实层）**：`CountryProfile` 表中的国家事实数据（电源、紧急电话、支付、签证等）
-- **Policy/Readiness Pack Layer（规则层）**：基于 Facts + 目的地/季节/活动，产出 must/should/optional
+- **Policy/Readiness Pack Layer（规则层）**：**Phase 3** 起 Pack 仅作 **overlay**（带 `when` 的动态规则）；标准入境/签证由 `FactsToReadinessCompiler` 从 Profile 衍生，见 `checkCountryStrictDerivation`
 - **Decision Layer（决策层）**：Abu/Dr.Dre/Neptune 用规则层输出的约束与风险，做取舍/排期/修复
 
 ### 2. 6 大准备维度

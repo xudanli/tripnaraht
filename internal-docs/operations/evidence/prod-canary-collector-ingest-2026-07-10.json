@@ -1,0 +1,26 @@
+{
+  "evidenceType": "PRODUCTION_CANARY_COLLECTOR_INGEST_DRILL",
+  "probedAt": "2026-07-10T18:51:04.136Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "mode": "http",
+  "verdict": "COLLECTOR_INGEST_PASS",
+  "vedurAuthoritative": true,
+  "weatherAuthority": "vedur_live_collector",
+  "response": {
+    "ok": true,
+    "ingestId": "vci_e0744aad-908d-4f62-afce-e26775b025ff",
+    "requestId": "drill_c7b260e5-bdf5-4ca1-96c2-c0d5f716966d",
+    "outcome": "SILENT",
+    "transport": "remote_collector",
+    "authoritative": true,
+    "sourceProvider": "iceland_met",
+    "weatherSource": "vedur.is",
+    "canonicalProcessed": true,
+    "detail": "anti-noise gate — wind=18 gust=28.8 tier=CALM stored=false"
+  },
+  "metadata": {
+    "rawRecordCount": 3,
+    "vedurRegionCount": 1
+  },
+  "note": "Calm Vedur sample expects SILENT outcome with evidence persisted. Does NOT alone satisfy Production Canary GO — formal 24h soak still required."
+}

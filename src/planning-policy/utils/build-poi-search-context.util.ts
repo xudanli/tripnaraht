@@ -63,6 +63,12 @@ function weatherFromEnvironment(
   return { condition: parts.join(',') };
 }
 
+const OFF_BEAT_USER_MSG_RE = /小众|秘境|私藏|避开人群|网红.*(不要|别|少)|hidden.?gem|off.?beaten|local.?secret/i;
+
+function detectPreferOffbeatFromMessage(message?: string): boolean {
+  return OFF_BEAT_USER_MSG_RE.test(String(message ?? ''));
+}
+
 /**
  * 从 DSO + 行程草案 + 用户话术中组装 POI 检索上下文（不访问外部网络）。
  */
@@ -71,6 +77,8 @@ export function buildPoiSearchContext(params: {
   decisionState?: DecisionState;
   itinerary?: unknown;
   userMessage?: string;
+  /** L0/L1 装配层 travelPreference 快照（含 preferOffbeatAttractions） */
+  travelPreference?: Record<string, unknown> | null;
 }): PoiSearchContext {
   const dest = destinationToString(params.destination);
   const ui = params.decisionState?.userIntent;
@@ -91,6 +99,25 @@ export function buildPoiSearchContext(params: {
     noveltyBias = Math.max(0, Math.min(1, nRaw));
   }
 
+  const preferFromPrefs = prefs?.preferOffbeatAttractions === true;
+  const preferFromTravelPref = params.travelPreference?.preferOffbeatAttractions === true;
+  const preferFromTags = (params.travelPreference?.mergedInterests as string[] | undefined)?.some((t) =>
+    /OFF_BEATEN|REMOTE|HIDDEN/i.test(String(t)),
+  );
+  const preferFromStyle = (ui?.styleTags ?? []).some((t) =>
+    /photography|photo|摄影|小众/i.test(String(t)),
+  );
+  const preferOffbeatAttractions =
+    preferFromPrefs ||
+    preferFromTravelPref ||
+    preferFromTags ||
+    preferFromStyle ||
+    detectPreferOffbeatFromMessage(params.userMessage);
+
+  if (preferOffbeatAttractions) {
+    noveltyBias = Math.max(noveltyBias ?? 0, 0.55);
+  }
+
   const pacing = mapPaceToPacing(ui?.pace);
   const fatigueScore = normalizeFatigue(tripState?.fatigue);
   const dayIndex =
@@ -106,6 +133,7 @@ export function buildPoiSearchContext(params: {
     ...(dayIndex !== undefined ? { dayIndex } : {}),
     ...(fatigueScore !== undefined ? { fatigueScore } : {}),
     ...(noveltyBias !== undefined ? { noveltyBias } : {}),
+    ...(preferOffbeatAttractions ? { preferOffbeatAttractions: true } : {}),
     ...(weatherFromEnvironment(env) ? { weather: weatherFromEnvironment(env) } : {}),
     ...(pacing ? { pacing } : {}),
   };

@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "7afcf760-885c-448d-9b0a-1a6ea6cdbace",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "strict-fast-reject",
+  "strategy": {
+    "strategyId": "strict-fast-reject",
+    "philosophy": "速度优先，严格遵循规则，快速失败",
+    "approach": "在步骤2中一旦检测到DEM证据缺失，立即输出REJECT，不进行任何额外检查或降级尝试。跳过所有后续步骤（如Dr.Dre节奏调整、Neptune修复、风暴场景处理），直接终止任务。",
+    "emphasis": "执行速度与规则刚性，最小化计算开销",
+    "risk": "可能误判边缘情况（如DEM数据短暂不可用但后续可恢复），导致过早拒绝合法任务"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求在7月前往冰岛高地，但DEM证据缺失。根据规则，必须立即REJECT，不进行任何降级或额外检查。",
+      "action": "REJECT",
+      "result": "[完成] REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:11:29.361Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:11:29.361Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

@@ -48,7 +48,7 @@ export class PlanEvidenceBuildEnvelopeSkill implements Skill<PlanEvidenceBuildEn
 
   metadata = {
     name: 'plan.evidence.buildEnvelope',
-    description: '统一 Evidence 结构，让所有结论可解释、可审计、可对比',
+    description: '构建 plan 统一 evidence envelope，使结论可解释可审计。在 gate/decision 输出需绑定证据引用时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

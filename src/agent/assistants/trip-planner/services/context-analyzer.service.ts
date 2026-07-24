@@ -14,6 +14,11 @@ import {
   DEFAULT_GAP_ANALYSIS_CONFIG,
   KEYWORD_TO_GAP_TYPE,
 } from '../interfaces/intent-uncertainty.interface';
+import type {
+  ItinerarySlotPlacementGapResult,
+  SlotPlacementSignalSource,
+  SuggestedItineraryDaySlot,
+} from '../interfaces/itinerary-slot-placement.interface';
 
 /**
  * 上下文分析服务
@@ -341,6 +346,308 @@ export class ContextAnalyzerService {
       confidence,
       requestedType,
     };
+  }
+
+  /**
+   * Layer1 行程槽位编排：结合缺口检测、地理/时间语义与 gap 关联，推荐插入日。
+   * route_and_run INTAKE 调用；失败时由编排器回退启发式打分。
+   */
+  analyzeItinerarySlotPlacement(
+    message: string,
+    tripContext: TripContext,
+  ): ItinerarySlotPlacementGapResult {
+    const analysisPath: string[] = ['analyzeItinerarySlotPlacement'];
+    const isPlacementRequested = this.isItineraryPlacementRequest(message);
+    analysisPath.push(`placement_requested=${isPlacementRequested}`);
+
+    if (!isPlacementRequested || tripContext.days.length === 0) {
+      return {
+        isPlacementRequested,
+        suggestedDays: [],
+        confidence: 0,
+        analysisPath,
+        activityAnchors: [],
+        temporalHints: [],
+      };
+    }
+
+    const activityAnchors = this.extractSlotActivityAnchors(message);
+    const temporalHints = this.extractSlotTemporalHints(message);
+    analysisPath.push(`anchors=${activityAnchors.join('|') || 'none'}`);
+    analysisPath.push(`temporal=${temporalHints.join('|') || 'none'}`);
+
+    const gaps = this.detectGaps(tripContext);
+    const gapRelation = this.analyzeRequestGapRelation(message, 'ADD_ACTIVITY', gaps);
+    if (gapRelation.related) {
+      analysisPath.push(
+        `gap_relation:type=${gapRelation.requestedType},matches=${gapRelation.matchedGaps.length}`,
+      );
+    }
+
+    const dayScores = new Map<
+      number,
+      {
+        score: number;
+        reasons: string[];
+        sources: Set<SlotPlacementSignalSource>;
+        availableHours?: number;
+        dateYmd: string;
+        labelHint?: string;
+        hasFreeTimeGap: boolean;
+      }
+    >();
+
+    const ensureDay = (dayNumber: number, dateYmd: string) => {
+      if (!dayScores.has(dayNumber)) {
+        dayScores.set(dayNumber, {
+          score: 0,
+          reasons: [],
+          sources: new Set(),
+          dateYmd,
+          hasFreeTimeGap: false,
+        });
+      }
+      return dayScores.get(dayNumber)!;
+    };
+
+    const totalDays = tripContext.durationDays || tripContext.days.length;
+    const northCorridor =
+      /胡萨维克|husav[ií]k|husavik|阿克雷里|akureyri|米湖|mývatn|myvatn|北部/i;
+    const highlandDayNumbers = tripContext.days
+      .filter((d) => /高地|highland|f208|landmann|内陆/i.test(this.buildDayTextBlob(d)))
+      .map((d) => d.dayNumber);
+    const firstHighlandDay =
+      highlandDayNumbers.length > 0 ? Math.min(...highlandDayNumbers) : totalDays + 1;
+
+    for (const day of tripContext.days) {
+      const blob = this.buildDayTextBlob(day);
+      const entry = ensureDay(day.dayNumber, day.date);
+
+      // 地理 / 活动锚点
+      for (const anchor of activityAnchors) {
+        if (blob.includes(anchor) || this.anchorMatchesDay(anchor, day, blob)) {
+          entry.score += 3;
+          entry.sources.add('GEOGRAPHIC_PROXIMITY');
+          entry.reasons.push(`当日行程与「${anchor}」相关`);
+        }
+      }
+      if (northCorridor.test(blob) && activityAnchors.some((a) => /观鲸|胡萨维克|husavik/i.test(a))) {
+        entry.score += 2;
+        entry.sources.add('GEOGRAPHIC_PROXIMITY');
+        entry.reasons.push('当日位于北部走廊，与观鲸港口顺路');
+      }
+
+      // 交通走廊（相邻 POI 名称出现在锚点中）
+      const poiNames = day.items.map((i) => i.name).filter(Boolean);
+      if (
+        activityAnchors.some((a) => poiNames.some((n) => n.includes(a) || a.includes(n))) &&
+        poiNames.length >= 1
+      ) {
+        entry.score += 2.5;
+        entry.sources.add('TRANSPORT_CORRIDOR');
+        entry.reasons.push('与您提到的沿途景点在同一天');
+      }
+
+      // 相对宽松日
+      const relaxed =
+        day.stats.itemCount <= 3 ||
+        day.stats.freeTime >= this.config.minFreeTimeForGap;
+      if (relaxed) {
+        entry.score += 1;
+        entry.sources.add('RELAXED_DAY');
+        if (day.stats.itemCount <= 2) {
+          entry.reasons.push('当日已排活动较少，空档相对充裕');
+        } else {
+          entry.reasons.push('当日节奏相对宽松，可挤出插入窗口');
+        }
+      }
+
+      // 时间语义
+      for (const hint of temporalHints) {
+        if (hint === 'SECOND_HALF' && day.dayNumber > Math.ceil(totalDays * 0.5)) {
+          entry.score += 2;
+          entry.sources.add('TEMPORAL_HINT');
+          entry.reasons.push('符合您说的「行程后半段」');
+        }
+        if (hint === 'FIRST_HALF' && day.dayNumber <= Math.ceil(totalDays * 0.5)) {
+          entry.score += 2;
+          entry.sources.add('TEMPORAL_HINT');
+          entry.reasons.push('符合您说的「行程前半段」');
+        }
+        if (hint === 'BEFORE_RETURN' && day.dayNumber >= Math.max(1, totalDays - 2)) {
+          entry.score += 1.5;
+          entry.sources.add('TEMPORAL_HINT');
+          entry.reasons.push('接近返程段，便于衔接回城');
+        }
+        if (hint === 'RELAXED_DAY' && relaxed) {
+          entry.score += 2;
+          entry.sources.add('TEMPORAL_HINT');
+          entry.reasons.push('符合您说的「比较闲」的一天');
+        }
+        if (hint === 'ALONG_ROUTE' && entry.score > 0) {
+          entry.score += 1;
+          entry.sources.add('TEMPORAL_HINT');
+          entry.reasons.push('与您描述的顺路安排一致');
+        }
+        if (hint === 'BEFORE_HIGHLAND' && day.dayNumber < firstHighlandDay) {
+          entry.score += 2;
+          entry.sources.add('TEMPORAL_HINT');
+          entry.reasons.push('位于内陆/高地段之前，适合作为进山前插入日');
+        }
+      }
+
+      if (/米湖|myvatn/i.test(blob)) {
+        entry.labelHint = '米湖 → 阿克雷里方向';
+      } else if (/胡萨维克|husavik/i.test(blob)) {
+        entry.labelHint = '胡萨维克周边';
+      } else if (/阿克雷里|akureyri/i.test(blob)) {
+        entry.labelHint = '阿克雷里周边';
+      }
+    }
+
+    // 缺口关联：FREE_TIME / ACTIVITY
+    if (gapRelation.related) {
+      for (const gap of gapRelation.matchedGaps) {
+        const entry = ensureDay(gap.dayNumber, gap.date);
+        const hours = this.gapDurationHours(gap);
+        entry.score += gap.severity === 'CRITICAL' ? 4 : gap.type === 'FREE_TIME' ? 3 : 2;
+        entry.sources.add(gap.type === 'FREE_TIME' ? 'FREE_TIME_GAP' : 'ACTIVITY_GAP');
+        if (gap.type === 'FREE_TIME') {
+          entry.hasFreeTimeGap = true;
+        }
+        if (hours > 0) {
+          entry.availableHours = hours;
+        }
+        const detail = this.formatGapDescription(gap, true);
+        entry.reasons.push(detail);
+        if (gap.context.beforeActivity && gap.context.afterActivity) {
+          entry.labelHint = `${gap.context.beforeActivity.name} → ${gap.context.afterActivity.name}`;
+        }
+      }
+    }
+
+    const freeGapsByDay = new Set(
+      gaps.filter((g) => g.type === 'FREE_TIME').map((g) => g.dayNumber),
+    );
+
+    const suggestedDays: SuggestedItineraryDaySlot[] = [...dayScores.entries()]
+      .filter(([, v]) => v.score > 0)
+      .map(([dayNumber, v]) => {
+        const uniqueReasons = [...new Set(v.reasons)].slice(0, 3);
+        const confidence = Math.min(0.95, 0.45 + v.score * 0.08);
+        const dayCtx = tripContext.days.find((d) => d.dayNumber === dayNumber);
+        const hasFreeTimeGap =
+          v.hasFreeTimeGap ||
+          freeGapsByDay.has(dayNumber) ||
+          (v.availableHours ?? 0) >= 2;
+        const geoRecommended =
+          v.sources.has('GEOGRAPHIC_PROXIMITY') || v.sources.has('TRANSPORT_CORRIDOR');
+        const itemHeavy =
+          (dayCtx?.stats.itemCount ?? 0) >= 4 ||
+          (dayCtx?.stats.freeTime ?? 0) < 120;
+        const scheduleTight = geoRecommended && !hasFreeTimeGap && itemHeavy;
+        const anchorNames = dayCtx?.items
+          .slice(0, 2)
+          .map((i) => i.name)
+          .filter(Boolean)
+          .join('、');
+        const tightScheduleNoteZh = scheduleTight
+          ? anchorNames
+            ? `地理顺路，但当天已有${anchorNames}等安排，行程较紧凑`
+            : '地理顺路，但当日已排活动较多，行程较紧凑'
+          : undefined;
+
+        return {
+          dayNumber,
+          dateYmd: v.dateYmd,
+          reasonZh: uniqueReasons.join('；') || '根据行程上下文推荐',
+          availableHours: v.availableHours,
+          confidence,
+          sources: [...v.sources],
+          labelHint: v.labelHint,
+          hasFreeTimeGap,
+          scheduleTight,
+          tightScheduleNoteZh,
+        };
+      })
+      .sort((a, b) => b.confidence - a.confidence || a.dayNumber - b.dayNumber)
+      .slice(0, 3);
+
+    const overallConfidence =
+      suggestedDays.length > 0 ? suggestedDays[0].confidence : 0;
+
+    if (suggestedDays.length === 0 && isPlacementRequested) {
+      analysisPath.push('graph_fracture:empty_suggested_days');
+    }
+
+    return {
+      isPlacementRequested,
+      suggestedDays,
+      confidence: overallConfidence,
+      analysisPath,
+      activityAnchors,
+      temporalHints,
+    };
+  }
+
+  private isItineraryPlacementRequest(message: string): boolean {
+    const t = String(message ?? '').trim();
+    if (!t) return false;
+    return (
+      /哪一天|哪几天|哪个行程|哪一程|安排在哪|加在哪|插在|放进|能否在.{0,24}安排|顺路/i.test(t) &&
+      (/行程|第\s*\d+\s*天|D\s*\d+/i.test(t) ||
+        /观鲸|瀑布|胡萨维克|阿克雷里|活动|安排|加/i.test(t))
+    );
+  }
+
+  private extractSlotActivityAnchors(message: string): string[] {
+    const anchors = new Set<string>();
+    const t = message;
+    if (/观鲸|whale/i.test(t)) {
+      anchors.add('观鲸');
+      anchors.add('胡萨维克');
+    }
+    if (/瀑布|waterfall|seljalands|skóga|gullfoss/i.test(t)) {
+      anchors.add('瀑布');
+    }
+    if (/胡萨维克|husav[ií]k|husavik/i.test(t)) anchors.add('胡萨维克');
+    if (/阿克雷里|akureyri/i.test(t)) anchors.add('阿克雷里');
+    if (/米湖|mývatn|myvatn/i.test(t)) anchors.add('米湖');
+    if (/黄金圈|golden/i.test(t)) anchors.add('黄金圈');
+    return [...anchors];
+  }
+
+  private extractSlotTemporalHints(message: string): string[] {
+    const hints: string[] = [];
+    const t = message;
+    if (/后半|后段|后几天|后面几天/i.test(t)) hints.push('SECOND_HALF');
+    if (/前半|前几天|开头几天/i.test(t)) hints.push('FIRST_HALF');
+    if (/回.+雷克|返回雷克|回城|回雷市/i.test(t)) hints.push('BEFORE_RETURN');
+    if (/闲|空档|宽松|不太满|有空/i.test(t)) hints.push('RELAXED_DAY');
+    if (/顺路/i.test(t)) hints.push('ALONG_ROUTE');
+    if (/进山前|高地前|f\s*路前/i.test(t)) hints.push('BEFORE_HIGHLAND');
+    return hints;
+  }
+
+  private buildDayTextBlob(day: TripDayContext): string {
+    const parts = [day.theme, day.city, ...day.items.map((i) => [i.name, i.nameCN, i.notes].join(' '))];
+    return parts.filter(Boolean).join(' ').toLowerCase();
+  }
+
+  private anchorMatchesDay(anchor: string, day: TripDayContext, blob: string): boolean {
+    const a = anchor.toLowerCase();
+    if (blob.includes(a)) return true;
+    if (/观鲸|whale/i.test(a)) {
+      return /北部|north|husavik|husavík|akureyri|米湖|myvatn/i.test(blob);
+    }
+    return false;
+  }
+
+  private gapDurationHours(gap: ItineraryGap): number {
+    const start = this.timeToMinutes(gap.timeSlot.start);
+    const end = this.timeToMinutes(gap.timeSlot.end);
+    if (end <= start) return 0;
+    return Math.round(((end - start) / 60) * 10) / 10;
   }
 
   /**

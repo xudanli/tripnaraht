@@ -27,7 +27,7 @@ export class DecisionCompressSkill implements Skill<DecisionCompressInput, Decis
   metadata = {
     name: 'decision.compress',
     description:
-      'OS: 将多轮 tool 结果压缩为工作记忆（stableFacts、unresolvedRisks、rejectedOptions、activePolicies），供后续推理续写。',
+      'decision.compress：OS: 将多轮 tool 结果压缩为工作记忆（stableFacts、unresolvedRisks、rejectedOptions、activePolicies），供后续推理续写。',
     version: '1.0.0',
     category: 'decision' as const,
     toolGroup: 'CONTEXT' as const,

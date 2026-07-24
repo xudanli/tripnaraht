@@ -54,6 +54,26 @@ export class UpdateCurrentUserDto {
 }
 
 /**
+ * 头像上传响应 DTO
+ */
+export class AvatarUploadResponseDto {
+  @ApiProperty({ description: '头像公开访问 URL' })
+  url!: string;
+
+  @ApiProperty({ description: 'OSS 存储 key' })
+  key!: string;
+
+  @ApiProperty({ description: '文件大小（字节）' })
+  size!: number;
+
+  @ApiProperty({ description: 'MIME 类型' })
+  mimeType!: string;
+
+  @ApiProperty({ type: CurrentUserResponseDto, description: '更新后的用户信息' })
+  user!: CurrentUserResponseDto;
+}
+
+/**
  * 删除账户请求 DTO
  */
 export class DeleteAccountDto {

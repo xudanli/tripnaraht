@@ -5,16 +5,27 @@
  * 规划工作台 API 接口
  */
 
-import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, HttpCode, HttpStatus, Logger, Optional, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiQuery, ApiExtraModels, getSchemaPath } from '@nestjs/swagger';
 import { PlanningWorkbenchAgentService, PlanningWorkbenchRequest } from './services/planning-workbench-agent.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import {
+  PlanningWorkbenchExecuteDto,
+  toPlanningWorkbenchRequest,
+  validatePlanningWorkbenchExecuteSemantics,
+} from './dto/planning-workbench-execute.dto';
 import { BudgetEvaluationService } from '../trips/services/budget-evaluation.service';
 import { TripBudgetService, BudgetConstraint } from '../trips/services/trip-budget.service';
 import type { BudgetStructure, TripBudgetIntent } from '../trips/budget-os/types/trip-budget-os.types';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
+import {
+  applyBudgetComparisonToOptionComparison,
+  buildOptionComparisonFromBudgetCompare,
+} from './utils/option-comparison-budget.projection.util';
+import type { OptionComparisonBffDto } from './dto/option-comparison.dto';
+
 import { PrismaService } from '../prisma/prisma.service';
 import { DataSourceRouterService } from '../data-contracts/services/data-source-router.service';
 import { WeatherQuery } from '../data-contracts/interfaces/weather.interface';
@@ -22,6 +33,7 @@ import { RoadStatusQuery } from '../data-contracts/interfaces/road-status.interf
 import { PlacesService } from '../places/places.service';
 import { EvidenceFetchTaskService } from '../trips/services/evidence-fetch-task.service';
 import { PlanningWorkbenchTaskService } from './services/planning-workbench-task.service';
+import { mapProgressToPipelineSteps } from './utils/plan-gate-verification.projection.util';
 import { TripSuggestionsService } from '../trips/services/trip-suggestions.service';
 import { TripWishService } from '../trips/wishlist/services/trip-wish.service';
 import { TripDomainInfluenceService } from '../trips/domain-influence/services/trip-domain-influence.service';
@@ -38,7 +50,6 @@ export class PlanningWorkbenchController {
     private readonly planningWorkbenchAgent: PlanningWorkbenchAgentService,
     private readonly budgetEvaluationService: BudgetEvaluationService,
     private readonly tripBudgetService: TripBudgetService,
-    private readonly planningWorkbenchAdminService: PlanningWorkbenchAdminService,
     private readonly prisma?: PrismaService,
     @Optional() private readonly dataSourceRouter?: DataSourceRouterService,
     @Optional() private readonly placesService?: PlacesService,
@@ -92,7 +103,7 @@ export class PlanningWorkbenchController {
               },
             },
             days: { type: 'number' },
-            travelMode: { type: 'string', enum: ['self_drive', 'public_transit', 'walking', 'mixed'] },
+            travelMode: { type: 'string', enum: ['self_drive'], default: 'self_drive' },
             mustDo: { type: 'array', items: { type: 'string' } },
             mustAvoid: { type: 'array', items: { type: 'string' } },
             constraints: { type: 'object' },
@@ -158,12 +169,30 @@ export class PlanningWorkbenchController {
       },
     },
   })
-  async execute(@Body() request: PlanningWorkbenchRequest) {
+  @ApiResponse({
+    status: 400,
+    description: '请求参数校验失败（结构或 compare/commit/adjust 语义）',
+    type: ApiErrorResponseDto,
+  })
+  async execute(@Body() request: PlanningWorkbenchExecuteDto) {
+    this.assertPlanningWorkbenchExecuteSemantics(request);
     try {
-      const result = await this.planningWorkbenchAgent.execute(request);
+      const result = await this.planningWorkbenchAgent.execute(
+        toPlanningWorkbenchRequest(request),
+      );
       return successResponse(result);
     } catch (error: any) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  private assertPlanningWorkbenchExecuteSemantics(request: PlanningWorkbenchExecuteDto): void {
+    const semanticError = validatePlanningWorkbenchExecuteSemantics(request);
+    if (semanticError) {
+      throw new BadRequestException({
+        errorCode: semanticError.code,
+        message: semanticError.message,
+      });
     }
   }
 
@@ -269,6 +298,73 @@ export class PlanningWorkbenchController {
       const sidebar = await this.tripDomainInfluenceService.getWorkbenchSidebar(tripId, userId);
       return successResponse(sidebar);
     } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * Plan Gate 空态：生成草案前的输入就绪情况
+   */
+  @Public()
+  @Get('trips/:tripId/plan-gate/readiness')
+  @ApiOperation({
+    summary: 'Plan Gate 就绪检查',
+    description: '供「方案确认」空态展示：已确认约束、决策结论、预算与阻塞项',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  async getPlanGateReadiness(@Param('tripId') tripId: string) {
+    try {
+      const result = await this.planningWorkbenchAgent.getPlanGateReadiness(tripId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('trips/:tripId/plan-gate/pre-trip-tasks')
+  @ApiOperation({
+    summary: 'Plan Gate 行前任务预览',
+    description: '基于方案 gate 状态与行程打包/建议数据，预览提交后待办',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({ name: 'planId', required: false, description: '草案 planId，默认当前方案' })
+  async getPlanGatePreTripTasks(
+    @Param('tripId') tripId: string,
+    @Query('planId') planId?: string,
+  ) {
+    try {
+      const result = await this.planningWorkbenchAgent.getPlanGatePreTripTasks(tripId, planId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get('trips/:tripId/plan-gate/feasibility')
+  @ApiOperation({
+    summary: 'Plan Gate 可执行性快照',
+    description: '基于 feasibility-report 与草案 gate 状态，返回基线 vs 草案可执行性分数',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({ name: 'planId', required: false, description: '草案 planId，默认当前方案' })
+  async getPlanGateFeasibility(
+    @Param('tripId') tripId: string,
+    @Query('planId') planId?: string,
+  ) {
+    try {
+      const result = await this.planningWorkbenchAgent.getPlanGateFeasibility(tripId, planId);
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
@@ -389,9 +485,53 @@ export class PlanningWorkbenchController {
   })
   async comparePlans(@Body() body: { planIds: string[]; compareFields?: string[] }) {
     try {
+      if (!body.planIds || body.planIds.length < 2) {
+        throw new BadRequestException('至少需要 2 个 planId');
+      }
       const result = await this.planningWorkbenchAgent.comparePlans(body.planIds, body.compareFields);
       return successResponse(result);
     } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * Plan Gate：草案 vs 基线差异
+   */
+  @Public()
+  @Get('plans/:planId/diff')
+  @ApiOperation({
+    summary: 'Plan Gate 方案差异',
+    description: '对比草案与基线版本的时间轴、指标、地图与风险变化',
+  })
+  @ApiParam({ name: 'planId', description: '草案 planId' })
+  @ApiQuery({ name: 'baselinePlanId', required: true, description: '基线 planId' })
+  @ApiQuery({ name: 'tripId', required: false, description: '行程 ID（用于成员分流与 feasibility 投影）' })
+  async getPlanGateDiff(
+    @Param('planId') planId: string,
+    @Query('baselinePlanId') baselinePlanId: string,
+    @Query('tripId') tripId?: string,
+  ) {
+    try {
+      if (!baselinePlanId) {
+        throw new BadRequestException('baselinePlanId 为必填参数');
+      }
+      const result = await this.planningWorkbenchAgent.getPlanGateDiff(
+        planId,
+        baselinePlanId,
+        tripId,
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
@@ -603,6 +743,87 @@ export class PlanningWorkbenchController {
   }
 
   /**
+   * 多方案预算对比（A/B/C）
+   */
+  @Public()
+  @Post('budget/compare')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '多方案预算对比',
+    description: '对比多个规划方案的预算占用、门控 verdict 与 L2 结构偏差',
+  })
+  async compareBudgetPlans(@Body() body: {
+    tripId: string;
+    plans: Array<{
+      planId: string;
+      label?: string;
+      estimatedCost: number;
+      categoryBreakdown: {
+        accommodation: number;
+        transportation: number;
+        food: number;
+        activities: number;
+        other: number;
+        experience?: number;
+      };
+    }>;
+    budgetConstraint?: BudgetConstraint;
+    budgetIntent?: TripBudgetIntent;
+    budgetStructure?: BudgetStructure;
+    /** 可选：已有方案矩阵 BFF，与 budget 列合并 */
+    optionComparison?: OptionComparisonBffDto;
+  }) {
+    try {
+      const budgetCompare = await this.budgetEvaluationService.compareBudgetPlans(body);
+      let optionComparison = buildOptionComparisonFromBudgetCompare(budgetCompare);
+      if (body.optionComparison) {
+        optionComparison = applyBudgetComparisonToOptionComparison(
+          body.optionComparison,
+          budgetCompare,
+        );
+      }
+      return successResponse({ ...budgetCompare, optionComparison });
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
+   * 预算详情（Checker 证据 Tab + 价格证据）
+   */
+  @Public()
+  @Get('budget/details')
+  @ApiOperation({
+    summary: '预算详情聚合',
+    description: '聚合 Profile、evaluate 证据、优化草案与价格参考',
+  })
+  @ApiQuery({ name: 'tripId', required: true })
+  @ApiQuery({ name: 'planId', required: false })
+  async getBudgetDetails(
+    @Query('tripId') tripId: string,
+    @Query('planId') planId?: string,
+  ) {
+    try {
+      const result = await this.budgetEvaluationService.getWorkbenchBudgetDetails(
+        tripId,
+        planId,
+      );
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  /**
    * 获取预算决策日志
    */
   @Public()
@@ -703,21 +924,15 @@ export class PlanningWorkbenchController {
     autoCommit?: boolean;
   }) {
     try {
-      // TODO: 实现应用优化建议的逻辑
-      // 当前返回模拟结果
-      const result = {
-        planId: body.planId,
-        appliedOptimizations: body.optimizationIds.map(id => ({
-          id,
-          type: 'REPLACE',
-          estimatedSavings: 100,
-          status: 'success' as const,
-        })),
-        totalSavings: body.optimizationIds.length * 100,
-        newEstimatedCost: 0, // 需要从实际方案中计算
-      };
+      const result = await this.budgetEvaluationService.applyBudgetOptimizations(body);
       return successResponse(result);
     } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      if (error instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
@@ -776,163 +991,7 @@ export class PlanningWorkbenchController {
     }
   }
 
-  // ==================== 后台管理接口 ====================
-
-  @Public()
-  @Get('admin/sessions')
-  @ApiOperation({
-    summary: '获取规划会话列表（管理接口）',
-    description: '获取规划会话列表，支持分页、筛选、排序。',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'tripId', required: false, type: String })
-  @ApiQuery({ name: 'userId', required: false, type: String })
-  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PROPOSED', 'NEED_CONFIRM', 'LOCKED'] })
-  @ApiQuery({ name: 'startDate', required: false, type: String })
-  @ApiQuery({ name: 'endDate', required: false, type: String })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回会话列表',
-    type: ApiSuccessResponseDto,
-  })
-  async getAdminSessions(@Query() query: any) {
-    try {
-      const result = await this.planningWorkbenchAdminService.getSessions({
-        tripId: query.tripId,
-        userId: query.userId,
-        status: query.status,
-        startDate: query.startDate ? new Date(query.startDate) : undefined,
-        endDate: query.endDate ? new Date(query.endDate) : undefined,
-        page: query.page ? parseInt(query.page, 10) : undefined,
-        limit: query.limit ? parseInt(query.limit, 10) : undefined,
-        sortBy: query.sortBy,
-        sortOrder: query.sortOrder,
-      });
-      return successResponse(result);
-    } catch (error: any) {
-      this.logger.error(`获取会话列表失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/sessions/stats')
-  @ApiOperation({
-    summary: '获取会话统计（管理接口）',
-    description: '获取规划会话的统计信息，包括成功率、平均时长等。',
-  })
-  @ApiQuery({ name: 'startDate', required: false, type: String })
-  @ApiQuery({ name: 'endDate', required: false, type: String })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回会话统计',
-    type: ApiSuccessResponseDto,
-  })
-  async getAdminSessionStats(@Query() query: any) {
-    try {
-      const stats = await this.planningWorkbenchAdminService.getSessionStats({
-        startDate: query.startDate ? new Date(query.startDate) : undefined,
-        endDate: query.endDate ? new Date(query.endDate) : undefined,
-      });
-      return successResponse(stats);
-    } catch (error: any) {
-      this.logger.error(`获取会话统计失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/sessions/:id')
-  @ApiOperation({
-    summary: '获取规划会话详情（管理接口）',
-    description: '获取单个规划会话的详细信息，包含所有交互历史。',
-  })
-  @ApiParam({ name: 'id', description: '会话ID（PlanningPlan ID）' })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回会话详情',
-    type: ApiSuccessResponseDto,
-  })
-  @ApiResponse({
-    status: 404,
-    description: '会话不存在',
-    type: ApiErrorResponseDto,
-  })
-  async getAdminSessionDetail(@Param('id') id: string) {
-    try {
-      const session = await this.planningWorkbenchAdminService.getSessionById(id);
-      if (!session) {
-        return errorResponse(ErrorCode.NOT_FOUND, `会话 ${id} 不存在`);
-      }
-      return successResponse(session);
-    } catch (error: any) {
-      this.logger.error(`获取会话详情失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/plans')
-  @ApiOperation({
-    summary: '获取规划方案列表（管理接口）',
-    description: '获取规划方案列表，支持分页、筛选。',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'tripId', required: false, type: String })
-  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PROPOSED', 'NEED_CONFIRM', 'LOCKED'] })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回方案列表',
-    type: ApiSuccessResponseDto,
-  })
-  async getAdminPlans(@Query() query: any) {
-    try {
-      const result = await this.planningWorkbenchAdminService.getPlans({
-        tripId: query.tripId,
-        status: query.status,
-        page: query.page ? parseInt(query.page, 10) : undefined,
-        limit: query.limit ? parseInt(query.limit, 10) : undefined,
-        sortBy: query.sortBy,
-        sortOrder: query.sortOrder,
-      });
-      return successResponse(result);
-    } catch (error: any) {
-      this.logger.error(`获取方案列表失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
-
-  @Public()
-  @Get('admin/plans/:id')
-  @ApiOperation({
-    summary: '获取规划方案详情（管理接口）',
-    description: '获取单个规划方案的详细信息。',
-  })
-  @ApiParam({ name: 'id', description: '方案ID（PlanningPlan ID）' })
-  @ApiResponse({
-    status: 200,
-    description: '成功返回方案详情',
-    type: ApiSuccessResponseDto,
-  })
-  @ApiResponse({
-    status: 404,
-    description: '方案不存在',
-    type: ApiErrorResponseDto,
-  })
-  async getAdminPlanDetail(@Param('id') id: string) {
-    try {
-      const plan = await this.planningWorkbenchAdminService.getPlanById(id);
-      if (!plan) {
-        return errorResponse(ErrorCode.NOT_FOUND, `方案 ${id} 不存在`);
-      }
-      return successResponse(plan);
-    } catch (error: any) {
-      this.logger.error(`获取方案详情失败: ${error.message}`, error.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
-    }
-  }
+  // 后台管理接口见 PlanningWorkbenchAdminController（/api/planning-workbench/admin/*，AdminStrictAuthGuard）
 
   // ==================== 天气数据获取接口 ====================
 
@@ -1885,10 +1944,13 @@ export class PlanningWorkbenchController {
       },
     },
   })
-  async executeAsync(@Body() request: PlanningWorkbenchRequest) {
+  async executeAsync(@Body() request: PlanningWorkbenchExecuteDto) {
     if (!this.planningWorkbenchTaskService) {
       return errorResponse(ErrorCode.INTERNAL_ERROR, 'PlanningWorkbenchTaskService 未注入');
     }
+
+    this.assertPlanningWorkbenchExecuteSemantics(request);
+    const workbenchRequest = toPlanningWorkbenchRequest(request);
 
     try {
       // 创建任务
@@ -1897,7 +1959,7 @@ export class PlanningWorkbenchController {
       // 异步执行任务（不等待完成）
       // 使用 setImmediate 确保不会阻塞当前请求
       setImmediate(() => {
-        this.executeTaskAsync(taskId, request).catch((error: any) => {
+        this.executeTaskAsync(taskId, workbenchRequest).catch((error: any) => {
           this.logger.error(`异步任务执行失败: taskId=${taskId}, error=${error.message}`, error.stack);
           try {
             this.planningWorkbenchTaskService?.markFailed(taskId, error.message || '未知错误');
@@ -1974,7 +2036,25 @@ export class PlanningWorkbenchController {
         return errorResponse(ErrorCode.NOT_FOUND, `任务 ${taskId} 不存在`);
       }
 
-      return successResponse(progress);
+      const pipelineSteps = mapProgressToPipelineSteps(
+        progress.progress,
+        progress.status === 'FAILED',
+      );
+
+      const ctre =
+        progress.result?.uiOutput?.ctre ??
+        (progress.result?.planState?.metadata?.ctre_compile_progress
+          ? {
+              skipped: false,
+              progress: progress.result.planState.metadata.ctre_compile_progress,
+            }
+          : undefined);
+
+      return successResponse({
+        ...progress,
+        pipelineSteps,
+        ctre,
+      });
     } catch (error: any) {
       this.logger.error(`获取任务状态失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
@@ -2046,18 +2126,28 @@ export class PlanningWorkbenchController {
     
     try {
       // 标记为运行中
-      this.planningWorkbenchTaskService.markRunning(taskId, '正在初始化...');
+      this.planningWorkbenchTaskService.markRunning(taskId, '正在合并决策结果...');
       
-      // 将 taskId 和进度更新函数注入到 request 的 metadata 中
-      const requestWithProgress = {
+      const requestWithProgress: PlanningWorkbenchRequest = {
         ...request,
         metadata: {
-          ...(request as any).metadata,
+          ...request.metadata,
           taskId,
           updateProgress: (progress: number, stage?: string) => {
             try {
-              this.logger.debug(`进度更新回调被调用: taskId=${taskId}, progress=${progress}%, stage=${stage || 'N/A'}`);
-              this.planningWorkbenchTaskService?.updateProgressPercent(taskId, progress, stage);
+              const stageLabel =
+                stage ??
+                (progress < 15
+                  ? '正在合并决策结果...'
+                  : progress < 35
+                    ? '正在重排行程结构...'
+                    : progress < 60
+                      ? '正在计算路线与时间...'
+                      : progress < 85
+                        ? '正在检查预算与成员...'
+                        : '正在执行提交前验证...');
+              this.logger.debug(`进度更新回调被调用: taskId=${taskId}, progress=${progress}%, stage=${stageLabel}`);
+              this.planningWorkbenchTaskService?.updateProgressPercent(taskId, progress, stageLabel);
             } catch (error: any) {
               this.logger.error(`进度更新回调失败: ${error.message}`, error.stack);
             }
@@ -2067,10 +2157,7 @@ export class PlanningWorkbenchController {
       
       this.logger.debug(`开始执行异步任务: taskId=${taskId}, action=${request.userAction || 'generate'}`);
       
-      // 执行规划工作台（使用包装后的 request）
-      // 注意：由于 execute 方法目前不支持进度回调，我们通过拦截关键步骤来更新进度
-      // 这里先标记为"正在生成方案"
-      this.planningWorkbenchTaskService.updateProgressPercent(taskId, 10, '正在生成行程骨架方案...');
+      this.planningWorkbenchTaskService.updateProgressPercent(taskId, 10, '正在合并决策结果...');
       
       const result = await this.planningWorkbenchAgent.execute(requestWithProgress);
       

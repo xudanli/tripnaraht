@@ -39,7 +39,7 @@ export interface IcelandGasEvPlannerInput extends SkillInput {
 export class IcelandGasEvChargePlannerSkill implements Skill<IcelandGasEvPlannerInput, IcelandGasEvPlannerOutput> {
   metadata = {
     name: 'iceland.gasAndEvChargePlanner',
-    description: 'Gas/EV 生存审计与走廊匹配推荐站（种子数据）。',
+    description: 'iceland.gasAndEvChargePlanner：Gas/EV 生存审计与走廊匹配推荐站（种子数据）。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

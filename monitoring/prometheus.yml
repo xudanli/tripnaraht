@@ -18,6 +18,7 @@ alerting:
 # Load rules once and periodically evaluate them
 rule_files:
   - '/etc/prometheus/rules/prometheus-alerts.yml'
+  - '/etc/prometheus/rules/agent_axioms_alerts.yml'
 
 scrape_configs:
   # Prometheus self-monitoring

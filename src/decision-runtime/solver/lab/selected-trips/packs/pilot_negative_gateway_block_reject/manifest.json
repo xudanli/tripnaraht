@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "pilot_negative_gateway_block_reject",
+  "planVersionId": "pv_pilot_negative_gateway_block_reject",
+  "evidenceVersionId": "ev_pilot_negative_gateway_block_reject",
+  "environment": "staging-test",
+  "destination": "IS",
+  "intendedOperation": "REROUTE",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "synthetic",
+  "deidentified": true,
+  "eligibility": "pending"
+}

@@ -44,19 +44,22 @@ import {
   PlanCandidate,
   ConversationMessage,
 } from '../interfaces/planning-assistant.interface';
+import { PaConversationContextService } from './pa-conversation-context.service';
+import { ConstraintSinkService } from '../../../memory/constraint-sink/constraint-sink.service';
+import { compressWorldStateToNarrative } from '../../../runtime/decision-os-narrative-projection.util';
+import type { DecisionOsWorldState } from '../../../runtime/decision-os-world-state.types';
+import { formatDecisionOsTripTime } from '../../../runtime/decision-os-world-state.types';
 import { randomUUID as uuidv4 } from 'crypto';
 
 @Injectable()
 export class PlanningAssistantService {
   private readonly logger = new Logger(PlanningAssistantService.name);
-  
-  // 会话状态存储（生产环境应使用 Redis）
-  private sessions: Map<string, PlanningConversationState> = new Map();
-  
+
   // 会话过期时间（24小时）
   private readonly SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
   constructor(
+    private readonly paConversationContext: PaConversationContextService,
     // V2.1 Infra 层服务
     @Optional() private readonly coreGateway?: CoreGatewayService,
     @Optional() private readonly llmExecutor?: LLMExecutorService,
@@ -68,6 +71,7 @@ export class PlanningAssistantService {
     @Optional() private readonly personaLanguage?: PersonaLanguageService,
     @Optional() private readonly recommendationEngine?: RecommendationEngineService,
     @Optional() private readonly preferenceLearning?: PreferenceLearningService,
+    @Optional() private readonly constraintSinkService?: ConstraintSinkService,
   ) {
     this.logger.log('🚀 规划助手智能体已初始化 (V2.1 架构)');
     this.logger.debug(`服务注入状态: CoreGateway=${!!coreGateway}, LLMExecutor=${!!llmExecutor}, LLM=${!!llmService}, PlanningWorkbench=${!!planningWorkbench}, PersonaShell=${!!personaShell}, Prisma=${!!prisma}`);
@@ -179,8 +183,44 @@ export class PlanningAssistantService {
   /**
    * 获取会话状态
    */
-  async getSessionState(sessionId: string): Promise<PlanningConversationState | null> {
-    return this.sessions.get(sessionId) || null;
+  async getSessionState(sessionId: string, userId?: string): Promise<PlanningConversationState | null> {
+    return this.paConversationContext.get(sessionId, userId);
+  }
+
+  /** 持久化会话（供 V2 业务路径在编排回调后写入） */
+  async saveSession(state: PlanningConversationState): Promise<void> {
+    await this.paConversationContext.set(state);
+    this.scheduleConstraintSinkFromSession(state);
+  }
+
+  /** PA 对话落库后异步抽取结构化约束写入 TripTaskMemory（不阻塞响应） */
+  private scheduleConstraintSinkFromSession(state: PlanningConversationState): void {
+    if (!this.constraintSinkService?.isEnabled()) return;
+
+    const tripId =
+      state.boundTripId ?? state.confirmedTripId ?? state.lastAccommodationTripId;
+    const userId = state.userId;
+    if (!tripId || !userId) return;
+
+    const lastUser = [...state.messageHistory].reverse().find((m) => m.role === 'user');
+    if (!lastUser?.content?.trim()) return;
+
+    this.constraintSinkService.schedule({
+      sessionId: state.sessionId,
+      tripId,
+      userId,
+      messageId: lastUser.id,
+      message: lastUser.content,
+      recentHistory: state.messageHistory
+        .slice(-6)
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    });
+  }
+
+  /** 删除会话上下文（Redis + 内存） */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.paConversationContext.delete(sessionId);
   }
 
   // ==================== LLM 增强的意图分析 ====================
@@ -870,6 +910,68 @@ ${personaFarewellCN}
 
   // ==================== LLM 增强的问答 ====================
 
+  /** 规划工作台绑定 Trip：注入库内日程，避免模型称「尚未选择住宿」而左侧已有酒店/POI */
+  private async buildBoundTripDigestBlock(tripId?: string): Promise<string> {
+    const tid = tripId?.trim();
+    if (!tid || !this.prisma) return '';
+    try {
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tid },
+        select: {
+          name: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          destination: true,
+          TripDay: {
+            orderBy: { date: 'asc' },
+            select: {
+              date: true,
+              ItineraryItem: {
+                orderBy: { startTime: 'asc' },
+                select: {
+                  note: true,
+                  type: true,
+                  startTime: true,
+                  endTime: true,
+                  Place: { select: { nameCN: true, nameEN: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!trip?.TripDay?.length) return '';
+      const worldState: DecisionOsWorldState = {
+        revision: 'v1',
+        tripId: tid,
+        name: trip.name,
+        status: trip.status,
+        destination: trip.destination,
+        startDate: trip.startDate?.toISOString().slice(0, 10) ?? null,
+        endDate: trip.endDate?.toISOString().slice(0, 10) ?? null,
+        days: (trip.TripDay ?? []).map((day) => ({
+          date: day.date?.toISOString().slice(0, 10) ?? '?',
+          items: (day.ItineraryItem ?? []).map((it) => ({
+            type: it.type,
+            note: it.note,
+            placeName: it.Place?.nameCN ?? it.Place?.nameEN ?? null,
+            startTime: formatDecisionOsTripTime(it.startTime),
+            endTime: formatDecisionOsTripTime(it.endTime),
+          })),
+        })),
+      };
+      const block = compressWorldStateToNarrative(worldState, tid);
+      if (!block.trim()) return '';
+      return `${block}\n\n【约束】上文为库内已入库行程草案。若已列出酒店、超市/景点与时间窗，分析/预算须基于这些具体安排；禁止写「用户尚未提供住宿、餐饮或活动选择」等与此矛盾的表述。无标价项可给区间估算但须说明依据。`;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[规划助手] bound trip digest failed trip_id=${tid}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return '';
+    }
+  }
+
   /**
    * 使用 LLM 回答问题
    */
@@ -879,6 +981,7 @@ ${personaFarewellCN}
     }
 
     try {
+      const tripDigest = await this.buildBoundTripDigestBlock(request.tripId);
       const contextInfo = state.selectedDestination 
         ? `用户正在规划去${state.selectedDestination}的旅行。` 
         : '用户还在探索目的地。';
@@ -887,6 +990,7 @@ ${personaFarewellCN}
 
 ${contextInfo}
 用户偏好: ${JSON.stringify(state.preferences)}
+${tripDigest ? `\n${tripDigest}\n` : ''}
 
 用户问题: "${request.message}"
 
@@ -934,9 +1038,11 @@ CN: [中文回复]`;
     }
 
     try {
+      const tripDigest = await this.buildBoundTripDigestBlock(request.tripId);
       const prompt = `你是一个友好的旅行规划助手。用户发来了一条消息，请自然地回应并引导用户继续规划旅行。
 
 当前状态: ${state.phase}
+${tripDigest ? `\n${tripDigest}\n` : ''}
 用户消息: "${request.message}"
 
 回复要简洁友好，引导用户继续对话。格式：
@@ -1098,8 +1204,8 @@ To give you the best recommendations, I'd like to know a bit more:
   // ==================== 辅助方法 ====================
 
   private async loadOrCreateSession(sessionId: string, userId?: string): Promise<PlanningConversationState> {
-    let state = this.sessions.get(sessionId);
-    
+    let state = await this.paConversationContext.get(sessionId, userId);
+
     if (!state || new Date(state.expiresAt) < new Date()) {
       const now = new Date().toISOString();
       state = {
@@ -1112,13 +1218,10 @@ To give you the best recommendations, I'd like to know a bit more:
         updatedAt: now,
         expiresAt: new Date(Date.now() + this.SESSION_TTL_MS).toISOString(),
       };
+      await this.paConversationContext.set(state);
     }
-    
-    return state;
-  }
 
-  private async saveSession(state: PlanningConversationState): Promise<void> {
-    this.sessions.set(state.sessionId, state);
+    return state;
   }
 
   private addMessage(state: PlanningConversationState, message: ConversationMessage): PlanningConversationState {

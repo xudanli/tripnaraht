@@ -1,0 +1,66 @@
+{
+  "schemaId": "tripnara.planning_signoff.authority@v1",
+  "kind": "authority",
+  "status": "APPROVED",
+  "approved": true,
+  "approvedAt": "2026-07-16T10:29:00.000Z",
+  "approvedBy": "Danny1",
+  "signoffId": "m4-ra01-2026-07-15",
+  "authorityScope": {
+    "operations": ["SHIFT", "SWAP", "SHORTEN", "REROUTE"],
+    "excludedOperations": ["MOVE_DAY", "REPLACE", "AUTO_ARRANGE"],
+    "tripSelectionMode": "selected_trips",
+    "destinations": ["IS"],
+    "maxRiskLevel": "MEDIUM",
+    "requiresUserConfirmation": true,
+    "forbiddenBehaviors": [
+      "high_risk_road_selection",
+      "booked_activity_cancel",
+      "booked_cross_day_move",
+      "payment_or_irreversible_ops"
+    ]
+  },
+  "rollbackProvider": "neptune-repair",
+  "evidenceArtifactRefs": {
+    "stability": "stability.json",
+    "locality": "locality.json",
+    "gateway": "gateway.json",
+    "rollback": "rollback.json"
+  },
+  "accountability": {
+    "failureOwner": "Danny1",
+    "escalation": "Danny2",
+    "rollbackOwner": "Danny3"
+  },
+  "policy": {
+    "selectedTripsMinObserveDays": 3,
+    "selectedTripsMaxObserveDays": 5,
+    "promoteTo5pctRequires": [
+      "zero_safety_incidents",
+      "human_spot_check_pass",
+      "dashboard_hard_zeros"
+    ],
+    "immediateRollbackTriggers": [
+      "gateway_bypass",
+      "unauthorized_plan_version_write",
+      "evidence_stale_continued_execute",
+      "booked_content_mutated",
+      "auto_fallback_failed",
+      "duplicate_plan_version"
+    ]
+  },
+  "selectedTripRefs": [
+    "ra01_is_01",
+    "ra01_is_02",
+    "ra01_is_03",
+    "ra01_is_04",
+    "ra01_is_05",
+    "ra01_is_06",
+    "ra01_is_07",
+    "ra01_is_08",
+    "ra01_is_09",
+    "ra01_is_10"
+  ],
+  "detail": "Product approved for staging selected_trips canary — IS only; scope frozen; Danny1/2/3 accountability",
+  "summary": "M4-RA-01 APPROVED — staging selected_trips; not 5%+"
+}

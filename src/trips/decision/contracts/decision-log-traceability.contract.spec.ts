@@ -38,11 +38,54 @@ describe('decision-log-traceability.contract (TD-04)', () => {
   });
 
   it('warns PHYSICAL without evidenceRefs', () => {
-    const r = analyzeDecisionLogTraceability([
-      minimalValid({ evidenceRefs: undefined, decisionSource: 'PHYSICAL' }),
-    ]);
+    const r = analyzeDecisionLogTraceability(
+      [minimalValid({ evidenceRefs: undefined, decisionSource: 'PHYSICAL' })],
+      { physicalEvidenceGate: 'warn' },
+    );
     expect(r.valid).toBe(true);
     expect(r.warnings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('errors PHYSICAL without evidenceRefs when gate=error', () => {
+    const r = analyzeDecisionLogTraceability(
+      [minimalValid({ evidenceRefs: undefined, decisionSource: 'PHYSICAL' })],
+      { physicalEvidenceGate: 'error' },
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('evidenceRefs'))).toBe(true);
+  });
+
+  it('errors PHYSICAL critical stage/action when gate=error_critical_stages', () => {
+    const r = analyzeDecisionLogTraceability(
+      [
+        minimalValid({
+          evidenceRefs: undefined,
+          decisionSource: 'PHYSICAL',
+          decisionStage: 'SPATIAL_REPAIR',
+          action: 'REPLACE',
+          reasonCodes: ['WORLD_ROAD_CLOSED'],
+        }),
+      ],
+      { physicalEvidenceGate: 'error_critical_stages' },
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('error_critical_stages'))).toBe(true);
+  });
+
+  it('warns PHYSICAL ALLOW at ABU_GATE when gate=error_critical_stages', () => {
+    const r = analyzeDecisionLogTraceability(
+      [
+        minimalValid({
+          evidenceRefs: undefined,
+          decisionSource: 'PHYSICAL',
+          decisionStage: 'ABU_GATE',
+          action: 'ALLOW',
+        }),
+      ],
+      { physicalEvidenceGate: 'error_critical_stages' },
+    );
+    expect(r.valid).toBe(true);
+    expect(r.warnings.some((w) => w.includes('evidenceRefs'))).toBe(true);
   });
 
   it('accepts optional jepaTrace with decision-trace-jepa@v1', () => {

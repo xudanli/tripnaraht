@@ -1,0 +1,541 @@
+{
+  "schema": "CLAIM_EVIDENCE_MATRIX",
+  "version": "2.0",
+  "status": "FROZEN",
+  "parent_matrix": "CLAIM_EVIDENCE_MATRIX_v1.0",
+  "engineering_baseline_commit": "bc6e2e6d5a087a6a20c47576ebdba295370ebec1",
+  "fact_pack_openapi_freeze_commit": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+  "purpose": "Additive fact confirmation + V3.1 remediation; no target architecture redesign. Research must not cite until SIGNATURES APPROVE.",
+  "post_sign_research_rule": "After APPROVE, research may cite v2 Claim IDs only for V3.2 Delta Assessment — not for mega-architecture conclusions until Release Readiness Review.",
+  "ewp_root": "evidence/work-packages/",
+  "prohibited": [
+    "microservice_split",
+    "cqrs",
+    "graphql",
+    "global_ssot_refactor",
+    "proposal_unification",
+    "ortools_authority_without_rfc",
+    "new_architecture_capability_during_v2_freeze"
+  ],
+  "ticket_bindings": {
+    "EWP-01": [
+      "C021",
+      "C021b"
+    ],
+    "EWP-02": [
+      "C022",
+      "C022b",
+      "C022c"
+    ],
+    "EWP-03": [
+      "C023",
+      "C023b",
+      "C023c",
+      "C023d",
+      "C023e",
+      "C023f",
+      "C023g",
+      "C023h"
+    ],
+    "EWP-04": [
+      "C024",
+      "C024b"
+    ],
+    "EWP-05": [
+      "C026",
+      "C026b"
+    ],
+    "EWP-06": [
+      "C025",
+      "C025b"
+    ],
+    "EWP-07": [
+      "C030",
+      "C030b"
+    ],
+    "WB-1": [
+      "C022b",
+      "C022c"
+    ],
+    "RB-1": [
+      "C023",
+      "C023b"
+    ],
+    "CC-1": [
+      "C024"
+    ],
+    "BFF-1": [
+      "C030",
+      "C030b"
+    ],
+    "CTX-1": [
+      "C021b"
+    ],
+    "C005-ERRATA": [
+      "C005E"
+    ],
+    "C018R": [
+      "C018R",
+      "C001"
+    ],
+    "Post-plan": [
+      "C032"
+    ],
+    "budget-contract": [
+      "C032"
+    ],
+    "audit-matrix": [
+      "C033"
+    ],
+    "idempotency": [
+      "C028"
+    ],
+    "CI-Guard": [
+      "C034"
+    ],
+    "OpenAPI-freeze": [
+      "C027"
+    ]
+  },
+  "claims": [
+    {
+      "claim_id": "C001",
+      "category": "main_entry",
+      "statement": "AgentController exposes @Post(\"route_and_run\"); with globalPrefix api the HTTP path is POST /api/agent/route_and_run. At ENGINEERING_BASELINE, ao-p0 contract loads PASS after C018R fix.",
+      "engineering_baseline": "bc6e2e6d5a087a6a20c47576ebdba295370ebec1",
+      "parent_v1_claim": "C001",
+      "ewp": null,
+      "tickets": [
+        "C018R"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/agent.controller.ao-p0.contract.spec.ts",
+          "src/agent/contracts/claude-exec-route-and-run.contract.spec.ts"
+        ],
+        "notes": "v1 recorded FAIL due to C018 BASELINE_INCOMPLETE; remediated on this baseline (C018R)."
+      }
+    },
+    {
+      "claim_id": "C005",
+      "category": "delivery_status",
+      "statement": "resolveDeliveryVerdict returns FLAWED_DRAFT when flawedDraft.is_flawed is true (ahead of OK); DELIVERY_VERDICTS includes FLAWED_DRAFT.",
+      "engineering_baseline": "bc6e2e6d5a087a6a20c47576ebdba295370ebec1",
+      "parent_v1_claim": "C005",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/delivery/types/delivery-verdict.types.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C005E",
+      "category": "delivery_status",
+      "statement": "DELIVERY_VERDICTS includes VERIFIED_WITH_WARNINGS; resolveDeliveryVerdict returns it when OK-family status and hasSoftWarnings===true and not flawed.",
+      "evidence_doc": "evidence/errata/C005-ERRATA_VERIFIED_WITH_WARNINGS.md",
+      "tickets": [
+        "C005-ERRATA"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/delivery/types/delivery-verdict.types.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C018",
+      "category": "freeze_integrity",
+      "statement": "At v1 freeze a7e9bdca5, route-and-run-trip-id-merge imported absent iceland-memory-shell util (BASELINE_INCOMPLETE). Retained as historical classification; remediated by C018R on ENGINEERING_BASELINE.",
+      "engineering_baseline": "bc6e2e6d5a087a6a20c47576ebdba295370ebec1",
+      "parent_v1_claim": "C018",
+      "evidence": {
+        "status": "HISTORICAL",
+        "classification": "BASELINE_INCOMPLETE",
+        "notes": "Do not re-evaluate as live FAIL on ENGINEERING_BASELINE; see C018R."
+      }
+    },
+    {
+      "claim_id": "C018R",
+      "category": "freeze_integrity",
+      "statement": "route-and-run-trip-id-merge imports isMemoryShellTripId from src/agent/utils/memory-shell-trip-id.util (no dangling iceland-self-drive dependency for loadability).",
+      "tickets": [
+        "C018R"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/utils/memory-shell-trip-id.util.spec.ts",
+          "src/agent/agent.controller.ao-p0.contract.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C032",
+      "category": "post_plan_protocol",
+      "statement": "orchestration-main-chain-protocol contracts freeze post-plan order and REPAIR/R2R budgets (VERIFY/REPAIR loop budgets documented in protocol).",
+      "tickets": [
+        "Post-plan",
+        "budget-contract"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C033",
+      "category": "audit",
+      "statement": "WRITEBACK_CORRIDOR_AUDIT_MATRIX and GATE_VERIFY_CORRIDOR_AUDIT_MATRIX exist as code SSOT scaffolds with contract specs; flawed draft opt-in writes metadata.audit_log / flawed_draft_opt_in_audit.",
+      "tickets": [
+        "audit-matrix"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts",
+          "src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C027",
+      "category": "openapi",
+      "statement": "execution_mode and allow_flawed_draft_narrate are frozen in RouteAndRunOptionsDto OpenAPI metadata via route-and-run-options.openapi.freeze.",
+      "tickets": [
+        "OpenAPI-freeze"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/route-and-run-options.openapi.freeze.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C028",
+      "category": "idempotency",
+      "statement": "Unified Execute uses Idempotency-Key or buildPlanVersionIdempotencyKey; Actions Commit dedups via RequestDeduplicationService.",
+      "tickets": [
+        "idempotency"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/decision-runtime/gateway/contracts/unified-execute-idempotency.contract.spec.ts",
+          "src/agent/contracts/actions-commit-idempotency.contract.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C034",
+      "category": "ci_guard",
+      "statement": "CI guards ci:dangling-imports and ci:freeze-smoke-gate exist under scripts/ci with workflow freeze-smoke-gate.yml.",
+      "tickets": [
+        "CI-Guard"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "anchors": [
+          {
+            "path": "scripts/ci/check-dangling-imports.ts"
+          },
+          {
+            "path": "scripts/ci/freeze-smoke-gate.ts"
+          },
+          {
+            "path": ".github/workflows/freeze-smoke-gate.yml"
+          }
+        ],
+        "notes": "Verified by npm run ci:dangling-imports && npm run ci:freeze-smoke-gate in Matrix v2 regression batch."
+      }
+    },
+    {
+      "claim_id": "C021",
+      "category": "travel_context",
+      "statement": "TravelContext CURRENT_SSOT_STATUS / constants document target SSOT vs CURRENT_RUNTIME_SSOT = OrchestratorState + DecisionState/DSO; TravelContext is not wired as main-chain SSOT.",
+      "ewp": "EWP-01",
+      "evidence_doc": "evidence/work-packages/EWP-01-travel-context/EVIDENCE.md",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/contracts/travel-context-projection.contract.spec.ts",
+          "src/travel-context/current-ssot-status.constants.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C021b",
+      "category": "travel_context",
+      "statement": "No unified contextHash on route_and_run main chain; CORRIDOR_LOCAL_FRESHNESS_INVENTORY (CTX-1) lists corridor-local fields.",
+      "ewp": "EWP-01",
+      "tickets": [
+        "CTX-1"
+      ],
+      "evidence_doc": "evidence/work-packages/EWP-01-travel-context/CTX-1.md",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/contracts/corridor-local-freshness.inventory.spec.ts",
+          "src/agent/contracts/travel-context-projection.contract.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C022",
+      "category": "writeback",
+      "statement": "WRITEBACK_CORRIDOR_AUDIT_MATRIX marks unified_execute and actions_commit persistence as mixed.",
+      "ewp": "EWP-02",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C022b",
+      "category": "writeback",
+      "statement": "Unified Execute mixedTargets listed as UNIFIED_EXECUTE_MIXED_TARGETS (WB-1).",
+      "ewp": "EWP-02",
+      "tickets": [
+        "WB-1"
+      ],
+      "evidence_doc": "evidence/work-packages/EWP-02-mixed-write-targets/WB-1.md",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts",
+          "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C022c",
+      "category": "writeback",
+      "statement": "Actions Commit mixedTargets listed as ACTIONS_COMMIT_MIXED_TARGETS (WB-1).",
+      "ewp": "EWP-02",
+      "tickets": [
+        "WB-1"
+      ],
+      "evidence_doc": "evidence/work-packages/EWP-02-mixed-write-targets/WB-1.md",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts",
+          "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C023",
+      "category": "rollback",
+      "statement": "UnifiedDecisionController POST decisions/:decisionId/rollback chain (RB-1).",
+      "ewp": "EWP-03",
+      "tickets": [
+        "RB-1"
+      ],
+      "evidence_doc": "evidence/work-packages/EWP-03-rollback-compensation/RB-1.md",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/decision-runtime/gateway/contracts/unified-rollback-http.contract.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C023b",
+      "category": "rollback",
+      "statement": "Actions rollback STUB_NO_SIDE_EFFECTS (RB-1).",
+      "ewp": "EWP-03",
+      "tickets": [
+        "RB-1"
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/actions-rollback-stub.product.contract.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C023c",
+      "category": "rollback",
+      "statement": "AgentController itinerary revision rollback paths exist.",
+      "ewp": "EWP-03",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C023d",
+      "category": "rollback",
+      "statement": "TEP repair apply failure-path materialization rollback + REJECTED.",
+      "ewp": "EWP-03",
+      "evidence": {
+        "status": "PARTIAL",
+        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C023e",
+      "category": "rollback",
+      "statement": "Arrange discardProposal is pre-apply discard.",
+      "ewp": "EWP-03",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C023f",
+      "category": "rollback",
+      "statement": "Iceland Apply committed rollback path not evidenced.",
+      "ewp": "EWP-03",
+      "gate": "DEFER",
+      "evidence": {
+        "status": "NEEDS_MORE_EVIDENCE"
+      }
+    },
+    {
+      "claim_id": "C023g",
+      "category": "rollback",
+      "statement": "Mobile verified proposal apply rollback not evidenced.",
+      "ewp": "EWP-03",
+      "gate": "DEFER",
+      "evidence": {
+        "status": "NEEDS_MORE_EVIDENCE"
+      }
+    },
+    {
+      "claim_id": "C023h",
+      "category": "rollback",
+      "statement": "OR-Tools Shadow has no authoritative apply; rollback for authority n/a while Shadow.",
+      "ewp": "EWP-03",
+      "gate": "BLOCKED",
+      "evidence": {
+        "status": "CODE_ONLY"
+      }
+    },
+    {
+      "claim_id": "C024",
+      "category": "concurrency",
+      "statement": "Corridor-local concurrency guards; Arrange dual-signal CC-1.",
+      "ewp": "EWP-04",
+      "tickets": [
+        "CC-1"
+      ],
+      "evidence_doc": "evidence/work-packages/EWP-04-cross-corridor-concurrency/CC-1.md",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/trips/arrange-itinerary/contracts/arrange-apply-stale.dual-signal.spec.ts",
+          "src/agent/contracts/cross-corridor-concurrency.contract.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C024b",
+      "category": "concurrency",
+      "statement": "No cross-corridor concurrent write e2e on one tripId.",
+      "ewp": "EWP-04",
+      "gate": "DEFER",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/cross-corridor-concurrency.contract.spec.ts",
+        "notes": "Negative existence check."
+      }
+    },
+    {
+      "claim_id": "C025",
+      "category": "client_protocol",
+      "statement": "Web/iOS handoffs exist; no production client source in repo.",
+      "ewp": "EWP-06",
+      "evidence_doc": "evidence/work-packages/EWP-06-client-protocol/EVIDENCE.md",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/client-protocol-handoff.inventory.contract.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C025b",
+      "category": "client_protocol",
+      "statement": "Shipping Web/iOS compliance cannot be proven from this repo.",
+      "ewp": "EWP-06",
+      "gate": "DEFER",
+      "evidence": {
+        "status": "NEEDS_MORE_EVIDENCE"
+      }
+    },
+    {
+      "claim_id": "C026",
+      "category": "shadow_data",
+      "statement": "OR-Tools shadowAuthority false; Arrange apply uses proposal.changes only.",
+      "ewp": "EWP-05",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C026b",
+      "category": "shadow_data",
+      "statement": "OR-Tools Shadow metrics + lab compare sample exist.",
+      "ewp": "EWP-05",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/decision-runtime/solver/lab/ortools-planning-lab-compare.sample.spec.ts",
+          "src/decision-runtime/solver/observability/ortools-shadow-metrics.collector.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C030",
+      "category": "bff",
+      "statement": "Repo is NestJS BFF/API without production client monorepo.",
+      "ewp": "EWP-07",
+      "tickets": [
+        "BFF-1"
+      ],
+      "evidence_doc": "evidence/work-packages/EWP-07-bff-client-contracts/BFF-1.md",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/contracts/bff-client-contract.matrix.spec.ts",
+          "src/agent/contracts/bff-client-contract.index.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C030b",
+      "category": "bff",
+      "statement": "BFF_CLIENT_CONTRACT_INDEX v1.1 dual-pins FACT_PACK_OPENAPI_FREEZE_COMMIT and ENGINEERING_BASELINE_COMMIT with OPENAPI_CONTRACT_DELTA_INDEX.",
+      "ewp": "EWP-07",
+      "tickets": [
+        "BFF-1"
+      ],
+      "evidence_doc": "evidence/work-packages/EWP-07-bff-client-contracts/CLIENT_CONTRACT_INDEX.md",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/bff-client-contract.index.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C031",
+      "category": "ortools_rfc",
+      "statement": "RFC-ORTools-Authoritative-Promotion INTERNAL_REVIEW; Shadow only; Apply not authorized.",
+      "gate": "BLOCKED",
+      "evidence": {
+        "status": "CODE_ONLY",
+        "anchors": [
+          {
+            "path": "evidence/rfc/RFC-ORTools-Authoritative-Promotion.md"
+          }
+        ]
+      }
+    },
+    {
+      "claim_id": "C035",
+      "category": "baseline",
+      "statement": "ENGINEERING_BASELINE_COMMIT bc6e2e6d5… is the V3.1 feature tip for Matrix v2; Matrix freeze delivery commit recorded in BASELINE_SCOPE_DECISION.md.",
+      "evidence": {
+        "status": "CODE_ONLY",
+        "notes": "Updated on freeze delivery commit."
+      }
+    }
+  ],
+  "annotated_tag": "claim-evidence-matrix-v2.0",
+  "matrix_v2_freeze_tag": "claim-evidence-matrix-v2.0"
+}

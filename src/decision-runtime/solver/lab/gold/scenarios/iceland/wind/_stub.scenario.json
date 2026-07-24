@@ -1,0 +1,10 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.wind.stub_slot_01",
+  "status": "stub",
+  "countryCode": "IS",
+  "family": "wind",
+  "title": "STUB — wind / storm day impact (fill later)",
+  "seed": 42,
+  "notes": ["placeholder for Gold Dataset target count"]
+}

@@ -1,0 +1,346 @@
+{
+  "schemaId": "tripnara.attention_shadow_staging_replay@v1",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "runId": "STG-REPLAY-10-prod-seed-verify",
+  "scenarioId": "STG-REPLAY-10",
+  "scenarioTitle": "完整 wind → slip → infeasible 链",
+  "setupHint": "实库完整因果链：WEATHER_STRONG_WIND + EXECUTION_SLIP + EXECUTION_SCHEDULE_INFEASIBLE（同 episode）。",
+  "runAt": "2026-07-11T19:55:51.832Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "featureFlags": {
+    "attentionOrchestration": false,
+    "primarySso": false
+  },
+  "inputRows": [
+    {
+      "problemId": "stg_attn_wind",
+      "authority": "CANONICAL",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "instanceKey": "WEATHER_STRONG_WIND:stg_attn_wind",
+      "workflowStatus": "OPEN",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "weather strong wind",
+      "summary": "weather strong wind",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "weather strong wind",
+      "queueDescription": "weather strong wind"
+    },
+    {
+      "problemId": "stg_attn_slip",
+      "authority": "CANONICAL",
+      "semanticKey": "EXECUTION_DEPARTURE_SLIP",
+      "instanceKey": "EXECUTION_DEPARTURE_SLIP:stg_attn_slip",
+      "workflowStatus": "OPEN",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "execution departure slip",
+      "summary": "execution departure slip",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "execution departure slip",
+      "queueDescription": "execution departure slip"
+    },
+    {
+      "problemId": "stg_attn_infeasible",
+      "authority": "CANONICAL",
+      "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+      "instanceKey": "EXECUTION_SCHEDULE_INFEASIBLE:stg_attn_infeasible",
+      "workflowStatus": "OPEN",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "execution schedule infeasible",
+      "summary": "execution schedule infeasible",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "execution schedule infeasible",
+      "queueDescription": "execution schedule infeasible"
+    },
+    {
+      "problemId": "stg_attn_night",
+      "authority": "CANONICAL",
+      "semanticKey": "NIGHT_DRIVING_RISK",
+      "instanceKey": "NIGHT_DRIVING_RISK:stg_attn_night",
+      "workflowStatus": "OPEN",
+      "enforcement": "REQUIRE_CONFIRMATION",
+      "title": "night driving risk",
+      "summary": "night driving risk",
+      "scope": {
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "itemIds": [
+          "c0c77777-7777-4777-8777-777777777631"
+        ],
+        "routeSegmentIds": [
+          "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+        ]
+      },
+      "occurrenceCount": 1,
+      "detectors": [
+        {
+          "id": "rfc001",
+          "label": "RFC001"
+        }
+      ],
+      "origin": {
+        "module": "RFC001",
+        "detectorId": "rfc001"
+      },
+      "queueTitle": "night driving risk",
+      "queueDescription": "night driving risk"
+    }
+  ],
+  "normalizedInputs": [
+    {
+      "problemId": "stg_attn_wind",
+      "semanticCapability": "WEATHER_STRONG_WIND",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    },
+    {
+      "problemId": "stg_attn_slip",
+      "semanticCapability": "EXECUTION_DEPARTURE_SLIP",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "causedByProblemId": "stg_attn_wind",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    },
+    {
+      "problemId": "stg_attn_infeasible",
+      "semanticCapability": "EXECUTION_SCHEDULE_INFEASIBLE",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "causedByProblemId": "stg_attn_slip",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    },
+    {
+      "problemId": "stg_attn_night",
+      "semanticCapability": "NIGHT_DRIVING_RISK",
+      "status": "OPEN",
+      "weatherEpisodeId": "vedur_ep_exec_slip_staging_20260712",
+      "episodeSource": "LINEAGE",
+      "causedByProblemId": "stg_attn_infeasible",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "mergeAuthority": true,
+      "routeSegmentId": "segment:c0c77777-7777-4777-8777-777777777777:drive_day2"
+    }
+  ],
+  "clusters": [
+    {
+      "clusterId": "cluster_weather_strong_wind_c0c77777_7777_4777_8777_777777777777_segment_c0c77777_7777_4777_8777_777777777777_drive_day2_vedur_ep_exec_slip_staging_20260712",
+      "tripId": "c0c77777-7777-4777-8777-777777777777",
+      "rootCauseKey": "weather:strong-wind:c0c77777-7777-4777-8777-777777777777:segment:c0c77777-7777-4777-8777-777777777777:drive_day2:vedur_ep_exec_slip_staging_20260712",
+      "rootCauseType": "WEATHER_STRONG_WIND",
+      "primaryProblemId": "stg_attn_infeasible",
+      "relatedProblemIds": [
+        "stg_attn_slip",
+        "stg_attn_wind",
+        "stg_attn_night"
+      ],
+      "causalChain": [
+        {
+          "code": "WEATHER_STRONG_WIND",
+          "label": "强风",
+          "problemId": "stg_attn_wind",
+          "order": 0
+        },
+        {
+          "code": "EXECUTION_DEPARTURE_SLIP",
+          "label": "执行偏差",
+          "problemId": "stg_attn_slip",
+          "order": 2
+        },
+        {
+          "code": "EXECUTION_SCHEDULE_INFEASIBLE",
+          "label": "行程不可执行",
+          "problemId": "stg_attn_infeasible",
+          "order": 3
+        },
+        {
+          "code": "NIGHT_DRIVING_RISK",
+          "label": "夜间驾驶风险",
+          "problemId": "stg_attn_night",
+          "order": 5
+        }
+      ],
+      "attentionLevel": "INTERRUPT",
+      "status": "OPEN",
+      "firstObservedAt": "2026-07-11T19:55:51.827Z",
+      "lastUpdatedAt": "2026-07-11T19:55:51.827Z",
+      "lastAttentionEscalatedAt": "2026-07-11T19:55:51.827Z"
+    }
+  ],
+  "primaryItems": [
+    {
+      "clusterId": "cluster_weather_strong_wind_c0c77777_7777_4777_8777_777777777777_segment_c0c77777_7777_4777_8777_777777777777_drive_day2_vedur_ep_exec_slip_staging_20260712",
+      "tripId": "c0c77777-7777-4777-8777-777777777777",
+      "primaryProblemId": "stg_attn_infeasible",
+      "primarySemanticCapability": "EXECUTION_SCHEDULE_INFEASIBLE",
+      "headline": "execution schedule infeasible",
+      "explanation": "execution schedule infeasible",
+      "causalStory": [
+        {
+          "code": "WEATHER_STRONG_WIND",
+          "label": "强风",
+          "problemId": "stg_attn_wind",
+          "order": 0
+        },
+        {
+          "code": "EXECUTION_DEPARTURE_SLIP",
+          "label": "执行偏差",
+          "problemId": "stg_attn_slip",
+          "order": 2
+        },
+        {
+          "code": "EXECUTION_SCHEDULE_INFEASIBLE",
+          "label": "行程不可执行",
+          "problemId": "stg_attn_infeasible",
+          "order": 3
+        },
+        {
+          "code": "NIGHT_DRIVING_RISK",
+          "label": "夜间驾驶风险",
+          "problemId": "stg_attn_night",
+          "order": 5
+        }
+      ],
+      "attentionLevel": "INTERRUPT",
+      "status": "OPEN",
+      "relatedEffects": [
+        {
+          "problemId": "stg_attn_slip",
+          "semanticCapability": "EXECUTION_DEPARTURE_SLIP",
+          "label": "执行偏差"
+        },
+        {
+          "problemId": "stg_attn_wind",
+          "semanticCapability": "WEATHER_STRONG_WIND",
+          "label": "强风"
+        },
+        {
+          "problemId": "stg_attn_night",
+          "semanticCapability": "NIGHT_DRIVING_RISK",
+          "label": "夜间驾驶风险"
+        }
+      ],
+      "confirmationEntry": {
+        "problemId": "stg_attn_infeasible",
+        "actionRoute": "decision-queue"
+      },
+      "firstObservedAt": "2026-07-11T19:55:51.827Z",
+      "lastUpdatedAt": "2026-07-11T19:55:51.827Z"
+    }
+  ],
+  "legacyVisibleItems": [
+    {
+      "problemId": "stg_attn_wind",
+      "semanticKey": "WEATHER_STRONG_WIND",
+      "title": "weather strong wind",
+      "workflowStatus": "OPEN"
+    },
+    {
+      "problemId": "stg_attn_slip",
+      "semanticKey": "EXECUTION_DEPARTURE_SLIP",
+      "title": "execution departure slip",
+      "workflowStatus": "OPEN"
+    },
+    {
+      "problemId": "stg_attn_infeasible",
+      "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+      "title": "execution schedule infeasible",
+      "workflowStatus": "OPEN"
+    },
+    {
+      "problemId": "stg_attn_night",
+      "semanticKey": "NIGHT_DRIVING_RISK",
+      "title": "night driving risk",
+      "workflowStatus": "OPEN"
+    }
+  ],
+  "comparison": {
+    "expectedClusterCount": 1,
+    "actualClusterCount": 1,
+    "expectedPrimary": "EXECUTION_SCHEDULE_INFEASIBLE",
+    "actualPrimary": "EXECUTION_SCHEDULE_INFEASIBLE",
+    "primarySelectionReason": "selected EXECUTION_SCHEDULE_INFEASIBLE (stg_attn_infeasible) by decision-driving > root-cause priority",
+    "expectedAttention": "INTERRUPT",
+    "actualAttention": "INTERRUPT",
+    "attentionReason": "attention=INTERRUPT from capabilities [WEATHER_STRONG_WIND, EXECUTION_DEPARTURE_SLIP, EXECUTION_SCHEDULE_INFEASIBLE, NIGHT_DRIVING_RISK] clusterStatus=OPEN",
+    "expectedVisibleItemCount": 1,
+    "actualVisibleItemCount": 1,
+    "verdict": "CORRECT_MERGE",
+    "reviewStatus": "AUTO_PASS",
+    "reason": "[TRIP_METADATA_RFC001] Sample STG-REPLAY-10 PASS",
+    "underlyingProblemCount": 4
+  },
+  "humanAdjudication": {
+    "shouldMerge": "PENDING",
+    "rootCauseKeyCorrect": "PENDING",
+    "primaryCorrect": "PENDING",
+    "attentionCorrect": "PENDING",
+    "visibleCardCountCorrect": "PENDING",
+    "resolutionBehaviorCorrect": "PENDING",
+    "eligibleForCanary": "PENDING"
+  }
+}

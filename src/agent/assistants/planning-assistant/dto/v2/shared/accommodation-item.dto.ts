@@ -1,6 +1,7 @@
 // src/agent/assistants/planning-assistant/dto/v2/shared/accommodation-item.dto.ts
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AccommodationCardActionDto } from './accommodation-card-action.dto';
 
 /**
  * 住宿项位置信息
@@ -69,9 +70,31 @@ export class AccommodationItemDto {
   @ApiPropertyOptional({ description: '退房日期（YYYY-MM-DD）' })
   checkOut?: string;
 
+  @ApiPropertyOptional({
+    description: '行程第几晚（1-based）；route_and_run 卡片用于 apply 时对齐 TripDay',
+  })
+  nightIndex?: number;
+
   @ApiPropertyOptional({ description: '距当天最近行程点的距离（公里）' })
   distanceKm?: number;
 
   @ApiPropertyOptional({ description: '最近的行程点名称' })
   nearestPlaceName?: string;
+
+  @ApiPropertyOptional({ description: '距离锚点 POI 名称（与 route_and_run 对齐）' })
+  anchor_poi_name_zh?: string;
+
+  @ApiPropertyOptional({ description: '距离说明（如：距「黄金瀑布」约 12.3 km）' })
+  distance_label_zh?: string;
+
+  @ApiPropertyOptional({
+    description: '选房决策辅助（规则层：距离/价位/人数/评分等信号，供卡片副标题展示）',
+  })
+  decision_support_zh?: string;
+
+  @ApiPropertyOptional({
+    description: '卡片操作（查看 / 加入行程）',
+    type: [AccommodationCardActionDto],
+  })
+  actions?: AccommodationCardActionDto[];
 }

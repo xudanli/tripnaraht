@@ -35,7 +35,7 @@ export class PlanBudgetEstimateBaselineSkill implements Skill<PlanBudgetEstimate
 
   metadata = {
     name: 'plan.budget.estimateBaseline',
-    description: '快速给出预算拆分与区间估算（交通/住宿/餐饮/门票/体验/缓冲）',
+    description: '估算 plan 预算基线与区间（交通/住宿/餐饮/门票/体验/缓冲）。在 PLAN_GEN 早期缺省 budget 或用户询问大概花费时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -163,7 +163,7 @@ ${userPrompt}`;
     
     parts.push(`## 行程信息`);
     parts.push(`目的地: ${destination.city || destination.country || '未指定'}`);
-    parts.push(`天数: ${planState.constraints.time.days} 天`);
+    parts.push(`天数: ${this.resolvePlanDays(planState)} 天`);
     
     if (planState.constraints.budget?.total) {
       parts.push(`总预算: ${planState.constraints.budget.total} ${planState.constraints.budget.currency || 'CNY'}`);
@@ -188,11 +188,20 @@ ${userPrompt}`;
     return parts.join('\n');
   }
 
+  private resolvePlanDays(planState: PlanState): number {
+    const days = planState.constraints?.time?.days;
+    if (typeof days === 'number' && days > 0) {
+      return days;
+    }
+    const fromSegments = planState.itinerary?.segments?.length ?? 0;
+    return fromSegments > 0 ? fromSegments : 1;
+  }
+
   /**
    * 获取默认预算拆分（当 LLM 调用失败时使用）
    */
   private getDefaultBudgetBreakdown(planState: PlanState, _destination: any): PlanBudgetEstimateBaselineOutput {
-    const days = planState.constraints.time.days;
+    const days = this.resolvePlanDays(planState);
     const totalBudget = planState.constraints.budget?.total || 20000; // 默认 2 万
     
     // 简单的默认预算拆分（基于天数）

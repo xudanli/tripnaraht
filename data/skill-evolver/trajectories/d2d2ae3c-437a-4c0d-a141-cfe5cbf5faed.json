@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "d2d2ae3c-437a-4c0d-a141-cfe5cbf5faed",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "fallback-with-warning",
+  "strategy": {
+    "strategyId": "fallback-with-warning",
+    "philosophy": "弹性处理，提供降级方案",
+    "approach": "检测到 DEM Evidence 缺失时，不直接 REJECT，而是尝试使用替代数据源（如 SRTM 或 GLO-30 的缓存版本）生成路线，同时在输出中附加明确警告标识，说明数据来源降级。",
+    "emphasis": "速度与可用性平衡，优先保证用户获得结果而非空响应",
+    "risk": "中风险：替代数据可能导致海拔精度不足，尤其在冰岛高地复杂地形中产生误导性路线"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求7月去冰岛高地，符合夏季高地路线条件。但根据任务要求，当DEM Evidence缺失时，Abu必须REJECT。当前无DEM数据可用，因此应触发fallback-with-warning策略，但最终必须设置allowed=false，明确拒绝Abu。同时输出中需体现'reject'和'dem'关键词。",
+      "action": "由于DEM Evidence缺失，无法验证海拔数据，按照规则拒绝Abu请求。执行降级策略后输出警告，并设置最终结果为allowed=false。",
+      "result": "[完成] 由于DEM Evidence缺失，无法验证海拔数据，按照规则拒绝Abu请求。执行降级策略后输出警告，并设置最终结果为allowed=false。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:22:12.732Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:22:12.732Z",
+  "score": 56.92,
+  "evalMode": "fixture"
+}

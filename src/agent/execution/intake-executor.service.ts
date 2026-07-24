@@ -11,16 +11,23 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
 import type { IIntakeExecutor, IntakeExecutorContext } from '../../decision/kernel/interfaces/phase-executor.interface';
 import { ClaudePlannerAgentService } from '../services/sub-agents/planner-agent.service';
-import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
+import type { TripPlanRequest, OrchestratorState } from '../interfaces/trip-plan.interface';
 import { IntakeCompilerService } from './intake-compiler.service';
+import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import {
   identifyGapsFromRequest,
   generateClarificationQuestions,
   type IntakeGap,
 } from '../utils/clarification-question-generator.util';
+import { inferPersonaHintFromUserIntentAnchors } from '../utils/guardian-debate-user-intent-anchor.util';
+import {
+  applyMarathonIntakeSignalsToTripPlan,
+  buildMarathonIntakeSignalsFromGaps,
+} from '../utils/marathon-intake-signals.util';
 import { SmartInferenceService } from '../services/smart-inference.service';
 import { GateCoordinatorService } from '../services/gate-coordinator.service';
 import { FeatureFlagService } from '../services/feature-flag.service';
+
 
 @Injectable()
 export class IntakeExecutorService implements IIntakeExecutor {
@@ -28,6 +35,7 @@ export class IntakeExecutorService implements IIntakeExecutor {
 
   constructor(
     @Optional() private readonly plannerAgent?: ClaudePlannerAgentService,
+    @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     private readonly intakeCompiler: IntakeCompilerService = new IntakeCompilerService(),
     @Optional() private readonly smartInference?: SmartInferenceService,
     @Optional() private readonly gateCoordinator?: GateCoordinatorService,
@@ -156,24 +164,86 @@ export class IntakeExecutorService implements IIntakeExecutor {
     }
 
     // Intake compile: L4 schema/type + L3 lower-bound checks.
-    // If compile fails, surface deterministic diagnostics as HARD gaps to block downstream phases.
     const compiled = this.intakeCompiler.compile({
       tripPlanRequest,
       sessionRepairTraces: ((dso as any)?.systemState?.repairTraceHistory ?? []) as any,
     });
-    if (compiled.status !== 'SUCCESS') {
-      const compileGaps = compiled.diagnostics
-        .map((d) => d.gap)
-        .filter(Boolean) as IntakeGap[];
-      if (compileGaps.length > 0) {
-        gaps = [...compileGaps, ...gaps];
+
+    const compileGaps = compiled.diagnostics.map((d) => d.gap).filter(Boolean) as IntakeGap[];
+    if (compileGaps.length > 0) {
+      gaps = [...compileGaps, ...gaps];
+    }
+
+    if (compiled.marathon_lower_bound_deferred && compiled.user_intent_anchors) {
+      const signals = buildMarathonIntakeSignalsFromGaps(gaps, tripPlanRequest, ctx.orchestratorState
+        ? (ctx.orchestratorState as { metadata?: { intake_user_message?: string } }).metadata
+            ?.intake_user_message
+        : undefined);
+      if (signals) {
+        Object.assign(
+          tripPlanRequest,
+          applyMarathonIntakeSignalsToTripPlan(
+            tripPlanRequest,
+            signals,
+            (ctx.orchestratorState as { metadata?: { intake_user_message?: string } } | undefined)?.metadata
+              ?.intake_user_message,
+          ),
+        );
+      } else {
+        const anchors = compiled.user_intent_anchors;
+        tripPlanRequest.guardian_debate_trip_context = {
+          ...(tripPlanRequest.guardian_debate_trip_context ?? {}),
+          user_intent_anchors: anchors,
+        };
+        const persona = inferPersonaHintFromUserIntentAnchors(anchors);
+        if (persona) {
+          tripPlanRequest.persona_hint = { ...(tripPlanRequest.persona_hint ?? {}), ...persona };
+        }
       }
+      if (compiled.suggested_days_for_deferred_lower_bound) {
+        candidate_structure = {
+          ...candidate_structure,
+          suggested_days: compiled.suggested_days_for_deferred_lower_bound,
+        };
+      }
+      this.logger.log(
+        `[IntakeExecutor] 极昼马拉松物理下界豁免：下放至三人格门禁 (suggested_days=${compiled.suggested_days_for_deferred_lower_bound ?? 'n/a'})`,
+      );
     }
 
     const hardGaps2 = gaps.filter((g) => g.severity === 'HARD');
     const clarificationQuestions = generateClarificationQuestions(hardGaps2, tripPlanRequest, {
       locale: ctx.locale,
     });
+
+    const tripId = String(tripPlanRequest.trip_id ?? (tripPlanRequest as { tripId?: string }).tripId ?? '').trim();
+    if (tripId && this.skillsRegistry) {
+      try {
+        const loadSkill = this.skillsRegistry.getSkill('trip.load');
+        if (loadSkill) {
+          const loaded = await loadSkill.execute({ tripId });
+          tripPlanRequest.trip_load = {
+            tripId: loaded.tripId,
+            itemCount: loaded.itemCount,
+            degraded: loaded.degraded,
+            degradedReason: loaded.degradedReason,
+            loadedAt: new Date().toISOString(),
+          };
+          if (loaded.items?.length && !tripPlanRequest.persisted_itinerary_items?.length) {
+            tripPlanRequest.persisted_itinerary_items = loaded.items;
+          }
+          if (ctx.orchestratorState && loaded.items?.length) {
+            const state = ctx.orchestratorState as OrchestratorState;
+            state.research_data = {
+              ...(state.research_data ?? {}),
+              itinerary_items: loaded.items,
+            };
+          }
+        }
+      } catch (e: unknown) {
+        this.logger.warn(`[IntakeExecutor] trip.load 失败: ${(e as Error)?.message}`);
+      }
+    }
 
     return {
       tripPlanRequest,

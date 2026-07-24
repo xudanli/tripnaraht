@@ -1,0 +1,12 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "pilot_iceland_blue_ice_03_guide_delay_shift_tw",
+  "evidenceVersionId": "ev-ice-03",
+  "frozenAt": "2026-07-16T09:53:47.008Z",
+  "sources": [
+    {
+      "provider": "gold_export",
+      "ref": "iceland.blue_ice.03_guide_delay_shift_tw"
+    }
+  ]
+}

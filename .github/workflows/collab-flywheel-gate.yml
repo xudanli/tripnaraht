@@ -1,0 +1,54 @@
+name: Match Square Collab Flywheel Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/match-square/**"
+      - "scripts/run-collaborative-flywheel-e2e.ts"
+      - "scripts/run-collab-flywheel-gate.ts"
+      - "scripts/collaborative-flywheel-replay-compare.ts"
+      - "scripts/lib/collab-flywheel-gate.ts"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**/collab_flywheel_audit_snapshots/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/collab-flywheel-gate.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "src/match-square/**"
+      - "scripts/run-collaborative-flywheel-e2e.ts"
+      - "scripts/run-collab-flywheel-gate.ts"
+      - "scripts/collaborative-flywheel-replay-compare.ts"
+      - "scripts/lib/collab-flywheel-gate.ts"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**/collab_flywheel_audit_snapshots/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/collab-flywheel-gate.yml"
+
+jobs:
+  collab-flywheel-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Collab flywheel unit tests (fingerprint + golden fixture)
+        run: npm run test:collab-flywheel:unit
+
+      - name: Collab flywheel offline gate (iceland_laugavegur_anxious_blind_box_v1)
+        run: npm run collab-flywheel:gate

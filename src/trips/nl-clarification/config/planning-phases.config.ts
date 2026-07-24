@@ -8,7 +8,7 @@
 export const PLANNING_PHASES = [
   { phase: 1, name: '硬约束确认', nameEn: 'Hard constraints', fields: ['destination', 'startDate', 'endDate', 'totalBudget', 'departureCity', 'travelerCount'] },
   { phase: 2, name: '风格选择', nameEn: 'Travel style', fields: ['travelStyle', 'travelSeason', 'activityPreferences', 'travelGroup'] },
-  { phase: 3, name: '节奏校准', nameEn: 'Pace calibration', fields: ['pace', 'preferencePace'] },
+  { phase: 3, name: '节奏校准', nameEn: 'Pace calibration', fields: ['pace', 'preferencePace', 'lunch_strategy'] },
   { phase: 4, name: '风险偏好', nameEn: 'Risk preference', fields: ['riskTolerance', 'hasWinterDrivingExperience', 'hasInsurance', 'hasEquipment'] },
 ] as const;
 

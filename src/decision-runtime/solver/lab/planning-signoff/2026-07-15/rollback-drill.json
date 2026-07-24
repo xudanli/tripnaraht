@@ -1,0 +1,69 @@
+{
+  "schemaId": "tripnara.planning_signoff.rollback_drill@v1",
+  "kind": "rollback_drill",
+  "status": "PASS",
+  "approved": true,
+  "liveDrill": true,
+  "harnessPass": true,
+  "drillKind": "staging_live",
+  "approvedAt": "2026-07-16T10:31:48.232Z",
+  "approvedBy": "lab:run-staging-rollback-drill",
+  "environment": "staging",
+  "signoffId": "m4-ra01-2026-07-15",
+  "tripId": "ra01_is_01",
+  "whitelistSize": 10,
+  "steps": [
+    {
+      "id": "RD-TOKEN",
+      "pass": true,
+      "detail": "token verified hash=449d90df1bf6981874a85193851b3f03"
+    },
+    {
+      "id": "RD-01",
+      "pass": true,
+      "detail": "mode=canary_authoritative provider=ortools-repair trip=ra01_is_01"
+    },
+    {
+      "id": "RD-01b",
+      "pass": true,
+      "detail": "merged=true"
+    },
+    {
+      "id": "RD-02/06",
+      "pass": true,
+      "detail": "stale attachment void after evidence drift"
+    },
+    {
+      "id": "RD-03/04",
+      "pass": true,
+      "detail": "provider=neptune-repair mode=shadow"
+    },
+    {
+      "id": "RD-05",
+      "pass": true,
+      "detail": "discarded=ortools_c1"
+    },
+    {
+      "id": "RD-05b",
+      "pass": true,
+      "detail": "authorize rejected ortools after canary kill"
+    },
+    {
+      "id": "RD-07",
+      "pass": true,
+      "detail": "regen provider=neptune-repair merged=false"
+    },
+    {
+      "id": "RD-08",
+      "pass": true,
+      "detail": "idempotent plan version (no duplicate)"
+    },
+    {
+      "id": "RD-09",
+      "pass": true,
+      "detail": "no duplicate decision cards in drill scope (mechanism)"
+    }
+  ],
+  "note": "Staging live drill against APPROVED authority.json + staging token + whitelist trip. Canary left OFF after drill.",
+  "detail": "Live/staging rollback drill passed — safe to proceed to selected_trips canary"
+}

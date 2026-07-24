@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "ra01_is_01",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "poi_ra01_is_01_pilot_is_01_start",
+      "to": "poi_ra01_is_01_stop_1",
+      "durationMin": 35
+    },
+    {
+      "from": "poi_ra01_is_01_stop_1",
+      "to": "poi_ra01_is_01_pilot_is_01_start",
+      "durationMin": 35
+    }
+  ]
+}

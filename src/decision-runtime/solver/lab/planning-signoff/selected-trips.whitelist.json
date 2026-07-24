@@ -1,0 +1,30 @@
+{
+  "schemaId": "tripnara.ortools_selected_trips_whitelist@v1",
+  "signoffId": "m4-ra01-2026-07-15",
+  "destinations": ["IS"],
+  "selectionCriteria": [
+    "iceland_destination",
+    "complete_trip_data",
+    "no_payment_or_irreversible_ops",
+    "no_high_risk_member_inference",
+    "ops_limited_to_SHIFT_SWAP_SHORTEN_REROUTE",
+    "human_reviewable",
+    "instant_neptune_fallback"
+  ],
+  "tripIds": [
+    "ra01_is_01",
+    "ra01_is_02",
+    "ra01_is_03",
+    "ra01_is_04",
+    "ra01_is_05",
+    "ra01_is_06",
+    "ra01_is_07",
+    "ra01_is_08",
+    "ra01_is_09",
+    "ra01_is_10"
+  ],
+  "ownerEmail": "2293028143@qq.com",
+  "environment": "staging",
+  "packSource": "staging_export",
+  "notes": "Staging intake 2026-07-16 — packs under selected-trips/packs/ra01_is_*. Product must still APPROVE authority.json before opening selected_trips canary."
+}

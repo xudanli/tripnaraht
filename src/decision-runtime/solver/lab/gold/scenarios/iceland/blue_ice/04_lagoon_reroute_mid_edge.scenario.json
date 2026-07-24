@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.blue_ice.04_lagoon_reroute_mid_edge",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "blue_ice",
+  "title": "Lagoon ice shelf unsafe \u2014 REROUTE forbid a3\u2192a4",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/blue_ice/problems/04_lagoon_reroute_mid_edge.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1"
+}

@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.10_shorten_overpacked_day",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "Overpacked day \u2014 SHORTEN longest stay",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/10_shorten_overpacked_day.problem.json",
+  "notes": [
+    "Repair Locality \u2014 duration only"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 2
+}

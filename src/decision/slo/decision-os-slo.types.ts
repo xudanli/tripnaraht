@@ -3,6 +3,7 @@
  */
 
 export type ValidationGatewayStageId =
+  | 'GRAPH_COMPILE_INTEGRITY'
   | 'DATA_RELIABILITY'
   | 'RISK_EVENTS'
   | 'AXIOM_PROJECTION'

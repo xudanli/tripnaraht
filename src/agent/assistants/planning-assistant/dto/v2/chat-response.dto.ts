@@ -49,6 +49,12 @@ export class RoutingInfoDto {
   @ApiProperty({ description: '路由原因' })
   reason!: string;
 
+  @ApiPropertyOptional({
+    description: '交付模式：`SYNC` 默认；`ASYNC_POLLING` 表示需轮询 `GET /api/agent/task/status/:taskId`',
+    enum: ['SYNC', 'ASYNC_POLLING'],
+  })
+  mode?: 'SYNC' | 'ASYNC_POLLING';
+
   @ApiPropertyOptional({ description: '提取的参数' })
   params?: Record<string, any>;
 }
@@ -96,6 +102,24 @@ export class ChatResponseDto {
 
   @ApiPropertyOptional({ description: '会话ID' })
   sessionId?: string;
+
+  @ApiPropertyOptional({
+    description: 'route_and_run 异步任务 ID（routing.mode=ASYNC_POLLING 时由前端轮询）',
+    example: 'task_trip_xxx_1716000000000',
+  })
+  task_id?: string;
+
+  @ApiPropertyOptional({
+    description: '异步任务状态（与 RouteAndRunTaskStatusResponseDto.status 对齐）',
+    enum: ['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED'],
+  })
+  task_status?: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+
+  @ApiPropertyOptional({
+    description: '轮询路径（相对 API 根；默认 `/api/agent/task/status/{task_id}`）',
+    example: '/api/agent/task/status/task_trip_xxx_1716000000000',
+  })
+  task_poll_path?: string;
 
   @ApiPropertyOptional({ 
     description: '目的地推荐列表（当路由到推荐接口时包含）', 
@@ -202,6 +226,49 @@ export class ChatResponseDto {
     decision_log?: unknown[];
     itinerary?: { days?: unknown[] };
     decisionState?: Record<string, unknown>;
+  };
+
+  /**
+   * 与左侧时间轴应对齐的日历日块（`route_and_run` payload.timeline，已与 Trip 草案对齐时优先库内）。
+   */
+  @ApiPropertyOptional({ description: '出站时间轴（与 feasibility 同源）' })
+  timeline?: unknown[];
+
+  /** 可执行性 / VERIFY 摘要（与 timeline 同一 itinerary 过滤） */
+  @ApiPropertyOptional({ description: 'safety_surface（verify_issues 等）' })
+  safety_surface?: Record<string, unknown>;
+
+  /** ITINERARY_ADJUST：草案待确认卡片（含 draft_schedule_zh / apply_confirmation_lines） */
+  @ApiPropertyOptional({ description: '改排优化结果（与 timeline 同源）' })
+  itinerary_adjust_result?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: '改排应用执行态（ADVICE_ONLY / AUTO）' })
+  actionExecution?: Record<string, unknown>;
+
+  /** 经 BFF 清洗的门控（violations 唯一权威来源；勿再读 state.gate_result.violations） */
+  @ApiPropertyOptional({ description: '清洗后的 gate_result（可执行性卡片）' })
+  gate_result?: Record<string, unknown>;
+
+  /**
+   * ITINERARY_ADJUST：可执行性唯一列表（已去重；改排草案待确认时不含 VERIFY 合成 POI_CLOSED）
+   */
+  @ApiPropertyOptional({ description: '工作台可执行性（改排场景优先读此字段）' })
+  workbench_feasibility?: {
+    violations?: unknown[];
+    verify_synthetic_suppressed?: boolean;
+  };
+
+  /**
+   * 展示源说明：`timeline_source` / `feasibility_source` 为 orchestration | trip_persisted；
+   * `drift_detected` 为 true 时表示曾出现编排内存与 Trip 库不一致，已按 Trip 收敛。
+   */
+  @ApiPropertyOptional({ description: '工作台时间轴与可执行性对齐元数据' })
+  workbench_display?: {
+    timeline_source?: string;
+    feasibility_source?: string;
+    aligned?: boolean;
+    drift_detected?: boolean;
+    trip_id?: string;
   };
 
   @ApiPropertyOptional({

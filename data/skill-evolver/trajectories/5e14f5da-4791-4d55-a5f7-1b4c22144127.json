@@ -1,0 +1,36 @@
+{
+  "trajectoryId": "5e14f5da-4791-4d55-a5f7-1b4c22144127",
+  "skillId": "country_pack.IS",
+  "skillVersion": 2,
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "DEM Evidence missing for segment (highlands)",
+      "action": "ABU REJECT E_DEM_MISSING",
+      "result": "DEM Evidence missing for segment (highlands)",
+      "isError": true,
+      "timestamp": "2026-05-26T07:06:03.288Z"
+    },
+    {
+      "stepIndex": 1,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "fixture trace summary audit",
+      "action": "EXPECTED_UTILITY EVALUATE EXPECTED_UTILITY_EVAL",
+      "result": "fixture trace summary audit",
+      "isError": false,
+      "timestamp": "2026-05-26T07:06:03.288Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n   - **高地地形证据门禁检查**：若用户意图包含“高地”，必须检查用户是否提供了海拔适应证明或官方许可文件（`E_DEM_HIGHLANDS`）。\n   - **拒绝逻辑**：改为条件性拒绝。当 `ABU REJECT` 触发时，先输出缺失证据的具体类型（如“海拔证明”），再进入期望效用评估分支。\n   - ⚠️ **注意**：`ABU REJECT` 后必须提供明确的证据补齐路径，而非终止会话。应调用交互式证据收集模块，输出可操作的补充证据请求提示。\n2. 输出初步路线方向建议。\n   - 在夏季高地场景下，增加“是否需要额外安全许可”的交互式确认环节。\n   - ⚠️ **注意**：本步骤必须输出用户可见的补充证据请求（如调用交互式证据收集模块），而非仅返回内部状态。\n3. **证据缺失处理规则**：当 `E_DEM_MISSING` 触发时，应输出可操作的补充证据请求提示，而非仅返回拒绝状态。\n4. **用户响应跟踪**：增加步骤记录用户对 `ABU REJECT` 的后续反馈，确保交互闭环。\n\n## 关键强调\n\n### ⚠️ 高地路线硬性条件\n- 海拔证明（`E_DEM`）\n- 季节窗口（7–8 月）\n- 官方许可（如需要）\n\n### ⚠️ 技能缺陷与执行失误的区别\n本案例属于核心规则缺失（如缺少海拔/证据门禁规则），需修改技能本体而非执行流程。两条轨迹的 Step 2 均未输出任何用户可见的补充证据请求，属于执行层缺失（应调用交互式证据收集模块）。\n\n### ⚠️ 轨迹完整性\n轨迹未记录用户对 `ABU REJECT` 的后续反馈，建议增加“用户响应跟踪”步骤，确保系统能基于用户回应动态调整输出。",
+  "evalMode": "decision_replay",
+  "decisionReplayPassed": true,
+  "liveDecisionReplay": false,
+  "createdAt": "2026-05-26T07:06:03.289Z",
+  "fixtureCaseId": "iceland-highlands-dem-missing",
+  "score": 97.98
+}

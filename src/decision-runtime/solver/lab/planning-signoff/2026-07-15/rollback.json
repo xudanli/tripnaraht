@@ -1,0 +1,21 @@
+{
+  "schemaId": "tripnara.planning_signoff.rollback@v1",
+  "kind": "rollback",
+  "status": "READY",
+  "approved": true,
+  "approvedAt": "2026-07-14T16:45:29.046Z",
+  "approvedBy": "policy:authority-canary-default-shadow",
+  "detail": "Unset OR_TOOLS_AUTHORITATIVE_CANARY → authoritativeProvider=neptune-repair / legacy",
+  "criteria": {
+    "fallbackProvider": "neptune-repair",
+    "canaryStages": [
+      "shadow",
+      "selected_trips",
+      "5%",
+      "20%",
+      "50%",
+      "100%"
+    ]
+  },
+  "summary": "Rollback to legacy authoritative provider is READY (not exercised)"
+}

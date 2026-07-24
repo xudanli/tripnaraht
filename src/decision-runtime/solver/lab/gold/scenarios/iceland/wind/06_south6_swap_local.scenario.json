@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.wind.06_south6_swap_local",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "wind",
+  "title": "South coast 6-POI \u2014 SWAP local wind avoid",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/wind/problems/06_south6_swap_local.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

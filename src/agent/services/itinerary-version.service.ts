@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditRecordService, type ItineraryRevisionAuditDelta } from './audit-record.service';
+import { AlignmentTier3PersistenceService } from '../../trips/decision/services/alignment-tier3-persistence.service';
 
 export type PersistNegotiationConfirmResult = {
   baseline_revision_id: string | null;
@@ -20,6 +21,7 @@ export class ItineraryVersionService {
   constructor(
     private readonly auditRecord: AuditRecordService,
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly alignmentTier3?: AlignmentTier3PersistenceService,
   ) {}
 
   /** Merge mechanical patch line with negotiation narrative + chosen-alternative reasoning tags for audit UI. */
@@ -125,6 +127,15 @@ export class ItineraryVersionService {
         },
       });
 
+      this.alignmentTier3?.scheduleCapture({
+        tripId,
+        parentSnapshot,
+        childSnapshot: params.postItinerary,
+        audit,
+        revisionId: confirmed.id,
+        source: 'itinerary-revision-regret',
+      });
+
       return {
         baseline_revision_id: baselineId,
         confirmed_revision_id: confirmed.id,
@@ -156,5 +167,67 @@ export class ItineraryVersionService {
   async getRevisionById(revisionId: string) {
     if (!this.prisma) return null;
     return this.prisma.itineraryRevision.findUnique({ where: { id: revisionId } });
+  }
+
+  /**
+   * Append-only USER_EDIT revision (ITINERARY_ADJUST / drag-drop) + alignment capture.
+   */
+  async persistUserEditRevision(params: {
+    tripId: string;
+    userId?: string | null;
+    preItinerary: unknown;
+    postItinerary: unknown;
+    summary?: string;
+    source?: string;
+  }): Promise<{ revision_id: string; audit: ItineraryRevisionAuditDelta } | null> {
+    if (!this.prisma) return null;
+    const tripId = String(params.tripId ?? '').trim();
+    if (!tripId) return null;
+
+    try {
+      const latest = await this.prisma.itineraryRevision.findFirst({
+        where: { tripId },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const audit = this.auditRecord.computeRevisionAuditDelta({
+        parentSnapshot: params.preItinerary,
+        childSnapshot: params.postItinerary,
+        alternativeId: 'USER_EDIT',
+        negotiationPayload: undefined,
+      });
+      audit.resolution_type = params.source ?? 'USER_EDIT';
+
+      const created = await this.prisma.itineraryRevision.create({
+        data: {
+          tripId,
+          userId: params.userId ?? null,
+          negotiationSessionId: null,
+          alternativeId: null,
+          resolutionPatchSummary: params.summary ?? `USER_EDIT: ${params.source ?? 'manual'}`,
+          snapshot: params.postItinerary as Prisma.InputJsonValue,
+          kind: 'USER_EDIT',
+          parentRevisionId: latest?.id ?? null,
+          deltaCostUsd: audit.delta_cost_usd,
+          deltaTimeMinutes: audit.delta_time_minutes,
+          interruptedItems: audit.interrupted_items as Prisma.InputJsonValue,
+          resolutionType: audit.resolution_type,
+        },
+      });
+
+      this.alignmentTier3?.scheduleCapture({
+        tripId,
+        parentSnapshot: params.preItinerary,
+        childSnapshot: params.postItinerary,
+        audit,
+        revisionId: created.id,
+        source: 'execution-closure',
+      });
+
+      return { revision_id: created.id, audit };
+    } catch (e) {
+      this.logger.warn(`persistUserEditRevision failed: ${(e as Error)?.message ?? e}`);
+      return null;
+    }
   }
 }

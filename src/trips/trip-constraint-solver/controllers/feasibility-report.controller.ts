@@ -1,16 +1,18 @@
 import {
+  BadRequestException,
   Body,
+  ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Post,
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../../auth/decorators/public.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../../auth/decorators/current-user.decorator';
@@ -19,6 +21,7 @@ import {
   errorResponse,
   successResponse,
 } from '../../../common/dto/standard-response.dto';
+import { mapWriteChainBlockedToErrorResponse } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { ConstraintSolverAccessService } from '../services/constraint-solver-access.service';
 import { FeasibilityReportService } from '../services/feasibility-report.service';
 import {
@@ -27,6 +30,8 @@ import {
   FeasibilityValidateScopeDto,
   ValidateFeasibilityBodyDto,
 } from '../dto/feasibility-report.dto';
+import { dispatchManualRepairFromModule } from '../../../decision-runtime/trigger/record-trigger-lineage-from-module.util';
+import { resolveDecisionRunId } from '../../../decision-runtime/trigger/record-trigger-lineage.util';
 
 @ApiTags('trip-constraint-solver')
 @Public()
@@ -35,6 +40,7 @@ export class FeasibilityReportController {
   constructor(
     private readonly access: ConstraintSolverAccessService,
     private readonly feasibility: FeasibilityReportService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   @Get()
@@ -88,7 +94,10 @@ export class FeasibilityReportController {
     try {
       const userId = this.access.resolveUserId(user);
       await this.access.assertTripMember(tripId, userId);
-      const data = await this.feasibility.validateScope(tripId, body.scope);
+      const data = await this.feasibility.validateScope(tripId, body.scope, {
+        forceRefreshEvidence: body.forceRefreshEvidence,
+        lang: body.lang,
+      });
       return successResponse(data);
     } catch (e) {
       return this.handleError(e);
@@ -110,13 +119,14 @@ export class FeasibilityReportController {
       const data = await this.feasibility.previewRepair(tripId, issueId, body);
       return successResponse(data);
     } catch (e) {
+      if (e instanceof ConflictException) throw e;
       return this.handleError(e);
     }
   }
 
   @Post('issues/:issueId/apply-repair')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '应用修复（复用 readiness apply-repair）' })
+  @ApiOperation({ summary: '应用修复（方案写库 SSOT — P4 repair authority）' })
   async applyRepair(
     @Param('tripId') tripId: string,
     @Param('issueId') issueId: string,
@@ -126,9 +136,24 @@ export class FeasibilityReportController {
     try {
       const userId = this.access.resolveUserId(user);
       await this.access.assertTripMember(tripId, userId);
-      const data = await this.feasibility.applyRepair(tripId, issueId, body);
-      return successResponse(data);
+      const dispatched = await dispatchManualRepairFromModule(this.moduleRef, {
+        tripId,
+        userId,
+        entryPointId: 'user.feasibility-apply-repair',
+        issueId,
+        metadata: {
+          repairOptionId: body.optionId,
+          intent: 'manual_repair',
+        },
+      });
+      const decisionRunId = resolveDecisionRunId(dispatched);
+      const data = await this.feasibility.applyRepair(tripId, issueId, body, userId);
+      return successResponse({
+        ...data,
+        ...(decisionRunId ? { decisionRunId } : {}),
+      });
     } catch (e) {
+      if (e instanceof ConflictException) throw e;
       return this.handleError(e);
     }
   }
@@ -156,6 +181,8 @@ export class FeasibilityReportController {
   }
 
   private handleError(e: unknown) {
+    const writeChain = mapWriteChainBlockedToErrorResponse(e);
+    if (writeChain) return writeChain;
     if (e instanceof NotFoundException) {
       return errorResponse(ErrorCode.NOT_FOUND, e.message);
     }

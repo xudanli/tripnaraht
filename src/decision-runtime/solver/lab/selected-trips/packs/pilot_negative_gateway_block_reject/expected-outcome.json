@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.selected_trip.expected_outcome@v1",
+  "tripId": "pilot_negative_gateway_block_reject",
+  "expectation": "reject",
+  "maxChangedActivities": 0,
+  "mustPreserveBooked": true,
+  "gateway": "BLOCK",
+  "notes": [
+    "Negative sample — expect reject / Gateway BLOCK (mechanism seal)",
+    "Not for production whitelist without re-review"
+  ],
+  "reviewedBy": "lab-mechanism-preflight",
+  "reviewedAt": "2026-07-16"
+}

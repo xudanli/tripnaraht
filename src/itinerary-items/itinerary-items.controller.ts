@@ -376,6 +376,39 @@ export class ItineraryItemsController {
   }
 
   @Public()
+  @Get('trip/:tripId')
+  @ApiOperation({
+    summary: '按 trip 批量拉取行程项（P0）',
+    description:
+      '一次返回全程全部 ItineraryItem（含 Place 坐标），替代 N×GET /itinerary-items?tripDayId=…。' +
+      '可与 GET /trips/:tripId/journey-map 并行或单独使用。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({
+    name: 'includePlace',
+    required: false,
+    type: Boolean,
+    description: '是否包含 Place 坐标（全程地图 marker 需要，默认 true）',
+  })
+  @ApiResponse({ status: 200, description: '成功', type: ApiSuccessResponseDto })
+  async findByTrip(
+    @Param('tripId') tripId: string,
+    @Query('includePlace') includePlace?: string,
+  ) {
+    try {
+      const items = await this.itineraryItemsService.findByTrip(tripId, {
+        includePlace: includePlace !== 'false',
+      });
+      return successResponse(items);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
   @Get(':id')
   @ApiOperation({ 
     summary: '获取单个行程项详情',
@@ -817,6 +850,42 @@ export class ItineraryItemsController {
   }
 
   @Public()
+  @Get('trip/:tripId/travel-info')
+  @ApiOperation({
+    summary: '批量获取行程交通信息（只读缓存）',
+    description:
+      '一次返回所有天的交通段，仅读 ItineraryItem.travelFromPrevious*，不触发路由重算。' +
+      '重算请用 POST /itinerary-items/trip/:tripId/calculate-all-travel。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID' })
+  @ApiQuery({
+    name: 'dates',
+    required: false,
+    description: 'YYYY-MM-DD 逗号分隔，仅返回指定天',
+  })
+  @ApiResponse({ status: 200, description: '批量交通信息（cached）' })
+  async getTripTravelInfo(
+    @Param('tripId') tripId: string,
+    @Query('dates') dates?: string,
+  ) {
+    try {
+      const dateFilter = dates
+        ?.split(',')
+        .map((d) => d.trim())
+        .filter(Boolean);
+      const result = await this.itineraryItemsService.getTripTravelInfoFromCache(tripId, {
+        dates: dateFilter?.length ? dateFilter : undefined,
+      });
+      return successResponse(result);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
   @Get('trip/:tripId/days/:dayId/travel-info')
   @ApiOperation({ 
     summary: '获取某天的交通信息',
@@ -824,6 +893,18 @@ export class ItineraryItemsController {
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
   @ApiParam({ name: 'dayId', description: '行程日期 ID' })
+  @ApiQuery({
+    name: 'mode',
+    required: false,
+    enum: ['live', 'cached'],
+    description: 'cached 只读 DB 段；live（默认）可能触发路由计算',
+  })
+  @ApiQuery({
+    name: 'includeTerrain',
+    required: false,
+    description:
+      'Legacy: 1/true → terrainPolicy=REQUIRED. Default is server AUTO (Iceland/F-road/highland auto DEM). Prefer omitting.',
+  })
   @ApiResponse({ 
     status: 200, 
     description: '交通信息',
@@ -842,9 +923,22 @@ export class ItineraryItemsController {
               toItemId: { type: 'string' },
               fromPlace: { type: 'string' },
               toPlace: { type: 'string' },
-              duration: { type: 'number', description: '分钟' },
+              duration: {
+                type: 'number',
+                description: '分钟 — equals eta.schedulableDurationMin (Shadow=base)',
+              },
               distance: { type: 'number', description: '米' },
               travelMode: { type: 'string', enum: ['DRIVING', 'WALKING', 'TRANSIT', 'FLIGHT', 'TRAIN', 'FERRY', 'BICYCLE', 'TAXI'] },
+              eta: {
+                type: 'object',
+                description:
+                  'tripnara/travel-eta/v1 — baseDurationMin / planningDurationMin / schedulableDurationMin / shadowPlanningDurationMin / adjustments / terrain',
+              },
+              userEvidence: {
+                type: 'object',
+                description:
+                  'tripnara/travel-eta-user-evidence/v1 — 基础车程/建议预留/阻断文案（Web/iOS 直接渲染）',
+              },
             },
           },
         },
@@ -862,9 +956,19 @@ export class ItineraryItemsController {
   async getDayTravelInfo(
     @Param('tripId') tripId: string,
     @Param('dayId') dayId: string,
+    @Query('mode') mode?: 'live' | 'cached',
+    @Query('includeTerrain') includeTerrain?: string,
   ) {
     try {
-      const result = await this.itineraryItemsService.getDayTravelInfo(tripId, dayId);
+      const wantTerrain = includeTerrain === '1' || includeTerrain === 'true';
+      const result =
+        mode === 'cached'
+          ? await this.itineraryItemsService.getDayTravelInfoFromCache(tripId, dayId)
+          : await this.itineraryItemsService.getDayTravelInfo(tripId, dayId, {
+              // Server AUTO by default; legacy flag forces REQUIRED
+              terrainPolicy: wantTerrain ? 'REQUIRED' : 'AUTO',
+              includeTerrain: wantTerrain,
+            });
       return successResponse(result);
     } catch (error: any) {
       if (error instanceof NotFoundException) {

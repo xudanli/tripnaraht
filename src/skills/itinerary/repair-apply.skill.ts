@@ -45,7 +45,7 @@ export interface RepairApplyOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'repair.apply',
-  description: '应用修复方案到行程',
+  description: '将 verify/neptune 产出的 repair adjustments 应用到 itinerary。在 REPAIR 阶段 verify 失败且已有修复方案需落盘时调用。',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -56,7 +56,7 @@ export class RepairApplySkill implements Skill<RepairApplyInput, RepairApplyOutp
 
   metadata: SkillMetadata = {
     name: 'repair.apply',
-    description: '应用修复方案到行程',
+    description: '将 verify/neptune 产出的 repair adjustments 应用到 itinerary。在 REPAIR 阶段 verify 失败且已有修复方案需落盘时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

@@ -53,11 +53,25 @@ describe('trip-loop-ui.adapter', () => {
       stopReason: 'patches_ready_for_approval',
     };
 
-    const ui = buildTripLoopUiView(result);
+    const ui = buildTripLoopUiView(result, {
+      feasibilityIssues: [
+        {
+          id: 'issue-1',
+          priority: 'must_handle',
+          category: 'schedule',
+          title: '冰川徒步时间冲突',
+          message: '冰川徒步与午餐时间重叠，建议调整出发时间。',
+          affectedDays: [2],
+          severity: 'high',
+        },
+      ],
+    });
     expect(ui.phase).toBe('awaiting_approval');
     expect(ui.progress.totalChecks).toBe(5);
     expect(ui.issueCards).toHaveLength(1);
     expect(ui.issueCards[0].recommendation).toContain('09:00');
+    expect(ui.issueCards[0].personaAlert?.presentation?.headline).toBe('冰川徒步时间冲突');
+    expect(ui.personaAlerts).toHaveLength(1);
     expect(ui.primaryAction?.patchCount).toBe(1);
   });
 

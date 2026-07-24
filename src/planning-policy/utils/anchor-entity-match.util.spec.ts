@@ -30,4 +30,10 @@ describe('anchor-entity-match (Golden Circle)', () => {
     const poi = { name: '斯奈山冰川国家公园', nameCN: '', id: 1 };
     expect(goldenCircleEntityStrongMatch(poi, 'thingvellir')).toBe(false);
   });
+
+  it('Geysir Car Rental 不应命中 geysir 锚点', () => {
+    const rental = { nameCN: 'Geysir租车公司', nameEN: 'Geysir Car Rental', id: 2002 };
+    expect(goldenCircleEntityStrongMatch(rental, 'geysir')).toBe(false);
+    expect(keywordMatchResearchPoiToSlug(rental, 'geysir')).toBe(false);
+  });
 });

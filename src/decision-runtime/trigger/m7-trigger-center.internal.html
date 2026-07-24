@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TripNARA M7 — Trigger Center (Internal)</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d8bfd;
+      --ok: #3dd68c;
+      --warn: #f5c542;
+      --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    header p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.85rem; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      align-items: flex-end;
+    }
+    label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--muted); }
+    input[type="text"] {
+      min-width: 220px;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+    }
+    button {
+      padding: 0.5rem 0.9rem;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button.secondary { background: var(--panel); border: 1px solid var(--border); color: var(--text); }
+    main { padding: 1rem 1.25rem 2rem; }
+    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; }
+    .error { color: var(--bad); margin-bottom: 1rem; }
+    .empty { color: var(--muted); padding: 2rem; text-align: center; border: 1px dashed var(--border); border-radius: 8px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+    }
+    .card h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; font-size: 0.85rem; color: var(--muted); }
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge.ok { background: rgba(61, 214, 140, 0.15); color: var(--ok); }
+    .badge.warn { background: rgba(245, 197, 66, 0.15); color: var(--warn); }
+    .badge.bad { background: rgba(248, 113, 113, 0.15); color: var(--bad); }
+    .badge.neutral { background: rgba(139, 156, 179, 0.15); color: var(--muted); }
+    .summary { margin-top: 0.75rem; font-size: 0.9rem; }
+    footer { padding: 0.75rem 1.25rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>M7 Trigger Center — Internal Ops</h1>
+    <p>行程触发事件 · 影响范围 · 方案有效性 · 系统建议 · 处置状态</p>
+  </header>
+
+  <div class="toolbar">
+    <label>
+      API Base URL
+      <input type="text" id="baseUrl" value="http://localhost:3000/api" />
+    </label>
+    <label>
+      Trip ID
+      <input type="text" id="tripId" placeholder="trip_abc" />
+    </label>
+    <button type="button" id="fetchBtn">Load</button>
+    <button type="button" id="pollBtn" class="secondary">Poll 30s</button>
+  </div>
+
+  <main>
+    <div id="status" class="meta"></div>
+    <div id="error" class="error" hidden></div>
+    <div id="list"></div>
+  </main>
+
+  <footer>
+    GET /decision-engine/v1/trigger-center/by-trip/:tripId · requires DECISION_TRIGGER_GATEWAY_ENABLED=1
+  </footer>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let pollTimer = null;
+
+    function validityBadge(v) {
+      const map = { VALID: 'ok', REPAIRING: 'warn', STALE: 'bad', UNKNOWN: 'neutral' };
+      return `<span class="badge ${map[v] || 'neutral'}">${v}</span>`;
+    }
+
+    function dispositionBadge(d) {
+      const warn = ['AWAITING_CONFIRMATION', 'PENDING', 'DELEGATED_FULL_REPLAN'];
+      const ok = ['AUTO_REPAIR', 'RESOLVED'];
+      const cls = ok.includes(d) ? 'ok' : warn.includes(d) ? 'warn' : d === 'SKIPPED' ? 'neutral' : 'neutral';
+      return `<span class="badge ${cls}">${d}</span>`;
+    }
+
+    function opsState(item) {
+      if (item.disposition === 'SKIPPED') return 'DEDUPED';
+      if (item.disposition === 'PENDING') return 'DETECTED';
+      if (item.disposition === 'AWAITING_CONFIRMATION') return 'ACKNOWLEDGED';
+      if (item.disposition === 'AUTO_REPAIR') return 'REPAIR_PROPOSED';
+      if (item.disposition === 'DELEGATED_FULL_REPLAN') return 'DECISION_CREATED';
+      return item.disposition;
+    }
+
+    async function fetchTriggerCenter() {
+      const base = $('baseUrl').value.replace(/\/$/, '');
+      const tripId = $('tripId').value.trim();
+      $('error').hidden = true;
+      $('status').textContent = 'Loading…';
+
+      if (!tripId) {
+        $('error').textContent = 'tripId is required';
+        $('error').hidden = false;
+        $('status').textContent = '';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${base}/decision-engine/v1/trigger-center/by-trip/${encodeURIComponent(tripId)}`);
+        const json = await res.json();
+        if (!json.success || !json.data) {
+          throw new Error(json.message || 'API unsuccessful');
+        }
+        render(json.data);
+      } catch (err) {
+        $('error').textContent = err.message || String(err);
+        $('error').hidden = false;
+        $('list').innerHTML = '';
+        $('status').textContent = '';
+      }
+    }
+
+    function render(view) {
+      $('status').textContent = `${view.itemCount} item(s) · schema ${view.schemaId} · ${view.generatedAt}`;
+      const list = $('list');
+
+      if (!view.items || view.items.length === 0) {
+        list.innerHTML = '<div class="empty">No lineage for this trip. Enable DECISION_TRIGGER_GATEWAY_ENABLED=1 and trigger an event.</div>';
+        return;
+      }
+
+      list.innerHTML = view.items.map((item) => `
+        <article class="card">
+          <h2>${escapeHtml(item.headline)}</h2>
+          <div class="row">
+            <span>${escapeHtml(item.eventType)}</span>
+            <span>${escapeHtml(item.triggerKind)}</span>
+            <span>scope: ${escapeHtml(item.affectedScope)}</span>
+            ${item.affectedDayLabel ? `<span>${escapeHtml(item.affectedDayLabel)}</span>` : ''}
+            <span>ops: ${opsState(item)}</span>
+          </div>
+          <div class="row" style="margin-top:0.5rem">
+            ${validityBadge(item.planValidity)}
+            ${dispositionBadge(item.disposition)}
+            ${item.humanConfirmationRequired ? '<span class="badge warn">HITL</span>' : ''}
+          </div>
+          <div class="summary">${escapeHtml(item.recommendation?.summary || '')}</div>
+          <div class="row" style="margin-top:0.5rem">
+            ${item.runId ? `<span>run: ${escapeHtml(item.runId)}</span>` : ''}
+            ${item.detectorId ? `<span>detector: ${escapeHtml(item.detectorId)}</span>` : ''}
+            ${item.recordedAt ? `<span>${escapeHtml(item.recordedAt)}</span>` : ''}
+          </div>
+        </article>
+      `).join('');
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    $('fetchBtn').addEventListener('click', fetchTriggerCenter);
+    $('pollBtn').addEventListener('click', () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        $('pollBtn').textContent = 'Poll 30s';
+        return;
+      }
+      fetchTriggerCenter();
+      pollTimer = setInterval(fetchTriggerCenter, 30000);
+      $('pollBtn').textContent = 'Stop poll';
+    });
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('base')) $('baseUrl').value = params.get('base');
+    if (params.get('tripId')) $('tripId').value = params.get('tripId');
+  </script>
+</body>
+</html>

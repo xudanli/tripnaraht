@@ -11,7 +11,31 @@ export type OfflineOperationType =
   | 'mood_check'
   | 'motion_signal'
   | 'experience_pulse'
-  | 'micro_feedback';
+  | 'micro_feedback'
+  | 'poi_execution_feedback';
+
+export type PoiAccessMorningAlert = {
+  itemId: string;
+  poiId: string;
+  poiName: string;
+  arrivalTime: string;
+  verdict:
+    | 'BLOCKED'
+    | 'FEASIBLE_WITH_RISK'
+    | 'FEASIBLE'
+    | 'NEEDS_CONFIRMATION'
+    | 'RESERVATION_REQUIRED';
+  reason: string;
+  planB: Array<{
+    action: string;
+    detail: string;
+    suggestedArrivalTime?: string;
+    alternativePoiId?: string;
+  }>;
+  crowdLevel?: string;
+  predictedWaitP50?: number;
+  disclosureLabel?: string;
+};
 
 export interface InTripMorningPack {
   schemaVersion: typeof IN_TRIP_MORNING_PACK_SCHEMA_VERSION;
@@ -30,6 +54,8 @@ export interface InTripMorningPack {
   };
   walletBalances: WalletBalances | null;
   pendingOperations: OfflineQueueEntryPublic[];
+  /** 当日 POI 准入/容量预警（冰岛 Access & Capacity Engine） */
+  poiAccessAlerts?: PoiAccessMorningAlert[];
 }
 
 export interface OfflineQueueEntryPublic {

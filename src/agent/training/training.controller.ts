@@ -31,6 +31,7 @@ import { TrainingBatchProcessorService } from './services/training-batch-process
 import { ModelCollapseMonitorService } from './services/model-collapse-monitor.service';
 import { TrainingQualityAnalyzerService } from './services/training-quality-analyzer.service';
 import { ConstraintsEngineService } from './services/constraints-engine.service';
+import { isConstraintAgentNarrateOnlyMode } from '../../decision-runtime/constraints/constraint-agent-narrate-only.util';
 import { RiskEventManagerService } from './services/risk-event-manager.service';
 import { ComplianceAuditService } from './services/compliance-audit.service';
 import { SecurityRedTeamService } from './services/security-red-team.service';
@@ -718,6 +719,66 @@ export class TrainingController {
   /**
    * ETL: 抽取轨迹数据
    */
+  @Post('etl/decision-trajectories/extract')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'PR-C：从 decision_trajectories 抽取 FINALIZED 执行轨迹' })
+  async extractDecisionTrajectories(
+    @Body()
+    dto: {
+      ids?: string[];
+      request_ids?: string[];
+      statuses?: string[];
+      orchestration_outcomes?: string[];
+      min_total_reward?: number;
+      updated_after?: string;
+      exclude_critical_fail?: boolean;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) {
+    const rows = await this.etlService.extractDecisionTrajectories({
+      ...dto,
+      statuses: (dto.statuses as any) ?? ['FINALIZED'],
+      orchestration_outcomes: dto.orchestration_outcomes as any,
+    });
+    return {
+      success: true,
+      data: {
+        count: rows.length,
+        rows: rows.map((r) => ({
+          id: r.id,
+          request_id: r.requestId,
+          orchestration_outcome: r.orchestrationOutcome,
+          total_reward: r.totalReward,
+          steps: r.payload.orchestration_steps?.length ?? 0,
+        })),
+      },
+    };
+  }
+
+  @Post('etl/decision-trajectories/export-training-pack')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'PR-C：导出 DPO + SFT Repair 训练包（decision_trajectories SSOT）' })
+  async exportDecisionTrajectoryTrainingPack(
+    @Body()
+    dto: {
+      request_ids?: string[];
+      updated_after?: string;
+      limit?: number;
+      output_dir?: string;
+    } = {},
+  ) {
+    const result = await this.etlService.exportDecisionTrajectoryTrainingPack(
+      {
+        request_ids: dto.request_ids,
+        updated_after: dto.updated_after,
+        limit: dto.limit,
+      },
+      dto.output_dir ?? './data/training/decision-trajectories',
+    );
+    return { success: true, data: result };
+  }
+
   @Post('etl/extract')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '抽取轨迹数据并转换为RL格式' })
@@ -1668,7 +1729,15 @@ export class TrainingController {
 
       return {
         success: true,
-        data: result,
+        data: {
+          ...result,
+          ...(isConstraintAgentNarrateOnlyMode()
+            ? {
+                usage: 'narrate_only',
+                formal_authority: 'ConstraintEvaluationGateway',
+              }
+            : {}),
+        },
       };
     } catch (error: any) {
       this.logger.error(
@@ -2218,6 +2287,7 @@ export class TrainingController {
       evidence_refs: any[];
       model_version: string;
       trace_id: string;
+      unified?: import('../../trips/decision/explainability/unified-explainability.types').UnifiedExplainabilityEnvelopeV1;
     },
   ): Promise<{ success: boolean; data: any }> {
     this.logger.log(`[TrainingController] 生成可解释输出: traceId=${dto.trace_id}`);
@@ -2228,6 +2298,7 @@ export class TrainingController {
         dto.evidence_refs,
         dto.model_version,
         dto.trace_id,
+        dto.unified ? { unifiedEnvelope: dto.unified } : undefined,
       );
 
       // 生成用户友好的解释文本

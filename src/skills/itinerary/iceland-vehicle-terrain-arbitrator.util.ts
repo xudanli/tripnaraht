@@ -235,8 +235,8 @@ export function collectIcelandVehicleTerrainArbitrationIssues(params: {
       type: 'REACHABILITY_ISSUE',
       severity: 'CRITICAL',
       message: intentVirtual2wd
-        ? '【车型-路况仲裁·意图合规】行程含 F-road/高地特征，用户话术或约束表明使用 2WD/经济型车辆：在未取得合规四驱订单前，该组合在冰岛属于违法且极高风险（保险通常无效）。'
-        : '【车型-路况仲裁】行程含 F-road/高地走廊特征，但检索到的租车报价偏向 2WD/经济型：F-road 禁止不合规两驱进入，保险可能失效且存在违法/高风险。',
+        ? '行程里包含冰岛 F 路或高地路段，而当前信息指向两驱/经济型车。这类路段通常要求四驱，且违法风险与事故风险都很高，一般车险也不保此类路段。请先改订允许上 F 路的四驱车，或改走不含 F 路的路线。'
+        : '行程里包含冰岛 F 路或高地路段，但租车信息更像两驱/经济型车。F 路通常禁止不合规车辆进入，且保险可能不覆盖。请升级车型或改线。',
       suggestion:
         '立即改订合规四驱（高离地）或改线避开 F-road；出发前用 road.is 核对开放状态，并联系车行确认车辆等级与砂石/风损条款。',
       violation: {
@@ -262,7 +262,7 @@ export function collectIcelandVehicleTerrainArbitrationIssues(params: {
       type: 'REACHABILITY_ISSUE',
       severity: 'WARNING',
       message:
-        '【车型-路况仲裁】行程似含 F-road/高地，但无法在租车摘录中确认四驱等级：请人工核对车型是否允许进入计划 F 路段。',
+        '行程里可能包含冰岛 F 路或高地，但无法在租车信息里确认是否为四驱。若确实要开 F 路，请向车行书面确认车型等级，并用 road.is 等核对路段开放情况。',
       suggestion: '在订单与车行确认 4WD/离地间隙；用 road.is + SafeTravel 复核封路与风况。',
       violation: {
         anchor: { constraintId: CONSTRAINT_IDS.TERRAIN_F_ROAD_COMPATIBILITY, ruleId: 'itinerary.verify:iceland_vehicle_terrain_v2:froad_unknown_class' },
@@ -276,7 +276,7 @@ export function collectIcelandVehicleTerrainArbitrationIssues(params: {
       type: 'REACHABILITY_ISSUE',
       severity: 'WARNING',
       message:
-        '【车型-路况仲裁】行程文本暗示可能涉及 F-road/高地，但未携带租车检索结果，且未从用户话术中解析到明确车型等级：无法自动校验。',
+        '行程文字里可能涉及冰岛 F 路或高地，但系统还没有可用的租车订单信息，也无法从话术中确定车型。若要走 F 路，请预订合规四驱并补充租车信息，或先改走普通公路。',
       suggestion: '若计划驶入 F-road，请预订合规四驱并在 research 流程中注入 car_rentals 或手动确认。',
       violation: {
         anchor: { constraintId: CONSTRAINT_IDS.TERRAIN_F_ROAD_COMPATIBILITY, ruleId: 'itinerary.verify:iceland_vehicle_terrain_v2:froad_no_rental_rows' },
@@ -292,7 +292,7 @@ export function collectIcelandVehicleTerrainArbitrationIssues(params: {
       type: 'REACHABILITY_ISSUE',
       severity: 'WARNING',
       message:
-        '【冬季胎仲裁】行程日期落在冰岛典型冬季/钉胎窗口：请确认订单含 studded / winter 合规轮胎，并谨慎选择无冬季配置的小型供应商。',
+        '行程日期落在冰岛典型冬季窗口。请确认车辆配备合规冬季/钉胎，并关注封路与天气预警。',
       suggestion: '向车行书面确认钉胎或等效冬季装备；降雪封路以 road.is 为准。',
       violation: {
         anchor: { constraintId: CONSTRAINT_IDS.ENVIRONMENT_EXTREME_WEATHER_CLOSURE, ruleId: 'itinerary.verify:iceland_vehicle_terrain_v2:studded_tires' },
@@ -308,7 +308,7 @@ export function collectIcelandVehicleTerrainArbitrationIssues(params: {
       type: 'REACHABILITY_ISSUE',
       severity: 'WARNING',
       message:
-        '【大风提车仲裁】SafeTravel/路况提示存在较强风况信号且话术涉及提车/换车：注意开门瞬间横风与车门损伤风险，必要时联系车行延后取车。',
+        '路况提示风况较强，且您的话术涉及取还车。开门时注意横风、防止车门被风吹损；必要时可联系车行延后取车。',
       suggestion: '查阅 vedur.is 风速与警报；停车选背风侧，双手控门；确认保险是否覆盖风损/开门磕碰。',
       violation: {
         anchor: { constraintId: CONSTRAINT_IDS.ENVIRONMENT_WIND_SPEED_LIMIT, ruleId: 'itinerary.verify:iceland_vehicle_terrain_v2:wind_pickup' },

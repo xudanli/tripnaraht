@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.04_new_lodge_reroute_mid",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "New lodge mid-loop \u2014 REROUTE forbid a3\u2192a4",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/hotel_change/problems/04_new_lodge_reroute_mid.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1"
+}

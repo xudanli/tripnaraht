@@ -91,6 +91,7 @@ export function createPlacesActions(
           lat: { type: 'number', optional: true },
           lng: { type: 'number', optional: true },
           limit: { type: 'number', optional: true },
+          countryCode: { type: 'string', optional: true, description: 'ISO 3166-1 alpha-2，冰岛走 CPRE' },
         },
         required: ['query'],
       },
@@ -101,7 +102,15 @@ export function createPlacesActions(
           count: { type: 'number' },
         },
       },
-      execute: async (input: { query?: string; userInput?: string; user_input?: string; lat?: number; lng?: number; limit?: number }, state: any) => {
+      execute: async (input: {
+        query?: string;
+        userInput?: string;
+        user_input?: string;
+        lat?: number;
+        lng?: number;
+        limit?: number;
+        countryCode?: string;
+      }, state: any) => {
         const logger = console; // 使用 console 作为 logger（可以后续改为注入 Logger）
         
         try {
@@ -111,6 +120,7 @@ export function createPlacesActions(
             lat: input.lat,
             lng: input.lng,
             limit: input.limit,
+            countryCode: input.countryCode ?? state?.destinationCode ?? state?.countryCode,
           };
           
           // 优先使用原始用户输入，而不是 input.query（可能被错误设置为 "unknown"）
@@ -232,7 +242,10 @@ export function createPlacesActions(
                 mustHavePois,
                 input.lat,
                 input.lng,
-                input.limit || 10
+                input.limit || 10,
+                normalizedInput.countryCode
+                  ? { countryCode: String(normalizedInput.countryCode) }
+                  : undefined,
               );
 
               // 转换为节点格式

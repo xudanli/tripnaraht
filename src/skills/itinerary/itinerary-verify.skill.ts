@@ -14,7 +14,14 @@ import { Skill, SkillInput, SkillOutput, SkillMetadata } from '../interfaces/ski
 import { Itinerary } from '../../agent/interfaces/trip-plan.interface';
 import { applyRiskTagsFromVerifyIssues, type VerifyIssueLike } from '../../agent/utils/itinerary-risk-tags.util';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
-import { OpeningHoursUtil } from '../../common/utils/opening-hours.util';
+import { collectItineraryOpeningHoursVerifyIssues } from '../../agent/utils/itinerary-opening-hours-verify.util';
+import {
+  collectItineraryPoiAccessVerifyIssues,
+  collectPoiAccessSlugsFromItinerary,
+} from '../../agent/utils/itinerary-poi-access-verify.util';
+import { PoiAccessCapacityService } from '../../poi-access-capacity/poi-access-capacity.service';
+import { ICELAND_ALL_ACCESS_RULES } from '../../poi-access-capacity/fixtures/iceland-poi-registry';
+import type { PoiAccessRule } from '../../poi-access-capacity/interfaces/poi-access-capacity.interface';
 import { DateTime } from 'luxon';
 import type { ConstraintViolation } from '../../agent/services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../../agent/services/constraint-registry';
@@ -41,7 +48,7 @@ export interface ItineraryVerifyInput extends SkillInput {
 export interface ItineraryVerifyOutput extends SkillOutput {
   verified: boolean;
   issues: Array<{
-    type: 'OPENING_HOURS_CONFLICT' | 'TRANSFER_BUFFER_INSUFFICIENT' | 'REACHABILITY_ISSUE' | 'FATIGUE_THRESHOLD_EXCEEDED' | 'TIME_WINDOW_OVERLAP';
+    type: 'OPENING_HOURS_CONFLICT' | 'TRANSFER_BUFFER_INSUFFICIENT' | 'REACHABILITY_ISSUE' | 'FATIGUE_THRESHOLD_EXCEEDED' | 'TIME_WINDOW_OVERLAP' | 'POI_ACCESS_BLOCKED' | 'POI_ACCESS_RISK' | 'POI_ACCESS_UNCONFIRMED';
     severity: 'CRITICAL' | 'ERROR' | 'WARNING' | 'INFO';
     item_id?: string;
     /** TIME_WINDOW_OVERLAP：与 item_id（后项）构成重叠对的另一项（前项） */
@@ -63,7 +70,7 @@ export interface ItineraryVerifyOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'itinerary.verify',
-  description: '验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）',
+  description: 'itinerary.verify：验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -74,7 +81,7 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
 
   metadata: SkillMetadata = {
     name: 'itinerary.verify',
-    description: '验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）',
+    description: 'itinerary.verify：验证行程的可行性（开放时间冲突、换乘 buffer、可达性、疲劳阈值）',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -98,6 +105,7 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
   constructor(
     @Optional() private readonly worldDecisionMemory?: WorldDecisionMemoryService,
     @Optional() private readonly worldStrategy?: WorldStrategyService,
+    @Optional() private readonly poiAccessCapacity?: PoiAccessCapacityService,
   ) {
     this.logger.log(`[ItineraryVerifySkill] 已初始化`);
   }
@@ -111,6 +119,9 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
 
       // 1. 验证开放时间冲突
       this.verifyOpeningHours(itinerary, research_data, issues);
+
+      // 1b. POI 准入与容量（冰岛 A 级 MVP）
+      await this.verifyPoiAccess(itinerary, research_data, input.intent_hints, issues);
 
       // 2. 验证换乘 buffer
       this.verifyTransferBuffers(itinerary, issues);
@@ -185,159 +196,67 @@ export class ItineraryVerifySkill implements Skill<ItineraryVerifyInput, Itinera
     researchData: Record<string, any> | undefined,
     issues: ItineraryVerifyOutput['issues'],
   ): void {
-    const openingHoursData = researchData?.opening_hours_evidence;
-    if (!openingHoursData) {
-      // 如果没有开放时间数据，跳过验证
-      return;
-    }
-
-    // 构建 POI ID 到开放时间的映射
-    const openingHoursMap = new Map<string, any>();
-    if (Array.isArray(openingHoursData)) {
-      openingHoursData.forEach((item: any) => {
-        if (item.poi_id && item.opening_hours) {
-          openingHoursMap.set(item.poi_id, item);
-        }
-      });
-    } else if (openingHoursData.opening_hours && Array.isArray(openingHoursData.opening_hours)) {
-      openingHoursData.opening_hours.forEach((item: any) => {
-        if (item.poi_id && item.opening_hours) {
-          openingHoursMap.set(item.poi_id, item);
-        }
-      });
-    }
-
-    // 检查每个行程项
-    for (const day of itinerary.days) {
-      const dayDate = DateTime.fromISO(day.date);
-      
-      for (const item of day.items) {
-        if (item.type !== 'POI' || !item.location_ref?.place_id) {
-          continue;
-        }
-
-        const poiId = item.location_ref.place_id;
-        const openingHoursInfo = openingHoursMap.get(poiId);
-        
-        if (!openingHoursInfo) {
-          // 没有开放时间数据，标记为警告
-          issues.push({
-            type: 'OPENING_HOURS_CONFLICT',
-            severity: 'WARNING',
-            item_id: item.id,
-            day: day.date,
-            message: `POI "${item.location_ref.name}" 缺少开放时间数据`,
-            suggestion: '请确认该地点在指定时间是否开放',
-            violation: {
-              anchor: { constraintId: CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP, ruleId: 'temporal_opening_v1' },
-              entityRef: { type: 'POI', id: item.id },
-              evidence: {
-                source: 'OPENING_HOURS',
-              },
-              scope: 'LOCAL',
-            },
-          });
-          continue;
-        }
-
-        // 检查是否在开放时间内
-        const startTime = this.parseTimeWindow(item.start_window, dayDate);
-        const endTime = this.parseTimeWindow(item.end_window, dayDate);
-
-        if (startTime && endTime) {
-          const isOpen = openingHoursInfo.is_open_now;
-          const openingHours = openingHoursInfo.opening_hours;
-
-          if (isOpen === false) {
-            issues.push({
-              type: 'OPENING_HOURS_CONFLICT',
-              severity: 'ERROR',
-              item_id: item.id,
-              day: day.date,
-              message: `POI "${item.location_ref.name}" 在 ${day.date} ${item.start_window} 可能未开放`,
-              suggestion: openingHours ? `建议调整到开放时间：${openingHours}` : '请检查该地点的开放时间',
-              violation: {
-                anchor: { constraintId: CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP, ruleId: 'temporal_opening_v1' },
-                entityRef: { type: 'POI', id: item.id },
-                evidence: {
-                  source: 'OPENING_HOURS',
-                },
-                scope: 'LOCAL',
-              },
-            });
-          } else if (openingHours && typeof openingHours === 'string') {
-            // 尝试解析开放时间字符串并验证
-            const hoursStr = openingHours;
-            const checkDate = startTime.toJSDate();
-            const timezone = 'UTC'; // 默认 UTC，实际应该从 POI 元数据获取
-            
-            if (!OpeningHoursUtil.isOpenAt(hoursStr, checkDate, timezone)) {
-              // Best-effort dual-lemma metric inference, only when evidence carries explicit window.
-              const inferred = this.inferOpenCloseMinutes(openingHoursInfo, dayDate);
-              const startMin = Math.round(startTime.diff(dayDate.startOf('day'), 'minutes').minutes);
-              const endMin = Math.round(endTime.diff(dayDate.startOf('day'), 'minutes').minutes);
-              const metric: ConstraintViolation['metric'] | undefined = inferred
-                ? (() => {
-                    const { openMin, closeMin } = inferred;
-                    // If start < open => GEQ lemma violated (slack = actual - limit)
-                    if (startMin < openMin) {
-                      return { cmp: 'GEQ', actual: startMin, limit: openMin, unit: 'min', slack: startMin - openMin };
-                    }
-                    // If end > close => LEQ lemma violated (slack = limit - actual)
-                    if (endMin > closeMin) {
-                      return { cmp: 'LEQ', actual: endMin, limit: closeMin, unit: 'min', slack: closeMin - endMin };
-                    }
-                    return undefined;
-                  })()
-                : undefined;
-              issues.push({
-                type: 'OPENING_HOURS_CONFLICT',
-                severity: 'ERROR',
-                item_id: item.id,
-                day: day.date,
-                message: `POI "${item.location_ref.name}" 在 ${item.start_window} 不在开放时间内`,
-                suggestion: `开放时间：${hoursStr}`,
-                violation: {
-                  anchor: { constraintId: CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP, ruleId: 'temporal_opening_v1' },
-                  entityRef: { type: 'POI', id: item.id },
-                  ...(metric ? { metric } : {}),
-                  evidence: {
-                    source: 'OPENING_HOURS',
-                  },
-                  scope: 'LOCAL',
-                },
-              });
-            }
-          }
-        }
-      }
-    }
+    issues.push(...collectItineraryOpeningHoursVerifyIssues(itinerary, researchData));
   }
 
-  private inferOpenCloseMinutes(
-    openingHoursInfo: any,
-    dayDate: DateTime,
-  ): { openMin: number; closeMin: number } | undefined {
-    // Accept a few common evidence shapes:
-    // - { open_min: number, close_min: number }
-    // - { open_time: "HH:mm", close_time: "HH:mm" }
-    const openMin = typeof openingHoursInfo?.open_min === 'number' ? openingHoursInfo.open_min : undefined;
-    const closeMin = typeof openingHoursInfo?.close_min === 'number' ? openingHoursInfo.close_min : undefined;
-    if (Number.isFinite(openMin) && Number.isFinite(closeMin)) {
-      return { openMin: Math.round(openMin), closeMin: Math.round(closeMin) };
-    }
-    const openTime = typeof openingHoursInfo?.open_time === 'string' ? openingHoursInfo.open_time : undefined;
-    const closeTime = typeof openingHoursInfo?.close_time === 'string' ? openingHoursInfo.close_time : undefined;
-    if (openTime && closeTime) {
-      const o = this.parseTimeWindow(openTime, dayDate);
-      const c = this.parseTimeWindow(closeTime, dayDate);
-      if (o && c) {
-        const oMin = Math.round(o.diff(dayDate.startOf('day'), 'minutes').minutes);
-        const cMin = Math.round(c.diff(dayDate.startOf('day'), 'minutes').minutes);
-        if (Number.isFinite(oMin) && Number.isFinite(cMin)) return { openMin: oMin, closeMin: cMin };
+  /**
+   * POI 准入与容量校验（规则层 + 库存层 + 拥堵层）
+   */
+  private async verifyPoiAccess(
+    itinerary: Itinerary,
+    researchData: Record<string, any> | undefined,
+    intentHints: ItineraryVerifyInput['intent_hints'],
+    issues: ItineraryVerifyOutput['issues'],
+  ): Promise<void> {
+    const slugs = collectPoiAccessSlugsFromItinerary(itinerary);
+    if (!slugs.length) return;
+
+    let rulesByPoiSlug: Map<string, PoiAccessRule[]> | undefined;
+
+    if (this.poiAccessCapacity) {
+      const rules = await this.poiAccessCapacity.getRulesForPoiSlugs(slugs);
+      rulesByPoiSlug = new Map();
+      for (const rule of rules) {
+        const list = rulesByPoiSlug.get(rule.poiId) ?? [];
+        list.push(rule);
+        rulesByPoiSlug.set(rule.poiId, list);
+      }
+    } else {
+      const rules = ICELAND_ALL_ACCESS_RULES.filter((r) => slugs.includes(r.poiId));
+      if (rules.length) {
+        rulesByPoiSlug = new Map();
+        for (const rule of rules) {
+          const list = rulesByPoiSlug.get(rule.poiId) ?? [];
+          list.push(rule);
+          rulesByPoiSlug.set(rule.poiId, list);
+        }
       }
     }
-    return undefined;
+
+    const vehicleType =
+      intentHints?.constraints_vehicle_type ??
+      (typeof researchData?.vehicle_type === 'string'
+        ? researchData.vehicle_type
+        : undefined);
+
+    const accessIssues = collectItineraryPoiAccessVerifyIssues({
+      itinerary,
+      researchData,
+      rulesByPoiSlug,
+      vehicleType,
+    });
+
+    for (const issue of accessIssues) {
+      issues.push({
+        type: issue.type,
+        severity: issue.severity,
+        item_id: issue.item_id,
+        day: issue.day,
+        message: issue.message,
+        suggestion: issue.suggestion,
+        violation: issue.violation,
+      });
+    }
   }
 
   /**

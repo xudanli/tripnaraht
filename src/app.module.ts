@@ -8,6 +8,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { TripRevisionModule } from './trips/trip-revision.module';
 import { PlacesModule } from './places/places.module';
+import { TravelProductCatalogModule } from './travel-product-catalog/travel-product-catalog.module';
 import { TripsModule } from './trips/trips.module';
 import { ItineraryItemsModule } from './itinerary-items/itinerary-items.module';
 import { CountriesModule } from './countries/countries.module';
@@ -69,10 +70,24 @@ import { SafetyModule } from './safety/safety.module';
 import { WorldModelSchedulerModule } from './trips/decision/world-model-scheduler.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { RoadIsModule } from './infrastructure/external/road-is/road-is.module';
-import { MatchSquareModule } from './match-square/match-square.module';
+import { HikingDemoModule } from './hiking-demo/hiking-demo.module';
+import { HikingPlansModule } from './hiking-plans/hiking-plans.module';
+import { HikingTrailBookmarksModule } from './hiking-trail-bookmarks/hiking-trail-bookmarks.module';
+import { HikingRouteShareModule } from './hiking-route-share/hiking-route-share.module';
 import { OdysseyIntakeModule } from './odyssey-intake/odyssey-intake.module';
 import { IdentityGovernanceModule } from './identity-governance/identity-governance.module';
 import { Gate1Module } from './gate1/gate1.module';
+import { GuideToPlanModule } from './guide-to-plan/guide-to-plan.module';
+import { ExplorationModule } from './trips/exploration/exploration.module';
+import { AttractionExploreModule } from './trips/attraction-explore/attraction-explore.module';
+import { ContextualRecommendationsModule } from './trips/contextual-recommendations/contextual-recommendations.module';
+import { CopilotModule } from './trips/copilot/copilot.module';
+import { ArrangeItineraryModule } from './trips/arrange-itinerary/arrange-itinerary.module';
+import { ResearchModule } from './research/research.module';
+import { TravelContextModule } from './travel-context/travel-context.module';
+import { CanonicalPoiResolutionModule } from './canonical-poi-resolution/canonical-poi-resolution.module';
+import { TravelCompilerModule } from './travel-compiler/travel-compiler.module';
+import { MobileModule } from './mobile/mobile.module';
 
 @Module({
   imports: [
@@ -103,12 +118,16 @@ import { Gate1Module } from './gate1/gate1.module';
     MonitoringModule, // Prometheus /metrics exporter (global)
     ContactModule, // 联系我们模块
     UsersModule, // 用户画像模块
+    OdysseyIntakeModule, // Decision OS Odyssey Intake（旅行人格冷启动）
     CountriesModule, // 国家档案模块
     CitiesModule, // 城市模块
     WeatherModule, // 天气模块
     IcelandInfoModule, // 冰岛信息源模块（vedur.is, safetravel.is, road.is）
     LlmModule, // LLM 通用服务模块
     PlacesModule, // 地点相关模块
+    TravelProductCatalogModule, // 旅行产品库（Admin CRUD + C 端只读）
+    CanonicalPoiResolutionModule, // CPRE — Travel Primary Key resolution (P0)
+    TravelCompilerModule, // Travel Compiler — Planner Draft → CanonicalTravelGraph (P0)
     FlightPricesModule, // 机票价格参考模块
     HotelsModule, // 酒店价格模块
     // 第二批：行程相关模块
@@ -130,6 +149,10 @@ import { Gate1Module } from './gate1/gate1.module';
     // 第七批：智能体和技能（可能有问题）
     RailPassModule, // RailPass 合规与订座决策模块（测试中）
     DemModule, // DEM 地形数据模块（独立导入，确保 DEM 服务可用）
+    HikingDemoModule, // Laugavegur 融资 Demo + hiking-audit（不替换决策主路径）
+    HikingPlansModule, // HikePlan 全生命周期（P1）
+    HikingTrailBookmarksModule, // F3 徒步路线收藏
+    HikingRouteShareModule, // 徒步路线分享（token + 过期）
     // ReadinessModule, // 暂时禁用，测试是否导致阻塞（DecisionModule 使用懒加载获取 ReadinessService）
     RouteDirectionsModule, // 恢复：测试是否导致阻塞
     RagModule, // 恢复：RAG 模块（用于增强对话）
@@ -163,10 +186,17 @@ import { Gate1Module } from './gate1/gate1.module';
     AnalyticsModule, // Analytics 模块（数据分析服务，使用 PostgreSQL MCP）
     SafetyModule, // 安全预警模块（地缘政治风险评估、旅行警告、安全通知）
     WorldModelSchedulerModule, // 专利实施例：世界模型异步推送调度（WeatherAgent → pushEnvironmentDelta）
-    OdysseyIntakeModule, // Odyssey 入网测评与旅行人格卡片
     IdentityGovernanceModule, // 账号、验证、发布权限（R0 身份治理）
     Gate1Module, // Gate 1 Human-Assisted Concierge 验证实验
-    MatchSquareModule, // 搭子广场 P0（招募帖 + 申请流）
+    GuideToPlanModule, // 从攻略开始规划（Guide-to-Plan Pipeline）
+    ExplorationModule, // Consumer Exploration Pipeline（/api/exploration）
+    AttractionExploreModule, // 景点探索 BFF（/trips/:id/attraction-explore）
+    ContextualRecommendationsModule, // 情境化当天微规划（ADR-009）
+    CopilotModule, // Nara Contextual Copilot — Page Insight (ADR-010)
+    ArrangeItineraryModule, // 编排行程 BFF（/trips/:id/arrange-itinerary + explore place/ai-actions）
+    ResearchModule, // 产品发现研究 Session / 事件
+    TravelContextModule, // RFC-003 Travel Context Protocol
+    MobileModule, // iOS 执行阶段 Mobile BFF
   ],
   providers: [
     {

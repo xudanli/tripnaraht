@@ -5,6 +5,11 @@ import type {
 } from '../../readiness/types/coverage-map.types';
 import type { FeasibilityIssueDto } from '../types/trip-constraint-solver.types';
 import { normalizeIssueId, resolveIssueIdToBlockerId } from './trip-revision.util';
+import {
+  GLOBAL_SEGMENT_DISTANCE_THRESHOLDS,
+  longDistanceHighMessage,
+  longDistanceWarnMessage,
+} from './segment-distance-threshold.util';
 
 const ROAD_CLASS_BLOCKER_RE = /^transport-(seg-\d+)-long_distance$/;
 
@@ -39,18 +44,23 @@ export function synthesizeRoadClassFindingFromCoverage(
   const toPoi = coverage.pois.find((p) => p.id === segment.toPoiId);
   if (!fromPoi || !toPoi) return undefined;
 
+  const thresholds = coverage.segmentDistanceThresholds ?? GLOBAL_SEGMENT_DISTANCE_THRESHOLDS;
   const longHazard = segment.hazards.find((h) => h.type === 'long_distance');
   const qualifies =
-    Boolean(longHazard) || segment.distance >= 300 || segment.distance > 200;
+    Boolean(longHazard) ||
+    segment.distance > thresholds.maxSegmentDistanceKm ||
+    segment.distance > thresholds.warnSegmentDistanceKm;
   if (!qualifies) return undefined;
 
   const hazardMessage =
     longHazard?.message ??
-    (segment.distance >= 300
-      ? '超长距离行驶(>300km)，强烈建议分段或中途住宿'
-      : '长距离行驶(>200km)，建议中途休息');
+    (segment.distance > thresholds.maxSegmentDistanceKm
+      ? longDistanceHighMessage(thresholds.maxSegmentDistanceKm)
+      : longDistanceWarnMessage(thresholds.warnSegmentDistanceKm));
   const severity =
-    longHazard?.severity === 'high' || segment.distance >= 300 ? 'high' : 'medium';
+    longHazard?.severity === 'high' || segment.distance > thresholds.maxSegmentDistanceKm
+      ? 'high'
+      : 'medium';
   const highlightIds = [fromPoi.itemId, toPoi.itemId].filter(Boolean) as string[];
 
   return {
@@ -259,12 +269,17 @@ export function buildRoadClassRepairOptions(
   };
 }
 
-/** 是否为 ≥300km 超长路段 hazard */
+/** 超长单段路段 hazard（阈值来自 coverage 或全局默认） */
 export function isRoadClassHazard(
   hazard: { type: string; severity: string },
   segmentDistanceKm: number,
+  maxSegmentDistanceKm: number = GLOBAL_SEGMENT_DISTANCE_THRESHOLDS.maxSegmentDistanceKm,
 ): boolean {
-  return hazard.type === 'long_distance' && hazard.severity === 'high' && segmentDistanceKm >= 300;
+  return (
+    hazard.type === 'long_distance' &&
+    hazard.severity === 'high' &&
+    segmentDistanceKm > maxSegmentDistanceKm
+  );
 }
 
 const ROAD_CLASS_STRUCTURAL_ACTIONS = new Set([

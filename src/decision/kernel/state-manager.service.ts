@@ -31,6 +31,7 @@ import {
   VerificationReport,
 } from './decision-state.types';
 import { mergeTravelOntologyState } from './travel-ontology.mapper';
+import { ContextCacheEvictionService } from '../../agent/context-engine/services/context-cache-eviction.service';
 
 /** 分布式提交配置 */
 export interface DistributedCommitConfig {
@@ -77,7 +78,7 @@ export class StateManagerService {
     GATE_EVAL: ['constraints', 'tripState.orchestratorAlternatives', 'systemState', 'history', 'requestId'],
     CONTEXT_BUILD: ['contextPackage', 'systemState', 'history', 'requestId'],
     PLAN_GEN: ['tripState.planDraft', 'tripState.planVersion', 'candidates', 'systemState', 'history', 'requestId'],
-    OPTIMIZE: ['optimizationHints', 'tripState.fatigue', 'constraints', 'systemState', 'history', 'requestId'],
+    OPTIMIZE: ['optimizationHints', 'tripState.fatigue', 'tripState.planDraft', 'environmentState', 'constraints', 'research_data', 'systemState', 'history', 'requestId'],
     VERIFY: ['confidence', 'systemState', 'history', 'requestId'],
     REPAIR: ['tripState.planDraft', 'systemState', 'history', 'requestId'],
     NARRATE: ['systemState', 'history', 'requestId'],
@@ -87,6 +88,7 @@ export class StateManagerService {
   constructor(
     @Optional() private readonly dsoStability?: DSOStabilityMonitorService,
     @Optional() private readonly distributedLock?: DistributedLockService,
+    @Optional() private readonly contextCacheEviction?: ContextCacheEvictionService,
   ) {
     if (distributedLock) {
       this.logger.log('[StateManager] 分布式锁服务已注入，支持多节点一致性');
@@ -133,6 +135,21 @@ export class StateManagerService {
     }
     if (patch.verification !== undefined) {
       updated.verification = this.mergeVerificationReport(current.verification, patch.verification);
+    }
+    if (patch.research_data !== undefined) {
+      updated.research_data = {
+        ...(current.research_data ?? {}),
+        ...patch.research_data,
+      };
+    }
+    if (patch.uncertaintyProfile !== undefined) {
+      updated.uncertaintyProfile = { ...(current.uncertaintyProfile ?? {}), ...patch.uncertaintyProfile };
+    }
+    if (patch.worldStateSummary !== undefined) {
+      updated.worldStateSummary = patch.worldStateSummary;
+    }
+    if (patch.beliefSamples !== undefined) {
+      updated.beliefSamples = patch.beliefSamples;
     }
 
     this.logger.debug(`[StateManager] Merged: requestId=${updated.requestId}, phase=${updated.systemState.currentPhase}`);
@@ -355,7 +372,36 @@ export class StateManagerService {
     this.logger.debug(
       `[StateManager] Committed: requestId=${transaction.requestId}, version ${currentVersion}→${newVersion}`,
     );
+
+    void this.evictContextCacheAfterCommit(withHistory, currentVersion);
+
     return { newState: withHistory, newVersion };
+  }
+
+  private extractTripIdForCacheEviction(state: DecisionState): string | null {
+    const fromOntology = state.travelOntologyState?.tripId?.trim();
+    if (fromOntology) return fromOntology;
+    const meta = (state as { metadata?: { tripId?: string; trip_id?: string } }).metadata;
+    const fromMeta = meta?.tripId?.trim() || meta?.trip_id?.trim();
+    return fromMeta || null;
+  }
+
+  private async evictContextCacheAfterCommit(
+    state: DecisionState,
+    supersededVersion: number,
+  ): Promise<void> {
+    if (!this.contextCacheEviction) return;
+    const tripId = this.extractTripIdForCacheEviction(state);
+    if (!tripId) return;
+    try {
+      await this.contextCacheEviction.evictSupersededDsoVersion({
+        tripId,
+        supersededVersion,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[StateManager] Context cache eviction failed: ${msg}`);
+    }
   }
 
   /**
@@ -469,6 +515,7 @@ export class StateManagerService {
     this.logger.debug(
       `[StateManager] Committed batch: requestId=${transactions[0].requestId}, tx=${transactions.length}, version ${currentVersion}→${newVersion}`,
     );
+    void this.evictContextCacheAfterCommit(draft, currentVersion);
     return { newState: draft, newVersion };
   }
 

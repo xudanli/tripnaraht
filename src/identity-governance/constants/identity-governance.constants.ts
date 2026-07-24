@@ -47,11 +47,6 @@ export const ORGANIZATION_MEMBER_STATUSES = [
   'REMOVED',
 ] as const;
 
-export const MATCH_SQUARE_FROZEN_MESSAGE =
-  '搭子广场公开招募已暂停，请使用可信旅行项目发布';
-
-export const MATCH_SQUARE_FROZEN_CODE = 'MATCH_SQUARE_FROZEN';
-
 export function isPublicPublishingLevel(level: string): boolean {
   return level === 'PUBLIC_NON_COMMERCIAL' || level === 'PUBLIC_COMMERCIAL';
 }

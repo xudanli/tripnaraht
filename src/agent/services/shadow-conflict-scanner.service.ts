@@ -76,7 +76,7 @@ export class ShadowConflictScannerService {
     const vehicleRequired = typeof vehicleRequiredRaw === 'string' ? vehicleRequiredRaw.toLowerCase() : '';
     const need4x4 = /4x4|4wd|四驱/.test(vehicleRequired);
     const vehicleType = (trip.constraints as any)?.vehicle_type as '2WD' | '4WD' | undefined;
-    const is2wd = vehicleType === undefined ? true : vehicleType === '2WD';
+    const is2wd = vehicleType === '2WD';
     const reachabilityRisk = need4x4 && is2wd;
 
     if (!reachabilityRisk && !scopeRisk) return undefined;
@@ -88,7 +88,7 @@ export class ShadowConflictScannerService {
       reachabilityRisk && scopeRisk ? 'CRITICAL' : reachabilityRisk ? 'HIGH' : scopeRisk ? 'MEDIUM' : 'LOW';
 
     const evidence_summary = reachabilityRisk
-      ? `发现硬冲突：当前车辆能力为 ${vehicleType ?? '2WD(assumed)'}，但路线要求 ${String(vehicleRequiredRaw ?? '4WD/4x4')}。`
+      ? `发现硬冲突：当前车辆能力为 ${vehicleType ?? '未指定'}，但路线要求 ${String(vehicleRequiredRaw ?? '4WD/4x4')}。`
       : `发现范围冲突：必去点数量=${mustCount} 与天数=${String(days ?? 'n/a')} 的组合可能导致容量不足。`;
 
     // --- Shadow Gate Dry-Run: reuse Kernel.executeGateEval ---

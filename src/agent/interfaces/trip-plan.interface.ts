@@ -18,6 +18,129 @@ import type {
 import type { ResearchConflictNegotiationReport } from '../teams/research/research-conflict-negotiation.types';
 
 /**
+ * 与门控 / 研究证据同源的辩论注入 SKU（冰岛 F-road、阵风等）；不得写入未验证事实。
+ * 由编排或研究层写入 `TripPlanRequest.guardian_debate_trip_context`，与 `violations` 对齐。
+ */
+export interface GuardianDebateRoadStatusEntry {
+  id: string;
+  status: string;
+  reason?: string;
+  source?: string;
+}
+
+export interface GuardianDebateFerryStatusEntry {
+  route: string;
+  status: string;
+  reason?: string;
+  next_available?: string;
+}
+
+export interface GuardianDebateTripContextSku {
+  location?: string;
+  timestamp?: string;
+  environment?: {
+    road_status?: GuardianDebateRoadStatusEntry[];
+    weather_snapshot?: {
+      wind_speed_ms?: number;
+      wind_gust_ms?: number;
+      condition?: string;
+      visibility_m?: number;
+      is_extreme?: boolean;
+    };
+    /** 挪威渡轮等：与 Entur/业务日历同源注入 */
+    ferry_status?: GuardianDebateFerryStatusEntry[];
+    /** SafeTravel / 合规摘要：轻量引用，避免把整条 RSS 塞进辩论 */
+    route_alert_refs?: Array<{ id?: string; title?: string; severity?: string }>;
+    /** F 路 / 高地穿越意图（INTAKE 信号写入） */
+    froad_crossing?: boolean;
+    primary_froad?: string;
+    season_note_zh?: string;
+  };
+  /** 与 `TripPlanRequest.constraints`（车辆/预算）区分：日程、日光、驾驶上限等 */
+  scheduling_constraints?: {
+    /** 民用暮光终前后沿 IANA 时区换算的 UTC ISO8601，供 Dr.Dre 引用「日光窗」 */
+    daylight_end?: string;
+    /** 自动写入时标明来源，便于审计（显式 SKU 可省略） */
+    daylight_end_source?: 'suncalc_civil_dusk_v1';
+    driving_limit_strict?: boolean;
+    /** 极昼马拉松：跨越日历边界的连续驾驶逻辑窗（小时），与 `days` 日历字段解耦 */
+    logical_continuous_window_hours?: number;
+    /** 用户选择「向导模式」后继续规划 */
+    guide_mode_requested?: boolean;
+    /** 极昼错峰观鲸场次（用户确认后写入） */
+    whale_watching_slot?: {
+      date?: string;
+      start_local: string;
+      end_local: string;
+      venue_zh?: string;
+      slot_label_zh?: string;
+    };
+    /** 次日最早出发本地时间 HH:mm */
+    next_day_delayed_departure_until?: string;
+    /** 活动结束后当日仍有驾驶（如胡萨维克→阿克雷里） */
+    overnight_drive_after_activity?: boolean;
+    /** 用户已确认锁定极昼晚间观鲸场次 */
+    midnight_sun_slot_locked?: boolean;
+    /** Layer1：用户选定将活动插入的行程日 */
+    itinerary_slot_placement?: {
+      day_number?: number;
+      date_ymd?: string;
+    };
+    /** 用户已确认按行程日历天数分段环岛（放弃 24h 一口气跑完） */
+    segmented_ring_over_calendar_days?: boolean;
+  };
+  /** 用户对 guardian_debate_abu_reject_v1 的选择（澄清闭环） */
+  debate_user_confirm?: {
+    question_id: 'guardian_debate_abu_reject_v1';
+    choice: string;
+    confirmed_at?: string;
+  };
+  route_alternatives?: Array<{
+    id: string;
+    type?: string;
+    extra_driving_time_mins?: number;
+  }>;
+  poi_metadata?: {
+    transport?: Record<string, unknown>;
+    candidates?: Array<Record<string, unknown>>;
+  };
+  /** 从用户原话解析的不可静默覆盖的诉求锚点（见 guardian-debate-user-intent-anchor.util） */
+  user_intent_anchors?: {
+    midnight_sun_continuous_drive?: boolean;
+    ring_road_full_scope?: boolean;
+    f_road_highland_crossing?: boolean;
+    primary_froad?: string;
+    destination_highland_zh?: string;
+    melt_season_risk_zh?: string;
+    peak_season_crowd_avoidance?: boolean;
+    whale_watching_husavik?: boolean;
+    overnight_stay_akureyri?: boolean;
+    interpretation_zh?: string;
+    disambiguation_zh?: string;
+    /** 用户确认接受分段环岛（非 24h 一口气） */
+    user_accepted_segmented_ring?: boolean;
+  };
+}
+
+/**
+ * Entur 轮渡等服务快照（写入 `research_data.transport_snapshots.entur`），由 enricher 映射为 `guardian_debate_trip_context.environment.ferry_status`。
+ */
+export interface EnturFerrySnapshot {
+  service_id: string;
+  status: 'OPERATIONAL' | 'CANCELLED' | 'DELAYED' | 'UNKNOWN';
+  next_departure?: string;
+  disruptions?: string[];
+  source: 'Entur';
+}
+
+/**
+ * 研究层交通快照容器（扩展字段可继续增加，如 `gtfs_rt`）。
+ */
+export interface ResearchTransportSnapshots {
+  entur?: EnturFerrySnapshot[];
+}
+
+/**
  * TripPlanRequest（最小字段）
  */
 export interface TripPlanRequest {
@@ -48,6 +171,17 @@ export interface TripPlanRequest {
   governance_runtime_state?: import('../../governance/runtime-state-machine/governance-runtime-state.types').GovernanceRuntimeState;
   /** GFIL: gated drift influence vectors (orchestration; no ledger). */
   governance_drift_influences?: import('../../governance/feedback/governance-drift-influence.types').GovernanceDriftInfluence[];
+  /** System 1 / NL 侧人格倾向（不在快路径执行三人格；供 System 2 门控与编排作评估基准） */
+  persona_hint?: {
+    abu_strictness?: 'NORMAL' | 'CRITICAL';
+    drdre_tolerance?: 'LOW' | 'MEDIUM' | 'HIGH';
+    neptune_creativity?: 'CONSERVATIVE' | 'BALANCED' | 'EXPLORATORY';
+  };
+  /**
+   * 结构化环境与交通切片；与门控 violations 同源，合并进辩论 User JSON 的 `trip_context`。
+   * 见 `prompts/agents/guardians-debate.md`（冰岛 SKU 示例）。
+   */
+  guardian_debate_trip_context?: GuardianDebateTripContextSku;
   mode?: 'walk' | 'drive' | 'transit' | 'mixed';
   party?: {
     count: number;
@@ -98,6 +232,16 @@ export interface TripPlanRequest {
   total_budget_minutes?: number;
   pace?: 'relaxed' | 'normal' | 'dense';
   style_tags?: string[];
+  /** PLAN_GEN 后由编排器从 itinerary 汇总的驾驶实数（公理 / VERIFY 热路径）。 */
+  plan_output?: import('../axioms/plan-routing-metrics.types').PlanGenerationRoutingOutput;
+  routing_metadata?: import('../axioms/plan-routing-metrics.types').PlanGenerationRoutingOutput;
+  routing_metrics?: {
+    pure_driving_minutes?: number;
+    /** @deprecated 使用 pure_driving_minutes */
+    total_driving_minutes?: number;
+    max_single_day_driving_minutes?: number;
+    day_segments?: import('../axioms/plan-routing-metrics.types').PlanRoutingDaySegment[];
+  };
   /**
    * 旅行本体扩展（Travel Vertical Ontology）
    * 用于将业务实体映射到 Agent/Place/Action/Resource/Event。
@@ -155,7 +299,40 @@ export interface TripPlanRequest {
       price?: number;
     }>;
   };
+  /** INTAKE `trip.load`：已从 DB Hydrate 的行程项 */
+  persisted_itinerary_items?: unknown[];
+  /** INTAKE `trip.load` 元信息 */
+  trip_load?: {
+    tripId: string;
+    itemCount: number;
+    degraded?: boolean;
+    degradedReason?: string;
+    loadedAt: string;
+  };
 }
+
+/**
+ * 三人格证据原子（供前端按 violation_code / tag 做高亮与图标，不全依赖纯文本）。
+ */
+export interface GuardianEvidenceAtom {
+  text: string;
+  /** 稳定机器码，如 GATE_VIOLATION:SAFETY:HARD、ADJUSTMENT:REPLACE_SEGMENT */
+  violation_code?: string;
+  /** UI 语义标签 */
+  tag?:
+    | 'safety'
+    | 'reachability'
+    | 'dem'
+    | 'fatigue'
+    | 'pacing'
+    | 'replace_segment'
+    | 'scope'
+    | 'adjustment'
+    | 'generic';
+}
+
+/** 规则投影（当前默认）| 辩论引擎等多模型输出（预留） */
+export type GuardianResultsSource = 'violation_projection_v1' | 'llm_debate' | string;
 
 /**
  * `GateResult.gate_result` 取值。必须遵循：Gate 在 Plan 之前执行（强顺序）。
@@ -180,7 +357,14 @@ export interface GateViolation {
     | 'HARNESS_GATE';
   severity: 'HARD' | 'SOFT';
   detail: string;
+  /** BFF 出站：中文标题（替代前端直显 ROUTE_INFEASIBLE 等英码） */
+  display_headline_zh?: string;
   evidence_refs?: string[]; // 关联的 EvidenceRef ID
+  /**
+   * 若为 true：由 VERIFY 阶段合成并入 `gate_result`（见 `mergeVerificationIssuesIntoGateResult`）。
+   * 仍参与 `deriveGuardianPersonaVotes`（如 HARD → Abu REJECT），但不触发辩论 LLM 的「致命门短路」（见 `GuardiansDebateService.hasFatalViolation`）。
+   */
+  verify_synthetic?: boolean;
 }
 
 export interface RequiredAdjustment {
@@ -222,26 +406,50 @@ export interface GateReadinessRuleGroup {
   severity?: string;
 }
 
+import type { PersonaClosureAudit } from '../../trips/decision/shared/persona-closure.types';
+
 export interface GateResult {
   gate_result: GateResultStatus;
   violations: GateViolation[];
   required_adjustments: RequiredAdjustment[];
   confidence: number; // 0..1
   evidence_refs?: string[]; // 使用的证据引用
+  /** StrategyOrchestrator persona closure 闭环审计（Neptune REPLACE 后 Abu 重验） */
+  persona_closure_audit?: PersonaClosureAudit;
   /** NEED_USER_CONFIRM 时：准备度规则与问题列表 */
   readiness_questions?: GateReadinessRuleGroup[];
+  /**
+   * 三人格侧写。`source` + `is_simulated` 用于审计：区分 violations 规则投影与未来 LLM 辩论输出。
+   * 各子项 `evidence` 为兼容单列摘要；`evidence_atoms` 为结构化原子证据。
+   */
   guardian_results?: {
+    source?: GuardianResultsSource;
+    /** true：由 violations / adjustments 规则投影生成 */
+    is_simulated?: boolean;
+    /** 影子辩论 LLM 一句合议摘要（可选） */
+    debate_summary_zh?: string;
+    /** 辩论引擎单次调用耗时（毫秒，可选） */
+    debate_latency_ms?: number;
+    /** Assembler `await` shadow 的等待时长（毫秒）；与 `debate_latency_ms` 对照可估算重叠收益 */
+    debate_shadow_wait_ms?: number;
+    /** max(0, debate_latency_ms - debate_shadow_wait_ms)，粗算「若晚启动辩论会多等的墙钟」 */
+    debate_overlapping_latency_saved_estimate_ms?: number;
+    /** `Date.now()`（ms），编排器 `startShadowIfEligible` 触发时刻 */
+    debate_shadow_triggered_at?: number;
     abu?: {
       verdict: 'ALLOW' | 'REJECT';
       evidence: string[];
+      evidence_atoms?: GuardianEvidenceAtom[];
     };
     drdre?: {
       verdict: 'ALLOW' | 'ADJUST' | 'REJECT';
       evidence: string[];
+      evidence_atoms?: GuardianEvidenceAtom[];
     };
     neptune?: {
       verdict: 'ALLOW' | 'REPLACE' | 'REJECT';
       evidence: string[];
+      evidence_atoms?: GuardianEvidenceAtom[];
     };
   };
 }
@@ -356,6 +564,17 @@ export interface ItineraryItem {
       alert_severity?: 'CRITICAL' | 'ERROR' | 'WARNING';
       alert_ids?: string[];
     };
+    /** CTRE Graph 投影：canonical poiId */
+    canonical_poi_id?: string;
+    intent_tags?: string[];
+    /** CTRE Graph 节点溯源 */
+    graph_node_kind?: string;
+    graph_node_id?: string;
+    booking_kind?: string;
+    booking_status?: string;
+    linked_node_id?: string;
+    linked_poi_node_id?: string;
+    activity_type?: string;
   };
 }
 
@@ -373,6 +592,10 @@ export interface Itinerary {
     robustness_score?: number; // 0..1
     /** verify 旁路只读快照（避免 itinerary 合同依赖 skills 具体类型） */
     verify_shadow?: Record<string, unknown>;
+    /** CTRE Graph 投影来源 */
+    source?: string;
+    graphId?: string;
+    compileId?: string;
   };
   /**
    * Action 层执行计划（不代表已提交）
@@ -396,6 +619,7 @@ export interface Itinerary {
  * 必须输出结构化决策日志：检查了什么、用了哪些证据、为什么允许/拒绝/调整
  */
 export type OrchestrationStep = 
+  | 'INTENT_COMPILE'   // Decision OS：自然语言 → PlanDeltaIR
   | 'INTAKE'           // 解析用户需求 (Planner)
   | 'STATE_UPDATE'     // Phase 2.3: Kernel 状态同步 (DSO 更新)
   | 'RESEARCH'         // 收集硬数据 (Domain Agents)
@@ -403,6 +627,7 @@ export type OrchestrationStep =
   | 'GATE_EVAL'        // Should-Exist Gate (Gatekeeper/Abu)，含 CONSTRAINT_CHECK
   | 'CONTEXT_BUILD'    // Phase 2.3: 构建 Context Package (Kernel)
   | 'PLAN_GEN'         // 生成多方案 (Planner)
+  | 'TRAVEL_COMPILE'   // Planner Draft → CanonicalTravelGraph（Travel Compiler）
   | 'OPTIMIZE'         // Phase 2.3: 抽取 Optimization Hints (Kernel)
   | 'VERIFY'           // 验证可执行性 (CoreDecision/Dr.Dre)
   | 'COMPLIANCE'       // 风险合规检查 (Compliance)
@@ -419,7 +644,16 @@ export type OrchestrationStep =
  */
 export type GuardianType = 'ABU' | 'DR_DRE' | 'NEPTUNE';
 
-export type SubAgentType = 'Orchestrator' | 'Planner' | 'Gatekeeper' | 'Compliance' | 'LocalInsight' | 'CoreDecision' | 'Narrator' | 'HallucinationDetection';
+export type SubAgentType =
+  | 'Orchestrator'
+  | 'Planner'
+  | 'Gatekeeper'
+  | 'Compliance'
+  | 'LocalInsight'
+  | 'CoreDecision'
+  | 'Narrator'
+  | 'HallucinationDetection'
+  | 'DecisionOS.IntentCompiler';
 
 export interface DecisionLogEntry {
   request_id: string;
@@ -458,10 +692,21 @@ export interface DecisionLogEntry {
     /** MAT 6.3 NARRATE：`research_data.__research_realtime_reroll_count` 快照（预算仲裁等成功重跑次数） */
     realtime_reroll_count?: number;
     /**
-     * 4.0 Experience Replay：当 `ResearchConflictNegotiationReport.memory_replay` 存在（EBP 受历史认知软化）时写入，
-     * 与 `MEMORY_REPLAY_DECISION_SOURCE` 对齐，便于持久化与认知切片回放。
+     * HALLUCINATION_DETECTION：`formatHallucinationOutputsZh` 的结构化补充（抽查样例、计数、可选 user_notification 摘要）。
+     * 与 `outputs_summary` 同源；统一入口可只展示 headline，展开后读此对象。
      */
-    decision_source?: string;
+    hallucination_audit_zh?: {
+      total_claims: number;
+      verified_against_evidence: number;
+      risk_marked: number;
+      removed_or_softened: number;
+      sample_rows: Array<{ excerpt_zh: string; outcome_zh: string }>;
+      user_notification?: { message: string | null; low_confidence_count: number };
+    };
+    /**
+     * CRUD 短路：实际执行的 Skill 名列表（如 trip.applyEdit），供决策日志与 UI 展示。
+     */
+    skills_hit?: string[];
     [key: string]: any; // 允许额外的元数据字段
   };
 }
@@ -589,6 +834,8 @@ export interface OrchestratorState {
    *（避免在叙述层解析 `research_data.__research_conflict_negotiation`）。
    */
   narration_research_conflict?: ResearchConflictNegotiationReport;
+  /** P0：NARRATE 前 EmotionNarratorOrchestrator 只读投影（tripnara.emotional_context@v1） */
+  emotional_context?: import('../narrator/types/emotional-context.type').EmotionalContext;
   gate_result?: GateResult;
   compliance_result?: {
     risk_warnings: Array<{
@@ -624,6 +871,8 @@ export interface OrchestratorState {
       date: string;
       narrative: string;
     }>;
+    /** 与 NARRATE `day_by_day_text_zh` 对齐：纯文本逐日块，供卡片区直出 */
+    day_by_day_text_zh?: string;
     highlights: string[];
     tips: string[];
     warnings?: NarrationWarningEntry[];
@@ -633,6 +882,22 @@ export interface OrchestratorState {
     visual_hint?: string;
     /** BFF：语音韵律 / TTS 参数建议 */
     audio_prosody?: string;
+    /** unified-explainability@v1（NARRATE 写入；assembler explain.unified 优先复用） */
+    unified_explainability?: import('../../trips/decision/explainability/unified-explainability.types').UnifiedExplainabilityEnvelopeV1;
+    /** 客户端 payload：envelope 仅在 explain.unified；narration 侧为引用 */
+    unified_explainability_ref?: import('../../trips/decision/explainability/dedupe-unified-explainability-client-payload.util').UnifiedExplainabilityClientRef;
+    guardian_narrative_zh?: {
+      abu: string;
+      drdre: string;
+      neptune: string;
+    };
+    risk_highlights?: Array<{
+      risk: string;
+      severity: 'high' | 'medium' | 'low';
+      explanation: string;
+      reason_codes?: string[];
+      evidence_refs?: string[];
+    }>;
   };
   evidence_registry: Map<string, EvidenceRef>; // evidence_id -> EvidenceRef
   decision_log: DecisionLogEntry[];
@@ -652,6 +917,16 @@ export interface OrchestratorState {
       message: string;
       items?: any[];
     }>;
+    /** route_and_run 冻结的 travelPreference 快照（含 request_fitness_* 等），供 Assembler / 观测解释 */
+    travel_preference_snapshot?: Record<string, unknown>;
+    /** Gate 落定且 `enable_guardians_debate_llm` 时触发辩论 shadow 的单调时间戳（ms），供重叠延迟审计 */
+    debate_triggered_at?: number;
+    /** 是否已发起辩论 LLM shadow（与 `GuardiansDebateService.startShadowIfEligible` 对齐） */
+    debate_shadow_started?: boolean;
+    /** PLAN_GEN 前已 await 辩论并可能将 Abu REJECT 融合为 NEED_USER_CONFIRM（Assembler 勿重复 LLM） */
+    debate_merged_before_plan_gen?: boolean;
+    /** `fuseGuardianDebateVerdictIntoGate` 原因，如 `abu_reject` */
+    debate_gate_fusion?: string;
     [key: string]: any;
   };
   /**

@@ -1,0 +1,64 @@
+{
+  "evidenceType": "NORTH_STAR_EXIT_STAGING",
+  "acceptanceMode": "DEVBOX_ENGINEERING_SELF_ACCEPTANCE",
+  "startedAt": "2026-07-10T16:27:57.271Z",
+  "endedAt": "2026-07-10T16:28:09.287Z",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "problemId": "problem_weather_c0a55555_1783700888409",
+  "effectivePlanVersionId": "plan_v2_00888798",
+  "useLiveVedur": true,
+  "liveSource": "replay-after-live-probe",
+  "liveProbeNotes": [
+    "vedur: North Star: Vedur-like fetchAndResolveWeatherIfChanged returned null",
+    "open-meteo: North Star: Vedur-like fetchAndResolveWeatherIfChanged returned null",
+    "execution completed via vedur-like replay after live probe"
+  ],
+  "checks": [
+    {
+      "id": "NS-EXIT-000-env",
+      "pass": true,
+      "detail": "production-isomorphic env"
+    },
+    {
+      "id": "NS-EXIT-001-live-evidence",
+      "pass": true,
+      "detail": "source=iceland_met wind=95 liveSource=replay-after-live-probe"
+    },
+    {
+      "id": "NS-EXIT-002-causal-trace",
+      "pass": true,
+      "detail": "traceId=ct_f791f1763d36e906 rules=iceland.wind_to_p90,iceland.p90_to_miss"
+    },
+    {
+      "id": "NS-EXIT-008-causal-story-view",
+      "pass": true,
+      "detail": "headline=冰岛路段：强风导致预约高风险 chainNodes=4"
+    },
+    {
+      "id": "NS-EXIT-003-non-stub-repair",
+      "pass": true,
+      "detail": "executable=1 selected=cand_indoor"
+    },
+    {
+      "id": "NS-EXIT-004-w01-gateway-apply",
+      "pass": true,
+      "detail": "resolution=VERIFIED revalidation=PASSED"
+    },
+    {
+      "id": "NS-EXIT-005-effective-plan-pointer",
+      "pass": true,
+      "detail": "effective=plan_v2_00888798 applied=none"
+    },
+    {
+      "id": "NS-EXIT-006-problem-resolved",
+      "pass": true,
+      "detail": "status=RESOLVED"
+    },
+    {
+      "id": "NS-EXIT-007-ledger-w01",
+      "pass": true,
+      "detail": "writeChain=EVALUATE_AUTHORIZE_EXECUTE ledgerEntries=0"
+    }
+  ],
+  "result": "READY"
+}

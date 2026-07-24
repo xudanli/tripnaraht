@@ -1,0 +1,26 @@
+{
+  "version": "2026.05.20",
+  "routeDirectionName": "IS_LAUGAVEGUR",
+  "packKey": "is-laugavegur",
+  "bounds": {
+    "south": 63.5995,
+    "west": -19.56,
+    "north": 64.81,
+    "east": -18.020000000000003
+  },
+  "tiles": {
+    "provider": "openstreetmap",
+    "templateUrl": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "minZoom": 9,
+    "maxZoom": 15,
+    "attribution": "© OpenStreetMap contributors"
+  },
+  "recommendedCacheZoom": [
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "generatedAt": "2026-06-08T15:13:30.868Z"
+}

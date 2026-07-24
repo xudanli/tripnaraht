@@ -6,7 +6,7 @@
  */
 export enum DecisionNodeType {
   DESTINATION = 'destination', // 目的地选择
-  COMPANION = 'companion', // 搭子匹配
+  COMPANION = 'companion', // 同行匹配（已下线，保留枚举兼容历史数据）
   BUDGET = 'budget', // 预算设定
   ITINERARY = 'itinerary', // 行程规划
   TIMING = 'timing', // 时间安排
@@ -45,25 +45,19 @@ export interface ShapleyAttribution {
  * 6 维 Trip Outcome Score
  */
 export interface TripOutcomeDimensions {
-  // 整体满意度 (权重 0.25)
+  // 整体满意度 (权重 0.30)
   overallSatisfaction: {
     cognitiveEvaluation: number; // 认知评价
     positiveActivation: number; // 正向激活
     negativeActivation: number; // 负向激活
     score: number; // 综合分数
   };
-  // 搭子关系满意度 (权重 0.20)
-  companionSatisfaction: {
-    willingnessToTravelAgain: number; // 愿意再次同行
-    groupDynamics: number; // 群组动态
-    score: number;
-  };
-  // 预算准确度 (权重 0.15)
+  // 预算准确度 (权重 0.20)
   budgetAccuracy: {
     deviation: number; // 偏差百分比
     score: number; // 分数 (偏差越小分数越高)
   };
-  // 行程完成质量 (权重 0.15)
+  // 行程完成质量 (权重 0.20)
   completionQuality: {
     p0CompletionRate: number; // P0 POI 完成率
     p1CompletionRate: number; // P1 POI 完成率
@@ -76,7 +70,7 @@ export interface TripOutcomeDimensions {
     stressEventCount: number;
     score: number;
   };
-  // 复购/推荐意愿 (权重 0.10)
+  // 复购/推荐意愿 (权重 0.15)
   repurchase: {
     nps: number; // NPS 分数
     recommendation: number; // 推荐意愿
@@ -93,7 +87,6 @@ export interface ExpectationGap {
   gap: number; // 差距 (正数=超出预期，负数=低于预期)
   referencePoints: {
     pastExperience: number; // 过往经验参考
-    companionExpectation: number; // 同行者期望
     preTripExpectation: number; // 旅行前预期
   };
 }
@@ -206,61 +199,6 @@ export enum LifeEventType {
 }
 
 /**
- * 校准曲线
- */
-export interface CalibrationCurve {
-  predictions: number[]; // 预测值
-  actuals: number[]; // 实际值
-  calibrated: number[]; // 校准后的值
-  temperature: number; // 温度缩放参数
-  accuracy: number; // 准确度
-}
-
-/**
- * 兼容性维度（10 维）
- */
-export enum CompatibilityDimension {
-  BUDGET = 'budget', // 预算与消费风格
-  TRAVEL_PACE = 'travel_pace', // 旅行节奏
-  INTERACTION_MODE = 'interaction_mode', // 交互模式
-  SKILL_REQUIREMENT = 'skill_requirement', // 技能需求
-  RISK_TOLERANCE = 'risk_tolerance', // 风险容忍度
-  SOCIAL_STYLE = 'social_style', // 社交风格
-  TEAM_BALANCE = 'team_balance', // 团队平衡
-  PAST_COLLABORATION = 'past_collaboration', // 过往合作
-  REPUTATION_SCORE = 'reputation_score', // 信用评分
-  MBTI_COMPATIBILITY = 'mbti_compatibility', // MBTI 兼容性
-}
-
-/**
- * 分维度校准结果
- */
-export interface DimensionCalibration {
-  dimension: CompatibilityDimension;
-  curve: CalibrationCurve;
-  accuracy: number;
-  needsRetraining: boolean;
-}
-
-/**
- * 搭子校准记录
- */
-export interface CompanionCalibrationRecord {
-  id: string;
-  postId: string;
-  applicationId: string;
-  preTripPrediction: number; // 0-1
-  postTripSatisfaction: number; // 0-1
-  calibrationCurve: CalibrationCurve;
-  dimensionScores: Map<CompatibilityDimension, DimensionCalibration>;
-  calibrationAccuracy: number;
-  needsRetraining: boolean;
-  tripId: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/**
  * 冷启动阶段
  */
 export enum ColdStartPhase {
@@ -293,7 +231,6 @@ export interface LearningSignal {
     episodic: EpisodicMemory[];
     semantic: SemanticMemory[];
   };
-  calibration: CompanionCalibrationRecord[];
   confidence: number;
   timestamp: Date;
 }

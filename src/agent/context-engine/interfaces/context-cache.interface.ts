@@ -21,10 +21,13 @@ export interface ContextCacheMiss {
 
 export type ContextCacheGetResult = ContextCacheHit | ContextCacheMiss;
 
+export type ContextCacheGetOptions = { phase?: string };
+export type ContextCacheSetOptions = { phase?: string; tripId?: string };
+
 /** ContextCache 能力接口 */
 export interface IContextCache {
-  get(key: string): Promise<ContextCacheGetResult>;
-  set(key: string, pkg: ContextPackage): Promise<void>;
+  get(key: string, options?: ContextCacheGetOptions): Promise<ContextCacheGetResult>;
+  set(key: string, pkg: ContextPackage, options?: ContextCacheSetOptions): Promise<void>;
   clear(): Promise<void>;
   getStats(): { memorySize: number; memoryKeys?: string[] };
 }

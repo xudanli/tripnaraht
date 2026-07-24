@@ -43,6 +43,10 @@ import {
   itineraryDiffToHighlights,
 } from '../utils/trip-plan-repair-preview.util';
 import { isRoadClassStructuralRepairOption } from '../../trip-constraint-solver/utils/road-class-repair-options.util';
+import { assertFeasibilityRepairAuthority } from '../../trip-constraint-solver/utils/repair-authority.util';
+import { isEffectivePlanWriteChainEnabled } from '../../../decision-runtime/execution/effective-plan-write-chain.config';
+import { assertPlanMutationAllowedOrThrow } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
+import { EffectivePlanWriteGuardService } from '../../../decision-runtime/execution/effective-plan-write-guard.service';
 
 const MARK_NOT_APPLICABLE_ACTIONS = new Set(['manual_confirm', 'mark_resolved']);
 const ADD_TO_LATER_ACTIONS = new Set(['ignore']);
@@ -70,6 +74,7 @@ export class ReadinessRepairService {
     private readonly guardianNegotiationService: ReadinessGuardianNegotiationService,
     private readonly causalPreanalysisService: ReadinessCausalPreanalysisService,
     @Optional() private readonly guardianChoose?: GuardianChooseService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {}
 
   async applyRepair(request: ApplyRepairRequest): Promise<ApplyRepairResponse> {
@@ -85,6 +90,19 @@ export class ReadinessRepairService {
 
     const actionType = option.actionType || 'unknown';
     this.logger.debug(`applyRepair trip=${tripId} blocker=${blockerId} action=${actionType}`);
+
+    try {
+      assertFeasibilityRepairAuthority(request.repairAuthority ?? 'readiness_prep', option);
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
+
+    if (!MARK_NOT_APPLICABLE_ACTIONS.has(actionType) && isEffectivePlanWriteChainEnabled()) {
+      assertPlanMutationAllowedOrThrow(
+        this.effectivePlanWriteGuard,
+        'ReadinessRepairService.applyRepair',
+      );
+    }
 
     if (MARK_NOT_APPLICABLE_ACTIONS.has(actionType)) {
       await this.findingMarksService.markNotApplicable(tripId, blockerId, {
@@ -395,7 +413,7 @@ export class ReadinessRepairService {
         status: 'would_defer',
         message: buildGuardianDeferMessage(preRepair),
         wouldDefer: true,
-        before: this.buildPreviewDaySnapshot(beforePlan, dayNumber, [repairOptions.blockerMessage]),
+        before: this.buildPreviewDaySnapshot(beforePlan, dayNumber, repairOptions.blockerMessage ? [repairOptions.blockerMessage] : []),
         after: this.buildPreviewDaySnapshot(beforePlan, dayNumber, ['应用时将需您确认后再修复']),
         itineraryDiff: [],
         impact: {
@@ -439,7 +457,7 @@ export class ReadinessRepairService {
       before: this.buildPreviewDaySnapshot(
         beforePlan,
         dayNumber,
-        highlights.length ? [] : [repairOptions.blockerMessage],
+        highlights.length ? [] : repairOptions.blockerMessage ? [repairOptions.blockerMessage] : [],
       ),
       after: this.buildPreviewDaySnapshot(
         afterPlan,

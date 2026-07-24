@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.08_seljalandsfoss_replace",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "Seljalandsfoss parking closed \u2014 REPLACE pool to Sk\u00f3gafoss-class alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/08_seljalandsfoss_replace.problem.json",
+  "notes": [
+    "REPLACE_POOL a1\u2192is.skogafoss_alt",
+    "locality target \u22643"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

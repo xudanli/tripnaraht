@@ -97,7 +97,7 @@ export class GeoFindNearbyPOISkill implements Skill<GeoFindNearbyPOIInput, GeoFi
 
   metadata: SkillMetadata = {
     name: 'geo.findNearbyPOI',
-    description: '查找附近 POI：带类型/半径/过滤的空间查询，统一 PostGIS 访问的安全出口',
+    description: 'geo.findNearbyPOI：按类型/半径/过滤查找附近 POI（PostGIS 安全出口）。在 RESEARCH 阶段补全周边景点或 repair 需空间候选召回时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

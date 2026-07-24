@@ -300,6 +300,20 @@ describe('ContextEngineerService', () => {
       expect(result2.id).not.toBe('stale-wrong-phase');
     });
 
+    it('dsoVersion 变化时 cache key 漂移，不应复用旧包', async () => {
+      const optsV1 = { ...mockOptions, dsoVersion: 1, requestId: 'req-1' };
+      const r1 = await service.build(optsV1, false);
+      const keyV2 = (service as any).buildCacheKey(
+        (service as any).resolveOptionsWithDynamicContext({ ...mockOptions, dsoVersion: 2, requestId: 'req-2' }),
+      );
+      (service as any).memoryCache.set(keyV2, {
+        package: { ...r1, id: 'stale-wrong-version', metadata: { ...r1.metadata, dsoVersion: 1 } },
+        timestamp: Date.now(),
+      });
+      const r2 = await service.build({ ...mockOptions, dsoVersion: 2, requestId: 'req-2' }, true);
+      expect(r2.id).not.toBe('stale-wrong-version');
+    });
+
     it('应该使用 Redis 缓存（如果可用）', async () => {
       const cachedPackage = {
         id: 'cached-123',

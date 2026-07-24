@@ -20,13 +20,22 @@ export type ExecutionVerdictStatus =
 
 export type FeasibilityIssuePriority = 'must_handle' | 'suggest_adjust' | 'pending_confirm';
 
+export type FeasibilityResolutionMode =
+  | 'DIRECT_EDIT'
+  | 'AUTO_FIX'
+  | 'EVIDENCE_REFRESH'
+  | 'COLLABORATION'
+  | 'DECISION_REQUIRED';
+
 export type FeasibilityDimensionKey =
   | 'schedule'
   | 'transport'
   | 'booking'
   | 'environment'
   | 'team_fit'
-  | 'itinerary_completeness';
+  | 'itinerary_completeness'
+  | 'access_capacity'
+  | 'experience_expectation';
 
 export type FeasibilityDayStatus = 'ok' | 'warning' | 'blocked';
 
@@ -72,6 +81,8 @@ export interface FeasibilityProofDto {
   confidence?: number;
   evidenceType: string;
   conclusion: string;
+  /** Gateway PlanObject 投影 — trace 用，不进 evidence title */
+  semanticKey?: string;
   repairOptions?: FeasibilityRepairOptionDto[];
   planBOptions?: FeasibilityRepairOptionDto[];
 }
@@ -109,14 +120,32 @@ export interface FeasibilityIssueAnchorsDto {
   suggestedTime?: string;
   isStartTooEarly?: boolean;
   timingSource?: 'computed' | 'missing_times' | 'user_confirmed';
+  removableItemId?: string;
+  removableItemLabel?: string;
+  removableItemSavedMinutes?: number;
+  /** daily_drive — 当日各驾驶路段（供 preview 活动明细） */
+  driveLegs?: Array<{
+    fromItemId?: string;
+    toItemId?: string;
+    fromPlaceLabel?: string;
+    toPlaceLabel?: string;
+    travelMinutes?: number;
+    departAt?: string;
+  }>;
 }
 
 export interface FeasibilityIssueUiHintsDto {
   primaryAction?: string;
+  /** P0-3 team_fit CTA */
+  profilingSurface?: 'decision_profiling' | 'team_pacing';
+  copyVariant?: string;
+  affectedMemberIds?: string[];
   deepLink?: string | {
     tab?: string;
+    subTab?: string;
     dayIndex?: number;
     highlightItemIds?: string[];
+    highlightDomains?: string[];
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -124,11 +153,19 @@ export interface FeasibilityIssueUiHintsDto {
 
 export interface FeasibilityIssueDto {
   id: string;
+  /** P2 — 关联 TripPrerequisite SSOT；出发准备与可执行性共享 */
+  prerequisiteId?: string;
+  /** 稳定 dedupe 键 — 与 revalidate 后 id 抖动时前端可对齐 */
+  semanticKey?: string;
   priority: FeasibilityIssuePriority;
   category: FeasibilityDimensionKey | string;
   title: string;
   message: string;
   affectedDays: number[];
+  /** BFF 稳定字段 — `same_day_travel` / `transfer_buffer`（`buffer_insufficient`） */
+  affectedDayNumbers?: number[];
+  /** BFF 稳定字段 — 如「瓦特纳冰川 → 冰河湖」 */
+  affectedScopeSummary?: string;
   tripDayId?: string;
   severity: 'high' | 'medium' | 'low';
   issueKind?: string;
@@ -137,8 +174,37 @@ export interface FeasibilityIssueDto {
   anchors?: FeasibilityIssueAnchorsDto;
   uiHints?: FeasibilityIssueUiHintsDto;
   actionRequired?: string;
+  /** How this issue should be resolved in the product surface */
+  resolutionMode?: FeasibilityResolutionMode;
+  /** Set when resolutionMode is DECISION_REQUIRED — stable link to DecisionProblem */
+  linkedDecisionProblemId?: string | null;
+  /** Why the issue was escalated to decision runtime */
+  escalationReason?: string;
   repairOptions?: FeasibilityRepairOptionDto[];
   proofs?: FeasibilityProofDto[];
+  /** POI Access Engine — 三结论 UI payload */
+  visitorAccess?: {
+    evaluation: {
+      verdict: string;
+      poiId: string;
+      message: string;
+      confidence: string;
+      planBHints: Array<{
+        action: string;
+        detail: string;
+        suggestedArrivalTime?: string;
+        alternativePoiId?: string;
+      }>;
+      crowding?: {
+        crowdLevel?: string;
+        predictedWaitP50?: number;
+        predictedWaitP90?: number;
+        disclosureLabel?: string;
+      };
+    };
+    hasReservationEvidence?: boolean;
+    deferredLive?: boolean;
+  };
 }
 
 export interface FeasibilityAlternativeDto {
@@ -223,6 +289,15 @@ export interface ItineraryCompletenessSummaryDto {
   signalCount: number;
 }
 
+export interface GateExecuteStatusDto {
+  blocked: boolean;
+  reasons: Array<{
+    code: 'access_hard_blocked' | 'experience_regret_unconfirmed';
+    issueId?: string;
+    message: string;
+  }>;
+}
+
 export interface TripFeasibilityReportDto {
   tripId: string;
   tripTitle: string;
@@ -233,8 +308,10 @@ export interface TripFeasibilityReportDto {
   verifiedForTripVersion?: string;
   currentTripVersion: string;
   isStale: boolean;
-  /** 是否可进入行中执行（已验证 + 未过期 + 无 must_handle） */
+  /** 是否可进入行中执行（已验证 + 未过期 + gate 未阻塞 + EXECUTABLE） */
   canStartExecute: boolean;
+  /** GATE-EXECUTE：阻止「开始行程」（权威来源） */
+  gateExecute: GateExecuteStatusDto;
   /** 行前阶段提示（与 /score phaseHint 同源） */
   phaseHint?: string;
   /** 决策覆盖声明：基于哪些数据判断、哪些未覆盖 */
@@ -316,6 +393,31 @@ export interface ExecutionTechnicalFindingDto {
   score?: number;
 }
 
+/** Aligns with feasibility gate vocabulary for in-trip causal banners. */
+export type ExecutionCausalPrimaryEnforcement = 'ADJUST_REQUIRED' | 'NOT_EXECUTABLE';
+
+export interface ExecutionCausalStoryChainNodeDto {
+  nodeId: string;
+  type: string;
+  title: string;
+  description: string;
+  sourceRefs?: string[];
+}
+
+export interface ExecutionCausalStoryDto {
+  chain: ExecutionCausalStoryChainNodeDto[];
+  assessment: string;
+}
+
+/** Canonical causal trace projection for in-trip execution advisory (Tier-3 refresh via linkedProblemId). */
+export interface ExecutionCausalInsightDto {
+  guardianHeadline: string;
+  primaryEnforcement: ExecutionCausalPrimaryEnforcement;
+  causalStory: ExecutionCausalStoryDto;
+  /** Optional — deep-link to decision-problems/:id or causal-trace refresh */
+  linkedProblemId?: string;
+}
+
 export interface TripExecutionAdvisoryDto {
   tripId: string;
   tripDayId: string;
@@ -330,6 +432,46 @@ export interface TripExecutionAdvisoryDto {
   realtimeRisks: ExecutionRealtimeRisksDto;
   evidence: ExecutionEvidenceDto;
   technicalFindings: ExecutionTechnicalFindingDto[];
+  /** Present when an open travel causal trace or weather signal exists */
+  causalInsight?: ExecutionCausalInsightDto;
+}
+
+export type ExecutionScheduleMutationType =
+  | 'SHORTEN_STAY'
+  | 'SKIP_ITEM'
+  | 'REPLACE_ITEM'
+  | 'REROUTE';
+
+export interface ExecutionScheduleMutationDto {
+  type: ExecutionScheduleMutationType;
+  itemId: string;
+  deltaMinutes?: number;
+  replacementPlaceId?: number;
+}
+
+export interface ExecutionAdvisoryScheduleItemDto {
+  placeId: number | string;
+  placeName: string;
+  startTime: string;
+  endTime: string;
+  status?: 'upcoming' | 'in_progress' | 'completed' | 'cancelled';
+}
+
+export interface ApplyExecutionRecommendationRequestDto {
+  confirm: boolean;
+  clientTimestamp?: string;
+}
+
+export interface ApplyExecutionRecommendationResponseDto {
+  applied: boolean;
+  executionAdvisory: TripExecutionAdvisoryDto;
+  scheduleMutations: ExecutionScheduleMutationDto[];
+  updatedSchedule: {
+    date: string;
+    schedule: {
+      items: ExecutionAdvisoryScheduleItemDto[];
+    };
+  };
 }
 
 export interface FeasibilityReportSnapshot {

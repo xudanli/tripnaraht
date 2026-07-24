@@ -1,0 +1,61 @@
+{
+  "evidenceType": "STAGING_REPLAY_ROAD_CLOSE_C_EXECUTE",
+  "acceptanceMode": "STAGING_REPLAY",
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+  "sourceProvider": "vegagerdin_gagnaveita",
+  "startedAt": "2026-07-10T20:24:17.529Z",
+  "endedAt": "2026-07-10T20:24:17.531Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "userId": "a0a99999-9999-4999-8999-999999999901",
+  "phase": "EXECUTE",
+  "problemId": "problem_road_F208_a0a99999_1783715057517",
+  "decisionId": "dec_problem_road_F208_a0a99999_1783715057517_1783715057525",
+  "selectedOptionId": "cand_c",
+  "effectivePlanVersionId": "plan_v18_15057525",
+  "writeChain": "EVALUATE_AUTHORIZE_EXECUTE",
+  "problemResolved": true,
+  "fixture": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+  "checks": [
+    {
+      "id": "PC-ROAD-C-001",
+      "pass": true,
+      "detail": "writeChain=EVALUATE_AUTHORIZE_EXECUTE"
+    },
+    {
+      "id": "PC-ROAD-C-002",
+      "pass": true,
+      "detail": "recordStatus=EFFECTIVE"
+    },
+    {
+      "id": "PC-ROAD-C-003",
+      "pass": true,
+      "detail": "planVersion=EFFECTIVE revalidation=implicit-pass"
+    },
+    {
+      "id": "PC-ROAD-C-004",
+      "pass": true,
+      "detail": "effectiveBefore=none effectiveAfter=plan_v18_15057525"
+    },
+    {
+      "id": "PC-ROAD-C-005",
+      "pass": true,
+      "detail": "f208InAppliedPlan=false"
+    },
+    {
+      "id": "PC-ROAD-C-006",
+      "pass": true,
+      "detail": "problemStatus=RESOLVED"
+    },
+    {
+      "id": "PC-ROAD-C-007",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    },
+    {
+      "id": "PC-ROAD-C-008",
+      "pass": true,
+      "detail": "idempotentReplay=true"
+    }
+  ],
+  "result": "PASS"
+}

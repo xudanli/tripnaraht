@@ -1,7 +1,50 @@
 // src/trips/decision/dto/decision-engine-api.dto.ts
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject, IsNumber, IsArray, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsString,
+  IsOptional,
+  IsObject,
+  IsNumber,
+  IsArray,
+  Min,
+  Max,
+  ValidateNested,
+} from 'class-validator';
+
+/**
+ * Task D / staging — prebuilt candidate with full plan (ValidationPipe whitelist-safe).
+ */
+export class PrebuiltDecisionCandidateDto {
+  @ApiProperty()
+  @IsString()
+  candidateId!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  source?: string;
+
+  @ApiProperty({ description: 'Full TripPlan JSON' })
+  @IsObject()
+  plan!: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  utilityHint?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  createdAt?: string;
+}
 
 /**
  * 决策引擎 API 统一请求/响应 DTO
@@ -188,6 +231,51 @@ export class GenerateMultiplePlansRequestDto {
   @IsOptional()
   @IsString()
   requestId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Task D / staging：预置候选（跳过 Legacy 生成，可选配合 constraintReportsByCandidateId）',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PrebuiltDecisionCandidateDto)
+  prebuiltCandidates?: PrebuiltDecisionCandidateDto[];
+
+  @ApiPropertyOptional({
+    description: 'Task D / staging：预置约束报告（提供时跳过 Gateway 重评估）',
+  })
+  @IsOptional()
+  @IsObject()
+  constraintReportsByCandidateId?: Record<string, Record<string, unknown>>;
+
+  @ApiPropertyOptional({
+    description: '显式 problemId / decisionRunId 关联（默认取 experimentContext.runId）',
+  })
+  @IsOptional()
+  @IsString()
+  problemId?: string;
+
+  @ApiPropertyOptional({ description: 'Staging E2E 实验上下文（与 X-Decision-* Header 合并）' })
+  @IsOptional()
+  @IsObject()
+  experimentContext?: {
+    experimentId?: string;
+    scenarioId?: string;
+    runId?: string;
+    source?: string;
+  };
+
+  @ApiPropertyOptional({
+    description: 'DECISION_LAB_ENABLED=1 时生效：Shadow 故障注入（仅 staging）',
+  })
+  @IsOptional()
+  @IsObject()
+  stagingShadowOptions?: {
+    shadowError?: string;
+    shadowTimeLimitMs?: number;
+    inputMismatch?: boolean;
+  };
 }
 
 export class ExplainPlanRequestDto {

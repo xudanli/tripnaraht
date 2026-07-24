@@ -5,6 +5,9 @@ CREATE SCHEMA IF NOT EXISTS "public";
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
 -- CreateExtension
+CREATE EXTENSION IF NOT EXISTS "postgis_raster";
+
+-- CreateExtension
 CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- CreateEnum

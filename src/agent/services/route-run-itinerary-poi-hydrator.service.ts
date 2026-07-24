@@ -8,6 +8,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Itinerary, ItineraryDay, ItineraryItem } from '../interfaces/trip-plan.interface';
+import {
+  formatHmInDestinationTimezone,
+  resolveDestinationTimezoneForVerify,
+} from '../utils/verify-opening-hours-timezone.util';
 
 export type RouteRunPoiCardMatchedFrom =
   | 'place_id'
@@ -146,9 +150,8 @@ function tagsFromMetadata(metadata: unknown): string[] {
   return Array.isArray(t) ? t.map((x) => String(x)).filter(Boolean) : [];
 }
 
-function isoTimeHm(d: Date | null | undefined, fallback: string): string {
-  if (!d) return fallback;
-  return d.toISOString().slice(11, 16);
+function isoTimeHm(d: Date | null | undefined, fallback: string, timezone: string): string {
+  return formatHmInDestinationTimezone(d, timezone, fallback);
 }
 
 const PERSISTED_TYPES_FOR_POI_CARD: ReadonlySet<string> = new Set([
@@ -196,7 +199,9 @@ export function buildItineraryFromPersistedTripDays(
       Place: { id: number; nameCN: string; nameEN: string | null } | null;
     }>;
   }>,
+  destination?: string | null,
 ): Itinerary {
+  const timezone = resolveDestinationTimezoneForVerify({ destination });
   const days: ItineraryDay[] = [];
   for (const day of tripDays) {
     const date = day.date.toISOString().slice(0, 10);
@@ -213,8 +218,8 @@ export function buildItineraryFromPersistedTripDays(
       items.push({
         id: row.id,
         type: 'POI',
-        start_window: isoTimeHm(row.startTime, '09:00'),
-        end_window: isoTimeHm(row.endTime, '11:00'),
+        start_window: isoTimeHm(row.startTime, '09:00', timezone),
+        end_window: isoTimeHm(row.endTime, '11:00', timezone),
         location_ref: {
           ...(row.placeId != null ? { place_id: String(row.placeId) } : {}),
           name: name || '地点待定',
@@ -238,15 +243,16 @@ export class RouteRunItineraryPoiHydratorService {
    * 从 Trip / TripDay / ItineraryItem（库内草案）构建 Itinerary 并走与规划态相同的 Place 补水，
    * 含 ACTIVITY/餐食/TRANSIT/REST（无点名时交通、休息用草案占位文案），供咨询态仍下发 `poi_cards_by_day`。
    */
-  async hydratePersistedTripDraft(tripId: string): Promise<RouteRunPoiHydrationPayload> {
-    const empty: RouteRunPoiHydrationPayload = { poi_cards: [], poi_cards_by_day: [] };
+  /** 读取库内 Trip 草案 → 编排 Itinerary（不补水 POI 卡片） */
+  async loadPersistedTripItinerary(tripId: string): Promise<Itinerary | null> {
     const tid = tripId.trim();
-    if (!tid) return empty;
+    if (!tid) return null;
     try {
       const trip = await this.prisma.trip.findUnique({
         where: { id: tid },
         select: {
           id: true,
+          destination: true,
           TripDay: {
             orderBy: { date: 'asc' },
             select: {
@@ -267,10 +273,25 @@ export class RouteRunItineraryPoiHydratorService {
           },
         },
       });
-      if (!trip?.TripDay?.length) {
+      if (!trip?.TripDay?.length) return null;
+      return buildItineraryFromPersistedTripDays(trip.id, trip.TripDay, trip.destination);
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[RouteRunPoiHydrator] loadPersistedTripItinerary failed trip_id=${tid}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return null;
+    }
+  }
+
+  async hydratePersistedTripDraft(tripId: string): Promise<RouteRunPoiHydrationPayload> {
+    const empty: RouteRunPoiHydrationPayload = { poi_cards: [], poi_cards_by_day: [] };
+    const tid = tripId.trim();
+    if (!tid) return empty;
+    try {
+      const itinerary = await this.loadPersistedTripItinerary(tid);
+      if (!itinerary?.days?.length) {
         return empty;
       }
-      const itinerary = buildItineraryFromPersistedTripDays(trip.id, trip.TripDay);
       return await this.hydrateFromItinerary(itinerary);
     } catch (e: any) {
       this.logger.warn(`[RouteRunPoiHydrator] hydratePersistedTripDraft failed trip_id=${tid}: ${e?.message ?? e}`);

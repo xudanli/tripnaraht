@@ -11,7 +11,6 @@ import { TripWorldState } from '../world-model';
 import { TripPlan } from '../plan-model';
 import { ConstraintDSL } from '../constraints/constraint-dsl.types';
 import { TripDecisionEngineService } from '../trip-decision-engine.service';
-import { ConstraintChecker } from '../constraints/constraint-checker';
 import { ConstraintEngineService } from '../constraints/constraint-engine.service';
 import { DailyUtilityCalculatorService } from '../optimization/daily-utility';
 
@@ -55,7 +54,6 @@ export class MultiPlanGenerator {
     @Inject(forwardRef(() => TripDecisionEngineService))
     @Optional()
     private readonly decisionEngine?: TripDecisionEngineService,
-    @Optional() private readonly constraintChecker?: ConstraintChecker,
     @Optional() private readonly constraintEngine?: ConstraintEngineService,
     @Optional() private readonly dailyUtilityCalculator?: DailyUtilityCalculatorService
   ) {}
@@ -65,7 +63,8 @@ export class MultiPlanGenerator {
    */
   async generateMultiplePlans(
     state: TripWorldState,
-    constraints: ConstraintDSL
+    constraints: ConstraintDSL,
+    options?: { prefilterFeasibility?: boolean },
   ): Promise<PlanVariant[]> {
     if (!this.decisionEngine) {
       throw new Error('TripDecisionEngineService is required for multi-plan generation');
@@ -77,7 +76,8 @@ export class MultiPlanGenerator {
     const conservativePlan = await this.generatePlanWithStrategy(
       state,
       constraints,
-      'conservative'
+      'conservative',
+      options,
     );
     if (conservativePlan) {
       variants.push(conservativePlan);
@@ -87,7 +87,8 @@ export class MultiPlanGenerator {
     const balancedPlan = await this.generatePlanWithStrategy(
       state,
       constraints,
-      'balanced'
+      'balanced',
+      options,
     );
     if (balancedPlan) {
       variants.push(balancedPlan);
@@ -97,7 +98,8 @@ export class MultiPlanGenerator {
     const aggressivePlan = await this.generatePlanWithStrategy(
       state,
       constraints,
-      'aggressive'
+      'aggressive',
+      options,
     );
     if (aggressivePlan) {
       variants.push(aggressivePlan);
@@ -114,8 +116,10 @@ export class MultiPlanGenerator {
   private async generatePlanWithStrategy(
     state: TripWorldState,
     constraints: ConstraintDSL,
-    strategy: StrategyType
+    strategy: StrategyType,
+    options?: { prefilterFeasibility?: boolean },
   ): Promise<PlanVariant | null> {
+    const prefilterFeasibility = options?.prefilterFeasibility !== false;
     try {
       // 创建策略特定的约束副本
       const strategyConstraints = this.adjustConstraintsForStrategy(constraints, strategy);
@@ -133,13 +137,16 @@ export class MultiPlanGenerator {
       const { plan } = await this.decisionEngine!.generatePlan(stateCopy);
       if (!plan) return null;
 
-      // Phase 0：约束前置 - 硬约束违规即淘汰，不进入评分
-      const feasibilityResult = await this.checkFeasibility(stateCopy, plan);
-      if (!feasibilityResult.feasible) {
-        this.logger.debug(
-          `[${strategy}] 方案因硬约束违规被淘汰: ${feasibilityResult.infeasibilityExplanation?.summary || '详见 violations'}`,
-        );
-        return null;
+      // Phase 0：约束前置 - 硬约束违规即淘汰（Canonical 路径可关闭，由 Gateway 统一裁决）
+      let feasibilityResult: Awaited<ReturnType<typeof this.checkFeasibility>> | undefined;
+      if (prefilterFeasibility) {
+        feasibilityResult = await this.checkFeasibility(stateCopy, plan);
+        if (!feasibilityResult.feasible) {
+          this.logger.debug(
+            `[${strategy}] 方案因硬约束违规被淘汰: ${feasibilityResult.infeasibilityExplanation?.summary || '详见 violations'}`,
+          );
+          return null;
+        }
       }
 
       // 评分（仅可行方案）：优先使用 DailyUtilityCalculator（Phase 2），否则用原有 scorePlan
@@ -148,15 +155,21 @@ export class MultiPlanGenerator {
       // 分析权衡
       const tradeoffs = this.analyzeTradeoffs(plan, constraints, strategy, stateCopy);
 
+      if (!prefilterFeasibility) {
+        feasibilityResult = await this.checkFeasibility(stateCopy, plan);
+      }
+
       return {
         id: strategy,
         plan,
         score,
         tradeoffs,
         feasibility: {
-          isValid: true,
-          violations: feasibilityResult.rawCheckResult.summary.warningCount + feasibilityResult.rawCheckResult.summary.infoCount,
-          conflicts: feasibilityResult.rawCheckResult.conflicts?.conflicts.length || 0,
+          isValid: feasibilityResult?.feasible ?? true,
+          violations:
+            (feasibilityResult?.rawCheckResult.summary.warningCount ?? 0) +
+            (feasibilityResult?.rawCheckResult.summary.infoCount ?? 0),
+          conflicts: feasibilityResult?.rawCheckResult.conflicts?.conflicts.length || 0,
         },
       };
     } catch (error) {
@@ -175,14 +188,10 @@ export class MultiPlanGenerator {
     if (this.constraintEngine) {
       return this.constraintEngine.isFeasible(state, plan);
     }
-    if (this.constraintChecker) {
-      const checkResult = await this.constraintChecker.checkPlan(state, plan);
-      return {
-        feasible: checkResult.isValid,
-        rawCheckResult: checkResult,
-        infeasibilityExplanation: checkResult.infeasibilityExplanation,
-      };
-    }
+
+    this.logger.warn(
+      'ConstraintEngineService unavailable; skipping feasibility prefilter (formal paths must inject engine)',
+    );
     return {
       feasible: true,
       rawCheckResult: {

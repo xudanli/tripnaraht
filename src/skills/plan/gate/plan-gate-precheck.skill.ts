@@ -27,7 +27,7 @@ export class PlanGatePrecheckSkill implements Skill<PlanGatePrecheckInput, PlanG
 
   metadata = {
     name: 'plan.gate.precheck',
-    description: '快速门控检查（数据足够时做硬判断，数据不足时标记需确认）',
+    description: '执行 plan gate 快速预检（数据足够则硬判，不足则标记待确认）。在完整三守护者评审前的轻量门控阶段调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -42,7 +42,7 @@ export class PlanGatePrecheckSkill implements Skill<PlanGatePrecheckInput, PlanG
       let status: GateStatus['status'] = 'ALLOW';
 
       // 1. 检查基本约束
-      if (!input.planState.constraints.time.days || input.planState.constraints.time.days <= 0) {
+      if (!input.planState.constraints?.time?.days || input.planState.constraints.time.days <= 0) {
         status = 'REJECT';
         reasons.push('天数无效或未指定');
       }

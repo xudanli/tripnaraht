@@ -13,6 +13,7 @@ import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, Logger } from
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
 import { ExecutionAgentService, ExecutionAgentRequest } from './services/execution-agent.service';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
+import { mapWriteChainBlockedToErrorResponse } from '../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { Public } from '../auth/decorators/public.decorator';
 import { ReorderRequestDto } from './dto/reorder.dto';
 import { ApplyFallbackRequestDto } from './dto/apply-fallback.dto';
@@ -112,6 +113,8 @@ export class ExecutionController {
       const result = await this.executionAgent.reorder(request);
       return successResponse(result);
     } catch (error: any) {
+      const writeChain = mapWriteChainBlockedToErrorResponse(error);
+      if (writeChain) return writeChain;
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }
@@ -147,6 +150,8 @@ export class ExecutionController {
       const result = await this.executionAgent.applyFallback(request);
       return successResponse(result);
     } catch (error: any) {
+      const writeChain = mapWriteChainBlockedToErrorResponse(error);
+      if (writeChain) return writeChain;
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

@@ -73,7 +73,7 @@ export class CalibrationLoopService {
         request.postTripSatisfaction,
       ),
       needsRetraining: false,
-      tripId: request.tripId,
+      tripId: request.tripId ?? '',
       createdAt: new Date(),
       updatedAt: new Date(),
     };

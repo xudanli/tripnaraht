@@ -35,4 +35,9 @@ export class QueryRouteDirectionDto {
   @IsInt()
   @Type(() => Number)
   month?: number; // 用于季节性筛选（1-12）
+
+  /** 逗号分隔，如 `hikingDetail` — 详情接口扩展徒步块 */
+  @IsOptional()
+  @IsString()
+  include?: string;
 }

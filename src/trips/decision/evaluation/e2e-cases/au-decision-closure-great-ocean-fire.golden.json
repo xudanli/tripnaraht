@@ -1,0 +1,64 @@
+{
+  "fixtureVersion": "decision-closure-golden/v1",
+  "caseId": "au-decision-closure-great-ocean-fire-001",
+  "description": "Golden optimizationHints: Great Ocean Road B100 bushfire closure; inland repair wins.",
+  "optimizationHints": {
+    "method": "CGUS",
+    "recommendedAlternativeId": "repair-gor-inland-v1",
+    "metaDecisionAudit": "META_BUDGET(sample=600,topK=5,H=3,entropy=0.71,ESS=180.4) mcTotal=600 ragWorld=1 mcRerank=1",
+    "decisionVerdict": {
+      "chosen_plan_id": "repair-gor-inland-v1",
+      "rejected_plans": [
+        {
+          "id": "base",
+          "status": "infeasible",
+          "hard_violation_count": 2,
+          "rejection_reasons": ["HARD:WORLD_ROAD_CLOSED (B100)", "HARD:WORLD_AIR_QUALITY_SMOKE"]
+        },
+        {
+          "id": "op-skip-apostles",
+          "status": "rejected",
+          "hard_violation_count": 0,
+          "utility_delta_vs_chosen": -0.18,
+          "rejection_reasons": ["lower_expected_utility delta=-0.180"]
+        }
+      ],
+      "monte_carlo_summary": {
+        "used": true,
+        "total_samples": 600,
+        "samples_per_candidate": {
+          "repair-gor-inland-v1": 600,
+          "base": 600,
+          "op-skip-apostles": 600
+        }
+      },
+      "fallback_chain": [
+        { "step": "mc_rank_authority", "reason": "smoke_entropy>0.60" },
+        { "step": "repair_accept", "reason": "WORLD_ROAD_HARD" }
+      ]
+    },
+    "decisionVerdictNarrationZh": "**推荐方案：** `repair-gor-inland-v1`。已弃选 2 个备选；蒙特卡罗共 600 次采样。路政物化：B100 封路已计入约束图。",
+    "worldConstraintMaterialization": {
+      "appliedEvents": 1,
+      "roadIds": ["B100"],
+      "weatherDates": ["2026-01-18"],
+      "storeVersion": 1,
+      "unifiedGraphNodeCount": 9,
+      "unifiedGraphEdgeCount": 14
+    },
+    "alternatives": [
+      {
+        "id": "repair-gor-inland-v1",
+        "score": 0.76,
+        "expected_utility": 0.76,
+        "feasibility_probability": 0.72
+      },
+      {
+        "id": "base",
+        "score": 0.14,
+        "expected_utility": 0.14,
+        "feasibility_probability": 0.06
+      }
+    ]
+  }
+}

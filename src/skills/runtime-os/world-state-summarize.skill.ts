@@ -48,7 +48,7 @@ export class WorldStateSummarizeSkill implements Skill<WorldStateSummarizeInput,
   metadata = {
     name: 'worldState.summarize',
     description:
-      'OS: physical→OperationalWorldState；冰岛 tripId 路径走 IcelandOperationalDomainPipeline（typed slices）+ WorldOperationalArbitration（executionStatus）。',
+      'worldState.summarize：汇总 physical 世界为 OperationalWorldState（冰岛 tripId 走 IcelandOperationalDomainPipeline + WorldOperationalArbitration）。在 planning/decision 阶段 policy.resolve/readiness 前需 OS 世界状态时调用。',
     version: '1.2.0',
     category: 'world' as const,
     toolGroup: 'CONTEXT' as const,

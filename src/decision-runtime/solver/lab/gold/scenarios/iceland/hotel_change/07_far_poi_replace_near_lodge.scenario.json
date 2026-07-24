@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.07_far_poi_replace_near_lodge",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "Hotel moved \u2014 REPLACE distant POI with V\u00edk church alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/hotel_change/problems/07_far_poi_replace_near_lodge.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

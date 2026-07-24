@@ -14,6 +14,7 @@ import { isInTripExecutionEnabled } from '../../in-trip-execution/utils/in-trip-
 import { TripStatus, normalizeTripStatus } from '../../dto/trip-status.dto';
 import type { TripExecutionAdvisoryDto } from '../types/trip-constraint-solver.types';
 import { buildExecutionAdvisory } from '../utils/execution-advisory-assembler.util';
+import { ExecutionCausalInsightService } from './execution-causal-insight.service';
 
 @Injectable()
 export class ExecutionAdvisoryService {
@@ -23,6 +24,7 @@ export class ExecutionAdvisoryService {
     @Optional() private readonly anchorHandoff?: AnchorHandoffService,
     @Optional() private readonly environmentRadar?: EnvironmentRadarService,
     @Optional() private readonly coverageMap?: CoverageMapService,
+    @Optional() private readonly causalInsightService?: ExecutionCausalInsightService,
   ) {}
 
   async getAdvisory(tripId: string, userId: string): Promise<TripExecutionAdvisoryDto> {
@@ -64,7 +66,29 @@ export class ExecutionAdvisoryService {
     const meta = (trip.metadata ?? {}) as Record<string, unknown>;
     const delayMinutes = typeof meta.inTripDelayMinutes === 'number' ? meta.inTripDelayMinutes : 0;
 
-    return buildExecutionAdvisory({
+    const routeSummaryFromAnchor = (() => {
+      const day = anchor?.itinerary?.days?.[dayNumber - 1]
+        ?? anchor?.itinerary?.days?.find((d) => d.date === date);
+      const items = day?.items ?? [];
+      return items
+        .map((i) => i.title ?? '行程项')
+        .filter(Boolean)
+        .slice(0, 6)
+        .join(' → ');
+    })();
+
+    const causalInsight = this.causalInsightService
+      ? await this.causalInsightService
+          .resolve({
+            tripId,
+            routeSummary: routeSummaryFromAnchor || undefined,
+            environmentEvents,
+            dayNumber,
+          })
+          .catch(() => undefined)
+      : undefined;
+
+    const dto = buildExecutionAdvisory({
       tripId,
       tripDayId: tripDay?.id ?? `day-${dayNumber}`,
       dayNumber,
@@ -74,7 +98,24 @@ export class ExecutionAdvisoryService {
       environmentEvents,
       delayMinutes,
       timezone: typeof meta.timezone === 'string' ? meta.timezone : 'Atlantic/Reykjavik',
+      causalInsight,
     });
+    return this.applyVerdictExpiry(dto);
+  }
+
+  /** When validUntil has passed, keep 200 but prompt re-evaluation (RECOMMENDATION_EXPIRED semantics on GET). */
+  private applyVerdictExpiry(dto: TripExecutionAdvisoryDto): TripExecutionAdvisoryDto {
+    const validUntil = dto.verdict.validUntil;
+    if (!validUntil) return dto;
+    const expired = DateTime.fromISO(validUntil) < DateTime.now();
+    if (!expired) return dto;
+    return {
+      ...dto,
+      verdict: {
+        ...dto.verdict,
+        headline: '建议已过期，正在重新评估当前行程…',
+      },
+    };
   }
 
   private resolveDayNumber(startDate: Date, endDate: Date): number {

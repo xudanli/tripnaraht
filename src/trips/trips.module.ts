@@ -6,6 +6,15 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { FlightPriceService } from './services/flight-price.service';
 import { FlightPriceDetailService } from './services/flight-price-detail.service';
 import { ScheduleConverterService } from './services/schedule-converter.service';
+import { ScheduleTimelineService } from './services/schedule-timeline.service';
+import { TimelineOverviewService } from './services/timeline-overview.service';
+import { CollabOverviewService } from './services/collab-overview.service';
+import { TripListService } from './services/trip-list.service';
+import { CoverImageService } from './services/cover-image.service';
+import { AccommodationOverviewService } from './services/accommodation-overview.service';
+import { OverallTripReadinessService } from './overall-readiness/services/overall-trip-readiness.service';
+import { JourneyMapService } from './services/journey-map.service';
+import { JourneyMapDecisionItemsService } from './services/journey-map-decision-items.service';
 import { ActionHistoryService } from './services/action-history.service';
 import { TripExtendedService } from './services/trip-extended.service';
 import { TripRecapService } from './services/trip-recap.service';
@@ -76,6 +85,8 @@ import { RealWorldExecutionService } from './services/real-world-execution.servi
 import { RealityGovernanceService } from './services/reality-governance.service';
 import { CityDigitalTwinService } from './services/city-digital-twin.service';
 import { StubRealityApiService } from './services/stub-reality-api.service';
+import { EmbeddedHikingTripSummaryService } from './services/embedded-hiking-trip-summary.service';
+import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
 import { TripLifecycleValidatorService } from './services/trip-lifecycle-validator.service';
 import { TripOutcomeOrchestratorService } from './services/trip-outcome-orchestrator.service';
 import { DecisionOSModule } from './decision/optimization/decision-os.module';
@@ -93,11 +104,28 @@ import { TripProcessFairnessModule } from './process-fairness/trip-process-fairn
 import { TripDecisionProfilingModule } from './decision-profiling/decision-profiling.module';
 import { InTripExecutionModule } from './in-trip-execution/in-trip-execution.module';
 import { TripConstraintSolverModule } from './trip-constraint-solver/trip-constraint-solver.module';
+import { TepModule } from './tep/tep.module';
+import { UnifiedConstraintAssessmentModule } from '../decision-runtime/constraints/unified-constraint-assessment.module';
+import { DecisionSemanticsModule } from './decision-semantics/decision-semantics.module';
+import { GuardianDecisionCoreModule } from './guardian-decision-core/guardian-decision-core.module';
+import { DecisionGatewayModule } from '../decision-runtime/gateway/decision-gateway.module';
 import { LoopsModule } from '../loops/loops.module';
 import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
+import { TripFilesModule } from './trip-files/trip-files.module';
+import { ActivityFavoritesModule } from './activity-favorites/activity-favorites.module';
+import { PlanObjectsModule } from '../decision-runtime/plan-objects/plan-objects.module';
+import { EffectivePlanExecutionModule } from '../decision-runtime/execution/effective-plan-execution.module';
+import { TravelStatusModule } from './travel-status/travel-status.module';
+import { ExecutionRiskCenterModule } from './execution-risk-center/execution-risk-center.module';
+import { WorldStateSnapshotModule } from '../decision-runtime/snapshot/world-state-snapshot.module';
+import { TripIntentModule } from '../decision-runtime/trigger/trip-intent.module';
+import { TripMonitoringModule } from '../decision-runtime/monitoring/trip-monitoring.module';
+import { AutomationAuthorizationModule } from '../decision-runtime/authorization/automation-authorization.module';
+import { TripMemberInvitesModule } from './member-invites/trip-member-invites.module';
+import { TripAdvisorCreateService } from './services/trip-advisor-create.service';
 
 @Module({
-  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, RouteDirectionsModule, ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, LoopsModule, IdentityGovernanceModule], // RouteDirectionsModule 用于创建行程时校验路线方向存在性（Should-Exist Gate 前置）
+  imports: [PrismaModule, LlmModule, forwardRef(() => DecisionModule), ItineraryItemsModule, AuthModule, RedisModule, SharedMemoryModule, ContextEngineModule, forwardRef(() => SkillsModule), forwardRef(() => DecisionDraftModule), forwardRef(() => PlacesModule), DestinationClarificationModule, BookingComModule, DecisionKernelModule, TransportModule, forwardRef(() => RouteDirectionsModule), ReadinessModule, DsoFeedbackPersistenceModule, PlanningPolicyModule, HikingDemoModule, DecisionOSModule.forFeature({ enableEventSourcing: true }), AttributionModule, TravelOutcomeModule, MemoryModule, NarrativeEngineModule, TripBudgetOsModule, TripWishModule, TripSilentVoteModule, TripDomainInfluenceModule, TripProcessFairnessModule, TripDecisionProfilingModule, InTripExecutionModule, TripConstraintSolverModule, TepModule, UnifiedConstraintAssessmentModule, DecisionSemanticsModule, DecisionGatewayModule, GuardianDecisionCoreModule, EffectivePlanExecutionModule, WorldStateSnapshotModule, TravelStatusModule, ExecutionRiskCenterModule, TripIntentModule, TripMonitoringModule, AutomationAuthorizationModule, LoopsModule, IdentityGovernanceModule, TripFilesModule, ActivityFavoritesModule, PlanObjectsModule, TripMemberInvitesModule], // Gateway 须在 Semantics 之后注册，且 Gateway 开启时 Semantics 仅暴露 L1 路由
   controllers: [TripsController, WorldKernelController],
   providers: [
     TripsService, 
@@ -140,6 +168,16 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     CityDigitalTwinService,
     StubRealityApiService,
     TripMetricsService, 
+    ScheduleTimelineService,
+    TimelineOverviewService,
+    CollabOverviewService,
+    TripListService,
+    TripAdvisorCreateService,
+    CoverImageService,
+    AccommodationOverviewService,
+    OverallTripReadinessService,
+    JourneyMapService,
+    JourneyMapDecisionItemsService,
     TripConflictsService, 
     TripIntentService, 
     TripOptimizationService, 
@@ -156,6 +194,7 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     EvidenceFetchTaskService,
     NLConversationContextService,
     SolverService,
+    EmbeddedHikingTripSummaryService,
     TripLifecycleValidatorService,
     TripOutcomeOrchestratorService,
     TravelEventPersistenceService,
@@ -181,6 +220,9 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     PoiRetrievalService,
     RouteTemplatePlanningService,
     TripMetricsService,
+    ScheduleTimelineService,
+    JourneyMapService,
+    JourneyMapDecisionItemsService,
     TripConflictsService,
     TripIntentService,
     TripOptimizationService,
@@ -200,6 +242,10 @@ import { IdentityGovernanceModule } from '../identity-governance/identity-govern
     TripDecisionProfilingModule,
     InTripExecutionModule,
     TripConstraintSolverModule,
+    TepModule,
+    DecisionSemanticsModule,
+    GuardianDecisionCoreModule,
+    ExecutionRiskCenterModule,
   ], // 导出 Service，供其他模块使用
 })
 export class TripsModule {}

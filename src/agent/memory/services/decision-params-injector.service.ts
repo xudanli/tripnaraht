@@ -8,6 +8,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionParams, normalizeDecisionParams } from '../interfaces/decision-params.interface';
+import type { AgentMemoryContext } from '../interfaces/agent-memory-context.interface';
 import { MemoryService } from './memory.service';
 import { AgentMemoryContextStore } from '../context/agent-memory-context.store';
 import { UserProfileMapperService } from './user-profile-mapper.service';
@@ -15,8 +16,15 @@ import { DecisionParamsMappingV2Service } from './decision-params-mapping-v2.ser
 import { ShadowModeDiffService } from './shadow-mode-diff.service';
 import { MemoryStateDecisionParamsService } from './memory-state-decision-params.service';
 import { calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
+import { resolveRouteHealthFromContext } from '../utils/route-health-memory.util';
+import { applyTripFeedbackOverlayToDecisionParams } from '../utils/trip-feedback-memory.util';
 import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
 import { applyRoutePartyFitnessToDecisionParams } from '../utils/route-party-fitness-decision-overlay.util';
+import {
+  applyIcelandMarketPriorToDecisionParams,
+  getIcelandMarketRouteTagScoreMultiplier,
+} from '../../../trips/iceland/market-preference/apply-iceland-market-prior-to-decision-params';
+import { readIcelandMarketSegmentFromTravelPreference } from '../../../trips/iceland/market-preference/iceland-market-preference-memory.util';
 import { DecisionOsSloService } from '../../../decision/slo/decision-os-slo.service';
 
 function cloneDecisionParams(params: DecisionParams): DecisionParams {
@@ -73,6 +81,8 @@ export class DecisionParamsInjectorService {
       }
       const params = useLegacy ? legacy : v2;
       this.applyRoutePartyFitnessOverlay(userId, params);
+      this.applyIcelandMarketPriorOverlay(params);
+      this.applyTripFeedbackOverlay(userId, params);
       await this.applyMemoryStateV1Overlay(userId, params);
       this.logger.debug(`Generated default decision params for new user ${userId}`);
       return normalizeDecisionParams(params);
@@ -89,6 +99,8 @@ export class DecisionParamsInjectorService {
     }
     const params = useLegacy ? legacy : v2;
     this.applyRoutePartyFitnessOverlay(userId, params);
+    this.applyIcelandMarketPriorOverlay(params);
+    this.applyTripFeedbackOverlay(userId, params);
     await this.applyMemoryStateV1Overlay(userId, params);
 
     this.logger.debug(
@@ -97,6 +109,19 @@ export class DecisionParamsInjectorService {
     );
 
     return normalizeDecisionParams(params);
+  }
+
+  /**
+   * `ICELAND_MARKET_PRIOR=1` 时叠加 IS-MPM v1 市场先验（须先有 route_and_run hydrator 写入的快照）。
+   */
+  private applyIcelandMarketPriorOverlay(params: DecisionParams): void {
+    if (process.env.ICELAND_MARKET_PRIOR !== '1') return;
+    const resolution = readIcelandMarketSegmentFromTravelPreference(this.memoryContextStore?.get());
+    if (!resolution) return;
+    applyIcelandMarketPriorToDecisionParams(params, resolution);
+    this.logger.debug(
+      `[DecisionParamsInjector] iceland_market_prior segment=${resolution.segmentId} confidence=${resolution.confidence.toFixed(2)}`,
+    );
   }
 
   private applyRoutePartyFitnessOverlay(userId: string, params: DecisionParams): void {
@@ -137,6 +162,34 @@ export class DecisionParamsInjectorService {
   }
 
   /**
+   * L4：基于冻结 snapshot 的 recentTripFeedbacks 微调 constraints / repairPolicy（只读，不调 DB）。
+   */
+  private applyTripFeedbackOverlay(userId: string, params: DecisionParams): void {
+    const snap = this.memoryContextStore?.get();
+    if (!snap || snap.userId !== userId) return;
+    const beforeBuffer = params.constraints.bufferTimeMin;
+    applyTripFeedbackOverlayToDecisionParams(params, snap.recentTripFeedbacks ?? []);
+    if (params.constraints.bufferTimeMin !== beforeBuffer || params.repairPolicy.preferRestDay) {
+      this.logger.debug(
+        `[DecisionParamsInjector] L4 trip_feedback overlay tail=${snap.recentTripFeedbacks?.length ?? 0}`,
+      );
+    }
+  }
+
+  /**
+   * 快照驱动 L4 微调（供单测 / replay harness 直接调用）。
+   */
+  applyDecisionParamsByTripFeedbackSnapshot(
+    context: Pick<AgentMemoryContext, 'recentTripFeedbacks'>,
+    params: DecisionParams,
+  ): DecisionParams {
+    return applyTripFeedbackOverlayToDecisionParams(
+      params,
+      context.recentTripFeedbacks ?? [],
+    );
+  }
+
+  /**
    * 调整 RouteDirection 评分（基于决策参数和路线健康度）
    */
   async adjustRouteDirectionScore(
@@ -171,14 +224,28 @@ export class DecisionParamsInjectorService {
       if (isStable) {
         adjustedScore *= (1 + decisionParams.routeDirectionBias.stabilityWeight * 0.2);
       }
+
+      const marketResolution = readIcelandMarketSegmentFromTravelPreference(this.memoryContextStore?.get());
+      if (marketResolution && routeTags.length > 0) {
+        adjustedScore *= getIcelandMarketRouteTagScoreMultiplier(routeTags, marketResolution);
+      }
     }
 
-    // 2. 应用路线健康度
-    const health = await this.memoryService.getRouteDirectionHealth(routeDirectionId, countryCode);
-    if (health) {
-      const healthScore = calculateRouteDirectionHealthScore(health);
-      // 健康度影响：健康度低的路线下调分数
-      adjustedScore *= (0.5 + healthScore * 0.5); // 健康度在 0.5~1.0 之间影响
+    // 2. 应用路线健康度（优先读冻结 snapshot，禁止 ALS 存在时二次 DB 读）
+    const ctx = this.memoryContextStore?.get();
+    const healthSnap = resolveRouteHealthFromContext(ctx, routeDirectionId, countryCode);
+    if (healthSnap) {
+      adjustedScore *= 0.5 + healthSnap.healthScore * 0.5;
+    } else if (ctx === undefined) {
+      const health = await this.memoryService.getRouteDirectionHealth(routeDirectionId, countryCode);
+      if (health) {
+        const healthScore = calculateRouteDirectionHealthScore(health);
+        adjustedScore *= 0.5 + healthScore * 0.5;
+      }
+    } else {
+      this.logger.debug(
+        `[DecisionParamsInjector] L3 snapshot miss rd=${routeDirectionId} cc=${countryCode}; skip DB (neutral)`,
+      );
     }
 
     return Math.max(0, Math.min(100, adjustedScore));

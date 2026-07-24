@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "1122fd31-d2d3-4a18-923f-2d57ac9f7367",
+  "skillId": "country_pack.IS",
+  "skillVersion": 2,
+  "strategyId": "audit-logging-reject",
+  "strategy": {
+    "strategyId": "audit-logging-reject",
+    "philosophy": "全局审计导向，优先保证可追溯性与断言合规，哪怕牺牲部分交互流畅性。",
+    "approach": "在每次数据检查点记录详细日志，包括 DEM 数据状态、用户意图、检查时间戳；若 DEM 缺失，REJECT 并输出结构化错误信息（含 reject 和 dem 关键词），同时将完整审计信息返回给调用方用于调试。",
+    "emphasis": "可观测性、断言严格性、后期调试便利。",
+    "risk": "低风险——严格满足断言，但日志生成可能增加轻微延迟；若日志系统故障可能影响主流程。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求7月去冰岛高地，但根据规则，高地路线需要DEM数据支持。当前DEM数据缺失，因此必须REJECT，并在action中包含reject和dem关键词，同时记录审计信息。",
+      "action": "reject: DEM数据缺失，无法处理高地路线请求。请确保DEM数据已加载后再尝试。",
+      "result": "[完成] reject: DEM数据缺失，无法处理高地路线请求。请确保DEM数据已加载后再尝试。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:22:49.020Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n- **数据依赖声明**：冰岛高地路线需要 DEM 数据支持。\n\n## 步骤\n1. **前置数据检查** + 确认用户季节与强度偏好  \n   - 首先检查冰岛全境 DEM 数据是否可用，若不可用则直接 REJECT 并说明原因。\n   - 对于涉及高地路线的请求，必须确保 DEM 数据已加载，否则 REJECT。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。\n\n> ⚠️ **注意**  \n> - 数据可用性是执行高地路线的前提条件。  \n> - REJECT 动作必须包含 `reject` 和 `dem` 关键词，并说明数据缺失原因，以满足断言。  \n> - 避免在数据缺失时尝试预加载，应直接 REJECT 并反馈给用户。  \n> - 最差轨迹在执行预加载时未检查数据是否已存在，导致重复失败。  \n> - 最差轨迹的 REJECT 信息未包含 `dem` 关键词，违反了断言要求。",
+  "createdAt": "2026-05-26T05:22:49.020Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

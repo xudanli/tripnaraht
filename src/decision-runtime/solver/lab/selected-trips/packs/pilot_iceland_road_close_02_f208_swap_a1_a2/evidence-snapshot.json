@@ -1,0 +1,19 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "pilot_iceland_road_close_02_f208_swap_a1_a2",
+  "evidenceVersionId": "ev-f208-2",
+  "frozenAt": "2026-07-14T17:00:04.736Z",
+  "sources": [
+    {
+      "provider": "vegagerdin_staging_fixture",
+      "ref": "vegagerdin_notice_staging_f208_2026-06-12"
+    }
+  ],
+  "event": {
+    "kind": "ROAD_STATUS_CHANGED",
+    "roadId": "F208",
+    "status": "CLOSED",
+    "canonicalConstraintId": "road.close.F208",
+    "effectiveFrom": "2026-06-12T08:15:00Z"
+  }
+}

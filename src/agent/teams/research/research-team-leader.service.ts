@@ -13,6 +13,7 @@ import type { ResearchBudgetBucketsMap } from './research-team-bus.types';
 import type { UserCognitiveProfile } from '../../memory/experience-replay/user-cognitive-profile.types';
 import { extractTripTotalBudget, buildResearchBudgetBucketsFromTotal } from './research-team-budget-ledger.util';
 import { readRealtimeRerollCount } from '../../memory/emotional-resonance/research-realtime-frustration.util';
+import { applyResearchTraceSignalsToResearchData } from '../../memory/emotional-resonance/research-member-stability.util';
 
 /**
  * Research Team 调度入口（MAT 3.0）：单轨 Leader 拓扑 — prepare → Member → finalize；
@@ -133,6 +134,7 @@ export class ResearchTeamLeaderService {
       const tFin = Date.now();
       const { researchData, environmentPatch } = await this.researchPipeline.finalizeLeaderResearchWorkspace(dso, ctx, ws);
       researchData.__research_conflict_negotiation = conflictNegotiation;
+      applyResearchTraceSignalsToResearchData(researchData, conflictNegotiation);
       audit.push({
         at: new Date().toISOString(),
         member: 'research_executor',

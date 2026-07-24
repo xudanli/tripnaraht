@@ -1,8 +1,15 @@
 import {
+  applyBoundTripReviewRouteAndRunOverrideInPlace,
+  isBoundTripLightConsultQuery,
+  isBoundTripLodgingDiningPlanQuery,
   isFactualMacroStatQuery,
+  isHotelInventorySearchQuery,
   isLocalClockOrTimezoneFactQuery,
   isTripStatusOverviewQuery,
   isWeatherRoadConditionFocusedQuery,
+  routingSignalsWithResolvedTaskType,
+  shouldForceDataLookupForBoundTripReview,
+  shouldRouteBoundTripAsItineraryAdjust,
   signalsFromRequest,
 } from './orchestration-signals.util';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
@@ -13,6 +20,35 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     user_id: 'u1',
     message: '',
     ...overrides,
+  });
+
+  it('有 trip_id + 搜索维克某日住宿 → DATA_LOOKUP（非瑕疵草案 SM）', () => {
+    const msg = '搜索维克 7 月 26 日住宿';
+    expect(isHotelInventorySearchQuery(msg, msg.toLowerCase())).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 'trip_15c50a69931845ca',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id + 西峡湾极地攻略咨询 → DATA_LOOKUP + Plan Studio 轻量咨询', () => {
+    const msg = '帮我查查类似冰岛西峡湾那种冷门秘境的极地探险攻略';
+    expect(isBoundTripLightConsultQuery(msg, msg.toLowerCase())).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: '807b3c54-4793-4006-a66d-67e79faa6fc2',
+        message: msg,
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.requiresStructuredOutput).toBe(false);
   });
 
   it('有 trip_id + 预算/指南类咨询 → DATA_LOOKUP 且不要求结构化输出', () => {
@@ -96,6 +132,28 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     expect(s.intent_mode_resolved).toBe('DATA_LOOKUP');
   });
 
+  it('有 trip_id + 维克超市能买什么 → DATA_LOOKUP（勿误入 POI 稀疏澄清）', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '维克超市可以买到什么水果',
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.requiresStructuredOutput).toBe(false);
+    expect(s.intent_mode_resolved).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id + 附近能买苹果 → DATA_LOOKUP', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '附近有能买苹果的超市吗',
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+  });
+
   it('有 trip_id + 口语好吃推荐 → DATA_LOOKUP（勿未命中餐饮分流误入 TRIP_PLANNING）', () => {
     const s = signalsFromRequest(
       base({
@@ -165,6 +223,73 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     expect(s.requiresStructuredOutput).toBe(false);
   });
 
+  it('有 trip_id + 全面分析当前行程 → DATA_LOOKUP（勿误入 CGUS 决策驾驶舱）', () => {
+    const msg = '帮我全面分析下当前行程，看下是否存在问题和可以优化的地方';
+    expect(isTripStatusOverviewQuery(msg, msg.toLowerCase())).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.requiresStructuredOutput).toBe(false);
+  });
+
+  it('有 trip_id + 全面分析 + intent_mode=TRIP_PLANNING → 仍 DATA_LOOKUP（复盘勿走规划状态机）', () => {
+    const msg = '帮我全面分析当前行程，看看还有什么问题或可以优化的地方';
+    const req = base({
+      trip_id: 't1',
+      message: msg,
+      options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+    });
+    expect(shouldForceDataLookupForBoundTripReview(req)).toBe(true);
+    expect(applyBoundTripReviewRouteAndRunOverrideInPlace(req)).toBe(true);
+    expect(req.options?.intent_mode).toBe('DATA_LOOKUP');
+    expect(req.options?.use_state_machine_orchestration).toBe(false);
+    const s = signalsFromRequest(req);
+    expect(s.taskType).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id + 多日住宿餐饮方案 → DATA_LOOKUP（勿走 TRIP_PLANNING 深度推理）', () => {
+    const msg =
+      '请给出详细6天住宿和餐饮方案，黄金圈南岸到冰河湖，包括酒店推荐和每日用餐策略';
+    expect(isBoundTripLodgingDiningPlanQuery(msg, msg.toLowerCase())).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.requiresStructuredOutput).toBe(false);
+  });
+
+  it('有 trip_id + 住宿餐饮方案 + intent_mode=TRIP_PLANNING → 仍 DATA_LOOKUP', () => {
+    const msg =
+      '详细6天住宿和餐饮方案，黄金圈南岸到冰河湖，酒店推荐和每日用餐策略';
+    const req = base({
+      trip_id: 't1',
+      message: msg,
+      options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+    });
+    expect(shouldForceDataLookupForBoundTripReview(req)).toBe(true);
+    expect(applyBoundTripReviewRouteAndRunOverrideInPlace(req)).toBe(true);
+    expect(req.options?.intent_mode).toBe('DATA_LOOKUP');
+    const s = signalsFromRequest(req);
+    expect(s.taskType).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id + 显式改排第 N 天 → TRIP_PLANNING（与分析复盘区分）', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '请将第3天行程优化为更轻松的节奏',
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
+  });
+
   it('有 trip_id + recommend hotels (EN) → DATA_LOOKUP', () => {
     const s = signalsFromRequest(
       base({
@@ -173,6 +298,43 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
       }),
     );
     expect(s.taskType).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id + 第三天轻松点改排 → TRIP_PLANNING（勿被 DATA_LOOKUP profile 误判轻量咨询）', () => {
+    const msg = '第三天的行程可以轻松点吗';
+    expect(shouldRouteBoundTripAsItineraryAdjust('t1', msg)).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.requiresStructuredOutput).toBe(true);
+    expect(s.intent_mode_resolved).toBe('TRIP_PLANNING');
+  });
+
+  it('options.intent_mode=GENERIC_QA + 第三天轻松点 → 钳回 TRIP_PLANNING', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '第三天的行程可以轻松点吗',
+        options: { intent_mode: 'GENERIC_QA' },
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.intent_mode_resolved).toBe('TRIP_PLANNING');
+    expect(s.requiresStructuredOutput).toBe(true);
+  });
+
+  it('intent.recognize 误传 DATA_LOOKUP + 第三天轻松点 → routingSignalsWithResolvedTaskType 钳回 TRIP_PLANNING', () => {
+    const req = base({
+      trip_id: 't1',
+      message: '第三天的行程可以轻松点吗',
+    });
+    const s = routingSignalsWithResolvedTaskType(req, 'DATA_LOOKUP');
+    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.requiresStructuredOutput).toBe(true);
   });
 
   it('有 trip_id + 换酒店（改行程）→ 仍为 TRIP_PLANNING', () => {
@@ -217,7 +379,7 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     expect(s.requiresStructuredOutput).toBe(false);
   });
 
-  it('options.intent_mode=TRIP_PLANNING 覆盖咨询句 → 仍为 TRIP_PLANNING', () => {
+  it('options.intent_mode=TRIP_PLANNING 落在轻量咨询句 → DATA_LOOKUP（契约：咨询≠深规划状态机）', () => {
     const s = signalsFromRequest(
       base({
         trip_id: 't1',
@@ -225,8 +387,20 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
         options: { intent_mode: 'TRIP_PLANNING' },
       }),
     );
-    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.taskType).toBe('DATA_LOOKUP');
     expect(s.intent_mode_requested).toBe('TRIP_PLANNING');
+    expect(s.intent_mode_resolved).toBe('DATA_LOOKUP');
+  });
+
+  it('options.intent_mode=TRIP_PLANNING + 改排句 → 仍为 TRIP_PLANNING', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '请把第三天行程改轻松一点',
+        options: { intent_mode: 'TRIP_PLANNING' },
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
     expect(s.intent_mode_resolved).toBe('TRIP_PLANNING');
   });
 
@@ -332,6 +506,16 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     );
     expect(s.taskType).toBe('DATA_LOOKUP');
     expect(s.requiresStructuredOutput).toBe(false);
+  });
+
+  it('有 trip_id + 查看第 N 天行程 → DATA_LOOKUP（只读查看，不重规划）', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '查看第三天的行程',
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
   });
 
   it('有 trip_id + 查看行程规划情况 → DATA_LOOKUP（「规划」在规划情况中勿判成重规划）', () => {
@@ -598,6 +782,59 @@ describe('isWeatherRoadConditionFocusedQuery', () => {
 
   it('同时强调租车/自驾 → 非天气路况聚焦（保留租车主旨路径）', () => {
     expect(isWeatherRoadConditionFocusedQuery('租车自驾天气路况要注意什么')).toBe(false);
+  });
+});
+
+describe('signalsFromRequest — route class golden 对齐', () => {
+  const base = (overrides: Partial<RouteAndRunRequestDto>): RouteAndRunRequestDto => ({
+    request_id: 'r-golden',
+    user_id: 'u1',
+    message: '',
+    ...overrides,
+  });
+
+  it('无 trip 显式规划 → TRIP_PLANNING', () => {
+    expect(
+      signalsFromRequest(base({ message: '帮我规划东京 5 天亲子游，要浅草寺和迪士尼' })).taskType,
+    ).toBe('TRIP_PLANNING');
+  });
+
+  it('英文 plan a N-day trip → TRIP_PLANNING', () => {
+    expect(
+      signalsFromRequest(
+        base({ message: 'Plan a minimal 2-day trip to Reykjavik for one traveler.' }),
+      ).taskType,
+    ).toBe('TRIP_PLANNING');
+  });
+
+  it('绑定 trip 开放时间 → DATA_LOOKUP', () => {
+    expect(
+      signalsFromRequest(
+        base({
+          trip_id: '00000000-0000-4000-8000-000000000003',
+          message: 'Dynjandi 瀑布周二开放吗',
+        }),
+      ).taskType,
+    ).toBe('DATA_LOOKUP');
+  });
+
+  it('退款+支付凭证 → HIGH risk', () => {
+    const s = signalsFromRequest(
+      base({ message: '我要退款并投诉供应商，涉及支付凭证' }),
+    );
+    expect(s.taskType).toBe('CUSTOMER_SUPPORT');
+    expect(s.risk).toBe('HIGH');
+  });
+
+  it('绑定 trip 不要改 → TRIP_PLANNING（非咨询）', () => {
+    expect(
+      signalsFromRequest(
+        base({
+          trip_id: '00000000-0000-4000-8000-000000000004',
+          message: '暴风雪天仍按原计划走F路高地，不要改',
+        }),
+      ).taskType,
+    ).toBe('TRIP_PLANNING');
   });
 });
 

@@ -6,6 +6,10 @@ import {
   SecurityRedTeamTestResult,
 } from '../interfaces/safety-compliance.interface';
 import { ConstraintsEngineService } from './constraints-engine.service';
+import {
+  resolveConstraintApprovalForAudit,
+  resolveConstraintBlockedForAudit,
+} from '../../../decision-runtime/constraints/constraint-agent-narrate-only.util';
 import { randomUUID } from 'crypto';
 
 /**
@@ -78,10 +82,12 @@ export class SecurityRedTeamService {
 
         // 评估结果
         const actualResult = {
-          blocked: constraintResult.is_blocked,
+          blocked: resolveConstraintBlockedForAudit(constraintResult),
           sev_level: constraintResult.sev_level,
-          requires_approval: constraintResult.requires_approval,
+          requires_approval: resolveConstraintApprovalForAudit(constraintResult),
           violations: constraintResult.violations,
+          block_authority: constraintResult.block_authority,
+          narrate_only: constraintResult.narrate_only,
         };
 
         const passed =

@@ -1,0 +1,119 @@
+{
+  "schemaId": "tripnara.attention_shadow_staging_replay_batch@v1",
+  "generatedAt": "2026-07-11T13:08:02.494Z",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "tripId": "c0a55555-5555-4555-8555-555555555555",
+  "tripNote": "preferred trip c0c77777-7777-4777-8777-777777777777 not found; using SR#5 staging canary c0a55555-5555-4555-8555-555555555555",
+  "rowSource": "TRIP_METADATA_RFC001",
+  "dryRun": false,
+  "scenarioCount": 10,
+  "autoPassCount": 2,
+  "autoPendingHumanCount": 8,
+  "errorCount": 0,
+  "repeatedPollingDuplicate": 0,
+  "runs": [
+    {
+      "scenarioId": "STG-REPLAY-A",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-A-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-484Z.json",
+      "runId": "6f1f25fa-dad9-4dd1-aed9-5b1b53ae956f",
+      "reviewStatus": "AUTO_PASS",
+      "verdict": "NO_OP",
+      "autoPass": true,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    },
+    {
+      "scenarioId": "STG-REPLAY-B",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-B-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-486Z.json",
+      "runId": "238e2720-4c1b-4b47-8f64-a2ccd4eee62c",
+      "reviewStatus": "AUTO_PENDING_HUMAN",
+      "verdict": "INCONCLUSIVE",
+      "autoPass": false,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    },
+    {
+      "scenarioId": "STG-REPLAY-C",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-C-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-487Z.json",
+      "runId": "b556157f-7ab9-47c0-9cec-244362b92241",
+      "reviewStatus": "AUTO_PENDING_HUMAN",
+      "verdict": "INCONCLUSIVE",
+      "autoPass": false,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    },
+    {
+      "scenarioId": "STG-REPLAY-D",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-D-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-488Z.json",
+      "runId": "27acf168-9dce-4e3f-95fd-0c6f97cb2736",
+      "reviewStatus": "AUTO_PENDING_HUMAN",
+      "verdict": "INCONCLUSIVE",
+      "autoPass": false,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    },
+    {
+      "scenarioId": "STG-REPLAY-E",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-E-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-490Z.json",
+      "runId": "STG-REPLAY-E-poll-2",
+      "reviewStatus": "AUTO_PENDING_HUMAN",
+      "verdict": "INCONCLUSIVE",
+      "autoPass": false,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2,
+      "pollingDuplicate": false
+    },
+    {
+      "scenarioId": "STG-REPLAY-F",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-F-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-490Z.json",
+      "runId": "421a77ec-6de2-40c4-8286-dc30674c55e1",
+      "reviewStatus": "AUTO_PASS",
+      "verdict": "NO_OP",
+      "autoPass": true,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    },
+    {
+      "scenarioId": "STG-REPLAY-07",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-07-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-491Z.json",
+      "runId": "7318080b-61f4-4c82-ba88-dab619756bad",
+      "reviewStatus": "AUTO_PENDING_HUMAN",
+      "verdict": "INCONCLUSIVE",
+      "autoPass": false,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    },
+    {
+      "scenarioId": "STG-REPLAY-08",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-08-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-492Z.json",
+      "runId": "acd72a35-f90b-42ce-8dc1-bf71e87f7a38",
+      "reviewStatus": "AUTO_PENDING_HUMAN",
+      "verdict": "INCONCLUSIVE",
+      "autoPass": false,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    },
+    {
+      "scenarioId": "STG-REPLAY-09",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-09-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-493Z.json",
+      "runId": "003bff20-1d61-4fdb-8f00-cd938ed7cba7",
+      "reviewStatus": "AUTO_PENDING_HUMAN",
+      "verdict": "INCONCLUSIVE",
+      "autoPass": false,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    },
+    {
+      "scenarioId": "STG-REPLAY-10",
+      "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-10-c0a55555-5555-4555-8555-555555555555-2026-07-11T13-08-02-494Z.json",
+      "runId": "64acb621-5326-47c2-8118-d1aebde0f375",
+      "reviewStatus": "AUTO_PENDING_HUMAN",
+      "verdict": "INCONCLUSIVE",
+      "autoPass": false,
+      "rowSource": "TRIP_METADATA_RFC001",
+      "problemCount": 2
+    }
+  ],
+  "observationClosureReady": false,
+  "note": "Human adjudication still required before Observation Closure PASS"
+}

@@ -1,0 +1,25 @@
+{
+  "evidenceType": "FORMAL_VEDUR_SOAK_CRON_REPAIR",
+  "repairedAt": "2026-07-11T15:16:00Z",
+  "rootCause": "crontab used `source` under /bin/sh (dash); source: not found — collector never ran on schedule",
+  "gapStartedApprox": "2026-07-11T06:29:09Z",
+  "gapEndedAt": "2026-07-11T15:16:00Z",
+  "activeSoakFile": "internal-docs/operations/evidence/formal-vedur-soak-2026-07-11.json",
+  "fix": {
+    "frankfurtCrontab": "*/15 * * * * /bin/bash /root/tripnara-collector/scripts/run-vedur-collector-cron.sh >> /var/log/vedur-collector.log 2>&1",
+    "wrapperScript": "scripts/run-vedur-collector-cron.sh",
+    "installScript": "scripts/install-frankfurt-collector-cron.sh"
+  },
+  "postFixVerification": {
+    "wrapperExit": 0,
+    "collectorHttp": 200,
+    "devboxIngestLog": "VedurCollectorIngestService collector ingest stored at 2026-07-11T15:15:59Z",
+    "frankfurtTunnelHealth": "ok"
+  },
+  "soakImpact": "Scheduled collector was non-functional for ~8.8h after soak start; formal 24h coverage requires Engineering/Ops assessment (abort+restart vs document gap)",
+  "devboxPm2": {
+    "vedur-collector-ingest": "online",
+    "vedur-collector-tunnel": "online",
+    "restarts": 0
+  }
+}

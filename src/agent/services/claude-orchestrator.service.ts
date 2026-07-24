@@ -1,6 +1,7 @@
 // src/agent/services/claude-orchestrator.service.ts
 
 import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PreferenceRoundOrchestratorService } from '../../trips/process-fairness/services/preference-round-orchestrator.service';
 import type { ProcessFairnessOrchestrationHint } from '../../trips/process-fairness/types/process-fairness-orchestration.types';
@@ -15,6 +16,7 @@ import { DecisionProfilingOrchestratorService } from '../../trips/decision-profi
 import type { DecisionProfilingOrchestrationHint } from '../../trips/decision-profiling/types/decision-profiling-orchestration.types';
 import { ConfigService } from '@nestjs/config';
 import { LlmService, type LlmTokenContext } from '../../llm/services/llm.service';
+import { setLlmTraceRoutePath } from '../../llm/token-context.storage';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
 import { SKILLS_REGISTRY_TOKEN } from '../../skills/services/skills-registry.token';
@@ -27,14 +29,13 @@ import {
   computeDecisionEvidenceFingerprint,
 } from '../utils/decision-evidence-fingerprint.util';
 import {
+  extractDecisionLogTripContext,
   formatContextBuildInputsZh,
   formatContextBuildOutputsZh,
-  formatFeedbackInputsZh,
-  formatFeedbackOutputsZh,
   formatGateEvalInputsKernelZh,
   formatGateEvalOutputsZh,
-  formatHallucinationInputsZh,
-  formatHallucinationOutputsZh,
+  formatGuardianDebateGateInputsZh,
+  formatGuardianDebateGateOutputsZh,
   formatIntakeInputsPreviewZh,
   formatIntakeOutputsZh,
   formatOptimizeInputsZh,
@@ -62,6 +63,8 @@ import { CONSTRAINT_IDS } from './constraint-registry';
 import { buildL3PersuasionLine, selectPersuasionMode } from '../utils/narrator-l3-persuasion.util';
 import { formatPredictiveFailureReport } from '../utils/repair-causal-explainer.util';
 import { calculateEarlyWarningRisk } from '../utils/early-warning-risk-model.util';
+import { injectGateRelaxationClarificationIfEligible } from '../utils/gate-relaxation-clarification.util';
+import { hydrateRelaxationConstraintsFromTripRecord } from '../utils/trip-relaxation-hydrate.util';
 import {
   IntentAnalysis,
   RoutingDecision,
@@ -86,32 +89,276 @@ import {
   normalizeSkillsPlanCoalesceVerifyRepair,
 } from './claude-orchestrator-smart-update-normalize.util';
 import {
+  buildDestinationSupplementForTriage,
+  buildOrchestrationTriagePrompt,
+  isOrchestrationTriageEnabled,
+  normalizeOrchestrationTriageResult,
+  ORCHESTRATION_TRIAGE_JSON_SCHEMA,
+} from '../utils/orchestration-triage.util';
+import { resolveDestinationLlmPromptSupplement } from '../utils/destination-llm-prompt-supplement.util';
+import {
   collectRepairAlternativesFromStepResults,
   mergeRepairAlternativesBundles,
 } from '../utils/collect-repair-alternatives-from-step-results.util';
+import {
+  mergeWorldBuildIntoResearchData,
+  resolveNorwaySubregionForWorldBuild,
+} from '../../skills/world/utils/world-model-production-guards.util';
 import { rssRefinedItemsToSafetravelRouteAlerts } from '../../skills/world/safetravel-rss-to-route-verify-alerts.util';
 import type {
   IcelandVehicleIntentHints,
   SkillInputIntentSnapshot,
 } from '../../skills/itinerary/iceland-vehicle-terrain-arbitrator.util';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
+import {
+  computeGuardiansDebateAwaitBudgetMs,
+  GuardiansDebateService,
+} from './guardians-debate.service';
+import {
+  buildGuardianDebateFusionClarificationQuestions,
+  fuseGuardianDebateVerdictIntoGate,
+} from '../utils/guardian-debate-gate-fusion.util';
+import {
+  applyBoundTripDateAuthority,
+  parseIntakeNlDatesAndDays,
+} from '../utils/trip-plan-intake-dates.util';
+import {
+  extractVehicleTypeFromCurrentUserMessage,
+  reconcileTripPlanVehicleConstraints,
+} from '../utils/trip-plan-intake-vehicle.util';
+import {
+  isStructuredClarificationEchoMessage,
+  isWorkbenchAssistantPlaceholderMessage,
+  rebuildTripPlanMessagePreservingSystemBlocks,
+  resolveCanonicalIntakeUserMessage,
+} from '../utils/trip-plan-intake-message.util';
+import { buildWorkbenchPlaceholderWelcomeText } from '../orchestration/graph/nodes/intake-workbench-placeholder.util';
+import {
+  applyFroadHighlandSignalsToTripPlan,
+  buildFroadHighlandIntentSignals,
+} from '../utils/froad-intake-signals.util';
+import {
+  applyPeakSeasonTimeShiftSignalsToTripPlan,
+  buildPeakSeasonTimeShiftSignals,
+} from '../utils/peak-season-time-shift-intake.util';
+import {
+  buildFroad2wdIntakeClarificationQuestion,
+  buildMarathonIntakeClarificationQuestion,
+  buildPeakSeasonTimeShiftIntakeClarificationQuestion,
+  isFroad2wdIntakeClarificationPending,
+  isMarathonDeferredIntakeClarificationPending,
+  isPeakSeasonTimeShiftIntakeClarificationPending,
+} from '../utils/structured-intake-clarification.util';
+import { enrichStateForIntakeGuardianDebateShortCircuit } from '../utils/intake-guardian-debate-short-circuit.util';
+import {
+  analyzeRouteAndRunIntent,
+  type RouteAndRunIntentAnalysis,
+  type TripDaySnapshotForPlacement,
+} from '../utils/route-and-run-intent-analyzer.util';
+import {
+  appendItineraryAdjustSystemHints,
+  buildDestinationScopeClarificationOptions,
+  mapTripPlacesToPoiEvidence,
+  shouldPreferTripDestinationOnHydration,
+  shouldSkipPoiDestinationClarificationForItineraryAdjust,
+  type TripPlaceRowForPoiEvidence,
+} from '../utils/itinerary-adjust-intent.util';
+import { resolveItineraryAdjustNeighborContext } from '../utils/itinerary-trip-neighbor-anchor-load.util';
+import {
+  corridorSearchLatLng,
+} from '../utils/itinerary-adjust-corridor-fallback.util';
+import {
+  buildItineraryAdjustAutoApplyLeadMessage,
+  classifyItineraryAdjustSubIntent,
+  evaluateItineraryAdjustConfidenceGate,
+  resolveItineraryAdjustExecutionMode,
+} from '../utils/itinerary-adjust-auto-apply.util';
+import { runAdaptiveReplanForAdjustState } from '../utils/itinerary-adjust-adaptive-replan.util';
+import {
+  executeItineraryAdjustDraftApply,
+  buildItineraryAdjustDraftApplyAnswerText,
+} from '../utils/itinerary-adjust-draft-apply.util';
+import {
+  PENDING_ITINERARY_ADJUST_DRAFT_META_KEY,
+  pendingDraftFromRequestSnapshot,
+  readPendingItineraryAdjustDraft,
+} from '../utils/itinerary-adjust-pending-draft.util';
+import {
+  buildLodgingReplaceAnswerText,
+  detectLodgingReplaceIntent,
+  findLodgingItemsOnDay,
+  parseLodgingReplaceSpec,
+} from '../utils/itinerary-lodging-replace.util';
+import { TripRunManagerService } from './trip-run-manager.service';
+import { ItineraryVersionService } from './itinerary-version.service';
+import {
+  buildCorridorDayApplyEdits,
+  parseNumericPlaceId,
+  pickTargetDayFromItinerary,
+} from '../utils/itinerary-adjust-corridor-apply.util';
+import {
+  allNewPoiItemsHavePlaceIds,
+  buildPoiSlotFillAppendEdits,
+  collectResearchPools,
+  collectSparseTripDayTargets,
+  enrichItineraryWithPlaceIdsFromResearch,
+  mergePoiSlotFillOrchestratorItinerary,
+} from '../utils/itinerary-adjust-poi-slot-fill.util';
+import { recordItineraryAdjustFunnel } from '../utils/itinerary-adjust-metrics.util';
+import {
+  FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON,
+  shouldBlockAutoApplyForFlawedDraft,
+} from '../utils/itinerary-adjust-flawed-auto-block.util';
+import { extractItineraryAdjustTargetDateFromMessage } from '../utils/itinerary-adjust-intent.util';
+import {
+  buildCorridorAdjustPoiPlanningSlice,
+  shouldSuppressTripRegionIdForItineraryAdjustPoiPlanning,
+} from '../utils/itinerary-adjust-poi-planning.util';
+import {
+  collectOpeningHoursPoiIdsForHydration,
+  hydrateOpeningHoursEvidenceForItinerary,
+} from '../utils/opening-hours-evidence-hydration.util';
+import type { TripUserEdit } from '../../skills/trip/utils/trip-user-edit.util';
+import type { ItineraryItem } from '../interfaces/trip-plan.interface';
+import type {
+  ItineraryAdjustSpatialConstraints,
+  NeighborAnchorContext,
+} from '../utils/itinerary-adjust-neighbor-anchors.util';
+import {
+  buildItineraryItemDeleteAnswerText,
+  detectItineraryItemDeleteIntent,
+  parseItineraryItemDeleteSpec,
+  resolveItemIdsForDeleteWithFallback,
+  type TripLikeForDelete,
+} from '../utils/itinerary-item-delete.util';
+import {
+  buildItineraryItemAddAnswerText,
+  detectItineraryItemAddIntent,
+  isPlausibleItineraryItemAddPoiQuery,
+  itemAlreadyOnDay,
+  parseItineraryItemAddSpec,
+  resolvePlaceIdForAdd,
+  resolveTripDayIdForAdd,
+} from '../utils/itinerary-item-add.util';
+import {
+  detectItineraryAdjustIntent,
+  detectFullTripReplanIntent,
+  detectFullTripReplanHotelIntent,
+  isItineraryFullTripReplanMetadata,
+} from '../utils/itinerary-adjust-intent.util';
+import {
+  buildIntentAddAlreadyExistsAnswer,
+  extractDaySearchAnchor,
+  intentAlreadySatisfiedOnDay,
+  isIntentBasedPoiQuery,
+  resolvePlaceIdForIntentAdd,
+  resolvePoiIntentProfile,
+  type IntentPoiCandidate,
+} from '../utils/itinerary-item-add-intent.util';
+import { buildSupplyGapFailureGuidance } from '../intent/intent-supply-failure.util';
+import {
+  openingHoursEvidenceToText,
+  suggestActivitySlotForDayAdd,
+} from '../utils/itinerary-item-add-slot.util';
+import {
+  buildGoldenCircleDayReplanAnswerText,
+  buildGoldenCircleScheduleSlots,
+  collectActivityItemIdsForDayReplan,
+  detectGoldenCircleDayReplanIntent,
+  goldenCircleSearchQueryForSlug,
+  parseGoldenCircleDayReplanSpec,
+  pickGoldenCirclePlaceFromCandidates,
+  resolveGoldenCirclePlaceIdsFromTrip,
+  resolveTripDayByDate,
+  type GoldenCircleAnchorSlug,
+  type PoiCandidateLike,
+} from '../utils/itinerary-day-replan.util';
+import {
+  buildItineraryDayViewAnswerText,
+  detectItineraryDayViewIntent,
+  parseItineraryDayViewSpec,
+  resolveTripDayIndexFromViewSpec,
+} from '../utils/itinerary-day-view.util';
+import {
+  applyExistingItemDurationToUpdateSpec,
+  buildItineraryItemUpdateAnswerText,
+  buildIsoTimesForUpdate,
+  detectItineraryItemUpdateIntent,
+  parseItineraryItemUpdateSpec,
+  resolveItemForUpdateWithFallback,
+} from '../utils/itinerary-item-update.util';
+import { mapOrchestratorDecisionLogToStepsExecuted } from '../utils/itinerary-item-crud-decision-log.util';
+import {
+  buildItinerarySlotPlacementClarificationQuestion,
+  isItinerarySlotPlacementIntakeClarificationPending,
+  mapTripDaysToPlacementSnapshots,
+  suggestItinerarySlotCandidates,
+  type ItinerarySlotCandidate,
+} from '../utils/itinerary-slot-placement.util';
+import type { ItinerarySlotPlacementGapResult } from '../assistants/trip-planner/interfaces/itinerary-slot-placement.interface';
+import { ContextAnalyzerService } from '../assistants/trip-planner/services/context-analyzer.service';
+import {
+  buildTripContextFromPrismaRow,
+  type PrismaTripRowForPaContext,
+} from '../utils/trip-context-from-prisma.util';
+import {
+  appendPolishAuditToAnalysisPath,
+  paSuggestedDaysToSlotCandidatesWithPolish,
+  shouldPreferPaSlotCandidates,
+} from '../utils/itinerary-slot-pa-bridge.util';
+import { ItinerarySlotPolisherService } from './itinerary-slot-polisher.service';
+import type { IntakeGap } from '../utils/clarification-question-generator.util';
+import { enrichGuardianDebateTripContextFromGateEval } from '../utils/guardian-debate-trip-context-enricher.util';
+import { resolvePersonaClosureAudit } from '../utils/persona-closure-repair-skip.util';
+import {
+  applyMarathonIntakeSignalsToTripPlan,
+  buildMarathonIntakeSignalsFromGaps,
+  enrichGateForMarathonDeferredLowerBound,
+} from '../utils/marathon-intake-signals.util';
+import {
+  resolveLiveWeatherLocationFromAnchoredTrip,
+  resolveLiveWeatherLocationFromMessage,
+  type LiveWeatherLocationResolve,
+} from '../utils/resolve-live-weather-location.util';
+import { applyTripPlanningStateMachineOptionDefaults } from '../utils/route-and-run-option-defaults.util';
+import { mergeVerificationIssuesIntoGateResult } from '../utils/merge-verify-issues-into-gate.util';
 import {
   isFactualMacroStatQuery,
   isLocalClockOrTimezoneFactQuery,
+  isBoundTripLodgingDiningPlanQuery,
+  isBoundTripLightConsultQuery,
   isTripStatusOverviewQuery,
+  isTodayWeatherFactQuery,
   isWeatherRoadConditionFocusedQuery,
   shouldEnableLiveWeatherMcpForLightweightRoute,
+  shouldForceDataLookupForBoundTripReview,
   shouldInjectIcelandRentalGuidanceForLightweight,
   shouldPullSafetravelAdvisoriesForLightweightIceland,
   isWestfjordsLegTransportPreferenceConsultation,
 } from '../utils/orchestration-signals.util';
 import {
+  buildLightweightTemporalGroundingZhLines,
+  buildLightweightTemporalRepairSuffix,
+  computeDaysUntilTripStartYmd,
+  parseTripDatesFromLightweightContext,
+  shouldRepairLightweightTemporalHallucination,
+} from '../utils/temporal-grounding.util';
+import {
   dedupeResearchScopes,
   invalidateResearchScopesInPlace,
-  isResearchAssetScope,
   cloneResearchRecord,
 } from '../utils/research-asset-scope.util';
-import { extractNluResearchInvalidateScopes } from '../utils/intake-research-scope-signals.util';
+import { planResearchScopes } from '../runtime/research-scope-planner.util';
+import { buildReturnToResearchContextV1 } from '../orchestration/return-to-research-context.util';
+import { emitPhaseExecutionPath } from '../orchestration/phase-execution-path.telemetry.util';
+
+import {
+  sanitizeOrchestrationHandoffForRequest,
+  type RouteAndRunSubagentSandboxCarrier,
+} from '../runtime/subagent-permission-sandbox-context.util';
+import type { DecisionOsExecutionContext } from '../runtime/decision-os-execution-context';
+import { DecisionOsExecutionContextStore } from '../runtime/decision-os-execution-context.store';
 import {
   isExecutableFlightInventoryQuery,
   resolveFlightInventoryLegs,
@@ -134,6 +381,8 @@ import {
   messageHasDiningLocationAnchor,
   tripSummaryIndicatesNonEmptyItineraryDraft,
 } from '../utils/trip-dining-consultation.util';
+import { buildLunchStrategyPromptLines } from '../utils/lunch-strategy-briefing.util';
+import { isPoiSupplyConsultationQuery } from '../utils/trip-supply-consultation.util';
 import {
   estimateLightweightKbTopicRelevanceScore,
   isActivityBookingRagSupplementQuery,
@@ -160,7 +409,9 @@ import {
 import {
   buildDefaultTripConsultationSuggestedOperations,
   buildDiningAnchorSuggestedOperations,
+  buildSilentVoteCreateSuggestedOperation,
   extractSuggestedOperationsFromAnswer,
+  isSilentVoteCreateIntentMessage,
   mergeSuggestedOperations,
   type TripConsultationSuggestedOperation,
 } from '../utils/trip-consultation-suggested-operations.util';
@@ -172,6 +423,7 @@ import {
   buildBriefItineraryLinesFromTripDays,
   formatConsultationTripDaySkeletonLines,
   formatTripPromptSummaryForConsultation,
+  shouldIncludeNamedDraftAppendixForLightweightConsultation,
 } from '../../trips/utils/trip-prompt-summary.util';
 import {
   ChunkRetrievalService,
@@ -209,8 +461,11 @@ import {
   attachDistanceToAnchorForCards,
   parseExplicitHotelNightScopeIndices,
   parseExplicitStayWindowFromUserMessage,
+  parseHotelProximityAnchorDayNumber,
   inferNightIndex0FromExplicitStayInTripWindow,
+  messageExpressesMultiNightStayPlanningIntent,
   narrowHotelStayWindowWithNlMessage,
+  pickFullTripReplanNightIndices,
   pickSpreadNightIndices,
   wrapSingleHotelPayload,
   diffCalendarDaysYmd,
@@ -219,6 +474,11 @@ import {
   type HotelRouteRunUiPayload,
   type RouteAndRunAccommodationCard,
 } from '../utils/hotel-mcp-route-run.mapper';
+import {
+  enrichHotelRouteRunUiForClientApply,
+  mapHotelRouteRunUiToAccommodationItems,
+} from '../utils/route-run-accommodation-apply.util';
+import { PlanningAssistantV2Service } from '../assistants/planning-assistant/services/planning-assistant-v2.service';
 import {
   buildTemplateHotelDecisionSupportZh,
   extractHotelDecisionLayers,
@@ -229,6 +489,11 @@ import { extractTripnaraStructuredSlicesFromPreferences } from '../utils/tripnar
 import { resolveRouteRunPartyProfileSnapshot } from '../utils/route-and-run-party-profile.util';
 import { isValidUuidForUserProfile } from './user-standing-preference.service';
 import { HotelDecisionSupportNarratorService } from './hotel-decision-support-narrator.service';
+import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
+import { ConstraintSinkService } from '../memory/constraint-sink/constraint-sink.service';
+import { attachTravelPreferenceSnapshotToOrchestratorState } from '../memory/utils/travel-preference-snapshot.util';
+import { attachAgentMemorySnapshotToOrchestratorState } from '../memory/utils/agent-memory-snapshot.util';
+import { mergeEmotionalClientSignalsFromRouteAndRunRequest } from '../narrator/emotional-orchestrator-metadata.util';
 import { AmadeusDirectService } from '../../mcp/amadeus-direct.service';
 import type { AmadeusDirectFlightOffer } from '../../mcp/amadeus-direct.service';
 import { FlightMcpService, isFlightMcpToolResultFailure } from '../../mcp/flight-mcp.service';
@@ -279,12 +544,21 @@ import {
 import { SkillInputValidatorService } from './skill-input-validator.service';
 import { HallucinationDetectionService } from './hallucination-detection.service';
 import { TrajectoryCollectionService } from '../training/services/trajectory-collection.service';
+import { DecisionTrajectoryInterlocutorService } from '../training/services/decision-trajectory-interlocutor.service';
+import {
+  finalizeOrchestrationDecisionTrajectory,
+  recordGateEvalTrajectoryDraft,
+  recordPlanGenDraftSnapshot,
+} from '../training/utils/decision-trajectory-orchestration.hook';
 import { ReadinessService } from '../../trips/readiness/services/readiness.service';
+import { CoverageMapService } from '../../trips/readiness/services/coverage-map.service';
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import { TripContext, TravelerProfile, ItineraryInfo } from '../../trips/readiness/types/trip-context.types';
 import type { ReadinessCheckResult } from '../../trips/readiness/types/readiness-findings.types';
+import type { ReadinessScoreResponse } from '../../trips/readiness/types/coverage-map.types';
 import { DecisionDraftGeneratorService } from '../../decision-draft/services/decision-draft-generator.service';
 import { DecisionReplayService } from './decision-replay.service';
+import { DecisionTelemetryService } from '../../trips/decision/telemetry/decision-telemetry.service';
 import type { DecisionDnaDto } from './user-profile-learning.service';
 // Domain Agents (World Model Layer)
 import { GeoAgentService } from './domain-agents/geo-agent.service';
@@ -299,7 +573,16 @@ import { HarnessStepName } from '../../harness/contracts/harness-step.types';
 import { TdfpmCalculatorService } from '../../trips/decision/services/tdfpm-calculator.service';
 import type { TdfpmDayContext } from '../../trips/decision/services/tdfpm-calculator.service';
 import { PrometheusMetricsService } from '../../monitoring/prometheus-metrics.service';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
+import {
+  applyPostRepairRoutingMetricsSync,
+  syncPlanRoutingMetricsToTripPlan,
+} from '../axioms/sync-plan-routing-metrics-to-trip.util';
 import { matchAxioms, pickDominantAxiom } from '../axioms/axiom-matchers';
+import {
+  axiomMatchSourceForMetrics,
+  normalizeAxiomCidForMetrics,
+} from '../axioms/axiom-prometheus.util';
 import {
   orchestratorStateToDecisionStatePatch,
   decisionStateToOrchestratorState,
@@ -311,6 +594,7 @@ import {
   type PoiPlanningDecisionSlice,
 } from '../../decision/kernel/decision-state.types';
 import type { PlanGenTerminalFailure } from '../../decision/kernel/decision-state.types';
+import { otelHarnessRuntimeFieldsFromRequest } from '../../harness/tracing/harness-otel-correlation.util';
 import type { RuntimeBranchDirective } from '../../governance/activation/runtime/runtime-branch-directive.types';
 import { AuditReportGenerator } from '../utils/terminal-audit-report.generator';
 import { normalizeDecisionOsAuditContract } from '../contracts/decision-os-audit.contract';
@@ -327,8 +611,81 @@ import {
 import type { UserRouteIntent } from '../../planning-policy/interfaces/region-intent.types';
 import { RegionAnchorPlanningService } from '../../planning-policy/services/region-anchor-planning.service';
 import { ICELAND_POI_SLUG_KEYWORDS } from '../../planning-policy/regions/iceland-poi-slugs';
-import { GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY } from '../../planning-policy/regions/golden-circle-anchor-retrieval-profile';
+import { buildSpecialRegionSupplementLanes } from '../utils/special-region-supplement.registry';
+import { buildItineraryAdjustCorridorPoiSearchPlan } from '../utils/itinerary-adjust-corridor-poi-search.util';
 import { POI_PLANNING_SCORE_REASON } from '../../planning-policy/constants/poi-planning-score-reasons';
+import {
+  computeResumeGraphEntryFromLast,
+  runPostPlanGraph,
+  runPrePlanUntilContextBuild,
+  PRE_PLAN_NODE_ORDER,
+  suggestGraphEntryFromHarnessAdmission,
+  type PostPlanGraphHost,
+  type PrePlanGraphHost,
+} from '../orchestration/graph';
+import {
+  runPlanVerifyOptimizeRepairLoop,
+  runVerifyReturnToResearchRetryLoop,
+  tryPlanGenEmptyDraftTerminal as tryPlanGenEmptyDraftTerminalGuard,
+  type PlanGenEmptyDraftGuardHost,
+  type PlanGenEmptyDraftGuardParams,
+  type PlanGenWithEmptyDraftResult,
+  type PlanVerifyLoopHost,
+  type PlanVerifyLoopRunParams,
+} from '../orchestration/plan-verify-loop';
+import { runTravelCompilePhase, runTravelRecompileAfterRepair } from '../orchestration/travel-compile/travel-compile-phase.util';
+import { runGraphEffectivePlanMaterializePhase } from '../orchestration/travel-compile/graph-effective-plan-materialize-phase.util';
+import { TravelCompilerService } from '../../travel-compiler/travel-compiler.service';
+import { TravelGraphStoreService } from '../../travel-compiler/services/travel-graph-store.service';
+import { GraphEffectivePlanMaterializerService } from '../../travel-compiler/services/graph-effective-plan-materializer.service';
+import {
+  IntakeOrchestratorNode,
+  ResearchOrchestratorNode,
+  StateUpdateOrchestratorNode,
+  PoiSelectionOrchestratorNode,
+  GateEvalOrchestratorNode,
+  ContextBuildOrchestratorNode,
+  runIntakePhase,
+  runPoiSelectionPhase,
+  runGateEvalPhase,
+  runContextBuildPhase,
+  runResearchPhase,
+  runStateUpdatePhase,
+  readFitnessProfileLinesForLightweightQa,
+  readIcelandMarketPriorForLightweightQa,
+  type IntakePhaseHost,
+  type IntakeNodeHost,
+  type PoiSelectionPhaseHost,
+  type PoiSelectionNodeHost,
+  type GateEvalPhaseHost,
+  type GateEvalNodeHost,
+  type ContextBuildPhaseHost,
+  type ContextBuildNodeHost,
+  type ResearchPhaseHost,
+  type ResearchNodeHost,
+  type StateUpdatePhaseHost,
+  type StateUpdateNodeHost,
+  runPlanGenPhase,
+  runVerifyPhase,
+  runOptimizePhase,
+  runRepairPhase,
+  buildVerifyPhaseVerdict,
+  type PlanGenPhaseHost,
+  type VerifyPhaseHost,
+  type VerifyPhaseResult,
+  type OptimizePhaseHost,
+  type RepairPhaseHost,
+} from '../orchestration/graph/nodes';
+import {
+  runNarratePhase,
+  runFeedbackPhase,
+  runHallucinationPhase,
+  type NarratePhaseHost,
+  type NarrateNodeHost,
+  type FeedbackPhaseHost,
+  type HallucinationPhaseHost,
+} from '../orchestration/post-plan';
+import { persistHarnessTraceOnPlanVerifyReturnToResearch } from '../orchestration/plan-verify-loop/plan-verify-loop-trace.util';
 import {
   buildPlanningPhaseTripOverviewPromptLines,
   parseTripStartDateFromContextLines,
@@ -361,9 +718,16 @@ import {
   extractSelectedPlaceIdsFromItinerary,
 } from '../../planning-policy/utils/build-poi-search-context.util';
 import {
-  buildContextualPoiSearchQuerySuffix,
   filterPoisByRejectedIds,
 } from '../../planning-policy/utils/contextual-poi-search-query.util';
+import { buildPoiSearchPlanFromContext } from '../utils/query-rewriting-poi-context.util';
+import { ragRetrievalExpansionParams } from '../utils/query-rewrite-rag-expansion.util';
+import {
+  AURORA_SLOT_RAG_POIS_QUERY,
+  AURORA_SLOT_RAG_PRACTICAL_QUERY,
+  buildAuroraSlotPlacementRagSection,
+  mapChunkToAuroraSlotRagEntry,
+} from '../utils/aurora-slot-placement-rag.util';
 import {
   applyDiversityPenaltyToSortedRows,
   applySelectedPoiPenalty,
@@ -395,6 +759,14 @@ import {
 } from '../utils/clarification-question-generator.util';
 import { TRANSPORT_SEARCH_UNRESOLVED_COORDS_MARKER } from '../../skills/transport/transport-search.skill';
 import { detectRhythmOrDiningPlanningIntent } from '../context-engine/utils/sparse-poi-day-allocation.util';
+import { applySparseRegionPoiGate, attachSparseRegionMetadata } from '../../planning-policy/open-world/sparse-poi-gate.util';
+import { resolveSparseRegionProfile } from '../../planning-policy/profiles/sparse-region.profile';
+import {
+  mergeDiscoveryStubsIntoPoiEvidence,
+  runOpenWorldDiscoveryBuffer,
+} from '../../planning-policy/open-world/discovery-buffer.util';
+import { runOpenWorldDiscoveryPipeline } from '../utils/open-world-discovery-pipeline.util';
+import { openWorldStubsToPoiEvidence } from '../../planning-policy/open-world/open-world-poi-stub.util';
 import {
   hydrateTripPlanTransportEndpoints,
   normalizeTransportEndpointsForSkill,
@@ -437,9 +809,8 @@ export class ClaudeOrchestratorService {
     private llmService: LlmService,
     private readonly prisma: PrismaService,
     private readonly ragRealityPolicyGate: RagRealityPolicyGateService,
-    @Inject(forwardRef(() => SkillsRegistryService))
-    @Optional()
-    private skillsRegistry?: SkillsRegistryService,
+    private readonly contextSlidingWindow: ContextSlidingWindowAdapter,
+    @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private skillsRegistry?: SkillsRegistryService,
     @Optional() private actionRegistry?: ActionRegistryService,
     @Optional() private plannerAgent?: ClaudePlannerAgentService,
     @Optional() private gatekeeperAgent?: ClaudeGatekeeperAgentService,
@@ -450,11 +821,14 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly skillInputValidator?: SkillInputValidatorService,
     @Optional() private hallucinationDetection?: HallucinationDetectionService,
     @Optional() private readonly clarificationHandler?: ClarificationHandlerService,
+    @Optional() private readonly relaxationTripPersist?: import('./relaxation-trip-persist.service').RelaxationTripPersistService,
     @Optional() private readonly shadowConflictScanner?: ShadowConflictScannerService,
     @Optional() private readonly localCaseStore?: LocalCaseStoreService,
     @Optional() private readonly cbrAggregator?: CbrAggregatorService,
     @Optional() private trajectoryCollection?: TrajectoryCollectionService,
+    @Optional() private readonly decisionTrajectoryInterlocutor?: DecisionTrajectoryInterlocutorService,
     @Optional() private readonly readinessService?: ReadinessService,
+    @Optional() private readonly coverageMapService?: CoverageMapService,
     @Optional() private readonly userDecisionService?: UserDecisionService,
     @Optional() @Inject(forwardRef(() => DecisionDraftGeneratorService))
     private readonly decisionDraftGenerator?: DecisionDraftGeneratorService,
@@ -485,6 +859,7 @@ export class ClaudeOrchestratorService {
     @Optional() private readonly dependencyHealthCheck?: DependencyHealthCheckService,
     /** 有 trip_id 时从 Trip 记录回填目的地/日期，避免「已在行程上下文仍追问目的地」 */
     @Optional() @Inject(forwardRef(() => TripsService)) private readonly tripsService?: TripsService,
+    @Optional() private readonly tripRunManager?: TripRunManagerService,
     /** DATA_LOOKUP 轻量咨询：行前/装备类可合并 practical+risks 知识块检索 */
     @Optional() private readonly chunkRetrieval?: ChunkRetrievalService,
     /** 只读 MCP 传感器（天气等）；由 PlanningAssistantModule 导出 */
@@ -497,14 +872,31 @@ export class ClaudeOrchestratorService {
     /** L2：住宿卡片「管家」叙事（批量 LLM）；未注入或 DISABLE_HOTEL_DECISION_LLM 时仅用规则模版 */
     @Optional() private readonly hotelDecisionNarrator?: HotelDecisionSupportNarratorService,
     @Optional() private readonly ontologyRoadStatusProvider?: OntologyRoadStatusProviderService,
+    @Optional() private readonly agentMemoryContextStore?: AgentMemoryContextStore,
+    @Optional() private readonly constraintSinkService?: ConstraintSinkService,
+    @Optional() private readonly decisionOsExecutionContextStore?: DecisionOsExecutionContextStore,
     /** 冰岛租车决策层（与 Booking 租车 MCP 轻量双路合并） */
     @Optional() private readonly icelandRentalGuidanceSkill?: IcelandRentalGuidanceSkill,
     /** SafeTravel RSS（轻量路径红警闸数据通路） */
     @Optional() private readonly safetravelGetAdvisoriesSkill?: SafetravelGetAdvisoriesSkill,
+    @Optional() private readonly guardiansDebate?: GuardiansDebateService,
+    @Optional() private readonly routeAndRunTaskProgress?: import('../runtime/route-and-run-task-progress.reporter').RouteAndRunTaskProgressReporter,
+    /** PA 行程缺口/槽位语义分析（Layer1 选日；失败时回退启发式） */
+    @Optional() private readonly contextAnalyzerService?: ContextAnalyzerService,
+    @Optional() private readonly itinerarySlotPolisher?: ItinerarySlotPolisherService,
+    @Optional() private readonly decisionTelemetry?: DecisionTelemetryService,
+    /** route_and_run 住宿卡片写入 PA 会话，供 apply 接口按 index 读取 */
+    @Optional()
+    @Inject(forwardRef(() => PlanningAssistantV2Service))
+    private readonly planningAssistantV2Service?: PlanningAssistantV2Service,
+    @Optional() private readonly itineraryVersion?: ItineraryVersionService,
     /** F3.1 过程公平性：关键决策节点自动发起 Round Robin */
     @Optional() private readonly preferenceRoundOrchestrator?: PreferenceRoundOrchestratorService,
     /** PDI-4：未完成调查时自动推送 Travel Style / Money DNA 问卷 */
     @Optional() private readonly decisionProfilingOrchestrator?: DecisionProfilingOrchestratorService,
+    @Optional() private readonly travelCompiler?: TravelCompilerService,
+    @Optional() private readonly travelGraphStore?: TravelGraphStoreService,
+    @Optional() private readonly graphEffectivePlanMaterializer?: GraphEffectivePlanMaterializerService,
   ) {
     this.logger.log(`[ClaudeOrchestratorService] Initialized`);
     this.logger.log(`[ClaudeOrchestratorService] SkillsRegistry: ${!!this.skillsRegistry}, ActionRegistry: ${!!this.actionRegistry}`);
@@ -656,6 +1048,16 @@ export class ClaudeOrchestratorService {
     this.logger.log(`[ClaudeOrchestratorService] 已注册 ${checks.length} 个依赖健康检查`);
   }
 
+  private resolveDosExecutionContext(
+    request: RouteAndRunRequestDto,
+  ): DecisionOsExecutionContext | undefined {
+    return (
+      this.decisionOsExecutionContextStore?.get() ??
+      (request as RouteAndRunRequestDto & { __dosExecutionContext?: DecisionOsExecutionContext })
+        .__dosExecutionContext
+    );
+  }
+
   private isDecisionReplayAutoSnapshotEnabled(): boolean {
     const v =
       this.configService?.get<string>('DECISION_REPLAY_AUTO_SNAPSHOT') ??
@@ -711,16 +1113,22 @@ export class ClaudeOrchestratorService {
     state: OrchestratorState,
   ): {
     evaluationRunId?: string;
+    otelTraceId?: string;
+    otelSpanId?: string;
     replanLineage?: { previous_plan_version?: number; previous_world_snapshot_hash?: string };
     orchestratorPlanVersion?: number;
+    userId?: string;
   } {
     const rc = state.metadata?.replan_context as
       | { previous_plan_version?: number; previous_world_snapshot_hash?: string }
       | undefined;
+    const otel = otelHarnessRuntimeFieldsFromRequest(request);
     return {
       evaluationRunId: request.meta?.run_id,
+      ...(otel ?? {}),
       ...(rc ? { replanLineage: rc } : {}),
       orchestratorPlanVersion: state.plan_version,
+      ...(request.user_id ? { userId: request.user_id } : {}),
     };
   }
 
@@ -908,10 +1316,13 @@ export class ClaudeOrchestratorService {
     operationName: string,
     tokenContext?: { request_id: string; state_machine_step: OrchestrationStep; sub_agent: SubAgentType },
   ): Promise<string> {
-    const startTime = Date.now();
     try {
-      const response = await this.llmService.callLlmWithSchema(primaryProvider, prompt, schema);
-      await this.recordTokenIfEnabled(prompt, response, primaryProvider, startTime, true, tokenContext);
+      const response = await this.llmService.callLlmWithSchema(
+        primaryProvider,
+        prompt,
+        schema,
+        tokenContext,
+      );
       return response;
     } catch (error: any) {
       this.logger.warn(`[Claude Orchestrator] ${operationName} 使用 ${primaryProvider} 失败: ${error?.message}`);
@@ -919,15 +1330,18 @@ export class ClaudeOrchestratorService {
       for (const fallbackProvider of fallbackProviders) {
         try {
           this.logger.debug(`[Claude Orchestrator] ${operationName} 尝试降级到 ${fallbackProvider}...`);
-          const response = await this.llmService.callLlmWithSchema(fallbackProvider, prompt, schema);
-          await this.recordTokenIfEnabled(prompt, response, fallbackProvider, startTime, true, tokenContext);
+          const response = await this.llmService.callLlmWithSchema(
+            fallbackProvider,
+            prompt,
+            schema,
+            tokenContext,
+          );
           return response;
         } catch (fallbackError: any) {
           this.logger.warn(`[Claude Orchestrator] ${operationName} 使用 ${fallbackProvider} 也失败: ${fallbackError?.message}`);
           continue;
         }
       }
-      await this.recordTokenIfEnabled(prompt, '', primaryProvider, startTime, false, tokenContext);
       throw error;
     }
   }
@@ -969,7 +1383,7 @@ export class ClaudeOrchestratorService {
 
   /**
    * 轻量咨询注入行程摘要：优先 TripsService；若可选依赖未注入则回退 Prisma（避免 Optional TripsService 导致永远不加载）。
-   * 默认按日类型骨架；西峡湾接驳、行前装备/徒步、或租车/自驾向问句额外附带「草案地点速览」（Place 名/备注），便于正文结合具体行程项与 POI。
+   * 默认按日类型骨架；绑定工作台或需锚定 POI 的咨询问法额外附带「草案地点速览」（Place 名/备注）。
    */
   private async resolveTripPromptSummaryForLightweightQa(
     effectiveTripId: string,
@@ -977,10 +1391,11 @@ export class ClaudeOrchestratorService {
   ): Promise<string | null> {
     const tid = effectiveTripId.trim();
     const msgLower = (request.message ?? '').trim().toLowerCase();
-    const includeNamedDraftAppendix = this.shouldIncludeNamedDraftAppendixForLightweightQa(
-      request.message ?? '',
+    const includeNamedDraftAppendix = shouldIncludeNamedDraftAppendixForLightweightConsultation({
+      message: request.message ?? '',
       msgLower,
-    );
+      contextType: request.conversation_context?.context_type,
+    });
     if (this.tripsService) {
       try {
         const s = await this.tripsService.getTripPromptSummaryForConsultation(tid, undefined, {
@@ -1060,23 +1475,6 @@ export class ClaudeOrchestratorService {
     );
   }
 
-  /**
-   * 是否在轻量咨询骨架外附带「草案地点速览」：西峡湾接驳、行前/装备/徒步、租车/自驾、
-   * 天气+路况聚焦问法，以及含路况/封路/天气等影响行程安全的用语时均需结合具体地点与日程项作答，
-   * 便于模型将路段信息与草案 Place 对齐（数据喂齐 + 推理，而非 OWL 硬编码）。
-   */
-  private shouldIncludeNamedDraftAppendixForLightweightQa(message: string, msgLower: string): boolean {
-    const m = (message ?? '').trim();
-    if (!m) return false;
-    if (isWeatherRoadConditionFocusedQuery(m)) return true;
-    /** 路况/气象/封路类：附带具名草案，减轻「对不准」具体行程项 */
-    if (/路况|封路|天气|风速|能开吗|condition|road\s*status/i.test(msgLower)) return true;
-    if (isWestfjordsLegTransportPreferenceConsultation(m, msgLower)) return true;
-    if (this.isPreparationGearTravelQuery(m)) return true;
-    if (this.isCarRentalOrDrivingTravelQuery(m)) return true;
-    return /徒步|登山|爬山|步道|长线|\b(hiking|trekking|trail)\b/i.test(m);
-  }
-
   /** 从 Trip 表行构造 Readiness 用的 TripContext（与 GATE_EVAL 的 trip_plan_request 路径对齐的字段子集）。 */
   private buildTripContextFromTripRowForReadiness(
     trip: { destination: string; startDate: Date; endDate: Date },
@@ -1102,6 +1500,33 @@ export class ClaudeOrchestratorService {
       trip: { startDate: startIso, endDate: endIso },
       itinerary,
     };
+  }
+
+  /** 与工作台左侧「准备度 xx/100」面板同源的分数摘录（CoverageMapService.getReadinessScore）。 */
+  private formatReadinessScoreHeaderForLightweightPrompt(scoreData: ReadinessScoreResponse): string {
+    const lines: string[] = [];
+    const overall = scoreData.score?.overall;
+    if (typeof overall === 'number') {
+      lines.push(`【出发准备度（与工作台左侧面板一致）】${Math.round(overall)}/100`);
+    }
+    const sum = scoreData.summary;
+    if (sum) {
+      lines.push(
+        `阻塞=${sum.blockers}，必做=${sum.must ?? sum.warnings ?? 0}，建议=${sum.should ?? sum.suggestions ?? 0}`,
+      );
+    }
+    const bd = scoreData.score;
+    if (bd) {
+      lines.push(
+        `维度：入境 ${Math.round(bd.entryTransit)}，保险 ${Math.round(bd.healthInsurance)}，装备 ${Math.round(bd.gearPacking)}，预订 ${Math.round(bd.bookingsCredentials)}，后勤 ${Math.round(bd.logisticsComms)}，应急 ${Math.round(bd.emergency)}`,
+      );
+    }
+    const blockers = (scoreData.findings ?? []).filter((f) => f.type === 'blocker').slice(0, 5);
+    for (const b of blockers) {
+      const title = (b.message ?? b.id ?? '').toString().replace(/\s+/g, ' ').trim();
+      if (title) lines.push(`- [阻塞] ${title}`.slice(0, 420));
+    }
+    return lines.join('\n');
   }
 
   /** 将 ReadinessCheckResult 压成轻量 prompt 用摘录（条数与总长封顶，避免撑爆上下文）。 */
@@ -1167,7 +1592,22 @@ export class ClaudeOrchestratorService {
       const result = await this.readinessService.checkFromDestination(trip.destination.trim(), tripContext, {
         lang: 'zh',
       });
-      const formatted = this.formatReadinessFindingsForLightweightPrompt(result);
+      let scoreHeader = '';
+      if (this.coverageMapService) {
+        try {
+          const scoreData = await this.coverageMapService.getReadinessScore(tid);
+          scoreHeader = this.formatReadinessScoreHeaderForLightweightPrompt(scoreData);
+          this.logger.debug(
+            `[LightweightQA] Readiness score trip_id=${tid} overall=${scoreData.score?.overall ?? 'n/a'}`,
+          );
+        } catch (scoreErr: any) {
+          this.logger.warn(
+            `[LightweightQA] Readiness score failed trip_id=${tid}: ${scoreErr?.message ?? scoreErr}`,
+          );
+        }
+      }
+      const packFormatted = this.formatReadinessFindingsForLightweightPrompt(result);
+      const formatted = scoreHeader ? `${scoreHeader}\n\n${packFormatted}` : packFormatted;
       this.logger.debug(
         `[LightweightQA] Readiness OK trip_id=${tid} duration_ms=${Date.now() - started} findings=${result.findings?.length ?? 0}`,
       );
@@ -1176,6 +1616,73 @@ export class ClaudeOrchestratorService {
       this.logger.warn(`[LightweightQA] Readiness failed trip_id=${tid}: ${e?.message ?? e}`);
       return null;
     }
+  }
+
+  /** 行程复盘问法：注入 detail.analyzeHealth 体检摘录（时间冲突、节奏、预算等） */
+  private async runLightweightTripHealthSupplement(
+    effectiveTripId: string | undefined,
+  ): Promise<string | null> {
+    const tid = effectiveTripId?.trim();
+    if (!tid || !this.skillsRegistry) return null;
+    const started = Date.now();
+    try {
+      const skill = this.skillsRegistry.getSkill('detail.analyzeHealth') as
+        | {
+            execute: (input: {
+              tripId: string;
+              planState?: null;
+            }) => Promise<{
+              health?: {
+                overall?: string;
+                overallScore?: number;
+                dimensions?: Record<
+                  string,
+                  { score?: number; issues?: string[]; status?: string }
+                >;
+              };
+            }>;
+          }
+        | undefined;
+      if (!skill) return null;
+      const { health } = await skill.execute({ tripId: tid, planState: null });
+      if (!health) return null;
+      const formatted = this.formatTripHealthForLightweightPrompt(health);
+      this.logger.debug(
+        `[LightweightQA] Trip health OK trip_id=${tid} duration_ms=${Date.now() - started} score=${health.overallScore ?? 'n/a'}`,
+      );
+      return formatted;
+    } catch (e: any) {
+      this.logger.warn(`[LightweightQA] Trip health failed trip_id=${tid}: ${e?.message ?? e}`);
+      return null;
+    }
+  }
+
+  private formatTripHealthForLightweightPrompt(health: {
+    overall?: string;
+    overallScore?: number;
+    dimensions?: Record<string, { score?: number; issues?: string[]; status?: string }>;
+  }): string {
+    const dimLabels: Record<string, string> = {
+      schedule: '时间安排',
+      budget: '预算',
+      pace: '节奏',
+      feasibility: '可达性',
+    };
+    const lines: string[] = [];
+    if (typeof health.overallScore === 'number') {
+      lines.push(`总体健康度：${Math.round(health.overallScore)}/100（${health.overall ?? 'unknown'}）`);
+    }
+    for (const [key, label] of Object.entries(dimLabels)) {
+      const dim = health.dimensions?.[key];
+      if (!dim) continue;
+      const issueText =
+        Array.isArray(dim.issues) && dim.issues.length
+          ? dim.issues.slice(0, 5).join('；')
+          : '无明显问题';
+      lines.push(`- ${label}（${dim.score ?? '—'}/100，${dim.status ?? '—'}）：${issueText}`);
+    }
+    const text = lines.join('\n');
+    return text.length > 4000 ? `${text.slice(0, 4000)}\n…(体检摘录已截断)` : text;
   }
 
   /** 租车/自驾类咨询：须触发 RAG（与 isTripScopedConsultationQuery 交通词对齐），否则仅「租车建议」不会命中 isDataLookupRagSupplementQuery 正文关键词 → 无摘录 */
@@ -1224,6 +1731,8 @@ export class ClaudeOrchestratorService {
     if (this.isPolarInfrastructureOrEmergencyQuery(msg)) return true;
     /** 餐饮类 DATA_LOOKUP：须走进轻量 RAG，否则「推荐餐厅」等无法命中 POI 知识库 */
     if (isDiningRecommendationQuery(msg)) return true;
+    /** 超市/补给类 DATA_LOOKUP：须检索冰岛超市/物价知识块 */
+    if (isPoiSupplyConsultationQuery(msg)) return true;
     /** 直升机 / 空中观光等活动预订咨询：原正则未含「直升机」，泛问路径下会完全不检索 KB */
     if (isActivityBookingRagSupplementQuery(msg)) return true;
     const m = msg.trim();
@@ -1311,6 +1820,10 @@ export class ClaudeOrchestratorService {
       /^[ \t>]*前端一键操作[ \t:：]*$/gim,
     ];
     for (const r of removals) t = t.replace(r, '');
+    // 兜底：未抽净的 CONSULTATION_UI / SUGGESTED_OPS 机读块不得进入用户可见正文
+    t = t.replace(/<<<CONSULTATION_UI_JSON>>>[\s\S]*?(?:<<<END_CONSULTATION_UI_JSON>{2,3}|$)/g, '');
+    t = t.replace(/<<<SUGGESTED_OPS_JSON>>>[\s\S]*?(?:<<<END_SUGGESTED_OPS_JSON>{2,3}|$)/g, '');
+    t = t.replace(/<<<(?:CONSULTATION_UI_JSON|END_CONSULTATION_UI_JSON|SUGGESTED_OPS_JSON|END_SUGGESTED_OPS_JSON)>{2,3}/g, '');
     return t.replace(/\n{3,}/g, '\n\n').trim();
   }
 
@@ -1414,7 +1927,10 @@ export class ClaudeOrchestratorService {
       return empty;
     }
     const mergeRagParams = (p: ChunkRetrievalParams): ChunkRetrievalParams =>
-      this.ragRealityPolicyGate.mergeChunkRetrievalParams(p, ragScope);
+      this.ragRealityPolicyGate.mergeChunkRetrievalParams(
+        { ...ragRetrievalExpansionParams(), ...p },
+        ragScope,
+      );
     try {
       const q = message.trim();
       const bias = (structuredRagBiasZh ?? '').trim();
@@ -1579,6 +2095,8 @@ export class ClaudeOrchestratorService {
   private static readonly LIVE_TOOL_CAR_RENTAL_MS = 20000;
   /** 多日行程按「每晚上一间」采样检索时的最大分段次数（并行 MCP） */
   private static readonly MAX_HOTEL_NIGHT_SAMPLE_SEGMENTS = 5;
+  /** 整段多日重规划：逐晚住宿 MCP 上限（6 天行程约 5 间夜） */
+  private static readonly MAX_FULL_TRIP_REPLAN_HOTEL_NIGHTS = 6;
   /** 仅检索一间夜时展示更多候选；多段并行时略少以免卡片过多 */
   private static readonly HOTEL_MCP_MAX_LISTINGS_SINGLE_NIGHT_SEGMENT = 3;
   private static readonly HOTEL_MCP_MAX_LISTINGS_PER_MULTI_SEGMENT = 2;
@@ -2288,18 +2806,15 @@ export class ClaudeOrchestratorService {
   private async resolveLiveWeatherLocationForMcp(
     request: RouteAndRunRequestDto,
     effectiveTripId?: string,
-  ): Promise<{ location: string; countryCode?: string } | null> {
+  ): Promise<LiveWeatherLocationResolve | null> {
     const msg = request.message ?? '';
-    const hints: Array<{ re: RegExp; location: string; countryCode?: string }> = [
-      { re: /斯奈山|斯奈费尔|Snæfellsnes|Snaefellsnes/i, location: 'Snæfellsnes Peninsula, Iceland', countryCode: 'IS' },
-      { re: /\b维克\b|Vík\b|Vik\b/i, location: 'Vík í Mýrdal, Iceland', countryCode: 'IS' },
-      { re: /赫本|霍芬|Höfn|Hofn/i, location: 'Höfn, Iceland', countryCode: 'IS' },
-      { re: /雷克雅未克|Reykjavik|Reykjavík/i, location: 'Reykjavik, Iceland', countryCode: 'IS' },
-    ];
-    for (const h of hints) {
-      if (h.re.test(msg)) return { location: h.location, countryCode: h.countryCode };
-    }
+    const fromMsg = resolveLiveWeatherLocationFromMessage(msg);
+    if (fromMsg) return fromMsg;
+
     if (effectiveTripId) {
+      const fromTrip = await resolveLiveWeatherLocationFromAnchoredTrip(this.prisma, effectiveTripId);
+      if (fromTrip) return fromTrip;
+
       try {
         const trip = await this.prisma.trip.findUnique({
           where: { id: effectiveTripId },
@@ -2312,11 +2827,14 @@ export class ClaudeOrchestratorService {
         /* ignore */
       }
     }
-    if (/冰岛|\bIceland\b/i.test(msg)) return { location: 'Iceland', countryCode: 'IS' };
-    return null;
+
+    return resolveLiveWeatherLocationFromMessage(msg);
   }
 
-  private formatLiveWeatherSensorBlock(data: Record<string, unknown>): string {
+  private formatLiveWeatherSensorBlock(
+    data: Record<string, unknown>,
+    opts?: { anchorLabel?: string },
+  ): string {
     const cur = data?.current as Record<string, unknown> | undefined;
     if (!cur) {
       return `【实时天气传感器 MCP】原始响应（截断）：${JSON.stringify(data).slice(0, 1200)}`;
@@ -2326,6 +2844,7 @@ export class ClaudeOrchestratorService {
     return [
       '【实时天气传感器 MCP】以下为 Open-Meteo 当前观测读数（非生成文案）：',
       `- 查询地: ${city} (${country})`,
+      ...(opts?.anchorLabel ? [`- 行程锚点: ${opts.anchorLabel}`] : []),
       `- 观测时间: ${cur.time}`,
       `- 气温: ${cur.temperature}°C（体感 ${cur.apparent_temperature}°C）`,
       `- 状况: ${cur.weather_description}`,
@@ -2467,12 +2986,15 @@ export class ClaudeOrchestratorService {
     return `第${nightOneBased}/${totalNights}晚 · ${md} 入住`;
   }
 
-  /** 与 buildStaySegmentLabelZh 同一锚点：入住当日最后一项行程 POI（需含 geometry） */
-  private async getStayAnchorGeoForNight(
+  /** 与 buildStaySegmentLabelZh 同一锚点：指定日行程 POI（需含 geometry） */
+  private async getStayAnchorGeoForTripDay(
     tripId: string,
-    checkInYmd: string,
+    dayYmd: string,
+    prefer: 'first' | 'last' = 'last',
   ): Promise<{ lat: number; lng: number; nameZh: string } | null> {
     if (!this.prisma) return null;
+    const orderDir = prefer === 'first' ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+    const timeDir = prefer === 'first' ? Prisma.sql`ASC NULLS LAST` : Prisma.sql`DESC NULLS LAST`;
     try {
       const row = await this.prisma.$queryRaw<
         Array<{ nameCN: string; nameEN: string | null; lat: unknown; lng: unknown }>
@@ -2484,9 +3006,9 @@ export class ClaudeOrchestratorService {
         JOIN "TripDay" td ON ii."tripDayId" = td.id
         JOIN "Place" p ON ii."placeId" = p.id
         WHERE td."tripId" = ${tripId}
-          AND td.date::date = ${checkInYmd}::date
+          AND td.date::date = ${dayYmd}::date
           AND p.location IS NOT NULL
-        ORDER BY ii."order" DESC NULLS LAST, ii."startTime" DESC NULLS LAST
+        ORDER BY ii."order" ${orderDir} NULLS LAST, ii."startTime" ${timeDir}
         LIMIT 1
       `;
       const place = row?.[0];
@@ -2500,16 +3022,39 @@ export class ClaudeOrchestratorService {
     }
   }
 
+  /** 入住当日最后一项行程 POI（需含 geometry） */
+  private async getStayAnchorGeoForNight(
+    tripId: string,
+    checkInYmd: string,
+  ): Promise<{ lat: number; lng: number; nameZh: string } | null> {
+    return this.getStayAnchorGeoForTripDay(tripId, checkInYmd, 'last');
+  }
+
   /** 为 MCP 住宿卡片写入相对当日锚点的直线距离（km），供前端与传感器摘要展示 */
   private async enrichHotelRouteRunUiPayloadWithAnchorDistances(
     payload: HotelRouteRunUiPayload,
     tripId: string,
     tripFirstCheckInYmd: string,
+    userMessage?: string,
   ): Promise<void> {
     if (!payload.accommodations?.length) return;
+    const proximityDay = userMessage ? parseHotelProximityAnchorDayNumber(userMessage) : undefined;
+    const proximityYmd =
+      proximityDay != null && proximityDay >= 1
+        ? addDaysYmd(tripFirstCheckInYmd, proximityDay - 1)
+        : undefined;
+    const proximityAnchor =
+      proximityYmd != null
+        ? await this.getStayAnchorGeoForTripDay(tripId, proximityYmd, 'first')
+        : null;
+
     const nights = new Set(payload.accommodations.map((c) => c.nightIndex ?? 1));
     const anchorByNight = new Map<number, { lat: number; lng: number; nameZh: string } | null>();
     for (const n of nights) {
+      if (proximityAnchor) {
+        anchorByNight.set(n, proximityAnchor);
+        continue;
+      }
       const checkInYmd = addDaysYmd(tripFirstCheckInYmd, n - 1);
       anchorByNight.set(n, await this.getStayAnchorGeoForNight(tripId, checkInYmd));
     }
@@ -2806,7 +3351,7 @@ export class ClaudeOrchestratorService {
       });
       return {
         audits,
-        block: this.formatLiveWeatherSensorBlock(data),
+        block: this.formatLiveWeatherSensorBlock(data, { anchorLabel: loc.anchorLabel }),
         snapshotCapturedAtIso: new Date().toISOString(),
       };
     } catch (e: any) {
@@ -2837,6 +3382,7 @@ export class ClaudeOrchestratorService {
     request: RouteAndRunRequestDto,
     context: AgentContext,
     effectiveTripId?: string,
+    opts?: { fullTripReplan?: boolean },
   ): Promise<{
     audits: LiveSensorAuditRow[];
     block: string | null;
@@ -2844,7 +3390,10 @@ export class ClaudeOrchestratorService {
     hotelRouteRunUi?: HotelRouteRunUiPayload;
   }> {
     const audits: LiveSensorAuditRow[] = [];
-    if (!this.shouldAttemptHotelSensor(request, context)) {
+    if (!opts?.fullTripReplan && !this.shouldAttemptHotelSensor(request, context)) {
+      return { audits, block: null };
+    }
+    if (opts?.fullTripReplan && !this.mcpToolDispatcher) {
       return { audits, block: null };
     }
     const baseParams = await this.resolveHotelSearchParamsForMcp(request, effectiveTripId);
@@ -2917,7 +3466,12 @@ export class ClaudeOrchestratorService {
         const hotelRouteRunUi = wrapped ?? undefined;
         if (hotelRouteRunUi) {
           if (tripId) {
-            await this.enrichHotelRouteRunUiPayloadWithAnchorDistances(hotelRouteRunUi, tripId, ci);
+            await this.enrichHotelRouteRunUiPayloadWithAnchorDistances(
+              hotelRouteRunUi,
+              tripId,
+              ci,
+              request.message,
+            );
           }
           await this.enrichHotelRouteRunUiPayloadWithDecisionSupport(hotelRouteRunUi, request, tripId);
           if (tripId) {
@@ -2968,6 +3522,11 @@ export class ClaudeOrchestratorService {
         indices = explicitNightScope;
       } else if (inferredNightIndex0 !== null) {
         indices = [inferredNightIndex0];
+      } else if (opts?.fullTripReplan) {
+        indices = pickFullTripReplanNightIndices(
+          totalNights,
+          ClaudeOrchestratorService.MAX_FULL_TRIP_REPLAN_HOTEL_NIGHTS,
+        );
       } else {
         indices = pickSpreadNightIndices(totalNights, ClaudeOrchestratorService.MAX_HOTEL_NIGHT_SAMPLE_SEGMENTS);
       }
@@ -3036,6 +3595,7 @@ export class ClaudeOrchestratorService {
               itineraryTotalNights: tripSpanNightsWhole,
               sampledNightIndices: segments.map((s) => s.nightIndex),
               userLimitedNightIntent,
+              fullTripReplan: opts?.fullTripReplan === true,
             })
           : null;
 
@@ -3060,7 +3620,7 @@ export class ClaudeOrchestratorService {
         ok: !!merged?.accommodations?.length,
         latency_ms,
         tripId: hotelSearchParams.tripId,
-        mode: 'per_night_sample',
+        mode: opts?.fullTripReplan ? 'per_night_full_trip_replan' : 'per_night_sample',
         segments: segments.length,
         merged_cards: merged?.accommodations?.length ?? 0,
       });
@@ -3069,7 +3629,12 @@ export class ClaudeOrchestratorService {
         return { audits, block: null };
       }
 
-      await this.enrichHotelRouteRunUiPayloadWithAnchorDistances(merged, tripId!, ci);
+      await this.enrichHotelRouteRunUiPayloadWithAnchorDistances(
+        merged,
+        tripId!,
+        ci,
+        request.message,
+      );
 
       await this.enrichHotelRouteRunUiPayloadWithDecisionSupport(merged, request, tripId);
 
@@ -3352,6 +3917,19 @@ export class ClaudeOrchestratorService {
       ];
     }
 
+    const fitnessLines = readFitnessProfileLinesForLightweightQa(request);
+    if (fitnessLines && fitnessLines.length > 0 && !lightweightTriviaFact) {
+      tripContextLines = tripContextLines.length > 0 ? [...tripContextLines, '', ...fitnessLines] : [...fitnessLines];
+    }
+
+    const icelandMarketPrior = readIcelandMarketPriorForLightweightQa(request);
+    if (icelandMarketPrior && !lightweightTriviaFact) {
+      tripContextLines =
+        tripContextLines.length > 0
+          ? [...tripContextLines, '', icelandMarketPrior]
+          : [icelandMarketPrior];
+    }
+
     const hasAnchoredTripFact = tripContextLines.some(
       (l) => l.includes('目的地代码:') || l.includes('开始日期:') || l.includes('行程跨度'),
     );
@@ -3391,6 +3969,7 @@ export class ClaudeOrchestratorService {
       ? []
       : buildOntologyEvidenceDisplayLinesZh({ hits: ontologyHitDefs, roadStatusByOntologyId });
     const weatherRoadFocused = isWeatherRoadConditionFocusedQuery(request.message ?? '');
+    const todayWeatherFocused = isTodayWeatherFactQuery(request.message ?? '');
     const westfjordsAirConsult = isWestfjordsLegTransportPreferenceConsultation(
       request.message ?? '',
       msgLower,
@@ -3399,10 +3978,33 @@ export class ClaudeOrchestratorService {
       Boolean(effectiveTripId) &&
       isTripStatusOverviewQuery(request.message ?? '', msgLower) &&
       !weatherRoadFocused;
-    const needsNamedDraftAppendixForLightweight = this.shouldIncludeNamedDraftAppendixForLightweightQa(
-      request.message ?? '',
-      msgLower,
-    );
+    const tripLodgingDiningPlan =
+      Boolean(effectiveTripId) &&
+      isBoundTripLodgingDiningPlanQuery(request.message ?? '', msgLower) &&
+      !tripStatusOverview &&
+      !weatherRoadFocused;
+    let lunchStrategyPromptLines: string[] = [];
+    if ((tripStatusOverview || tripLodgingDiningPlan) && effectiveTripId) {
+      try {
+        const tripForLunch = await this.prisma.trip.findUnique({
+          where: { id: effectiveTripId },
+          select: { metadata: true, pacingConfig: true, destination: true },
+        });
+        if (tripForLunch) {
+          lunchStrategyPromptLines = buildLunchStrategyPromptLines(tripForLunch);
+        }
+      } catch (e: any) {
+        this.logger.warn(
+          `[LightweightQA] lunch strategy briefing failed trip_id=${effectiveTripId}: ${e?.message ?? e}`,
+        );
+      }
+    }
+    const needsNamedDraftAppendixForLightweight =
+      shouldIncludeNamedDraftAppendixForLightweightConsultation({
+        message: request.message ?? '',
+        msgLower,
+        contextType: request.conversation_context?.context_type,
+      });
     const msgForNamedPoi = request.message ?? '';
     const prepOrHikeNamedPoiConsult =
       Boolean(effectiveTripId) &&
@@ -3480,6 +4082,10 @@ export class ClaudeOrchestratorService {
           this.runIcelandRentalGuidanceLightweightBranch(request, tripCtxJoined),
           stPullP,
         ]);
+    const tripHealthSupplement =
+      (tripStatusOverview || tripLodgingDiningPlan) && effectiveTripId
+        ? await this.runLightweightTripHealthSupplement(effectiveTripId)
+        : null;
     const liveSensorAudit: LiveSensorAuditRow[] = [
       ...wBranch.audits,
       ...fBranch.audits,
@@ -3532,6 +4138,19 @@ export class ClaudeOrchestratorService {
     });
     const narrativeSafety = evaluateNarrativeSafety(inventory_snapshots_meta);
 
+    const lightweightNow = new Date();
+    const tripDatesForTemporal = parseTripDatesFromLightweightContext(tripCtxJoined);
+    const daysUntilTripStart = computeDaysUntilTripStartYmd(
+      tripDatesForTemporal.startYmd,
+      lightweightNow,
+    );
+    const temporalGroundingLines = lightweightTriviaFact
+      ? []
+      : buildLightweightTemporalGroundingZhLines(lightweightNow, {
+          tripStartYmd: tripDatesForTemporal.startYmd,
+          tripEndYmd: tripDatesForTemporal.endYmd,
+        });
+
     const prompt = [
       ...(clockFactOnly
         ? ['你是专业旅行顾问。', ...this.buildLightweightClockFactPromptLines(request.message ?? '')]
@@ -3540,6 +4159,7 @@ export class ClaudeOrchestratorService {
           : [
               '你是专业旅行顾问。当前请求被路由为「咨询/检索」类（非完整多日行程 JSON 生成）。',
               '请用清晰中文回答：可包含预算区间、油价/租车参考、门票大致范围；无法确定时请说明假设。',
+              ...temporalGroundingLines,
             ]),
       ...(ragSupplement
         ? [
@@ -3561,7 +4181,14 @@ export class ClaudeOrchestratorService {
         ? [
             '【本轮主旨】用户主要关心目的地**近期天气要点**与**道路/风况/封路或官方出行提示**，请结合上文行程的**日期与经过区域**组织回答。',
             '优先使用下文「实时天气传感器」摘录（若有）、准备度与知识库中与气象、大风开门、封路或行车相关的条目；若无可靠实时摘录，须说明时效与信息来源限制，并给出官方核验渠道示例（如 vedur.is、road.is、SafeTravel）。',
+            '说明「当前无法拿到某类实时数据」时，必须以【UTC 参考 / 当前时刻】与【相对行程】中的日期计算距出发天数；禁止编造「当前是某年某月」或与 UTC 参考不一致的年月。',
             '**不要**套用「行程进度/概览」式结构去展开住宿、餐饮、亮点盘点或长篇租车攻略；除非用户同时明确要求评估行程总体准备度。',
+          ]
+        : []),
+      ...(todayWeatherFocused && !weatherRoadFocused
+        ? [
+            '【本轮主旨】用户问的是**今日/当前实况天气**。若下文有「实时天气传感器 MCP」摘录，**首段须直接给出**观测地、气温、天气状况与风速；禁止用季节气候常识或「超出预报窗口」话术替代已有实况读数。',
+            '若无传感器摘录，须明确说明拉取失败，并给出 vedur.is 等官方核验入口；勿编造具体温度或降水。',
           ]
         : []),
       ...(prepOrHikeNamedPoiConsult
@@ -3582,19 +4209,41 @@ export class ClaudeOrchestratorService {
             '请按以下结构组织回答（小标题可用 `-` 或加粗，保持简洁）：',
             '- **当前摘要**：一句话说明行程覆盖的核心区域/城市或路线主轴。',
             '- **住宿**：基于上文摘要与日程草案判断——是否已体现酒店/民宿预订或过夜城镇；若仅有日间景点而无住宿线索，须明确写「当前摘要未显示住宿预订，建议补充」或等价表述；勿编造预订记录。',
-            '- **餐饮**：草案或摘要中是否安排了午餐/晚餐或留出用餐时段；若仅有景点时段而无餐饮安排，须点名缺口并建议（例如在哪些城镇预留正餐时间）；勿编造具体餐厅名除非摘录或日程已给出。',
+            '- **餐饮**：草案或摘要中是否安排了午餐/晚餐或留出用餐时段；若仅有景点时段而无餐饮安排，须点名缺口并建议（例如在哪些城镇预留正餐时间）；勿编造具体餐厅名除非摘录或日程已给出。午餐时间窗是体力回血与情绪复位的隐形安全线——须结合下方【午餐时间窗策略】说明为何重要及如何改。',
+            ...(lunchStrategyPromptLines.length > 0 ? lunchStrategyPromptLines : []),
             '- **亮点介绍**：1–2 点最吸引人的安排（基于上文摘要与已知日程事实，勿编造未出现的 POI）。',
             '- **不合理与风险（须直接可执行）**：若存在过密、绕路、衔接过紧、季节/路况或体力不匹配等问题，请**直接给出改法**；若无明显问题，写「未发现明显硬伤」。',
-            '- **准备度小结**：用一句话给出准备度档位（如：高/中/低）并列出 2～4 条最关键的待办（证件、保险、装备、预订缺口等）。',
+            '- **行程健康度（analyzeHealth）**：须引用下方「行程健康度体检」摘录；**仅衡量时间轴结构**（冲突/节奏/预算），100 分不代表可出发。',
+            '- **出发准备度（Readiness Pack）**：须引用下方「出发准备度」摘录中的 **xx/100 分数与阻塞项**；与工作台左侧准备度面板口径一致，**禁止用健康度分数替代准备度**。',
+            '- **准备度小结**：基于准备度分数给出档位（高/中/低）并列出 2～4 条最关键的待办（证件、保险、装备、预订缺口等）。',
             '【Dashboard 强约束】此类问法且已绑定行程时：`<<<CONSULTATION_UI_JSON>>>` 块**禁止省略**；`summary_cards` 至少 4 张，语义分别覆盖：**预算区间与口径**、**驾驶或日程强度/松紧**、**核心游览区域或主轴**、**最大风险或优先优化点**（标题可用简短中文；value/hint 与正文一致）。',
+          ]
+        : []),
+      ...(tripLodgingDiningPlan
+        ? [
+            '【住宿+餐饮方案问法】用户要的是**按晚/按日**的住宿与用餐策略（结合当前草稿路线），而非整段重规划或仅复述 Abu 门控结论。',
+            '请按以下结构组织回答（小标题可用 `-` 或加粗，保持简洁）：',
+            '- **路线与分晚主轴**：结合上文摘要说明覆盖区域（如黄金圈→南岸→冰河湖）及各晚建议过夜城镇/锚点。',
+            '- **逐晚住宿建议**：按第 1 晚、第 2 晚…列出推荐城镇与选店思路（预算档、距次日首站距离、是否需提前订）；若下文有「实时住宿 MCP」摘录，须引用其中的区域/价格线索，勿编造未出现的房源名。',
+            '- **每日用餐策略**：按日说明早餐/午餐/晚餐安排思路（城镇正餐 vs 沿途简餐、预订窗口、午餐时间窗与体力）；须结合下方【午餐时间窗策略】（若有）。',
+            '- **与当前草稿对齐**：对照「当前已入库日程草案」与「按日骨架」，点名哪些天已有/缺少住宿、餐饮时段或 **TRANSIT/交通** 衔接；若仅 1 个景点或缺交通段，须明确写为缺口并建议补全。',
+            '- **出发准备度 vs 行程健康度**：须分别引用下方摘录——**准备度 xx/100 + 阻塞项**（与工作台左侧面板一致）与 **健康度 analyzeHealth**（仅结构冲突/节奏）；健康度 100 时若准备度低，须明确写「结构无冲突但尚不可出发」。',
+            '- **优先行动**：列出 2～4 条可执行下一步（订哪几晚、在哪天补交通、哪顿需预约等）。',
+            '【Dashboard 强约束】已绑定行程时：`<<<CONSULTATION_UI_JSON>>>` 块**禁止省略**；`summary_cards` 至少 4 张，语义分别覆盖：**住宿预算与分晚城镇**、**餐饮/午餐策略要点**、**路线主轴或核心区域**、**最大缺口或风险**（与正文一致）。',
           ]
         : []),
       ...tripContextLines,
       ...(hardOntologyAppendixLines.length > 0 ? hardOntologyAppendixLines : []),
       ...(readinessSupplement
         ? [
-            '【目的地准备度规则引擎摘录】来自目的地知识 Pack 的自动检查（仅供参考；个案以官方与实时政策为准）。若与上文「知识库检索摘录」并存，装备/签证类以准备度必做/建议为准组织回答，并注明差异原因。',
+            '【出发准备度摘录（Readiness Pack + 工作台 /score 同源）】衡量能否出发（证据覆盖、交通确定性、阻塞项等）。正文「准备度小结」须引用此处 **xx/100** 与阻塞清单；**禁止**用下方 analyzeHealth 分数替代。',
             readinessSupplement,
+          ]
+        : []),
+      ...(tripHealthSupplement
+        ? [
+            '【行程健康度体检（detail.analyzeHealth）】仅衡量当前时间轴的结构合理性（时间冲突、节奏、预算维度）；100/100 表示无日程冲突，**不代表**住宿/交通/证件已齐。勿将此分数当作「出发准备度」。',
+            tripHealthSupplement,
           ]
         : []),
       ...(effectiveTripId &&
@@ -3665,8 +4314,8 @@ export class ClaudeOrchestratorService {
             '【系统块 SUGGESTED_OPS】在向用户展示正文与 CONSULTATION_UI 块之后，必须额外输出一段机器可读 JSON（**禁止**在用户可见正文里写「一键操作」类标题或复述该 JSON）。格式严格如下（各占一行）：',
             `第一行仅写：${'<<<SUGGESTED_OPS_JSON>>>'}`,
             '第二行起至结束标记前：单行合法 JSON 数组，元素字段：id（英文短键）、label（按钮文案≤18字）、kind（仅 route_and_run_message 或 client_navigation）、payload（对象）。',
-            '—— route_and_run_message：payload.message 为完整中文指令，用户点击后作为新一轮对话发给助手（用于「按建议改行程」）；须贴合你在正文「风险与优化」里的具体结论。',
-            '—— client_navigation：payload.route 只能为 timeline / replay / planning / itinerary / decision_cockpit 之一；并须在 payload 中带 trip_id（值等于当前关联行程）。',
+            '—— route_and_run_message：payload.message 为完整中文指令，用户点击后作为新一轮对话发给助手（用于「按建议改行程」「搜索某地酒店」）；须贴合你在正文里的具体结论。',
+            '—— client_navigation：payload.route 可为 timeline / replay / planning / itinerary / decision_cockpit；**仅当按钮文案是「发起投票/创建投票」时**才可用 silent_vote_create / silent_vote（或 action=silent_vote_create）。搜索酒店/查房绝不可用 silent_vote_*，必须用 route_and_run_message。并须在 payload 中带 trip_id（值等于当前关联行程）。',
             '数组长度 2～4；至少包含 1 条 route_and_run_message。',
             `最后一行仅写：${'<<<END_SUGGESTED_OPS_JSON>>>'}`,
           ]
@@ -3721,6 +4370,39 @@ export class ClaudeOrchestratorService {
           sub_agent: 'Orchestrator' as SubAgentType,
           ...lightweightLlmTokenBase,
         });
+      }
+
+      if (
+        !lightweightTriviaFact &&
+        temporalGroundingLines.length > 0 &&
+        shouldRepairLightweightTemporalHallucination(answerText, lightweightNow, {
+          daysUntilTripStart,
+        })
+      ) {
+        repairStartedAt = repairStartedAt || Date.now();
+        const temporalRepairPrompt =
+          prompt +
+          buildLightweightTemporalRepairSuffix(lightweightNow, {
+            tripStartYmd: tripDatesForTemporal.startYmd,
+            tripEndYmd: tripDatesForTemporal.endYmd,
+          }) +
+          (effectiveTripId && !lightweightTriviaFact
+            ? `\n\n【输出完整性】若上文要求输出 ${'<<<CONSULTATION_UI_JSON>>>'} … ${'<<<END_CONSULTATION_UI_JSON>>>'} 以及 ${'<<<SUGGESTED_OPS_JSON>>>'} … ${'<<<END_SUGGESTED_OPS_JSON>>>'}，重写后仍须在文末按顺序保留更新后的两块。`
+            : '');
+        answerText = await this.llmService.callLlmWithSchema(
+          llmProvider,
+          temporalRepairPrompt,
+          undefined,
+          {
+            request_id: request.request_id,
+            state_machine_step: 'INTAKE' as OrchestrationStep,
+            sub_agent: 'Orchestrator' as SubAgentType,
+            ...lightweightLlmTokenBase,
+          },
+        );
+        this.logger.warn(
+          `[Lightweight] temporal hallucination repair request_id=${request.request_id} utc=${lightweightNow.toISOString()}`,
+        );
       }
 
       const integrityOutcome = await enforceNarrativeIntegrityPipeline({
@@ -3786,6 +4468,7 @@ export class ClaudeOrchestratorService {
         [...diningAnchorOps, ...extracted.operations],
         buildDefaultTripConsultationSuggestedOperations(effectiveTripId, {
           planning_handoff_message: request.message ?? '',
+          include_silent_vote: isSilentVoteCreateIntentMessage(request.message ?? ''),
         }),
       );
     }
@@ -4158,6 +4841,236 @@ export class ClaudeOrchestratorService {
   }
 
   /**
+   * 绑定 Trip：工作台 UI 占位欢迎语 → 秒回引导，不跑 RESEARCH/POI_SELECTION。
+   */
+  async orchestrateWorkbenchAssistantPlaceholder(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const tripId = (request.trip_id || context.tripId || '').trim();
+    let destination = '当前';
+    let dateRange: { start_date?: string; end_date?: string } | undefined;
+    if (tripId && this.tripsService) {
+      try {
+        const trip = (await this.tripsService.findOne(tripId, request.user_id)) as {
+          destination?: string | null;
+          startDate?: Date | string | null;
+          endDate?: Date | string | null;
+        };
+        if (trip?.destination) destination = String(trip.destination);
+        if (trip?.startDate && trip?.endDate) {
+          dateRange = {
+            start_date:
+              trip.startDate instanceof Date
+                ? trip.startDate.toISOString().slice(0, 10)
+                : String(trip.startDate).slice(0, 10),
+            end_date:
+              trip.endDate instanceof Date
+                ? trip.endDate.toISOString().slice(0, 10)
+                : String(trip.endDate).slice(0, 10),
+          };
+        }
+      } catch (e: unknown) {
+        this.logger.debug(
+          `[Claude Orchestrator] workbench placeholder trip load skipped: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    const answerText = buildWorkbenchPlaceholderWelcomeText({
+      trip_plan_request: { destination, date_range: dateRange },
+    } as OrchestratorState);
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingTaskType: 'TRIP_PLANNING',
+        workbench_assistant_placeholder: true as const,
+        needsUserConfirmation: false,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.95,
+          reasoning: 'workbench_assistant_placeholder',
+        },
+      },
+      stepsExecuted: [
+        {
+          stepId: 'workbench_placeholder',
+          skillName: 'workbench.placeholder',
+          success: true,
+          duration: Date.now() - startTime,
+        },
+      ],
+      totalDuration: Date.now() - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: '规划工作台助手占位欢迎语',
+          outputs_summary: answerText,
+          evidence_refs: tripId ? [`trip:${tripId}`] : [],
+          timestamp: new Date().toISOString(),
+          metadata: { system_action: 'WORKBENCH_ASSISTANT_PLACEHOLDER_SHORT_CIRCUIT' },
+        },
+      ],
+    };
+  }
+
+  /**
+   * 绑定 Trip：「查看第 N 天行程」→ 读库摘要，跳过规划状态机与目的地澄清。
+   */
+  private async orchestrateItineraryDayViewQuery(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const tripId = (request.trip_id || context.tripId || '').trim();
+    const message = request.message ?? '';
+    const spec = parseItineraryDayViewSpec(message);
+    if (!tripId || !spec) {
+      return {
+        success: false,
+        answerText: '未能理解要查看哪一天，请说明「第几天」或具体日期。',
+        result: {
+          routingTaskType: 'DATA_LOOKUP',
+          lightweightKnowledgeQa: true,
+        },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+    }
+
+    if (!this.tripsService) {
+      return {
+        success: false,
+        answerText: '暂时无法读取行程，请稍后重试。',
+        result: { routingTaskType: 'DATA_LOOKUP', lightweightKnowledgeQa: true },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+    }
+
+    let trip: {
+      destination?: string | null;
+      startDate?: Date | string | null;
+      endDate?: Date | string | null;
+      TripDay?: Array<{
+        id?: string;
+        date?: Date | string | null;
+        ItineraryItem?: Array<Record<string, unknown>>;
+      }>;
+    };
+    try {
+      trip = (await this.tripsService.findOne(tripId, request.user_id)) as typeof trip;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] day view trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        success: false,
+        answerText: '未找到关联行程，请确认工作台已打开正确 Trip。',
+        result: { routingTaskType: 'DATA_LOOKUP', lightweightKnowledgeQa: true },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+    }
+
+    const days = trip.TripDay ?? [];
+    const dateRange =
+      trip.startDate && trip.endDate
+        ? {
+            start_date:
+              trip.startDate instanceof Date
+                ? trip.startDate.toISOString().slice(0, 10)
+                : String(trip.startDate).slice(0, 10),
+            end_date:
+              trip.endDate instanceof Date
+                ? trip.endDate.toISOString().slice(0, 10)
+                : String(trip.endDate).slice(0, 10),
+          }
+        : undefined;
+    const resolvedSpec = parseItineraryDayViewSpec(message, dateRange) ?? spec;
+    const dayIdx = resolveTripDayIndexFromViewSpec(days, resolvedSpec);
+    if (dayIdx == null || !days[dayIdx]) {
+      const n = resolvedSpec.dayNumber;
+      return {
+        success: false,
+        answerText:
+          n != null
+            ? `当前行程共 ${days.length} 天，没有第 ${n} 天。请核对天数或指定具体日期。`
+            : '未能定位到指定日期，请说明第几天或 YYYY-MM-DD。',
+        result: { routingTaskType: 'DATA_LOOKUP', lightweightKnowledgeQa: true },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [],
+      };
+    }
+
+    const day = days[dayIdx];
+    const dateIso =
+      day.date instanceof Date
+        ? day.date.toISOString().slice(0, 10)
+        : String(day.date ?? '').slice(0, 10);
+    const answerText = buildItineraryDayViewAnswerText({
+      dayNumber: dayIdx + 1,
+      dateIso: dateIso || undefined,
+      items: (day.ItineraryItem ?? []) as never[],
+      tripTitle: trip.destination ?? undefined,
+    });
+
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingTaskType: 'DATA_LOOKUP',
+        lightweightKnowledgeQa: true,
+        itinerary_day_view_intake: true as const,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.95,
+          reasoning: 'itinerary_day_view_read',
+        },
+        suggested_operations: [
+          {
+            id: 'view_timeline',
+            label: '查看行程时间轴',
+            action: 'OPEN_TRIP_TIMELINE',
+          },
+        ],
+      },
+      stepsExecuted: [
+        {
+          stepId: 'itinerary_day_view',
+          skillName: 'trip.readDay',
+          success: true,
+          duration: Date.now() - startTime,
+        },
+      ],
+      totalDuration: Date.now() - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'LocalInsight' as SubAgentType,
+          inputs_summary: message,
+          outputs_summary: `ITINERARY_DAY_VIEW day=${dayIdx + 1} items=${day.ItineraryItem?.length ?? 0}`,
+          evidence_refs: [`trip:${tripId}:day:${dayIdx + 1}`],
+          timestamp: new Date().toISOString(),
+          metadata: { system_action: 'ITINERARY_DAY_VIEW_READ' },
+        },
+      ],
+    };
+  }
+
+  /**
    * 智能编排主入口（CLAUDE_DYNAMIC 等）。
    *
    * **Harness 内存 trace**：本方法内大量 early `return` 与 `executePlan` 出口**不**经过 `buildSuccessResult` / `buildErrorResult`，
@@ -4178,6 +5091,23 @@ export class ClaudeOrchestratorService {
     this.logger.debug(`[Claude Orchestrator] 使用 LLM 提供商: ${llmProvider}`);
 
     try {
+      const boundTripIdEarly = (request.trip_id || context.tripId || '').trim();
+      if (boundTripIdEarly && detectItineraryDayViewIntent(request.message ?? '')) {
+        this.logger.log(
+          `[Claude Orchestrator] 查看指定日行程 → 读库短路 request_id=${request.request_id}`,
+        );
+        setLlmTraceRoutePath('LIGHTWEIGHT');
+        return await this.orchestrateItineraryDayViewQuery(request, context, startTime);
+      }
+
+      if (boundTripIdEarly && isWorkbenchAssistantPlaceholderMessage(request.message)) {
+        this.logger.log(
+          `[Claude Orchestrator] 工作台助手占位欢迎语 → 短路 request_id=${request.request_id}`,
+        );
+        setLlmTraceRoutePath('LIGHTWEIGHT');
+        return await this.orchestrateWorkbenchAssistantPlaceholder(request, context, startTime);
+      }
+
       const rt = context.routingTaskType;
       const teamDiscussMsg = resolveRouteAndRunUserMessage(request);
       if (isTeamStructuredDiscussionQuery(teamDiscussMsg)) {
@@ -4191,19 +5121,67 @@ export class ClaudeOrchestratorService {
           startTime,
         );
       }
+      const msgLowerEarly = (request.message ?? '').trim().toLowerCase();
+      const boundTripLightConsult =
+        !!boundTripIdEarly &&
+        isBoundTripLightConsultQuery(request.message ?? '', msgLowerEarly);
+      const boundTripItineraryAdjust =
+        !!boundTripIdEarly &&
+        !boundTripLightConsult &&
+        (detectItineraryAdjustIntent(request.message ?? '') ||
+          detectFullTripReplanIntent(request.message ?? ''));
+      if (
+        boundTripItineraryAdjust &&
+        (rt === 'DATA_LOOKUP' || rt === 'GENERIC_QA' || rt === 'RAG_QA')
+      ) {
+        this.logger.log(
+          `[Claude Orchestrator] bound trip 行程改排/整段重规划命中，routingTaskType=${rt} → 改走状态机 request_id=${request.request_id}`,
+        );
+        setLlmTraceRoutePath('STATE_MACHINE');
+        const smDeadline = deadline ?? createDeadline(120_000);
+        const smResult = await this.orchestrateWithStateMachine(request, context, smDeadline, undefined);
+        smResult.totalDuration = Date.now() - startTime;
+        return smResult;
+      }
       if (rt === 'DATA_LOOKUP' || rt === 'GENERIC_QA' || rt === 'RAG_QA') {
         this.logger.log(
           `[Claude Orchestrator] routingTaskType=${rt}，走轻量知识问答路径（跳过 Skill 选择与 itinerary 类校验）`,
         );
+        setLlmTraceRoutePath('LIGHTWEIGHT');
         return await this.orchestrateLightweightKnowledgeQuery(request, context, deadline, llmProvider, startTime);
       }
 
       /** 已绑定行程的 TRIP_PLANNING：动态 Skill DAG 不会在 INTAKE 注入 planState/itinerary，校验必报缺 planState/request/itinerary → 统一走状态机 */
       const boundTripId = (request.trip_id || context.tripId || '').trim();
       if (boundTripId && rt === 'TRIP_PLANNING') {
+        // 复盘/可行性/轻量咨询：即使上游误标 TRIP_PLANNING，也不进状态机（避免 CGUS/VERIFY/REPAIR 空转）
+        const msgForConsult = request.message ?? '';
+        const msgLowerConsult = msgForConsult.trim().toLowerCase();
+        if (
+          isBoundTripLightConsultQuery(msgForConsult, msgLowerConsult) ||
+          shouldForceDataLookupForBoundTripReview({ trip_id: boundTripId, message: msgForConsult })
+        ) {
+          this.logger.log(
+            `[Claude Orchestrator] 已绑定 trip 但命中轻量咨询/复盘，TRIP_PLANNING → LIGHTWEIGHT（跳过 CGUS）request_id=${request.request_id}`,
+          );
+          request.options = {
+            ...request.options,
+            intent_mode: 'DATA_LOOKUP',
+            use_state_machine_orchestration: false,
+          };
+          setLlmTraceRoutePath('LIGHTWEIGHT');
+          return await this.orchestrateLightweightKnowledgeQuery(
+            request,
+            context,
+            deadline,
+            llmProvider,
+            startTime,
+          );
+        }
         this.logger.log(
           `[Claude Orchestrator] 已绑定 trip_id 且 TRIP_PLANNING → 状态机编排（避免 CLAUDE_DYNAMIC Skills 缺参）request_id=${request.request_id}`,
         );
+        setLlmTraceRoutePath('STATE_MACHINE');
         const smDeadline = deadline ?? createDeadline(120_000);
         const smResult = await this.orchestrateWithStateMachine(request, context, smDeadline, undefined);
         smResult.totalDuration = Date.now() - startTime;
@@ -4228,6 +5206,7 @@ export class ClaudeOrchestratorService {
         const countryCode = this.extractCountryCodeFromMessage(request.message);
         if (countryCode) {
           this.logger.log(`[Claude Orchestrator] 新建行程规划，countryCode=${countryCode}，走专利状态机流程`);
+          setLlmTraceRoutePath('STATE_MACHINE');
           const smDeadline = deadline ?? createDeadline(60_000);
           const smResult = await this.orchestrateWithStateMachine(request, context, smDeadline, undefined);
           smResult.totalDuration = Date.now() - startTime;
@@ -4265,17 +5244,47 @@ export class ClaudeOrchestratorService {
         }
       }
 
-      // 1. 使用 LLM 分析用户意图（原有流程，作为fallback）
-      this.logger.debug(`[Claude Orchestrator] 步骤 1/6: 分析用户意图...`);
-      const intentAnalysis = await this.analyzeIntent(request, context, llmProvider);
-      this.logger.log(`[Claude Orchestrator] ✅ 意图分析完成: ${intentAnalysis.intentType}, 复杂度: ${intentAnalysis.complexity}`);
+      setLlmTraceRoutePath('CLAUDE_DYNAMIC');
 
-      // 2. 使用 LLM 选择路由策略
-      this.logger.debug(`[Claude Orchestrator] 步骤 2/6: 选择路由策略...`);
-      const routingDecision = await this.decideRouting(intentAnalysis, llmProvider, request.request_id);
-      this.logger.log(
-        `[Claude Orchestrator] ✅ 路由决策完成: ${routingDecision.route}, 置信度: ${routingDecision.confidence}`,
-      );
+      let intentAnalysis: IntentAnalysis | undefined;
+      let routingDecision: RoutingDecision | undefined;
+      let skillsPlan: SkillsPlan | undefined;
+
+      if (isOrchestrationTriageEnabled()) {
+        this.logger.debug(`[Claude Orchestrator] 步骤 1–4/6: 编排分流（Intent+Route+Skills 合并）...`);
+        const triage = await this.runOrchestrationTriage(
+          request,
+          context,
+          llmProvider,
+          request.emergency_constraints,
+        );
+        if (triage) {
+          intentAnalysis = triage.intentAnalysis;
+          routingDecision = triage.routingDecision;
+          skillsPlan = triage.skillsPlan;
+          this.logger.log(
+            `[Claude Orchestrator] ✅ Triage: ${intentAnalysis.intentType} → ${routingDecision.route}, skills=${skillsPlan.selectedSkills.length}`,
+          );
+        } else {
+          this.logger.warn('[Claude Orchestrator] Triage 失败，回退分步 Intent→Route→Skills');
+        }
+      }
+
+      if (!intentAnalysis) {
+        this.logger.debug(`[Claude Orchestrator] 步骤 1/6: 分析用户意图...`);
+        intentAnalysis = await this.analyzeIntent(request, context, llmProvider);
+        this.logger.log(
+          `[Claude Orchestrator] ✅ 意图分析完成: ${intentAnalysis.intentType}, 复杂度: ${intentAnalysis.complexity}`,
+        );
+      }
+
+      if (!routingDecision) {
+        this.logger.debug(`[Claude Orchestrator] 步骤 2/6: 选择路由策略...`);
+        routingDecision = await this.decideRouting(intentAnalysis, llmProvider, request.request_id);
+        this.logger.log(
+          `[Claude Orchestrator] ✅ 路由决策完成: ${routingDecision.route}, 置信度: ${routingDecision.confidence}`,
+        );
+      }
 
       // 3. 根据路由决策选择执行路径
       if (routingDecision.route?.startsWith('SYSTEM1')) {
@@ -4315,15 +5324,21 @@ export class ClaudeOrchestratorService {
 
 
       // 4. System 2 路径：使用 LLM 选择 Skills
-      this.logger.debug(`[Claude Orchestrator] 步骤 4/6: 选择 Skills...`);
-      const skillsPlan = await this.selectSkills(
-        intentAnalysis,
-        routingDecision,
-        context,
-        llmProvider,
-        request.request_id,
-        request.emergency_constraints,
-      );
+      if (!skillsPlan) {
+        this.logger.debug(`[Claude Orchestrator] 步骤 4/6: 选择 Skills...`);
+        skillsPlan = await this.selectSkills(
+          intentAnalysis,
+          routingDecision,
+          context,
+          llmProvider,
+          request.request_id,
+          request.emergency_constraints,
+        );
+      } else {
+        this.logger.debug(
+          `[Claude Orchestrator] 步骤 4/6: Skills 已由 Triage 预选 (${skillsPlan.selectedSkills.length})`,
+        );
+      }
       this.logger.log(`[Claude Orchestrator] ✅ Skills 选择完成: ${skillsPlan.selectedSkills.length} 个 Skills`);
       if (skillsPlan.selectedSkills.length > 0) {
         this.logger.debug(`[Claude Orchestrator] 选择的 Skills: ${skillsPlan.selectedSkills.map(s => s.skillName).join(', ')}`);
@@ -4540,6 +5555,57 @@ export class ClaudeOrchestratorService {
           },
         ],
       };
+    }
+  }
+
+  /**
+   * 合并 Intent + Route + Skills 单次 LLM（ORCHESTRATION_TRIAGE_LLM=1，默认开启）
+   */
+  private async runOrchestrationTriage(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    provider: LlmProvider,
+    emergencyConstraints?: RouteAndRunRequestDto['emergency_constraints'],
+  ): Promise<{
+    intentAnalysis: IntentAnalysis;
+    routingDecision: RoutingDecision;
+    skillsPlan: SkillsPlan;
+  } | null> {
+    const availableSkills = this.getAvailableSkills(emergencyConstraints);
+    const destinationSupplement = buildDestinationSupplementForTriage(
+      request.message ?? '',
+      request.trip_id ?? undefined,
+    );
+    const prompt = buildOrchestrationTriagePrompt({
+      userMessage: request.message ?? '',
+      userId: context.userId,
+      tripId: context.tripId ?? undefined,
+      conversationHistory: context.conversationHistory,
+      availableSkills,
+      destinationSupplement,
+    });
+    const tokenContext = request.request_id
+      ? {
+          request_id: request.request_id,
+          state_machine_step: 'INTAKE' as OrchestrationStep,
+          sub_agent: 'Orchestrator' as SubAgentType,
+        }
+      : undefined;
+    try {
+      const response = await this.callLlmWithFallback(
+        provider,
+        prompt,
+        ORCHESTRATION_TRIAGE_JSON_SCHEMA as unknown as Record<string, unknown>,
+        '编排分流',
+        tokenContext,
+      );
+      const parsed = this.extractJSONFromResponse(response);
+      return normalizeOrchestrationTriageResult(parsed);
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] runOrchestrationTriage 失败: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return null;
     }
   }
 
@@ -5355,6 +6421,28 @@ export class ClaudeOrchestratorService {
   /**
    * 将先前步骤中 SafeTravel RSS（`safetravel_alerts` / `rss_refined`）并入 `research_data`，供 itinerary.verify 封路段对齐。
    */
+  /**
+   * 将 plan 中 world.buildContext 结果并入 research_data（worldModelMeta → DSO 优化门控）
+   */
+  private mergePriorWorldBuildIntoResearchData(
+    existing: Record<string, any> | undefined,
+    results: Record<string, any>,
+  ): Record<string, any> {
+    const out: Record<string, any> = { ...(existing ?? {}) };
+    for (const stepResult of Object.values(results)) {
+      if (
+        stepResult &&
+        typeof stepResult === 'object' &&
+        !Array.isArray(stepResult) &&
+        (stepResult as any).world &&
+        (stepResult as any).missingPieces !== undefined
+      ) {
+        mergeWorldBuildIntoResearchData(out, stepResult as any);
+      }
+    }
+    return out;
+  }
+
   private mergePriorSafetravelIntoResearchData(
     existing: Record<string, any> | undefined,
     results: Record<string, any>,
@@ -5460,7 +6548,7 @@ export class ClaudeOrchestratorService {
             this.logger.debug(`[Claude Orchestrator] 执行 Skill: ${step.skillName}`);
             const result = await skill.execute(input);
             const mergedSkillResult = this.mergeSkillOutputWithPlanStateInput(input, result);
-            results[step.id] = mergedSkillResult;
+            results[step.id] = this.sanitizeOrchestrationHandoff(request, mergedSkillResult);
             
             stepsExecuted.push({
               stepId: step.id,
@@ -5484,7 +6572,7 @@ export class ClaudeOrchestratorService {
               results,
             };
             const result = await action.execute(input, state);
-            results[step.id] = result;
+            results[step.id] = this.sanitizeOrchestrationHandoff(request, result);
             
             stepsExecuted.push({
               stepId: step.id,
@@ -5547,7 +6635,7 @@ export class ClaudeOrchestratorService {
                   const input = this.prepareSkillInput(step, results, context, request, intentSnapshot);
                   const result = await skill.execute(input);
                   const merged = this.mergeSkillOutputWithPlanStateInput(input, result);
-                  results[step.id] = merged;
+                  results[step.id] = this.sanitizeOrchestrationHandoff(request, merged);
                   
                   stepsExecuted.push({
                     stepId: step.id,
@@ -5572,7 +6660,7 @@ export class ClaudeOrchestratorService {
                     results,
                   };
                   const result = await action.execute(input, state);
-                  results[step.id] = result;
+                  results[step.id] = this.sanitizeOrchestrationHandoff(request, result);
                   
                   stepsExecuted.push({
                     stepId: step.id,
@@ -5875,6 +6963,11 @@ export class ClaudeOrchestratorService {
     request: RouteAndRunRequestDto,
     context: AgentContext,
   ): string {
+    const destSupplement = resolveDestinationLlmPromptSupplement({
+      userMessage: request.message,
+      destinationHint: request.message,
+    });
+    const destBlock = destSupplement ? `\n[目的地特化规则]\n${destSupplement}\n` : '';
     return `
 ${INTENT_ANALYSIS_PROMPT}
 
@@ -5885,7 +6978,7 @@ ${request.message}
 - 用户 ID: ${context.userId}
 - 行程 ID: ${context.tripId || '无'}
 - 对话历史: ${context.conversationHistory?.join('\n') || '无'}
-
+${destBlock}
 请分析用户意图。
 `.trim();
   }
@@ -5984,6 +7077,9 @@ ${JSON.stringify(routingDecision, null, 2)}
   /**
    * 裁剪版「意图快照」：为动态计划中的 verify / smart_update 自动补水，无需塞入整条 OrchestratorState。
    */
+  /**
+   * 裁剪版「意图快照」：为动态计划中的 verify / smart_update 自动补水，无需塞入整条 OrchestratorState。
+   */
   private buildSkillInputIntentSnapshot(
     request: RouteAndRunRequestDto,
     context: AgentContext,
@@ -6059,6 +7155,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     
     // 为特定 Skills 提供智能默认值
     if (step.skillName === 'routeDirection.pickForIntent') {
+      const optAny = (request.options ?? {}) as Record<string, unknown>;
       // 确保 userIntentTags 是数组
       if (!Array.isArray(input.userIntentTags)) {
         input.userIntentTags = input.userIntentTags ? [input.userIntentTags] : [];
@@ -6081,6 +7178,11 @@ ${JSON.stringify(routingDecision, null, 2)}
           // 使用当前月份作为默认值
           input.season = new Date().getMonth() + 1;
         }
+      }
+
+      const tpReq = optAny.trip_plan_request as TripPlanRequest | undefined;
+      if (tpReq) {
+        input.tripPlanRequest = tpReq;
       }
     }
     
@@ -6225,6 +7327,26 @@ ${JSON.stringify(routingDecision, null, 2)}
       step.skillName === 'itinerary.generate'
     ) {
       input.research_data = this.mergePriorSafetravelIntoResearchData(input.research_data, results);
+      input.research_data = this.mergePriorWorldBuildIntoResearchData(input.research_data, results);
+    }
+
+    if (step.skillName === 'world.buildContext' && input.countryCode === 'NO' && !input.subregion) {
+      const poiNames: string[] = [];
+      for (const stepResult of Object.values(results)) {
+        if (stepResult && typeof stepResult === 'object') {
+          const names = (stepResult as any).poi_names ?? (stepResult as any).poiNames;
+          if (Array.isArray(names)) poiNames.push(...names.map(String));
+        }
+      }
+      const resolved = resolveNorwaySubregionForWorldBuild({
+        countryCode: input.countryCode,
+        userMessage: request.message,
+        poiNames,
+      });
+      if (resolved) {
+        input.subregion = resolved;
+        this.logger.debug(`[Claude Orchestrator] world.buildContext: NO → subregion=${resolved} (keyword/explicit)`);
+      }
     }
 
     if (step.skillName === 'worldState.summarize') {
@@ -6286,7 +7408,14 @@ ${JSON.stringify(routingDecision, null, 2)}
       input.intent_hints = { ...intentSnapshot.intent_hints, ...(input.intent_hints ?? {}) };
     }
 
-    return input;
+    return this.sanitizeOrchestrationHandoff(request, input);
+  }
+
+  private sanitizeOrchestrationHandoff(request: RouteAndRunRequestDto, value: unknown): unknown {
+    return sanitizeOrchestrationHandoffForRequest(
+      request as RouteAndRunSubagentSandboxCarrier,
+      value,
+    );
   }
 
   /** skillName → OrchestrationStep（用于 Token 按阶段打点） */
@@ -6617,7 +7746,51 @@ ${JSON.stringify(routingDecision, null, 2)}
     deadline?: { remainingMs: () => number; clamp: (ms: number, minMs?: number) => number },
     resume?: { decision_state: DecisionState; checkpoint_loaded?: boolean },
   ): Promise<OrchestrationResult> {
+    applyTripPlanningStateMachineOptionDefaults(request);
+    setLlmTraceRoutePath('STATE_MACHINE');
     const startTime = Date.now();
+    const boundTripIdEarly = (request.trip_id || context.tripId || '').trim();
+    const earlyMsg = resolveRouteAndRunUserMessage(request);
+    if (boundTripIdEarly && isSilentVoteCreateIntentMessage(earlyMsg)) {
+      this.logger.log(
+        `[Claude Orchestrator] 状态机入口：发起投票 → SilentVote CTA 短路 request_id=${request.request_id}`,
+      );
+      setLlmTraceRoutePath('LIGHTWEIGHT');
+      const voteOp = buildSilentVoteCreateSuggestedOperation(boundTripIdEarly);
+      return {
+        success: true,
+        answerText:
+          '可以发起团队匿名投票。请点击下方「发起投票」打开创建面板（选项与截止时间由你确认后提交）。',
+        result: {
+          routingTaskType: 'DATA_LOOKUP',
+          lightweightKnowledgeQa: true,
+          ui_surface: 'consultation' as const,
+          trip_id: boundTripIdEarly,
+          ...(voteOp ? { suggested_operations: [voteOp] } : {}),
+        },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [
+          {
+            request_id: request.request_id,
+            step: 'INTAKE' as OrchestrationStep,
+            actor: 'Orchestrator' as SubAgentType,
+            inputs_summary: earlyMsg.slice(0, 200),
+            outputs_summary: 'silent_vote_create CTA (SM entry bypass)',
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: { system_action: 'SILENT_VOTE_CREATE_CTA' },
+          },
+        ],
+      };
+    }
+    if (boundTripIdEarly && isWorkbenchAssistantPlaceholderMessage(request.message)) {
+      this.logger.log(
+        `[Claude Orchestrator] 状态机入口：工作台占位欢迎语 → 短路 request_id=${request.request_id}`,
+      );
+      setLlmTraceRoutePath('LIGHTWEIGHT');
+      return await this.orchestrateWorkbenchAssistantPlaceholder(request, context, startTime);
+    }
     this.logger.log(`[Claude Orchestrator] 开始状态机编排: request_id=${request.request_id}`);
     this.logger.log(`[Claude Orchestrator] Deadline: ${deadline?.remainingMs() || 'N/A'}ms`);
 
@@ -6663,6 +7836,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         request.options,
       ) as OrchestratorState['metadata'],
     };
+    state.metadata = mergeEmotionalClientSignalsFromRouteAndRunRequest(state.metadata, request);
 
     // Phase 2.1: 初始化 DecisionState (DSO)，与 OrchestratorState 并行维护
     // Phase 2.4: DECISION_KERNEL_ENABLED=false 可回滚到无 Kernel 路径
@@ -6700,8 +7874,13 @@ ${JSON.stringify(routingDecision, null, 2)}
             resume_admission_passed: true,
           },
         });
+        const graphEntry =
+          suggestGraphEntryFromHarnessAdmission(admission) ??
+          computeResumeGraphEntryFromLast(decisionState.systemState?.lastStep);
+        (state.metadata as Record<string, unknown>).graph_resume_entry = graphEntry;
+        (state.metadata as Record<string, unknown>).harness_resume_admission_step = step;
         this.logger.debug(
-          `[Claude Orchestrator] Durable resume: DSO 已加载 admission_step=${String(step)} skip_intake=${resumeSkipIntake}`,
+          `[Claude Orchestrator] Durable resume: DSO 已加载 admission_step=${String(step)} graph_entry=${graphEntry} skip_intake=${resumeSkipIntake}`,
         );
       }
     } else if (this.decisionKernel && this.isKernelEnabledForRequest(request)) {
@@ -6715,936 +7894,152 @@ ${JSON.stringify(routingDecision, null, 2)}
     decisionState = this.mergeGovernanceRuntimeBranchDirective(request, decisionState);
 
     try {
-      // 步骤 1: INTAKE - 解析请求 & 缺口识别（Durable：lastStep=INTAKE 时跳过重复 INTAKE）
-      if (!resumeSkipIntake) {
-        await this.executeIntakeStep(request, context, state, llmProvider);
-      } else {
-        this.logger.log('[Claude Orchestrator] Durable resume: 跳过 INTAKE，进入 STATE_UPDATE');
-        state.current_step = 'STATE_UPDATE';
-        state.metadata.last_updated_at = new Date().toISOString();
-      }
-      this.maybeSnapshot(state, 'AUTO');
-
-      // 步骤 2: STATE_UPDATE - Phase 2.3 显式 DSO 同步
-      decisionState = await this.executeStateUpdateStep(state, decisionState) ?? decisionState;
-      this.maybeSnapshot(state, 'AUTO');
-
-      // 在 DSO 里记录本轮澄清 fingerprint 与重复尝试次数（用于高亮 accept_no_solution 等防御性策略）
-      if (this.decisionKernel && decisionState) {
-        const fp = (state.metadata as any)?.last_relaxation_fingerprint as string | undefined;
-        if (fp) {
-          const prev = decisionState.systemState?.lastRelaxationFingerprint;
-          const prevSame = decisionState.systemState?.consecutiveSameRelaxationAttempts ?? 0;
-          const same = prev && prev === fp;
-          const nextSame = same ? prevSame + 1 : 0;
-          const prevRetry = decisionState.systemState?.planGenRetryCount ?? 0;
-          decisionState = this.decisionKernel.updateState(decisionState, {
-            systemState: {
-              requestId: state.request_id,
-              lastRelaxationFingerprint: fp,
-              consecutiveSameRelaxationAttempts: nextSame,
-              planGenRetryCount: prevRetry + 1,
-            } as any,
-          });
-        }
-      }
-
-      // 用户批准终止：优雅拒绝出口（不进入 RESEARCH/Gate/Plan）
-      const terminalIntent = (state.metadata as any)?.terminal_intent as string | undefined;
-      if (terminalIntent === 'TERMINAL_NO_SOLUTION') {
-        this.logger.warn(`[Claude Orchestrator] TERMINAL_NO_SOLUTION confirmed by user; halting orchestration.`);
-        state.current_step = 'DONE';
-        state.verdict = 'REJECT';
-        state.metadata.last_updated_at = new Date().toISOString();
-        state.metadata.total_duration_ms = Date.now() - startTime;
-        this.maybeSnapshot(state, 'CHECKPOINT');
-        return this.buildTerminalNoSolutionResult(state, startTime, decisionState, context);
-      }
-
-      // HARD 缺口 + 已生成澄清问题：必须在 RESEARCH 之前返回，避免 transport.search 等技能在「未指定」上失败
-      if (this.shouldReturnClarificationForHardGaps(state)) {
-        const compileHard =
-          state.gaps?.find(
-            (g) =>
-              g?.severity === 'HARD' &&
-              (g.type === 'INTENT_COMPILE_ERROR' || g.type === 'SPEC_TYPE_ERROR'),
-          ) ?? null;
-        if (compileHard) {
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'INTAKE',
-            actor: 'Orchestrator',
-            inputs_summary: 'INTAKE compiler hard error → clarification',
-            outputs_summary: `INTENT_COMPILE_BLOCK: ${compileHard.type}`,
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'INTENT_COMPILE_BLOCK',
-              gap_type: compileHard.type,
-              detail: compileHard.detail,
-              allow_partial: state.metadata?.allow_partial === true,
-            },
-          });
-        }
-        this.logger.debug(
-          `[Claude Orchestrator] HARD 缺口且已有澄清问题，跳过 RESEARCH/Gate/Plan，直接返回澄清`,
-        );
-        return this.buildClarificationResult(state, startTime, decisionState, context);
-      }
-
-      // 2.0 细粒度 Checkpoint（COW）：仅在副本上 invalidate；Options 显式 scopes 优先于 NLU（数组合并顺序 + dedupe 保序）
-      const optInv = request.options?.research_invalidate_scopes;
-      const nluInv = extractNluResearchInvalidateScopes(request);
-      const combinedInv = dedupeResearchScopes([
-        ...(Array.isArray(optInv) ? optInv.filter(isResearchAssetScope) : []),
-        ...nluInv,
-      ]);
-      if (combinedInv.length > 0) {
-        const scopes = combinedInv;
-          let rdBase: Record<string, unknown> | undefined =
-            state.research_data && typeof state.research_data === 'object'
-              ? cloneResearchRecord(state.research_data as Record<string, unknown>)
-              : undefined;
-          if (
-            (!rdBase || Object.keys(rdBase).length === 0) &&
-            this.researchPriorSnapshot
-          ) {
-            const loaded = await this.researchPriorSnapshot.load(request);
-            if (loaded && typeof loaded === 'object' && Object.keys(loaded).length > 0) {
-              rdBase = cloneResearchRecord(loaded as Record<string, unknown>);
-            }
-          }
-          if (rdBase && Object.keys(rdBase).length > 0) {
-            const researchAtomicRollbackSnapshot = cloneResearchRecord(rdBase);
-            const draftRd = cloneResearchRecord(rdBase);
-            if (!draftRd) {
-              this.logger.warn(`[Claude Orchestrator] research COW: draft clone failed request_id=${state.request_id}`);
-            } else {
-            const { clearedKeys } = invalidateResearchScopesInPlace(
-              draftRd,
-              scopes,
-              'research_invalidate_scopes+nlu',
-            );
-            const m0 = { ...(state.metadata as any) };
-            m0.research_scopes_to_recompute = scopes;
-            m0.research_scope_invalidation = {
-              scopes,
-              cleared_keys: clearedKeys,
-              at: new Date().toISOString(),
-            };
-            m0.pending_research_prior_for_kernel = draftRd;
-            m0.research_atomic_rollback_snapshot = researchAtomicRollbackSnapshot;
-            state.metadata = m0 as OrchestratorState['metadata'];
-            state.decision_log.push({
-              request_id: state.request_id,
-              step: 'RESEARCH',
-              actor: 'Orchestrator',
-              inputs_summary: 'Harness：研究资产作用域局部无效化（COW 副本，主干未提交）',
-              outputs_summary: `INVALIDATE_SCOPES scopes=${scopes.join(',')} cleared_key_count=${clearedKeys.length}`,
-              evidence_refs: [],
-              timestamp: new Date().toISOString(),
-              metadata: {
-                system_action: 'RESEARCH_SCOPE_INVALIDATION',
-                scopes,
-                cleared_keys_sample: clearedKeys.slice(0, 32),
-                nlu_scopes: nluInv.length ? nluInv : undefined,
-                option_scopes: Array.isArray(optInv) ? optInv.filter(isResearchAssetScope) : undefined,
-              },
-            });
-            }
-          }
-      }
-
-      // 步骤 3: RESEARCH - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
-      decisionState = await this.executeResearchPhase(decisionState, state, request, context, llmProvider);
-      this.maybeSnapshot(state, 'AUTO');
-
-      const transportIntercept = this.maybeInterceptDegradedTransportEvidence(
+      const prePlanOutcome = await runPrePlanUntilContextBuild(this.asPrePlanGraphHost(), {
+        request,
+        context,
         state,
         decisionState,
+        llmProvider,
         startTime,
+        deadline,
+        resumeSkipIntake,
+        entry: resume?.decision_state
+          ? computeResumeGraphEntryFromLast(decisionState?.systemState?.lastStep)
+          : undefined,
+      });
+      decisionState = prePlanOutcome.decisionState ?? decisionState;
+      if (prePlanOutcome.kind === "terminal") {
+        return prePlanOutcome.result;
+      }
+
+      const planGenOut = await this.runPlanGenWithEmptyDraftGuard({
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+      });
+      decisionState = planGenOut.decisionState;
+      if (planGenOut.terminal) {
+        return planGenOut.terminal;
+      }
+
+      await this.runTravelCompilePhaseIfEnabled(state, request);
+
+      let planVerifyOutcome = await runPlanVerifyOptimizeRepairLoop(this.asPlanVerifyLoopHost(), {
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+      });
+      decisionState = planVerifyOutcome.decisionState;
+      const verifyRetry = await runVerifyReturnToResearchRetryLoop({
+        state,
+        planVerifyOutcome,
+        decisionState,
+        onRetryStarted: (retryIndex, maxRetries) => {
+          this.logger.warn(
+            `[Claude Orchestrator] VERIFY RETURN_TO_RESEARCH: retry=${retryIndex}/${maxRetries} → pre_plan from research`,
+          );
+        },
+        onRetry: async ({ decisionState: dsFromVerify }) => {
+          const rePrePlan = await runPrePlanUntilContextBuild(this.asPrePlanGraphHost(), {
+            request,
+            context,
+            state,
+            decisionState: dsFromVerify,
+            llmProvider,
+            startTime,
+            deadline,
+            resumeSkipIntake: true,
+            entry: 'research',
+          });
+          if (rePrePlan.kind === 'terminal') {
+            return {
+              planVerifyOutcome,
+              decisionState: rePrePlan.decisionState,
+              prePlanTerminal: rePrePlan.result,
+            };
+          }
+          let ds = rePrePlan.decisionState ?? dsFromVerify;
+          const regen = await this.runPlanGenWithEmptyDraftGuard({
+            request,
+            context,
+            state,
+            decisionState: ds,
+            llmProvider,
+            startTime,
+          });
+          ds = regen.decisionState ?? ds;
+          if (regen.terminal) {
+            return { planVerifyOutcome, decisionState: ds, planGenTerminal: regen.terminal };
+          }
+          await this.runTravelCompilePhaseIfEnabled(state, request);
+          const reVerify = await runPlanVerifyOptimizeRepairLoop(this.asPlanVerifyLoopHost(), {
+            request,
+            context,
+            state,
+            decisionState: ds,
+            llmProvider,
+            startTime,
+          });
+          return {
+            planVerifyOutcome: reVerify,
+            decisionState: reVerify.decisionState ?? ds,
+          };
+        },
+      });
+      if (verifyRetry.terminal) {
+        return verifyRetry.terminal;
+      }
+      planVerifyOutcome = verifyRetry.planVerifyOutcome;
+      decisionState = verifyRetry.decisionState;
+      if (planVerifyOutcome.kind === 'terminal') {
+        return planVerifyOutcome.result;
+      }
+
+      await runGraphEffectivePlanMaterializePhase({
+        state,
+        request,
+        materializer: this.graphEffectivePlanMaterializer,
+        configService: this.configService,
+      });
+
+      const postPlanOutcome = await runPostPlanGraph(this.asPostPlanGraphHost(), {
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+        deadline,
+      });
+      if (postPlanOutcome.kind === 'terminal') {
+        // post_plan 子图在 HALLUCINATION 节点以 terminal 出口并内嵌 buildSuccessResult；
+        // 须在此仍走整段重规划住宿 enrich，否则会跳过 FULL_TRIP_REPLAN_HOTEL_SENSOR。
+        return await this.enrichOrchestrationResultWithFullTripReplanHotel(
+          request,
+          context,
+          state,
+          postPlanOutcome.result,
+        );
+      }
+      await this.maybeAutoApplyItineraryAdjustCorridor(state);
+      const baseResult = this.buildSuccessResult(
+        state,
+        startTime,
+        postPlanOutcome.decisionState,
         context,
       );
-      if (transportIntercept) {
-        this.logger.warn(
-          '[Claude Orchestrator] RESEARCH 拦截：交通证据需澄清端点（ClarifyEndpoints），已返回 NEED_USER_CONFIRM',
-        );
-        return transportIntercept;
-      }
-      if ((state.metadata as any)?.transport_clarify_force_reinject) {
-        (state.metadata as any) = { ...(state.metadata ?? {}), transport_clarify_force_reinject: false };
-      }
-
-      // Early Warning：RESEARCH 后前置侦察（不阻断；仅写入 metadata/decision_log，供 UI 提示）
-      if (this.shadowConflictScanner) {
-        try {
-          const ew = await this.shadowConflictScanner.scan({
-            decisionKernel: this.decisionKernel,
-            decisionState,
-            state,
-            request,
-          });
-          if (ew) {
-            const early_warning_id =
-              ew.early_warning_id ??
-              this.djb2Fingerprint({
-                request_id: state.request_id,
-                risk_level: ew.risk_level,
-                conflict_type: ew.conflict_type,
-                evidence_summary: ew.evidence_summary,
-                suggested_actions: (ew.suggested_actions ?? [])
-                  .map((s) => ({
-                    relaxation_type: s.relaxation_type,
-                    shadow_confidence: s.shadow_confidence,
-                    violations_before: s.violations_before,
-                    violations_after: s.violations_after,
-                    fixed_conflict_types: (s.fixed_conflict_types ?? []).slice().sort(),
-                  }))
-                  .sort((a, b) => a.relaxation_type.localeCompare(b.relaxation_type)),
-              });
-            const withId: EarlyWarning = { ...ew, early_warning_id };
-            (state.metadata as any) = { ...(state.metadata ?? {}), early_warning: withId };
-            state.decision_log.push({
-              request_id: state.request_id,
-              step: 'RESEARCH',
-              actor: 'Orchestrator',
-              inputs_summary: 'ShadowConflictScanner (post-RESEARCH)',
-              outputs_summary: `EARLY_WARNING: id=${early_warning_id} risk=${ew.risk_level} type=${ew.conflict_type} suggestions=${ew.suggested_actions.length}`,
-              evidence_refs: [],
-              timestamp: new Date().toISOString(),
-              metadata: {
-                system_action: 'EARLY_WARNING',
-                early_warning: withId,
-              },
-            });
-          }
-        } catch (e: any) {
-          this.logger.debug(`[Claude Orchestrator] Early warning scan skipped: ${e?.message}`);
-        }
-      }
-
-      // INTAKE 形式化仿真：PREDICTIVE_FAILURE_REPORT（可与 Shadow EW 叠加；核心载荷为 SimulatedRepairTrace[]）
-      const intakeSim = (state.metadata as any)?.intake_simulation as
-        | { simulatedRepairTraces?: import('../services/route-feasibility.types').SimulatedRepairTrace[] }
-        | undefined;
-      const simTraces = intakeSim?.simulatedRepairTraces ?? [];
-      if (simTraces.length > 0) {
-        const audit_text = formatPredictiveFailureReport(simTraces);
-        const simDigest = digestSimulatedRepairTracesForCorrelation(simTraces as unknown[]);
-        const tripDigest = digestTripPlanRequestLight(state.trip_plan_request ?? {});
-        const predictiveStateHash = computePredictiveFailureStateHash({
-          dsoVersion: decisionState?.systemState?.version ?? 0,
-          simulatedTracesDigest: simDigest,
-          tripDigest,
-        });
-        const predictiveCorrelationId = buildDecisionFeedbackCorrelationId({
-          sessionId: state.request_id,
-          phase: 'INTAKE',
-          kind: 'PREDICTIVE_FAILURE',
-          roundIndex: 0,
-          stateHash: predictiveStateHash,
-        });
-        const predictive_failure_report = {
-          card_type: 'PREDICTIVE_FAILURE_REPORT' as const,
-          correlationId: predictiveCorrelationId,
-          audit_text,
-          simulated_repair_traces: simTraces,
-        };
-        const existingEw = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
-        const mergedEw: EarlyWarning = existingEw
-          ? { ...existingEw, predictive_failure_report }
-          : {
-              early_warning_id: `pred-${state.request_id}`,
-              risk_level: 'MEDIUM',
-              conflict_type: 'MIXED',
-              evidence_summary: 'INTAKE_PREDICTIVE_SIMULATION',
-              suggested_actions: [],
-              predictive_failure_report,
-            };
-        (state.metadata as any) = { ...(state.metadata ?? {}), early_warning: mergedEw };
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'RESEARCH',
-          actor: 'Orchestrator',
-          inputs_summary: 'IntakeCompilerService simulation → PREDICTIVE_FAILURE_REPORT',
-          outputs_summary: `PREDICTIVE_FAILURE_REPORT: traces=${simTraces.length}`,
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: {
-            system_action: 'PREDICTIVE_FAILURE_REPORT',
-            correlation_id: predictiveCorrelationId,
-            predictive_failure_report,
-          },
-        });
-      }
-
-      // 预防性放宽闭环：HIGH/CRITICAL 在进入 POI 前强制澄清；下一回合 `clarification_answers` 由 ClarificationHandlerService 与 PLAN_GEN 同源 Patch
-      const ewMeta = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
-      if (ewMeta && (ewMeta.risk_level === 'HIGH' || ewMeta.risk_level === 'CRITICAL')) {
-        const clarAnswers = (request as any).clarification_answers as Array<{ questionId?: string }> | undefined;
-        const answeredEarlyWarning = clarAnswers?.some((a) => a?.questionId === 'early_warning_relaxations');
-        const earlyWarningAcknowledged =
-          (state.metadata as any)?.early_warning_acknowledged === true ||
-          decisionState?.systemState?.earlyWarningAcknowledged === true;
-        if (!answeredEarlyWarning && !earlyWarningAcknowledged) {
-            // A/B 实验：50% 保留传统模糊措辞，50% 注入 L3 级论证风格的劝说语句。
-          const ab = (() => {
-            // djb2:deadbeef -> 取低 8 位十六进制数字作为稳定分桶标识
-            const fp = this.djb2Fingerprint({ request_id: state.request_id, exp: 'ew_l3_prompt_v1' });
-            const hex = fp.includes(':') ? fp.split(':')[1] : fp;
-            const n = parseInt(hex.slice(-8), 16);
-            const bucket = Number.isFinite(n) ? n % 100 : 0;
-            return { fingerprint: fp, bucket, treatment: bucket < 50 };
-          })();
-
-          const supported = new Set(['upgrade_vehicle_to_4wd', 'increase_days_by_1', 'drop_one_must_include_poi']);
-          const dedup = new Map<string, (typeof ewMeta.suggested_actions)[number]>();
-          for (const s of ewMeta.suggested_actions ?? []) {
-            if (s?.relaxation_type && supported.has(s.relaxation_type) && !dedup.has(s.relaxation_type)) {
-              dedup.set(s.relaxation_type, s);
-            }
-          }
-          const list = [...dedup.values()];
-          if (list.length > 0) {
-            const anyHigh = list.some((s) => s.shadow_confidence === 'high_probability_fixed');
-            this.logger.warn(
-              `[Claude Orchestrator] EARLY_WARNING intercept: risk=${ewMeta.risk_level} type=${ewMeta.conflict_type} options=${list.length}`,
-            );
-
-            const risk = calculateEarlyWarningRisk(
-              {
-                risk_level: ewMeta.risk_level,
-                conflict_type: ewMeta.conflict_type,
-                suggested_actions: list,
-              },
-              { request_id: state.request_id },
-            );
-            const failure_risk_score = risk.score;
-
-            const failure_prob_hint = (() => {
-              if (!ab.treatment) return undefined;
-              if (failure_risk_score >= 0.8) {
-                return `【高危逻辑拦截】若保持现状继续，预计撞墙风险很高（score=${failure_risk_score.toFixed(2)}）。建议立即选择一项修复以恢复物理可行域。`;
-              }
-              if (failure_risk_score >= 0.4) {
-                return `【运行风险提示】该配置存在较高后续回溯成本（score=${failure_risk_score.toFixed(2)}）。建议优先修复，避免反复试错。`;
-              }
-              return `【提示】已检测到潜在风险（score=${failure_risk_score.toFixed(2)}），建议先修复再继续。`;
-            })();
-
-            const l3Line = (() => {
-              if (!ab.treatment) return undefined;
-              const cid =
-                ewMeta.conflict_type === 'REACHABILITY'
-                  ? CONSTRAINT_IDS.TERRAIN_F_ROAD_COMPATIBILITY
-                  : ewMeta.conflict_type === 'SCOPE'
-                    ? CONSTRAINT_IDS.TIME_SPACE_ETA_FEASIBILITY
-                    : CONSTRAINT_IDS.TIME_SPACE_ETA_FEASIBILITY;
-              const mode = selectPersuasionMode(cid);
-             // 注意：early_warning 处于行程生成之前阶段；我们此时尚无具体的数值宽松量。
-             // 但我们仍会展示一个确定性的“硬约束”横幅，包含 cid 和证据摘要。
-              const out = buildL3PersuasionLine({
-                mode,
-                proof: {
-                  cid,
-                  unit: 'bool',
-                  slack: -1,
-                  evidence: ewMeta.evidence_summary
-                    ? { source: 'SHADOW_GATE', refIds: [String(ewMeta.early_warning_id ?? 'early_warning')] }
-                    : { source: 'SHADOW_GATE' },
-                },
-              });
-              return out?.line;
-            })();
-
-            const questionHeader = ab.treatment
-              ? `[SYSTEM_ACTION]: EARLY_WARNING(L3) 风险=${ewMeta.risk_level}（${ewMeta.conflict_type}）。`
-              : `[SYSTEM_ACTION]: EARLY_WARNING 风险=${ewMeta.risk_level}（${ewMeta.conflict_type}）。`;
-            const questionBody = `${ewMeta.evidence_summary} 请在 POI 选择与排程前确认一项或多项“物理可行域”放宽（影子推演置信度已标注）。`;
-            const question = `${questionHeader}${failure_prob_hint ? `\n${failure_prob_hint}\n` : ''}${l3Line ? `\n${l3Line}\n` : ''}${questionBody}`;
-
-            // 约束评分器：对选项进行排序，以打破振荡 / 优先处理硬物理约束。
-            const topPrecedent = Array.isArray((ewMeta as any).historical_precedents)
-              ? ((ewMeta as any).historical_precedents[0] as any)
-              : undefined;
-            const oscillation_k = decisionState?.systemState?.consecutiveSameRelaxationAttempts ?? 0;
-            const dominant_cid =
-              String((decisionState as any)?.constraints?.violations?.[0]?.type ?? '').trim() ||
-              (ewMeta.conflict_type === 'REACHABILITY' ? 'REACHABILITY_HARD' : ewMeta.conflict_type === 'SCOPE' ? 'SCOPE' : 'MIXED');
-            const is_hard = ewMeta.conflict_type === 'REACHABILITY' || ewMeta.risk_level === 'CRITICAL';
-
-            const scored = list
-              .map((s) => {
-                const id = s.relaxation_type as RelaxationActionId;
-                const persuasion = this.localCaseStore?.getPersuasionRate({
-                  signature: SignatureBuilder.buildConversionSignature({
-                    conflict_type: ewMeta.conflict_type,
-                    primary_violation_type: dominant_cid,
-                    region_id: (state.trip_plan_request as any)?.region_id,
-                    start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
-                  }),
-                  action: id,
-                });
-                const breakdown = ConstraintScorer.calculateScore(id, {
-                  dominant_cid,
-                  is_hard,
-                  oscillation_k,
-                  precedent: topPrecedent,
-                  preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
-                  persuasion,
-                  delta: 1.5,
-                });
-                return { s, breakdown };
-              })
-              .sort((a, b) => b.breakdown.score - a.breakdown.score);
-
-            state.clarification_questions = [
-              {
-                id: 'early_warning_relaxations',
-                question,
-                type: anyHigh ? 'single_choice' : 'multi_choice',
-                required: true,
-                options: ([
-                  ...scored.map(({ s, breakdown }) => ({
-                    value: s.relaxation_type,
-                    label: `${s.relaxation_type}｜${s.impact_description}（${
-                      s.shadow_confidence === 'high_probability_fixed' ? 'high_probability_fixed' : 'needs_more_changes'
-                    }）`,
-                    metadata: {
-                      score: breakdown.score,
-                      weights: breakdown.weights,
-                      dominant_cid: breakdown.dominant_cid,
-                      precedent_n: breakdown.precedent_n,
-                      terms: breakdown.terms,
-                    },
-                  })),
-                  {
-                    value: 'proceed_at_own_risk',
-                    label: '[实验性] 保持现状继续规划（可能导致失败）',
-                    metadata: {
-                      score: ConstraintScorer.calculateScore('proceed_at_own_risk', {
-                        dominant_cid,
-                        is_hard,
-                        oscillation_k,
-                        precedent: topPrecedent,
-                        preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
-                      }).score,
-                      dominant_cid,
-                      precedent_n: typeof topPrecedent?.sample_count === 'number' ? topPrecedent.sample_count : 0,
-                    },
-                  },
-                ] as any),
-                hint: '提交后下一回合将合并写入 TripPlanRequest；再次规划时可行域已被物理修复。也可选择「自担风险继续」跳过拦截（撞南墙模式，仍可能进入 PLAN_GEN 熔断）。',
-              },
-            ];
-            state.decision_log.push({
-              request_id: state.request_id,
-              step: 'RESEARCH',
-              actor: 'Orchestrator',
-              inputs_summary: 'EARLY_WARNING intercept → clarification',
-              outputs_summary: `PREVENTIVE_RELAXATION_REQUIRED: risk=${ewMeta.risk_level}`,
-              evidence_refs: [],
-              timestamp: new Date().toISOString(),
-              metadata: {
-                system_action: 'EARLY_WARNING_INTERCEPT',
-                early_warning: ewMeta,
-                options_snapshot: (state.clarification_questions?.[0] as any)?.options ?? [],
-                ew_prompt_ab: ab,
-                failure_risk_score,
-                failure_risk_reason: risk.reason,
-                failure_risk_confidence: risk.confidence,
-                ...(l3Line ? { ew_l3_line: l3Line } : {}),
-                ...(failure_prob_hint ? { failure_prob_hint } : {}),
-              },
-            });
-            state.metadata.last_updated_at = new Date().toISOString();
-            state.metadata.total_duration_ms = Date.now() - startTime;
-            this.maybeSnapshot(state, 'CHECKPOINT');
-            return this.buildClarificationResult(state, startTime, decisionState, context);
-          }
-        }
-      }
-
-      // 步骤 4: POI_SELECTION - 明确执行 POI 选择/排序，不直接从 RESEARCH 跳到 PLAN_GEN
-      const poiSelectionResult = await this.executePoiSelectionStep(state, decisionState);
-      this.maybeSnapshot(state, 'AUTO');
-      if (poiSelectionResult.allowWithFallback) {
-        this.logger.debug('[Claude Orchestrator] POI_SELECTION 无数据，触发 FALLBACK');
-        this.applyFallbackPlan(state);
-        this.recordPoiPlanningOutcomeAfterItinerary(state, decisionState);
-        state.current_step = 'DONE';
-        state.metadata.last_updated_at = new Date().toISOString();
-        state.metadata.total_duration_ms = Date.now() - startTime;
-        this.maybeSnapshot(state, 'CHECKPOINT');
-        return this.buildSuccessResult(state, startTime, decisionState, context);
-      }
-      if (poiSelectionResult.needsClarification) {
-        this.logger.debug(
-          `[Claude Orchestrator] POI_SELECTION 无同国家候选，返回 NEED_MORE_INFO`,
-        );
-        this.maybeSnapshot(state, 'CHECKPOINT');
-        return this.buildClarificationResult(state, startTime, decisionState, context);
-      }
-
-      // 步骤 5: GATE_EVAL - KERNEL_NATIVE_EXECUTION 时走 Kernel.executeGateEval
-      decisionState = await this.executeGateEvalPhase(decisionState, state, request, context, llmProvider);
-      this.relaxGateForPartialIfEligible(state);
-      this.maybeSnapshot(state, 'AUTO');
-
-      // 如果 Gate 结果为 BLOCK，直接返回
-      if (state.gate_result?.gate_result === 'BLOCK') {
-        this.recordPoiPlanningOutcomeAfterItinerary(state, decisionState);
-        this.maybeSnapshot(state, 'CHECKPOINT');
-        return this.buildBlockedResult(state, startTime, decisionState, context);
-      }
-
-      await this.maybeTriggerDecisionProfilingQuiz(request, state);
-      await this.maybeTriggerProcessFairnessRound(request, state);
-
-      // 步骤 6: CONTEXT_BUILD - Phase 2.3 在 PLAN 前构建 Context
-      decisionState = await this.executeContextBuildStep(request, context, state, decisionState);
-      this.maybeSnapshot(state, 'AUTO');
-
-      // 步骤 7: PLAN_GEN - KERNEL_NATIVE_EXECUTION 时走 Kernel.executePlanGen
-      decisionState = await this.executePlanGenPhase(decisionState, state, request, context, llmProvider);
-      this.maybeSnapshot(state, 'AUTO');
-
-      // PLAN_GEN 空草案：系统动作短路 — 不进入 OPTIMIZE/VERIFY/NARRATE，避免无依据行程建议
-      const itineraryDays = Array.isArray((state.itinerary as any)?.days) ? (state.itinerary as any).days.length : 0;
-      if (itineraryDays === 0 && this.decisionKernel && decisionState && !decisionState.systemState?.planGenTerminalFailure) {
-        const inconsistent: PlanGenTerminalFailure = {
-          code: 'INCONSISTENT_EMPTY_DRAFT',
-          message: 'Itinerary is empty but no terminal failure was signaled.',
-        };
-        decisionState = this.decisionKernel.updateState(decisionState, {
-          systemState: {
-            requestId: state.request_id,
-            currentPhase: 'PLAN_GEN',
-            planGenTerminalFailure: inconsistent,
-          } as any,
-        });
-      }
-
-      const planGenTf = decisionState?.systemState?.planGenTerminalFailure;
-      if (planGenTf) {
-        this.logger.warn(
-          `[Claude Orchestrator] PLAN_GEN 空草案终止: code=${planGenTf.code} system_action=${SYSTEM_ORCHESTRATOR_ACTIONS.PLAN_GEN_EMPTY_DRAFT_HALT}`,
-        );
-        const mustInclude =
-          decisionState?.userIntent?.mustIncludePoiIds ??
-          (state.trip_plan_request as any)?.must_include_poi_ids ??
-          [];
-        const days =
-          decisionState?.userIntent?.days ??
-          (state.trip_plan_request as any)?.days ??
-          undefined;
-
-        const vehicleRequiredRaw =
-          (decisionState?.environmentState as any)?.routeCorridorWorld?.constraints?.vehicleRequired ??
-          (decisionState?.environmentState as any)?.routeCorridorWorld?.constraints?.vehicle_requirement ??
-          (state.research_data as any)?.routeCorridorWorld?.constraints?.vehicleRequired ??
-          (state.research_data as any)?.route_corridor_world?.constraints?.vehicleRequired;
-        const vehicleRequired = typeof vehicleRequiredRaw === 'string' ? vehicleRequiredRaw.toLowerCase() : '';
-        const assumedVehicleType =
-          typeof (state.trip_plan_request as any)?.constraints?.vehicle_type === 'string'
-            ? String((state.trip_plan_request as any).constraints.vehicle_type)
-            : '2WD';
-
-        const need4x4 = /4x4|4wd|四驱/.test(vehicleRequired);
-        const userIs2wd = /2wd|两驱|2驱|2x4/i.test(assumedVehicleType) || assumedVehicleType === '2WD';
-
-        const labelWithFixTypes = (
-          base: string,
-          fixed: boolean,
-          impact?: string,
-          fixedTypes?: string[],
-        ): string => {
-          const fx =
-            fixedTypes && fixedTypes.length > 0
-              ? `｜效果: 解决${fixedTypes.map((t) => `【${t}】`).join('')}冲突`
-              : '';
-          return `${base}（${fixed ? 'high_probability_fixed' : 'needs_more_changes'}）${impact ? `｜Impact: ${impact}` : ''}${fx}`;
-        };
-
-        const clone = <T,>(v: T): T => {
-          const sc = (globalThis as any).structuredClone as ((x: any) => any) | undefined;
-          if (typeof sc === 'function') return sc(v);
-          return JSON.parse(JSON.stringify(v)) as T;
-        };
-
-        const baseViolations = ((decisionState as any).constraints?.violations ??
-          (state.gate_result as any)?.violations ??
-          []) as Array<{ type?: string }>;
-        const baseVTypes = new Set(baseViolations.map((v) => String(v?.type ?? '')).filter(Boolean));
-        const baseCount = baseViolations.length;
-
-        const shadowGate = async (
-          patchTrip: (t: any) => any,
-        ): Promise<{ fixed: boolean; improved: boolean; fixedTypes: string[]; afterCount: number; afterTypes: string[] }> => {
-          if (!this.decisionKernel || !decisionState) {
-            return { fixed: false, improved: false, fixedTypes: [], afterCount: baseCount, afterTypes: Array.from(baseVTypes) };
-          }
-          const shadowDso = clone(decisionState);
-          const shadowTrip = patchTrip(clone(state.trip_plan_request ?? { request_id: state.request_id, origin: '', destination: '' }));
-          const ctx = {
-            requestId: state.request_id,
-            routeDirectionId: (request as any).route_direction_id ?? undefined,
-            userId: (request as any).user_id,
-            tripPlanRequest: shadowTrip,
-            researchData: state.research_data,
-          };
-          const { gateResult } = await this.decisionKernel.executeGateEval(shadowDso as any, ctx as any);
-          const vs = (gateResult.violations ?? []) as Array<{ type?: string }>;
-          const afterTypes = vs.map((v) => String(v?.type ?? '')).filter(Boolean);
-          const afterSet = new Set(afterTypes);
-          const fixedTypes = Array.from(baseVTypes).filter((t) => !afterSet.has(t)).map((t) => this.violationTypeToCn(t));
-          const afterCount = vs.length;
-          const fixed = afterCount === 0;
-          const improved = afterCount < baseCount;
-          return { fixed, improved, fixedTypes, afterCount, afterTypes };
-        };
-
-        const optA = (() => {
-          // 空间约束：MustIncludePoi vs TotalTripDuration
-          if (!Array.isArray(mustInclude) || mustInclude.length === 0 || typeof days !== 'number' || !Number.isFinite(days)) {
-            return undefined;
-          }
-          const fixed = mustInclude.length <= Math.max(1, Math.floor(days) + 1);
-          return {
-            value: 'increase_days_by_1',
-            label: labelWithFixTypes(
-              `将总天数增加 1 天（${days}→${days + 1}）以容纳必去点`,
-              fixed,
-              `近似将必去点容量上限从 ${Math.max(1, Math.floor(days) + 1)} 提升到 ${Math.max(1, Math.floor(days + 1) + 1)}`,
-            ),
-          };
-        })();
-
-        const optB = (() => {
-          if (!Array.isArray(mustInclude) || mustInclude.length === 0) return undefined;
-          const fixed = typeof days === 'number' ? mustInclude.length - 1 <= Math.max(1, Math.floor(days)) : true;
-          return {
-            value: 'drop_one_must_include_poi',
-            label: labelWithFixTypes(
-              '移除 1 个必去点（最小冲突集近似）',
-              fixed,
-              `必去点数量从 ${mustInclude.length} 降至 ${Math.max(0, mustInclude.length - 1)}`,
-            ),
-          };
-        })();
-
-        const optC = (() => {
-          // 准入约束：F-road vs Vehicle
-          if (!need4x4) return undefined;
-          const fixed = true; // 升级车辆能力本身即满足该原子冲突（不保证全局可行，但对该冲突是“高概率修复”）
-          return {
-            value: 'upgrade_vehicle_to_4wd',
-            label: labelWithFixTypes(
-              '将车辆能力升级为 4WD/4x4（满足 F-road 准入）',
-              fixed && userIs2wd,
-              vehicleRequiredRaw ? `满足车辆要求：${String(vehicleRequiredRaw)}` : undefined,
-            ),
-          };
-        })();
-
-        const optionsBase = [optC, optA, optB].filter(Boolean) as Array<{ value: string; label: string }>;
-
-        // 真正 Dry-Run：对每个 option 构造 shadow tripPlanRequest，执行 Kernel.executeGateEval 并回填 delta（violation types）
-        const dryRunResults = await Promise.all(
-          optionsBase.map(async (o) => {
-            const r = await shadowGate((t) => {
-              const next = { ...t, constraints: { ...(t.constraints ?? {}) } } as any;
-              if (o.value === 'upgrade_vehicle_to_4wd') next.constraints.vehicle_type = '4WD';
-              if (o.value === 'increase_days_by_1') {
-                if (next.date_range?.end_date) {
-                  const end = new Date(next.date_range.end_date + 'T00:00:00Z');
-                  if (!Number.isNaN(end.getTime())) {
-                    const plus = new Date(end);
-                    plus.setUTCDate(plus.getUTCDate() + 1);
-                    next.date_range = { ...next.date_range, end_date: plus.toISOString().slice(0, 10) };
-                  }
-                } else if (typeof next.days === 'number' && Number.isFinite(next.days)) {
-                  next.days = Math.max(1, Math.floor(next.days) + 1);
-                }
-              }
-              if (o.value === 'drop_one_must_include_poi') {
-                const arr = Array.isArray(next.must_include_poi_ids) ? [...next.must_include_poi_ids] : [];
-                if (arr.length > 0) arr.pop();
-                next.must_include_poi_ids = arr;
-              }
-              return next;
-            });
-            const fixed = r.fixed;
-            const improved = r.improved;
-            const fixedTypes = r.fixedTypes;
-            const scoreLabel = fixed
-              ? 'high_probability_fixed'
-              : improved
-                ? `needs_more_changes（improved ${baseCount}→${r.afterCount}）`
-                : 'needs_more_changes';
-            const enrichedLabel = `${o.label}`.replace(
-              /\（(high_probability_fixed|needs_more_changes)\）/,
-              `（${scoreLabel}）`,
-            ) + (fixedTypes.length ? `｜效果: 解决${fixedTypes.map((t) => `【${t}】`).join('')}冲突` : '');
-            return { value: o.value, label: enrichedLabel, fixed };
-          }),
-        );
-
-        const anyHigh = dryRunResults.some((r) => r.label.includes('high_probability_fixed'));
-        const sameAttempts = decisionState?.systemState?.consecutiveSameRelaxationAttempts ?? 0;
-        const recommendTermination = sameAttempts >= 2;
-        // 约束评分器 + 最小割集分组，用于 PLAN_GEN 空草案的澄清说明。
-        const dominant_cid =
-          String((decisionState as any)?.constraints?.violations?.[0]?.type ?? '').trim() ||
-          (need4x4 ? 'REACHABILITY_HARD' : mustInclude?.length ? 'SCOPE' : 'MIXED');
-        const is_hard = need4x4 || String((baseViolations?.[0] as any)?.severity ?? '').toUpperCase() === 'HARD';
-        const ewMetaTop = (state.metadata as any)?.early_warning?.historical_precedents?.[0] as any | undefined;
-
-        const scored = dryRunResults.map(({ value, label }) => {
-          const id = value as RelaxationActionId;
-          const persuasion = this.localCaseStore?.getPersuasionRate({
-            signature: SignatureBuilder.buildConversionSignature({
-              conflict_type: (need4x4 ? 'REACHABILITY' : mustInclude?.length ? 'SCOPE' : 'MIXED') as any,
-              primary_violation_type: dominant_cid,
-              region_id: (state.trip_plan_request as any)?.region_id,
-              start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
-            }),
-            action: id,
-          });
-          const breakdown = ConstraintScorer.calculateScore(id, {
-            dominant_cid,
-            is_hard,
-            oscillation_k: sameAttempts,
-            precedent: ewMetaTop,
-            preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
-            persuasion,
-            delta: 1.5,
-          });
-          return { value: id, label, breakdown };
-        });
-        scored.sort((a, b) => b.breakdown.score - a.breakdown.score);
-
-        const grouped = groupMinCutPaths({ dominant_cid, is_hard, options: scored });
-        const decorate = (prefix: string, o: (typeof scored)[number]) => ({
-          value: o.value,
-          label: `${prefix}${o.label}${
-            o.breakdown.precedent_n > 3 && typeof ewMetaTop?.stats?.historical_late_accept_rate === 'number'
-              ? `｜判例: N=${o.breakdown.precedent_n}, ${(ewMetaTop.stats.historical_late_accept_rate * 100).toFixed(0)}% 最终采纳`
-              : o.breakdown.precedent_n >= 1
-                ? `｜判例: N=${o.breakdown.precedent_n}`
-                : ''
-          }`,
-          metadata: {
-            score: o.breakdown.score,
-            weights: o.breakdown.weights,
-            dominant_cid: o.breakdown.dominant_cid,
-            precedent_n: o.breakdown.precedent_n,
-            terms: o.breakdown.terms,
-            path: prefix.includes('路径 A') ? 'A' : prefix.includes('路径 B') ? 'B' : 'OTHER',
-          },
-        });
-
-        const options = ([
-          ...grouped.pathA.map((o) => decorate('【路径 A·推荐】', o)),
-          ...grouped.pathB.map((o) => decorate('【路径 B·可选】', o)),
-          ...grouped.other.map((o) => decorate('【可选】', o)),
-          {
-            value: 'accept_no_solution',
-            label: `${recommendTermination ? '【推荐】' : ''}保持所有约束不变（TERMINAL_NO_SOLUTION｜CONSENSUS_REACHED: NO_FEASIBLE_PATH）${
-              recommendTermination ? '（已连续多次尝试当前约束，物理冲突仍无法消除）' : ''
-            }`,
-            metadata: {
-              score: ConstraintScorer.calculateScore('accept_no_solution', {
-                dominant_cid,
-                is_hard,
-                oscillation_k: sameAttempts,
-                precedent: ewMetaTop,
-                preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
-              }).score,
-              dominant_cid,
-              precedent_n: typeof ewMetaTop?.sample_count === 'number' ? ewMetaTop.sample_count : 0,
-              path: 'OTHER',
-            },
-          },
-        ] as any);
-
-        state.errors.push({
-          step: 'PLAN_GEN',
-          error_code: planGenTf.code,
-          message: planGenTf.message,
-          timestamp: new Date().toISOString(),
-        });
-        state.clarification_questions = [
-          {
-            id: 'plan_gen_empty_draft_relax_constraints',
-            question: `${
-              recommendTermination
-                ? `[SYSTEM_ACTION]: 观察到多次尝试未果（连续相同放宽尝试次数=${sameAttempts}）。建议保持当前约束终止规划，或尝试更高强度的组合放宽。\n\n`
-                : ''
-            }${planGenTf.message} 系统已停止后续验证与行程叙述，以免产生无依据建议。请选择一个“放宽约束”的动作（已做影子预演/近似检查并标注置信度）。`,
-            type: anyHigh ? 'single_choice' : 'multi_choice',
-            required: true,
-            options:
-            options.length > 0
-                ? options
-                : [
-                    {
-                      value: 'manual_relax_constraints',
-                      label: labelWithFixTypes('手动描述你愿意放宽的约束（改期/减少必去点/降低强度）', false),
-                    },
-                  ],
-            hint: planGenTf.detail ? `技术详情：${planGenTf.detail}` : undefined,
-          },
-        ];
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'PLAN_GEN',
-          actor: 'Orchestrator',
-          inputs_summary: 'PLAN_GEN_EMPTY_DRAFT → clarification options snapshot',
-          outputs_summary: `PLAN_GEN_EMPTY_DRAFT_CLARIFICATION: options=${Array.isArray(options) ? options.length : 0}`,
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: {
-            system_action: 'PLAN_GEN_EMPTY_DRAFT_CLARIFICATION',
-            options_snapshot: options ?? [],
-            dominant_cid,
-            is_hard,
-          },
-        });
-        state.current_step = 'DONE';
-        state.metadata.last_updated_at = new Date().toISOString();
-        state.metadata.total_duration_ms = Date.now() - startTime;
-        this.maybeSnapshot(state, 'CHECKPOINT');
-        return this.buildClarificationResult(state, startTime, decisionState, context);
-      }
-
-      // 步骤 8:优化（OPTIMIZE）- 阶段 2.3：抽取优化提示
-      decisionState = await this.executeOptimizeStep(state, decisionState);
-      this.maybeSnapshot(state, 'AUTO');
-
-      // 步骤 9: 验证（VERIFY）- 当执行模式为 KERNEL_NATIVE_EXECUTION 时，走 Kernel.executeVerify 路径
-      decisionState = await this.executeVerifyPhase(decisionState, state, request, context, llmProvider);
-      decisionState = this.syncConfidenceAfterVerify(state, decisionState) ?? decisionState;
-      this.maybeSnapshot(state, 'AUTO');
-
-      // FATAL 不可修复：跳过 REPAIR/NARRATE，直接 FAILED
-      if (decisionState?.verification?.hasFatal) {
-        const msg =
-          decisionState.verification.issues.find((i) => i.class === 'FATAL')?.message ??
-          'FATAL_VERIFICATION_ISSUE';
-        state.current_step = 'FAILED';
-        state.errors.push({
-          step: 'VERIFY',
-          error_code: 'VERIFICATION_FATAL',
-          message: msg,
-          timestamp: new Date().toISOString(),
-        });
-        this.maybeSnapshot(state, 'CHECKPOINT');
-        return this.buildErrorResult(state, new Error(msg), startTime, decisionState, 'VERIFY', undefined, context);
-      }
-
-      // 步骤 10: 修复（REPAIR）- 当执行模式为 KERNEL_NATIVE_EXECUTION 时，走 Kernel.executeRepair 路径（条件执行）
-      if (state.gate_result?.gate_result === 'ADJUST_REQUIRED' || state.errors.length > 0) {
-        const euBefore = decisionState?.optimizationHints?.expectedUtility;
-        decisionState = await this.executeRepairPhase(decisionState, state, request, context, llmProvider) ?? decisionState;
-        this.maybeSnapshot(state, 'AUTO');
-
-        // Utility Decay：修复后重新 OPTIMIZE（轻量）并检测 E[U] 连续下降
-        if (this.decisionKernel && decisionState) {
-          try {
-            // 重用 OPTIMIZE 的 fatigue 计算逻辑（与 executeOptimizeStep 一致）
-            let fatigue: number | undefined;
-            const planDraft = decisionState.tripState?.planDraft as Itinerary | undefined;
-            if (planDraft?.days?.length && this.tdfpmCalculator) {
-              const contexts = this.itineraryToTdfpmDayContexts(planDraft);
-              const scores = contexts.map((c) => this.tdfpmCalculator!.computeFatigueScore(c).fatigueScore);
-              const maxScore = Math.max(...scores, 0);
-              fatigue = Math.min(1, maxScore / 100);
-            }
-            const { newState: afterOpt, optimizationHints } = await this.decisionKernel.executeOptimize(decisionState, {
-              fatigue,
-            });
-            decisionState = afterOpt;
-            const euAfter = optimizationHints?.expectedUtility;
-            const prevEu = euBefore ?? decisionState.systemState?.lastExpectedUtility;
-            const prevDeclines = decisionState.systemState?.consecutiveUtilityDeclines ?? 0;
-            const decline = typeof prevEu === 'number' && typeof euAfter === 'number' && euAfter < prevEu;
-            const nextDeclines = decline ? prevDeclines + 1 : 0;
-            decisionState = this.decisionKernel.updateState(decisionState, {
-              systemState: {
-                requestId: state.request_id,
-                lastExpectedUtility: typeof euAfter === 'number' ? euAfter : prevEu,
-                consecutiveUtilityDeclines: nextDeclines,
-              },
-            });
-
-            const maxDeclines = parseInt(process.env.DECISION_REPAIR_UTILITY_DECAY_MAX ?? '2', 10);
-            if (maxDeclines > 0 && nextDeclines >= maxDeclines) {
-              state.clarification_questions = [
-                {
-                  id: 'utility_decay_halt_confirmation',
-                  question:
-                    `自动修复后期望效用已连续 ${nextDeclines} 次下降（E[U] ${String(prevEu)} → ${String(euAfter)}）。是否缩小范围/放宽约束，或由您确认继续？`,
-                  type: 'NEED_CONFIRMATION',
-                  required: true,
-                  options: [
-                    { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
-                    { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
-                    { id: 'continue_auto_repair', label: '继续自动修复' },
-                  ],
-                } as any,
-              ];
-              this.maybeSnapshot(state, 'CHECKPOINT');
-              return this.buildClarificationResult(state, startTime, decisionState, context);
-            }
-          } catch (e: any) {
-            this.logger.debug(`[Claude Orchestrator] Utility decay check skipped: ${e?.message}`);
-          }
-        }
-      }
-
-      // 修复收敛保护：repairCount 超过阈值后转为 NEED_CONFIRMATION（避免 VERIFY↔REPAIR 横跳）
-      const repairCount = decisionState?.systemState?.repairCount ?? 0;
-      const maxRepairs = parseInt(process.env.DECISION_MAX_REPAIR_COUNT ?? '3', 10);
-      if (repairCount >= maxRepairs && maxRepairs > 0) {
-        state.clarification_questions = [
-          {
-            id: 'repair_halt_confirmation',
-            question: `系统已自动修复尝试 ${repairCount} 次，仍未收敛。是否需要缩小范围/放宽约束/或由您确认继续自动修复？`,
-            type: 'NEED_CONFIRMATION',
-            required: true,
-            options: [
-              { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
-              { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
-              { id: 'continue_auto_repair', label: '继续自动修复' },
-            ],
-            hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
-          } as any,
-        ];
-        this.maybeSnapshot(state, 'CHECKPOINT');
-        return this.buildClarificationResult(state, startTime, decisionState, context);
-      }
-
-      // 步骤 11: NARRATE - 产出用户可读解释（不得改硬字段）
-      this.recordPoiPlanningOutcomeAfterItinerary(state, decisionState);
-      await this.executeNarrateStep(request, context, state, llmProvider);
-      this.maybeSnapshot(state, 'AUTO');
-
-      // 步骤 11.5: FEEDBACK - 专利反馈学习模块，记录决策日志（异步，不阻塞）
-      decisionState = await this.executeFeedbackStep(state, decisionState) ?? decisionState;
-      this.maybeSnapshot(state, 'AUTO');
-
-      // 步骤 12: HALLUCINATION_DETECTION - 防幻觉检测
-      await this.executeHallucinationDetectionStep(request, context, state);
-      this.maybeSnapshot(state, 'AUTO');
-
-      // 步骤 13: DONE
-      state.current_step = 'DONE';
-      state.metadata.last_updated_at = new Date().toISOString();
-      state.metadata.total_duration_ms = Date.now() - startTime;
-      this.maybeSnapshot(state, 'CHECKPOINT');
-
-      return this.buildSuccessResult(state, startTime, decisionState, context);
+      return await this.enrichOrchestrationResultWithFullTripReplanHotel(
+        request,
+        context,
+        state,
+        baseResult,
+      );
     } catch (error: any) {
       this.logger.error(`[Claude Orchestrator] 状态机编排失败: ${error?.message}`, error?.stack);
 
@@ -7716,6 +8111,46 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
   }
 
+  /** Layer1 行程槽位：先选哪一天，再进入 SKU 错峰场次 */
+  private shouldReturnClarificationForItinerarySlotPlacementIntake(state: OrchestratorState): boolean {
+    return (
+      (state.metadata as { itinerary_slot_placement_intake_short_circuit?: boolean })
+        ?.itinerary_slot_placement_intake_short_circuit === true &&
+      Array.isArray(state.clarification_questions) &&
+      state.clarification_questions.length > 0
+    );
+  }
+
+  /** 旺季极昼错峰：INTAKE 确认卡（体验优化，非合规硬拦） */
+  private shouldReturnClarificationForPeakSeasonTimeShiftIntake(state: OrchestratorState): boolean {
+    return (
+      (state.metadata as { peak_season_time_shift_intake_short_circuit?: boolean })
+        ?.peak_season_time_shift_intake_short_circuit === true &&
+      Array.isArray(state.clarification_questions) &&
+      state.clarification_questions.length > 0
+    );
+  }
+
+  /** F-road + 2WD：INTAKE 结构化合规澄清（优先于马拉松） */
+  private shouldReturnClarificationForFroad2wdIntake(state: OrchestratorState): boolean {
+    return (
+      (state.metadata as { froad_2wd_intake_clarification_short_circuit?: boolean })
+        ?.froad_2wd_intake_clarification_short_circuit === true &&
+      Array.isArray(state.clarification_questions) &&
+      state.clarification_questions.length > 0
+    );
+  }
+
+  /** 极昼马拉松 SOFT 下界：INTAKE 返回结构化澄清，禁止进入 RESEARCH/辩论 Raw 泄露 */
+  private shouldReturnClarificationForMarathonIntake(state: OrchestratorState): boolean {
+    return (
+      (state.metadata as { marathon_intake_clarification_short_circuit?: boolean })
+        ?.marathon_intake_clarification_short_circuit === true &&
+      Array.isArray(state.clarification_questions) &&
+      state.clarification_questions.length > 0
+    );
+  }
+
   /** INTAKE 已标 HARD 缺口并生成澄清问题时，不得进入 RESEARCH（避免关键技能在占位目的地上报错） */
   private shouldReturnClarificationForHardGaps(state: OrchestratorState): boolean {
     const allowPartial = state.metadata?.allow_partial === true;
@@ -7781,12 +8216,16 @@ ${JSON.stringify(routingDecision, null, 2)}
     const structOrigin =
       typeof structIn?.origin === 'string' ? structIn.origin.trim() : '';
     // message 有时仅为「继续/规划」而日期在上一轮或仅通过 structured 提交；全角数字归一后便于正则命中
-    const recentSlice = (request.conversation_context?.recent_messages ?? []).slice(-16);
+    const recentSlice = this.contextSlidingWindow.slice(
+      'orchestrator_claude',
+      request.conversation_context?.recent_messages,
+    );
     const rawIntakeBundle = [request.message, ...recentSlice].filter(Boolean).join('\n');
     const textForIntake = String(rawIntakeBundle).replace(
       /[０-９]/g,
       (c) => String.fromCharCode(c.charCodeAt(0) - 0xff10 + 0x30),
     );
+    const vehicle_type = extractVehicleTypeFromCurrentUserMessage(request.message);
 
     // 国内常见城市（先于国家级关键词，便于「上海美食2天」等短句命中目的地）
     const domesticCityPatterns: Array<{ pattern: RegExp; value: string }> = [
@@ -7841,95 +8280,14 @@ ${JSON.stringify(routingDecision, null, 2)}
       }
     }
 
-    // 提取日期（改进的规则）
-    let start_date: string | undefined;
-    let date_range: { start_date: string; end_date: string } | undefined;
-    let days: number | undefined;
-
-    // 匹配日期范围（如 "2024-01-01 到 2024-01-07" 或 "2024-01-01 - 2024-01-07"）
-    const dateRangeMatch = textForIntake.match(
-      /(\d{4})-(\d{2})-(\d{2})\s*(?:到|至|-|~)\s*(\d{4})-(\d{2})-(\d{2})/,
-    );
-    if (dateRangeMatch) {
-      const startDateStr = `${dateRangeMatch[1]}-${dateRangeMatch[2]}-${dateRangeMatch[3]}`;
-      const endDateStr = `${dateRangeMatch[4]}-${dateRangeMatch[5]}-${dateRangeMatch[6]}`;
-      date_range = {
-        start_date: startDateStr,
-        end_date: endDateStr,
-      };
-      start_date = startDateStr;
-    } else {
-      // 匹配单个日期
-      const dateMatch = textForIntake.match(/(\d{4})-(\d{2})-(\d{2})/);
-      if (dateMatch) {
-        start_date = dateMatch[0];
-      }
-    }
-
-    // 相对日期兜底（今天/明天/后天）
-    if (!start_date) {
-      const now = new Date();
-      const relativeDays =
-        /后天/.test(textForIntake)
-          ? 2
-          : /明天/.test(textForIntake)
-            ? 1
-            : /今天|今日/.test(textForIntake)
-              ? 0
-              : undefined;
-      if (relativeDays !== undefined) {
-        const d = new Date(now);
-        d.setDate(now.getDate() + relativeDays);
-        start_date = d.toISOString().slice(0, 10);
-      }
-    }
-
-    // 提取天数（改进的规则：匹配 "N天"、"N日"、"N晚" 等）
-    const daysPatterns = [
-      /(\d+)\s*天/,
-      /(\d+)\s*日/,
-      /(\d+)\s*晚/,
-      /(\d+)\s*days?/i,
-      /(\d+)\s*nights?/i,
-    ];
-    for (const pattern of daysPatterns) {
-      const daysMatch = textForIntake.match(pattern);
-      if (daysMatch) {
-        const extractedDays = parseInt(daysMatch[1], 10);
-        if (extractedDays > 0 && extractedDays <= 30) {
-          days = extractedDays;
-          break;
-        }
-      }
-    }
-
-    // 中文天数兜底（如：一日/两日/三天）
-    if (!days) {
-      const zhDayPatterns: Array<{ pattern: RegExp; value: number }> = [
-        { pattern: /一日|一天/, value: 1 },
-        { pattern: /两日|两天|二日|二天/, value: 2 },
-        { pattern: /三日|三天/, value: 3 },
-        { pattern: /四日|四天/, value: 4 },
-        { pattern: /五日|五天/, value: 5 },
-        { pattern: /六日|六天/, value: 6 },
-        { pattern: /七日|七天/, value: 7 },
-      ];
-      const matched = zhDayPatterns.find((x) => x.pattern.test(textForIntake));
-      if (matched) {
-        days = matched.value;
-      }
-    }
-
-    // 如果没有提取到天数，但有日期范围，计算天数
-    if (!days && date_range) {
-      const start = new Date(date_range.start_date);
-      const end = new Date(date_range.end_date);
-      const diffTime = Math.abs(end.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-      if (diffDays > 0 && diffDays <= 30) {
-        days = diffDays;
-      }
-    }
+    const tripIdBound = Boolean(request.trip_id?.trim());
+    const nlDates = parseIntakeNlDatesAndDays(textForIntake, {
+      refYear: new Date().getFullYear(),
+      tripIdBound,
+    });
+    let start_date = nlDates.start_date;
+    let date_range = nlDates.date_range;
+    let days = nlDates.duration_days;
 
     // 提取人数（简单规则）
     let partyCount = 1;
@@ -7960,13 +8318,6 @@ ${JSON.stringify(routingDecision, null, 2)}
     } else if (/公交|地铁|transit|public transport/i.test(textForIntake)) {
       mode = 'transit';
     }
-
-    // 提取车辆类型（用于准入类约束与 INTAKE predictive simulation）
-    const vehicle_type: '2WD' | '4WD' | undefined = /4wd|4x4|四驱|四驱车/i.test(textForIntake)
-      ? '4WD'
-      : /2wd|两驱/i.test(textForIntake)
-        ? '2WD'
-        : undefined;
 
     // 未命中关键词表时：从「在X的…行程」抽取 X（覆盖 Reykjavik、雷克雅未克市区等）
     if (
@@ -8046,6 +8397,7 @@ ${JSON.stringify(routingDecision, null, 2)}
       ...(party_profile_clean ? { party_profile: party_profile_clean } : {}),
       ...(routeParty?.mobility_note_zh ? { party_mobility_note_zh: routeParty.mobility_note_zh } : {}),
       ...(vehicle_type ? { constraints: { vehicle_type } } : {}),
+      ...(request.options?.persona_hint ? { persona_hint: request.options.persona_hint as TripPlanRequest['persona_hint'] } : {}),
     };
   }
 
@@ -8056,7 +8408,14 @@ ${JSON.stringify(routingDecision, null, 2)}
   ): Promise<
     | {
         ok: true;
-        trip: { destination: string | null; startDate: Date | null; endDate: Date | null };
+        trip: {
+          destination: string | null;
+          startDate: Date | null;
+          endDate: Date | null;
+          budgetConfig?: unknown;
+          pacingConfig?: unknown;
+          metadata?: unknown;
+        };
         source: 'trips_service' | 'prisma_fallback';
       }
     | { ok: false; error_message: string }
@@ -8075,6 +8434,9 @@ ${JSON.stringify(routingDecision, null, 2)}
             destination: destNorm || null,
             startDate: full.startDate ?? null,
             endDate: full.endDate ?? null,
+            budgetConfig: (full as { budgetConfig?: unknown }).budgetConfig,
+            pacingConfig: (full as { pacingConfig?: unknown }).pacingConfig,
+            metadata: (full as { metadata?: unknown }).metadata,
           },
           source: 'trips_service',
         };
@@ -8098,12 +8460,926 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     const row = await this.prisma.trip.findUnique({
       where: { id: tid },
-      select: { destination: true, startDate: true, endDate: true },
+      select: {
+        destination: true,
+        startDate: true,
+        endDate: true,
+        budgetConfig: true,
+        pacingConfig: true,
+        metadata: true,
+      },
     });
     if (!row) {
       return { ok: false, error_message: `行程 ID ${tid} 不存在` };
     }
     return { ok: true, trip: row, source: 'prisma_fallback' };
+  }
+
+  /** INTAKE Layer1：按日草案快照，用于北部观鲸等槽位候选 */
+  private async loadTripDaySnapshotsForSlotPlacement(
+    tripId: string,
+    userId?: string,
+  ): Promise<TripDaySnapshotForPlacement[]> {
+    const tid = tripId.trim();
+    if (!tid) return [];
+
+    const uid = userId?.trim();
+    if (uid) {
+      const collaborator = await this.prisma.tripCollaborator.findUnique({
+        where: { tripId_userId: { tripId: tid, userId: uid } },
+      });
+      if (!collaborator) return [];
+    }
+
+    const row = await this.prisma.trip.findUnique({
+      where: { id: tid },
+      select: {
+        TripDay: {
+          orderBy: { date: 'asc' as const },
+          select: {
+            date: true,
+            ItineraryItem: {
+              orderBy: { order: 'asc' as const },
+              select: {
+                type: true,
+                note: true,
+                Place: { select: { nameCN: true, nameEN: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!row?.TripDay?.length) return [];
+    return mapTripDaysToPlacementSnapshots(row.TripDay);
+  }
+
+  /**
+   * ITINERARY_ADJUST：从绑定 Trip 的行程项 Place 登记种子化 poi_evidence，避免国家级目的地冷检索过稀。
+   */
+  private async loadTripPlacePoiEvidenceForAdjust(
+    tripId: string,
+    userId?: string,
+  ): Promise<Array<Record<string, unknown>>> {
+    const tid = tripId.trim();
+    if (!tid) return [];
+
+    const uid = userId?.trim();
+    if (uid) {
+      const collaborator = await this.prisma.tripCollaborator.findUnique({
+        where: { tripId_userId: { tripId: tid, userId: uid } },
+      });
+      if (!collaborator) return [];
+    }
+
+    const placeIds = await this.prisma.itineraryItem.findMany({
+      where: {
+        placeId: { not: null },
+        TripDay: { tripId: tid },
+      },
+      select: { placeId: true },
+      distinct: ['placeId'],
+    });
+    const ids = placeIds
+      .map((r) => r.placeId)
+      .filter((id): id is number => typeof id === 'number' && id > 0);
+    if (!ids.length) return [];
+
+    const places = await this.prisma.place.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        nameCN: true,
+        nameEN: true,
+        category: true,
+        address: true,
+      },
+    });
+
+    const coordRows = await this.prisma.$queryRaw<
+      Array<{ id: number; lat: number | null; lng: number | null }>
+    >`
+      SELECT id, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+      FROM "Place"
+      WHERE id IN (${Prisma.join(ids)})
+        AND location IS NOT NULL
+    `;
+    const coordById = new Map(coordRows.map((r) => [r.id, r]));
+
+    const rows: TripPlaceRowForPoiEvidence[] = places.map((p) => {
+      const c = coordById.get(p.id);
+      return {
+        id: p.id,
+        nameCN: p.nameCN,
+        nameEN: p.nameEN,
+        category: String(p.category),
+        address: p.address,
+        lat: c?.lat != null ? Number(c.lat) : null,
+        lng: c?.lng != null ? Number(c.lng) : null,
+      };
+    });
+    return mapTripPlacesToPoiEvidence(rows);
+  }
+
+  /** ITINERARY_ADJUST：邻日锚点 + 走廊空间约束（D(N-1) 尾 → D(N+1) 头） */
+  private async resolveItineraryAdjustNeighborContextForHost(
+    tripId: string,
+    targetDateIso: string,
+    userId?: string,
+  ) {
+    if (!this.prisma) return null;
+    const dest =
+      (
+        await this.prisma.trip.findUnique({
+          where: { id: tripId.trim() },
+          select: { destination: true },
+        })
+      )?.destination ?? '';
+    const maxDetourKm = /冰岛|iceland/i.test(String(dest)) ? 50 : 35;
+    const ctx = await resolveItineraryAdjustNeighborContext(
+      this.prisma,
+      tripId,
+      targetDateIso,
+      userId,
+      maxDetourKm,
+    );
+    if (!ctx) return null;
+    return { anchors: ctx.anchors, spatial: ctx.spatial, dayRows: ctx.dayRows };
+  }
+
+  /** ITINERARY_ADJUST：走廊候选稀疏时沿邻日中点 poi.search 补检 */
+  private async supplementItineraryAdjustCorridorPoisForHost(params: {
+    destinationRaw: string;
+    anchors: NeighborAnchorContext;
+    spatial: ItineraryAdjustSpatialConstraints;
+  }): Promise<{ pois: unknown[]; query?: string; count: number }> {
+    const poiSkill = this.skillsRegistry?.getSkill('poi.search');
+    if (!poiSkill) return { pois: [], count: 0 };
+    const corridorPlan = buildItineraryAdjustCorridorPoiSearchPlan({
+      destinationRaw: params.destinationRaw,
+      anchors: params.anchors,
+      poiSearchCtx: { destination: params.destinationRaw.trim() || 'Iceland', pacing: 'relaxed' },
+    });
+    const query = corridorPlan.contextualizedQuery;
+    const { lat, lng } = corridorSearchLatLng(params.spatial);
+    try {
+      const result = (await poiSkill.execute({
+        query,
+        queryRewriteResult: corridorPlan.rewrite,
+        multiRouteSearch: true,
+        limit: 14,
+        lat,
+        lng,
+        category: 'ATTRACTION',
+      })) as { pois?: unknown[] } | unknown[];
+      const pois = Array.isArray(result)
+        ? result
+        : Array.isArray(result?.pois)
+          ? result.pois
+          : [];
+      return { pois, query, count: pois.length };
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary adjust corridor poi.search failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { pois: [], query, count: 0 };
+    }
+  }
+
+  /**
+   * ITINERARY_ADJUST 双闸门：强修改意图 + 走廊高置信 → trip.applyEdit 落库目标日。
+   */
+  private async maybeAutoApplyItineraryAdjustCorridor(state: OrchestratorState): Promise<void> {
+    const routeIntent = (state.metadata as Record<string, unknown>)?.route_and_run_intent as
+      | RouteAndRunIntentAnalysis
+      | undefined;
+    if (routeIntent?.primary !== 'ITINERARY_ADJUST') return;
+    if (state.clarification_questions?.length) return;
+    if (!state.itinerary?.days?.length) return;
+
+    const md = state.metadata as Record<string, unknown>;
+    if (md.itinerary_day_replan_intake === true) return;
+
+    // P0-1：FLAWED_DRAFT 禁止 AUTO / SEMI_AUTO 写回
+    if (shouldBlockAutoApplyForFlawedDraft(md)) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      this.logger.warn(
+        `[Claude Orchestrator] ITINERARY_ADJUST AUTO blocked: ${FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON} request_id=${state.request_id}`,
+      );
+      return;
+    }
+
+    const intakeMsg =
+      (typeof md.intake_user_message === 'string' ? md.intake_user_message : '') ||
+      state.trip_plan_request?.message ||
+      '';
+    const subIntent = classifyItineraryAdjustSubIntent(intakeMsg);
+    md.itinerary_adjust_sub_intent = subIntent;
+
+    if (subIntent === 'poi_slot_fill') {
+      await this.maybeAutoApplyPoiSlotFill(state, md, intakeMsg, subIntent);
+      return;
+    }
+
+    const confidence = evaluateItineraryAdjustConfidenceGate(md);
+    md.itinerary_adjust_confidence_gate = confidence;
+
+    const executionMode = resolveItineraryAdjustExecutionMode({
+      subIntent,
+      highConfidence: confidence.highConfidence,
+    });
+    md.itinerary_adjust_execution_mode = executionMode;
+
+    const targetDateIso =
+      (typeof md.itinerary_adjust_target_date_iso === 'string'
+        ? md.itinerary_adjust_target_date_iso
+        : undefined) ??
+      extractItineraryAdjustTargetDateFromMessage(
+        intakeMsg,
+        state.trip_plan_request?.date_range,
+      );
+
+    const dayNumber =
+      typeof md.itinerary_adjust_neighbor_anchors === 'object' &&
+      md.itinerary_adjust_neighbor_anchors != null &&
+      'targetDayNumber' in (md.itinerary_adjust_neighbor_anchors as object)
+        ? Number((md.itinerary_adjust_neighbor_anchors as { targetDayNumber?: number }).targetDayNumber)
+        : undefined;
+
+    if (executionMode !== 'AUTO' || !targetDateIso) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: executionMode !== 'AUTO' ? 'execution_mode_advice_only' : 'missing_target_date',
+        subIntent,
+        confidence,
+        executionMode,
+      };
+      recordItineraryAdjustFunnel(this.promMetrics, {
+        stage: 'draft_created',
+        outcome: 'success',
+        sub_intent: subIntent,
+        execution_mode: executionMode,
+        reason:
+          executionMode !== 'AUTO' ? 'execution_mode_advice_only' : 'missing_target_date',
+        request_id: state.request_id,
+      });
+      return;
+    }
+
+    const tripId =
+      state.trip_plan_request?.trip_id?.trim() ??
+      state.trip_plan_request?.ontology_context?.trip_id?.trim();
+    const userId = (state.metadata as { userId?: string })?.userId;
+    if (!tripId || !this.tripsService) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: !tripId ? 'missing_trip_id' : 'trips_service_unavailable',
+        executionMode,
+      };
+      return;
+    }
+
+    const targetDay = pickTargetDayFromItinerary(state.itinerary, targetDateIso.slice(0, 10));
+    if (!targetDay?.items?.length) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'empty_target_day_itinerary',
+        executionMode,
+      };
+      return;
+    }
+
+    let trip: TripLikeForDelete;
+    try {
+      trip = (await this.tripsService.findOne(tripId, userId)) as TripLikeForDelete;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary adjust auto-apply trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      md.itinerary_adjust_auto_apply = { applied: false, reason: 'trip_load_failed', executionMode };
+      return;
+    }
+
+    const placeIdCache = new Map<string, number>();
+    const resolvePlaceId = (item: ItineraryItem): number | undefined => {
+      const fromRef = parseNumericPlaceId(item.location_ref?.place_id);
+      if (fromRef != null) return fromRef;
+      const key = String(item.location_ref?.place_id ?? item.location_ref?.name ?? item.id);
+      if (placeIdCache.has(key)) return placeIdCache.get(key);
+      const resolved = this.resolvePlaceIdForItineraryAdjustApply(item, state);
+      if (resolved != null) placeIdCache.set(key, resolved);
+      return resolved;
+    };
+
+    const { edits, deleteIds, addCount, unresolvedItems } = buildCorridorDayApplyEdits({
+      trip,
+      targetDateIso: targetDateIso.slice(0, 10),
+      targetDay,
+      resolvePlaceId,
+    });
+
+    if (addCount === 0 || unresolvedItems.length > 0) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'unresolved_places',
+        executionMode,
+        unresolvedItems,
+        deleteIds,
+        addCount,
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        executionMode,
+      };
+      return;
+    }
+
+    try {
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: edits as TripUserEdit[],
+      })) as { success?: boolean };
+      if (out?.success) {
+        md.itinerary_adjust_auto_apply = {
+          applied: true,
+          executionMode: 'AUTO',
+          subIntent,
+          confidence,
+          targetDateIso: targetDateIso.slice(0, 10),
+          deletedCount: deleteIds.length,
+          addedCount: addCount,
+          skillsHit: ['trip.applyEdit'],
+        };
+        recordItineraryAdjustFunnel(this.promMetrics, {
+          stage: 'auto_apply',
+          outcome: 'success',
+          sub_intent: subIntent,
+          execution_mode: 'AUTO',
+          request_id: state.request_id,
+          added_count: addCount,
+        });
+        const lead = buildItineraryAdjustAutoApplyLeadMessage({
+          applied: true,
+          executionMode: 'AUTO',
+          targetDateIso: targetDateIso.slice(0, 10),
+          dayNumber: Number.isFinite(dayNumber) ? dayNumber : undefined,
+        });
+        if (lead) {
+          const prior = state.narration;
+          state.narration = {
+            user_friendly_summary: lead,
+            day_by_day_narrative: prior?.day_by_day_narrative ?? [],
+            highlights: prior?.highlights ?? [],
+            tips: prior?.tips ?? [],
+            day_by_day_text_zh: prior?.day_by_day_text_zh,
+            warnings: prior?.warnings,
+            research_ui_hints: prior?.research_ui_hints,
+            voice_tone_modifier: prior?.voice_tone_modifier,
+            visual_hint: prior?.visual_hint,
+            audio_prosody: prior?.audio_prosody,
+          };
+        }
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'REPAIR',
+          actor: 'Planner',
+          inputs_summary: `ITINERARY_ADJUST 走廊自动落库 ${targetDateIso.slice(0, 10)}`,
+          outputs_summary: `已落库：删除 ${deleteIds.length} 项，新增 ${addCount} 项（trip.applyEdit）`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'ITINERARY_ADJUST_AUTO_APPLIED',
+            skills_hit: ['trip.applyEdit'],
+            fallback_level: confidence.fallbackLevel,
+          },
+        });
+        return;
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary adjust auto-apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    md.itinerary_adjust_auto_apply = {
+      applied: false,
+      reason: 'apply_failed',
+      executionMode: 'ADVICE_ONLY',
+    };
+    md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+  }
+
+  /** POI_SLOT_FILL：向稀疏日追加推荐景点（只增不删，place_id 齐备时 SEMI_AUTO 落库） */
+  private async maybeAutoApplyPoiSlotFill(
+    state: OrchestratorState,
+    md: Record<string, unknown>,
+    intakeMsg: string,
+    subIntent: 'poi_slot_fill',
+  ): Promise<void> {
+    md.itinerary_adjust_poi_slot_fill = true;
+    if (!state.itinerary?.days?.length) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'empty_itinerary_draft',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const tripId =
+      state.trip_plan_request?.trip_id?.trim() ??
+      state.trip_plan_request?.ontology_context?.trip_id?.trim();
+    const userId = (state.metadata as { userId?: string })?.userId;
+    if (!tripId || !this.tripsService) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: !tripId ? 'missing_trip_id' : 'trips_service_unavailable',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    let trip: TripLikeForDelete;
+    try {
+      trip = (await this.tripsService.findOne(tripId, userId)) as TripLikeForDelete;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] poi slot fill trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'trip_load_failed',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const sparseTargets = collectSparseTripDayTargets(trip);
+    md.itinerary_adjust_poi_slot_fill_targets = sparseTargets;
+    if (!sparseTargets.length) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'no_sparse_days',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const merged = mergePoiSlotFillOrchestratorItinerary({
+      orchestrator: state.itinerary,
+      trip,
+      sparseTargets,
+    });
+    if (merged?.days?.length) {
+      state.itinerary = merged;
+    }
+
+    const researchPools = collectResearchPools(
+      state.research_data as Record<string, unknown> | undefined,
+    );
+    const boundCount = enrichItineraryWithPlaceIdsFromResearch(state.itinerary, researchPools);
+    md.itinerary_adjust_place_id_bound_count = boundCount;
+
+    const poiSlotFillReady = allNewPoiItemsHavePlaceIds(
+      state.itinerary.days ?? [],
+      sparseTargets,
+      trip,
+    );
+    const executionMode = resolveItineraryAdjustExecutionMode({
+      subIntent,
+      highConfidence: false,
+      poiSlotFillReady,
+    });
+    md.itinerary_adjust_execution_mode = executionMode;
+
+    const primaryTarget = sparseTargets[0];
+    if (!md.itinerary_adjust_target_date_iso) {
+      md.itinerary_adjust_target_date_iso = primaryTarget.dateIso;
+      md.itinerary_adjust_target_day_number = primaryTarget.dayNumber;
+    }
+
+    if (executionMode !== 'SEMI_AUTO') {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: poiSlotFillReady ? 'execution_mode_advice_only' : 'unresolved_places',
+        subIntent,
+        executionMode,
+        sparseDayCount: sparseTargets.length,
+        placeIdBoundCount: boundCount,
+      };
+      recordItineraryAdjustFunnel(this.promMetrics, {
+        stage: 'draft_created',
+        outcome: 'success',
+        sub_intent: subIntent,
+        execution_mode: executionMode,
+        reason: poiSlotFillReady ? 'execution_mode_advice_only' : 'unresolved_places',
+        request_id: state.request_id,
+      });
+      return;
+    }
+
+    const placeIdCache = new Map<string, number>();
+    const resolvePlaceId = (item: ItineraryItem): number | undefined => {
+      const fromRef = parseNumericPlaceId(item.location_ref?.place_id);
+      if (fromRef != null) return fromRef;
+      const key = String(item.location_ref?.place_id ?? item.location_ref?.name ?? item.id);
+      if (placeIdCache.has(key)) return placeIdCache.get(key);
+      const resolved = this.resolvePlaceIdForItineraryAdjustApply(item, state);
+      if (resolved != null) placeIdCache.set(key, resolved);
+      return resolved;
+    };
+
+    const { edits, addCount, unresolvedItems, appliedDays } = buildPoiSlotFillAppendEdits({
+      trip,
+      sparseTargets,
+      draftDays: state.itinerary.days ?? [],
+      resolvePlaceId,
+    });
+
+    if (addCount === 0 || unresolvedItems.length > 0) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: addCount === 0 ? 'no_new_pois' : 'unresolved_places',
+        subIntent,
+        executionMode: 'ADVICE_ONLY',
+        unresolvedItems,
+        addCount,
+        sparseDayCount: sparseTargets.length,
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      return;
+    }
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        subIntent,
+        executionMode,
+      };
+      return;
+    }
+
+    try {
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: edits as TripUserEdit[],
+      })) as { success?: boolean };
+      if (out?.success) {
+        md.itinerary_adjust_auto_apply = {
+          applied: true,
+          executionMode: 'SEMI_AUTO',
+          subIntent,
+          addedCount: addCount,
+          appliedDays,
+          sparseDayCount: sparseTargets.length,
+          skillsHit: ['trip.applyEdit'],
+        };
+        recordItineraryAdjustFunnel(this.promMetrics, {
+          stage: 'auto_apply',
+          outcome: 'success',
+          sub_intent: subIntent,
+          execution_mode: 'SEMI_AUTO',
+          request_id: state.request_id,
+          added_count: addCount,
+          applied_days: appliedDays.length,
+        });
+        const lead = buildItineraryAdjustAutoApplyLeadMessage({
+          applied: true,
+          executionMode: 'SEMI_AUTO',
+          targetDateIso: primaryTarget.dateIso,
+          dayNumber: primaryTarget.dayNumber,
+        });
+        if (lead) {
+          const prior = state.narration;
+          state.narration = {
+            user_friendly_summary: lead,
+            day_by_day_narrative: prior?.day_by_day_narrative ?? [],
+            highlights: prior?.highlights ?? [],
+            tips: prior?.tips ?? [],
+            day_by_day_text_zh: prior?.day_by_day_text_zh,
+            warnings: prior?.warnings,
+            research_ui_hints: prior?.research_ui_hints,
+            voice_tone_modifier: prior?.voice_tone_modifier,
+            visual_hint: prior?.visual_hint,
+            audio_prosody: prior?.audio_prosody,
+          };
+        }
+        state.decision_log.push({
+          request_id: state.request_id,
+          step: 'REPAIR',
+          actor: 'Planner',
+          inputs_summary: `POI_SLOT_FILL 追加落库 ${appliedDays.join(', ')}`,
+          outputs_summary: `已落库：向 ${appliedDays.length} 个稀疏日新增 ${addCount} 个景点（trip.applyEdit append-only）`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'POI_SLOT_FILL_AUTO_APPLIED',
+            skills_hit: ['trip.applyEdit'],
+            applied_days: appliedDays,
+          },
+        });
+        return;
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] poi slot fill auto-apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    md.itinerary_adjust_auto_apply = {
+      applied: false,
+      reason: 'apply_failed',
+      subIntent,
+      executionMode: 'ADVICE_ONLY',
+    };
+    md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+  }
+
+  private resolvePlaceIdForItineraryAdjustApply(
+    item: ItineraryItem,
+    state: OrchestratorState,
+  ): number | undefined {
+    const rawId = item.location_ref?.place_id;
+    const numeric = parseNumericPlaceId(rawId);
+    if (numeric != null) return numeric;
+
+    const name = String(item.location_ref?.name ?? '').trim();
+    if (!name) return undefined;
+
+    const research = state.research_data as { poi_evidence?: { pois?: unknown[] }; pois?: unknown[] } | undefined;
+    const pools: unknown[][] = [];
+    if (Array.isArray(research?.poi_evidence?.pois)) pools.push(research.poi_evidence.pois);
+    if (Array.isArray(research?.pois)) pools.push(research.pois);
+
+    for (const pool of pools) {
+      for (const row of pool) {
+        const p = row as Record<string, unknown>;
+        const label = String(p.name ?? p.nameCN ?? p.nameEN ?? '');
+        if (!label || (!label.includes(name) && !name.includes(label))) continue;
+        const id = parseNumericPlaceId(p.id ?? p.poi_id ?? p.place_id);
+        if (id != null) return id;
+      }
+    }
+    return undefined;
+  }
+
+  /** PA Layer1：完整 TripContext（含 items 时间窗，供 ContextAnalyzer 缺口检测） */
+  private async loadTripContextForPaSlotPlacement(
+    tripId: string,
+    userId?: string,
+  ): Promise<ReturnType<typeof buildTripContextFromPrismaRow> | null> {
+    const tid = tripId.trim();
+    if (!tid) return null;
+
+    const uid = userId?.trim();
+    if (uid) {
+      const collaborator = await this.prisma.tripCollaborator.findUnique({
+        where: { tripId_userId: { tripId: tid, userId: uid } },
+      });
+      if (!collaborator) return null;
+    }
+
+    const row = (await this.prisma.trip.findUnique({
+      where: { id: tid },
+      select: {
+        id: true,
+        destination: true,
+        startDate: true,
+        endDate: true,
+        status: true,
+        budgetConfig: true,
+        pacingConfig: true,
+        metadata: true,
+        TripDay: {
+          orderBy: { date: 'asc' as const },
+          select: {
+            id: true,
+            date: true,
+            ItineraryItem: {
+              orderBy: { order: 'asc' as const },
+              select: {
+                id: true,
+                type: true,
+                startTime: true,
+                endTime: true,
+                estimatedCost: true,
+                travelFromPreviousDuration: true,
+                note: true,
+                Place: { select: { nameCN: true, nameEN: true } },
+              },
+            },
+          },
+        },
+      },
+    })) as PrismaTripRowForPaContext | null;
+
+    if (!row) return null;
+    return buildTripContextFromPrismaRow(row);
+  }
+
+  /**
+   * Layer1 槽位候选：优先 PA ContextAnalyzer，失败则启发式 TripDay 打分。
+   */
+  private async resolveItinerarySlotCandidatesForIntake(
+    intakeMsg: string,
+    trip: TripPlanRequest | undefined | null,
+    tripId: string,
+    userId: string | undefined,
+    tripDaySnapshots: TripDaySnapshotForPlacement[],
+  ): Promise<{
+    candidates: ItinerarySlotCandidate[];
+    paAnalysis?: ItinerarySlotPlacementGapResult;
+  }> {
+    const fallback = (): ItinerarySlotCandidate[] =>
+      suggestItinerarySlotCandidates(trip, tripDaySnapshots, intakeMsg);
+
+    if (!this.contextAnalyzerService) {
+      return { candidates: fallback() };
+    }
+
+    try {
+      const tripCtx = await this.loadTripContextForPaSlotPlacement(tripId, userId);
+      if (!tripCtx) {
+        return { candidates: fallback() };
+      }
+
+      const pa = this.contextAnalyzerService.analyzeItinerarySlotPlacement(intakeMsg, tripCtx);
+
+      if (!pa.suggestedDays?.length) {
+        this.logger.debug(
+          `[INTAKE] PA graph fracture (empty suggestedDays); heuristic fallback trip_id=${tripId}`,
+        );
+        return {
+          candidates: fallback(),
+          paAnalysis: { ...pa, fallbackReason: 'GRAPH_FRACTURE' },
+        };
+      }
+
+      if (shouldPreferPaSlotCandidates(pa)) {
+        const candidates = await paSuggestedDaysToSlotCandidatesWithPolish(pa, {
+          polisher: this.itinerarySlotPolisher,
+          tripId,
+          tripContext: tripCtx,
+          onPolishAudit: (tag) => appendPolishAuditToAnalysisPath(pa, tag),
+        });
+        if (!candidates.length) {
+          return {
+            candidates: fallback(),
+            paAnalysis: { ...pa, fallbackReason: 'EMPTY_CANDIDATES' },
+          };
+        }
+        return { candidates, paAnalysis: pa };
+      }
+      this.logger.debug(
+        `[INTAKE] PA slot placement low confidence (${pa.confidence}); heuristic fallback trip_id=${tripId}`,
+      );
+      return {
+        candidates: fallback(),
+        paAnalysis: { ...pa, fallbackReason: 'LOW_CONFIDENCE' },
+      };
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[INTAKE] PA slot placement failed, heuristic fallback: ${(e as Error)?.message ?? e}`,
+      );
+    }
+
+    return { candidates: fallback() };
+  }
+
+  /**
+   * 极光槽位选日 INTAKE 澄清卡：拉取 pois/practical 知识库摘录（不走 DATA_LOOKUP 轻量路径）。
+   * `route_and_run` 主链默认无 TLS DecisionContext；Policy 开启时需与轻量咨询一致临时 bind。
+   */
+  async fetchAuroraSlotPlacementRagSupplement(
+    message: string,
+    opts?: { request?: RouteAndRunRequestDto; tripId?: string },
+  ): Promise<{
+    supplementZh: string | null;
+    citationCount: number;
+    relevantCount: number;
+    usedStaticFallback: boolean;
+  }> {
+    const runRetrieval = () => this.retrieveAuroraSlotPlacementRagSupplement(message);
+
+    if (!isRagRealityPolicyGateActive()) {
+      return runRetrieval();
+    }
+    if (getBoundDecisionContext()) {
+      return runRetrieval();
+    }
+    const req = opts?.request;
+    if (req) {
+      const effectiveTripId = opts?.tripId?.trim() || req.trip_id?.trim() || undefined;
+      const decisionCtx = await this.buildLightweightDecisionContextForRealityGate(req, effectiveTripId);
+      return runWithDecisionContextAsync(decisionCtx, runRetrieval);
+    }
+    return runRetrieval();
+  }
+
+  private async retrieveAuroraSlotPlacementRagSupplement(
+    message: string,
+  ): Promise<{
+    supplementZh: string | null;
+    citationCount: number;
+    relevantCount: number;
+    usedStaticFallback: boolean;
+  }> {
+    const empty = {
+      supplementZh: null as string | null,
+      citationCount: 0,
+      relevantCount: 0,
+      usedStaticFallback: false,
+    };
+    if (!this.chunkRetrieval) {
+      this.logger.debug('[INTAKE] Aurora slot RAG skipped: ChunkRetrieval not injected');
+      return empty;
+    }
+    const decisionContext = getBoundDecisionContext();
+    const { scope, policy } = this.ragRealityPolicyGate.resolve(decisionContext);
+    if (scope === 'blocked') {
+      const codes = policy.codes?.length ? policy.codes.join(',') : 'n/a';
+      this.logger.debug(`[INTAKE] Aurora slot RAG skipped: rag_soft_world_blocked codes=${codes}`);
+      return empty;
+    }
+    const mergeRagParams = (p: ChunkRetrievalParams): ChunkRetrievalParams =>
+      this.ragRealityPolicyGate.mergeChunkRetrievalParams(
+        { ...ragRetrievalExpansionParams(), ...p },
+        scope,
+      );
+    const userCtx = String(message ?? '').trim();
+    const poisQuery = userCtx
+      ? `${AURORA_SLOT_RAG_POIS_QUERY} ${userCtx}`.slice(0, 512)
+      : AURORA_SLOT_RAG_POIS_QUERY;
+    try {
+      const [poisPool, practicalPool] = await Promise.all([
+        this.chunkRetrieval.retrieve(
+          mergeRagParams({
+            query: poisQuery,
+            limit: 10,
+            category: 'pois',
+            useHybridSearch: true,
+            credibilityMin: 0.35,
+          }),
+        ),
+        this.chunkRetrieval.retrieve(
+          mergeRagParams({
+            query: AURORA_SLOT_RAG_PRACTICAL_QUERY,
+            limit: 8,
+            category: 'practical',
+            useHybridSearch: true,
+            credibilityMin: 0.35,
+          }),
+        ),
+      ]);
+      const pois = (poisPool ?? []).map((r) =>
+        mapChunkToAuroraSlotRagEntry(String(r.content), this.formatRagDocumentTitle(r)),
+      );
+      const practical = (practicalPool ?? []).map((r) =>
+        mapChunkToAuroraSlotRagEntry(String(r.content), this.formatRagDocumentTitle(r)),
+      );
+      const ragSection = buildAuroraSlotPlacementRagSection(pois, practical);
+      const citationCount = (poisPool?.length ?? 0) + (practicalPool?.length ?? 0);
+      if (ragSection.supplementZh) {
+        this.logger.debug(
+          `[INTAKE] Aurora slot RAG attached raw=${citationCount} relevant=${ragSection.relevantCount} static=${ragSection.usedStaticFallback} msg=${userCtx.slice(0, 48)}`,
+        );
+      }
+      return {
+        supplementZh: ragSection.supplementZh,
+        citationCount,
+        relevantCount: ragSection.relevantCount,
+        usedStaticFallback: ragSection.usedStaticFallback,
+      };
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[INTAKE] Aurora slot RAG failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return empty;
+    }
   }
 
   /**
@@ -8165,23 +9441,49 @@ ${JSON.stringify(routingDecision, null, 2)}
       tripPlanRequest.destination === '未指定' ||
       (typeof tripPlanRequest.destination === 'string' && !String(tripPlanRequest.destination).trim());
 
-    const tripDest =
-      trip.destination == null ? '' : typeof trip.destination === 'string' ? trip.destination.trim() : String(trip.destination).trim();
+    const tripDestRaw =
+      trip.destination == null
+        ? ''
+        : typeof trip.destination === 'string'
+          ? trip.destination.trim()
+          : String(trip.destination).trim();
+    const tripDest = this.normalizeTripRecordDestinationForPlanning(tripDestRaw);
     const tripHasDest = Boolean(tripDest);
     const tripHasDates = Boolean(trip.startDate && trip.endDate);
 
     const filledFields: string[] = [];
 
-    if (destUnset && tripDest) {
+    const planDestStr =
+      typeof tripPlanRequest.destination === 'string' ? tripPlanRequest.destination.trim() : '';
+    if (
+      tripDest &&
+      (destUnset || shouldPreferTripDestinationOnHydration(planDestStr, tripDest))
+    ) {
       tripPlanRequest.destination = tripDest;
-      filledFields.push('destination');
+      filledFields.push(destUnset ? 'destination' : 'destination_trip_authority');
     }
 
-    const noDates =
-      !tripPlanRequest.start_date &&
-      !(tripPlanRequest.date_range?.start_date && tripPlanRequest.date_range?.end_date);
+    const structIn = request.structured_travel_input;
+    const stStart = typeof structIn?.start_date === 'string' ? structIn.start_date.trim() : '';
+    const stEnd = typeof structIn?.end_date === 'string' ? structIn.end_date.trim() : '';
+    const structuredHasDates =
+      Boolean(stStart && stEnd && /^\d{4}-\d{2}-\d{2}$/.test(stStart) && /^\d{4}-\d{2}-\d{2}$/.test(stEnd));
 
-    if (noDates && trip.startDate && trip.endDate) {
+    const recentSlice = this.contextSlidingWindow.slice(
+      'orchestrator_claude',
+      request.conversation_context?.recent_messages,
+    );
+    const intakeTextBundle = [request.message, ...recentSlice].filter(Boolean).join('\n');
+    const textForHydration = String(intakeTextBundle).replace(
+      /[０-９]/g,
+      (c) => String.fromCharCode(c.charCodeAt(0) - 0xff10 + 0x30),
+    );
+    const nlParse = parseIntakeNlDatesAndDays(textForHydration, {
+      refYear: new Date().getFullYear(),
+      tripIdBound: true,
+    });
+
+    if (trip.startDate && trip.endDate) {
       const start =
         trip.startDate instanceof Date
           ? trip.startDate.toISOString().slice(0, 10)
@@ -8190,18 +9492,41 @@ ${JSON.stringify(routingDecision, null, 2)}
         trip.endDate instanceof Date
           ? trip.endDate.toISOString().slice(0, 10)
           : String(trip.endDate).slice(0, 10);
-      tripPlanRequest.date_range = { start_date: start, end_date: end };
-      tripPlanRequest.start_date = start;
-      filledFields.push('date_range', 'start_date');
-      if (!tripPlanRequest.days) {
-        const sd = new Date(`${start}T12:00:00.000Z`);
-        const ed = new Date(`${end}T12:00:00.000Z`);
-        const diffDays = Math.ceil(Math.abs(ed.getTime() - sd.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-        if (diffDays > 0 && diffDays <= 366) {
-          tripPlanRequest.days = diffDays;
-          filledFields.push('days');
-        }
+
+      const authority = applyBoundTripDateAuthority({
+        tripStart: start,
+        tripEnd: end,
+        plan: {
+          start_date: tripPlanRequest.start_date,
+          date_range: tripPlanRequest.date_range,
+          days: tripPlanRequest.days,
+        },
+        nlParse,
+        structuredHasDates,
+      });
+
+      const hadPlanDates = Boolean(
+        tripPlanRequest.start_date ||
+          (tripPlanRequest.date_range?.start_date && tripPlanRequest.date_range?.end_date),
+      );
+
+      tripPlanRequest.date_range = authority.date_range;
+      tripPlanRequest.start_date = authority.start_date;
+      tripPlanRequest.days = authority.days;
+
+      if (!hadPlanDates || authority.authority === 'trip_record') {
+        filledFields.push('date_range', 'start_date', 'days');
+      } else if (authority.authority === 'nl_override') {
+        filledFields.push('date_range', 'start_date', 'days', 'nl_override');
+      } else if (authority.authority === 'structured') {
+        filledFields.push('date_range', 'start_date', 'days', 'structured');
       }
+
+      if (authority.overwritten_nl_fields.length > 0) {
+        filledFields.push('trip_date_authority_overwrite');
+      }
+
+      (state.metadata as Record<string, unknown>).trip_date_authority = authority.authority;
     }
 
     tripPlanRequest.ontology_context = {
@@ -8209,12 +9534,26 @@ ${JSON.stringify(routingDecision, null, 2)}
       trip_id: tid,
     };
 
+    const relaxationFilled = hydrateRelaxationConstraintsFromTripRecord(tripPlanRequest, trip);
+    if (relaxationFilled.length > 0) {
+      filledFields.push(...relaxationFilled);
+    }
+
+    const planDatesMissing =
+      !tripPlanRequest.start_date &&
+      !(tripPlanRequest.date_range?.start_date && tripPlanRequest.date_range?.end_date);
+
     const status = filledFields.length > 0 ? 'applied' : 'noop';
     const sparseDb =
-      (destUnset && !tripHasDest) || (noDates && !tripHasDates);
+      (destUnset && !tripHasDest) || (planDatesMissing && !tripHasDates);
+    const dateAuthority = (state.metadata as Record<string, unknown>)?.trip_date_authority as
+      | string
+      | undefined;
     const detail =
       filledFields.length > 0
-        ? `已从 Trip 回填：${filledFields.join(', ')}`
+        ? dateAuthority === 'trip_record' && filledFields.includes('trip_date_authority_overwrite')
+          ? `已用绑定 Trip 起止日期覆盖 NL 误解析（${filledFields.join(', ')}）`
+          : `已从 Trip 回填：${filledFields.join(', ')}`
         : sparseDb
           ? 'Trip 已加载，但库中缺少可回填的目的地或起止日期（且请求侧仍为占位/缺日期）'
           : 'Trip 已加载，请求侧已有目的地/日期，无需回填';
@@ -8229,7 +9568,8 @@ ${JSON.stringify(routingDecision, null, 2)}
       trip_destination_present: tripHasDest,
       trip_dates_present: tripHasDates,
       plan_destination_was_placeholder: destUnset,
-      plan_dates_missing: noDates,
+      plan_dates_missing: planDatesMissing,
+      ...(dateAuthority ? { trip_date_authority: dateAuthority } : {}),
       detail,
     });
 
@@ -8241,410 +9581,1605 @@ ${JSON.stringify(routingDecision, null, 2)}
   }
 
   /**
-   * INTAKE 步骤：解析请求 & 缺口识别
-   * P3 B: 优先经 Kernel.executeIntake（IntakeExecutor 封装 PlannerAgent），否则降级到直接调用
+   * INTAKE 步骤：解析请求 & 缺口识别（Phase 4b → intake-phase.executor）
    */
+  private intakeOrchestratorNode?: IntakeOrchestratorNode;
+
+  private getIntakeNode(): IntakeOrchestratorNode {
+    if (!this.intakeOrchestratorNode) {
+      this.intakeOrchestratorNode = new IntakeOrchestratorNode(this.createIntakeNodeHost());
+    }
+    return this.intakeOrchestratorNode;
+  }
+
+  private async tryApplyBoundTripItineraryItemDelete(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    deletedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectItineraryItemDeleteIntent(message)) {
+      return { applied: false, reason: 'not_delete_intent' };
+    }
+    const spec = parseItineraryItemDeleteSpec(message);
+    if (!spec) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: '未能理解要删除的行程项，请说明第几天以及景点名称。',
+      };
+    }
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildItineraryItemDeleteAnswerText(spec, 0),
+      };
+    }
+
+    let trip: TripLikeForDelete;
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as TripLikeForDelete;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary delete: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        answerText: buildItineraryItemDeleteAnswerText(spec, 0),
+      };
+    }
+
+    const resolved = resolveItemIdsForDeleteWithFallback(trip, spec);
+    const itemIds = resolved.itemIds;
+    if (!itemIds.length) {
+      return {
+        applied: false,
+        reason: 'no_matching_items',
+        answerText: buildItineraryItemDeleteAnswerText(spec, 0),
+        itemIds: [],
+      };
+    }
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        answerText: buildItineraryItemDeleteAnswerText(spec, 0, resolved),
+        itemIds,
+      };
+    }
+
+    try {
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: itemIds.map((itemId) => ({ type: 'delete' as const, itemId })),
+      })) as { success?: boolean };
+      if (out?.success) {
+        return {
+          applied: true,
+          deletedCount: itemIds.length,
+          itemIds,
+          skillsHit: ['trip.applyEdit'],
+          answerText: buildItineraryItemDeleteAnswerText(spec, itemIds.length, resolved),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary delete apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit: ['trip.applyEdit'],
+      answerText: buildItineraryItemDeleteAnswerText(spec, 0, resolved),
+      itemIds,
+    };
+  }
+
+  private async tryApplyBoundTripItineraryItemAdd(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    addedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectItineraryItemAddIntent(message)) {
+      return { applied: false, reason: 'not_add_intent' };
+    }
+    if (detectItineraryAdjustIntent(message)) {
+      return { applied: false, reason: 'not_add_intent' };
+    }
+    const spec = parseItineraryItemAddSpec(message);
+    if (!spec) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+      };
+    }
+    if (!isPlausibleItineraryItemAddPoiQuery(spec.poiQuery)) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+      };
+    }
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildItineraryItemAddAnswerText(spec, 0),
+      };
+    }
+
+    let trip: TripLikeForDelete & {
+      TripDay?: Array<{
+        id?: string;
+        date?: Date | string | null;
+        ItineraryItem?: Array<{
+          id: string;
+          startTime?: Date | string | null;
+          endTime?: Date | string | null;
+          Place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+          place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+        }>;
+      }>;
+    };
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as typeof trip;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary add: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        answerText: buildItineraryItemAddAnswerText(spec, 0),
+      };
+    }
+
+    const dayResolved = resolveTripDayIdForAdd(trip, spec.dayNumber);
+    const effectiveDay = dayResolved.dayNumber ?? spec.dayNumber;
+    if (!dayResolved.tripDayId) {
+      return {
+        applied: false,
+        reason: 'day_not_found',
+        answerText: buildItineraryItemAddAnswerText(spec, 0, { dayNumber: effectiveDay }),
+      };
+    }
+
+    const intentProfile = isIntentBasedPoiQuery(spec.poiQuery)
+      ? resolvePoiIntentProfile(spec.poiQuery)
+      : null;
+
+    if (intentProfile) {
+      if (intentAlreadySatisfiedOnDay(trip, effectiveDay ?? 1, intentProfile)) {
+        return {
+          applied: false,
+          reason: 'already_exists',
+          answerText: buildIntentAddAlreadyExistsAnswer(effectiveDay, intentProfile),
+        };
+      }
+    } else if (itemAlreadyOnDay(trip, effectiveDay, spec.poiQuery)) {
+      return {
+        applied: false,
+        reason: 'already_exists',
+        answerText: buildItineraryItemAddAnswerText(spec, 0, {
+          dayNumber: effectiveDay,
+          alreadyExists: true,
+        }),
+      };
+    }
+
+    const externalCandidates: IntentPoiCandidate[] = [];
+    let resolvedPlaceName = spec.poiQuery;
+    let resolvedPlaceCategory: string | null = null;
+    const skillsHit: string[] = [];
+    const dayAnchor =
+      intentProfile && effectiveDay ? extractDaySearchAnchor(trip, effectiveDay) : null;
+
+    const poiSkill = this.skillsRegistry?.getSkill('poi.search');
+    if (poiSkill) {
+      skillsHit.push('poi.search');
+      try {
+        const searchOut = (await poiSkill.execute({
+          query: intentProfile?.semanticQuery ?? spec.poiQuery,
+          limit: intentProfile ? 12 : 8,
+          lat: dayAnchor?.lat,
+          lng: dayAnchor?.lng,
+          keyword_only: intentProfile ? false : true,
+        })) as {
+          pois?: Array<{
+            poi_id?: string;
+            name?: string;
+            nameCN?: string;
+            nameEN?: string;
+            category?: string;
+            coordinates?: { lat: number; lng: number };
+          }>;
+        };
+        for (const p of searchOut?.pois ?? []) {
+          const id = Number(p.poi_id);
+          if (!Number.isFinite(id)) continue;
+          externalCandidates.push({
+            id,
+            nameCN: p.nameCN ?? p.name ?? null,
+            nameEN: p.nameEN ?? null,
+            category: p.category ?? null,
+          });
+        }
+      } catch (e: unknown) {
+        this.logger.warn(
+          `[Claude Orchestrator] itinerary add poi.search failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    if (intentProfile && dayAnchor && intentProfile.geoCategories.length > 0) {
+      const geoSkill = this.skillsRegistry?.getSkill('geo.findNearbyPOI');
+      if (geoSkill) {
+        skillsHit.push('geo.findNearbyPOI');
+        try {
+          const geoOut = (await geoSkill.execute({
+            location: dayAnchor,
+            radius: 35000,
+            category: intentProfile.geoCategories,
+            limit: 12,
+          })) as {
+            pois?: Array<{
+              id?: number;
+              poi_id?: string;
+              name?: string;
+              nameCN?: string;
+              category?: string;
+              distance?: number;
+              distance_meters?: number;
+            }>;
+          };
+          for (const p of geoOut?.pois ?? []) {
+            const id = Number(p.id ?? p.poi_id);
+            if (!Number.isFinite(id)) continue;
+            externalCandidates.push({
+              id,
+              nameCN: p.nameCN ?? p.name ?? null,
+              nameEN: null,
+              category: p.category ?? null,
+              distanceMeters: p.distance ?? p.distance_meters,
+            });
+          }
+        } catch (e: unknown) {
+          this.logger.warn(
+            `[Claude Orchestrator] itinerary add geo.findNearbyPOI failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+    }
+
+    const tripDestination = String((trip as { destination?: string | null }).destination ?? '');
+    const countryCode = this.inferCountryFromDestination(tripDestination) ?? 'IS';
+
+    const placeId = intentProfile
+      ? resolvePlaceIdForIntentAdd(trip, effectiveDay ?? 1, externalCandidates, intentProfile)
+      : resolvePlaceIdForAdd(trip, spec, externalCandidates);
+    if (!placeId) {
+      return {
+        applied: false,
+        reason: intentProfile && !dayAnchor ? 'no_day_anchor' : 'place_not_found',
+        answerText: intentProfile
+          ? buildSupplyGapFailureGuidance(intentProfile, {
+              dayNumber: effectiveDay,
+              anchorMissing: !dayAnchor,
+              searchRadiusKm: 35,
+              countryCode,
+            })
+          : buildItineraryItemAddAnswerText(spec, 0, { dayNumber: effectiveDay }),
+      };
+    }
+
+    const matched =
+      externalCandidates.find((c) => c.id === placeId) ??
+      (() => {
+        for (const day of trip.TripDay ?? []) {
+          for (const item of day.ItineraryItem ?? []) {
+            const place = item.Place ?? item.place;
+            if (place?.id === placeId) return place;
+          }
+        }
+        return undefined;
+      })();
+    if (matched?.nameCN || matched?.nameEN) {
+      resolvedPlaceName = String(matched.nameCN ?? matched.nameEN);
+    }
+    if ((matched as { category?: string | null })?.category) {
+      resolvedPlaceCategory = String((matched as { category?: string | null }).category);
+    }
+
+    let openingHoursText: string | undefined;
+    const ohSkill = this.skillsRegistry?.getSkill('opening_hours.get');
+    if (ohSkill) {
+      skillsHit.push('opening_hours.get');
+      try {
+        const ohOut = (await ohSkill.execute({ poi_ids: [String(placeId)] })) as {
+          opening_hours?: Array<{ opening_hours?: unknown }>;
+        };
+        const dayRow = (trip.TripDay ?? [])[(effectiveDay ?? 1) - 1];
+        const dayDate =
+          dayRow?.date instanceof Date
+            ? dayRow.date
+            : dayRow?.date
+              ? new Date(String(dayRow.date))
+              : new Date();
+        openingHoursText = openingHoursEvidenceToText(
+          ohOut?.opening_hours?.[0]?.opening_hours,
+          dayDate,
+          'Atlantic/Reykjavik',
+        );
+      } catch (e: unknown) {
+        this.logger.debug(
+          `[Claude Orchestrator] itinerary add opening_hours.get skipped: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    const dayRow = (trip.TripDay ?? [])[(effectiveDay ?? 1) - 1];
+    const slot = suggestActivitySlotForDayAdd({
+      tripDayDate: dayRow?.date,
+      items: dayRow?.ItineraryItem ?? [],
+      poiQuery: spec.poiQuery,
+      placeCategory: resolvedPlaceCategory,
+      openingHoursText,
+      timezone: 'Atlantic/Reykjavik',
+    });
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        answerText: buildItineraryItemAddAnswerText(spec, 0, {
+          dayNumber: effectiveDay,
+          placeName: resolvedPlaceName,
+        }),
+      };
+    }
+
+    try {
+      skillsHit.push('trip.applyEdit');
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: [
+          {
+            type: 'add' as const,
+            tripDayId: dayResolved.tripDayId,
+            placeId,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          },
+        ],
+      })) as { success?: boolean; dbEdit?: { results?: Array<{ success?: boolean }> } };
+      if (out?.success) {
+        return {
+          applied: true,
+          addedCount: 1,
+          skillsHit,
+          answerText: buildItineraryItemAddAnswerText(spec, 1, {
+            dayNumber: effectiveDay,
+            placeName: resolvedPlaceName,
+            scheduledTimeLabel: slot.localLabel,
+            scheduleReasonZh: slot.reasonZh,
+          }),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary add apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit,
+      answerText: buildItineraryItemAddAnswerText(spec, 0, {
+        dayNumber: effectiveDay,
+        placeName: resolvedPlaceName,
+      }),
+    };
+  }
+
+  private async tryApplyBoundTripItineraryAdjustDraft(
+    tripId: string,
+    userId: string | undefined,
+    request: Pick<import('../dto/route-and-run.dto').RouteAndRunRequestDto, 'message' | 'options' | 'trip_id'>,
+  ): Promise<{
+    applied: boolean;
+    deletedCount?: number;
+    addedCount?: number;
+    answerText?: string;
+    targetDateIso?: string;
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    let pending =
+      pendingDraftFromRequestSnapshot({
+        tripId,
+        snapshot: request.options?.itinerary_adjust_draft_snapshot,
+      }) ?? undefined;
+
+    const durableRunId = request.options?.durable_trip_run_id?.trim();
+    if (!pending && durableRunId && this.tripRunManager) {
+      const meta = await this.tripRunManager.getTripRunMetadata(durableRunId);
+      pending = readPendingItineraryAdjustDraft(meta ?? undefined);
+      if (pending && pending.trip_id !== tripId) pending = undefined;
+    }
+
+    if (!pending) {
+      return {
+        applied: false,
+        reason: 'no_pending_draft',
+        answerText: buildItineraryAdjustDraftApplyAnswerText({
+          applied: false,
+          targetDateIso: '',
+          reason: 'no_pending_draft',
+        }),
+      };
+    }
+
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildItineraryAdjustDraftApplyAnswerText({
+          applied: false,
+          targetDateIso: pending.target_date_iso,
+          dayNumber: pending.target_day_number,
+          reason: 'trips_service_unavailable',
+        }),
+      };
+    }
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        answerText: buildItineraryAdjustDraftApplyAnswerText({
+          applied: false,
+          targetDateIso: pending.target_date_iso,
+          dayNumber: pending.target_day_number,
+          reason: 'trip_apply_edit_unavailable',
+        }),
+      };
+    }
+
+    const tripPois = await this.loadTripPlacePoiEvidenceForAdjust(tripId, userId);
+    const researchState = {
+      research_data: {
+        poi_evidence: { pois: tripPois },
+        pois: tripPois,
+      },
+    } as unknown as OrchestratorState;
+
+    const preTrip = await this.tripsService!.findOne(tripId.trim(), userId);
+
+    const result = await executeItineraryAdjustDraftApply({
+      tripId,
+      userId,
+      pending,
+      loadTrip: async () =>
+        (await this.tripsService!.findOne(tripId.trim(), userId)) as TripLikeForDelete,
+      resolvePlaceId: (item) =>
+        this.resolvePlaceIdForItineraryAdjustApply(item, researchState),
+      researchPools: [tripPois],
+      applyEditSkill: skill as {
+        execute: (input: {
+          mode: 'db';
+          tripId: string;
+          edits: TripUserEdit[];
+        }) => Promise<{ success?: boolean }>;
+      },
+    });
+
+    if (result.applied && durableRunId && this.tripRunManager) {
+      await this.tripRunManager.updateTripRun({
+        runId: durableRunId,
+        metadata: { [PENDING_ITINERARY_ADJUST_DRAFT_META_KEY]: null },
+      });
+    }
+
+    if (result.applied && this.itineraryVersion) {
+      try {
+        const postTrip = await this.tripsService!.findOne(tripId.trim(), userId);
+        void this.itineraryVersion.persistUserEditRevision({
+          tripId: tripId.trim(),
+          userId,
+          preItinerary: preTrip,
+          postItinerary: postTrip,
+          summary: `ITINERARY_ADJUST apply: ${result.targetDateIso ?? pending.target_date_iso}`,
+          source: 'ITINERARY_ADJUST',
+        });
+      } catch {
+        // best-effort alignment capture
+      }
+    }
+
+    return result;
+  }
+
+  private async tryApplyBoundTripItineraryDayReplan(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+    dateRange?: { start_date?: string; end_date?: string },
+  ): Promise<{
+    applied: boolean;
+    deletedCount?: number;
+    addedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectGoldenCircleDayReplanIntent(message)) {
+      return { applied: false, reason: 'not_day_replan_intent' };
+    }
+    const spec = parseGoldenCircleDayReplanSpec(message, dateRange);
+    if (!spec) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: '未能理解要重排的行程日，请说明日期与黄金圈景点。',
+      };
+    }
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          targetDateIso: spec.targetDateIso,
+          placeNames: [],
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    let trip: TripLikeForDelete & {
+      TripDay?: Array<{
+        id?: string;
+        date?: Date | string | null;
+        ItineraryItem?: Array<{
+          id: string;
+          type?: string;
+          Place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+          place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+        }>;
+      }>;
+    };
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as typeof trip;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary day replan: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          targetDateIso: spec.targetDateIso,
+          placeNames: [],
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    const dayResolved = resolveTripDayByDate(trip, spec.targetDateIso);
+    if (!dayResolved.tripDayId) {
+      return {
+        applied: false,
+        reason: 'day_not_found',
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          targetDateIso: spec.targetDateIso,
+          placeNames: [],
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    const skillsHit: string[] = [];
+    const placeIds: Partial<Record<GoldenCircleAnchorSlug, number>> = resolveGoldenCirclePlaceIdsFromTrip(trip);
+    const poiSkill = this.skillsRegistry?.getSkill('poi.search');
+    const searchCache = new Map<GoldenCircleAnchorSlug, PoiCandidateLike[]>();
+
+    for (const slug of spec.anchorSlugs) {
+      if (placeIds[slug] != null) continue;
+      if (!poiSkill) continue;
+      skillsHit.push('poi.search');
+      try {
+        const searchOut = (await poiSkill.execute({
+          query: goldenCircleSearchQueryForSlug(slug),
+          limit: 10,
+          keyword_only: true,
+        })) as { pois?: PoiCandidateLike[] };
+        const pois = searchOut?.pois ?? [];
+        searchCache.set(slug, pois);
+        const picked = pickGoldenCirclePlaceFromCandidates(slug, pois);
+        if (picked != null) placeIds[slug] = picked;
+      } catch (e: unknown) {
+        this.logger.warn(
+          `[Claude Orchestrator] day replan poi.search(${slug}) failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    const missing = spec.anchorSlugs.filter((slug) => placeIds[slug] == null);
+    if (missing.length > 0) {
+      return {
+        applied: false,
+        reason: 'place_not_found',
+        skillsHit,
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          dayNumber: dayResolved.dayNumber,
+          targetDateIso: spec.targetDateIso ?? dayResolved.dateIso,
+          placeNames: spec.anchorSlugs.filter((s) => placeIds[s] != null).map((s) => s),
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    const placeNames: string[] = [];
+    for (const slug of spec.anchorSlugs) {
+      const pid = placeIds[slug]!;
+      let label: string = slug;
+      outer: for (const day of trip.TripDay ?? []) {
+        for (const item of day.ItineraryItem ?? []) {
+          const place = item.Place ?? item.place;
+          if (place?.id === pid) {
+            label = String(place.nameCN ?? place.nameEN ?? slug);
+            break outer;
+          }
+        }
+      }
+      if (label === slug) {
+        for (const pois of searchCache.values()) {
+          const hit = pois.find((p) => Number(p.id ?? p.poi_id) === pid);
+          if (hit) {
+            label = String(hit.nameCN ?? hit.nameEN ?? hit.name ?? slug);
+            break;
+          }
+        }
+      }
+      placeNames.push(label);
+    }
+
+    const dayRow = (trip.TripDay ?? []).find((d) => d.id === dayResolved.tripDayId);
+    const schedule = buildGoldenCircleScheduleSlots(dayRow?.date ?? spec.targetDateIso);
+    const deleteIds = collectActivityItemIdsForDayReplan(dayResolved.items);
+
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        skillsHit,
+        answerText: buildGoldenCircleDayReplanAnswerText({
+          dayNumber: dayResolved.dayNumber,
+          targetDateIso: spec.targetDateIso ?? dayResolved.dateIso,
+          placeNames,
+          deletedCount: 0,
+          addedCount: 0,
+        }),
+      };
+    }
+
+    const edits = [
+      ...deleteIds.map((itemId) => ({ type: 'delete' as const, itemId })),
+      ...schedule.map((slot) => ({
+        type: 'add' as const,
+        tripDayId: dayResolved.tripDayId!,
+        placeId: placeIds[slot.slug]!,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      })),
+    ];
+
+    try {
+      skillsHit.push('trip.applyEdit');
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits,
+      })) as { success?: boolean };
+      if (out?.success) {
+        return {
+          applied: true,
+          deletedCount: deleteIds.length,
+          addedCount: schedule.length,
+          skillsHit,
+          answerText: buildGoldenCircleDayReplanAnswerText({
+            dayNumber: dayResolved.dayNumber,
+            targetDateIso: spec.targetDateIso ?? dayResolved.dateIso,
+            placeNames,
+            deletedCount: deleteIds.length,
+            addedCount: schedule.length,
+          }),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary day replan apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit,
+      answerText: buildGoldenCircleDayReplanAnswerText({
+        dayNumber: dayResolved.dayNumber,
+        targetDateIso: spec.targetDateIso ?? dayResolved.dateIso,
+        placeNames,
+        deletedCount: 0,
+        addedCount: 0,
+      }),
+    };
+  }
+
+  private async tryApplyBoundTripLodgingReplace(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+    dateRange?: { start_date?: string; end_date?: string },
+  ): Promise<{
+    applied: boolean;
+    answerText?: string;
+    checkInIso?: string;
+    fromName?: string;
+    toName?: string;
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectLodgingReplaceIntent(message)) {
+      return { applied: false, reason: 'not_lodging_replace_intent' };
+    }
+    const spec = parseLodgingReplaceSpec(message, dateRange);
+    if (!spec?.toName) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: buildLodgingReplaceAnswerText(
+          { toName: '目标住宿' },
+          { applied: false, reason: 'parse_failed' },
+        ),
+      };
+    }
+
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        fromName: spec.fromName,
+        toName: spec.toName,
+        checkInIso: spec.checkInIso,
+        answerText: buildLodgingReplaceAnswerText(spec, {
+          applied: false,
+          reason: 'trips_service_unavailable',
+        }),
+      };
+    }
+
+    let trip: TripLikeForDelete;
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as TripLikeForDelete;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] lodging replace: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        fromName: spec.fromName,
+        toName: spec.toName,
+        checkInIso: spec.checkInIso,
+        answerText: buildLodgingReplaceAnswerText(spec, {
+          applied: false,
+          reason: 'trip_load_failed',
+        }),
+      };
+    }
+
+    const found = findLodgingItemsOnDay(trip, spec.checkInIso, spec.fromName);
+    if (!found.tripDayId || !found.dateIso) {
+      return {
+        applied: false,
+        reason: 'day_not_found',
+        fromName: spec.fromName,
+        toName: spec.toName,
+        checkInIso: spec.checkInIso,
+        answerText: buildLodgingReplaceAnswerText(spec, {
+          applied: false,
+          checkInIso: spec.checkInIso,
+          dayNumber: found.dayNumber,
+          reason: 'day_not_found',
+        }),
+      };
+    }
+
+    const replacedFrom =
+      found.matched[0]?.name ??
+      found.allRest[0]?.name ??
+      spec.fromName ??
+      '原住宿';
+
+    if (!this.planningAssistantV2Service) {
+      return {
+        applied: false,
+        reason: 'pa_unavailable',
+        fromName: replacedFrom,
+        toName: spec.toName,
+        checkInIso: found.dateIso,
+        answerText: buildLodgingReplaceAnswerText(spec, {
+          applied: false,
+          checkInIso: found.dateIso,
+          dayNumber: found.dayNumber,
+          replacedFrom,
+          reason: 'pa_unavailable',
+        }),
+      };
+    }
+
+    const checkIn = found.dateIso.slice(0, 10);
+    const checkOutDate = new Date(`${checkIn}T00:00:00.000Z`);
+    checkOutDate.setUTCDate(checkOutDate.getUTCDate() + 1);
+    const checkOut = checkOutDate.toISOString().slice(0, 10);
+
+    try {
+      const out = await this.planningAssistantV2Service.applyAccommodationToItinerary(tripId.trim(), {
+        sessionId: `lodging-replace:${tripId.trim()}:${checkIn}`,
+        accommodationIndex: 0,
+        replaceExisting: true,
+        accommodation: {
+          id: `nl-replace-${Buffer.from(spec.toName).toString('base64url').slice(0, 24)}`,
+          source: 'hotel',
+          name: spec.toName,
+          nameCN: spec.toName,
+          checkIn,
+          checkOut,
+        },
+      });
+      if (out?.success) {
+        return {
+          applied: true,
+          skillsHit: ['planning_assistant.accommodations.apply'],
+          fromName: replacedFrom,
+          toName: spec.toName,
+          checkInIso: checkIn,
+          answerText: buildLodgingReplaceAnswerText(spec, {
+            applied: true,
+            checkInIso: checkIn,
+            dayNumber: found.dayNumber,
+            replacedFrom,
+          }),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] lodging replace apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit: ['planning_assistant.accommodations.apply'],
+      fromName: replacedFrom,
+      toName: spec.toName,
+      checkInIso: checkIn,
+      answerText: buildLodgingReplaceAnswerText(spec, {
+        applied: false,
+        checkInIso: checkIn,
+        dayNumber: found.dayNumber,
+        replacedFrom,
+        reason: 'apply_failed',
+      }),
+    };
+  }
+
+  private async tryApplyBoundTripItineraryItemUpdate(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+  ): Promise<{
+    applied: boolean;
+    updatedCount?: number;
+    answerText?: string;
+    itemIds?: string[];
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectItineraryItemUpdateIntent(message)) {
+      return { applied: false, reason: 'not_update_intent' };
+    }
+    const spec = parseItineraryItemUpdateSpec(message);
+    if (!spec) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: '未能理解要修改的行程时间，请说明景点名称以及开始/结束时间。',
+      };
+    }
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        answerText: buildItineraryItemUpdateAnswerText(spec, false),
+      };
+    }
+
+    let trip: TripLikeForDelete & {
+      TripDay?: Array<{
+        id?: string;
+        date?: Date | string | null;
+        ItineraryItem?: Array<{
+          id: string;
+          Place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+          place?: { id?: number; nameCN?: string | null; nameEN?: string | null } | null;
+        }>;
+      }>;
+    };
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as typeof trip;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary update: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        answerText: buildItineraryItemUpdateAnswerText(spec, false),
+      };
+    }
+
+    const resolved = resolveItemForUpdateWithFallback(trip, spec);
+    if (!resolved.itemId) {
+      return {
+        applied: false,
+        reason: 'no_matching_items',
+        answerText: buildItineraryItemUpdateAnswerText(spec, false, {
+          dayNumber: spec.dayNumber,
+        }),
+      };
+    }
+
+    const effectiveSpec = applyExistingItemDurationToUpdateSpec(spec, resolved.matchedItem);
+    const times = buildIsoTimesForUpdate(resolved.tripDayDate, effectiveSpec);
+    const skill = this.skillsRegistry?.getSkill('trip.applyEdit');
+    if (!skill) {
+      return {
+        applied: false,
+        reason: 'trip_apply_edit_unavailable',
+        answerText: buildItineraryItemUpdateAnswerText(spec, false, {
+          dayNumber: resolved.matchedDayNumber,
+          placeName: resolved.placeName,
+          localLabel: times.localLabel,
+          usedDayFallback: resolved.usedDayFallback,
+        }),
+        itemIds: [resolved.itemId],
+      };
+    }
+
+    try {
+      const out = (await skill.execute({
+        mode: 'db',
+        tripId: tripId.trim(),
+        edits: [
+          {
+            type: 'update' as const,
+            itemId: resolved.itemId,
+            updates: {
+              startTime: times.startTime,
+              endTime: times.endTime,
+            },
+          },
+        ],
+      })) as { success?: boolean };
+      if (out?.success) {
+        return {
+          applied: true,
+          updatedCount: 1,
+          itemIds: [resolved.itemId],
+          skillsHit: ['trip.applyEdit'],
+          answerText: buildItineraryItemUpdateAnswerText(spec, true, {
+            dayNumber: resolved.matchedDayNumber,
+            placeName: resolved.placeName,
+            localLabel: times.localLabel,
+            usedDayFallback: resolved.usedDayFallback,
+          }),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] itinerary update apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit: ['trip.applyEdit'],
+      answerText: buildItineraryItemUpdateAnswerText(spec, false, {
+        dayNumber: resolved.matchedDayNumber,
+        placeName: resolved.placeName,
+        localLabel: times.localLabel,
+        usedDayFallback: resolved.usedDayFallback,
+      }),
+      itemIds: [resolved.itemId],
+    };
+  }
+
+  private createIntakePhaseHost(): IntakePhaseHost {
+    return {
+      logger: this.logger,
+      clarificationHandler: this.clarificationHandler,
+      decisionKernel: this.decisionKernel,
+      localCaseStore: this.localCaseStore,
+      convertToTripPlanRequest: (req, st) => this.convertToTripPlanRequest(req, st),
+      hydrateTripPlanRequestFromTripRecord: (req, tp, st) =>
+        this.hydrateTripPlanRequestFromTripRecord(req, tp, st),
+      isConstraintSinkHydrateEnabled: () => this.constraintSinkService?.isEnabled() ?? false,
+      getActiveTripStateForConstraintSink: () =>
+        this.agentMemoryContextStore?.get()?.activeTripState ?? null,
+      recordConstraintSinkHydrated: (keys) =>
+        this.promMetrics?.recordConstraintSinkHydrated(keys.length),
+      kernelCreateInitialOpts: (req, st) => this.kernelCreateInitialOpts(req, st),
+      generateDecisionStepForStep: (st, step, actor) =>
+        this.generateDecisionStepForStep(st, step, actor as SubAgentType),
+      applyMarathonPipelineSignals: (st, req) => this.applyMarathonPipelineSignals(st, req),
+      loadTripDaySnapshotsForSlotPlacement: (tripId, userId) =>
+        this.loadTripDaySnapshotsForSlotPlacement(tripId, userId),
+      resolveItinerarySlotCandidatesForIntake: (msg, tp, tripId, userId, snaps) =>
+        this.resolveItinerarySlotCandidatesForIntake(msg, tp, tripId, userId, snaps),
+      fetchAuroraSlotPlacementRagSupplement: (msg, opts) =>
+        this.fetchAuroraSlotPlacementRagSupplement(msg, opts),
+      tryApplyBoundTripItineraryItemDelete: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemDelete(tripId, userId, message),
+      tryApplyBoundTripItineraryItemAdd: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
+      tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
+      tryApplyBoundTripLodgingReplace: (tripId, userId, message, dateRange) =>
+        this.tryApplyBoundTripLodgingReplace(tripId, userId, message, dateRange),
+      tryApplyBoundTripItineraryDayReplan: (tripId, userId, message, dateRange) =>
+        this.tryApplyBoundTripItineraryDayReplan(tripId, userId, message, dateRange),
+      tryApplyBoundTripItineraryAdjustDraft: (tripId, userId, req) =>
+        this.tryApplyBoundTripItineraryAdjustDraft(tripId, userId, req),
+      recordIntakeDecisionTelemetry: this.decisionTelemetry
+        ? (event) =>
+            this.decisionTelemetry!.record(event).catch((err: unknown) => {
+              this.logger.warn(
+                `[INTAKE Telemetry] record failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            })
+        : undefined,
+      persistRelaxationToTrip: (tripId, userId, applied) =>
+        this.relaxationTripPersist?.persistFromIntake(tripId, userId, applied) ??
+        Promise.resolve(undefined),
+    };
+  }
+
+  private createIntakeNodeHost(): IntakeNodeHost {
+    const phaseHost = this.createIntakePhaseHost();
+    return {
+      logger: this.logger,
+      promMetrics: this.promMetrics,
+      executeIntakeStep: (req, ctx, st, llm) =>
+        runIntakePhase(phaseHost, { request: req, context: ctx, state: st, llmProvider: llm }),
+      maybeSnapshot: (st, trigger) => this.maybeSnapshot(st, trigger),
+      buildPrePlanSuccessResult: (st, start, dso, ctx) =>
+        this.buildSuccessResult(st, start, dso, ctx),
+      tryApplyBoundTripItineraryItemDelete: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemDelete(tripId, userId, message),
+      tryApplyBoundTripItineraryItemAdd: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
+      tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
+        this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
+      tryApplyBoundTripLodgingReplace: (tripId, userId, message, dateRange) =>
+        this.tryApplyBoundTripLodgingReplace(tripId, userId, message, dateRange),
+      tryApplyBoundTripItineraryDayReplan: (tripId, userId, message, dateRange) =>
+        this.tryApplyBoundTripItineraryDayReplan(tripId, userId, message, dateRange),
+      tryApplyBoundTripItineraryAdjustDraft: (tripId, userId, req) =>
+        this.tryApplyBoundTripItineraryAdjustDraft(tripId, userId, req),
+      mergeCompoundDataLookupFollowup: (st, req, ctx, llm) =>
+        this.mergeCompoundDataLookupFollowup(st, req, ctx, llm),
+    };
+  }
+
+  /** 复合意图：CRUD 已落库后，用轻量 DATA_LOOKUP 回答同句中的咨询子句。 */
+  private async mergeCompoundDataLookupFollowup(
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<void> {
+    const followup = (state.metadata as Record<string, unknown>)?.compound_data_lookup_followup;
+    const followupText = typeof followup === 'string' ? followup.trim() : '';
+    if (!followupText) return;
+
+    const crudAnswer = String(state.narration?.user_friendly_summary ?? '').trim();
+    try {
+      const lw = await this.orchestrateLightweightKnowledgeQuery(
+        { ...request, message: followupText },
+        context,
+        undefined,
+        llmProvider,
+        Date.now(),
+      );
+      const extra = String(lw.answerText ?? '').trim();
+      if (!extra) return;
+      state.narration = {
+        user_friendly_summary: crudAnswer ? `${crudAnswer}\n\n${extra}` : extra,
+        day_by_day_narrative: state.narration?.day_by_day_narrative ?? [],
+        highlights: state.narration?.highlights ?? [],
+        tips: state.narration?.tips ?? [],
+        day_by_day_text_zh: state.narration?.day_by_day_text_zh,
+        warnings: state.narration?.warnings,
+        research_ui_hints: state.narration?.research_ui_hints,
+        voice_tone_modifier: state.narration?.voice_tone_modifier,
+        visual_hint: state.narration?.visual_hint,
+        audio_prosody: state.narration?.audio_prosody,
+      };
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] compound DATA_LOOKUP followup failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  private stateUpdateOrchestratorNode?: StateUpdateOrchestratorNode;
+
+  private getStateUpdateNode(): StateUpdateOrchestratorNode {
+    if (!this.stateUpdateOrchestratorNode) {
+      this.stateUpdateOrchestratorNode = new StateUpdateOrchestratorNode(this.createStateUpdateNodeHost());
+    }
+    return this.stateUpdateOrchestratorNode;
+  }
+
+  private createStateUpdatePhaseHost(): StateUpdatePhaseHost {
+    return {
+      logger: this.logger,
+      decisionKernel: this.decisionKernel,
+      dsoLatestStateProvider: this.dsoLatestStateProvider,
+      isDsoAsPrimary: () => this.isDsoAsPrimary(),
+      applyPoiPlanningToPatch: (patch, dso, st) => this.applyPoiPlanningToPatch(patch, dso, st),
+      extractWorldModelFromContextPackage: (dso) => this.extractWorldModelFromContextPackage(dso),
+    };
+  }
+
+  private createStateUpdateNodeHost(): StateUpdateNodeHost {
+    const phaseHost = this.createStateUpdatePhaseHost();
+    return {
+      logger: this.logger,
+      executeStateUpdateStep: (st, dso) => runStateUpdatePhase(phaseHost, { state: st, decisionState: dso }),
+      maybeSnapshot: (st, trigger) => this.maybeSnapshot(st, trigger),
+      applyRelaxationFingerprintToDso: (st, dso) =>
+        this.applyRelaxationFingerprintAfterStateUpdate(st, dso),
+      maybeHaltTerminalNoSolution: (input, dso) =>
+        this.maybeStateUpdateTerminalNoSolution(input, dso),
+      maybeHaltHardGapsClarification: (input, dso) =>
+        this.maybeStateUpdateHardGapsClarification(input, dso),
+      maybeHaltStructuredIntakeClarification: (input, dso) =>
+        this.maybeStateUpdateStructuredIntakeClarification(input, dso),
+      applyResearchScopeInvalidationCow: (req, st) =>
+        this.applyResearchScopeInvalidationCowBeforeResearch(req, st),
+    };
+  }
+
+  private async applyRelaxationFingerprintAfterStateUpdate(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+  ): Promise<DecisionState | undefined> {
+    if (!this.decisionKernel || !decisionState) return decisionState;
+    const fp = (state.metadata as { last_relaxation_fingerprint?: string })?.last_relaxation_fingerprint;
+    if (!fp) return decisionState;
+    const prev = decisionState.systemState?.lastRelaxationFingerprint;
+    const prevSame = decisionState.systemState?.consecutiveSameRelaxationAttempts ?? 0;
+    const same = prev && prev === fp;
+    const nextSame = same ? prevSame + 1 : 0;
+    const prevRetry = decisionState.systemState?.planGenRetryCount ?? 0;
+    return this.decisionKernel.updateState(decisionState, {
+      systemState: {
+        requestId: state.request_id,
+        lastRelaxationFingerprint: fp,
+        consecutiveSameRelaxationAttempts: nextSame,
+        planGenRetryCount: prevRetry + 1,
+      } as DecisionState['systemState'],
+    });
+  }
+
+  private async maybeStateUpdateTerminalNoSolution(
+    input: import('../orchestration/graph/nodes/base.node').StateUpdatePrePlanSegmentInput,
+    decisionState: DecisionState | undefined,
+  ): Promise<import('../orchestration/graph/orchestration-graph.types').GraphRunOutcome | null> {
+    const terminalIntent = (input.state.metadata as { terminal_intent?: string })?.terminal_intent;
+    if (terminalIntent !== 'TERMINAL_NO_SOLUTION') return null;
+    this.logger.warn(`[Claude Orchestrator] TERMINAL_NO_SOLUTION confirmed by user; halting orchestration.`);
+    input.state.current_step = 'DONE';
+    input.state.verdict = 'REJECT';
+    input.state.metadata.last_updated_at = new Date().toISOString();
+    input.state.metadata.total_duration_ms = Date.now() - input.prePlan.startTime;
+    this.maybeSnapshot(input.state, 'CHECKPOINT');
+    return input.prePlan.prePlanTerminal(
+      'terminal_no_solution',
+      this.buildTerminalNoSolutionResult(
+        input.state,
+        input.prePlan.startTime,
+        decisionState,
+        input.context,
+      ),
+    );
+  }
+
+  private async maybeStateUpdateStructuredIntakeClarification(
+    input: import('../orchestration/graph/nodes/base.node').StateUpdatePrePlanSegmentInput,
+    decisionState: DecisionState | undefined,
+  ): Promise<import('../orchestration/graph/orchestration-graph.types').GraphRunOutcome | null> {
+  if (
+    !this.shouldReturnClarificationForMarathonIntake(input.state) &&
+    !this.shouldReturnClarificationForFroad2wdIntake(input.state) &&
+    !this.shouldReturnClarificationForPeakSeasonTimeShiftIntake(input.state) &&
+    !this.shouldReturnClarificationForItinerarySlotPlacementIntake(input.state)
+  ) {
+    return null;
+  }
+
+  if (
+    this.shouldReturnClarificationForMarathonIntake(input.state) ||
+    this.shouldReturnClarificationForFroad2wdIntake(input.state) ||
+    this.shouldReturnClarificationForPeakSeasonTimeShiftIntake(input.state)
+  ) {
+    enrichStateForIntakeGuardianDebateShortCircuit(input.state, input.request);
+  }
+
+  input.state.decision_log.push({
+    request_id: input.state.request_id,
+    step: 'STATE_UPDATE',
+    actor: 'Orchestrator',
+    inputs_summary: 'INTAKE structured clarification → guardian debate surface',
+    outputs_summary: `gate=${input.state.gate_result?.gate_result ?? 'n/a'} personas=${Boolean(input.state.gate_result?.guardian_results)}`,
+    evidence_refs: [],
+    timestamp: new Date().toISOString(),
+    metadata: {
+      system_action: 'INTAKE_GUARDIAN_DEBATE_SHORT_CIRCUIT',
+      marathon_intake: (input.state.metadata as Record<string, unknown>)?.marathon_intake_clarification_short_circuit === true,
+      debate_gate_fusion: (input.state.metadata as Record<string, unknown>)?.debate_gate_fusion,
+    },
+  });
+
+  this.logger.debug(
+    `[Claude Orchestrator] INTAKE 结构化澄清 + 三人格合议，跳过 RESEARCH/Gate/Plan`,
+  );
+  return input.prePlan.prePlanTerminal(
+    'terminal_clarification',
+    this.buildClarificationResult(input.state, input.prePlan.startTime, decisionState, input.context),
+  );
+  }
+
+  private async maybeStateUpdateHardGapsClarification(
+    input: import('../orchestration/graph/nodes/base.node').StateUpdatePrePlanSegmentInput,
+    decisionState: DecisionState | undefined,
+  ): Promise<import('../orchestration/graph/orchestration-graph.types').GraphRunOutcome | null> {
+    if (!this.shouldReturnClarificationForHardGaps(input.state)) return null;
+    const compileHard =
+      input.state.gaps?.find(
+        (g) =>
+          g?.severity === 'HARD' &&
+          (g.type === 'INTENT_COMPILE_ERROR' || g.type === 'SPEC_TYPE_ERROR'),
+      ) ?? null;
+    if (compileHard) {
+      input.state.decision_log.push({
+        request_id: input.state.request_id,
+        step: 'INTAKE',
+        actor: 'Orchestrator',
+        inputs_summary: 'INTAKE compiler hard error → clarification',
+        outputs_summary: `INTENT_COMPILE_BLOCK: ${compileHard.type}`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: {
+          system_action: 'INTENT_COMPILE_BLOCK',
+          gap_type: compileHard.type,
+          detail: compileHard.detail,
+          allow_partial: input.state.metadata?.allow_partial === true,
+        },
+      });
+    }
+    this.logger.debug(
+      `[Claude Orchestrator] HARD 缺口且已有澄清问题，跳过 RESEARCH/Gate/Plan，直接返回澄清`,
+    );
+    return input.prePlan.prePlanTerminal(
+      'terminal_clarification',
+      this.buildClarificationResult(input.state, input.prePlan.startTime, decisionState, input.context),
+    );
+  }
+
+  private async applyResearchScopeInvalidationCowBeforeResearch(
+    request: RouteAndRunRequestDto,
+    state: OrchestratorState,
+  ): Promise<void> {
+    const dosCtx = this.resolveDosExecutionContext(request);
+    const scopePlan = planResearchScopes({
+      request,
+      dosContext: dosCtx,
+      metadata: state.metadata as Record<string, unknown>,
+    });
+    const scopes = scopePlan.assetScopes;
+    if (scopes.length === 0) return;
+
+    let rdBase: Record<string, unknown> | undefined =
+      state.research_data && typeof state.research_data === 'object'
+        ? cloneResearchRecord(state.research_data as Record<string, unknown>)
+        : undefined;
+    if ((!rdBase || Object.keys(rdBase).length === 0) && this.researchPriorSnapshot) {
+      const loaded = await this.researchPriorSnapshot.load(request);
+      if (loaded && typeof loaded === 'object' && Object.keys(loaded).length > 0) {
+        rdBase = cloneResearchRecord(loaded as Record<string, unknown>);
+      }
+    }
+    if (!rdBase || Object.keys(rdBase).length === 0) return;
+
+    const researchAtomicRollbackSnapshot = cloneResearchRecord(rdBase);
+    const draftRd = cloneResearchRecord(rdBase);
+    if (!draftRd) {
+      this.logger.warn(`[Claude Orchestrator] research COW: draft clone failed request_id=${state.request_id}`);
+      return;
+    }
+    const { clearedKeys } = invalidateResearchScopesInPlace(
+      draftRd,
+      scopes,
+      `research_scope_plan:${scopePlan.source}`,
+    );
+    const m0 = { ...(state.metadata as Record<string, unknown>) };
+    m0.research_scopes_to_recompute = scopes;
+    m0.research_scope_plan_v1 = scopePlan;
+    m0.research_scope_invalidation = {
+      scopes,
+      cleared_keys: clearedKeys,
+      at: scopePlan.at,
+      source: scopePlan.source,
+    };
+    if (scopePlan.forbid_full_research) {
+      m0.forbid_scoped_partial_degrade_to_full = true;
+    }
+    m0.pending_research_prior_for_kernel = draftRd;
+    m0.research_atomic_rollback_snapshot = researchAtomicRollbackSnapshot;
+    state.metadata = m0 as OrchestratorState['metadata'];
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'RESEARCH',
+      actor: 'Orchestrator',
+      inputs_summary: 'Harness：研究资产作用域局部无效化（COW 副本，主干未提交）',
+      outputs_summary: `INVALIDATE_SCOPES source=${scopePlan.source} scopes=${scopes.join(',')} cleared_key_count=${clearedKeys.length}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        system_action: 'RESEARCH_SCOPE_INVALIDATION',
+        scopes,
+        research_scope_plan_v1: scopePlan,
+        cleared_keys_sample: clearedKeys.slice(0, 32),
+      },
+    });
+  }
+
   private async executeIntakeStep(
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
     _provider: LlmProvider,
   ): Promise<void> {
-    state.current_step = 'INTAKE';
-    const stepStartTime = Date.now();
+    await runIntakePhase(this.createIntakePhaseHost(), {
+      request,
+      context,
+      state,
+      llmProvider: _provider,
+    });
+  }
 
-    this.logger.debug(`[Claude Orchestrator] 执行 INTAKE 步骤...`);
+  private poiSelectionOrchestratorNode?: PoiSelectionOrchestratorNode;
 
-    try {
-      state.metadata = {
-        ...(state.metadata ?? {}),
-        clarification_locale: request.conversation_context?.locale,
-      } as any;
-
-      let tripPlanRequest = this.convertToTripPlanRequest(request, state);
-      await this.hydrateTripPlanRequestFromTripRecord(request, tripPlanRequest, state);
-
-      // Constraint Zone (Temporal hard deadlines): make them explicitly visible to downstream LLM/planning skills.
-      // We keep it as a high-weight system hint embedded in TripPlanRequest.message (best-effort, backwards compatible).
-      const hardDeadlines = (request as any)?.emergency_constraints?.hard_deadlines as Record<string, string> | undefined;
-      if (hardDeadlines && typeof hardDeadlines === 'object' && Object.keys(hardDeadlines).length > 0) {
-        const lines = Object.entries(hardDeadlines)
-          .slice(0, 10)
-          .map(([k, v]) => `- ${String(k)} 截止于 ${String(v)}`);
-        const sysHint =
-          `[SYSTEM_MESSAGE][CONSTRAINT_ZONE][TEMPORAL_DEADLINE]\n` +
-          `注意：以下 POI/Segment 受到物理环境限制（如日落），必须在指定时间前结束。\n` +
-          `${lines.join('\n')}\n` +
-          `如果当前计划冲突，请优先尝试调换行程顺序（例如将上午的室内活动挪至傍晚，或将高风险户外活动提前）。\n`;
-        tripPlanRequest.message = `${sysHint}\n${tripPlanRequest.message ?? request.message ?? ''}`.trim();
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'INTAKE',
-          actor: 'Orchestrator',
-          inputs_summary: 'emergency_constraints.hard_deadlines → Constraint Zone system hint',
-          outputs_summary: `TEMPORAL_DEADLINES=${Object.keys(hardDeadlines).length}`,
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: {
-            system_action: 'CONSTRAINT_ZONE_TEMPORAL_DEADLINE',
-            hard_deadlines: hardDeadlines,
-          },
-        });
-      }
-
-      // 闭环：消费澄清回合答案 → 组合放宽补丁 / 或用户批准终止
-      const clarificationAnswers = (request as any).clarification_answers as any[] | undefined;
-      if (this.clarificationHandler && Array.isArray(clarificationAnswers) && clarificationAnswers.length > 0) {
-        const {
-          tripPlanRequest: patched,
-          applied,
-          terminalIntent,
-          fingerprint,
-          earlyWarningProceedAtOwnRisk,
-          didPatch,
-          transportClarificationApplied,
-        } = this.clarificationHandler.applyRelaxationsFromAnswers(tripPlanRequest, clarificationAnswers);
-        // 防御性：记录 fingerprint 与重试次数到 DSO.systemState（用于识别无效重复尝试）
-        if (this.decisionKernel && (state as any).decisionState) {
-          // no-op: decisionState 不在 state 上；留给 STATE_UPDATE 后统一写入
-        }
-        if (terminalIntent) {
-          state.metadata = {
-            ...(state.metadata ?? {}),
-            terminal_intent: terminalIntent,
-            last_relaxation_fingerprint: fingerprint,
-          } as any;
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'STATE_UPDATE',
-            actor: 'Orchestrator',
-            inputs_summary: 'clarification_answers → TerminalIntent',
-            outputs_summary: 'CONSENSUS_REACHED: NO_FEASIBLE_PATH',
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'CONSENSUS_REACHED_NO_FEASIBLE_PATH',
-              terminal_intent: terminalIntent,
-              fingerprint,
-            },
-          });
-        } else if (applied.length > 0 || didPatch) {
-          tripPlanRequest = patched;
-          state.metadata = {
-            ...(state.metadata ?? {}),
-            applied_relaxations: applied,
-            last_relaxation_fingerprint: fingerprint,
-          } as any;
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'STATE_UPDATE',
-            actor: 'Orchestrator',
-            inputs_summary: 'clarification_answers → CompositeRelaxationPatch',
-            outputs_summary: `RELAXATION_APPLIED: ${applied.map((a) => a.id).join('+')}`,
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'RELAXATION_APPLIED',
-              applied_relaxations: applied,
-              fingerprint,
-            },
-          });
-        }
-
-        if (earlyWarningProceedAtOwnRisk) {
-          const ew = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
-          // 此时我们可能还没有 VERIFY 报告；保持绑定的稳定性和轻量级。
-          const evidence = collectDecisionEvidenceSummaries(undefined);
-          const fp = computeDecisionEvidenceFingerprint(evidence);
-          state.metadata = {
-            ...(state.metadata ?? {}),
-            early_warning_acknowledged: true,
-            early_warning_proceed_at: new Date().toISOString(),
-            ...(fingerprint ? { last_relaxation_fingerprint: fingerprint } : {}),
-          } as any;
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'STATE_UPDATE',
-            actor: 'Orchestrator',
-            inputs_summary: 'clarification_answers → EARLY_WARNING_PROCEED_AT_OWN_RISK',
-            outputs_summary: 'USER_PROCEEDED_AT_OWN_RISK: no TripPlanRequest patch; downstream POI/PLAN_GEN allowed',
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'EARLY_WARNING_PROCEED_AT_OWN_RISK',
-              early_warning_id: ew?.early_warning_id,
-              event: 'PROCEED_AT_OWN_RISK',
-              evidence_fingerprint: fp.evidence_fingerprint,
-              acknowledged_violations: fp.acknowledged_violations,
-              max_violation_slack: fp.max_violation_slack,
-            },
-          });
-        }
-
-        // 行为分析：记录用户在澄清问题上的“选择/拒绝”（用于 EARLY_WARNING → PLAN_GEN 的认知差语料）
-        const ewAnswer = clarificationAnswers.find((a) => a?.questionId === 'early_warning_relaxations');
-        const pgAnswer = clarificationAnswers.find((a) => a?.questionId === 'plan_gen_empty_draft_relax_constraints');
-
-        const normalizePicked = (v: any): string[] => {
-          if (Array.isArray(v)) return v.map(String).filter(Boolean);
-          if (typeof v === 'string') return [v].filter(Boolean);
-          return [];
-        };
-
-        if (ewAnswer) {
-          const ew = (state.metadata as any)?.early_warning as EarlyWarning | undefined;
-          const suggested = Array.isArray(ew?.suggested_actions)
-            ? ew!.suggested_actions.map((s) => String(s?.relaxation_type ?? '')).filter(Boolean)
-            : [];
-          const chosen = normalizePicked(ewAnswer.value);
-          const rejected = suggested.filter((x) => !chosen.includes(x));
-          const proceed = chosen.includes('proceed_at_own_risk');
-          const evidence = proceed ? collectDecisionEvidenceSummaries(undefined) : [];
-          const fp = proceed ? computeDecisionEvidenceFingerprint(evidence) : undefined;
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'STATE_UPDATE',
-            actor: 'Orchestrator',
-            inputs_summary: 'clarification_answers → EARLY_WARNING_USER_CHOICE',
-            outputs_summary: `EARLY_WARNING_USER_CHOICE: chosen=${chosen.join(',') || '∅'} rejected=${rejected.join(',') || '∅'}`,
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'EARLY_WARNING_USER_CHOICE',
-              early_warning_id: ew?.early_warning_id,
-              suggested_actions: suggested,
-              chosen_actions: chosen,
-              rejected_actions: rejected,
-              ...(proceed && fp
-                ? {
-                    event: 'PROCEED_AT_OWN_RISK',
-                    evidence_fingerprint: fp.evidence_fingerprint,
-                    acknowledged_violations: fp.acknowledged_violations,
-                    max_violation_slack: fp.max_violation_slack,
-                  }
-                : {}),
-            },
-          });
-
-          // Conversion Learning: CLARIFICATION_FEEDBACK — bind the choice to the option snapshot at presentation time.
-          const snap = (state.decision_log ?? [])
-            .slice()
-            .reverse()
-            .find((e) => e?.metadata?.system_action === 'EARLY_WARNING_INTERCEPT')?.metadata?.options_snapshot as any[] | undefined;
-          const top = Array.isArray(snap)
-            ? snap
-                .filter((o) => o && typeof o === 'object' && typeof (o as any).metadata?.score === 'number')
-                .sort((a, b) => ((b as any).metadata.score as number) - ((a as any).metadata.score as number))[0]
-            : undefined;
-          const topValue = top ? String((top as any).value ?? '') : '';
-          const reward = proceed ? -1 : topValue && chosen.includes(topValue) ? 1 : 0;
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'STATE_UPDATE',
-            actor: 'Orchestrator',
-            inputs_summary: 'clarification_answers → CLARIFICATION_FEEDBACK (EARLY_WARNING)',
-            outputs_summary: `CLARIFICATION_FEEDBACK: q=early_warning_relaxations reward=${reward}`,
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'CLARIFICATION_FEEDBACK',
-              questionId: 'early_warning_relaxations',
-              early_warning_id: ew?.early_warning_id,
-              dominant_cid: (top as any)?.metadata?.dominant_cid ?? (ew as any)?.conflict_type,
-              fingerprint: (state.metadata as any)?.last_relaxation_fingerprint,
-              oscillation_k: 0,
-              options_snapshot: Array.isArray(snap) ? snap : [],
-              chosen_actions: chosen,
-              top_scored_value: topValue || undefined,
-              reward,
-            },
-          });
-
-          // 回灌到 CaseStore：记录 shown/chosen_top/proceeded/rejected（best-effort，不阻塞）
-          if (this.localCaseStore && Array.isArray(snap)) {
-            const sig = SignatureBuilder.buildConversionSignature({
-              conflict_type: ((ew as any)?.conflict_type ?? 'MIXED') as any,
-              primary_violation_type: (top as any)?.metadata?.dominant_cid,
-              region_id: (state.trip_plan_request as any)?.region_id,
-              start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
-            }) as any;
-            Promise.resolve()
-              .then(() => {
-                for (const o of snap) {
-                  const v = String((o as any)?.value ?? '');
-                  if (!v) continue;
-                  this.localCaseStore!.recordConversion({ signature: sig, action: v as any, kind: 'shown' });
-                }
-                if (proceed) this.localCaseStore!.recordConversion({ signature: sig, action: 'proceed_at_own_risk', kind: 'proceeded' });
-                if (topValue && chosen.includes(topValue)) this.localCaseStore!.recordConversion({ signature: sig, action: topValue as any, kind: 'chosen_top' });
-                // targeted rejection: only count top-scored action rejected when user didn't pick it.
-                if (topValue && !chosen.includes(topValue)) {
-                  this.localCaseStore!.recordConversion({ signature: sig, action: topValue as any, kind: 'rejected' });
-                }
-              })
-              .catch(() => undefined);
-          }
-        }
-
-        if (pgAnswer) {
-          const chosen = normalizePicked(pgAnswer.value);
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'STATE_UPDATE',
-            actor: 'Orchestrator',
-            inputs_summary: 'clarification_answers → PLAN_GEN_USER_CHOICE',
-            outputs_summary: `PLAN_GEN_USER_CHOICE: chosen=${chosen.join(',') || '∅'}`,
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'PLAN_GEN_USER_CHOICE',
-              chosen_actions: chosen,
-            },
-          });
-
-          const snap = (state.decision_log ?? [])
-            .slice()
-            .reverse()
-            .find((e) => e?.metadata?.system_action === 'PLAN_GEN_EMPTY_DRAFT_CLARIFICATION')?.metadata?.options_snapshot as any[] | undefined;
-          const top = Array.isArray(snap)
-            ? snap
-                .filter((o) => o && typeof o === 'object' && typeof (o as any).metadata?.score === 'number')
-                .sort((a, b) => ((b as any).metadata.score as number) - ((a as any).metadata.score as number))[0]
-            : undefined;
-          const topValue = top ? String((top as any).value ?? '') : '';
-          const reward = chosen.includes('accept_no_solution') ? -1 : topValue && chosen.includes(topValue) ? 1 : 0;
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'STATE_UPDATE',
-            actor: 'Orchestrator',
-            inputs_summary: 'clarification_answers → CLARIFICATION_FEEDBACK (PLAN_GEN)',
-            outputs_summary: `CLARIFICATION_FEEDBACK: q=plan_gen_empty_draft_relax_constraints reward=${reward}`,
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'CLARIFICATION_FEEDBACK',
-              questionId: 'plan_gen_empty_draft_relax_constraints',
-              dominant_cid: (top as any)?.metadata?.dominant_cid,
-              fingerprint: (state.metadata as any)?.last_relaxation_fingerprint,
-              oscillation_k: 0,
-              options_snapshot: Array.isArray(snap) ? snap : [],
-              chosen_actions: chosen,
-              top_scored_value: topValue || undefined,
-              reward,
-            },
-          });
-
-          if (this.localCaseStore && Array.isArray(snap)) {
-            const sig = SignatureBuilder.buildConversionSignature({
-              conflict_type: 'MIXED',
-              primary_violation_type: (top as any)?.metadata?.dominant_cid,
-              region_id: (state.trip_plan_request as any)?.region_id,
-              start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
-            }) as any;
-            Promise.resolve()
-              .then(() => {
-                for (const o of snap) {
-                  const v = String((o as any)?.value ?? '');
-                  if (!v) continue;
-                  this.localCaseStore!.recordConversion({ signature: sig, action: v as any, kind: 'shown' });
-                }
-                if (topValue && chosen.includes(topValue)) this.localCaseStore!.recordConversion({ signature: sig, action: topValue as any, kind: 'chosen_top' });
-                if (topValue && !chosen.includes(topValue)) {
-                  this.localCaseStore!.recordConversion({ signature: sig, action: topValue as any, kind: 'rejected' });
-                }
-              })
-              .catch(() => undefined);
-          }
-        }
-
-        if (transportClarificationApplied) {
-          state.metadata = {
-            ...(state.metadata ?? {}),
-            transport_research_followup: true,
-            last_transport_clarification_fingerprint: fingerprint,
-          } as any;
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'INTAKE',
-            actor: 'Orchestrator',
-            inputs_summary: 'clarification_answers → clarify_transport_endpoints_v1',
-            outputs_summary: 'TRANSPORT_ENDPOINTS_PATCHED; next RESEARCH may run transport_only',
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'CLARIFY_TRANSPORT_ENDPOINTS_APPLIED',
-              fingerprint,
-            },
-          });
-        }
-      }
-
-      state.trip_plan_request = tripPlanRequest;
-      state.metadata.intake_user_message = request.message;
-
-      if (this.decisionKernel) {
-        const intakeCtx: import('../../decision/kernel/interfaces/phase-executor.interface').IntakeExecutorContext = {
-          requestId: state.request_id,
-          userId: request.user_id,
-          tripPlanRequest: tripPlanRequest as any,
-          orchestratorState: state,
-          locale: request.conversation_context?.locale,
-        };
-        const dso = this.decisionKernel.createInitialState(state.request_id, this.kernelCreateInitialOpts(request, state));
-        const result = await this.decisionKernel.executeIntake(dso, intakeCtx);
-
-        state.gaps = result.gaps as OrchestratorState['gaps'];
-        state.clarification_questions = result.clarificationQuestions as any;
-        if ((result as any).simulation) {
-          (state.metadata as any) = { ...(state.metadata ?? {}), intake_simulation: (result as any).simulation };
-        }
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'INTAKE',
-          actor: 'Planner',
-          inputs_summary: formatIntakeInputsPreviewZh(request.message, 100),
-          outputs_summary: formatIntakeOutputsZh(result.intent ?? 'PLAN_TRIP', result.gaps.length),
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: {
-            duration_ms: Date.now() - stepStartTime,
-            gaps: result.gaps,
-            candidate_structure: result.candidate_structure,
-            clarification_questions_count: result.clarificationQuestions?.length || 0,
-          },
-        });
-      } else {
-        // P3 D.1: 降级路径统一为 util 规则识别，不再直接调用 plannerAgent
-        const gaps = identifyGapsFromRequest(tripPlanRequest);
-        state.gaps = gaps as OrchestratorState['gaps'];
-        const hardGaps = gaps.filter((g) => g.severity === 'HARD');
-        if (hardGaps.length > 0) {
-          state.clarification_questions = generateClarificationQuestions(hardGaps, tripPlanRequest, {
-            locale: request.conversation_context?.locale,
-          });
-        }
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'INTAKE',
-          actor: 'Orchestrator',
-          inputs_summary: formatIntakeInputsPreviewZh(request.message, 100),
-          outputs_summary: formatIntakeOutputsZh('PLAN_TRIP', gaps.length),
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: {
-            duration_ms: Date.now() - stepStartTime,
-            gaps,
-            clarification_questions_count: state.clarification_questions?.length || 0,
-          },
-        });
-      }
-
-      state.metadata.last_updated_at = new Date().toISOString();
-      await this.generateDecisionStepForStep(state, 'INTAKE', 'Planner');
-    } catch (error: any) {
-      this.logger.error(`[Claude Orchestrator] INTAKE 步骤失败: ${error?.message}`);
-      throw error;
+  private getPoiSelectionNode(): PoiSelectionOrchestratorNode {
+    if (!this.poiSelectionOrchestratorNode) {
+      this.poiSelectionOrchestratorNode = new PoiSelectionOrchestratorNode(this.createPoiSelectionNodeHost());
     }
+    return this.poiSelectionOrchestratorNode;
+  }
+
+  private createPoiSelectionPhaseHost(): PoiSelectionPhaseHost {
+    return {
+      logger: this.logger,
+      llmService: this.llmService,
+      resolvePoiPolicy: (explicit, require) => this.resolvePoiPolicy(explicit, require),
+      inferCountryFromDestination: (dest) => this.inferCountryFromDestination(dest),
+      normalizeText: (s) => this.normalizeText(s),
+      dedupePois: (pois) => this.dedupePois(pois),
+      loadTripPlacePoiEvidenceForAdjust: (tripId, userId) =>
+        this.loadTripPlacePoiEvidenceForAdjust(tripId, userId),
+      resolveItineraryAdjustNeighborContext: (tripId, targetDateIso, userId) =>
+        this.resolveItineraryAdjustNeighborContextForHost(tripId, targetDateIso, userId),
+      supplementItineraryAdjustCorridorPois: (params) =>
+        this.supplementItineraryAdjustCorridorPoisForHost(params),
+      applyPoiPlanningToResearchPois: (pois, dso, country) =>
+        this.applyPoiPlanningToResearchPois(pois, dso, country),
+      passesHardPoiGuards: (poi, country, dest) =>
+        this.passesHardPoiGuards(poi, country, dest),
+      poiLocalityScore: (poi, country, city) => this.poiLocalityScore(poi, country, city),
+      selectClusteredPois: (ranked, topN, coords, dest) =>
+        this.selectClusteredPois(
+          ranked,
+          topN,
+          coords as { lat: number; lng: number },
+          dest,
+        ),
+      buildPoiPlanningAnchorFallbackStub: (slug) => this.buildPoiPlanningAnchorFallbackStub(slug),
+      tryExtractStartCoordinates: (origin) => this.tryExtractStartCoordinates(origin),
+      toPoiTraceNode: (poi) => this.toPoiTraceNode(poi),
+      buildPoiTraceCommuteMatrix: (nodes, mode, coords) =>
+        this.buildPoiTraceCommuteMatrix(
+          nodes as Array<{ name: string; coordinates?: { lat: number; lng: number } }>,
+          mode as 'walk' | 'drive' | 'transit' | 'mixed' | undefined,
+          coords as { lat: number; lng: number } | undefined,
+        ),
+      estimateNearestTotalCommuteMinutes: (nodes, mode, coords) =>
+        this.estimateNearestTotalCommuteMinutes(
+          nodes as Array<{ name: string; coordinates?: { lat: number; lng: number } }>,
+          mode as 'walk' | 'drive' | 'transit' | 'mixed' | undefined,
+          coords as { lat: number; lng: number } | undefined,
+        ),
+      countryDisplayName: (country) => this.countryDisplayName(country),
+      buildPoiCountryClarificationQuestion: (dest, country) =>
+        this.buildPoiCountryClarificationQuestion(dest, country),
+      recordPoiPlanningOutcomeAfterSelection: (st, dso, scored, diag) =>
+        this.recordPoiPlanningOutcomeAfterSelection(st, dso, scored, diag),
+      generateDecisionStepForStep: (st, step, actor) =>
+        this.generateDecisionStepForStep(st, step, actor as SubAgentType),
+    };
+  }
+
+  private createPoiSelectionNodeHost(): PoiSelectionNodeHost {
+    const phaseHost = this.createPoiSelectionPhaseHost();
+    return {
+      logger: this.logger,
+      executePoiSelectionStep: (st, dso) => runPoiSelectionPhase(phaseHost, { state: st, decisionState: dso }),
+      maybeSnapshot: (st, trigger) => this.maybeSnapshot(st, trigger),
+      applyFallbackPlan: (st) => this.applyFallbackPlan(st),
+      recordPoiPlanningOutcomeAfterItinerary: (st, dso) =>
+        this.recordPoiPlanningOutcomeAfterItinerary(st, dso),
+      buildSuccessResult: (st, start, dso, ctx) =>
+        this.buildSuccessResult(st, start, dso, ctx),
+      buildClarificationResult: (st, start, dso, ctx) =>
+        this.buildClarificationResult(st, start, dso, ctx),
+    };
+  }
+
+  private gateEvalOrchestratorNode?: GateEvalOrchestratorNode;
+
+  private getGateEvalNode(): GateEvalOrchestratorNode {
+    if (!this.gateEvalOrchestratorNode) {
+      this.gateEvalOrchestratorNode = new GateEvalOrchestratorNode(this.createGateEvalNodeHost());
+    }
+    return this.gateEvalOrchestratorNode;
+  }
+
+  private createGateEvalPhaseHost(): GateEvalPhaseHost {
+    return {
+      logger: this.logger,
+      isKernelNativeExecution: (c) => this.isKernelNativeExecution(c),
+      decisionKernel: this.decisionKernel,
+      syncOrchestratorFromDecisionState: (newState, st) => {
+        const derived = decisionStateToOrchestratorState(newState, st);
+        Object.assign(st, derived);
+      },
+      generateDecisionStepForStep: (st, step, actor) =>
+        this.generateDecisionStepForStep(st, step, actor),
+      executePhaseViaKernel: (dso, st, phase, run) =>
+        this.executePhaseViaKernel(dso, st, phase, run),
+      executeGateEvalStep: (req, ctx, st, llm) =>
+        this.executeGateEvalStep(req, ctx, st, llm),
+      enrichGuardianDebateTripContextAfterGateEval: (st) =>
+        this.enrichGuardianDebateTripContextAfterGateEval(st),
+      applyMarathonPipelineSignals: (st, req) => this.applyMarathonPipelineSignals(st, req),
+      onGateEvalCompleted: (st, req) => recordGateEvalTrajectoryDraft(this.decisionTrajectoryInterlocutor, st, req),
+    };
+  }
+
+  private createGateEvalNodeHost(): GateEvalNodeHost {
+    const phaseHost = this.createGateEvalPhaseHost();
+    return {
+      logger: this.logger,
+      touchAsyncTaskProgress: (step) =>
+        this.touchAsyncTaskProgress(step as OrchestrationStep),
+      executeGateEvalPhase: (dso, st, req, ctx, llm) =>
+        runGateEvalPhase(phaseHost, {
+          decisionState: dso,
+          state: st,
+          request: req,
+          context: ctx,
+          llmProvider: llm,
+        }),
+      relaxGateForPartialIfEligible: (st) => this.relaxGateForPartialIfEligible(st),
+      applyMarathonPipelineSignals: (st, req) => this.applyMarathonPipelineSignals(st, req),
+      maybeStartGuardiansDebateShadowAfterGate: (req, st) =>
+        this.maybeStartGuardiansDebateShadowAfterGate(req, st),
+      maybeAwaitGuardiansDebateFuseAndShortCircuit: async (req, st, dso, ctx, start, deadline) => {
+        const r = await this.maybeAwaitGuardiansDebateFuseAndShortCircuit(
+          req,
+          st,
+          dso,
+          ctx,
+          start,
+          deadline,
+        );
+        return r ?? null;
+      },
+      maybeSnapshot: (st, trigger) => this.maybeSnapshot(st, trigger),
+      recordPoiPlanningOutcomeAfterItinerary: (st, dso) =>
+        this.recordPoiPlanningOutcomeAfterItinerary(st, dso),
+      buildBlockedResult: (st, start, dso, ctx) =>
+        this.buildBlockedResult(st, start, dso, ctx),
+      isGateBlocked: (st) => st.gate_result?.gate_result === 'BLOCK',
+    };
+  }
+
+  private contextBuildOrchestratorNode?: ContextBuildOrchestratorNode;
+
+  private getContextBuildNode(): ContextBuildOrchestratorNode {
+    if (!this.contextBuildOrchestratorNode) {
+      this.contextBuildOrchestratorNode = new ContextBuildOrchestratorNode(
+        this.createContextBuildNodeHost(),
+      );
+    }
+    return this.contextBuildOrchestratorNode;
+  }
+
+  private createContextBuildPhaseHost(): ContextBuildPhaseHost {
+    return {
+      logger: this.logger,
+      decisionKernel: this.decisionKernel,
+      memoryPort: this.agentMemoryContextStore
+        ? {
+            getTravelerNationality: () =>
+              this.agentMemoryContextStore!.get()?.userBasics?.nationality,
+          }
+        : undefined,
+      extractCountryCodeFromMessage: (msg) => this.extractCountryCodeFromMessage(msg),
+    };
+  }
+
+  private createContextBuildNodeHost(): ContextBuildNodeHost {
+    const phaseHost = this.createContextBuildPhaseHost();
+    return {
+      logger: this.logger,
+      executeContextBuildStep: (req, ctx, st, dso) =>
+        runContextBuildPhase(phaseHost, { request: req, context: ctx, state: st, decisionState: dso }),
+      maybeSnapshot: (st, trigger) => this.maybeSnapshot(st, trigger),
+    };
   }
 
   /**
@@ -8677,8 +11212,367 @@ ${JSON.stringify(routingDecision, null, 2)}
     state.metadata = m as OrchestratorState['metadata'];
   }
 
+  private researchOrchestratorNode?: ResearchOrchestratorNode;
+
+  private getResearchNode(): ResearchOrchestratorNode {
+    if (!this.researchOrchestratorNode) {
+      this.researchOrchestratorNode = new ResearchOrchestratorNode(this.createResearchNodeHost());
+    }
+    return this.researchOrchestratorNode;
+  }
+
+  private createResearchPhaseHost(): ResearchPhaseHost {
+    return {
+      logger: this.logger,
+      isKernelNativeExecution: (c) => this.isKernelNativeExecution(c),
+      decisionKernel: this.decisionKernel,
+      researchPriorSnapshot: this.researchPriorSnapshot,
+      clearResearchAtomicPendingMetadata: (s) => this.clearResearchAtomicPendingMetadata(s),
+      syncOrchestratorFromDecisionState: (newState, st) => {
+        const derived = decisionStateToOrchestratorState(newState, st);
+        Object.assign(st, derived);
+      },
+      generateDecisionStepForStep: (s, step, actor) => this.generateDecisionStepForStep(s, step, actor),
+      executePhaseViaKernel: (dso, st, phase, run) =>
+        this.executePhaseViaKernel(dso, st, phase, async () => {
+          await run();
+        }),
+      executeResearchStep: async (req, ctx, st, llm, dso) => {
+        await this.executeResearchStep(req, ctx, st, llm, dso);
+      },
+    };
+  }
+
+  private createResearchNodeHost(): ResearchNodeHost {
+    const phaseHost = this.createResearchPhaseHost();
+    return {
+      logger: this.logger,
+      touchAsyncTaskProgress: (step) =>
+        this.touchAsyncTaskProgress(step as OrchestrationStep),
+      executeResearchPhase: (dso, st, req, ctx, llm) =>
+        runResearchPhase(phaseHost, {
+          decisionState: dso,
+          state: st,
+          request: req,
+          context: ctx,
+          llmProvider: llm,
+        }),
+      maybeSnapshot: (st, trigger) => this.maybeSnapshot(st, trigger),
+      maybeInterceptDegradedTransportEvidence: (st, dso, startTime, ctx) =>
+        this.maybeInterceptDegradedTransportEvidence(st, dso, startTime, ctx) ?? null,
+      clearTransportClarifyReinjectFlag: (st) => {
+        if ((st.metadata as Record<string, unknown>)?.transport_clarify_force_reinject) {
+          st.metadata = { ...(st.metadata ?? {}), transport_clarify_force_reinject: false } as OrchestratorState['metadata'];
+        }
+      },
+      runShadowConflictEarlyWarning: (dso, st, req) =>
+        this.runShadowConflictEarlyWarningAfterResearch(dso, st, req),
+      applyIntakePredictiveFailureReport: (dso, st) =>
+        this.applyIntakePredictiveFailureReportAfterResearch(dso, st),
+      runEarlyWarningClarificationIntercept: (input, dso) =>
+        this.runEarlyWarningClarificationInterceptAfterResearch(input, dso),
+    };
+  }
+
+  private async runShadowConflictEarlyWarningAfterResearch(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+  ): Promise<void> {
+    if (!this.shadowConflictScanner) return;
+    try {
+      const ew = await this.shadowConflictScanner.scan({
+        decisionKernel: this.decisionKernel,
+        decisionState,
+        state,
+        request,
+      });
+      if (!ew) return;
+      const early_warning_id =
+        ew.early_warning_id ??
+        this.djb2Fingerprint({
+          request_id: state.request_id,
+          risk_level: ew.risk_level,
+          conflict_type: ew.conflict_type,
+          evidence_summary: ew.evidence_summary,
+          suggested_actions: (ew.suggested_actions ?? [])
+            .map((s) => ({
+              relaxation_type: s.relaxation_type,
+              shadow_confidence: s.shadow_confidence,
+              violations_before: s.violations_before,
+              violations_after: s.violations_after,
+              fixed_conflict_types: (s.fixed_conflict_types ?? []).slice().sort(),
+            }))
+            .sort((a, b) => a.relaxation_type.localeCompare(b.relaxation_type)),
+        });
+      const withId: EarlyWarning = { ...ew, early_warning_id };
+      state.metadata = { ...(state.metadata ?? {}), early_warning: withId } as OrchestratorState['metadata'];
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'RESEARCH',
+        actor: 'Orchestrator',
+        inputs_summary: 'ShadowConflictScanner (post-RESEARCH)',
+        outputs_summary: `EARLY_WARNING: id=${early_warning_id} risk=${ew.risk_level} type=${ew.conflict_type} suggestions=${ew.suggested_actions.length}`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: {
+          system_action: 'EARLY_WARNING',
+          early_warning: withId,
+        },
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.debug(`[Claude Orchestrator] Early warning scan skipped: ${msg}`);
+    }
+  }
+
+  private applyIntakePredictiveFailureReportAfterResearch(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+  ): void {
+    const intakeSim = (state.metadata as Record<string, unknown>)?.intake_simulation as
+      | { simulatedRepairTraces?: import('./route-feasibility.types').SimulatedRepairTrace[] }
+      | undefined;
+    const simTraces = intakeSim?.simulatedRepairTraces ?? [];
+    if (simTraces.length === 0) return;
+    const audit_text = formatPredictiveFailureReport(simTraces);
+    const simDigest = digestSimulatedRepairTracesForCorrelation(simTraces as unknown[]);
+    const tripDigest = digestTripPlanRequestLight(state.trip_plan_request ?? {});
+    const predictiveStateHash = computePredictiveFailureStateHash({
+      dsoVersion: decisionState?.systemState?.version ?? 0,
+      simulatedTracesDigest: simDigest,
+      tripDigest,
+    });
+    const predictiveCorrelationId = buildDecisionFeedbackCorrelationId({
+      sessionId: state.request_id,
+      phase: 'INTAKE',
+      kind: 'PREDICTIVE_FAILURE',
+      roundIndex: 0,
+      stateHash: predictiveStateHash,
+    });
+    const predictive_failure_report = {
+      card_type: 'PREDICTIVE_FAILURE_REPORT' as const,
+      correlationId: predictiveCorrelationId,
+      audit_text,
+      simulated_repair_traces: simTraces,
+    };
+    const existingEw = (state.metadata as Record<string, unknown>)?.early_warning as EarlyWarning | undefined;
+    const mergedEw: EarlyWarning = existingEw
+      ? { ...existingEw, predictive_failure_report }
+      : {
+          early_warning_id: `pred-${state.request_id}`,
+          risk_level: 'MEDIUM',
+          conflict_type: 'MIXED',
+          evidence_summary: 'INTAKE_PREDICTIVE_SIMULATION',
+          suggested_actions: [],
+          predictive_failure_report,
+        };
+    state.metadata = { ...(state.metadata ?? {}), early_warning: mergedEw } as OrchestratorState['metadata'];
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'RESEARCH',
+      actor: 'Orchestrator',
+      inputs_summary: 'IntakeCompilerService simulation → PREDICTIVE_FAILURE_REPORT',
+      outputs_summary: `PREDICTIVE_FAILURE_REPORT: traces=${simTraces.length}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        system_action: 'PREDICTIVE_FAILURE_REPORT',
+        correlation_id: predictiveCorrelationId,
+        predictive_failure_report,
+      },
+    });
+  }
+
+  private async runEarlyWarningClarificationInterceptAfterResearch(
+    input: import('../orchestration/graph/nodes/base.node').ResearchPrePlanSegmentInput,
+    decisionState: DecisionState | undefined,
+  ): Promise<import('../orchestration/graph/orchestration-graph.types').GraphRunOutcome | null> {
+    const { request, context, state, prePlan } = input;
+    const ewMeta = (state.metadata as Record<string, unknown>)?.early_warning as EarlyWarning | undefined;
+    if (!ewMeta || (ewMeta.risk_level !== 'HIGH' && ewMeta.risk_level !== 'CRITICAL')) {
+      return null;
+    }
+    const clarAnswers = (request as RouteAndRunRequestDto & { clarification_answers?: Array<{ questionId?: string }> })
+      .clarification_answers;
+    const answeredEarlyWarning = clarAnswers?.some((a) => a?.questionId === 'early_warning_relaxations');
+    const earlyWarningAcknowledged =
+      (state.metadata as Record<string, unknown>)?.early_warning_acknowledged === true ||
+      decisionState?.systemState?.earlyWarningAcknowledged === true;
+    if (answeredEarlyWarning || earlyWarningAcknowledged) {
+      return null;
+    }
+    const ab = (() => {
+      const fp = this.djb2Fingerprint({ request_id: state.request_id, exp: 'ew_l3_prompt_v1' });
+      const hex = fp.includes(':') ? fp.split(':')[1] : fp;
+      const n = parseInt(hex.slice(-8), 16);
+      const bucket = Number.isFinite(n) ? n % 100 : 0;
+      return { fingerprint: fp, bucket, treatment: bucket < 50 };
+    })();
+    const supported = new Set(['upgrade_vehicle_to_4wd', 'increase_days_by_1', 'drop_one_must_include_poi']);
+    const dedup = new Map<string, (typeof ewMeta.suggested_actions)[number]>();
+    for (const s of ewMeta.suggested_actions ?? []) {
+      if (s?.relaxation_type && supported.has(s.relaxation_type) && !dedup.has(s.relaxation_type)) {
+        dedup.set(s.relaxation_type, s);
+      }
+    }
+    const list = [...dedup.values()];
+    if (list.length === 0) return null;
+    const anyHigh = list.some((s) => s.shadow_confidence === 'high_probability_fixed');
+    this.logger.warn(
+      `[Claude Orchestrator] EARLY_WARNING intercept: risk=${ewMeta.risk_level} type=${ewMeta.conflict_type} options=${list.length}`,
+    );
+    const risk = calculateEarlyWarningRisk(
+      {
+        risk_level: ewMeta.risk_level,
+        conflict_type: ewMeta.conflict_type,
+        suggested_actions: list,
+      },
+      { request_id: state.request_id },
+    );
+    const failure_risk_score = risk.score;
+    const failure_prob_hint = (() => {
+      if (!ab.treatment) return undefined;
+      if (failure_risk_score >= 0.8) {
+        return `【高危逻辑拦截】若保持现状继续，预计撞墙风险很高（score=${failure_risk_score.toFixed(2)}）。建议立即选择一项修复以恢复物理可行域。`;
+      }
+      if (failure_risk_score >= 0.4) {
+        return `【运行风险提示】该配置存在较高后续回溯成本（score=${failure_risk_score.toFixed(2)}）。建议优先修复，避免反复试错。`;
+      }
+      return `【提示】已检测到潜在风险（score=${failure_risk_score.toFixed(2)}），建议先修复再继续。`;
+    })();
+    const l3Line = (() => {
+      if (!ab.treatment) return undefined;
+      const cid =
+        ewMeta.conflict_type === 'REACHABILITY'
+          ? CONSTRAINT_IDS.TERRAIN_F_ROAD_COMPATIBILITY
+          : ewMeta.conflict_type === 'SCOPE'
+            ? CONSTRAINT_IDS.TIME_SPACE_ETA_FEASIBILITY
+            : CONSTRAINT_IDS.TIME_SPACE_ETA_FEASIBILITY;
+      const mode = selectPersuasionMode(cid);
+      const out = buildL3PersuasionLine({
+        mode,
+        proof: {
+          cid,
+          unit: 'bool',
+          slack: -1,
+          evidence: ewMeta.evidence_summary
+            ? { source: 'SHADOW_GATE', refIds: [String(ewMeta.early_warning_id ?? 'early_warning')] }
+            : { source: 'SHADOW_GATE' },
+        },
+      });
+      return out?.line;
+    })();
+    const questionHeader = ab.treatment
+      ? `[SYSTEM_ACTION]: EARLY_WARNING(L3) 风险=${ewMeta.risk_level}（${ewMeta.conflict_type}）。`
+      : `[SYSTEM_ACTION]: EARLY_WARNING 风险=${ewMeta.risk_level}（${ewMeta.conflict_type}）。`;
+    const questionBody = `${ewMeta.evidence_summary} 请在 POI 选择与排程前确认一项或多项“物理可行域”放宽（影子推演置信度已标注）。`;
+    const question = `${questionHeader}${failure_prob_hint ? `\n${failure_prob_hint}\n` : ''}${l3Line ? `\n${l3Line}\n` : ''}${questionBody}`;
+    const topPrecedent = Array.isArray((ewMeta as any).historical_precedents)
+      ? ((ewMeta as any).historical_precedents[0] as any)
+      : undefined;
+    const oscillation_k = decisionState?.systemState?.consecutiveSameRelaxationAttempts ?? 0;
+    const dominant_cid =
+      String((decisionState as DecisionState & { constraints?: { violations?: Array<{ type?: string }> } })?.constraints?.violations?.[0]?.type ?? '').trim() ||
+      (ewMeta.conflict_type === 'REACHABILITY' ? 'REACHABILITY_HARD' : ewMeta.conflict_type === 'SCOPE' ? 'SCOPE' : 'MIXED');
+    const is_hard = ewMeta.conflict_type === 'REACHABILITY' || ewMeta.risk_level === 'CRITICAL';
+    const scored = list
+      .map((s) => {
+        const id = s.relaxation_type as RelaxationActionId;
+        const persuasion = this.localCaseStore?.getPersuasionRate({
+          signature: SignatureBuilder.buildConversionSignature({
+            conflict_type: ewMeta.conflict_type,
+            primary_violation_type: dominant_cid,
+            region_id: (state.trip_plan_request as any)?.region_id,
+            start_date: (state.trip_plan_request as any)?.start_date ?? state.trip_plan_request?.date_range?.start_date,
+          }),
+          action: id,
+        });
+        const breakdown = ConstraintScorer.calculateScore(id, {
+          dominant_cid,
+          is_hard,
+          oscillation_k,
+          precedent: topPrecedent,
+          preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
+          persuasion,
+          delta: 1.5,
+        });
+        return { s, breakdown };
+      })
+      .sort((a, b) => b.breakdown.score - a.breakdown.score);
+    state.clarification_questions = [
+      {
+        id: 'early_warning_relaxations',
+        question,
+        type: anyHigh ? 'single_choice' : 'multi_choice',
+        required: true,
+        options: [
+          ...scored.map(({ s, breakdown }) => ({
+            value: s.relaxation_type,
+            label: `${s.relaxation_type}｜${s.impact_description}（${
+              s.shadow_confidence === 'high_probability_fixed' ? 'high_probability_fixed' : 'needs_more_changes'
+            }）`,
+            metadata: {
+              score: breakdown.score,
+              weights: breakdown.weights,
+              dominant_cid: breakdown.dominant_cid,
+              precedent_n: breakdown.precedent_n,
+              terms: breakdown.terms,
+            },
+          })),
+          {
+            value: 'proceed_at_own_risk',
+            label: '[实验性] 保持现状继续规划（可能导致失败）',
+            metadata: {
+              score: ConstraintScorer.calculateScore('proceed_at_own_risk', {
+                dominant_cid,
+                is_hard,
+                oscillation_k,
+                precedent: topPrecedent,
+                preset: is_hard ? 'ICELAND_HARD' : 'SOFT_PREFERENCE',
+              }).score,
+              dominant_cid,
+              precedent_n: typeof topPrecedent?.sample_count === 'number' ? topPrecedent.sample_count : 0,
+            },
+          },
+        ] as any,
+        hint: '提交后下一回合将合并写入 TripPlanRequest；再次规划时可行域已被物理修复。也可选择「自担风险继续」跳过拦截（撞南墙模式，仍可能进入 PLAN_GEN 熔断）。',
+      },
+    ];
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'RESEARCH',
+      actor: 'Orchestrator',
+      inputs_summary: 'EARLY_WARNING intercept → clarification',
+      outputs_summary: `PREVENTIVE_RELAXATION_REQUIRED: risk=${ewMeta.risk_level}`,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        system_action: 'EARLY_WARNING_INTERCEPT',
+        early_warning: ewMeta,
+        options_snapshot: (state.clarification_questions?.[0] as { options?: unknown })?.options ?? [],
+        ew_prompt_ab: ab,
+        failure_risk_score,
+        failure_risk_reason: risk.reason,
+        failure_risk_confidence: risk.confidence,
+        ...(l3Line ? { ew_l3_line: l3Line } : {}),
+        ...(failure_prob_hint ? { failure_prob_hint } : {}),
+      },
+    });
+    state.metadata = {
+      ...(state.metadata ?? {}),
+      last_updated_at: new Date().toISOString(),
+      total_duration_ms: Date.now() - prePlan.startTime,
+    } as OrchestratorState['metadata'];
+    this.maybeSnapshot(state, 'CHECKPOINT');
+    return prePlan.prePlanTerminal(
+      'terminal_clarification',
+      this.buildClarificationResult(state, prePlan.startTime, decisionState, context),
+    );
+  }
+
   /**
-   * RESEARCH 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeResearch，否则走 callback
+   * RESEARCH 阶段：委派 nodes/research-phase.executor（Kernel Lint/Harness 内聚）。
    */
   private async executeResearchPhase(
     decisionState: DecisionState | undefined,
@@ -8687,218 +11581,13 @@ ${JSON.stringify(routingDecision, null, 2)}
     context: AgentContext,
     llmProvider: LlmProvider,
   ): Promise<DecisionState | undefined> {
-    if (
-      this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) &&
-      this.decisionKernel &&
-      decisionState &&
-      state.trip_plan_request
-    ) {
-      const stepStartTime = Date.now();
-      const transportFollowup = (state.metadata as any)?.transport_research_followup === true;
-      let priorResearch: Record<string, unknown> | undefined =
-        transportFollowup &&
-        state.research_data &&
-        typeof state.research_data === 'object' &&
-        Object.keys(state.research_data as object).length > 0
-          ? (state.research_data as Record<string, unknown>)
-          : undefined;
-      if (transportFollowup && !priorResearch && this.researchPriorSnapshot) {
-        const loaded = await this.researchPriorSnapshot.load(request);
-        if (loaded && Object.keys(loaded).length > 0) {
-          priorResearch = loaded;
-          state.research_data = loaded as any;
-          state.decision_log.push({
-            request_id: state.request_id,
-            step: 'RESEARCH',
-            actor: 'Orchestrator',
-            inputs_summary: 'transport_research_followup → prior research snapshot restore',
-            outputs_summary: `PRIOR_RESEARCH_SNAPSHOT_RESTORED keys=${Object.keys(loaded).length}`,
-            evidence_refs: [],
-            timestamp: new Date().toISOString(),
-            metadata: {
-              system_action: 'PRIOR_RESEARCH_SNAPSHOT_RESTORED',
-              snapshot_keys: Object.keys(loaded).slice(0, 24),
-            },
-          });
-        }
-      }
-      const didRunTransportOnly = !!(transportFollowup && priorResearch);
-      const scopesToRecompute = (state.metadata as any)?.research_scopes_to_recompute as unknown;
-      const pendingPrior = (state.metadata as any)?.pending_research_prior_for_kernel as
-        | Record<string, unknown>
-        | undefined;
-      const priorForScoped =
-        pendingPrior && typeof pendingPrior === 'object' && Object.keys(pendingPrior).length > 0
-          ? pendingPrior
-          : state.research_data &&
-              typeof state.research_data === 'object' &&
-              Object.keys(state.research_data as object).length > 0
-            ? (state.research_data as Record<string, unknown>)
-            : undefined;
-      const scopedPartial =
-        !didRunTransportOnly &&
-        Array.isArray(scopesToRecompute) &&
-        scopesToRecompute.length > 0 &&
-        !!priorForScoped &&
-        Object.keys(priorForScoped).length > 0;
-      const rollbackSnap = (state.metadata as any)?.research_atomic_rollback_snapshot as
-        | Record<string, unknown>
-        | undefined;
-      const ctx = {
-        requestId: state.request_id,
-        routeDirectionId: request.route_direction_id ?? undefined,
-        userId: request.user_id,
-        tripPlanRequest: state.trip_plan_request,
-        recent_messages: request.conversation_context?.recent_messages,
-        ...(didRunTransportOnly
-          ? {
-              researchMode: 'transport_only' as const,
-              priorResearchData: priorResearch,
-            }
-          : scopedPartial
-            ? {
-                researchMode: 'scoped_partial' as const,
-                priorResearchData: priorForScoped,
-                researchScopesToRecompute: scopesToRecompute,
-                ...(rollbackSnap && Object.keys(rollbackSnap).length > 0
-                  ? { researchAtomicRollbackSnapshot: rollbackSnap }
-                  : {}),
-              }
-            : {}),
-      };
-      const researchExecutionKind = didRunTransportOnly
-        ? 'TRANSPORT_ONLY'
-        : scopedPartial
-          ? 'SCOPED_PARTIAL'
-          : 'FULL';
-      const researchCloneBeforeKernel = cloneResearchRecord(state.research_data as Record<string, unknown>);
-      let newState!: DecisionState;
-      let researchData!: Record<string, unknown>;
-      let teamAuditLog: ResearchTeamAuditEntry[] | undefined;
-      try {
-        const out = await this.decisionKernel.executeResearch(decisionState, ctx);
-        newState = out.newState;
-        researchData = out.researchData;
-        teamAuditLog = out.teamAuditLog;
-      } catch (kernelErr: unknown) {
-        const msg = kernelErr instanceof Error ? kernelErr.message : String(kernelErr);
-        if (researchCloneBeforeKernel && Object.keys(researchCloneBeforeKernel).length > 0) {
-          state.research_data = cloneResearchRecord(researchCloneBeforeKernel) as any;
-        } else {
-          delete state.research_data;
-        }
-        this.clearResearchAtomicPendingMetadata(state);
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'RESEARCH',
-          actor: 'Orchestrator',
-          inputs_summary: 'Kernel RESEARCH 失败，已恢复 research_data 至 Kernel 调用前快照',
-          outputs_summary: `RESEARCH_FAILURE_RESTORED: ${msg.slice(0, 240)}`,
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: {
-            system_action: 'RESEARCH_FAILURE_RESTORED',
-            error_message: msg.slice(0, 500),
-          },
-        });
-        throw kernelErr;
-      }
-      const derived = decisionStateToOrchestratorState(newState, state);
-      Object.assign(state, derived);
-      state.research_data = researchData;
-      state.current_step = 'RESEARCH';
-      if (transportFollowup) {
-        (state.metadata as any) = { ...(state.metadata ?? {}), transport_research_followup: false };
-        if (didRunTransportOnly) {
-          const te = researchData.transport_evidence as Record<string, any> | undefined;
-          const stillBad =
-            te &&
-            (te.degraded === true || te.missing === true) &&
-            te.suggested_action === TRANSPORT_SEARCH_SUGGESTED_ACTION_CLARIFY;
-          if (stillBad) {
-            (state.metadata as any).transport_clarify_force_reinject = true;
-            state.decision_log.push({
-              request_id: state.request_id,
-              step: 'RESEARCH',
-              actor: 'Orchestrator',
-              inputs_summary: 'transport_only follow-up still degraded transport_evidence',
-              outputs_summary: 'TRANSPORT_FOLLOWUP_STILL_DEGRADED → allow clarify reinject',
-              evidence_refs: [],
-              timestamp: new Date().toISOString(),
-              metadata: { system_action: 'TRANSPORT_FOLLOWUP_STILL_DEGRADED' },
-            });
-          } else {
-            (state.metadata as any).is_followup_transport_repair = true;
-          }
-        }
-      }
-      if (teamAuditLog?.length) {
-        (state.metadata as any) = {
-          ...(state.metadata ?? {}),
-          last_team_execution: {
-            at: new Date().toISOString(),
-            request_id: state.request_id,
-            research_execution_kind: researchExecutionKind,
-            team_audit_log: teamAuditLog,
-          },
-        };
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'RESEARCH',
-          actor: 'Orchestrator',
-          inputs_summary: 'Research Team 执行审计（Kernel）',
-          outputs_summary: formatResearchTeamAuditOutputsZh(teamAuditLog),
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: {
-            system_action: 'RESEARCH_TEAM_AUDIT',
-            request_id: state.request_id,
-            research_execution_kind: researchExecutionKind,
-            team_audit_log: teamAuditLog,
-          },
-        });
-      }
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'RESEARCH',
-        actor: 'Orchestrator',
-        inputs_summary: formatResearchInputsKernelZh(),
-        outputs_summary: formatResearchOutputsZh(Object.keys(researchData)),
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: {
-          duration_ms: Date.now() - stepStartTime,
-          data_types: Object.keys(researchData),
-          ...(didRunTransportOnly ? { system_action: 'TRANSPORT_RESEARCH_FOLLOWUP', research_mode: 'transport_only' } : {}),
-          ...(scopedPartial
-            ? {
-                research_mode: 'scoped_partial',
-                research_scopes_to_recompute: scopesToRecompute,
-              }
-            : {}),
-          ...(teamAuditLog?.length
-            ? {
-                research_execution_kind: researchExecutionKind,
-                team_audit_entry_count: teamAuditLog.length,
-              }
-            : {}),
-        },
-      });
-      state.metadata.last_updated_at = new Date().toISOString();
-      this.clearResearchAtomicPendingMetadata(state);
-      await this.generateDecisionStepForStep(state, 'RESEARCH', 'LocalInsight');
-      await this.researchPriorSnapshot?.save(request, researchData as Record<string, unknown>);
-      return newState;
-    }
-    if ((state.metadata as any)?.pending_research_prior_for_kernel) {
-      this.logger.warn(
-        `[Claude Orchestrator] RESEARCH 降级路径：KERNEL_NATIVE_EXECUTION 关闭，丢弃 pending COW 元数据 request_id=${state.request_id}`,
-      );
-      this.clearResearchAtomicPendingMetadata(state);
-    }
-    return this.executePhaseViaKernel(decisionState, state, 'RESEARCH', () =>
-      this.executeResearchStep(request, context, state, llmProvider, decisionState),
-    );
+    return runResearchPhase(this.createResearchPhaseHost(), {
+      decisionState,
+      state,
+      request,
+      context,
+      llmProvider,
+    });
   }
 
   /**
@@ -9037,6 +11726,26 @@ ${JSON.stringify(routingDecision, null, 2)}
     const destinationCity = this.normalizeText(destinationRaw);
 
     let deduped = this.dedupePois(asArray);
+    const routeIntent = (state.metadata as Record<string, unknown>)
+      ?.route_and_run_intent as RouteAndRunIntentAnalysis | undefined;
+    const isItineraryAdjust = routeIntent?.primary === 'ITINERARY_ADJUST';
+    let itineraryAdjustTripPoiSeedCount = 0;
+    if (isItineraryAdjust) {
+      const tripId =
+        state.trip_plan_request?.trip_id?.trim() ??
+        state.trip_plan_request?.ontology_context?.trip_id?.trim() ??
+        (state.metadata as { tripId?: string })?.tripId?.trim();
+      const userId = (state.metadata as { userId?: string })?.userId;
+      if (tripId) {
+        const tripPois = await this.loadTripPlacePoiEvidenceForAdjust(tripId, userId);
+        itineraryAdjustTripPoiSeedCount = tripPois.length;
+        if (tripPois.length) {
+          deduped = this.dedupePois([...tripPois, ...deduped]);
+          (state.metadata as Record<string, unknown>).itinerary_adjust_trip_poi_seed_count =
+            tripPois.length;
+        }
+      }
+    }
     const rejectedIds = (decisionState?.userIntent?.excludePoiIds ?? [])
       .map((x) => String(x).trim().toLowerCase())
       .filter(Boolean);
@@ -9142,9 +11851,16 @@ ${JSON.stringify(routingDecision, null, 2)}
       .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
       .join('\n');
     const skipGeoClusterForDiversity =
-      detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
-      rankedPois.length >= 3;
-    let scored = skipGeoClusterForDiversity
+      resolveSparseRegionProfile({
+        countryCode: destinationCountry,
+        destinationHint: destinationRaw,
+      })?.defaultDayAllocation === 'intentional_slack' ||
+      (detectRhythmOrDiningPlanningIntent(planningTextForDiversity) &&
+        rankedPois.length >= 3);
+    const skipGeoClusterForAdjust =
+      isItineraryAdjust && itineraryAdjustTripPoiSeedCount >= 2;
+    let scored =
+      skipGeoClusterForDiversity || skipGeoClusterForAdjust
       ? rankedPois.slice(0, topNLimit)
       : this.selectClusteredPois(
           rankedPois,
@@ -9153,7 +11869,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           destinationRaw,
         );
     /** Phase 2.6：最后一跳强制锚点进入 TopN（候选来自 rankedPois；与聚类解耦） */
-    if (destinationCountry === 'IS' && requiredAnchors.length > 0) {
+    if (destinationCountry === 'IS' && requiredAnchors.length > 0 && !skipGeoClusterForAdjust) {
       const beforeLen = scored.length;
       scored = enforceRequiredAnchorsTopN(
         scored,
@@ -9168,6 +11884,42 @@ ${JSON.stringify(routingDecision, null, 2)}
       this.logger.debug(
         `[POI_PLANNING_ADMISSION] required=${JSON.stringify(requiredAnchors)} clustered_len=${beforeLen} final_len=${scored.length}`,
       );
+    }
+
+    const sparsePoiGate = applySparseRegionPoiGate({
+      scored: scored as Record<string, unknown>[],
+      destinationCountry,
+      destinationHint: destinationRaw,
+      dedupe: (pois) => this.dedupePois(pois),
+    });
+    scored = sparsePoiGate.scored;
+    attachSparseRegionMetadata(state.metadata as Record<string, unknown>, sparsePoiGate);
+
+    const sparseProfile = sparsePoiGate.sparseProfile;
+    if (sparseProfile && planningTextForDiversity.trim()) {
+      const existingDiscovery = (state.research_data as Record<string, unknown> | undefined)
+        ?.open_world_discovery;
+      const discovery =
+        existingDiscovery && typeof existingDiscovery === 'object'
+          ? (existingDiscovery as ReturnType<typeof runOpenWorldDiscoveryBuffer>)
+          : runOpenWorldDiscoveryBuffer({
+              userMessage: planningTextForDiversity,
+              countryCode: destinationCountry,
+              destinationHint: destinationRaw,
+              regionTags: [sparseProfile.regionTag],
+              existingPoiEvidence: scored as unknown[],
+              existingStubIds: (sparsePoiGate.openWorldStubs ?? []).map((s) => s.stubId),
+            });
+      if (discovery.stubs.length > 0) {
+        scored = this.dedupePois([
+          ...(scored as unknown[]),
+          ...openWorldStubsToPoiEvidence(discovery.stubs),
+        ]);
+        const meta = state.metadata as Record<string, unknown>;
+        meta.open_world_discovery = discovery;
+        meta.open_world_discovery_applied_at = new Date().toISOString();
+        meta.open_world_stubs = [...(sparsePoiGate.openWorldStubs ?? []), ...discovery.stubs];
+      }
     }
 
     const admissionDiag: PoiPlanningAdmissionDiagnosticsInput | undefined =
@@ -9262,9 +12014,18 @@ ${JSON.stringify(routingDecision, null, 2)}
       state.trip_plan_request?.mode as any,
       startCoordinates,
     );
+    const skipCommuteClarifyForItineraryAdjust =
+      shouldSkipPoiDestinationClarificationForItineraryAdjust(
+        routeIntent?.primary,
+        itineraryAdjustTripPoiSeedCount,
+      );
     const existingTripRouteOrderOptimization =
       this.isExistingTripRouteOrderOptimizationRequest(state);
-    if (estimatedCommuteMinutes > commuteBudgetMinutes && !existingTripRouteOrderOptimization) {
+    if (
+      estimatedCommuteMinutes > commuteBudgetMinutes &&
+      !skipCommuteClarifyForItineraryAdjust &&
+      !existingTripRouteOrderOptimization
+    ) {
       const destinationExample = destinationRaw || '雷克雅未克';
       state.gaps = [
         ...(state.gaps || []),
@@ -9280,12 +12041,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           question:
             '当前目的地范围过大，单日通勤过长。请选择更聚焦的区域继续规划：',
           type: 'single_choice',
-          options: [
-            `${destinationExample} 市区`,
-            `${destinationExample} 南部`,
-            `${destinationExample} 西部`,
-            '我来手动输入具体城市/区域',
-          ],
+          options: buildDestinationScopeClarificationOptions(destinationExample),
           required: true,
         } as any,
       ];
@@ -9303,8 +12059,21 @@ ${JSON.stringify(routingDecision, null, 2)}
       };
     }
 
-    const minPoiRequired = 2;
-    if (scored.length > 0 && scored.length < minPoiRequired && !existingTripRouteOrderOptimization) {
+    const minPoiRequired = sparsePoiGate.minPoiRequired;
+    const skipSparseForItineraryAdjust = shouldSkipPoiDestinationClarificationForItineraryAdjust(
+      routeIntent?.primary,
+      itineraryAdjustTripPoiSeedCount,
+      minPoiRequired > 0 ? minPoiRequired : 2,
+    );
+    if (skipSparseForItineraryAdjust && scored.length < minPoiRequired) {
+      scored = rankedPois.slice(0, Math.max(minPoiRequired, scored.length));
+    }
+    if (
+      scored.length > 0 &&
+      scored.length < minPoiRequired &&
+      !skipSparseForItineraryAdjust &&
+      !existingTripRouteOrderOptimization
+    ) {
       const destinationExample = destinationRaw || '雷克雅未克';
       state.gaps = [
         ...(state.gaps || []),
@@ -9320,12 +12089,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           question:
             '当前目的地范围过大或过散，候选点不足以生成可执行单日行程。请选择更聚焦区域：',
           type: 'single_choice',
-          options: [
-            `${destinationExample} 市区`,
-            `${destinationExample} 近郊`,
-            `${destinationExample} 南部`,
-            '我来手动输入具体城市/区域',
-          ],
+          options: buildDestinationScopeClarificationOptions(destinationExample),
           required: true,
         } as any,
       ];
@@ -9355,6 +12119,9 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
 
     if (destinationCountry && scored.length === 0 && !existingTripRouteOrderOptimization) {
+      if (sparsePoiGate.sparseProfile) {
+        (state.metadata as Record<string, unknown>).sparse_region_no_poi_fallback = true;
+      } else {
       const destinationExample = destinationRaw ? `${destinationRaw} ${this.countryDisplayName(destinationCountry)}` : 'Tokyo, Japan';
       const fallbackDecision = {
         verdict: 'ALLOW_WITH_FALLBACK',
@@ -9393,6 +12160,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           needsClarification: true,
           allowWithFallback: false,
         };
+      }
       }
     }
 
@@ -9527,6 +12295,178 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
     if (requirePoiData) return 'strict';
     return 'fallback';
+  }
+
+  private enrichGuardianDebateTripContextAfterGateEval(state: OrchestratorState): void {
+    try {
+      enrichGuardianDebateTripContextFromGateEval(state);
+    } catch (e: any) {
+      this.logger.warn(`[Claude Orchestrator] enrichGuardianDebateTripContext failed: ${e?.message ?? e}`);
+    }
+  }
+
+  /** 极昼马拉松：回填 trip SKU、Gate SOFT 违规，避免 STATE_UPDATE 剥离后三人格误判。 */
+  private applyMarathonPipelineSignals(state: OrchestratorState, request: RouteAndRunRequestDto): void {
+    if (!state.trip_plan_request) return;
+    const intakeMsg =
+      request.message ?? (state.metadata as { intake_user_message?: string } | undefined)?.intake_user_message;
+    const signals = buildMarathonIntakeSignalsFromGaps(state.gaps, state.trip_plan_request, intakeMsg);
+    if (!signals) return;
+
+    state.trip_plan_request = applyMarathonIntakeSignalsToTripPlan(
+      state.trip_plan_request,
+      signals,
+      intakeMsg,
+    );
+    (state.metadata as Record<string, unknown>).marathon_intake_signals = signals;
+
+    if (state.gate_result) {
+      state.gate_result = enrichGateForMarathonDeferredLowerBound(
+        state.gate_result,
+        state.trip_plan_request,
+        state.gaps,
+        intakeMsg,
+      );
+    }
+  }
+
+  /**
+   * Gate 最终落定（含 `allow_partial` 放宽）后尽早启动辩论 LLM shadow，与后续 PLAN 等步骤并行；
+   * 由 Assembler `GuardiansDebateService.consumeShadowOrMerge` 消费。
+   */
+  private maybeStartGuardiansDebateShadowAfterGate(request: RouteAndRunRequestDto, state: OrchestratorState): void {
+    if (!this.guardiansDebate) return;
+    if (request.options?.enable_guardians_debate_llm !== true) return;
+    const gate = state.gate_result;
+    if (!gate) return;
+    if (this.guardiansDebate.hasFatalViolation(gate)) return;
+    this.guardiansDebate.startShadowIfEligible(request.request_id, gate, {
+      personaHint: request.options.persona_hint as TripPlanRequest['persona_hint'],
+      tripContext: state.trip_plan_request,
+      llmProvider: request.options.llm_provider,
+      personaClosureAudit: resolvePersonaClosureAudit({
+        gateResult: gate,
+        orchestratorMetadata: state.metadata as Record<string, unknown>,
+      }),
+    });
+    if (state.metadata) {
+      (state.metadata as Record<string, unknown>).debate_triggered_at = Date.now();
+      (state.metadata as Record<string, unknown>).debate_shadow_started = true;
+    }
+  }
+
+  /**
+   * PLAN_GEN 前 await 影子辩论；Abu REJECT → `NEED_USER_CONFIRM` 并短路（不生成行程草案）。
+   */
+  private async maybeAwaitGuardiansDebateFuseAndShortCircuit(
+    request: RouteAndRunRequestDto,
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+    context: AgentContext,
+    startTime: number,
+    deadline?: { remainingMs: () => number },
+  ): Promise<OrchestrationResult | undefined> {
+    if (!this.guardiansDebate || request.options?.enable_guardians_debate_llm !== true) {
+      return undefined;
+    }
+    const gateBefore = state.gate_result;
+    if (!gateBefore || this.guardiansDebate.hasFatalViolation(gateBefore)) {
+      return undefined;
+    }
+
+    const remaining = deadline?.remainingMs?.() ?? 90_000;
+    const debateBudgetMs = computeGuardiansDebateAwaitBudgetMs(remaining);
+
+    const stepStart = Date.now();
+    let gateWithDebate: GateResult;
+    let debateWaitTimedOut = false;
+    try {
+      const consumed = await this.guardiansDebate.consumeShadowOrMergeWithBudget(
+        request.request_id,
+        gateBefore,
+        {
+          personaHint: request.options.persona_hint as TripPlanRequest['persona_hint'],
+          tripContext: state.trip_plan_request,
+          llmProvider: request.options.llm_provider,
+          personaClosureAudit: resolvePersonaClosureAudit({
+            gateResult: gateBefore,
+            orchestratorMetadata: state.metadata as Record<string, unknown>,
+          }),
+        },
+        debateBudgetMs,
+      );
+      gateWithDebate = consumed.gate;
+      debateWaitTimedOut = consumed.debate_wait_timed_out;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] GuardiansDebate pre-plan await failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return undefined;
+    }
+
+    const fusion = fuseGuardianDebateVerdictIntoGate(gateWithDebate, state.trip_plan_request);
+    state.gate_result = fusion.gate;
+    state.metadata = {
+      ...(state.metadata ?? {}),
+      debate_merged_before_plan_gen: true,
+      debate_await_budget_ms: debateBudgetMs,
+      ...(debateWaitTimedOut ? { debate_wait_timed_out: true } : {}),
+      ...(fusion.fused ? { debate_gate_fusion: fusion.reason } : {}),
+    } as OrchestratorState['metadata'];
+
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'GATE_EVAL',
+      actor: 'Gatekeeper',
+      inputs_summary: formatGuardianDebateGateInputsZh(
+        debateBudgetMs,
+        extractDecisionLogTripContext({
+          tripPlanRequest: state.trip_plan_request,
+          metadata: state.metadata as Record<string, unknown>,
+        }),
+      ),
+      outputs_summary: formatGuardianDebateGateOutputsZh({
+        gateResult: fusion.gate.gate_result,
+        fused: fusion.fused,
+        fusionReason: fusion.reason,
+        guardian: {
+          abu: fusion.gate.guardian_results?.abu?.verdict,
+          drdre: fusion.gate.guardian_results?.drdre?.verdict,
+          neptune: fusion.gate.guardian_results?.neptune?.verdict,
+        },
+      }),
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        duration_ms: Date.now() - stepStart,
+        gate_result: fusion.gate.gate_result,
+        debate_source: fusion.gate.guardian_results?.source,
+        debate_gate_fusion: fusion.reason,
+        abu_verdict: fusion.gate.guardian_results?.abu?.verdict,
+        debate_wait_timed_out: debateWaitTimedOut,
+        debate_await_budget_ms: debateBudgetMs,
+      },
+    });
+
+    if (!fusion.fused || fusion.gate.gate_result !== 'NEED_USER_CONFIRM') {
+      return undefined;
+    }
+
+    const debateQuestions = buildGuardianDebateFusionClarificationQuestions(
+      fusion.gate,
+      state.trip_plan_request,
+    );
+    const existing = state.clarification_questions ?? [];
+    const merged = [...existing];
+    for (const q of debateQuestions) {
+      if (!merged.some((m) => m.id === q.id)) merged.push(q);
+    }
+    state.clarification_questions = merged;
+
+    this.logger.log(
+      `[Claude Orchestrator] Abu REJECT → NEED_USER_CONFIRM，跳过 PLAN_GEN request_id=${request.request_id}`,
+    );
+    return this.buildClarificationResult(state, startTime, decisionState, context);
   }
 
   private relaxGateForPartialIfEligible(state: OrchestratorState): void {
@@ -9673,14 +12613,33 @@ ${JSON.stringify(routingDecision, null, 2)}
     return v.trim().toLowerCase();
   }
 
+  /** Trip 表 destination 常为 ISO 码（如 IS），规划 NL 需可读国名以便检索与展示 */
+  private normalizeTripRecordDestinationForPlanning(tripDest: string): string {
+    const t = tripDest.trim();
+    if (!t) return '';
+    const upper = t.toUpperCase();
+    if (upper === 'IS') return '冰岛';
+    if (upper === 'JP') return '日本';
+    if (upper === 'KR') return '韩国';
+    if (upper === 'CN') return '中国';
+    return t;
+  }
+
   private inferCountryFromDestination(destination: string): string | undefined {
     const d = this.normalizeText(destination);
     if (!d) return undefined;
+    if (/^gl$/i.test(d.trim()) || /格陵兰|greenland|nuuk|ilulissat|伊卢利萨特|迪斯科|disko/.test(d)) {
+      return 'GL';
+    }
+    if (/^sj$/i.test(d.trim()) || /斯瓦尔巴|svalbard|longyearbyen|朗伊尔/.test(d)) {
+      return 'SJ';
+    }
     if (/东京|大阪|京都|日本|tokyo|osaka|kyoto|japan/.test(d)) return 'JP';
     if (/首尔|韩国|seoul|korea/.test(d)) return 'KR';
     if (/上海|北京|广州|深圳|杭州|成都|重庆|中国|china/.test(d)) return 'CN';
     /** 冰岛：POI_SELECTION / poiPlanning 冰岛分支依赖 ISO 国家码 IS */
-    if (/冰岛|iceland|reykjav[ií]k|雷克雅未克/.test(d)) return 'IS';
+    if (/^is$/i.test(d.trim()) || /冰岛|iceland|reykjav[ií]k|雷克雅未克/.test(d)) return 'IS';
+    if (/^[a-z]{2}$/i.test(d.trim())) return d.trim().toUpperCase();
     return undefined;
   }
 
@@ -9727,6 +12686,9 @@ ${JSON.stringify(routingDecision, null, 2)}
       DE: '德国',
       IT: '意大利',
       ES: '西班牙',
+      IS: '冰岛',
+      GL: '格陵兰',
+      SJ: '斯瓦尔巴',
     };
     return map[code] ?? code;
   }
@@ -9994,9 +12956,7 @@ ${JSON.stringify(routingDecision, null, 2)}
     return score;
   }
 
-  /**
-   * GATE_EVAL 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeGateEval，否则走 callback
-   */
+  /** GATE_EVAL 阶段（Phase 4b → gate-eval-phase.executor；Harness 失败 Kernel 内合成 BLOCK） */
   private async executeGateEvalPhase(
     decisionState: DecisionState | undefined,
     state: OrchestratorState,
@@ -10004,120 +12964,41 @@ ${JSON.stringify(routingDecision, null, 2)}
     context: AgentContext,
     llmProvider: LlmProvider,
   ): Promise<DecisionState | undefined> {
-    if (
-      this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) &&
-      this.decisionKernel &&
-      decisionState &&
-      state.trip_plan_request
-    ) {
-      const stepStartTime = Date.now();
-      const ctx = {
-        requestId: state.request_id,
-        routeDirectionId: request.route_direction_id ?? undefined,
-        userId: request.user_id,
-        tripPlanRequest: state.trip_plan_request,
-        researchData: state.research_data,
-      };
-      const { newState, gateResult } = await this.decisionKernel.executeGateEval(decisionState, ctx);
-      const derived = decisionStateToOrchestratorState(newState, state);
-      Object.assign(state, derived);
-      state.gate_result = {
-        gate_result: gateResult.gate_result,
-        violations: gateResult.violations as GateResult['violations'],
-        required_adjustments: gateResult.required_adjustments as GateResult['required_adjustments'],
-        confidence: gateResult.confidence,
-        evidence_refs: [],
-      };
-      state.current_step = 'GATE_EVAL';
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'GATE_EVAL',
-        actor: 'Gatekeeper',
-        inputs_summary: formatGateEvalInputsKernelZh(),
-        outputs_summary: formatGateEvalOutputsZh(gateResult.gate_result, gateResult.violations.length),
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: { duration_ms: Date.now() - stepStartTime },
-      });
-      state.metadata.last_updated_at = new Date().toISOString();
-      await this.generateDecisionStepForStep(state, 'GATE_EVAL', 'Gatekeeper');
-      return newState;
-    }
-    return this.executePhaseViaKernel(decisionState, state, 'GATE_EVAL', () =>
-      this.executeGateEvalStep(request, context, state, llmProvider),
-    );
+    return runGateEvalPhase(this.createGateEvalPhaseHost(), {
+      decisionState,
+      state,
+      request,
+      context,
+      llmProvider,
+    });
   }
 
-  /**
-   * PLAN_GEN 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executePlanGen
-   */
-  private async executePlanGenPhase(
-    decisionState: DecisionState | undefined,
-    state: OrchestratorState,
-    request: RouteAndRunRequestDto,
-    context: AgentContext,
-    llmProvider: LlmProvider,
-  ): Promise<DecisionState | undefined> {
-    if (this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) && this.decisionKernel && decisionState && state.trip_plan_request) {
-      const stepStartTime = Date.now();
-      let dsoForPlan = decisionState;
-      if (
-        dsoForPlan.systemState?.pendingMigrations?.length &&
-        (dsoForPlan.tripState?.planDraft as { days?: unknown[] } | undefined)?.days?.length
-      ) {
-        dsoForPlan = this.decisionKernel.applyPrePlanMigrationInjections(dsoForPlan);
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'CONTEXT_BUILD',
-          actor: 'Orchestrator',
-          inputs_summary: '消费 DSO.systemState.pendingMigrations → 注入既有 planDraft',
-          outputs_summary: `剩余待迁移条目=${dsoForPlan.systemState?.pendingMigrations?.length ?? 0}`,
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: { duration_ms: 0 },
-        });
-      }
-      const ctx = {
-        requestId: state.request_id,
-        tripPlanRequest: state.trip_plan_request,
-        researchData: state.research_data,
-        gateResult: state.gate_result as any,
-      };
-      const { newState, itinerary } = await this.decisionKernel.executePlanGen(dsoForPlan, ctx);
-      const derived = decisionStateToOrchestratorState(newState, state);
-      Object.assign(state, derived);
-      state.itinerary = itinerary as Itinerary;
-      state.current_step = 'PLAN_GEN';
-      const pgFail = newState.systemState?.planGenTerminalFailure;
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'PLAN_GEN',
-        actor: 'Planner',
-        inputs_summary: formatPlanGenInputsKernelZh(),
-        outputs_summary: formatPlanGenOutputsZh(
-          itinerary.days.length,
-          pgFail?.message ?? 'planGenTerminalFailure',
-        ),
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: {
-          duration_ms: Date.now() - stepStartTime,
-          ...(pgFail
-            ? {
-                system_action: SYSTEM_ORCHESTRATOR_ACTIONS.PLAN_GEN_EMPTY_DRAFT_HALT,
-                planGenTerminalFailure: pgFail,
-              }
-            : {}),
-        },
-      });
-      state.metadata.last_updated_at = new Date().toISOString();
-      await this.generateDecisionStepForStep(state, 'PLAN_GEN', 'Planner');
-      if (this.trajectoryCollection && state.itinerary && state.gate_result) {
+  private createPlanGenPhaseHost(): PlanGenPhaseHost {
+    return {
+      logger: this.logger,
+      isKernelNativeExecution: (c) => this.isKernelNativeExecution(c),
+      decisionKernel: this.decisionKernel,
+      syncOrchestratorFromDecisionState: (newState, st) => {
+        const derived = decisionStateToOrchestratorState(newState, st);
+        Object.assign(st, derived);
+      },
+      syncPlanRoutingMetricsToTripPlan: (trip, itinerary) =>
+        trip ? syncPlanRoutingMetricsToTripPlan(trip, itinerary) : trip,
+      generateDecisionStepForStep: (st, step, actor) =>
+        this.generateDecisionStepForStep(st, step, actor),
+      onPlanGenDraftCaptured: (requestId, itinerary) =>
+        recordPlanGenDraftSnapshot(this.decisionTrajectoryInterlocutor, requestId, itinerary),
+      collectTrajectoryAfterPlanGen: async ({ request, state }) => {
+        if (!this.trajectoryCollection || !state.itinerary || !state.gate_result) return;
         try {
           let complianceResult = state.compliance_result;
           if (!complianceResult && this.complianceAgent) {
             try {
-              complianceResult = await this.complianceAgent.checkCompliance(state.itinerary, state.gate_result, state);
+              complianceResult = await this.complianceAgent.checkCompliance(
+                state.itinerary,
+                state.gate_result,
+                state,
+              );
             } catch {
               complianceResult = { risk_warnings: [], disclaimers: [], required_confirmations: [] };
             }
@@ -10138,17 +13019,83 @@ ${JSON.stringify(routingDecision, null, 2)}
         } catch (e: any) {
           this.logger.warn(`[Claude Orchestrator] 轨迹收集失败: ${e?.message}`);
         }
-      }
-      return newState;
-    }
-    return this.executePhaseViaKernel(decisionState, state, 'PLAN_GEN', () =>
-      this.executePlanGenStep(request, context, state, llmProvider),
-    );
+      },
+      executePhaseViaKernel: (dso, st, phase, run) =>
+        this.executePhaseViaKernel(dso, st, phase, run),
+      executePlanGenStep: (req, ctx, st, llm) =>
+        this.executePlanGenStep(req, ctx, st, llm),
+      runAdaptiveReplanAfterPlanGen: (st) => this.runAdaptiveReplanAfterPlanGen(st),
+    };
+  }
+
+  /** ITINERARY_ADJUST：PLAN_GEN 后用人格+环境约束精炼草案 */
+  private runAdaptiveReplanAfterPlanGen(state: OrchestratorState): Promise<boolean> {
+    return runAdaptiveReplanForAdjustState(state, this.skillsRegistry);
+  }
+
+  private createVerifyPhaseHost(): VerifyPhaseHost {
+    return {
+      logger: this.logger,
+      isKernelNativeExecution: (c) => this.isKernelNativeExecution(c),
+      decisionKernel: this.decisionKernel,
+      syncOrchestratorFromDecisionState: (newState, st) => {
+        const derived = decisionStateToOrchestratorState(newState, st);
+        Object.assign(st, derived);
+      },
+      mergeVerificationIssuesIntoGateResult: (gate, issues) =>
+        mergeVerificationIssuesIntoGateResult(gate, issues) ?? null,
+      generateDecisionStepForStep: (st, step, actor) =>
+        this.generateDecisionStepForStep(st, step, actor),
+      executePhaseViaKernel: (dso, st, phase, run) =>
+        this.executePhaseViaKernel(dso, st, phase, run),
+      executeVerifyStep: (req, ctx, st, llm) =>
+        this.executeVerifyStep(req, ctx, st, llm),
+    };
   }
 
   /**
-   * VERIFY 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeVerify
+   * PLAN_GEN 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executePlanGen
    */
+  private async executePlanGenPhase(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<DecisionState | undefined> {
+    return runPlanGenPhase(this.createPlanGenPhaseHost(), {
+      decisionState,
+      state,
+      request,
+      context,
+      llmProvider,
+    });
+  }
+
+  /**
+   * VERIFY 阶段：物理执行体 + 结构化 Verdict（plan-verify-loop 胶水消费）
+   */
+  async runVerifyPhase(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<VerifyPhaseResult> {
+    const newDecisionState = await runVerifyPhase(this.createVerifyPhaseHost(), {
+      decisionState,
+      state,
+      request,
+      context,
+      llmProvider,
+    });
+    return {
+      decisionState: newDecisionState,
+      verdict: buildVerifyPhaseVerdict(state, newDecisionState),
+    };
+  }
+
+  /** @deprecated 仅保留给直接 phase 调用方；子图请用 runVerifyPhase */
   private async executeVerifyPhase(
     decisionState: DecisionState | undefined,
     state: OrchestratorState,
@@ -10156,119 +13103,109 @@ ${JSON.stringify(routingDecision, null, 2)}
     context: AgentContext,
     llmProvider: LlmProvider,
   ): Promise<DecisionState | undefined> {
-    if (this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) && this.decisionKernel && decisionState && state.itinerary) {
-      const stepStartTime = Date.now();
-      const ctx = {
-        requestId: state.request_id,
-        tripPlanRequest: state.trip_plan_request,
-        itinerary: state.itinerary as any,
-        researchData: state.research_data,
-      };
-      const { newState, issues } = await this.decisionKernel.executeVerify(decisionState, ctx);
-      const derived = decisionStateToOrchestratorState(newState, state);
-      Object.assign(state, derived);
-      const fatalIssues = (issues as Array<{ class?: string; message?: string }>).filter((i) => i?.class === 'FATAL');
-      const conflictIssues = (issues as Array<{ class?: string }>).filter((i) => i?.class === 'CONFLICT');
-      const advisoryIssues = (issues as Array<{ class?: string }>).filter((i) => i?.class === 'ADVISORY');
-
-      // FATAL 的终止由主链在 VERIFY 后统一处理（避免在 phase 内 throw 导致非预期降级）。
-
-      // CONFLICT/ADVISORY：不一定阻塞 DONE。当前工程口径：只要有 issues 就进入 errors（后续 REPAIR gate 用）。
-      // ADVISORY 未来可从 errors 中剥离为 warnings；先保持兼容。
-      if (issues.length > 0) {
-        state.errors.push({
-          step: 'VERIFY',
-          error_code: 'VERIFICATION_ISSUES',
-          message: `发现 ${issues.length} 个验证问题`,
-          timestamp: new Date().toISOString(),
-        });
-      }
-      state.current_step = 'VERIFY';
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'VERIFY',
-        actor: 'Orchestrator',
-        inputs_summary: formatVerifyInputsKernelZh(),
-        outputs_summary: formatVerifyOutputsZh({
-          issueCount: issues.length,
-          fatal: fatalIssues.length,
-          conflict: conflictIssues.length,
-          advisory: advisoryIssues.length,
-        }),
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: { duration_ms: Date.now() - stepStartTime, issues, guardian: 'DR_DRE' as GuardianType },
-      });
-
-      // Hard opening-hours audit proof (C1 strict): materialize a stable evidence bundle for temporal_opening_v1.
-      // Source of truth: Kernel verify issues + (itinerary + research_data.opening_hours_evidence) for human-readable windows.
-      try {
-        const poiClosed = (issues as any[]).filter((i) => i?.code === 'POI_CLOSED' && i?.entityRef?.type === 'POI');
-        if (poiClosed.length > 0 && state.itinerary && state.research_data?.opening_hours_evidence) {
-          const ohData = state.research_data.opening_hours_evidence;
-          const openingHoursMap = new Map<string, any>();
-          const rows = Array.isArray(ohData) ? ohData : Array.isArray((ohData as any)?.opening_hours) ? (ohData as any).opening_hours : [];
-          for (const r of rows) {
-            if (r && r.poi_id && r.opening_hours) openingHoursMap.set(String(r.poi_id), r);
-          }
-          const day0 = (state.itinerary as any)?.days?.[0];
-          const dayDate = String(day0?.date ?? '');
-          const items: any[] = Array.isArray(day0?.items) ? day0.items : [];
-          for (const it of items) {
-            const poiId = String(it?.location_ref?.place_id ?? '');
-            if (!poiId) continue;
-            const hit = poiClosed.find((x) => String(x?.entityRef?.id ?? '') === String(it?.id ?? ''));
-            if (!hit) continue;
-            const oh = openingHoursMap.get(poiId);
-            const openWindow = oh?.opening_hours ?? (oh?.open_time && oh?.close_time ? `${oh.open_time}-${oh.close_time}` : undefined) ?? 'UNKNOWN';
-            state.decision_log.push({
-              request_id: state.request_id,
-              step: 'VERIFY',
-              actor: 'Orchestrator',
-              inputs_summary: formatVerifyTemporalOpeningInputsZh(),
-              outputs_summary: formatVerifyPoiClosedOutputsZh(
-                String(it?.location_ref?.name ?? poiId),
-                String(it?.start_window ?? ''),
-                String(it?.end_window ?? ''),
-              ),
-              evidence_refs: oh?.evidence_id ? [String(oh.evidence_id)] : [],
-              timestamp: new Date().toISOString(),
-              metadata: {
-                rule_id: 'temporal_opening_v1',
-                details: {
-                  evidence: {
-                    type: 'opening_hours',
-                    source: 'OPENING_HOURS',
-                    poi_id: poiId,
-                    date: dayDate || undefined,
-                    timezone: 'UTC',
-                    planned_start: dayDate && it?.start_window ? `${dayDate}T${String(it.start_window)}:00.000Z` : null,
-                    planned_end: dayDate && it?.end_window ? `${dayDate}T${String(it.end_window)}:00.000Z` : null,
-                    open_window: openWindow,
-                    is_violated: true,
-                    item_id: String(it?.id ?? ''),
-                  },
-                },
-              },
-            } as any);
-          }
-        }
-      } catch {
-        // best-effort only
-      }
-
-      state.metadata.last_updated_at = new Date().toISOString();
-      await this.generateDecisionStepForStep(state, 'VERIFY', 'CoreDecision');
-      return newState;
-    }
-    return this.executePhaseViaKernel(decisionState, state, 'VERIFY', () =>
-      this.executeVerifyStep(request, context, state, llmProvider),
-    );
+    const result = await this.runVerifyPhase(decisionState, state, request, context, llmProvider);
+    return result.decisionState;
   }
 
-  /**
-   * REPAIR 阶段：KERNEL_NATIVE_EXECUTION 时走 Kernel.executeRepair
-   */
+  private createOptimizePhaseHost(): OptimizePhaseHost {
+    return {
+      logger: this.logger,
+      decisionKernel: this.decisionKernel,
+      computeOptimizeFatigue: (planDraft) => this.computePlanDraftFatigue(planDraft),
+    };
+  }
+
+  private createRepairPhaseHost(): RepairPhaseHost {
+    return {
+      logger: this.logger,
+      isKernelNativeExecution: (c) => this.isKernelNativeExecution(c),
+      decisionKernel: this.decisionKernel,
+      syncOrchestratorFromDecisionState: (newState, st) => {
+        const derived = decisionStateToOrchestratorState(newState, st);
+        Object.assign(st, derived);
+      },
+      applyPostRepairRoutingSync: (p) => {
+        const postRepair = applyPostRepairRoutingMetricsSync({
+          trip: p.trip!,
+          itinerary: p.itinerary,
+          metadata: p.metadata,
+          message: p.message,
+          routeAndRunIntent: p.routeAndRunIntent as any,
+          clarificationAnswers: p.clarificationAnswers as any,
+        });
+        return { trip: postRepair.trip };
+      },
+      generateDecisionStepForStep: (st, step, actor) =>
+        this.generateDecisionStepForStep(st, step, actor),
+      executePhaseViaKernel: (dso, st, phase, run) =>
+        this.executePhaseViaKernel(dso, st, phase, run),
+      executeRepairStep: (req, ctx, st, llm) =>
+        this.executeRepairStep(req, ctx, st, llm),
+      recordRepairObservability: (p) => this.recordRepairPhaseObservability(p),
+      runTravelRecompileAfterRepair: (p) =>
+        runTravelRecompileAfterRepair({
+          state: p.state,
+          request: p.request,
+          compiler: this.travelCompiler,
+          graphStore: this.travelGraphStore,
+          configService: this.configService,
+          itineraryBeforeRepair: p.itineraryBeforeRepair,
+          repairApplied: p.repairApplied,
+          verificationIssues: p.verificationIssues,
+          onProgress: (view) => {
+            void this.routeAndRunTaskProgress?.reportCtreCompilationProgress(view);
+          },
+        }),
+    };
+  }
+
+  private computePlanDraftFatigue(planDraft: Itinerary | undefined): number | undefined {
+    if (!planDraft?.days?.length || !this.tdfpmCalculator) return undefined;
+    try {
+      const contexts = this.itineraryToTdfpmDayContexts(planDraft);
+      const scores = contexts.map((ctx) => this.tdfpmCalculator!.computeFatigueScore(ctx).fatigueScore);
+      const maxScore = Math.max(...scores, 0);
+      const fatigue = Math.min(1, maxScore / 100);
+      this.logger.debug(`[Claude Orchestrator] TDFPM fatigue: maxScore=${maxScore}, fatigue=${fatigue.toFixed(2)}`);
+      return fatigue;
+    } catch (e: any) {
+      this.logger.warn(`[Claude Orchestrator] TDFPM 计算失败: ${e?.message}`);
+      return undefined;
+    }
+  }
+
+  async runOptimizePhase(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+  ): Promise<DecisionState | undefined> {
+    return runOptimizePhase(this.createOptimizePhaseHost(), { state, decisionState });
+  }
+
+  async runRepairPhase(
+    decisionState: DecisionState | undefined,
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    llmProvider: LlmProvider,
+  ): Promise<DecisionState | undefined> {
+    return runRepairPhase(this.createRepairPhaseHost(), {
+      decisionState,
+      state,
+      request,
+      context,
+      llmProvider,
+    });
+  }
+
+  persistHarnessTraceOnReturnToResearch(decisionState: DecisionState | undefined): void {
+    persistHarnessTraceOnPlanVerifyReturnToResearch(this.decisionKernel, decisionState);
+  }
+
+  computeRepairFatigue(planDraft: Itinerary | undefined): number | undefined {
+    return this.computePlanDraftFatigue(planDraft);
+  }
+
+  /** @deprecated 子图请用 runRepairPhase */
   private async executeRepairPhase(
     decisionState: DecisionState | undefined,
     state: OrchestratorState,
@@ -10276,127 +13213,114 @@ ${JSON.stringify(routingDecision, null, 2)}
     context: AgentContext,
     llmProvider: LlmProvider,
   ): Promise<DecisionState | undefined> {
-    if (this.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) && this.decisionKernel && decisionState && state.itinerary && state.gate_result) {
-      const stepStartTime = Date.now();
-      const ctx = {
-        requestId: state.request_id,
-        tripPlanRequest: state.trip_plan_request,
-        researchData: state.research_data,
-        gateResult: state.gate_result as any,
-        itinerary: state.itinerary as any,
-        alternatives: state.alternatives,
-      };
-      const { newState, itinerary, repairApplied } = await this.decisionKernel.executeRepair(decisionState, ctx);
-      const derived = decisionStateToOrchestratorState(newState, state);
-      Object.assign(state, derived);
-      if (itinerary) state.itinerary = itinerary as Itinerary;
-      state.current_step = 'REPAIR';
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'REPAIR',
-        actor: 'LocalInsight',
-        inputs_summary: formatRepairInputsKernelZh(),
-        outputs_summary: formatRepairOutputsZh(repairApplied),
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: { duration_ms: Date.now() - stepStartTime, repair_applied: repairApplied, guardian: 'NEPTUNE' as GuardianType },
-      });
-      state.metadata.last_updated_at = new Date().toISOString();
-      await this.generateDecisionStepForStep(state, 'REPAIR', 'LocalInsight');
+    return this.runRepairPhase(decisionState, state, request, context, llmProvider);
+  }
 
-      // Observability: best-effort score sample even for non-terminal REPAIR exits (oscillation/max-iter/utility-compensation)
-      try {
-        const audit_report = AuditReportGenerator.generate(newState, state);
-        const normalizedContract = normalizeDecisionOsAuditContract(audit_report);
-        const normalizedAudit = this.normalizeDecisionOsAuditReport(normalizedContract.audit_report);
-        if (normalizedContract.violations.length > 0) {
-          for (const v of normalizedContract.violations) {
-            this.promMetrics?.recordDecisionOsAuditContractViolation({
+  private async recordRepairPhaseObservability(params: {
+    newState: DecisionState;
+    state: OrchestratorState;
+    request: RouteAndRunRequestDto;
+  }): Promise<void> {
+    const { newState, state, request } = params;
+    try {
+      const audit_report = AuditReportGenerator.generate(newState, state);
+      const normalizedContract = normalizeDecisionOsAuditContract(audit_report);
+      const normalizedAudit = this.normalizeDecisionOsAuditReport(normalizedContract.audit_report);
+      if (normalizedContract.violations.length > 0) {
+        for (const v of normalizedContract.violations) {
+          this.promMetrics?.recordDecisionOsAuditContractViolation({
+            stage: 'REPAIR',
+            field: v.field,
+            reason: v.reason,
+          });
+        }
+      }
+      const score = normalizedAudit.session_consistency_score;
+      const domAxiom = pickDominantAxiom(
+        matchAxioms(
+          buildAxiomMatchContext({
+            message: request?.message ?? (state as any)?.trip_plan_request?.message,
+            constraints: (state as any)?.trip_plan_request?.constraints,
+            trip: (state as any)?.trip_plan_request,
+            tripId: (state as any)?.trip_plan_request?.trip_id,
+            itinerary: (state as any)?.itinerary,
+            routeAndRunIntent: (state.metadata as Record<string, unknown>)?.route_and_run_intent as any,
+            clarificationAnswers: (state.metadata as Record<string, unknown>)?.clarification_answers as any,
+          }),
+        ),
+      );
+      const expectedCid = domAxiom?.axiom?.cid;
+      const actualCid = normalizedAudit.dominant_cid;
+      const axiomMatchSource = axiomMatchSourceForMetrics(domAxiom);
+      this.promMetrics?.recordSessionConsistencyScore({
+        score,
+        axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
+        cid: actualCid ?? expectedCid ?? 'UNKNOWN',
+        terminal: false,
+      });
+
+      const hasRealTraces =
+        Array.isArray((audit_report as any)?.repair_traces) && (audit_report as any).repair_traces.length > 0;
+      if (hasRealTraces || typeof score === 'number') {
+        const deltaReason = normalizedAudit.delta_reason;
+        const deltaUtility = normalizedAudit.delta_utility;
+        const delta_reason_kind =
+          deltaReason === 'aligned'
+            ? ('aligned' as const)
+            : deltaReason
+              ? ('mismatch' as const)
+              : ('unknown' as const);
+        const is_intent_revised = normalizedAudit.intent_revision_flag;
+        const utility_drift_severity = (() => {
+          if (!Number.isFinite(deltaUtility)) return 'unknown' as const;
+          const a = Math.abs(deltaUtility);
+          if (a <= 5) return 'low' as const;
+          if (a <= 20) return 'medium' as const;
+          return 'high' as const;
+        })();
+
+        try {
+          if (domAxiom?.axiom_id && expectedCid && actualCid && expectedCid !== actualCid) {
+            this.promMetrics?.recordAxiomDominantCidMismatch({
+              axiom_id: domAxiom.axiom_id,
+              expected_cid: normalizeAxiomCidForMetrics(expectedCid),
+              actual_cid: normalizeAxiomCidForMetrics(actualCid),
               stage: 'REPAIR',
-              field: v.field,
-              reason: v.reason,
+              match_source: axiomMatchSource,
             });
           }
-        }
-        const score = normalizedAudit.session_consistency_score;
-        const domAxiom = pickDominantAxiom(matchAxioms({ message: request?.message, constraints: (state as any)?.trip_plan_request?.constraints }));
-        const expectedCid = domAxiom?.axiom?.cid;
-        const actualCid = normalizedAudit.dominant_cid;
-        this.promMetrics?.recordSessionConsistencyScore({
-          score,
-          axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
-          cid: actualCid ?? expectedCid ?? 'UNKNOWN',
-          terminal: false,
-        });
-
-        // LogicOps: emit a single atomic audit event when REPAIR produced actionable traces or a score.
-        // This allows P0/P1/P2 matrix to light up even when the run returns OK (non-terminal).
-        const hasRealTraces =
-          Array.isArray((audit_report as any)?.repair_traces) && (audit_report as any).repair_traces.length > 0;
-        if (hasRealTraces || typeof score === 'number') {
-          const deltaReason = normalizedAudit.delta_reason;
-          const deltaUtility = normalizedAudit.delta_utility;
-          const delta_reason_kind =
-            deltaReason === 'aligned'
-              ? ('aligned' as const)
-              : deltaReason
-                ? ('mismatch' as const)
-                : ('unknown' as const);
-          const is_intent_revised = normalizedAudit.intent_revision_flag;
-          const utility_drift_severity = (() => {
-            if (!Number.isFinite(deltaUtility)) return 'unknown' as const;
-            const a = Math.abs(deltaUtility);
-            if (a <= 5) return 'low' as const;
-            if (a <= 20) return 'medium' as const;
-            return 'high' as const;
-          })();
-
-          // Runtime proof counters (do not affect control flow)
-          try {
-            if (domAxiom?.axiom_id && expectedCid && actualCid && expectedCid !== actualCid) {
-              this.promMetrics?.recordAxiomDominantCidMismatch({
-                axiom_id: domAxiom.axiom_id,
-                expected_cid: expectedCid,
-                actual_cid: actualCid,
-                stage: 'REPAIR',
-              });
-            }
-            if (delta_reason_kind === 'mismatch') {
-              this.promMetrics?.recordAxiomSimRealMismatch({
-                axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
-                expected_cid: expectedCid ?? 'UNKNOWN',
-                actual_cid: actualCid ?? 'UNKNOWN',
-                stage: 'REPAIR',
-              });
-            }
-          } catch {
-            // best-effort only
+          if (delta_reason_kind === 'mismatch') {
+            this.promMetrics?.recordAxiomSimRealMismatch({
+              axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
+              expected_cid: normalizeAxiomCidForMetrics(expectedCid),
+              actual_cid: normalizeAxiomCidForMetrics(actualCid),
+              stage: 'REPAIR',
+              match_source: axiomMatchSource,
+              severity: domAxiom?.axiom?.severity ?? 'UNKNOWN',
+            });
           }
-
-          this.logger.log(
-            JSON.stringify({
-              event: 'decision_os_audit_report',
-              phase: 'REPAIR',
-              terminal: false,
-              request_id: state.request_id,
-              dominant_cid: normalizedAudit.dominant_cid,
-              session_consistency_score: normalizedAudit.session_consistency_score,
-              delta_reason_kind,
-              is_intent_revised,
-              utility_drift_severity,
-              audit_report: normalizedAudit.audit_report,
-            }),
-          );
+        } catch {
+          // best-effort only
         }
-      } catch {
-        // best-effort only
-      }
 
-      return newState;
+        this.logger.log(
+          JSON.stringify({
+            event: 'decision_os_audit_report',
+            phase: 'REPAIR',
+            terminal: false,
+            request_id: state.request_id,
+            dominant_cid: normalizedAudit.dominant_cid,
+            session_consistency_score: normalizedAudit.session_consistency_score,
+            delta_reason_kind,
+            is_intent_revised,
+            utility_drift_severity,
+            audit_report: normalizedAudit.audit_report,
+          }),
+        );
+      }
+    } catch {
+      // best-effort only
     }
-    return this.executePhaseViaKernel(decisionState, state, 'REPAIR', () =>
-      this.executeRepairStep(request, context, state, llmProvider),
-    );
   }
 
   /**
@@ -10409,6 +13333,13 @@ ${JSON.stringify(routingDecision, null, 2)}
     executeFn: () => Promise<void>,
   ): Promise<DecisionState | undefined> {
     if (!this.decisionKernel || !decisionState) {
+      emitPhaseExecutionPath(state, {
+        phase: phaseName,
+        path: !this.decisionKernel ? 'kernel_missing_service' : 'kernel_missing_dso',
+        reason: !this.decisionKernel ? 'missing_kernel' : 'missing_dso',
+        step: phaseName as OrchestrationStep,
+        loggerWarn: (m) => this.logger.warn(m),
+      });
       await executeFn();
       return this.executeStateUpdateStep(state, decisionState) ?? decisionState;
     }
@@ -10453,8 +13384,39 @@ ${JSON.stringify(routingDecision, null, 2)}
     const ui = patch.userIntent ?? decisionState.userIntent;
     if (!ui) return;
     const q = (state.metadata as { intake_user_message?: string }).intake_user_message;
+    const routePrimary = (state.metadata as Record<string, unknown>)?.route_and_run_intent as
+      | { primary?: string }
+      | undefined;
+    const isItineraryAdjust = routePrimary?.primary === 'ITINERARY_ADJUST';
+
+    if (
+      isItineraryAdjust &&
+      shouldSuppressTripRegionIdForItineraryAdjustPoiPlanning(typeof q === 'string' ? q : undefined, (text) => {
+        const hit = this.regionAnchorPlanning!.resolveAndBuildSlice({}, text);
+        return {
+          regionIntent: hit?.routeIntent?.regionId
+            ? { regionId: hit.routeIntent.regionId }
+            : undefined,
+          confidence: hit?.routeIntent?.confidence ?? 0,
+        };
+      })
+    ) {
+      const slice = buildCorridorAdjustPoiPlanningSlice({
+        totalBudgetMinutes: ui.totalBudgetMinutes,
+      });
+      patch.poiPlanning = slice;
+      const meta = state.metadata as Record<string, unknown>;
+      meta.poiPlanningFeasibility = slice.schedulePlan?.feasibility;
+      meta.poiPlanningBudgetGateApplied = false;
+      meta.poiPlanningResolution = slice.resolution;
+      this.logger.debug(
+        `[STATE_UPDATE] poiPlanning corridor_adjust anchors=0 excluded=${slice.poiPlan?.excludedPoiIds?.length ?? 0}`,
+      );
+      return;
+    }
+
     const userRoute: Partial<UserRouteIntent> = {
-      regionId: ui.regionId,
+      regionId: isItineraryAdjust ? undefined : ui.regionId,
       mustIncludePoiIds: ui.mustIncludePoiIds,
       excludePoiIds: ui.excludePoiIds,
       totalBudgetMinutes: ui.totalBudgetMinutes,
@@ -10477,85 +13439,13 @@ ${JSON.stringify(routingDecision, null, 2)}
   }
 
   /**
-   * STATE_UPDATE 步骤：Phase 2.3 显式同步，专利权利要求 7 原子提交
+   * STATE_UPDATE 步骤（Phase 4b → state-update-phase.executor）
    */
   private async executeStateUpdateStep(
     state: OrchestratorState,
     decisionState: DecisionState | undefined,
   ): Promise<DecisionState | undefined> {
-    if (!this.decisionKernel || !decisionState) return decisionState;
-
-    state.current_step = 'STATE_UPDATE';
-    const stepStartTime = Date.now();
-    this.logger.debug(`[Claude Orchestrator] 执行 STATE_UPDATE 步骤（原子提交）...`);
-
-    const patch = this.isDsoAsPrimary()
-      ? buildPatchFromDSOPrimary(decisionState, state)
-      : orchestratorStateToDecisionStatePatch(state);
-    patch.systemState = {
-      ...patch.systemState,
-      requestId: state.request_id,
-      currentPhase: 'STATE_UPDATE',
-      lastUpdatedAt: new Date().toISOString(),
-    };
-    this.applyPoiPlanningToPatch(patch, decisionState, state);
-    // Scheme C: 世界模型三段式，从 patch + decisionState 构建 worldStateSummary（P3: research_data 补全，world.buildContext 优先）
-    const { buildWorldStateSummaryFromDso } = await import('../../decision/kernel/world-state-summary.types');
-    const mergedForSummary = {
-      environmentState: patch.environmentState ?? decisionState.environmentState,
-      userIntent: patch.userIntent ?? decisionState.userIntent,
-    };
-    const worldFromContext = this.extractWorldModelFromContextPackage(decisionState);
-    const worldStateSummary = buildWorldStateSummaryFromDso(
-      mergedForSummary,
-      state.research_data,
-      worldFromContext ?? (state as any).world_model_context,
-    );
-    if (Object.keys(worldStateSummary).length > 0) {
-      patch.worldStateSummary = worldStateSummary;
-    }
-
-    const requestId = state.request_id;
-    const getLatestState = this.dsoLatestStateProvider
-      ? () => this.dsoLatestStateProvider!.getLatest(requestId)
-      : undefined;
-
-    // P3 A.1: 经 Kernel.executeStateUpdate 封装（原子提交 + 冲突回退）
-    const { newState: updated } = await this.decisionKernel.executeStateUpdate(decisionState, patch, {
-      getLatestState,
-      maxRetries: 3,
-    });
-
-    // DSO 为主时：派生 OrchestratorState 兼容字段
-    const derived = decisionStateToOrchestratorState(updated, state);
-    Object.assign(state, derived);
-
-    state.decision_log.push({
-      request_id: state.request_id,
-      step: 'STATE_UPDATE' as OrchestrationStep,
-      actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: '把本轮对话与约束写入统一决策状态（DSO），一次性提交',
-      outputs_summary: formatStateUpdateOutputsZh({
-        hasUserIntent: !!patch.userIntent,
-        hasConstraints: !!patch.constraints,
-        hasEnvironmentState: !!patch.environmentState,
-        version: updated.systemState?.version,
-        destinationBefore: decisionState.userIntent?.destination as unknown,
-        destinationAfter: (patch.userIntent?.destination ?? updated.userIntent?.destination) as unknown,
-      }),
-      evidence_refs: [],
-      timestamp: new Date().toISOString(),
-      metadata: {
-        duration_ms: Date.now() - stepStartTime,
-        state_update_user_intent_destination: {
-          before: decisionState.userIntent?.destination ?? null,
-          after: patch.userIntent?.destination ?? updated.userIntent?.destination ?? null,
-        },
-      },
-    });
-    state.metadata.last_updated_at = new Date().toISOString();
-
-    return updated;
+    return runStateUpdatePhase(this.createStateUpdatePhaseHost(), { state, decisionState });
   }
 
   /**
@@ -10628,8 +13518,12 @@ ${JSON.stringify(routingDecision, null, 2)}
               systemState: { requestId: state.request_id ?? '' },
               requestId: state.request_id,
             } as DecisionState);
+          const sanitizedRecentMessages = this.contextSlidingWindow.slice(
+            'orchestrator_claude',
+            request.conversation_context?.recent_messages,
+          );
           const hydration = hydrateTripPlanTransportEndpoints(dsoForHydration, tripRequest, {
-            recentMessages: request.conversation_context?.recent_messages,
+            recentMessages: sanitizedRecentMessages,
           });
           const { trip: hydratedTrip, patchedFields } = hydration;
           if (patchedFields.length > 0) {
@@ -10736,6 +13630,8 @@ ${JSON.stringify(routingDecision, null, 2)}
               decisionState,
               itinerary: state.itinerary,
               userMessage: userMsgForRetrieval,
+              travelPreference: (state.metadata as Record<string, unknown> | undefined)
+                ?.travel_preference_snapshot as Record<string, unknown> | undefined,
             });
             poiSearchCtxForTrace = poiSearchCtx;
             const semanticGapsForQuery = detectItineraryGapsV1({
@@ -10744,28 +13640,34 @@ ${JSON.stringify(routingDecision, null, 2)}
               itinerary: state.itinerary,
             });
             const gapSuffix = gapRetrievalIntentQuerySuffix(semanticGapsForQuery);
-            const ctxSuffix = buildContextualPoiSearchQuerySuffix(poiSearchCtx);
-            const boost =
-              plan.boostedTerms.length > 0 ? ` ${plan.boostedTerms.slice(0, 12).join(' ')}` : '';
-            const scenicQuery = `${destinationQuery} attractions landmark museum sightseeing${boost}${ctxSuffix}${gapSuffix}`
-              .replace(/\s+/g, ' ')
-              .trim();
-            const generalQuery =
-              plan.boostedTerms.length > 0
-                ? `${destinationQuery} ${plan.boostedTerms.slice(0, 8).join(' ')}${ctxSuffix}${gapSuffix}`
-                    .replace(/\s+/g, ' ')
-                    .trim()
-                : `${destinationQuery}${ctxSuffix}${gapSuffix}`.replace(/\s+/g, ' ').trim();
+            const scenicPlan = buildPoiSearchPlanFromContext({
+              baseQuery: destinationQuery,
+              poiSearchCtx,
+              gapSuffix,
+              boostTerms: plan.boostedTerms,
+              variant: 'scenic',
+            });
+            const generalPlan = buildPoiSearchPlanFromContext({
+              baseQuery: destinationQuery,
+              poiSearchCtx,
+              gapSuffix,
+              boostTerms: plan.boostedTerms.length > 0 ? plan.boostedTerms : undefined,
+              variant: 'general',
+            });
 
             const scenicResult = await poiSkill.execute({
-              query: scenicQuery,
+              query: scenicPlan.contextualizedQuery,
+              queryRewriteResult: scenicPlan.rewrite,
+              multiRouteSearch: true,
               limit: 12,
               lat,
               lng,
               category: 'ATTRACTION',
             } as any);
             const generalResult = await poiSkill.execute({
-              query: generalQuery,
+              query: generalPlan.contextualizedQuery,
+              queryRewriteResult: generalPlan.rewrite,
+              multiRouteSearch: true,
               limit: 12,
               lat,
               lng,
@@ -10782,64 +13684,83 @@ ${JSON.stringify(routingDecision, null, 2)}
                 : [];
             let merged = mergeResearchPoiLists(scenicPois, generalPois, 16);
             const extraSubQueries: Record<string, string> = {};
-            if (plan.regionTags.includes('golden_circle') && plan.boostedTerms.length > 0) {
-              const anchorQuery = `Iceland Golden Circle ${plan.boostedTerms.slice(0, 10).join(' ')}`;
-              extraSubQueries.golden_circle_anchor = anchorQuery;
-              const anchorResult = await poiSkill.execute({
-                query: anchorQuery,
-                limit: 12,
+            if (poiSearchCtx.preferOffbeatAttractions) {
+              const offbeatPlan = buildPoiSearchPlanFromContext({
+                baseQuery: destinationQuery,
+                poiSearchCtx,
+                gapSuffix,
+                boostTerms: plan.boostedTerms,
+                variant: 'offbeat',
+              });
+              extraSubQueries.offbeat = offbeatPlan.contextualizedQuery;
+              const offbeatResult = await poiSkill.execute({
+                query: offbeatPlan.contextualizedQuery,
+                queryRewriteResult: offbeatPlan.rewrite,
+                multiRouteSearch: true,
+                limit: 10,
                 lat,
                 lng,
                 category: 'ATTRACTION',
               } as any);
-              const anchorPois = Array.isArray(anchorResult?.pois)
-                ? anchorResult.pois
-                : Array.isArray(anchorResult)
-                  ? anchorResult
+              const offbeatPois = Array.isArray(offbeatResult?.pois)
+                ? offbeatResult.pois
+                : Array.isArray(offbeatResult)
+                  ? offbeatResult
                   : [];
-              merged = mergeResearchPoiLists(anchorPois, merged, 22);
+              merged = mergeResearchPoiLists(offbeatPois, merged, 20);
             }
-            /** Phase 3.2：第四路专补 Geysir / Gullfoss 召回（合并优先） */
-            if (plan.regionTags.includes('golden_circle')) {
-              extraSubQueries.golden_circle_pair = GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY;
-              const pairResult = await poiSkill.execute({
-                query: GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY,
-                limit: 14,
+            const regionSupplementLanes = buildSpecialRegionSupplementLanes(plan.regionTags, {
+              poiSearchCtx,
+              boostedTerms: plan.boostedTerms.length > 0 ? plan.boostedTerms : undefined,
+              gapSuffix,
+            });
+            let supplementMergeCap = 22;
+            for (const lane of regionSupplementLanes) {
+              extraSubQueries[lane.key] = lane.plan.contextualizedQuery;
+              const laneResult = await poiSkill.execute({
+                query: lane.plan.contextualizedQuery,
+                queryRewriteResult: lane.plan.rewrite,
+                multiRouteSearch: true,
+                limit: lane.limit,
                 lat,
                 lng,
                 category: 'ATTRACTION',
               } as any);
-              const pairPois = Array.isArray(pairResult?.pois)
-                ? pairResult.pois
-                : Array.isArray(pairResult)
-                  ? pairResult
+              const lanePois = Array.isArray(laneResult?.pois)
+                ? laneResult.pois
+                : Array.isArray(laneResult)
+                  ? laneResult
                   : [];
-              merged = mergeResearchPoiLists(pairPois, merged, 30);
-            }
-            if (plan.regionTags.includes('westfjords')) {
-              const wfQuery = `Iceland Westfjords scenic viewpoints ${plan.boostedTerms.slice(0, 10).join(' ')}`;
-              extraSubQueries.westfjords = wfQuery;
-              const wfResult = await poiSkill.execute({
-                query: wfQuery,
-                limit: 12,
-                lat,
-                lng,
-                category: 'ATTRACTION',
-              } as any);
-              const wfPois = Array.isArray(wfResult?.pois)
-                ? wfResult.pois
-                : Array.isArray(wfResult)
-                  ? wfResult
-                  : [];
-              merged = mergeResearchPoiLists(wfPois, merged, 26);
+              merged = mergeResearchPoiLists(lanePois, merged, supplementMergeCap);
+              supplementMergeCap = Math.min(34, supplementMergeCap + 4);
             }
             merged = filterPoisByRejectedIds(merged, poiSearchCtx.rejectedPoiIds);
+            const countryCodeResearch =
+              typeof tripRequest.destination === 'string' &&
+              /^[A-Za-z]{2}$/.test(tripRequest.destination.trim())
+                ? tripRequest.destination.trim().toUpperCase()
+                : undefined;
+            const discovery = await runOpenWorldDiscoveryPipeline(
+              {
+                userMessage: userMsgForRetrieval,
+                countryCode: countryCodeResearch,
+                destinationHint: destinationRaw,
+                regionTags: plan.regionTags,
+                existingPoiEvidence: merged,
+              },
+              { llmService: this.llmService },
+            );
+            if (discovery.stubs.length > 0) {
+              merged = mergeDiscoveryStubsIntoPoiEvidence(merged, discovery.stubs);
+              researchData.open_world_discovery = discovery;
+              researchData.open_world_discovery_applied_at = new Date().toISOString();
+            }
             researchData.poi_evidence = merged;
             const semanticGaps = semanticGapsForQuery;
             researchData.retrieval_decision_trace = buildPlanningRetrievalDecisionTrace({
               poiSearchCtx,
-              scenicQuery,
-              generalQuery,
+              scenicQuery: scenicPlan.contextualizedQuery,
+              generalQuery: generalPlan.contextualizedQuery,
               extraSubQueries: Object.keys(extraSubQueries).length ? extraSubQueries : undefined,
               mergedPoiCount: merged.length,
               semanticGaps,
@@ -10866,18 +13787,11 @@ ${JSON.stringify(routingDecision, null, 2)}
         try {
           const openingHoursSkill = this.skillsRegistry.getSkill('opening_hours.get');
           if (openingHoursSkill && researchData.poi_evidence && !researchData.poi_evidence.missing) {
-            // 提取 POI IDs（兼容新旧格式）
-            let poiIds: string[] = [];
-            if (Array.isArray(researchData.poi_evidence)) {
-              poiIds = researchData.poi_evidence.slice(0, 5).map((poi: any) => 
-                poi.poi_id || poi.id || poi.place_id
-              ).filter(Boolean);
-            } else if (researchData.poi_evidence.pois && Array.isArray(researchData.poi_evidence.pois)) {
-              poiIds = researchData.poi_evidence.pois.slice(0, 5).map((poi: any) => 
-                poi.poi_id || poi.id || poi.place_id
-              ).filter(Boolean);
-            }
-            
+            const poiIds = collectOpeningHoursPoiIdsForHydration(
+              state.itinerary,
+              researchData as Record<string, unknown>,
+            );
+
             if (poiIds.length > 0) {
               const openingHoursResult = await openingHoursSkill.execute({
                 poi_ids: poiIds,
@@ -11350,8 +14264,9 @@ ${JSON.stringify(routingDecision, null, 2)}
     const countryCode = destination.split('-')[0] || destination.split(',')[0] || 'UNKNOWN';
 
     // 构建 TravelerProfile
+    const memoryNationality = this.agentMemoryContextStore?.get()?.userBasics?.nationality;
     const traveler: TravelerProfile = {
-      nationality: undefined, // 可以从 request 或其他地方提取
+      nationality: memoryNationality,
       residencyCountry: undefined,
       tags: [],
       budgetLevel: request.constraints?.budget?.total
@@ -11402,66 +14317,19 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
   }
 
-  /**
-   * CONTEXT_BUILD 步骤：Phase 2.3 在 PLAN 前构建 Context Package
-   * P3 A.2: 经 Kernel.executeContextBuild 封装
-   */
+  /** CONTEXT_BUILD（Phase 4b → context-build-phase.executor） */
   private async executeContextBuildStep(
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
     decisionState: DecisionState | undefined,
   ): Promise<DecisionState | undefined> {
-    if (!this.decisionKernel || !decisionState) return decisionState;
-
-    state.current_step = 'CONTEXT_BUILD';
-    const stepStartTime = Date.now();
-    this.logger.debug(`[Claude Orchestrator] 执行 CONTEXT_BUILD 步骤...`);
-
-    const tripId = state.metadata?.tripId as string | undefined;
-    const destinationCountryCode =
-      !tripId && request.message
-        ? this.extractCountryCodeFromMessage(request.message)
-        : undefined;
-    const overrides = {
-      tripId,
-      userId: state.metadata?.userId as string | undefined,
-      userQuery: request.message,
-      phase: 'PLANNING' as const,
-      agent: 'PLANNER' as const,
-      destinationCountryCode,
-      abortSignal: context.abortSignal,
-    };
-
-    try {
-      const { newState, contextPackage: pkg } = await this.decisionKernel.executeContextBuild(decisionState, overrides);
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'CONTEXT_BUILD' as OrchestrationStep,
-        actor: 'Orchestrator' as SubAgentType,
-        inputs_summary: formatContextBuildInputsZh(),
-        outputs_summary: formatContextBuildOutputsZh((pkg as any)?.blocks?.length ?? 0, !pkg),
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: { duration_ms: Date.now() - stepStartTime },
-      });
-      state.metadata.last_updated_at = new Date().toISOString();
-      return newState;
-    } catch (error: any) {
-      this.logger.warn(`[Claude Orchestrator] CONTEXT_BUILD 失败: ${error?.message}`);
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'CONTEXT_BUILD' as OrchestrationStep,
-        actor: 'Orchestrator' as SubAgentType,
-        inputs_summary: formatContextBuildInputsZh(),
-        outputs_summary: `上下文包构建失败：${error?.message ?? '未知错误'}`,
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: { duration_ms: Date.now() - stepStartTime, error: true },
-      });
-      state.metadata.last_updated_at = new Date().toISOString();
-      return decisionState;
-    }
+    return runContextBuildPhase(this.createContextBuildPhaseHost(), {
+      request,
+      context,
+      state,
+      decisionState,
+    });
   }
 
   /**
@@ -11496,73 +14364,12 @@ ${JSON.stringify(routingDecision, null, 2)}
     return contexts;
   }
 
-  /**
-   * OPTIMIZE 步骤：Phase 2.3 抽取 Optimization Hints
-   * P3 A.3: 经 Kernel.executeOptimize 封装；TDFPM fatigue 由 Orchestrator 预计算后传入
-   */
+  /** @deprecated 子图请用 runOptimizePhase */
   private async executeOptimizeStep(
     state: OrchestratorState,
     decisionState: DecisionState | undefined,
   ): Promise<DecisionState | undefined> {
-    if (!this.decisionKernel || !decisionState) return decisionState;
-
-    state.current_step = 'OPTIMIZE';
-    const stepStartTime = Date.now();
-    this.logger.debug(`[Claude Orchestrator] 执行 OPTIMIZE 步骤...`);
-
-    // TDFPM: 预计算 fatigue 传入 Kernel（Kernel 无 TdfpmCalculator 依赖）
-    let fatigue: number | undefined;
-    const planDraft = decisionState.tripState?.planDraft as Itinerary | undefined;
-    if (planDraft?.days?.length && this.tdfpmCalculator) {
-      try {
-        const contexts = this.itineraryToTdfpmDayContexts(planDraft);
-        const scores = contexts.map((ctx) => this.tdfpmCalculator!.computeFatigueScore(ctx).fatigueScore);
-        const maxScore = Math.max(...scores, 0);
-        fatigue = Math.min(1, maxScore / 100);
-        this.logger.debug(`[Claude Orchestrator] TDFPM fatigue: maxScore=${maxScore}, fatigue=${fatigue.toFixed(2)}`);
-      } catch (e: any) {
-        this.logger.warn(`[Claude Orchestrator] TDFPM 计算失败: ${e?.message}`);
-      }
-    }
-
-    const { newState, optimizationHints: hints } = await this.decisionKernel.executeOptimize(decisionState, {
-      fatigue,
-    });
-
-    const summarizeOptimizeOutputs = (): string => {
-      if (!hints) return '本轮未产出数值型优化结论（可能跳过或降级）。';
-      const ci = hints.confidenceInterval;
-      return formatOptimizeOutputsZh({
-        method: hints.method,
-        recommendedId: hints.recommendedAlternativeId,
-        altCount: hints.alternatives?.length ?? 0,
-        expectedUtility: hints.expectedUtility,
-        feasibilityProbability: hints.feasibilityProbability,
-        ciLower: ci?.lower,
-        ciUpper: ci?.upper,
-        strategyDirection: hints.strategyDirection,
-      });
-    };
-
-    state.decision_log.push({
-      request_id: state.request_id,
-      step: 'OPTIMIZE' as OrchestrationStep,
-      actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: formatOptimizeInputsZh(),
-      outputs_summary: summarizeOptimizeOutputs(),
-      evidence_refs: [],
-      timestamp: new Date().toISOString(),
-      metadata: {
-        duration_ms: Date.now() - stepStartTime,
-        guardian: 'DR_DRE',
-        alternatives_considered: hints?.alternatives?.length ?? undefined,
-        expected_utility: hints?.expectedUtility,
-        feasibility_probability: hints?.feasibilityProbability,
-        optimization_method: hints?.method,
-      },
-    });
-    state.metadata.last_updated_at = new Date().toISOString();
-    return newState;
+    return this.runOptimizePhase(state, decisionState);
   }
 
   /**
@@ -11602,6 +14409,12 @@ ${JSON.stringify(routingDecision, null, 2)}
             // 类型转换：Skill 返回的结果需要转换为 Itinerary
             if (itineraryResult && typeof itineraryResult === 'object' && 'request_id' in itineraryResult && 'days' in itineraryResult) {
               state.itinerary = itineraryResult as Itinerary;
+              if (state.trip_plan_request && state.itinerary.days?.length) {
+                state.trip_plan_request = syncPlanRoutingMetricsToTripPlan(
+                  state.trip_plan_request,
+                  state.itinerary,
+                );
+              }
             } else {
               // 降级：生成空行程
               state.itinerary = {
@@ -11733,11 +14546,33 @@ ${JSON.stringify(routingDecision, null, 2)}
       // 调用验证 Skills（itinerary.verify）
       if (this.skillsRegistry && state.itinerary) {
         try {
+          const researchData =
+            state.research_data && typeof state.research_data === 'object'
+              ? ({ ...state.research_data } as Record<string, unknown>)
+              : ({} as Record<string, unknown>);
+          const ohSkill = this.skillsRegistry.getSkill('opening_hours.get');
+          if (ohSkill) {
+            try {
+              await hydrateOpeningHoursEvidenceForItinerary({
+                itinerary: state.itinerary,
+                researchData,
+                openingHoursSkill: ohSkill as {
+                  execute: (input: { poi_ids: string[] }) => Promise<{ opening_hours?: unknown[] }>;
+                },
+              });
+              state.research_data = researchData;
+            } catch (e: unknown) {
+              this.logger.warn(
+                `[Claude Orchestrator] VERIFY opening_hours hydrate skipped: ${e instanceof Error ? e.message : String(e)}`,
+              );
+            }
+          }
+
           const verifySkill = this.skillsRegistry.getSkill('itinerary.verify');
           if (verifySkill) {
             const verifyResult = await verifySkill.execute({
               itinerary: state.itinerary,
-              research_data: state.research_data,
+              research_data: researchData,
               user_query: request.message,
               intent_hints: (() => {
                 const vt = state.trip_plan_request?.constraints?.vehicle_type;
@@ -11858,6 +14693,18 @@ ${JSON.stringify(routingDecision, null, 2)}
         }
       }
 
+      if (repairApplied && state.trip_plan_request && state.itinerary?.days?.length) {
+        const postRepair = applyPostRepairRoutingMetricsSync({
+          trip: state.trip_plan_request,
+          itinerary: state.itinerary,
+          metadata: state.metadata as Record<string, unknown>,
+          message: request?.message ?? state.trip_plan_request.message,
+          routeAndRunIntent: (state.metadata as Record<string, unknown>)?.route_and_run_intent as any,
+          clarificationAnswers: (state.metadata as Record<string, unknown>)?.clarification_answers as any,
+        });
+        state.trip_plan_request = postRepair.trip;
+      }
+
       state.decision_log.push({
         request_id: state.request_id,
         step: 'REPAIR',
@@ -11890,251 +14737,86 @@ ${JSON.stringify(routingDecision, null, 2)}
     }
   }
 
+  private createNarratePhaseHost(): NarratePhaseHost {
+    return {
+      logger: this.logger,
+      decisionKernel: this.decisionKernel,
+      narratorAgent: this.narratorAgent,
+      resolveDosExecutionContext: (req) => {
+        const ctx = this.resolveDosExecutionContext(req);
+        const tripId = ctx?.tripId;
+        if (!ctx || !tripId) return null;
+        return { planDelta: [...ctx.planDelta], tripId };
+      },
+      kernelCreateInitialOpts: (req, st) => this.kernelCreateInitialOpts(req, st),
+      parseResearchConflictReport: (raw) =>
+        isResearchConflictNegotiationReport(raw) ? raw : undefined,
+      readRealtimeRerollCount: (rd) => readRealtimeRerollCount(rd),
+      memoryReplayDecisionSource: MEMORY_REPLAY_DECISION_SOURCE,
+    };
+  }
+
+  private createNarrateNodeHost(): NarrateNodeHost {
+    const phaseHost = this.createNarratePhaseHost();
+    return {
+      ...phaseHost,
+      recordPoiPlanningOutcomeAfterItinerary: (st, dso) =>
+        this.recordPoiPlanningOutcomeAfterItinerary(st, dso),
+      touchAsyncTaskProgress: (step) =>
+        this.touchAsyncTaskProgress(step as OrchestrationStep),
+      maybeSnapshot: (st, trigger) =>
+        this.maybeSnapshot(st, trigger as 'AUTO' | 'USER_ACTION' | 'CHECKPOINT'),
+      runNarratePhase: (params) => runNarratePhase(phaseHost, params),
+    };
+  }
+
   /**
    * NARRATE 步骤：产出用户可读解释（不得改硬字段）
-   * P3 C: 优先经 Kernel.executeNarrate（NarrateExecutor 封装 NarratorAgent），否则降级到直接调用
    */
   private async executeNarrateStep(
     request: RouteAndRunRequestDto,
     context: AgentContext,
     state: OrchestratorState,
     _provider: LlmProvider,
+    decisionState?: DecisionState,
   ): Promise<void> {
-    state.current_step = 'NARRATE';
-    const stepStartTime = Date.now();
-
-    this.logger.debug(`[Claude Orchestrator] 执行 NARRATE 步骤...`);
-
-    try {
-      const rd0 = state.research_data as Record<string, unknown> | undefined;
-      const rawEbpNegotiation = rd0?.__research_conflict_negotiation;
-      const narrateEbpReport = isResearchConflictNegotiationReport(rawEbpNegotiation) ? rawEbpNegotiation : undefined;
-      const narrateRealtimeRerollCount = readRealtimeRerollCount(rd0);
-
-      if (this.decisionKernel && state.itinerary && state.gate_result) {
-        const narrateCtx: import('../../decision/kernel/interfaces/phase-executor.interface').NarrateExecutorContext = {
-          requestId: state.request_id,
-          userId: request.user_id,
-          orchestratorState: state,
-          ...(narrateEbpReport ? { researchConflict: narrateEbpReport } : {}),
-        };
-        const dso = this.decisionKernel.createInitialState(state.request_id, this.kernelCreateInitialOpts(request, state));
-        const result = await this.decisionKernel.executeNarrate(dso, narrateCtx);
-        state.narration = result.narration as any;
-      } else {
-        // P3 D.1 原意：无 Kernel 时不强行走 NarrateExecutor；但若已有日程仍应产出叙述（否则调试里常年「0 天」）。
-        state.narration = {
-          user_friendly_summary: '',
-          day_by_day_narrative: [],
-          highlights: [],
-          tips: [],
-        };
-      }
-
-      // Kernel / NarrateExecutor 若返回空 day 列表，或上层未走 Kernel，则用 NarratorAgent 直接基于 itinerary.days 生成（与侧边栏有行程但叙述为 0 的根因对齐）。
-      const narrativeDays = state.narration?.day_by_day_narrative?.length ?? 0;
-      const itineraryDayCount = Array.isArray(state.itinerary?.days) ? state.itinerary!.days.length : 0;
-      if (
-        this.narratorAgent &&
-        itineraryDayCount > 0 &&
-        narrativeDays === 0
-      ) {
-        const gate: GateResult =
-          state.gate_result ??
-          ({
-            gate_result: 'ALLOW',
-            violations: [],
-            required_adjustments: [],
-            confidence: 0.9,
-          } as GateResult);
-        try {
-          const fbState = {
-            ...state,
-            ...(narrateEbpReport ? { narration_research_conflict: narrateEbpReport } : {}),
-          };
-          const fb = await this.narratorAgent.narrate(
-            state.itinerary as Itinerary,
-            gate,
-            state.decision_log ?? [],
-            fbState,
-          );
-          state.narration = fb as any;
-          this.logger.debug(
-            `[Claude Orchestrator] NARRATE fallback: NarratorAgent 生成 ${fb.day_by_day_narrative?.length ?? 0} 天叙述`,
-          );
-        } catch (e: any) {
-          this.logger.warn(`[Claude Orchestrator] NARRATE fallback narrator failed: ${e?.message ?? e}`);
-        }
-      }
-
-      let manifestAudit: { collapsed_suture_count: number } | undefined;
-      if (state.narration && state.research_data && typeof state.research_data === 'object') {
-        const { mergeResearchManifestIntoNarration } = await import('../utils/narrator-research-manifest-hints.util');
-        manifestAudit = { collapsed_suture_count: 0 };
-        state.narration = mergeResearchManifestIntoNarration(state.narration as any, state, manifestAudit) as any;
-      }
-
-      state.decision_log.push({
-        request_id: state.request_id,
-        step: 'NARRATE',
-        actor: 'Narrator',
-        inputs_summary: '把结构化日程转成自然语言说明（不改具体时间安排）',
-        outputs_summary: state.narration
-          ? `已写出 ${state.narration?.day_by_day_narrative?.length || 0} 天的讲解文案与要点提示`
-          : '未生成叙述（可能缺少 Kernel 或日程为空）',
-        evidence_refs: [],
-        timestamp: new Date().toISOString(),
-        metadata: {
-          duration_ms: Date.now() - stepStartTime,
-          ...(narrateEbpReport
-            ? {
-                ebp_stance: narrateEbpReport.primary_narrative_stance,
-                conflict_count: narrateEbpReport.items.length,
-                ...(narrateEbpReport.stitch_tactic ? { stitch_tactic: narrateEbpReport.stitch_tactic } : {}),
-                ...(narrateEbpReport.memory_replay
-                  ? { decision_source: MEMORY_REPLAY_DECISION_SOURCE }
-                  : {}),
-              }
-            : {}),
-          ...(manifestAudit && manifestAudit.collapsed_suture_count > 0
-            ? { collapsed_suture_count: manifestAudit.collapsed_suture_count }
-            : {}),
-          ...(narrateRealtimeRerollCount > 0 ? { realtime_reroll_count: narrateRealtimeRerollCount } : {}),
-          effective_voice_tone:
-            state.narration && typeof state.narration === 'object'
-              ? ((state.narration as { voice_tone_modifier?: string }).voice_tone_modifier ?? null)
-              : null,
-        },
-      });
-
-      state.metadata.last_updated_at = new Date().toISOString();
-    } catch (error: any) {
-      this.logger.error(`[Claude Orchestrator] NARRATE 步骤失败: ${error?.message}`);
-      // Narrate 失败不影响整体流程，记录错误但继续
-      state.errors.push({
-        step: 'NARRATE',
-        error_code: 'NARRATION_ERROR',
-        message: error?.message || '叙述生成失败',
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
-  /**
-   * FEEDBACK 步骤：专利反馈学习模块，记录决策日志
-   * P3 A.4: 经 Kernel.executeFeedback 封装
-   */
-  private async executeFeedbackStep(
-    state: OrchestratorState,
-    decisionState: DecisionState | undefined,
-  ): Promise<DecisionState | undefined> {
-    if (!this.decisionKernel || !decisionState) return decisionState;
-
-    state.current_step = 'FEEDBACK';
-    const patch = this.isDsoAsPrimary()
-      ? buildPatchFromDSOPrimary(decisionState, state)
-      : orchestratorStateToDecisionStatePatch(state);
-
-    const { newState: synced } = await this.decisionKernel.executeFeedback(decisionState, patch);
-
-    state.decision_log.push({
-      request_id: state.request_id,
-      step: 'FEEDBACK' as OrchestrationStep,
-      actor: 'Orchestrator' as SubAgentType,
-      inputs_summary: formatFeedbackInputsZh(),
-      outputs_summary: formatFeedbackOutputsZh(synced.confidence, synced.systemState?.version),
-      evidence_refs: [],
-      timestamp: new Date().toISOString(),
+    await runNarratePhase(this.createNarratePhaseHost(), {
+      request,
+      context,
+      state,
+      decisionState,
     });
-    state.metadata.last_updated_at = new Date().toISOString();
-
-    return synced;
+    await this.routeAndRunTaskProgress?.reportOrchestrationStepWithState('NARRATE', state);
   }
 
-  /**
-   * 步骤 8: HALLUCINATION_DETECTION - 防幻觉检测
-   */
-  private async executeHallucinationDetectionStep(
-    request: RouteAndRunRequestDto,
-    context: AgentContext,
-    state: OrchestratorState,
-  ): Promise<void> {
-    if (!this.hallucinationDetection) {
-      this.logger.debug(`[Claude Orchestrator] HallucinationDetectionService 未注入，跳过防幻觉检测`);
-      return;
-    }
+  private createFeedbackPhaseHost(): FeedbackPhaseHost {
+    return {
+      logger: this.logger,
+      decisionKernel: this.decisionKernel,
+      isDsoAsPrimary: () => this.isDsoAsPrimary(),
+    };
+  }
 
-    const stepStartTime = Date.now();
-    this.logger.debug(`[Claude Orchestrator] 执行 HALLUCINATION_DETECTION 步骤...`);
+  private createHallucinationPhaseHost(): HallucinationPhaseHost {
+    return {
+      logger: this.logger,
+      hallucinationDetection: this.hallucinationDetection,
+    };
+  }
 
-    try {
-      // 对narration进行防幻觉检测
-      if (state.narration) {
-        const detectionResult = await this.hallucinationDetection.detectHallucinations(
-          state.narration,
-          context,
-        );
-
-        // 使用清理后的输出
-        if (detectionResult.cleanedOutput) {
-          state.narration = detectionResult.cleanedOutput as any;
-        }
-
-        // 如果有幻觉风险，记录警告
-        if (detectionResult.hallucinationRisks.length > 0) {
-          // 在state中添加warnings字段（如果不存在）
-          if (!state.metadata.warnings) {
-            state.metadata.warnings = [];
-          }
-
-          (state.metadata.warnings as any[]).push({
-            type: 'HALLUCINATION_RISK',
-            message: detectionResult.userNotification.message,
-            items: detectionResult.hallucinationRisks.map(r => ({
-              text: r.text,
-              confidence: r.confidence,
-              action: r.action,
-            })),
-          });
-
-          this.logger.warn(
-            `[Claude Orchestrator] 检测到 ${detectionResult.hallucinationRisks.length} 个幻觉风险`,
-          );
-        }
-
-        // 记录决策日志
-        state.decision_log.push({
-          request_id: state.request_id,
-          step: 'HALLUCINATION_DETECTION',
-          actor: 'HallucinationDetection',
-          inputs_summary: formatHallucinationInputsZh(),
-          outputs_summary: formatHallucinationOutputsZh(
-            detectionResult.statistics.totalClaims,
-            detectionResult.statistics.verifiedClaims,
-            detectionResult.statistics.hallucinationRisks,
-          ),
-          evidence_refs: [],
-          timestamp: new Date().toISOString(),
-          metadata: {
-            duration_ms: Date.now() - stepStartTime,
-            statistics: detectionResult.statistics,
-          },
-        });
-      }
-
-      state.metadata.last_updated_at = new Date().toISOString();
-    } catch (error: any) {
-      this.logger.error(
-        `[Claude Orchestrator] HALLUCINATION_DETECTION 步骤失败: ${error?.message}`,
-      );
-      // 防幻觉检测失败不影响整体流程，记录错误但继续
-      state.errors.push({
-        step: 'HALLUCINATION_DETECTION',
-        error_code: 'HALLUCINATION_DETECTION_ERROR',
-        message: error?.message || '防幻觉检测失败',
-        timestamp: new Date().toISOString(),
-      });
-    }
+  private createPostPlanGraphHost(): PostPlanGraphHost {
+    const narrateHost = this.createNarrateNodeHost();
+    const feedbackHost = this.createFeedbackPhaseHost();
+    const hallucinationHost = this.createHallucinationPhaseHost();
+    return {
+      ...narrateHost,
+      runFeedbackPhase: (params) => runFeedbackPhase(feedbackHost, params),
+      runHallucinationPhase: (params) => runHallucinationPhase(hallucinationHost, params),
+      buildSuccessResult: (st, start, dso, ctx) =>
+        this.buildSuccessResult(st, start, dso, ctx),
+      buildErrorResult: (st, error, start, dso, failingStep, robust, ctx) =>
+        this.buildErrorResult(st, error, start, dso, failingStep as any, robust as any, ctx),
+    };
   }
 
   /**
@@ -12203,6 +14885,339 @@ ${JSON.stringify(routingDecision, null, 2)}
     return messages.join('\n');
   }
 
+  /** Phase 1：PLAN/VERIFY 子图宿主面（plan-verify-loop） */
+  getDecisionKernel(): DecisionKernelService | undefined {
+    return this.decisionKernel;
+  }
+
+  getLocalCaseStore(): LocalCaseStoreService | undefined {
+    return this.localCaseStore;
+  }
+
+  private asPlanVerifyLoopHost(): PlanVerifyLoopHost {
+    return this as unknown as PlanVerifyLoopHost;
+  }
+
+  private asPlanGenEmptyDraftGuardHost(): PlanGenEmptyDraftGuardHost {
+    return this as unknown as PlanGenEmptyDraftGuardHost;
+  }
+
+  private asPostPlanGraphHost(): PostPlanGraphHost {
+    return this.createPostPlanGraphHost();
+  }
+
+
+  private asPrePlanGraphHost(): PrePlanGraphHost {
+    return this as unknown as PrePlanGraphHost;
+  }
+
+  async runPrePlanNode(
+    nodeId: import('../orchestration/graph/orchestration-graph.types').OrchestrationNodeId,
+    ctx: import('../orchestration/graph/orchestration-graph.types').SharedRunContext,
+  ): Promise<import('../orchestration/graph/orchestration-graph.types').GraphNodeOutcome> {
+    const params = ctx as import('../orchestration/graph/pre-plan-graph.types').PrePlanGraphRunParams;
+    const entry = params.entry ?? 'intake';
+    if (
+      !params.forcePrePlanIntakeEntry &&
+      PRE_PLAN_NODE_ORDER.indexOf(nodeId) < PRE_PLAN_NODE_ORDER.indexOf(entry)
+    ) {
+      return { kind: 'continue', decisionState: ctx.decisionState };
+    }
+    const segment = await this.runPrePlanFullChain({
+      ...params,
+      decisionState: ctx.decisionState,
+      entry: nodeId,
+      stopAfter: nodeId,
+    });
+    if (segment.kind === 'terminal') {
+      return {
+        kind: 'terminal',
+        terminal: segment.terminal,
+        result: segment.result,
+        decisionState: segment.decisionState,
+      };
+    }
+    return { kind: 'continue', decisionState: segment.decisionState };
+  }
+
+  private async runPrePlanFullChain(
+    params: import('../orchestration/graph/pre-plan-graph.types').PrePlanGraphRunParams,
+  ): Promise<import('../orchestration/graph/orchestration-graph.types').GraphRunOutcome> {
+    const { request, context, state, llmProvider, startTime, resumeSkipIntake, stopAfter } = params;
+    let decisionState = params.decisionState;
+    const startAt = params.entry ?? 'intake';
+    const shouldRun = (node: import('../orchestration/graph/orchestration-graph.types').OrchestrationNodeId) =>
+      PRE_PLAN_NODE_ORDER.indexOf(node) >= PRE_PLAN_NODE_ORDER.indexOf(startAt);
+
+    const maybeStopAfter = (
+      node: import('../orchestration/graph/orchestration-graph.types').OrchestrationNodeId,
+    ): import('../orchestration/graph/orchestration-graph.types').GraphRunOutcome | null => {
+      if (stopAfter && stopAfter === node) {
+        return { kind: 'completed', lastNode: node, decisionState };
+      }
+      return null;
+    };
+
+    const prePlanTerminal = (
+      terminal: import('../orchestration/graph/orchestration-graph.types').OrchestrationTerminalId,
+      result: OrchestrationResult,
+    ): import('../orchestration/graph/orchestration-graph.types').GraphRunOutcome => ({
+      kind: 'terminal',
+      terminal,
+      result,
+      decisionState,
+    });
+
+    if (shouldRun('intake')) {
+      const intakeSegment = await this.getIntakeNode().runPrePlanSegment({
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+        resumeSkipIntake,
+        systemRequestId: state.request_id,
+        logger: this.logger,
+        prePlan: { startTime, stopAfter, maybeStopAfter, prePlanTerminal },
+      });
+      if (intakeSegment.kind !== 'continue') {
+        return intakeSegment;
+      }
+      decisionState = intakeSegment.decisionState;
+    }
+
+    if (shouldRun('state_update')) {
+      const stateUpdateSegment = await this.getStateUpdateNode().runPrePlanSegment({
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+        systemRequestId: state.request_id,
+        logger: this.logger,
+        prePlan: { startTime, stopAfter, maybeStopAfter, prePlanTerminal },
+      });
+      if (stateUpdateSegment.kind !== 'continue') {
+        return stateUpdateSegment;
+      }
+      decisionState = stateUpdateSegment.decisionState;
+    }
+
+    if (shouldRun('research')) {
+      const researchSegment = await this.getResearchNode().runPrePlanSegment({
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+        systemRequestId: state.request_id,
+        logger: this.logger,
+        prePlan: { startTime, stopAfter, maybeStopAfter, prePlanTerminal },
+      });
+      if (researchSegment.kind !== 'continue') {
+        return researchSegment;
+      }
+      decisionState = researchSegment.decisionState;
+    }
+
+    if (shouldRun('poi_selection')) {
+      const poiSegment = await this.getPoiSelectionNode().runPrePlanSegment({
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+        systemRequestId: state.request_id,
+        logger: this.logger,
+        prePlan: { startTime, stopAfter, maybeStopAfter, prePlanTerminal },
+      });
+      if (poiSegment.kind !== 'continue') {
+        return poiSegment;
+      }
+      decisionState = poiSegment.decisionState;
+    }
+
+    if (shouldRun('gate_eval')) {
+      const gateSegment = await this.getGateEvalNode().runPrePlanSegment({
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+        deadline: params.deadline,
+        systemRequestId: state.request_id,
+        logger: this.logger,
+        prePlan: { startTime, stopAfter, maybeStopAfter, prePlanTerminal },
+      });
+      if (gateSegment.kind !== 'continue') {
+        return gateSegment;
+      }
+      decisionState = gateSegment.decisionState;
+    }
+
+    if (shouldRun('context_build')) {
+      const contextBuildSegment = await this.getContextBuildNode().runPrePlanSegment({
+        request,
+        context,
+        state,
+        decisionState,
+        llmProvider,
+        startTime,
+        systemRequestId: state.request_id,
+        logger: this.logger,
+        prePlan: { startTime, stopAfter, maybeStopAfter, prePlanTerminal },
+      });
+      if (contextBuildSegment.kind !== 'continue') {
+        return contextBuildSegment;
+      }
+      decisionState = contextBuildSegment.decisionState;
+    }
+
+    return { kind: 'completed', lastNode: 'context_build', decisionState };
+  }
+
+  async applyReturnToResearchInvalidation(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+    request: RouteAndRunRequestDto,
+  ): Promise<DecisionState | undefined> {
+    let ds = decisionState;
+    const harnessEvents = ds?.harnessRuntime?.last_harness_failure_events;
+    const r2rContext = buildReturnToResearchContextV1({ events: harnessEvents });
+    const scopes = dedupeResearchScopes(r2rContext.scopes);
+
+    if (this.decisionKernel && ds) {
+      ds = this.decisionKernel.updateState(ds, {
+        harnessRuntime: {
+          ...(ds.harnessRuntime ?? {}),
+          researchEvidenceSnapshotId: undefined,
+          evidenceVersion: undefined,
+        },
+      });
+    }
+
+    // 定向 COW：保留未失效域作为 prior，强制后续 RESEARCH 走 scoped_partial
+    let rdBase: Record<string, unknown> | undefined =
+      state.research_data && typeof state.research_data === 'object'
+        ? cloneResearchRecord(state.research_data as Record<string, unknown>)
+        : undefined;
+    if ((!rdBase || Object.keys(rdBase).length === 0) && this.researchPriorSnapshot) {
+      const loaded = await this.researchPriorSnapshot.load(request);
+      if (loaded && typeof loaded === 'object' && Object.keys(loaded).length > 0) {
+        rdBase = cloneResearchRecord(loaded as Record<string, unknown>);
+      }
+    }
+
+    const m0 = { ...(state.metadata as Record<string, unknown>) };
+    m0.return_to_research_context_v1 = r2rContext;
+    m0.research_scopes_to_recompute = scopes;
+
+    let clearedKeys: string[] = [];
+    if (rdBase && Object.keys(rdBase).length > 0) {
+      const rollback = cloneResearchRecord(rdBase);
+      const draftRd = cloneResearchRecord(rdBase);
+      if (draftRd) {
+        const inv = invalidateResearchScopesInPlace(draftRd, scopes, 'RETURN_TO_RESEARCH');
+        clearedKeys = inv.clearedKeys;
+        m0.pending_research_prior_for_kernel = draftRd;
+        m0.research_atomic_rollback_snapshot = rollback;
+        // 主干 research_data 暂不清空：Kernel scoped_partial 以 pending prior 为准
+      }
+    } else {
+      // 无 prior 时允许后续显式 forced full，但必须可观测
+      m0.r2r_allow_forced_full_empty_prior = true;
+      this.logger.warn(
+        `[Claude Orchestrator] RETURN_TO_RESEARCH 无 prior research，允许显式 forced full request_id=${state.request_id} codes=${r2rContext.failure_codes.join(',')}`,
+      );
+    }
+
+    m0.research_scope_invalidation = {
+      scopes,
+      cleared_keys: clearedKeys,
+      at: r2rContext.at,
+      reason: 'RETURN_TO_RESEARCH',
+      failure_codes: r2rContext.failure_codes,
+      missing_evidence: r2rContext.missing_evidence,
+      forbid_full_research: r2rContext.forbid_full_research,
+    };
+    state.metadata = m0 as OrchestratorState['metadata'];
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'VERIFY',
+      actor: 'Orchestrator',
+      inputs_summary: 'Harness RETURN_TO_RESEARCH → targeted research scope invalidation',
+      outputs_summary: `RESEARCH_SCOPE_INVALIDATION scopes=${scopes.join(',')} codes=${r2rContext.failure_codes.join(',') || '∅'}`,
+      evidence_refs: [],
+      timestamp: r2rContext.at,
+      metadata: {
+        system_action: 'RETURN_TO_RESEARCH',
+        scopes,
+        return_to_research_context_v1: r2rContext,
+        failure_codes: r2rContext.failure_codes,
+        missing_evidence: r2rContext.missing_evidence,
+      },
+    });
+    return ds;
+  }
+
+  private warn(message: string): void {
+    this.logger.warn(message);
+  }
+
+  private async tryPlanGenEmptyDraftTerminal(
+    params: PlanGenEmptyDraftGuardParams,
+  ): Promise<OrchestrationResult | null> {
+    return tryPlanGenEmptyDraftTerminalGuard(this.asPlanGenEmptyDraftGuardHost(), params);
+  }
+
+  private async runTravelCompilePhaseIfEnabled(
+    state: OrchestratorState,
+    request: RouteAndRunRequestDto,
+  ): Promise<void> {
+    this.touchAsyncTaskProgress('TRAVEL_COMPILE');
+    await runTravelCompilePhase({
+      state,
+      request,
+      compiler: this.travelCompiler,
+      graphStore: this.travelGraphStore,
+      configService: this.configService,
+      onProgress: (view) => {
+        void this.routeAndRunTaskProgress?.reportCtreCompilationProgress(view);
+      },
+    });
+    this.maybeSnapshot(state, 'AUTO');
+  }
+
+  private async runPlanGenWithEmptyDraftGuard(
+    params: PlanVerifyLoopRunParams,
+  ): Promise<PlanGenWithEmptyDraftResult> {
+    this.touchAsyncTaskProgress('PLAN_GEN');
+    let decisionState = await this.executePlanGenPhase(
+      params.decisionState,
+      params.state,
+      params.request,
+      params.context,
+      params.llmProvider,
+    );
+    this.maybeSnapshot(params.state, 'AUTO');
+    const terminal = await tryPlanGenEmptyDraftTerminalGuard(this.asPlanGenEmptyDraftGuardHost(), {
+      request: params.request,
+      context: params.context,
+      state: params.state,
+      decisionState,
+      startTime: params.startTime,
+    });
+    if (terminal) {
+      return { decisionState, terminal };
+    }
+    return { decisionState };
+  }
+
   private violationTypeToCn(type: string): string {
     const t = String(type || '').toUpperCase();
     if (t === 'REACHABILITY') return '准入类';
@@ -12225,23 +15240,28 @@ ${JSON.stringify(routingDecision, null, 2)}
       parts.push(summary);
     }
 
-    const days = narr?.day_by_day_narrative;
-    if (Array.isArray(days) && days.length > 0) {
-      const dayLines = days
-        .map((d) => {
-          const header =
-            d.day != null
-              ? `第 ${d.day} 天${d.date ? `（${d.date}）` : ''}`
-              : d.date
-                ? String(d.date)
-                : '';
-          const body = (d.narrative || '').trim();
-          if (!header && !body) return '';
-          return header ? `${header}\n${body}` : body;
-        })
-        .filter(Boolean);
-      if (dayLines.length > 0) {
-        parts.push(dayLines.join('\n\n'));
+    const preformattedDays = narr?.day_by_day_text_zh?.trim();
+    if (preformattedDays) {
+      parts.push(preformattedDays);
+    } else {
+      const days = narr?.day_by_day_narrative;
+      if (Array.isArray(days) && days.length > 0) {
+        const dayLines = days
+          .map((d) => {
+            const header =
+              d.day != null
+                ? `第 ${d.day} 天${d.date ? `（${d.date}）` : ''}`
+                : d.date
+                  ? String(d.date)
+                  : '';
+            const body = (d.narrative || '').trim();
+            if (!header && !body) return '';
+            return header ? `${header}\n${body}` : body;
+          })
+          .filter(Boolean);
+        if (dayLines.length > 0) {
+          parts.push(dayLines.join('\n\n'));
+        }
       }
     }
 
@@ -12283,6 +15303,11 @@ ${JSON.stringify(routingDecision, null, 2)}
         recovery_trace_summary: inv.trace_summary,
       } as OrchestratorState['metadata'];
     }
+  }
+
+  private resolveClarificationIntroAnswerText(state: OrchestratorState): string {
+    const locale = (state.metadata as { clarification_locale?: string })?.clarification_locale;
+    return clarificationIntroPlain(locale);
   }
 
   /**
@@ -12408,6 +15433,134 @@ ${JSON.stringify(routingDecision, null, 2)}
    * 构建成功结果
    * @param decisionState DSO（含 confidence/history/decisionMeta），供 RLHF/分析/前端使用
    */
+  private async persistDecisionTrajectoryAtOrchestrationExit(
+    state: OrchestratorState,
+    decisionState: DecisionState | undefined,
+    answerText?: string,
+  ): Promise<void> {
+    await finalizeOrchestrationDecisionTrajectory({
+      interlocutor: this.decisionTrajectoryInterlocutor,
+      state,
+      decisionState,
+      answerText,
+    });
+  }
+
+  private attachHotelRouteRunUiToOrchestrationResult(
+    result: OrchestrationResult,
+    hotelRouteRunUi: HotelRouteRunUiPayload,
+  ): OrchestrationResult {
+    if (!result.result) return result;
+    return {
+      ...result,
+      result: {
+        ...result.result,
+        accommodations: hotelRouteRunUi.accommodations,
+        airbnbListings: hotelRouteRunUi.airbnbListings,
+        routing: hotelRouteRunUi.routing,
+        ...(hotelRouteRunUi.night_groups?.length
+          ? { accommodation_night_groups: hotelRouteRunUi.night_groups }
+          : {}),
+        ...(hotelRouteRunUi.hotel_search_meta
+          ? { hotel_search_meta: hotelRouteRunUi.hotel_search_meta }
+          : {}),
+      },
+    };
+  }
+
+  private persistRouteRunAccommodationsToClientSession(
+    request: RouteAndRunRequestDto,
+    tripId: string | undefined,
+    hotelRouteRunUi: HotelRouteRunUiPayload,
+  ): void {
+    const sessionId = request.options?.client_session_id?.trim();
+    const tid = tripId?.trim();
+    if (!sessionId || !tid || !this.planningAssistantV2Service) return;
+    const items = mapHotelRouteRunUiToAccommodationItems(hotelRouteRunUi);
+    if (!items.length) return;
+    void this.planningAssistantV2Service
+      .persistLastAccommodationsForApply(sessionId, tid, items, request.user_id)
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(
+          `[Claude Orchestrator] persist route_run accommodations failed sessionId=${sessionId}: ${msg}`,
+        );
+      });
+  }
+
+  /** 整段多日重规划完成后：自动逐晚触发住宿 MCP，写入出站卡片载荷 */
+  private async enrichOrchestrationResultWithFullTripReplanHotel(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    state: OrchestratorState,
+    result: OrchestrationResult,
+  ): Promise<OrchestrationResult> {
+    if (!isItineraryFullTripReplanMetadata(state.metadata as Record<string, unknown> | undefined)) {
+      return result;
+    }
+    const md = state.metadata as Record<string, unknown>;
+    const hasClarification =
+      Array.isArray(state.clarification_questions) && state.clarification_questions.length > 0;
+    if (hasClarification) return result;
+
+    const msg =
+      request.message ??
+      (typeof md.intake_user_message === 'string' ? md.intake_user_message : '');
+    if (!detectFullTripReplanHotelIntent(msg, md)) return result;
+
+    const tripId = request.trip_id?.trim() ?? context.tripId?.trim();
+    if (!this.mcpToolDispatcher) {
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'NARRATE',
+        actor: 'Orchestrator',
+        inputs_summary: '整段多日重规划：绑定 Trip 后自动触发逐晚住宿 MCP',
+        outputs_summary: '住宿 MCP 未配置（mcpToolDispatcher 不可用），已跳过检索',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: {
+          system_action: 'FULL_TRIP_REPLAN_HOTEL_SENSOR',
+          skipped: true,
+          reason: 'mcp_unavailable',
+        },
+      });
+      return result;
+    }
+    try {
+      const hBranch = await this.runLiveHotelSensorBranch(request, context, tripId, {
+        fullTripReplan: true,
+      });
+      (state.metadata as Record<string, unknown>).full_trip_replan_hotel_sensor = {
+        attempted: true,
+        ok: !!hBranch.hotelRouteRunUi?.accommodations?.length,
+        card_count: hBranch.hotelRouteRunUi?.accommodations?.length ?? 0,
+      };
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'NARRATE',
+        actor: 'Orchestrator',
+        inputs_summary: '整段多日重规划：绑定 Trip 后自动触发逐晚住宿 MCP',
+        outputs_summary: hBranch.hotelRouteRunUi?.accommodations?.length
+          ? `住宿 MCP 返回 ${hBranch.hotelRouteRunUi.accommodations.length} 张候选卡片（第 ${(hBranch.hotelRouteRunUi.hotel_search_meta?.sampled_nights ?? []).join('、')} 晚）`
+          : '住宿 MCP 未返回可用候选（不影响行程草案）',
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { system_action: 'FULL_TRIP_REPLAN_HOTEL_SENSOR' },
+      });
+      if (!hBranch.hotelRouteRunUi?.accommodations?.length) {
+        return result;
+      }
+      const enrichedUi = enrichHotelRouteRunUiForClientApply(hBranch.hotelRouteRunUi);
+      this.persistRouteRunAccommodationsToClientSession(request, tripId, enrichedUi);
+      return this.attachHotelRouteRunUiToOrchestrationResult(result, enrichedUi);
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] FULL_TRIP_REPLAN hotel sensor failed request_id=${request.request_id}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return result;
+    }
+  }
+
   private buildSuccessResult(
     state: OrchestratorState,
     startTime: number,
@@ -12415,6 +15568,8 @@ ${JSON.stringify(routingDecision, null, 2)}
     context?: AgentContext,
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
+    attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     const hasClarificationQuestions = state.clarification_questions && state.clarification_questions.length > 0;
     this.finalizeHarnessTraceFromOrchestration(
       decisionState,
@@ -12423,8 +15578,15 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     // 如果有澄清问题，说明需要用户提供更多信息
     const answerText = hasClarificationQuestions
-      ? clarificationIntroPlain((state.metadata as any)?.clarification_locale)
+      ? this.resolveClarificationIntroAnswerText(state)
       : this.buildUserFacingAnswerText(state);
+
+    void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
+      (e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`[Claude Orchestrator] DecisionTrajectory finalize failed: ${msg}`);
+      },
+    );
 
     this.logger.log(`[Claude Orchestrator] 构建成功结果: decision_log.length=${state.decision_log.length}, current_step=${state.current_step}`);
 
@@ -12455,11 +15617,7 @@ ${JSON.stringify(routingDecision, null, 2)}
           : {}),
       },
       answerText,
-      stepsExecuted: state.decision_log.map(log => ({
-        stepId: log.step,
-        success: true,
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
     };
@@ -12474,10 +15632,19 @@ ${JSON.stringify(routingDecision, null, 2)}
     decisionState?: DecisionState,
     context?: AgentContext,
   ): OrchestrationResult {
+    injectGateRelaxationClarificationIfEligible(state);
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
+    attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'BLOCKED');
     const violations = state.gate_result?.violations || [];
     const answerText = `行程规划被阻止。原因：${violations.map(v => v.detail).join('；')}`;
+    void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
+      (e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`[Claude Orchestrator] DecisionTrajectory finalize failed: ${msg}`);
+      },
+    );
 
     // 如果有澄清问题，也包含在结果中（虽然被阻止，但可能需要用户提供替代方案）
     const hasClarificationQuestions = state.clarification_questions && state.clarification_questions.length > 0;
@@ -12500,11 +15667,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         } : {}),
       },
       answerText,
-      stepsExecuted: state.decision_log.map(log => ({
-        stepId: log.step,
-        success: true,
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
     };
@@ -12622,13 +15785,22 @@ ${JSON.stringify(routingDecision, null, 2)}
     context?: AgentContext,
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
+    attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'NEED_USER_CONFIRM');
-    const answerText = clarificationIntroPlain((state.metadata as any)?.clarification_locale);
+    const answerText = this.resolveClarificationIntroAnswerText(state);
+    void this.persistDecisionTrajectoryAtOrchestrationExit(state, decisionState, answerText).catch(
+      (e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`[Claude Orchestrator] DecisionTrajectory finalize failed: ${msg}`);
+      },
+    );
 
     return {
       success: false, // 需要用户输入，所以 success 为 false
       result: {
         state,
+        ...(state.gate_result ? { gate_result: state.gate_result } : {}),
         needsUserConfirmation: true,
         clarificationQuestions: state.clarification_questions || [],
         clarificationMessage: this.formatClarificationMessage(
@@ -12638,11 +15810,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         gaps: state.gaps,
       },
       answerText,
-      stepsExecuted: state.decision_log.map(log => ({
-        stepId: log.step,
-        success: true,
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
     };
@@ -12661,7 +15829,12 @@ ${JSON.stringify(routingDecision, null, 2)}
     context?: AgentContext,
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
+    attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'FAILED');
+    void this.decisionTrajectoryInterlocutor
+      ?.markFailed(state.request_id)
+      .catch(() => {});
     // 🆕 检查是否是超时错误
     const isTimeout =
       error?.message?.startsWith('TIMEOUT:') ||
@@ -12698,11 +15871,9 @@ ${JSON.stringify(routingDecision, null, 2)}
         ...(decisionState && { decisionState }),
       },
       answerText,
-      stepsExecuted: state.decision_log.map(log => ({
-        stepId: log.step,
-        success: log.step !== 'FAILED' && log.step !== 'TIMEOUT',
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log, {
+        isSuccess: (step) => step !== 'FAILED' && step !== 'TIMEOUT',
+      }),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log, // 🆕 确保决策日志被包含
     };
@@ -12715,6 +15886,8 @@ ${JSON.stringify(routingDecision, null, 2)}
     context?: AgentContext,
   ): OrchestrationResult {
     this.stampRecoveryOntoOrchestratorDecisionLogs(context, state);
+    attachTravelPreferenceSnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+    attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
     this.finalizeHarnessTraceFromOrchestration(decisionState, 'FAILED');
 
     const tf = decisionState?.systemState?.planGenTerminalFailure;
@@ -12783,13 +15956,21 @@ ${JSON.stringify(routingDecision, null, 2)}
     try {
       const score = normalizedAudit.session_consistency_score;
       const domAxiom = pickDominantAxiom(
-        matchAxioms({
-          message: (state as any)?.trip_plan_request?.message,
-          constraints: (state as any)?.trip_plan_request?.constraints,
-        }),
+        matchAxioms(
+          buildAxiomMatchContext({
+            message: (state as any)?.trip_plan_request?.message,
+            constraints: (state as any)?.trip_plan_request?.constraints,
+            trip: (state as any)?.trip_plan_request,
+            tripId: (state as any)?.trip_plan_request?.trip_id,
+            itinerary: (state as any)?.itinerary,
+            routeAndRunIntent: (state.metadata as Record<string, unknown>)?.route_and_run_intent as any,
+            clarificationAnswers: (state.metadata as Record<string, unknown>)?.clarification_answers as any,
+          }),
+        ),
       );
       const expectedCid = domAxiom?.axiom?.cid;
       const actualCid = normalizedAudit.dominant_cid;
+      const axiomMatchSource = axiomMatchSourceForMetrics(domAxiom);
       this.promMetrics?.recordSessionConsistencyScore({
         score,
         axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
@@ -12806,17 +15987,20 @@ ${JSON.stringify(routingDecision, null, 2)}
         if (domAxiom?.axiom_id && expectedCid && actualCid && expectedCid !== actualCid) {
           this.promMetrics?.recordAxiomDominantCidMismatch({
             axiom_id: domAxiom.axiom_id,
-            expected_cid: expectedCid,
-            actual_cid: actualCid,
+            expected_cid: normalizeAxiomCidForMetrics(expectedCid),
+            actual_cid: normalizeAxiomCidForMetrics(actualCid),
             stage: 'TERMINAL',
+            match_source: axiomMatchSource,
           });
         }
         if (delta_reason_kind === 'mismatch') {
           this.promMetrics?.recordAxiomSimRealMismatch({
             axiom_id: domAxiom?.axiom_id ?? 'UNKNOWN',
-            expected_cid: expectedCid ?? 'UNKNOWN',
-            actual_cid: actualCid ?? 'UNKNOWN',
+            expected_cid: normalizeAxiomCidForMetrics(expectedCid),
+            actual_cid: normalizeAxiomCidForMetrics(actualCid),
             stage: 'TERMINAL',
+            match_source: axiomMatchSource,
+            severity: domAxiom?.axiom?.severity ?? 'UNKNOWN',
           });
         }
       } catch {
@@ -12891,11 +16075,7 @@ ${JSON.stringify(routingDecision, null, 2)}
         ...(decisionState && { decisionState }),
       } as any,
       answerText,
-      stepsExecuted: state.decision_log.map((log) => ({
-        stepId: log.step,
-        success: true,
-        duration: log.metadata?.duration_ms || 0,
-      })),
+      stepsExecuted: mapOrchestratorDecisionLogToStepsExecuted(state.decision_log),
       totalDuration: Date.now() - startTime,
       decisionLog: state.decision_log,
     };
@@ -13043,5 +16223,13 @@ ${JSON.stringify(routingDecision, null, 2)}
    */
   private computeWeatherRisk(researchData: Record<string, any>): number | undefined {
     return aggregateWeatherRisk(researchData);
+  }
+
+  /** 异步 route_and_run 任务进度（无 task 上下文时为 no-op） */
+  private touchAsyncTaskProgress(
+    step: import('../interfaces/trip-plan.interface').OrchestrationStep,
+    customMessage?: string,
+  ): void {
+    void this.routeAndRunTaskProgress?.reportOrchestrationStep(step, customMessage);
   }
 }

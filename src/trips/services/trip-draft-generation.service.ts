@@ -336,7 +336,7 @@ export class TripDraftGenerationService {
       if (ref.nameEN?.trim()) names.add(ref.nameEN.trim());
     }
 
-    const ids = refs.map((ref) => ref.id).filter((id): id is number => Number.isInteger(id) && id > 0);
+    const ids = refs.map((ref) => ref.id).filter((id): id is number => id != null && Number.isInteger(id) && id > 0);
     const uuids = refs.map((ref) => ref.uuid).filter((uuid): uuid is string => Boolean(uuid?.trim()));
     if (ids.length > 0 || uuids.length > 0) {
       const places = await this.prisma.place.findMany({

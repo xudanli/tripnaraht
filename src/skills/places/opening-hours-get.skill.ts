@@ -9,6 +9,11 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { PlacesService } from '../../places/places.service';
 import { Skill as SkillDecorator } from '../decorators/skill.decorator';
+import {
+  extractOpeningHoursFromPlaceMetadata,
+  hasResolvableOpeningHours,
+  openingHoursToEvidenceString,
+} from '../../common/utils/resolve-place-opening-hours.util';
 
 export interface OpeningHoursGetInput extends SkillInput {
   poi_ids: string[];
@@ -25,7 +30,7 @@ export interface OpeningHoursGetOutput extends SkillOutput {
 
 @SkillDecorator({
   name: 'opening_hours.get',
-  description: '获取 POI 的开放时间',
+  description: '获取 POI opening_hours 与时区规则。在 RESEARCH/VERIFY 阶段校验活动时间窗或 repair 需判断营业冲突时调用。',
   version: '1.0.0',
   category: 'trip',
   toolGroup: 'DOMAIN',
@@ -36,7 +41,7 @@ export class OpeningHoursGetSkill implements Skill<OpeningHoursGetInput, Opening
 
   metadata = {
     name: 'opening_hours.get',
-    description: '获取 POI 的开放时间',
+    description: '获取 POI opening_hours 与时区规则。在 RESEARCH/VERIFY 阶段校验活动时间窗或 repair 需判断营业冲突时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,
@@ -75,7 +80,7 @@ export class OpeningHoursGetSkill implements Skill<OpeningHoursGetInput, Opening
                 const place = await placesService.findOne(placeIdNum);
                 if (place) {
                   const metadata = (place.metadata as any) || {};
-                  openingHours = metadata.openingHours || metadata.opening_hours;
+                  openingHours = extractOpeningHoursFromPlaceMetadata(metadata);
                   // place.status 包含 isOpen 字段
                   isOpenNow = place.status?.isOpen ?? false;
                 } else {
@@ -85,7 +90,7 @@ export class OpeningHoursGetSkill implements Skill<OpeningHoursGetInput, Opening
                     const updatedPlace = await placesService.findOne(placeIdNum);
                     if (updatedPlace) {
                       const metadata = (updatedPlace.metadata as any) || {};
-                      openingHours = metadata.openingHours || metadata.opening_hours;
+                      openingHours = extractOpeningHoursFromPlaceMetadata(metadata);
                       // place.status 包含 isOpen 字段
                       isOpenNow = updatedPlace.status?.isOpen ?? false;
                     }
@@ -98,9 +103,13 @@ export class OpeningHoursGetSkill implements Skill<OpeningHoursGetInput, Opening
               }
             }
             
+            const evidenceHours = hasResolvableOpeningHours(openingHours)
+              ? openingHoursToEvidenceString(openingHours) ?? openingHours
+              : openingHours;
+
             return {
               poi_id: poiId,
-              opening_hours: openingHours,
+              opening_hours: evidenceHours,
               is_open_now: isOpenNow,
               evidence_id: `opening_hours_${poiId}_${Date.now()}`,
             };

@@ -15,6 +15,19 @@ import type { PhaseExecutorContext, GateResultLike } from '../../../decision/ker
 import type { DecisionState } from '../../../decision/kernel/decision-state.types';
 import { REPLAN_FLIGHT_SEARCH } from '../../../decision/kernel/replan-flight-search.interface';
 import type { IReplanFlightSearch } from '../../../decision/kernel/replan-flight-search.interface';
+import { DecisionTriggerGatewayService } from '../../../decision-runtime/trigger/decision-trigger.gateway.service';
+import {
+  dispatchWorldEventIfEnabled,
+} from '../../../decision-runtime/trigger/record-trigger-lineage.util';
+import { evaluateReplanningTrigger } from '../../../decision-runtime/trigger/replanning-trigger.policy';
+import type { ReplanningTriggerResult } from '../../../decision-runtime/trigger/replanning-trigger.policy';
+import { isReplanningTriggerPolicyEnabled } from '../../../decision-runtime/trigger/replanning-trigger.config';
+import {
+  inferWorldEventSeverity,
+  shouldRunKernelFullReplan,
+  toReplanningTriggerDecision,
+} from '../../../decision-runtime/trigger/replanning-trigger-decision.util';
+import type { DecisionTriggerInput } from '../../../decision-runtime/contracts/decision-run-request';
 
 @Injectable()
 export class ReplanCoordinatorService implements IReplanTrigger {
@@ -25,11 +38,41 @@ export class ReplanCoordinatorService implements IReplanTrigger {
     private readonly prisma: PrismaService,
     @Optional() @Inject(DSO_FEEDBACK_PERSISTENCE) private readonly feedbackPersistence?: IDsoFeedbackPersistence,
     @Optional() @Inject(REPLAN_FLIGHT_SEARCH) private readonly flightSearch?: IReplanFlightSearch,
+    @Optional() private readonly triggerGateway?: DecisionTriggerGatewayService,
   ) {}
 
   /** Kernel 全链路重规划（供 ContingencyOrchestrator KERNEL_REPLAN 路径调用） */
   async runKernelReplan(tripRunIdOrTripId: string, reason: string): Promise<void> {
     this.logger.log(`[ReplanCoordinator] 开始重规划: tripRunId=${tripRunIdOrTripId}, reason=${reason}`);
+
+    const eventSeverity = inferWorldEventSeverity(reason);
+    const replanning = evaluateReplanningTrigger({
+      tripId: tripRunIdOrTripId,
+      triggerKind: 'WORLD_EVENT',
+      eventSeverity,
+      affectsEffectivePlan: true,
+      metadata: { reason, replanPath: 'kernel_replan_coordinator' },
+    });
+    const replanningDecision = toReplanningTriggerDecision(replanning, { eventSeverity });
+    const gatewayInput = this.buildKernelReplanGatewayInput(
+      tripRunIdOrTripId,
+      reason,
+      replanning,
+      replanningDecision,
+      eventSeverity,
+    );
+
+    if (isReplanningTriggerPolicyEnabled() && !shouldRunKernelFullReplan(replanning.action)) {
+      this.logger.log(
+        `[ReplanCoordinator] replanning policy ${replanning.action} — skip kernel full replan (${replanning.rationale})`,
+      );
+      await this.recordKernelGatewayDispatch(gatewayInput, {
+        skipped: `replanning_policy_${replanning.action.toLowerCase()}`,
+      });
+      return;
+    }
+
+    await this.recordKernelGatewayDispatch(gatewayInput);
 
     if (!this.feedbackPersistence) {
       this.logger.warn('[ReplanCoordinator] 无 DSO 持久化，跳过');
@@ -105,6 +148,45 @@ export class ReplanCoordinatorService implements IReplanTrigger {
   /** @deprecated 直接调用请改用 ContingencyOrchestrator；保留供测试与渐进迁移 */
   async triggerReplan(tripRunIdOrTripId: string, reason: string): Promise<void> {
     return this.runKernelReplan(tripRunIdOrTripId, reason);
+  }
+
+  private buildKernelReplanGatewayInput(
+    tripId: string,
+    reason: string,
+    replanning: ReplanningTriggerResult,
+    replanningDecision: ReturnType<typeof toReplanningTriggerDecision>,
+    eventSeverity: 'LOW' | 'MEDIUM' | 'HIGH',
+  ): DecisionTriggerInput {
+    return {
+      kind: 'WORLD_EVENT',
+      tripId,
+      source: 'INTERNAL',
+      metadata: {
+        eventType: reason,
+        eventSeverity,
+        reason,
+        replanPath: 'kernel_replan_coordinator',
+        replanningTrigger: replanning,
+        replanningDecision,
+      },
+    };
+  }
+
+  private async recordKernelGatewayDispatch(
+    gatewayInput: DecisionTriggerInput,
+    extra?: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const input = extra
+        ? { ...gatewayInput, metadata: { ...gatewayInput.metadata, ...extra } }
+        : gatewayInput;
+      await dispatchWorldEventIfEnabled(this.triggerGateway, input);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `[kernel.replan-coordinator] Trigger Gateway dispatch failed (replan continues): ${message}`,
+      );
+    }
   }
 
   /** 当 reason 为 flight_cancelled 时，搜索替代航班并更新 DSO.environmentState.flights */

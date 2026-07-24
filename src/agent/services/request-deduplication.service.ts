@@ -2,7 +2,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 import { resolveRouteAndRunUserMessage } from '../utils/resolve-route-and-run-message.util';
+
 
 /**
  * 去重缓存项
@@ -28,6 +30,8 @@ interface DedupCacheItem {
 @Injectable()
 export class RequestDeduplicationService {
   private readonly logger = new Logger(RequestDeduplicationService.name);
+
+  constructor(private readonly contextSlidingWindow: ContextSlidingWindowAdapter) {}
   
   // 去重缓存存储
   private readonly dedupCache: Map<string, DedupCacheItem> = new Map();
@@ -59,7 +63,10 @@ export class RequestDeduplicationService {
         // 不包含 max_seconds, max_steps 等可能影响结果的选项
       },
       // 包含最近的对话上下文（用于区分不同上下文）
-      context: request.conversation_context?.recent_messages?.slice(-3) || [], // 只取最近 3 条消息
+      context: this.contextSlidingWindow.slice(
+        'request_dedup',
+        request.conversation_context?.recent_messages,
+      ),
     };
 
     const keyStr = JSON.stringify(keyData, this.sortKeys);

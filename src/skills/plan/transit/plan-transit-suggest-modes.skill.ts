@@ -49,7 +49,7 @@ export class PlanTransitSuggestModesSkill implements Skill<PlanTransitSuggestMod
 
   metadata = {
     name: 'plan.transit.suggestModes',
-    description: '为同一段 A→B 给出多模式交通对比（飞机/火车/大巴/自驾）',
+    description: '对比 plan transit 同段 A→B 多模式交通（飞机/火车/大巴/自驾）。在跨城段 mode 选择或 budget/时间权衡时调用。',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

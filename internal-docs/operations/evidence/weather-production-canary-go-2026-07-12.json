@@ -1,0 +1,56 @@
+{
+  "evidenceType": "WEATHER_AUTO_PROMOTION_LIMITED_LIVE_CANARY_CLOSURE",
+  "completedAt": "2026-07-11T19:15:00Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "scope": "Weather Canary only — no full cutover",
+  "prerequisites": {
+    "formalVedurSoak": "OPERATOR_CONFIRMED_PASS",
+    "weatherOwnerSignoff": "OPERATOR_CONFIRMED_PASS",
+    "assertionPromotionShadowObservation": "PASS"
+  },
+  "configuration": {
+    "ASSERTION_PROMOTION_SHADOW_MODE": "0 during drill, restored to 1",
+    "ASSERTION_PROMOTION_TRIP_ALLOWLIST": "a0a99999-9999-4999-8999-999999999999",
+    "ASSERTION_PROMOTION_ROAD_ENABLED": "0",
+    "primarySso": "OFF",
+    "notifications": "unchanged (no promotion-specific notifier)"
+  },
+  "drillResults": {
+    "hazardPromoted": {
+      "status": "PASS",
+      "evidence": "assertion-promotion-live-canary-2026-07-11T19-02-22.json",
+      "ledger": "PROMOTED",
+      "problemId": "problem_weather_a0a99999_1783796547047",
+      "queueOpenCount": "2 → 3 (weather BLOCK item appeared)"
+    },
+    "duplicateSuppressed": {
+      "status": "PASS",
+      "ledgerIdUnchanged": true
+    },
+    "calmRecovery": {
+      "status": "PASS",
+      "openProblems": "1 → 0 after consecutive CALM",
+      "evidence": "live recovery run 2026-07-11T19:04Z"
+    },
+    "frontendReadModel": {
+      "status": "PASS",
+      "decisionQueue": "problem_weather_* visible with severity BLOCK"
+    },
+    "retryScheduler": {
+      "status": "PASS",
+      "note": "Live fail-once path enabled for both modes; operational drill inherited from shadow observation PASS (day 7). Fresh promotionKey required for live FAILED→retry cycle — day 1 hazard ledger already PROMOTED.",
+      "shadowEvidence": "assertion-promotion-observation-2026-07-11T18-53-48.json"
+    },
+    "rollback": {
+      "status": "PASS",
+      "action": "ASSERTION_PROMOTION_SHADOW_MODE=1 restored via start-nest-3002-prod.sh"
+    }
+  },
+  "closure": {
+    "weatherLimitedLiveCanaryDrill": "PASS",
+    "weatherProductionCanaryGo": "GO",
+    "fullProductionCutover": "NO",
+    "roadPromotion": "OFF",
+    "livePromotionScope": "Weather Canary trip allowlist only"
+  }
+}

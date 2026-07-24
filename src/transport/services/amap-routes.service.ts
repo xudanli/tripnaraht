@@ -3,6 +3,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import { TransportOption, TransportMode } from '../interfaces/transport.interface';
+import { encodePolyline, parseAmapPolyline, type LatLng } from '../utils/encoded-polyline.util';
 
 /**
  * 高德地图路线规划服务
@@ -44,6 +45,69 @@ export class AmapRoutesService {
    * @param preferences 偏好设置
    * @returns 交通选项列表
    */
+  /**
+   * 获取路段几何（高德 driving/walking polyline → Google encoded polyline）
+   */
+  async computeRouteGeometry(
+    fromLat: number,
+    fromLng: number,
+    toLat: number,
+    toLng: number,
+    travelMode: 'transit' | 'walking' | 'driving' = 'driving',
+  ): Promise<{
+    polyline: string;
+    distanceMeters: number;
+    durationMinutes: number;
+  } | null> {
+    if (!this.apiKey) return null;
+
+    try {
+      let apiPath: string;
+      const params: Record<string, string> = {
+        origin: `${fromLng},${fromLat}`,
+        destination: `${toLng},${toLat}`,
+      };
+
+      if (travelMode === 'walking') {
+        apiPath = '/walking';
+      } else {
+        apiPath = '/driving';
+      }
+
+      const response = await this.axiosInstance.get(this.baseUrl + apiPath, { params });
+      const data = response.data;
+      if (!data || data.status !== '1') return null;
+
+      const path = data.route?.paths?.[0];
+      if (!path) return null;
+
+      const coords: LatLng[] = [];
+      for (const step of path.steps ?? []) {
+        if (typeof step.polyline === 'string' && step.polyline.trim()) {
+          for (const point of parseAmapPolyline(step.polyline)) {
+            const prev = coords.at(-1);
+            if (prev && prev.lat === point.lat && prev.lng === point.lng) continue;
+            coords.push(point);
+          }
+        }
+      }
+
+      const polyline =
+        coords.length >= 2
+          ? encodePolyline(coords)
+          : encodePolyline([
+              { lat: fromLat, lng: fromLng },
+              { lat: toLat, lng: toLng },
+            ]);
+
+      const durationMinutes = Math.max(1, Math.round(Number(path.duration || 0) / 60));
+      const distanceMeters = Math.round(Number(path.distance || 0));
+      return { polyline, distanceMeters, durationMinutes };
+    } catch {
+      return null;
+    }
+  }
+
   async getRoutes(
     fromLat: number,
     fromLng: number,

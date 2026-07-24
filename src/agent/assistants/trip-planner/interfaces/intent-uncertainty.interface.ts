@@ -245,6 +245,13 @@ export const KEYWORD_TO_GAP_TYPE: Record<string, ItineraryGapType> = {
   '去哪': 'ACTIVITY',
   '逛': 'ACTIVITY',
   '看': 'ACTIVITY',
+  '观鲸': 'ACTIVITY',
+  '瀑布': 'ACTIVITY',
+  '活动': 'ACTIVITY',
+
+  // 空闲（槽位编排）
+  '空档': 'FREE_TIME',
+  '空闲': 'FREE_TIME',
 };
 
 /**

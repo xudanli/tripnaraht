@@ -1,0 +1,324 @@
+{
+  "schemaId": "tripnara.solver_problem@v1",
+  "requestId": "req-fixture-10",
+  "tripId": "trip-gold-iceland",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-ska-1",
+  "snapshotId": "ev-ska-1",
+  "operation": "REPLACE",
+  "scope": {
+    "dayIds": [
+      "day-1"
+    ]
+  },
+  "nodes": [
+    {
+      "nodeId": "depot",
+      "serviceDurationMin": 0,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 480
+        }
+      ],
+      "fixedStartMin": 480,
+      "isMandatory": true,
+      "isBooked": true,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a1",
+      "sourceActivityId": "act-a1",
+      "poiId": "is.seljalandsfoss",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a2",
+      "sourceActivityId": "act-a2",
+      "poiId": "is.skogafoss",
+      "serviceDurationMin": 60,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a3",
+      "sourceActivityId": "act-a3",
+      "poiId": "is.dyrholaey",
+      "serviceDurationMin": 45,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": false,
+      "isBooked": false,
+      "canRemove": true,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a4",
+      "sourceActivityId": "act-a4",
+      "poiId": "is.reynisfjara",
+      "serviceDurationMin": 50,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a5",
+      "sourceActivityId": "act-a5",
+      "poiId": "is.vik",
+      "serviceDurationMin": 40,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": true,
+      "isBooked": false,
+      "canRemove": false,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "a6",
+      "sourceActivityId": "act-a6",
+      "poiId": "is.skaftafell",
+      "serviceDurationMin": 70,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": false,
+      "isBooked": false,
+      "canRemove": true,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "is.skaftafell.visitor_center",
+      "sourceActivityId": "act-a6:alt",
+      "poiId": "is.skaftafell.visitor_center",
+      "serviceDurationMin": 70,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": false,
+      "isBooked": false,
+      "canRemove": true,
+      "canMoveDay": false
+    },
+    {
+      "nodeId": "is.svinafellsjokull",
+      "sourceActivityId": "act-a6:alt",
+      "poiId": "is.svinafellsjokull",
+      "serviceDurationMin": 70,
+      "timeWindows": [
+        {
+          "startMin": 480,
+          "endMin": 1200
+        }
+      ],
+      "isMandatory": false,
+      "isBooked": false,
+      "canRemove": true,
+      "canMoveDay": false
+    }
+  ],
+  "travelMatrix": {
+    "nodeIds": [
+      "depot",
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "a6",
+      "is.skaftafell.visitor_center",
+      "is.svinafellsjokull"
+    ],
+    "costsMin": [
+      [
+        0,
+        16,
+        20,
+        24,
+        28,
+        32,
+        36,
+        33,
+        37
+      ],
+      [
+        20,
+        0,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      [
+        21,
+        19,
+        0,
+        21,
+        18,
+        22,
+        26,
+        30,
+        34
+      ],
+      [
+        22,
+        20,
+        18,
+        0,
+        20,
+        24,
+        21,
+        25,
+        29
+      ],
+      [
+        30,
+        21,
+        19,
+        17,
+        0,
+        19,
+        23,
+        27,
+        24
+      ],
+      [
+        31,
+        29,
+        27,
+        18,
+        16,
+        0,
+        18,
+        22,
+        26
+      ],
+      [
+        32,
+        30,
+        28,
+        26,
+        24,
+        15,
+        0,
+        17,
+        21
+      ],
+      [
+        33,
+        31,
+        29,
+        27,
+        25,
+        23,
+        21,
+        0,
+        16
+      ],
+      [
+        41,
+        39,
+        30,
+        28,
+        26,
+        24,
+        22,
+        20,
+        0
+      ]
+    ]
+  },
+  "constraints": [
+    {
+      "constraintId": "depot-fixed",
+      "kind": "DEPOT_FIXED",
+      "hard": true,
+      "payload": {
+        "nodeId": "depot"
+      }
+    },
+    {
+      "constraintId": "edge-forbidden-0",
+      "kind": "EDGE_FORBIDDEN",
+      "hard": true,
+      "canonicalConstraintId": "road.close.F208",
+      "payload": {
+        "fromNodeId": "a5",
+        "toNodeId": "a6",
+        "roadId": "F208"
+      }
+    },
+    {
+      "constraintId": "replace-pool-0",
+      "kind": "REPLACE_POOL",
+      "hard": false,
+      "payload": {
+        "fromNodeId": "a6",
+        "toNodeId": "is.skaftafell.visitor_center"
+      }
+    },
+    {
+      "constraintId": "replace-pool-1",
+      "kind": "REPLACE_POOL",
+      "hard": false,
+      "payload": {
+        "fromNodeId": "a6",
+        "toNodeId": "is.svinafellsjokull"
+      }
+    }
+  ],
+  "objectives": [
+    {
+      "objectiveId": "min-travel",
+      "kind": "MINIMIZE_TRAVEL",
+      "weight": 1
+    }
+  ],
+  "solverConfig": {
+    "maxCandidates": 3,
+    "timeLimitMs": 1500,
+    "seed": 42
+  }
+}

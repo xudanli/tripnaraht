@@ -1,4 +1,8 @@
 import { CliError } from "../infra/errors";
+import {
+  extractHarnessTraceObservability,
+  type HarnessTraceObservabilitySlice,
+} from "./harness-observability.util";
 
 export interface OrchestrationErrorEntry {
   step?: string;
@@ -140,6 +144,12 @@ export interface RouteAndRunApiResult {
   orchestration_mode_final?: string;
   received_route_direction_id?: string;
   mode_final?: string;
+  harness_active_trace_id?: string;
+  harness_trace_export_path?: string;
+  evaluation_run_id?: string;
+  otel_trace_id?: string;
+  otel_span_id?: string;
+  run_id?: string;
   clarification_questions?: Array<{
     id?: string;
     question?: string;
@@ -365,6 +375,7 @@ export async function callRouteAndRun(
     : [];
 
   const itinerary_days = extractItineraryDaysFromRoutePayload(payloadObj);
+  const harnessObs: HarnessTraceObservabilitySlice = extractHarnessTraceObservability(root);
 
   return {
     verdict,
@@ -512,6 +523,12 @@ export async function callRouteAndRun(
         ? obs.received_route_direction_id
         : undefined,
     mode_final: typeof obs?.mode_final === "string" ? obs.mode_final : undefined,
+    harness_active_trace_id: harnessObs.harness_active_trace_id,
+    harness_trace_export_path: harnessObs.harness_trace_export_path,
+    evaluation_run_id: harnessObs.evaluation_run_id,
+    otel_trace_id: harnessObs.otel_trace_id,
+    otel_span_id: harnessObs.otel_span_id,
+    run_id: harnessObs.run_id,
     clarification_questions:
       clarificationQuestions.length > 0
         ? clarificationQuestions.map((q) => ({

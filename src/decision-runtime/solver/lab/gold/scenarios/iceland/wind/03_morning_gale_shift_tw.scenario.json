@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.wind.03_morning_gale_shift_tw",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "wind",
+  "title": "Morning gale \u2014 SHIFT later outdoor windows",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/wind/problems/03_morning_gale_shift_tw.problem.json",
+  "notes": [
+    "no EDGE_FORBIDDEN; TW start delayed vs base morning"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

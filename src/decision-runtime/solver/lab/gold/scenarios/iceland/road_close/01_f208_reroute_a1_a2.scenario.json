@@ -1,0 +1,18 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.01_f208_reroute_a1_a2",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "F208 closed \u2014 REROUTE avoid a1\u2192a2",
+  "seed": 42,
+  "stabilityRuns": 100,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/01_f208_reroute_a1_a2.problem.json",
+  "notes": [
+    "canonical road.close.F208",
+    "locality soft \u2014 reroute may reorder",
+    "staging_replay evidence pack bound for M4 real_gold_replay gate"
+  ],
+  "provenance": "staging_replay",
+  "evidencePackRef": "src/decision-runtime/solver/lab/gold/evidence/iceland/road_close/01_f208_reroute_a1_a2.evidence.json"
+}

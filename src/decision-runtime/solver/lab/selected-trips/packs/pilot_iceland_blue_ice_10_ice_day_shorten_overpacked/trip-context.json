@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.selected_trip.context@v1",
+  "tripId": "pilot_iceland_blue_ice_10_ice_day_shorten_overpacked",
+  "planVersionId": "pv-gold",
+  "timezone": "Atlantic/Reykjavik",
+  "dateRange": {
+    "startDate": "2026-06-12",
+    "endDate": "2026-06-12"
+  },
+  "destination": "IS",
+  "deidentified": true,
+  "notes": [
+    "exported from gold iceland.blue_ice.10_ice_day_shorten_overpacked",
+    "frozen copy — not live"
+  ]
+}

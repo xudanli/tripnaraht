@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "pilot_iceland_road_close_10_shorten_overpacked_day",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-short-1",
+  "environment": "staging-test",
+  "destination": "IS",
+  "intendedOperation": "SHORTEN",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "synthetic",
+  "deidentified": true,
+  "eligibility": "pending"
+}

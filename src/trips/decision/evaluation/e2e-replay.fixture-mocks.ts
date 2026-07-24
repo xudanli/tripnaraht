@@ -4,6 +4,9 @@
  */
 import type { E2ECase } from './e2e-case.types';
 import type { DecisionLogEntry } from '../shared/decision-result.types';
+import type { PersonaClosureAudit } from '../shared/persona-closure.types';
+import { applyResearchTraceSignalsToResearchData } from '../../../agent/memory/emotional-resonance/research-member-stability.util';
+import { mapResearchTraceSignalsToLogMetadata } from '../shared/research-trace-signals-log-metadata.util';
 
 function normalizeCandidateSearchTrace(input: {
   candidateSearchBudget?: any;
@@ -61,16 +64,20 @@ function normalizeCandidateSearchTrace(input: {
 export function buildDecisionLogsForFixture(testCase: E2ECase): DecisionLogEntry[] {
   const ts = new Date().toISOString();
   const abu = testCase.expected.abuExpected;
+  const pcEarly = testCase.expected.personaClosureExpected;
+  const initialAbuAction =
+    pcEarly && abu.action === 'REJECT' ? 'ALLOW' : abu.action;
   const logs: DecisionLogEntry[] = [
     {
       persona: 'ABU',
-      action: abu.action,
+      action: initialAbuAction,
       explanation:
-        abu.action === 'REJECT'
+        initialAbuAction === 'REJECT'
           ? 'DEM Evidence missing for segment (highlands)'
           : '通过安全检查',
       reasonCodes:
-        abu.reasonCodes ?? (abu.action === 'ALLOW' ? ['ABU_GATE_PASS'] : []),
+        abu.reasonCodes ??
+        (initialAbuAction === 'ALLOW' ? ['ABU_GATE_PASS'] : []),
       evidenceRefs: ['fixture:abu-gate'],
       timestamp: ts,
       decisionSource: 'PHYSICAL',
@@ -84,6 +91,28 @@ export function buildDecisionLogsForFixture(testCase: E2ECase): DecisionLogEntry
       candidateSearchBudget: trace.candidateSearchBudget,
       candidateSearchAudit: trace.candidateSearchAudit,
     });
+    const sig = testCase.expected.traceSignals;
+    const researchDataForTrace: Record<string, unknown> = {};
+    if (sig) {
+      applyResearchTraceSignalsToResearchData(researchDataForTrace, {
+        user_emotional_account: {
+          accumulated_goodwill: 0.2,
+          current_tolerance_bonus: 0.5,
+          frustration_score: sig.frustration_circuit_triggered ? 0.88 : 0.12,
+        },
+        mental_offset_hints: sig.frustration_circuit_triggered
+          ? {
+              suture_aggressive_allowed: false,
+              tolerance_bonus: 0.5,
+              frustration_circuit_active: true,
+            }
+          : {
+              suture_aggressive_allowed: true,
+              tolerance_bonus: 0.5,
+            },
+      });
+    }
+    const experienceFlowOverlay = mapResearchTraceSignalsToLogMetadata(researchDataForTrace);
     logs.push({
       persona: 'EXPECTED_UTILITY',
       action: 'EVALUATE',
@@ -98,6 +127,20 @@ export function buildDecisionLogsForFixture(testCase: E2ECase): DecisionLogEntry
         metaDecisionAudit: trace.metaDecisionAudit,
         candidateSearchBudget: normalized.candidateSearchBudget,
         candidateSearchAudit: normalized.candidateSearchAudit,
+        ...(sig?.stability_mode_active !== undefined ? { stability_mode_active: sig.stability_mode_active } : {}),
+        ...(sig?.frustration_circuit_triggered !== undefined
+          ? { frustration_circuit_triggered: sig.frustration_circuit_triggered }
+          : {}),
+        ...(sig?.narrative_track !== undefined ? { narrative_track: sig.narrative_track } : {}),
+        ...(experienceFlowOverlay.experience_flow
+          ? { experience_flow: experienceFlowOverlay.experience_flow }
+          : {}),
+        ...(trace.observationHarness !== undefined
+          ? { observationHarness: trace.observationHarness }
+          : {}),
+        ...(trace.dilemmaElicitationHint !== undefined
+          ? { dilemmaElicitationHint: trace.dilemmaElicitationHint }
+          : {}),
       },
     });
   }
@@ -128,6 +171,61 @@ export function buildDecisionLogsForFixture(testCase: E2ECase): DecisionLogEntry
       decisionSource: 'PHYSICAL',
       decisionStage: 'SPATIAL_REPAIR',
     });
+  }
+
+  const pc = testCase.expected.personaClosureExpected;
+  if (pc) {
+    const recheckCount = Math.max(pc.minAbuRechecks ?? 1, 1);
+    const stopReason =
+      pc.allowedStopReasons?.[0] ??
+      (testCase.expected.finalState.allowed ? 'ABU_RECHECK_PASS' : 'NEPTUNE_SHRINK_EXHAUSTED');
+
+    for (let i = 0; i < recheckCount; i += 1) {
+      const recheckAllow = testCase.expected.finalState.allowed || i < recheckCount - 1;
+      logs.push({
+        persona: 'ABU',
+        action: recheckAllow ? 'ALLOW' : 'REJECT',
+        explanation: recheckAllow
+          ? 'post-Neptune Abu recheck passed'
+          : 'post-Neptune Abu recheck rejected patch',
+        reasonCodes: recheckAllow ? ['ABU_GATE_PASS', 'PERSONA_CLOSURE_RECHECK'] : ['ABU_GATE_REJECT'],
+        evidenceRefs: [`fixture:abu-recheck-${i}`],
+        timestamp: ts,
+        decisionSource: 'PHYSICAL',
+        decisionStage: 'ABU_GATE',
+        metadata: {
+          persona_closure: { iter: i, phase: 'post_neptune_recheck' },
+        },
+      });
+    }
+
+    const audit: PersonaClosureAudit = {
+      iters: Array.from({ length: recheckCount }, (_, i) => ({
+        iter: i,
+        neptuneAction: 'REPLACE' as const,
+        planFingerprintBefore: `fixture-before-${testCase.id}`,
+        planFingerprintAfter: `fixture-after-${testCase.id}-${i}`,
+        abuRecheck: testCase.expected.finalState.allowed ? 'ALLOW' : 'REJECT',
+        newHardViolations: testCase.expected.finalState.allowed ? [] : ['FROAD_2WD_COMPLIANCE'],
+        stopReason,
+      })),
+      stopReason,
+      totalAbuRechecks: recheckCount,
+    };
+
+    if (pc.mustEmitAudit !== false) {
+      logs.push({
+        persona: 'ABU',
+        action: testCase.expected.finalState.allowed ? 'ALLOW' : 'REJECT',
+        explanation: `persona closure stop=${stopReason}`,
+        reasonCodes: ['PERSONA_CLOSURE', stopReason],
+        evidenceRefs: ['fixture:persona-closure-audit'],
+        timestamp: ts,
+        decisionSource: 'PHYSICAL',
+        decisionStage: 'FINALIZE',
+        metadata: { personaClosureAudit: audit },
+      });
+    }
   }
 
   return logs;

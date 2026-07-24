@@ -199,10 +199,12 @@ export class SemanticMemoryService {
     // 过滤
     let filtered = userMemories;
     if (request.minConfidence !== undefined) {
-      filtered = filtered.filter(m => m.confidence >= request.minConfidence);
+      const minConfidence = request.minConfidence;
+      filtered = filtered.filter(m => m.confidence >= minConfidence);
     }
     if (request.pattern) {
-      filtered = filtered.filter(m => m.metadata.pattern.includes(request.pattern));
+      const pattern = request.pattern;
+      filtered = filtered.filter(m => m.metadata.pattern.includes(pattern));
     }
 
     // 排序（按置信度降序）

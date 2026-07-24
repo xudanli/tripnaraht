@@ -7,17 +7,22 @@ import {
   buildCandidateRetrievalQueryPlan,
   mergeResearchPoiLists,
 } from '../../../planning-policy/utils/build-candidate-retrieval-query-plan.util';
+import {
+  mergeDiscoveryStubsIntoPoiEvidence,
+} from '../../../planning-policy/open-world/discovery-buffer.util';
+import { runOpenWorldDiscoveryPipeline } from '../../utils/open-world-discovery-pipeline.util';
+import { LlmService } from '../../../llm/services/llm.service';
 import { buildPoiSearchContext } from '../../../planning-policy/utils/build-poi-search-context.util';
 import {
-  buildContextualPoiSearchQuerySuffix,
   filterPoisByRejectedIds,
 } from '../../../planning-policy/utils/contextual-poi-search-query.util';
+import { buildPoiSearchPlanFromContext } from '../../utils/query-rewriting-poi-context.util';
 import {
   buildFailedRetrievalTrace,
   buildPlanningRetrievalDecisionTrace,
 } from '../../../planning-policy/utils/build-retrieval-decision-trace.util';
 import { detectItineraryGapsV1, gapRetrievalIntentQuerySuffix } from '../../../planning-policy/utils/detect-itinerary-gaps.util';
-import { GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY } from '../../../planning-policy/regions/golden-circle-anchor-retrieval-profile';
+import { buildSpecialRegionSupplementLanes } from '../../utils/special-region-supplement.registry';
 import { resolveResearchPoiBaseQueryHint } from '../../utils/research-poi-retrieval-geography-hint.util';
 import type { DecisionState } from '../../../decision/kernel/decision-state.types';
 import type { PhaseExecutorContext } from '../../../decision/kernel/interfaces/phase-executor.interface';
@@ -41,6 +46,7 @@ export class DestinationResearchMember implements OnModuleInit, OnModuleDestroy 
     private readonly predictionCollector: PredictionCollectorService,
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly researchTeamBus?: ResearchTeamBusService,
+    @Optional() private readonly llmService?: LlmService,
   ) {}
 
   onModuleInit(): void {
@@ -172,30 +178,38 @@ export class DestinationResearchMember implements OnModuleInit, OnModuleDestroy 
         itinerary: itineraryLike,
       });
       const gapSuffix = gapRetrievalIntentQuerySuffix(semanticGapsForQuery);
-      const ctxSuffix = buildContextualPoiSearchQuerySuffix(poiSearchCtx);
-      const boost =
-        plan.boostedTerms.length > 0 ? ` ${plan.boostedTerms.slice(0, 12).join(' ')}` : '';
-      const scenicQuery = `${baseQuery} attractions landmark museum sightseeing${boost}${ctxSuffix}${gapSuffix}`
-        .replace(/\s+/g, ' ')
-        .trim();
-      const generalQuery =
-        plan.boostedTerms.length > 0
-          ? `${baseQuery} ${plan.boostedTerms.slice(0, 8).join(' ')}${ctxSuffix}${gapSuffix}`.replace(/\s+/g, ' ').trim()
-          : `${baseQuery}${ctxSuffix}${gapSuffix}`.replace(/\s+/g, ' ').trim();
+      const scenicPlan = buildPoiSearchPlanFromContext({
+        baseQuery,
+        poiSearchCtx,
+        gapSuffix,
+        boostTerms: plan.boostedTerms,
+        variant: 'scenic',
+      });
+      const generalPlan = buildPoiSearchPlanFromContext({
+        baseQuery,
+        poiSearchCtx,
+        gapSuffix,
+        boostTerms: plan.boostedTerms.length > 0 ? plan.boostedTerms : undefined,
+        variant: 'general',
+      });
       const lat =
         typeof tripRequest.destination === 'object' ? tripRequest.destination?.lat : undefined;
       const lng =
         typeof tripRequest.destination === 'object' ? tripRequest.destination?.lng : undefined;
 
       const scenicResult = await skill.execute({
-        query: scenicQuery,
+        query: scenicPlan.contextualizedQuery,
+        queryRewriteResult: scenicPlan.rewrite,
+        multiRouteSearch: true,
         limit: 12,
         lat,
         lng,
         category: 'ATTRACTION',
       } as Record<string, unknown>);
       const generalResult = await skill.execute({
-        query: generalQuery,
+        query: generalPlan.contextualizedQuery,
+        queryRewriteResult: generalPlan.rewrite,
+        multiRouteSearch: true,
         limit: 12,
         lat,
         lng,
@@ -213,46 +227,59 @@ export class DestinationResearchMember implements OnModuleInit, OnModuleDestroy 
           : [];
       let merged = mergeResearchPoiLists(scenicPois, generalPois, 16);
       const extraSubQueries: Record<string, string> = {};
-      if (plan.regionTags.includes('golden_circle') && plan.boostedTerms.length > 0) {
-        const anchorQuery = `Iceland Golden Circle ${plan.boostedTerms.slice(0, 10).join(' ')}`;
-        extraSubQueries.golden_circle_anchor = anchorQuery;
-        const anchorResult = await skill.execute({
-          query: anchorQuery,
-          limit: 12,
+      const regionSupplementLanes = buildSpecialRegionSupplementLanes(plan.regionTags, {
+        poiSearchCtx,
+        boostedTerms: plan.boostedTerms.length > 0 ? plan.boostedTerms : undefined,
+        gapSuffix,
+      });
+      let supplementMergeCap = 22;
+      for (const lane of regionSupplementLanes) {
+        extraSubQueries[lane.key] = lane.plan.contextualizedQuery;
+        const laneResult = await skill.execute({
+          query: lane.plan.contextualizedQuery,
+          queryRewriteResult: lane.plan.rewrite,
+          multiRouteSearch: true,
+          limit: lane.limit,
           lat,
           lng,
           category: 'ATTRACTION',
         } as Record<string, unknown>);
-        const anchorPois = Array.isArray((anchorResult as { pois?: unknown })?.pois)
-          ? (anchorResult as { pois: unknown[] }).pois
-          : Array.isArray(anchorResult)
-            ? anchorResult
+        const lanePois = Array.isArray((laneResult as { pois?: unknown })?.pois)
+          ? (laneResult as { pois: unknown[] }).pois
+          : Array.isArray(laneResult)
+            ? laneResult
             : [];
-        merged = mergeResearchPoiLists(anchorPois, merged, 22);
-      }
-      if (plan.regionTags.includes('golden_circle')) {
-        extraSubQueries.golden_circle_pair = GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY;
-        const pairResult = await skill.execute({
-          query: GOLDEN_CIRCLE_GEYSIR_GULLFOSS_RECALL_QUERY,
-          limit: 14,
-          lat,
-          lng,
-          category: 'ATTRACTION',
-        } as Record<string, unknown>);
-        const pairPois = Array.isArray((pairResult as { pois?: unknown })?.pois)
-          ? (pairResult as { pois: unknown[] }).pois
-          : Array.isArray(pairResult)
-            ? pairResult
-            : [];
-        merged = mergeResearchPoiLists(pairPois, merged, 30);
+        merged = mergeResearchPoiLists(lanePois, merged, supplementMergeCap);
+        supplementMergeCap = Math.min(34, supplementMergeCap + 4);
       }
       merged = filterPoisByRejectedIds(merged, poiSearchCtx.rejectedPoiIds);
+
+      const countryCode =
+        typeof tripRequest.destination === 'string' && /^[A-Za-z]{2}$/.test(tripRequest.destination.trim())
+          ? tripRequest.destination.trim().toUpperCase()
+          : undefined;
+      const discovery = await runOpenWorldDiscoveryPipeline(
+        {
+          userMessage: userMsgForRetrieval,
+          countryCode,
+          destinationHint: destRaw,
+          regionTags: plan.regionTags,
+          existingPoiEvidence: merged,
+        },
+        { llmService: this.llmService },
+      );
+      if (discovery.stubs.length > 0) {
+        merged = mergeDiscoveryStubsIntoPoiEvidence(merged, discovery.stubs);
+        researchData.open_world_discovery = discovery;
+        researchData.open_world_discovery_applied_at = new Date().toISOString();
+      }
+
       researchData.poi_evidence = merged;
       const semanticGaps = semanticGapsForQuery;
       researchData.retrieval_decision_trace = buildPlanningRetrievalDecisionTrace({
         poiSearchCtx,
-        scenicQuery,
-        generalQuery,
+        scenicQuery: scenicPlan.contextualizedQuery,
+        generalQuery: generalPlan.contextualizedQuery,
         extraSubQueries: Object.keys(extraSubQueries).length ? extraSubQueries : undefined,
         mergedPoiCount: merged.length,
         semanticGaps,

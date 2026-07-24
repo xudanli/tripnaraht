@@ -2,8 +2,10 @@
  * Simulated_to_Real_Join：INTAKE 仿真 reason 与 REPAIR 真实 trace 对齐 + 效用预测误差（审计层）。
  */
 import { AuditReportGenerator } from './terminal-audit-report.generator';
+import { analyzeRouteAndRunIntent } from './route-and-run-intent-analyzer.util';
+import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 import type { DecisionState } from '../../decision/kernel/decision-state.types';
-import type { OrchestratorState } from '../interfaces/trip-plan.interface';
+import type { OrchestratorState, TripPlanRequest } from '../interfaces/trip-plan.interface';
 import type { SimulatedRepairTrace } from '../services/route-feasibility.types';
 
 describe('AuditReportGenerator — Simulated_to_Real_Join', () => {
@@ -375,5 +377,84 @@ describe('AuditReportGenerator — Simulated_to_Real_Join', () => {
     expect(report.predictive_feedback_then_repair?.drift_vector?.delta_reason).toBe('aligned');
     expect(report.session_consistency_score).toBeGreaterThanOrEqual(95);
     expect((report as any).dominant_cid).toBe('time.eta_feasibility');
+  });
+
+  it('axiom: Yaris F208 — route_and_run intent + sim/real TERRAIN, dominant_cid aligned, score>=95', () => {
+    const yarisMsg =
+      '外头写着F208公路开了，我们打算6月18号租一辆普通的丰田 Yaris，走 F208 北线横穿内陆高地去兰曼纳劳卡。';
+    const routeAndRun = analyzeRouteAndRunIntent(yarisMsg, {
+      trip: { message: yarisMsg } as TripPlanRequest,
+    });
+    expect(routeAndRun.sub_signals.froad_2wd_compliance).toBe(true);
+
+    const terrainPenalty = AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.utility_anchor.actual_penalty;
+    const simTerrain: SimulatedRepairTrace = {
+      tacticId: 'IntakePredictiveSimulator',
+      targetEntity: { type: 'DAY', id: 'INTAKE' },
+      applied: false,
+      reason: 'TERRAIN_F_ROAD_UNFIT' as any,
+      metrics: {
+        fatigue_score01: 0.35,
+        fatigue_weight: 1,
+        base_limit: 1,
+        effective_limit: 1,
+        actual_cost: 0,
+        unit: 'bool',
+        utility_delta: terrainPenalty,
+      },
+      estimated_utility_delta: terrainPenalty,
+      simulation: { kind: 'HISTORICAL_BOUNDARY', boundary_id: 'terrain_high_risk' },
+    };
+    const realTerrain = {
+      tacticId: 'TerrainFroadUnfitProjection',
+      targetEntity: { type: 'DESTINATION', id: 'INTAKE' },
+      applied: false,
+      reason: 'TERRAIN_F_ROAD_UNFIT' as const,
+      metrics: { utility_delta: terrainPenalty },
+    };
+
+    const decisionState: Partial<DecisionState> = {
+      requestId: rid,
+      verification: {
+        issues: [
+          {
+            class: 'CONFLICT',
+            message:
+              `[L3-PROOF|${AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.cid}|DESTINATION:${rid}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] terrain`,
+          } as any,
+        ],
+      } as any,
+      systemState: {
+        requestId: rid,
+        repairTraces: [realTerrain as any],
+        repairTraceHistory: [],
+      },
+    };
+
+    const state: Partial<OrchestratorState> = {
+      request_id: rid,
+      trip_plan_request: { message: yarisMsg } as TripPlanRequest,
+      decision_log: [],
+      metadata: {
+        started_at: '2026-06-01T00:00:00.000Z',
+        last_updated_at: '2026-06-18T12:00:00.000Z',
+        route_and_run_intent: routeAndRun,
+        early_warning: {
+          predictive_failure_report: {
+            card_type: 'PREDICTIVE_FAILURE_REPORT',
+            correlationId: 'corr-intake-yaris-f208',
+            audit_text: 'yaris f208',
+            simulated_repair_traces: [simTerrain],
+          },
+        },
+      },
+    };
+
+    const report = AuditReportGenerator.generate(decisionState as DecisionState, state as OrchestratorState);
+    expect(report.predictive_feedback_then_repair?.drift_vector?.delta_reason).toBe('aligned');
+    expect(report.predictive_feedback_then_repair?.drift_vector?.delta_utility).toBeCloseTo(0, 5);
+    expect(report.session_consistency_score).toBeGreaterThanOrEqual(95);
+    expect((report as any).dominant_cid).toBe(AXIOM_REGISTRY.TERRAIN_F_ROAD_UNFIT.cid);
+    expect(report.predictive_failure_report_summary?.predictive_to_real_conflict_ratio).toBe(1);
   });
 });

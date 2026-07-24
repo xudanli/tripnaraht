@@ -1,0 +1,387 @@
+{
+  "evidenceType": "EXECUTION_SLIP_STAGING_C_EXECUTE",
+  "phase": "C",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "environment": "http://localhost:3001",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "planVersionId": "plan_v2_60518027",
+  "problemId": "problem_exec_slip_c0c77777_1783760517728",
+  "decisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+  "writeCount": 1,
+  "legacyWriteCount": 0,
+  "timestamps": {
+    "startedAt": "2026-07-11T09:02:00.634Z",
+    "endedAt": "2026-07-11T09:02:01.136Z"
+  },
+  "rollbackResult": null,
+  "http": {
+    "authorize": {
+      "ok": true,
+      "record": {
+        "createdAt": "2026-07-11T09:01:58.027Z",
+        "decidedAt": "2026-07-11T09:02:00.830Z",
+        "problemId": "problem_exec_slip_c0c77777_1783760517728",
+        "decisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+        "finalAction": "REPLACE",
+        "reasonCodes": [
+          "USER_PREFERENCE_INSUFFICIENT",
+          "HUMAN_CONFIRMATION_REQUIRED"
+        ],
+        "workspaceId": "ws_problem_exec_slip_c0c77777_1783760517728",
+        "evidenceRefs": [
+          "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+        ],
+        "recordStatus": "AUTHORIZED",
+        "ruleVersions": [
+          "abu-exec-slip-0.1.0"
+        ],
+        "modelVersions": {
+          "drdre": "dre-road-load-rfc001-0.2.0",
+          "neptune": "neptune-rfc001-adapter-0.1.0"
+        },
+        "basePlanVersionId": "plan_1",
+        "utilityEvaluation": [
+          {
+            "vector": {
+              "timeStress": 0.06,
+              "fatigueCost": 0.076,
+              "monetaryCost": 0,
+              "residualRisk": 0.1,
+              "reversibility": 0.7,
+              "experienceValue": 0.65,
+              "intentPreservation": 0.65
+            },
+            "utility": 0.3658,
+            "candidateId": "cand_remove_next"
+          },
+          {
+            "vector": {
+              "timeStress": 0.264,
+              "fatigueCost": 0.335,
+              "monetaryCost": 0,
+              "residualRisk": 0.1,
+              "reversibility": 0.7,
+              "experienceValue": 0.75,
+              "intentPreservation": 0.75
+            },
+            "utility": 0.3333999999999999,
+            "candidateId": "cand_substitute_next"
+          }
+        ],
+        "rejectedCandidates": [
+          {
+            "rejectedBy": "HARD_CONSTRAINT",
+            "candidateId": "original",
+            "reasonCodes": [
+              "CANDIDATE_BLOCKED_BY_HARD_CONSTRAINT",
+              "EXEC_SLIP_ORIGINAL_INFEASIBLE"
+            ]
+          }
+        ],
+        "selectedCandidateId": "cand_remove_next",
+        "preferenceSnapshotId": "pref_c0c77777-7777-4777-8777-777777777777_default",
+        "worldStateSnapshotId": "wss_c0c77777_1783760517714",
+        "consideredCandidateIds": [
+          "original",
+          "cand_remove_next",
+          "cand_substitute_next"
+        ],
+        "authorizationRequirement": {
+          "level": "L2",
+          "reasons": [
+            "HUMAN_CONFIRMATION_REQUIRED"
+          ],
+          "externalSideEffects": [],
+          "requiresUserConfirmation": true
+        }
+      },
+      "planVersion": {
+        "status": "PENDING_AUTHORIZATION",
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "createdAt": "2026-07-11T09:01:58.107Z",
+        "createdBy": "DECISION_CORE",
+        "operations": [
+          {
+            "kind": "REMOVE_ITEM",
+            "parameters": {
+              "action": "REMOVE_NEXT_ACTIVITY",
+              "itineraryItemId": "c0c77777-7777-4777-8777-777777777632"
+            },
+            "targetRefs": [
+              {
+                "id": "c0c77777-7777-4777-8777-777777777632",
+                "kind": "PLAN_ITEM"
+              }
+            ],
+            "operationId": "op_remove_next"
+          }
+        ],
+        "planVersionId": "plan_v2_60518027",
+        "sourceDecisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+        "parentPlanVersionId": "plan_1",
+        "materializedPlanSnapshotRef": "snap_plan_v2_60518027_cand_remove_next"
+      }
+    },
+    "execute": {
+      "ok": true,
+      "planVersion": {
+        "status": "EFFECTIVE",
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "createdAt": "2026-07-11T09:01:58.107Z",
+        "createdBy": "DECISION_CORE",
+        "operations": [
+          {
+            "kind": "REMOVE_ITEM",
+            "parameters": {
+              "action": "REMOVE_NEXT_ACTIVITY",
+              "itineraryItemId": "c0c77777-7777-4777-8777-777777777632"
+            },
+            "targetRefs": [
+              {
+                "id": "c0c77777-7777-4777-8777-777777777632",
+                "kind": "PLAN_ITEM"
+              }
+            ],
+            "operationId": "op_remove_next"
+          }
+        ],
+        "planVersionId": "plan_v2_60518027",
+        "sourceDecisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+        "parentPlanVersionId": "plan_1",
+        "materializedPlanSnapshotRef": "snap_plan_v2_60518027_cand_remove_next",
+        "effectiveAt": "2026-07-11T09:02:01.030Z"
+      },
+      "record": {
+        "createdAt": "2026-07-11T09:01:58.027Z",
+        "decidedAt": "2026-07-11T09:02:01.042Z",
+        "problemId": "problem_exec_slip_c0c77777_1783760517728",
+        "decisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+        "finalAction": "REPLACE",
+        "reasonCodes": [
+          "USER_PREFERENCE_INSUFFICIENT",
+          "HUMAN_CONFIRMATION_REQUIRED"
+        ],
+        "workspaceId": "ws_problem_exec_slip_c0c77777_1783760517728",
+        "evidenceRefs": [
+          "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+        ],
+        "recordStatus": "EFFECTIVE",
+        "ruleVersions": [
+          "abu-exec-slip-0.1.0"
+        ],
+        "modelVersions": {
+          "drdre": "dre-road-load-rfc001-0.2.0",
+          "neptune": "neptune-rfc001-adapter-0.1.0"
+        },
+        "basePlanVersionId": "plan_1",
+        "utilityEvaluation": [
+          {
+            "vector": {
+              "timeStress": 0.06,
+              "fatigueCost": 0.076,
+              "monetaryCost": 0,
+              "residualRisk": 0.1,
+              "reversibility": 0.7,
+              "experienceValue": 0.65,
+              "intentPreservation": 0.65
+            },
+            "utility": 0.3658,
+            "candidateId": "cand_remove_next"
+          },
+          {
+            "vector": {
+              "timeStress": 0.264,
+              "fatigueCost": 0.335,
+              "monetaryCost": 0,
+              "residualRisk": 0.1,
+              "reversibility": 0.7,
+              "experienceValue": 0.75,
+              "intentPreservation": 0.75
+            },
+            "utility": 0.3333999999999999,
+            "candidateId": "cand_substitute_next"
+          }
+        ],
+        "rejectedCandidates": [
+          {
+            "rejectedBy": "HARD_CONSTRAINT",
+            "candidateId": "original",
+            "reasonCodes": [
+              "CANDIDATE_BLOCKED_BY_HARD_CONSTRAINT",
+              "EXEC_SLIP_ORIGINAL_INFEASIBLE"
+            ]
+          }
+        ],
+        "selectedCandidateId": "cand_remove_next",
+        "preferenceSnapshotId": "pref_c0c77777-7777-4777-8777-777777777777_default",
+        "worldStateSnapshotId": "wss_c0c77777_1783760517714",
+        "consideredCandidateIds": [
+          "original",
+          "cand_remove_next",
+          "cand_substitute_next"
+        ],
+        "authorizationRequirement": {
+          "level": "L2",
+          "reasons": [
+            "HUMAN_CONFIRMATION_REQUIRED"
+          ],
+          "externalSideEffects": [],
+          "requiresUserConfirmation": true
+        },
+        "effectivePlanVersionId": "plan_v2_60518027"
+      },
+      "idempotentReplay": false,
+      "materializedPlanSnapshotRef": "snap_plan_v2_60518027_cand_remove_next",
+      "itineraryMaterialized": true
+    },
+    "executeReplay": {
+      "ok": true,
+      "planVersion": {
+        "status": "EFFECTIVE",
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "createdAt": "2026-07-11T09:01:58.107Z",
+        "createdBy": "DECISION_CORE",
+        "operations": [
+          {
+            "kind": "REMOVE_ITEM",
+            "parameters": {
+              "action": "REMOVE_NEXT_ACTIVITY",
+              "itineraryItemId": "c0c77777-7777-4777-8777-777777777632"
+            },
+            "targetRefs": [
+              {
+                "id": "c0c77777-7777-4777-8777-777777777632",
+                "kind": "PLAN_ITEM"
+              }
+            ],
+            "operationId": "op_remove_next"
+          }
+        ],
+        "effectiveAt": "2026-07-11T09:02:01.030Z",
+        "planVersionId": "plan_v2_60518027",
+        "sourceDecisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+        "parentPlanVersionId": "plan_1",
+        "materializedPlanSnapshotRef": "snap_plan_v2_60518027_cand_remove_next"
+      },
+      "record": {
+        "createdAt": "2026-07-11T09:01:58.027Z",
+        "decidedAt": "2026-07-11T09:02:01.042Z",
+        "problemId": "problem_exec_slip_c0c77777_1783760517728",
+        "decisionId": "dec_problem_exec_slip_c0c77777_1783760517728_1783760518027",
+        "finalAction": "REPLACE",
+        "reasonCodes": [
+          "USER_PREFERENCE_INSUFFICIENT",
+          "HUMAN_CONFIRMATION_REQUIRED"
+        ],
+        "workspaceId": "ws_problem_exec_slip_c0c77777_1783760517728",
+        "evidenceRefs": [
+          "ev_exec_slip_c0c77777-7777-4777-8777-777777777631_c0c77777_2026-07-12T13"
+        ],
+        "recordStatus": "EFFECTIVE",
+        "ruleVersions": [
+          "abu-exec-slip-0.1.0"
+        ],
+        "modelVersions": {
+          "drdre": "dre-road-load-rfc001-0.2.0",
+          "neptune": "neptune-rfc001-adapter-0.1.0"
+        },
+        "basePlanVersionId": "plan_1",
+        "utilityEvaluation": [
+          {
+            "vector": {
+              "timeStress": 0.06,
+              "fatigueCost": 0.076,
+              "monetaryCost": 0,
+              "residualRisk": 0.1,
+              "reversibility": 0.7,
+              "experienceValue": 0.65,
+              "intentPreservation": 0.65
+            },
+            "utility": 0.3658,
+            "candidateId": "cand_remove_next"
+          },
+          {
+            "vector": {
+              "timeStress": 0.264,
+              "fatigueCost": 0.335,
+              "monetaryCost": 0,
+              "residualRisk": 0.1,
+              "reversibility": 0.7,
+              "experienceValue": 0.75,
+              "intentPreservation": 0.75
+            },
+            "utility": 0.3333999999999999,
+            "candidateId": "cand_substitute_next"
+          }
+        ],
+        "rejectedCandidates": [
+          {
+            "rejectedBy": "HARD_CONSTRAINT",
+            "candidateId": "original",
+            "reasonCodes": [
+              "CANDIDATE_BLOCKED_BY_HARD_CONSTRAINT",
+              "EXEC_SLIP_ORIGINAL_INFEASIBLE"
+            ]
+          }
+        ],
+        "selectedCandidateId": "cand_remove_next",
+        "preferenceSnapshotId": "pref_c0c77777-7777-4777-8777-777777777777_default",
+        "worldStateSnapshotId": "wss_c0c77777_1783760517714",
+        "consideredCandidateIds": [
+          "original",
+          "cand_remove_next",
+          "cand_substitute_next"
+        ],
+        "effectivePlanVersionId": "plan_v2_60518027",
+        "authorizationRequirement": {
+          "level": "L2",
+          "reasons": [
+            "HUMAN_CONFIRMATION_REQUIRED"
+          ],
+          "externalSideEffects": [],
+          "requiresUserConfirmation": true
+        }
+      },
+      "idempotentReplay": true,
+      "materializedPlanSnapshotRef": "snap_plan_v2_60518027_cand_remove_next"
+    }
+  },
+  "checks": [
+    {
+      "id": "ES-C-001",
+      "pass": true,
+      "detail": "authorize HTTP=201"
+    },
+    {
+      "id": "ES-C-002",
+      "pass": true,
+      "detail": "execute HTTP=201 planVersionId=plan_v2_60518027"
+    },
+    {
+      "id": "ES-C-003",
+      "pass": true,
+      "detail": "effectivePlan switched to plan_v2_60518027"
+    },
+    {
+      "id": "ES-C-004",
+      "pass": true,
+      "detail": "problemStatus=RESOLVED"
+    },
+    {
+      "id": "ES-C-005",
+      "pass": true,
+      "detail": "idempotentExecute HTTP=201"
+    },
+    {
+      "id": "ES-C-006",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    },
+    {
+      "id": "ES-C-007",
+      "pass": true,
+      "detail": "openExecutionProblems=0"
+    }
+  ],
+  "result": "PASS"
+}

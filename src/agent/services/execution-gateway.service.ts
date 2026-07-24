@@ -28,10 +28,30 @@ import {
   shouldAttachDedupRuntimeObservability,
 } from '../runtime/dedup-runtime-adapter.util';
 import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.service';
+import { TripOrchestrationLockService } from './trip-orchestration-lock.service';
 import { AgentService } from './agent.service';
 import { runRouteAndRunMainChain } from './execution-gateway.route-and-run.orchestration';
+import { applyRouteAndRunEntryRoutingInPlace } from '../routing/route-and-run-route-class-fork.util';
+import { normalizeRouteAndRunConversationContextInPlace } from '../context/utils/conversation-context-window.util';
 import { shouldRejectDedupForStaleTraceContract } from './execution-gateway-trace-compatibility.util';
+import {
+  attachRobustnessDashboardToResponse,
+  tryBuildRobustnessDashboard,
+} from '../utils/robustness-rollout-gateway.util';
+import { TripRobustnessDashboardService } from './trip-robustness-dashboard.service';
 import { GovernanceHydrationService } from '../../governance/activation/governance-hydration.service';
+import { randomUUID } from 'crypto';
+import { runWithLlmTraceContext } from '../../llm/token-context.storage';
+import {
+  applyGatewayAuthorityAuditToResponse,
+  buildGatewayAuthorityEntryContext,
+} from '../../decision-runtime/execution/execution-gateway-authority-audit.util';
+import {
+  isReplayStrictSealActive,
+  resolveReplayStrictSealContextFromRequest,
+  runWithReplayStrictSealContext,
+} from '../runtime/replay-strict-seal.util';
+import { runWithConstraintGatewayIngressContext } from '../../decision-runtime/constraints/constraint-gateway-ingress-audit.util';
 
 /**
  * Execution Gateway — Stage 2 runtime surface: replay admission + ECPS **before** any engine runs.
@@ -70,13 +90,68 @@ export class ExecutionGatewayService {
     @Optional() private readonly policyVersionRegistry?: ExecutionPolicyVersionRegistryService,
     @Optional() private readonly runtimeReplayPersistence?: RuntimeReplayPersistenceService,
     @Optional() readonly governanceHydration?: GovernanceHydrationService,
+    @Optional() private readonly tripOrchestrationLock?: TripOrchestrationLockService,
+    @Optional() private readonly tripRobustnessDashboard?: TripRobustnessDashboardService,
   ) {}
 
   /**
    * Full route_and_run orchestration (stable deadline, dedup replay admission, policy routing, exec modes, recovery).
    */
   async runRouteAndRun(request: RouteAndRunRequestDto): Promise<RouteAndRunResponseDto> {
-    return runRouteAndRunMainChain(this.agent, this, request);
+    const routeClassFork = applyRouteAndRunEntryRoutingInPlace(request);
+    if (routeClassFork) {
+      this.logger.log(
+        `[ExecutionGateway] route_class_fork=${routeClassFork.routeClass} depth=${routeClassFork.orchestrationDepth} actions=${routeClassFork.forkActions.join(',')} request_id=${request.request_id}`,
+      );
+    }
+    const requestId = request.request_id?.trim() || randomUUID();
+    if (!request.request_id?.trim()) {
+      request.request_id = requestId;
+    }
+    const windowStats = normalizeRouteAndRunConversationContextInPlace(request);
+    if (windowStats.originalSize > windowStats.normalizedSize) {
+      this.logger.debug(
+        `[ExecutionGateway] conversation_context ingress window ${windowStats.originalSize} -> ${windowStats.normalizedSize} request_id=${requestId}`,
+      );
+    }
+    const runChain = () => runRouteAndRunMainChain(this.agent, this, request);
+    const runGuarded = this.tripOrchestrationLock
+      ? () => this.tripOrchestrationLock!.runWithTripWriteLockIfNeeded(request, runChain)
+      : runChain;
+
+    return runWithConstraintGatewayIngressContext(() =>
+      runWithReplayStrictSealContext(
+        resolveReplayStrictSealContextFromRequest(request),
+        () =>
+          runWithLlmTraceContext(
+            { requestId, stepName: 'INTAKE', subAgent: 'Orchestrator', routePath: 'GATEWAY' },
+            async () => {
+              const entryContext = buildGatewayAuthorityEntryContext(request);
+              const response = await runGuarded();
+              this.agent.scheduleEpisodicSummarizerAfterRouteAndRun(request);
+              const audited = applyGatewayAuthorityAuditToResponse({
+                request,
+                response,
+                entryContext,
+              });
+              if (isReplayStrictSealActive(request)) {
+                const obs = (audited.observability ?? {}) as Record<string, unknown>;
+                obs.replay_strict_seal_v1 = {
+                  schemaId: 'tripnara.replay_strict_seal@v1',
+                  active: true,
+                  sealed: Boolean(
+                    request.options?.orchestration_replay_anchor_snapshot_id?.trim() &&
+                      request.options?.execution_model_allow_upgrade === false,
+                  ),
+                  anchor_snapshot_id: request.options?.orchestration_replay_anchor_snapshot_id,
+                };
+                audited.observability = obs as typeof audited.observability;
+              }
+              return audited;
+            },
+          ),
+      ),
+    );
   }
 
   /**
@@ -264,5 +339,31 @@ export class ExecutionGatewayService {
         time_remaining_ms: deadline.remainingMs(),
       },
     };
+  }
+
+  /**
+   * Post-orchestration enrichment: dual-dimension Robustness Rollout → observability + payload.
+   * Best-effort; failures are logged and do not fail the gateway response.
+   */
+  enrichResponseWithRobustnessRollout(
+    request: RouteAndRunRequestDto,
+    response: RouteAndRunResponseDto,
+  ): RouteAndRunResponseDto {
+    try {
+      const dashboard = tryBuildRobustnessDashboard(request, response);
+      if (!dashboard) {
+        return response;
+      }
+      this.logger.debug(
+        `[ExecutionGateway] robustness_rollout physical=${Math.round(dashboard.physical_robustness_score * 100)}% org=${Math.round(dashboard.organizational_robustness_score * 100)}% request_id=${request.request_id}`,
+      );
+      this.tripRobustnessDashboard?.scheduleCacheDashboard(request.trip_id, dashboard);
+      return attachRobustnessDashboardToResponse(response, dashboard);
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[ExecutionGateway] robustness_rollout skipped: ${err instanceof Error ? err.message : String(err)} request_id=${request.request_id}`,
+      );
+      return response;
+    }
   }
 }

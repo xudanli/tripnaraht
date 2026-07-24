@@ -175,6 +175,27 @@ describe('GateResult Schema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('should validate GateResult with guardian_results evidence_atoms', () => {
+    const validResult = {
+      gate_result: 'ALLOW' as const,
+      violations: [],
+      required_adjustments: [],
+      confidence: 0.9,
+      guardian_results: {
+        source: 'violation_projection_v1',
+        is_simulated: true,
+        abu: {
+          verdict: 'ALLOW' as const,
+          evidence: ['ok'],
+          evidence_atoms: [{ text: 'ok', violation_code: 'GATE:ABU_ALLOW_DEFAULT', tag: 'safety' as const }],
+        },
+        drdre: { verdict: 'ALLOW' as const, evidence: ['ok'] },
+        neptune: { verdict: 'ALLOW' as const, evidence: ['ok'] },
+      },
+    };
+    expect(validateGateResult(validResult).success).toBe(true);
+  });
+
   it('should reject invalid gate_result status', () => {
     const invalidResult = {
       gate_result: 'MAYBE', // Invalid: not in enum

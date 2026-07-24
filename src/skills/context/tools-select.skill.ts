@@ -13,6 +13,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Skill, SkillInput, SkillOutput } from '../interfaces/skill.interface';
 import { SkillsRegistryService } from '../services/skills-registry.service';
 import { EmbeddingService } from '../../places/services/embedding.service';
+import { filterSkillsForToolSelect } from '../utils/skill-usage-audit.util';
 
 export interface ToolsSelectInput extends SkillInput {
   /** 用户请求 */
@@ -71,7 +72,7 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
 
   metadata = {
     name: 'tools.select',
-    description: '工具选择（Tool RAG）：根据用户请求、规划阶段和当前状态，推荐 3-5 个最相关的工具',
+    description: 'tools.select：工具选择（Tool RAG）：根据用户请求、规划阶段和当前状态，推荐 3-5 个最相关的工具',
     version: '1.0.0',
     category: 'rag' as const,
     toolGroup: 'CONTEXT' as const,
@@ -129,6 +130,7 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
       // 1. 获取所有可用工具
       const skillsRegistry = this.getSkillsRegistry();
       let allSkills = skillsRegistry.getAllSkills();
+      allSkills = filterSkillsForToolSelect(allSkills);
 
       // 1.1 按工具分组过滤（如果指定）
       if (input.toolGroupFilter && input.toolGroupFilter !== 'ALL') {
@@ -203,13 +205,26 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
         'decision.compress',
       ],
       adjustment: [
+        'itinerary.adaptive_replan',
+        'itinerary.experience_curator',
+        'itinerary.experience_align',
         'itinerary.smart_update',
+        'trip.applyEdit',
+        'trip.load',
         'decision.drdrePace',
         'decision.neptuneRepair',
         'plan.selectSlices',
         'decision.compress',
       ],
-      repair: ['itinerary.smart_update', 'decision.neptuneRepair', 'plan.selectSlices'],
+      repair: [
+        'trip.applyEdit',
+        'itinerary.adaptive_replan',
+        'itinerary.experience_curator',
+        'itinerary.experience_align',
+        'itinerary.smart_update',
+        'decision.neptuneRepair',
+        'plan.selectSlices',
+      ],
       readiness: [
         'readiness.generateChecklist',
         'readiness.summarizeRisks',
@@ -239,9 +254,17 @@ export class ToolsSelectSkill implements Skill<ToolsSelectInput, ToolsSelectOutp
       context: ['context.build', 'world.buildContext', 'worldState.summarize'],
       plan: ['plan.selectSlices', 'itinerary.smart_update'],
       tools: ['tools.select'],
-      改行程: ['itinerary.smart_update', 'itinerary.verify'],
-      修改行程: ['itinerary.smart_update'],
-      调整行程: ['itinerary.smart_update', 'plan.selectSlices'],
+      改行程: ['itinerary.adaptive_replan', 'trip.applyEdit', 'itinerary.smart_update', 'itinerary.verify'],
+      修改行程: ['itinerary.adaptive_replan', 'trip.applyEdit', 'itinerary.smart_update'],
+      调整行程: ['itinerary.adaptive_replan', 'trip.applyEdit', 'itinerary.smart_update', 'plan.selectSlices'],
+      太累: ['itinerary.adaptive_replan', 'itinerary.experience_curator', 'decision.drdrePace', 'plan.pace.adjustSchedule'],
+      轻松: ['itinerary.adaptive_replan', 'itinerary.experience_curator', 'decision.drdrePace'],
+      体验: ['itinerary.experience_curator', 'itinerary.adaptive_replan'],
+      日落: ['itinerary.experience_curator', 'itinerary.adaptive_replan'],
+      下雨: ['itinerary.adaptive_replan', 'world.realtimeWeather', 'itinerary.verify'],
+      天气: ['itinerary.adaptive_replan', 'world.realtimeWeather', 'itinerary.verify'],
+      删除活动: ['trip.deleteItem', 'trip.applyEdit'],
+      加载行程: ['trip.load'],
       // 冰岛 / 高地 / 官方旅行安全 RSS（与天气、路况证据互补）
       iceland: ['safetravel.get_advisories', 'iceland.rentalGuidance'],
       冰岛: ['safetravel.get_advisories', 'iceland.rentalGuidance'],

@@ -205,4 +205,126 @@ describe('PlanningWorkbenchKernelBridgeService', () => {
       expect(enriched.options[1].summary).toContain('dominant_cid=FATIGUE');
     });
   });
+
+  describe('runNativeVerifyPipeline', () => {
+    it('skips when verify SSOT not applied', async () => {
+      const kernel = {
+        executeVerify: jest.fn(),
+        updateState: jest.fn((s: unknown, patch: unknown) => ({ ...(s as object), ...(patch as object) })),
+      };
+      const bridgeWithKernel = new PlanningWorkbenchKernelBridgeService(kernel as never);
+      const planState = mockPlanState();
+
+      const out = await bridgeWithKernel.runNativeVerifyPipeline({
+        request: mockRequest(),
+        planState,
+      });
+
+      expect(out.skipped).toBe(true);
+      expect(out.reason).toBe('verify_ssot_not_applied');
+      expect(kernel.executeVerify).not.toHaveBeenCalled();
+    });
+
+    it('runs executeVerify with graph projected itinerary', async () => {
+      const kernel = {
+        executeVerify: jest.fn().mockResolvedValue({
+          issues: [{ code: 'TIME_WINDOW_OVERLAP', class: 'CONFLICT', message: 'overlap' }],
+          confidenceDelta: -0.1,
+          newState: {},
+        }),
+        updateState: jest.fn((current: Record<string, unknown>, patch: Record<string, unknown>) => ({
+          ...current,
+          ...patch,
+          systemState: { ...(current.systemState as object), ...(patch.systemState as object) },
+        })),
+      };
+      const bridgeWithKernel = new PlanningWorkbenchKernelBridgeService(kernel as never);
+      const planState = mockPlanState();
+      planState.metadata = {
+        verify_ssot_applied: true,
+        verify_itinerary_source: 'canonical_travel_graph@v0',
+        graph_projected_itinerary: {
+          request_id: 'plan_test',
+          days: [{ date: '2026-08-01', items: [{ id: 'p1', type: 'POI', location_ref: { name: 'Gullfoss' } }] }],
+        },
+        canonical_travel_graph: { graphId: 'g1', compileId: 'c1' },
+      };
+
+      const out = await bridgeWithKernel.runNativeVerifyPipeline({
+        request: mockRequest(),
+        planState,
+      });
+
+      expect(out.skipped).toBe(false);
+      expect(out.metadata.issueCount).toBe(1);
+      expect(out.gateStatus.status).toBe('NEED_CONFIRM');
+      expect(kernel.executeVerify).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          verifyItinerarySource: 'canonical_travel_graph@v0',
+          itinerary: planState.metadata?.graph_projected_itinerary,
+        }),
+      );
+      expect(planState.metadata?.kernelVerify?.issueCount).toBe(1);
+    });
+
+    it('runs executeRepair when verify finds repairable conflicts', async () => {
+      const repairedItinerary = {
+        request_id: 'plan_test',
+        days: [{ date: '2026-08-03', items: [{ id: 'p1', type: 'POI', location_ref: { name: 'Geysir' } }] }],
+      };
+      const kernel = {
+        executeVerify: jest.fn().mockResolvedValue({
+          issues: [{ code: 'TIME_WINDOW_OVERLAP', class: 'CONFLICT', message: 'overlap' }],
+          confidenceDelta: -0.1,
+          newState: { requestId: 'plan_test' },
+        }),
+        executeRepair: jest.fn().mockResolvedValue({
+          repairApplied: true,
+          itinerary: repairedItinerary,
+          newState: {},
+        }),
+        updateState: jest.fn((current: Record<string, unknown>, patch: Record<string, unknown>) => ({
+          ...current,
+          ...patch,
+          systemState: { ...(current.systemState as object), ...(patch.systemState as object) },
+        })),
+      };
+      const bridgeWithKernel = new PlanningWorkbenchKernelBridgeService(kernel as never);
+      const planState = mockPlanState();
+      planState.constraints.time = { days: 1, startDate: '2026-08-03' };
+      planState.itinerary.segments = [
+        {
+          segmentId: 's0',
+          dayIndex: 0,
+          distanceKm: 0,
+          ascentM: 0,
+          slopePct: 0,
+          metadata: { attractions: [{ name: 'Gullfoss' }] },
+        },
+      ];
+      planState.metadata = {
+        verify_ssot_applied: true,
+        verify_itinerary_source: 'canonical_travel_graph@v0',
+        graph_projected_itinerary: {
+          request_id: 'plan_test',
+          days: [{ date: '2026-08-03', items: [{ id: 'p1', type: 'POI', location_ref: { name: 'Gullfoss' } }] }],
+        },
+      };
+
+      const out = await bridgeWithKernel.runNativeVerifyRepairPipeline({
+        request: mockRequest(),
+        planState,
+        enableRepair: true,
+      });
+
+      expect(out.repair?.applied).toBe(true);
+      expect(out.repair?.segmentsUpdated).toBe(1);
+      expect(kernel.executeRepair).toHaveBeenCalled();
+      const attractions = planState.itinerary.segments[0]?.metadata?.attractions as Array<
+        Record<string, unknown>
+      >;
+      expect(attractions?.[0]?.name).toBe('Geysir');
+    });
+  });
 });

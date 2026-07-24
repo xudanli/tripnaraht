@@ -1,0 +1,41 @@
+{
+  "caseId": "iceland-highlands-001",
+  "description": "[e2e] 冰岛高地路线 - 中等强度用户",
+  "source_e2e_case_id": "iceland-highlands-001",
+  "tasks": [
+    {
+      "id": "iceland-highlands-001",
+      "description": "测试中等强度用户在夏季（7月）选择冰岛高地路线的决策流程",
+      "initialObservation": "我想在7月去冰岛高地，中等强度，7天行程",
+      "successCriteria": "final allowed=true; Abu ALLOW; Dr.Dre mustAdjust=false; Neptune mustRepair=false",
+      "optimalSteps": 8
+    }
+  ],
+  "assertions": [
+    {
+      "type": "task_completed",
+      "value": "true",
+      "weight": 2
+    },
+    {
+      "type": "trajectory_contains",
+      "value": "allow",
+      "weight": 1
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "allow",
+      "weight": 2
+    },
+    {
+      "type": "trajectory_contains",
+      "value": "高地",
+      "weight": 1
+    },
+    {
+      "type": "skill_body_contains",
+      "value": "is",
+      "weight": 0.5
+    }
+  ]
+}

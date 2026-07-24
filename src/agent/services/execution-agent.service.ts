@@ -11,17 +11,18 @@
  */
 
 import { Injectable, Logger, Optional, Inject, forwardRef, NotFoundException, BadRequestException } from '@nestjs/common';
-import { ExecRemindSkill } from '../../skills/exec/exec-remind.skill';
-import { ExecHandleChangeSkill } from '../../skills/exec/exec-handle-change.skill';
-import { ExecFallbackSkill } from '../../skills/exec/exec-fallback.skill';
 import { ExecutionState, Reminder, ChangeHandlingResult, FallbackPlan } from '../../skills/exec/shared/execution-state.types';
 import { PersonaShellService, PersonaShellOutput } from './persona-shell.service';
+import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import type { Skill } from '../../skills/interfaces/skill.interface';
 import { TripsService } from '../../trips/trips.service';
 import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
 import { ReorderRequestDto } from '../dto/reorder.dto';
 import { ApplyFallbackRequestDto } from '../dto/apply-fallback.dto';
+import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution/effective-plan-write-guard.service';
+import { assertPlanMutationAllowedOrThrow } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 export interface ExecutionAgentRequest {
   /** Trip ID */
@@ -78,18 +79,18 @@ export class ExecutionAgentService {
   private readonly fallbackPlanCache = new Map<string, FallbackPlan>();
 
   constructor(
-    @Optional() private readonly execRemind?: ExecRemindSkill,
-    @Optional() private readonly execHandleChange?: ExecHandleChangeSkill,
-    @Optional() private readonly execFallback?: ExecFallbackSkill,
+    @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly personaShell?: PersonaShellService,
     @Optional() @Inject(forwardRef(() => TripsService)) private readonly tripsService?: TripsService,
     @Optional() @Inject(forwardRef(() => ItineraryItemsService)) private readonly itineraryItemsService?: ItineraryItemsService,
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {
     // 添加诊断日志
     this.logger.log(`[ExecutionAgentService] 服务已创建`);
-    this.logger.log(`[ExecutionAgentService] execRemind: ${!!this.execRemind}, execHandleChange: ${!!this.execHandleChange}, execFallback: ${!!this.execFallback}`);
-    this.logger.log(`[ExecutionAgentService] tripsService: ${!!this.tripsService}, itineraryItemsService: ${!!this.itineraryItemsService}, prisma: ${!!this.prisma}`);
+    this.logger.log(
+      `[ExecutionAgentService] skillsRegistry: ${!!this.skillsRegistry}, tripsService: ${!!this.tripsService}, itineraryItemsService: ${!!this.itineraryItemsService}, prisma: ${!!this.prisma}`,
+    );
   }
 
   /**
@@ -114,9 +115,15 @@ export class ExecutionAgentService {
       const uiOutput: ExecutionAgentResponse['uiOutput'] = {};
 
       switch (request.action) {
-        case 'remind':
-          if (this.execRemind) {
-            const remindResult = await this.execRemind.execute({
+        case 'remind': {
+          const skill = this.skillsRegistry?.getSkill('exec.remind') as
+            | Skill<
+                { tripId: string; currentDate: string; reminderTypes?: string[]; advanceHours?: number },
+                { reminders: Reminder[] }
+              >
+            | undefined;
+          if (skill) {
+            const remindResult = await skill.execute({
               tripId: request.tripId,
               currentDate,
               reminderTypes: request.remindParams?.reminderTypes as any,
@@ -126,10 +133,18 @@ export class ExecutionAgentService {
             uiOutput.reminders = remindResult.reminders;
           }
           break;
+        }
 
         case 'handle_change':
-          if (this.execHandleChange && request.changeParams) {
-            const changeResult = await this.execHandleChange.execute({
+          if (request.changeParams) {
+            const skill = this.skillsRegistry?.getSkill('exec.handleChange') as
+              | Skill<
+                  { tripId: string; changeType: string; changeDetails: unknown },
+                  { result: ChangeHandlingResult }
+                >
+              | undefined;
+            if (!skill) break;
+            const changeResult = await skill.execute({
               tripId: request.tripId,
               changeType: request.changeParams.changeType as any,
               changeDetails: request.changeParams.changeDetails,
@@ -175,8 +190,15 @@ export class ExecutionAgentService {
           break;
 
         case 'fallback':
-          if (this.execFallback && request.fallbackParams) {
-            const fallbackResult = await this.execFallback.execute({
+          if (request.fallbackParams) {
+            const skill = this.skillsRegistry?.getSkill('exec.fallback') as
+              | Skill<
+                  { tripId: string; triggerReason: string; originalPlan: unknown },
+                  { fallbackPlan: FallbackPlan }
+                >
+              | undefined;
+            if (!skill) break;
+            const fallbackResult = await skill.execute({
               tripId: request.tripId,
               triggerReason: request.fallbackParams.triggerReason,
               originalPlan: request.fallbackParams.originalPlan,
@@ -223,6 +245,11 @@ export class ExecutionAgentService {
    */
   async reorder(request: ReorderRequestDto) {
     this.logger.debug(`重新排序行程: tripId=${request.tripId}, dayId=${request.dayId}`);
+
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'ExecutionAgentService.reorder',
+    );
 
     if (!this.itineraryItemsService || !this.prisma) {
       throw new BadRequestException('ItineraryItemsService 或 PrismaService 未注入');
@@ -359,6 +386,11 @@ export class ExecutionAgentService {
    */
   async applyFallback(request: ApplyFallbackRequestDto) {
     this.logger.debug(`应用修复方案: tripId=${request.tripId}, solutionId=${request.solutionId}`);
+
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'ExecutionAgentService.applyFallback',
+    );
 
     if (!this.itineraryItemsService || !this.prisma) {
       throw new BadRequestException('ItineraryItemsService 或 PrismaService 未注入');

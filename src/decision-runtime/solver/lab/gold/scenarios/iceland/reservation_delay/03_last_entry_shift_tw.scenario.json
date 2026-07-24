@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.reservation_delay.03_last_entry_shift_tw",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "reservation_delay",
+  "title": "Last-entry slipped \u2014 SHIFT around late reservation",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/reservation_delay/problems/03_last_entry_shift_tw.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

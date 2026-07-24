@@ -53,6 +53,20 @@ route:
         alertname: ^(HighDecisionLatency|LowDecisionThroughput).*
       receiver: 'decision-os-performance'
 
+    # Query Rewriting v1.1 — LLM/Schema 崩溃防线
+    - match:
+        alertname: AgentLlmSchemaOrCrashException
+      receiver: 'decision-os-critical'
+      group_wait: 10s
+      repeat_interval: 30m
+
+    # Query Rewriting v1.1 — 分场景零结果率
+    - match:
+        alertname: QueryRewriteZeroResultSpike
+      receiver: 'decision-os-warning'
+      group_wait: 1m
+      repeat_interval: 2h
+
 # 抑制规则
 inhibit_rules:
   # 如果 Critical 告警存在，抑制相同 alertname 的 Warning

@@ -1,0 +1,12 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "pilot_iceland_parking_full_02_bluelagoon_approach_swap",
+  "evidenceVersionId": "ev-park-02",
+  "frozenAt": "2026-07-16T09:53:49.039Z",
+  "sources": [
+    {
+      "provider": "gold_export",
+      "ref": "iceland.parking_full.02_bluelagoon_approach_swap"
+    }
+  ]
+}

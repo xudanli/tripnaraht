@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.wind.08_reynisfjara_replace_shelter",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "wind",
+  "title": "Reynisfjara wave/wind \u2014 REPLACE to sheltered viewpoint alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/wind/problems/08_reynisfjara_replace_shelter.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

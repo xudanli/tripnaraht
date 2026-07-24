@@ -3,12 +3,48 @@
  * 不写入账本；仅影响 McpAgentExecutorService 是否真正调用 dispatcher。
  */
 
+import { randomUUID } from 'crypto';
+
 export type ToolGovernanceMode = 'auto' | 'ask' | 'deny';
 
 export interface ToolGovernancePolicyEntry {
   mode: ToolGovernanceMode;
   reason?: string;
 }
+
+/** Harness P0：无论 HITL feature 是否开启，均并入的破坏性工具显式策略（可被 memory 覆盖）。 */
+export const DEFAULT_DESTRUCTIVE_TOOL_POLICIES: Record<string, ToolGovernancePolicyEntry> = {
+  'google-calendar.deleteEvent': { mode: 'ask', reason: 'Destructive: deletes calendar event' },
+  'google-calendar.deleteCalendar': { mode: 'deny', reason: 'Destructive: deletes entire calendar' },
+  delete_event: { mode: 'ask', reason: 'Destructive: deletes calendar event' },
+  delete_calendar: { mode: 'deny', reason: 'Destructive: deletes entire calendar' },
+};
+
+/**
+ * 工具名模式兜底（Smithery / 第三方 MCP 命名不一致时仍拦截）。
+ * 命中后默认 `ask`；运营可在 `tool_policies` 升格为 `deny`。
+ */
+export const DESTRUCTIVE_MCP_TOOL_NAME_PATTERNS: ReadonlyArray<{
+  re: RegExp;
+  mode: ToolGovernanceMode;
+  reason: string;
+}> = [
+  {
+    re: /(?:^|[._-])delete/i,
+    mode: 'ask',
+    reason: 'Destructive side-effect: delete operation requires approval',
+  },
+  {
+    re: /(?:^|[._-])(?:remove|purge|trash|wipe|truncate)/i,
+    mode: 'ask',
+    reason: 'Destructive side-effect: remove/purge operation requires approval',
+  },
+  {
+    re: /(?:^|[._-])(?:send(?:_?(?:mail|email|message))?|forward|reply)/i,
+    mode: 'ask',
+    reason: 'Destructive side-effect: outbound message requires approval',
+  },
+];
 
 /** FEATURE_AGENTIC_GOVERNANCE_HITL 开启时并入的默认策略（可被内存覆盖）。 */
 export const DEFAULT_HITL_TOOL_POLICIES: Record<string, ToolGovernancePolicyEntry> = {
@@ -48,24 +84,54 @@ export function normalizeToolPoliciesFromConstraints(
 }
 
 /**
- * hitlFeatureEnabled 为 true 时先铺默认 ask/deny，再由内存中的 tool_policies 覆盖。
- * 为 false 时仅应用内存策略（便于在未开 Feature 时由运营显式注入 deny）。
+ * 合并顺序：destructive 基线 → HITL 默认（feature 开）→ memory 覆盖。
+ * destructive 基线 **始终** 生效，避免未开 HITL 时破坏性工具 silent auto。
  */
 export function mergeAgenticToolPolicies(
   hitlFeatureEnabled: boolean,
   fromMemoryConstraints?: unknown,
 ): Record<string, ToolGovernancePolicyEntry> {
-  const base: Record<string, ToolGovernancePolicyEntry> = hitlFeatureEnabled ? { ...DEFAULT_HITL_TOOL_POLICIES } : {};
   const mem = normalizeToolPoliciesFromConstraints(fromMemoryConstraints) ?? {};
-  return { ...base, ...mem };
+  return {
+    ...DEFAULT_DESTRUCTIVE_TOOL_POLICIES,
+    ...(hitlFeatureEnabled ? DEFAULT_HITL_TOOL_POLICIES : {}),
+    ...mem,
+  };
 }
 
+/** 仅查表；不应用 destructive 模式兜底。 */
 export function policyForMcpTool(
   mcpToolName: string,
   policies: Record<string, ToolGovernancePolicyEntry> | undefined,
 ): ToolGovernancePolicyEntry {
   const p = policies?.[mcpToolName];
   return p ?? { mode: 'auto' };
+}
+
+export function matchesDestructiveMcpToolName(mcpToolName: string): ToolGovernancePolicyEntry | undefined {
+  const name = String(mcpToolName ?? '').trim();
+  if (!name) return undefined;
+  for (const { re, mode, reason } of DESTRUCTIVE_MCP_TOOL_NAME_PATTERNS) {
+    if (re.test(name)) return { mode, reason };
+  }
+  return undefined;
+}
+
+/**
+ * dispatch 前最终策略：显式 policy → destructive 模式兜底 → auto。
+ */
+export function resolveToolGovernancePolicy(
+  mcpToolName: string,
+  policies: Record<string, ToolGovernancePolicyEntry> | undefined,
+): ToolGovernancePolicyEntry {
+  const explicit = policies?.[mcpToolName];
+  if (explicit) return explicit;
+  return matchesDestructiveMcpToolName(mcpToolName) ?? { mode: 'auto' };
+}
+
+/** 治理挂起/拒绝审计 id（日志 + envelope 对齐，便于排障串联）。 */
+export function generateGovernanceAuditId(): string {
+  return `gov_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
 }
 
 /** 用户确认后的放行项；写入 TripTask.constraints.approved_tool_invocations 或 route_and_run.options.agentic_approved_tool_invocations。 */
@@ -144,6 +210,7 @@ export function buildToolGovernanceHoldEnvelope(
   mode: 'ask' | 'deny',
   reason?: string,
   toolCallId?: string,
+  governanceAuditId?: string,
 ): {
   success: false;
   data: Record<string, unknown>;
@@ -151,11 +218,13 @@ export function buildToolGovernanceHoldEnvelope(
   sideEffects: Record<string, unknown>;
   confidence: number;
 } {
+  const auditId = governanceAuditId ?? generateGovernanceAuditId();
   return {
     success: false,
     data: {
       _system_status: mode === 'ask' ? 'AWAITING_APPROVAL' : 'GOVERNANCE_DENY',
       mcpToolName,
+      governance_audit_id: auditId,
       ...(toolCallId ? { tool_call_id: toolCallId } : {}),
       governance_mode: mode,
       reason: reason ?? null,

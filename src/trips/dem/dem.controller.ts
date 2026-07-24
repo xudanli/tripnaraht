@@ -4,8 +4,10 @@ import { Controller, Get, Post, Body, Query, Param } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiBody, ApiTags, ApiParam } from '@nestjs/swagger';
 import { DEMElevationService } from './services/dem-elevation.service';
 import { DEMEffortMetadataService, RoutePoint } from './services/dem-effort-metadata.service';
+import { DemProfileFromGeometryService } from './services/dem-profile-from-geometry.service';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
 import { Public } from '../../auth/decorators/public.decorator';
+import type { TravelRouteGeometryV1 } from '../../transport/contracts/travel-eta.contract';
 
 @ApiTags('DEM')
 @Controller('dem')
@@ -13,6 +15,7 @@ export class DemController {
   constructor(
     private readonly demElevationService: DEMElevationService,
     private readonly demEffortMetadataService: DEMEffortMetadataService,
+    private readonly demProfileFromGeometry: DemProfileFromGeometryService,
   ) {}
 
   @Public()
@@ -39,12 +42,17 @@ export class DemController {
     }
 
     try {
-      const elevation = await this.demElevationService.getElevation(latNum, lngNum);
+      const sample = await this.demElevationService.getElevationWithProvenance(latNum, lngNum);
       return successResponse({
         lat: latNum,
         lng: lngNum,
-        elevation: elevation,
+        elevation: sample.elevationM,
+        elevationM: sample.elevationM,
         unit: 'meters',
+        source: sample.source,
+        resolutionM: sample.resolutionM,
+        srid: sample.srid,
+        confidence: sample.confidence,
       });
     } catch (error: any) {
       return errorResponse(
@@ -201,6 +209,64 @@ export class DemController {
       return errorResponse(
         ErrorCode.INTERNAL_ERROR,
         `获取海拔剖面失败: ${error.message}`,
+      );
+    }
+  }
+
+  @Public()
+  @Post('profile-from-geometry')
+  @ApiOperation({
+    summary: '从 travel-eta geometry 生成地形摘要',
+    description:
+      '消费 segments[].eta.geometry（ENCODED_POLYLINE），返回 ascentM / slope / demSource provenance。' +
+      '供 travel-info includeTerrain 与 F208 金样共用。',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['geometry'],
+      properties: {
+        geometry: {
+          type: 'object',
+          properties: {
+            encoding: { type: 'string', enum: ['ENCODED_POLYLINE', 'GEOJSON_LINESTRING', 'NONE'] },
+            value: { type: 'string' },
+            source: {
+              type: 'string',
+              enum: ['ROUTE_API', 'CACHED_METADATA', 'STRAIGHT_LINE', 'NONE'],
+            },
+          },
+        },
+        sampleIntervalM: { type: 'number', example: 100 },
+        activityType: { type: 'string', enum: ['walking', 'driving', 'cycling'] },
+      },
+    },
+  })
+  async profileFromGeometry(
+    @Body()
+    body: {
+      geometry: TravelRouteGeometryV1;
+      sampleIntervalM?: number;
+      activityType?: 'walking' | 'driving' | 'cycling';
+    },
+  ) {
+    try {
+      if (!body?.geometry) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'geometry 必填');
+      }
+      const terrain = await this.demProfileFromGeometry.profile({
+        geometry: body.geometry,
+        sampleIntervalM: body.sampleIntervalM,
+        activityType: body.activityType,
+      });
+      if (!terrain) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, 'geometry 无法解码为有效折线');
+      }
+      return successResponse(terrain);
+    } catch (error: any) {
+      return errorResponse(
+        ErrorCode.INTERNAL_ERROR,
+        `从 geometry 生成地形失败: ${error.message}`,
       );
     }
   }

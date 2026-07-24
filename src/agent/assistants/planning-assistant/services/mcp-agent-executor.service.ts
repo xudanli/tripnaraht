@@ -14,12 +14,24 @@ import {
   type McpToolRoutingEntry,
 } from './mcp-openai-tools.adapter';
 import {
-  buildToolGovernanceHoldEnvelope,
-  isGovernanceAskPreApproved,
-  policyForMcpTool,
+  evaluateMcpToolDispatch,
+} from '../../../runtime/agent-execution-policy-gateway.util';
+import {
+  buildAgenticLoopCheckpoint,
+  buildAgenticLoopCheckpointObservability,
+  cloneCheckpointMessages,
+  parseAgenticLoopCheckpointsEnabled,
+  stepHasGovernanceAskHold,
+  validateAgenticResumeCheckpoint,
+  type AgenticLoopCheckpointMessageV1,
+  type AgenticLoopCheckpointV1,
+  type AgentLoopTraceStep,
+} from '../../../runtime/agentic-loop-checkpoint.util';
+import {
   type GovernanceApprovedToolInvocation,
   type ToolGovernancePolicyEntry,
 } from '../../../runtime/agentic-tool-governance.util';
+import { evaluateAgenticToolMutationGate } from '../../../../decision-runtime/execution/agentic-mutation-commit.adapter';
 import {
   classifyOrchestratorFailure,
   truncateOrchestratorFailurePreview,
@@ -28,6 +40,7 @@ import type { OrchestratorRobustnessMetadata } from '../../../utils/orchestrator
 import { isMcpToolExecutionError } from '../errors/mcp-tool-execution.error';
 import { extractTokenUsage } from '../../../../llm/utils/token-extractor.util';
 import type { ComplexityLevel } from '../../../utils/orchestration-signals.util';
+import { buildTemporalGroundingLine } from '../../../utils/temporal-grounding.util';
 import { MetricsRecorder } from '../../../utils/agent-metrics.util';
 import type {
   BookingCompletionContract,
@@ -69,37 +82,7 @@ export interface McpToolRuntimeEnvelope {
 
 export type AgentToolPack = 'weather' | 'exa' | 'hotel' | 'calendar';
 
-export interface AgentLoopTraceStep {
-  step: number;
-  llm_finish_reason?: string | null;
-  tool_calls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
-  tool_results?: Array<{ tool_call_id: string; envelope: McpToolRuntimeEnvelope }>;
-  latency_ms: number;
-  /** Task Closure booking：本轮前后 completion 快照与推进语义（可 replay）。 */
-  booking_prev_completion?: BookingCompletionContract;
-  booking_next_completion?: BookingCompletionContract;
-  booking_progress_made?: boolean;
-  /** 至少一次真实 MCP 执行但 completion 维度无严格前进 */
-  booking_no_progress_step?: boolean;
-  booking_no_progress_reason?: BookingNoProgressReason;
-  /** 仅观测：不参与 completion 判断，为 state_progress 升级预留 */
-  booking_state_delta?: {
-    route_len_delta: number;
-    inventory_items_delta: number;
-  };
-  /** 本轮存在 Policy 标为 discouraged 且已真实执行的语义 action */
-  booking_discouraged_action?: boolean;
-  /** 本轮 Policy 前基于近期 no_progress 序列检测到的失败模式 */
-  booking_failure_pattern?: BookingFailurePattern;
-  /** 连续相同 failure_pattern 的长度（pattern 为 none 时为 0） */
-  booking_pattern_stability?: number;
-  /** 本轮 Policy 给出的 suggested 条数（纠偏前后一致取最终 decision） */
-  booking_suggested_candidates_count?: number;
-  /** 执行语义命中 suggested，或触发了 suggested 纠偏 */
-  booking_suggested_used?: boolean;
-  /** stability≥2 且 LLM 未采纳 suggested 时，强制首轮改为 suggested[0] */
-  booking_suggested_override?: boolean;
-}
+export type { AgentLoopTraceStep } from '../../../runtime/agentic-loop-checkpoint.util';
 
 export interface McpAgentExecutorBudget {
   /** 累计 total_tokens 上限（默认 AGENTIC_LOOP_MAX_TOTAL_TOKENS 或 4000） */
@@ -161,6 +144,14 @@ export interface McpAgentExecutorRunInput {
    * Task Closure：booking 时强制执行 Proposal→Policy→Execute，禁止绕过 Policy 直连 MCP。
    */
   taskClosure?: BookingTaskClosureRunOptions;
+  /** State P2：从 checkpoint 续跑（须与 message 一致） */
+  resumeCheckpoint?: AgenticLoopCheckpointV1;
+  /** State P2+：rollback 可观测（写入 trace.task_rollback_v1） */
+  taskRollbackV1?: import('../../../runtime/agentic-task-rollback.util').AgenticTaskRollbackObservabilityV1;
+  /** Canonical authority：有 trip 时供 mutation gate 判定 */
+  tripId?: string;
+  /** 若 Fast Path 获准执行 TRIP_MUTATION 工具，须携带完整 envelope */
+  mutationAuthorityEnvelope?: import('../../../../decision-runtime/execution/mutation-authority-envelope-v1.types').MutationAuthorityEnvelopeV1;
 }
 
 /** 双轨实验：MCP 工具调用次数、LLM 轮次、Token 累计（与 observability 对齐） */
@@ -180,6 +171,10 @@ export type AgenticToolLoopTrace = {
   steps: AgentLoopTraceStep[];
   stopped_reason: string;
   booking_summary?: BookingToolLoopSummary;
+  checkpoints?: AgenticLoopCheckpointV1[];
+  checkpoint_observability?: ReturnType<typeof buildAgenticLoopCheckpointObservability>;
+  resumed_from_step?: number;
+  task_rollback_v1?: import('../../../runtime/agentic-task-rollback.util').AgenticTaskRollbackObservabilityV1;
 };
 
 export interface McpAgentExecutorRunResult {
@@ -198,12 +193,6 @@ export interface McpAgentExecutorRunResult {
 const DEFAULT_SYSTEM_WEATHER = `你是 TripNARA 旅行助理。你可以调用提供的工具获取实时天气。
 策略：若用户询问某地天气，先调用相应天气工具，再基于工具结果用中文简洁回答。
 不要编造气象数据；工具失败时说明原因并给出可行建议。`;
-
-/** 减少日期参数幻觉：每次请求注入当前 UTC 锚点（工具参数字符串请与此对齐）。 */
-function buildTemporalGroundingLine(now: Date = new Date()): string {
-  const iso = now.toISOString();
-  return `[Temporal anchor] UTC now: ${iso}. Interpret 今天/明天/后天 and weather startDate/endDate relative to this instant.`;
-}
 
 /** 按路由复杂度给出 MCP 韧性默认值（可被 budget / 环境变量覆盖）。 */
 export function resolveAgenticMcpRetryBudget(complexity: ComplexityLevel): Pick<
@@ -258,12 +247,30 @@ export class McpAgentExecutorService {
    */
   async run(input: McpAgentExecutorRunInput): Promise<McpAgentExecutorRunResult> {
     const bookingClosureActive = input.taskClosure?.mode === 'booking';
+    const checkpointsEnabled = parseAgenticLoopCheckpointsEnabled();
+    const checkpoints: AgenticLoopCheckpointV1[] = [];
+    let resumedFromStep: number | undefined;
+    const taskRollbackV1 = input.taskRollbackV1;
+    const cpCtx = () => ({ checkpointsEnabled, checkpoints, resumedFromStep, taskRollbackV1 });
+
+    if (input.resumeCheckpoint) {
+      const validation = validateAgenticResumeCheckpoint(input.resumeCheckpoint, input.message);
+      if (validation.ok === false) {
+        return {
+          success: false,
+          final_message: null,
+          trace: this.finalizeTrace([], `resume_invalid:${validation.reason}`, bookingClosureActive, cpCtx()),
+          metrics: this.emptyMetrics(),
+        };
+      }
+      resumedFromStep = input.resumeCheckpoint.step;
+    }
 
     if (!this.mcpDispatcher) {
       return {
         success: false,
         final_message: null,
-        trace: this.finalizeTrace([], 'McpToolDispatcherService not available', bookingClosureActive),
+        trace: this.finalizeTrace([], 'McpToolDispatcherService not available', bookingClosureActive, cpCtx()),
         metrics: this.emptyMetrics(),
       };
     }
@@ -276,7 +283,7 @@ export class McpAgentExecutorService {
       return {
         success: false,
         final_message: null,
-        trace: this.finalizeTrace([], 'no_tools_registered_for_packs', bookingClosureActive),
+        trace: this.finalizeTrace([], 'no_tools_registered_for_packs', bookingClosureActive, cpCtx()),
         metrics: this.emptyMetrics(),
       };
     }
@@ -302,6 +309,7 @@ export class McpAgentExecutorService {
           [],
           filterOpts ? 'all_tools_filtered_by_runtime_mcp_cap' : 'all_tools_filtered_by_agentic_llm_whitelist',
           bookingClosureActive,
+          cpCtx(),
         ),
         metrics: this.emptyMetrics(),
       };
@@ -309,18 +317,32 @@ export class McpAgentExecutorService {
 
     const messages: ChatCompletionMessage[] = [];
     const systemBody = input.systemPrompt?.trim() || this.buildDefaultSystemPrompt(packs);
-    messages.push({
-      role: 'system',
-      content: `${buildTemporalGroundingLine()}\n\n${systemBody}`,
-    });
-    messages.push({ role: 'user', content: input.message });
 
     const traceSteps: AgentLoopTraceStep[] = [];
-    let stoppedReason = 'max_steps';
-    let lastRaw: unknown;
     let promptTok = 0;
     let completionTok = 0;
     let totalTok = 0;
+    let startStep = 1;
+
+    if (input.resumeCheckpoint) {
+      messages.push(
+        ...(cloneCheckpointMessages(input.resumeCheckpoint.messages) as unknown as ChatCompletionMessage[]),
+      );
+      traceSteps.push(...cloneCheckpointMessages(input.resumeCheckpoint.trace_steps));
+      promptTok = input.resumeCheckpoint.metrics.prompt_tokens;
+      completionTok = input.resumeCheckpoint.metrics.completion_tokens;
+      totalTok = input.resumeCheckpoint.metrics.total_tokens;
+      startStep = input.resumeCheckpoint.step + 1;
+    } else {
+      messages.push({
+        role: 'system',
+        content: `${buildTemporalGroundingLine()}\n\n${systemBody}`,
+      });
+      messages.push({ role: 'user', content: input.message });
+    }
+
+    let stoppedReason = 'max_steps';
+    let lastRaw: unknown;
 
     let bookingCtx: BookingExecutionContext | undefined;
     let bookingStage: BookingStage | undefined;
@@ -347,7 +369,7 @@ export class McpAgentExecutorService {
     let lastToolSig: string | null = null;
     let identicalToolStreak = 0;
 
-    for (let step = 1; step <= maxSteps; step++) {
+    for (let step = startStep; step <= maxSteps; step++) {
       if (getRemaining) {
         const rem = getRemaining();
         if (rem < budgetCfg.minRemainingMs) {
@@ -362,6 +384,7 @@ export class McpAgentExecutorService {
             finalMessage: lastAssistantPlainText ?? this.defaultBudgetUserMessage('time'),
             previewDetail: `remaining_ms=${Math.max(0, Math.floor(rem))}`,
             bookingClosureActive,
+            checkpointCtx: cpCtx(),
           });
         }
       }
@@ -383,7 +406,7 @@ export class McpAgentExecutorService {
         return {
           success: false,
           final_message: null,
-          trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive),
+          trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive, cpCtx()),
           last_raw_llm_response: lastRaw,
           metrics: this.buildMetrics(traceSteps, promptTok, completionTok, totalTok),
         };
@@ -427,6 +450,7 @@ export class McpAgentExecutorService {
             this.defaultBudgetUserMessage('token'),
           previewDetail: `total_tokens=${totalTok}>${budgetCfg.maxTotalTokens}`,
           bookingClosureActive,
+          checkpointCtx: cpCtx(),
         });
       }
 
@@ -444,7 +468,7 @@ export class McpAgentExecutorService {
         return {
           success: true,
           final_message: llmRes.message.content,
-          trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive),
+          trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive, cpCtx()),
           last_raw_llm_response: lastRaw,
           metrics: this.buildMetrics(traceSteps, promptTok, completionTok, totalTok),
         };
@@ -475,6 +499,7 @@ export class McpAgentExecutorService {
           finalMessage: lastAssistantPlainText ?? this.defaultBudgetUserMessage('dead_loop'),
           previewDetail: `identical_tool_plan_x${identicalToolStreak}`,
           bookingClosureActive,
+          checkpointCtx: cpCtx(),
         });
       }
 
@@ -496,6 +521,7 @@ export class McpAgentExecutorService {
           finalMessage: lastAssistantPlainText ?? this.defaultBudgetUserMessage('time'),
           previewDetail: `remaining_ms=${Math.max(0, Math.floor(getRemaining()))}`,
           bookingClosureActive,
+          checkpointCtx: cpCtx(),
         });
       }
 
@@ -650,6 +676,8 @@ export class McpAgentExecutorService {
             input.toolGovernancePolicies,
             input.governanceApprovedToolInvocations,
             call.id,
+            input.tripId,
+            input.mutationAuthorityEnvelope,
           );
           mcpExecutedThisRound++;
           if (decision.discouraged.includes(proposal)) {
@@ -749,7 +777,7 @@ export class McpAgentExecutorService {
             success: true,
             final_message:
               lastAssistantPlainText ?? 'Completion contract satisfied.',
-            trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive),
+            trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive, cpCtx()),
             last_raw_llm_response: lastRaw,
             metrics: this.buildMetrics(traceSteps, promptTok, completionTok, totalTok),
           };
@@ -764,6 +792,8 @@ export class McpAgentExecutorService {
             input.toolGovernancePolicies,
             input.governanceApprovedToolInvocations,
             call.id,
+            input.tripId,
+            input.mutationAuthorityEnvelope,
           );
           toolResults!.push({ tool_call_id: call.id, envelope });
           messages.push({
@@ -779,12 +809,37 @@ export class McpAgentExecutorService {
         lastStep.tool_results = toolResults;
         lastStep.latency_ms = lastStep.latency_ms + (Date.now() - execT0);
       }
+
+      if (checkpointsEnabled) {
+        checkpoints.push(
+          buildAgenticLoopCheckpoint({
+            step,
+            taskMessage: input.message,
+            messages: messages as unknown as AgenticLoopCheckpointMessageV1[],
+            traceSteps,
+            metrics: { prompt_tokens: promptTok, completion_tokens: completionTok, total_tokens: totalTok },
+          }),
+        );
+      }
+
+      if (stepHasGovernanceAskHold(lastStep)) {
+        stoppedReason = 'governance_ask_hold';
+        return {
+          success: false,
+          final_message:
+            lastAssistantPlainText ??
+            '本次工具调用需人工确认；审批通过后请携带 checkpoint 续跑。',
+          trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive, cpCtx()),
+          last_raw_llm_response: lastRaw,
+          metrics: this.buildMetrics(traceSteps, promptTok, completionTok, totalTok),
+        };
+      }
     }
 
     return {
       success: false,
       final_message: lastAssistantPlainText,
-      trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive),
+      trace: this.finalizeTrace(traceSteps, stoppedReason, bookingClosureActive, cpCtx()),
       last_raw_llm_response: lastRaw,
       metrics: this.buildMetrics(traceSteps, promptTok, completionTok, totalTok),
     };
@@ -794,14 +849,43 @@ export class McpAgentExecutorService {
     traceSteps: AgentLoopTraceStep[],
     stoppedReason: string,
     bookingClosureActive: boolean,
+    checkpointCtx?: {
+      checkpointsEnabled: boolean;
+      checkpoints: AgenticLoopCheckpointV1[];
+      resumedFromStep?: number;
+      taskRollbackV1?: import('../../../runtime/agentic-task-rollback.util').AgenticTaskRollbackObservabilityV1;
+    },
   ): AgenticToolLoopTrace {
-    const base: AgenticToolLoopTrace = { steps: traceSteps, stopped_reason: stoppedReason };
+    const base: AgenticToolLoopTrace = {
+      steps: traceSteps,
+      stopped_reason: stoppedReason,
+      ...(checkpointCtx?.checkpointsEnabled && checkpointCtx.checkpoints.length > 0
+        ? { checkpoints: checkpointCtx.checkpoints }
+        : {}),
+      ...(checkpointCtx
+        ? {
+            checkpoint_observability: buildAgenticLoopCheckpointObservability({
+              enabled: checkpointCtx.checkpointsEnabled,
+              checkpoints: checkpointCtx.checkpoints,
+              stoppedReason,
+            }),
+          }
+        : {}),
+      ...(checkpointCtx?.resumedFromStep != null
+        ? { resumed_from_step: checkpointCtx.resumedFromStep }
+        : {}),
+      ...(checkpointCtx?.taskRollbackV1
+        ? { task_rollback_v1: checkpointCtx.taskRollbackV1 }
+        : {}),
+    };
     if (!bookingClosureActive) {
       return base;
     }
     return {
       ...base,
-      booking_summary: buildBookingToolLoopSummary(traceSteps),
+      booking_summary: buildBookingToolLoopSummary(
+        traceSteps as Parameters<typeof buildBookingToolLoopSummary>[0],
+      ),
     };
   }
 
@@ -834,6 +918,11 @@ export class McpAgentExecutorService {
     finalMessage: string;
     previewDetail: string;
     bookingClosureActive?: boolean;
+    checkpointCtx?: {
+      checkpointsEnabled: boolean;
+      checkpoints: AgenticLoopCheckpointV1[];
+      resumedFromStep?: number;
+    };
   }): McpAgentExecutorRunResult {
     this.logger.warn(
       `[BudgetGuard] ${params.reason}: ${params.previewDetail} | stopped=${params.stoppedReason}`,
@@ -854,6 +943,7 @@ export class McpAgentExecutorService {
         params.traceSteps,
         params.stoppedReason,
         params.bookingClosureActive ?? false,
+        params.checkpointCtx,
       ),
       last_raw_llm_response: params.lastRaw,
       metrics: this.buildMetrics(params.traceSteps, params.promptTok, params.completionTok, params.totalTok),
@@ -988,6 +1078,8 @@ export class McpAgentExecutorService {
     toolGovernancePolicies: Record<string, ToolGovernancePolicyEntry> | undefined,
     governanceApprovedToolInvocations: GovernanceApprovedToolInvocation[] | undefined,
     toolCallId?: string,
+    tripId?: string,
+    mutationAuthorityEnvelope?: McpAgentExecutorRunInput['mutationAuthorityEnvelope'],
   ): Promise<McpToolRuntimeEnvelope> {
     const entry = routing.get(llmFunctionName);
     if (!entry) {
@@ -1005,31 +1097,38 @@ export class McpAgentExecutorService {
       };
     }
 
-    const gov = policyForMcpTool(entry.mcpToolName, toolGovernancePolicies);
-    if (gov.mode === 'deny') {
-      this.logger.warn(
-        `[AgenticGovernance] deny mcp=${entry.mcpToolName} reason=${gov.reason ?? 'policy'}`,
-      );
-      return buildToolGovernanceHoldEnvelope(entry.mcpToolName, 'deny', gov.reason) as McpToolRuntimeEnvelope;
-    }
-    if (gov.mode === 'ask') {
-      if (
-        isGovernanceAskPreApproved(governanceApprovedToolInvocations, toolCallId, entry.mcpToolName)
-      ) {
-        this.logger.debug(
-          `[AgenticGovernance] ask bypass (pre-approved) mcp=${entry.mcpToolName} tool_call_id=${toolCallId ?? ''}`,
-        );
+    const dispatch = evaluateMcpToolDispatch({
+      mcpToolName: entry.mcpToolName,
+      policies: toolGovernancePolicies,
+      toolCallId,
+      approvedInvocations: governanceApprovedToolInvocations,
+    });
+    if (dispatch.action === 'hold' && dispatch.holdEnvelope) {
+      if (dispatch.mode === 'deny') {
+        this.logger.warn(dispatch.logLine);
       } else {
-        this.logger.warn(
-          `[AgenticGovernance] ask hold mcp=${entry.mcpToolName} reason=${gov.reason ?? 'hitl'}`,
-        );
-        return buildToolGovernanceHoldEnvelope(
-          entry.mcpToolName,
-          'ask',
-          gov.reason,
-          toolCallId,
-        ) as McpToolRuntimeEnvelope;
+        this.logger.warn(dispatch.logLine);
       }
+      return dispatch.holdEnvelope as McpToolRuntimeEnvelope;
+    }
+    if (dispatch.policy.mode === 'ask') {
+      this.logger.debug(dispatch.logLine);
+    }
+
+    const mutationGate = evaluateAgenticToolMutationGate({
+      mcpToolName: entry.mcpToolName,
+      tripId,
+      mutationAuthorityEnvelope,
+    });
+    if (!mutationGate.allowed && mutationGate.holdEnvelope) {
+      const hold = { ...mutationGate.holdEnvelope };
+      if (hold.data && typeof hold.data === 'object') {
+        hold.data = { ...(hold.data as Record<string, unknown>), mcpToolName: entry.mcpToolName };
+      }
+      this.logger.warn(
+        `[AgenticMutationGate] blocked ${entry.mcpToolName} sideEffect=${mutationGate.sideEffect} reasons=${mutationGate.reasonCodes.join(',')}`,
+      );
+      return hold;
     }
 
     const maxAttempts = resolveMcpToolMaxAttempts(budget);

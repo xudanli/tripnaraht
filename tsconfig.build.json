@@ -11,6 +11,22 @@
     "**/*.spec.ts",
     "**/*.e2e-spec.ts",
     "**/*.test.ts",
-    "src/mcp/mcp-skills-server.ts"
+    "**/*.hooks.example.ts",
+    "src/mcp/mcp-skills-server.ts",
+    "src/mcp/mcp-schema-builders.ts",
+    "src/mcp/run-server-direct.ts",
+    "src/mcp/diagnose-server.ts",
+    "src/mcp/diagnose-timeout.ts",
+    "src/mcp/test-mcp-skills.ts",
+    "src/mcp/airbnb-bridge-server.ts",
+    "src/mcp/google-calendar-bridge-server.ts",
+    "src/mcp/google-maps-bridge-server.ts",
+    "src/mcp/mcp-schema-builders.ts",
+    "src/mcp/debug-startup.ts",
+    "src/mcp/verify-skills-registration.ts",
+    "src/match-square/**",
+    "src/match-learning/**",
+    "src/reputation-os/**",
+    "src/odyssey-intake/engine/companion-matching.engine.ts"
   ]
 }

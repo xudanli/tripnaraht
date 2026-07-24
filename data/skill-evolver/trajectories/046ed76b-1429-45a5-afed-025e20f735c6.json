@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "046ed76b-1429-45a5-afed-025e20f735c6",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "CONTEXTUAL-FALLBACK",
+  "strategy": {
+    "strategyId": "CONTEXTUAL-FALLBACK",
+    "philosophy": "准确优先，全局补偿",
+    "approach": "当 DEM Evidence 缺失时，先不立即 REJECT；而是搜集全局上下文（如用户历史、其他地理数据、季节线索），尝试从非 DEM 来源推断高地可通行性。若仍无法确认，再 REJECT。",
+    "emphasis": "最大化决策准确率，利用全部可用信息减少误拒。",
+    "risk": "推理路径长，响应延迟高；可能因过度推断而违反规则本意，导致合规风险。"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户明确表示想在7月去冰岛高地。根据冰岛Country Pack编排规则（弱种子），夏季（7-8月）可考虑高地路线。但任务要求测试当DEM Evidence缺失时，Abu必须REJECT。当前没有DEM数据，也没有用户历史或其他地理信息可以推断高地可通行性。按照CONTEXTUAL-FALLBACK策略，先搜集全局上下文，但此处无额外信息，因此应REJECT。最终allowed=false。",
+      "action": "REJECT",
+      "result": "[完成] REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:17:41.438Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:17:41.438Z",
+  "score": 56.92,
+  "evalMode": "fixture"
+}

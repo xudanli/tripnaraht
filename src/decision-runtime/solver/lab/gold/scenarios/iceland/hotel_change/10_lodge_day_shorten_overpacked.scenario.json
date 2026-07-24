@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.10_lodge_day_shorten_overpacked",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "Hotel day overpacked \u2014 SHORTEN drop optional distant legs",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/hotel_change/problems/10_lodge_day_shorten_overpacked.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

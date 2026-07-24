@@ -221,4 +221,45 @@ describe('RouteAndRunContextEnricherService', () => {
     expect(injected).toContain('极光');
     expect(injected).toContain('系统注入·行程愿望单');
   });
+
+  it('active_trip_summary appends budget profile block when service available', async () => {
+    const day = new Date('2026-06-01T00:00:00.000Z');
+    const prisma = {
+      trip: {
+        findUnique: jest.fn().mockResolvedValue({
+          name: '冰岛自驾',
+          status: 'PLANNING',
+          destination: 'IS',
+          startDate: day,
+          endDate: day,
+          TripDay: [],
+        }),
+      },
+    } as any;
+    const budgetProfileService = {
+      getProfile: jest.fn().mockResolvedValue({
+        intent: { total: 10000, currency: 'CNY', dailyBudget: 1428, source: 'user', setAt: 'x' },
+        structure: {
+          allocations: { transportation: 3000, accommodation: 500, experience: 5000, food: 1500, other: 0 },
+          spendingPersona: 'experience',
+        },
+        actuals: { totalEstimated: 4200, budgetUsagePercent: 42, unpaidCount: 1 },
+        gateStatus: { verdict: 'NEED_CONFIRM', violationTypes: ['STRUCTURE_MISMATCH'] },
+      }),
+    } as any;
+    const svc = new RouteAndRunContextEnricherService(
+      prisma,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      budgetProfileService,
+    );
+    const req = baseReq();
+    req.conversation_context = { context_type: 'active_trip_summary' };
+    await svc.maybeInjectActiveTripSummary(req);
+    const injected = req.conversation_context?.recent_messages?.[0] ?? '';
+    expect(injected).toContain('[系统注入·预算档案]');
+    expect(injected).toContain('10000');
+  });
 });

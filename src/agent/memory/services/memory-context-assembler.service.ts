@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { MemoryService } from './memory.service';
 import type { UserTravelProfile } from '../interfaces/user-travel-profile.interface';
-import type { AgentMemoryContext } from '../interfaces/agent-memory-context.interface';
+import type { AgentMemoryContext, TripFeedbackSnapshot } from '../interfaces/agent-memory-context.interface';
 import type { RouteAndRunRequestDto } from '../../dto/route-and-run.dto';
 import type { RouteRunPartyProfileSnapshot } from '../interfaces/agent-memory-context.interface';
 import { resolveRouteRunPartyProfileSnapshot } from '../../utils/route-and-run-party-profile.util';
@@ -27,7 +27,26 @@ import { invalidateLedgerByAnchorDrift, planLedgerRecomputeOrder } from '../deci
 import { mergePendingWorldAnchorsIntoLedger } from '../decision-ledger/ledger-pending-audit.merge.util';
 import type { DecisionLedgerSnapshot } from '../decision-ledger/decision-ledger.types';
 import { LedgerPendingAuditStoreService } from '../decision-ledger/ledger-pending-audit.store.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+import type { AgentMemoryUserBasics } from '../interfaces/agent-memory-context.interface';
+import { extractAgentMemoryUserBasicsFromPreferences } from '../utils/agent-memory-user-basics.util';
+import { buildMergedTravelPreferenceSummary } from '../utils/travel-preference-merge.util';
+import {
+  buildActiveRouteHealthSnapshot,
+  buildFailurePatternsFromRouteHealth,
+  collectL3LookupCandidates,
+  parseRouteDirectionId,
+  resolveCountryCodeForL3Lookup,
+  routeHealthSnapshotKey,
+  type ActiveRouteHealthSnapshot,
+} from '../utils/route-health-memory.util';
+import {
+  L4_TRIP_FEEDBACK_TAIL,
+  projectTripFeedbackSnapshots,
+} from '../utils/trip-feedback-memory.util';
 import { TripIntentDigestService } from './trip-intent-digest.service';
+import { loadDecisionLedgerCausalityConsoleV1 } from '../../../trips/decision-semantics/read/decision-ledger-console-read.util';
+import type { DecisionLedgerCausalityConsoleV1 } from '../../../trips/decision-semantics/read/decision-ledger-console-read.util';
 
 export type MemoryContractObservabilityV1 = {
   revision: 'v1';
@@ -57,6 +76,7 @@ export class MemoryContextAssemblerService {
     @Inject(WORLD_DECISION_MEMORY_ARCHIVE)
     private readonly wdArchive?: WorldDecisionMemoryArchivePort,
     @Optional() private readonly ledgerPendingAudit?: LedgerPendingAuditStoreService,
+    @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
   ) {}
 
@@ -93,14 +113,37 @@ export class MemoryContextAssemblerService {
 
     const layers: string[] = [];
     let userProfile: UserTravelProfile | null = null;
+    let userBasics: AgentMemoryUserBasics | null = null;
     let recentDecisions: AgentMemoryContext['recentDecisions'] = [];
 
     if (userId && userId !== 'anonymous') {
       try {
-        userProfile = await this.memoryService.getUserTravelProfile(userId);
+        const [l1, l0] = await Promise.all([
+          this.memoryService.getUserTravelProfile(userId),
+          this.loadL0UserBasics(userId),
+        ]);
+        userProfile = l1;
+        userBasics = l0;
         layers.push('L1_user_profile');
+        if (userBasics) {
+          layers.push('L0_user_basics');
+        }
       } catch (e: any) {
-        this.logger.warn(`MemoryContextAssembler: L1 load failed: ${e?.message ?? e}`);
+        this.logger.warn(`MemoryContextAssembler: L1/L0 parallel load failed: ${e?.message ?? e}`);
+        try {
+          userProfile = await this.memoryService.getUserTravelProfile(userId);
+          layers.push('L1_user_profile');
+        } catch (e2: any) {
+          this.logger.warn(`MemoryContextAssembler: L1 load failed: ${e2?.message ?? e2}`);
+        }
+        try {
+          userBasics = await this.loadL0UserBasics(userId);
+          if (userBasics) {
+            layers.push('L0_user_basics');
+          }
+        } catch (e3: any) {
+          this.logger.warn(`MemoryContextAssembler: L0 load failed: ${e3?.message ?? e3}`);
+        }
       }
       try {
         recentDecisions = await this.memoryService.getUserRouteDirectionDecisions(userId);
@@ -142,7 +185,11 @@ export class MemoryContextAssemblerService {
       layers.push('route_party_profile');
     }
 
-    const travelPreference = this.mergeTravelPreferenceSummary(userProfile, routePartyProfile);
+    const travelPreference = buildMergedTravelPreferenceSummary({
+      profile: userProfile,
+      routeParty: routePartyProfile,
+      basics: userBasics,
+    });
     const anchorBundle = buildLedgerAnchorBundle({
       activeTripState,
       travelPreference,
@@ -176,38 +223,49 @@ export class MemoryContextAssemblerService {
     }
     const ledgerRecomputePlan = planLedgerRecomputeOrder(drifted.ledger);
 
+    const l3Promise = this.loadL3RouteHealth({
+      request,
+      activeTripState,
+      recentDecisions,
+      travelPreference,
+      loadedAt,
+    });
+    const l4Promise =
+      userId && userId !== 'anonymous'
+        ? this.loadL4TripFeedback(userId)
+        : Promise.resolve({
+            recentTripFeedbacks: [] as TripFeedbackSnapshot[],
+            layers: [] as string[],
+            metadata: {} as Record<string, unknown>,
+          });
     let domainInfluenceDigest: AgentMemoryContext['domainInfluenceDigest'] = null;
     let wishConstraintDigest: AgentMemoryContext['wishConstraintDigest'] = null;
     let privateWishDigest: AgentMemoryContext['privateWishDigest'] = null;
     let decisionProfilingDigest: AgentMemoryContext['decisionProfilingDigest'] = null;
     let negotiationDigest: AgentMemoryContext['negotiationDigest'] = null;
-    if (tripId && this.tripIntentDigest) {
-      try {
-        const digests = await this.tripIntentDigest.loadForMemoryContext(tripId, userId);
-        domainInfluenceDigest = digests.domainInfluenceDigest;
-        wishConstraintDigest = digests.wishConstraintDigest;
-        privateWishDigest = digests.privateWishDigest;
-        decisionProfilingDigest = digests.decisionProfilingDigest;
-        negotiationDigest = digests.negotiationDigest;
-        if (domainInfluenceDigest) {
-          layers.push('trip_domain_influence_digest');
-        }
-        if (wishConstraintDigest) {
-          layers.push('trip_wish_constraint_digest');
-        }
-        if (privateWishDigest) {
-          layers.push('trip_private_wish_digest');
-        }
-        if (decisionProfilingDigest) {
-          layers.push('trip_decision_profiling_digest');
-        }
-        if (negotiationDigest) {
-          layers.push('trip_negotiation_digest');
-        }
-      } catch (e: any) {
-        this.logger.warn(`MemoryContextAssembler: trip intent digest failed: ${e?.message ?? e}`);
-      }
+    const digestPromise =
+      tripId && this.tripIntentDigest
+        ? this.tripIntentDigest.loadForMemoryContext(tripId, userId).catch((e: any) => {
+            this.logger.warn(`MemoryContextAssembler: trip intent digest failed: ${e?.message ?? e}`);
+            return null;
+          })
+        : Promise.resolve(null);
+    const [l3, l4, digests] = await Promise.all([l3Promise, l4Promise, digestPromise]);
+    layers.push(...l3.layers, ...l4.layers);
+    if (digests) {
+      domainInfluenceDigest = digests.domainInfluenceDigest;
+      wishConstraintDigest = digests.wishConstraintDigest;
+      privateWishDigest = digests.privateWishDigest;
+      decisionProfilingDigest = digests.decisionProfilingDigest;
+      negotiationDigest = digests.negotiationDigest;
+      if (domainInfluenceDigest) layers.push('trip_domain_influence_digest');
+      if (wishConstraintDigest) layers.push('trip_wish_constraint_digest');
+      if (privateWishDigest) layers.push('trip_private_wish_digest');
+      if (decisionProfilingDigest) layers.push('trip_decision_profiling_digest');
+      if (negotiationDigest) layers.push('trip_negotiation_digest');
     }
+
+    const mergedMetadata = { ...l3.metadata, ...l4.metadata };
 
     const ctx: AgentMemoryContext = {
       snapshotId,
@@ -216,6 +274,7 @@ export class MemoryContextAssemblerService {
       userId,
       tripId,
       userProfile,
+      userBasics,
       travelPreference,
       routePartyProfile,
       recentDecisions,
@@ -224,14 +283,20 @@ export class MemoryContextAssemblerService {
       recentWorldDecisions,
       activeTripState,
       recoveryHistory,
-      failurePatterns: [],
+      failurePatterns: l3.failurePatterns,
+      activeRouteHealthSnapshot: l3.activeRouteHealthSnapshot,
+      routeHealthByKey: l3.routeHealthByKey,
+      recentTripFeedbacks: l4.recentTripFeedbacks,
       domainInfluenceDigest,
       wishConstraintDigest,
       privateWishDigest,
       decisionProfilingDigest,
       negotiationDigest,
       loadedAt,
-      observability: { layers },
+      observability: {
+        layers,
+        ...(Object.keys(mergedMetadata).length > 0 ? { metadata: mergedMetadata } : {}),
+      },
     };
 
     this.logger.debug(
@@ -252,6 +317,28 @@ export class MemoryContextAssemblerService {
     };
   }
 
+  /** Decision Semantics ↔ Ledger caused_by（Memory Console / route_and_run 调试） */
+  async loadDecisionLedgerCausalityForTrip(
+    tripId: string,
+    ledger?: DecisionLedgerSnapshot | null,
+    ledgerSnapshotVersion?: number,
+  ): Promise<DecisionLedgerCausalityConsoleV1 | null> {
+    if (!this.prisma?.isDbConnected()) return null;
+    try {
+      return await loadDecisionLedgerCausalityConsoleV1({
+        tripId,
+        prisma: this.prisma,
+        ledger: ledger ?? null,
+        ledgerSnapshotVersion,
+      });
+    } catch (e: unknown) {
+      this.logger.warn(
+        `loadDecisionLedgerCausalityForTrip failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return null;
+    }
+  }
+
   /**
    * 将当前 request 的 Decision ring 压缩进执行上下文（与 WorldDecisionMemory.append 内 refresh 等价）。
    * 供编排阶段在拓扑调整后显式对齐 overlay。
@@ -264,37 +351,149 @@ export class MemoryContextAssemblerService {
     applyDecisionRingToExecutionOperationalOverlay(ex, mem.requestId, this.worldDecisionMemory);
   }
 
-  private mergeTravelPreferenceSummary(
-    profile: UserTravelProfile | null,
-    routeParty: RouteRunPartyProfileSnapshot | null,
-  ): Record<string, unknown> | null {
-    const fromProfile = profile
-      ? {
-          pacePreference: profile.pacePreference,
-          riskTolerance: profile.riskTolerance,
-          travelPhilosophy: profile.travelPhilosophy,
-          preferredRouteTypes: profile.preferredRouteTypes,
-          confidence: profile.confidence,
-        }
-      : null;
-    const fromRoute =
-      routeParty &&
-      (routeParty.fitness_level != null ||
-        routeParty.risk_tolerance != null ||
-        routeParty.party_total != null ||
-        routeParty.has_children != null ||
-        routeParty.has_elderly != null ||
-        (typeof routeParty.mobility_note_zh === 'string' && routeParty.mobility_note_zh.trim().length > 0))
-        ? {
-            route_fitness_level: routeParty.fitness_level ?? null,
-            route_risk_tolerance: routeParty.risk_tolerance ?? null,
-            route_party_total: routeParty.party_total ?? null,
-            route_has_children: routeParty.has_children ?? null,
-            route_has_elderly: routeParty.has_elderly ?? null,
-            route_mobility_note_zh: routeParty.mobility_note_zh?.trim() ?? null,
-          }
-        : null;
-    if (!fromProfile && !fromRoute) return null;
-    return { ...(fromProfile ?? {}), ...(fromRoute ?? {}) };
+  /** L0：`UserProfile.preferences`（Prisma），与 L1 并行读取；失败或非 DB 模式返回 null。 */
+  private async loadL0UserBasics(userId: string): Promise<AgentMemoryUserBasics | null> {
+    if (!this.prisma?.isDbConnected()) {
+      return null;
+    }
+    try {
+      const row = await this.prisma.userProfile.findUnique({
+        where: { userId },
+        select: { preferences: true, updatedAt: true },
+      });
+      if (!row?.preferences) {
+        return null;
+      }
+      return extractAgentMemoryUserBasicsFromPreferences(row.preferences, row.updatedAt.toISOString());
+    } catch (e: any) {
+      this.logger.warn(`MemoryContextAssembler: L0 user basics load failed: ${e?.message ?? e}`);
+      return null;
+    }
+  }
+
+  /**
+   * L3：路线健康度装配（唯一 DB 读入口）；结果写入 snapshot，Injector 禁止二次读取。
+   */
+  private async loadL3RouteHealth(input: {
+    request: RouteAndRunRequestDto;
+    activeTripState: AgentMemoryContext['activeTripState'];
+    recentDecisions: AgentMemoryContext['recentDecisions'];
+    travelPreference: Record<string, unknown> | null;
+    loadedAt: string;
+  }): Promise<{
+    failurePatterns: string[];
+    activeRouteHealthSnapshot: ActiveRouteHealthSnapshot | null;
+    routeHealthByKey: Record<string, ActiveRouteHealthSnapshot>;
+    layers: string[];
+    metadata: Record<string, unknown>;
+  }> {
+    const empty = {
+      failurePatterns: [] as string[],
+      activeRouteHealthSnapshot: null as ActiveRouteHealthSnapshot | null,
+      routeHealthByKey: {} as Record<string, ActiveRouteHealthSnapshot>,
+      layers: [] as string[],
+      metadata: {} as Record<string, unknown>,
+    };
+
+    const defaultCountryCode = resolveCountryCodeForL3Lookup({
+      request: input.request,
+      travelPreference: input.travelPreference,
+      recentDecisions: input.recentDecisions,
+    });
+    const candidates = collectL3LookupCandidates({
+      activeTripState: input.activeTripState,
+      recentDecisions: input.recentDecisions,
+      defaultCountryCode,
+    });
+    if (candidates.length === 0) {
+      return empty;
+    }
+
+    const routeHealthByKey: Record<string, ActiveRouteHealthSnapshot> = {};
+    const metadata: Record<string, unknown> = {};
+    const layers: string[] = [];
+
+    for (const candidate of candidates) {
+      try {
+        const health = await this.memoryService.getRouteDirectionHealth(
+          candidate.routeDirectionId,
+          candidate.countryCode,
+        );
+        if (!health) continue;
+        routeHealthByKey[routeHealthSnapshotKey(candidate.routeDirectionId, candidate.countryCode)] =
+          buildActiveRouteHealthSnapshot(health, input.loadedAt);
+      } catch (e: any) {
+        metadata[`L3_load_error_${candidate.routeDirectionId}_${candidate.countryCode}`] =
+          e?.message ?? String(e);
+        this.logger.warn(
+          `MemoryContextAssembler: L3 load failed rd=${candidate.routeDirectionId} cc=${candidate.countryCode}: ${e?.message ?? e}`,
+        );
+      }
+    }
+
+    if (Object.keys(routeHealthByKey).length > 0) {
+      layers.push('L3_route_health');
+    }
+
+    const activeRouteId = parseRouteDirectionId(input.activeTripState?.selectedRouteDirectionId);
+    let activeRouteHealthSnapshot: ActiveRouteHealthSnapshot | null = null;
+    if (activeRouteId != null && defaultCountryCode) {
+      activeRouteHealthSnapshot =
+        routeHealthByKey[routeHealthSnapshotKey(activeRouteId, defaultCountryCode)] ?? null;
+    }
+    if (!activeRouteHealthSnapshot) {
+      const firstKey = Object.keys(routeHealthByKey)[0];
+      activeRouteHealthSnapshot = firstKey ? routeHealthByKey[firstKey] : null;
+    }
+
+    const failurePatterns =
+      activeRouteHealthSnapshot != null
+        ? buildFailurePatternsFromRouteHealth({
+            commonFailureReasons: [...activeRouteHealthSnapshot.commonFailureReasons],
+          })
+        : [];
+
+    return {
+      failurePatterns,
+      activeRouteHealthSnapshot,
+      routeHealthByKey,
+      layers,
+      metadata,
+    };
+  }
+
+  /**
+   * L4：行程反馈 tail 装配（唯一 DB 读入口 via MemoryService）；不写入 L1。
+   */
+  private async loadL4TripFeedback(userId: string): Promise<{
+    recentTripFeedbacks: TripFeedbackSnapshot[];
+    layers: string[];
+    metadata: Record<string, unknown>;
+  }> {
+    const empty = {
+      recentTripFeedbacks: [] as TripFeedbackSnapshot[],
+      layers: [] as string[],
+      metadata: {} as Record<string, unknown>,
+    };
+
+    try {
+      const raw = await this.memoryService.getUserTripFeedbacksTail(userId, L4_TRIP_FEEDBACK_TAIL);
+      const recentTripFeedbacks = projectTripFeedbackSnapshots(raw, L4_TRIP_FEEDBACK_TAIL);
+      if (recentTripFeedbacks.length === 0) {
+        return empty;
+      }
+      return {
+        recentTripFeedbacks,
+        layers: ['L4_trip_feedback'],
+        metadata: {},
+      };
+    } catch (e: any) {
+      const message = e?.message ?? String(e);
+      this.logger.warn(`MemoryContextAssembler: L4 load failed user=${userId}: ${message}`);
+      return {
+        ...empty,
+        metadata: { L4_load_error: message },
+      };
+    }
   }
 }

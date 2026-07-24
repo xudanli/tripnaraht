@@ -1,0 +1,64 @@
+{
+  "fixtureVersion": "decision-closure-golden/v1",
+  "caseId": "jp-decision-closure-izu-typhoon-001",
+  "description": "Golden optimizationHints: Izu typhoon + Route 134 closed; inland repair wins.",
+  "optimizationHints": {
+    "method": "CGUS",
+    "recommendedAlternativeId": "repair-izu-inland-v1",
+    "metaDecisionAudit": "META_BUDGET(sample=700,topK=6,H=3,entropy=0.78,ESS=195.6) mcTotal=700 ragWorld=1 mcRerank=1",
+    "decisionVerdict": {
+      "chosen_plan_id": "repair-izu-inland-v1",
+      "rejected_plans": [
+        {
+          "id": "base",
+          "status": "infeasible",
+          "hard_violation_count": 2,
+          "rejection_reasons": ["HARD:WORLD_ROAD_CLOSED (ROUTE134)", "HARD:WORLD_TYPHOON_RAIN"]
+        },
+        {
+          "id": "op-skip-atami",
+          "status": "rejected",
+          "hard_violation_count": 0,
+          "utility_delta_vs_chosen": -0.2,
+          "rejection_reasons": ["lower_expected_utility delta=-0.200"]
+        }
+      ],
+      "monte_carlo_summary": {
+        "used": true,
+        "total_samples": 700,
+        "samples_per_candidate": {
+          "repair-izu-inland-v1": 700,
+          "base": 700,
+          "op-skip-atami": 700
+        }
+      },
+      "fallback_chain": [
+        { "step": "mc_rank_authority", "reason": "typhoon_entropy>0.70" },
+        { "step": "repair_accept", "reason": "WORLD_ROAD_HARD" }
+      ]
+    },
+    "decisionVerdictNarrationZh": "**推荐方案：** `repair-izu-inland-v1`。已弃选 2 个备选；蒙特卡罗共 700 次采样。路政物化：Route 134 封闭已计入约束图。",
+    "worldConstraintMaterialization": {
+      "appliedEvents": 1,
+      "roadIds": ["ROUTE134"],
+      "weatherDates": ["2026-09-15"],
+      "storeVersion": 1,
+      "unifiedGraphNodeCount": 10,
+      "unifiedGraphEdgeCount": 15
+    },
+    "alternatives": [
+      {
+        "id": "repair-izu-inland-v1",
+        "score": 0.78,
+        "expected_utility": 0.78,
+        "feasibility_probability": 0.7
+      },
+      {
+        "id": "base",
+        "score": 0.12,
+        "expected_utility": 0.12,
+        "feasibility_probability": 0.04
+      }
+    ]
+  }
+}

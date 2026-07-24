@@ -13,6 +13,8 @@ import { DateTime } from 'luxon';
 import { EnhancedChatService } from '../../rag/services/enhanced-chat.service';
 import { System1InfoCardService } from './system1-info-card.service';
 import { System1Result } from '../interfaces/system1-info-card.interface';
+import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution/effective-plan-write-guard.service';
+import { assertPlanMutationAllowedOrThrow } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 /**
  * System 1 Executor Service
@@ -31,6 +33,7 @@ export class System1ExecutorService {
     @Optional() private infoCardService?: System1InfoCardService,
     /** 地点搜索无命中时，行前类问题走单次 LLM 常识兜底（与 QA_LIGHT 对齐） */
     @Optional() private readonly llmService?: LlmService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {}
 
   /**
@@ -168,6 +171,11 @@ export class System1ExecutorService {
     result: any;
     answerText: string;
   }> {
+    assertPlanMutationAllowedOrThrow(
+      this.effectivePlanWriteGuard,
+      'System1ExecutorService.executeAPI',
+    );
+
     const input = state.user_input.toLowerCase();
 
     // 删除操作

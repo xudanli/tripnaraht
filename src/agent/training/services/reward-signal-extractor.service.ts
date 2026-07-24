@@ -4,6 +4,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ApprovalStatus } from '@prisma/client';
 import { RewardSignal, ExecutionResult } from '../interfaces/trajectory.interface';
 import { TripNARAApprovalSignals, GatedRewardMetrics } from '../interfaces/product.interface';
+import type { DecisionLogEntry } from '../../interfaces/trip-plan.interface';
+import type { DecisionTrajectoryV1 } from '../interfaces/decision-trajectory.types';
+import {
+  computeOrchestrationOutcomeReward,
+  type OrchestrationOutcomeRewardResult,
+} from '../utils/orchestration-outcome-reward.util';
 
 /**
  * TripNARA 扩展版 Reward 信号
@@ -39,6 +45,20 @@ export class RewardSignalExtractorService {
   // ============================================================================
   // TripNARA v2.0 新增方法
   // ============================================================================
+
+  /**
+   * PR-A：从 DecisionTrajectoryV1 闭合载荷提取编排语义 Reward（纯规则，无 LLM Judge）。
+   */
+  extractFromOrchestrationOutcome(
+    payload: DecisionTrajectoryV1,
+    decisionLog: DecisionLogEntry[] = [],
+  ): OrchestrationOutcomeRewardResult {
+    const result = computeOrchestrationOutcomeReward(payload, decisionLog);
+    this.logger.debug(
+      `[RewardExtractor] orchestration outcome=${result.outcome} total=${result.totalReward} trainable=${result.trainable}`,
+    );
+    return result;
+  }
 
   /**
    * 从 TripNARA 拆分审批信号提取 reward 信号

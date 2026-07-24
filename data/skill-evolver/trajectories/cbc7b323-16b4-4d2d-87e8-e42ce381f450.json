@@ -1,0 +1,36 @@
+{
+  "trajectoryId": "cbc7b323-16b4-4d2d-87e8-e42ce381f450",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "DEM Evidence missing for segment (highlands)",
+      "action": "ABU REJECT E_DEM_MISSING",
+      "result": "DEM Evidence missing for segment (highlands)",
+      "isError": true,
+      "timestamp": "2026-05-26T07:05:39.436Z"
+    },
+    {
+      "stepIndex": 1,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "fixture trace summary audit",
+      "action": "EXPECTED_UTILITY EVALUATE EXPECTED_UTILITY_EVAL",
+      "result": "fixture trace summary audit",
+      "isError": false,
+      "timestamp": "2026-05-26T07:05:39.436Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "evalMode": "decision_replay",
+  "decisionReplayPassed": true,
+  "liveDecisionReplay": false,
+  "createdAt": "2026-05-26T07:05:39.436Z",
+  "fixtureCaseId": "iceland-highlands-dem-missing",
+  "score": 80.79
+}

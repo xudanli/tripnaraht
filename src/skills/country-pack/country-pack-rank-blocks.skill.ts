@@ -44,7 +44,7 @@ export class CountryPackRankBlocksSkill implements Skill<CountryPackRankBlocksIn
 
   metadata = {
     name: 'countryPack.rankBlocks',
-    description: '国家包块排序：根据 query、phase、intent 对块进行相关性排序',
+    description: 'countryPack.rankBlocks：国家包块排序：根据 query、phase、intent 对块进行相关性排序',
     version: '1.0.0',
     category: 'countryPack' as const,
   };

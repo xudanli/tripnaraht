@@ -1,0 +1,32 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "pilot_iceland_parking_full_02_bluelagoon_approach_swap",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "is.blue_lagoon",
+      "to": "is.seljalandsfoss",
+      "durationMin": 30
+    },
+    {
+      "from": "is.seljalandsfoss",
+      "to": "is.skogafoss",
+      "durationMin": 35
+    },
+    {
+      "from": "is.skogafoss",
+      "to": "is.reynisfjara",
+      "durationMin": 40
+    },
+    {
+      "from": "is.reynisfjara",
+      "to": "is.vik",
+      "durationMin": 45
+    },
+    {
+      "from": "is.vik",
+      "to": "is.skaftafell",
+      "durationMin": 50
+    }
+  ]
+}

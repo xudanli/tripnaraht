@@ -11,6 +11,8 @@ import { RedisService } from '../../redis/redis.service';
 import { ParallelExecutorService } from './parallel-executor.service';
 import { HybridSearchConfigService } from './hybrid-search-config.service';
 import { expandChunkCategoryForRetrievalFilter } from '../../knowledge-base/chunk-category-derive';
+import { QueryRewriteMetricsService } from '../../agent/services/query-rewrite-metrics.service';
+import { bindQueryRewriteDownstreamSafe } from '../../agent/utils/query-rewrite-metrics-bind.util';
 
 function parseChunkUpdatedAt(v: Date | string | null | undefined): Date | undefined {
   if (v == null) return undefined;
@@ -136,6 +138,8 @@ export interface ChunkRetrievalParams {
    * 避免余弦略低于 0.01 或驱动返回非标类型导致 Dense=0、RRF 无 dense 分支。
    */
   relaxDenseSimilarityFilter?: boolean;
+  /** Query Rewriting pipeline trace_id（与 expandQuery rewrite 绑定下游零结果） */
+  pipelineTraceId?: string;
 }
 
 @Injectable()
@@ -176,6 +180,7 @@ export class ChunkRetrievalService {
     @Optional() private readonly queryIntentService?: QueryIntentService,
     @Optional() private readonly redisService?: RedisService,
     @Optional() private readonly parallelExecutor?: ParallelExecutorService,
+    @Optional() private readonly queryRewriteMetrics?: QueryRewriteMetricsService,
     @Optional() private readonly hybridSearchConfig?: HybridSearchConfigService,
   ) {
     if (this.redisService) {
@@ -437,12 +442,22 @@ export class ChunkRetrievalService {
             useReranking: true,
           });
         }
-        
+
+        bindQueryRewriteDownstreamSafe(
+          this.queryRewriteMetrics,
+          {
+            traceId: params.pipelineTraceId,
+            totalResults: rerankedResults.length,
+            downstreamScene: 'rag',
+          },
+          this.logger,
+        );
+
         return rerankedResults;
       }
 
       const finalResults = results.slice(0, limit);
-      
+
       // 记录监控指标
       if (this.monitoringService) {
         const totalLatency = Date.now() - startTime;
@@ -455,6 +470,16 @@ export class ChunkRetrievalService {
           useReranking: false,
         });
       }
+
+      bindQueryRewriteDownstreamSafe(
+        this.queryRewriteMetrics,
+        {
+          traceId: params.pipelineTraceId,
+          totalResults: finalResults.length,
+          downstreamScene: 'rag',
+        },
+        this.logger,
+      );
 
       return finalResults;
     } catch (error: any) {
@@ -497,7 +522,9 @@ export class ChunkRetrievalService {
     const expanded = await this.queryExpansionService!.expandQuery({
       query,
       maxVariants: maxQueryVariants,
+      profile: 'user_facing',
     });
+    const primaryQuery = expanded.contextualizedQuery ?? query;
 
     this.logger.debug(
       `查询扩展: 原始="${query}", 变体=${expanded.variants.length}, 总计=${expanded.allQueries.length}`
@@ -533,12 +560,23 @@ export class ChunkRetrievalService {
     // 4. 合并结果（使用QueryExpansionService的合并策略）
     const mergedResults = this.queryExpansionService!.mergeResults(
       resultsMap,
-      query,
-      limit
+      primaryQuery,
+      limit,
+      expanded.routes,
     );
 
     this.logger.debug(
       `查询扩展检索完成: 原始查询结果=${allResults[0]?.length || 0}, 合并后=${mergedResults.length}`
+    );
+
+    bindQueryRewriteDownstreamSafe(
+      this.queryRewriteMetrics,
+      {
+        traceId: expanded.rewrite?.pipeline?.trace_id,
+        totalResults: mergedResults.length,
+        downstreamScene: 'rag',
+      },
+      this.logger,
     );
 
     return mergedResults;

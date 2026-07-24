@@ -1,0 +1,58 @@
+{
+  "schema": "rag-chunk-road-constraint-seed/v1",
+  "countryCode": "NZ",
+  "description": "P0 New Zealand Milford SH94 heavy rain road constraint seed.",
+  "chunks": [
+    {
+      "chunk_id": "nz-road-sh94-closed-heavy-rain",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "Milford Road SH94 is CLOSED due to heavy rain, avalanche risk and rockfall in Fiordland.",
+      "credibility_score": 0.93,
+      "keywords": ["SH94", "Milford", "CLOSED", "Fiordland"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "SH94",
+        "countryCode": "NZ",
+        "status": "CLOSED",
+        "affected_slot_ids": ["day2-drive-sh94"],
+        "valid_from": "2026-03-10T00:00:00Z",
+        "valid_to": "2026-03-14T23:59:59Z",
+        "source": "journeys.nzta.govt.nz",
+        "confidence": 0.93
+      }
+    },
+    {
+      "chunk_id": "nz-road-sh94-advisory-slip",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "SH94 Milford Road: ADVISORY — slips reported, chains may be required.",
+      "credibility_score": 0.85,
+      "keywords": ["SH94", "ADVISORY", "slip"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "SH94",
+        "countryCode": "NZ",
+        "status": "ADVISORY",
+        "source": "journeys.nzta.govt.nz",
+        "confidence": 0.85
+      }
+    },
+    {
+      "chunk_id": "nz-weather-heavy-rain-2026-03-12",
+      "type": "RISK_INFO",
+      "category": "RISK_INFO",
+      "content": "Heavy rain warning for Fiordland — MetService orange warning.",
+      "credibility_score": 0.88,
+      "keywords": ["heavy rain", "Fiordland", "MetService"],
+      "metadata": {
+        "category": "RISK_INFO",
+        "countryCode": "NZ",
+        "weather_dates": ["2026-03-12"],
+        "date": "2026-03-12",
+        "source": "metservice.com",
+        "confidence": 0.88
+      }
+    }
+  ]
+}

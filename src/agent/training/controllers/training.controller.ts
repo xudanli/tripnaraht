@@ -20,6 +20,8 @@ import {
   LoraEvalRequest,
 } from '../services/llm-judge-client.service';
 import { ModelDeploymentService } from '../services/model-deployment.service';
+import { ShadowDeploymentWorkflowService } from '../services/shadow-deployment-workflow.service';
+import { evaluateShadowPromotionGates } from '../utils/shadow-promotion-gate.util';
 
 /**
  * 启动训练请求
@@ -39,6 +41,14 @@ class StartTrainingDto {
   batch_size?: number;
   /** 数据集名称 */
   dataset_name?: string;
+  /** sft | dpo | sft_then_dpo */
+  training_stage?: 'sft' | 'dpo' | 'sft_then_dpo';
+  sft_num_epochs?: number;
+  dpo_num_epochs?: number;
+  sft_learning_rate?: number;
+  dpo_learning_rate?: number;
+  dpo_pair_types?: string[];
+  dpo_rejected_sources?: string[];
   /** 从检查点恢复 */
   resume_from_checkpoint?: string;
 }
@@ -113,6 +123,7 @@ export class TrainingController {
     private readonly vllmClientService: VllmClientService,
     private readonly llmJudgeClientService: LlmJudgeClientService,
     private readonly modelDeploymentService: ModelDeploymentService,
+    private readonly shadowDeployment: ShadowDeploymentWorkflowService,
   ) {}
   
   // ============================================
@@ -181,26 +192,163 @@ export class TrainingController {
     if (dto.num_epochs) config.num_epochs = dto.num_epochs;
     if (dto.batch_size) config.batch_size = dto.batch_size;
     if (dto.dataset_name) config.dataset_name = dto.dataset_name;
-    
+    if (dto.training_stage) config.training_stage = dto.training_stage;
+    if (dto.sft_num_epochs != null) config.sft_num_epochs = dto.sft_num_epochs;
+    if (dto.dpo_num_epochs != null) config.dpo_num_epochs = dto.dpo_num_epochs;
+    if (dto.sft_learning_rate != null) config.sft_learning_rate = dto.sft_learning_rate;
+    if (dto.dpo_learning_rate != null) config.dpo_learning_rate = dto.dpo_learning_rate;
+    if (dto.dpo_pair_types?.length) {
+      config.dpo_pair_types = dto.dpo_pair_types as FineTuneConfig['dpo_pair_types'];
+    }
+    if (dto.dpo_rejected_sources?.length) {
+      config.dpo_rejected_sources = dto.dpo_rejected_sources as FineTuneConfig['dpo_rejected_sources'];
+    }
+
     try {
       const result = await this.fineTuneService.startTraining(
         taskId,
         config,
         dto.resume_from_checkpoint,
       );
-      
+
       return {
         success: true,
         ...result,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       throw new HttpException(
-        { success: false, error: error?.message || String(error) },
+        { success: false, error: message },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
+
+  @Post('pipeline/sft-then-dpo')
+  @ApiOperation({
+    summary: '启动 sft_then_dpo 两阶段串联（Chain-of-Repair SFT → 真拓扑 DPO）',
+  })
+  @ApiResponse({ status: 200, description: 'Pipeline 已排队' })
+  async startSftThenDpoPipeline(@Body() dto: StartTrainingDto & { task_id?: string }) {
+    const taskId = dto.task_id ?? `pipeline-${Date.now()}`;
+    const config: Partial<FineTuneConfig> = { training_stage: 'sft_then_dpo' };
+    if (dto.model_name) config.model_name = dto.model_name;
+    if (dto.lora_rank) config.lora_rank = dto.lora_rank;
+    if (dto.lora_alpha) config.lora_alpha = dto.lora_alpha;
+    if (dto.sft_num_epochs != null) config.sft_num_epochs = dto.sft_num_epochs;
+    if (dto.dpo_num_epochs != null) config.dpo_num_epochs = dto.dpo_num_epochs;
+    if (dto.sft_learning_rate != null) config.sft_learning_rate = dto.sft_learning_rate;
+    if (dto.dpo_learning_rate != null) config.dpo_learning_rate = dto.dpo_learning_rate;
+    if (dto.dpo_pair_types?.length) {
+      config.dpo_pair_types = dto.dpo_pair_types as FineTuneConfig['dpo_pair_types'];
+    }
+    if (dto.dpo_rejected_sources?.length) {
+      config.dpo_rejected_sources = dto.dpo_rejected_sources as FineTuneConfig['dpo_rejected_sources'];
+    }
+
+    try {
+      const result = await this.fineTuneService.startSftThenDpoPipeline(
+        taskId,
+        config,
+        dto.resume_from_checkpoint,
+      );
+      return { success: true, ...result };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new HttpException(
+        { success: false, error: message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('pipeline/:taskId')
+  @ApiOperation({ summary: '获取 sft_then_dpo Pipeline 状态' })
+  async getPipelineStatus(@Param('taskId') taskId: string) {
+    return this.fineTuneService.getPipelineStatus(taskId);
+  }
+
+  @Post('pipeline/flywheel')
+  @ApiOperation({
+    summary: 'Decision OS 飞轮：ETL + sft_then_dpo（可选 wait 直至完成）',
+  })
+  async runDecisionFlywheel(
+    @Body()
+    body: StartTrainingDto & { task_id?: string; wait?: boolean },
+  ) {
+    const config: Partial<FineTuneConfig> = { training_stage: 'sft_then_dpo' };
+    if (body.model_name) config.model_name = body.model_name;
+    if (body.dpo_pair_types?.length) {
+      config.dpo_pair_types = body.dpo_pair_types as FineTuneConfig['dpo_pair_types'];
+    }
+    if (body.dpo_rejected_sources?.length) {
+      config.dpo_rejected_sources = body.dpo_rejected_sources as FineTuneConfig['dpo_rejected_sources'];
+    }
+
+    try {
+      const result = await this.fineTuneService.runDecisionFlywheelPipeline({
+        taskId: body.task_id,
+        config,
+        wait: body.wait === true,
+      });
+      return { success: true, ...result };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new HttpException(
+        { success: false, error: message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
   
+  @Get('shadow/active')
+  @ApiOperation({ summary: '当前活跃阴影适配器' })
+  getActiveShadow() {
+    return {
+      active: this.shadowDeployment.getActiveShadow(),
+      enabled: this.shadowDeployment.isShadowDeployEnabled(),
+    };
+  }
+
+  @Get('shadow/registrations')
+  @ApiOperation({ summary: '阴影适配器注册历史' })
+  listShadowRegistrations() {
+    return this.shadowDeployment.listShadowRegistrations();
+  }
+
+  @Get('shadow/:shadowVersion/metrics')
+  @ApiOperation({ summary: '阴影评测聚合指标与晋升门控' })
+  getShadowMetrics(@Param('shadowVersion') shadowVersion: string) {
+    const metrics = this.shadowDeployment.getShadowMetrics(shadowVersion);
+    const gate = evaluateShadowPromotionGates(metrics);
+    return { metrics, gate };
+  }
+
+  @Get('shadow/metrics/prometheus')
+  @ApiOperation({ summary: 'Prometheus 格式阴影指标' })
+  getShadowPrometheusMetrics(@Query('shadow_version') shadowVersion?: string) {
+    const body = this.shadowDeployment.getShadowMetricsPrometheus(shadowVersion);
+    return body;
+  }
+
+  @Post('shadow/:shadowVersion/promote')
+  @ApiOperation({ summary: '将阴影候选晋升为主 Planner（需门控通过或 force）' })
+  async promoteShadow(
+    @Param('shadowVersion') shadowVersion: string,
+    @Query('force') force?: string,
+  ) {
+      const result = await this.shadowDeployment.promote(shadowVersion, {
+      force: force === '1' || force === 'true',
+    });
+    if (!result.promoted) {
+      throw new HttpException(
+        { success: false, ...result },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return { success: true, ...result };
+  }
+
   @Get('tasks')
   @ApiOperation({ summary: '列出所有训练任务' })
   @ApiResponse({ status: 200, description: '任务列表' })

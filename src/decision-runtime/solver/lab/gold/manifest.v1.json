@@ -1,0 +1,413 @@
+{
+  "schemaId": "tripnara.planning_gold_manifest@v1",
+  "version": 1,
+  "authoritativePromotion": false,
+  "targetCounts": {
+    "road_close": 10,
+    "wind": 10,
+    "blue_ice": 10,
+    "parking_full": 10,
+    "hotel_change": 10,
+    "reservation_delay": 10
+  },
+  "scenarios": [
+    {
+      "scenarioId": "iceland.road_close.01_f208_reroute_a1_a2",
+      "path": "scenarios/iceland/road_close/01_f208_reroute_a1_a2.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.02_f208_swap_a1_a2",
+      "path": "scenarios/iceland/road_close/02_f208_swap_a1_a2.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.03_f208_shift_wide_tw",
+      "path": "scenarios/iceland/road_close/03_f208_shift_wide_tw.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.04_f235_reroute_mid_edge",
+      "path": "scenarios/iceland/road_close/04_f235_reroute_mid_edge.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.05_dual_forbid_reroute",
+      "path": "scenarios/iceland/road_close/05_dual_forbid_reroute.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.06_south6_swap_local",
+      "path": "scenarios/iceland/road_close/06_south6_swap_local.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.07_skaftafell_replace_pool",
+      "path": "scenarios/iceland/road_close/07_skaftafell_replace_pool.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.08_seljalandsfoss_replace",
+      "path": "scenarios/iceland/road_close/08_seljalandsfoss_replace.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.09_booked_pin_preserved",
+      "path": "scenarios/iceland/road_close/09_booked_pin_preserved.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.road_close.10_shorten_overpacked_day",
+      "path": "scenarios/iceland/road_close/10_shorten_overpacked_day.scenario.json",
+      "status": "active",
+      "family": "road_close"
+    },
+    {
+      "scenarioId": "iceland.wind.01_coast_gust_reroute_a1_a2",
+      "path": "scenarios/iceland/wind/01_coast_gust_reroute_a1_a2.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.02_coast_gust_swap_a1_a2",
+      "path": "scenarios/iceland/wind/02_coast_gust_swap_a1_a2.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.03_morning_gale_shift_tw",
+      "path": "scenarios/iceland/wind/03_morning_gale_shift_tw.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.04_peninsula_reroute_mid_edge",
+      "path": "scenarios/iceland/wind/04_peninsula_reroute_mid_edge.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.05_dual_gust_reroute",
+      "path": "scenarios/iceland/wind/05_dual_gust_reroute.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.06_south6_swap_local",
+      "path": "scenarios/iceland/wind/06_south6_swap_local.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.07_dyrholaey_replace_indoor",
+      "path": "scenarios/iceland/wind/07_dyrholaey_replace_indoor.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.08_reynisfjara_replace_shelter",
+      "path": "scenarios/iceland/wind/08_reynisfjara_replace_shelter.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.09_booked_lunch_pin_preserved",
+      "path": "scenarios/iceland/wind/09_booked_lunch_pin_preserved.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.wind.10_storm_shorten_overpacked",
+      "path": "scenarios/iceland/wind/10_storm_shorten_overpacked.scenario.json",
+      "status": "active",
+      "family": "wind"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.01_trailhead_reroute_a1_a2",
+      "path": "scenarios/iceland/blue_ice/01_trailhead_reroute_a1_a2.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.02_trailhead_swap_a1_a2",
+      "path": "scenarios/iceland/blue_ice/02_trailhead_swap_a1_a2.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.03_guide_delay_shift_tw",
+      "path": "scenarios/iceland/blue_ice/03_guide_delay_shift_tw.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.04_lagoon_reroute_mid_edge",
+      "path": "scenarios/iceland/blue_ice/04_lagoon_reroute_mid_edge.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.05_dual_access_reroute",
+      "path": "scenarios/iceland/blue_ice/05_dual_access_reroute.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.06_glacier6_swap_local",
+      "path": "scenarios/iceland/blue_ice/06_glacier6_swap_local.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.07_blue_ice_hike_replace_vc",
+      "path": "scenarios/iceland/blue_ice/07_blue_ice_hike_replace_vc.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.08_lagoon_boat_replace_shore",
+      "path": "scenarios/iceland/blue_ice/08_lagoon_boat_replace_shore.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.09_booked_briefing_pin_preserved",
+      "path": "scenarios/iceland/blue_ice/09_booked_briefing_pin_preserved.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.blue_ice.10_ice_day_shorten_overpacked",
+      "path": "scenarios/iceland/blue_ice/10_ice_day_shorten_overpacked.scenario.json",
+      "status": "active",
+      "family": "blue_ice"
+    },
+    {
+      "scenarioId": "iceland.parking_full.01_bluelagoon_approach_reroute",
+      "path": "scenarios/iceland/parking_full/01_bluelagoon_approach_reroute.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.02_bluelagoon_approach_swap",
+      "path": "scenarios/iceland/parking_full/02_bluelagoon_approach_swap.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.03_peak_avoid_shift_tw",
+      "path": "scenarios/iceland/parking_full/03_peak_avoid_shift_tw.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.04_skogafoss_lot_reroute_mid",
+      "path": "scenarios/iceland/parking_full/04_skogafoss_lot_reroute_mid.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.05_dual_lot_reroute",
+      "path": "scenarios/iceland/parking_full/05_dual_lot_reroute.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.06_south6_swap_local",
+      "path": "scenarios/iceland/parking_full/06_south6_swap_local.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.07_bluelagoon_replace_skylagoon",
+      "path": "scenarios/iceland/parking_full/07_bluelagoon_replace_skylagoon.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.08_seljalandsfoss_replace_gljufrabui",
+      "path": "scenarios/iceland/parking_full/08_seljalandsfoss_replace_gljufrabui.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.09_booked_spa_pin_preserved",
+      "path": "scenarios/iceland/parking_full/09_booked_spa_pin_preserved.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.parking_full.10_peak_day_shorten_overpacked",
+      "path": "scenarios/iceland/parking_full/10_peak_day_shorten_overpacked.scenario.json",
+      "status": "active",
+      "family": "parking_full"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.01_lodge_shift_reroute_a2_a3",
+      "path": "scenarios/iceland/hotel_change/01_lodge_shift_reroute_a2_a3.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.02_lodge_shift_swap",
+      "path": "scenarios/iceland/hotel_change/02_lodge_shift_swap.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.03_late_checkout_shift_tw",
+      "path": "scenarios/iceland/hotel_change/03_late_checkout_shift_tw.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.04_new_lodge_reroute_mid",
+      "path": "scenarios/iceland/hotel_change/04_new_lodge_reroute_mid.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.05_dual_stale_hop_reroute",
+      "path": "scenarios/iceland/hotel_change/05_dual_stale_hop_reroute.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.06_lodge_day_swap_local",
+      "path": "scenarios/iceland/hotel_change/06_lodge_day_swap_local.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.07_far_poi_replace_near_lodge",
+      "path": "scenarios/iceland/hotel_change/07_far_poi_replace_near_lodge.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.08_east_day_replace_local_walk",
+      "path": "scenarios/iceland/hotel_change/08_east_day_replace_local_walk.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.09_booked_breakfast_pin_preserved",
+      "path": "scenarios/iceland/hotel_change/09_booked_breakfast_pin_preserved.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.10_lodge_day_shorten_overpacked",
+      "path": "scenarios/iceland/hotel_change/10_lodge_day_shorten_overpacked.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.md_01_overloaded_day1_rebalance",
+      "path": "scenarios/iceland/hotel_change/md_01_overloaded_day1_rebalance.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.md_02_pin_breakfast_stay",
+      "path": "scenarios/iceland/hotel_change/md_02_pin_breakfast_stay.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.md_03_tight_capacity_day2",
+      "path": "scenarios/iceland/hotel_change/md_03_tight_capacity_day2.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.md_04_max_moved_one",
+      "path": "scenarios/iceland/hotel_change/md_04_max_moved_one.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.hotel_change.md_05_three_movable_on_day1",
+      "path": "scenarios/iceland/hotel_change/md_05_three_movable_on_day1.scenario.json",
+      "status": "active",
+      "family": "hotel_change"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.01_late_show_reroute_pre",
+      "path": "scenarios/iceland/reservation_delay/01_late_show_reroute_pre.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.02_late_show_swap_pre",
+      "path": "scenarios/iceland/reservation_delay/02_late_show_swap_pre.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.03_last_entry_shift_tw",
+      "path": "scenarios/iceland/reservation_delay/03_last_entry_shift_tw.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.04_post_show_reroute_mid",
+      "path": "scenarios/iceland/reservation_delay/04_post_show_reroute_mid.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.05_dual_buffer_reroute",
+      "path": "scenarios/iceland/reservation_delay/05_dual_buffer_reroute.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.06_show_day_swap_local",
+      "path": "scenarios/iceland/reservation_delay/06_show_day_swap_local.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.07_late_replace_short_alt",
+      "path": "scenarios/iceland/reservation_delay/07_late_replace_short_alt.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.08_beach_replace_bakery",
+      "path": "scenarios/iceland/reservation_delay/08_beach_replace_bakery.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.09_booked_show_pin_preserved",
+      "path": "scenarios/iceland/reservation_delay/09_booked_show_pin_preserved.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    },
+    {
+      "scenarioId": "iceland.reservation_delay.10_delay_shorten_overpacked",
+      "path": "scenarios/iceland/reservation_delay/10_delay_shorten_overpacked.scenario.json",
+      "status": "active",
+      "family": "reservation_delay"
+    }
+  ],
+  "roadCloseActiveCount": 10,
+  "windActiveCount": 10,
+  "blueIceActiveCount": 10,
+  "parkingFullActiveCount": 10,
+  "hotelChangeActiveCount": 10,
+  "reservationDelayActiveCount": 10,
+  "hotelChangeMoveDayActiveCount": 5,
+  "stagingReplayActiveCount": 5
+}

@@ -17,12 +17,15 @@ import type { IVerifyExecutor, PhaseExecutorContext } from '../../decision/kerne
 import { normalizeItem } from '../../decision/kernel/itinerary.types';
 import { solveDayTimeline, type SolveDayTimelineEnvironment } from '../../decision/kernel/itinerary-timeline.util';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
+import { buildL3ProofPrefixFromMatch } from '../axioms/axiom-l3-proof.util';
 import { matchAxioms } from '../axioms/axiom-matchers';
 import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 import { ExperienceAgentService } from '../services/domain-agents/experience-agent.service';
 import type { Itinerary } from '../interfaces/trip-plan.interface';
 import { RouteFeasibilityEngineService } from '../services/route-feasibility-engine.service';
 import { classifyVerificationIssueFromText } from './verification-issue.rules';
+import { mapItineraryVerifyIssueToVerificationIssue } from '../utils/map-itinerary-verify-issue.util';
 import type { ConstraintViolation, FeasibilityFinding } from '../services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../services/constraint-registry';
 import type { IcelandVehicleIntentHints } from '../../skills/itinerary/iceland-vehicle-terrain-arbitrator.util';
@@ -31,6 +34,7 @@ import {
   buildTerrainFroadUnfitAxiomDecisionMemory,
   pickLastVehicleAcceptedCausalityIds,
 } from '../memory/decision-memory/vehicle-terrain-decision-memory.util';
+import { hydrateOpeningHoursEvidenceForItinerary } from '../utils/opening-hours-evidence-hydration.util';
 import {
   dataReliabilityFindingsToVerificationIssues,
   evaluateDataReliability,
@@ -43,6 +47,7 @@ import { ValidationGatewayService } from '../../decision/validation-gateway/vali
 import { ValidationGatewayExtensionService } from '../../decision/validation-gateway/validation-gateway-extension.service';
 
 const VG_SKIP_LEGACY = '__vg_rfe_complete';
+
 
 @Injectable()
 export class VerifyExecutorService implements IVerifyExecutor {
@@ -170,6 +175,11 @@ export class VerifyExecutorService implements IVerifyExecutor {
     const result = await this.validationGateway.runStages(
       { dso, ctx, recordSlo: true },
       [
+        {
+          stageId: 'GRAPH_COMPILE_INTEGRITY',
+          run: async ({ ctx: c, issues, confidenceDelta }) =>
+            this.stageGraphCompileIntegrity(c, issues, confidenceDelta),
+        },
         {
           stageId: 'DATA_RELIABILITY',
           run: async ({ dso: s, ctx: c, issues, confidenceDelta }) =>
@@ -491,7 +501,16 @@ export class VerifyExecutorService implements IVerifyExecutor {
       });
       if (result?.issues && Array.isArray(result.issues)) {
         for (const raw of result.issues) {
-          const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ITINERARY_VERIFY_SKILL' });
+          const structured =
+            raw && typeof raw === 'object' && typeof (raw as { message?: string }).message === 'string'
+              ? mapItineraryVerifyIssueToVerificationIssue(raw as Parameters<typeof mapItineraryVerifyIssueToVerificationIssue>[0])
+              : undefined;
+          const v =
+            structured ??
+            classifyVerificationIssueFromText({
+              text: typeof raw === 'string' ? raw : String((raw as { message?: string })?.message ?? ''),
+              source: 'ITINERARY_VERIFY_SKILL',
+            });
           if (v) next.push(v);
         }
         delta += -0.1 * Math.min(result.issues.length, 5);
@@ -507,6 +526,72 @@ export class VerifyExecutorService implements IVerifyExecutor {
       });
       delta += -0.2;
     }
+    return { issues: next, confidenceDelta: delta };
+  }
+
+  private stageGraphCompileIntegrity(
+    ctx: PhaseExecutorContext,
+    issues: VerificationIssue[],
+    confidenceDelta: number,
+  ): { issues: VerificationIssue[]; confidenceDelta: number; skipped?: boolean } {
+    const graph = ctx.canonicalTravelGraph;
+    if (!graph) {
+      return { issues, confidenceDelta, skipped: true };
+    }
+
+    const next = [...issues];
+    let delta = confidenceDelta;
+    const now = new Date().toISOString();
+
+    if (graph.stats.poiUnresolved > 0) {
+      next.push({
+        code: 'GRAPH_POI_UNRESOLVED',
+        class: 'CONFLICT',
+        message: `[CTRE] ${graph.stats.poiUnresolved} POI(s) unresolved in CanonicalTravelGraph`,
+        source: 'OTHER',
+        at: now,
+        suggestedActions: [{ action: 'ASK_USER', detail: 'Confirm unresolved POI slots' }],
+      });
+      delta -= 0.05;
+    }
+
+    const routeGap = graph.stats.routeTemplatesTotal - graph.stats.routeTemplatesResolved;
+    if (routeGap > 0) {
+      next.push({
+        code: 'GRAPH_ROUTE_UNRESOLVED',
+        class: 'CONFLICT',
+        message: `[CTRE] ${routeGap} route template(s) unresolved in CanonicalTravelGraph`,
+        source: 'OTHER',
+        at: now,
+      });
+      delta -= 0.05;
+    }
+
+    if (ctx.verifyItinerarySource !== 'canonical_travel_graph@v0') {
+      next.push({
+        code: 'GRAPH_VERIFY_SSOT_MISMATCH',
+        class: 'ADVISORY',
+        message: '[CTRE] VERIFY itinerary source is not graph-projected SSOT',
+        source: 'OTHER',
+        at: now,
+      });
+    }
+
+    if (ctx.itinerary) {
+      ctx.itinerary.metadata = {
+        ...(ctx.itinerary.metadata ?? {}),
+        __canonical_travel_graph: {
+          graphId: graph.graphId,
+          compileId: graph.compileId,
+          poiResolved: graph.stats.poiResolved,
+          poiUnresolved: graph.stats.poiUnresolved,
+          routeTemplatesResolved: graph.stats.routeTemplatesResolved,
+          routeTemplatesTotal: graph.stats.routeTemplatesTotal,
+          verifyItinerarySource: ctx.verifyItinerarySource,
+        },
+      };
+    }
+
     return { issues: next, confidenceDelta: delta };
   }
 
@@ -562,7 +647,7 @@ export class VerifyExecutorService implements IVerifyExecutor {
     dso: DecisionState,
     ctx: PhaseExecutorContext,
   ): Promise<{ issues: VerificationIssue[]; confidenceDelta: number }> {
-    const issues: VerificationIssue[] = [];
+    let issues: VerificationIssue[] = [];
     let confidenceDelta = 0;
 
     const reliability = evaluateDataReliability(dso, ctx);
@@ -582,6 +667,10 @@ export class VerifyExecutorService implements IVerifyExecutor {
       issues.push(...dataReliabilityFindingsToVerificationIssues(reliability.findings));
       confidenceDelta += reliability.confidenceDelta;
     }
+
+    const graphIntegrity = this.stageGraphCompileIntegrity(ctx, issues, confidenceDelta);
+    issues = graphIntegrity.issues;
+    confidenceDelta = graphIntegrity.confidenceDelta;
 
     const riskGate = evaluateRiskEvents(dso, ctx);
     if (ctx.itinerary) {
@@ -624,12 +713,22 @@ export class VerifyExecutorService implements IVerifyExecutor {
     try {
       const message = String((ctx.tripPlanRequest as any)?.message ?? '').trim();
       const constraints = (ctx.tripPlanRequest as any)?.constraints as Record<string, any> | undefined;
-      const matches = matchAxioms({ message, constraints });
+      const clarAnswers = (ctx.tripPlanRequest as { clarification_answers?: unknown })?.clarification_answers;
+      const matches = matchAxioms(
+        buildAxiomMatchContext({
+          message,
+          constraints,
+          trip: ctx.tripPlanRequest as any,
+          tripId: ctx.requestId,
+          itinerary: ctx.itinerary as any,
+          clarificationAnswers: Array.isArray(clarAnswers) ? (clarAnswers as any) : undefined,
+        }),
+      );
       const terrain = matches.find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
       if (terrain) {
         const now = new Date().toISOString();
         const terrainMsg =
-          `[L3-PROOF|${terrain.axiom.cid}|DESTINATION:${ctx.requestId}|cmp:GEQ|actual:2|limit:4|unit:WD|slack:-2|evidence:MODEL:intent_froad] ` +
+          `${buildL3ProofPrefixFromMatch(terrain, `DESTINATION:${ctx.requestId}`)} ` +
           `意图要求 F-road/高地，但车辆为 2WD（冰岛高地普遍要求 4WD），物理上不可执行。`;
         issues.push({
           code: 'TERRAIN_F_ROAD_UNFIT',
@@ -655,6 +754,31 @@ export class VerifyExecutorService implements IVerifyExecutor {
       }
     } catch {
       // best-effort only
+    }
+
+    // 0a. VERIFY 前从 Place DB 补全 opening_hours_evidence（须在 RouteFeasibility / itinerary.verify 之前）
+    if (this.skillsRegistry && ctx.itinerary && ctx.researchData && typeof ctx.researchData === 'object') {
+      const ohSkill = this.skillsRegistry.getSkill('opening_hours.get');
+      if (ohSkill) {
+        try {
+          const hydrated = await hydrateOpeningHoursEvidenceForItinerary({
+            itinerary: ctx.itinerary as Itinerary,
+            researchData: ctx.researchData as Record<string, unknown>,
+            openingHoursSkill: ohSkill as {
+              execute: (input: { poi_ids: string[] }) => Promise<{ opening_hours?: unknown[] }>;
+            },
+          });
+          if (hydrated.fetched > 0) {
+            this.logger.debug(
+              `[VerifyExecutor] opening_hours pre-feasibility hydrate: fetched=${hydrated.fetched} total=${hydrated.merged}`,
+            );
+          }
+        } catch (e: unknown) {
+          this.logger.warn(
+            `[VerifyExecutor] opening_hours pre-feasibility hydrate skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
     }
 
     // 0. RouteFeasibilityEngine（统一聚合：verify + fatigue + terrain + expert rules）
@@ -732,18 +856,58 @@ export class VerifyExecutorService implements IVerifyExecutor {
     // 1. itinerary.verify Skill
     if (this.skillsRegistry && ctx.itinerary) {
       try {
+        const researchData =
+          ctx.researchData && typeof ctx.researchData === 'object'
+            ? ({ ...(ctx.researchData as Record<string, unknown>) } as Record<string, unknown>)
+            : ({} as Record<string, unknown>);
+        const ohSkill = this.skillsRegistry.getSkill('opening_hours.get');
+        if (ohSkill) {
+          try {
+            const hydrated = await hydrateOpeningHoursEvidenceForItinerary({
+              itinerary: ctx.itinerary as Itinerary,
+              researchData,
+              openingHoursSkill: ohSkill as {
+                execute: (input: { poi_ids: string[] }) => Promise<{ opening_hours?: unknown[] }>;
+              },
+            });
+            if (hydrated.fetched > 0) {
+              this.logger.debug(
+                `[VerifyExecutor] opening_hours hydrated: fetched=${hydrated.fetched} total=${hydrated.merged}`,
+              );
+            }
+          } catch (e: unknown) {
+            this.logger.warn(
+              `[VerifyExecutor] opening_hours pre-hydrate skipped: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+        }
+
         const skill = this.skillsRegistry.getSkill('itinerary.verify');
         if (skill) {
           const result = await skill.execute({
             itinerary: ctx.itinerary as any,
-            research_data: ctx.researchData,
+            research_data: researchData,
             ...(verifyUserQuery ? { user_query: verifyUserQuery } : {}),
             ...(verifyIntentHints ? { intent_hints: verifyIntentHints } : {}),
           });
 
           if (result?.issues && Array.isArray(result.issues)) {
             for (const raw of result.issues) {
-              const v = classifyVerificationIssueFromText({ text: String(raw ?? ''), source: 'ITINERARY_VERIFY_SKILL' });
+              const structured =
+                raw && typeof raw === 'object' && typeof (raw as { message?: string }).message === 'string'
+                  ? mapItineraryVerifyIssueToVerificationIssue(raw as Parameters<typeof mapItineraryVerifyIssueToVerificationIssue>[0])
+                  : undefined;
+              const v =
+                structured ??
+                classifyVerificationIssueFromText({
+                  text:
+                    typeof raw === 'string'
+                      ? raw
+                      : raw && typeof raw === 'object' && typeof (raw as { message?: string }).message === 'string'
+                        ? (raw as { message: string }).message
+                        : '',
+                  source: 'ITINERARY_VERIFY_SKILL',
+                });
               if (v) issues.push(v);
             }
             confidenceDelta += -0.1 * Math.min(result.issues.length, 5);
@@ -887,9 +1051,18 @@ export class VerifyExecutorService implements IVerifyExecutor {
       // entity.*
       case CONSTRAINT_IDS.ENTITY_OPENING_HOURS_OVERLAP:
       case CONSTRAINT_IDS.ENTITY_SEASONAL_CLOSURE:
+      case CONSTRAINT_IDS.ENTITY_ACCESS_BLOCKED:
         return 'POI_CLOSED';
       case CONSTRAINT_IDS.ENTITY_MANDATORY_RESERVATION:
+      case CONSTRAINT_IDS.ENTITY_PARKING_RESERVATION_MISSING:
+      case CONSTRAINT_IDS.ENTITY_INVENTORY_SOLD_OUT:
         return 'TIME_WINDOW_BREACH';
+      case CONSTRAINT_IDS.ENTITY_VEHICLE_INCOMPATIBLE:
+        return 'ROUTE_INFEASIBLE';
+      case CONSTRAINT_IDS.ENTITY_ACCESS_STATUS_STALE:
+        return 'UNKNOWN';
+      case CONSTRAINT_IDS.ENTITY_PARKING_WAIT_HIGH:
+        return 'UNKNOWN';
 
       // environment.*
       case CONSTRAINT_IDS.ENVIRONMENT_WIND_SPEED_LIMIT:

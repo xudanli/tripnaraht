@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.blue_ice.08_lagoon_boat_replace_shore",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "blue_ice",
+  "title": "Lagoon boat cancelled \u2014 REPLACE to shore viewpoint alt",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/blue_ice/problems/08_lagoon_boat_replace_shore.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

@@ -63,6 +63,7 @@ export function inferResearchKeyScope(key: string): ResearchAssetScope {
     k.includes('retrieval_decision') ||
     k.includes('failure_risk') ||
     k.includes('windspeed') ||
+    k.includes('cost_estimate') ||
     k === 'country_code' ||
     k === 'countrycode' ||
     k === 'month'

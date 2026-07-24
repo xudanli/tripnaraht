@@ -1,0 +1,13 @@
+{
+  "outPath": "/home/devbox/project/internal-docs/operations/evidence/assertion-promotion-shadow-validation-2026-07-11T18-31-49-838Z.json",
+  "verdict": {
+    "wrong_secret_blocked": true,
+    "non_allowlist_skipped": true,
+    "road_promotion_skipped": true,
+    "duplicate_idempotent": true,
+    "problem_store_unchanged": true,
+    "visible_queue_unchanged": true,
+    "recovery_shadow_observed": true,
+    "overall_pass": true
+  }
+}

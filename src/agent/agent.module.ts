@@ -5,6 +5,8 @@ import { ActionsController } from './actions.controller';
 import { QuickPlanController } from './quick-plan.controller';
 import { AgentService } from './services/agent.service';
 import { ExecutionGatewayService } from './services/execution-gateway.service';
+import { ExecutionAgentService } from './services/execution-agent.service';
+import { TripOrchestrationLockService } from './services/trip-orchestration-lock.service';
 import { EcpsRuntimeBiasService } from './services/ecps-runtime-bias.service';
 import { ExecutionPolicyVersionRegistryService } from './services/execution-policy-version-registry.service';
 import { PolicyAgentPopulationService } from './services/policy-agent-population.service';
@@ -75,11 +77,13 @@ import { PlanningWorkbenchAgentService } from './services/planning-workbench-age
 import { PlanningWorkbenchKernelBridgeService } from './services/planning-workbench-kernel-bridge.service';
 import { AgentOpsOutcomeBridgeService } from './services/agent-ops-outcome-bridge.service';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
-import { ExecutionAgentService } from './services/execution-agent.service';
+import { PlanningWorkbenchTaskService } from './services/planning-workbench-task.service';
+import { EffectivePlanWriteGuardService } from '../decision-runtime/execution/effective-plan-write-guard.service';
 import { TripDetailAgentService } from './services/trip-detail-agent.service';
 import { ExecutionController } from './execution.controller';
 import { TripDetailController } from './trip-detail.controller';
 import { PlanningWorkbenchController } from './planning-workbench.controller';
+import { PlanningWorkbenchAdminController } from './planning-workbench-admin.controller';
 import { AgentAdminController } from './agent-admin.controller';
 import { DecisionReplayController } from './controllers/decision-replay.controller';
 import { AgentRunAdminService } from './services/agent-run-admin.service';
@@ -92,13 +96,18 @@ import { SideEffectRuleSyncerService } from './services/side-effect-rule-syncer.
 import { HardTruthRuleResolverService } from './services/hard-truth-rule-resolver.service';
 import { AgentActionLogService } from './services/agent-action-log.service';
 import { ClarificationHandlerService } from './services/clarification-handler.service';
+import { RelaxationTripPersistService } from './services/relaxation-trip-persist.service';
 import { ResearchPriorSnapshotService } from './services/research-prior-snapshot.service';
 import { ShadowConflictScannerService } from './services/shadow-conflict-scanner.service';
+import { ShadowRoutingEvaluatorService } from './services/shadow-routing-evaluator.service';
+import { ShadowRouteClassEvaluatorService } from './services/shadow-route-class-evaluator.service';
 import { LocalCaseStoreService } from './cbr/local-case-store.service';
 import { CbrRepository } from './cbr/cbr.repository';
 import { CbrAggregatorService } from './cbr/cbr-aggregator.service';
 import { JepaProjectorService } from './services/jepa-projector.service';
 import { RouteAndRunResponseAssemblerService } from './services/route-and-run-response-assembler.service';
+import { GuardiansDebateService } from './services/guardians-debate.service';
+import { ItinerarySlotPolisherService } from './services/itinerary-slot-polisher.service';
 import { RouteRunItineraryPoiHydratorService } from './services/route-run-itinerary-poi-hydrator.service';
 import { TradeoffEngineService } from './services/tradeoff-engine.service';
 import { NegotiationNarratorService } from './services/negotiation-narrator.service';
@@ -117,7 +126,13 @@ import { NegotiationSessionStoreService } from './services/negotiation-session-s
 import { NegotiationResolverService } from './services/negotiation-resolver.service';
 import { TimelineInspectorService } from './services/timeline-inspector.service';
 import { ItineraryVersionService } from './services/itinerary-version.service';
+import { TripRobustnessDashboardService } from './services/trip-robustness-dashboard.service';
 import { AuditRecordService } from './services/audit-record.service';
+import { AgenticTokenQuotaService } from './services/agentic-token-quota.service';
+import { HarnessCostDiagnosticsService } from './services/harness-cost-diagnostics.service';
+import { HarnessQualityLoopDiagnosticsService } from './services/harness-quality-loop-diagnostics.service';
+import { HarnessLlmRoutingDiagnosticsService } from './services/harness-llm-routing-diagnostics.service';
+import { AgentExecutionPolicyGatewayService } from './services/agent-execution-policy-gateway.service';
 import { RevisionNarratorService } from './services/revision-narrator.service';
 import { ItineraryRevisionTimelineService } from './services/itinerary-revision-timeline.service';
 import { ItineraryRevisionRegretService } from './services/itinerary-revision-regret.service';
@@ -131,6 +146,29 @@ import { PlanningRequestClassifierService } from './services/planning-request-cl
 import { DecisionReplayService } from './services/decision-replay.service';
 import { UserStandingPreferenceService } from './services/user-standing-preference.service';
 import { RouteAndRunContextEnricherService } from './services/route-and-run-context-enricher.service';
+import { DecisionOsContextAssemblerService } from './runtime/decision-os-context-assembler.service';
+import { DecisionOsExecutionContextStore } from './runtime/decision-os-execution-context.store';
+import { DecisionRuntimeKernelService } from './runtime/decision-runtime-kernel.service';
+import { RouteAndRunTaskProgressReporter } from './runtime/route-and-run-task-progress.reporter';
+import { IntakeStreamingReporter } from './runtime/intake-streaming.reporter';
+import { RouteAndRunAsyncTaskStore } from './services/route-and-run-async-task.store';
+import { RouteAndRunAsyncService } from './services/route-and-run-async.service';
+import { RouteAndRunAsyncDelegationService } from './services/route-and-run-async-delegation.service';
+import { RouteAndRunAsyncTaskLeaseService } from './services/route-and-run-async-task-lease.service';
+import { LocalRouteAndRunTaskEventBus } from './services/local-route-and-run-task-event.bus';
+import { RouteAndRunTaskStreamService } from './services/route-and-run-task-stream.service';
+import { RouteAndRunTaskStreamRegistry } from './services/route-and-run-task-stream.registry';
+import { RouteAndRunTaskStreamMetricsService } from './services/route-and-run-task-stream-metrics.service';
+import { RouteAndRunTaskLifecycleService } from './services/route-and-run-task-lifecycle.service';
+import { RedisPubSubRouteAndRunTaskEventBus } from './services/redis-pub-sub-route-and-run-task-event.bus';
+import { routeAndRunRedisPubSubProviders } from './redis/route-and-run-redis-pubsub.providers';
+import { routeAndRunTaskEventBusProvider } from './providers/route-and-run-task-event-bus.provider';
+import { CacheModule } from '../common/cache/cache.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { LlmIntentCompilerService } from './runtime/llm-intent-compiler.service';
+import { DecisionOsGrayRouterService } from './runtime/decision-os-gray-router.service';
+import { RouteRunRequestFitnessHydratorService } from './memory/services/route-run-request-fitness-hydrator.service';
+import { RouteRunIcelandMarketPriorHydratorService } from './memory/services/route-run-iceland-market-prior-hydrator.service';
 import { SkillsModule } from '../skills/skills.module';
 import { GovernanceModule } from '../governance/governance.module';
 // 子 Agent 服务（Claude 编排）
@@ -155,9 +193,13 @@ import { DecisionDraftModule } from '../decision-draft/decision-draft.module';
 import { ChainOfWorkModule } from '../chain-of-work/chain-of-work.module';
 import { PostgreSQLMcpModule } from '../mcp/postgresql-mcp.module';
 import { AmadeusDirectModule } from '../mcp/amadeus-direct.module';
+import { BookingComModule } from '../mcp/booking-com.module';
 import { FlightMcpModule } from '../mcp/flight-mcp.module';
 import { RedisModule } from '../redis/redis.module';
+import { AgentContextModule } from './context/agent-context.module';
 import { RoadIsModule } from '../infrastructure/external/road-is/road-is.module';
+import { EffectivePlanExecutionModule } from '../decision-runtime/execution/effective-plan-execution.module';
+import { TravelCompilerModule } from '../travel-compiler/travel-compiler.module';
 import { DecisionContractCapturerService } from './services/decision-contract-capturer.service';
 import { AgentActionReconcilerService } from './services/agent-action-reconciler.service';
 import { SagaReconciliationCron } from './crons/saga-reconciliation.cron';
@@ -187,9 +229,9 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     PlanningPolicyModule,
     RailPassModule,
     ReadinessModule,
-    DecisionModule,
-    CausalRuntimeModule,
-    OptimizationModule,
+    forwardRef(() => DecisionModule),
+    forwardRef(() => CausalRuntimeModule),
+    forwardRef(() => OptimizationModule),
     SharedMemoryModule,
     forwardRef(() => RagModule), // RAG 模块（用于增强对话），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
@@ -197,7 +239,9 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     GovernanceModule,
     AssistantsModule, // 智能体助手模块（规划助手、行程助手）
     AgentInfraModule, // Infra 层（LLMExecutor、CoreGateway）
-    RouteDirectionsModule, // 路线方向模块（用于信息卡片）
+    CacheModule, // 异步 route_and_run 任务进度（task_progress:*）
+    EventEmitterModule.forRoot({ wildcard: false, maxListeners: 32 }),
+    forwardRef(() => RouteDirectionsModule), // 路线方向模块（用于信息卡片）
     DataModelingModule, // 数据建模模块（用于不确定性建模）
     PrismaModule, // Prisma 模块（用于数据库访问）
     SpatialModule, // POI→SpatialDomainSegment 投影，供 route_and_run Action PREVIEW 物理门
@@ -207,17 +251,22 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     forwardRef(() => ChainOfWorkModule), // Phase B+：ExecutionIntegrationService（编排恢复闭环）
     PostgreSQLMcpModule, // PostgreSQL MCP 模块（用于 Admin 批量操作）
     AmadeusDirectModule, // Amadeus REST（轻量 path：航班库存 sensor）
+    BookingComModule, // checkout Bundle 租车锁价重采样
     FlightMcpModule, // Flight MCP（Smithery/Kiwi，与 Amadeus 二选一或回退）
     RedisModule, // research prior 快照（可选 Redis；MCP 模式下为内存 cache）
+    AgentContextModule, // P1-a：recent_messages 滑动窗口适配器（消费端迁移见 P1-b）
     forwardRef(() => AuthModule), // AdminStrictAuthGuard（replay 锚点 admin API）
     RoadIsModule, // ontology 区域 → Road.is / segment 缓存路况（轻量问答硬锚点附录）
     DecisionOsP0Module, // Validation Gateway + Contingency + SLO + DNA compliance
+    EffectivePlanExecutionModule,
+    TravelCompilerModule,
   ],
   controllers: [
     AgentController,
     ActionsController,
     QuickPlanController,
     PlanningWorkbenchController,
+    PlanningWorkbenchAdminController,
     ExecutionController,
     TripDetailController,
     AgentAdminController,
@@ -225,6 +274,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
   ],
   providers: [
     ExecutionGatewayService,
+    TripOrchestrationLockService,
     EcpsRuntimeBiasService,
     ExecutionPolicyVersionRegistryService,
     PolicyAgentPopulationService,
@@ -257,6 +307,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     PlanningWorkbenchKernelBridgeService, // 规划工作台 ↔ Decision Kernel 桥接
     AgentOpsOutcomeBridgeService, // Agent → OPS outcome（自动携带 TripWorldState）
     PlanningWorkbenchAdminService, // 规划工作台管理服务（后台管理）
+    PlanningWorkbenchTaskService, // 规划工作台异步任务（execute-async）
     ExecutionAgentService, // 执行阶段 Agent
     TripDetailAgentService, // 行程详情页 Agent
     // Claude 编排子 Agent
@@ -286,6 +337,8 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     DecisionContractCapturerService,
     JepaProjectorService,
     RouteRunItineraryPoiHydratorService,
+    GuardiansDebateService,
+    ItinerarySlotPolisherService,
     RouteAndRunResponseAssemblerService,
     TravelTimeResolverService,
     TradeoffEngineService,
@@ -296,6 +349,11 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     NegotiationResolverService,
     TimelineInspectorService,
     AuditRecordService,
+    AgenticTokenQuotaService,
+    HarnessCostDiagnosticsService,
+    HarnessQualityLoopDiagnosticsService,
+    HarnessLlmRoutingDiagnosticsService,
+    AgentExecutionPolicyGatewayService,
     RevisionNarratorService,
     ItineraryRevisionTimelineService,
     ItineraryRevisionRegretService,
@@ -304,15 +362,40 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     PreferenceEvolutionService,
     ItineraryRollbackService,
     ItineraryVersionService,
+    TripRobustnessDashboardService,
     AgentEntryResponseFactoryService,
     PlanningRequestClassifierService,
     DecisionReplayService,
     UserStandingPreferenceService,
     RouteAndRunContextEnricherService,
+    DecisionOsContextAssemblerService,
+    DecisionOsExecutionContextStore,
+    DecisionRuntimeKernelService,
+    RouteAndRunTaskProgressReporter,
+    IntakeStreamingReporter,
+    RouteAndRunAsyncTaskStore,
+    RouteAndRunAsyncService,
+    RouteAndRunAsyncDelegationService,
+    RouteAndRunAsyncTaskLeaseService,
+    ...routeAndRunRedisPubSubProviders,
+    LocalRouteAndRunTaskEventBus,
+    RedisPubSubRouteAndRunTaskEventBus,
+    routeAndRunTaskEventBusProvider,
+    RouteAndRunTaskStreamService,
+    RouteAndRunTaskStreamRegistry,
+    RouteAndRunTaskStreamMetricsService,
+    RouteAndRunTaskLifecycleService,
+    LlmIntentCompilerService,
+    DecisionOsGrayRouterService,
+    RouteRunRequestFitnessHydratorService,
+    RouteRunIcelandMarketPriorHydratorService,
     StrategyConflictOptionsService,
     ClarificationHandlerService,
+    RelaxationTripPersistService,
     ResearchPriorSnapshotService,
     ShadowConflictScannerService,
+    ShadowRoutingEvaluatorService,
+    ShadowRouteClassEvaluatorService,
     CbrRepository,
     CbrAggregatorService,
     LocalCaseStoreService,
@@ -336,6 +419,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     // TokenStatsService 已移至 AgentInfraModule
   ],
   exports: [
+    AgentContextModule,
     AgentService,
     ActionRegistryService,
     AgentOpsOutcomeBridgeService,
@@ -353,6 +437,13 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     ActionGraphSagaCompilerService,
     PhysicalValidatorService,
     SelfHealingService,
+    PreferenceEvolutionService,
+    UserProfileLearningService,
+    AgenticTokenQuotaService,
+    HarnessCostDiagnosticsService,
+    HarnessQualityLoopDiagnosticsService,
+    HarnessLlmRoutingDiagnosticsService,
+    AgentExecutionPolicyGatewayService,
   ],
 })
 export class AgentModule {
@@ -375,6 +466,7 @@ export class AgentModule {
     @Optional() private planningWorkbenchAgent?: PlanningWorkbenchAgentService,
     @Optional() private executionAgent?: ExecutionAgentService,
     @Optional() private tripDetailAgent?: TripDetailAgentService,
+    @Optional() private effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {
     // 注册基础 Actions（在模块初始化时）
     this.registerBasicActions();
@@ -389,7 +481,11 @@ export class AgentModule {
     }
     
     // 注册 Trip Actions
-    const tripActions = createTripActions(this.tripsService, this.itineraryItemsService);
+    const tripActions = createTripActions(
+      this.tripsService,
+      this.itineraryItemsService,
+      this.effectivePlanWriteGuard,
+    );
     this.actionRegistry.registerMany(tripActions);
 
     // 注册 Places Actions

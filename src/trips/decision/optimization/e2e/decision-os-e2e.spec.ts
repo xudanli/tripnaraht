@@ -122,6 +122,7 @@ describe('Decision OS E2E Tests', () => {
       snapshotAudit,
       metricsService,
       undefined,
+      undefined,
     );
 
     await facade.onModuleInit();
@@ -480,6 +481,7 @@ describe('Decision OS E2E Tests', () => {
         new DifferentiableDecisionService(),
         new DSOSnapshotAuditService(),
         new DecisionMetricsService(),
+        undefined,
         undefined,
       );
 

@@ -55,4 +55,12 @@ export interface RecordOutcomeCaptureParams {
   usedBlockKeys?: string[];
   /** 额外上下文 */
   context?: Record<string, unknown>;
+  /**
+   * P0：供 RLHF 非语义 KV 影响评估（与 `contextSnapshot` / 效用权重 / 修改字段对齐）
+   */
+  rlhfJsonEval?: {
+    contextSnapshot?: Record<string, unknown>;
+    utilityWeights?: Record<string, number>;
+    modification?: { field: string; from: unknown; to: unknown };
+  };
 }

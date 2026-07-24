@@ -34,6 +34,7 @@
  * - 替换后 check：核心标签/体验仍然覆盖
  */
 
+import { formatClockLabel } from '../../../common/utils/format-clock-label.util';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionPersonaStrategy } from './decision-persona-strategy.interface';
 import {
@@ -55,6 +56,8 @@ import { ExaIntegrationService } from '../../../mcp/exa-integration.service';
 import { AirbnbIntegrationService } from '../../../mcp/airbnb-integration.service';
 import { evaluateConstraintFeasibility } from '../../../world/world-constraint-feasibility.policy';
 import { BookingComIntegrationService } from '../../../mcp/booking-com-integration.service';
+import type { NeptuneEvaluateOptions } from '../shared/persona-closure.types';
+import { fingerprintRoutePlan } from '../shared/plan-fingerprint.util';
 
 @Injectable()
 export class NeptuneStrategy implements DecisionPersonaStrategy {
@@ -81,9 +84,10 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
    */
   async evaluate(
     world: WorldModelContext,
-    plan: RoutePlanDraft
+    plan: RoutePlanDraft,
+    opts?: NeptuneEvaluateOptions,
   ): Promise<DecisionResult> {
-    this.logger.debug(`Neptune 评估计划: ${plan.tripId}`);
+    this.logger.debug(`Neptune 评估计划: ${plan.tripId}${opts?.shrinkMode ? ' (shrinkMode)' : ''}`);
 
     // 1️⃣ 检测空间问题（使用 SpatialIssueDetector + 补充检测）
     const detectedIssues = await this.spatialIssueDetector.detect(world, plan);
@@ -140,6 +144,9 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
     let currentPlan = { ...plan, segments: [...plan.segments] };
     const logs: DecisionLogEntry[] = [];
     let hasReplacement = false;
+
+    const rejectedFingerprints = new Set(opts?.rejectedFingerprints ?? []);
+    const shrinkMode = opts?.shrinkMode === true;
 
     for (const issue of spatialIssues) {
       // 执行质量降级：记录语义，但不触发走廊替换（避免把 degraded 误当作封路）
@@ -290,6 +297,23 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
       const planBefore = currentPlan;
       currentPlan = this.applyReplacement(currentPlan, operation);
 
+      const patchFp = fingerprintRoutePlan(currentPlan);
+      if (rejectedFingerprints.has(patchFp)) {
+        currentPlan = planBefore;
+        logs.push({
+          persona: 'NEPTUNE',
+          action: 'ALLOW',
+          explanation: '收缩模式：该补丁指纹已被 Abu 重验拒绝，跳过',
+          reasonCodes: ['PERSONA_CLOSURE_REJECTED_FINGERPRINT'],
+          evidenceRefs: [issue.issueId],
+          timestamp: new Date().toISOString(),
+          decisionSource: 'PHILOSOPHY',
+          decisionStage: 'SPATIAL_REPAIR',
+          metadata: { persona_closure: { rejected_fingerprint: patchFp } },
+        });
+        continue;
+      }
+
       // 7️⃣ 替换后检查：核心标签/体验仍然覆盖
       if (philosophy) {
         // TODO: 从替换后的计划中提取当前标签
@@ -369,6 +393,10 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
                 }
             : undefined,
       });
+
+      if (shrinkMode) {
+        break;
+      }
     }
 
     const action: DecisionAction = hasReplacement ? 'REPLACE' : 'ALLOW';
@@ -879,7 +907,7 @@ export class NeptuneStrategy implements DecisionPersonaStrategy {
           type: 'SEGMENT_BLOCKED',
           segmentId: segment.segmentId,
           severity: 'HARD',
-          reason: `日落安全窗限制（end=${end.toISOString()} > threshold=${safetyThreshold.toISOString()}）`,
+          reason: `日落安全窗限制（结束 ${formatClockLabel(end)} 晚于安全阈值 ${formatClockLabel(safetyThreshold)}）`,
           metadata: {
             rule_id: 'solar_safety_v1',
             details: {

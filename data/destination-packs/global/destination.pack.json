@@ -1,0 +1,19 @@
+{
+  "packId": "destination.global",
+  "version": "1.0.0",
+  "layer": "GLOBAL",
+  "status": "ACTIVE",
+  "scope": {},
+  "supportedSemanticKeys": [
+    "EXCESSIVE_DAILY_LOAD",
+    "INSUFFICIENT_RECOVERY",
+    "TIME_WINDOW_INFEASIBLE",
+    "POI_UNAVAILABLE",
+    "BUDGET_THRESHOLD_EXCEEDED"
+  ],
+  "environmentModifiers": [
+    { "path": "modifiers/global-driving-baseline.json", "version": "1.0.0" }
+  ],
+  "validFrom": "2026-01-01T00:00:00Z",
+  "owner": "tripnara-platform"
+}

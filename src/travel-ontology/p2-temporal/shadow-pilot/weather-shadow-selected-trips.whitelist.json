@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.ontology_p2_weather_shadow_selected_trips@v1",
+  "workItem": "ONT-P2-01",
+  "destination": "IS",
+  "semanticScope": "WEATHER_DETERIORATION",
+  "authorityMode": "SHADOW",
+  "tripIds": [
+    "ont_canary_is_wind_01",
+    "ont_canary_is_wind_02",
+    "ont_canary_is_wind_03",
+    "ont_p2_is_weather_shadow_01",
+    "ont_p2_is_weather_shadow_02",
+    "ont_pilot_is_continuous_mod_01"
+  ],
+  "notes": "ONT-P2-01 Weather Production Shadow Pilot — IS WEATHER_DETERIORATION only; SHADOW; selected trips."
+}

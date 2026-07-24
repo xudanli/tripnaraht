@@ -1,5 +1,6 @@
 // src/trips/dto/place-response.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { resolvePlaceDisplayName } from '../../places/utils/place-display-name.util';
 
 /**
  * Place 元数据响应 DTO
@@ -92,6 +93,12 @@ export class PlaceResponseDto {
     nullable: true,
   })
   nameEN!: string | null;
+
+  @ApiProperty({
+    description: '展示用名称（中文 UI 优先 nameCN，无则 nameEN）',
+    example: '东京国立博物馆',
+  })
+  displayName!: string;
 
   @ApiProperty({
     description: '地点类别',
@@ -225,6 +232,7 @@ export function toPlaceResponseDto(place: any): PlaceResponseDto | null {
     id: place.id,
     nameCN: place.nameCN,
     nameEN: place.nameEN || null,
+    displayName: resolvePlaceDisplayName(place, { fallback: place.nameCN || '行程点' }),
     category: place.category,
     address: place.address || '',
     rating: place.rating || null,

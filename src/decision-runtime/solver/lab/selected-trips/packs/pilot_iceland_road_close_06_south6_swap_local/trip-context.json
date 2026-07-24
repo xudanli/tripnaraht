@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.selected_trip.context@v1",
+  "tripId": "pilot_iceland_road_close_06_south6_swap_local",
+  "planVersionId": "pv-gold",
+  "timezone": "Atlantic/Reykjavik",
+  "dateRange": {
+    "startDate": "2026-06-12",
+    "endDate": "2026-06-12"
+  },
+  "destination": "IS",
+  "deidentified": true,
+  "notes": [
+    "exported from gold iceland.road_close.06_south6_swap_local",
+    "frozen copy — not live"
+  ]
+}

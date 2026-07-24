@@ -1,0 +1,64 @@
+{
+  "fixtureVersion": "decision-closure-golden/v1",
+  "caseId": "nz-decision-closure-milford-rain-001",
+  "description": "Golden optimizationHints: Fiordland heavy rain + SH94 closed; cruise reschedule repair wins.",
+  "optimizationHints": {
+    "method": "CGUS",
+    "recommendedAlternativeId": "repair-milford-cruise-v1",
+    "metaDecisionAudit": "META_BUDGET(sample=800,topK=6,H=3,entropy=0.74,ESS=210.2) mcTotal=800 ragWorld=1 mcRerank=1",
+    "decisionVerdict": {
+      "chosen_plan_id": "repair-milford-cruise-v1",
+      "rejected_plans": [
+        {
+          "id": "base",
+          "status": "infeasible",
+          "hard_violation_count": 2,
+          "rejection_reasons": ["HARD:WORLD_ROAD_CLOSED (SH94)", "HARD:WORLD_WEATHER_HEAVY_RAIN"]
+        },
+        {
+          "id": "op-skip-milford",
+          "status": "rejected",
+          "hard_violation_count": 0,
+          "utility_delta_vs_chosen": -0.22,
+          "rejection_reasons": ["lower_expected_utility delta=-0.220"]
+        }
+      ],
+      "monte_carlo_summary": {
+        "used": true,
+        "total_samples": 800,
+        "samples_per_candidate": {
+          "repair-milford-cruise-v1": 800,
+          "base": 800,
+          "op-skip-milford": 800
+        }
+      },
+      "fallback_chain": [
+        { "step": "mc_rank_authority", "reason": "weather_entropy>0.65" },
+        { "step": "repair_accept", "reason": "WORLD_ROAD_HARD" }
+      ]
+    },
+    "decisionVerdictNarrationZh": "**推荐方案：** `repair-milford-cruise-v1`。已弃选 2 个备选；蒙特卡罗共 800 次采样。路政物化：SH94 封闭已计入约束图。",
+    "worldConstraintMaterialization": {
+      "appliedEvents": 1,
+      "roadIds": ["SH94"],
+      "weatherDates": ["2026-03-12"],
+      "storeVersion": 1,
+      "unifiedGraphNodeCount": 11,
+      "unifiedGraphEdgeCount": 16
+    },
+    "alternatives": [
+      {
+        "id": "repair-milford-cruise-v1",
+        "score": 0.79,
+        "expected_utility": 0.79,
+        "feasibility_probability": 0.68
+      },
+      {
+        "id": "base",
+        "score": 0.11,
+        "expected_utility": 0.11,
+        "feasibility_probability": 0.05
+      }
+    ]
+  }
+}

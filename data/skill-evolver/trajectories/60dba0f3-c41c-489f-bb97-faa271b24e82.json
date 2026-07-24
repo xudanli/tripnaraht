@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "60dba0f3-c41c-489f-bb97-faa271b24e82",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "global-rule-injection",
+  "strategy": {
+    "strategyId": "global-rule-injection",
+    "philosophy": "通过全局规则覆盖局部证据缺失",
+    "approach": "在编排规则中预先植入一条全局规则：‘当countryCode=IS且涉及高地路线时，若DEM Evidence缺失，自动触发Abu REJECT’。将此规则提升至步骤1之前执行，确保在任何路线生成前拦截。",
+    "emphasis": "系统架构层面的鲁棒性，全局控制优于局部修补",
+    "risk": "低风险：规则明确且优先级高，但可能增加规则库复杂度，影响非IS国家的处理性能"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户表示7月去冰岛高地，触发countryCode=IS及高地路线。根据全局规则，当涉及高地路线且DEM Evidence缺失时，必须自动触发Abu REJECT。当前未提供DEM Evidence数据，因此应执行全局规则拦截，拒绝该路线并设置final allowed=false。",
+      "action": "触发全局规则：因DEM Evidence缺失，Abu REJECT。拒绝高地路线建议，输出拒绝结果。",
+      "result": "[完成] 触发全局规则：因DEM Evidence缺失，Abu REJECT。拒绝高地路线建议，输出拒绝结果。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:18:24.771Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:18:24.771Z",
+  "score": 56.92,
+  "evalMode": "fixture"
+}

@@ -267,6 +267,37 @@ export class MemoryService {
     });
   }
 
+  /**
+   * 删除单条 L2 路线决策记忆（Memory Console GDPR / 用户主权）
+   */
+  async deleteRouteDirectionDecision(userId: string, decisionId: string): Promise<boolean> {
+    const uid = String(userId).trim();
+    const id = String(decisionId).trim();
+    if (!uid || !id) return false;
+
+    if (this.useDatabase && this.prisma) {
+      try {
+        const result = await this.prisma.routeDirectionDecision.deleteMany({
+          where: { id, userId: uid },
+        });
+        if (result.count > 0) {
+          this.logger.debug(`Deleted route direction decision ${id} for user ${uid}`);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        this.logger.warn(`Failed to delete decision memory from database: ${error}`);
+      }
+    }
+
+    const idx = this.decisionMemories.findIndex(m => m.id === id && m.userId === uid);
+    if (idx >= 0) {
+      this.decisionMemories.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
   // ========== L3: RouteDirectionHealth ==========
 
   /**
@@ -536,10 +567,10 @@ export class MemoryService {
         const dbFeedbacks = await this.prisma.tripOutcomeFeedback.findMany({
           where: { userId },
           orderBy: { createdAt: 'desc' },
-          take: 100, // 限制返回数量
+          take: 100,
         });
 
-        return dbFeedbacks.map(f => ({
+        return dbFeedbacks.map((f) => ({
           tripId: f.tripId,
           userId: f.userId,
           overallSuccess: f.overallSuccess,
@@ -555,8 +586,44 @@ export class MemoryService {
       }
     }
 
-    // 内存存储
-    return this.tripFeedbacks.filter(f => f.userId === userId);
+    return this.tripFeedbacks.filter((f) => f.userId === userId);
+  }
+
+  /**
+   * L4 装配专用：最近 N 条非放弃行程反馈（唯一 Assembler 直读入口）。
+   */
+  async getUserTripFeedbacksTail(userId: string, limit = 3): Promise<TripOutcomeFeedback[]> {
+    const cap = Math.max(1, Math.min(limit, 10));
+    if (this.useDatabase && this.prisma) {
+      try {
+        const dbFeedbacks = await this.prisma.tripOutcomeFeedback.findMany({
+          where: { userId, abandoned: false },
+          orderBy: { createdAt: 'desc' },
+          take: cap,
+        });
+
+        return dbFeedbacks.map((f) => ({
+          tripId: f.tripId,
+          userId: f.userId,
+          overallSuccess: f.overallSuccess,
+          fatigueLevel: f.fatigueLevel || undefined,
+          satisfaction: f.satisfaction || undefined,
+          abandoned: f.abandoned,
+          failurePoints: f.failurePoints,
+          notes: f.notes || undefined,
+          createdAt: f.createdAt,
+        }));
+      } catch (error) {
+        this.logger.warn(
+          `Failed to query trip feedback tail from database: ${error}, falling back to memory`,
+        );
+      }
+    }
+
+    return this.tripFeedbacks
+      .filter((f) => f.userId === userId && !f.abandoned)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, cap);
   }
 }
 

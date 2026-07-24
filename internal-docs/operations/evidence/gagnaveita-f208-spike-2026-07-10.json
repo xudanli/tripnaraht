@@ -1,0 +1,211 @@
+{
+  "spikeId": "gagnaveita-f208-spike-2026-07-10",
+  "generatedAt": "2026-07-10T20:06:49.924Z",
+  "step1_fetch": {
+    "url": "https://gagnaveita.vegagerdin.is/api/faerd2017_1",
+    "fetchedAt": "2026-07-10T20:04:13Z",
+    "httpStatus": 200,
+    "contentType": "application/json; charset=utf-8",
+    "bytes": 353801,
+    "sha256": "2fed5b6e76f3a1dfa082c5a9cf6d6dda2748d039a3982328633e10163bdd4c4b",
+    "egressHost": "47.87.131.183",
+    "egressRegion": "de-frankfurt",
+    "snapshotPath": "scripts/fixtures/gagnaveita-faerd2017_1-live-2026-07-10.json"
+  },
+  "step2_f208": {
+    "matchCount": 4,
+    "identification": "FulltNafnButs prefix Fjallabaksleið nyrðri → roadId F208",
+    "segments": [
+      {
+        "rawRecordId": "913030036",
+        "segmentId": "913030036",
+        "roadName": "Fjallabaksleið nyrðri: Eldgjá - Landmannalaugavegur",
+        "astandYfirbord": "FAERT_FJALLABILUM",
+        "astandLysingEn": "Mountain vehicles",
+        "observedAt": "2026-07-10T20:00:52Z",
+        "resolvedRoadId": "F208",
+        "canonical": "limited"
+      },
+      {
+        "rawRecordId": "913460036",
+        "segmentId": "913460036",
+        "roadName": "Fjallabaksleið nyrðri - Langisjór",
+        "astandYfirbord": "FAERT_FJALLABILUM",
+        "astandLysingEn": "Mountain vehicles",
+        "observedAt": "2026-07-10T20:00:52Z",
+        "resolvedRoadId": "F208",
+        "canonical": "limited"
+      },
+      {
+        "rawRecordId": "913040036",
+        "segmentId": "913040036",
+        "roadName": "Fjallabaksleið nyrðri: Sigalda - Landmannalaugar",
+        "astandYfirbord": "GREIDFAERT",
+        "astandLysingEn": "Easily passable",
+        "observedAt": "2026-07-10T20:00:52Z",
+        "resolvedRoadId": "F208",
+        "canonical": "open"
+      },
+      {
+        "rawRecordId": "913020036",
+        "segmentId": "913020036",
+        "roadName": "Fjallabaksleið nyrðri: Búland - Eldgjá",
+        "astandYfirbord": "FAERT_FJALLABILUM",
+        "astandLysingEn": "Mountain vehicles",
+        "observedAt": "2026-07-10T20:00:52Z",
+        "resolvedRoadId": "F208",
+        "canonical": "limited"
+      }
+    ],
+    "liveRollupStatus": "limited",
+    "liveRollupObservedAt": "2026-07-10T20:00:52.000Z",
+    "f208CurrentlyClosed": false
+  },
+  "step3_minimalFields": {
+    "roadId": "Fjallabaksleið nyrðri name prefix → F208",
+    "segmentId": "IdButur (official segment id)",
+    "roadName": "FulltNafnButs / StuttNafnButs",
+    "currentStatus": "AstandYfirbord enum (+ AstandLysingEn text)",
+    "restrictionType": "FrkvLysingEn / AstandVidbotaruppl (often null on F208)",
+    "observedAt": "DagsKeyrtUt (publish) preferred over DagsSkrad",
+    "sourceProvider": "vegagerdin_gagnaveita",
+    "rawRecordId": "IdButur",
+    "geometry": "not present in faerd2017_1 payload"
+  },
+  "step4_statusMapping": [
+    {
+      "gagnaveitaValue": "GREIDFAERT",
+      "astandLysingEn": "Easily passable",
+      "canonicalStatus": "open",
+      "changedStatus": "OPEN",
+      "recordCount": 596
+    },
+    {
+      "gagnaveitaValue": "FAERT_FJALLABILUM",
+      "astandLysingEn": "Mountain vehicles",
+      "canonicalStatus": "limited",
+      "changedStatus": "LIMITED",
+      "recordCount": 76
+    },
+    {
+      "gagnaveitaValue": "EKKI_I_THJONUSTU",
+      "astandLysingEn": "Not known",
+      "canonicalStatus": "unknown",
+      "changedStatus": "UNKNOWN",
+      "recordCount": 18
+    },
+    {
+      "gagnaveitaValue": "OFAERT_ANNAD",
+      "astandLysingEn": "Impassable",
+      "canonicalStatus": "closed",
+      "changedStatus": "CLOSED",
+      "recordCount": 3
+    },
+    {
+      "gagnaveitaValue": "LOKAD",
+      "astandLysingEn": "Closed",
+      "canonicalStatus": "closed",
+      "changedStatus": "CLOSED",
+      "recordCount": 5
+    },
+    {
+      "gagnaveitaValue": "OTHEKKT",
+      "astandLysingEn": "Not known",
+      "canonicalStatus": "unknown",
+      "changedStatus": "UNKNOWN",
+      "recordCount": 3
+    }
+  ],
+  "step4_lokadReference": [
+    {
+      "rawRecordId": "913140036",
+      "roadName": "Hlöðuvallavegur",
+      "astandYfirbord": "LOKAD",
+      "astandLysingEn": "Closed",
+      "canonical": "closed"
+    },
+    {
+      "rawRecordId": "913290036",
+      "roadName": "Austurleið: Sprengisandsleið -  Holuhraun",
+      "astandYfirbord": "LOKAD",
+      "astandLysingEn": "Closed",
+      "canonical": "closed"
+    },
+    {
+      "rawRecordId": "913350036",
+      "roadName": "Hrafnkelsdalsleið",
+      "astandYfirbord": "LOKAD",
+      "astandLysingEn": "Closed",
+      "canonical": "closed"
+    }
+  ],
+  "step5_adapterAlignment": {
+    "ADAPTER_ALIGNMENT": "PARTIAL",
+    "verdict": "PARTIAL",
+    "icelandRoadStatusAdapter": "FAIL",
+    "roadStatusRealtimeService": "FAIL",
+    "gagnaveitaMapper": "PASS",
+    "requiredChanges": [
+      "IcelandRoadStatusAdapter targets www.road.is DATEX II — does not parse faerd2017_1 JSON",
+      "RoadStatusRealtimeService primary path uses api.road.is/api/condition (UNRESOLVABLE)",
+      "Wire Gagnaveita fetch + gagnaveita-faerd.mapper into collector/realtime service",
+      "Add vegagerdin_gagnaveita provider to ingest + evidence resolver confidence table",
+      "Deprecate api.road.is from RFC-001 primary live config"
+    ]
+  },
+  "step6_sourceAuthority": {
+    "authoritativeLiveSource": "Vegagerðin Gagnaveita / faerd2017_1",
+    "transport": "Frankfurt collector",
+    "canonicalProvider": "vegagerdin_gagnaveita",
+    "deprecated": {
+      "endpoint": "https://api.road.is/api/condition",
+      "status": "LEGACY_ENDPOINT / UNRESOLVABLE"
+    }
+  },
+  "fixtures": {
+    "live": "scripts/fixtures/gagnaveita-f208-real-shape.json",
+    "closedReplay": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+    "closedReplayRollupStatus": "closed"
+  },
+  "corpusStats": {
+    "totalRecords": 701,
+    "astandDistribution": [
+      [
+        "GREIDFAERT",
+        596
+      ],
+      [
+        "FAERT_FJALLABILUM",
+        76
+      ],
+      [
+        "EKKI_I_THJONUSTU",
+        18
+      ],
+      [
+        "LOKAD",
+        5
+      ],
+      [
+        "OFAERT_ANNAD",
+        3
+      ],
+      [
+        "OTHEKKT",
+        3
+      ]
+    ]
+  },
+  "spikePass": true,
+  "spikePassConditions": {
+    "frankfurtReachable": true,
+    "f208Found": true,
+    "statusEnumsMapped": true,
+    "stableSegmentIds": true,
+    "observedAtPresent": true,
+    "canonicalMapping": true,
+    "realShapeFixtures": true,
+    "f208LiveClosed": false,
+    "note": "Live snapshot does not show F208 CLOSED; LOKAD enum proven on other roads. CLOSED replay fixture splices live LOKAD status onto F208 segment identity."
+  }
+}

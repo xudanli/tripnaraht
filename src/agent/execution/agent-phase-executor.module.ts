@@ -11,9 +11,12 @@
  * 参考: docs/KERNEL_BUSINESS_LOGIC_MIGRATION_PLAN.md
  */
 
-import { Module, forwardRef } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { RagModule } from '../../rag/rag.module';
+import { PoiPitfallInsightService } from '../services/poi-pitfall-insight.service';
 import { DecisionOsP0Module } from '../../decision/decision-os-p0.module';
+
 import { DomainAgentsModule } from '../services/domain-agents/domain-agents.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { WorldFactsModule } from '../../world-facts/world-facts.module';
@@ -38,6 +41,7 @@ import { RepairExecutorService } from './repair-executor.service';
 import { IntakeExecutorService } from './intake-executor.service';
 import { IntakeCompilerService } from './intake-compiler.service';
 import { NarrateExecutorService } from './narrate-executor.service';
+import { EmotionNarratorOrchestrator } from '../narrator/services/emotion-narrator-orchestrator.service';
 import { WeatherPredictionService } from '../../skills/world/services/weather-prediction.service';
 import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
 import { CountryConfigService } from '../../skills/world/services/country-config.service';
@@ -59,8 +63,10 @@ import { TrainingModule } from '../training/training.module';
     forwardRef(() => ReadinessModule), // ReadinessService, UserDecisionService for GATE_EVAL
     forwardRef(() => AgentModule), // ClaudeGatekeeperAgentService for GATE_EVAL
     forwardRef(() => TrainingModule), // ConstraintsEngineService / RuleManager for physical narration hints
+    forwardRef(() => RagModule), // ChunkRetrieval for POI pitfall insights
   ],
   providers: [
+    PoiPitfallInsightService,
     CountryConfigService,
     WeatherPredictionService,
     FailureRiskPredictionService,
@@ -87,6 +93,7 @@ import { TrainingModule } from '../training/training.module';
     IntakeCompilerService,
     IntakeExecutorService,
     NarrateExecutorService,
+    EmotionNarratorOrchestrator,
   ],
   exports: [
     WorldModelCollectorService,
@@ -105,6 +112,7 @@ import { TrainingModule } from '../training/training.module';
     IntakeCompilerService,
     IntakeExecutorService,
     NarrateExecutorService,
+    EmotionNarratorOrchestrator,
   ],
 })
 export class AgentPhaseExecutorModule {}

@@ -28,6 +28,8 @@ import { PersonaShellService } from '../../services/persona-shell.service';
 import { SharedAssistantsModule } from '../shared/shared-assistants.module';
 import { AgentInfraModule } from '../../infra/infra.module';
 import { CacheModule } from '../../../common/cache/cache.module';
+import { RedisModule } from '../../../redis/redis.module';
+import { PaConversationContextService } from './services/pa-conversation-context.service';
 import { HotelDirectModule } from '../../../mcp/hotel-direct.module';
 import { GoogleMapsDirectModule } from '../../../mcp/google-maps-direct.module';
 import { AirbnbModule } from '../../../mcp/airbnb.module';
@@ -46,9 +48,10 @@ import { TransitousDirectModule } from '../../../mcp/transitous-direct.module';
 import { BookingComModule } from '../../../mcp/booking-com.module';
 import { GoogleCalendarModule } from '../../../mcp/google-calendar.module';
 import { ItineraryItemsModule } from '../../../itinerary-items/itinerary-items.module';
+import { EffectivePlanExecutionModule } from '../../../decision-runtime/execution/effective-plan-execution.module';
 import { AgentModule } from '../../agent.module';
 import { TripsModule } from '../../../trips/trips.module';
-
+import { QueryRewritingModule } from '../../query-rewriting.module';
 // 根据环境变量调整限流配置
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const disableThrottler = process.env.DISABLE_THROTTLER === 'true';
@@ -65,11 +68,13 @@ const throttlerConfig = disableThrottler
   imports: [
     ThrottlerModule.forRoot(throttlerConfig),
     LlmModule,
+    QueryRewritingModule,
     PrismaModule, // 提供PrismaService
     SharedAssistantsModule,
     forwardRef(() => AgentModule), // 方案 A: 注入 AgentService 用于 route_and_run 编排
     AgentInfraModule, // V2.1: Infra层 (LLMExecutor, CoreGateway, TaskService)
     CacheModule, // 通用缓存模块
+    RedisModule, // PA 对话上下文 Redis 双写
     HotelDirectModule, // 酒店搜索服务
     GoogleMapsDirectModule, // Google Maps 服务（用于地理编码）
     AirbnbModule, // Airbnb/民宿搜索服务
@@ -87,7 +92,8 @@ const throttlerConfig = disableThrottler
     TransitousDirectModule, // Transitous MOTIS API（欧洲 fallback，55+ 国 GTFS）
     BookingComModule, // Booking.com 租车服务
     GoogleCalendarModule, // Google Calendar MCP 服务（日历管理）
-    ItineraryItemsModule, // 行程项服务（用于「提取攻略中的景点加入行程」）
+    ItineraryItemsModule,
+    EffectivePlanExecutionModule,
     forwardRef(() => TripsModule), // 方案2：ExecutionAgent 不可用时，TripSuggestionsService 作为优化降级
   ],
   controllers: [
@@ -96,6 +102,7 @@ const throttlerConfig = disableThrottler
     McpAgentLoopController, // 原生 Tool Calling + MCP 闭环（实验）
   ],
   providers: [
+    PaConversationContextService,
     PlanningAssistantService,
     PlanningAssistantV2Service, // V2 Service
     SmartRouterService, // 智能路由服务

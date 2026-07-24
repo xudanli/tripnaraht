@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.05_dual_forbid_reroute",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "Dual EDGE_FORBIDDEN a1\u2192a2 and a5\u2192a6",
+  "seed": 42,
+  "stabilityRuns": 100,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/05_dual_forbid_reroute.problem.json",
+  "notes": [
+    "staging_replay evidence pack bound for M4 real_gold_replay gate"
+  ],
+  "provenance": "staging_replay",
+  "evidencePackRef": "src/decision-runtime/solver/lab/gold/evidence/iceland/road_close/05_dual_forbid_reroute.evidence.json"
+}

@@ -1,0 +1,101 @@
+{
+  "evidenceType": "ROAD_PROD_CANARY_PRE_SIGNOFF_A_OBSERVE",
+  "evidenceLabel": "ROAD_PROD_CANARY_PRE_SIGNOFF_ENGINEERING_EVIDENCE",
+  "drillDefinition": "Prod Canary Road A/B/C Pre-Signoff Drill",
+  "drillStatus": "Road A/B/C Engineering Drill",
+  "productionCanaryGoStatus": "Road Production Canary GO: PENDING WEATHER SOAK SIGN-OFF",
+  "acceptanceMode": "PRE_SIGNOFF_REPLAY",
+  "replay": true,
+  "live": false,
+  "sourceProvider": "vegagerdin_gagnaveita",
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+  "startedAt": "2026-07-10T20:46:45.660Z",
+  "endedAt": "2026-07-10T20:46:45.921Z",
+  "tripId": "b0b88888-8888-4888-8888-888888888888",
+  "userId": "b0b88888-8888-4888-8888-888888888801",
+  "weatherCanaryTripId": "a0a99999-9999-4999-8999-999999999999",
+  "phase": "OBSERVE",
+  "canaryPhase": "OBSERVE",
+  "problemId": "problem_road_F208_b0b88888_1783716405816",
+  "ingestResponse": {
+    "ok": true,
+    "ingestId": "gci_84308f09-f2fc-4a2a-bc01-f081df446e18",
+    "requestId": "road_pre_signoff_608072ad-1dc3-4ef6-8d3a-4f0483818b28",
+    "outcome": "ASSERTION_EMITTED",
+    "transport": "remote_collector",
+    "authoritative": true,
+    "sourceProvider": "vegagerdin_gagnaveita",
+    "roadSource": "gagnaveita.vegagerdin.is",
+    "canonicalProcessed": true,
+    "roadId": "F208",
+    "currentStatus": "closed",
+    "detail": "assertion emitted status=CLOSED"
+  },
+  "fixture": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+  "fixtureMeta": {
+    "fixtureId": "gagnaveita-f208-replay-v1",
+    "replay": true,
+    "live": false,
+    "sourceUrl": "https://gagnaveita.vegagerdin.is/api/faerd2017_1",
+    "sourceProvider": "vegagerdin_gagnaveita",
+    "fetchedAt": "2026-07-10T20:46:45.661Z",
+    "egressHost": "47.87.131.183",
+    "egressRegion": "de-frankfurt",
+    "httpStatus": 200,
+    "contentType": "application/json; charset=utf-8",
+    "payloadSha256": "2fed5b6e76f3a1dfa082c5a9cf6d6dda2748d039a3982328633e10163bdd4c4b",
+    "roadId": "F208",
+    "replayScenario": "CLOSED",
+    "replayScenarioNote": "Live snapshot 2026-07-10T20:04:13Z shows F208 north segments as LIMITED/OPEN. Replay CLOSED uses segment identity IdButur=913020036 with LOKAD status enum from live record IdButur=913140036 (Hlöðuvallavegur).",
+    "statusSpliceFromRecordId": 913140036,
+    "replayObservedAtPatched": "2026-07-10T20:46:45.661Z"
+  },
+  "checks": [
+    {
+      "id": "PC-ROAD-A-001",
+      "pass": true,
+      "detail": "destination=IS productionCanary=true canaryPurpose=ROAD_SLICE_2"
+    },
+    {
+      "id": "PC-ROAD-A-002",
+      "pass": true,
+      "detail": "assertion.status=CLOSED"
+    },
+    {
+      "id": "PC-ROAD-A-003",
+      "pass": true,
+      "detail": "openProblems=1"
+    },
+    {
+      "id": "PC-ROAD-A-004",
+      "pass": true,
+      "detail": "lineageNodes=4"
+    },
+    {
+      "id": "PC-ROAD-A-005",
+      "pass": true,
+      "detail": "userVisible=false"
+    },
+    {
+      "id": "PC-ROAD-A-006",
+      "pass": true,
+      "detail": "pipeline created problem; no repair execution"
+    },
+    {
+      "id": "PC-ROAD-A-007",
+      "pass": true,
+      "detail": "effectivePlan=plan_1"
+    },
+    {
+      "id": "PC-ROAD-A-008",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    },
+    {
+      "id": "PC-ROAD-A-009",
+      "pass": true,
+      "detail": "replay=true live=false sourceProvider=vegagerdin_gagnaveita"
+    }
+  ],
+  "result": "PASS"
+}

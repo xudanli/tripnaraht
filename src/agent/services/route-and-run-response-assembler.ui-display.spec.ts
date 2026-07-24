@@ -28,9 +28,10 @@ describe('RouteAndRunResponseAssemblerService — ui_display.evidence_cards_ui',
           useValue: { set: jest.fn() },
         },
         {
-          provide: RouteRunItineraryPoiHydratorService,
+          provide:         RouteRunItineraryPoiHydratorService,
           useValue: {
             hydrateFromItinerary: jest.fn().mockResolvedValue({ poi_cards: [], poi_cards_by_day: [] }),
+            loadPersistedTripItinerary: jest.fn().mockResolvedValue(null),
           },
         },
       ],
@@ -254,6 +255,9 @@ describe('RouteAndRunResponseAssemblerService — ui_display.evidence_cards_ui',
     expect(qs![0].id).toBe('nl_fallback_clarification');
     expect(qs![0].question).toContain('目的地');
     expect(qs![0].type).toBe('text');
+    expect(resp.ui_state?.ui_status).toBe('awaiting_confirmation');
+    expect(resp.ui_state?.requires_user_action).toBe(true);
+    expect(resp.ui_state?.progress_percent).toBe(100);
   });
 
   it('explain.decision_log uses top-level orchestration decisionLog when state.decision_log is empty (RAG 轻量问答)', async () => {
@@ -320,6 +324,561 @@ describe('RouteAndRunResponseAssemblerService — ui_display.evidence_cards_ui',
 
     // 轻量问答走 SYSTEM2_REASONING，observability 须为 SYSTEM2，避免前端用 system_mode 误藏「决策日志」
     expect((resp.observability as { system_mode?: string }).system_mode).toBe('SYSTEM2');
+  });
+
+  it('sanitizes gate_result violations for client (no L3-PROOF / ROUTE_INFEASIBLE in payload)', async () => {
+    const assembler = await createAssembler();
+    const rawDetail =
+      '[VERIFY] ROUTE_INFEASIBLE [entity:OTHER:vehicle_terrain_arbitrator]: ' +
+      '[L3-PROOF|terrain.f_road_compatibility|OTHER:vehicle_terrain_arbitrator|cmp:LEQ|actual:|limit:|unit:|slack:|evidence:MODEL:user_query,intent_virtual_car_rental,itinerary_text] ' +
+      '【车型-路况仲裁·意图合规】行程含 F-road/高地特征，用户话术表明使用 2WD/经济型车辆。';
+    const state: OrchestratorState = {
+      request_id: 'gate-sanitize-1',
+      current_step: 'DONE',
+      verdict: 'ALLOW',
+      plan_version: 0,
+      decision_log: [],
+      evidence_registry: new Map(),
+      errors: [],
+      metadata: {
+        started_at: new Date().toISOString(),
+        last_updated_at: new Date().toISOString(),
+      },
+    } as OrchestratorState;
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: 'ok',
+      stepsExecuted: [],
+      totalDuration: 1,
+      result: {
+        state,
+        itinerary: { request_id: 'gate-sanitize-1', days: [] },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [
+            {
+              type: 'SAFETY',
+              severity: 'HARD',
+              detail: rawDetail,
+              verify_synthetic: true,
+            },
+          ],
+          required_adjustments: [],
+          confidence: 0.9,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeDynamicResponse({
+      request: { request_id: 'gate-sanitize-1', message: '冰岛自驾' } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result.payload as {
+      orchestrationResult?: { gate_result?: { violations?: Array<{ detail?: string; display_headline_zh?: string }> } };
+      safety_surface?: { verify_issues?: Array<{ message?: string; headline_zh?: string; type?: string }> };
+    };
+    const gate = payload.orchestrationResult?.gate_result;
+    expect(gate?.violations).toHaveLength(1);
+    expect(gate?.violations?.[0]?.detail).not.toContain('[L3-PROOF');
+    expect(gate?.violations?.[0]?.detail).not.toContain('ROUTE_INFEASIBLE');
+    expect(gate?.violations?.[0]?.display_headline_zh).toContain('可执行性');
+  });
+
+  it('sanitizes VERIFY decision_log metadata.issues for advisory POI_CLOSED', async () => {
+    const assembler = await createAssembler();
+    const l3 =
+      '[L3-PROOF|entity.opening_hours_overlap|POI:req-1_day1_item1|cmp:LEQ|actual:|limit:|unit:|slack:|evidence:OPENING_HOURS] ' +
+      'POI "Krossá River Crossing" 缺少开放时间数据';
+    const verifyEntry: DecisionLogEntry = {
+      request_id: 'advisory-1',
+      step: 'VERIFY',
+      actor: 'Orchestrator',
+      inputs_summary: '验证',
+      outputs_summary: '共发现 1 个问题',
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        issues: [{ code: 'POI_CLOSED', class: 'ADVISORY', message: l3 }],
+      },
+    };
+    const state: OrchestratorState = {
+      request_id: 'advisory-1',
+      current_step: 'DONE',
+      verdict: 'ALLOW',
+      plan_version: 0,
+      decision_log: [verifyEntry],
+      evidence_registry: new Map(),
+      errors: [],
+      metadata: {
+        started_at: new Date().toISOString(),
+        last_updated_at: new Date().toISOString(),
+      },
+    } as OrchestratorState;
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: 'ok',
+      stepsExecuted: [],
+      totalDuration: 1,
+      decisionLog: [verifyEntry],
+      result: {
+        state,
+        itinerary: { request_id: 'advisory-1', days: [] },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 0.9,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeDynamicResponse({
+      request: { request_id: 'advisory-1', message: '冰岛' } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const explain = resp.explain as { decision_log?: Array<{ metadata?: { issues?: Array<Record<string, unknown>> } }> };
+    const issue = explain.decision_log?.find((e) => e.metadata?.issues)?.metadata?.issues?.[0];
+    expect(issue?.message).not.toContain('[L3-PROOF');
+    expect(issue?.code_label_zh).toContain('开放时间');
+    expect(issue?.class_label_zh).toBe('提示');
+  });
+
+  it('itinerary CRUD short-circuit uses planning success surface (not consultation red)', async () => {
+    const assembler = await createAssembler();
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: '已将行程中「冰河湖」的行程时间调整为 11:00–12:40。',
+      stepsExecuted: [{ stepId: 'REPAIR', skillName: 'trip.applyEdit', success: true, duration: 1 }],
+      totalDuration: 1,
+      totalCost: 0,
+      result: {
+        state: {
+          request_id: 'crud-1',
+          current_step: 'DONE',
+          verdict: 'ALLOW',
+          plan_version: 1,
+          decision_log: [],
+          evidence_registry: new Map(),
+          errors: [],
+          metadata: {
+            started_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+            itinerary_item_update_intake: true,
+            itinerary_item_update_short_circuit: { applied: true, updatedCount: 1 },
+          },
+        } as OrchestratorState,
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 1,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeStateMachineResponse({
+      request: { request_id: 'crud-1', message: '修改冰河湖时间', trip_id: 'trip-1' } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.ui_surface).toBe('planning');
+    expect(payload?.itinerary_item_crud).toBe(true);
+    expect(payload?.consultation_itinerary_payload_suppressed).toBeUndefined();
+    expect(resp.route.ui_hint.message).toBe('行程已更新');
+    expect(resp.route.ui_hint.status).toBe('done');
+    expect(resp.result?.status).toBe('OK');
+    expect(payload?.iron_shield_ui_suppressed).toBe(true);
+    expect(payload?.decision_cockpit_ui_suppressed).toBe(true);
+    expect(resp.explain?.decision_cockpit).toBeUndefined();
+    expect(payload?.evidence_bundle).toBeUndefined();
+    expect(payload?.ui_display).toBeUndefined();
+    expect(payload?.decision_metadata).toBeUndefined();
+  });
+
+  it('lodging replace short-circuit is applied success, not draft-pending adjust card', async () => {
+    const assembler = await createAssembler();
+    const answer =
+      '已将 **2026-07-22** 的住宿从「黄金瀑布酒店」修改为「格伦达菲厄泽宾馆」，并写入当前行程。';
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: answer,
+      stepsExecuted: [{ stepId: 'INTAKE', skillName: 'lodging.replace', success: true, duration: 1 }],
+      totalDuration: 1,
+      totalCost: 0,
+      result: {
+        state: {
+          request_id: 'lodge-1',
+          current_step: 'DONE',
+          verdict: 'ALLOW',
+          plan_version: 1,
+          decision_log: [],
+          evidence_registry: new Map(),
+          errors: [],
+          narration: {
+            user_friendly_summary: answer,
+            day_by_day_narrative: [],
+            highlights: [],
+            tips: [],
+          },
+          metadata: {
+            started_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+            lodging_replace_intake: true,
+            lodging_replace_short_circuit: { applied: true, toName: '格伦达菲厄泽宾馆' },
+            route_and_run_intent: { primary: 'ITINERARY_ADJUST' },
+          },
+        } as OrchestratorState,
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 1,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeStateMachineResponse({
+      request: {
+        request_id: 'lodge-1',
+        message:
+          '请将我行程中7月22日的住宿从「黄金瀑布酒店」修改为「格伦达菲厄泽宾馆」。',
+        trip_id: 'trip_15c50a69931845ca',
+      } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.itinerary_item_crud).toBe(true);
+    expect(payload?.itinerary_adjust_result).toBeUndefined();
+    expect(resp.route.ui_hint.message).toBe('行程已更新');
+    expect(resp.route.ui_hint.status).toBe('done');
+    expect(String(resp.result?.answer_text ?? '')).toContain('格伦达菲厄泽宾馆');
+    expect(String(resp.result?.answer_text ?? '')).not.toContain('应用到行程');
+    expect(String(resp.result?.answer_text ?? '')).not.toContain('景点密度');
+  });
+
+  it('ITINERARY_ADJUST suppresses decision cockpit and uses day narrative answer', async () => {
+    const assembler = await createAssembler();
+    const hydrator = (assembler as unknown as { poiHydrator: RouteRunItineraryPoiHydratorService }).poiHydrator;
+    (hydrator.hydrateFromItinerary as jest.Mock).mockResolvedValue({
+      poi_cards: [{ poi_id: 'p1', display_name_zh: '辛格维利尔' }],
+      poi_cards_by_day: [],
+    });
+
+    const itinerary = {
+      request_id: 'adj-1',
+      days: [
+        {
+          day_index: 1,
+          date: '2026-06-02',
+          items: [{ poi_id: 'p1', name: 'Thingvellir' }],
+        },
+      ],
+    };
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText:
+        '**基于当前行程会话的决策说明：**\n\n**推荐方案：** `plan-philosophy-aligned`',
+      stepsExecuted: [{ stepId: 'NARRATE', skillName: 'narrate', success: true, duration: 1 }],
+      totalDuration: 1,
+      totalCost: 0,
+      result: {
+        state: {
+          request_id: 'adj-1',
+          current_step: 'DONE',
+          verdict: 'ALLOW',
+          plan_version: 2,
+          decision_log: [],
+          evidence_registry: new Map(),
+          errors: [],
+          narration: {
+            user_friendly_summary:
+              '安全守护者 Abu 检查了行程的所有路段，确认计划安全可行。\n\n节奏调节者 Dr.Dre 检查了行程节奏，认为当前安排合理。\n\n路线守护者 Neptune 检查了路线完整性，所有路段均可用。\n\n为您规划了2天的行程，行程已通过安全检查，包含黄金圈等亮点。',
+            day_by_day_text_zh:
+              '第 2 天（2026-06-02）\n上午从雷克雅未克出发，游览辛格维利尔国家公园、盖歇尔间歇泉与黄金瀑布，下午返回雷克雅未克；晚餐可选 Bæjarins Beztu 或 Messinn。',
+          },
+          metadata: {
+            started_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+            itinerary_adjust_intake: true,
+            route_and_run_intent: {
+              primary: 'ITINERARY_ADJUST',
+              sub_signals: {},
+              slot_placement_requested: false,
+              intake_nl: '',
+            },
+          },
+        } as OrchestratorState,
+        itinerary,
+        decisionState: {
+          optimizationHints: {
+            method: 'CGUS',
+            recommendedAlternativeId: 'plan-philosophy-aligned',
+            decisionVerdictNarrationZh: '**推荐方案：** `plan-philosophy-aligned`',
+          },
+        },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 0.9,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeStateMachineResponse({
+      request: {
+        request_id: 'adj-1',
+        message: '请将我的6月2日行程更新为黄金圈',
+        trip_id: 'trip-iceland-1',
+      } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.itinerary_adjust_intake).toBe(true);
+    expect(payload?.decision_cockpit_ui_suppressed).toBe(true);
+    expect(payload?.iron_shield_ui_suppressed).toBe(true);
+    expect(resp.explain?.decision_cockpit).toBeUndefined();
+    expect(resp.explain?.optimization).toBeUndefined();
+    expect(resp.explain?.unified).toBeUndefined();
+    expect(resp.explain?.guardian_personas).toBeUndefined();
+    expect(payload?.candidates).toEqual([]);
+    expect(payload?.alternatives).toEqual([]);
+    expect(payload?.safety_surface).toBeUndefined();
+    expect(payload?.evidence_bundle).toBeUndefined();
+    expect((resp.observability as { poi_planning?: { feasibility?: string } })?.poi_planning?.feasibility).toBe(
+      'ok',
+    );
+    expect(resp.route.ui_hint.message).toBe('行程草案已更新');
+    expect(resp.result?.answer_text).toContain('辛格维利尔');
+    expect(resp.result?.answer_text).not.toContain('决策说明');
+    expect(resp.result?.answer_text).not.toContain('plan-philosophy-aligned');
+    expect(resp.result?.answer_text).not.toContain('安全守护者 Abu');
+    expect(resp.result?.answer_text).not.toContain('Dr.Dre');
+    expect(resp.result?.answer_text).not.toContain('Neptune');
+  });
+
+  it('ITINERARY_ADJUST detected from trip-bound message when metadata flags missing', async () => {
+    const assembler = await createAssembler();
+    const goldenCircleMsg =
+      '请将我的6月2日行程更新为：上午从雷克雅未克出发，游览黄金圈（辛格维利尔国家公园、盖歇尔间歇泉、黄金瀑布），下午返回雷克雅未克。晚餐推荐为Bæjarins Beztu热狗摊或Messinn餐厅。请生成新的行程草案。';
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: '安全守护者 Abu 检查了行程的所有路段，确认计划安全可行。',
+      stepsExecuted: [],
+      totalDuration: 1,
+      result: {
+        state: {
+          request_id: 'adj-fallback',
+          current_step: 'DONE',
+          verdict: 'ALLOW',
+          plan_version: 1,
+          decision_log: [],
+          evidence_registry: new Map(),
+          errors: [],
+          narration: {
+            day_by_day_text_zh: '2026-06-02\n黄金圈一日游草案。',
+          },
+          metadata: {
+            started_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+          },
+        } as OrchestratorState,
+        itinerary: { request_id: 'adj-fallback', days: [{ day_index: 2, date: '2026-06-02', items: [] }] },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 0.9,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeStateMachineResponse({
+      request: {
+        request_id: 'adj-fallback',
+        message: goldenCircleMsg,
+        trip_id: 'trip-iceland-1',
+      } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.itinerary_adjust_intake).toBe(true);
+    expect(payload?.decision_cockpit_ui_suppressed).toBe(true);
+    expect(resp.result?.answer_text).toContain('黄金圈');
+    expect(resp.result?.answer_text).not.toContain('安全守护者 Abu');
+  });
+
+  it('ITINERARY_ADJUST strips harness verify_synthetic gate violations and scopes timeline to target day', async () => {
+    const assembler = await createAssembler();
+    const goldenCircleMsg =
+      '请将我的6月2日行程更新为：上午从雷克雅未克出发，游览黄金圈（辛格维利尔国家公园、盖歇尔间歇泉、黄金瀑布），下午返回雷克雅未克。请生成新的行程草案。';
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: 'ignored',
+      stepsExecuted: [],
+      totalDuration: 1,
+      result: {
+        state: {
+          request_id: 'adj-gate',
+          current_step: 'DONE',
+          verdict: 'ALLOW',
+          plan_version: 1,
+          decision_log: [],
+          evidence_registry: new Map(),
+          errors: [],
+          trip_plan_request: {
+            request_id: 'adj-gate',
+            destination: '冰岛',
+            date_range: { start_date: '2026-06-01', end_date: '2026-06-02' },
+            days: 2,
+          },
+          narration: {
+            day_by_day_narrative: [
+              { day: 1, date: '2026-06-01', narrative: '第 1 天：米湖、众神瀑布等。' },
+              { day: 2, date: '2026-06-02', narrative: '第 2 天：黄金圈一日游。' },
+            ],
+          },
+          metadata: {
+            started_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+            itinerary_adjust_intake: true,
+            intake_user_message: goldenCircleMsg,
+          },
+        } as OrchestratorState,
+        itinerary: {
+          request_id: 'adj-gate',
+          days: [
+            { day_index: 1, date: '2026-06-01', items: [{ poi_id: 'north', name: '米湖' }] },
+            { day_index: 2, date: '2026-06-02', items: [{ poi_id: 'gc', name: '黄金瀑布' }] },
+          ],
+        },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [
+            {
+              type: 'SAFETY',
+              severity: 'HARD',
+              detail:
+                'UNKNOWN。VERIFY requires boundResearchSnapshotId on visible state (RESEARCH freeze).',
+              verify_synthetic: true,
+            },
+          ],
+          required_adjustments: [],
+          confidence: 0.8,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeStateMachineResponse({
+      request: {
+        request_id: 'adj-gate',
+        message: goldenCircleMsg,
+        trip_id: 'trip-iceland-1',
+      } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    const orchGate = (payload?.orchestrationResult as { gate_result?: { violations?: unknown[] } })
+      ?.gate_result;
+    expect(orchGate?.violations).toEqual([]);
+    expect(payload?.timeline).toEqual([
+      expect.objectContaining({ date: '2026-06-02' }),
+    ]);
+    expect(resp.result?.answer_text).toContain('黄金圈');
+    expect(resp.result?.answer_text).not.toContain('米湖');
+  });
+
+  it('assembleClaudeStateMachineResponse surfaces accommodations from orchestration enrich', async () => {
+    const assembler = await createAssembler();
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: 'ok',
+      stepsExecuted: [{ stepId: 'NARRATE', skillName: 'narrate', success: true, duration: 1 }],
+      totalDuration: 1,
+      totalCost: 0,
+      result: {
+        state: {
+          request_id: 'hotel-sm-1',
+          current_step: 'DONE',
+          verdict: 'ALLOW',
+          plan_version: 1,
+          decision_log: [],
+          evidence_registry: new Map(),
+          errors: [],
+          metadata: {
+            started_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+            itinerary_full_trip_replan: true,
+            full_trip_replan_hotel_requested: true,
+          },
+        } as OrchestratorState,
+        itinerary: {
+          request_id: 'hotel-sm-1',
+          days: [{ date: '2026-11-01', items: [] }],
+        },
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 1,
+          evidence_refs: [],
+        },
+        accommodations: [{ id: 'h1', name: 'Hotel A', nightIndex: 1 }],
+        accommodation_night_groups: [{ night_index: 1, cards: [{ id: 'h1', name: 'Hotel A' }] }],
+        hotel_search_meta: { strategy: 'per_night_full_trip_replan', sampled_nights: [1, 2] },
+        routing: { target: 'hotel' },
+      } as OrchestrationResult['result'],
+    };
+
+    const resp = await assembler.assembleClaudeStateMachineResponse({
+      request: {
+        request_id: 'hotel-sm-1',
+        message: '还缺住宿',
+        trip_id: 'trip-1',
+      } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.accommodations).toHaveLength(1);
+    expect(payload?.accommodation_night_groups).toHaveLength(1);
+    expect(payload?.hotel_search_meta).toEqual(
+      expect.objectContaining({ strategy: 'per_night_full_trip_replan' }),
+    );
   });
 
 });

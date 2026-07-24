@@ -10,19 +10,34 @@ import type { ReadinessTripFindingScope } from './readiness-findings.types';
 import type { CoverageDisclosure } from '../../../travel-cognition';
 import type { NonTransactionalReplanResult } from '../../../travel-cognition';
 import type { GuardianPersonaPresentation } from '../../decision/shared/guardian-presentation.types';
+import type { ResolvedSegmentDistanceThresholds } from '../../trip-constraint-solver/utils/segment-distance-threshold.util';
 
 // ==================== 准备度分数类型 ====================
 
 /**
- * 准备度分数详情
+ * 准备度分数详情 — PR-1 起为「出发准备完成度」
  */
 export interface ReadinessScoreBreakdown {
-  overall: number;              // 总体分数 0-100
-  evidenceCoverage: number;     // 证据覆盖率 0-100
-  scheduleFeasibility: number;  // 时间可行性 0-100
-  transportCertainty: number;   // 交通确定性 0-100
-  safetyRisk: number;           // 安全风险分数 0-100 (越高越安全)
-  buffers: number;              // 缓冲时间分数 0-100
+  /** 出发准备总体完成度 0–100 */
+  overall: number;
+  entryTransit: number;
+  healthInsurance: number;
+  gearPacking: number;
+  bookingsCredentials: number;
+  logisticsComms: number;
+  emergency: number;
+  /**
+   * @deprecated PR-1 — 方案维度已迁至 feasibility-report；过渡期内可能缺省
+   */
+  evidenceCoverage?: number;
+  /** @deprecated 使用 feasibility-report.dimensions.schedule */
+  scheduleFeasibility?: number;
+  /** @deprecated 使用 feasibility-report.dimensions.transport */
+  transportCertainty?: number;
+  /** @deprecated 目的地风险见 emergency；路线风险见 feasibility */
+  safetyRisk?: number;
+  /** @deprecated 使用 feasibility-report issues */
+  buffers?: number;
 }
 
 /**
@@ -48,6 +63,29 @@ export interface ReadinessScoreFinding {
   issueKind?: string;
   anchors?: Record<string, unknown>;
   uiHints?: Record<string, unknown>;
+  /** POI Access Engine — 与 feasibility issues[].visitorAccess 同形 */
+  visitorAccess?: {
+    evaluation: {
+      verdict: string;
+      poiId: string;
+      message: string;
+      confidence: string;
+      planBHints: Array<{
+        action: string;
+        detail: string;
+        suggestedArrivalTime?: string;
+        alternativePoiId?: string;
+      }>;
+      crowding?: {
+        crowdLevel?: string;
+        predictedWaitP50?: number;
+        predictedWaitP90?: number;
+        disclosureLabel?: string;
+      };
+    };
+    hasReservationEvidence?: boolean;
+    deferredLive?: boolean;
+  };
   /** 与树形 findings 对齐：覆盖缺口时的行程定位 */
   tripScope?: ReadinessTripFindingScope;
 }
@@ -111,6 +149,7 @@ export interface ReadinessScoreResponse {
   /** 最近一次级联影响预分析（trip.metadata 持久化 + 实时计算） */
   causalPreAnalysis?: import('../../../travel-cognition').NonTransactionalReplanResult;
   /** 供准备度 UI 渲染的级联提示卡片 */
+  /** @deprecated P4 — 请从 feasibility-report repair-options 或 trip.metadata.readinessCausalPreAnalysis 读取 */
   cascadeUiHints?: ReadinessCascadeUiHint[];
 }
 
@@ -266,6 +305,11 @@ export interface ApplyRepairRequest {
   runGuardianNegotiation?: boolean;
   /** 为 true 时跳过 pre_repair 低共识 REJECT 门控，强制执行 Neptune 修复 */
   forceDecisionRepair?: boolean;
+  /**
+   * P4 — 写库 authority：`feasibility` 允许方案 mutate；`readiness_prep` 仅勾选/标记/刷新
+   * @default readiness_prep when called from legacy readiness API
+   */
+  repairAuthority?: 'feasibility' | 'readiness_prep';
 }
 
 /**
@@ -468,11 +512,15 @@ export interface SegmentCoverage {
   fromPoiId: string;
   toPoiId: string;
   day: number;
+  /** 全程 0-based 序号，便于 journey-map trunkSegmentIds 引用 */
+  sequenceIndex?: number;
   distance: number; // km
   duration: number; // minutes
   routeType: 'driving' | 'walking' | 'transit' | 'cycling';
   coverageStatus: SegmentCoverageStatus;
   polyline: string; // Google Encoded Polyline / Mapbox polyline
+  /** 几何来源：route_api=贴路，straight_line=直线回退 */
+  geometrySource?: 'route_api' | 'straight_line' | 'cached_metadata';
   hazards: SegmentHazard[];
 }
 
@@ -551,10 +599,13 @@ export interface CoverageMapData {
     weather?: string; // 天气数据最后更新时间
     roadClosure?: string; // 道路封闭数据最后更新时间
     openingHours?: string; // 开放时间数据最后更新时间
+    inventory?: string; // 住宿库存/预订确认最后更新时间
   };
   /** 规划期 vs 临行前：控制路况类缺口是否展示 */
   readinessPhase?: 'planning' | 'pre_departure' | 'in_trip' | 'past';
   daysUntilStart?: number;
   phaseHint?: string;
   deferredLiveGapCount?: number;
+  /** 生效的单段距离阈值（用户 > 国家 > 全球） */
+  segmentDistanceThresholds?: ResolvedSegmentDistanceThresholds;
 }

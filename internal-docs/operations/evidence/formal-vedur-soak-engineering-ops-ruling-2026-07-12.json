@@ -1,0 +1,103 @@
+{
+  "evidenceType": "FORMAL_VEDUR_SOAK_ENGINEERING_OPS_RULING",
+  "ruledAt": "2026-07-12T15:42:00.000Z",
+  "activeSoakEvidence": "internal-docs/operations/evidence/formal-vedur-soak-2026-07-11.json",
+  "automatedCheckEvidence": "internal-docs/operations/evidence/formal-vedur-soak-check-2026-07-11.json",
+  "priorGapEvidence": [
+    "internal-docs/operations/evidence/formal-vedur-soak-abort-2026-07-11.json",
+    "internal-docs/operations/evidence/formal-vedur-soak-superseded-cron-gap-2026-07-11.json",
+    "internal-docs/operations/evidence/formal-vedur-soak-abort-cron-gap-2026-07-11.json",
+    "internal-docs/operations/evidence/formal-vedur-soak-cron-repair-2026-07-11.json"
+  ],
+  "automatedVerdict": "FORMAL_VEDUR_SOAK_FAIL",
+  "engineeringOpsVerdict": "CONDITIONAL_PASS_WITH_DOCUMENTED_GAP",
+  "signoffEligible": true,
+  "signoffScope": "VEDUR_AUTHORITY_PATH_ONLY",
+  "signoffNotInScope": [
+    "full_24h_uninterrupted_collector_uptime_certificate",
+    "sustained_live_promotion_without_pm2_remediation"
+  ],
+  "soakTimeline": {
+    "activeSoakStartedAt": "2026-07-11T15:20:50.819Z",
+    "activeSoakEndsAt": "2026-07-12T15:20:50.819Z",
+    "lastSuccessfulDevboxIngestAt": "2026-07-12T10:00:02.767Z",
+    "lastSuccessfulFrankfurtHttp200BeforeGap": "2026-07-12T10:00:02Z",
+    "continuousWindowHours": 18.65,
+    "tailGapHours": 5.35,
+    "checkedAt": "2026-07-12T15:40:54.627Z"
+  },
+  "gaps": [
+    {
+      "gapId": "GAP-A-CRON-SOURCE-DASH",
+      "window": "2026-07-11T06:29:09Z → 2026-07-11T15:16:00Z",
+      "durationHours": 8.78,
+      "rootCause": "Frankfurt crontab used `source` under /bin/sh (dash); scheduled collector never ran",
+      "disposition": "ABORT_AND_RESTART",
+      "dispositionEvidence": "formal-vedur-soak-abort-cron-gap-2026-07-11.json",
+      "repairEvidence": "formal-vedur-soak-cron-repair-2026-07-11.json",
+      "impactOnActiveSoak": "NONE — active soak restarted after repair at 15:20:50Z"
+    },
+    {
+      "gapId": "GAP-B-DEVBOX-PM2-TAIL",
+      "window": "2026-07-12T10:00:02Z → 2026-07-12T15:20:50Z",
+      "durationHours": 5.35,
+      "rootCause": "Devbox PM2 collector stack offline; tunnel :19080 refused; Frankfurt cron continued but POST failed",
+      "symptoms": {
+        "devboxIngestPort3000": "down",
+        "frankfurtTunnelPort19080": "connection_refused",
+        "frankfurtHttp200": 76,
+        "frankfurtConnectionRefused": 22,
+        "missedCronTicks": 21
+      },
+      "disposition": "DOCUMENT_GAP",
+      "authorityPathInvalidated": false
+    }
+  ],
+  "criteriaAssessment": {
+    "calendar24hElapsed": { "auto": true, "ops": "ACCEPT" },
+    "cronSuccessRateGte95Pct": {
+      "auto": false,
+      "autoValue": 0.784,
+      "continuousWindowValue": 1.0,
+      "ops": "WAIVED",
+      "rationale": "All 21 misses align with GAP-B tail outage; 76/76 ticks succeeded during 18.65h continuous window"
+    },
+    "noSustainedTunnelOutageGt15Min": {
+      "auto": false,
+      "autoValueHours": 5.35,
+      "ops": "DOCUMENTED_INFRA_GAP",
+      "rationale": "Outage is devbox PM2/tunnel infra, not Vedur authority logic regression"
+    },
+    "tripMetadataIngestedOrUnchanged": {
+      "auto": true,
+      "rawCount": 96,
+      "pollCount": 48,
+      "ingestedPolls": 48,
+      "outcomes": { "INGESTED": 11, "UNCHANGED": 37 },
+      "ops": "ACCEPT"
+    },
+    "noProviderTransitionAnomaly": {
+      "auto": true,
+      "lastPollSource": "vedur.is",
+      "lastPollProvider": "iceland_met",
+      "legacyWriteInvocations": 0,
+      "ops": "ACCEPT"
+    }
+  },
+  "requiredBeforeSustainedLive": [
+    "Restore devbox PM2 stack: scripts/install-devbox-collector-pm2.sh",
+    "Verify Frankfurt tunnel :19080 health and one manual collector http=200",
+    "Restart Nest :3002 with intended promotion env (shadow vs live) — current pid had SHADOW_MODE=0 at check time",
+    "Enable PM2 startup on boot (pm2 startup + pm2 save) or document devbox sleep policy"
+  ],
+  "recommendedNotBlocking": [
+    "Optional 6h supplementary soak after PM2 restoration to cover GAP-B window",
+    "pm2 monit / health alert on :3000 and :19080 during any live canary"
+  ],
+  "auditNote": "Automated check JSON remains FORMAL_VEDUR_SOAK_FAIL for machine audit; Engineering/Ops ruling supersedes for authority-path sign-off only.",
+  "signoffOwners": {
+    "weatherEngineeringOwner": "PENDING — Engineering self-assessment recorded",
+    "opsObserverOwner": "PENDING — name required",
+    "releaseSignoffOwner": "PENDING — name required"
+  }
+}

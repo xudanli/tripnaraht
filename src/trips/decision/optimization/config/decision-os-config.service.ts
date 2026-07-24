@@ -10,13 +10,14 @@
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { resolveCgusRagEvidenceEnabled } from '../../../../decision/kernel/kernel-cgus-rag.constants';
 
 // ========== 配置类型定义 ==========
 
 export interface DecisionOSConfig {
   general: GeneralConfig;
   decision: DecisionConfig;
-  /** RAG → evidence → CGUS 侧链配置（默认关闭） */
+  /** RAG → evidence → WorldConstraintStore → CGUS 侧链配置 */
   ragEvidence: RagEvidenceConfig;
   learning: LearningConfig;
   cache: CacheConfig;
@@ -62,8 +63,8 @@ export interface DecisionConfig {
 
 export interface RagEvidenceConfig {
   /**
-   * 全局 RAG 证据链开关（默认 false，避免 OPTIMIZE 路径每次打库检索）。
-   * 建议与环境变量门闸并存：config 为主，env 作为最低层 fallback。
+   * 全局 RAG 证据链开关。
+   * 默认：staging/production 为 true；development 为 false（可用 `DECISION_OS_RAG_EVIDENCE_ENABLED` 覆盖）。
    */
   enabled: boolean;
   /** 触发检索的最小字符数（query 拼接后的 base 长度）。 */
@@ -396,7 +397,9 @@ export class DecisionOSConfigService implements OnModuleInit {
         ...overrides?.decision,
       },
       ragEvidence: {
-        enabled: (process.env.DECISION_OS_RAG_EVIDENCE_ENABLED ?? 'false').toLowerCase() === 'true',
+        enabled: resolveCgusRagEvidenceEnabled({
+          configEnabled: overrides?.ragEvidence?.enabled,
+        }),
         minQueryLength: parseInt(process.env.DECISION_OS_RAG_EVIDENCE_MIN_QUERY_LEN ?? '1', 10),
         confidenceThreshold: parseFloat(process.env.DECISION_OS_RAG_EVIDENCE_CONFIDENCE_THRESHOLD ?? '0.25'),
         ...overrides?.ragEvidence,

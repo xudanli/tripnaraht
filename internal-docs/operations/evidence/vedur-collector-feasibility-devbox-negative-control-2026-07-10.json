@@ -1,0 +1,89 @@
+{
+  "evidenceType": "VEDUR_COLLECTOR_FEASIBILITY_SPIKE",
+  "probedAt": "2026-07-10T18:16:34.558Z",
+  "collectorCandidate": "devbox-negative-control",
+  "collectorEgressIp": "114.55.244.12",
+  "vedurHost": "xmlweather.vedur.is",
+  "vedurApiUrl": "https://xmlweather.vedur.is/?op_w=xml&type=obs&lang=en&view=xml&ids=1",
+  "spikePass": false,
+  "failureStage": "TCP",
+  "stability": {
+    "runs": 3,
+    "gapMs": 2000,
+    "allPass": false,
+    "latencyMsP50": 30026,
+    "samples": [
+      {
+        "run": 1,
+        "ok": false,
+        "ms": 30025,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "run": 2,
+        "ok": false,
+        "ms": 30026,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "run": 3,
+        "ok": false,
+        "ms": 30125,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ]
+  },
+  "sampleXmlPreview": "",
+  "ipRestrictionObserved": "likely — devbox cannot reach 130.208.87.200",
+  "recommendedPollIntervalMinutes": 15,
+  "nextStep": "Try another candidate region/host; if all fail, reassess Vedur as production authority",
+  "steps": [
+    {
+      "step": "collector-egress-ip",
+      "ok": true,
+      "detail": "114.55.244.12"
+    },
+    {
+      "step": "DNS-A",
+      "ok": true,
+      "detail": "130.208.87.200"
+    },
+    {
+      "step": "proxy-env",
+      "ok": true,
+      "detail": "none"
+    },
+    {
+      "step": "TCP-443",
+      "ok": false,
+      "detail": "connect timeout or refused"
+    },
+    {
+      "step": "TLS-handshake",
+      "ok": false,
+      "detail": "timeout",
+      "ms": 15160
+    },
+    {
+      "step": "HTTP-XML-run-1",
+      "ok": false,
+      "detail": "status=n/a bytes=0 sha256=e3b0c44298fc…",
+      "ms": 30025
+    },
+    {
+      "step": "HTTP-XML-run-2",
+      "ok": false,
+      "detail": "status=n/a bytes=0 sha256=e3b0c44298fc…",
+      "ms": 30026
+    },
+    {
+      "step": "HTTP-XML-run-3",
+      "ok": false,
+      "detail": "status=n/a bytes=0 sha256=e3b0c44298fc…",
+      "ms": 30125
+    }
+  ]
+}

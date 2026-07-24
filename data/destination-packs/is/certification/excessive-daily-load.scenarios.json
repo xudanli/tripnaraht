@@ -1,0 +1,61 @@
+[
+  {
+    "scenarioId": "CERT-IS-DAILY-LOAD-BLOCK",
+    "country": "IS",
+    "semanticKey": "EXCESSIVE_DAILY_LOAD",
+    "facts": {
+      "driving": {
+        "hours": 10,
+        "thresholdHours": 8,
+        "dayIndex": 1,
+        "excessive": true
+      },
+      "load": { "physicalLoad": 1.25 },
+      "candidate": { "isSplitDay": false, "id": "original" }
+    },
+    "candidateUsesRoute": true,
+    "expect": {
+      "matched": true,
+      "ruleId": "IS_DAILY_LOAD_EXCESSIVE_BLOCK",
+      "verdict": "BLOCK"
+    }
+  },
+  {
+    "scenarioId": "CERT-IS-DAILY-LOAD-SPLIT-BYPASS",
+    "country": "IS",
+    "semanticKey": "EXCESSIVE_DAILY_LOAD",
+    "facts": {
+      "driving": {
+        "hours": 6,
+        "thresholdHours": 8,
+        "dayIndex": 1,
+        "excessive": false
+      },
+      "load": { "physicalLoad": 0.75 },
+      "candidate": { "isSplitDay": true, "id": "cand_split_day" }
+    },
+    "candidateUsesRoute": false,
+    "expect": { "matched": false }
+  },
+  {
+    "scenarioId": "CERT-IS-DAILY-LOAD-SPLIT-PARTIAL-WARN",
+    "country": "IS",
+    "semanticKey": "EXCESSIVE_DAILY_LOAD",
+    "facts": {
+      "driving": {
+        "hours": 9,
+        "thresholdHours": 8,
+        "dayIndex": 1,
+        "excessive": true
+      },
+      "load": { "physicalLoad": 1.1 },
+      "candidate": { "isSplitDay": true, "id": "cand_split_day" }
+    },
+    "candidateUsesRoute": true,
+    "expect": {
+      "matched": true,
+      "ruleId": "IS_DAILY_LOAD_SPLIT_PARTIAL_WARN",
+      "verdict": "WARNING"
+    }
+  }
+]

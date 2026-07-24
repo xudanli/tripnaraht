@@ -1,0 +1,18 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.03_f208_shift_wide_tw",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "F208 closed \u2014 SHIFT with wide TW",
+  "seed": 42,
+  "stabilityRuns": 100,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/03_f208_shift_wide_tw.problem.json",
+  "notes": [
+    "prefer locality for SHIFT",
+    "staging_replay evidence pack bound for M4 real_gold_replay gate"
+  ],
+  "provenance": "staging_replay",
+  "maxChangedActivities": 4,
+  "evidencePackRef": "src/decision-runtime/solver/lab/gold/evidence/iceland/road_close/03_f208_shift_wide_tw.evidence.json"
+}

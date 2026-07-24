@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.09_booked_spa_pin_preserved",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "Parking chaos \u2014 booked spa slot pin preserved",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/parking_full/problems/09_booked_spa_pin_preserved.problem.json",
+  "notes": [
+    "require booked a3"
+  ],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

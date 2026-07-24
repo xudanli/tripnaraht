@@ -42,7 +42,7 @@ describe('TransportSearchSkill', () => {
   it('应该被定义', () => {
     expect(skill).toBeDefined();
     expect(skill.metadata.name).toBe('transport.search');
-    expect(skill.metadata.description).toBe('搜索两点之间的交通路线');
+    expect(skill.metadata.description).toContain('transport');
   });
 
   describe('execute', () => {
@@ -146,12 +146,75 @@ describe('TransportSearchSkill', () => {
         destination: { lat: 30.25, lng: 120.15 },
       });
 
-      expect(resolveEntities).toHaveBeenCalled();
+      expect(resolveEntities).toHaveBeenCalledWith(
+        '杭州西湖风景区',
+        [],
+        undefined,
+        undefined,
+        10,
+        undefined,
+      );
       expect(routing.planPoiHopRoute).toHaveBeenCalledWith(
         30.2427,
         120.1487,
         30.25,
         120.15,
+        'drive',
+      );
+    });
+
+    it('冰岛地名经 EntityResolution 时应传入 countryCode IS（CPRE 路由）', async () => {
+      const resolveEntities = jest.fn().mockResolvedValue({
+        results: [
+          {
+            id: 0,
+            name: 'Blue Lagoon',
+            nameCN: '蓝湖',
+            category: 'ATTRACTION',
+            lat: 63.8804,
+            lng: -22.4495,
+            score: 0.98,
+            source: 'cpre' as const,
+            matchReasons: ['ALIAS'],
+            metadata: { canonical_poi_id: 'is.blue_lagoon' },
+          },
+        ],
+        missingPois: [],
+        needsClarification: [],
+      });
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          TransportSearchSkill,
+          { provide: TransportRoutingService, useValue: { planPoiHopRoute: jest.fn() } },
+          { provide: EntityResolutionService, useValue: { resolveEntities } },
+        ],
+      }).compile();
+
+      const s = module.get<TransportSearchSkill>(TransportSearchSkill);
+      const routing = module.get(TransportRoutingService) as jest.Mocked<TransportRoutingService>;
+      routing.planPoiHopRoute.mockResolvedValue(mockRoutingOk as any);
+
+      // 非锚点表内名称，强制走 EntityResolution
+      await s.execute({
+        origin: '蓝湖',
+        destination: { lat: 64.1466, lng: -21.9426 },
+        countryCode: 'IS',
+      });
+
+      expect(resolveEntities).toHaveBeenCalledWith(
+        '蓝湖',
+        [],
+        undefined,
+        undefined,
+        10,
+        { countryCode: 'IS' },
+      );
+      expect(routing.planPoiHopRoute).toHaveBeenCalledWith(
+        63.8804,
+        -22.4495,
+        64.1466,
+        -21.9426,
         'drive',
       );
     });

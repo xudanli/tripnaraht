@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.selected_trip.expected_outcome@v1",
+  "tripId": "pilot_iceland_road_close_05_dual_forbid_reroute",
+  "expectation": "fallback",
+  "maxChangedActivities": 4,
+  "mustPreserveBooked": true,
+  "gateway": "BLOCK",
+  "notes": [
+    "Negative sample — dual EDGE_FORBIDDEN expects fallback to Neptune",
+    "Mechanism seal only; re-review before RA-01B whitelist"
+  ],
+  "reviewedBy": "lab-mechanism-preflight",
+  "reviewedAt": "2026-07-16"
+}

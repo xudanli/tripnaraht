@@ -74,6 +74,36 @@ export class PrometheusMetricsService implements OnModuleInit {
   private memoryPipelineWriteSuccessTotal!: Counter;
   private memoryPipelineWriteFailureTotal!: Counter;
   private memoryContractMissingTotal!: Counter;
+  private constraintSinkPatchAppliedTotal!: Counter;
+  private constraintSinkSkippedTotal!: Counter;
+  private constraintSinkHydratedTotal!: Counter;
+
+  // Constraint Gateway SHADOW_COMPARE (decision-runtime)
+  private constraintShadowComparedTotal!: Counter;
+  private constraintShadowDivergedTotal!: Counter;
+
+  /** Decision Trigger Gateway dispatch (production observation) */
+  private decisionTriggerDispatchTotal!: Counter;
+
+  /** Decision OS Step 4：灰度分流 + A/B Tick 审计 */
+  private dosTickTotal!: Counter;
+  private dosTickDurationMs!: Histogram;
+  private dosTickPlanDeltaCount!: Histogram;
+  private dosTickIncrementalScopeCount!: Histogram;
+  private dosTickInvalidatedAssetScopes!: Histogram;
+
+  /** Decision OS Sub-Agent：Narrator 差量叙述缓存审计 */
+  private narratorCacheTotal!: Counter;
+  private narratorUpdatedDaysRatio!: Histogram;
+
+  /** Query Rewriting v1.1 可观测性 */
+  private queryRewriteTotal!: Counter;
+  private queryRewriteDurationMs!: Histogram;
+  private queryRewriteZeroResultTotal!: Counter;
+  private queryRewriteRuleFallbackTotal!: Counter;
+
+  /** ITINERARY_ADJUST / POI_SLOT_FILL 漏斗 */
+  private itineraryAdjustFunnelTotal!: Counter;
 
   constructor() {
     this.registry = new Registry();
@@ -247,14 +277,14 @@ export class PrometheusMetricsService implements OnModuleInit {
     this.axiomSimRealMismatchTotal = new Counter({
       name: 'tripnara_axiom_sim_real_mismatch_total',
       help: 'Total number of axiom sim/real mismatches (delta_reason_kind=mismatch)',
-      labelNames: ['axiom_id', 'expected_cid', 'actual_cid', 'stage'],
+      labelNames: ['axiom_id', 'expected_cid', 'actual_cid', 'stage', 'match_source', 'severity'],
       registers: [this.registry],
     });
 
     this.axiomDominantCidMismatchTotal = new Counter({
       name: 'tripnara_axiom_dominant_cid_mismatch_total',
       help: 'Total number of dominant_cid mismatches against expected axiom cid',
-      labelNames: ['axiom_id', 'expected_cid', 'actual_cid', 'stage'],
+      labelNames: ['axiom_id', 'expected_cid', 'actual_cid', 'stage', 'match_source'],
       registers: [this.registry],
     });
     this.auditContractViolationTotal = new Counter({
@@ -352,6 +382,122 @@ export class PrometheusMetricsService implements OnModuleInit {
       help: 'route_and_run response assembled without memory_contract on request',
       registers: [this.registry],
     });
+    this.constraintSinkPatchAppliedTotal = new Counter({
+      name: 'tripnara_constraint_sink_patch_applied_total',
+      help: 'Constraint Sink patches written to TripTaskMemory',
+      registers: [this.registry],
+    });
+    this.constraintSinkSkippedTotal = new Counter({
+      name: 'tripnara_constraint_sink_skipped_total',
+      help: 'Constraint Sink extract/write skipped',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+    this.constraintSinkHydratedTotal = new Counter({
+      name: 'tripnara_constraint_sink_hydrated_total',
+      help: 'INTAKE hydrate applied Constraint Sink patches into TripPlanRequest',
+      registers: [this.registry],
+    });
+    this.constraintShadowComparedTotal = new Counter({
+      name: 'tripnara_constraint_shadow_compared_total',
+      help: 'Dual-run constraint evaluations (SHADOW_COMPARE mode)',
+      registers: [this.registry],
+    });
+    this.constraintShadowDivergedTotal = new Counter({
+      name: 'tripnara_constraint_shadow_diverged_total',
+      help: 'Legacy vs canonical constraint divergence in SHADOW_COMPARE',
+      labelNames: ['divergence_kind'],
+      registers: [this.registry],
+    });
+
+    this.decisionTriggerDispatchTotal = new Counter({
+      name: 'tripnara_decision_trigger_dispatch_total',
+      help: 'Decision Trigger Gateway dispatches by route and status',
+      labelNames: ['route_target', 'status'],
+      registers: [this.registry],
+    });
+
+    this.dosTickTotal = new Counter({
+      name: 'tripnara_dos_tick_total',
+      help: 'Decision OS runtime kernel ticks completed (A/B audit)',
+      labelNames: ['intent_compile_source', 'gray_llm_path', 'gray_route_reason'],
+      registers: [this.registry],
+    });
+    this.dosTickDurationMs = new Histogram({
+      name: 'tripnara_dos_tick_duration_ms',
+      help: 'Wall-clock duration of route_and_run kernel tick (ms)',
+      labelNames: ['intent_compile_source', 'gray_llm_path'],
+      buckets: [50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000, 60_000],
+      registers: [this.registry],
+    });
+    this.dosTickPlanDeltaCount = new Histogram({
+      name: 'tripnara_dos_tick_plan_delta_count',
+      help: 'Plan Delta IR count per tick (intent compile output)',
+      labelNames: ['intent_compile_source'],
+      buckets: [0, 1, 2, 3, 5, 8, 13],
+      registers: [this.registry],
+    });
+    this.dosTickIncrementalScopeCount = new Histogram({
+      name: 'tripnara_dos_tick_incremental_scope_count',
+      help: 'Fiber-level incremental research scopes projected from plan delta',
+      labelNames: ['intent_compile_source'],
+      buckets: [0, 1, 2, 3, 5, 8, 13, 21],
+      registers: [this.registry],
+    });
+    this.dosTickInvalidatedAssetScopes = new Histogram({
+      name: 'tripnara_dos_tick_invalidated_asset_scopes',
+      help: 'Research asset scopes invalidated on tick (executed or projected)',
+      labelNames: ['intent_compile_source', 'gray_llm_path'],
+      buckets: [0, 1, 2, 3, 5, 8, 13, 21, 34],
+      registers: [this.registry],
+    });
+
+    this.narratorCacheTotal = new Counter({
+      name: 'tripnara_narrator_cache_total',
+      help: 'Day-level narrative cache evaluations in Decision OS Narrator (hit vs miss)',
+      labelNames: ['status', 'source'],
+      registers: [this.registry],
+    });
+    this.narratorUpdatedDaysRatio = new Histogram({
+      name: 'tripnara_narrator_updated_days_ratio',
+      help: 'Ratio of updated narrative days to total trip days per narrate() call',
+      labelNames: ['source', 'is_incremental'],
+      buckets: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+      registers: [this.registry],
+    });
+
+    this.queryRewriteTotal = new Counter({
+      name: 'tripnara_query_rewrite_total',
+      help: 'Total Query Rewriting pipeline invocations',
+      labelNames: ['scene', 'profile', 'stage1_source', 'stage2_generative'],
+      registers: [this.registry],
+    });
+    this.queryRewriteDurationMs = new Histogram({
+      name: 'tripnara_query_rewrite_duration_ms',
+      help: 'Query Rewriting pipeline duration in milliseconds',
+      labelNames: ['scene', 'profile'],
+      buckets: [5, 20, 50, 100, 250, 500, 1000, 2500, 5000],
+      registers: [this.registry],
+    });
+    this.queryRewriteZeroResultTotal = new Counter({
+      name: 'tripnara_query_rewrite_zero_result_total',
+      help: 'Downstream searches returning zero results after query rewrite',
+      labelNames: ['scene'],
+      registers: [this.registry],
+    });
+    this.queryRewriteRuleFallbackTotal = new Counter({
+      name: 'tripnara_query_rewrite_rule_fallback_total',
+      help: 'Stage 1 rule_fallback occurrences (LLM unavailable or schema parse failed)',
+      labelNames: ['scene'],
+      registers: [this.registry],
+    });
+
+    this.itineraryAdjustFunnelTotal = new Counter({
+      name: 'tripnara_itinerary_adjust_funnel_total',
+      help: 'ITINERARY_ADJUST funnel: draft_created → apply_clicked → auto/user apply outcomes',
+      labelNames: ['stage', 'outcome', 'sub_intent', 'execution_mode', 'reason'],
+      registers: [this.registry],
+    });
   }
 
   // Gate Metrics Methods
@@ -441,6 +587,8 @@ export class PrometheusMetricsService implements OnModuleInit {
     expected_cid?: string;
     actual_cid?: string;
     stage?: string;
+    match_source?: string;
+    severity?: string;
   }): void {
     try {
       this.axiomSimRealMismatchTotal.inc({
@@ -448,6 +596,8 @@ export class PrometheusMetricsService implements OnModuleInit {
         expected_cid: params.expected_cid ? String(params.expected_cid) : 'UNKNOWN',
         actual_cid: params.actual_cid ? String(params.actual_cid) : 'UNKNOWN',
         stage: params.stage ? String(params.stage) : 'UNKNOWN',
+        match_source: params.match_source ? String(params.match_source) : 'UNKNOWN',
+        severity: params.severity ? String(params.severity) : 'UNKNOWN',
       });
     } catch {
       // best-effort only
@@ -459,6 +609,7 @@ export class PrometheusMetricsService implements OnModuleInit {
     expected_cid?: string;
     actual_cid?: string;
     stage?: string;
+    match_source?: string;
   }): void {
     try {
       this.axiomDominantCidMismatchTotal.inc({
@@ -466,6 +617,7 @@ export class PrometheusMetricsService implements OnModuleInit {
         expected_cid: params.expected_cid ? String(params.expected_cid) : 'UNKNOWN',
         actual_cid: params.actual_cid ? String(params.actual_cid) : 'UNKNOWN',
         stage: params.stage ? String(params.stage) : 'UNKNOWN',
+        match_source: params.match_source ? String(params.match_source) : 'UNKNOWN',
       });
     } catch {
       // best-effort only
@@ -668,6 +820,182 @@ export class PrometheusMetricsService implements OnModuleInit {
     } catch {
       // best-effort
     }
+  }
+
+  recordConstraintSinkPatchApplied(): void {
+    try {
+      this.constraintSinkPatchAppliedTotal.inc();
+    } catch {
+      // best-effort
+    }
+  }
+
+  recordConstraintSinkSkipped(reason: string): void {
+    try {
+      this.constraintSinkSkippedTotal.inc({ reason: reason || 'unknown' });
+    } catch {
+      // best-effort
+    }
+  }
+
+  recordConstraintSinkHydrated(keyCount: number): void {
+    try {
+      if (keyCount > 0) this.constraintSinkHydratedTotal.inc();
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** SHADOW_COMPARE — legacy boolean vs CanonicalConstraintReport divergence. */
+  recordConstraintShadowComparison(comparison: {
+    diverged: boolean;
+    divergenceKind: string;
+  }): void {
+    try {
+      this.constraintShadowComparedTotal.inc();
+      if (comparison.diverged) {
+        const kind = /^[\w_]+$/.test(comparison.divergenceKind)
+          ? comparison.divergenceKind.slice(0, 48)
+          : 'UNKNOWN';
+        this.constraintShadowDivergedTotal.inc({ divergence_kind: kind });
+      }
+    } catch {
+      // best-effort
+    }
+  }
+
+  recordDecisionTriggerDispatch(input: { routeTarget: string; status: string }): void {
+    try {
+      const route = String(input.routeTarget || 'unknown').slice(0, 48);
+      const status = String(input.status || 'unknown').slice(0, 16);
+      this.decisionTriggerDispatchTotal.inc({ route_target: route, status });
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** Decision OS Step 4：灰度 A/B Tick 审计（Grafana / Prometheus） */
+  recordDosTickAudit(audit: {
+    intent_compile_source: string;
+    gray_llm_path: boolean;
+    gray_route_reason: string;
+    duration_ms: number;
+    plan_delta_count: number;
+    incremental_scope_count: number;
+    invalidated_asset_scopes_count: number;
+  }): void {
+    const source = String(audit.intent_compile_source || 'skipped');
+    const gray = audit.gray_llm_path ? 'true' : 'false';
+    const reason = String(audit.gray_route_reason || 'unknown');
+    try {
+      this.dosTickTotal.inc({
+        intent_compile_source: source,
+        gray_llm_path: gray,
+        gray_route_reason: reason,
+      });
+      this.dosTickDurationMs.observe(
+        { intent_compile_source: source, gray_llm_path: gray },
+        Math.max(0, audit.duration_ms),
+      );
+      this.dosTickPlanDeltaCount.observe(
+        { intent_compile_source: source },
+        Math.max(0, audit.plan_delta_count),
+      );
+      this.dosTickIncrementalScopeCount.observe(
+        { intent_compile_source: source },
+        Math.max(0, audit.incremental_scope_count),
+      );
+      this.dosTickInvalidatedAssetScopes.observe(
+        { intent_compile_source: source, gray_llm_path: gray },
+        Math.max(0, audit.invalidated_asset_scopes_count),
+      );
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** Decision OS Sub-Agent：Narrator 差量叙述缓存命中率（Grafana 红利曲线） */
+  recordNarratorIncrementalAudit(audit: {
+    is_incremental: boolean;
+    cache_hits: number;
+    cache_misses: number;
+    updated_days_0based: number[];
+  }, source: 'rule' | 'llm' = 'rule'): void {
+    const src = source === 'llm' ? 'llm' : 'rule';
+    const incremental = audit.is_incremental ? 'true' : 'false';
+    const hits = Math.max(0, audit.cache_hits);
+    const misses = Math.max(0, audit.cache_misses);
+    const total = hits + misses;
+    try {
+      if (hits > 0) {
+        this.narratorCacheTotal.inc({ status: 'hit', source: src }, hits);
+      }
+      if (misses > 0) {
+        this.narratorCacheTotal.inc({ status: 'miss', source: src }, misses);
+      }
+      if (total > 0) {
+        this.narratorUpdatedDaysRatio.observe(
+          { source: src, is_incremental: incremental },
+          misses / total,
+        );
+      }
+    } catch {
+      // best-effort
+    }
+  }
+
+  recordQueryRewrite(params: {
+    scene: string;
+    profile: string;
+    stage1_source: 'llm' | 'rule_fallback';
+    stage2_generative: boolean;
+    duration_ms: number;
+    confidence: number;
+    zero_result?: boolean;
+  }) {
+    const stage2 = params.stage2_generative ? 'true' : 'false';
+    this.queryRewriteTotal.inc({
+      scene: params.scene,
+      profile: params.profile,
+      stage1_source: params.stage1_source,
+      stage2_generative: stage2,
+    });
+    this.queryRewriteDurationMs.observe(
+      { scene: params.scene, profile: params.profile },
+      params.duration_ms,
+    );
+    if (params.stage1_source === 'rule_fallback') {
+      this.queryRewriteRuleFallbackTotal.inc({ scene: params.scene });
+    }
+    if (params.zero_result) {
+      this.queryRewriteZeroResultTotal.inc({ scene: params.scene });
+    }
+  }
+
+  recordQueryRewriteDownstream(params: {
+    scene: string;
+    zero_result: boolean;
+    total_results: number;
+  }) {
+    if (params.zero_result) {
+      this.queryRewriteZeroResultTotal.inc({ scene: params.scene });
+    }
+  }
+
+  recordItineraryAdjustFunnel(params: {
+    stage: string;
+    outcome: string;
+    sub_intent: string;
+    execution_mode: string;
+    reason: string;
+  }) {
+    this.itineraryAdjustFunnelTotal.inc({
+      stage: params.stage,
+      outcome: params.outcome,
+      sub_intent: params.sub_intent,
+      execution_mode: params.execution_mode,
+      reason: params.reason,
+    });
   }
 
   // Get metrics for Prometheus scraping

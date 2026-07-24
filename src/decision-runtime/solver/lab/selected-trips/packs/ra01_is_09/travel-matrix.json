@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "ra01_is_09",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "poi_ra01_is_09_pilot_is_09_start",
+      "to": "poi_ra01_is_09_lagoon_booking",
+      "durationMin": 35
+    },
+    {
+      "from": "poi_ra01_is_09_lagoon_booking",
+      "to": "poi_ra01_is_09_pilot_is_09_start",
+      "durationMin": 35
+    }
+  ]
+}

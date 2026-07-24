@@ -51,6 +51,9 @@ export class TripBudgetProfileService {
       tripId,
       intent,
       structure,
+      ...(structure?.structureVsActual
+        ? { structureVsActual: structure.structureVsActual }
+        : {}),
       gateStatus: config.gateStatus,
       updatedAt: config.updatedAt ?? trip.updatedAt.toISOString(),
     };

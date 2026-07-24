@@ -94,7 +94,7 @@ describe('PublishingPermissionService', () => {
     });
     const check = await service.canPublicRecruit('user-1');
     expect(check.allowed).toBe(false);
-    expect(check.reason).toContain('搭子广场公开招募已暂停');
+    expect(check.reason).toContain('搭子广场公开招募已下线');
   });
 
   it('blocks trusted project publish without certification even when permission is public', async () => {

@@ -1,0 +1,177 @@
+{
+  "evidenceType": "SLICE4_STG_REPLAY_10_PRIMARY_CONVERGENCE",
+  "testedAt": "2026-07-11T19:56:01.446Z",
+  "scenarioId": "STG-REPLAY-10",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "verifyOnly": true,
+  "localReplay": {
+    "actualClusterCount": 1,
+    "actualVisibleItemCount": 1,
+    "actualPrimary": "EXECUTION_SCHEDULE_INFEASIBLE",
+    "actualAttention": "INTERRUPT",
+    "verdict": "CORRECT_MERGE",
+    "reviewStatus": "AUTO_PASS",
+    "evidencePath": "/home/devbox/project/internal-docs/operations/evidence/attention-shadow/attention-shadow-staging-STG-REPLAY-10-c0c77777-7777-4777-8777-777777777777-2026-07-11T19-56-01-282Z.json"
+  },
+  "liveDualRead": {
+    "schemaId": "tripnara.attention_internal_dual_read@v1",
+    "phase": "INTERNAL_DUAL_READ",
+    "tripId": "c0c77777-7777-4777-8777-777777777777",
+    "generatedAt": "2026-07-11T19:56:01.332Z",
+    "primarySsoEnabled": false,
+    "notificationsEnabled": false,
+    "currentQueueItems": [
+      {
+        "problemId": "stg_attn_wind",
+        "semanticKey": "WEATHER_STRONG_WIND",
+        "title": "道路 / 可行性：1 个行程项受影响",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "stg_attn_slip",
+        "semanticKey": "EXECUTION_DEPARTURE_SLIP",
+        "title": "道路 / 可行性：1 个行程项受影响",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "stg_attn_infeasible",
+        "semanticKey": "EXECUTION_SCHEDULE_INFEASIBLE",
+        "title": "执行偏差：1 个行程项受影响",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "stg_attn_night",
+        "semanticKey": "NIGHT_DRIVING_RISK",
+        "title": "道路 / 可行性：1 个行程项受影响",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "dp_id:issue-time-conflict-c0c77777-7777-4777-8777-777777777632_rfc001_93281797-c0c77777-7777-4777-8777-777777777633",
+        "semanticKey": "id",
+        "title": "时间冲突",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "dp_id:plan_object_plan_object_meal_late_arrival_po_c0c77777-7777-4777-8777-777777777601_meal_windo",
+        "semanticKey": "id",
+        "title": "午餐窗冲突",
+        "workflowStatus": "ASSESSING",
+        "enforcement": "REQUIRE_ADJUSTMENT"
+      },
+      {
+        "problemId": "dp_anchor:environment:EXECUTION_SCHEDULE_INFEASIBLE:c0c77777-7777-4777-8777-777777777631::",
+        "semanticKey": "anchor",
+        "title": "EXECUTION_SCHEDULE_FEASIBILITY",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      }
+    ],
+    "attentionPrimaryItems": [
+      {
+        "clusterId": "cluster_weather_strong_wind_c0c77777_7777_4777_8777_777777777777_segment_c0c77777_7777_4777_8777_777777777777_drive_day2_vedur_ep_exec_slip_staging_20260712",
+        "tripId": "c0c77777-7777-4777-8777-777777777777",
+        "primaryProblemId": "stg_attn_infeasible",
+        "primarySemanticCapability": "EXECUTION_SCHEDULE_INFEASIBLE",
+        "headline": "执行偏差：1 个行程项受影响",
+        "explanation": "执行偏差 · urgency HIGH",
+        "causalStory": [
+          {
+            "code": "WEATHER_STRONG_WIND",
+            "label": "强风",
+            "problemId": "stg_attn_wind",
+            "order": 0
+          },
+          {
+            "code": "EXECUTION_DEPARTURE_SLIP",
+            "label": "执行偏差",
+            "problemId": "stg_attn_slip",
+            "order": 2
+          },
+          {
+            "code": "EXECUTION_SCHEDULE_INFEASIBLE",
+            "label": "行程不可执行",
+            "problemId": "stg_attn_infeasible",
+            "order": 3
+          },
+          {
+            "code": "NIGHT_DRIVING_RISK",
+            "label": "夜间驾驶风险",
+            "problemId": "stg_attn_night",
+            "order": 5
+          }
+        ],
+        "attentionLevel": "INTERRUPT",
+        "status": "OPEN",
+        "relatedEffects": [
+          {
+            "problemId": "stg_attn_slip",
+            "semanticCapability": "EXECUTION_DEPARTURE_SLIP",
+            "label": "执行偏差"
+          },
+          {
+            "problemId": "stg_attn_wind",
+            "semanticCapability": "WEATHER_STRONG_WIND",
+            "label": "强风"
+          },
+          {
+            "problemId": "stg_attn_night",
+            "semanticCapability": "NIGHT_DRIVING_RISK",
+            "label": "夜间驾驶风险"
+          }
+        ],
+        "confirmationEntry": {
+          "problemId": "stg_attn_infeasible",
+          "actionRoute": "decision-queue"
+        },
+        "firstObservedAt": "2026-07-11T19:56:01.332Z",
+        "lastUpdatedAt": "2026-07-11T19:56:01.332Z"
+      }
+    ],
+    "comparison": {
+      "currentVisibleCount": 7,
+      "attentionVisibleCount": 1,
+      "reductionCount": 6,
+      "hiddenProblemIds": [
+        "stg_attn_wind",
+        "stg_attn_slip",
+        "stg_attn_night"
+      ],
+      "primaryProblemIds": [
+        "stg_attn_infeasible"
+      ],
+      "missedProblemIds": [
+        "dp_id:issue-time-conflict-c0c77777-7777-4777-8777-777777777632_rfc001_93281797-c0c77777-7777-4777-8777-777777777633",
+        "dp_id:plan_object_plan_object_meal_late_arrival_po_c0c77777-7777-4777-8777-777777777601_meal_windo",
+        "dp_anchor:environment:EXECUTION_SCHEDULE_INFEASIBLE:c0c77777-7777-4777-8777-777777777631::"
+      ],
+      "openClusterCount": 1,
+      "canonicalProblemCount": 4
+    },
+    "shadowVerdict": "CORRECT_MERGE",
+    "shadowVerdictReason": "Legacy queue has multiple visible items; shadow converged to one primary item"
+  },
+  "missedLegacyOnly": [
+    "dp_id:issue-time-conflict-c0c77777-7777-4777-8777-777777777632_rfc001_93281797-c0c77777-7777-4777-8777-777777777633",
+    "dp_id:plan_object_plan_object_meal_late_arrival_po_c0c77777-7777-4777-8777-777777777601_meal_windo",
+    "dp_anchor:environment:EXECUTION_SCHEDULE_INFEASIBLE:c0c77777-7777-4777-8777-777777777631::"
+  ],
+  "missedSeedProblems": [],
+  "checks": {
+    "localVisibleOne": true,
+    "localPrimaryInfeasible": true,
+    "apiPrimaryOne": true,
+    "apiPrimaryCapability": true,
+    "apiHiddenNonEmpty": true,
+    "apiHiddenIncludesWind": true,
+    "apiMissedSeedEmpty": true,
+    "apiReductionGte1": true,
+    "apiShadowVerdictMerge": true
+  },
+  "primaryConvergencePass": true,
+  "overallPass": true
+}

@@ -1,6 +1,11 @@
-import { IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsBoolean, IsIn, IsArray, IsNumber, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+export type AccessEvidenceRefreshScope =
+  | 'access_rules'
+  | 'access_inventory'
+  | 'access_congestion';
 
 export class FeasibilityScopeDto {
   @IsIn(['day', 'issue', 'route'])
@@ -24,6 +29,15 @@ export class FeasibilityValidateScopeDto {
   @ValidateNested()
   @Type(() => FeasibilityScopeDto)
   scope!: FeasibilityScopeDto;
+
+  @ApiPropertyOptional({ description: 'true=全量；或传 access 子 scope 数组' })
+  @IsOptional()
+  forceRefreshEvidence?: boolean | AccessEvidenceRefreshScope[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  lang?: string;
 }
 
 export class FeasibilityPreviewRepairBodyDto {
@@ -71,13 +85,24 @@ export class FeasibilityApplyRepairBodyDto {
   @IsOptional()
   @IsBoolean()
   forceDecisionRepair?: boolean;
+
+  @ApiPropertyOptional({ description: 'manual_confirm：停车/入场确认码' })
+  @IsOptional()
+  @IsString()
+  parkingReservationRef?: string;
+
+  @ApiPropertyOptional({ description: 'manual_confirm：附件 ID（M1 可 501）' })
+  @IsOptional()
+  @IsString()
+  evidenceAttachmentId?: string;
 }
 
 export class ValidateFeasibilityBodyDto {
-  @ApiPropertyOptional({ description: '是否刷新证据后再验证（默认 true）' })
+  @ApiPropertyOptional({
+    description: 'true=刷新全部证据；false=跳过；或 access 子 scope 数组',
+  })
   @IsOptional()
-  @IsBoolean()
-  forceRefreshEvidence?: boolean;
+  forceRefreshEvidence?: boolean | AccessEvidenceRefreshScope[];
 
   @ApiPropertyOptional({ description: '语言 zh | en' })
   @IsOptional()

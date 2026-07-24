@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.05_dual_lot_reroute",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "Dual lots full \u2014 REROUTE two forbidden edges",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/parking_full/problems/05_dual_lot_reroute.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1"
+}

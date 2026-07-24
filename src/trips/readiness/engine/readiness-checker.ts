@@ -11,6 +11,7 @@ import { ReadinessPack, Rule, SupportedLanguage } from '../types/readiness-pack.
 import { TripContext } from '../types/trip-context.types';
 import { ReadinessFinding, ReadinessFindingItem, ReadinessCheckResult, FrontendUserQuestion } from '../types/readiness-findings.types';
 import { RuleEngine } from './rule-engine';
+import { filterPackRulesForOverlay } from '../utils/readiness-pack-overlay.util';
 import { requiresSchengenVisa } from '../types/trip-context.types';
 import { getLocalizedText, getLocalizedTexts } from '../utils/i18n.utils';
 import { RiskQuantificationService } from '../services/risk-quantification.service';
@@ -30,6 +31,19 @@ export class ReadinessChecker {
    * @param context - 行程上下文
    * @param lang - 目标语言（默认 'en'）
    */
+  /**
+   * Phase 3: evaluate only Pack overlay rules (with `when`, non-Profile-derivable entry rules).
+   */
+  checkPackOverlay(
+    pack: ReadinessPack,
+    context: TripContext,
+    lang: SupportedLanguage = 'en',
+  ): ReadinessFinding {
+    const overlayRules = filterPackRulesForOverlay(pack.rules);
+    const overlayPack: ReadinessPack = { ...pack, rules: overlayRules };
+    return this.checkDestination(overlayPack, context, lang);
+  }
+
   checkDestination(
     pack: ReadinessPack,
     context: TripContext,

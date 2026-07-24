@@ -20,6 +20,13 @@ import type {
 } from '../../decision/kernel/decision-state.types';
 import { haversineMeters, normalizeItem } from '../../decision/kernel/itinerary.types';
 import {
+  applyPoiAccessShiftArrivalRepair,
+  applyPoiAccessReplaceRepair,
+  isPoiAccessConstraintIssue,
+  type ItineraryLike as PoiAccessItineraryLike,
+} from '../../poi-access-capacity/utils/poi-access-repair.util';
+import { CONSTRAINT_IDS } from '../services/constraint-registry';
+import {
   isOutdoorVisibilityConstrainedItem,
   addMinutes,
   parseItemWindow,
@@ -32,7 +39,10 @@ import type {
   PhaseExecutorContext,
   ItineraryLike,
 } from '../../decision/kernel/interfaces/phase-executor.interface';
+import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 import { SkillsRegistryService } from '../../skills/services/skills-registry.service';
+import { buildAxiomMatchContext } from '../axioms/build-axiom-match-context.util';
+import { applyPostRepairRoutingMetricsSync } from '../axioms/post-repair-routing-sync.util';
 import { matchAxioms } from '../axioms/axiom-matchers';
 import { AXIOM_REGISTRY } from '../axioms/axiom-registry';
 import { ClaudeLocalInsightAgentService } from '../services/sub-agents/local-insight-agent.service';
@@ -44,9 +54,9 @@ import { evaluateAltPath } from '../utils/terrain-reroute-evaluator.util';
 import type { RepairReason, RepairTrace } from '../services/route-feasibility.types';
 import { buildPoiSearchContext } from '../../planning-policy/utils/build-poi-search-context.util';
 import {
-  buildContextualPoiSearchQuerySuffix,
   filterPoisByRejectedIds,
 } from '../../planning-policy/utils/contextual-poi-search-query.util';
+import { buildPoiSearchPlanFromContext } from '../utils/query-rewriting-poi-context.util';
 import { buildReplacementRetrievalDecisionTrace } from '../../planning-policy/utils/build-retrieval-decision-trace.util';
 import {
   extractPreserveGoalsFromState,
@@ -54,14 +64,32 @@ import {
   buildPreserveViolationFatalMessage,
 } from '../../trips/experience-fulfillment/utils/repair-preserve-guard.util';
 import { detectItineraryGapsV1, gapRetrievalIntentQuerySuffix } from '../../planning-policy/utils/detect-itinerary-gaps.util';
+import {
+  buildPersonaClosureSkipRepairTrace,
+  filterSpatialReplaceAdjustments,
+  resolvePersonaClosureAudit,
+  shouldSkipRepairNeptuneReplace,
+} from '../utils/persona-closure-repair-skip.util';
+import {
+  shouldSkipAggressivePoiRepairForSparseContext,
+  isSparseIntentionalSlackActive,
+} from '../../planning-policy/open-world/sparse-repair-guard.util';
+import {
+  buildPseudoOrchestratorForDecisionContext,
+  syncDecisionContextToDecisionState,
+} from '../../planning-policy/open-world/decision-context-sync.util';
+import {
+  REPAIR_OSCILLATION_MOVE_THRESHOLD,
+} from '../orchestration/orchestration-governance-matrix.constants';
 
 @Injectable()
 export class RepairExecutorService implements IRepairExecutor {
   private readonly logger = new Logger(RepairExecutorService.name);
 
-  private static readonly OSCILLATION_MOVE_THRESHOLD = 3; // >2 times
+  private static readonly OSCILLATION_MOVE_THRESHOLD = REPAIR_OSCILLATION_MOVE_THRESHOLD;
 
   constructor(
+    private readonly contextSlidingWindow: ContextSlidingWindowAdapter,
     @Optional() private readonly skillsRegistry?: SkillsRegistryService,
     @Optional() private readonly localInsightAgent?: ClaudeLocalInsightAgentService,
     /**
@@ -108,6 +136,21 @@ export class RepairExecutorService implements IRepairExecutor {
   }> {
     this.logger.debug(`[RepairExecutor] 执行 REPAIR 阶段 requestId=${ctx.requestId}`);
 
+    const hydrated = syncDecisionContextToDecisionState(
+      dso,
+      buildPseudoOrchestratorForDecisionContext(
+        {
+          requestId: ctx.requestId,
+          researchData: ctx.researchData,
+          tripPlanRequest: ctx.tripPlanRequest,
+          itinerary: ctx.itinerary,
+          gateResult: ctx.gateResult,
+        },
+        dso,
+      ),
+    );
+    dso.constraints = hydrated.constraints;
+
     let repairApplied = false;
     let itinerary = ctx.itinerary;
     let escalationPlan: RepairEscalationPlan | undefined;
@@ -122,6 +165,26 @@ export class RepairExecutorService implements IRepairExecutor {
 
     const hasLowBudgetDirective =
       (ctx.gateResult.required_adjustments ?? []).some((a) => a.action === 'REDUCE_SCOPE_OR_ADD_EVIDENCE') === true;
+
+    const personaClosureAudit = resolvePersonaClosureAudit({
+      personaClosureAudit: ctx.personaClosureAudit,
+      gateResult: ctx.gateResult as GateResult,
+    });
+    const skipNeptuneSpatialReplace = shouldSkipRepairNeptuneReplace(personaClosureAudit, dso);
+    const skipSparseSlackRepair = isSparseIntentionalSlackActive(dso);
+    if (skipSparseSlackRepair) {
+      this.logger.debug('[RepairExecutor] SPARSE_REGION intentional slack — 跳过惩罚性 POI 替换/Neptune 空间改写');
+    }
+    if (skipNeptuneSpatialReplace) {
+      repairTraces.push(buildPersonaClosureSkipRepairTrace());
+      this.logger.debug(
+        `[RepairExecutor] Skipping Neptune spatial REPLACE (persona_closure_already_converged, stopReason=${personaClosureAudit?.stopReason})`,
+      );
+    }
+    const repairAdjustments = filterSpatialReplaceAdjustments(
+      ctx.gateResult.required_adjustments,
+      skipNeptuneSpatialReplace,
+    );
 
     const req = this.toTripPlanRequest(ctx.tripPlanRequest, ctx.requestId);
     const minimalState: Partial<OrchestratorState> = {
@@ -139,7 +202,15 @@ export class RepairExecutorService implements IRepairExecutor {
     try {
       const msg = String((req as any)?.message ?? '').trim();
       const constraints = (req as any)?.constraints as Record<string, any> | undefined;
-      const matches = matchAxioms({ message: msg, constraints });
+      const matches = matchAxioms(
+        buildAxiomMatchContext({
+          message: msg,
+          constraints,
+          trip: req as any,
+          itinerary: ctx.itinerary as any,
+          clarificationAnswers: (req as any)?.clarification_answers,
+        }),
+      );
       const terrain = matches.find((m) => m.axiom_id === 'TERRAIN_F_ROAD_UNFIT');
       const fatigue = matches.find((m) => m.axiom_id === 'FATIGUE_OVERLOAD');
       const eta = matches.find((m) => m.axiom_id === 'ETA_INFEASIBLE');
@@ -346,7 +417,8 @@ export class RepairExecutorService implements IRepairExecutor {
     // 1. LocalInsight Agent 生成替代方案（保留：当 deterministic/targeted 未覆盖时）
     let alternatives = ctx.alternatives;
     // 当 Kernel 指示“低预算/补证据”时，跳过替代方案生成以节省链路与 token（repair.apply 只需执行 required_adjustments）。
-    if (this.localInsightAgent && ctx.gateResult && !hasLowBudgetDirective) {
+    // persona closure 已收敛（ABU_RECHECK_PASS）时跳过，避免重复 Neptune 空间替换。
+    if (this.localInsightAgent && ctx.gateResult && !hasLowBudgetDirective && !skipNeptuneSpatialReplace && !skipSparseSlackRepair) {
       try {
         const alt = await this.localInsightAgent.suggestAlternatives(
           req,
@@ -362,14 +434,48 @@ export class RepairExecutorService implements IRepairExecutor {
       }
     }
 
+    // 1.5 trip.applyEdit：用户改行程 / Gate 需调整时，优先 smart_update 闭环
+    if (this.skillsRegistry && itinerary) {
+      const userIntent = String((req as { message?: string; user_change_intent?: string }).message
+        ?? (req as { user_change_intent?: string }).user_change_intent
+        ?? '').trim();
+      const gateAdjust =
+        ctx.gateResult.gate_result === 'ADJUST_REQUIRED' ||
+        ctx.gateResult.gate_result === 'NEED_USER_CONFIRM';
+      if (userIntent.length > 0 || gateAdjust) {
+        try {
+          const applyEditSkill = this.skillsRegistry.getSkill('trip.applyEdit');
+          if (applyEditSkill) {
+            const editOut = await applyEditSkill.execute({
+              mode: 'smart',
+              tripId: String((req as { trip_id?: string }).trip_id ?? ''),
+              itinerary: itinerary as any,
+              research_data: minimalState.research_data as Record<string, unknown> | undefined,
+              user_change_intent: userIntent || undefined,
+            });
+            if (editOut?.itinerary) {
+              itinerary = {
+                request_id: editOut.itinerary.request_id,
+                days: editOut.itinerary.days,
+                metadata: editOut.itinerary.metadata,
+              };
+              repairApplied = true;
+            }
+          }
+        } catch (e: unknown) {
+          this.logger.warn(`[RepairExecutor] trip.applyEdit 失败: ${(e as Error)?.message}`);
+        }
+      }
+    }
+
     // 2. repair.apply Skill 应用修复（保留 legacy：当 gateResult.required_adjustments 显式存在时）
-    if (this.skillsRegistry && itinerary && ctx.gateResult.required_adjustments?.length > 0) {
+    if (this.skillsRegistry && itinerary && repairAdjustments.length > 0) {
       try {
         const skill = this.skillsRegistry.getSkill('repair.apply');
         if (skill) {
           const result = await skill.execute({
             itinerary: itinerary as any,
-            adjustments: ctx.gateResult.required_adjustments,
+            adjustments: repairAdjustments,
             alternatives: alternatives || { alternative_pois: [], alternative_routes: [] },
           });
           if (result?.repaired && result.itinerary) {
@@ -402,6 +508,29 @@ export class RepairExecutorService implements IRepairExecutor {
           `继续静默压缩/迁移可能显著拉低体验分；请您进行更高级别放宽（减 POI / 加天 / 降强度 / 调交通）以避免“修到不像旅行”。`,
         at: new Date().toISOString(),
       };
+    }
+
+    if (
+      repairApplied &&
+      itinerary &&
+      Array.isArray(itinerary.days) &&
+      itinerary.days.length > 0 &&
+      ctx.tripPlanRequest
+    ) {
+      try {
+        const req = this.toTripPlanRequest(ctx.tripPlanRequest, ctx.requestId);
+        const { trip: synced } = applyPostRepairRoutingMetricsSync({
+          trip: req,
+          itinerary: itinerary as import('../interfaces/trip-plan.interface').Itinerary,
+        });
+        Object.assign(ctx.tripPlanRequest as object, {
+          plan_output: synced.plan_output,
+          routing_metadata: synced.routing_metadata,
+          routing_metrics: synced.routing_metrics,
+        });
+      } catch {
+        // best-effort: routing sync must not block REPAIR
+      }
     }
 
     return {
@@ -539,9 +668,86 @@ export class RepairExecutorService implements IRepairExecutor {
 
     switch (issue.code as VerificationIssueCode) {
       case 'POI_CLOSED':
+        if (isPoiAccessConstraintIssue(issue)) {
+          const meta = issue.metadata as {
+            poi_access_constraint_id?: string;
+            poi_access_blocked_poi_id?: string;
+          } | undefined;
+          const isTrailBlock =
+            meta?.poi_access_constraint_id === CONSTRAINT_IDS.ENTITY_ACCESS_BLOCKED;
+          if (isTrailBlock || issue.suggestedActions?.some((a) => a.action === 'REPLACE')) {
+            const replaced = applyPoiAccessReplaceRepair(
+              issue,
+              itinerary as PoiAccessItineraryLike,
+              meta?.poi_access_blocked_poi_id,
+            );
+            if (replaced.ok && replaced.itinerary) {
+              return {
+                ok: true,
+                itinerary: replaced.itinerary as typeof itinerary,
+                repairTrace: {
+                  tacticId: 'PoiAccessReplaceTactic',
+                  targetEntity: issue.entityRef ?? { type: 'POI' },
+                  applied: true,
+                  reason: 'SUCCESS_APPLIED',
+                  metrics: {
+                    fatigue_weight: 1,
+                    base_limit: 0,
+                    effective_limit: 0,
+                    actual_cost: 1,
+                    unit: 'op',
+                  },
+                  evidence: { refIds: [replaced.alternativePoiId ?? 'unknown'] },
+                },
+              };
+            }
+          }
+          const shift = applyPoiAccessShiftArrivalRepair(issue, itinerary as PoiAccessItineraryLike);
+          if (shift.ok && shift.itinerary) {
+            return {
+              ok: true,
+              itinerary: shift.itinerary as typeof itinerary,
+              repairTrace: {
+                tacticId: 'PoiAccessShiftArrivalTactic',
+                targetEntity: issue.entityRef ?? { type: 'POI' },
+                applied: true,
+                reason: 'SUCCESS_APPLIED',
+                metrics: {
+                  fatigue_weight: 1,
+                  base_limit: 0,
+                  effective_limit: 0,
+                  actual_cost: shift.shiftMinutes ?? 0,
+                  unit: 'min',
+                },
+              },
+            };
+          }
+        }
         return this.poiClosedReplacementOperator(issue, dso, itinerary, ctx);
       case 'TIME_WINDOW_OVERLAP':
       case 'TIME_WINDOW_BREACH':
+        if (isPoiAccessConstraintIssue(issue)) {
+          const shift = applyPoiAccessShiftArrivalRepair(issue, itinerary as PoiAccessItineraryLike);
+          if (shift.ok && shift.itinerary) {
+            return {
+              ok: true,
+              itinerary: shift.itinerary as typeof itinerary,
+              repairTrace: {
+                tacticId: 'PoiAccessReservationShiftTactic',
+                targetEntity: issue.entityRef ?? { type: 'POI' },
+                applied: true,
+                reason: 'SUCCESS_APPLIED',
+                metrics: {
+                  fatigue_weight: 1,
+                  base_limit: 0,
+                  effective_limit: 0,
+                  actual_cost: shift.shiftMinutes ?? 0,
+                  unit: 'min',
+                },
+              },
+            };
+          }
+        }
         return this.timeWindowSwapShiftOperator(issue, itinerary);
       case 'ROUTE_INFEASIBLE':
       case 'SUNSET_BREACH':
@@ -1123,6 +1329,26 @@ export class RepairExecutorService implements IRepairExecutor {
     itinerary: ItineraryLike,
     ctx: PhaseExecutorContext,
   ): Promise<{ ok: boolean; itinerary?: ItineraryLike; postRepairAdvisories?: VerificationIssue[] }> {
+    const closedPoiIdEarly = String(_issue.entityRef?.id ?? '').trim();
+    if (shouldSkipAggressivePoiRepairForSparseContext(_dso, closedPoiIdEarly)) {
+      return {
+        ok: false,
+        postRepairAdvisories: [
+          {
+            code: 'ADVISORY' as VerificationIssueCode,
+            class: 'ADVISORY',
+            message:
+              '稀疏区 intentional slack：跳过闭馆/弹性占位 POI 的惩罚性替换，保留天气窗与安全缓冲。',
+            source: 'OTHER',
+            at: new Date().toISOString(),
+            suggestedActions: [
+              { action: 'RELAX', detail: '保留留白或等待核实开放世界节点' },
+            ],
+          },
+        ],
+      };
+    }
+
     const radiusMeters = Number(process.env.DECISION_REPAIR_REPLACEMENT_RADIUS_M ?? 3000);
     const dest =
       typeof ctx.tripPlanRequest?.destination === 'string'
@@ -1450,7 +1676,10 @@ export class RepairExecutorService implements IRepairExecutor {
     const skill = this.skillsRegistry.getSkill('poi.search');
     if (!skill) return {};
     try {
-      const recent = Array.isArray(ctx.recent_messages) ? ctx.recent_messages.filter((m) => typeof m === 'string').slice(-5) : [];
+      const stringMessages = Array.isArray(ctx.recent_messages)
+        ? ctx.recent_messages.filter((m): m is string => typeof m === 'string')
+        : [];
+      const recent = this.contextSlidingWindow.slice('repair_executor', stringMessages);
       const userMessage = recent.length ? recent.join('\n') : undefined;
       const poiSearchCtx = buildPoiSearchContext({
         destination,
@@ -1458,7 +1687,6 @@ export class RepairExecutorService implements IRepairExecutor {
         itinerary,
         userMessage,
       });
-      const ctxSuffix = buildContextualPoiSearchQuerySuffix(poiSearchCtx);
       const baseQuery = `${destination!.trim()} attraction`;
       const causedByEvent = closedPoiId?.trim()
         ? ({ type: 'POI_CLOSED' as const, poiId: String(closedPoiId).trim().toLowerCase() } as const)
@@ -1471,9 +1699,16 @@ export class RepairExecutorService implements IRepairExecutor {
         closedItemCategoryHint: closedItemCategoryHint,
       });
       const gapSuffix = gapRetrievalIntentQuerySuffix(semanticGaps);
-      const query = `${baseQuery}${ctxSuffix}${gapSuffix}`.replace(/\s+/g, ' ').trim();
+      const poiPlan = buildPoiSearchPlanFromContext({
+        baseQuery,
+        poiSearchCtx,
+        gapSuffix,
+        variant: 'general',
+      });
       const r = await skill.execute({
-        query,
+        query: poiPlan.contextualizedQuery,
+        queryRewriteResult: poiPlan.rewrite,
+        multiRouteSearch: true,
         limit: 10,
         lat: around?.lat,
         lng: around?.lng,
@@ -1488,7 +1723,7 @@ export class RepairExecutorService implements IRepairExecutor {
       const hardRejectedIds = rej.map((x) => String(x).trim().toLowerCase()).filter(Boolean);
       const replTrace = buildReplacementRetrievalDecisionTrace({
         poiSearchCtx,
-        query,
+        query: poiPlan.contextualizedQuery,
         hardRejectedIds,
         mergedPoiCount: pois.length,
         retrievalReason: 'find_alternative_poi_same_category_near_closed_slot',

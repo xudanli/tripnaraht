@@ -14,6 +14,10 @@ import { ReadinessRepairService } from '../../../trips/readiness/services/readin
 import { buildReadinessCascadeUiHints } from '../../../trips/readiness/utils/readiness-causal-preanalysis.util';
 import { TripContext } from '../../../trips/readiness/types/trip-context.types';
 import {
+  buildEffectivePlanWriteChainBlockedPayload,
+  isDirectPlanMutationBlocked,
+} from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
+import {
   GUARDIAN_LOW_CONSENSUS_DEFER_THRESHOLD,
   shouldDeferRepairByPreNegotiation,
 } from '../../../trips/readiness/utils/readiness-guardian-negotiation.util';
@@ -340,6 +344,9 @@ export function createReadinessActions(deps: ReadinessActionDeps): Action[] {
         },
         _state: unknown,
       ) => {
+        if (isDirectPlanMutationBlocked()) {
+          return buildEffectivePlanWriteChainBlockedPayload('readiness.applyRepair');
+        }
         return readinessRepairService.applyRepair({
           tripId: input.trip_id.trim(),
           blockerId: input.blocker_id.trim(),

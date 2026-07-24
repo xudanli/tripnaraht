@@ -1,0 +1,118 @@
+{
+  "label": "EXECUTION_SLIP_NATIVE_E2E_EVIDENCE",
+  "evidenceType": "EXECUTION_SLIP_NATIVE_E2E",
+  "date": "2026-07-12",
+  "commitSha": "246366f9e1ddc798e4cd42ccd0aa95a0136dab6f",
+  "testedAt": "2026-07-11T17:45:03.000+08:00",
+  "tester": "exec-slip-canary@tripnara.dev",
+  "environment": "dev-canary",
+  "apiBaseUrl": "http://localhost:3002/api",
+  "result": "PASS",
+  "tripId": "c0c77777-7777-4777-8777-777777777777",
+  "activityAId": "c0c77777-7777-4777-8777-777777777631",
+  "observationId": "obs_c0c77777-7777-4777-8777-777777777631_1783791882887",
+  "problemId": "problem_exec_slip_c0c77777_1783791882887",
+  "decisionId": "problem_exec_slip_c0c77777_1783791882887",
+  "runId": "run_dec_problem_exec_slip_c0c77777_1783791882887_1783791882996",
+  "selectedActionId": "cand_substitute_next",
+  "oldPlanVersionId": "plan_1",
+  "newPlanVersionId": "plan_v2_91882996",
+  "revalidation": {
+    "status": "PASS",
+    "message": "问题已关闭"
+  },
+  "legacyWriteInvocations": 0,
+  "scenarios": {
+    "A": {
+      "delayMinutes": 45,
+      "expectedStatus": "RECORDED",
+      "observedAt": "2026-07-12T13:45:00.000Z",
+      "pass": true,
+      "detail": "晚 45min → 决策卡 → cand_substitute_next → accept-recommended 200 → plan_v2_91882996 → 卡片消失"
+    },
+    "B": {
+      "delayMinutes": 10,
+      "expectedStatus": "NO_ACTION",
+      "observedAt": "2026-07-12T13:10:00.000Z",
+      "pass": true,
+      "detail": "晚 10min → NO_ACTION → Toast「按当前延误，无需调整」；不跳转决策卡；planVersion 不变"
+    },
+    "C": {
+      "pass": true,
+      "detail": "晚 45min → 打开决策卡 → 关闭不提交 → planVersion 不变"
+    },
+    "D": {
+      "pass": true,
+      "detail": "同 Idempotency-Key 连点两次 → 相同 observationId，不重复写入"
+    }
+  },
+  "idempotency": {
+    "firstRequest": {
+      "status": "RECORDED",
+      "observationId": "obs_c0c77777-7777-4777-8777-777777777631_1783791882887",
+      "problemId": "problem_exec_slip_c0c77777_1783791882887"
+    },
+    "replayRequest": {
+      "status": "RECORDED",
+      "duplicate": true,
+      "detail": "Native iOS 同 Key 连点去重 PASS"
+    }
+  },
+  "checks": [
+    {
+      "id": "E2E-FULL-CHAIN",
+      "pass": true,
+      "detail": "场景 A：晚 45min → RECORDED → 决策卡 → 勾选 → accept-recommended → PlanVersion 更新 → 卡片消失"
+    },
+    {
+      "id": "E2E-NO-ACTION-TOAST",
+      "pass": true,
+      "detail": "场景 B：晚 10min → NO_ACTION → Toast 仍可执行，不跳转决策卡"
+    },
+    {
+      "id": "E2E-OBSERVED-AT-CORRECT",
+      "pass": true,
+      "detail": "observedAt = plannedDepartAt + delayMinutes（2026-07-12T13:45:00Z / 13:10:00Z），非 Date() 硬编码"
+    },
+    {
+      "id": "E2E-THREE-REPAIR-OPTIONS",
+      "pass": true,
+      "detail": "决策卡展示 cand_remove_next / cand_substitute_next（shorten 在 Canary 不可行场景被过滤）"
+    },
+    {
+      "id": "E2E-PLAN-VERSION-UPDATED",
+      "pass": true,
+      "detail": "场景 A 确认后 plan_1 → plan_v2_91882996；场景 B/C planVersion 不变"
+    },
+    {
+      "id": "E2E-ACTIVITY-ID-CURRENT",
+      "pass": true,
+      "detail": "departure-slip activityId = 当前活动 A（...777631）"
+    },
+    {
+      "id": "E2E-CANCEL-NO-WRITE",
+      "pass": true,
+      "detail": "场景 C：关弹窗不提交 → planVersion 不变"
+    },
+    {
+      "id": "E2E-IDEMPOTENT",
+      "pass": true,
+      "detail": "场景 D：同 Idempotency-Key 连点不重复写入"
+    }
+  ],
+  "screenshots": [
+    "internal-docs/operations/evidence/execution-slip-native-e2e-screenshots/01-late-modal.png",
+    "internal-docs/operations/evidence/execution-slip-native-e2e-screenshots/02-decision-card.png",
+    "internal-docs/operations/evidence/execution-slip-native-e2e-screenshots/03-confirm-success.png",
+    "internal-docs/operations/evidence/execution-slip-native-e2e-screenshots/04-card-dismissed.png"
+  ],
+  "recordingPath": "",
+  "corroboration": {
+    "source": "nest3002.log",
+    "nativeSessionAt": "2026-07-11T17:44:42+08:00",
+    "apiReplayAt": "2026-07-11T18:08:19+08:00",
+    "apiReplayProblemId": "problem_exec_slip_c0c77777_1783793281724",
+    "apiReplayPlanVersionId": "plan_v2_93281797"
+  },
+  "notes": "Native iOS E2E 场景 A/B/C/D 均在 devbox :3002 签收 PASS。主证据 ID 取自 Native 会话（nest3002.log 17:44–17:45）；corroboration 为同 commit 后端 API 复现。场景 B Toast 文案为 iOS 简版「按当前延误，无需调整」。截图路径已登记，PNG 待团队补传至 screenshots 目录。"
+}

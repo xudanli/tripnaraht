@@ -4,7 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CurrencyStrategyDto } from './dto/currency-strategy.dto';
 import { CountryPackDto, CreateOrUpdateCountryPackDto } from './dto/country-pack.dto';
 import { GetCountriesQueryDto } from './dto/get-countries-query.dto';
-import { CountryProfileDto } from './dto/country-profile.dto';
+import { assembleCountryProfileResponse } from './country-profile-v2.mapper';
+import type { CountryProfileV2Data } from './types/country-profile-v2.types';
 import { CurrencyMathUtil } from '../common/utils/currency-math.util';
 import { getCountryPack, COUNTRY_PACKS } from '../trips/readiness/config/country-pack.config';
 import { Prisma } from '@prisma/client';
@@ -324,7 +325,7 @@ export class CountriesService {
    * @param countryCode 国家代码（ISO 3166-1 alpha-2）
    * @returns 完整的国家档案信息
    */
-  async getCountryProfile(countryCode: string): Promise<CountryProfileDto> {
+  async getCountryProfile(countryCode: string): Promise<CountryProfileV2Data> {
     const profile = await this.prisma.countryProfile.findUnique({
       where: { isoCode: countryCode.toUpperCase() },
     });
@@ -333,23 +334,7 @@ export class CountriesService {
       throw new NotFoundException(`未找到国家代码为 ${countryCode} 的国家档案`);
     }
 
-    return {
-      isoCode: profile.isoCode,
-      nameCN: profile.nameCN,
-      nameEN: profile.nameEN || undefined,
-      updatedAt: profile.updatedAt,
-      currencyCode: profile.currencyCode || undefined,
-      currencyName: profile.currencyName || undefined,
-      exchangeRateToCNY: profile.exchangeRateToCNY || undefined,
-      exchangeRateToUSD: profile.exchangeRateToUSD || undefined,
-      paymentType: profile.paymentType || undefined,
-      paymentInfo: profile.paymentInfo as any || undefined,
-      powerInfo: profile.powerInfo as any || undefined,
-      emergency: profile.emergency as any || undefined,
-      visaForCN: profile.visaForCN as any || undefined,
-      complianceInfo: profile.complianceInfo as any || undefined,
-      travelCulture: profile.travelCulture as any || undefined,
-    };
+    return assembleCountryProfileResponse(profile);
   }
 }
 

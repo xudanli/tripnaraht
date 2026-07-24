@@ -14,7 +14,22 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ContextBlock } from '../../agent/context-engine/types/context-package.types';
 import { getCountryPack } from '../../trips/readiness/config/country-pack.config';
 import { PackStorageService } from '../../trips/readiness/storage/pack-storage.service';
+import { ReadinessService } from '../../trips/readiness/services/readiness.service';
+import type { ReadinessPack } from '../../trips/readiness/types/readiness-pack.types';
+import type { TripContext } from '../../trips/readiness/types/trip-context.types';
 import { WorldFactReadinessProjectionService } from '../../world-facts/world-fact-readiness-projection.service';
+import { prismaRowToCountryFacts } from '../../countries/country-profile-v2.mapper';
+import type { CountryFacts } from '../../trips/readiness/compilers/facts-to-readiness.compiler';
+import {
+  buildContextBlocksFromCountryFacts,
+  buildContextBlocksFromReadinessFinding,
+  contextBlockTypeToTopic,
+  type CountryProfileContextTopic,
+} from '../../countries/context/country-profile-context-blocks';
+import {
+  buildReadinessPackSkillEvolverContextBlock,
+  buildSkillEvolverCountryPackContextBlock,
+} from '../../agent/training/skill-evolver/utils/country-pack-evolver-markdown.util';
 
 export interface CountryPackGetBlocksInput extends SkillInput {
   /** Pack ID 或国家代码 */
@@ -34,6 +49,12 @@ export interface CountryPackGetBlocksInput extends SkillInput {
   
   /** 规划阶段（用于筛选相关性） */
   phase?: string;
+
+  /** ISO 3166-1 alpha-2 护照国籍，用于 CountryProfile entryRequirements 回退块 */
+  travelerNationality?: string;
+
+  /** 行程开始日期（ISO），用于季节/天气窗口 Profile 回退块 */
+  tripStartDate?: string;
 }
 
 export interface CountryPackGetBlocksOutput extends SkillOutput {
@@ -66,6 +87,7 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
   constructor(
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly packStorage?: PackStorageService,
+    @Optional() private readonly readinessService?: ReadinessService,
     @Optional() private readonly worldFactReadiness?: WorldFactReadinessProjectionService,
   ) {}
 
@@ -91,6 +113,26 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
     } catch (err: any) {
       this.logger.warn(`findPacksByCountryFallback(${countryCode}) failed: ${err?.message}`);
       return [];
+    }
+  }
+
+  /** 从 ReadinessPack 直接加载 SkillEvolver 块（不依赖 packData 合并路径） */
+  private async loadSkillEvolverBlockFromDb(
+    countryCode: string,
+  ): Promise<ContextBlock | null> {
+    if (!this.prisma) return null;
+    try {
+      const row = await this.prisma.readinessPack.findFirst({
+        where: { countryCode: countryCode.toUpperCase(), isActive: true },
+        orderBy: { updatedAt: 'desc' },
+        select: { packData: true },
+      });
+      if (!row?.packData) return null;
+      return buildReadinessPackSkillEvolverContextBlock(countryCode, row.packData);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`loadSkillEvolverBlockFromDb(${countryCode}) failed: ${msg}`);
+      return null;
     }
   }
 
@@ -121,7 +163,9 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
               ? await this.packStorage.findPacksByCountry(input.packId.toUpperCase())
               : await this.findPacksByCountryFallback(input.packId.toUpperCase());
             if (packRecords.length > 0) {
-              const pack = packRecords[0] as any;
+              const pack =
+                (packRecords.find((p: any) => p?.skillEvolver?.markdown) as any) ??
+                (packRecords[0] as any);
               countryCode = pack.geo?.countryCode || input.packId.toUpperCase();
               countryName = typeof pack.displayName === 'string' ? pack.displayName : pack.displayName?.en || pack.displayName?.zh || countryCode;
               packData = pack;
@@ -160,15 +204,71 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
         packData = countryPack;
       }
 
-      // 2. 为每个主题提取块
-      for (const topic of input.topics) {
-        const block = this.extractTopicBlock(topic, packData, countryCode, countryName);
-        if (block) {
-          // P0: 添加证据溯源
-          const blockWithEvidence = this.addEvidenceToBlock(block, packData, countryCode);
-          blocks.push(blockWithEvidence);
+      const iso = countryCode.toUpperCase().slice(0, 2);
+      const topics = [...input.topics] as CountryProfileContextTopic[];
+
+      // Phase 3: Findings-first projection (Profile strict derivation + Pack overlay)
+      if (this.readinessService && /^[A-Z]{2}$/.test(iso)) {
+        const tripContext = this.buildTripContextFromInput(input, iso);
+        const packForOverlay =
+          packData && (packData.rules?.length > 0 || packData.hazards?.length > 0)
+            ? (packData as ReadinessPack)
+            : null;
+        const finding = await this.readinessService.getMergedCountryFinding(
+          iso,
+          tripContext,
+          packForOverlay,
+        );
+        if (finding) {
+          const droneFacts = await this.loadCountryFactsForDrone(iso);
+          const findingBlocks = buildContextBlocksFromReadinessFinding(
+            finding,
+            {
+              topics,
+              countryCode: iso,
+              countryName,
+              travelerNationality: input.travelerNationality,
+            },
+            droneFacts,
+          );
+          blocks.push(...findingBlocks);
+          for (const topic of topics) {
+            const hasBlock = findingBlocks.some(
+              (b) => contextBlockTypeToTopic(b.type) === topic,
+            );
+            if (!hasBlock) missingTopics.push(topic);
+          }
+          this.logger.debug(
+            `[Phase3] findings→blocks ${iso}: ${findingBlocks.map((b) => b.type).join(', ')}`,
+          );
         } else {
-          missingTopics.push(topic);
+          missingTopics.push(...topics);
+        }
+      } else {
+        for (const topic of topics) {
+          const block = this.extractTopicBlock(topic, packData, countryCode, countryName);
+          if (block) {
+            blocks.push(this.addEvidenceToBlock(block, packData, countryCode));
+          } else {
+            missingTopics.push(topic);
+          }
+        }
+        if (missingTopics.length > 0) {
+          const filled = await this.fillMissingTopicsFromCountryProfile(
+            countryCode,
+            countryName,
+            [...missingTopics] as CountryProfileContextTopic[],
+            input.travelerNationality,
+            input.tripStartDate,
+          );
+          for (const block of filled) {
+            blocks.push(block);
+            const topic = contextBlockTypeToTopic(block.type);
+            if (topic) {
+              const idx = missingTopics.indexOf(topic);
+              if (idx >= 0) missingTopics.splice(idx, 1);
+            }
+          }
         }
       }
 
@@ -200,6 +300,17 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
         }
       }
 
+      const evolverBlock =
+        buildSkillEvolverCountryPackContextBlock(countryCode) ??
+        (await this.loadSkillEvolverBlockFromDb(countryCode)) ??
+        buildReadinessPackSkillEvolverContextBlock(countryCode, packData);
+      if (evolverBlock) {
+        blocks.push(evolverBlock);
+        this.logger.debug(
+          `[countryPack.getBlocks] SkillEvolver block for ${countryCode} source=${evolverBlock.data?.source ?? 'unknown'}`,
+        );
+      }
+
       return {
         blocks,
         missingTopics,
@@ -212,6 +323,73 @@ export class CountryPackGetBlocksSkill implements Skill<CountryPackGetBlocksInpu
     } catch (error: any) {
       this.logger.error(`获取国家包块失败: ${error.message}`, error.stack);
       throw error;
+    }
+  }
+
+  private buildTripContextFromInput(
+    input: CountryPackGetBlocksInput,
+    countryCode: string,
+  ): TripContext {
+    return {
+      traveler: { nationality: input.travelerNationality },
+      trip: input.tripStartDate ? { startDate: input.tripStartDate } : {},
+      itinerary: {
+        countries: [countryCode],
+        activities: ['self_drive'],
+      },
+    };
+  }
+
+  private async loadCountryFactsForDrone(
+    countryCode: string,
+  ): Promise<CountryFacts | undefined> {
+    if (!this.prisma) return undefined;
+    try {
+      const row = await this.prisma.countryProfile.findUnique({
+        where: { isoCode: countryCode.toUpperCase() },
+      });
+      return row ? prismaRowToCountryFacts(row) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * ReadinessPack / config 缺失主题时，从 CountryProfile V2 表编译 ContextBlock。
+   */
+  private async fillMissingTopicsFromCountryProfile(
+    countryCode: string,
+    countryName: string,
+    topics: CountryProfileContextTopic[],
+    travelerNationality?: string,
+    tripStartDate?: string,
+  ): Promise<ContextBlock[]> {
+    if (!this.prisma || topics.length === 0) return [];
+
+    try {
+      const row = await this.prisma.countryProfile.findUnique({
+        where: { isoCode: countryCode.toUpperCase() },
+      });
+      if (!row) {
+        this.logger.debug(`countryProfile fallback: no row for ${countryCode}`);
+        return [];
+      }
+
+      const facts = prismaRowToCountryFacts(row);
+      const displayName = countryName || facts.nameCN || facts.nameEN || countryCode;
+      if (!facts.nameCN && displayName) {
+        facts.nameCN = displayName;
+      }
+
+      return buildContextBlocksFromCountryFacts(facts, {
+        topics,
+        travelerNationality,
+        tripStartDate,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`countryProfile fallback failed (${countryCode}): ${msg}`);
+      return [];
     }
   }
 

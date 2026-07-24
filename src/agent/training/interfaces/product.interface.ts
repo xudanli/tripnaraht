@@ -364,5 +364,7 @@ export interface ExplainableOutput {
     model_version: string;
     trace_id: string;
     generated_at: string;
+    /** unified-explainability@v1 投影时写入 */
+    unified_contract_version?: string;
   };
 }

@@ -54,10 +54,10 @@ export class ContactNotificationService {
     }
 
     try {
-      const smtpFrom = this.configService.get<string>('SMTP_FROM') || 
-                      this.configService.get<string>('SMTP_USER') || 
+      const smtpFrom = this.configService?.get<string>('SMTP_FROM') ||
+                      this.configService?.get<string>('SMTP_USER') ||
                       'noreply@tripnara.com';
-      const appName = this.configService.get<string>('APP_NAME') || 'TripNARA';
+      const appName = this.configService?.get<string>('APP_NAME') || 'TripNARA';
 
       // 构建邮件内容
       const userInfo = userId ? `用户ID: ${userId}` : '匿名用户';

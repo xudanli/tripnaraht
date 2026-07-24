@@ -1,0 +1,19 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.hotel_change.md_05_three_movable_on_day1",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "hotel_change",
+  "title": "Hotel stay \u2014 MOVE_DAY three movable on day-1",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "maxChangedActivities": 3,
+  "requireNodeIds": [
+    "a4"
+  ],
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/hotel_change/problems/md_05_three_movable_on_day1.problem.json",
+  "notes": [
+    "MOVE_DAY multi-day (P4); requires OR_TOOLS_MOVE_DAY_SHADOW=1 on sidecar"
+  ],
+  "provenance": "synthetic_template_v1"
+}

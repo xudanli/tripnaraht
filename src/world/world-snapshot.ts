@@ -21,6 +21,17 @@ function mapToRecord(m: Map<string, ConstraintField>): Record<string, Constraint
   return o;
 }
 
+/** Flatten snapshot maps for graph overlay / CGUS injection. */
+export function constraintFieldsFromSnapshot(
+  snapshot: WorldConstraintStoreSnapshot,
+): ConstraintField[] {
+  return [
+    ...Object.values(snapshot.roads),
+    ...Object.values(snapshot.weather),
+    ...Object.values(snapshot.bookings),
+  ];
+}
+
 export function snapshotWorldConstraintStore(
   store: WorldConstraintStore,
 ): WorldConstraintStoreSnapshot {

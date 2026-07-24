@@ -18,11 +18,14 @@ import { SvalbardPoiFeaturesService } from './services/svalbard-poi-features.ser
 import { IcelandPoiFeaturesService } from './services/iceland-poi-features.service';
 import { PlaceTrailEnrichmentService } from './services/place-trail-enrichment.service';
 import { UnsplashService } from './services/unsplash.service';
+import { PlaceEvidenceService } from './services/place-evidence.service';
 import { ExperienceVectorService } from './services/experience-vector.service';
 import { PlaceGraphService } from './services/place-graph.service';
 import { DistrictService } from './services/district.service';
 import { CrowdCurveService } from './services/crowd-curve.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PoiAccessCapacityModule } from '../poi-access-capacity/poi-access-capacity.module';
+import { CanonicalPoiResolutionModule } from '../canonical-poi-resolution/canonical-poi-resolution.module';
 import { HotelsModule } from '../hotels/hotels.module';
 import { RagModule } from '../rag/rag.module';
 import { UploadModule } from '../upload/upload.module';
@@ -31,6 +34,8 @@ import { LlmModule } from '../llm/llm.module';
 @Module({
   imports: [
     PrismaModule, 
+    PoiAccessCapacityModule,
+    CanonicalPoiResolutionModule,
     HotelsModule,
     UploadModule, // 导入上传模块以使用 UploadService
     forwardRef(() => RagModule), // 导入RAG模块以使用EmbeddingCacheService（使用forwardRef避免循环依赖）
@@ -58,6 +63,7 @@ import { LlmModule } from '../llm/llm.module';
     PlaceGraphService, // Travel World Model: Place Graph
     DistrictService, // Travel World Model: District 区域模型
     CrowdCurveService, // Travel World Model Phase 6: 人流曲线
+    PlaceEvidenceService,
   ],
   exports: [
     PlacesService,
@@ -78,6 +84,7 @@ import { LlmModule } from '../llm/llm.module';
     PlaceGraphService,
     DistrictService,
     CrowdCurveService,
+    PlaceEvidenceService,
   ],
 })
 export class PlacesModule {}

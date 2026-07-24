@@ -1,0 +1,6 @@
+24:  auditStatus: 'proven' | 'needs_audit' | 'shadow_only';
+49:    auditStatus: 'needs_audit',
+59:    auditStatus: 'needs_audit',
+69:    auditStatus: 'needs_audit',
+79:    auditStatus: 'needs_audit',
+99:    auditStatus: 'needs_audit',

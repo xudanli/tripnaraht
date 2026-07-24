@@ -9,6 +9,12 @@ export interface StandardResponse<T = any> {
   success: boolean;
   data?: T;
   error?: ErrorResponse;
+  /** Mobile BFF / 执行阶段增强信封（可选，向后兼容） */
+  requestId?: string;
+  tripId?: string;
+  contextVersion?: number;
+  planVersion?: number;
+  serverTime?: string;
 }
 
 /**
@@ -78,4 +84,10 @@ export enum ErrorCode {
   
   // 请求错误
   BAD_REQUEST = 'BAD_REQUEST',
+
+  /** 日程写库冲突（缓冲/顺延与现有项重叠） */
+  SCHEDULE_CONFLICT = 'SCHEDULE_CONFLICT',
+
+  /** Travel Context revision 乐观锁冲突（RFC-003 §8.2） */
+  REVISION_CONFLICT = 'REVISION_CONFLICT',
 }

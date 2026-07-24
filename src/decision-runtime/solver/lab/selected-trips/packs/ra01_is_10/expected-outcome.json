@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.expected_outcome@v1",
+  "tripId": "ra01_is_10",
+  "expectation": "reject",
+  "maxChangedActivities": 0,
+  "mustPreserveBooked": true,
+  "gateway": "BLOCK",
+  "reviewedBy": "lab-staging-export",
+  "reviewedAt": "2026-07-16",
+  "notes": [
+    "Negative sample — Gateway BLOCK / reject-or-fallback path"
+  ]
+}

@@ -34,6 +34,9 @@ type LogLike = Pick<Logger, 'log' | 'warn' | 'error'> | {
   error?: (msg: string) => void;
 };
 
+const BYPASS_LOG_THROTTLE_MS = 15000;
+const bypassLogThrottle = new Map<string, { at: number; suppressed: number }>();
+
 /** Prefer Nest Logger; routes by severity (default warn). */
 export function logRealityBypass(
   logger: LogLike,
@@ -47,7 +50,22 @@ export function logRealityBypass(
   if (escalation === 'error' || escalation === 'block') {
     effective = severity === 'info' ? 'warn' : 'error';
   }
-  const msg = `[REALITY_BYPASS][${effective.toUpperCase()}] ${component} ${detail}`;
+
+  const throttleKey = `${effective}:${component}:${detail}`;
+  const now = Date.now();
+  const prev = bypassLogThrottle.get(throttleKey);
+  if (prev && now - prev.at < BYPASS_LOG_THROTTLE_MS) {
+    prev.suppressed += 1;
+    return;
+  }
+
+  let suppressedSuffix = '';
+  if (prev && prev.suppressed > 0) {
+    suppressedSuffix = ` (suppressed ${prev.suppressed} similar in ${BYPASS_LOG_THROTTLE_MS / 1000}s)`;
+  }
+  bypassLogThrottle.set(throttleKey, { at: now, suppressed: 0 });
+
+  const msg = `[REALITY_BYPASS][${effective.toUpperCase()}] ${component} ${detail}${suppressedSuffix}`;
   switch (effective) {
     case 'info':
       logger.log?.(msg);

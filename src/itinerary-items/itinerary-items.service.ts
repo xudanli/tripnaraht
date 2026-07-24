@@ -7,11 +7,29 @@ import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
 import { SmartRoutesService } from '../transport/services/smart-routes.service';
 import { TravelTimeEstimatorService } from '../transport/services/travel-time-estimator.service';
+import { PoiHopTravelSegmentService } from '../transport/services/poi-hop-travel-segment.service';
+import { TravelSegmentEnrichmentService } from '../transport/services/travel-segment-enrichment.service';
+import {
+  ITINERARY_ITEM_TRAVEL_ETA_METADATA_KEY,
+  isTravelEtaEnvelopeV1,
+  projectLegacyDurationToEtaEnvelope,
+  type TerrainPolicyMode,
+  type TravelEtaEnvelopeV1,
+} from '../transport/contracts/travel-eta.contract';
+import {
+  projectTravelEtaUserEvidence,
+  type TravelEtaUserEvidenceV1,
+} from '../transport/contracts/travel-eta-user-evidence.contract';
+import { DemProfileFromGeometryService } from '../trips/dem/services/dem-profile-from-geometry.service';
 import { PlacesService } from '../places/places.service';
 import { GoogleMapsDirectService } from '../mcp/google-maps-direct.service';
 import { SearchNearbyPoiQueryDto, NearbyPoiResultDto, NearbyPoiCategory } from './dto/search-nearby-poi.dto';
 import { PlaceCategory } from '@prisma/client';
+import { attachDisplaySortIndices } from './utils/itinerary-day-display-order.util';
+import { parseCoordsFromRestNote } from '../agent/utils/accommodation-place.util';
+import { resolveEffectiveIcelandPlaceCoordinates } from '../places/utils/iceland-canonical-poi-coords.util';
 import { TripRevisionBumpService } from '../trips/services/trip-revision-bump.service';
+import { resolveEffectiveTravelMode } from '../trips/trip-constraint-solver/utils/constraints-summary.util';
 
 @Injectable()
 export class ItineraryItemsService {
@@ -19,6 +37,9 @@ export class ItineraryItemsService {
     private prisma: PrismaService,
     @Optional() private readonly smartRoutesService?: SmartRoutesService,
     @Optional() private readonly travelTimeEstimator?: TravelTimeEstimatorService,
+    @Optional() private readonly poiHopTravelSegment?: PoiHopTravelSegmentService,
+    @Optional() private readonly travelSegmentEnrichment?: TravelSegmentEnrichmentService,
+    @Optional() private readonly demProfileFromGeometry?: DemProfileFromGeometryService,
     @Optional() @Inject(forwardRef(() => PlacesService)) private readonly placesService?: PlacesService,
     @Optional() private readonly googleMapsService?: GoogleMapsDirectService,
     @Optional() private readonly tripRevisionBump?: TripRevisionBumpService,
@@ -267,8 +288,17 @@ export class ItineraryItemsService {
         note: noteValue,
         ...(bookingUrlValue != null && { bookingUrl: bookingUrlValue }),
         order: orderValue, // 🆕 设置显示顺序
+        ...(dto.costCategory != null && { costCategory: dto.costCategory }),
+        ...(dto.costNote != null && { costNote: dto.costNote }),
+        ...(dto.estimatedCost != null && { estimatedCost: dto.estimatedCost }),
+        ...(dto.currency != null && { currency: dto.currency }),
         ...(dto.travelFromPreviousDuration != null && { travelFromPreviousDuration: dto.travelFromPreviousDuration }),
         ...(dto.travelFromPreviousDistance != null && { travelFromPreviousDistance: dto.travelFromPreviousDistance }),
+        ...(dto.experienceDefinitionId !== undefined && {
+          experienceDefinitionId: dto.experienceDefinitionId,
+        }),
+        ...(dto.productOfferingId !== undefined && { productOfferingId: dto.productOfferingId }),
+        ...(dto.productSessionId !== undefined && { productSessionId: dto.productSessionId }),
       } as any, // Use UncheckedCreateInput to allow direct foreign key assignment
       include: {
         Place: {
@@ -516,14 +546,279 @@ export class ItineraryItemsService {
       ? []
       : await this.findCheckoutItemsForDay(currentTripDay);
 
-    // 合并结果，退房项排在最前面
+    // 合并结果；退房项固定置顶（displaySortIndex），其余按 startTime
     const allItems = [...checkoutItems, ...todayItems];
 
     // 添加跨天标记和坐标字段
     const enrichedItems = await Promise.all(
       allItems.map(item => this.enrichItemWithCoordinates(item))
     );
-    return enrichedItems.map(item => this.addCrossDayInfo(item, currentTripDay.date));
+    const withCrossDay = enrichedItems.map(item => this.addCrossDayInfo(item, currentTripDay.date));
+    return attachDisplaySortIndices(withCrossDay);
+  }
+
+  private readonly timelineItemInclude = {
+    Place: true,
+    Trail: {
+      include: {
+        Place_Trail_startPlaceIdToPlace: true,
+        Place_Trail_endPlaceIdToPlace: true,
+        TrailWaypoint: {
+          include: { Place: true },
+          orderBy: { order: 'asc' as const },
+        },
+      },
+    },
+    TripDay: true,
+  };
+
+  /**
+   * journey-map / timeline BFF：按 trip 一次拉取全部行程项（含 Place 坐标）
+   */
+  async findByTrip(tripId: string, options?: { includePlace?: boolean }) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        TripDay: { orderBy: { date: 'asc' } },
+      },
+    });
+    if (!trip) {
+      throw new NotFoundException(`找不到行程 (ID: ${tripId})`);
+    }
+
+    const allOrderedDays = trip.TripDay.map((d) => ({ id: d.id, date: d.date }));
+    const dayIds = allOrderedDays.map((d) => d.id);
+    const itemsByDayId = await this.loadItemsGroupedByTripDayIds(tripId, dayIds);
+
+    const flat: any[] = [];
+    for (const day of trip.TripDay) {
+      const dayItems = await this.buildTimelineDayItems(
+        { id: day.id, date: day.date, tripId },
+        allOrderedDays,
+        itemsByDayId,
+      );
+      flat.push(...dayItems);
+    }
+
+    if (options?.includePlace === false) {
+      return flat.map((item) => {
+        const { Place: _place, ...rest } = item;
+        return rest;
+      });
+    }
+    return flat;
+  }
+
+  /**
+   * timeline BFF：一次查询多天的 ItineraryItem，按 tripDayId 分组
+   */
+  async loadItemsGroupedByTripDayIds(
+    tripId: string,
+    tripDayIds: string[],
+  ): Promise<Map<string, any[]>> {
+    const uniqueIds = [...new Set(tripDayIds.filter(Boolean))];
+    if (uniqueIds.length === 0) return new Map();
+
+    const rows = await this.prisma.itineraryItem.findMany({
+      where: {
+        tripDayId: { in: uniqueIds },
+        TripDay: { tripId },
+      },
+      include: this.timelineItemInclude,
+      orderBy: { startTime: 'asc' },
+    });
+
+    const grouped = new Map<string, any[]>();
+    for (const row of rows) {
+      const list = grouped.get(row.tripDayId) ?? [];
+      list.push(row);
+      grouped.set(row.tripDayId, list);
+    }
+    return grouped;
+  }
+
+  /**
+   * timeline BFF：由内存中的分组 items 构建与 findByTripDay 一致的当天列表
+   */
+  async buildTimelineDayItems(
+    currentTripDay: { id: string; date: Date; tripId: string },
+    allOrderedDays: Array<{ id: string; date: Date }>,
+    itemsByDayId: Map<string, any[]>,
+  ): Promise<any[]> {
+    const dayIndex = allOrderedDays.findIndex((d) => d.id === currentTripDay.id);
+    const previousTripDay = dayIndex > 0 ? allOrderedDays[dayIndex - 1] : undefined;
+    const previousDayItems = previousTripDay
+      ? (itemsByDayId.get(previousTripDay.id) ?? [])
+      : [];
+    const checkoutItems = this.filterCheckoutItemsInMemory(currentTripDay, previousDayItems);
+    const todayItems = itemsByDayId.get(currentTripDay.id) ?? [];
+    const allItems = [...checkoutItems, ...todayItems];
+    const enrichedItems = await Promise.all(
+      allItems.map((item) => this.enrichItemWithCoordinates(item)),
+    );
+    const withCrossDay = enrichedItems.map((item) =>
+      this.addCrossDayInfo(item, currentTripDay.date),
+    );
+    return attachDisplaySortIndices(withCrossDay);
+  }
+
+  /** 内存版退房项筛选（与 findCheckoutItemsForDay 语义一致） */
+  private filterCheckoutItemsInMemory(
+    currentTripDay: { id: string; date: Date },
+    previousDayItems: any[],
+  ): any[] {
+    const currentDate = DateTime.fromJSDate(currentTripDay.date, { zone: 'utc' });
+    const currentDayStart = currentDate.startOf('day');
+    const currentDayEnd = currentDate.endOf('day');
+
+    return previousDayItems
+      .filter((item) => {
+        if (item.type !== 'REST') return false;
+        const place = item.Place;
+        if (!place) return false;
+        const isHotel =
+          place.category === 'HOTEL' ||
+          (place.nameCN && /酒店|旅馆|民宿/i.test(place.nameCN)) ||
+          (place.nameEN && /hotel|hostel|resort|guesthouse|inn/i.test(place.nameEN));
+        if (!isHotel) return false;
+
+        if (item.endTime) {
+          const end = DateTime.fromJSDate(item.endTime, { zone: 'utc' });
+          return (
+            end >= currentDayStart &&
+            end <= currentDayEnd.plus({ hours: 14 })
+          );
+        }
+        if (!item.startTime) return false;
+        const start = DateTime.fromJSDate(item.startTime, { zone: 'utc' });
+        return start < currentDayStart;
+      })
+      .map((item) => ({
+        ...item,
+        _isCheckoutItem: true,
+        _checkoutDate: currentTripDay.date,
+      }));
+  }
+
+  /** 由已加载 items 构建 cached travel-info（不查库） */
+  buildDayTravelInfoFromLoadedItems(
+    dayId: string,
+    date: Date,
+    items: any[],
+    tripEtaByToItemId?: Record<string, TravelEtaEnvelopeV1>,
+  ) {
+    const sorted = [...items].sort((a, b) => {
+      const ta = a.startTime ? new Date(a.startTime).getTime() : 0;
+      const tb = b.startTime ? new Date(b.startTime).getTime() : 0;
+      return ta - tb;
+    });
+
+    const travelSegments: Array<{
+      fromItemId: string;
+      toItemId: string;
+      fromPlace: string;
+      toPlace: string;
+      duration: number | null;
+      distance: number | null;
+      travelMode: string | null;
+      crossDay?: boolean;
+      eta?: TravelEtaEnvelopeV1;
+      userEvidence?: TravelEtaUserEvidenceV1;
+    }> = [];
+
+    const firstItem = sorted.find((item) => item.placeId);
+    if (
+      firstItem &&
+      (firstItem.travelFromPreviousDuration != null || firstItem.travelFromPreviousDistance != null)
+    ) {
+      const eta = this.resolveEtaFromItemCache(firstItem, tripEtaByToItemId);
+      travelSegments.push({
+        fromItemId: 'cross-day',
+        toItemId: firstItem.id,
+        fromPlace: '上一日',
+        toPlace: firstItem.Place?.nameCN || firstItem.Place?.nameEN || '未知地点',
+        duration: eta?.schedulableDurationMin ?? firstItem.travelFromPreviousDuration,
+        distance: firstItem.travelFromPreviousDistance,
+        travelMode: firstItem.travelMode,
+        crossDay: true,
+        ...(eta ? { eta, userEvidence: projectTravelEtaUserEvidence(eta) } : {}),
+      });
+    }
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const fromItem = sorted[i];
+      const toItem = sorted[i + 1];
+      const eta = this.resolveEtaFromItemCache(toItem, tripEtaByToItemId);
+      travelSegments.push({
+        fromItemId: fromItem.id,
+        toItemId: toItem.id,
+        fromPlace: fromItem.Place?.nameCN || fromItem.Place?.nameEN || '未知地点',
+        toPlace: toItem.Place?.nameCN || toItem.Place?.nameEN || '未知地点',
+        duration: eta?.schedulableDurationMin ?? toItem.travelFromPreviousDuration,
+        distance: toItem.travelFromPreviousDistance,
+        travelMode: toItem.travelMode,
+        ...(eta ? { eta, userEvidence: projectTravelEtaUserEvidence(eta) } : {}),
+      });
+    }
+
+    const totalDuration = travelSegments.reduce((sum, s) => sum + (s.duration || 0), 0);
+    const totalDistance = travelSegments.reduce((sum, s) => sum + (s.distance || 0), 0);
+
+    return {
+      dayId,
+      date,
+      itemCount: sorted.length,
+      segments: travelSegments,
+      summary: {
+        totalDuration,
+        totalDistance,
+        segmentCount: travelSegments.length,
+      },
+      source: 'cached' as const,
+    };
+  }
+
+  /** Prefer Trip.metadata.travelEtaByToItemId / item metadata; else project legacy duration. */
+  private resolveEtaFromItemCache(
+    item: {
+      id?: string;
+      travelFromPreviousDuration?: number | null;
+      travelFromPreviousDistance?: number | null;
+      metadata?: unknown;
+    },
+    tripEtaByToItemId?: Record<string, TravelEtaEnvelopeV1>,
+  ): TravelEtaEnvelopeV1 | undefined {
+    if (item.id && tripEtaByToItemId?.[item.id] && isTravelEtaEnvelopeV1(tripEtaByToItemId[item.id])) {
+      return tripEtaByToItemId[item.id];
+    }
+    const meta = item.metadata as Record<string, unknown> | null | undefined;
+    const stored = meta?.[ITINERARY_ITEM_TRAVEL_ETA_METADATA_KEY];
+    if (isTravelEtaEnvelopeV1(stored)) {
+      return stored;
+    }
+    if (item.travelFromPreviousDuration == null || !Number.isFinite(item.travelFromPreviousDuration)) {
+      return undefined;
+    }
+    return projectLegacyDurationToEtaEnvelope({
+      durationMin: item.travelFromPreviousDuration,
+      distanceM: item.travelFromPreviousDistance,
+      sourceKind: 'CACHED',
+      provider: 'UNKNOWN',
+      cacheHit: true,
+      geometry: null,
+    });
+  }
+
+  /** 供 Trip 详情等场景：仅取应在指定日期展示的退房项（不含当日常规项） */
+  async findCheckoutDisplayItemsForTripDay(tripDayId: string): Promise<any[]> {
+    const currentTripDay = await this.prisma.tripDay.findUnique({
+      where: { id: tripDayId },
+      include: { Trip: true },
+    });
+    if (!currentTripDay) return [];
+    const checkoutItems = await this.findCheckoutItemsForDay(currentTripDay);
+    const enriched = await Promise.all(checkoutItems.map((item) => this.enrichItemWithCoordinates(item)));
+    return enriched.map((item) => this.addCrossDayInfo(item, currentTripDay.date));
   }
 
   /**
@@ -869,6 +1164,21 @@ export class ItineraryItemsService {
         ...(updateDto.note !== undefined && { note: updateDto.note }),
         // 更新 tripDayId（如果跨天或明确提供）
         ...(targetTripDayId !== existing.tripDayId && { tripDayId: targetTripDayId }),
+        ...(updateDto.travelFromPreviousDuration !== undefined && {
+          travelFromPreviousDuration: updateDto.travelFromPreviousDuration,
+        }),
+        ...(updateDto.travelFromPreviousDistance !== undefined && {
+          travelFromPreviousDistance: updateDto.travelFromPreviousDistance,
+        }),
+        ...(updateDto.experienceDefinitionId !== undefined && {
+          experienceDefinitionId: updateDto.experienceDefinitionId,
+        }),
+        ...(updateDto.productOfferingId !== undefined && {
+          productOfferingId: updateDto.productOfferingId,
+        }),
+        ...(updateDto.productSessionId !== undefined && {
+          productSessionId: updateDto.productSessionId,
+        }),
         // 费用相关字段
         ...(updateDto.estimatedCost !== undefined && { estimatedCost: updateDto.estimatedCost }),
         ...(updateDto.actualCost !== undefined && { actualCost: updateDto.actualCost }),
@@ -1266,6 +1576,15 @@ export class ItineraryItemsService {
         longitude: coords?.lng ?? null,
         coordinates: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
       };
+    } else if (item.type === 'REST' && typeof item.note === 'string') {
+      const coords = parseCoordsFromRestNote(item.note);
+      if (coords) {
+        item.lat = coords.lat;
+        item.lng = coords.lng;
+        item.latitude = coords.lat;
+        item.longitude = coords.lng;
+        item.coordinates = coords;
+      }
     }
 
     // 处理 Trail 相关的 Place 对象
@@ -1322,16 +1641,32 @@ export class ItineraryItemsService {
     if (!placeId) return null;
 
     try {
-      const result = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+      const result = await this.prisma.$queryRaw<
+        Array<{
+          id: number;
+          nameEN: string | null;
+          nameCN: string | null;
+          metadata: unknown;
+          lat: number | null;
+          lng: number | null;
+        }>
+      >`
         SELECT 
+          id,
+          "nameEN",
+          "nameCN",
+          metadata,
           ST_Y(location::geometry) as lat,
           ST_X(location::geometry) as lng
         FROM "Place"
         WHERE id = ${placeId} AND location IS NOT NULL
       `;
 
-      if (result.length > 0 && result[0].lat && result[0].lng) {
-        return { lat: result[0].lat, lng: result[0].lng };
+      if (result.length === 0) return null;
+      const row = result[0];
+      const resolved = resolveEffectiveIcelandPlaceCoordinates(row);
+      if (resolved) {
+        return { lat: resolved.lat, lng: resolved.lng };
       }
     } catch (e) {
       // PostGIS 查询失败，返回 null
@@ -1963,11 +2298,214 @@ export class ItineraryItemsService {
     return straightDistanceKm;
   }
 
+  private async resolveTravelSegmentBetweenItems(input: {
+    fromCoords: { lat: number; lng: number } | null;
+    toCoords: { lat: number; lng: number } | null;
+    preferredMode?: string | null;
+    defaultMode: 'DRIVING' | 'TRANSIT';
+    fallbackDuration?: number | null;
+    fallbackDistance?: number | null;
+    tripId?: string;
+    terrainPolicy?: TerrainPolicyMode;
+    includeTerrain?: boolean;
+  }): Promise<{
+    duration: number | null;
+    distance: number | null;
+    travelMode: string | null;
+    eta?: TravelEtaEnvelopeV1;
+  }> {
+    if (!input.fromCoords || !input.toCoords) {
+      const duration = input.fallbackDuration ?? null;
+      const distance = input.fallbackDistance ?? null;
+      const eta =
+        duration != null
+          ? projectLegacyDurationToEtaEnvelope({
+              durationMin: duration,
+              distanceM: distance,
+              sourceKind: 'CACHED',
+              provider: 'UNKNOWN',
+              cacheHit: true,
+              geometry: null,
+            })
+          : undefined;
+      return {
+        duration,
+        distance,
+        travelMode: input.preferredMode ?? input.defaultMode,
+        ...(eta ? { eta } : {}),
+      };
+    }
+
+    // ETA-L2-PROD-01: single enrichment entry (base → terrain policy → L2 shadow/auth)
+    if (this.travelSegmentEnrichment) {
+      const enriched = await this.travelSegmentEnrichment.enrich({
+        origin: input.fromCoords,
+        destination: input.toCoords,
+        travelMode: input.preferredMode,
+        defaultMode: input.defaultMode,
+        tripContext: {
+          tripId: input.tripId,
+          terrainPolicy: input.terrainPolicy ?? 'AUTO',
+          includeTerrain: input.includeTerrain,
+        },
+      });
+      return {
+        duration: enriched.eta.schedulableDurationMin,
+        distance: enriched.distanceMeters,
+        travelMode: enriched.travelMode,
+        eta: enriched.eta,
+      };
+    }
+
+    if (this.poiHopTravelSegment) {
+      const seg = await this.poiHopTravelSegment.resolveSegment({
+        from: input.fromCoords,
+        to: input.toCoords,
+        preferredMode: input.preferredMode,
+        defaultMode: input.defaultMode,
+      });
+      return {
+        duration: seg.eta.schedulableDurationMin ?? seg.eta.baseDurationMin,
+        distance: seg.distanceMeters,
+        travelMode: seg.travelMode,
+        eta: seg.eta,
+      };
+    }
+
+    const straightKm = this.calculateHaversineDistance(
+      input.fromCoords.lat,
+      input.fromCoords.lng,
+      input.toCoords.lat,
+      input.toCoords.lng,
+    );
+    const mode =
+      straightKm < 1
+        ? 'WALKING'
+        : input.defaultMode === 'TRANSIT'
+          ? straightKm < 2
+            ? 'WALKING'
+            : straightKm < 50
+              ? 'DRIVING'
+              : 'TRANSIT'
+          : 'DRIVING';
+    const routeDistanceKm = this.estimateRouteDistanceKm(straightKm, mode);
+    const duration = this.travelTimeEstimator
+      ? this.travelTimeEstimator.estimateDurationMinutes(routeDistanceKm, mode)
+      : Math.round((routeDistanceKm / 60) * 60);
+    const distance = Math.round(routeDistanceKm * 1000);
+    const eta = projectLegacyDurationToEtaEnvelope({
+      durationMin: duration,
+      distanceM: distance,
+      sourceKind: 'HEURISTIC',
+      provider: 'HEURISTIC',
+      geometry: null,
+    });
+    return {
+      duration: eta.planningDurationMin,
+      distance,
+      travelMode: mode,
+      eta,
+    };
+  }
+
+  /**
+   * 将 GET travel-info 计算结果写回 ItineraryItem.travelFromPrevious*（与 feasibility 同源）
+   * travelEta 快照写入 Trip.metadata.travelEtaByToItemId（ItineraryItem 无 metadata 列）
+   */
+  async syncTravelDurationsFromDayTravelInfo(tripId: string): Promise<{ updated: number }> {
+    const days = await this.prisma.tripDay.findMany({
+      where: { tripId },
+      select: { id: true },
+      orderBy: { date: 'asc' },
+    });
+
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const tripMeta = (trip?.metadata as Record<string, unknown> | null) ?? {};
+    const etaByItem: Record<string, unknown> = {
+      ...((tripMeta.travelEtaByToItemId as Record<string, unknown> | undefined) ?? {}),
+    };
+    const evidenceByItem: Record<string, unknown> = {
+      ...((tripMeta.travelEtaUserEvidenceByToItemId as Record<string, unknown> | undefined) ??
+        {}),
+    };
+    let etaMetaDirty = false;
+
+    let updated = 0;
+    for (const day of days) {
+      const info = await this.getDayTravelInfo(tripId, day.id);
+      for (const seg of info.segments) {
+        if (seg.duration == null) continue;
+        const row = await this.prisma.itineraryItem.findUnique({
+          where: { id: seg.toItemId },
+          select: {
+            travelFromPreviousDuration: true,
+            travelFromPreviousDistance: true,
+            travelMode: true,
+          },
+        });
+        if (!row) continue;
+
+        const prevEta = etaByItem[seg.toItemId];
+        const etaChanged =
+          !!seg.eta && JSON.stringify(prevEta) !== JSON.stringify(seg.eta);
+        const needsUpdate =
+          row.travelFromPreviousDuration !== seg.duration ||
+          row.travelFromPreviousDistance !== seg.distance ||
+          (seg.travelMode && row.travelMode !== seg.travelMode) ||
+          etaChanged;
+        if (!needsUpdate) continue;
+
+        if (seg.eta) {
+          etaByItem[seg.toItemId] = seg.eta;
+          evidenceByItem[seg.toItemId] = projectTravelEtaUserEvidence(seg.eta);
+          etaMetaDirty = true;
+        }
+
+        await this.prisma.itineraryItem.update({
+          where: { id: seg.toItemId },
+          data: {
+            travelFromPreviousDuration: seg.duration,
+            travelFromPreviousDistance: seg.distance,
+            ...(seg.travelMode ? { travelMode: seg.travelMode } : {}),
+          },
+        });
+        updated += 1;
+      }
+    }
+
+    if (etaMetaDirty) {
+      await this.prisma.trip.update({
+        where: { id: tripId },
+        data: {
+          metadata: {
+            ...tripMeta,
+            travelEtaByToItemId: etaByItem,
+            travelEtaUserEvidenceByToItemId: evidenceByItem,
+            travelEtaSyncedAt: new Date().toISOString(),
+          } as object,
+        },
+      });
+    }
+
+    if (updated > 0) {
+      await this.tripRevisionBump?.bump(tripId);
+    }
+
+    return { updated };
+  }
+
   /**
    * 获取某天所有行程项之间的交通信息
    * 推断交通方式时尊重行程意图（pacingConfig.travelMode），避免「自驾游」出现公交/驾车混用
    */
-  async getDayTravelInfo(tripId: string, dayId: string) {
+  async getDayTravelInfo(
+    tripId: string,
+    dayId: string,
+    options?: { includeTerrain?: boolean; terrainPolicy?: TerrainPolicyMode },
+  ) {
     // 验证 TripDay 存在且属于该 Trip
     const tripDay = await this.prisma.tripDay.findFirst({
       where: {
@@ -1989,15 +2527,14 @@ export class ItineraryItemsService {
       throw new NotFoundException(`找不到指定的行程日期 (tripId: ${tripId}, dayId: ${dayId})`);
     }
 
-    // 解析默认交通方式，优先级：行程配置 > 用户偏好 > 默认驾车
+    // 解析默认交通方式：travelMode / transport(car) / 用户偏好 / 默认驾车
     let defaultMode: 'DRIVING' | 'TRANSIT' = 'DRIVING';
-    const tm = (tripDay.Trip?.pacingConfig as { travelMode?: string } | null)?.travelMode?.toUpperCase();
-    if (tm === 'PUBLIC_TRANSIT') {
+    const effectiveMode = resolveEffectiveTravelMode(tripDay.Trip?.pacingConfig)?.toUpperCase();
+    if (effectiveMode === 'PUBLIC_TRANSIT') {
       defaultMode = 'TRANSIT';
-    } else if (tm === 'DRIVING' || tm === 'MIXED') {
+    } else if (effectiveMode === 'DRIVING' || effectiveMode === 'MIXED') {
       defaultMode = 'DRIVING';
     } else {
-      // 行程未指定时，尝试从用户偏好获取
       try {
         const owner = await this.prisma.tripCollaborator.findFirst({
           where: { tripId, role: 'OWNER' },
@@ -2018,6 +2555,13 @@ export class ItineraryItemsService {
       }
     }
 
+    const tripEtaRow = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const tripEtaByToItemId = ((tripEtaRow?.metadata as Record<string, unknown> | null)
+      ?.travelEtaByToItemId ?? {}) as Record<string, TravelEtaEnvelopeV1>;
+
     const items = tripDay.ItineraryItem;
     const travelSegments: Array<{
       fromItemId: string;
@@ -2028,6 +2572,8 @@ export class ItineraryItemsService {
       distance: number | null;
       travelMode: string | null;
       crossDay?: boolean;
+      eta?: TravelEtaEnvelopeV1;
+      userEvidence?: TravelEtaUserEvidenceV1;
     }> = [];
 
     const firstItem = items.find((item) => item.placeId);
@@ -2060,58 +2606,28 @@ export class ItineraryItemsService {
         let duration: number | null = null;
         let distance: number | null = null;
         let travelMode: string | null = firstItem.travelMode || defaultMode;
+        let eta: TravelEtaEnvelopeV1 | undefined;
 
         if (fromCoords && toCoords) {
-          const calculatedDistance = this.calculateHaversineDistance(
-            fromCoords.lat, fromCoords.lng,
-            toCoords.lat, toCoords.lng,
-          );
-          const mode =
-            calculatedDistance < 1
-              ? 'WALKING'
-              : defaultMode === 'TRANSIT'
-                ? calculatedDistance < 2
-                  ? 'WALKING'
-                  : calculatedDistance < 50
-                    ? 'DRIVING'
-                    : 'TRANSIT'
-                : 'DRIVING';
-          travelMode = mode;
-          const routeDistanceKm = this.estimateRouteDistanceKm(calculatedDistance, mode);
-          distance = Math.round(routeDistanceKm * 1000);
-          duration = this.travelTimeEstimator
-            ? this.travelTimeEstimator.estimateDurationMinutes(routeDistanceKm, mode)
-            : (mode === 'WALKING'
-                ? Math.round((routeDistanceKm / 5) * 60)
-                : mode === 'DRIVING'
-                  ? Math.round((routeDistanceKm / 60) * 60)
-                  : Math.round((routeDistanceKm / 80) * 60));
-
-          if (this.smartRoutesService) {
-            try {
-              const routes = await this.smartRoutesService.getRoutes(
-                fromCoords.lat,
-                fromCoords.lng,
-                toCoords.lat,
-                toCoords.lng,
-                travelMode as 'DRIVING' | 'WALKING' | 'TRANSIT',
-              );
-              const routeData = routes[0] as any;
-              if (routeData?.durationMinutes) {
-                duration = routeData.durationMinutes;
-                if (routeData.distanceMeters) {
-                  distance = routeData.distanceMeters;
-                } else if (routeData.distanceKm) {
-                  distance = Math.round(routeData.distanceKm * 1000);
-                }
-              }
-            } catch {
-              // 使用估算值
-            }
-          }
+          const resolved = await this.resolveTravelSegmentBetweenItems({
+            fromCoords,
+            toCoords,
+            preferredMode: firstItem.travelMode,
+            defaultMode,
+            fallbackDuration: firstItem.travelFromPreviousDuration,
+            fallbackDistance: firstItem.travelFromPreviousDistance,
+            tripId,
+            terrainPolicy: options?.terrainPolicy ?? 'AUTO',
+            includeTerrain: options?.includeTerrain,
+          });
+          duration = resolved.duration;
+          distance = resolved.distance;
+          travelMode = resolved.travelMode;
+          eta = resolved.eta;
         } else {
           duration = firstItem.travelFromPreviousDuration;
           distance = firstItem.travelFromPreviousDistance;
+          eta = this.resolveEtaFromItemCache(firstItem, tripEtaByToItemId);
         }
 
         travelSegments.push({
@@ -2123,6 +2639,9 @@ export class ItineraryItemsService {
           distance,
           travelMode,
           crossDay: true,
+          ...(eta
+            ? { eta, userEvidence: projectTravelEtaUserEvidence(eta) }
+            : {}),
         });
       }
     }
@@ -2147,59 +2666,27 @@ export class ItineraryItemsService {
       let duration: number | null = toItem.travelFromPreviousDuration;
       let distance: number | null = toItem.travelFromPreviousDistance;
       let travelMode: string | null = toItem.travelMode;
+      let eta: TravelEtaEnvelopeV1 | undefined = this.resolveEtaFromItemCache(
+        toItem,
+        tripEtaByToItemId,
+      );
 
-      // 只要坐标可用就重新计算 A→B 路段，避免把旧库存储的日程空档误当作交通耗时。
       if (fromCoords && toCoords) {
-        const calculatedDistance = this.calculateHaversineDistance(
-          fromCoords.lat, fromCoords.lng,
-          toCoords.lat, toCoords.lng
-        );
-        distance = Math.round(calculatedDistance * 1000); // 转为米
-
-        // 根据距离 + 行程意图推断交通方式：自驾游时长距离不再误判为公交
-        const mode =
-          calculatedDistance < 1
-            ? 'WALKING'
-            : defaultMode === 'TRANSIT'
-              ? calculatedDistance < 2
-                ? 'WALKING'
-                : calculatedDistance < 50
-                  ? 'DRIVING'
-                  : 'TRANSIT'
-              : 'DRIVING'; // 自驾：除极短距离外统一驾车
-        travelMode = mode;
-        const routeDistanceKm = this.estimateRouteDistanceKm(calculatedDistance, mode);
-        distance = Math.round(routeDistanceKm * 1000);
-        duration = this.travelTimeEstimator
-          ? this.travelTimeEstimator.estimateDurationMinutes(routeDistanceKm, mode)
-          : (mode === 'WALKING'
-              ? Math.round((routeDistanceKm / 5) * 60)
-              : mode === 'DRIVING'
-                ? Math.round((routeDistanceKm / 60) * 60)
-                : Math.round((routeDistanceKm / 80) * 60));
-
-        // 如果有 SmartRoutesService，使用更精确的计算
-        if (this.smartRoutesService) {
-          try {
-            const routes = await this.smartRoutesService.getRoutes(
-              fromCoords.lat, fromCoords.lng,
-              toCoords.lat, toCoords.lng,
-              travelMode as 'DRIVING' | 'WALKING' | 'TRANSIT'
-            );
-            if (routes.length > 0) {
-              duration = routes[0].durationMinutes;
-              // 使用 distanceMeters 如果存在，否则使用估算
-              const routeData = routes[0] as any;
-              if (routeData.distanceMeters) {
-                distance = routeData.distanceMeters;
-              } else if (routeData.distanceKm) {
-                distance = Math.round(routeData.distanceKm * 1000);
-              }
-            }
-          } catch (e) {
-            // 使用估算值
-          }
-        }
+        const resolved = await this.resolveTravelSegmentBetweenItems({
+          fromCoords,
+          toCoords,
+          preferredMode: toItem.travelMode,
+          defaultMode,
+          fallbackDuration: toItem.travelFromPreviousDuration,
+          fallbackDistance: toItem.travelFromPreviousDistance,
+          tripId,
+          terrainPolicy: options?.terrainPolicy ?? 'AUTO',
+          includeTerrain: options?.includeTerrain,
+        });
+        duration = resolved.duration;
+        distance = resolved.distance;
+        travelMode = resolved.travelMode;
+        eta = resolved.eta;
       }
 
       travelSegments.push({
@@ -2210,12 +2697,24 @@ export class ItineraryItemsService {
         duration,
         distance,
         travelMode,
+        ...(eta
+          ? { eta, userEvidence: projectTravelEtaUserEvidence(eta) }
+          : {}),
       });
     }
 
-    // 计算总时间和距离
+    // 计算总时间和距离（schedulableDurationMin — Shadow 下仍为 base）
     const totalDuration = travelSegments.reduce((sum, s) => sum + (s.duration || 0), 0);
     const totalDistance = travelSegments.reduce((sum, s) => sum + (s.distance || 0), 0);
+
+    // Legacy fallback: enrichment absent but includeTerrain=1 → attach DEM only
+    if (
+      !this.travelSegmentEnrichment &&
+      options?.includeTerrain &&
+      this.demProfileFromGeometry
+    ) {
+      await this.attachTerrainToSegments(travelSegments);
+    }
 
     return {
       dayId,
@@ -2226,6 +2725,116 @@ export class ItineraryItemsService {
         totalDuration, // 分钟
         totalDistance, // 米
         segmentCount: travelSegments.length,
+      },
+    };
+  }
+
+  /** Legacy DEM attach when TravelSegmentEnrichmentService is unavailable */
+  private async attachTerrainToSegments(
+    segments: Array<{ eta?: TravelEtaEnvelopeV1 }>,
+  ): Promise<void> {
+    if (!this.demProfileFromGeometry) return;
+    for (const seg of segments) {
+      const geometry = seg.eta?.geometry;
+      if (!geometry?.value || geometry.encoding === 'NONE') continue;
+      try {
+        const terrain = await this.demProfileFromGeometry.profile({
+          geometry,
+          sampleIntervalM: 100,
+          activityType: 'driving',
+        });
+        if (terrain && seg.eta) {
+          seg.eta = { ...seg.eta, terrain };
+        }
+      } catch {
+        // keep segment without terrain
+      }
+    }
+  }
+
+  /**
+   * 只读缓存交通段（不触发路由重算 / 外部 API）— schedule-timeline BFF 首屏用
+   */
+  async getDayTravelInfoFromCache(tripId: string, dayId: string) {
+    const tripDay = await this.prisma.tripDay.findFirst({
+      where: { id: dayId, tripId },
+      include: {
+        ItineraryItem: {
+          include: { Place: true },
+          orderBy: { startTime: 'asc' },
+        },
+        Trip: { select: { metadata: true } },
+      },
+    });
+    if (!tripDay) {
+      throw new NotFoundException(`找不到指定的行程日期 (tripId: ${tripId}, dayId: ${dayId})`);
+    }
+
+    const tripEtaByToItemId = ((tripDay.Trip?.metadata as Record<string, unknown> | null)
+      ?.travelEtaByToItemId ?? {}) as Record<string, TravelEtaEnvelopeV1>;
+
+    return this.buildDayTravelInfoFromLoadedItems(
+      dayId,
+      tripDay.date,
+      tripDay.ItineraryItem,
+      tripEtaByToItemId,
+    );
+  }
+
+  /**
+   * 批量只读交通段（整趟行程，不触发路由重算）— P1 替代 N×GET days/:dayId/travel-info
+   */
+  async getTripTravelInfoFromCache(
+    tripId: string,
+    options?: { dates?: string[] },
+  ) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: {
+        id: true,
+        metadata: true,
+        TripDay: {
+          orderBy: { date: 'asc' },
+          select: { id: true, date: true },
+        },
+      },
+    });
+    if (!trip) {
+      throw new NotFoundException(`行程 ID ${tripId} 不存在`);
+    }
+
+    const tripEtaByToItemId = ((trip.metadata as Record<string, unknown> | null)
+      ?.travelEtaByToItemId ?? {}) as Record<string, TravelEtaEnvelopeV1>;
+
+    let days = trip.TripDay;
+    if (options?.dates?.length) {
+      const set = new Set(options.dates);
+      days = days.filter((d) => {
+        const iso = DateTime.fromJSDate(d.date).toISODate() ?? '';
+        return set.has(iso);
+      });
+    }
+
+    const dayIds = days.map((d) => d.id);
+    const itemsByDayId = await this.loadItemsGroupedByTripDayIds(tripId, dayIds);
+    const dayResults = days.map((d) =>
+      this.buildDayTravelInfoFromLoadedItems(
+        d.id,
+        d.date,
+        itemsByDayId.get(d.id) ?? [],
+        tripEtaByToItemId,
+      ),
+    );
+
+    return {
+      tripId,
+      source: 'cached' as const,
+      days: dayResults,
+      summary: {
+        totalDays: dayResults.length,
+        totalDuration: dayResults.reduce((s, d) => s + (d.summary.totalDuration || 0), 0),
+        totalDistance: dayResults.reduce((s, d) => s + (d.summary.totalDistance || 0), 0),
+        segmentCount: dayResults.reduce((s, d) => s + d.summary.segmentCount, 0),
       },
     };
   }

@@ -1,0 +1,32 @@
+{
+  "schemaId": "tripnara.selected_trip.travel_matrix@v1",
+  "tripId": "pilot_iceland_road_close_06_south6_swap_local",
+  "unit": "minutes",
+  "edges": [
+    {
+      "from": "is.seljalandsfoss",
+      "to": "is.skogafoss",
+      "durationMin": 30
+    },
+    {
+      "from": "is.skogafoss",
+      "to": "is.dyrholaey",
+      "durationMin": 35
+    },
+    {
+      "from": "is.dyrholaey",
+      "to": "is.reynisfjara",
+      "durationMin": 40
+    },
+    {
+      "from": "is.reynisfjara",
+      "to": "is.vik",
+      "durationMin": 45
+    },
+    {
+      "from": "is.vik",
+      "to": "is.skaftafell",
+      "durationMin": 50
+    }
+  ]
+}

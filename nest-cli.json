@@ -10,6 +10,10 @@
       {
         "include": "assets/strategy/**/*",
         "watchAssets": true
+      },
+      {
+        "include": "trips/decision/evaluation/e2e-cases/**/*.json",
+        "watchAssets": true
       }
     ],
     "watchAssets": true,

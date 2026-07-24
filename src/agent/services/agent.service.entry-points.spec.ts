@@ -261,6 +261,9 @@ describe('AgentService - Entry Points Validation', () => {
       expect(response.route.reasons).toContain(RouterReason.HIGH_RISK_ACTION);
       expect(response.route.ui_hint.status).toBe(UIStatus.REDIRECT_REQUIRED);
       expect(response.result.payload.redirectInfo?.redirect_reason).toBe('READONLY_MODE_RESTRICTION');
+      expect(response.result.payload.redirectInfo?.redirect_to).toBe(
+        '/dashboard/plan-studio?tripId=trip-456',
+      );
     });
 
     it('应该允许行程详情页的查询请求', async () => {

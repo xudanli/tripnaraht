@@ -179,6 +179,79 @@ export class GoogleRoutesService implements OnModuleInit {
    * @param preferences 偏好设置（如 LESS_WALKING）
    * @returns 交通选项列表
    */
+  /**
+   * 获取路段几何（贴路 polyline），供 journey-map / coverage-map 使用
+   */
+  async computeRouteGeometry(
+    fromLat: number,
+    fromLng: number,
+    toLat: number,
+    toLng: number,
+    travelMode: 'TRANSIT' | 'WALKING' | 'DRIVING' = 'DRIVING',
+  ): Promise<{
+    polyline: string;
+    distanceMeters: number;
+    durationMinutes: number;
+  } | null> {
+    if (!this.apiKey) return null;
+
+    if (this.isCircuitOpen) {
+      if (this.circuitOpenUntil && Date.now() < this.circuitOpenUntil) {
+        return null;
+      }
+      this.isCircuitOpen = false;
+      this.circuitOpenUntil = null;
+      this.consecutiveFailures = 0;
+    }
+
+    await this.onModuleInit();
+    if (!this.axiosInstance) return null;
+
+    try {
+      const response = await this.axiosInstance.post(
+        '/directions/v2:computeRoutes',
+        {
+          origin: {
+            location: { latLng: { latitude: fromLat, longitude: fromLng } },
+          },
+          destination: {
+            location: { latLng: { latitude: toLat, longitude: toLng } },
+          },
+          travelMode,
+          routingPreference: 'TRAFFIC_AWARE',
+          computeAlternativeRoutes: false,
+        },
+        {
+          headers: {
+            'X-Goog-FieldMask':
+              'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline',
+          },
+        },
+      );
+
+      const route = response.data?.routes?.[0];
+      const polyline = route?.polyline?.encodedPolyline;
+      if (typeof polyline !== 'string' || !polyline.trim()) return null;
+
+      const durationSeconds = this.parseDurationSeconds(route.duration);
+      const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
+      const distanceMeters = Math.round(Number(route.distanceMeters) || 0);
+
+      this.consecutiveFailures = 0;
+      this.isCircuitOpen = false;
+      this.circuitOpenUntil = null;
+
+      return { polyline: polyline.trim(), distanceMeters, durationMinutes };
+    } catch {
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
+        this.isCircuitOpen = true;
+        this.circuitOpenUntil = Date.now() + this.circuitResetMs;
+      }
+      return null;
+    }
+  }
+
   async getRoutes(
     fromLat: number,
     fromLng: number,

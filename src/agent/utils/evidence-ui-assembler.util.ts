@@ -8,6 +8,7 @@ import type {
 import type { DecisionEvidenceCardPayload } from './evidence-payload-assembler.util';
 import { assembleDecisionEvidenceCards } from './evidence-payload-assembler.util';
 import { resolveWallHitDistanceMsForConstraints } from './wall-hit-distance.util';
+import { humanizeFeasibilityMessageForUserZh } from './feasibility-message-surface.zh.util';
 
 export interface EvidenceUIAssemblerContext {
   wallHitDistanceMs?: number;
@@ -87,7 +88,9 @@ export function assembleEvidenceCardUIProps(
       : 1;
   const ev = card.evidence ?? {};
   const theme = inferEvidenceTheme(ev);
-  const title = (card.narrator_hint_rendered ?? card.message ?? '').trim() || 'Evidence';
+  const title =
+    humanizeFeasibilityMessageForUserZh((card.narrator_hint_rendered ?? card.message ?? '').trim()) ||
+    'Evidence';
   const valueDisplay = formatValueDisplay(ev);
   const benchmark = formatBenchmark(ev);
   const sourceLabel = sourceLabelFromEvidence(ev);

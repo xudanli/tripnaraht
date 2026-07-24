@@ -1,0 +1,32 @@
+{
+  "packId": "destination.nz",
+  "version": "0.1.0-probe",
+  "layer": "COUNTRY",
+  "status": "ACTIVE",
+  "scope": {
+    "countries": ["NZ", "NEW_ZEALAND"]
+  },
+  "supportedSemanticKeys": [
+    "ROAD_SEGMENT_UNAVAILABLE",
+    "ROAD_SEGMENT_RESTRICTED"
+  ],
+  "evidenceProviders": [
+    {
+      "domain": "road",
+      "primary": "ROAD_NZ",
+      "fallback": "GENERIC_MAP"
+    }
+  ],
+  "ruleBundles": [
+    { "path": "rules/nz-road-rules.json", "version": "0.1.0-probe" }
+  ],
+  "repairTemplateBundles": [
+    { "path": "repair/nz-road-repair-templates.json", "version": "0.1.0-probe" }
+  ],
+  "environmentModifiers": [
+    { "path": "modifiers/nz-driving.json", "version": "0.1.0-probe" }
+  ],
+  "dependencies": [{ "packId": "destination.global", "version": "1.0.0" }],
+  "validFrom": "2026-01-01T00:00:00Z",
+  "owner": "tripnara-nz-steward-probe"
+}

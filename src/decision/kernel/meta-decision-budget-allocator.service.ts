@@ -121,6 +121,11 @@ export class MetaDecisionBudgetAllocatorService {
     const summary: Record<string, number> = {};
     if (typeof env.weatherRisk === 'number') summary.weatherRisk = clamp01(env.weatherRisk);
     if (typeof env.crowdLevel === 'number') summary.crowdLevel = clamp01(env.crowdLevel);
+    const rc = env.roadConditions as Record<string, unknown> | undefined;
+    const aggPass = rc?._aggregatePassability;
+    if (typeof aggPass === 'number' && Number.isFinite(aggPass)) {
+      summary.passability = clamp01(aggPass);
+    }
     // failureRiskLevel 不是数值，这里只做粗映射
     if (env.failureRiskLevel === 'HIGH') summary.failureRisk = 0.85;
     else if (env.failureRiskLevel === 'MEDIUM') summary.failureRisk = 0.6;

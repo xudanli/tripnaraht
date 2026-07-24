@@ -1,0 +1,2 @@
+Canonical committed pack path: evidence/agent-interface-fact-pack/
+Tarball: evidence/agent-interface-evidence-pack-a7e9bdca5.tar.gz

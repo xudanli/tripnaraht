@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.parking_full.03_peak_avoid_shift_tw",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "parking_full",
+  "title": "Peak parking \u2014 SHIFT later arrival windows",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/parking_full/problems/03_peak_avoid_shift_tw.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

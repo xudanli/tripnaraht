@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "53aa6794-d0ea-435e-a92b-2809b952c946",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "S2_STRICT_REJECT",
+  "strategy": {
+    "strategyId": "S2_STRICT_REJECT",
+    "philosophy": "保守合规，宁可拒绝不可误放",
+    "approach": "对任何高地路段候选执行强制DEM/海拔证据检查；若证据缺失或模糊，立即REJECT并记录拒绝理由。7月虽为开放季，但需二次确认Abu门禁状态，不依赖默认假设。所有pace调整必须显式输出。",
+    "emphasis": "规则严格遵守与审计可追溯性",
+    "risk": "过度拒绝导致用户路径中断，可能被判定为过度保守，影响任务完成度与用户满意度"
+  },
+  "taskIds": [
+    "iceland-highlands-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地，中等强度，7天行程",
+      "thought": "用户明确要求7月冰岛高地路线，中等强度。按照S2_STRICT_REJECT策略，必须检查DEM/海拔证据确认Abu门禁状态。当前未提供任何DEM或海拔数据，因此无法确认Abu允许，必须REJECT。同时Dr.Dre节奏mustAdjust=false，但当前无pace调整动作；Neptune mustRepair=false，无空间冲突。但核心是Abu门禁因证据缺失而REJECT，导致final allowed无法为true。",
+      "action": "REJECT due to missing DEM/elevation evidence for Abu gate check on Icelandic Highland route in July.",
+      "result": "[完成] REJECT due to missing DEM/elevation evidence for Abu gate check on Icelandic Highland route in July.",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:03:40.962Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:03:40.962Z",
+  "score": 79,
+  "evalMode": "fixture"
+}

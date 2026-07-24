@@ -1,9 +1,17 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, timeout, catchError } from 'rxjs';
 import { AxiosResponse } from 'axios';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { DecisionTrajectoryTrainingSyncService } from './decision-trajectory-training-sync.service';
+import { ShadowDeploymentWorkflowService } from './shadow-deployment-workflow.service';
+import type { DecisionTrajectoryTrainingPackResult } from '../interfaces/decision-trajectory-etl.types';
+import type {
+  SftThenDpoPipelineRun,
+  SftThenDpoPipelineStage,
+  SftThenDpoPipelineStatus,
+} from '../interfaces/fine-tune-pipeline.types';
 
 /**
  * LoRA 微调训练配置
@@ -23,6 +31,20 @@ export interface FineTuneConfig {
   batch_size: number;
   /** 数据集名称 */
   dataset_name: string;
+  /** sft | dpo | sft_then_dpo */
+  training_stage?: 'sft' | 'dpo' | 'sft_then_dpo';
+  /** Python 容器内 DPO JSONL（register 后或 mount 路径） */
+  dpo_dataset_path?: string;
+  /** SFT repair 链 JSONL */
+  sft_dataset_path?: string;
+  dpo_pair_types?: Array<'planner_obedience' | 'debate_narrator'>;
+  dpo_rejected_sources?: Array<'true_topology' | 'violation_surrogate'>;
+  /** SFT 阶段 epoch（Chain-of-Repair） */
+  sft_num_epochs?: number;
+  /** DPO 阶段 epoch */
+  dpo_num_epochs?: number;
+  sft_learning_rate?: number;
+  dpo_learning_rate?: number;
 }
 
 /**
@@ -53,6 +75,9 @@ export interface TrainingTask {
   loss?: number;
   metrics: Record<string, any>;
   error?: string;
+  pipeline_stage?: string;
+  checkpoint_sft_final?: string;
+  production_adapter_path?: string;
 }
 
 /**
@@ -80,6 +105,11 @@ export class FineTuneService implements OnModuleInit {
   
   /** Python 训练服务地址 */
   private trainServiceUrl: string;
+
+  /** sft_then_dpo 串联任务本地状态（与 Python task 同步） */
+  private readonly pipelineRuns = new Map<string, SftThenDpoPipelineRun>();
+
+  private readonly pipelineShadowMonitors = new Set<string>();
   
   /** 默认训练配置 */
   private defaultConfig: FineTuneConfig = {
@@ -90,12 +120,15 @@ export class FineTuneService implements OnModuleInit {
     num_epochs: 3,
     batch_size: 2,
     dataset_name: 'tripnara_decision',
+    training_stage: 'sft',
   };
   
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly decisionTrajectorySync?: DecisionTrajectoryTrainingSyncService,
+    @Optional() private readonly shadowDeployment?: ShadowDeploymentWorkflowService,
   ) {
     this.trainServiceUrl = this.configService.get<string>('TRAIN_SERVICE_URL') || 'http://localhost:8000';
   }
@@ -156,12 +189,56 @@ export class FineTuneService implements OnModuleInit {
     taskId: string,
     config?: Partial<FineTuneConfig>,
     resumeFromCheckpoint?: string,
-  ): Promise<{ task_id: string; status: string; message: string }> {
+  ): Promise<{ task_id: string; status: string; message: string; pipeline_stage?: string }> {
     const finalConfig = { ...this.defaultConfig, ...config };
-    
+    this.applyTrainingEnvDefaults(finalConfig);
+
+    const stage =
+      finalConfig.training_stage ||
+      this.configService.get<string>('TRAINING_STAGE')?.trim() ||
+      'sft';
+
+    if (stage === 'sft_then_dpo') {
+      finalConfig.training_stage = 'sft_then_dpo';
+      return this.startSftThenDpoPipeline(taskId, finalConfig, resumeFromCheckpoint);
+    }
+
     this.logger.log(`Starting training task: ${taskId}`);
     this.logger.log(`Config: ${JSON.stringify(finalConfig)}`);
-    
+
+    const prepared = await this.decisionTrajectorySync?.syncAndPrepareForPythonTraining();
+    if (prepared?.pack) {
+      const { pack, dataset_paths } = prepared;
+      this.logger.log(
+        `[FineTune] decision_trajectory pack: ${pack.dpo_jsonl_path} ` +
+          `(planner=${pack.stats.dpo_planner_obedience}, true_topology=${pack.stats.dpo_planner_true_topology}, ` +
+          `debate=${pack.stats.dpo_debate_narrator}, repair_sft=${pack.stats.sft_repair_chains})`,
+      );
+      if (dataset_paths?.dpo_dataset_path) {
+        finalConfig.dpo_dataset_path =
+          this.configService.get<string>('TRAINING_DPO_DATASET_PATH')?.trim() ||
+          dataset_paths.dpo_dataset_path;
+        if (dataset_paths.sft_dataset_path) {
+          finalConfig.sft_dataset_path = dataset_paths.sft_dataset_path;
+        }
+        if (!finalConfig.training_stage) {
+          const envStage = this.configService.get<string>('TRAINING_STAGE')?.trim();
+          if (envStage === 'dpo') {
+            finalConfig.training_stage = 'dpo';
+          }
+        }
+      }
+    }
+
+    const pairTypes = this.configService.get<string>('TRAINING_DPO_PAIR_TYPES');
+    if (pairTypes?.trim()) {
+      finalConfig.dpo_pair_types = pairTypes.split(',').map((s) => s.trim()) as FineTuneConfig['dpo_pair_types'];
+    }
+    const rejectedSources = this.configService.get<string>('TRAINING_DPO_REJECTED_SOURCES');
+    if (rejectedSources?.trim()) {
+      finalConfig.dpo_rejected_sources = rejectedSources.split(',').map((s) => s.trim()) as FineTuneConfig['dpo_rejected_sources'];
+    }
+
     try {
       const response = await firstValueFrom(
         this.httpService.post(`${this.trainServiceUrl}/training/start`, {
@@ -180,6 +257,256 @@ export class FineTuneService implements OnModuleInit {
     }
   }
   
+  /**
+   * sft_then_dpo 两阶段串联：SFT（修复链）→ checkpoint-sft-final → DPO（真拓扑偏好）→ 生产 LoRA。
+   */
+  async startSftThenDpoPipeline(
+    taskId: string,
+    config?: Partial<FineTuneConfig>,
+    resumeFromCheckpoint?: string,
+  ): Promise<{ task_id: string; status: string; message: string; pipeline_stage: string }> {
+    const finalConfig: FineTuneConfig = {
+      ...this.defaultConfig,
+      ...config,
+      training_stage: 'sft_then_dpo',
+    };
+    this.applyTrainingEnvDefaults(finalConfig);
+
+    this.logger.log(`[Pipeline] Starting sft_then_dpo: ${taskId}`);
+
+    const prepared = await this.decisionTrajectorySync?.syncAndPrepareForPythonTraining();
+    if (!prepared?.pack) {
+      throw new Error(
+        'sft_then_dpo requires decision trajectory ETL pack. ' +
+          'Enable TRAINING_DECISION_TRAJECTORY_ETL_ENABLED=1',
+      );
+    }
+
+    this.validateSftThenDpoPack(prepared.pack);
+
+    if (prepared.dataset_paths) {
+      finalConfig.sft_dataset_path = prepared.dataset_paths.sft_dataset_path;
+      finalConfig.dpo_dataset_path =
+        this.configService.get<string>('TRAINING_DPO_DATASET_PATH')?.trim() ||
+        prepared.dataset_paths.dpo_dataset_path;
+    }
+
+    const pairTypes = this.configService.get<string>('TRAINING_DPO_PAIR_TYPES');
+    if (pairTypes?.trim()) {
+      finalConfig.dpo_pair_types = pairTypes
+        .split(',')
+        .map((s) => s.trim()) as FineTuneConfig['dpo_pair_types'];
+    }
+    const rejectedSources = this.configService.get<string>('TRAINING_DPO_REJECTED_SOURCES');
+    if (rejectedSources?.trim()) {
+      finalConfig.dpo_rejected_sources = rejectedSources
+        .split(',')
+        .map((s) => s.trim()) as FineTuneConfig['dpo_rejected_sources'];
+    }
+
+    if (!finalConfig.sft_dataset_path) {
+      throw new Error('sft_then_dpo: missing SFT repair chain dataset path');
+    }
+    if (!finalConfig.dpo_dataset_path) {
+      throw new Error('sft_then_dpo: missing DPO preferences dataset path');
+    }
+
+    const now = new Date().toISOString();
+    this.pipelineRuns.set(taskId, {
+      task_id: taskId,
+      stage: 'pending',
+      config: { ...finalConfig },
+      created_at: now,
+      updated_at: now,
+      pack_stats: prepared.pack.stats,
+    });
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService
+          .post(`${this.trainServiceUrl}/training/pipeline/sft-then-dpo`, {
+            task_id: taskId,
+            config: finalConfig,
+            resume_from_checkpoint: resumeFromCheckpoint,
+          })
+          .pipe(timeout(60_000)),
+      );
+
+      const run = this.pipelineRuns.get(taskId)!;
+      run.stage = 'sft_running';
+      run.updated_at = new Date().toISOString();
+      this.pipelineRuns.set(taskId, run);
+
+      this.schedulePipelineShadowDeployMonitor(taskId);
+
+      return {
+        ...(response as AxiosResponse).data,
+        pipeline_stage: 'sft_running',
+      };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.markPipelineFailed(taskId, msg);
+      throw new Error(`Failed to start sft_then_dpo pipeline: ${msg}`);
+    }
+  }
+
+  /**
+   * 轮询直至 pipeline 完成或失败（生产调度用）。
+   */
+  async waitForPipelineCompletion(
+    taskId: string,
+    options?: { pollIntervalMs?: number; timeoutMs?: number },
+  ): Promise<SftThenDpoPipelineStatus> {
+    const pollIntervalMs = options?.pollIntervalMs ?? 15_000;
+    const timeoutMs = options?.timeoutMs ?? 86_400_000;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const status = await this.getPipelineStatus(taskId);
+      if (
+        status.stage === 'completed' ||
+        status.stage === 'failed' ||
+        status.stage === 'cancelled'
+      ) {
+        if (status.stage === 'completed') {
+          await this.triggerShadowDeployIfReady(status);
+        }
+        return status;
+      }
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
+
+    throw new Error(`Pipeline ${taskId} timed out after ${timeoutMs}ms`);
+  }
+
+  /**
+   * 合并 Nest 本地状态与 Python 训练服务状态。
+   */
+  async getPipelineStatus(taskId: string): Promise<SftThenDpoPipelineStatus> {
+    const local = this.pipelineRuns.get(taskId);
+    let python: TrainingTask | null = null;
+
+    try {
+      python = await this.getTrainingStatus(taskId);
+    } catch {
+      python = null;
+    }
+
+    const pyStage = (python?.metrics as Record<string, string> | undefined)?.pipeline_stage
+      ?? python?.pipeline_stage
+      ?? (python as TrainingTask & { pipeline_stage?: string })?.pipeline_stage;
+
+    const stage = this.resolvePipelineStage(local?.stage, pyStage, python?.status);
+
+    const status: SftThenDpoPipelineStatus = {
+      task_id: taskId,
+      stage,
+      config: (local?.config ?? python?.config ?? this.defaultConfig) as SftThenDpoPipelineStatus['config'],
+      created_at: local?.created_at ?? python?.created_at ?? new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      pack_stats: local?.pack_stats,
+      checkpoint_sft_final:
+        local?.checkpoint_sft_final ??
+        (python as TrainingTask & { checkpoint_sft_final?: string })?.checkpoint_sft_final ??
+        (python?.metrics as Record<string, string>)?.checkpoint_sft_final,
+      production_adapter_path:
+        local?.production_adapter_path ??
+        (python as TrainingTask & { production_adapter_path?: string })?.production_adapter_path ??
+        (python?.metrics as Record<string, string>)?.production_adapter_path,
+      error: local?.error ?? python?.error,
+      python_status: python?.status,
+      python_progress: python?.progress,
+      python_metrics: python?.metrics,
+    };
+
+    if (local) {
+      const updated: SftThenDpoPipelineRun = {
+        ...local,
+        stage: status.stage,
+        updated_at: status.updated_at,
+        checkpoint_sft_final: status.checkpoint_sft_final,
+        production_adapter_path: status.production_adapter_path,
+        error: status.error,
+      };
+      this.pipelineRuns.set(taskId, updated);
+    }
+
+    return status;
+  }
+
+  getLocalPipelineRun(taskId: string): SftThenDpoPipelineRun | undefined {
+    return this.pipelineRuns.get(taskId);
+  }
+
+  private applyTrainingEnvDefaults(config: FineTuneConfig): void {
+    const sftEpochs = this.configService.get<string>('TRAINING_SFT_NUM_EPOCHS');
+    if (sftEpochs && !config.sft_num_epochs) {
+      config.sft_num_epochs = Number(sftEpochs);
+    }
+    const dpoEpochs = this.configService.get<string>('TRAINING_DPO_NUM_EPOCHS');
+    if (dpoEpochs && !config.dpo_num_epochs) {
+      config.dpo_num_epochs = Number(dpoEpochs);
+    }
+    const sftLr = this.configService.get<string>('TRAINING_SFT_LEARNING_RATE');
+    if (sftLr && !config.sft_learning_rate) {
+      config.sft_learning_rate = Number(sftLr);
+    }
+    const dpoLr = this.configService.get<string>('TRAINING_DPO_LEARNING_RATE');
+    if (dpoLr && !config.dpo_learning_rate) {
+      config.dpo_learning_rate = Number(dpoLr);
+    }
+    if (!config.training_stage) {
+      const stage = this.configService.get<string>('TRAINING_STAGE')?.trim();
+      if (stage === 'sft' || stage === 'dpo' || stage === 'sft_then_dpo') {
+        config.training_stage = stage;
+      }
+    }
+  }
+
+  private validateSftThenDpoPack(pack: DecisionTrajectoryTrainingPackResult): void {
+    if (pack.stats.sft_repair_chains < 1) {
+      throw new Error(
+        'sft_then_dpo blocked: no SFT repair chains. ' +
+          'Need VERIFY→REPAIR trajectories before topology DPO (mode collapse guard).',
+      );
+    }
+    const dpoTotal =
+      pack.stats.dpo_planner_obedience + pack.stats.dpo_debate_narrator;
+    if (dpoTotal < 1) {
+      throw new Error('sft_then_dpo blocked: no DPO preference pairs exported');
+    }
+    this.logger.log(
+      `[Pipeline] pack validated: repair_sft=${pack.stats.sft_repair_chains} ` +
+        `dpo_planner=${pack.stats.dpo_planner_obedience} ` +
+        `true_topology=${pack.stats.dpo_planner_true_topology}`,
+    );
+  }
+
+  private resolvePipelineStage(
+    local?: SftThenDpoPipelineStage,
+    pythonStage?: string,
+    pythonStatus?: string,
+  ): SftThenDpoPipelineStage {
+    if (pythonStatus === 'failed') return 'failed';
+    if (pythonStatus === 'cancelled') return 'cancelled';
+    if (pythonStatus === 'completed' || pythonStage === 'completed') return 'completed';
+    if (pythonStage === 'dpo_running') return 'dpo_running';
+    if (pythonStage === 'sft_completed') return 'sft_completed';
+    if (pythonStage === 'sft_running') return 'sft_running';
+    if (pythonStage === 'failed') return 'failed';
+    return local ?? 'pending';
+  }
+
+  private markPipelineFailed(taskId: string, error: string): void {
+    const run = this.pipelineRuns.get(taskId);
+    if (run) {
+      run.stage = 'failed';
+      run.error = error;
+      run.updated_at = new Date().toISOString();
+      this.pipelineRuns.set(taskId, run);
+    }
+  }
+
   /**
    * 获取训练状态
    */
@@ -255,7 +582,9 @@ export class FineTuneService implements OnModuleInit {
     } = options || {};
     
     this.logger.log('Preparing training data from validated trajectories...');
-    
+
+    await this.decisionTrajectorySync?.syncAndPrepareForPythonTraining();
+
     // 查询高质量轨迹
     const trajectories = await this.prisma.validatedTrajectory.findMany({
       where: {
@@ -447,35 +776,170 @@ export class FineTuneService implements OnModuleInit {
   /**
    * 执行完整的训练流程
    */
+  /**
+   * Decision OS 自演进飞轮：decision_trajectory ETL → sft_then_dpo 串联训练。
+   */
+  async runDecisionFlywheelPipeline(options?: {
+    config?: Partial<FineTuneConfig>;
+    taskId?: string;
+    wait?: boolean;
+    pollIntervalMs?: number;
+    timeoutMs?: number;
+  }): Promise<{
+    task_id: string;
+    status: string;
+    pipeline_stage: string;
+    production_adapter_path?: string;
+    shadow_registration?: {
+      registered: boolean;
+      shadowVersion?: string;
+      reason?: string;
+    } | null;
+  }> {
+    const taskId = options?.taskId ?? `flywheel-${Date.now()}`;
+    const config: Partial<FineTuneConfig> = {
+      training_stage: 'sft_then_dpo',
+      ...options?.config,
+    };
+
+    await this.startSftThenDpoPipeline(taskId, config);
+
+    if (!options?.wait) {
+      return { task_id: taskId, status: 'started', pipeline_stage: 'sft_running' };
+    }
+
+    const finalStatus = await this.waitForPipelineCompletion(taskId, {
+      pollIntervalMs: options?.pollIntervalMs,
+      timeoutMs: options?.timeoutMs,
+    });
+
+    if (finalStatus.stage === 'failed') {
+      throw new Error(finalStatus.error ?? `Pipeline ${taskId} failed`);
+    }
+
+    const shadow = await this.triggerShadowDeployIfReady(finalStatus);
+
+    return {
+      task_id: taskId,
+      status: 'completed',
+      pipeline_stage: finalStatus.stage,
+      production_adapter_path: finalStatus.production_adapter_path,
+      shadow_registration: shadow,
+    };
+  }
+
+  /**
+   * 后台监听 pipeline 完成并注册阴影适配器（非阻塞启动场景）。
+   */
+  schedulePipelineShadowDeployMonitor(taskId: string): void {
+    const auto =
+      this.configService.get<string>('TRAINING_SHADOW_DEPLOY_AUTO_MONITOR')?.trim() !== '0';
+    if (!auto || !this.shadowDeployment?.isShadowDeployEnabled()) return;
+    if (this.pipelineShadowMonitors.has(taskId)) return;
+    this.pipelineShadowMonitors.add(taskId);
+
+    void (async () => {
+      try {
+        const status = await this.waitForPipelineCompletion(taskId, {
+          pollIntervalMs: Number(
+            this.configService.get<string>('TRAINING_PIPELINE_POLL_MS') ?? '15000',
+          ),
+          timeoutMs: Number(
+            this.configService.get<string>('TRAINING_PIPELINE_TIMEOUT_MS') ?? '86400000',
+          ),
+        });
+        if (status.stage === 'completed') {
+          await this.triggerShadowDeployIfReady(status);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `[Pipeline] shadow monitor failed taskId=${taskId}: ${err instanceof Error ? err.message : err}`,
+        );
+      } finally {
+        this.pipelineShadowMonitors.delete(taskId);
+      }
+    })();
+  }
+
+  private async triggerShadowDeployIfReady(
+    pipeline: SftThenDpoPipelineStatus,
+  ): Promise<{ registered: boolean; shadowVersion?: string; reason?: string } | null> {
+    if (!this.shadowDeployment?.isShadowDeployEnabled()) return null;
+    if (!pipeline.production_adapter_path) return { registered: false, reason: 'no_adapter_path' };
+
+    const result = await this.shadowDeployment.onFlywheelPipelineCompleted(pipeline);
+    this.logger.log(
+      `[Pipeline] shadow deploy taskId=${pipeline.task_id} registered=${result.registered} ` +
+        `version=${result.shadowVersion ?? 'n/a'} ${result.reason ?? ''}`,
+    );
+
+    if (result.registered && result.shadowVersion) {
+      const autoPromote =
+        this.configService.get<string>('SHADOW_PROMOTION_AUTO')?.trim() === '1';
+      if (autoPromote) {
+        const metrics = await this.getShadowPromotionStatus(result.shadowVersion);
+        if (metrics.promotionReady) {
+          await this.shadowDeployment.promote(result.shadowVersion);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  getShadowPromotionStatus(shadowVersion: string) {
+    if (!this.shadowDeployment) {
+      throw new Error('Shadow deployment workflow not available');
+    }
+    return this.shadowDeployment.getShadowMetrics(shadowVersion);
+  }
+
   async runFullTrainingPipeline(options?: {
     config?: Partial<FineTuneConfig>;
     minValidationScore?: number;
     minTotalReward?: number;
+    useDecisionFlywheel?: boolean;
   }): Promise<{
     task_id: string;
-    data_preparation: {
+    data_preparation?: {
       train_samples: number;
       eval_samples: number;
     };
     status: string;
+    pipeline_stage?: string;
   }> {
     const taskId = `train-${Date.now()}`;
-    
+    const useFlywheel =
+      options?.useDecisionFlywheel ??
+      this.configService.get<string>('TRAINING_STAGE')?.trim() === 'sft_then_dpo';
+
+    if (useFlywheel) {
+      this.logger.log(`Starting decision flywheel pipeline: ${taskId}`);
+      const result = await this.runDecisionFlywheelPipeline({
+        taskId,
+        config: options?.config,
+        wait: false,
+      });
+      return {
+        task_id: result.task_id,
+        status: result.status,
+        pipeline_stage: result.pipeline_stage,
+      };
+    }
+
     this.logger.log(`Starting full training pipeline: ${taskId}`);
-    
-    // 1. 准备训练数据
+
     const dataResult = await this.prepareTrainingData({
       minValidationScore: options?.minValidationScore,
       minTotalReward: options?.minTotalReward,
     });
-    
+
     if (dataResult.train_samples === 0) {
       throw new Error('No training data available');
     }
-    
-    // 2. 启动训练
+
     await this.startTraining(taskId, options?.config);
-    
+
     return {
       task_id: taskId,
       data_preparation: {

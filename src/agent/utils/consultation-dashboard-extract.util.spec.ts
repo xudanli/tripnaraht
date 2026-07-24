@@ -26,4 +26,23 @@ describe('consultation-dashboard-extract', () => {
     expect(cleanText).toBe('x');
     expect(cleanText).not.toContain('CONSULTATION_UI_JSON');
   });
+
+  it('accepts malformed end marker with only two closing brackets (model typo)', () => {
+    const raw =
+      '正文建议。\n<<<CONSULTATION_UI_JSON>>> {"version":1,"headline":"第三天住宿"} <<<END_CONSULTATION_UI_JSON>>\n尾注';
+    const { cleanText, dashboard } = extractConsultationDashboardFromAnswer(raw);
+    expect(cleanText).toContain('正文建议');
+    expect(cleanText).toContain('尾注');
+    expect(cleanText).not.toContain('CONSULTATION_UI_JSON');
+    expect(cleanText).not.toContain('"headline"');
+    expect(dashboard?.headline).toBe('第三天住宿');
+  });
+
+  it('drops orphan start marker when end is missing', () => {
+    const raw = '可见。 <<<CONSULTATION_UI_JSON>>> {"headline":"泄漏"}';
+    const { cleanText, dashboard } = extractConsultationDashboardFromAnswer(raw);
+    expect(dashboard).toBeUndefined();
+    expect(cleanText).toBe('可见。');
+    expect(cleanText).not.toContain('泄漏');
+  });
 });

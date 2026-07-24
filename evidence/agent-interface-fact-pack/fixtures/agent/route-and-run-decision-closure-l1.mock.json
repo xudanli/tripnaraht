@@ -1,0 +1,73 @@
+{
+  "fixtureVersion": "route-and-run-decision-closure-l1/v3",
+  "description": "Frontend L1+L2 mock: Banner + verdict + rejected_plans + alternatives",
+  "request_id": "mock-l1-iceland-f208",
+  "meta": {
+    "run_id": "eval-run-mock-l1-001"
+  },
+  "result": {
+    "status": "OK",
+    "answer_text": "建议在风暴窗口改走南岸备选线，已避开 F208 封路段。",
+    "payload": {}
+  },
+  "explain": {
+    "optimization": {
+      "method": "CGUS",
+      "recommended_alternative_id": "repair-spatial-poi-v2",
+      "decision_verdict": {
+        "chosen_plan_id": "repair-spatial-poi-v2",
+        "rejected_plans": [
+          {
+            "id": "base",
+            "status": "infeasible",
+            "rejection_reasons": ["HARD:WORLD_ROAD_CLOSED (F208)", "HARD:WORLD_WEATHER_BLIZZARD"],
+            "hard_violation_count": 2
+          },
+          {
+            "id": "op-swap-day3",
+            "status": "rejected",
+            "rejection_reasons": ["lower_expected_utility delta=-0.180"],
+            "utility_delta_vs_chosen": -0.18
+          }
+        ],
+        "monte_carlo_summary": {
+          "used": true,
+          "total_samples": 500
+        }
+      },
+      "decision_verdict_narration_zh": "**推荐方案：** `repair-spatial-poi-v2` …",
+      "world_constraint_materialization": {
+        "applied_events": 2,
+        "road_ids": ["F208", "IS-R1-SOUTH"],
+        "weather_dates": ["2026-01-16"],
+        "store_version": 1
+      },
+      "meta_decision_audit": "META_BUDGET(sample=500) mcTotal=500 ragWorld=2",
+      "alternatives": [
+        {
+          "id": "repair-spatial-poi-v2",
+          "score": 0.82,
+          "expected_utility": 0.82,
+          "feasibility_probability": 0.71
+        },
+        {
+          "id": "base",
+          "score": 0.12,
+          "expected_utility": 0.12,
+          "feasibility_probability": 0.04
+        },
+        {
+          "id": "op-swap-day3",
+          "score": 0.64,
+          "expected_utility": 0.64,
+          "feasibility_probability": 0.55
+        }
+      ]
+    }
+  },
+  "observability": {
+    "harness_active_trace_id": "trace-mock-l1-001",
+    "harness_trace_export_path": "artifacts/harness-on-failure/trace-mock-l1-001.json",
+    "evaluation_run_id": "eval-run-mock-l1-001"
+  }
+}

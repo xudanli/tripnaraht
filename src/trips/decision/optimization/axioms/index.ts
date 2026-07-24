@@ -20,6 +20,8 @@ export * from './axiom-system';
 
 // 公理验证服务
 export { AxiomValidatorService } from './axiom-validator.service';
+
+// NOTE: Not the same system as `src/agent/axioms/` (runtime guardians). See agent/axioms/README.md.
 export type { AxiomValidationReport } from './axiom-validator.service';
 
 // 分层效用服务

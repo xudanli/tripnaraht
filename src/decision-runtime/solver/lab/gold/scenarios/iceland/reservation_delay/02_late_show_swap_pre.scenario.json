@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.reservation_delay.02_late_show_swap_pre",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "reservation_delay",
+  "title": "Reservation delayed \u2014 SWAP pre-legs",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/reservation_delay/problems/02_late_show_swap_pre.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 4
+}

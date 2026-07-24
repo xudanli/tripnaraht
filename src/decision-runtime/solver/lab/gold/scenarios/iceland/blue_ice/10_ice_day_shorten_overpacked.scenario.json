@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.blue_ice.10_ice_day_shorten_overpacked",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "blue_ice",
+  "title": "Ice-access day overpacked \u2014 SHORTEN drop optional glacier",
+  "seed": 42,
+  "stabilityRuns": 20,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/blue_ice/problems/10_ice_day_shorten_overpacked.problem.json",
+  "notes": [],
+  "provenance": "synthetic_template_v1",
+  "maxChangedActivities": 3
+}

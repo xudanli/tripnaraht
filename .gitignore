@@ -20,6 +20,7 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.production-transition.local
 
 # IDE
 .vscode/
@@ -73,6 +74,7 @@ data/geographic/dem/**/*
 # Misc
 .cache/
 .temp/
+.local/qdrant/
 data/backups/*.dump
 data/backups/*.sql
 
@@ -99,3 +101,8 @@ data/routing/
 docs/
 .env.backup
 .env.backup.*
+
+# M4 lab authority token (never commit)
+**/planning-signoff/.lab-authority-token.env
+**/planning-signoff/.staging-authority-token.env
+**/planning-signoff/.staging-canary-enable.env

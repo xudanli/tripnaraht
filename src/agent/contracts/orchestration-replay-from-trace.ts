@@ -79,7 +79,12 @@ export function mergeReplayProfileIntoRouteAndRunRequest(
   baseRequest: RouteAndRunRequestDto,
   profile: OrchestrationReplayProfileV1,
 ): RouteAndRunRequestDto {
-  const o = profile.options_overlay;
+  const raw = profile.options_overlay;
+  const { execution_model_runtime_hint, ...rest } = raw;
+  const o =
+    execution_model_runtime_hint == null
+      ? rest
+      : { ...rest, execution_model_runtime_hint };
   return {
     ...baseRequest,
     options: {

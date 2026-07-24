@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "pilot_iceland_blue_ice_03_guide_delay_shift_tw",
+  "planVersionId": "pv-gold",
+  "evidenceVersionId": "ev-ice-03",
+  "environment": "staging-test",
+  "destination": "IS",
+  "intendedOperation": "SHIFT",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "synthetic",
+  "deidentified": true,
+  "eligibility": "pending"
+}

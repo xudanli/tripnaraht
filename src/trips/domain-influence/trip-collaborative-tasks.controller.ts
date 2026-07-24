@@ -13,16 +13,12 @@ import {
   successResponse,
 } from '../../common/dto/standard-response.dto';
 import { TripDomainInfluenceService } from './services/trip-domain-influence.service';
-import { PreferenceRoundService } from '../process-fairness/services/preference-round.service';
 
 @ApiTags('trip-collaborative-tasks')
 @Public()
 @Controller('trips/:tripId/collaborative-tasks')
 export class TripCollaborativeTasksController {
-  constructor(
-    private readonly domainService: TripDomainInfluenceService,
-    private readonly roundService: PreferenceRoundService,
-  ) {}
+  constructor(private readonly domainService: TripDomainInfluenceService) {}
 
   @Get()
   @ApiOperation({ summary: '结构化协商任务列表（中/高交叉领域）' })
@@ -36,26 +32,7 @@ export class TripCollaborativeTasksController {
         tripId,
         this.resolveUserId(user),
       );
-      const enriched = await Promise.all(
-        tasks.map(async (task) => {
-          const activeRoundId =
-            task.activeRoundId ??
-            (await this.roundService.getActiveRoundForDomain(tripId, task.domain));
-          if (!activeRoundId) {
-            return task;
-          }
-          if (task.status === 'consensus_reached') {
-            return { ...task, activeRoundId };
-          }
-          return {
-            ...task,
-            activeRoundId,
-            status: 'in_discussion' as const,
-            statusLabel: '讨论中',
-          };
-        }),
-      );
-      return successResponse({ tasks: enriched });
+      return successResponse({ tasks });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return errorResponse(ErrorCode.INTERNAL_ERROR, message);

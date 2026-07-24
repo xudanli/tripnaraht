@@ -13,6 +13,7 @@ import { ContextRankerService } from './services/context-ranker.service';
 import { ContextCompressorService } from './services/context-compressor.service';
 import { ContextBudgetManagerService } from './services/context-budget-manager.service';
 import { ContextCacheService } from './services/context-cache.service';
+import { ContextCacheEvictionService } from './services/context-cache-eviction.service';
 import { DynamicContextSelectorService } from './services/dynamic-context-selector.service';
 import { TripTaskMemoryService } from './services/trip-task-memory.service';
 import { ExecutionHistoryCompressorService } from './services/execution-history-compressor.service';
@@ -29,6 +30,7 @@ import { RedisModule } from '../../redis/redis.module';
 import { TripDomainInfluenceModule } from '../../trips/domain-influence/trip-domain-influence.module';
 import { RagModule } from '../../rag/rag.module'; // Phase 2.1 优化: 导入 RAG 模块以使用 ParallelExecutorService
 import { SharedMemoryModule } from '../memory/shared-memory.module';
+import { TravelContextModule } from '../../travel-context/travel-context.module';
 
 @Global()
 @Module({
@@ -39,6 +41,7 @@ import { SharedMemoryModule } from '../memory/shared-memory.module';
     forwardRef(() => RagModule), // Phase 2.1 优化: 导入 RAG 模块以使用 ParallelExecutorService
     forwardRef(() => SharedMemoryModule), // Context Orchestrator: 读取 UserTravelProfile（全局 SharedMemory）
     TripDomainInfluenceModule, // 领域影响力 → Context Block 投影
+    TravelContextModule, // RFC-003 Phase 6 — agent grounding
   ],
   controllers: [ContextController],
   providers: [
@@ -48,6 +51,7 @@ import { SharedMemoryModule } from '../memory/shared-memory.module';
     ContextCompressorService, // Phase 3: Context Engine 工业化
     ContextBudgetManagerService, // Phase 4: Context Engine 工业化
     ContextCacheService, // Phase 5: Context Engine 工业化
+    ContextCacheEvictionService,
     DynamicContextSelectorService,
     TripTaskMemoryService,
     ExecutionHistoryCompressorService,
@@ -68,6 +72,7 @@ import { SharedMemoryModule } from '../memory/shared-memory.module';
     ContextCompressorService,
     ContextBudgetManagerService,
     ContextCacheService,
+    ContextCacheEvictionService,
     IncrementalItineraryGeneratorService,
     ContextMetricsService,
     ContextLearningService,

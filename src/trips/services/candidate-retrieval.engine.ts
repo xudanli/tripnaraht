@@ -22,6 +22,13 @@ import { ExperienceVectorService } from '../../places/services/experience-vector
 import type { PoiPlanningDecisionSlice } from '../../decision/kernel/decision-state.types';
 import { ICELAND_POI_SLUG_KEYWORDS } from '../../planning-policy/regions/iceland-poi-slugs';
 import { getAnchorRetrievalProfile } from '../../planning-policy/regions/golden-circle-anchor-retrieval-profile';
+import {
+  DEFAULT_OFF_BEAT_RATIO,
+  enforceOffBeatQuota,
+  isOffBeatCandidate,
+  medianPopularity,
+  resolveOffBeatMinCount,
+} from './candidate-retrieval-offbeat.util';
 import { POI_PLANNING_SCORE_REASON } from '../../planning-policy/constants/poi-planning-score-reasons';
 
 /** 候选地点（与 TripDraftService 兼容） */
@@ -127,6 +134,8 @@ export class CandidateRetrievalEngine {
       routeDirectionId?: string | number;
       /** DSO poiPlanning：锚点注入、排除、optional 加权 */
       poiPlanning?: PoiPlanningDecisionSlice;
+      /** 小众 POI 最低占比（默认 0.2 当 preferOffbeatAttractions=true） */
+      offBeatRatio?: number;
     },
   ): Promise<CandidatePlace[]> {
     const countryCode = dto.destination.toUpperCase().trim();
@@ -201,7 +210,13 @@ export class CandidateRetrievalEngine {
     }
 
     // Step 3 & 4: 评分 + 多样性采样
-    const sampled = this.diversitySample(bucketed);
+    const preferOffbeat =
+      dto.constraints?.preferOffbeatAttractions === true ||
+      dto.style === TravelStyle.PHOTOGRAPHY;
+    const offBeatRatio =
+      options?.offBeatRatio ??
+      (preferOffbeat ? DEFAULT_OFF_BEAT_RATIO : 0);
+    const sampled = this.diversitySample(bucketed, { offBeatRatio });
 
     // Step 5: 空间聚类（TripNara Phase 2，供约束引擎使用）
     const withClusters = this.spatialClustering.attachClusterIds(sampled);
@@ -705,9 +720,20 @@ export class CandidateRetrievalEngine {
    * 🆕 改进 hidden gems 识别：不只是取中间段，而是识别真正的小众但高质量景点
    * Top rated 40% + Popular 30% + Hidden gems 20% + Random 10%
    */
-  private diversitySample(places: Array<CandidatePlace & { compositeScore: number }>): CandidatePlace[] {
+  private diversitySample(
+    places: Array<CandidatePlace & { compositeScore: number }>,
+    config?: { offBeatRatio?: number },
+  ): CandidatePlace[] {
     if (places.length <= 50) {
-      return places.map(({ compositeScore: _compositeScore, ...rest }) => rest);
+      const ratio = config?.offBeatRatio ?? 0;
+      if (ratio <= 0) {
+        return places.map(({ compositeScore: _compositeScore, ...rest }) => rest);
+      }
+      const minCount = resolveOffBeatMinCount(places.length, ratio);
+      const median = medianPopularity(places);
+      const offBeatPool = places.filter((p) => isOffBeatCandidate(p, median));
+      const enforced = enforceOffBeatQuota(places, offBeatPool, minCount);
+      return enforced.map(({ compositeScore: _compositeScore, ...rest }) => rest);
     }
 
     // 按 compositeScore 降序
@@ -770,6 +796,14 @@ export class CandidateRetrievalEngine {
     }
 
     const result = sorted.filter((p) => selectedIds.has(p.id));
+    const ratio = config?.offBeatRatio ?? 0;
+    if (ratio > 0) {
+      const minCount = resolveOffBeatMinCount(result.length, ratio);
+      const median = medianPopularity(sorted);
+      const offBeatPool = sorted.filter((p) => isOffBeatCandidate(p, median));
+      const enforced = enforceOffBeatQuota(result, offBeatPool, minCount);
+      return enforced.map(({ compositeScore: _compositeScore, ...rest }) => rest);
+    }
     return result.map(({ compositeScore: _compositeScore, ...rest }) => rest);
   }
 

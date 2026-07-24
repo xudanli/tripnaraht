@@ -13,7 +13,9 @@
 | `rag-engineering/` | Chunk、索引、检索 |
 | `reinforcement-learning/` | RL、轨迹、ROLL |
 | `optimization-candidate-search/` | 候选搜索、Abu/Dre 交界 |
+| `route-and-run-intent/` | Layer1/Layer2 意图、FULL_TRIP_REPLAN vs ITINERARY_ADJUST、INTAKE metadata |
+| `planning-phase-dialog-intent/` | 规划期四大对话维度（鲁棒性/供应链/多人仲裁/空间缝合）与 Decision OS 映射 |
 | `memory-model-team/` | 记忆模型、DecisionParams |
-| `cgus/`、`kernel/`、`harness/` 等 | **短名入口**，链到上面对应长包 |
+| `cgus/`、`kernel/`、`harness/`、`intent/` 等 | **短名入口**，链到上面对应长包 |
 
 **原子能力契约**（`evaluate-constraints` 等）在 **`.cursor/skills/decision/`** 等目录，与 `src/skills/` 渐进对齐。

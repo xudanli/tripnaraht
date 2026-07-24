@@ -1,13 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+import { isAgentTripComprehensiveAnalysisMessage } from '../utils/agent-readiness-phase.util';
 import { resolveRouteAndRunUserMessage } from '../utils/resolve-route-and-run-message.util';
+
+/**
+ * 已有行程复盘/咨询：即使前端误传 intent_mode=TRIP_PLANNING，也不应 REDIRECT 到规划工作台。
+ * （真正分析仍依赖客户端传 trip_id；此处只避免误跳转。）
+ */
+export function isExistingTripReviewOrConsultMessage(message: string): boolean {
+  const msg = message.trim();
+  if (!msg) return false;
+  if (isAgentTripComprehensiveAnalysisMessage(msg)) return true;
+  return /(?:当前行程|行程.*可行性|可行性.*行程|整体可行性|需要改进|行程体检|全面体检|有什么问题|可以优化|哪里需要改|怎么改进)/i.test(
+    msg,
+  );
+}
 
 @Injectable()
 export class PlanningRequestClassifierService {
   /**
    * 判断是否是“从零规划”请求（需要重定向到规划工作台）。
    *
-   * 核心原则：只拦截从零开始的行程规划请求，不拦截已创建行程的查询/修改请求。
+   * 核心原则：只拦截从零开始的行程规划请求，不拦截已有行程的查询/修改/复盘请求。
    */
   isPlanningRequest(request: RouteAndRunRequestDto): boolean {
     const message = resolveRouteAndRunUserMessage(request).toLowerCase().trim();
@@ -16,6 +30,11 @@ export class PlanningRequestClassifierService {
 
     // 如果已有 trip_id，肯定不是规划请求（可能是查询已有行程的规划）
     if (!hasNoTripId) {
+      return false;
+    }
+
+    // 复盘/可行性/改进：优先于 intent_mode 短路（侧栏常误传 TRIP_PLANNING 且漏传 trip_id）
+    if (isExistingTripReviewOrConsultMessage(message)) {
       return false;
     }
 

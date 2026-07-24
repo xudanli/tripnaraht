@@ -11,6 +11,11 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DecisionState } from './decision-state.types';
 import { RLHFSignalCollectorService } from '../../agent/services/rlhf-signal-collector.service';
 import type { RecordOutcomeCaptureParams } from './outcome-capture.types';
+import type {
+  RlhfDilemmaElicitationSnapshot,
+  RlhfObservationHarnessSnapshot,
+} from '../../agent/services/rlhf-decision-context.types';
+import { evaluateNonSemanticKvInfluence } from '../../agent/services/json-kv-influence-evaluator';
 
 export interface RecordUserFeedbackParams {
   tripRunId: string;
@@ -63,6 +68,8 @@ export class FeedbackEngineAdapterService {
         const utilityWeights = state.optimizationHints?.expectedUtilityWeights ?? state.optimizationHints?.weightSummary;
         const candidatePlansCount = state.candidates?.length ?? 0;
         const selectedPlanSummary = this.buildSelectedPlanSummary(state);
+        const observationHarness = this.buildRlhfObservationHarnessSnapshot(state);
+        const dilemmaElicitationHint = this.buildRlhfDilemmaElicitationSnapshot(state);
 
         this.rlhfCollector.recordFeedbackSignal({
           trip_run_id: tripRunId,
@@ -76,6 +83,8 @@ export class FeedbackEngineAdapterService {
             utilityWeights: utilityWeights && Object.keys(utilityWeights).length > 0 ? utilityWeights : undefined,
             candidatePlansCount: candidatePlansCount > 0 ? candidatePlansCount : undefined,
             selectedPlanSummary: selectedPlanSummary || undefined,
+            ...(observationHarness ? { observationHarness } : {}),
+            ...(dilemmaElicitationHint ? { dilemmaElicitationHint } : {}),
           },
         });
       } catch (e: unknown) {
@@ -230,6 +239,17 @@ export class FeedbackEngineAdapterService {
         .filter(Boolean)
         .join(', ');
 
+      const je = params.rlhfJsonEval;
+      const jsonKvInfluence =
+        je && (je.contextSnapshot || je.utilityWeights || je.modification)
+          ? evaluateNonSemanticKvInfluence({
+              contextSnapshot: je.contextSnapshot,
+              utilityWeights: je.utilityWeights,
+              modification: je.modification,
+              outcomeCapture,
+            })
+          : undefined;
+
       this.rlhfCollector.recordFeedbackSignal({
         trip_run_id: tripRunId,
         user_id: userId,
@@ -239,6 +259,7 @@ export class FeedbackEngineAdapterService {
         context: {
           decision_output_summary: summary,
           outcomeCapture,
+          ...(jsonKvInfluence && jsonKvInfluence.entries.length > 0 ? { jsonKvInfluence } : {}),
         },
       });
       this.logger.debug(`[FeedbackAdapter] recordOutcomeCapture: ${summary}`);
@@ -321,6 +342,94 @@ export class FeedbackEngineAdapterService {
       this.logger.warn(`[FeedbackAdapter] getLearningSignals 失败: ${(e as Error)?.message}`);
       return [];
     }
+  }
+
+  private findLatestMetaBudgetObservationHarness(
+    history?: DecisionState['history'],
+  ): Record<string, unknown> | undefined {
+    if (!history?.length) return undefined;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const h = history[i];
+      if (h?.type === 'meta_budget' && h.payload && typeof h.payload === 'object') {
+        const oh = (h.payload as Record<string, unknown>).observationHarness;
+        if (oh && typeof oh === 'object') return oh as Record<string, unknown>;
+      }
+    }
+    return undefined;
+  }
+
+  private buildRlhfObservationHarnessSnapshot(state: DecisionState): RlhfObservationHarnessSnapshot | undefined {
+    let raw: Record<string, unknown> | undefined;
+    const rd = state.research_data;
+    if (rd && typeof rd === 'object' && rd.observationHarness && typeof rd.observationHarness === 'object') {
+      raw = rd.observationHarness as Record<string, unknown>;
+    } else {
+      raw = this.findLatestMetaBudgetObservationHarness(state.history);
+    }
+    if (!raw) return undefined;
+
+    const audit = Array.isArray(raw.audit) ? (raw.audit as Record<string, unknown>[]) : [];
+    const evidenceKinds = [
+      ...new Set(
+        audit
+          .map((a) => {
+            const ex = a.execution as Record<string, unknown> | undefined;
+            return ex?.evidenceKind as string | undefined;
+          })
+          .filter((x): x is string => typeof x === 'string' && x.length > 0),
+      ),
+    ];
+
+    const executedActionCount = audit.filter((row) => {
+      const s = (row.execution as Record<string, unknown> | undefined)?.summary;
+      return s !== 'OBSERVATION_TIMEOUT' && !String(s ?? '').startsWith('EXECUTION_ERROR');
+    }).length;
+
+    const sug = raw.suggestDilemmaElicitation as Record<string, unknown> | undefined;
+    const suggestDilemmaElicitation =
+      sug && typeof sug === 'object'
+        ? {
+            reason: typeof sug.reason === 'string' ? sug.reason : 'EVIDENCE_CONTRADICTION',
+            crossSpread: typeof sug.crossSpread === 'number' ? sug.crossSpread : undefined,
+            hint: typeof sug.hint === 'string' ? sug.hint : undefined,
+          }
+        : undefined;
+
+    const pe = raw.passabilityEvidence as Record<string, unknown> | undefined;
+    const passabilityEvidence =
+      pe && typeof pe === 'object'
+        ? {
+            passability01: typeof pe.passability01 === 'number' ? pe.passability01 : undefined,
+            evidenceWeight: typeof pe.evidenceWeight === 'number' ? pe.evidenceWeight : undefined,
+          }
+        : undefined;
+
+    const excl = raw.excludedPoiIds;
+    const excludedPoiIdCount = Array.isArray(excl) ? excl.length : undefined;
+
+    return {
+      schemaVersion: 1,
+      parallel: raw.parallel === true,
+      observationTimeoutMs: typeof raw.observationTimeoutMs === 'number' ? raw.observationTimeoutMs : undefined,
+      minVoiScore: typeof raw.minVoiScore === 'number' ? raw.minVoiScore : undefined,
+      maxActions: typeof raw.maxActions === 'number' ? raw.maxActions : undefined,
+      executedActionCount: executedActionCount > 0 ? executedActionCount : undefined,
+      auditEntryCount: audit.length > 0 ? audit.length : undefined,
+      excludedPoiIdCount,
+      suggestDilemmaElicitation,
+      passabilityEvidence,
+      evidenceKinds: evidenceKinds.length ? evidenceKinds : undefined,
+    };
+  }
+
+  private buildRlhfDilemmaElicitationSnapshot(state: DecisionState): RlhfDilemmaElicitationSnapshot | undefined {
+    const h = state.optimizationHints?.dilemmaElicitationHint;
+    if (!h || typeof h.reason !== 'string') return undefined;
+    return {
+      reason: h.reason,
+      crossSpread: typeof h.crossSpread === 'number' ? h.crossSpread : undefined,
+      hint: typeof h.hint === 'string' ? h.hint : undefined,
+    };
   }
 
   private buildDecisionLogSummary(state: DecisionState, stage: string): string {

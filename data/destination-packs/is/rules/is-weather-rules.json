@@ -1,0 +1,28 @@
+{
+  "schemaId": "tripnara.destination.rules@v1",
+  "rules": [
+    {
+      "ruleId": "IS_WEATHER_HIGH_WIND_BLOCK",
+      "semanticKey": "WEATHER_ACTIVITY_PROHIBITED",
+      "appliesWhen": { "country": "IS" },
+      "conditions": [
+        {
+          "field": "weather.windSpeedKmh",
+          "operator": "GTE",
+          "value": 90
+        },
+        {
+          "field": "activity.exposed",
+          "operator": "EQ",
+          "value": true
+        }
+      ],
+      "result": {
+        "verdict": "BLOCK",
+        "reasonCode": "WEATHER_HIGH_WIND",
+        "constraintCode": "WEATHER_PROHIBITED",
+        "overridable": false
+      }
+    }
+  ]
+}

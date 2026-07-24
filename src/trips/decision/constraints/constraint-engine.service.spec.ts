@@ -416,4 +416,63 @@ describe('ConstraintEngineService', () => {
       expect(typeof feasible).toBe('boolean');
     });
   });
+
+  describe('CONSTRAINT_GATEWAY_MODE=SHADOW_COMPARE', () => {
+    const env = process.env;
+
+    afterEach(() => {
+      process.env = env;
+    });
+
+    it('legacy boolean 仍为 authority，并附带 canonicalReport + comparison', async () => {
+      process.env = { ...env, CONSTRAINT_GATEWAY_MODE: 'SHADOW_COMPARE' };
+
+      const gateway = {
+        evaluatePlan: jest.fn().mockResolvedValue({
+          schemaId: 'tripnara.canonical_constraint_report@v1',
+          tripId: 'unknown',
+          evaluatedAt: new Date().toISOString(),
+          assertions: [
+            {
+              assertionId: 'a1',
+              constraintType: 'ROAD',
+              status: 'BLOCK',
+              severity: 'HARD',
+              scope: { tripId: 'unknown' },
+              reasonCode: 'ROAD_CLOSED',
+              evidenceRefs: [],
+              message: 'blocked',
+              evaluator: { engine: 'test', version: '0' },
+            },
+          ],
+          completeness: {
+            roads: 'MISSING',
+            weather: 'MISSING',
+            hazards: 'MISSING',
+            ferries: 'MISSING',
+            openingHours: 'MISSING',
+          },
+          overallStatus: 'INFEASIBLE',
+          degraded: false,
+          degradedReasons: [],
+        }),
+      };
+
+      const shadowService = new ConstraintEngineService(
+        new ConstraintChecker(),
+        gateway as any,
+      );
+      const state = createBaseState();
+      const plan = createBasePlan();
+
+      const result = await shadowService.isFeasible(state, plan);
+
+      expect(result.feasible).toBe(true);
+      expect(result.canonicalReport?.overallStatus).toBe('INFEASIBLE');
+      expect(result.constraintShadowComparison?.diverged).toBe(true);
+      expect(result.constraintShadowComparison?.divergenceKind).toBe(
+        'LEGACY_PASS_CANONICAL_BLOCK',
+      );
+    });
+  });
 });

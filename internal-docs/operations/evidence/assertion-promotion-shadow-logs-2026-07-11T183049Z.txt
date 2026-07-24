@@ -1,0 +1,151 @@
+=== Assertion Promotion Shadow Validation 2026-07-11T183049Z ===
+Sat Jul 11 18:30:49 UTC 2026
+
+=== Env verification ===
+assertion-promotion.env:
+ASSERTION_PROMOTION_ENABLED=1
+ASSERTION_PROMOTION_SHADOW_MODE=1
+ASSERTION_PROMOTION_WEATHER_ENABLED=1
+ASSERTION_PROMOTION_ROAD_ENABLED=0
+ASSERTION_PROMOTION_TRIP_ALLOWLIST=a0a99999-9999-4999-8999-999999999999
+ASSERTION_PROMOTION_INTERNAL_SECRET=shadow-promotion-devbox-2026-07-12
+ASSERTION_PROMOTION_BASE_URL=http://127.0.0.1:3002
+ASSERTION_PROMOTION_RETRY_INTERVAL_MS=300000
+ASSERTION_PROMOTION_MAX_ATTEMPTS=5
+ASSERTION_PROMOTION_RETRY_CRON_ENABLED=1
+
+Nest :3002 process:
+40376 node dist/src/main.js
+42020 /bin/bash -O extglob -c snap=$(command cat <&3) && builtin shopt -s extglob && builtin eval -- "$snap" && { builtin set +u 2>/dev/null || true; builtin eval "${__CURSOR_SANDBOX_ENV_RESTORE:-}" 2>/dev/null; builtin export PWD="$(builtin pwd)"; builtin shopt -s expand_aliases 2>/dev/null; builtin eval "$1"; }; COMMAND_EXIT_CODE=$?; dump_bash_state >&4; builtin exit $COMMAND_EXIT_CODE -- cd /home/devbox/project && STAMP=$(date -u +%Y-%m-%dT%H%M%SZ) && EVIDENCE=internal-docs/operations/evidence && LOG_PACK="$EVIDENCE/assertion-promotion-shadow-logs-${STAMP}.txt" && mkdir -p "$EVIDENCE" && { echo "=== Assertion Promotion Shadow Validation $STAMP ===" date -u echo "" echo "=== Env verification ===" echo "assertion-promotion.env:" grep ASSERTION_PROMOTION config/decision-runtime/assertion-promotion.env echo "" echo "Nest :3002 process:" pgrep -af 'dist/src/main.js' || echo 'nest not running' NEST_PID=$(pgrep -f 'dist/src/main.js' | head -1) if [ -n "$NEST_PID" ]; then tr '\0' '\n' < /proc/$NEST_PID/environ | grep ASSERTION_PROMOTION || true; fi echo "" echo "PM2 vedur-collector-ingest env:" pm2 env 0 2>/dev/null | grep ASSERTION_PROMOTION || pm2 show vedur-collector-ingest 2>/dev/null | grep -A20 'env:' || true echo "" echo "=== Cron evidence (18:30 CALM ingest ??? promote) ===" grep -E '6:30:03|RECOVERY_SHADOW|promote-assertion' /tmp/nest3002-prod.log | tail -15 echo "" set -a && source config/decision-runtime/assertion-promotion.env && export DATABASE_URL="$(grep '^DATABASE_URL=' .env | head -1 | sed 's/^DATABASE_URL=//' | tr -d '"')" && set +a echo "=== Pre-validation snapshot ===" npx tsx -e " import { PrismaClient } from '@prisma/client'; const W='a0a99999-9999-4999-8999-999999999999'; (async()=>{   const p=new PrismaClient();   const t=await p.trip.findUnique({where:{id:W},select:{metadata:true}});   const m=(t?.metadata??{}) as Record<string,unknown>;   const probs=(m.rfc001DecisionProblems as {items?:{problemId:string;status:string}[]})?.items??[];   const ledger=m.rfc001AssertionPromotionLedger??null;   let openCount:number|undefined;   try{const r=await fetch('http://127.0.0.1:3002/api/trips/'+W+'/decision-queue',{signal:AbortSignal.timeout(8000)});if(r.ok){const b=await r.json() as {data?:{openCount?:number}};openCount=b.data?.openCount;}}catch{}   console.log(JSON.stringify({problemCount:probs.length,openProblems:probs.filter(x=>!['RESOLVED','DISMISSED','FAILED'].includes(x.status)).map(x=>x.problemId),decisionQueueOpenCount:openCount,ledger},null,2));   await p.\$disconnect(); })(); " | tee "$EVIDENCE/assertion-promotion-shadow-pre-validation-${STAMP}.json" echo "" echo "=== 5) Service interrupt test ===" echo "Stopping Nest :3002..." pkill -f 'dist/src/main.js' 2>/dev/null || true sleep 2 echo "Promote while Nest down (expect failure):" INTERRUPT_DOWN=$(curl -s --max-time 3 -w '\nHTTP_CODE:%{http_code}' -X POST http://127.0.0.1:3002/api/internal/monitoring/promote-assertion \   -H 'Content-Type: application/json' \   -H "x-assertion-promotion-secret: ${ASSERTION_PROMOTION_INTERNAL_SECRET}" \   -d '{"tripId":"a0a99999-9999-4999-8999-999999999999","signal":"RECOVERY_OBSERVED","predicate":"weather.hazard","dayIndex":1,"riskTier":"CALM","ingestId":"interrupt-down-'$STAMP'","trigger":"collector_ingest"}' 2>&1 || echo 'connection_failed') echo "$INTERRUPT_DOWN" echo "$INTERRUPT_DOWN" > "$EVIDENCE/assertion-promotion-interrupt-down-${STAMP}.json" echo "Restarting Nest :3002..." bash scripts/start-nest-3002-prod.sh sleep 3 echo "Promote after restart (expect idempotent/success):" curl -s -X POST http://127.0.0.1:3002/api/internal/monitoring/promote-assertion \   -H 'Content-Type: application/json' \   -H "x-assertion-promotion-secret: ${ASSERTION_PROMOTION_INTERNAL_SECRET}" \   -d '{"tripId":"a0a99999-9999-4999-8999-999999999999","signal":"RECOVERY_OBSERVED","predicate":"weather.hazard","dayIndex":1,"riskTier":"CALM","ingestId":"post-interrupt-'$STAMP'","trigger":"collector_ingest"}' \   | tee "$EVIDENCE/assertion-promotion-post-interrupt-${STAMP}.json" echo "" echo "Monitoring scan reconcile fallback:" curl -s -X POST "http://127.0.0.1:3002/api/trips/a0a99999-9999-4999-8999-999999999999/monitoring/scan?dayIndex=1" \   | head -c 800 echo "" echo "" echo "=== Structured tests (wrong secret, non-allowlist, duplicate, road) ===" npx tsx scripts/validate-assertion-promotion-shadow.ts | tee "$EVIDENCE/assertion-promotion-shadow-validation-run-${STAMP}.json" echo "" echo "=== Final ledger + problem counts ===" npx tsx -e " import { PrismaClient } from '@prisma/client'; const W='a0a99999-9999-4999-8999-999999999999'; (async()=>{   const p=new PrismaClient();   const t=await p.trip.findUnique({where:{id:W},select:{metadata:true}});   const m=(t?.metadata??{}) as Record<string,unknown>;   const probs=(m.rfc001DecisionProblems as {items?:unknown[]})?.items??[];   let openCount:number|undefined;   try{const r=await fetch('http://127.0.0.1:3002/api/trips/'+W+'/decision-queue',{signal:AbortSignal.timeout(8000)});if(r.ok){const b=await r.json() as {data?:{openCount?:number}};openCount=b.data?.openCount;}}catch{}   console.log(JSON.stringify({problemCount:probs.length,decisionQueueOpenCount:openCount,ledger:m.rfc001AssertionPromotionLedger??null},null,2));   await p.\$disconnect(); })(); " | tee "$EVIDENCE/assertion-promotion-shadow-final-ledger-${STAMP}.json" echo "" echo "=== Log pack tails ===" echo "--- PM2 ingest out (last 25) ---" tail -25 /home/devbox/.pm2/logs/vedur-collector-ingest-out.log echo "--- PM2 ingest error (assertion-promotion) ---" grep -i 'assertion-promotion' /home/devbox/.pm2/logs/vedur-collector-ingest-error.log 2>/dev/null | tail -10 || echo '(none)' echo "--- Nest prod (last 40) ---" tail -40 /tmp/nest3002-prod.log } 2>&1 | tee "$LOG_PACK" && echo "DONE stamp=$STAMP log=$LOG_PACK"
+42036 /bin/bash -O extglob -c snap=$(command cat <&3) && builtin shopt -s extglob && builtin eval -- "$snap" && { builtin set +u 2>/dev/null || true; builtin eval "${__CURSOR_SANDBOX_ENV_RESTORE:-}" 2>/dev/null; builtin export PWD="$(builtin pwd)"; builtin shopt -s expand_aliases 2>/dev/null; builtin eval "$1"; }; COMMAND_EXIT_CODE=$?; dump_bash_state >&4; builtin exit $COMMAND_EXIT_CODE -- cd /home/devbox/project && STAMP=$(date -u +%Y-%m-%dT%H%M%SZ) && EVIDENCE=internal-docs/operations/evidence && LOG_PACK="$EVIDENCE/assertion-promotion-shadow-logs-${STAMP}.txt" && mkdir -p "$EVIDENCE" && { echo "=== Assertion Promotion Shadow Validation $STAMP ===" date -u echo "" echo "=== Env verification ===" echo "assertion-promotion.env:" grep ASSERTION_PROMOTION config/decision-runtime/assertion-promotion.env echo "" echo "Nest :3002 process:" pgrep -af 'dist/src/main.js' || echo 'nest not running' NEST_PID=$(pgrep -f 'dist/src/main.js' | head -1) if [ -n "$NEST_PID" ]; then tr '\0' '\n' < /proc/$NEST_PID/environ | grep ASSERTION_PROMOTION || true; fi echo "" echo "PM2 vedur-collector-ingest env:" pm2 env 0 2>/dev/null | grep ASSERTION_PROMOTION || pm2 show vedur-collector-ingest 2>/dev/null | grep -A20 'env:' || true echo "" echo "=== Cron evidence (18:30 CALM ingest ??? promote) ===" grep -E '6:30:03|RECOVERY_SHADOW|promote-assertion' /tmp/nest3002-prod.log | tail -15 echo "" set -a && source config/decision-runtime/assertion-promotion.env && export DATABASE_URL="$(grep '^DATABASE_URL=' .env | head -1 | sed 's/^DATABASE_URL=//' | tr -d '"')" && set +a echo "=== Pre-validation snapshot ===" npx tsx -e " import { PrismaClient } from '@prisma/client'; const W='a0a99999-9999-4999-8999-999999999999'; (async()=>{   const p=new PrismaClient();   const t=await p.trip.findUnique({where:{id:W},select:{metadata:true}});   const m=(t?.metadata??{}) as Record<string,unknown>;   const probs=(m.rfc001DecisionProblems as {items?:{problemId:string;status:string}[]})?.items??[];   const ledger=m.rfc001AssertionPromotionLedger??null;   let openCount:number|undefined;   try{const r=await fetch('http://127.0.0.1:3002/api/trips/'+W+'/decision-queue',{signal:AbortSignal.timeout(8000)});if(r.ok){const b=await r.json() as {data?:{openCount?:number}};openCount=b.data?.openCount;}}catch{}   console.log(JSON.stringify({problemCount:probs.length,openProblems:probs.filter(x=>!['RESOLVED','DISMISSED','FAILED'].includes(x.status)).map(x=>x.problemId),decisionQueueOpenCount:openCount,ledger},null,2));   await p.\$disconnect(); })(); " | tee "$EVIDENCE/assertion-promotion-shadow-pre-validation-${STAMP}.json" echo "" echo "=== 5) Service interrupt test ===" echo "Stopping Nest :3002..." pkill -f 'dist/src/main.js' 2>/dev/null || true sleep 2 echo "Promote while Nest down (expect failure):" INTERRUPT_DOWN=$(curl -s --max-time 3 -w '\nHTTP_CODE:%{http_code}' -X POST http://127.0.0.1:3002/api/internal/monitoring/promote-assertion \   -H 'Content-Type: application/json' \   -H "x-assertion-promotion-secret: ${ASSERTION_PROMOTION_INTERNAL_SECRET}" \   -d '{"tripId":"a0a99999-9999-4999-8999-999999999999","signal":"RECOVERY_OBSERVED","predicate":"weather.hazard","dayIndex":1,"riskTier":"CALM","ingestId":"interrupt-down-'$STAMP'","trigger":"collector_ingest"}' 2>&1 || echo 'connection_failed') echo "$INTERRUPT_DOWN" echo "$INTERRUPT_DOWN" > "$EVIDENCE/assertion-promotion-interrupt-down-${STAMP}.json" echo "Restarting Nest :3002..." bash scripts/start-nest-3002-prod.sh sleep 3 echo "Promote after restart (expect idempotent/success):" curl -s -X POST http://127.0.0.1:3002/api/internal/monitoring/promote-assertion \   -H 'Content-Type: application/json' \   -H "x-assertion-promotion-secret: ${ASSERTION_PROMOTION_INTERNAL_SECRET}" \   -d '{"tripId":"a0a99999-9999-4999-8999-999999999999","signal":"RECOVERY_OBSERVED","predicate":"weather.hazard","dayIndex":1,"riskTier":"CALM","ingestId":"post-interrupt-'$STAMP'","trigger":"collector_ingest"}' \   | tee "$EVIDENCE/assertion-promotion-post-interrupt-${STAMP}.json" echo "" echo "Monitoring scan reconcile fallback:" curl -s -X POST "http://127.0.0.1:3002/api/trips/a0a99999-9999-4999-8999-999999999999/monitoring/scan?dayIndex=1" \   | head -c 800 echo "" echo "" echo "=== Structured tests (wrong secret, non-allowlist, duplicate, road) ===" npx tsx scripts/validate-assertion-promotion-shadow.ts | tee "$EVIDENCE/assertion-promotion-shadow-validation-run-${STAMP}.json" echo "" echo "=== Final ledger + problem counts ===" npx tsx -e " import { PrismaClient } from '@prisma/client'; const W='a0a99999-9999-4999-8999-999999999999'; (async()=>{   const p=new PrismaClient();   const t=await p.trip.findUnique({where:{id:W},select:{metadata:true}});   const m=(t?.metadata??{}) as Record<string,unknown>;   const probs=(m.rfc001DecisionProblems as {items?:unknown[]})?.items??[];   let openCount:number|undefined;   try{const r=await fetch('http://127.0.0.1:3002/api/trips/'+W+'/decision-queue',{signal:AbortSignal.timeout(8000)});if(r.ok){const b=await r.json() as {data?:{openCount?:number}};openCount=b.data?.openCount;}}catch{}   console.log(JSON.stringify({problemCount:probs.length,decisionQueueOpenCount:openCount,ledger:m.rfc001AssertionPromotionLedger??null},null,2));   await p.\$disconnect(); })(); " | tee "$EVIDENCE/assertion-promotion-shadow-final-ledger-${STAMP}.json" echo "" echo "=== Log pack tails ===" echo "--- PM2 ingest out (last 25) ---" tail -25 /home/devbox/.pm2/logs/vedur-collector-ingest-out.log echo "--- PM2 ingest error (assertion-promotion) ---" grep -i 'assertion-promotion' /home/devbox/.pm2/logs/vedur-collector-ingest-error.log 2>/dev/null | tail -10 || echo '(none)' echo "--- Nest prod (last 40) ---" tail -40 /tmp/nest3002-prod.log } 2>&1 | tee "$LOG_PACK" && echo "DONE stamp=$STAMP log=$LOG_PACK"
+ASSERTION_PROMOTION_BASE_URL=http://127.0.0.1:3002
+ASSERTION_PROMOTION_MAX_ATTEMPTS=5
+ASSERTION_PROMOTION_ENABLED=1
+ASSERTION_PROMOTION_ROAD_ENABLED=0
+ASSERTION_PROMOTION_RETRY_CRON_ENABLED=1
+ASSERTION_PROMOTION_SHADOW_MODE=1
+ASSERTION_PROMOTION_RETRY_INTERVAL_MS=300000
+ASSERTION_PROMOTION_WEATHER_ENABLED=1
+ASSERTION_PROMOTION_TRIP_ALLOWLIST=a0a99999-9999-4999-8999-999999999999
+ASSERTION_PROMOTION_INTERNAL_SECRET=shadow-promotion-devbox-2026-07-12
+
+PM2 vedur-collector-ingest env:
+ASSERTION_PROMOTION_INTERNAL_SECRET: shadow-promotion-devbox-2026-07-12
+ASSERTION_PROMOTION_TRIP_ALLOWLIST: a0a99999-9999-4999-8999-999999999999
+ASSERTION_PROMOTION_WEATHER_ENABLED: 1
+ASSERTION_PROMOTION_RETRY_INTERVAL_MS: 300000
+ASSERTION_PROMOTION_SHADOW_MODE: 1
+ASSERTION_PROMOTION_RETRY_CRON_ENABLED: 1
+ASSERTION_PROMOTION_ROAD_ENABLED: 0
+ASSERTION_PROMOTION_ENABLED: 1
+ASSERTION_PROMOTION_MAX_ATTEMPTS: 5
+ASSERTION_PROMOTION_BASE_URL: http://127.0.0.1:3002
+
+=== Cron evidence (18:30 CALM ingest → promote) ===
+[HTTP-Interceptor] 请求到达: POST /api/internal/monitoring/promote-assertion
+[Nest] 40376  - 07/11/2026, 6:25:28 PM     LOG [HTTP] [Interceptor] 请求到达: POST /api/internal/monitoring/promote-assertion
+[Nest] 40376  - 07/11/2026, 6:25:29 PM     LOG [AssertionPromotionService] [AssertionPromotion] RECOVERY_SHADOW trip=a0a99999-9999-4999-8999-999999999999 day=1 streak=1
+[HTTP-Middleware] POST /api/internal/monitoring/promote-assertion 201 307ms
+[Nest] 40376  - 07/11/2026, 6:25:29 PM     LOG [HTTP] [Middleware] POST /api/internal/monitoring/promote-assertion 201 307ms
+[HTTP-Interceptor] POST /api/internal/monitoring/promote-assertion 201 277ms
+[Nest] 40376  - 07/11/2026, 6:25:29 PM     LOG [HTTP] [Interceptor] POST /api/internal/monitoring/promote-assertion 201 277ms
+[HTTP-Middleware] 请求到达: POST /api/internal/monitoring/promote-assertion
+[Nest] 40376  - 07/11/2026, 6:30:03 PM     LOG [HTTP] [Middleware] 请求到达: POST /api/internal/monitoring/promote-assertion
+[HTTP-Interceptor] 请求到达: POST /api/internal/monitoring/promote-assertion
+[Nest] 40376  - 07/11/2026, 6:30:03 PM     LOG [HTTP] [Interceptor] 请求到达: POST /api/internal/monitoring/promote-assertion
+[HTTP-Middleware] POST /api/internal/monitoring/promote-assertion 201 60ms
+[Nest] 40376  - 07/11/2026, 6:30:03 PM     LOG [HTTP] [Middleware] POST /api/internal/monitoring/promote-assertion 201 60ms
+[HTTP-Interceptor] POST /api/internal/monitoring/promote-assertion 201 59ms
+[Nest] 40376  - 07/11/2026, 6:30:03 PM     LOG [HTTP] [Interceptor] POST /api/internal/monitoring/promote-assertion 201 59ms
+
+=== Pre-validation snapshot ===
+{
+  "problemCount": 0,
+  "openProblems": [],
+  "decisionQueueOpenCount": 2,
+  "ledger": {
+    "failedQueue": [],
+    "lastUpdatedAt": "2026-07-11T18:25:29.018Z",
+    "byPromotionKey": {
+      "weather:recovery:day:1:RECOVERY_OBSERVED": {
+        "detail": "recovery_observed calmStreak=1 tier=CALM",
+        "signal": "RECOVERY_OBSERVED",
+        "status": "RECOVERY_SHADOW",
+        "attempts": 1,
+        "ingestId": "manual-test-1",
+        "ledgerId": "apl_3c6bfb32-3d04-43f8-ac63-2504d5eeae58",
+        "shadowMode": true,
+        "promotionKey": "weather:recovery:day:1:RECOVERY_OBSERVED",
+        "lastAttemptAt": "2026-07-11T18:25:28.975Z"
+      }
+    }
+  }
+}
+
+=== 5) Service interrupt test ===
+Stopping Nest :3002...
+
+=== Resume validation Sat Jul 11 18:31:10 UTC 2026 ===
+Restarting Nest :3002...
+[start-nest-3002-prod] pid=42261 log=/tmp/nest3002-prod.log
+[start-nest-3002-prod] health ok
+=== Interrupt-down (while nest was down) ===
+connection_failed HTTP_CODE:000
+Promote after restart:
+{"ok":true,"result":{"schemaId":"tripnara.assertion_promotion@v1","tripId":"a0a99999-9999-4999-8999-999999999999","promotionKey":"weather:recovery:day:1:RECOVERY_OBSERVED","signal":"RECOVERY_OBSERVED","status":"RECOVERY_SHADOW","shadowMode":true,"skipped":true,"detail":"recovery_observed calmStreak=1 tier=CALM","ledgerId":"apl_3c6bfb32-3d04-43f8-ac63-2504d5eeae58"}}
+Monitoring scan reconcile:
+{"success":true,"data":{"schemaId":"tripnara.trip_monitoring_scan@v1","tripId":"a0a99999-9999-4999-8999-999999999999","scannedAt":"2026-07-11T18:31:45.564Z","contextSnapshotId":"tcs_a0a99999-9999-4999-8999-999999999999_cv0_plan_1_no_travel_graph_1783702828155","contextSnapshotRevision":"cv0_plan_1_no_travel_graph_1783702828155","activeAlertCount":2,"items":[{"kind":"ROAD_CLOSURE","label":"道路封闭","status":"ALERT","lastCheckedAt":"2026-07-11T18:31:45.564Z","summary":"F208 受限，可能影响相关驾驶段","evidenceSource":"vegagerdin_gagnaveita"},{"kind":"WEATHER_HAZARD","label":"严重天气","status":"ALERT","lastCheckedAt":"2026-07-11T18:31:48.751Z","summary":"第 2 天天气风险需关注，请查看决策队列"},{"kind":"FLIGHT_STATUS","label":"航班状态","status":"PENDI
+=== Structured tests ===
+{
+  "outPath": "/home/devbox/project/internal-docs/operations/evidence/assertion-promotion-shadow-validation-2026-07-11T18-31-49-838Z.json",
+  "verdict": {
+    "wrong_secret_blocked": true,
+    "non_allowlist_skipped": true,
+    "road_promotion_skipped": true,
+    "duplicate_idempotent": true,
+    "problem_store_unchanged": true,
+    "visible_queue_unchanged": true,
+    "recovery_shadow_observed": true,
+    "overall_pass": true
+  }
+}
+=== Final ledger ===
+{
+  "problemCount": 0,
+  "decisionQueueOpenCount": 2,
+  "ledger": {
+    "failedQueue": [],
+    "lastUpdatedAt": "2026-07-11T18:25:29.018Z",
+    "byPromotionKey": {
+      "weather:recovery:day:1:RECOVERY_OBSERVED": {
+        "detail": "recovery_observed calmStreak=1 tier=CALM",
+        "signal": "RECOVERY_OBSERVED",
+        "status": "RECOVERY_SHADOW",
+        "attempts": 1,
+        "ingestId": "manual-test-1",
+        "ledgerId": "apl_3c6bfb32-3d04-43f8-ac63-2504d5eeae58",
+        "shadowMode": true,
+        "promotionKey": "weather:recovery:day:1:RECOVERY_OBSERVED",
+        "lastAttemptAt": "2026-07-11T18:25:28.975Z"
+      }
+    }
+  }
+}
+=== Live interrupt retry test ===
+
+=== Final service state Sat Jul 11 18:32:56 UTC 2026 ===
+Nest pid=42760 shadow_mode=RFC001_SHADOW_MODE=0
+ASSERTION_PROMOTION_SHADOW_MODE=1
+{"status":"ok","timestamp":"2026-07-11T18:32:56.723Z","service":"tripnara-api"}
+--- PM2 ingest (last 8) ---
+[Nest] 6401  - 07/11/2026, 6:15:02 PM     LOG [VedurCollectorCanonicalService] collector canonical SILENT trip=a0a99999-9999-4999-8999-999999999999 day=1 wind=14.4 tier=CALM
+[collector-ingest-server] listening on 0.0.0.0:3000
+[collector-ingest-server] POST /internal/evidence/weather/vedur
+[collector-ingest-server] POST /internal/evidence/road/gagnaveita
+[collector-ingest-server] vedur_canonical=1
+[collector-ingest-server] gagnaveita_canonical=1
+[Nest] 38462  - 07/11/2026, 6:30:03 PM     LOG [VedurCollectorIngestService] collector ingest stored trip=a0a99999-9999-4999-8999-999999999999 day=1 station=1 wind=14.4 replay=live
+[Nest] 38462  - 07/11/2026, 6:30:03 PM     LOG [VedurCollectorCanonicalService] collector canonical SILENT trip=a0a99999-9999-4999-8999-999999999999 day=1 wind=14.4 tier=CALM
+--- Nest (promotion lines) ---
+[Nest] 42760  - 07/11/2026, 6:32:22 PM     LOG [RoutesResolver] AssertionPromotionController {/api/internal/monitoring}: +0ms
+[Nest] 42760  - 07/11/2026, 6:32:22 PM     LOG [RouterExplorer] Mapped {/api/internal/monitoring/promote-assertion, POST} route +1ms

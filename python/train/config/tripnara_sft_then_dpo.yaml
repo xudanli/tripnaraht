@@ -1,0 +1,19 @@
+# sft_then_dpo 串联参考配置（实际参数由 API / pipeline_runner 按 task 注入）
+_base_: base_config.yaml
+
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+stage: sft_then_dpo
+
+# Stage 1 — Chain-of-Repair SFT
+sft_num_epochs: 3
+sft_learning_rate: 1.5e-4
+cutoff_len: 6144
+
+# Stage 2 — True Topology DPO（在 checkpoint-sft-final 上继续训练 adapter）
+dpo_num_epochs: 2
+dpo_learning_rate: 5.0e-6
+dpo_beta: 0.1
+dpo_pair_types:
+  - planner_obedience
+dpo_rejected_sources:
+  - true_topology

@@ -1,0 +1,21 @@
+{
+  "caseId": "api-smoke",
+  "description": "与 tasks/api-smoke 等价的 replay case 入口（fixture 评分）",
+  "tasks": [
+    {
+      "id": "t1",
+      "description": "查询天气 API 并解析 JSON 返回",
+      "initialObservation": "用户要求查询北京天气"
+    },
+    {
+      "id": "t2",
+      "description": "处理 API 401 错误",
+      "initialObservation": "API 返回 401 Unauthorized"
+    }
+  ],
+  "assertions": [
+    { "type": "skill_body_contains", "value": "重试", "weight": 1 },
+    { "type": "skill_body_contains", "value": "api_key", "weight": 1 },
+    { "type": "trajectory_contains", "value": "参数", "weight": 2 }
+  ]
+}

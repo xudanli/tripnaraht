@@ -1,0 +1,100 @@
+# Release Gate — Harness Eval Suite A (deterministic blockers + replay)
+#
+# PR 必跑：harness:blockers + harness:replay
+# master / 每日：+ harness:fault-injection + memory:regression
+#
+# 本地：
+#   npm run harness:blockers
+#   npm run harness:replay
+#   npm run harness:fault-injection
+#   npm run memory:regression
+
+name: Harness Release Gate
+
+on:
+  pull_request:
+    paths:
+      - "src/harness/evals/**"
+      - "src/trips/decision-semantics/**"
+      - "src/agent/memory/**"
+      - "src/generated/decision-semantics-contracts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/harness-release-gate.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "src/harness/evals/**"
+      - "src/trips/decision-semantics/**"
+      - "src/agent/memory/**"
+      - "src/generated/decision-semantics-contracts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/harness-release-gate.yml"
+  schedule:
+    # 主分支每日回归（fault-injection + memory proxy）
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: harness-release-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-blockers-and-replay:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Release blockers (Suite A — deterministic)
+        run: npm run harness:blockers
+
+      - name: Deterministic replay gate (ReplayPass / PolicyPass / FinalStatePass)
+        run: npm run harness:replay
+
+      - name: State machine unit tests (frontend SSOT)
+        run: npx jest src/trips/decision-semantics/frontend/decision-center-execution-state-machine.util.spec.ts --no-cache --runInBand
+
+  main-daily-regression:
+    if: github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Release blockers
+        run: npm run harness:blockers
+
+      - name: Replay gate
+        run: npm run harness:replay
+
+      - name: Fault injection matrix (P1 implemented entries)
+        run: npm run harness:fault-injection
+
+      - name: Memory regression proxy (P0/P1 safety baseline)
+        run: npm run memory:regression

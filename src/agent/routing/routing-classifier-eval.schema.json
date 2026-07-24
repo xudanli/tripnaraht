@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tripnara.routing_classifier_eval@v1",
+  "title": "RoutingClassifierEvalSampleV1",
+  "type": "object",
+  "required": ["schemaId", "version", "sample_id", "timestamp", "features", "ground_truth", "current_rule_output"],
+  "properties": {
+    "schemaId": { "const": "tripnara.routing_classifier_eval@v1" },
+    "version": { "const": 1 },
+    "sample_id": { "type": "string", "description": "Unique id; align with request_id / trace id" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "features": {
+      "type": "object",
+      "required": [
+        "taskType",
+        "complexityScore",
+        "complexityLevel",
+        "risk",
+        "latencyBudgetMs",
+        "matchedRuleCount",
+        "orchestrationMode"
+      ],
+      "properties": {
+        "taskType": {
+          "type": "string",
+          "enum": [
+            "TRIP_PLANNING",
+            "CRUD",
+            "DATA_LOOKUP",
+            "CUSTOMER_SUPPORT",
+            "RAG_QA",
+            "BOOKING_WORKFLOW",
+            "GENERIC_QA"
+          ]
+        },
+        "complexityScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "complexityLevel": { "type": "string", "enum": ["SIMPLE", "MODERATE", "COMPLEX"] },
+        "risk": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "latencyBudgetMs": { "type": "integer", "minimum": 0 },
+        "intentModeRequested": { "type": "string" },
+        "intentModeResolved": { "type": "string" },
+        "requiresStructuredOutput": { "type": "boolean" },
+        "expectsToolCalls": { "type": "boolean" },
+        "needsAudit": { "type": "boolean" },
+        "legacyWellSupported": { "type": "boolean" },
+        "matchedRuleCount": { "type": "integer", "minimum": 0 },
+        "orchestrationMode": { "type": "string", "enum": ["LEGACY", "CLAUDE_DYNAMIC", "CLAUDE_SM"] },
+        "modeLockActive": { "type": "boolean" },
+        "hasTripId": { "type": "boolean" },
+        "entryPoint": { "type": "string" }
+      }
+    },
+    "ground_truth": {
+      "type": "object",
+      "required": ["targetRouting", "isAsync"],
+      "properties": {
+        "targetRouting": {
+          "type": "string",
+          "enum": ["SYSTEM1_API", "SYSTEM1_RAG", "SYSTEM2_REASONING", "SYSTEM2_CONSENT"]
+        },
+        "isAsync": { "type": "boolean" },
+        "annotatorNotes": { "type": "string" }
+      }
+    },
+    "current_rule_output": {
+      "type": "object",
+      "required": ["actualRouting", "orchestrationMode", "latencyMs"],
+      "properties": {
+        "actualRouting": {
+          "type": "string",
+          "enum": ["SYSTEM1_API", "SYSTEM1_RAG", "SYSTEM2_REASONING", "SYSTEM2_CONSENT"]
+        },
+        "orchestrationMode": { "type": "string" },
+        "latencyMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "shadow_output": {
+      "type": "object",
+      "properties": {
+        "shadowRouting": {
+          "type": "string",
+          "enum": ["SYSTEM1_API", "SYSTEM1_RAG", "SYSTEM2_REASONING", "SYSTEM2_CONSENT"]
+        },
+        "isMatch": { "type": "boolean" },
+        "mismatchType": { "type": "string", "enum": ["OVER_ROUTING", "UNDER_ROUTING", "NONE"] },
+        "latencyMs": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

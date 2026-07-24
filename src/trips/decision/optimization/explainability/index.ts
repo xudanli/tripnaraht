@@ -1,18 +1,4 @@
 /**
- * 决策可解释性模块导出
- *
- * P3.1 优化：人类可读的决策解释
+ * @deprecated 使用 `src/trips/decision/explainability/`（unified-explainability@v1）替代。
+ * `decision-explainer.service.ts` 已移除（零生产 inject）。
  */
-
-export { DecisionExplainerService } from './decision-explainer.service';
-export type {
-  DecisionExplanation,
-  KeyFactor,
-  Tradeoff,
-  ConstraintExplanation,
-  AlternativeExplanation,
-  RiskExplanation,
-  RecommendationExplanation,
-  ExplanationMetadata,
-  ExplainerConfig,
-} from './decision-explainer.service';

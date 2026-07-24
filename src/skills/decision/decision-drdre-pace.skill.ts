@@ -38,7 +38,7 @@ export class DecisionDrdrePaceSkill implements Skill<DecisionDrdrePaceInput, Dec
 
   metadata = {
     name: 'decision.drdrePace',
-    description: '基于人体能力模型调整行程节奏，可以拆分天数或插入缓冲日，但不能替换路线。',
+    description: 'decision.drdrePace：基于人体能力模型调整行程节奏，可以拆分天数或插入缓冲日，但不能替换路线。',
     version: '1.0.0',
     category: 'decision' as const,
     toolGroup: 'DOMAIN' as const,

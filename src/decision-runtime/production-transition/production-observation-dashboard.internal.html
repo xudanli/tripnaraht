@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Production Observation Dashboard</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #e8eaed; background: #0f1117; }
+    body { margin: 0; padding: 1.25rem 1.5rem 2rem; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.25rem; }
+    .sub { color: #9aa0a6; font-size: 0.85rem; margin-bottom: 1rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.75rem; }
+    .card { background: #1a1d27; border: 1px solid #2a2f3a; border-radius: 8px; padding: 0.85rem 1rem; }
+    .card h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: #9aa0a6; margin: 0 0 0.35rem; }
+    .card .val { font-size: 1.35rem; font-weight: 600; }
+    .pass { color: #81c995; }
+    .warn { color: #fdd663; }
+    .fail { color: #f28b82; }
+    .inc { color: #8ab4f8; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid #2a2f3a; }
+    th { color: #9aa0a6; font-weight: 500; }
+    pre { background: #1a1d27; border: 1px solid #2a2f3a; border-radius: 8px; padding: 0.75rem; overflow: auto; font-size: 0.75rem; }
+    button { background: #394457; color: #e8eaed; border: 0; border-radius: 6px; padding: 0.45rem 0.75rem; cursor: pointer; }
+    button:hover { background: #4a5568; }
+  </style>
+</head>
+<body>
+  <h1>Production Observation</h1>
+  <p class="sub">30d selective window · six metric categories · <span id="generatedAt">—</span></p>
+  <button id="refresh">Refresh</button>
+  <div class="grid" id="summary"></div>
+  <table>
+    <thead><tr><th>Metric</th><th>Category</th><th>Disposition</th><th>Detail</th></tr></thead>
+    <tbody id="metrics"></tbody>
+  </table>
+  <h2 style="margin-top:1.25rem;font-size:0.95rem;">Blockers</h2>
+  <pre id="blockers">—</pre>
+  <script>
+    const API = (new URLSearchParams(location.search).get('api')) || 'http://localhost:3000/api';
+    const dispositionClass = (d) => ({ PASS: 'pass', PASS_WITH_CONDITIONS: 'warn', FAIL: 'fail', INCOMPLETE: 'inc' }[d] || 'inc');
+
+    async function loadReport() {
+      const res = await fetch(`${API}/decision-engine/v1/runtime-capabilities`);
+      const caps = (await res.json()).data;
+      let report = null;
+      try {
+        const r = await fetch('/report.json');
+        if (r.ok) report = await r.json();
+      } catch (_) {}
+      if (!report) {
+        document.getElementById('summary').innerHTML = '<div class="card"><h2>Report</h2><div class="val inc">Run npm run production-observation:report</div></div>';
+        return;
+      }
+      document.getElementById('generatedAt').textContent = report.generatedAt;
+      const tw = report.timeWindow;
+      document.getElementById('summary').innerHTML = [
+        ['Overall', report.overallDisposition],
+        ['Window', `${tw.elapsedDays.toFixed(1)} / ${tw.requiredDays}d`],
+        ['Runtime mode', caps.mode],
+        ['Constraint GW', caps.constraintGatewayMode],
+        ['Trigger GW', caps.decisionTriggerGateway ? 'ON' : 'OFF'],
+        ['Dispatch', `${caps.triggerWiring?.dispatchWired ?? '?'}/${caps.triggerWiring?.total ?? '?'}`],
+      ].map(([k,v]) => `<div class="card"><h2>${k}</h2><div class="val ${dispositionClass(String(v))}">${v}</div></div>`).join('');
+      document.getElementById('metrics').innerHTML = report.metrics.map(m =>
+        `<tr><td>${m.metricId}</td><td>${m.category}</td><td class="${dispositionClass(m.disposition)}">${m.disposition}</td><td>${m.detail}</td></tr>`
+      ).join('');
+      document.getElementById('blockers').textContent = (report.blockers || []).join('\n') || '(none)';
+    }
+    document.getElementById('refresh').onclick = () => loadReport().catch(e => alert(e));
+    loadReport().catch(e => alert(e));
+  </script>
+</body>
+</html>

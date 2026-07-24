@@ -32,6 +32,7 @@ import { OpeningHoursGetSkill } from '../../../../skills/places/opening-hours-ge
 import { DemGetProfileSkill, DemGetProfileOutput } from '../../../../skills/dem/dem-get-profile.skill';
 import { GeoCheckHazardZonesSkill } from '../../../../skills/geo/geo-check-hazard-zones.skill';
 import { Itinerary, ItineraryItem } from '../../../interfaces/trip-plan.interface';
+import { hasResolvableOpeningHours } from '../../../../common/utils/resolve-place-opening-hours.util';
 
 @Injectable()
 export class RouteOptimizationService {
@@ -369,7 +370,7 @@ export class RouteOptimizationService {
         const itemName = this.getItemName(item);
         const itemId = item.itemId || '';
         
-        if (!hoursInfo || !hoursInfo.opening_hours) {
+        if (!hoursInfo || !hasResolvableOpeningHours(hoursInfo.opening_hours)) {
           // 没有开放时间数据，警告
           results.push({
             rule: 'OPENING_HOURS',

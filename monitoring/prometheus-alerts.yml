@@ -153,3 +153,39 @@ groups:
         annotations:
           summary: "Low average evidence confidence"
           description: "Average evidence confidence is {{ $value }} (threshold: 0.6)"
+
+  # Query Rewriting v1.1 — Decision OS 检索护城河观测闭环
+  - name: tripnara_query_rewrite_v1_1
+    interval: 30s
+    rules:
+      - alert: AgentLlmSchemaOrCrashException
+        expr: |
+          (
+            sum(rate(tripnara_query_rewrite_rule_fallback_total[5m]))
+            /
+            sum(rate(tripnara_query_rewrite_total[5m]))
+          ) > 0.30
+        for: 5m
+        labels:
+          severity: critical
+          tier: agent_kernel
+          component: query_rewriting
+        annotations:
+          summary: "Agent 内部重度依赖降级管道（rule_fallback 比例 > 30%）"
+          description: "最近 5 分钟内 Stage 1 LLM 改写失败并触发 rule_fallback 的比例为 {{ $value | humanizePercentage }}。请检查 LLM 响应率、JSON Schema 兼容性或 API 配额。"
+
+      - alert: QueryRewriteZeroResultSpike
+        expr: |
+          (
+            sum by (scene) (rate(tripnara_query_rewrite_zero_result_total[5m]))
+            /
+            sum by (scene) (rate(tripnara_query_rewrite_total[5m]))
+          ) > 0.15
+        for: 5m
+        labels:
+          severity: warning
+          tier: data_quality
+          component: query_rewriting
+        annotations:
+          summary: "场景 [{{ $labels.scene }}] 下游零结果率触发异常红线"
+          description: "场景 {{ $labels.scene }} 最近 5 分钟搜索零结果率为 {{ $value | humanizePercentage }}。可能由 expansion_routes 噪音、KG 别名映射或区域 Registry Prompt 负面膨胀导致。"

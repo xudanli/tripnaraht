@@ -13,7 +13,6 @@ import { DecisionLogClusteringService } from './evaluation/decision-log-clusteri
 import { AdminDecisionLogListQueryDto, AdminDecisionStatsQueryDto } from './dto/admin-decision.dto';
 import { AdminDecisionLogFactAppendDto } from './dto/admin-quality-fact.dto';
 import { ConstraintConflictResolver } from './constraints/constraint-conflict-resolver.service';
-import { ConstraintChecker } from './constraints/constraint-checker';
 import { ConstraintEngineService } from './constraints/constraint-engine.service';
 import { DailyUtilityCalculatorService } from './optimization/daily-utility';
 import { PlanModificationLogService } from './services/plan-modification-log.service';
@@ -48,7 +47,6 @@ export class DecisionController {
     private readonly decisionStats: DecisionStatsService,
     private readonly clusteringService: DecisionLogClusteringService,
     @Optional() private readonly conflictResolver?: ConstraintConflictResolver,
-    @Optional() private readonly constraintChecker?: ConstraintChecker,
     @Optional() private readonly constraintEngine?: ConstraintEngineService,
     @Optional() private readonly dailyUtilityCalculator?: DailyUtilityCalculatorService,
     @Optional() private readonly planModificationLog?: PlanModificationLogService,
@@ -872,24 +870,8 @@ export class DecisionController {
   ) {
     try {
       // Phase 0: 优先使用 ConstraintEngineService.isFeasible 统一入口
-      if (this.constraintEngine) {
-        if (!body.state || !body.plan) {
-          return errorResponse(ErrorCode.VALIDATION_ERROR, 'state 和 plan 是必需的参数');
-        }
-        applyPrismaTripIdToWorldState(body.state, body.tripId);
-        const result = await this.constraintEngine.isFeasible(body.state, body.plan);
-        return successResponse({
-          feasible: result.feasible,
-          isValid: result.feasible, // 兼容旧字段
-          violations: result.violations,
-          summary: result.rawCheckResult.summary,
-          conflicts: result.rawCheckResult.conflicts,
-          infeasibilityExplanation: result.infeasibilityExplanation,
-        });
-      }
-
-      if (!this.constraintChecker) {
-        return errorResponse(ErrorCode.INTERNAL_ERROR, 'ConstraintChecker / ConstraintEngine 不可用');
+      if (!this.constraintEngine) {
+        return errorResponse(ErrorCode.INTERNAL_ERROR, 'ConstraintEngineService 不可用');
       }
 
       if (!body.state || !body.plan) {
@@ -897,15 +879,16 @@ export class DecisionController {
       }
 
       applyPrismaTripIdToWorldState(body.state, body.tripId);
-      const checkResult = await this.constraintChecker.checkPlan(body.state, body.plan);
-
+      const result = await this.constraintEngine.isFeasible(body.state, body.plan);
       return successResponse({
-        feasible: checkResult.isValid,
-        isValid: checkResult.isValid,
-        violations: checkResult.violations,
-        summary: checkResult.summary,
-        conflicts: checkResult.conflicts,
-        infeasibilityExplanation: checkResult.infeasibilityExplanation,
+        feasible: result.feasible,
+        isValid: result.feasible,
+        violations: result.violations,
+        summary: result.rawCheckResult.summary,
+        conflicts: result.rawCheckResult.conflicts,
+        infeasibilityExplanation: result.infeasibilityExplanation,
+        canonicalReport: result.canonicalReport,
+        constraintShadowComparison: result.constraintShadowComparison,
       });
     } catch (error: any) {
       this.logger.error(`约束检查失败: ${error.message}`, error.stack);

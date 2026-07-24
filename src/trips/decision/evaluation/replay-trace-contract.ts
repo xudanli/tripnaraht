@@ -2,6 +2,7 @@ import type {
   DecisionTraceSummary,
   E2EDiff,
   ExpectedDecisionTraceSummary,
+  ObservationHarnessTraceSummary,
   StructuredDiffItem,
 } from './e2e-case.types';
 import type { DecisionLogEntry } from '../shared/decision-result.types';
@@ -11,13 +12,45 @@ export const TRACE_METADATA_WHITELIST = [
   'metaDecisionAudit',
   'candidateSearchBudget',
   'candidateSearchAudit',
+  'observationHarness',
+  'dilemmaElicitationHint',
 ] as const;
 
 export const REPLAY_LOG_METADATA_WHITELIST = [
   'metaDecisionAudit',
   'candidateSearchBudget',
   'candidateSearchAudit',
+  'observationHarness',
+  'dilemmaElicitationHint',
 ] as const;
+
+function summarizeObservationHarnessFromMetadata(raw: unknown): ObservationHarnessTraceSummary | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const audit = Array.isArray(o.audit) ? (o.audit as unknown[]) : [];
+  const auditSummaries = audit
+    .map(a => {
+      const ex = (a as Record<string, unknown>)?.execution as Record<string, unknown> | undefined;
+      return typeof ex?.summary === 'string' ? ex.summary : undefined;
+    })
+    .filter((s): s is string => typeof s === 'string')
+    .slice(0, 12);
+  return {
+    parallel: o.parallel === true,
+    observationTimeoutMs: typeof o.observationTimeoutMs === 'number' ? o.observationTimeoutMs : undefined,
+    auditEntryCount: audit.length,
+    excludedPoiIds: Array.isArray(o.excludedPoiIds) ? (o.excludedPoiIds as string[]) : undefined,
+    passabilityEvidence:
+      o.passabilityEvidence && typeof o.passabilityEvidence === 'object'
+        ? (o.passabilityEvidence as ObservationHarnessTraceSummary['passabilityEvidence'])
+        : undefined,
+    suggestDilemmaElicitation:
+      o.suggestDilemmaElicitation && typeof o.suggestDilemmaElicitation === 'object'
+        ? (o.suggestDilemmaElicitation as ObservationHarnessTraceSummary['suggestDilemmaElicitation'])
+        : undefined,
+    auditSummaries: auditSummaries.length > 0 ? auditSummaries : undefined,
+  };
+}
 
 function deepPickLike(actual: unknown, expectedShape: unknown): unknown {
   if (expectedShape === null || typeof expectedShape !== 'object') return actual;
@@ -57,7 +90,35 @@ export function buildDecisionTraceSummary(logs: DecisionLogEntry[]): DecisionTra
       !!(log.metadata as Record<string, unknown> | undefined)?.candidateSearchAudit ||
       !!(log.metadata as Record<string, unknown> | undefined)?.metaDecisionAudit,
   );
+  const obsSource = logs.find(
+    (log) => !!(log.metadata as Record<string, unknown> | undefined)?.observationHarness,
+  );
+  const dilemmaSource = logs.find(
+    (log) => (log.metadata as Record<string, unknown> | undefined)?.dilemmaElicitationHint != null,
+  );
   const meta = (summarySource?.metadata ?? {}) as Record<string, unknown>;
+  const obsRaw = (obsSource?.metadata as Record<string, unknown> | undefined)?.observationHarness;
+  const obsSummary = summarizeObservationHarnessFromMetadata(obsRaw);
+  const dilemmaFromMeta = (dilemmaSource?.metadata as Record<string, unknown> | undefined)
+    ?.dilemmaElicitationHint as DecisionTraceSummary['dilemmaElicitationHint'] | undefined;
+  const dilemmaFromObs = obsSummary?.suggestDilemmaElicitation;
+  const dilemmaElicitationHint: DecisionTraceSummary['dilemmaElicitationHint'] =
+    dilemmaFromMeta && typeof dilemmaFromMeta === 'object'
+      ? {
+          reason: typeof dilemmaFromMeta.reason === 'string' ? dilemmaFromMeta.reason : 'EVIDENCE_CONTRADICTION',
+          crossSpread:
+            typeof dilemmaFromMeta.crossSpread === 'number' ? dilemmaFromMeta.crossSpread : undefined,
+          hint: typeof dilemmaFromMeta.hint === 'string' ? dilemmaFromMeta.hint : undefined,
+        }
+      : dilemmaFromObs && typeof dilemmaFromObs === 'object'
+        ? {
+            reason:
+              typeof dilemmaFromObs.reason === 'string' ? dilemmaFromObs.reason : 'EVIDENCE_CONTRADICTION',
+            crossSpread: typeof dilemmaFromObs.crossSpread === 'number' ? dilemmaFromObs.crossSpread : undefined,
+            hint: typeof dilemmaFromObs.hint === 'string' ? dilemmaFromObs.hint : undefined,
+          }
+        : undefined;
+
   return {
     schemaVersion:
       typeof meta.schemaVersion === 'string' ? (meta.schemaVersion as any) : 'trace/v1',
@@ -65,6 +126,8 @@ export function buildDecisionTraceSummary(logs: DecisionLogEntry[]): DecisionTra
       typeof meta.metaDecisionAudit === 'string' ? meta.metaDecisionAudit : undefined,
     candidateSearchBudget: meta.candidateSearchBudget as any,
     candidateSearchAudit: meta.candidateSearchAudit as any,
+    observationHarness: obsSummary,
+    dilemmaElicitationHint,
   };
 }
 

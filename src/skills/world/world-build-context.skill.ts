@@ -25,7 +25,12 @@ import { CacheService } from '../../common/cache/cache.service';
 import { CountryConfigService } from './services/country-config.service';
 import * as crypto from 'crypto';
 import { EvidenceCacheService } from './services/evidence-cache.service';
+import {
+  enrichWorldModelWithPartyAggregation,
+  projectPartyPersonasFromTripRequest,
+} from '../../trips/decision/persona/project-party-from-request.util';
 import { mapCountryPhysicalData } from './utils/country-physical-data.mapper';
+import { collectDemEvidenceFromTripTerrain } from './utils/collect-dem-evidence-from-trip-terrain.util';
 
 /**
  * 错误严重级别
@@ -68,6 +73,16 @@ export interface WorldBuildContextInput extends SkillInput {
     fitness?: 'low' | 'medium' | 'high';
     pace?: 'relaxed' | 'moderate' | 'intense';
     drivingFatiguePreferences?: import('../../trips/decision/models/human-capability.model').DrivingFatiguePreferencesInput;
+  };
+  /**
+   * 派对组成（多人格解耦）；与 TripPlanRequest.party 对齐。
+   * 存在多位差异化参与者时写入 WorldModelContext.partyAggregation。
+   */
+  partyComposition?: {
+    count?: number;
+    has_children?: boolean;
+    has_elderly?: boolean;
+    fitness_level?: 'low' | 'medium' | 'high';
   };
   /** 路线方向 ID（可选） */
   routeDirectionId?: string;
@@ -172,6 +187,7 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
       let season: number;
       let routeDirectionId: string | undefined;
       let partyProfile: WorldBuildContextInput['partyProfile'];
+      let partyComposition = input.partyComposition;
 
       // 1. 获取基础数据
       if (input.tripId) {
@@ -223,12 +239,24 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
           drivingFatiguePreferences:
             pacingConfig?.drivingFatiguePreferences ?? tripMeta?.userProfile?.drivingFatiguePreferences,
         };
+        if (!partyComposition) {
+          const partyMeta = tripMeta?.party ?? pacingConfig?.party;
+          if (partyMeta && typeof partyMeta === 'object') {
+            partyComposition = {
+              count: Number(partyMeta.count) || undefined,
+              has_children: partyMeta.has_children === true || partyMeta.hasChildren === true,
+              has_elderly: partyMeta.has_elderly === true || partyMeta.hasElderly === true,
+              fitness_level: partyMeta.fitness_level ?? partyMeta.fitnessLevel,
+            };
+          }
+        }
       } else {
         // 使用原始参数
         countryCode = input.countryCode || '';
         season = input.season || 1;
         routeDirectionId = input.routeDirectionId;
         partyProfile = input.partyProfile;
+        partyComposition = input.partyComposition ?? partyComposition;
       }
 
       if (!countryCode) {
@@ -284,9 +312,20 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
       // 4. 构建 PhysicalRealityModel
       // 4.1 尝试生成 DEM 证据
       let demEvidence: PhysicalRealityModel['demEvidence'] = [];
+
+      // 4.1.0 优先：行程项上已盖章的 Gate-2 terrain → DemDecisionEvidence（供 Abu）
+      if (trip && trip.TripDay?.length) {
+        const stamped = collectDemEvidenceFromTripTerrain(trip, { tripId: input.tripId });
+        if (stamped.length > 0) {
+          demEvidence = stamped;
+          this.logger.debug(
+            `使用行程 stamped terrain 生成 ${stamped.length} 条 DEM 证据（跳过即时栅格重算）`,
+          );
+        }
+      }
       
-      // 4.1.1 优先：从实际行程路线生成 DEM 证据
-      if (trip && trip.TripDay && trip.TripDay.length > 0 && this.demEffortMetadataService) {
+      // 4.1.1 其次：从实际行程路线生成 DEM 证据
+      if (demEvidence.length === 0 && trip && trip.TripDay && trip.TripDay.length > 0 && this.demEffortMetadataService) {
         try {
           // 提取所有行程项的坐标
           const routePoints: Array<{ lat: number; lng: number }> = [];
@@ -876,12 +915,39 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
       const complianceEvidence = this.buildComplianceEvidence(routeDirection);
 
       // 6. 组装 WorldModelContext
-      const world: WorldModelContext = {
+      let world: WorldModelContext = {
         physical,
         human: human || createHumanCapabilityModelFromProfile('default', { pace: 'normal', fitness: 'medium', riskTolerance: 'medium' }),
         routeDirection: routeDirection as any,
         complianceEvidence: complianceEvidence.length > 0 ? complianceEvidence : undefined,
       };
+
+      // 6b. 多人格派对聚合（带父母/儿童等差异化参与者）
+      const shouldAggregateParty =
+        partyComposition?.has_elderly === true ||
+        partyComposition?.has_children === true ||
+        (partyComposition?.count !== undefined && partyComposition.count > 1);
+      if (shouldAggregateParty) {
+        const personas = projectPartyPersonasFromTripRequest({
+          party: {
+            count: partyComposition?.count ?? 2,
+            has_elderly: partyComposition?.has_elderly,
+            has_children: partyComposition?.has_children,
+            fitness_level: partyComposition?.fitness_level ?? partyProfile?.fitness,
+          },
+          party_profile: partyProfile?.riskTolerance
+            ? { risk_tolerance: partyProfile.riskTolerance.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' }
+            : undefined,
+        });
+        world = enrichWorldModelWithPartyAggregation(world, personas, {
+          date: trip?.startDate
+            ? new Date(trip.startDate).toISOString().slice(0, 10)
+            : `${new Date().getFullYear()}-${String(season).padStart(2, '0')}-01`,
+        });
+        this.logger.log(
+          `[world.buildContext] party aggregation: members=${personas.length} hardGates=${world.partyAggregation?.hardGateTriggeredBy?.length ?? 0}`,
+        );
+      }
 
       // 7. 验证WorldModelContext完整性
       const worldValidation = this.validateWorldModelContext(world);
@@ -1019,6 +1085,14 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
           .digest('hex')
           .substring(0, 8);
         parts.push(`profile:${profileHash}`);
+      }
+      if (input.partyComposition) {
+        const partyHash = crypto
+          .createHash('md5')
+          .update(JSON.stringify(input.partyComposition))
+          .digest('hex')
+          .substring(0, 8);
+        parts.push(`party:${partyHash}`);
       }
     }
 

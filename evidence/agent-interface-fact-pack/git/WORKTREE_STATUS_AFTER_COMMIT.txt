@@ -1,0 +1,2176 @@
+ M config/decision-runtime/gagnaveita-collector-frankfurt.runtime.env
+ M config/decision-runtime/gagnaveita-collector-ingest.env
+ D coverage/agent/agent-admin.controller.ts.html
+ D coverage/agent/agent.controller.ts.html
+ D coverage/agent/assistants/journey-assistant/index.html
+ D coverage/agent/assistants/journey-assistant/journey-assistant.controller.ts.html
+ D coverage/agent/assistants/journey-assistant/services/index.html
+ D coverage/agent/assistants/journey-assistant/services/journey-assistant.service.ts.html
+ D coverage/agent/assistants/planning-assistant/index.html
+ D coverage/agent/assistants/planning-assistant/planning-assistant.controller.ts.html
+ D coverage/agent/assistants/planning-assistant/services/index.html
+ D coverage/agent/assistants/planning-assistant/services/planning-assistant.service.ts.html
+ D coverage/agent/assistants/shared/services/index.html
+ D coverage/agent/assistants/shared/services/persona-language.service.ts.html
+ D coverage/agent/assistants/shared/services/preference-learning.service.ts.html
+ D coverage/agent/assistants/shared/services/recommendation-engine.service.ts.html
+ D coverage/agent/assistants/trip-planner/index.html
+ D coverage/agent/assistants/trip-planner/services/context-analyzer.service.ts.html
+ D coverage/agent/assistants/trip-planner/services/index.html
+ D coverage/agent/assistants/trip-planner/services/intent-disambiguator.service.ts.html
+ D coverage/agent/assistants/trip-planner/services/route-optimization.service.ts.html
+ D coverage/agent/assistants/trip-planner/services/trip-planner.service.ts.html
+ D coverage/agent/assistants/trip-planner/trip-planner.controller.ts.html
+ D coverage/agent/context-engine/context.controller.ts.html
+ D coverage/agent/context-engine/dto/context-api-client.ts.html
+ D coverage/agent/context-engine/dto/context-api.types.ts.html
+ D coverage/agent/context-engine/dto/frontend-context-api-client.ts.html
+ D coverage/agent/context-engine/dto/index.html
+ D coverage/agent/context-engine/index.html
+ D coverage/agent/context-engine/services/context-engineer.service.ts.html
+ D coverage/agent/context-engine/services/context-metrics.service.ts.html
+ D coverage/agent/context-engine/services/index.html
+ D coverage/agent/context-engine/utils/index.html
+ D coverage/agent/context-engine/utils/langgraph-context-integration.ts.html
+ D coverage/agent/execution.controller.ts.html
+ D coverage/agent/index.html
+ D coverage/agent/infra/audit-log.service.ts.html
+ D coverage/agent/infra/core-gateway.service.ts.html
+ D coverage/agent/infra/index.html
+ D coverage/agent/infra/index.ts.html
+ D coverage/agent/infra/llm-executor.service.ts.html
+ D coverage/agent/infra/state-store.service.ts.html
+ D coverage/agent/infra/telemetry.service.ts.html
+ D coverage/agent/memory/services/decision-params-injector.service.ts.html
+ D coverage/agent/memory/services/index.html
+ D coverage/agent/memory/services/memory.service.ts.html
+ D coverage/agent/memory/services/multi-persona-manager.service.ts.html
+ D coverage/agent/memory/services/persona-identification.service.ts.html
+ D coverage/agent/memory/services/persona-state-manager.service.ts.html
+ D coverage/agent/memory/services/user-profile-mapper.service.ts.html
+ D coverage/agent/plan-execute/context-assembler.service.ts.html
+ D coverage/agent/plan-execute/executor.service.ts.html
+ D coverage/agent/plan-execute/index.html
+ D coverage/agent/plan-execute/orchestrator.service.ts.html
+ D coverage/agent/plan-execute/planner.service.ts.html
+ D coverage/agent/plan-execute/replanner.service.ts.html
+ D coverage/agent/planner-agent-mcp.service.ts.html
+ D coverage/agent/planning-workbench.controller.ts.html
+ D coverage/agent/reasoning/services/causal-modeling.service.ts.html
+ D coverage/agent/reasoning/services/graph-reasoning.service.ts.html
+ D coverage/agent/reasoning/services/index.html
+ D coverage/agent/services/action-cache.service.ts.html
+ D coverage/agent/services/action-dependency-analyzer.service.ts.html
+ D coverage/agent/services/action-registry.service.ts.html
+ D coverage/agent/services/actions/execution.actions.ts.html
+ D coverage/agent/services/actions/index.html
+ D coverage/agent/services/actions/itinerary.actions.ts.html
+ D coverage/agent/services/actions/places.actions.ts.html
+ D coverage/agent/services/actions/planning.actions.ts.html
+ D coverage/agent/services/actions/policy.actions.ts.html
+ D coverage/agent/services/actions/readiness.actions.ts.html
+ D coverage/agent/services/actions/transport.actions.ts.html
+ D coverage/agent/services/actions/trip-detail.actions.ts.html
+ D coverage/agent/services/actions/trip.actions.ts.html
+ D coverage/agent/services/actions/webbrowse.actions.ts.html
+ D coverage/agent/services/agent-run-admin.service.ts.html
+ D coverage/agent/services/agent-state.service.ts.html
+ D coverage/agent/services/agent.service.ts.html
+ D coverage/agent/services/claude-orchestration-prompts.ts.html
+ D coverage/agent/services/claude-orchestrator.service.ts.html
+ D coverage/agent/services/critic.service.ts.html
+ D coverage/agent/services/event-telemetry.service.ts.html
+ D coverage/agent/services/execution-agent.service.ts.html
+ D coverage/agent/services/hallucination-detection.service.ts.html
+ D coverage/agent/services/index.html
+ D coverage/agent/services/llm-plan-service.ts.html
+ D coverage/agent/services/orchestration-stability.util.ts.html
+ D coverage/agent/services/orchestration-utils.ts.html
+ D coverage/agent/services/orchestrator.service.ts.html
+ D coverage/agent/services/persona-shell.service.ts.html
+ D coverage/agent/services/planning-workbench-admin.service.ts.html
+ D coverage/agent/services/planning-workbench-agent.service.ts.html
+ D coverage/agent/services/react-system-prompt.service.ts.html
+ D coverage/agent/services/request-deduplication.service.ts.html
+ D coverage/agent/services/router.service.ts.html
+ D coverage/agent/services/skill-input-schema-generator.service.ts.html
+ D coverage/agent/services/skill-input-validator.service.ts.html
+ D coverage/agent/services/skill-validation-rules.config.ts.html
+ D coverage/agent/services/sub-agents/compliance-agent.service.ts.html
+ D coverage/agent/services/sub-agents/core-decision-agent.service.ts.html
+ D coverage/agent/services/sub-agents/gatekeeper-agent.service.ts.html
+ D coverage/agent/services/sub-agents/index.html
+ D coverage/agent/services/sub-agents/local-insight-agent.service.ts.html
+ D coverage/agent/services/sub-agents/narrator-agent.service.ts.html
+ D coverage/agent/services/sub-agents/planner-agent.service.ts.html
+ D coverage/agent/services/system-collaboration.service.ts.html
+ D coverage/agent/services/system1-executor.service.ts.html
+ D coverage/agent/services/system1-info-card.service.ts.html
+ D coverage/agent/services/token-stats.service.ts.html
+ D coverage/agent/services/trip-detail-agent.service.ts.html
+ D coverage/agent/services/trip-run-manager.service.ts.html
+ D coverage/agent/services/tripnara-system-prompt.service.ts.html
+ D coverage/agent/services/webbrowse-executor.service.ts.html
+ D coverage/agent/training/index.html
+ D coverage/agent/training/services/ab-test-manager.service.ts.html
+ D coverage/agent/training/services/circuit-breaker.service.ts.html
+ D coverage/agent/training/services/clarification-prompt-designer.service.ts.html
+ D coverage/agent/training/services/compliance-audit.service.ts.html
+ D coverage/agent/training/services/constraint-rule-manager.service.ts.html
+ D coverage/agent/training/services/constraints-engine.service.ts.html
+ D coverage/agent/training/services/cost-governance.service.ts.html
+ D coverage/agent/training/services/data-quality-checker.service.ts.html
+ D coverage/agent/training/services/dataset-version-manager.service.ts.html
+ D coverage/agent/training/services/decision-explanation-designer.service.ts.html
+ D coverage/agent/training/services/diagnostic-label-system.service.ts.html
+ D coverage/agent/training/services/domain-expert-knowledge.service.ts.html
+ D coverage/agent/training/services/eval-suite.service.ts.html
+ D coverage/agent/training/services/explainable-output.service.ts.html
+ D coverage/agent/training/services/fallback-strategy.service.ts.html
+ D coverage/agent/training/services/index.html
+ D coverage/agent/training/services/iterative-deployment-workflow.service.ts.html
+ D coverage/agent/training/services/judge-prompt-designer.service.ts.html
+ D coverage/agent/training/services/mlflow-client.service.ts.html
+ D coverage/agent/training/services/model-ab-test.service.ts.html
+ D coverage/agent/training/services/model-collapse-monitor.service.ts.html
+ D coverage/agent/training/services/model-registry.service.ts.html
+ D coverage/agent/training/services/observability.service.ts.html
+ D coverage/agent/training/services/offline-policy-evaluator.service.ts.html
+ D coverage/agent/training/services/pii-anonymizer.service.ts.html
+ D coverage/agent/training/services/policy-orchestrator-integration.service.ts.html
+ D coverage/agent/training/services/policy-service-manager.service.ts.html
+ D coverage/agent/training/services/quality-scorer.service.ts.html
+ D coverage/agent/training/services/rate-limiter.service.ts.html
+ D coverage/agent/training/services/regression-gate.service.ts.html
+ D coverage/agent/training/services/replay-comparator.service.ts.html
+ D coverage/agent/training/services/retry-policy.service.ts.html
+ D coverage/agent/training/services/reward-definition.service.ts.html
+ D coverage/agent/training/services/reward-model-trainer.service.ts.html
+ D coverage/agent/training/services/reward-signal-extractor.service.ts.html
+ D coverage/agent/training/services/risk-event-manager.service.ts.html
+ D coverage/agent/training/services/risk-prompt-designer.service.ts.html
+ D coverage/agent/training/services/rl-integration.service.ts.html
+ D coverage/agent/training/services/roll-ab-test.service.ts.html
+ D coverage/agent/training/services/roll-batch-processor.service.ts.html
+ D coverage/agent/training/services/roll-cache.service.ts.html
+ D coverage/agent/training/services/roll-circuit-breaker.service.ts.html
+ D coverage/agent/training/services/roll-client.service.ts.html
+ D coverage/agent/training/services/roll-connection-pool.service.ts.html
+ D coverage/agent/training/services/roll-monitoring.service.ts.html
+ D coverage/agent/training/services/roll-policy-adapter.service.ts.html
+ D coverage/agent/training/services/roll-retry.service.ts.html
+ D coverage/agent/training/services/roll-reward-adapter.service.ts.html
+ D coverage/agent/training/services/roll-tracing.service.ts.html
+ D coverage/agent/training/services/roll-trajectory-adapter.service.ts.html
+ D coverage/agent/training/services/security-red-team.service.ts.html
+ D coverage/agent/training/services/test-case-manager.service.ts.html
+ D coverage/agent/training/services/training-batch-processor.service.ts.html
+ D coverage/agent/training/services/training-data-preparation.service.ts.html
+ D coverage/agent/training/services/training-metrics.service.ts.html
+ D coverage/agent/training/services/training-pipeline.service.ts.html
+ D coverage/agent/training/services/training-quality-analyzer.service.ts.html
+ D coverage/agent/training/services/trajectory-collection.service.ts.html
+ D coverage/agent/training/services/trajectory-etl.service.ts.html
+ D coverage/agent/training/services/trajectory-validator.service.ts.html
+ D coverage/agent/training/services/user-feedback-loop.service.ts.html
+ D coverage/agent/training/training.controller.ts.html
+ D coverage/agent/trip-detail.controller.ts.html
+ D coverage/agent/utils/agent-metrics.util.ts.html
+ D coverage/agent/utils/decision-log-migrator.util.ts.html
+ D coverage/agent/utils/index.html
+ D coverage/agent/utils/orchestration-metrics.util.ts.html
+ D coverage/agent/utils/orchestration-policy.util.ts.html
+ D coverage/agent/utils/orchestration-signals.util.ts.html
+ D coverage/agent/utils/resolve-orchestration-mode.util.ts.html
+ D coverage/agent/utils/skill-importance.util.ts.html
+ D coverage/agent/utils/token-calculator.util.ts.html
+ D coverage/auth/auth.controller.ts.html
+ D coverage/auth/decorators/current-user.decorator.ts.html
+ D coverage/auth/decorators/index.html
+ D coverage/auth/decorators/public.decorator.ts.html
+ D coverage/auth/guards/index.html
+ D coverage/auth/guards/jwt-auth.guard.ts.html
+ D coverage/auth/index.html
+ D coverage/auth/services/email-verification.service.ts.html
+ D coverage/auth/services/google-oauth.service.ts.html
+ D coverage/auth/services/index.html
+ D coverage/auth/services/token.service.ts.html
+ D coverage/auth/services/user.service.ts.html
+ D coverage/auth/strategies/index.html
+ D coverage/auth/strategies/jwt.strategy.ts.html
+ D coverage/base.css
+ D coverage/block-navigation.js
+ D coverage/cities/cities.controller.ts.html
+ D coverage/cities/cities.service.ts.html
+ D coverage/cities/index.html
+ D coverage/common/filters/http-exception.filter.ts.html
+ D coverage/common/filters/index.html
+ D coverage/common/interceptors/index.html
+ D coverage/common/interceptors/logging.interceptor.ts.html
+ D coverage/common/middlewares/index.html
+ D coverage/common/middlewares/security.middleware.ts.html
+ D coverage/common/utils/adapter-mapper.util.ts.html
+ D coverage/common/utils/currency-math.util.ts.html
+ D coverage/common/utils/hotel-cost-calculator.util.ts.html
+ D coverage/common/utils/http-client.factory.ts.html
+ D coverage/common/utils/index.html
+ D coverage/common/utils/opening-hours.util.ts.html
+ D coverage/common/utils/osm-opening-hours-parser.util.ts.html
+ D coverage/common/utils/risk-calculator.util.ts.html
+ D coverage/common/utils/suggestion-id.util.ts.html
+ D coverage/common/utils/time-value-calculator.util.ts.html
+ D coverage/contact/contact.controller.ts.html
+ D coverage/contact/index.html
+ D coverage/contact/services/contact-notification.service.ts.html
+ D coverage/contact/services/contact.service.ts.html
+ D coverage/contact/services/file-storage.service.ts.html
+ D coverage/contact/services/index.html
+ D coverage/contact/services/rate-limit.service.ts.html
+ D coverage/content-strategy/services/brand-expression.service.ts.html
+ D coverage/content-strategy/services/brand-story.service.ts.html
+ D coverage/content-strategy/services/content-strategy-qa.service.ts.html
+ D coverage/content-strategy/services/copy-example-library.service.ts.html
+ D coverage/content-strategy/services/copy-standards.service.ts.html
+ D coverage/content-strategy/services/index.html
+ D coverage/content-strategy/services/localization.service.ts.html
+ D coverage/content-strategy/services/persona-based-communication.service.ts.html
+ D coverage/content-strategy/services/user-journey-communication.service.ts.html
+ D coverage/countries/countries.controller.ts.html
+ D coverage/countries/countries.service.ts.html
+ D coverage/countries/index.html
+ D coverage/data-architecture/services/data-architecture.service.ts.html
+ D coverage/data-architecture/services/index.html
+ D coverage/data-contracts/adapters/base.adapter.ts.html
+ D coverage/data-contracts/adapters/default-road-status.adapter.ts.html
+ D coverage/data-contracts/adapters/default-weather.adapter.ts.html
+ D coverage/data-contracts/adapters/iceland-aurora.adapter.ts.html
+ D coverage/data-contracts/adapters/iceland-road-status.adapter.ts.html
+ D coverage/data-contracts/adapters/iceland-safety.adapter.ts.html
+ D coverage/data-contracts/adapters/iceland-weather.adapter.ts.html
+ D coverage/data-contracts/adapters/index.html
+ D coverage/data-contracts/services/data-source-router.service.ts.html
+ D coverage/data-contracts/services/iceland-comprehensive.service.ts.html
+ D coverage/data-contracts/services/iceland-froad.service.ts.html
+ D coverage/data-contracts/services/index.html
+ D coverage/data-fusion/services/data-conflict-resolution.service.ts.html
+ D coverage/data-fusion/services/feature-quality-assessment.service.ts.html
+ D coverage/data-fusion/services/fusion-resilience.service.ts.html
+ D coverage/data-fusion/services/fusion-resource-manager.service.ts.html
+ D coverage/data-fusion/services/index.html
+ D coverage/data-modeling/index.html
+ D coverage/data-modeling/index.ts.html
+ D coverage/data-modeling/services/index.html
+ D coverage/data-modeling/services/uncertainty-modeling.service.ts.html
+ D coverage/data-pipeline/index.html
+ D coverage/data-pipeline/index.ts.html
+ D coverage/data-pipeline/services/data-cleaning.service.ts.html
+ D coverage/data-pipeline/services/data-pipeline.service.ts.html
+ D coverage/data-pipeline/services/data-standardization.service.ts.html
+ D coverage/data-pipeline/services/index.html
+ D coverage/data-privacy/index.html
+ D coverage/data-privacy/index.ts.html
+ D coverage/data-privacy/services/data-privacy-framework.service.ts.html
+ D coverage/data-privacy/services/encryption.service.ts.html
+ D coverage/data-privacy/services/index.html
+ D coverage/data-privacy/services/sensitive-data-handling.service.ts.html
+ D coverage/data-quality/index.html
+ D coverage/data-quality/index.ts.html
+ D coverage/data-quality/services/confidence-annotation.service.ts.html
+ D coverage/data-quality/services/data-improvement.service.ts.html
+ D coverage/data-quality/services/data-lineage.service.ts.html
+ D coverage/data-quality/services/data-quality-framework.service.ts.html
+ D coverage/data-quality/services/index.html
+ D coverage/data-quality/services/source-annotation.service.ts.html
+ D coverage/favicon.png
+ D coverage/flight-prices/flight-prices.controller.ts.html
+ D coverage/flight-prices/index.html
+ D coverage/flight-prices/services/index.html
+ D coverage/flight-prices/services/price-prediction.service.ts.html
+ D coverage/flight-prices/services/prophet-service.ts.html
+ D coverage/hotels/hotels.controller.ts.html
+ D coverage/hotels/index.html
+ D coverage/hotels/services/hotel-price-prediction.service.ts.html
+ D coverage/hotels/services/hotel-price.service.ts.html
+ D coverage/hotels/services/index.html
+ D coverage/hybrid-cache.service.ts.html
+ D coverage/index.html
+ D coverage/itinerary-items/entities/index.html
+ D coverage/itinerary-items/entities/itinerary-item.entity.ts.html
+ D coverage/itinerary-items/index.html
+ D coverage/itinerary-items/itinerary-items.controller.ts.html
+ D coverage/itinerary-items/itinerary-items.service.ts.html
+ D coverage/itinerary-items/services/index.html
+ D coverage/itinerary-items/services/item-cost.service.ts.html
+ D coverage/itinerary-items/services/itinerary-validation.service.ts.html
+ D coverage/itinerary-items/services/travel-time-cache.service.ts.html
+ D coverage/itinerary-items/validators/base.validator.ts.html
+ D coverage/itinerary-items/validators/buffer-time.validator.ts.html
+ D coverage/itinerary-items/validators/index.html
+ D coverage/itinerary-items/validators/index.ts.html
+ D coverage/itinerary-items/validators/time-overlap.validator.ts.html
+ D coverage/itinerary-items/validators/travel-time.validator.ts.html
+ D coverage/itinerary-optimization/index.html
+ D coverage/itinerary-optimization/itinerary-optimization.controller.ts.html
+ D coverage/itinerary-optimization/itinerary-optimization.service.ts.html
+ D coverage/itinerary-optimization/services/alternative-comparison.service.ts.html
+ D coverage/itinerary-optimization/services/conservative-strategy.service.ts.html
+ D coverage/itinerary-optimization/services/data-expiry-policy.service.ts.html
+ D coverage/itinerary-optimization/services/dynamic-transport-time.service.ts.html
+ D coverage/itinerary-optimization/services/enhanced-rest-time.service.ts.html
+ D coverage/itinerary-optimization/services/enhanced-vrptw-optimizer.service.ts.html
+ D coverage/itinerary-optimization/services/explanation.service.ts.html
+ D coverage/itinerary-optimization/services/happiness-scorer.service.ts.html
+ D coverage/itinerary-optimization/services/index.html
+ D coverage/itinerary-optimization/services/metrics-aggregator.service.ts.html
+ D coverage/itinerary-optimization/services/multi-strategy-route-generator.service.ts.html
+ D coverage/itinerary-optimization/services/product-explainable-output-builder.service.ts.html
+ D coverage/itinerary-optimization/services/queue-time-model.service.ts.html
+ D coverage/itinerary-optimization/services/robust-time-matrix.service.ts.html
+ D coverage/itinerary-optimization/services/route-optimizer.service.ts.html
+ D coverage/itinerary-optimization/services/scenario-optimization.service.ts.html
+ D coverage/itinerary-optimization/services/spatial-clustering.service.ts.html
+ D coverage/itinerary-optimization/services/vrptw-optimizer.service.ts.html
+ D coverage/knowledge-base/services/chunking.service.ts.html
+ D coverage/knowledge-base/services/index.html
+ D coverage/knowledge-base/services/indexing.service.ts.html
+ D coverage/knowledge-base/services/loader.service.ts.html
+ D coverage/lcov-report/agent/agent-admin.controller.ts.html
+ D coverage/lcov-report/agent/agent.controller.ts.html
+ D coverage/lcov-report/agent/assistants/journey-assistant/index.html
+ D coverage/lcov-report/agent/assistants/journey-assistant/journey-assistant.controller.ts.html
+ D coverage/lcov-report/agent/assistants/journey-assistant/services/index.html
+ D coverage/lcov-report/agent/assistants/journey-assistant/services/journey-assistant.service.ts.html
+ D coverage/lcov-report/agent/assistants/planning-assistant/index.html
+ D coverage/lcov-report/agent/assistants/planning-assistant/planning-assistant.controller.ts.html
+ D coverage/lcov-report/agent/assistants/planning-assistant/services/index.html
+ D coverage/lcov-report/agent/assistants/planning-assistant/services/planning-assistant.service.ts.html
+ D coverage/lcov-report/agent/assistants/shared/services/index.html
+ D coverage/lcov-report/agent/assistants/shared/services/persona-language.service.ts.html
+ D coverage/lcov-report/agent/assistants/shared/services/preference-learning.service.ts.html
+ D coverage/lcov-report/agent/assistants/shared/services/recommendation-engine.service.ts.html
+ D coverage/lcov-report/agent/assistants/trip-planner/index.html
+ D coverage/lcov-report/agent/assistants/trip-planner/services/context-analyzer.service.ts.html
+ D coverage/lcov-report/agent/assistants/trip-planner/services/index.html
+ D coverage/lcov-report/agent/assistants/trip-planner/services/intent-disambiguator.service.ts.html
+ D coverage/lcov-report/agent/assistants/trip-planner/services/route-optimization.service.ts.html
+ D coverage/lcov-report/agent/assistants/trip-planner/services/trip-planner.service.ts.html
+ D coverage/lcov-report/agent/assistants/trip-planner/trip-planner.controller.ts.html
+ D coverage/lcov-report/agent/context-engine/context.controller.ts.html
+ D coverage/lcov-report/agent/context-engine/dto/context-api-client.ts.html
+ D coverage/lcov-report/agent/context-engine/dto/context-api.types.ts.html
+ D coverage/lcov-report/agent/context-engine/dto/frontend-context-api-client.ts.html
+ D coverage/lcov-report/agent/context-engine/dto/index.html
+ D coverage/lcov-report/agent/context-engine/index.html
+ D coverage/lcov-report/agent/context-engine/services/context-engineer.service.ts.html
+ D coverage/lcov-report/agent/context-engine/services/context-metrics.service.ts.html
+ D coverage/lcov-report/agent/context-engine/services/index.html
+ D coverage/lcov-report/agent/context-engine/utils/index.html
+ D coverage/lcov-report/agent/context-engine/utils/langgraph-context-integration.ts.html
+ D coverage/lcov-report/agent/execution.controller.ts.html
+ D coverage/lcov-report/agent/index.html
+ D coverage/lcov-report/agent/infra/audit-log.service.ts.html
+ D coverage/lcov-report/agent/infra/core-gateway.service.ts.html
+ D coverage/lcov-report/agent/infra/index.html
+ D coverage/lcov-report/agent/infra/index.ts.html
+ D coverage/lcov-report/agent/infra/llm-executor.service.ts.html
+ D coverage/lcov-report/agent/infra/state-store.service.ts.html
+ D coverage/lcov-report/agent/infra/telemetry.service.ts.html
+ D coverage/lcov-report/agent/memory/services/decision-params-injector.service.ts.html
+ D coverage/lcov-report/agent/memory/services/index.html
+ D coverage/lcov-report/agent/memory/services/memory.service.ts.html
+ D coverage/lcov-report/agent/memory/services/multi-persona-manager.service.ts.html
+ D coverage/lcov-report/agent/memory/services/persona-identification.service.ts.html
+ D coverage/lcov-report/agent/memory/services/persona-state-manager.service.ts.html
+ D coverage/lcov-report/agent/memory/services/user-profile-mapper.service.ts.html
+ D coverage/lcov-report/agent/plan-execute/context-assembler.service.ts.html
+ D coverage/lcov-report/agent/plan-execute/executor.service.ts.html
+ D coverage/lcov-report/agent/plan-execute/index.html
+ D coverage/lcov-report/agent/plan-execute/orchestrator.service.ts.html
+ D coverage/lcov-report/agent/plan-execute/planner.service.ts.html
+ D coverage/lcov-report/agent/plan-execute/replanner.service.ts.html
+ D coverage/lcov-report/agent/planner-agent-mcp.service.ts.html
+ D coverage/lcov-report/agent/planning-workbench.controller.ts.html
+ D coverage/lcov-report/agent/reasoning/services/causal-modeling.service.ts.html
+ D coverage/lcov-report/agent/reasoning/services/graph-reasoning.service.ts.html
+ D coverage/lcov-report/agent/reasoning/services/index.html
+ D coverage/lcov-report/agent/services/action-cache.service.ts.html
+ D coverage/lcov-report/agent/services/action-dependency-analyzer.service.ts.html
+ D coverage/lcov-report/agent/services/action-registry.service.ts.html
+ D coverage/lcov-report/agent/services/actions/execution.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/index.html
+ D coverage/lcov-report/agent/services/actions/itinerary.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/places.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/planning.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/policy.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/readiness.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/transport.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/trip-detail.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/trip.actions.ts.html
+ D coverage/lcov-report/agent/services/actions/webbrowse.actions.ts.html
+ D coverage/lcov-report/agent/services/agent-run-admin.service.ts.html
+ D coverage/lcov-report/agent/services/agent-state.service.ts.html
+ D coverage/lcov-report/agent/services/agent.service.ts.html
+ D coverage/lcov-report/agent/services/claude-orchestration-prompts.ts.html
+ D coverage/lcov-report/agent/services/claude-orchestrator.service.ts.html
+ D coverage/lcov-report/agent/services/critic.service.ts.html
+ D coverage/lcov-report/agent/services/event-telemetry.service.ts.html
+ D coverage/lcov-report/agent/services/execution-agent.service.ts.html
+ D coverage/lcov-report/agent/services/hallucination-detection.service.ts.html
+ D coverage/lcov-report/agent/services/index.html
+ D coverage/lcov-report/agent/services/llm-plan-service.ts.html
+ D coverage/lcov-report/agent/services/orchestration-stability.util.ts.html
+ D coverage/lcov-report/agent/services/orchestration-utils.ts.html
+ D coverage/lcov-report/agent/services/orchestrator.service.ts.html
+ D coverage/lcov-report/agent/services/persona-shell.service.ts.html
+ D coverage/lcov-report/agent/services/planning-workbench-admin.service.ts.html
+ D coverage/lcov-report/agent/services/planning-workbench-agent.service.ts.html
+ D coverage/lcov-report/agent/services/react-system-prompt.service.ts.html
+ D coverage/lcov-report/agent/services/request-deduplication.service.ts.html
+ D coverage/lcov-report/agent/services/router.service.ts.html
+ D coverage/lcov-report/agent/services/skill-input-schema-generator.service.ts.html
+ D coverage/lcov-report/agent/services/skill-input-validator.service.ts.html
+ D coverage/lcov-report/agent/services/skill-validation-rules.config.ts.html
+ D coverage/lcov-report/agent/services/sub-agents/compliance-agent.service.ts.html
+ D coverage/lcov-report/agent/services/sub-agents/core-decision-agent.service.ts.html
+ D coverage/lcov-report/agent/services/sub-agents/gatekeeper-agent.service.ts.html
+ D coverage/lcov-report/agent/services/sub-agents/index.html
+ D coverage/lcov-report/agent/services/sub-agents/local-insight-agent.service.ts.html
+ D coverage/lcov-report/agent/services/sub-agents/narrator-agent.service.ts.html
+ D coverage/lcov-report/agent/services/sub-agents/planner-agent.service.ts.html
+ D coverage/lcov-report/agent/services/system-collaboration.service.ts.html
+ D coverage/lcov-report/agent/services/system1-executor.service.ts.html
+ D coverage/lcov-report/agent/services/system1-info-card.service.ts.html
+ D coverage/lcov-report/agent/services/token-stats.service.ts.html
+ D coverage/lcov-report/agent/services/trip-detail-agent.service.ts.html
+ D coverage/lcov-report/agent/services/trip-run-manager.service.ts.html
+ D coverage/lcov-report/agent/services/tripnara-system-prompt.service.ts.html
+ D coverage/lcov-report/agent/services/webbrowse-executor.service.ts.html
+ D coverage/lcov-report/agent/training/index.html
+ D coverage/lcov-report/agent/training/services/ab-test-manager.service.ts.html
+ D coverage/lcov-report/agent/training/services/circuit-breaker.service.ts.html
+ D coverage/lcov-report/agent/training/services/clarification-prompt-designer.service.ts.html
+ D coverage/lcov-report/agent/training/services/compliance-audit.service.ts.html
+ D coverage/lcov-report/agent/training/services/constraint-rule-manager.service.ts.html
+ D coverage/lcov-report/agent/training/services/constraints-engine.service.ts.html
+ D coverage/lcov-report/agent/training/services/cost-governance.service.ts.html
+ D coverage/lcov-report/agent/training/services/data-quality-checker.service.ts.html
+ D coverage/lcov-report/agent/training/services/dataset-version-manager.service.ts.html
+ D coverage/lcov-report/agent/training/services/decision-explanation-designer.service.ts.html
+ D coverage/lcov-report/agent/training/services/diagnostic-label-system.service.ts.html
+ D coverage/lcov-report/agent/training/services/domain-expert-knowledge.service.ts.html
+ D coverage/lcov-report/agent/training/services/eval-suite.service.ts.html
+ D coverage/lcov-report/agent/training/services/explainable-output.service.ts.html
+ D coverage/lcov-report/agent/training/services/fallback-strategy.service.ts.html
+ D coverage/lcov-report/agent/training/services/index.html
+ D coverage/lcov-report/agent/training/services/iterative-deployment-workflow.service.ts.html
+ D coverage/lcov-report/agent/training/services/judge-prompt-designer.service.ts.html
+ D coverage/lcov-report/agent/training/services/mlflow-client.service.ts.html
+ D coverage/lcov-report/agent/training/services/model-ab-test.service.ts.html
+ D coverage/lcov-report/agent/training/services/model-collapse-monitor.service.ts.html
+ D coverage/lcov-report/agent/training/services/model-registry.service.ts.html
+ D coverage/lcov-report/agent/training/services/observability.service.ts.html
+ D coverage/lcov-report/agent/training/services/offline-policy-evaluator.service.ts.html
+ D coverage/lcov-report/agent/training/services/pii-anonymizer.service.ts.html
+ D coverage/lcov-report/agent/training/services/policy-orchestrator-integration.service.ts.html
+ D coverage/lcov-report/agent/training/services/policy-service-manager.service.ts.html
+ D coverage/lcov-report/agent/training/services/quality-scorer.service.ts.html
+ D coverage/lcov-report/agent/training/services/rate-limiter.service.ts.html
+ D coverage/lcov-report/agent/training/services/regression-gate.service.ts.html
+ D coverage/lcov-report/agent/training/services/replay-comparator.service.ts.html
+ D coverage/lcov-report/agent/training/services/retry-policy.service.ts.html
+ D coverage/lcov-report/agent/training/services/reward-definition.service.ts.html
+ D coverage/lcov-report/agent/training/services/reward-model-trainer.service.ts.html
+ D coverage/lcov-report/agent/training/services/reward-signal-extractor.service.ts.html
+ D coverage/lcov-report/agent/training/services/risk-event-manager.service.ts.html
+ D coverage/lcov-report/agent/training/services/risk-prompt-designer.service.ts.html
+ D coverage/lcov-report/agent/training/services/rl-integration.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-ab-test.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-batch-processor.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-cache.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-circuit-breaker.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-client.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-connection-pool.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-monitoring.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-policy-adapter.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-retry.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-reward-adapter.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-tracing.service.ts.html
+ D coverage/lcov-report/agent/training/services/roll-trajectory-adapter.service.ts.html
+ D coverage/lcov-report/agent/training/services/security-red-team.service.ts.html
+ D coverage/lcov-report/agent/training/services/test-case-manager.service.ts.html
+ D coverage/lcov-report/agent/training/services/training-batch-processor.service.ts.html
+ D coverage/lcov-report/agent/training/services/training-data-preparation.service.ts.html
+ D coverage/lcov-report/agent/training/services/training-metrics.service.ts.html
+ D coverage/lcov-report/agent/training/services/training-pipeline.service.ts.html
+ D coverage/lcov-report/agent/training/services/training-quality-analyzer.service.ts.html
+ D coverage/lcov-report/agent/training/services/trajectory-collection.service.ts.html
+ D coverage/lcov-report/agent/training/services/trajectory-etl.service.ts.html
+ D coverage/lcov-report/agent/training/services/trajectory-validator.service.ts.html
+ D coverage/lcov-report/agent/training/services/user-feedback-loop.service.ts.html
+ D coverage/lcov-report/agent/training/training.controller.ts.html
+ D coverage/lcov-report/agent/trip-detail.controller.ts.html
+ D coverage/lcov-report/agent/utils/agent-metrics.util.ts.html
+ D coverage/lcov-report/agent/utils/decision-log-migrator.util.ts.html
+ D coverage/lcov-report/agent/utils/index.html
+ D coverage/lcov-report/agent/utils/orchestration-metrics.util.ts.html
+ D coverage/lcov-report/agent/utils/orchestration-policy.util.ts.html
+ D coverage/lcov-report/agent/utils/orchestration-signals.util.ts.html
+ D coverage/lcov-report/agent/utils/resolve-orchestration-mode.util.ts.html
+ D coverage/lcov-report/agent/utils/skill-importance.util.ts.html
+ D coverage/lcov-report/agent/utils/token-calculator.util.ts.html
+ D coverage/lcov-report/auth/auth.controller.ts.html
+ D coverage/lcov-report/auth/decorators/current-user.decorator.ts.html
+ D coverage/lcov-report/auth/decorators/index.html
+ D coverage/lcov-report/auth/decorators/public.decorator.ts.html
+ D coverage/lcov-report/auth/guards/index.html
+ D coverage/lcov-report/auth/guards/jwt-auth.guard.ts.html
+ D coverage/lcov-report/auth/index.html
+ D coverage/lcov-report/auth/services/email-verification.service.ts.html
+ D coverage/lcov-report/auth/services/google-oauth.service.ts.html
+ D coverage/lcov-report/auth/services/index.html
+ D coverage/lcov-report/auth/services/token.service.ts.html
+ D coverage/lcov-report/auth/services/user.service.ts.html
+ D coverage/lcov-report/auth/strategies/index.html
+ D coverage/lcov-report/auth/strategies/jwt.strategy.ts.html
+ D coverage/lcov-report/base.css
+ D coverage/lcov-report/block-navigation.js
+ D coverage/lcov-report/cities/cities.controller.ts.html
+ D coverage/lcov-report/cities/cities.service.ts.html
+ D coverage/lcov-report/cities/index.html
+ D coverage/lcov-report/common/filters/http-exception.filter.ts.html
+ D coverage/lcov-report/common/filters/index.html
+ D coverage/lcov-report/common/interceptors/index.html
+ D coverage/lcov-report/common/interceptors/logging.interceptor.ts.html
+ D coverage/lcov-report/common/middlewares/index.html
+ D coverage/lcov-report/common/middlewares/security.middleware.ts.html
+ D coverage/lcov-report/common/utils/adapter-mapper.util.ts.html
+ D coverage/lcov-report/common/utils/currency-math.util.ts.html
+ D coverage/lcov-report/common/utils/hotel-cost-calculator.util.ts.html
+ D coverage/lcov-report/common/utils/http-client.factory.ts.html
+ D coverage/lcov-report/common/utils/index.html
+ D coverage/lcov-report/common/utils/opening-hours.util.ts.html
+ D coverage/lcov-report/common/utils/osm-opening-hours-parser.util.ts.html
+ D coverage/lcov-report/common/utils/risk-calculator.util.ts.html
+ D coverage/lcov-report/common/utils/suggestion-id.util.ts.html
+ D coverage/lcov-report/common/utils/time-value-calculator.util.ts.html
+ D coverage/lcov-report/contact/contact.controller.ts.html
+ D coverage/lcov-report/contact/index.html
+ D coverage/lcov-report/contact/services/contact-notification.service.ts.html
+ D coverage/lcov-report/contact/services/contact.service.ts.html
+ D coverage/lcov-report/contact/services/file-storage.service.ts.html
+ D coverage/lcov-report/contact/services/index.html
+ D coverage/lcov-report/contact/services/rate-limit.service.ts.html
+ D coverage/lcov-report/content-strategy/services/brand-expression.service.ts.html
+ D coverage/lcov-report/content-strategy/services/brand-story.service.ts.html
+ D coverage/lcov-report/content-strategy/services/content-strategy-qa.service.ts.html
+ D coverage/lcov-report/content-strategy/services/copy-example-library.service.ts.html
+ D coverage/lcov-report/content-strategy/services/copy-standards.service.ts.html
+ D coverage/lcov-report/content-strategy/services/index.html
+ D coverage/lcov-report/content-strategy/services/localization.service.ts.html
+ D coverage/lcov-report/content-strategy/services/persona-based-communication.service.ts.html
+ D coverage/lcov-report/content-strategy/services/user-journey-communication.service.ts.html
+ D coverage/lcov-report/countries/countries.controller.ts.html
+ D coverage/lcov-report/countries/countries.service.ts.html
+ D coverage/lcov-report/countries/index.html
+ D coverage/lcov-report/data-architecture/services/data-architecture.service.ts.html
+ D coverage/lcov-report/data-architecture/services/index.html
+ D coverage/lcov-report/data-contracts/adapters/base.adapter.ts.html
+ D coverage/lcov-report/data-contracts/adapters/default-road-status.adapter.ts.html
+ D coverage/lcov-report/data-contracts/adapters/default-weather.adapter.ts.html
+ D coverage/lcov-report/data-contracts/adapters/iceland-aurora.adapter.ts.html
+ D coverage/lcov-report/data-contracts/adapters/iceland-road-status.adapter.ts.html
+ D coverage/lcov-report/data-contracts/adapters/iceland-safety.adapter.ts.html
+ D coverage/lcov-report/data-contracts/adapters/iceland-weather.adapter.ts.html
+ D coverage/lcov-report/data-contracts/adapters/index.html
+ D coverage/lcov-report/data-contracts/services/data-source-router.service.ts.html
+ D coverage/lcov-report/data-contracts/services/iceland-comprehensive.service.ts.html
+ D coverage/lcov-report/data-contracts/services/iceland-froad.service.ts.html
+ D coverage/lcov-report/data-contracts/services/index.html
+ D coverage/lcov-report/data-fusion/services/data-conflict-resolution.service.ts.html
+ D coverage/lcov-report/data-fusion/services/feature-quality-assessment.service.ts.html
+ D coverage/lcov-report/data-fusion/services/fusion-resilience.service.ts.html
+ D coverage/lcov-report/data-fusion/services/fusion-resource-manager.service.ts.html
+ D coverage/lcov-report/data-fusion/services/index.html
+ D coverage/lcov-report/data-modeling/index.html
+ D coverage/lcov-report/data-modeling/index.ts.html
+ D coverage/lcov-report/data-modeling/services/index.html
+ D coverage/lcov-report/data-modeling/services/uncertainty-modeling.service.ts.html
+ D coverage/lcov-report/data-pipeline/index.html
+ D coverage/lcov-report/data-pipeline/index.ts.html
+ D coverage/lcov-report/data-pipeline/services/data-cleaning.service.ts.html
+ D coverage/lcov-report/data-pipeline/services/data-pipeline.service.ts.html
+ D coverage/lcov-report/data-pipeline/services/data-standardization.service.ts.html
+ D coverage/lcov-report/data-pipeline/services/index.html
+ D coverage/lcov-report/data-privacy/index.html
+ D coverage/lcov-report/data-privacy/index.ts.html
+ D coverage/lcov-report/data-privacy/services/data-privacy-framework.service.ts.html
+ D coverage/lcov-report/data-privacy/services/encryption.service.ts.html
+ D coverage/lcov-report/data-privacy/services/index.html
+ D coverage/lcov-report/data-privacy/services/sensitive-data-handling.service.ts.html
+ D coverage/lcov-report/data-quality/index.html
+ D coverage/lcov-report/data-quality/index.ts.html
+ D coverage/lcov-report/data-quality/services/confidence-annotation.service.ts.html
+ D coverage/lcov-report/data-quality/services/data-improvement.service.ts.html
+ D coverage/lcov-report/data-quality/services/data-lineage.service.ts.html
+ D coverage/lcov-report/data-quality/services/data-quality-framework.service.ts.html
+ D coverage/lcov-report/data-quality/services/index.html
+ D coverage/lcov-report/data-quality/services/source-annotation.service.ts.html
+ D coverage/lcov-report/favicon.png
+ D coverage/lcov-report/flight-prices/flight-prices.controller.ts.html
+ D coverage/lcov-report/flight-prices/index.html
+ D coverage/lcov-report/flight-prices/services/index.html
+ D coverage/lcov-report/flight-prices/services/price-prediction.service.ts.html
+ D coverage/lcov-report/flight-prices/services/prophet-service.ts.html
+ D coverage/lcov-report/hotels/hotels.controller.ts.html
+ D coverage/lcov-report/hotels/index.html
+ D coverage/lcov-report/hotels/services/hotel-price-prediction.service.ts.html
+ D coverage/lcov-report/hotels/services/hotel-price.service.ts.html
+ D coverage/lcov-report/hotels/services/index.html
+ D coverage/lcov-report/hybrid-cache.service.ts.html
+ D coverage/lcov-report/index.html
+ D coverage/lcov-report/itinerary-items/entities/index.html
+ D coverage/lcov-report/itinerary-items/entities/itinerary-item.entity.ts.html
+ D coverage/lcov-report/itinerary-items/index.html
+ D coverage/lcov-report/itinerary-items/itinerary-items.controller.ts.html
+ D coverage/lcov-report/itinerary-items/itinerary-items.service.ts.html
+ D coverage/lcov-report/itinerary-items/services/index.html
+ D coverage/lcov-report/itinerary-items/services/item-cost.service.ts.html
+ D coverage/lcov-report/itinerary-items/services/itinerary-validation.service.ts.html
+ D coverage/lcov-report/itinerary-items/services/travel-time-cache.service.ts.html
+ D coverage/lcov-report/itinerary-items/validators/base.validator.ts.html
+ D coverage/lcov-report/itinerary-items/validators/buffer-time.validator.ts.html
+ D coverage/lcov-report/itinerary-items/validators/index.html
+ D coverage/lcov-report/itinerary-items/validators/index.ts.html
+ D coverage/lcov-report/itinerary-items/validators/time-overlap.validator.ts.html
+ D coverage/lcov-report/itinerary-items/validators/travel-time.validator.ts.html
+ D coverage/lcov-report/itinerary-optimization/index.html
+ D coverage/lcov-report/itinerary-optimization/itinerary-optimization.controller.ts.html
+ D coverage/lcov-report/itinerary-optimization/itinerary-optimization.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/alternative-comparison.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/conservative-strategy.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/data-expiry-policy.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/dynamic-transport-time.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/enhanced-rest-time.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/enhanced-vrptw-optimizer.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/explanation.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/happiness-scorer.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/index.html
+ D coverage/lcov-report/itinerary-optimization/services/metrics-aggregator.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/multi-strategy-route-generator.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/product-explainable-output-builder.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/queue-time-model.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/robust-time-matrix.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/route-optimizer.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/scenario-optimization.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/spatial-clustering.service.ts.html
+ D coverage/lcov-report/itinerary-optimization/services/vrptw-optimizer.service.ts.html
+ D coverage/lcov-report/knowledge-base/services/chunking.service.ts.html
+ D coverage/lcov-report/knowledge-base/services/index.html
+ D coverage/lcov-report/knowledge-base/services/indexing.service.ts.html
+ D coverage/lcov-report/knowledge-base/services/loader.service.ts.html
+ D coverage/lcov-report/llm/index.html
+ D coverage/lcov-report/llm/llm.controller.ts.html
+ D coverage/lcov-report/llm/services/index.html
+ D coverage/lcov-report/llm/services/llm-cost.service.ts.html
+ D coverage/lcov-report/llm/services/llm.service.ts.html
+ D coverage/lcov-report/llm/utils/circuit-breaker.ts.html
+ D coverage/lcov-report/llm/utils/index.html
+ D coverage/lcov-report/llm/utils/openai-http.factory.ts.html
+ D coverage/lcov-report/llm/utils/retry-with-backoff.ts.html
+ D coverage/lcov-report/llm/utils/token-extractor.util.ts.html
+ D coverage/lcov-report/mcp/bisect-decision-imports.ts.html
+ D coverage/lcov-report/mcp/check-env-vars.ts.html
+ D coverage/lcov-report/mcp/debug-onmoduleinit.ts.html
+ D coverage/lcov-report/mcp/debug-skills-module-init.ts.html
+ D coverage/lcov-report/mcp/debug-startup.ts.html
+ D coverage/lcov-report/mcp/diagnose-mcp-timeout.ts.html
+ D coverage/lcov-report/mcp/diagnose-server.ts.html
+ D coverage/lcov-report/mcp/diagnose-timeout.ts.html
+ D coverage/lcov-report/mcp/index.html
+ D coverage/lcov-report/mcp/mcp-prompts.ts.html
+ D coverage/lcov-report/mcp/mcp-schema-builders.ts.html
+ D coverage/lcov-report/mcp/mcp-server.ts.html
+ D coverage/lcov-report/mcp/mcp-skills-server.ts.html
+ D coverage/lcov-report/mcp/run-server-direct.ts.html
+ D coverage/lcov-report/mcp/static-verify-skills.ts.html
+ D coverage/lcov-report/mcp/test-mcp-skills.ts.html
+ D coverage/lcov-report/mcp/verify-skills-registration.ts.html
+ D coverage/lcov-report/parallel-executor.service.ts.html
+ D coverage/lcov-report/places/index.html
+ D coverage/lcov-report/places/places-v5.controller.ts.html
+ D coverage/lcov-report/places/places.controller.ts.html
+ D coverage/lcov-report/places/places.service.ts.html
+ D coverage/lcov-report/places/services/admin-division.service.ts.html
+ D coverage/lcov-report/places/services/amap-poi.service.ts.html
+ D coverage/lcov-report/places/services/embedding.service.ts.html
+ D coverage/lcov-report/places/services/entity-resolution.service.ts.html
+ D coverage/lcov-report/places/services/google-places.service.ts.html
+ D coverage/lcov-report/places/services/hotel-recommendation.service.ts.html
+ D coverage/lcov-report/places/services/iceland-poi-features.service.ts.html
+ D coverage/lcov-report/places/services/index.html
+ D coverage/lcov-report/places/services/mapbox.service.ts.html
+ D coverage/lcov-report/places/services/nara-hint.service.ts.html
+ D coverage/lcov-report/places/services/nature-poi-mapper.service.ts.html
+ D coverage/lcov-report/places/services/nature-poi.service.ts.html
+ D coverage/lcov-report/places/services/overpass.service.ts.html
+ D coverage/lcov-report/places/services/place-trail-enrichment.service.ts.html
+ D coverage/lcov-report/places/services/route-difficulty.service.ts.html
+ D coverage/lcov-report/places/services/svalbard-poi-features.service.ts.html
+ D coverage/lcov-report/places/services/unsplash.service.ts.html
+ D coverage/lcov-report/places/services/vector-search.service.ts.html
+ D coverage/lcov-report/places/utils/geojson-validator.util.ts.html
+ D coverage/lcov-report/places/utils/gpx-fatigue-calculator.util.ts.html
+ D coverage/lcov-report/places/utils/gpx-parser.util.ts.html
+ D coverage/lcov-report/places/utils/index.html
+ D coverage/lcov-report/places/utils/metadata-enricher.util.ts.html
+ D coverage/lcov-report/places/utils/physical-metadata-constants.ts.html
+ D coverage/lcov-report/places/utils/physical-metadata-generator.util.ts.html
+ D coverage/lcov-report/places/utils/prompt-utils.ts.html
+ D coverage/lcov-report/places/utils/trail-difficulty-assessor.util.ts.html
+ D coverage/lcov-report/planning-policy/index.html
+ D coverage/lcov-report/planning-policy/index.ts.html
+ D coverage/lcov-report/planning-policy/planning-policy.controller.ts.html
+ D coverage/lcov-report/planning-policy/services/cost-model.service.ts.html
+ D coverage/lcov-report/planning-policy/services/day-scheduler.service.ts.html
+ D coverage/lcov-report/planning-policy/services/feasibility.service.ts.html
+ D coverage/lcov-report/planning-policy/services/hp-simulator.service.ts.html
+ D coverage/lcov-report/planning-policy/services/index.html
+ D coverage/lcov-report/planning-policy/services/place-to-poi-helper.service.ts.html
+ D coverage/lcov-report/planning-policy/services/place-to-poi.service.ts.html
+ D coverage/lcov-report/planning-policy/services/policy-compiler.service.ts.html
+ D coverage/lcov-report/planning-policy/services/ranking.service.ts.html
+ D coverage/lcov-report/planning-policy/services/replanner.service.ts.html
+ D coverage/lcov-report/planning-policy/services/robustness-evaluator.service.ts.html
+ D coverage/lcov-report/planning-policy/utils/index.html
+ D coverage/lcov-report/planning-policy/utils/time-utils.ts.html
+ D coverage/lcov-report/poi/services/index.html
+ D coverage/lcov-report/poi/services/poi-layer.service.ts.html
+ D coverage/lcov-report/poi/services/poi-route-affinity.service.ts.html
+ D coverage/lcov-report/prettify.css
+ D coverage/lcov-report/prettify.js
+ D coverage/lcov-report/prisma/index.html
+ D coverage/lcov-report/prisma/prisma.service.ts.html
+ D coverage/lcov-report/providers/asr/index.html
+ D coverage/lcov-report/providers/asr/mock-asr.provider.ts.html
+ D coverage/lcov-report/providers/ocr/google-ocr.provider.ts.html
+ D coverage/lcov-report/providers/ocr/index.html
+ D coverage/lcov-report/providers/ocr/mock-ocr.provider.ts.html
+ D coverage/lcov-report/providers/poi/google-poi.provider.ts.html
+ D coverage/lcov-report/providers/poi/index.html
+ D coverage/lcov-report/providers/poi/mock-poi.provider.ts.html
+ D coverage/lcov-report/providers/tts/index.html
+ D coverage/lcov-report/providers/tts/mock-tts.provider.ts.html
+ D coverage/lcov-report/rag/index.html
+ D coverage/lcov-report/rag/rag.controller.ts.html
+ D coverage/lcov-report/rag/services/chunk-retrieval.service.ts.html
+ D coverage/lcov-report/rag/services/compliance-facts-agent.service.ts.html
+ D coverage/lcov-report/rag/services/embedding-cache.service.ts.html
+ D coverage/lcov-report/rag/services/enhanced-chat.service.ts.html
+ D coverage/lcov-report/rag/services/gate-decision-logger.service.ts.html
+ D coverage/lcov-report/rag/services/hybrid-cache.service.ts.html
+ D coverage/lcov-report/rag/services/index.html
+ D coverage/lcov-report/rag/services/llm-extraction.service.ts.html
+ D coverage/lcov-report/rag/services/local-insight.service.ts.html
+ D coverage/lcov-report/rag/services/mcp-tools.service.ts.html
+ D coverage/lcov-report/rag/services/parallel-executor.service.ts.html
+ D coverage/lcov-report/rag/services/query-expansion.service.ts.html
+ D coverage/lcov-report/rag/services/rag-evaluation.service.ts.html
+ D coverage/lcov-report/rag/services/rag-fallback.service.ts.html
+ D coverage/lcov-report/rag/services/rag-freshness.service.ts.html
+ D coverage/lcov-report/rag/services/rag-monitoring.service.ts.html
+ D coverage/lcov-report/rag/services/rag-query-collector.service.ts.html
+ D coverage/lcov-report/rag/services/rag-testset.service.ts.html
+ D coverage/lcov-report/rag/services/rag.service.ts.html
+ D coverage/lcov-report/rag/services/redis-cache.service.ts.html
+ D coverage/lcov-report/rag/services/reranking.service.ts.html
+ D coverage/lcov-report/rag/services/retry-helper.service.ts.html
+ D coverage/lcov-report/rag/services/route-knowledge-curator.service.ts.html
+ D coverage/lcov-report/railpass/actions/index.html
+ D coverage/lcov-report/railpass/actions/railpass-actions.service.ts.html
+ D coverage/lcov-report/railpass/actions/railpass-agent-actions.ts.html
+ D coverage/lcov-report/railpass/constraints/index.html
+ D coverage/lcov-report/railpass/constraints/railpass-constraints.service.ts.html
+ D coverage/lcov-report/railpass/index.html
+ D coverage/lcov-report/railpass/integrations/index.html
+ D coverage/lcov-report/railpass/integrations/planning-policy-integration.service.ts.html
+ D coverage/lcov-report/railpass/integrations/schedule-action-integration.service.ts.html
+ D coverage/lcov-report/railpass/integrations/transport-integration.service.ts.html
+ D coverage/lcov-report/railpass/railpass.controller.ts.html
+ D coverage/lcov-report/railpass/railpass.service.ts.html
+ D coverage/lcov-report/railpass/rules/index.html
+ D coverage/lcov-report/railpass/rules/railpass-rule-engine.service.ts.html
+ D coverage/lcov-report/railpass/services/compliance-validator.service.ts.html
+ D coverage/lcov-report/railpass/services/eligibility-engine.service.ts.html
+ D coverage/lcov-report/railpass/services/executability-check.service.ts.html
+ D coverage/lcov-report/railpass/services/index.html
+ D coverage/lcov-report/railpass/services/pass-coverage-checker.service.ts.html
+ D coverage/lcov-report/railpass/services/pass-selection-engine.service.ts.html
+ D coverage/lcov-report/railpass/services/plan-regeneration.service.ts.html
+ D coverage/lcov-report/railpass/services/reservation-channel-policy.service.ts.html
+ D coverage/lcov-report/railpass/services/reservation-decision-engine.service.ts.html
+ D coverage/lcov-report/railpass/services/reservation-orchestration.service.ts.html
+ D coverage/lcov-report/railpass/services/travel-day-calculation-engine.service.ts.html
+ D coverage/lcov-report/redis-cache.service.ts.html
+ D coverage/lcov-report/redis/index.html
+ D coverage/lcov-report/redis/redis.service.ts.html
+ D coverage/lcov-report/retry-helper.service.ts.html
+ D coverage/lcov-report/route-directions/fixtures/index.html
+ D coverage/lcov-report/route-directions/fixtures/is_highlands_froad.fixture.ts.html
+ D coverage/lcov-report/route-directions/index.html
+ D coverage/lcov-report/route-directions/plugins/compliance-plugin.service.ts.html
+ D coverage/lcov-report/route-directions/plugins/index.html
+ D coverage/lcov-report/route-directions/plugins/transport-plugin.service.ts.html
+ D coverage/lcov-report/route-directions/route-directions.controller.ts.html
+ D coverage/lcov-report/route-directions/route-directions.service.ts.html
+ D coverage/lcov-report/route-directions/services/enhanced-risk-assessment.service.ts.html
+ D coverage/lcov-report/route-directions/services/index.html
+ D coverage/lcov-report/route-directions/services/pack-kpi-acceptance.service.ts.html
+ D coverage/lcov-report/route-directions/services/result-presentation.service.ts.html
+ D coverage/lcov-report/route-directions/services/route-direction-cache.service.ts.html
+ D coverage/lcov-report/route-directions/services/route-direction-card.service.ts.html
+ D coverage/lcov-report/route-directions/services/route-direction-explainer.service.ts.html
+ D coverage/lcov-report/route-directions/services/route-direction-observability.service.ts.html
+ D coverage/lcov-report/route-directions/services/route-direction-poi-generator.service.ts.html
+ D coverage/lcov-report/route-directions/services/route-direction-selector.service.ts.html
+ D coverage/lcov-report/route-directions/services/route-judgment.service.ts.html
+ D coverage/lcov-report/route-directions/templates/index.html
+ D coverage/lcov-report/route-directions/templates/route-direction-archetypes.ts.html
+ D coverage/lcov-report/schedule-action/index.html
+ D coverage/lcov-report/schedule-action/schedule-action.controller.ts.html
+ D coverage/lcov-report/schedule-action/schedule-action.service.ts.html
+ D coverage/lcov-report/schedule-action/utils/index.html
+ D coverage/lcov-report/schedule-action/utils/timeline-rebuilder.util.ts.html
+ D coverage/lcov-report/skills/context/context-build.skill.ts.html
+ D coverage/lcov-report/skills/context/context-compile-package.skill.ts.html
+ D coverage/lcov-report/skills/context/context-compress.skill.ts.html
+ D coverage/lcov-report/skills/context/context-evaluate.skill.ts.html
+ D coverage/lcov-report/skills/context/context-regression-tests.skill.ts.html
+ D coverage/lcov-report/skills/context/index.html
+ D coverage/lcov-report/skills/context/plan-select-slices.skill.ts.html
+ D coverage/lcov-report/skills/context/tools-select.skill.ts.html
+ D coverage/lcov-report/skills/country-pack/country-pack-generate-regression-tests.skill.ts.html
+ D coverage/lcov-report/skills/country-pack/country-pack-get-blocks.skill.ts.html
+ D coverage/lcov-report/skills/country-pack/country-pack-new-skeleton.skill.ts.html
+ D coverage/lcov-report/skills/country-pack/country-pack-rank-blocks.skill.ts.html
+ D coverage/lcov-report/skills/country-pack/country-pack-suggest-improvements.skill.ts.html
+ D coverage/lcov-report/skills/country-pack/country-pack-validate.skill.ts.html
+ D coverage/lcov-report/skills/country-pack/index.html
+ D coverage/lcov-report/skills/decision/decision-abu-check.skill.ts.html
+ D coverage/lcov-report/skills/decision/decision-drdre-pace.skill.ts.html
+ D coverage/lcov-report/skills/decision/decision-explain-for-human.skill.ts.html
+ D coverage/lcov-report/skills/decision/decision-log-append.skill.ts.html
+ D coverage/lcov-report/skills/decision/decision-neptune-repair.skill.ts.html
+ D coverage/lcov-report/skills/decision/decision-replay.skill.ts.html
+ D coverage/lcov-report/skills/decision/decision-run-three-guardians.skill.ts.html
+ D coverage/lcov-report/skills/decision/decision-stage.skill.ts.html
+ D coverage/lcov-report/skills/decision/index.html
+ D coverage/lcov-report/skills/decorators/index.html
+ D coverage/lcov-report/skills/decorators/skill.decorator.ts.html
+ D coverage/lcov-report/skills/dem/dem-get-profile.skill.ts.html
+ D coverage/lcov-report/skills/dem/index.html
+ D coverage/lcov-report/skills/detail/detail-analyze-health.skill.ts.html
+ D coverage/lcov-report/skills/detail/detail-explain-decision.skill.ts.html
+ D coverage/lcov-report/skills/detail/detail-show-evidence.skill.ts.html
+ D coverage/lcov-report/skills/detail/detail-understand-status.skill.ts.html
+ D coverage/lcov-report/skills/detail/index.html
+ D coverage/lcov-report/skills/exec/exec-fallback.skill.ts.html
+ D coverage/lcov-report/skills/exec/exec-handle-change.skill.ts.html
+ D coverage/lcov-report/skills/exec/exec-remind.skill.ts.html
+ D coverage/lcov-report/skills/exec/index.html
+ D coverage/lcov-report/skills/geo/geo-check-hazard-zones.skill.ts.html
+ D coverage/lcov-report/skills/geo/geo-find-candidate-within-corridor.skill.ts.html
+ D coverage/lcov-report/skills/geo/geo-find-nearby-poi.skill.ts.html
+ D coverage/lcov-report/skills/geo/geo-sample-elevation-profile.skill.ts.html
+ D coverage/lcov-report/skills/geo/index.html
+ D coverage/lcov-report/skills/hitl/decision-check-approval.skill.ts.html
+ D coverage/lcov-report/skills/hitl/decision-request-approval.skill.ts.html
+ D coverage/lcov-report/skills/hitl/entities/approval-request.entity.ts.html
+ D coverage/lcov-report/skills/hitl/entities/index.html
+ D coverage/lcov-report/skills/hitl/hitl-create-approval-task.skill.ts.html
+ D coverage/lcov-report/skills/hitl/hitl-resolve-approval-task.skill.ts.html
+ D coverage/lcov-report/skills/hitl/index.html
+ D coverage/lcov-report/skills/hitl/services/approval-storage.service.ts.html
+ D coverage/lcov-report/skills/hitl/services/index.html
+ D coverage/lcov-report/skills/index.html
+ D coverage/lcov-report/skills/itinerary/index.html
+ D coverage/lcov-report/skills/itinerary/itinerary-generate.skill.ts.html
+ D coverage/lcov-report/skills/itinerary/itinerary-verify.skill.ts.html
+ D coverage/lcov-report/skills/itinerary/repair-apply.skill.ts.html
+ D coverage/lcov-report/skills/places/index.html
+ D coverage/lcov-report/skills/places/opening-hours-get.skill.ts.html
+ D coverage/lcov-report/skills/places/poi-search.skill.ts.html
+ D coverage/lcov-report/skills/plan/architect/index.html
+ D coverage/lcov-report/skills/plan/architect/plan-architect-commit-option.skill.ts.html
+ D coverage/lcov-report/skills/plan/architect/plan-architect-compare-options.skill.ts.html
+ D coverage/lcov-report/skills/plan/architect/plan-architect-generate-skeleton.skill.ts.html
+ D coverage/lcov-report/skills/plan/budget/index.html
+ D coverage/lcov-report/skills/plan/budget/plan-budget-detect-overrun.skill.ts.html
+ D coverage/lcov-report/skills/plan/budget/plan-budget-estimate-baseline.skill.ts.html
+ D coverage/lcov-report/skills/plan/budget/plan-budget-propose-tradeoffs.skill.ts.html
+ D coverage/lcov-report/skills/plan/constraints/index.html
+ D coverage/lcov-report/skills/plan/constraints/plan-constraints-arbitrate-tradeoffs.skill.ts.html
+ D coverage/lcov-report/skills/plan/constraints/plan-constraints-detect-conflicts.skill.ts.html
+ D coverage/lcov-report/skills/plan/evidence/index.html
+ D coverage/lcov-report/skills/plan/evidence/plan-evidence-build-envelope.skill.ts.html
+ D coverage/lcov-report/skills/plan/gate/index.html
+ D coverage/lcov-report/skills/plan/gate/plan-gate-precheck.skill.ts.html
+ D coverage/lcov-report/skills/plan/gate/plan-gate-propose-safe-alternatives.skill.ts.html
+ D coverage/lcov-report/skills/plan/gate/plan-gate-run-three-guardians.skill.ts.html
+ D coverage/lcov-report/skills/plan/log/index.html
+ D coverage/lcov-report/skills/plan/log/plan-log-append-decision.skill.ts.html
+ D coverage/lcov-report/skills/plan/pace/index.html
+ D coverage/lcov-report/skills/plan/pace/plan-pace-adjust-schedule.skill.ts.html
+ D coverage/lcov-report/skills/plan/pace/plan-pace-compute-time-windows.skill.ts.html
+ D coverage/lcov-report/skills/plan/pace/plan-pace-fatigue-score.skill.ts.html
+ D coverage/lcov-report/skills/plan/transit/index.html
+ D coverage/lcov-report/skills/plan/transit/plan-transit-build-transfer-graph.skill.ts.html
+ D coverage/lcov-report/skills/plan/transit/plan-transit-generate-plan-b.skill.ts.html
+ D coverage/lcov-report/skills/plan/transit/plan-transit-suggest-modes.skill.ts.html
+ D coverage/lcov-report/skills/readiness/index.html
+ D coverage/lcov-report/skills/readiness/readiness-check-visa-window.skill.ts.html
+ D coverage/lcov-report/skills/readiness/readiness-generate-checklist.skill.ts.html
+ D coverage/lcov-report/skills/readiness/readiness-summarize-risks.skill.ts.html
+ D coverage/lcov-report/skills/route-direction/index.html
+ D coverage/lcov-report/skills/route-direction/route-direction-list-for-country.skill.ts.html
+ D coverage/lcov-report/skills/route-direction/route-direction-pick-for-intent.skill.ts.html
+ D coverage/lcov-report/skills/route-pack/index.html
+ D coverage/lcov-report/skills/route-pack/route-pack-generate-regression-tests.skill.ts.html
+ D coverage/lcov-report/skills/route-pack/route-pack-new-skeleton.skill.ts.html
+ D coverage/lcov-report/skills/route-pack/route-pack-validate.skill.ts.html
+ D coverage/lcov-report/skills/services/index.html
+ D coverage/lcov-report/skills/services/skill-scanner.service.ts.html
+ D coverage/lcov-report/skills/services/skills-registry.service.ts.html
+ D coverage/lcov-report/skills/services/skills-registry.token.ts.html
+ D coverage/lcov-report/skills/skills.tokens.ts.html
+ D coverage/lcov-report/skills/transport/index.html
+ D coverage/lcov-report/skills/transport/transport-search.skill.ts.html
+ D coverage/lcov-report/skills/trip/index.html
+ D coverage/lcov-report/skills/trip/trip-quick-evaluate.skill.ts.html
+ D coverage/lcov-report/skills/utils/index.html
+ D coverage/lcov-report/skills/utils/schema-generator.util.ts.html
+ D coverage/lcov-report/skills/weather/index.html
+ D coverage/lcov-report/skills/weather/weather-search.skill.ts.html
+ D coverage/lcov-report/skills/web/index.html
+ D coverage/lcov-report/skills/web/web-browse.skill.ts.html
+ D coverage/lcov-report/skills/world/index.html
+ D coverage/lcov-report/skills/world/world-build-context.skill.ts.html
+ D coverage/lcov-report/sort-arrow-sprite.png
+ D coverage/lcov-report/sorter.js
+ D coverage/lcov-report/system/index.html
+ D coverage/lcov-report/system/system.controller.ts.html
+ D coverage/lcov-report/system/system.service.ts.html
+ D coverage/lcov-report/tasks/index.html
+ D coverage/lcov-report/tasks/tasks.service.ts.html
+ D coverage/lcov-report/trails/index.html
+ D coverage/lcov-report/trails/services/index.html
+ D coverage/lcov-report/trails/services/smart-trail-planner.service.ts.html
+ D coverage/lcov-report/trails/services/trail-cache.service.ts.html
+ D coverage/lcov-report/trails/services/trail-support-services.service.ts.html
+ D coverage/lcov-report/trails/services/trail-tracking.service.ts.html
+ D coverage/lcov-report/trails/trails.controller.ts.html
+ D coverage/lcov-report/trails/trails.service.ts.html
+ D coverage/lcov-report/trails/utils/index.html
+ D coverage/lcov-report/trails/utils/trail-fatigue-calculator.util.ts.html
+ D coverage/lcov-report/transport/index.html
+ D coverage/lcov-report/transport/services/amap-routes.service.ts.html
+ D coverage/lcov-report/transport/services/google-routes.service.ts.html
+ D coverage/lcov-report/transport/services/index.html
+ D coverage/lcov-report/transport/services/location-detector.service.ts.html
+ D coverage/lcov-report/transport/services/route-cache.service.ts.html
+ D coverage/lcov-report/transport/services/smart-routes.service.ts.html
+ D coverage/lcov-report/transport/transport-decision.service.ts.html
+ D coverage/lcov-report/transport/transport-routing.service.ts.html
+ D coverage/lcov-report/transport/transport.controller.ts.html
+ D coverage/lcov-report/trip-templates/index.html
+ D coverage/lcov-report/trip-templates/trip-templates.controller.ts.html
+ D coverage/lcov-report/trip-templates/trip-templates.service.ts.html
+ D coverage/lcov-report/trips/decision/adapters/index.html
+ D coverage/lcov-report/trips/decision/adapters/sense-tools.adapter.ts.html
+ D coverage/lcov-report/trips/decision/candidates/candidate-pool.service.ts.html
+ D coverage/lcov-report/trips/decision/candidates/index.html
+ D coverage/lcov-report/trips/decision/candidates/index.ts.html
+ D coverage/lcov-report/trips/decision/config/index.html
+ D coverage/lcov-report/trips/decision/config/index.ts.html
+ D coverage/lcov-report/trips/decision/config/objective-config.ts.html
+ D coverage/lcov-report/trips/decision/config/user-persona-mapping.config.ts.html
+ D coverage/lcov-report/trips/decision/constraints/advanced-constraints.service.ts.html
+ D coverage/lcov-report/trips/decision/constraints/constraint-checker.ts.html
+ D coverage/lcov-report/trips/decision/constraints/index.html
+ D coverage/lcov-report/trips/decision/constraints/index.ts.html
+ D coverage/lcov-report/trips/decision/constraints/route-direction-constraints.service.ts.html
+ D coverage/lcov-report/trips/decision/controllers/approval.controller.ts.html
+ D coverage/lcov-report/trips/decision/controllers/index.html
+ D coverage/lcov-report/trips/decision/data-quality/data-quality.model.ts.html
+ D coverage/lcov-report/trips/decision/data-quality/index.html
+ D coverage/lcov-report/trips/decision/data-quality/index.ts.html
+ D coverage/lcov-report/trips/decision/decision-stats.controller.ts.html
+ D coverage/lcov-report/trips/decision/decision.controller.ts.html
+ D coverage/lcov-report/trips/decision/evaluation/decision-log-clustering.service.ts.html
+ D coverage/lcov-report/trips/decision/evaluation/e2e-assertions.ts.html
+ D coverage/lcov-report/trips/decision/evaluation/e2e-case-storage.service.ts.html
+ D coverage/lcov-report/trips/decision/evaluation/e2e-cases/iceland-highlands.example.ts.html
+ D coverage/lcov-report/trips/decision/evaluation/e2e-cases/index.html
+ D coverage/lcov-report/trips/decision/evaluation/e2e-replay.service.ts.html
+ D coverage/lcov-report/trips/decision/evaluation/evaluation.service.ts.html
+ D coverage/lcov-report/trips/decision/evaluation/index.html
+ D coverage/lcov-report/trips/decision/evaluation/index.ts.html
+ D coverage/lcov-report/trips/decision/events/event-trigger.service.ts.html
+ D coverage/lcov-report/trips/decision/events/index.html
+ D coverage/lcov-report/trips/decision/events/index.ts.html
+ D coverage/lcov-report/trips/decision/examples/agent-runner-with-hitl.example.ts.html
+ D coverage/lcov-report/trips/decision/examples/index.html
+ D coverage/lcov-report/trips/decision/explainability/explainability.service.ts.html
+ D coverage/lcov-report/trips/decision/explainability/index.html
+ D coverage/lcov-report/trips/decision/explainability/index.ts.html
+ D coverage/lcov-report/trips/decision/graph-db/graph-data-converter.service.ts.html
+ D coverage/lcov-report/trips/decision/graph-db/index.html
+ D coverage/lcov-report/trips/decision/graph-db/index.ts.html
+ D coverage/lcov-report/trips/decision/index.html
+ D coverage/lcov-report/trips/decision/index.ts.html
+ D coverage/lcov-report/trips/decision/learning/index.html
+ D coverage/lcov-report/trips/decision/learning/index.ts.html
+ D coverage/lcov-report/trips/decision/learning/learning.service.ts.html
+ D coverage/lcov-report/trips/decision/models/human-capability.model.ts.html
+ D coverage/lcov-report/trips/decision/models/index.html
+ D coverage/lcov-report/trips/decision/models/physical-reality.model.ts.html
+ D coverage/lcov-report/trips/decision/models/route-philosophy.model.ts.html
+ D coverage/lcov-report/trips/decision/monitoring/index.html
+ D coverage/lcov-report/trips/decision/monitoring/index.ts.html
+ D coverage/lcov-report/trips/decision/monitoring/monitoring.service.ts.html
+ D coverage/lcov-report/trips/decision/orchestration/index.html
+ D coverage/lcov-report/trips/decision/orchestration/index.ts.html
+ D coverage/lcov-report/trips/decision/orchestration/langgraph-orchestrator.service.ts.html
+ D coverage/lcov-report/trips/decision/orchestration/narrator-agent.service.ts.html
+ D coverage/lcov-report/trips/decision/orchestration/planner-agent.service.ts.html
+ D coverage/lcov-report/trips/decision/performance/batch.service.ts.html
+ D coverage/lcov-report/trips/decision/performance/cache.service.ts.html
+ D coverage/lcov-report/trips/decision/performance/index.html
+ D coverage/lcov-report/trips/decision/performance/index.ts.html
+ D coverage/lcov-report/trips/decision/plan-diff/index.html
+ D coverage/lcov-report/trips/decision/plan-diff/index.ts.html
+ D coverage/lcov-report/trips/decision/plan-diff/plan-diff.ts.html
+ D coverage/lcov-report/trips/decision/prediction/index.html
+ D coverage/lcov-report/trips/decision/prediction/index.ts.html
+ D coverage/lcov-report/trips/decision/prediction/mobagel-forecast.service.ts.html
+ D coverage/lcov-report/trips/decision/readiness/index.html
+ D coverage/lcov-report/trips/decision/readiness/index.ts.html
+ D coverage/lcov-report/trips/decision/readiness/readiness-agent.service.ts.html
+ D coverage/lcov-report/trips/decision/schedulers/approval-cleanup.scheduler.ts.html
+ D coverage/lcov-report/trips/decision/schedulers/index.html
+ D coverage/lcov-report/trips/decision/services/agent-resume.service.ts.html
+ D coverage/lcov-report/trips/decision/services/approval.service.ts.html
+ D coverage/lcov-report/trips/decision/services/decision-log-storage.service.ts.html
+ D coverage/lcov-report/trips/decision/services/decision-logging.service.ts.html
+ D coverage/lcov-report/trips/decision/services/decision-state-manager.service.ts.html
+ D coverage/lcov-report/trips/decision/services/decision-stats.service.ts.html
+ D coverage/lcov-report/trips/decision/services/decision-support.service.ts.html
+ D coverage/lcov-report/trips/decision/services/dem-daily-energy.service.ts.html
+ D coverage/lcov-report/trips/decision/services/dem-decision-evidence-pipeline.service.ts.html
+ D coverage/lcov-report/trips/decision/services/dem-decision-evidence.service.ts.html
+ D coverage/lcov-report/trips/decision/services/dem-evidence-chain.service.ts.html
+ D coverage/lcov-report/trips/decision/services/dem-evidence-enforcer.service.ts.html
+ D coverage/lcov-report/trips/decision/services/dem-risk-scoring.service.ts.html
+ D coverage/lcov-report/trips/decision/services/dem-route-segmentation.service.ts.html
+ D coverage/lcov-report/trips/decision/services/dry-run-planner.service.ts.html
+ D coverage/lcov-report/trips/decision/services/fatigue-calculator.service.ts.html
+ D coverage/lcov-report/trips/decision/services/heuristic-diet.service.ts.html
+ D coverage/lcov-report/trips/decision/services/index.html
+ D coverage/lcov-report/trips/decision/services/multi-person-decision.service.ts.html
+ D coverage/lcov-report/trips/decision/services/persona-explanation.service.ts.html
+ D coverage/lcov-report/trips/decision/services/plan-converter.service.ts.html
+ D coverage/lcov-report/trips/decision/services/poi-features-adapter.service.ts.html
+ D coverage/lcov-report/trips/decision/services/rhythm-matching.service.ts.html
+ D coverage/lcov-report/trips/decision/services/spatial-issue-detector.service.ts.html
+ D coverage/lcov-report/trips/decision/services/spatial-replacement.service.ts.html
+ D coverage/lcov-report/trips/decision/services/strategy-orchestrator.service.ts.html
+ D coverage/lcov-report/trips/decision/services/three-layer-explanation.service.ts.html
+ D coverage/lcov-report/trips/decision/services/trip-feedback.service.ts.html
+ D coverage/lcov-report/trips/decision/services/weather-decision-evidence.service.ts.html
+ D coverage/lcov-report/trips/decision/shared/index.html
+ D coverage/lcov-report/trips/decision/shared/trip-state.types.ts.html
+ D coverage/lcov-report/trips/decision/shared/tripnara-error-codes.ts.html
+ D coverage/lcov-report/trips/decision/strategies/abu-strategy.service.ts.html
+ D coverage/lcov-report/trips/decision/strategies/abu.ts.html
+ D coverage/lcov-report/trips/decision/strategies/dr-dre-strategy.service.ts.html
+ D coverage/lcov-report/trips/decision/strategies/drdre.ts.html
+ D coverage/lcov-report/trips/decision/strategies/index.html
+ D coverage/lcov-report/trips/decision/strategies/neptune-strategy.service.ts.html
+ D coverage/lcov-report/trips/decision/strategies/neptune.ts.html
+ D coverage/lcov-report/trips/decision/strategy/index.html
+ D coverage/lcov-report/trips/decision/strategy/index.ts.html
+ D coverage/lcov-report/trips/decision/strategy/types/index.html
+ D coverage/lcov-report/trips/decision/strategy/types/strategy-mode.types.ts.html
+ D coverage/lcov-report/trips/decision/tools/index.html
+ D coverage/lcov-report/trips/decision/tools/index.ts.html
+ D coverage/lcov-report/trips/decision/tools/tripnara-core-tool.service.ts.html
+ D coverage/lcov-report/trips/decision/tot/beam-search.service.ts.html
+ D coverage/lcov-report/trips/decision/tot/candidate-helper.ts.html
+ D coverage/lcov-report/trips/decision/tot/dimension-scorers.ts.html
+ D coverage/lcov-report/trips/decision/tot/hard-gate.ts.html
+ D coverage/lcov-report/trips/decision/tot/index.html
+ D coverage/lcov-report/trips/decision/tot/optimization-result-extractor.ts.html
+ D coverage/lcov-report/trips/decision/tot/plan-converter.ts.html
+ D coverage/lcov-report/trips/decision/tot/score-result.ts.html
+ D coverage/lcov-report/trips/decision/tot/scoring-constants.ts.html
+ D coverage/lcov-report/trips/decision/tot/tot-evaluator.factory.ts.html
+ D coverage/lcov-report/trips/decision/tot/tot-evaluator.service.ts.html
+ D coverage/lcov-report/trips/decision/tot/utils.ts.html
+ D coverage/lcov-report/trips/decision/tot/weight-computer.ts.html
+ D coverage/lcov-report/trips/decision/travel/index.html
+ D coverage/lcov-report/trips/decision/travel/index.ts.html
+ D coverage/lcov-report/trips/decision/travel/reliability.service.ts.html
+ D coverage/lcov-report/trips/decision/trip-decision-engine.service.ts.html
+ D coverage/lcov-report/trips/decision/versioning/index.html
+ D coverage/lcov-report/trips/decision/versioning/index.ts.html
+ D coverage/lcov-report/trips/decision/versioning/version.service.ts.html
+ D coverage/lcov-report/trips/dem/index.html
+ D coverage/lcov-report/trips/dem/index.ts.html
+ D coverage/lcov-report/trips/dem/services/dem-effort-metadata.service.ts.html
+ D coverage/lcov-report/trips/dem/services/dem-elevation.service.ts.html
+ D coverage/lcov-report/trips/dem/services/index.html
+ D coverage/lcov-report/trips/entities/index.html
+ D coverage/lcov-report/trips/entities/trip.entity.ts.html
+ D coverage/lcov-report/trips/index.html
+ D coverage/lcov-report/trips/readiness/compilers/facts-to-readiness.compiler.ts.html
+ D coverage/lcov-report/trips/readiness/compilers/index.html
+ D coverage/lcov-report/trips/readiness/compilers/readiness-to-constraints.compiler.ts.html
+ D coverage/lcov-report/trips/readiness/config/country-pack.config.ts.html
+ D coverage/lcov-report/trips/readiness/config/index.html
+ D coverage/lcov-report/trips/readiness/config/terrain-policy.config.ts.html
+ D coverage/lcov-report/trips/readiness/data/index.html
+ D coverage/lcov-report/trips/readiness/data/norway-pack.example.ts.html
+ D coverage/lcov-report/trips/readiness/data/svalbard-pack.example.ts.html
+ D coverage/lcov-report/trips/readiness/data/xizang-pack.example.ts.html
+ D coverage/lcov-report/trips/readiness/engine/index.html
+ D coverage/lcov-report/trips/readiness/engine/readiness-checker.ts.html
+ D coverage/lcov-report/trips/readiness/engine/rule-engine.ts.html
+ D coverage/lcov-report/trips/readiness/index.html
+ D coverage/lcov-report/trips/readiness/index.ts.html
+ D coverage/lcov-report/trips/readiness/packs/emergency.pack.ts.html
+ D coverage/lcov-report/trips/readiness/packs/high-altitude.pack.ts.html
+ D coverage/lcov-report/trips/readiness/packs/index.html
+ D coverage/lcov-report/trips/readiness/packs/index.ts.html
+ D coverage/lcov-report/trips/readiness/packs/permit-checkpoint.pack.ts.html
+ D coverage/lcov-report/trips/readiness/packs/seasonal-road.pack.ts.html
+ D coverage/lcov-report/trips/readiness/packs/sparse-supply.pack.ts.html
+ D coverage/lcov-report/trips/readiness/readiness.controller.ts.html
+ D coverage/lcov-report/trips/readiness/services/capability-pack-evaluator.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/checklist-status.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/finding-marks.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts-airline.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts-cache.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts-coastline.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts-mountain.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts-poi.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts-port.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts-river.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts-road.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/geo-facts.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/index.html
+ D coverage/lcov-report/trips/readiness/services/packing-list.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/poi-pickup-scorer.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/poi-trailhead.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/readiness.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/solution.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/terrain-facts.service.ts.html
+ D coverage/lcov-report/trips/readiness/services/terrain-risk.service.ts.html
+ D coverage/lcov-report/trips/readiness/storage/index.html
+ D coverage/lcov-report/trips/readiness/storage/pack-storage.service.ts.html
+ D coverage/lcov-report/trips/readiness/storage/pack-validator.service.ts.html
+ D coverage/lcov-report/trips/readiness/types/index.html
+ D coverage/lcov-report/trips/readiness/types/trip-context.types.ts.html
+ D coverage/lcov-report/trips/readiness/utils/i18n.utils.ts.html
+ D coverage/lcov-report/trips/readiness/utils/index.html
+ D coverage/lcov-report/trips/services/action-history.service.ts.html
+ D coverage/lcov-report/trips/services/budget-evaluation.service.ts.html
+ D coverage/lcov-report/trips/services/flight-price-detail-enhanced.service.ts.html
+ D coverage/lcov-report/trips/services/flight-price-detail.service.ts.html
+ D coverage/lcov-report/trips/services/flight-price.service.ts.html
+ D coverage/lcov-report/trips/services/index.html
+ D coverage/lcov-report/trips/services/schedule-converter.service.ts.html
+ D coverage/lcov-report/trips/services/trip-adjustment.service.ts.html
+ D coverage/lcov-report/trips/services/trip-budget.service.ts.html
+ D coverage/lcov-report/trips/services/trip-conflicts.service.ts.html
+ D coverage/lcov-report/trips/services/trip-draft.service.ts.html
+ D coverage/lcov-report/trips/services/trip-emergency.service.ts.html
+ D coverage/lcov-report/trips/services/trip-extended.service.ts.html
+ D coverage/lcov-report/trips/services/trip-insight.service.ts.html
+ D coverage/lcov-report/trips/services/trip-intent.service.ts.html
+ D coverage/lcov-report/trips/services/trip-metrics.service.ts.html
+ D coverage/lcov-report/trips/services/trip-optimization.service.ts.html
+ D coverage/lcov-report/trips/services/trip-recap.service.ts.html
+ D coverage/lcov-report/trips/services/trip-suggestions.service.ts.html
+ D coverage/lcov-report/trips/trips.controller.ts.html
+ D coverage/lcov-report/trips/trips.service.ts.html
+ D coverage/lcov-report/trips/utils/hp-simulator.util.ts.html
+ D coverage/lcov-report/trips/utils/index.html
+ D coverage/lcov-report/trips/utils/pacing-calculator.util.ts.html
+ D coverage/lcov-report/users/index.html
+ D coverage/lcov-report/users/users.controller.ts.html
+ D coverage/lcov-report/users/users.service.ts.html
+ D coverage/lcov-report/vision/index.html
+ D coverage/lcov-report/vision/utils/index.html
+ D coverage/lcov-report/vision/utils/keyword-extractor.util.ts.html
+ D coverage/lcov-report/vision/vision.controller.ts.html
+ D coverage/lcov-report/vision/vision.service.ts.html
+ D coverage/lcov-report/voice/index.html
+ D coverage/lcov-report/voice/services/index.html
+ D coverage/lcov-report/voice/services/llm-voice-parser.service.ts.html
+ D coverage/lcov-report/voice/voice.controller.ts.html
+ D coverage/lcov-report/voice/voice.service.ts.html
+ D coverage/lcov.info
+ D coverage/llm/index.html
+ D coverage/llm/llm.controller.ts.html
+ D coverage/llm/services/index.html
+ D coverage/llm/services/llm-cost.service.ts.html
+ D coverage/llm/services/llm.service.ts.html
+ D coverage/llm/utils/circuit-breaker.ts.html
+ D coverage/llm/utils/index.html
+ D coverage/llm/utils/openai-http.factory.ts.html
+ D coverage/llm/utils/retry-with-backoff.ts.html
+ D coverage/llm/utils/token-extractor.util.ts.html
+ D coverage/mcp/bisect-decision-imports.ts.html
+ D coverage/mcp/check-env-vars.ts.html
+ D coverage/mcp/debug-onmoduleinit.ts.html
+ D coverage/mcp/debug-skills-module-init.ts.html
+ D coverage/mcp/debug-startup.ts.html
+ D coverage/mcp/diagnose-mcp-timeout.ts.html
+ D coverage/mcp/diagnose-server.ts.html
+ D coverage/mcp/diagnose-timeout.ts.html
+ D coverage/mcp/index.html
+ D coverage/mcp/mcp-prompts.ts.html
+ D coverage/mcp/mcp-schema-builders.ts.html
+ D coverage/mcp/mcp-server.ts.html
+ D coverage/mcp/mcp-skills-server.ts.html
+ D coverage/mcp/run-server-direct.ts.html
+ D coverage/mcp/static-verify-skills.ts.html
+ D coverage/mcp/test-mcp-skills.ts.html
+ D coverage/mcp/verify-skills-registration.ts.html
+ D coverage/parallel-executor.service.ts.html
+ D coverage/places/index.html
+ D coverage/places/places-v5.controller.ts.html
+ D coverage/places/places.controller.ts.html
+ D coverage/places/places.service.ts.html
+ D coverage/places/services/admin-division.service.ts.html
+ D coverage/places/services/amap-poi.service.ts.html
+ D coverage/places/services/embedding.service.ts.html
+ D coverage/places/services/entity-resolution.service.ts.html
+ D coverage/places/services/google-places.service.ts.html
+ D coverage/places/services/hotel-recommendation.service.ts.html
+ D coverage/places/services/iceland-poi-features.service.ts.html
+ D coverage/places/services/index.html
+ D coverage/places/services/mapbox.service.ts.html
+ D coverage/places/services/nara-hint.service.ts.html
+ D coverage/places/services/nature-poi-mapper.service.ts.html
+ D coverage/places/services/nature-poi.service.ts.html
+ D coverage/places/services/overpass.service.ts.html
+ D coverage/places/services/place-trail-enrichment.service.ts.html
+ D coverage/places/services/route-difficulty.service.ts.html
+ D coverage/places/services/svalbard-poi-features.service.ts.html
+ D coverage/places/services/unsplash.service.ts.html
+ D coverage/places/services/vector-search.service.ts.html
+ D coverage/places/utils/geojson-validator.util.ts.html
+ D coverage/places/utils/gpx-fatigue-calculator.util.ts.html
+ D coverage/places/utils/gpx-parser.util.ts.html
+ D coverage/places/utils/index.html
+ D coverage/places/utils/metadata-enricher.util.ts.html
+ D coverage/places/utils/physical-metadata-constants.ts.html
+ D coverage/places/utils/physical-metadata-generator.util.ts.html
+ D coverage/places/utils/prompt-utils.ts.html
+ D coverage/places/utils/trail-difficulty-assessor.util.ts.html
+ D coverage/planning-policy/index.html
+ D coverage/planning-policy/index.ts.html
+ D coverage/planning-policy/planning-policy.controller.ts.html
+ D coverage/planning-policy/services/cost-model.service.ts.html
+ D coverage/planning-policy/services/day-scheduler.service.ts.html
+ D coverage/planning-policy/services/feasibility.service.ts.html
+ D coverage/planning-policy/services/hp-simulator.service.ts.html
+ D coverage/planning-policy/services/index.html
+ D coverage/planning-policy/services/place-to-poi-helper.service.ts.html
+ D coverage/planning-policy/services/place-to-poi.service.ts.html
+ D coverage/planning-policy/services/policy-compiler.service.ts.html
+ D coverage/planning-policy/services/ranking.service.ts.html
+ D coverage/planning-policy/services/replanner.service.ts.html
+ D coverage/planning-policy/services/robustness-evaluator.service.ts.html
+ D coverage/planning-policy/utils/index.html
+ D coverage/planning-policy/utils/time-utils.ts.html
+ D coverage/poi/services/index.html
+ D coverage/poi/services/poi-layer.service.ts.html
+ D coverage/poi/services/poi-route-affinity.service.ts.html
+ D coverage/prettify.css
+ D coverage/prettify.js
+ D coverage/prisma/index.html
+ D coverage/prisma/prisma.service.ts.html
+ D coverage/providers/asr/index.html
+ D coverage/providers/asr/mock-asr.provider.ts.html
+ D coverage/providers/ocr/google-ocr.provider.ts.html
+ D coverage/providers/ocr/index.html
+ D coverage/providers/ocr/mock-ocr.provider.ts.html
+ D coverage/providers/poi/google-poi.provider.ts.html
+ D coverage/providers/poi/index.html
+ D coverage/providers/poi/mock-poi.provider.ts.html
+ D coverage/providers/tts/index.html
+ D coverage/providers/tts/mock-tts.provider.ts.html
+ D coverage/rag/index.html
+ D coverage/rag/rag.controller.ts.html
+ D coverage/rag/services/chunk-retrieval.service.ts.html
+ D coverage/rag/services/compliance-facts-agent.service.ts.html
+ D coverage/rag/services/embedding-cache.service.ts.html
+ D coverage/rag/services/enhanced-chat.service.ts.html
+ D coverage/rag/services/gate-decision-logger.service.ts.html
+ D coverage/rag/services/hybrid-cache.service.ts.html
+ D coverage/rag/services/index.html
+ D coverage/rag/services/llm-extraction.service.ts.html
+ D coverage/rag/services/local-insight.service.ts.html
+ D coverage/rag/services/mcp-tools.service.ts.html
+ D coverage/rag/services/parallel-executor.service.ts.html
+ D coverage/rag/services/query-expansion.service.ts.html
+ D coverage/rag/services/rag-evaluation.service.ts.html
+ D coverage/rag/services/rag-fallback.service.ts.html
+ D coverage/rag/services/rag-freshness.service.ts.html
+ D coverage/rag/services/rag-monitoring.service.ts.html
+ D coverage/rag/services/rag-query-collector.service.ts.html
+ D coverage/rag/services/rag-testset.service.ts.html
+ D coverage/rag/services/rag.service.ts.html
+ D coverage/rag/services/redis-cache.service.ts.html
+ D coverage/rag/services/reranking.service.ts.html
+ D coverage/rag/services/retry-helper.service.ts.html
+ D coverage/rag/services/route-knowledge-curator.service.ts.html
+ D coverage/railpass/actions/index.html
+ D coverage/railpass/actions/railpass-actions.service.ts.html
+ D coverage/railpass/actions/railpass-agent-actions.ts.html
+ D coverage/railpass/constraints/index.html
+ D coverage/railpass/constraints/railpass-constraints.service.ts.html
+ D coverage/railpass/index.html
+ D coverage/railpass/integrations/index.html
+ D coverage/railpass/integrations/planning-policy-integration.service.ts.html
+ D coverage/railpass/integrations/schedule-action-integration.service.ts.html
+ D coverage/railpass/integrations/transport-integration.service.ts.html
+ D coverage/railpass/railpass.controller.ts.html
+ D coverage/railpass/railpass.service.ts.html
+ D coverage/railpass/rules/index.html
+ D coverage/railpass/rules/railpass-rule-engine.service.ts.html
+ D coverage/railpass/services/compliance-validator.service.ts.html
+ D coverage/railpass/services/eligibility-engine.service.ts.html
+ D coverage/railpass/services/executability-check.service.ts.html
+ D coverage/railpass/services/index.html
+ D coverage/railpass/services/pass-coverage-checker.service.ts.html
+ D coverage/railpass/services/pass-selection-engine.service.ts.html
+ D coverage/railpass/services/plan-regeneration.service.ts.html
+ D coverage/railpass/services/reservation-channel-policy.service.ts.html
+ D coverage/railpass/services/reservation-decision-engine.service.ts.html
+ D coverage/railpass/services/reservation-orchestration.service.ts.html
+ D coverage/railpass/services/travel-day-calculation-engine.service.ts.html
+ D coverage/redis-cache.service.ts.html
+ D coverage/redis/index.html
+ D coverage/redis/redis.service.ts.html
+ D coverage/retry-helper.service.ts.html
+ D coverage/route-directions/fixtures/index.html
+ D coverage/route-directions/fixtures/is_highlands_froad.fixture.ts.html
+ D coverage/route-directions/index.html
+ D coverage/route-directions/plugins/compliance-plugin.service.ts.html
+ D coverage/route-directions/plugins/index.html
+ D coverage/route-directions/plugins/transport-plugin.service.ts.html
+ D coverage/route-directions/route-directions.controller.ts.html
+ D coverage/route-directions/route-directions.service.ts.html
+ D coverage/route-directions/services/enhanced-risk-assessment.service.ts.html
+ D coverage/route-directions/services/index.html
+ D coverage/route-directions/services/pack-kpi-acceptance.service.ts.html
+ D coverage/route-directions/services/result-presentation.service.ts.html
+ D coverage/route-directions/services/route-direction-cache.service.ts.html
+ D coverage/route-directions/services/route-direction-card.service.ts.html
+ D coverage/route-directions/services/route-direction-explainer.service.ts.html
+ D coverage/route-directions/services/route-direction-observability.service.ts.html
+ D coverage/route-directions/services/route-direction-poi-generator.service.ts.html
+ D coverage/route-directions/services/route-direction-selector.service.ts.html
+ D coverage/route-directions/services/route-judgment.service.ts.html
+ D coverage/route-directions/templates/index.html
+ D coverage/route-directions/templates/route-direction-archetypes.ts.html
+ D coverage/schedule-action/index.html
+ D coverage/schedule-action/schedule-action.controller.ts.html
+ D coverage/schedule-action/schedule-action.service.ts.html
+ D coverage/schedule-action/utils/index.html
+ D coverage/schedule-action/utils/timeline-rebuilder.util.ts.html
+ D coverage/skills/context/context-build.skill.ts.html
+ D coverage/skills/context/context-compile-package.skill.ts.html
+ D coverage/skills/context/context-compress.skill.ts.html
+ D coverage/skills/context/context-evaluate.skill.ts.html
+ D coverage/skills/context/context-regression-tests.skill.ts.html
+ D coverage/skills/context/index.html
+ D coverage/skills/context/plan-select-slices.skill.ts.html
+ D coverage/skills/context/tools-select.skill.ts.html
+ D coverage/skills/country-pack/country-pack-generate-regression-tests.skill.ts.html
+ D coverage/skills/country-pack/country-pack-get-blocks.skill.ts.html
+ D coverage/skills/country-pack/country-pack-new-skeleton.skill.ts.html
+ D coverage/skills/country-pack/country-pack-rank-blocks.skill.ts.html
+ D coverage/skills/country-pack/country-pack-suggest-improvements.skill.ts.html
+ D coverage/skills/country-pack/country-pack-validate.skill.ts.html
+ D coverage/skills/country-pack/index.html
+ D coverage/skills/decision/decision-abu-check.skill.ts.html
+ D coverage/skills/decision/decision-drdre-pace.skill.ts.html
+ D coverage/skills/decision/decision-explain-for-human.skill.ts.html
+ D coverage/skills/decision/decision-log-append.skill.ts.html
+ D coverage/skills/decision/decision-neptune-repair.skill.ts.html
+ D coverage/skills/decision/decision-replay.skill.ts.html
+ D coverage/skills/decision/decision-run-three-guardians.skill.ts.html
+ D coverage/skills/decision/decision-stage.skill.ts.html
+ D coverage/skills/decision/index.html
+ D coverage/skills/decorators/index.html
+ D coverage/skills/decorators/skill.decorator.ts.html
+ D coverage/skills/dem/dem-get-profile.skill.ts.html
+ D coverage/skills/dem/index.html
+ D coverage/skills/detail/detail-analyze-health.skill.ts.html
+ D coverage/skills/detail/detail-explain-decision.skill.ts.html
+ D coverage/skills/detail/detail-show-evidence.skill.ts.html
+ D coverage/skills/detail/detail-understand-status.skill.ts.html
+ D coverage/skills/detail/index.html
+ D coverage/skills/exec/exec-fallback.skill.ts.html
+ D coverage/skills/exec/exec-handle-change.skill.ts.html
+ D coverage/skills/exec/exec-remind.skill.ts.html
+ D coverage/skills/exec/index.html
+ D coverage/skills/geo/geo-check-hazard-zones.skill.ts.html
+ D coverage/skills/geo/geo-find-candidate-within-corridor.skill.ts.html
+ D coverage/skills/geo/geo-find-nearby-poi.skill.ts.html
+ D coverage/skills/geo/geo-sample-elevation-profile.skill.ts.html
+ D coverage/skills/geo/index.html
+ D coverage/skills/hitl/decision-check-approval.skill.ts.html
+ D coverage/skills/hitl/decision-request-approval.skill.ts.html
+ D coverage/skills/hitl/entities/approval-request.entity.ts.html
+ D coverage/skills/hitl/entities/index.html
+ D coverage/skills/hitl/hitl-create-approval-task.skill.ts.html
+ D coverage/skills/hitl/hitl-resolve-approval-task.skill.ts.html
+ D coverage/skills/hitl/index.html
+ D coverage/skills/hitl/services/approval-storage.service.ts.html
+ D coverage/skills/hitl/services/index.html
+ D coverage/skills/index.html
+ D coverage/skills/itinerary/index.html
+ D coverage/skills/itinerary/itinerary-generate.skill.ts.html
+ D coverage/skills/itinerary/itinerary-verify.skill.ts.html
+ D coverage/skills/itinerary/repair-apply.skill.ts.html
+ D coverage/skills/places/index.html
+ D coverage/skills/places/opening-hours-get.skill.ts.html
+ D coverage/skills/places/poi-search.skill.ts.html
+ D coverage/skills/plan/architect/index.html
+ D coverage/skills/plan/architect/plan-architect-commit-option.skill.ts.html
+ D coverage/skills/plan/architect/plan-architect-compare-options.skill.ts.html
+ D coverage/skills/plan/architect/plan-architect-generate-skeleton.skill.ts.html
+ D coverage/skills/plan/budget/index.html
+ D coverage/skills/plan/budget/plan-budget-detect-overrun.skill.ts.html
+ D coverage/skills/plan/budget/plan-budget-estimate-baseline.skill.ts.html
+ D coverage/skills/plan/budget/plan-budget-propose-tradeoffs.skill.ts.html
+ D coverage/skills/plan/constraints/index.html
+ D coverage/skills/plan/constraints/plan-constraints-arbitrate-tradeoffs.skill.ts.html
+ D coverage/skills/plan/constraints/plan-constraints-detect-conflicts.skill.ts.html
+ D coverage/skills/plan/evidence/index.html
+ D coverage/skills/plan/evidence/plan-evidence-build-envelope.skill.ts.html
+ D coverage/skills/plan/gate/index.html
+ D coverage/skills/plan/gate/plan-gate-precheck.skill.ts.html
+ D coverage/skills/plan/gate/plan-gate-propose-safe-alternatives.skill.ts.html
+ D coverage/skills/plan/gate/plan-gate-run-three-guardians.skill.ts.html
+ D coverage/skills/plan/log/index.html
+ D coverage/skills/plan/log/plan-log-append-decision.skill.ts.html
+ D coverage/skills/plan/pace/index.html
+ D coverage/skills/plan/pace/plan-pace-adjust-schedule.skill.ts.html
+ D coverage/skills/plan/pace/plan-pace-compute-time-windows.skill.ts.html
+ D coverage/skills/plan/pace/plan-pace-fatigue-score.skill.ts.html
+ D coverage/skills/plan/transit/index.html
+ D coverage/skills/plan/transit/plan-transit-build-transfer-graph.skill.ts.html
+ D coverage/skills/plan/transit/plan-transit-generate-plan-b.skill.ts.html
+ D coverage/skills/plan/transit/plan-transit-suggest-modes.skill.ts.html
+ D coverage/skills/readiness/index.html
+ D coverage/skills/readiness/readiness-check-visa-window.skill.ts.html
+ D coverage/skills/readiness/readiness-generate-checklist.skill.ts.html
+ D coverage/skills/readiness/readiness-summarize-risks.skill.ts.html
+ D coverage/skills/route-direction/index.html
+ D coverage/skills/route-direction/route-direction-list-for-country.skill.ts.html
+ D coverage/skills/route-direction/route-direction-pick-for-intent.skill.ts.html
+ D coverage/skills/route-pack/index.html
+ D coverage/skills/route-pack/route-pack-generate-regression-tests.skill.ts.html
+ D coverage/skills/route-pack/route-pack-new-skeleton.skill.ts.html
+ D coverage/skills/route-pack/route-pack-validate.skill.ts.html
+ D coverage/skills/services/index.html
+ D coverage/skills/services/skill-scanner.service.ts.html
+ D coverage/skills/services/skills-registry.service.ts.html
+ D coverage/skills/services/skills-registry.token.ts.html
+ D coverage/skills/skills.tokens.ts.html
+ D coverage/skills/transport/index.html
+ D coverage/skills/transport/transport-search.skill.ts.html
+ D coverage/skills/trip/index.html
+ D coverage/skills/trip/trip-quick-evaluate.skill.ts.html
+ D coverage/skills/utils/index.html
+ D coverage/skills/utils/schema-generator.util.ts.html
+ D coverage/skills/weather/index.html
+ D coverage/skills/weather/weather-search.skill.ts.html
+ D coverage/skills/web/index.html
+ D coverage/skills/web/web-browse.skill.ts.html
+ D coverage/skills/world/index.html
+ D coverage/skills/world/world-build-context.skill.ts.html
+ D coverage/sort-arrow-sprite.png
+ D coverage/sorter.js
+ D coverage/system/index.html
+ D coverage/system/system.controller.ts.html
+ D coverage/system/system.service.ts.html
+ D coverage/tasks/index.html
+ D coverage/tasks/tasks.service.ts.html
+ D coverage/trails/index.html
+ D coverage/trails/services/index.html
+ D coverage/trails/services/smart-trail-planner.service.ts.html
+ D coverage/trails/services/trail-cache.service.ts.html
+ D coverage/trails/services/trail-support-services.service.ts.html
+ D coverage/trails/services/trail-tracking.service.ts.html
+ D coverage/trails/trails.controller.ts.html
+ D coverage/trails/trails.service.ts.html
+ D coverage/trails/utils/index.html
+ D coverage/trails/utils/trail-fatigue-calculator.util.ts.html
+ D coverage/transport/index.html
+ D coverage/transport/services/amap-routes.service.ts.html
+ D coverage/transport/services/google-routes.service.ts.html
+ D coverage/transport/services/index.html
+ D coverage/transport/services/location-detector.service.ts.html
+ D coverage/transport/services/route-cache.service.ts.html
+ D coverage/transport/services/smart-routes.service.ts.html
+ D coverage/transport/transport-decision.service.ts.html
+ D coverage/transport/transport-routing.service.ts.html
+ D coverage/transport/transport.controller.ts.html
+ D coverage/trip-templates/index.html
+ D coverage/trip-templates/trip-templates.controller.ts.html
+ D coverage/trip-templates/trip-templates.service.ts.html
+ D coverage/trips/decision/adapters/index.html
+ D coverage/trips/decision/adapters/sense-tools.adapter.ts.html
+ D coverage/trips/decision/candidates/candidate-pool.service.ts.html
+ D coverage/trips/decision/candidates/index.html
+ D coverage/trips/decision/candidates/index.ts.html
+ D coverage/trips/decision/config/index.html
+ D coverage/trips/decision/config/index.ts.html
+ D coverage/trips/decision/config/objective-config.ts.html
+ D coverage/trips/decision/config/user-persona-mapping.config.ts.html
+ D coverage/trips/decision/constraints/advanced-constraints.service.ts.html
+ D coverage/trips/decision/constraints/constraint-checker.ts.html
+ D coverage/trips/decision/constraints/index.html
+ D coverage/trips/decision/constraints/index.ts.html
+ D coverage/trips/decision/constraints/route-direction-constraints.service.ts.html
+ D coverage/trips/decision/controllers/approval.controller.ts.html
+ D coverage/trips/decision/controllers/index.html
+ D coverage/trips/decision/data-quality/data-quality.model.ts.html
+ D coverage/trips/decision/data-quality/index.html
+ D coverage/trips/decision/data-quality/index.ts.html
+ D coverage/trips/decision/decision-stats.controller.ts.html
+ D coverage/trips/decision/decision.controller.ts.html
+ D coverage/trips/decision/evaluation/decision-log-clustering.service.ts.html
+ D coverage/trips/decision/evaluation/e2e-assertions.ts.html
+ D coverage/trips/decision/evaluation/e2e-case-storage.service.ts.html
+ D coverage/trips/decision/evaluation/e2e-cases/iceland-highlands.example.ts.html
+ D coverage/trips/decision/evaluation/e2e-cases/index.html
+ D coverage/trips/decision/evaluation/e2e-replay.service.ts.html
+ D coverage/trips/decision/evaluation/evaluation.service.ts.html
+ D coverage/trips/decision/evaluation/index.html
+ D coverage/trips/decision/evaluation/index.ts.html
+ D coverage/trips/decision/events/event-trigger.service.ts.html
+ D coverage/trips/decision/events/index.html
+ D coverage/trips/decision/events/index.ts.html
+ D coverage/trips/decision/examples/agent-runner-with-hitl.example.ts.html
+ D coverage/trips/decision/examples/index.html
+ D coverage/trips/decision/explainability/explainability.service.ts.html
+ D coverage/trips/decision/explainability/index.html
+ D coverage/trips/decision/explainability/index.ts.html
+ D coverage/trips/decision/graph-db/graph-data-converter.service.ts.html
+ D coverage/trips/decision/graph-db/index.html
+ D coverage/trips/decision/graph-db/index.ts.html
+ D coverage/trips/decision/index.html
+ D coverage/trips/decision/index.ts.html
+ D coverage/trips/decision/learning/index.html
+ D coverage/trips/decision/learning/index.ts.html
+ D coverage/trips/decision/learning/learning.service.ts.html
+ D coverage/trips/decision/models/human-capability.model.ts.html
+ D coverage/trips/decision/models/index.html
+ D coverage/trips/decision/models/physical-reality.model.ts.html
+ D coverage/trips/decision/models/route-philosophy.model.ts.html
+ D coverage/trips/decision/monitoring/index.html
+ D coverage/trips/decision/monitoring/index.ts.html
+ D coverage/trips/decision/monitoring/monitoring.service.ts.html
+ D coverage/trips/decision/orchestration/index.html
+ D coverage/trips/decision/orchestration/index.ts.html
+ D coverage/trips/decision/orchestration/langgraph-orchestrator.service.ts.html
+ D coverage/trips/decision/orchestration/narrator-agent.service.ts.html
+ D coverage/trips/decision/orchestration/planner-agent.service.ts.html
+ D coverage/trips/decision/performance/batch.service.ts.html
+ D coverage/trips/decision/performance/cache.service.ts.html
+ D coverage/trips/decision/performance/index.html
+ D coverage/trips/decision/performance/index.ts.html
+ D coverage/trips/decision/plan-diff/index.html
+ D coverage/trips/decision/plan-diff/index.ts.html
+ D coverage/trips/decision/plan-diff/plan-diff.ts.html
+ D coverage/trips/decision/prediction/index.html
+ D coverage/trips/decision/prediction/index.ts.html
+ D coverage/trips/decision/prediction/mobagel-forecast.service.ts.html
+ D coverage/trips/decision/readiness/index.html
+ D coverage/trips/decision/readiness/index.ts.html
+ D coverage/trips/decision/readiness/readiness-agent.service.ts.html
+ D coverage/trips/decision/schedulers/approval-cleanup.scheduler.ts.html
+ D coverage/trips/decision/schedulers/index.html
+ D coverage/trips/decision/services/agent-resume.service.ts.html
+ D coverage/trips/decision/services/approval.service.ts.html
+ D coverage/trips/decision/services/decision-log-storage.service.ts.html
+ D coverage/trips/decision/services/decision-logging.service.ts.html
+ D coverage/trips/decision/services/decision-state-manager.service.ts.html
+ D coverage/trips/decision/services/decision-stats.service.ts.html
+ D coverage/trips/decision/services/decision-support.service.ts.html
+ D coverage/trips/decision/services/dem-daily-energy.service.ts.html
+ D coverage/trips/decision/services/dem-decision-evidence-pipeline.service.ts.html
+ D coverage/trips/decision/services/dem-decision-evidence.service.ts.html
+ D coverage/trips/decision/services/dem-evidence-chain.service.ts.html
+ D coverage/trips/decision/services/dem-evidence-enforcer.service.ts.html
+ D coverage/trips/decision/services/dem-risk-scoring.service.ts.html
+ D coverage/trips/decision/services/dem-route-segmentation.service.ts.html
+ D coverage/trips/decision/services/dry-run-planner.service.ts.html
+ D coverage/trips/decision/services/fatigue-calculator.service.ts.html
+ D coverage/trips/decision/services/heuristic-diet.service.ts.html
+ D coverage/trips/decision/services/index.html
+ D coverage/trips/decision/services/multi-person-decision.service.ts.html
+ D coverage/trips/decision/services/persona-explanation.service.ts.html
+ D coverage/trips/decision/services/plan-converter.service.ts.html
+ D coverage/trips/decision/services/poi-features-adapter.service.ts.html
+ D coverage/trips/decision/services/rhythm-matching.service.ts.html
+ D coverage/trips/decision/services/spatial-issue-detector.service.ts.html
+ D coverage/trips/decision/services/spatial-replacement.service.ts.html
+ D coverage/trips/decision/services/strategy-orchestrator.service.ts.html
+ D coverage/trips/decision/services/three-layer-explanation.service.ts.html
+ D coverage/trips/decision/services/trip-feedback.service.ts.html
+ D coverage/trips/decision/services/weather-decision-evidence.service.ts.html
+ D coverage/trips/decision/shared/index.html
+ D coverage/trips/decision/shared/trip-state.types.ts.html
+ D coverage/trips/decision/shared/tripnara-error-codes.ts.html
+ D coverage/trips/decision/strategies/abu-strategy.service.ts.html
+ D coverage/trips/decision/strategies/abu.ts.html
+ D coverage/trips/decision/strategies/dr-dre-strategy.service.ts.html
+ D coverage/trips/decision/strategies/drdre.ts.html
+ D coverage/trips/decision/strategies/index.html
+ D coverage/trips/decision/strategies/neptune-strategy.service.ts.html
+ D coverage/trips/decision/strategies/neptune.ts.html
+ D coverage/trips/decision/strategy/index.html
+ D coverage/trips/decision/strategy/index.ts.html
+ D coverage/trips/decision/strategy/types/index.html
+ D coverage/trips/decision/strategy/types/strategy-mode.types.ts.html
+ D coverage/trips/decision/tools/index.html
+ D coverage/trips/decision/tools/index.ts.html
+ D coverage/trips/decision/tools/tripnara-core-tool.service.ts.html
+ D coverage/trips/decision/tot/beam-search.service.ts.html
+ D coverage/trips/decision/tot/candidate-helper.ts.html
+ D coverage/trips/decision/tot/dimension-scorers.ts.html
+ D coverage/trips/decision/tot/hard-gate.ts.html
+ D coverage/trips/decision/tot/index.html
+ D coverage/trips/decision/tot/optimization-result-extractor.ts.html
+ D coverage/trips/decision/tot/plan-converter.ts.html
+ D coverage/trips/decision/tot/score-result.ts.html
+ D coverage/trips/decision/tot/scoring-constants.ts.html
+ D coverage/trips/decision/tot/tot-evaluator.factory.ts.html
+ D coverage/trips/decision/tot/tot-evaluator.service.ts.html
+ D coverage/trips/decision/tot/utils.ts.html
+ D coverage/trips/decision/tot/weight-computer.ts.html
+ D coverage/trips/decision/travel/index.html
+ D coverage/trips/decision/travel/index.ts.html
+ D coverage/trips/decision/travel/reliability.service.ts.html
+ D coverage/trips/decision/trip-decision-engine.service.ts.html
+ D coverage/trips/decision/versioning/index.html
+ D coverage/trips/decision/versioning/index.ts.html
+ D coverage/trips/decision/versioning/version.service.ts.html
+ D coverage/trips/dem/index.html
+ D coverage/trips/dem/index.ts.html
+ D coverage/trips/dem/services/dem-effort-metadata.service.ts.html
+ D coverage/trips/dem/services/dem-elevation.service.ts.html
+ D coverage/trips/dem/services/index.html
+ D coverage/trips/entities/index.html
+ D coverage/trips/entities/trip.entity.ts.html
+ D coverage/trips/index.html
+ D coverage/trips/readiness/compilers/facts-to-readiness.compiler.ts.html
+ D coverage/trips/readiness/compilers/index.html
+ D coverage/trips/readiness/compilers/readiness-to-constraints.compiler.ts.html
+ D coverage/trips/readiness/config/country-pack.config.ts.html
+ D coverage/trips/readiness/config/index.html
+ D coverage/trips/readiness/config/terrain-policy.config.ts.html
+ D coverage/trips/readiness/data/index.html
+ D coverage/trips/readiness/data/norway-pack.example.ts.html
+ D coverage/trips/readiness/data/svalbard-pack.example.ts.html
+ D coverage/trips/readiness/data/xizang-pack.example.ts.html
+ D coverage/trips/readiness/engine/index.html
+ D coverage/trips/readiness/engine/readiness-checker.ts.html
+ D coverage/trips/readiness/engine/rule-engine.ts.html
+ D coverage/trips/readiness/index.html
+ D coverage/trips/readiness/index.ts.html
+ D coverage/trips/readiness/packs/emergency.pack.ts.html
+ D coverage/trips/readiness/packs/high-altitude.pack.ts.html
+ D coverage/trips/readiness/packs/index.html
+ D coverage/trips/readiness/packs/index.ts.html
+ D coverage/trips/readiness/packs/permit-checkpoint.pack.ts.html
+ D coverage/trips/readiness/packs/seasonal-road.pack.ts.html
+ D coverage/trips/readiness/packs/sparse-supply.pack.ts.html
+ D coverage/trips/readiness/readiness.controller.ts.html
+ D coverage/trips/readiness/services/capability-pack-evaluator.service.ts.html
+ D coverage/trips/readiness/services/checklist-status.service.ts.html
+ D coverage/trips/readiness/services/finding-marks.service.ts.html
+ D coverage/trips/readiness/services/geo-facts-airline.service.ts.html
+ D coverage/trips/readiness/services/geo-facts-cache.service.ts.html
+ D coverage/trips/readiness/services/geo-facts-coastline.service.ts.html
+ D coverage/trips/readiness/services/geo-facts-mountain.service.ts.html
+ D coverage/trips/readiness/services/geo-facts-poi.service.ts.html
+ D coverage/trips/readiness/services/geo-facts-port.service.ts.html
+ D coverage/trips/readiness/services/geo-facts-river.service.ts.html
+ D coverage/trips/readiness/services/geo-facts-road.service.ts.html
+ D coverage/trips/readiness/services/geo-facts.service.ts.html
+ D coverage/trips/readiness/services/index.html
+ D coverage/trips/readiness/services/packing-list.service.ts.html
+ D coverage/trips/readiness/services/poi-pickup-scorer.service.ts.html
+ D coverage/trips/readiness/services/poi-trailhead.service.ts.html
+ D coverage/trips/readiness/services/readiness.service.ts.html
+ D coverage/trips/readiness/services/solution.service.ts.html
+ D coverage/trips/readiness/services/terrain-facts.service.ts.html
+ D coverage/trips/readiness/services/terrain-risk.service.ts.html
+ D coverage/trips/readiness/storage/index.html
+ D coverage/trips/readiness/storage/pack-storage.service.ts.html
+ D coverage/trips/readiness/storage/pack-validator.service.ts.html
+ D coverage/trips/readiness/types/index.html
+ D coverage/trips/readiness/types/trip-context.types.ts.html
+ D coverage/trips/readiness/utils/i18n.utils.ts.html
+ D coverage/trips/readiness/utils/index.html
+ D coverage/trips/services/action-history.service.ts.html
+ D coverage/trips/services/budget-evaluation.service.ts.html
+ D coverage/trips/services/flight-price-detail-enhanced.service.ts.html
+ D coverage/trips/services/flight-price-detail.service.ts.html
+ D coverage/trips/services/flight-price.service.ts.html
+ D coverage/trips/services/index.html
+ D coverage/trips/services/schedule-converter.service.ts.html
+ D coverage/trips/services/trip-adjustment.service.ts.html
+ D coverage/trips/services/trip-budget.service.ts.html
+ D coverage/trips/services/trip-conflicts.service.ts.html
+ D coverage/trips/services/trip-draft.service.ts.html
+ D coverage/trips/services/trip-emergency.service.ts.html
+ D coverage/trips/services/trip-extended.service.ts.html
+ D coverage/trips/services/trip-insight.service.ts.html
+ D coverage/trips/services/trip-intent.service.ts.html
+ D coverage/trips/services/trip-metrics.service.ts.html
+ D coverage/trips/services/trip-optimization.service.ts.html
+ D coverage/trips/services/trip-recap.service.ts.html
+ D coverage/trips/services/trip-suggestions.service.ts.html
+ D coverage/trips/trips.controller.ts.html
+ D coverage/trips/trips.service.ts.html
+ D coverage/trips/utils/hp-simulator.util.ts.html
+ D coverage/trips/utils/index.html
+ D coverage/trips/utils/pacing-calculator.util.ts.html
+ D coverage/users/index.html
+ D coverage/users/users.controller.ts.html
+ D coverage/users/users.service.ts.html
+ D coverage/vision/index.html
+ D coverage/vision/utils/index.html
+ D coverage/vision/utils/keyword-extractor.util.ts.html
+ D coverage/vision/vision.controller.ts.html
+ D coverage/vision/vision.service.ts.html
+ D coverage/voice/index.html
+ D coverage/voice/services/index.html
+ D coverage/voice/services/llm-voice-parser.service.ts.html
+ D coverage/voice/voice.controller.ts.html
+ D coverage/voice/voice.service.ts.html
+ M data/destination-packs/is/road/is-road-segment-profiles.json
+ M internal-docs/product/OVERALL_TRIP_READINESS.md
+ M internal-docs/product/TRIPNARA_AI_NATIVE_POSITIONING.md
+ M internal-docs/product/rfc-travel-context-protocol-v1.md
+ M internal-docs/product/travel-ontology-p2-temporal-prediction-charter.md
+ M internal-docs/product/travel-ontology-world-model-p0-gap-backlog.md
+ M internal-docs/product/travel-ontology-world-model-v1.md
+ M nest-cli.json
+ M package.json
+ M prisma/schema.prisma
+ M scripts/cron/sync-road-status-daily.ts
+ D scripts/migrate-iceland-poi-categories.ts
+ M src/app.module.ts
+ D src/auth/EXECUTE_NATIVE_API.md
+ M src/common/dto/standard-response.dto.ts
+ M src/countries/countries-admin-legacy.controller.ts
+ D src/cron/sync-road-status.cron.ts
+ D src/cron/sync-weather.cron.ts
+ M src/decision-runtime/constraints/constraint-evaluation.config.ts
+ M src/decision-runtime/constraints/constraint-gateway-mode.config.ts
+ M src/decision-runtime/controllers/decision-runtime-ops.controller.ts
+ M src/decision-runtime/decision-cases/DECISION_SPACE_IOS_HANDOFF.md
+ M src/decision-runtime/decision-cases/decision-cases.module.ts
+ M src/decision-runtime/decision-cases/publishers/iceland-p0-case.builders.spec.ts
+ M src/decision-runtime/decision-cases/publishers/iceland-p0-case.builders.ts
+ M src/decision-runtime/decision-cases/services/decision-case-apply-writeback.service.ts
+ M src/decision-runtime/decision-cases/services/decision-case.service.ts
+ M src/decision-runtime/decision-runtime.module.ts
+ M src/decision-runtime/execution/effective-plan-execution.module.ts
+ M src/decision-runtime/execution/effective-plan-write-chain-status.util.ts
+ M src/decision-runtime/execution/effective-plan-write-guard.service.ts
+ M src/decision-runtime/gateway/contracts/unified-decision-ui.types.ts
+ M src/decision-runtime/gateway/decision-gateway.module.ts
+ M src/decision-runtime/gateway/registry/decision-engine-registry.service.ts
+ M src/decision-runtime/gateway/services/unified-decision-problem-read-model.service.ts
+ M src/decision-runtime/packs/destination-pack.module.ts
+ M src/decision-runtime/packs/road/road-segment-profile.loader.spec.ts
+ M src/decision-runtime/snapshot/contracts/trip-context-snapshot.types.ts
+ M src/decision-runtime/snapshot/trip-context-snapshot.assembler.service.ts
+ M src/decision-runtime/snapshot/world-state-snapshot.module.ts
+ M src/guide-to-plan/services/guide-to-plan.orchestrator.ts
+ M src/harness/evals/fixtures/ontology-world-model/scenarios/visa-unconfirmed.fixture.ts
+ M src/hiking-demo/utils/hiking-detail-override-merge.util.ts
+ M src/itinerary-items/SEARCH_NEARBY_POI_API.md
+ M src/itinerary-items/dto/search-nearby-poi.dto.ts
+ M src/itinerary-items/itinerary-items.controller.ts
+ M src/itinerary-items/itinerary-items.module.ts
+ M src/itinerary-items/itinerary-items.service.ts
+ M src/main.ts
+ M src/match-learning/match-learning.scheduler.ts
+ M src/mobile/controllers/mobile-execution.controller.ts
+ M src/mobile/controllers/mobile-planning.controller.ts
+ M src/mobile/controllers/mobile-user.controller.ts
+ M src/mobile/dto/mobile-execution.types.ts
+ M src/mobile/mobile.module.ts
+ M src/mobile/services/mobile-execution-write.service.ts
+ M src/mobile/services/mobile-execution.service.ts
+ M src/mobile/services/mobile-planning.service.ts
+ M src/mobile/ws/trip-context-change-notifier.service.ts
+ M src/mobile/ws/trip-context-ws.types.ts
+ M src/places/dto/admin-place.dto.ts
+ M src/places/dto/create-place.dto.ts
+ M src/places/dto/geo-result.dto.ts
+ M src/places/dto/place-image.dto.ts
+ M src/places/dto/update-place.dto.ts
+ M src/places/interfaces/place-metadata.interface.ts
+ M src/places/places.controller.ts
+ M src/places/places.service.ts
+ M src/places/services/iceland-poi-features.service.ts
+ M src/places/services/nature-poi.service.ts
+ M src/places/types/iceland-poi-categories.ts
+ M src/places/utils/iceland-canonical-poi-coords.util.ts
+ M src/places/utils/metadata-enricher.util.ts
+ M src/places/utils/physical-metadata-generator.util.ts
+ M src/poi-access-capacity/fixtures/is-c-tier.crowding-profiles.ts
+ M src/poi-access-capacity/poi-access-capacity.controller.ts
+ M src/poi-access-capacity/utils/evaluate-poi-access.util.spec.ts
+ M src/poi-access-capacity/utils/evaluate-poi-access.util.ts
+ M src/poi-access-capacity/utils/poi-access-feasibility-mapper.util.ts
+ M src/poi-access-capacity/utils/trip-reservation-evidence.util.ts
+ M src/route-directions/README.md
+ M src/route-directions/dto/update-route-direction.dto.ts
+ M src/route-directions/interfaces/route-direction.interface.ts
+ M src/route-directions/route-directions.controller.ts
+ M src/route-directions/route-directions.service.ts
+ M src/skills/plan/shared/plan-state.types.ts
+ M src/skills/world/services/road-status-realtime.service.spec.ts
+ M src/skills/world/services/road-status-realtime.service.ts
+ D src/skills/world/services/weather-sync.cron.ts
+ M src/skills/world/world-build-context.skill.ts
+ D src/tasks/tasks.module.ts
+ D src/tasks/tasks.service.ts
+ M src/transport/contracts/travel-eta-actual.contract.ts
+ M src/travel-ontology/contracts/index.ts
+ M src/travel-ontology/contracts/travel-world-fact.types.ts
+ M src/travel-ontology/contracts/world-fact-to-snapshot.adapter.ts
+ M src/travel-ontology/evaluators/ontology-constraint.evaluator.spec.ts
+ M src/travel-ontology/evaluators/ontology-constraint.evaluator.ts
+ M src/travel-ontology/evaluators/ontology-constraint.types.ts
+ M src/travel-ontology/p2-temporal/selected-user-advisory/index.ts
+ M src/travel-ontology/projections/ontology-issues.projection.spec.ts
+ M src/travel-ontology/projections/ontology-issues.projection.ts
+ M src/travel-ontology/travel-ontology.module.ts
+ D src/trip-templates/dto/trip-template.dto.ts
+ D src/trip-templates/trip-templates.controller.ts
+ D src/trip-templates/trip-templates.module.ts
+ D src/trip-templates/trip-templates.service.ts
+ M src/trips/arrange-itinerary/arrange-itinerary.controller.ts
+ M src/trips/arrange-itinerary/services/plan-proposal-apply.service.ts
+ M src/trips/arrange-itinerary/services/planning-orchestrator-facade.service.ts
+ M src/trips/attraction-explore/ATTRACTION_EXPLORE_API.md
+ M src/trips/attraction-explore/constants/attraction-explore-catalog.constants.ts
+ M src/trips/attraction-explore/dto/attraction-explore.dto.ts
+ M src/trips/attraction-explore/services/attraction-explore-auto-arrange.service.ts
+ M src/trips/attraction-explore/services/attraction-explore-candidate.service.ts
+ M src/trips/attraction-explore/services/attraction-explore-context.service.ts
+ M src/trips/attraction-explore/services/attraction-explore-intent-compile.service.ts
+ M src/trips/attraction-explore/services/attraction-explore-orchestrator.service.ts
+ M src/trips/attraction-explore/services/attraction-explore-recommendations.service.ts
+ M src/trips/attraction-explore/utils/attraction-explore-card.util.ts
+ M src/trips/attraction-explore/utils/attraction-explore-experience-coverage.util.ts
+ M src/trips/attraction-explore/utils/attraction-explore-intent-compiler.util.ts
+ M src/trips/attraction-explore/utils/attraction-explore-place.util.spec.ts
+ M src/trips/attraction-explore/utils/attraction-explore-place.util.ts
+ M src/trips/budget-os/utils/budget-config.util.ts
+ M src/trips/contextual-recommendations/contextual-recommendations.controller.ts
+ M src/trips/contextual-recommendations/services/contextual-recommendations-commit.service.ts
+ M src/trips/copilot/ACTIVITY_EDITOR_AI_POLICY.md
+ M src/trips/copilot/PAGE_INSIGHT_API.md
+ M src/trips/copilot/contracts/activity-editor-ai.ts
+ M src/trips/copilot/contracts/page-ai-contracts.ts
+ M src/trips/copilot/contracts/page-insight.types.ts
+ M src/trips/copilot/dto/page-insight.dto.ts
+ M src/trips/copilot/services/activity-editor-insight.selector.spec.ts
+ M src/trips/copilot/services/activity-editor-insight.selector.ts
+ M src/trips/copilot/services/activity-editor-orchestrator.spec.ts
+ M src/trips/copilot/services/activity-editor-page-context.builder.spec.ts
+ M src/trips/copilot/services/activity-editor-page-context.builder.ts
+ M src/trips/copilot/services/page-ai-contract.registry.spec.ts
+ M src/trips/copilot/services/page-insight-narrative.service.ts
+ M src/trips/copilot/services/page-insight-orchestrator.service.ts
+ M src/trips/decision-semantics/services/decision-semantics.service.ts
+ D src/trips/decision/models/physical-road-legacy.adapter.ts
+ M src/trips/decision/repair/fuel-reachability-repairs.ts
+ M src/trips/decision/schedulers/approval-cleanup.scheduler.ts
+ M src/trips/decision/trip-decision-engine.service.ts
+ M src/trips/decision/world-model.ts
+ M src/trips/dto/frontend-trip-detail-tab-api-client.ts
+ M src/trips/dto/frontend-trip-detail-tab-api.types.ts
+ M src/trips/exploration/exploration-ontology-entry.harness.spec.ts
+ M src/trips/exploration/exploration.module.ts
+ M src/trips/exploration/services/consumer-exploration-issues.service.ts
+ M src/trips/exploration/services/exploration-reliability.service.ts
+ M src/trips/exploration/types/exploration.types.ts
+ M src/trips/fuel/build-fuel-input-from-plan.ts
+ M src/trips/fuel/index.ts
+ M src/trips/guardian-decision-core/evidence/gagnaveita-collector-parse.util.ts
+ M src/trips/guardian-decision-core/evidence/gagnaveita-faerd.mapper.ts
+ M src/trips/guardian-decision-core/execution/plan-version-apply.executor.ts
+ M src/trips/guardian-decision-core/guardian-decision-core.module.ts
+ M src/trips/guardian-decision-core/persistence/rfc001-decision-ledger.store.ts
+ M src/trips/guardian-decision-core/plan-version/plan-version.store.ts
+ M src/trips/guardian-decision-core/workspace/decision-workspace.service.ts
+ M src/trips/overall-readiness/OVERALL_TRIP_READINESS_API.md
+ M src/trips/overall-readiness/index.ts
+ M src/trips/overall-readiness/services/overall-trip-readiness.service.ts
+ M src/trips/readiness/readiness.controller.ts
+ M src/trips/routing/execution/terrain-vehicle-compatibility.ts
+ M src/trips/tep/services/tep-local-repair-apply.service.ts
+ M src/trips/tep/services/tep-plan-metadata.service.ts
+ M src/trips/tep/tep.module.ts
+ M src/trips/trip-constraint-solver/utils/trip-route-plan-draft.util.ts
+ M src/trips/trips.controller.ts
+?? .docs/iceland-self-drive-situation-acceptance-fixture.json
+?? .env.staging
+?? .env.staging.runtime
+?? archives/
+?? config/decision-runtime/iceland-road-status-gagnaveita.env
+?? data/destination-packs/is/certification/knowledge-pack/
+?? data/destination-packs/is/knowledge-pack.manifest.json
+?? data/destination-packs/is/knowledge/
+?? data/destination-packs/is/sources/
+?? internal-docs/product/travel-ontology-p0-07d-canonical-apply.md
+?? internal-docs/product/travel-ontology-p0-08-signoff.md
+?? internal-docs/product/travel-ontology-p0-13-selected-canary-observation.md
+?? internal-docs/product/travel-ontology-p0-14-expanded-cohort-observation.md
+?? internal-docs/product/travel-ontology-p0-15-real-pilot-cohort-validation.md
+?? internal-docs/product/travel-ontology-p0-16-default-read-write-activation.md
+?? internal-docs/product/travel-ontology-p0-17-stability-tail.md
+?? internal-docs/product/travel-ontology-p0-authority-cutover.md
+?? internal-docs/product/travel-ontology-p0-authority-readiness-matrix.md
+?? internal-docs/product/travel-ontology-p0-closure-report.md
+?? internal-docs/product/travel-ontology-p0-no-bypass-audit.md
+?? internal-docs/product/travel-ontology-p0-production-canary-readiness.md
+?? internal-docs/product/travel-ontology-p0-write-chain-seal.md
+?? internal-docs/product/travel-ontology-p1-activity-disruption-slice.md
+?? internal-docs/product/travel-ontology-p1-closure-report.md
+?? internal-docs/product/travel-ontology-p1-continuous-world-change-loop.md
+?? internal-docs/product/travel-ontology-p1-road-closure-slice.md
+?? internal-docs/product/travel-ontology-p1-weather-deterioration-slice.md
+?? internal-docs/product/travel-ontology-p2-03b-wave1-live-observation.md
+?? internal-docs/product/travel-ontology-p2-03b-wave2-activation.md
+?? internal-docs/product/travel-ontology-p2-03c-wave2-observation.md
+?? internal-docs/product/travel-ontology-p2-04-selected-user-cohort-expansion.md
+?? internal-docs/product/travel-ontology-triad-signoff.md
+?? openapi.json
+?? prisma/migrations/20260719150000_place_category_supply_service/
+?? prisma/migrations/20260719151000_backfill_is_place_supply_service/
+?? prisma/migrations/20260721170000_rfc001_formal_storage/
+?? scripts/backfill-image-poi-address-offline.ts
+?? scripts/backfill-image-poi-address-reverse.ts
+?? scripts/backfill-osm-iceland-place-address.ts
+?? scripts/backfill-osm-iceland-place-commercial.ts
+?? scripts/backfill-rfc001-table-storage.ts
+?? scripts/enrich-iceland-main-routes-skeleton.ts
+?? scripts/enrich-osm-iceland-poi-copy.ts
+?? scripts/fix-iceland-route-direction-data.ts
+?? scripts/iceland-self-drive-demo-replay.ts
+?? scripts/iceland-situation-smoke.sh
+?? scripts/import-iceland-ev-charging-from-osm.ts
+?? scripts/import-iceland-fuel-stations-from-osm.ts
+?? scripts/import-iceland-parking-from-osm.ts
+?? scripts/import-iceland-poi-from-osm.ts
+?? scripts/lib/image-poi-address-weak.spec.ts
+?? scripts/lib/image-poi-address-weak.util.ts
+?? scripts/ontology-canary-runtime-activate.ts
+?? scripts/ontology-canary-runtime-server.ts
+?? scripts/ontology-canary-scope-check.ts
+?? scripts/ontology-kill-switch-rollback-drill.ts
+?? scripts/ontology-p0-13-observation-gate.ts
+?? scripts/ontology-p0-14-observation-gate.ts
+?? scripts/ontology-p0-15-pilot-validation-gate.ts
+?? scripts/ontology-p0-16-gate-a.ts
+?? scripts/ontology-p0-17-stability-tail.ts
+?? scripts/ontology-p1-activity-disruption-pilot.ts
+?? scripts/ontology-p1-road-closure-pilot.ts
+?? scripts/ontology-p1-weather-deterioration-pilot.ts
+?? scripts/ontology-p2-selected-user-cohort-expansion-approve.ts
+?? scripts/ontology-p2-selected-user-cohort-expansion-submit.ts
+?? scripts/ontology-production-unlock-check.ts
+?? scripts/ontology-selected-canary-release.ts
+?? scripts/ontology-shadow-baseline.ts
+?? scripts/seed-iceland-road-status-seasonal.ts
+?? scripts/snap-iceland-route-corridors.ts
+?? scripts/sync-iceland-road-status-gagnaveita.ts
+?? scripts/tmp-seed-drivers-license.ts
+?? src/decision-runtime/P1_SEMANTIC_CONVERGENCE.md
+?? src/decision-runtime/P2_RFC001_TABLE_STORAGE.md
+?? src/decision-runtime/P3_MODULE_CLEANUP.md
+?? src/decision-runtime/constraints/ontology-authority-rollout.config.spec.ts
+?? src/decision-runtime/constraints/ontology-authority-rollout.config.ts
+?? src/decision-runtime/constraints/ontology-authority-selected-trips.ts
+?? src/decision-runtime/constraints/ontology-authority-selected-trips.whitelist.json
+?? src/decision-runtime/decision-cases/PLANNING_DECISION_SPACE_ADMISSION.md
+?? src/decision-runtime/decision-cases/utils/
+?? src/decision-runtime/decision-inbox-semantics.ts
+?? src/decision-runtime/execution/effective-plan-version.store.ts
+?? src/decision-runtime/execution/effective-plan-writer.service.spec.ts
+?? src/decision-runtime/execution/effective-plan-writer.service.ts
+?? src/decision-runtime/execution/p0-direct-plan-mutation.policy.ts
+?? src/decision-runtime/execution/write-entry-registry.spec.ts
+?? src/decision-runtime/execution/write-entry-registry.ts
+?? src/decision-runtime/execution/write-entry-registry.types.ts
+?? src/decision-runtime/gateway/controllers/iceland-self-drive-situation.controller.ts
+?? src/decision-runtime/gateway/services/iceland-self-drive-situation-product.service.ts
+?? src/decision-runtime/p1-semantic-convergence-status.util.ts
+?? src/decision-runtime/p1-semantic-convergence.config.ts
+?? src/decision-runtime/p1-semantic-convergence.spec.ts
+?? src/decision-runtime/p3-module-cleanup-status.util.ts
+?? src/decision-runtime/p3-module-cleanup.spec.ts
+?? src/decision-runtime/packs/knowledge/
+?? src/decision-runtime/plan-version-semantics.ts
+?? src/decision-runtime/storage/
+?? src/harness/evals/ontology-world-model/ontology-authority-cutover.util.ts
+?? src/harness/evals/ontology-world-model/ontology-authority-readiness-matrix.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-gate1-canonical-apply.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-gate1-http.e2e.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-no-bypass-audit.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-p1-activity-disruption.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-p1-road-closure-loop.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-p1-road-monitoring-pilot.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-p1-weather-deterioration.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-p2-selected-user-cohort-expansion.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-production-canary-readiness.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-scenario-001-authority.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-scenario-002-authority.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-scenario-003-authority.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-scenario-004-authority.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-scenario-005-authority.spec.ts
+?? src/harness/evals/ontology-world-model/ontology-write-chain-seal.spec.ts
+?? src/itinerary-items/ADD_ACTIVITY_NEARBY_API.md
+?? src/itinerary-items/BOOKING_IMPORT_IOS_API.md
+?? src/itinerary-items/dto/add-activity-nearby.dto.ts
+?? src/itinerary-items/services/add-activity-nearby.service.ts
+?? src/itinerary-items/services/booking-import.service.ts
+?? src/itinerary-items/types/
+?? src/itinerary-items/utils/add-activity-nearby.util.ts
+?? src/itinerary-items/utils/booking-import.heuristic.util.spec.ts
+?? src/itinerary-items/utils/booking-import.heuristic.util.ts
+?? src/itinerary-items/utils/resolve-nearby-poi-origin.util.spec.ts
+?? src/itinerary-items/utils/resolve-nearby-poi-origin.util.ts
+?? src/mobile/PERSONAL_CENTER_IOS_API.md
+?? src/mobile/controllers/mobile-trip-credentials.controller.ts
+?? src/mobile/dictionaries/
+?? src/mobile/dto/mobile-credential-documents.dto.ts
+?? src/mobile/dto/mobile-daily-drive.types.ts
+?? src/mobile/dto/mobile-driver-profile.dto.ts
+?? src/mobile/dto/mobile-execution-quick-actions.types.ts
+?? src/mobile/dto/mobile-identity.dto.ts
+?? src/mobile/dto/mobile-in-trip-home.types.ts
+?? src/mobile/dto/mobile-overview-dashboard.types.ts
+?? src/mobile/dto/mobile-travel-portrait.dto.ts
+?? src/mobile/services/mobile-credential-document-storage.service.ts
+?? src/mobile/services/mobile-credential-documents.service.spec.ts
+?? src/mobile/services/mobile-credential-documents.service.ts
+?? src/mobile/services/mobile-credential-status.service.ts
+?? src/mobile/services/mobile-daily-drive.service.ts
+?? src/mobile/services/mobile-driver-profile.service.ts
+?? src/mobile/services/mobile-execution-quick-actions.service.ts
+?? src/mobile/services/mobile-identity-options.service.spec.ts
+?? src/mobile/services/mobile-identity-options.service.ts
+?? src/mobile/services/mobile-identity.service.ts
+?? src/mobile/services/mobile-in-trip-home.service.ts
+?? src/mobile/services/mobile-overview-dashboard.service.ts
+?? src/mobile/services/mobile-travel-portrait.service.ts
+?? src/mobile/services/user-preferences-other.store.ts
+?? src/mobile/utils/daily-drive-daylight-detail.projection.util.spec.ts
+?? src/mobile/utils/daily-drive-daylight-detail.projection.util.ts
+?? src/mobile/utils/daily-drive-dimension-detail.projection.util.spec.ts
+?? src/mobile/utils/daily-drive-dimension-detail.projection.util.ts
+?? src/mobile/utils/daily-drive-fuel-corridor.projection.util.spec.ts
+?? src/mobile/utils/daily-drive-fuel-corridor.projection.util.ts
+?? src/mobile/utils/daily-drive-road-detail.projection.util.spec.ts
+?? src/mobile/utils/daily-drive-road-detail.projection.util.ts
+?? src/mobile/utils/daily-drive-schedule-detail.projection.util.spec.ts
+?? src/mobile/utils/daily-drive-schedule-detail.projection.util.ts
+?? src/mobile/utils/daily-drive-status.projection.util.spec.ts
+?? src/mobile/utils/daily-drive-status.projection.util.ts
+?? src/mobile/utils/daily-drive-weather-detail.projection.util.spec.ts
+?? src/mobile/utils/daily-drive-weather-detail.projection.util.ts
+?? src/mobile/utils/drive-session.projection.util.spec.ts
+?? src/mobile/utils/drive-session.projection.util.ts
+?? src/mobile/utils/execution-corridor-poi.util.ts
+?? src/mobile/utils/execution-quick-actions.projection.util.spec.ts
+?? src/mobile/utils/execution-quick-actions.projection.util.ts
+?? src/mobile/utils/in-trip-home.projection.util.spec.ts
+?? src/mobile/utils/in-trip-home.projection.util.ts
+?? src/mobile/utils/overview-dashboard.projection.util.spec.ts
+?? src/mobile/utils/overview-dashboard.projection.util.ts
+?? src/places/utils/osm-commercial-attrs.util.spec.ts
+?? src/places/utils/osm-commercial-attrs.util.ts
+?? src/poi-access-capacity/utils/poi-access-feasibility-mapper.util.spec.ts
+?? src/route-directions/contracts/
+?? src/route-directions/dto/environment-overrides-v1.dto.ts
+?? src/route-directions/dto/segment-facts-v1.dto.ts
+?? src/route-directions/utils/route-direction-admin-metadata.util.spec.ts
+?? src/route-directions/utils/route-direction-admin-metadata.util.ts
+?? src/skills/world/services/iceland-seasonal-road-status.util.spec.ts
+?? src/skills/world/services/iceland-seasonal-road-status.util.ts
+?? src/skills/world/services/ingest-gagnaveita-road-status.ts
+?? src/travel-ontology/authority/
+?? src/travel-ontology/canary/
+?? src/travel-ontology/contracts/action-proposal.types.ts
+?? src/travel-ontology/contracts/build-constraint-assessment.spec.ts
+?? src/travel-ontology/contracts/build-constraint-assessment.ts
+?? src/travel-ontology/contracts/constraint-assessment.types.ts
+?? src/travel-ontology/contracts/fact-epistemic-boundary.types.ts
+?? src/travel-ontology/gate1/
+?? src/travel-ontology/observability/
+?? src/travel-ontology/p1-activity-disruption/
+?? src/travel-ontology/p1-road-closure/
+?? src/travel-ontology/p1-weather-deterioration/
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.activation.ts
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.authorization.ts
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.cohort.ts
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.display-variant.ts
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.funnel.ts
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.kill-switch.ts
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.observation-gate.ts
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.registry.ts
+?? src/travel-ontology/p2-temporal/selected-user-advisory/cohort-expansion.waves.ts
+?? src/travel-ontology/pilot/
+?? src/travel-ontology/services/ontology-canonical-apply.service.ts
+?? src/trips/attraction-explore/dto/attraction-explore-candidate-coerce.spec.ts
+?? src/trips/attraction-explore/utils/resolve-explore-attraction-ref.util.spec.ts
+?? src/trips/attraction-explore/utils/resolve-explore-attraction-ref.util.ts
+?? src/trips/copilot/dto/page-insight-mode.util.ts
+?? src/trips/copilot/dto/page-insight.dto.spec.ts
+?? src/trips/daily-drive/
+?? src/trips/execution-overview-dashboard/
+?? src/trips/execution-quick-actions/
+?? src/trips/fuel/collect-drive-corridor-coordinates.spec.ts
+?? src/trips/fuel/collect-drive-corridor-coordinates.ts
+?? src/trips/fuel/decode-travel-route-geometry.ts
+?? src/trips/fuel/project-fuel-poi-onto-corridor.spec.ts
+?? src/trips/fuel/project-fuel-poi-onto-corridor.ts
+?? src/trips/guardian-decision-core/evidence/gagnaveita-multi-road.spec.ts
+?? src/trips/iceland-self-drive/
+?? src/trips/in-trip-home/
+?? src/trips/overall-readiness/SELF_DRIVE_READINESS_REPORT.md
+?? src/trips/overall-readiness/config/iceland-compliance-knowledge.pack.ts
+?? src/trips/overall-readiness/ports/
+?? src/trips/overall-readiness/types/self-drive-readiness.types.ts
+?? src/trips/overall-readiness/utils/assemble-self-drive-readiness.util.spec.ts
+?? src/trips/overall-readiness/utils/assemble-self-drive-readiness.util.ts

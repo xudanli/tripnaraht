@@ -43,6 +43,41 @@ describe('intake-predictive-simulator.util — estimated_utility_delta', () => {
     expect(t).toBeDefined();
     expect(typeof t!.estimated_utility_delta).toBe('number');
     expect(t!.metrics.utility_delta).toBe(t!.estimated_utility_delta);
-    expect(t!.estimated_utility_delta).toBe(-12);
+    expect(t!.estimated_utility_delta).toBe(-10);
+  });
+
+  it('极昼马拉松 SKU 驱动 FATIGUE_OVERLOAD 仿真 trace', () => {
+    const msg = '想利用极昼，不间断连续自驾环岛';
+    const traces = buildHistoricalBoundarySimulations({
+      tripPlanRequest: { message: msg },
+      detectRingRoadIntent: () => true,
+    });
+    const t = traces.find((x) => x.reason === 'FATIGUE_OVERLOAD');
+    expect(t).toBeDefined();
+    expect(t!.estimated_utility_delta).toBe(-25);
+  });
+
+  it('旺季错峰 SKU 驱动 ETA_INFEASIBLE 仿真 trace', () => {
+    const msg =
+      '6月25号下午我们到北部的胡萨维克，想安排一场观鲸，晚上住在阿克雷里，希望避开白天的旅游大巴人潮。';
+    const traces = buildHistoricalBoundarySimulations({
+      tripPlanRequest: { message: msg },
+      detectRingRoadIntent: () => false,
+    });
+    const t = traces.find((x) => x.reason === 'ETA_INFEASIBLE');
+    expect(t).toBeDefined();
+    expect(t!.estimated_utility_delta).toBe(-20);
+  });
+
+  it('Yaris F208：意图 SKU 驱动地形仿真 trace（与公理 anchor 对齐）', () => {
+    const msg =
+      '外头写着F208公路开了，我们打算6月18号租一辆普通的丰田 Yaris，走 F208 北线横穿内陆高地去兰曼纳劳卡。';
+    const traces = buildHistoricalBoundarySimulations({
+      tripPlanRequest: { message: msg },
+      detectRingRoadIntent: () => false,
+    });
+    const t = traces.find((x) => x.reason === 'TERRAIN_F_ROAD_UNFIT');
+    expect(t).toBeDefined();
+    expect(t!.estimated_utility_delta).toBe(-10);
   });
 });

@@ -1,0 +1,58 @@
+{
+  "evidenceType": "STAGING_REPLAY_ROAD_CLOSE_B_SUGGEST",
+  "acceptanceMode": "STAGING_REPLAY",
+  "liveSource": "REAL-SHAPE-ROAD-REPLAY-F208-CLOSED",
+  "sourceProvider": "vegagerdin_gagnaveita",
+  "startedAt": "2026-07-10T20:24:17.520Z",
+  "endedAt": "2026-07-10T20:24:17.528Z",
+  "tripId": "a0a99999-9999-4999-8999-999999999999",
+  "userId": "a0a99999-9999-4999-8999-999999999901",
+  "phase": "SUGGEST",
+  "problemId": "problem_road_F208_a0a99999_1783715057517",
+  "decisionId": "dec_problem_road_F208_a0a99999_1783715057517_1783715057525",
+  "repairCount": 3,
+  "fixture": "scripts/fixtures/gagnaveita-f208-closed-real-shape.json",
+  "checks": [
+    {
+      "id": "PC-ROAD-B-001",
+      "pass": true,
+      "detail": "repairMethods=ONTOLOGY_EQUIVALENCE,LOCAL_SUBSTITUTION,ROUTE_REPAIR"
+    },
+    {
+      "id": "PC-ROAD-B-002",
+      "pass": true,
+      "detail": "originalBlock=BLOCK"
+    },
+    {
+      "id": "PC-ROAD-B-003",
+      "pass": true,
+      "detail": "executable=3"
+    },
+    {
+      "id": "PC-ROAD-B-004",
+      "pass": true,
+      "detail": "blockedExecutable=0"
+    },
+    {
+      "id": "PC-ROAD-B-005",
+      "pass": true,
+      "detail": "gate=SUGGEST_REPLACE (BLOCK + executable options)"
+    },
+    {
+      "id": "PC-ROAD-B-006",
+      "pass": true,
+      "detail": "bypass=cand_c +90min"
+    },
+    {
+      "id": "PC-ROAD-B-007",
+      "pass": true,
+      "detail": "effectivePlan=unchanged"
+    },
+    {
+      "id": "PC-ROAD-B-008",
+      "pass": true,
+      "detail": "legacyWriteInvocations=0"
+    }
+  ],
+  "result": "PASS"
+}

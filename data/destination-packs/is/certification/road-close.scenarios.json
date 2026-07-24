@@ -1,0 +1,46 @@
+[
+  {
+    "scenarioId": "CERT-IS-ROAD-CLOSED-BLOCK",
+    "country": "IS",
+    "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
+    "facts": { "road": { "status": "CLOSED" } },
+    "candidateUsesRoute": true,
+    "expect": {
+      "matched": true,
+      "ruleId": "IS_ROAD_CLOSED_BLOCK",
+      "verdict": "BLOCK"
+    }
+  },
+  {
+    "scenarioId": "CERT-IS-ROAD-CLOSED-BYPASS",
+    "country": "IS",
+    "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
+    "facts": { "road": { "status": "CLOSED" } },
+    "candidateUsesRoute": false,
+    "expect": {
+      "matched": true,
+      "ruleId": "IS_ROAD_CLOSED_BLOCK",
+      "verdict": "PASS"
+    }
+  },
+  {
+    "scenarioId": "CERT-IS-ROAD-LIMITED-WARN",
+    "country": "IS",
+    "semanticKey": "ROAD_SEGMENT_RESTRICTED",
+    "facts": { "road": { "status": "LIMITED" } },
+    "candidateUsesRoute": true,
+    "expect": {
+      "matched": true,
+      "ruleId": "IS_ROAD_LIMITED_WARN",
+      "verdict": "WARNING"
+    }
+  },
+  {
+    "scenarioId": "CERT-IS-WEATHER-NO-MATCH",
+    "country": "IS",
+    "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
+    "facts": { "road": { "status": "OPEN" } },
+    "candidateUsesRoute": true,
+    "expect": { "matched": false }
+  }
+]

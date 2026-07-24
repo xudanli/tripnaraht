@@ -1,0 +1,32 @@
+# TripNARA DPO 微调（decision_trajectories 导出的偏好对）
+_base_: base_config.yaml
+
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+
+stage: dpo
+dataset_dir: /app/data
+
+# 注册后的稳定路径（ingest 后默认存在）；也可用 TRAINING_DPO_DATASET_PATH 覆盖
+dpo_jsonl_path: /app/data/tripnara_dpo_preferences.jsonl
+
+# 可选分桶：仅真拓扑 / 仅 planner / 等
+# dpo_pair_types: [planner_obedience]
+# dpo_rejected_sources: [true_topology]
+
+dpo_beta: 0.1
+max_prompt_length: 2048
+cutoff_len: 4096
+
+lora_rank: 64
+lora_alpha: 128
+lora_dropout: 0.05
+lora_target: q_proj,v_proj,k_proj,o_proj,gate_proj,up_proj,down_proj
+
+num_train_epochs: 2
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 5.0e-6
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+
+mlflow_experiment: tripnara-dpo-finetune

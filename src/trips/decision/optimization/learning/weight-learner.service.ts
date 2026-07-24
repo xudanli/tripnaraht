@@ -71,6 +71,11 @@ export interface FeedbackRecord {
     completionRate?: number;          // 0-1
     daysCompleted?: number;
     totalDays?: number;
+
+    /** 决策时记录的期望效用 [0,1]，与 completionRate 对照 */
+    predictedUtility?: number;
+    /** 单侧预测 regret 代理 max(0, clamp(pred)−clamp(actual))，[0,1] */
+    predictionRegret01?: number;
   };
   
   /** 当时的权重配置 */

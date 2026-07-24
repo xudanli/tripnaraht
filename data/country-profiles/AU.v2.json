@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 2,
+  "isoCode": "AU",
+  "nameCN": "澳大利亚",
+  "nameEN": "Australia",
+  "currencyCode": "AUD",
+  "currencyName": "澳元",
+  "exchangeRateToCNY": 4.72,
+  "exchangeRateToUSD": 0.65,
+  "paymentType": "HYBRID_DIGITAL_PREFER",
+  "paymentInfo": {
+    "contactlessUbiquitous": true,
+    "notes": "主流商户支持 Tap & Pay；偏远内陆需备现金。",
+    "tipping": "非强制，餐厅可自愿 10%。"
+  },
+  "powerInfo": {
+    "plugs": ["I"],
+    "plugTypes": ["I"],
+    "voltage": 230,
+    "voltageUnit": "V",
+    "frequency": 50,
+    "frequencyUnit": "Hz"
+  },
+  "emergency": {
+    "fire": "000",
+    "police": "000",
+    "ambulance": "000",
+    "unifiedNumber": "000"
+  },
+  "entryRequirements": {
+    "officialLink": "https://immi.homeaffairs.gov.au/",
+    "byNationality": {
+      "CN": {
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Visitor visa",
+        "requirementSummaryCN": "中国公民需申请澳大利亚访客签证。"
+      },
+      "US": {
+        "status": "EVISA",
+        "statusLabel": "ETA",
+        "requirementSummary": "美国护照：ETA 电子旅行授权。"
+      }
+    }
+  },
+  "complianceInfo": {
+    "drivingRules": {
+      "minAge": 21,
+      "drivingSide": "LEFT",
+      "requiresInternationalLicense": false,
+      "gravelRoadPresent": true,
+      "leftHandDrivingEtaBuffer": 0.12,
+      "speedLimits": {
+        "urban": 50,
+        "gravelRoad": 80,
+        "asphaltHighway": 100
+      },
+      "specialRules": [
+        "左侧通行；环岛让行规则与 NZ 类似",
+        "长途内陆需关注 fuel range 与手机信号盲区"
+      ]
+    }
+  },
+  "timeBoundaries": {
+    "daylightFluctuation": true,
+    "seasons": [
+      {
+        "name": "SUMMER_BUSHFIRE_RISK",
+        "months": [12, 1, 2],
+        "avgDaylightHours": 14,
+        "outdoorRoutingWindow": { "start": "06:00", "end": "20:00" },
+        "recommendedCarType": "ANY"
+      }
+    ],
+    "environmentalTriggers": {
+      "weatherAlertSource": "http://www.bom.gov.au/",
+      "roadStatusSource": "https://traffic.vicroads.vic.gov.au/",
+      "autoRerouteTriggers": [
+        "BUSHFIRE_SMOKE",
+        "WORLD_ROAD_CLOSED (B100)",
+        "EXTREME_HEAT_INLAND"
+      ]
+    }
+  },
+  "travelCulture": {
+    "tippingHabits": { "level": "OPTIONAL", "description": "小费非强制" },
+    "experienceRules": []
+  }
+}

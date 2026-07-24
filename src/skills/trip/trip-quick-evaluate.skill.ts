@@ -51,7 +51,7 @@ export class TripQuickEvaluateSkill implements Skill<TripQuickEvaluateInput, Tri
 
   metadata = {
     name: 'trip.quickEvaluate',
-    description: '对行程进行快速体检，输出统一的评分、警告和修复建议',
+    description: 'trip.quickEvaluate：对行程进行快速体检，输出统一的评分、警告和修复建议',
     version: '1.0.0',
     category: 'analytics' as const,
   };

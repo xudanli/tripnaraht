@@ -1,0 +1,73 @@
+{
+  "fixtureVersion": "tripnara-e2e-synthetic-dso/v1",
+  "caseId": "iceland-storm-icecave-failure-001",
+  "description": "Synthetic: Iceland south coast blizzard on Route 1 + blue ice cave tour cancelled; high frustration → 6.1 apology-first narrative baseline.",
+  "strategySignals": {
+    "weather_severity": "RED_ALERT",
+    "wind_speed_mps": 25,
+    "precipitation": "heavy_snow",
+    "roads": [
+      {
+        "id": "IS-R1-SOUTH",
+        "name": "Route 1 (South Coast)",
+        "segment": "Selfoss–Vík",
+        "status": "CLOSED",
+        "reason": "winter_storm_impassable"
+      }
+    ],
+    "poiStatuses": [
+      {
+        "poi_id": "blue-ice-cave-tour",
+        "name_zh": "蓝冰洞探险",
+        "status": "UNAVAILABLE_DUE_TO_WEATHER",
+        "detail": "Operator closure + road impassable"
+      }
+    ]
+  },
+  "user_emotional_account": {
+    "accumulated_goodwill": 0.22,
+    "current_tolerance_bonus": 0.88,
+    "frustration_score": 0.85,
+    "frustration_circuit_active": true,
+    "realtime_reroll_count": 2
+  },
+  "executionHints": {
+    "research_stability_mode": true,
+    "notes": "After two itinerary mutations, research members narrow to stability-first skills (see flight-research / hotel-research specs)."
+  },
+  "negotiationReportOverlay": {
+    "version": 1,
+    "has_conflicts": true,
+    "conflict_flags": ["SUTURE_COEXISTENCE"],
+    "primary_narrative_stance": "STITCH_TRANSPARENCY",
+    "tolerance_bonus": 0.92,
+    "mental_offset_hints": {
+      "frustration_circuit_active": true
+    },
+    "stitch_tactic": "AGGRESSIVE_COMPENSATION",
+    "items": [
+      {
+        "kind": "SUTURE_COEXISTENCE",
+        "summary": "实时路况熔断与草案缝合并存"
+      }
+    ]
+  },
+  "narrativeExpectations_6_1": {
+    "order": ["apology_empathy", "alternative_strategy"],
+    "must_contain_substrings_zh": ["歉意恢复", "6.1"],
+    "forbidden_patterns_zh": [
+      "Loss-Gain",
+      "省下50",
+      "省下 50",
+      "虽然多开了",
+      "但您省"
+    ]
+  },
+  "expected": {
+    "trace_signals": {
+      "stability_mode_active": true,
+      "frustration_circuit_triggered": true,
+      "narrative_track": "EMPATHY_RECOVERY"
+    }
+  }
+}

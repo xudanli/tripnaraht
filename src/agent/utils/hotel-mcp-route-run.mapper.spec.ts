@@ -3,11 +3,15 @@ import {
   mapHotelMcpDataForRouteAndRun,
   countStayNightsBetweenInclusive,
   pickSpreadNightIndices,
+  pickFullTripReplanNightIndices,
   mergeSegmentHotelSearchResults,
   addDaysYmd,
   parseExplicitHotelNightScopeIndices,
+  parseHotelProximityAnchorDayNumber,
   parseExplicitStayWindowFromUserMessage,
   narrowHotelStayWindowWithNlMessage,
+  resolveHotelStayDatesForBoundTrip,
+  shouldSkipHotelDateClarification,
   messageExpressesMultiNightStayPlanningIntent,
   inferNightIndex0FromExplicitStayInTripWindow,
   diffCalendarDaysYmd,
@@ -66,6 +70,12 @@ describe('hotel-mcp-route-run.mapper', () => {
   it('pickSpreadNightIndices caps and spreads samples', () => {
     expect(pickSpreadNightIndices(6, 5)).toHaveLength(5);
     expect(pickSpreadNightIndices(3, 5)).toEqual([0, 1, 2]);
+  });
+
+  it('pickFullTripReplanNightIndices covers every night when within cap', () => {
+    expect(pickFullTripReplanNightIndices(5, 6)).toEqual([0, 1, 2, 3, 4]);
+    expect(pickFullTripReplanNightIndices(6, 6)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(pickFullTripReplanNightIndices(8, 6)).toHaveLength(6);
   });
 
   it('mergeSegmentHotelSearchResults attaches itineraryHintZh per segment', () => {
@@ -128,8 +138,70 @@ describe('hotel-mcp-route-run.mapper', () => {
         6,
       ),
     ).toEqual([0]);
+    expect(
+      parseExplicitHotelNightScopeIndices('第二天的行程给我推荐酒店', 6),
+    ).toEqual([1]);
+    expect(
+      parseExplicitHotelNightScopeIndices('第三天的行程推荐住宿', 6),
+    ).toEqual([2]);
     expect(parseExplicitHotelNightScopeIndices('整个行程酒店推荐', 6)).toBeNull();
     expect(parseExplicitHotelNightScopeIndices('推荐酒店', 6)).toBeNull();
+  });
+
+  it('parseHotelProximityAnchorDayNumber reads day for distance sorting', () => {
+    expect(
+      parseHotelProximityAnchorDayNumber('最好离第三天的行程要近'),
+    ).toBe(3);
+    expect(
+      parseHotelProximityAnchorDayNumber('第二天的行程给我推荐酒店，并且最好离第三天的行程要近'),
+    ).toBe(3);
+  });
+
+  it('narrowHotelStayWindowWithNlMessage narrows via day-scoped hotel intent without calendar dates', () => {
+    expect(
+      narrowHotelStayWindowWithNlMessage({
+        baseCheckIn: '2026-06-01',
+        baseCheckOut: '2026-06-07',
+        message: '第二天的行程给我推荐酒店，并且最好离第三天的行程要近',
+        tripStartYmd: '2026-06-01',
+        tripEndYmd: '2026-06-07',
+      }),
+    ).toEqual({ checkIn: '2026-06-02', checkOut: '2026-06-03' });
+  });
+
+  it('shouldSkipHotelDateClarification for bound trip scoped hotel ask', () => {
+    expect(
+      shouldSkipHotelDateClarification({
+        message: '第二天的行程给我推荐酒店，并且最好离第三天的行程要近',
+        tripId: 'trip-1',
+        checkIn: '2026-06-02',
+        checkOut: '2026-06-03',
+        tripStartYmd: '2026-06-01',
+        tripEndYmd: '2026-06-07',
+      }),
+    ).toBe(true);
+    expect(
+      shouldSkipHotelDateClarification({
+        message: '推荐酒店',
+        tripId: 'trip-1',
+        checkIn: '2026-06-01',
+        checkOut: '2026-06-07',
+        tripStartYmd: '2026-06-01',
+        tripEndYmd: '2026-06-07',
+      }),
+    ).toBe(true);
+  });
+
+  it('resolveHotelStayDatesForBoundTrip prefers day scope over router full-trip params', () => {
+    expect(
+      resolveHotelStayDatesForBoundTrip({
+        message: '第二天的行程给我推荐酒店，并且最好离第三天的行程要近',
+        paramsCheckIn: '2026-06-01',
+        paramsCheckOut: '2026-06-07',
+        tripStartYmd: '2026-06-01',
+        tripEndYmd: '2026-06-07',
+      }),
+    ).toEqual({ checkIn: '2026-06-02', checkOut: '2026-06-03' });
   });
 
   it('haversineKm is sensible for short distances', () => {
@@ -185,6 +257,39 @@ describe('hotel-mcp-route-run.mapper', () => {
     );
     expect(cards[0].distance_to_anchor_km).toBeDefined();
     expect(cards[0].distance_label_zh).toMatch(/测试餐厅/);
+  });
+
+  it('attachDistanceToAnchorForCards omits absurd distance (>250km or off-Iceland coords)', () => {
+    const anchor = { lat: 64.255, lng: -21.129, nameZh: '辛格维利尔国家公园' };
+    const far = attachDistanceToAnchorForCards(
+      [
+        {
+          id: '1',
+          source: 'airbnb',
+          name: 'Far listing',
+          nightIndex: 1,
+          listing_lat: 40.7,
+          listing_lng: -74.0,
+        },
+      ],
+      new Map([[1, anchor]]),
+    );
+    expect(far[0].distance_to_anchor_km).toBeUndefined();
+
+    const wrongSign = attachDistanceToAnchorForCards(
+      [
+        {
+          id: '2',
+          source: 'airbnb',
+          name: 'Wrong lng sign',
+          nightIndex: 1,
+          listing_lat: 64.14,
+          listing_lng: 21.94,
+        },
+      ],
+      new Map([[1, anchor]]),
+    );
+    expect(wrongSign[0].distance_to_anchor_km).toBeUndefined();
   });
 
   it('parseExplicitStayWindowFromUserMessage reads NL and clamps to trip', () => {

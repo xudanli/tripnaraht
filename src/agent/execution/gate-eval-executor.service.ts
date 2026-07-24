@@ -26,6 +26,7 @@ import { evaluateConflictMatrix, type ConflictMatrixRule } from '../../trips/dec
 import { PrismaService } from '../../prisma/prisma.service';
 import { getWeatherForTime } from '../../trips/ontology/environment/environment-domain.util';
 import { enrichPatentGateConstraintExtensions } from '../../decision/kernel/patent/patent-gate-constraints.util';
+import { isPhase6GateEvalFormalBlockDelegated } from '../../decision-runtime/phase6-legacy-deprecation.config';
 
 @Injectable()
 export class GateEvalExecutorService implements IGateEvalExecutor {
@@ -106,7 +107,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
 
     // 3. 有 blocker 且无需用户决策 -> BLOCK
     if (readinessBlockers.length > 0 && rulesNeedingDecision.length === 0) {
-      const gateResult: GateResultLike = {
+      const gateResult: GateResultLike = this.delegateFormalBlock({
         gate_result: 'BLOCK',
         violations: readinessBlockers.map((item: any) => ({
           type: 'SAFETY',
@@ -115,16 +116,19 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         })),
         required_adjustments: [],
         confidence: 0.9,
-      };
+      });
       const hasFailureRisk = readinessBlockers.some((b: any) => b?.type === 'FAILURE_RISK');
       return {
         constraints: this.finalizePatentConstraints(dso, {
           feasible: false,
           violations: gateResult.violations,
-          gateOutcome: 'BLOCK',
+          gateOutcome: gateResult.gate_result,
         }),
         gateResult,
-        alternatives: this.alternativesForBlockedGate(gateResult, hasFailureRisk ? 'failure_risk' : 'readiness'),
+        alternatives:
+          gateResult.gate_result === 'BLOCK'
+            ? this.alternativesForBlockedGate(gateResult, hasFailureRisk ? 'failure_risk' : 'readiness')
+            : undefined,
       };
     }
 
@@ -174,17 +178,21 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         }
       }
 
-      const constraints: ConstraintReport = {
-        feasible: gateResult.gate_result === 'ALLOW',
-        violations: (gateResult.violations || []).map((v) => ({ type: v.type, severity: v.severity, detail: v.detail })),
-        feasibleActions: gateResult.required_adjustments?.map((a) => a.action),
-        gateOutcome: gateResult.gate_result,
-      };
-      const gateResultLike: GateResultLike = {
+      const gateResultLike: GateResultLike = this.delegateFormalBlock({
         gate_result: gateResult.gate_result,
         violations: gateResult.violations || [],
         required_adjustments: gateResult.required_adjustments || [],
         confidence: gateResult.confidence ?? 0.8,
+      });
+      const constraints: ConstraintReport = {
+        feasible: gateResultLike.gate_result === 'ALLOW',
+        violations: (gateResultLike.violations || []).map((v) => ({
+          type: v.type,
+          severity: v.severity,
+          detail: v.detail,
+        })),
+        feasibleActions: gateResultLike.required_adjustments?.map((a) => a.action),
+        gateOutcome: gateResultLike.gate_result,
       };
       return {
         constraints: this.finalizePatentConstraints(dso, constraints),
@@ -200,7 +208,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     const extraViolations = await this.evaluateAdmissionAndSpatialAtoms(tripRequest, researchData, hardTruth);
 
     // 降级：默认 ALLOW（若 extraViolations 存在则 ADJUST_REQUIRED/BLOCK）
-    const gateResult: GateResultLike = {
+    const gateResult: GateResultLike = this.delegateFormalBlock({
       gate_result:
         extraViolations.some((v) => v.severity === 'HARD')
           ? 'BLOCK'
@@ -213,7 +221,7 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         why: typeof item.message === 'string' ? item.message : item.message?.zh || item.message?.en || '',
       })),
       confidence: 0.8,
-    };
+    });
     return {
       constraints: this.finalizePatentConstraints(dso, {
         feasible: gateResult.gate_result === 'ALLOW',
@@ -223,6 +231,14 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
       }),
       gateResult,
     };
+  }
+
+  private delegateFormalBlock(gate: GateResultLike): GateResultLike {
+    if (!isPhase6GateEvalFormalBlockDelegated() || gate.gate_result !== 'BLOCK') {
+      return gate;
+    }
+    this.logger.debug('[GateEval] Phase6: formal BLOCK → ADJUST_REQUIRED (gateway authority)');
+    return { ...gate, gate_result: 'ADJUST_REQUIRED' };
   }
 
   private finalizePatentConstraints(dso: DecisionState, constraints: ConstraintReport): ConstraintReport {
@@ -247,15 +263,23 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     const need4x4 = /4x4|4wd|四驱/.test(vehicleRequired);
 
     const vehicleType = (tripRequest as any)?.constraints?.vehicle_type as '2WD' | '4WD' | undefined;
-    const is2wd = vehicleType === undefined ? true : vehicleType === '2WD';
+    const is2wd = vehicleType === '2WD';
 
     if (hardTruth.gateFroadBlock2wd && need4x4 && is2wd) {
       out.push({
         type: 'REACHABILITY',
         severity: 'HARD',
-        detail: `Route requires 4x4/4WD (${String(vehicleRequiredRaw)}), but vehicle_type is ${vehicleType ?? '2WD (assumed)'}.`,
+        detail: `Route requires 4x4/4WD (${String(vehicleRequiredRaw)}), but vehicle_type is 2WD.`,
+      });
+    } else if (hardTruth.gateFroadBlock2wd && need4x4 && vehicleType === undefined) {
+      out.push({
+        type: 'REACHABILITY',
+        severity: 'SOFT',
+        detail: `Route may require 4x4/4WD (${String(vehicleRequiredRaw)}); vehicle_type is unspecified — confirm rental drivetrain before committing.`,
       });
     }
+
+    this.evaluateVehiclePartyConstraints(tripRequest, researchData, out);
 
     // --- 空间类：must_include_poi_ids vs days（近似容量判断） ---
     const must = Array.isArray((tripRequest as any)?.must_include_poi_ids)
@@ -297,7 +321,12 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
             : typeof w?.wind_threshold_mps === 'number'
               ? Number(w.wind_threshold_mps)
               : null;
-        const thr = explicitThr != null && Number.isFinite(explicitThr) ? explicitThr : driveSafetyWindThresholdMps(vehicleType ?? '2WD');
+        const windVehicleHint =
+          vehicleType === '4WD' ? 'SUV' : vehicleType === '2WD' ? '2WD' : 'SUV';
+        const thr =
+          explicitThr != null && Number.isFinite(explicitThr)
+            ? explicitThr
+            : driveSafetyWindThresholdMps(windVehicleHint);
         if (wind > thr) {
           out.push({
             type: 'SAFETY',
@@ -370,7 +399,8 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         const s = String(md?.surfaceType ?? '').toLowerCase();
         return t === 'F_ROAD' || s === 'f-road';
       });
-      const vehicleClass = is2wd ? 'SMALL_CAR' : 'SUV_4WD';
+      const vehicleClass =
+        vehicleType === '2WD' ? 'SMALL_CAR' : vehicleType === '4WD' ? 'SUV_4WD' : 'UNKNOWN';
       const facts: Record<string, unknown> = {
         segment: { type: hasFRoad ? 'F_ROAD' : 'OTHER' },
         weather: {
@@ -397,6 +427,96 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
     }
 
     return out;
+  }
+
+  /**
+   * 同行人/行李物理约束：长辈、多儿童或大件行李时拒绝紧凑型租车召回。
+   */
+  private evaluateVehiclePartyConstraints(
+    tripRequest: PhaseExecutorContext['tripPlanRequest'] | undefined,
+    researchData: Record<string, any>,
+    out: GateResultLike['violations'],
+  ): void {
+    if (!tripRequest) return;
+
+    const party = (tripRequest as any)?.party as
+      | { has_elderly?: boolean; has_children?: boolean; count?: number }
+      | undefined;
+    const ontology = (tripRequest as any)?.ontology_context as
+      | { party?: { luggage_count?: number }; user?: { luggage_count?: number } }
+      | undefined;
+    const profile = researchData?.userTravelProfile ?? researchData?.user_travel_profile;
+    const profileParty = profile?.party as { hasElderly?: boolean; childCount?: number } | undefined;
+
+    const luggageCount =
+      Number(ontology?.party?.luggage_count ?? ontology?.user?.luggage_count ?? profile?.luggageCount ?? 0) || 0;
+    const hasElderly = party?.has_elderly === true || profileParty?.hasElderly === true;
+    const childCount =
+      typeof profileParty?.childCount === 'number' && Number.isFinite(profileParty.childCount)
+        ? profileParty.childCount
+        : party?.has_children
+          ? 2
+          : 0;
+
+    if (!party && !profileParty && luggageCount === 0) return;
+
+    const requiresSpaciousVehicle = hasElderly || childCount > 1 || luggageCount >= 3;
+    if (!requiresSpaciousVehicle) return;
+
+    const vehicleClass = this.resolveSelectedVehicleClass(tripRequest, researchData);
+    if (!this.isCompactVehicleClass(vehicleClass)) return;
+
+    const partyDetail = hasElderly
+      ? '同行人包含长辈'
+      : childCount > 1
+        ? '多名儿童'
+        : '同行团队';
+    out.push({
+      type: 'VEHICLE_SPACE_INSUFFICIENT',
+      severity: 'HARD',
+      detail: `${partyDetail}且携带了 ${luggageCount} 件行李，紧凑型轿车空间严重不足。系统已自动过滤该车型，并为您锁定 MPV / 中大型 SUV。`,
+    });
+  }
+
+  private resolveSelectedVehicleClass(
+    tripRequest: PhaseExecutorContext['tripPlanRequest'] | undefined,
+    researchData: Record<string, any>,
+  ): string {
+    const vehicleConfig =
+      researchData?.currentVehicleConfig ??
+      researchData?.current_vehicle_config ??
+      researchData?.selected_vehicle;
+    const fromConfig = vehicleConfig?.type ?? vehicleConfig?.car_class ?? vehicleConfig?.vehicle_class;
+    if (typeof fromConfig === 'string' && fromConfig.trim()) return fromConfig.trim();
+
+    const cars = researchData?.car_rentals ?? researchData?.carRentals;
+    if (Array.isArray(cars) && cars.length > 0) {
+      const first = cars[0] as Record<string, unknown>;
+      const fromCar =
+        first?.vehicle_type ??
+        first?.vehicleType ??
+        first?.car_class ??
+        first?.carClass ??
+        first?.vehicle_name;
+      if (typeof fromCar === 'string' && fromCar.trim()) return fromCar.trim();
+    }
+
+    const constraints = (tripRequest as any)?.constraints as { rental_vehicle_class?: string } | undefined;
+    if (constraints?.rental_vehicle_class?.trim()) return constraints.rental_vehicle_class.trim();
+
+    return '';
+  }
+
+  private isCompactVehicleClass(raw: string): boolean {
+    const t = raw.toUpperCase();
+    if (!t) return false;
+    return (
+      t.includes('COMPACT') ||
+      t.includes('SEDAN_MINI') ||
+      t.includes('ECONOMY') ||
+      t.includes('MINI') ||
+      (t.includes('SMALL') && !t.includes('SUV'))
+    );
   }
 
   private async loadConflictMatrixRules(): Promise<ConflictMatrixRule[]> {

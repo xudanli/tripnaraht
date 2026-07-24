@@ -307,6 +307,9 @@ export class PlanningWorkbenchAdminService {
    */
   async getPlans(filters: {
     tripId?: string;
+    /** 与 PlanningPlan.id 相同（管理端「会话」主键） */
+    sessionId?: string;
+    userId?: string;
     status?: 'DRAFT' | 'PROPOSED' | 'NEED_CONFIRM' | 'LOCKED';
     page?: number;
     limit?: number;
@@ -330,8 +333,20 @@ export class PlanningWorkbenchAdminService {
     if (filters.tripId) {
       where.tripId = filters.tripId;
     }
+    if (filters.sessionId?.trim()) {
+      where.id = filters.sessionId.trim();
+    }
     if (filters.status) {
       where.status = filters.status;
+    }
+    if (filters.userId?.trim()) {
+      where.Trip = {
+        TripCollaborator: {
+          some: {
+            userId: filters.userId.trim(),
+          },
+        },
+      };
     }
 
     const orderBy: any = {};

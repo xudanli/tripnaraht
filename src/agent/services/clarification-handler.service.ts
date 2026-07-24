@@ -6,7 +6,10 @@ import { tryParseLatLngPairFromString } from '../../skills/transport/transport-s
 export type AppliedRelaxation =
   | { id: 'upgrade_vehicle_to_4wd' }
   | { id: 'increase_days_by_1' }
-  | { id: 'drop_one_must_include_poi'; dropped_poi_id?: string };
+  | { id: 'drop_one_must_include_poi'; dropped_poi_id?: string }
+  | { id: 'relax_pace_to_conservative' }
+  | { id: 'relax_budget_by_10pct' }
+  | { id: 'reduce_scope' };
 
 @Injectable()
 export class ClarificationHandlerService {
@@ -37,6 +40,9 @@ export class ClarificationHandlerService {
 
     const relPlanGen = answers.find((a) => a.questionId === 'plan_gen_empty_draft_relax_constraints');
     const relEarly = answers.find((a) => a.questionId === 'early_warning_relaxations');
+    const relGate = answers.find((a) => a.questionId === 'gate_eval_relax_constraints');
+    const relVerify = answers.find((a) => a.questionId === 'verify_relax_constraints');
+    const relPlanning = answers.find((a) => a.questionId === 'planning_conflicts_relax_constraints');
 
     const toPicked = (rel: typeof relPlanGen): string[] => {
       if (!rel) return [];
@@ -44,12 +50,29 @@ export class ClarificationHandlerService {
     };
     const pickedPlanGen = toPicked(relPlanGen);
     const pickedEarly = toPicked(relEarly);
-    const RELAX_ATOMS = new Set(['upgrade_vehicle_to_4wd', 'increase_days_by_1', 'drop_one_must_include_poi']);
+    const pickedGate = toPicked(relGate);
+    const pickedVerify = toPicked(relVerify);
+    const pickedPlanning = toPicked(relPlanning);
+    const RELAX_ATOMS = new Set([
+      'upgrade_vehicle_to_4wd',
+      'increase_days_by_1',
+      'drop_one_must_include_poi',
+      'relax_budget_by_10pct',
+      'relax_pace_to_conservative',
+      'reduce_scope',
+      'manual_relax_constraints',
+    ]);
     const earlyAtoms = pickedEarly.filter((x) => RELAX_ATOMS.has(x));
     const earlyProceedOnly =
       !!relEarly && pickedEarly.includes('proceed_at_own_risk') && earlyAtoms.length === 0;
 
-    const picked = [...pickedPlanGen, ...pickedEarly];
+    const picked = [
+      ...pickedPlanGen,
+      ...pickedEarly,
+      ...pickedGate,
+      ...pickedVerify,
+      ...pickedPlanning,
+    ];
 
     const next: TripPlanRequest = this.deepClone(base);
     let didPatch = false;
@@ -92,6 +115,119 @@ export class ClarificationHandlerService {
           }
           didPatch = true;
         }
+      }
+    }
+
+    const slotPlacementAnswer = answers.find((a) => a.questionId === 'itinerary_slot_placement_v1');
+    if (slotPlacementAnswer) {
+      const v = String(slotPlacementAnswer.value ?? '').trim();
+      const dayMatch = /^PLACE_ON_D(\d+)$/.exec(v);
+      if (dayMatch) {
+        const day_number = parseInt(dayMatch[1], 10);
+        const start = next.date_range?.start_date ?? next.start_date;
+        let date_ymd: string | undefined;
+        if (start && /^\d{4}-\d{2}-\d{2}$/.test(start) && day_number >= 1) {
+          const d = new Date(`${start}T12:00:00.000Z`);
+          d.setUTCDate(d.getUTCDate() + (day_number - 1));
+          date_ymd = d.toISOString().slice(0, 10);
+        }
+        next.guardian_debate_trip_context = {
+          ...(next.guardian_debate_trip_context ?? {}),
+          scheduling_constraints: {
+            ...(next.guardian_debate_trip_context?.scheduling_constraints ?? {}),
+            itinerary_slot_placement: { day_number, date_ymd },
+          },
+        };
+        didPatch = true;
+      }
+    }
+
+    const peakSeasonAnswer = answers.find((a) => a.questionId === 'peak_season_midnight_sun_whale_v1');
+    if (peakSeasonAnswer) {
+      const v = String(peakSeasonAnswer.value ?? '').trim();
+      if (v === 'LOCK_MIDNIGHT_SUN_WHALE_SLOT') {
+        next.guardian_debate_trip_context = {
+          ...(next.guardian_debate_trip_context ?? {}),
+          user_intent_anchors: {
+            ...(next.guardian_debate_trip_context?.user_intent_anchors ?? {}),
+            peak_season_crowd_avoidance: true,
+            whale_watching_husavik: true,
+            overnight_stay_akureyri: true,
+          },
+          scheduling_constraints: {
+            ...(next.guardian_debate_trip_context?.scheduling_constraints ?? {}),
+            whale_watching_slot: {
+              start_local: '20:30',
+              end_local: '23:30',
+              venue_zh: '胡萨维克',
+              slot_label_zh: '午夜阳光观鲸场',
+            },
+            next_day_delayed_departure_until: '10:00',
+            overnight_drive_after_activity: true,
+            midnight_sun_slot_locked: true,
+          },
+        };
+        didPatch = true;
+      }
+    }
+
+    const debateAnswer = answers.find((a) => a.questionId === 'guardian_debate_abu_reject_v1');
+    if (debateAnswer) {
+      const v = String(debateAnswer.value ?? '').trim();
+      if (v) {
+        const ctx = { ...(next.guardian_debate_trip_context ?? {}) };
+        ctx.debate_user_confirm = {
+          question_id: 'guardian_debate_abu_reject_v1',
+          choice: v,
+          confirmed_at: new Date().toISOString(),
+        };
+        if (v === 'accept_neptune_alternative') {
+          ctx.user_intent_anchors = {
+            ...(ctx.user_intent_anchors ?? {}),
+            midnight_sun_continuous_drive: false,
+            ring_road_full_scope: true,
+            user_accepted_segmented_ring: true,
+          };
+          ctx.scheduling_constraints = {
+            ...(ctx.scheduling_constraints ?? {}),
+            segmented_ring_over_calendar_days: true,
+          };
+        }
+        next.guardian_debate_trip_context = ctx;
+        didPatch = true;
+      }
+    }
+
+    const froadAnswer = answers.find((a) => a.questionId === 'froad_2wd_compliance_v1');
+    if (froadAnswer) {
+      const v = String(froadAnswer.value ?? '').trim();
+      if (v === 'UPGRADE_VEHICLE_TO_4WD' || v === 'upgrade_vehicle_to_4wd') {
+        next.constraints = { ...(next.constraints ?? {}), vehicle_type: '4WD' };
+        applied.push({ id: 'upgrade_vehicle_to_4wd' });
+        didPatch = true;
+      }
+      if (v === 'SWITCH_GUIDE_MODE') {
+        next.guardian_debate_trip_context = {
+          ...(next.guardian_debate_trip_context ?? {}),
+          scheduling_constraints: {
+            ...(next.guardian_debate_trip_context?.scheduling_constraints ?? {}),
+            guide_mode_requested: true,
+          },
+        };
+        didPatch = true;
+      }
+      if (v === 'ACCEPT_NEPTUNE_DETOUR') {
+        next.guardian_debate_trip_context = {
+          ...(next.guardian_debate_trip_context ?? {}),
+          route_alternatives: [
+            {
+              id: 'RT26_F208_NORTH_NON_FORD',
+              type: 'highland_detour_2wd',
+              extra_driving_time_mins: 45,
+            },
+          ],
+        };
+        didPatch = true;
       }
     }
 
@@ -166,6 +302,31 @@ export class ClarificationHandlerService {
         next.must_include_poi_ids = must;
       }
       applied.push({ id: 'drop_one_must_include_poi', dropped_poi_id: dropped });
+    }
+
+    if (pickSet.has('relax_pace_to_conservative')) {
+      next.constraints = {
+        ...(next.constraints ?? {}),
+        ...( { pacing_mode: 'conservative' } as Record<string, unknown> ),
+      };
+      applied.push({ id: 'relax_pace_to_conservative' });
+    }
+
+    if (pickSet.has('relax_budget_by_10pct')) {
+      const budgetRaw = (next.constraints as Record<string, unknown> | undefined)?.budget;
+      if (budgetRaw && typeof budgetRaw === 'object' && typeof (budgetRaw as { total?: number }).total === 'number') {
+        const b = budgetRaw as { total: number; currency?: string };
+        next.constraints = {
+          ...(next.constraints ?? {}),
+          budget: { ...b, total: Math.ceil(b.total * 1.1) },
+        };
+        applied.push({ id: 'relax_budget_by_10pct' });
+      }
+    }
+
+    if (pickSet.has('reduce_scope') && typeof next.days === 'number' && next.days > 1) {
+      next.days = Math.max(1, next.days - 1);
+      applied.push({ id: 'reduce_scope' });
     }
 
     return {

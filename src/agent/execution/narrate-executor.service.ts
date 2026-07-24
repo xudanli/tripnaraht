@@ -25,6 +25,28 @@ import {
 } from '../utils/narrator-l3-persuasion.util';
 import { ConstraintsEngineService } from '../training/services/constraints-engine.service';
 import { resolveWallHitDistanceMsForConstraints } from '../utils/wall-hit-distance.util';
+import { mergeOptimizationDecisionNarration } from './merge-optimization-decision-narration.util';
+import { mergePlanningPhaseIntentIntoNarration } from '../utils/planning-intent-narrate.util';
+import { mergeLegEvidenceIntoNarration } from '../utils/narrate-leg-evidence.util';
+import { mergePoiPitfallIntoNarration } from '../utils/poi-pitfall-insight.util';
+import { mergeBookingPriorityIntoNarration } from '../utils/merge-booking-priority-narration.util';
+import { buildBookingPriorityList } from '../delivery/utils/booking-priority-list.builder.util';
+import { PoiPitfallInsightService } from '../services/poi-pitfall-insight.service';
+import { compileCausalNarrative } from '../../trips/decision/narration/causal-narrative-compiler.service';
+import type { DecisionLogEntry as KernelDecisionLogEntry } from '../../trips/decision/shared/decision-result.types';
+import type { TimeDrift } from '../../trips/decision/temporal/time-drift.types';
+import { EmotionNarratorOrchestrator } from '../narrator/services/emotion-narrator-orchestrator.service';
+import { applyEmotionalContextToNarration } from '../utils/apply-emotional-context-to-narration.util';
+import { mergeAnchoringPresenceIntoNarration } from '../narrator/anchoring-presence-narration.util';
+import { attachAgentMemorySnapshotToOrchestratorState } from '../memory/utils/agent-memory-snapshot.util';
+import { AgentMemoryContextStore } from '../memory/context/agent-memory-context.store';
+import type { EmotionalContext } from '../narrator/types/emotional-context.type';
+import { persistEmotionalContextToOrchestratorMetadata } from '../narrator/emotional-orchestrator-metadata.util';
+import { collectTravelDiagnostic } from '../narrator/utils/travel-diagnostic-collector.util';
+import { buildVoicePayloadForDiagnostic } from '../narrator/services/voice-evidence-translator.util';
+import type { TravelDiagnosticReport } from '../narrator/utils/travel-diagnostic-collector.util';
+import { syncDecisionContextToDecisionState } from '../../planning-policy/open-world/decision-context-sync.util';
+import { mergeDecisionContextIntoNarration } from '../narrator/utils/merge-decision-context-narration.util';
 import {
   buildProactiveUxHints,
   mergeProactiveUxHintsIntoNarration,
@@ -37,6 +59,9 @@ export class NarrateExecutorService implements INarrateExecutor {
   constructor(
     @Optional() private readonly narratorAgent?: ClaudeNarratorAgentService,
     @Optional() private readonly constraintsEngine?: ConstraintsEngineService,
+    @Optional() private readonly poiPitfallInsight?: PoiPitfallInsightService,
+    @Optional() private readonly emotionNarratorOrchestrator?: EmotionNarratorOrchestrator,
+    @Optional() private readonly agentMemoryContextStore?: AgentMemoryContextStore,
   ) {}
 
   async execute(
@@ -70,10 +95,55 @@ export class NarrateExecutorService implements INarrateExecutor {
 
     try {
       const escalation = dso.verification?.escalationPlan;
+      const party = (state.trip_plan_request as { party?: { has_elderly?: boolean } })?.party;
+      const partyNoteZh = party?.has_elderly
+        ? '我们注意到您带着父母同行，已在体能与路况校验中采用更保守的物理门槛。'
+        : undefined;
+      const causalCompiled = compileCausalNarrative({
+        decisionLogs: (state.decision_log ?? []) as unknown as KernelDecisionLogEntry[],
+        optimizationHints: dso.optimizationHints,
+        timeDrifts: (state.itinerary as { temporal?: { drifts?: TimeDrift[] } } | undefined)?.temporal
+          ?.drifts,
+        partyNoteZh,
+      });
+
+      const travelDiagnostic = this.collectTravelDiagnosticForNarrate(state, dso);
+      if (state.metadata && typeof state.metadata === 'object') {
+        (state.metadata as Record<string, unknown>).travel_diagnostic = travelDiagnostic;
+      }
+
+      const dsoWithContext = syncDecisionContextToDecisionState(dso, state);
+
+      let emotionalContext: EmotionalContext | undefined;
+      if (this.emotionNarratorOrchestrator) {
+        try {
+          attachAgentMemorySnapshotToOrchestratorState(this.agentMemoryContextStore, state);
+          emotionalContext = this.emotionNarratorOrchestrator.buildFromNarrateContext({
+            dso: dsoWithContext,
+            ctx,
+            state,
+          });
+        } catch (e: unknown) {
+          this.logger.debug(
+            `[NarrateExecutor] emotional context skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
+      if (emotionalContext) {
+        persistEmotionalContextToOrchestratorMetadata(state, emotionalContext);
+      }
+
       const stateForNarrate = {
         ...state,
         ...(escalation ? { kernel_escalation_plan: escalation } : {}),
         ...(ctx.researchConflict ? { narration_research_conflict: ctx.researchConflict } : {}),
+        ...(causalCompiled ? { kernel_causal_narrative_compile: causalCompiled } : {}),
+        ...(dsoWithContext.optimizationHints ? { kernel_optimization_hints: dsoWithContext.optimizationHints } : {}),
+        ...(dsoWithContext.constraints?.decisionContext
+          ? { kernel_decision_context: dsoWithContext.constraints.decisionContext }
+          : {}),
+        ...(emotionalContext ? { emotional_context: emotionalContext } : {}),
       } as OrchestratorState;
 
       let narration = (await this.narratorAgent.narrate(
@@ -84,6 +154,66 @@ export class NarrateExecutorService implements INarrateExecutor {
       )) as NarrationLike;
 
       narration = this.mergeTransportResearchGuidanceIntoNarration(narration, state);
+      const md = state.metadata as Record<string, unknown> | undefined;
+      const isItineraryAdjust =
+        md?.itinerary_adjust_intake === true ||
+        (md?.route_and_run_intent as { primary?: string } | undefined)?.primary === 'ITINERARY_ADJUST';
+      if (!isItineraryAdjust) {
+        narration = mergeOptimizationDecisionNarration(narration, dsoWithContext.optimizationHints);
+      }
+      narration = this.mergeCausalProtectionNarration(narration, dsoWithContext, state);
+      narration = mergePlanningPhaseIntentIntoNarration(narration, state);
+      narration = mergeLegEvidenceIntoNarration(narration, state.itinerary, state, dsoWithContext);
+      narration = mergeDecisionContextIntoNarration(narration, dsoWithContext.constraints);
+
+      if (this.poiPitfallInsight) {
+        try {
+          const country =
+            (dso.environmentState?.countryCode as string | undefined) ??
+            (state.trip_plan_request as { destination?: string | { country_code?: string } } | undefined)
+              ?.destination;
+          const countryCode =
+            typeof country === 'string'
+              ? country.slice(0, 2).toUpperCase()
+              : typeof country === 'object' && country?.country_code
+                ? String(country.country_code).slice(0, 2).toUpperCase()
+                : undefined;
+          const pitfallCards = await this.poiPitfallInsight.resolveForItinerary(
+            state.itinerary,
+            countryCode,
+          );
+          narration = mergePoiPitfallIntoNarration(narration, pitfallCards);
+        } catch (e: unknown) {
+          this.logger.debug(
+            `[NarrateExecutor] poi pitfall skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
+      const tripIdForBooking =
+        ctx.tripPlanRequest?.trip_id?.trim() ??
+        (state.trip_plan_request as { trip_id?: string } | undefined)?.trip_id?.trim() ??
+        (state.metadata as Record<string, unknown> | undefined)?.trip_id?.toString?.().trim();
+      if (tripIdForBooking) {
+        try {
+          const researchData = (state.research_data ?? state.metadata) as
+            | Record<string, unknown>
+            | undefined;
+          const priorityList = buildBookingPriorityList({
+            tripId: tripIdForBooking,
+            itinerary: state.itinerary,
+            researchData,
+            poiPitfallCards: narration.poi_pitfall_cards as
+              | import('../utils/poi-pitfall-insight.util').PoiPitfallCard[]
+              | undefined,
+          });
+          narration = mergeBookingPriorityIntoNarration(narration, priorityList);
+        } catch (e: unknown) {
+          this.logger.debug(
+            `[NarrateExecutor] booking priority skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
       narration = mergeProactiveUxHintsIntoNarration(
         narration,
         buildProactiveUxHints({
@@ -277,14 +407,48 @@ export class NarrateExecutorService implements INarrateExecutor {
         narration = { ...narration, tips, warnings };
       }
 
+      if (emotionalContext) {
+        narration = applyEmotionalContextToNarration(
+          narration,
+          emotionalContext,
+          ctx.researchConflict,
+          state.research_data as Record<string, unknown> | undefined,
+        );
+        narration = mergeAnchoringPresenceIntoNarration(narration, emotionalContext, {
+          escalationSnippet: escalation?.userClarificationSnippet,
+          weatherWindLockActive: emotionalContext.ambienceSignals.weatherWindLockActive,
+          offlineMapsSynced: Boolean(
+            (state.metadata as Record<string, unknown> | undefined)?.offline_maps_synced,
+          ),
+        });
+      }
+
       const hint = dso.poiPlanning?.narrationHint;
       if (hint?.trim()) {
         const tips = [...(narration.tips ?? [])];
         if (!tips.some((t) => t.includes(hint.slice(0, 20)))) {
           tips.unshift(hint);
         }
-        return { narration: { ...narration, tips } };
+        narration = { ...narration, tips };
       }
+
+      const voicePayload = buildVoicePayloadForDiagnostic(
+        travelDiagnostic,
+        emotionalContext?.recommendedVoiceStance.toneModifier ?? 'empathetic_reassurance',
+      );
+      if (voicePayload) {
+        narration = {
+          ...narration,
+          voice_payload: voicePayload,
+          ...(travelDiagnostic.hasMajorItineraryConflict &&
+          !(narration.user_friendly_summary ?? '').includes('旅行管家')
+            ? {
+                user_friendly_summary: `${voicePayload.text.slice(0, 280)}…\n\n${(narration.user_friendly_summary ?? '').trim()}`.trim(),
+              }
+            : {}),
+        };
+      }
+
       return { narration };
     } catch (e: unknown) {
       this.logger.warn(`[NarrateExecutor] NarratorAgent 失败: ${(e as Error)?.message}`);
@@ -297,6 +461,36 @@ export class NarrateExecutorService implements INarrateExecutor {
         },
       };
     }
+  }
+
+  /** 将 RESEARCH 产出的交通降级指引 / 区域一致性提示并入叙事 tips（不修改行程硬字段） */
+  private collectTravelDiagnosticForNarrate(
+    state: OrchestratorState,
+    dso: DecisionState,
+  ): TravelDiagnosticReport {
+    const rd = state.research_data as Record<string, unknown> | undefined;
+    const meta = state.metadata as Record<string, unknown> | undefined;
+    const payload = (meta?.route_and_run_payload ?? meta?.result_payload ?? rd) as
+      | Record<string, unknown>
+      | undefined;
+
+    const selfHealApplied = (state.decision_log ?? []).some((entry) => {
+      const code = String(
+        (entry as { reason_code?: string; reasonCode?: string }).reason_code ??
+          (entry as { reasonCode?: string }).reasonCode ??
+          '',
+      );
+      return /REPAIR|SELF_HEAL|HEAL|REROUTE/i.test(code);
+    });
+
+    return collectTravelDiagnostic({
+      itinerary: state.itinerary,
+      accommodations: (payload?.accommodations ?? rd?.accommodations) as unknown[] | null,
+      accommodationNightGroups: (payload?.accommodation_night_groups ??
+        rd?.accommodation_night_groups) as unknown[] | null,
+      gateViolations: state.gate_result?.violations,
+      selfHealApplied,
+    });
   }
 
   /** 将 RESEARCH 产出的交通降级指引 / 区域一致性提示并入叙事 tips（不修改行程硬字段） */
@@ -323,5 +517,58 @@ export class NarrateExecutorService implements INarrateExecutor {
     }
     if (tips.length === prevTips.length) return narration;
     return { ...narration, tips };
+  }
+
+  /**
+   * 因果叙事编译器：将 monte_carlo / Neptune / TimeDrift trace 译为受控用户文案。
+   * 若 NarratorAgent 已写入 causal_protection_summary_zh 则跳过（避免重复）。
+   */
+  private mergeCausalProtectionNarration(
+    narration: NarrationLike,
+    dso: DecisionState,
+    state: OrchestratorState,
+  ): NarrationLike {
+    if (narration.causal_protection_summary_zh?.trim()) {
+      return narration;
+    }
+
+    const plan = state.itinerary as { temporal?: { drifts?: TimeDrift[] } } | undefined;
+    const party = (state.trip_plan_request as { party?: { has_elderly?: boolean } })?.party;
+    const partyNoteZh = party?.has_elderly
+      ? '我们注意到您带着父母同行，已在体能与路况校验中采用更保守的物理门槛。'
+      : undefined;
+
+    const compiled = compileCausalNarrative({
+      decisionLogs: (state.decision_log ?? []) as unknown as KernelDecisionLogEntry[],
+      optimizationHints: dso.optimizationHints,
+      timeDrifts: plan?.temporal?.drifts,
+      partyNoteZh,
+    });
+    if (!compiled) return narration;
+
+    const summary = compiled.deterministicSummaryZh.trim();
+    let userSummary = (narration.user_friendly_summary ?? '').trim();
+    const anchor = summary.slice(0, Math.min(24, summary.length));
+    if (anchor && !userSummary.includes(anchor)) {
+      userSummary = userSummary ? `${summary}\n\n${userSummary}` : summary;
+    }
+
+    const tips = [...(narration.tips ?? [])];
+    const label = '[决策保护]';
+    const firstLine = summary.split('\n')[0]?.trim();
+    if (firstLine) {
+      const line = `${label} ${firstLine}`.slice(0, 500);
+      if (!tips.some((t) => t.startsWith(label))) {
+        tips.unshift(line);
+      }
+    }
+
+    return {
+      ...narration,
+      user_friendly_summary: userSummary,
+      tips,
+      causal_protection_summary_zh: summary,
+      causal_chain: compiled.chain,
+    };
   }
 }

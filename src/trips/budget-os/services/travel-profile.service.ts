@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { UserTravelProfile } from '../../../agent/memory/interfaces/user-travel-profile.interface';
-import { buildPersonaSnapshot } from '../../../match-square/utils/match-square-persona.util';
+import { buildPersonaSnapshot } from '../../../odyssey-intake/utils/odyssey-persona-snapshot.util';
 import { PrismaService } from '../../../prisma/prisma.service';
 import type { UserTravelProfileAggregate } from '../types/travel-profile.types';
 import { MoneyDnaService } from './money-dna.service';

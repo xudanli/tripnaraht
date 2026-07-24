@@ -97,6 +97,11 @@ export class TripConstraintsDto {
   @IsString({ each: true })
   @IsOptional()
   avoidCategories?: string[];
+
+  @ApiPropertyOptional({ description: '是否偏好小众景点（召回时保证 ≥20% 非热门 POI）' })
+  @IsBoolean()
+  @IsOptional()
+  preferOffbeatAttractions?: boolean;
 }
 
 /**

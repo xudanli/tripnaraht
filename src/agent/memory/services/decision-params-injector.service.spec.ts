@@ -94,5 +94,46 @@ describe('DecisionParamsInjectorService (shadow mode)', () => {
     const out = await injector.getDecisionParamsForUser('u1');
     expect(out.constraints.maxDailyAscentM).toBe(1000);
   });
+
+  it('applies iceland market prior when ICELAND_MARKET_PRIOR=1 and snapshot present', async () => {
+    process.env.ICELAND_MARKET_PRIOR = '1';
+    process.env.DECISION_PARAMS_MAPPING_LEGACY = '1';
+
+    const profile = createDefaultUserTravelProfile('u1');
+    const base = createDefaultDecisionParams();
+
+    const store = {
+      get: jest.fn().mockReturnValue({
+        userId: 'u1',
+        travelPreference: {
+          iceland_market_segment: {
+            segmentId: 'IS_MARKET_US',
+            confidence: 0.85,
+            blended: false,
+            canonicalRouteId: 'IS-SOUTH-GOLDEN-5-7-LUX',
+            routeDirectionTagAffinities: { 'golden-circle': 1 },
+            promptBlockZh: 'test',
+          },
+        },
+      }),
+    };
+
+    const injector = new DecisionParamsInjectorService(
+      { getUserTravelProfile: jest.fn().mockResolvedValue(profile) } as any,
+      {
+        mapUserProfileToDecisionParams: jest.fn().mockImplementation(() =>
+          JSON.parse(JSON.stringify(base)),
+        ),
+      } as any,
+      { map: jest.fn().mockReturnValue({ params: JSON.parse(JSON.stringify(base)) }) } as any,
+      { diff: jest.fn() } as any,
+      store as any,
+    );
+
+    const out = await injector.getDecisionParamsForUser('u1');
+    expect(out.constraints.bufferTimeMin).toBeGreaterThanOrEqual(30);
+    expect(out.repairPolicy.preferRestDay).toBe(true);
+    delete process.env.ICELAND_MARKET_PRIOR;
+  });
 });
 

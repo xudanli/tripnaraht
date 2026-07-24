@@ -57,6 +57,8 @@ import {
   pickReplayConfigForHash,
 } from './lib/cgus-replay-config-hash';
 import { buildCgusReplayTraceRefsV1 } from './lib/evaluation-harness-report-refs';
+import { runDecisionClosureGate } from './lib/decision-closure-gate';
+import { ICELAND_DECISION_CLOSURE_FIXTURES } from '../src/trips/decision/evaluation/e2e-cases/registry';
 import {
   runBridgeKernelReplaySuite,
   BRIDGE_REPLAY_SCHEMA_VERSION,
@@ -1051,6 +1053,12 @@ async function main(): Promise<void> {
       evaluationRunId,
     );
 
+    const decisionClosureGate =
+      String(process.env.CGUS_REPORT_DECISION_CLOSURE ?? '').toLowerCase() === '1' ||
+      String(process.env.CGUS_REPORT_DECISION_CLOSURE ?? '').toLowerCase() === 'true'
+        ? runDecisionClosureGate(ICELAND_DECISION_CLOSURE_FIXTURES)
+        : undefined;
+
     const report = {
       runFingerprint,
       traceRefs,
@@ -1064,6 +1072,16 @@ async function main(): Promise<void> {
       emptyCount,
       configSnapshot,
       gate: gateResult,
+      ...(decisionClosureGate
+        ? {
+            decision_closure_gate: {
+              passed: decisionClosureGate.failed === 0,
+              passedCount: decisionClosureGate.passed,
+              failedCount: decisionClosureGate.failed,
+              results: decisionClosureGate.results,
+            },
+          }
+        : {}),
       observability: observabilitySuite,
       aggregates: {
         cgusRate: results.length ? cgusCount / results.length : 0,
@@ -1177,6 +1195,12 @@ async function main(): Promise<void> {
     logger.log(`Done. Wrote report: ${abs}`);
     if (!gateResult.passed) {
       logger.error(`Gate failed: ${gateResult.failures.join(' | ')}`);
+      process.exitCode = 1;
+    }
+    if (decisionClosureGate && decisionClosureGate.failed > 0) {
+      logger.error(
+        `Decision closure gate failed: ${decisionClosureGate.results.filter((r) => !r.ok).map((r) => r.id).join(', ')}`,
+      );
       process.exitCode = 1;
     }
 }

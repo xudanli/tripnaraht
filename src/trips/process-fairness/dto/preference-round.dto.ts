@@ -40,6 +40,27 @@ export class CreatePreferenceRoundDto {
   @IsOptional()
   @IsString()
   closesAt?: string;
+
+  @ApiPropertyOptional({ description: '绑定的决策问题 ID' })
+  @IsOptional()
+  @IsString()
+  decisionProblemId?: string;
+
+  @ApiPropertyOptional({ description: '决策检查器焦点冲突 ID' })
+  @IsOptional()
+  @IsString()
+  focusConflictId?: string;
+
+  @ApiPropertyOptional({ description: '关联方案 ID 列表（讨论上下文）', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  optionIds?: string[];
+
+  @ApiPropertyOptional({ description: '中/高交叉领域未认领时自动认领', default: false })
+  @IsOptional()
+  @IsBoolean()
+  autoClaimDomain?: boolean;
 }
 
 export class SubmitUtteranceDto {

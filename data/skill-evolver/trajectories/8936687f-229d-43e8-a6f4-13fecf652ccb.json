@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "8936687f-229d-43e8-a6f4-13fecf652ccb",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "conservative-evidence-lock",
+  "strategy": {
+    "strategyId": "conservative-evidence-lock",
+    "philosophy": "安全优先，拒绝任何缺乏完整证据链的请求",
+    "approach": "严格依赖显式 DEM 证据字段。若 `dem_evidence` 缺失或为空，直接返回 REJECT，不进行任何推断或回退。仅在夏季且证据完整时才考虑高地路线。",
+    "emphasis": "局部证据完整性，零误判",
+    "risk": "可能误伤正常请求（若证据因非业务原因缺失），但完全规避了错误放行高地的风险"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户请求在7月去冰岛高地，属于夏季。但根据 [conservative-evidence-lock] 策略，必须检查 DEM 证据。当前用户输入中未提供任何 DEM 证据字段，因此应直接拒绝，不允许访问高地。",
+      "action": "REJECT",
+      "result": "[完成] REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:20:34.940Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 Abu 海拔/证据门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:20:34.941Z",
+  "score": 56.92,
+  "evalMode": "fixture"
+}

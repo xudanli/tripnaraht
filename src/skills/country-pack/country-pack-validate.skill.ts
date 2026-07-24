@@ -51,7 +51,7 @@ export class CountryPackValidateSkill implements Skill<CountryPackValidateInput,
 
   metadata = {
     name: 'countryPack.validate',
-    description: '验证 Pack 数据的完整性和正确性，输出结构化错误和警告',
+    description: 'countryPack.validate：验证 Pack 数据的完整性和正确性，输出结构化错误和警告',
     version: '1.0.0',
     category: 'countryPack' as const,
   };

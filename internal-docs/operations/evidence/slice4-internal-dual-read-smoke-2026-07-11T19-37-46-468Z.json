@@ -1,0 +1,270 @@
+{
+  "evidenceType": "SLICE4_INTERNAL_DUAL_READ_SMOKE",
+  "testedAt": "2026-07-11T19:37:46.469Z",
+  "baseUrl": "http://127.0.0.1:3002/api",
+  "nestLog": "/tmp/nest3002-slice4-dual-read.log",
+  "env": {
+    "ASSERTION_PROMOTION_SHADOW_MODE": "0",
+    "ASSERTION_PROMOTION_WEATHER_ENABLED": "1",
+    "ASSERTION_PROMOTION_ROAD_ENABLED": "0",
+    "ATTENTION_INTERNAL_DUAL_READ_ENABLED": "1",
+    "ATTENTION_ROOT_CAUSE_PRIMARY_SSO": "0"
+  },
+  "execSlipDualRead": {
+    "schemaId": "tripnara.attention_internal_dual_read@v1",
+    "phase": "INTERNAL_DUAL_READ",
+    "tripId": "c0c77777-7777-4777-8777-777777777777",
+    "generatedAt": "2026-07-11T19:37:44.196Z",
+    "primarySsoEnabled": false,
+    "notificationsEnabled": false,
+    "currentQueueItems": [
+      {
+        "problemId": "dp_id:issue-time-conflict-c0c77777-7777-4777-8777-777777777632_rfc001_93281797-c0c77777-7777-4777-8777-777777777633",
+        "semanticKey": "id",
+        "title": "时间冲突",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      },
+      {
+        "problemId": "dp_id:plan_object_plan_object_meal_late_arrival_po_c0c77777-7777-4777-8777-777777777601_meal_windo",
+        "semanticKey": "id",
+        "title": "午餐窗冲突",
+        "workflowStatus": "ASSESSING",
+        "enforcement": "REQUIRE_ADJUSTMENT"
+      },
+      {
+        "problemId": "dp_anchor:environment:EXECUTION_SCHEDULE_INFEASIBLE:c0c77777-7777-4777-8777-777777777631::",
+        "semanticKey": "anchor",
+        "title": "EXECUTION_SCHEDULE_FEASIBILITY",
+        "workflowStatus": "OPEN",
+        "enforcement": "BLOCK"
+      }
+    ],
+    "attentionPrimaryItems": [],
+    "comparison": {
+      "currentVisibleCount": 3,
+      "attentionVisibleCount": 0,
+      "reductionCount": 3,
+      "hiddenProblemIds": [],
+      "primaryProblemIds": [],
+      "missedProblemIds": [
+        "dp_id:issue-time-conflict-c0c77777-7777-4777-8777-777777777632_rfc001_93281797-c0c77777-7777-4777-8777-777777777633",
+        "dp_id:plan_object_plan_object_meal_late_arrival_po_c0c77777-7777-4777-8777-777777777601_meal_windo",
+        "dp_anchor:environment:EXECUTION_SCHEDULE_INFEASIBLE:c0c77777-7777-4777-8777-777777777631::"
+      ],
+      "openClusterCount": 1,
+      "canonicalProblemCount": 1
+    },
+    "shadowVerdict": "INCONCLUSIVE",
+    "shadowVerdictReason": "Heuristic could not classify merge/separation outcome"
+  },
+  "weatherDualRead": {
+    "schemaId": "tripnara.attention_internal_dual_read@v1",
+    "phase": "INTERNAL_DUAL_READ",
+    "tripId": "a0a99999-9999-4999-8999-999999999999",
+    "generatedAt": "2026-07-11T19:37:45.151Z",
+    "primarySsoEnabled": false,
+    "notificationsEnabled": false,
+    "currentQueueItems": [
+      {
+        "problemId": "dp_id:plan_object_plan_object_stay_missing_day_2",
+        "semanticKey": "id",
+        "title": "住宿衔接不完整",
+        "workflowStatus": "ASSESSING",
+        "enforcement": "REQUIRE_ADJUSTMENT"
+      },
+      {
+        "problemId": "dp_id:plan_object_plan_object_meal_late_arrival_po_a0a99999-9999-4999-8999-999999999602_meal_windo",
+        "semanticKey": "id",
+        "title": "午餐窗冲突",
+        "workflowStatus": "ASSESSING",
+        "enforcement": "REQUIRE_ADJUSTMENT"
+      }
+    ],
+    "attentionPrimaryItems": [],
+    "comparison": {
+      "currentVisibleCount": 2,
+      "attentionVisibleCount": 0,
+      "reductionCount": 2,
+      "hiddenProblemIds": [],
+      "primaryProblemIds": [],
+      "missedProblemIds": [
+        "dp_id:plan_object_plan_object_stay_missing_day_2",
+        "dp_id:plan_object_plan_object_meal_late_arrival_po_a0a99999-9999-4999-8999-999999999602_meal_windo"
+      ],
+      "openClusterCount": 1,
+      "canonicalProblemCount": 1
+    },
+    "shadowVerdict": "INCONCLUSIVE",
+    "shadowVerdictReason": "Heuristic could not classify merge/separation outcome"
+  },
+  "checks": [
+    {
+      "id": "A-HEALTH",
+      "pass": true,
+      "detail": "status=200"
+    },
+    {
+      "id": "A-ENV-SHADOW-MODE",
+      "pass": true,
+      "detail": "=0"
+    },
+    {
+      "id": "A-ENV-WEATHER",
+      "pass": true,
+      "detail": "=1"
+    },
+    {
+      "id": "A-ENV-ROAD-OFF",
+      "pass": true,
+      "detail": "=0"
+    },
+    {
+      "id": "A-ENV-DUAL-READ",
+      "pass": true,
+      "detail": "=1"
+    },
+    {
+      "id": "A-ENV-PRIMARY-SSO-OFF",
+      "pass": true,
+      "detail": "=0"
+    },
+    {
+      "id": "A-MODULE-DUAL-READ",
+      "pass": true,
+      "detail": "Nest started; dual-read route verified via HTTP below"
+    },
+    {
+      "id": "A-SCHEDULER-PROMOTION",
+      "pass": true,
+      "detail": "retryCron=1 enabled=1"
+    },
+    {
+      "id": "B-NO-AUTH",
+      "pass": true,
+      "detail": "success=false code=UNAUTHORIZED"
+    },
+    {
+      "id": "B-EXTERNAL-USER",
+      "pass": true,
+      "detail": "code=FORBIDDEN msg=需要为行程成员"
+    },
+    {
+      "id": "B-INTERNAL-NON-MEMBER",
+      "pass": true,
+      "detail": "code=FORBIDDEN msg=需要为行程成员"
+    },
+    {
+      "id": "B-INTERNAL-CANARY-MEMBER",
+      "pass": true,
+      "detail": "success=true"
+    },
+    {
+      "id": "B-NON-CANARY-TRIP",
+      "pass": true,
+      "detail": "code=FORBIDDEN msg=trip_not_on_attention_internal_dual_read_allowlist"
+    },
+    {
+      "id": "EXEC-SHAPE",
+      "pass": true,
+      "detail": "phase=INTERNAL_DUAL_READ primarySso=false notifications=false"
+    },
+    {
+      "id": "EXEC-COMPARISON-COUNTS",
+      "pass": true,
+      "detail": "current=3 attention=0 reduction=3"
+    },
+    {
+      "id": "EXEC-CANONICAL-COUNT",
+      "pass": true,
+      "detail": "canonicalProblemCount=1"
+    },
+    {
+      "id": "EXEC-NO-ROAD-IN-ATTENTION",
+      "pass": true,
+      "detail": "no road semantic in current queue items"
+    },
+    {
+      "id": "C-EXEC-QUEUE-UNCHANGED-BY-DUAL-READ",
+      "pass": true,
+      "detail": "decision-queue status=200 openCount=3"
+    },
+    {
+      "id": "C-EXEC-INVARIANTS",
+      "pass": true,
+      "detail": "problems 1→1 plan=plan_v2_93281797 ledger 1→1"
+    },
+    {
+      "id": "C-EXEC-DUAL-READ",
+      "pass": true,
+      "detail": "current=3 attention=0 verdict=INCONCLUSIVE"
+    },
+    {
+      "id": "D-WEATHER-DUAL-READ",
+      "pass": true,
+      "detail": "status=200"
+    },
+    {
+      "id": "WEATHER-SHAPE",
+      "pass": true,
+      "detail": "phase=INTERNAL_DUAL_READ primarySso=false notifications=false"
+    },
+    {
+      "id": "WEATHER-COMPARISON-COUNTS",
+      "pass": true,
+      "detail": "current=2 attention=0 reduction=2"
+    },
+    {
+      "id": "WEATHER-CANONICAL-COUNT",
+      "pass": true,
+      "detail": "canonicalProblemCount=1"
+    },
+    {
+      "id": "WEATHER-NO-ROAD-IN-ATTENTION",
+      "pass": true,
+      "detail": "no road semantic in current queue items"
+    },
+    {
+      "id": "D-WEATHER-QUEUE",
+      "pass": true,
+      "detail": "currentItems=2 hasWeather=false attention=0"
+    },
+    {
+      "id": "D-WEATHER-NO-ROAD",
+      "pass": true,
+      "detail": "roadItems=0"
+    },
+    {
+      "id": "D-WEATHER-INVARIANTS",
+      "pass": true,
+      "detail": "problems 1→1 ledger 0→0"
+    },
+    {
+      "id": "E-CANONICAL-MUTATION-ZERO",
+      "pass": true,
+      "detail": "dual-read did not change rfc001DecisionProblems count"
+    },
+    {
+      "id": "E-QUEUE-MUTATION-ZERO",
+      "pass": true,
+      "detail": "exec trip updatedAt unchanged=true"
+    },
+    {
+      "id": "E-NOTIFICATION-ZERO",
+      "pass": true,
+      "detail": "notificationsEnabled=false in response"
+    },
+    {
+      "id": "E-WEATHER-LIVE-NOT-SHADOW",
+      "pass": true,
+      "detail": "promote probe status=201 shadowMode=false"
+    },
+    {
+      "id": "F-ROAD-PROMOTION-ZERO",
+      "pass": true,
+      "detail": "road=0"
+    }
+  ],
+  "overallPass": true,
+  "status": "Slice 4 Internal Dual-Read Smoke Test = PASS"
+}

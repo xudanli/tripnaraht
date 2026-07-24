@@ -169,6 +169,28 @@ export {
 
 // 工具
 export {
+  type LunchStrategy,
+  type LunchStrategySignals,
+  type LunchBreakSpec,
+  LUNCH_STRATEGY_LABELS,
+  normalizeLunchStrategy,
+  resolveLunchStrategy,
+  resolveLunchStrategyFromTrip,
+  extractLunchStrategySignalsFromTrip,
+  buildLunchBreakSpec,
+  getMinLunchGapMinutes,
+  buildMealBlockWindows,
+  buildLunchWindowConflictCopy,
+  buildMealsAssessmentCopy,
+  buildAgentMealBriefing,
+  lunchStrategyInsightZh,
+  toAgentLunchBreak,
+  extractLunchStrategySignalsFromParams,
+  shouldPromptLunchStrategyQuestion,
+  buildLunchStrategyClarificationQuestion,
+  buildTripLunchMetadataFromParams,
+} from './utils/lunch-strategy.util';
+export {
   hhmmToMin,
   minToHhmm,
   isOpenAt,

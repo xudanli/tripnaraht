@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.context@v1",
+  "tripId": "ra01_is_07",
+  "planVersionId": "plan_pilot_is_07_v1",
+  "timezone": "Atlantic/Reykjavik",
+  "dateRange": {
+    "startDate": "2026-08-02",
+    "endDate": "2026-08-07"
+  },
+  "destination": "IS",
+  "deidentified": true,
+  "notes": [
+    "exported from staging DB",
+    "sourceTripId=pilot_is_07",
+    "frozen copy — not live"
+  ]
+}

@@ -3,6 +3,10 @@ import type {
   ReadinessRepairLoopResult,
   ReadinessRepairSnapshot,
 } from '../types/loop-run.types';
+import type { FeasibilityIssueDto } from '../../trips/trip-constraint-solver/types/trip-constraint-solver.types';
+import type { ReadinessGuardianNegotiationSnapshot } from '../../trips/readiness/types/coverage-map.types';
+import type { PersonaAlertDto } from '../../trips/dto/persona-alerts.dto';
+import { projectFeasibilityIssueToPersonaAlert } from '../../trips/utils/guardian-user-facing.projection.util';
 
 export type TripLoopUiPhase = 'validating' | 'issues_found' | 'awaiting_approval' | 'completed' | 'failed';
 
@@ -26,6 +30,8 @@ export interface TripLoopIssueCardDto {
   };
   requiresApproval: boolean;
   optionId?: string;
+  /** 与 persona-alerts / Decision Strip 同源 BFF 投影 */
+  personaAlert?: PersonaAlertDto;
 }
 
 export interface TripLoopUiViewDto {
@@ -39,6 +45,8 @@ export interface TripLoopUiViewDto {
   };
   checklist: TripLoopChecklistItemDto[];
   issueCards: TripLoopIssueCardDto[];
+  /** M3：与 GET persona-alerts 同源（本次 loop 涉及的 must_handle issues） */
+  personaAlerts?: PersonaAlertDto[];
   primaryAction?: {
     label: string;
     loopRunId: string;
@@ -58,10 +66,22 @@ const CHECK_LABELS = [
   { id: 'booking', label: '预订完整度' },
 ] as const;
 
-export function buildTripLoopUiView(result: ReadinessRepairLoopResult): TripLoopUiViewDto {
+export function buildTripLoopUiView(
+  result: ReadinessRepairLoopResult,
+  options?: {
+    feasibilityIssues?: FeasibilityIssueDto[];
+    guardianNegotiation?: ReadinessGuardianNegotiationSnapshot;
+  },
+): TripLoopUiViewDto {
   const phase = resolvePhase(result);
   const checklist = buildChecklist(result);
-  const issueCards = buildIssueCards(result);
+  const issueById = new Map(
+    (options?.feasibilityIssues ?? []).map((issue) => [issue.id, issue]),
+  );
+  const issueCards = buildIssueCards(result, issueById, options?.guardianNegotiation);
+  const personaAlerts = issueCards
+    .map((card) => card.personaAlert)
+    .filter((a): a is PersonaAlertDto => a != null);
   const completedChecks = checklist.filter((c) => c.result === 'passed').length;
 
   return {
@@ -75,6 +95,7 @@ export function buildTripLoopUiView(result: ReadinessRepairLoopResult): TripLoop
     },
     checklist,
     issueCards,
+    ...(personaAlerts.length ? { personaAlerts } : {}),
     primaryAction:
       result.requiresApproval && result.recommendedPatches.length > 0
         ? {
@@ -146,14 +167,37 @@ function buildChecklist(result: ReadinessRepairLoopResult): TripLoopChecklistIte
   });
 }
 
-function buildIssueCards(result: ReadinessRepairLoopResult): TripLoopIssueCardDto[] {
-  return result.iterations.map((it) => toIssueCard(it, result));
+function buildIssueCards(
+  result: ReadinessRepairLoopResult,
+  issueById: Map<string, FeasibilityIssueDto>,
+  guardianNegotiation?: ReadinessGuardianNegotiationSnapshot,
+): TripLoopIssueCardDto[] {
+  return result.iterations.map((it) => toIssueCard(it, result, issueById, guardianNegotiation));
 }
 
 function toIssueCard(
   iteration: ReadinessRepairIterationView,
   result: ReadinessRepairLoopResult,
+  issueById: Map<string, FeasibilityIssueDto>,
+  guardianNegotiation?: ReadinessGuardianNegotiationSnapshot,
 ): TripLoopIssueCardDto {
+  const issueDto =
+    issueById.get(iteration.issueId) ??
+    ({
+      id: iteration.issueId,
+      priority: 'must_handle',
+      category: 'other',
+      title: iteration.issueTitle,
+      message: iteration.issueTitle,
+      affectedDays: [],
+      severity: 'high',
+    } satisfies FeasibilityIssueDto);
+
+  const personaAlert = projectFeasibilityIssueToPersonaAlert(issueDto, {
+    audience: 'user',
+    guardianNegotiation,
+  });
+
   const recommended = result.recommendedPatches.find((p) => p.issueId === iteration.issueId);
   const attempts = iteration.attemptedOptions.slice(0, 3).map((optId, idx) => {
     if (optId === iteration.proposal.optionId) {
@@ -164,13 +208,14 @@ function toIssueCard(
 
   return {
     issueId: iteration.issueId,
-    title: iteration.issueTitle,
-    problem: iteration.issueTitle,
+    title: personaAlert?.title ?? iteration.issueTitle,
+    problem: personaAlert?.explanation ?? iteration.issueTitle,
     systemAttempts: attempts.length > 0 ? attempts : ['系统正在评估修复方案'],
     recommendation: recommended?.title ?? iteration.proposal.title,
     impact: buildImpact(iteration),
     requiresApproval: iteration.validation.wouldDefer === true || result.requiresApproval,
     optionId: recommended?.optionId ?? iteration.proposal.optionId,
+    ...(personaAlert ? { personaAlert } : {}),
   };
 }
 

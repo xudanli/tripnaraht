@@ -9,10 +9,18 @@ import { LocationDetectorService } from './services/location-detector.service';
 import { SmartRoutesService } from './services/smart-routes.service';
 import { RouteCacheService } from './services/route-cache.service';
 import { TravelTimeEstimatorService } from './services/travel-time-estimator.service';
+import { PoiHopTravelSegmentService } from './services/poi-hop-travel-segment.service';
+import { RouteGeometryService } from './services/route-geometry.service';
+import { MapboxDirectionsService } from './services/mapbox-directions.service';
 import { SelfHostedRoutingService } from './services/self-hosted-routing.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { RedisService } from '../redis/redis.service';
+import { DemModule } from '../trips/dem/dem.module';
+import { TravelSegmentEnrichmentService } from './services/travel-segment-enrichment.service';
+import { TravelEtaReconciliationService } from './services/travel-eta-reconciliation.service';
+import { TravelEtaActualCaptureService } from './services/travel-eta-actual-capture.service';
+import { TravelEtaCanaryDashboardService } from './services/travel-eta-canary-dashboard.service';
 
 // 检查是否在 MCP 模式下
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
@@ -34,6 +42,7 @@ class MockRedisService {
 @Module({
   imports: [
     PrismaModule,
+    DemModule,
     // 在 MCP 模式下，使用内存缓存而不是 Redis
     disableRedis 
       ? CacheModule.register({ ttl: 3600, max: 1000 })
@@ -56,6 +65,13 @@ class MockRedisService {
     SelfHostedRoutingService,
     RouteCacheService,
     TravelTimeEstimatorService,
+    PoiHopTravelSegmentService,
+    MapboxDirectionsService,
+    RouteGeometryService,
+    TravelEtaReconciliationService,
+    TravelEtaActualCaptureService,
+    TravelEtaCanaryDashboardService,
+    TravelSegmentEnrichmentService,
   ],
   exports: [
     TransportDecisionService,
@@ -65,6 +81,13 @@ class MockRedisService {
     SelfHostedRoutingService,
     RouteCacheService, // 导出路线缓存服务
     TravelTimeEstimatorService, // 统一交通时间估算（与 getDayTravelInfo 对齐）
+    PoiHopTravelSegmentService,
+    MapboxDirectionsService,
+    RouteGeometryService,
+    TravelEtaReconciliationService,
+    TravelEtaActualCaptureService,
+    TravelEtaCanaryDashboardService,
+    TravelSegmentEnrichmentService,
   ],
 })
 export class TransportModule {}

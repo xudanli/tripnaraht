@@ -1,0 +1,13 @@
+{
+  "schemaId": "tripnara.selected_trip.manifest@v1",
+  "tripId": "ra01_is_06",
+  "planVersionId": "plan_pilot_is_06_v1_tep_REPAIR-SDR101-D1-activity_stop_6",
+  "evidenceVersionId": "ev_ra01_is_06_20260716",
+  "environment": "staging",
+  "destination": "IS",
+  "intendedOperation": "SHORTEN",
+  "timezone": "Atlantic/Reykjavik",
+  "source": "staging_export",
+  "deidentified": true,
+  "eligibility": "pending"
+}

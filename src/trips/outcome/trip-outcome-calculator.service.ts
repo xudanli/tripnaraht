@@ -41,11 +41,9 @@ export interface TripOutcomeRequest {
   // 期望数据
   preTripExpectation: number;
   pastExperienceReference?: number;
-  companionExpectation?: number;
   // 权重配置（可选）
   weights?: {
     overallSatisfaction: number;
-    companionSatisfaction: number;
     budgetAccuracy: number;
     completionQuality: number;
     safety: number;
@@ -64,7 +62,6 @@ export interface TripOutcomeResponse {
   groupAggregation: GroupAggregationResult;
   weights: {
     overallSatisfaction: number;
-    companionSatisfaction: number;
     budgetAccuracy: number;
     completionQuality: number;
     safety: number;
@@ -79,12 +76,11 @@ export class TripOutcomeCalculator {
 
   // 默认权重
   private readonly defaultWeights = {
-    overallSatisfaction: 0.25,
-    companionSatisfaction: 0.20,
-    budgetAccuracy: 0.15,
-    completionQuality: 0.15,
+    overallSatisfaction: 0.30,
+    budgetAccuracy: 0.20,
+    completionQuality: 0.20,
     safety: 0.15,
-    repurchase: 0.10,
+    repurchase: 0.15,
   };
 
   /**
@@ -130,9 +126,6 @@ export class TripOutcomeCalculator {
       overallSatisfaction: this.calculateOverallSatisfaction(
         request.questionnaireResponses,
       ),
-      companionSatisfaction: this.calculateCompanionSatisfaction(
-        request.questionnaireResponses,
-      ),
       budgetAccuracy: this.calculateBudgetAccuracy(request),
       completionQuality: this.calculateCompletionQuality(request),
       safety: this.calculateSafety(request),
@@ -156,22 +149,6 @@ export class TripOutcomeCalculator {
       cognitiveEvaluation,
       positiveActivation,
       negativeActivation,
-      score,
-    };
-  }
-
-  /**
-   * 计算搭子关系满意度
-   */
-  private calculateCompanionSatisfaction(responses: any): TripOutcomeDimensions['companionSatisfaction'] {
-    const willingnessToTravelAgain = this.normalizeTo01(responses.willingnessToTravelAgain, 7);
-    const groupDynamics = this.normalizeTo01(responses.groupDynamics, 7);
-
-    const score = (willingnessToTravelAgain * 0.6 + groupDynamics * 0.4);
-
-    return {
-      willingnessToTravelAgain,
-      groupDynamics,
       score,
     };
   }
@@ -262,7 +239,6 @@ export class TripOutcomeCalculator {
   ): number {
     return (
       dimensions.overallSatisfaction.score * weights.overallSatisfaction +
-      dimensions.companionSatisfaction.score * weights.companionSatisfaction +
       dimensions.budgetAccuracy.score * weights.budgetAccuracy +
       dimensions.completionQuality.score * weights.completionQuality +
       dimensions.safety.score * weights.safety +
@@ -285,17 +261,12 @@ export class TripOutcomeCalculator {
     const pastExperience = request.pastExperienceReference
       ? this.normalizeTo01(request.pastExperienceReference, 10)
       : preTripExpectation;
-    const companionExpectation = request.companionExpectation
-      ? this.normalizeTo01(request.companionExpectation, 10)
-      : preTripExpectation;
-
     return {
       preTripExpectation,
       postTripSatisfaction,
       gap,
       referencePoints: {
         pastExperience,
-        companionExpectation,
         preTripExpectation,
       },
     };

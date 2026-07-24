@@ -2,7 +2,12 @@
  * `route_and_run` 响应中的 **safety_surface**：供前端「痛觉 UI」稳定消费（与 LLM 文案解耦）。
  */
 
-import type { Itinerary } from '../interfaces/trip-plan.interface';
+import type { Itinerary, GateResult } from '../interfaces/trip-plan.interface';
+import {
+  humanizeVerifyIssueHeadlineZh,
+  surfaceRawVerifyIssueMessageForUserZh,
+} from './feasibility-message-surface.zh.util';
+import { filterSafetyVerifyIssuesAgainstItinerary, filterSafetyIssuesDuplicatingGateViolations } from './filter-stale-verify-violations.util';
 
 export const SAFETY_SURFACE_VERSION = '1.0' as const;
 
@@ -30,6 +35,8 @@ export type SafetySurfaceVerifyIssue = {
   item_id?: string;
   day?: string;
   message: string;
+  /** BFF 出站：中文标题（供前端替代直显 ROUTE_INFEASIBLE 等英码） */
+  headline_zh?: string;
   suggestion?: string;
   segment_ref?: string;
 };
@@ -109,7 +116,8 @@ function sanitizeVerifyIssues(issues: unknown): SafetySurfaceVerifyIssue[] {
     const x = i as Record<string, unknown>;
     const type = typeof x.type === 'string' ? x.type : 'UNKNOWN';
     const severity = typeof x.severity === 'string' ? x.severity : 'WARNING';
-    const message = typeof x.message === 'string' ? truncate(x.message, SUMMARY_MAX) : '';
+    const rawMsg = typeof x.message === 'string' ? x.message : '';
+    const message = rawMsg ? truncate(surfaceRawVerifyIssueMessageForUserZh(rawMsg), SUMMARY_MAX) : '';
     if (!message) continue;
     const violation = x.violation as Record<string, unknown> | undefined;
     const entityRef = violation?.entityRef as Record<string, unknown> | undefined;
@@ -117,6 +125,7 @@ function sanitizeVerifyIssues(issues: unknown): SafetySurfaceVerifyIssue[] {
     out.push({
       type,
       severity,
+      ...(type !== 'UNKNOWN' ? { headline_zh: humanizeVerifyIssueHeadlineZh(type) } : {}),
       ...(typeof x.item_id === 'string' ? { item_id: x.item_id } : {}),
       ...(typeof x.day === 'string' ? { day: x.day } : {}),
       message,
@@ -238,12 +247,19 @@ export function buildSafetySurfacePayload(params: {
   research_data?: Record<string, unknown> | null;
   itinerary?: Itinerary | null;
   stepsExecuted?: Array<{ skillName?: string; result?: any; success?: boolean }>;
+  /** 已清洗的 gate；用于剔除与 violations 重复的 verify_issues（避免前端双源各渲染一遍） */
+  gate_result?: GateResult | null;
 }): SafetySurfacePayload {
   const rawAlerts = (params.research_data as { safetravel_alerts?: unknown } | null)?.safetravel_alerts;
   const fromResearch = sanitizeAlerts(rawAlerts);
   const tagged = collectTaggedLegs(params.itinerary ?? undefined);
   const smart = extractSmartUpdate(params.stepsExecuted);
-  const verifyFromStep = extractVerifyIssuesFromSteps(params.stepsExecuted);
+  let verifyFromStep = filterSafetyVerifyIssuesAgainstItinerary(
+    extractVerifyIssuesFromSteps(params.stepsExecuted),
+    params.itinerary ?? undefined,
+    params.research_data ?? undefined,
+  );
+  verifyFromStep = filterSafetyIssuesDuplicatingGateViolations(verifyFromStep, params.gate_result);
 
   return {
     version: SAFETY_SURFACE_VERSION,

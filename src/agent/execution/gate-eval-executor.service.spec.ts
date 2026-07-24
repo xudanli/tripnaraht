@@ -268,3 +268,74 @@ describe('GateEvalExecutorService — conflict matrix from DB', () => {
     expect(result.gateResult.violations.some((v) => String(v.detail).includes('db_froad_visibility_block_v1'))).toBe(true);
   });
 });
+
+describe('GateEvalExecutorService — vehicle party constraints', () => {
+  let service: GateEvalExecutorService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [GateEvalExecutorService, TripContextExtractorService],
+    }).compile();
+    service = module.get<GateEvalExecutorService>(GateEvalExecutorService);
+  });
+
+  it('长辈 + 多行李 + 紧凑型租车应 HARD 拒绝', async () => {
+    const result = await service.execute({} as any, {
+      requestId: 'r-vehicle-party',
+      tripPlanRequest: {
+        destination: 'Iceland',
+        party: { count: 4, has_elderly: true },
+        ontology_context: { party: { luggage_count: 4 } },
+        date_range: { start_date: '2026-06-01', end_date: '2026-06-05' },
+      },
+      researchData: {
+        car_rentals: [{ vehicle_name: 'Toyota Yaris Compact', car_class: 'COMPACT' }],
+      },
+    });
+    expect(result.gateResult.violations.some((v) => v.type === 'VEHICLE_SPACE_INSUFFICIENT')).toBe(true);
+    expect(result.gateResult.violations.some((v) => v.severity === 'HARD' && v.detail.includes('紧凑型'))).toBe(true);
+  });
+
+  it('无空间压力时不应触发 VEHICLE_SPACE_INSUFFICIENT', async () => {
+    const result = await service.execute({} as any, {
+      requestId: 'r-vehicle-ok',
+      tripPlanRequest: {
+        destination: 'Iceland',
+        party: { count: 2 },
+        date_range: { start_date: '2026-06-01', end_date: '2026-06-05' },
+      },
+      researchData: {
+        car_rentals: [{ vehicle_name: 'Toyota Yaris Compact', car_class: 'COMPACT' }],
+      },
+    });
+    expect(result.gateResult.violations.some((v) => v.type === 'VEHICLE_SPACE_INSUFFICIENT')).toBe(false);
+  });
+
+  describe('Phase 6 formal BLOCK delegation', () => {
+    const originalPhase6 = process.env.PHASE6_LEGACY_DEPRECATION;
+
+    afterEach(() => {
+      if (originalPhase6 === undefined) delete process.env.PHASE6_LEGACY_DEPRECATION;
+      else process.env.PHASE6_LEGACY_DEPRECATION = originalPhase6;
+    });
+
+    it('CAS-094: readiness failure risk BLOCK softens to ADJUST_REQUIRED when Phase 6 on', async () => {
+      process.env.PHASE6_LEGACY_DEPRECATION = '1';
+      const result = await service.execute(
+        {} as any,
+        {
+          requestId: 'r1',
+          routeDirectionId: 'rd-1',
+          tripPlanRequest: { destination: 'Iceland' },
+          researchData: {
+            failure_risk_prediction: {
+              predictions: [{ day: 2, riskLevel: 'HIGH' }],
+            },
+          },
+        },
+      );
+      expect(result.gateResult.gate_result).toBe('ADJUST_REQUIRED');
+      expect(result.constraints.feasible).toBe(false);
+    });
+  });
+});

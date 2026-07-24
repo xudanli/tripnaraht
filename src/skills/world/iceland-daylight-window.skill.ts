@@ -72,7 +72,7 @@ function nightRiskFromDaylightHours(h: number): IcelandDaylightWindowOutput['nig
 export class IcelandDaylightWindowSkill implements Skill<IcelandDaylightWindowInput, IcelandDaylightWindowOutput> {
   metadata = {
     name: 'iceland.daylightWindow',
-    description: '冰岛日照与安全驾驶时间窗（suncalc + Atlantic/Reykjavik）。',
+    description: '计算 iceland 日照与安全驾驶 daylight 时间窗（suncalc + Atlantic/Reykjavik）。在 planning/readiness 需判断可驾驶时段或 polar night 风险时调用。',
     version: '1.0.0',
     category: 'world' as const,
     toolGroup: 'DOMAIN' as const,

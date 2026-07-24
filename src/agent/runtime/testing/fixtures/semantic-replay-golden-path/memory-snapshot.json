@@ -15,6 +15,7 @@
     "activeTripState": null,
     "recoveryHistory": [],
     "failurePatterns": [],
+    "recentTripFeedbacks": [],
     "domainInfluenceDigest": null,
     "wishConstraintDigest": null,
     "privateWishDigest": null,

@@ -14,6 +14,7 @@
 | 决策草案 | 草案统计 | `/api/decision-draft` |
 | 规划工作台 | 会话、计划管理 | `/api/planning-workbench/admin` |
 | 准备度配置 | Readiness Pack 管理 | `/api/readiness/admin` |
+| 国家知识库 | CountryProfile V2 增删改查 | `/api/admin/countries`（兼容 `/api/countries/admin`） |
 | RAG 系统 | 文档、缓存、指标 | `/api/rag` |
 | 数据质量 | 地理数据质量监控 | `/api/admin/data-quality` |
 | 目的地配置 | 澄清配置管理 | `/api/admin/destination-clarification` |
@@ -383,6 +384,8 @@ Response:
 
 ### 2.4 规划工作台管理 `/api/planning-workbench/admin`
 
+**鉴权**：`AdminStrictAuthGuard` — 须 `Authorization: Bearer <accessToken>`（`POST /api/admin/auth/login` 获取，角色 ADMIN/OPERATOR），或配置 `ADMIN_GOD_API_KEY` 时使用 `x-admin-god-key` / `Bearer <god-key>`。
+
 #### 原型页面：规划会话管理
 
 ```
@@ -446,7 +449,29 @@ Response:
 
 ---
 
-### 2.6 准备度配置 `/api/readiness/admin`
+### 2.6 国家知识库 `/api/admin/countries`
+
+**鉴权**：`AdminStrictAuthGuard` — `Authorization: Bearer <accessToken>`（ADMIN/OPERATOR）或 `x-admin-god-key` / `Bearer <ADMIN_GOD_API_KEY>`。
+
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| GET | `/api/admin/countries/profiles` | 档案列表（`page`, `limit`, `q`, `schemaVersion`） |
+| GET | `/api/admin/countries/profiles/:isoCode` | 档案详情（同公开 profile，含 V2 字段） |
+| POST | `/api/admin/countries/profiles` | 创建 V2 档案（Zod 校验） |
+| PUT | `/api/admin/countries/profiles/:isoCode` | 全量更新 |
+| PATCH | `/api/admin/countries/profiles/:isoCode` | 部分更新（JSON 浅合并，升为 V2） |
+| DELETE | `/api/admin/countries/profiles/:isoCode` | 硬删除 |
+| POST | `/api/admin/countries/profiles/validate` | 仅校验 JSON，不落库 |
+
+兼容旧路径：`/api/countries/admin/...` 与上表等价。
+
+请求体与 `data/country-profiles/{ISO}.v2.json` 同构（`schemaVersion: 2` 必填）。
+
+完整接口文档：[src/countries/COUNTRY_PROFILE_ADMIN_API.md](../countries/COUNTRY_PROFILE_ADMIN_API.md)
+
+---
+
+### 2.7 准备度配置 `/api/readiness/admin`
 
 #### 原型页面：Readiness Pack 管理
 

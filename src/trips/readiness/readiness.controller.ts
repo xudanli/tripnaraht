@@ -46,6 +46,7 @@ import {
 import { TripContext } from './types/trip-context.types';
 import { ReadinessCheckResult, ReadinessFindingItem } from './types/readiness-findings.types';
 import { successResponse, errorResponse, ErrorCode } from '../../common/dto/standard-response.dto';
+import { mapWriteChainBlockedToErrorResponse } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../../common/dto/api-response.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DateTime } from 'luxon';
@@ -67,7 +68,10 @@ import { ReadinessCausalPreanalysisService } from './services/readiness-causal-p
 import { buildReadinessCascadeUiHints } from './utils/readiness-causal-preanalysis.util';
 import { CascadeUiHintDto } from '../../travel-cognition/dto/travel-runtime-api.dto';
 import { CoverageMapService } from './services/coverage-map.service';
+import { ReadinessAutoRepairService } from './services/readiness-auto-repair.service';
 import { ReadinessRepairService } from './services/readiness-repair.service';
+import { dispatchManualRepairFromModule } from '../../decision-runtime/trigger/record-trigger-lineage-from-module.util';
+import { resolveDecisionRunId } from '../../decision-runtime/trigger/record-trigger-lineage.util';
 import { UpdateChecklistStatusDto } from './dto/checklist-status.dto';
 import {
   MarkNotApplicableDto,
@@ -101,6 +105,11 @@ import {
 } from './utils/trip-risk-enrichment.util';
 import { getLocalizedText } from './utils/i18n.utils';
 import { filterRisksForTripPhase, isActionableLiveRisk, getTripReadinessPhase, getDaysUntilTripStart, ACTIONABLE_READINESS_HORIZON_DAYS, type RelevanceFilterableRisk } from './utils/trip-readiness-relevance.util';
+import {
+  isPlanFeasibilityBlockerId,
+  resolveRepairTargetIssueId,
+} from '../trip-constraint-solver/utils/repair-authority.util';
+import type { FeasibilityReportService } from '../trip-constraint-solver/services/feasibility-report.service';
 
 class TravelerDto {
   @IsOptional()
@@ -319,6 +328,7 @@ export class ReadinessController {
     private readonly userDecisionService: UserDecisionService,
     private readonly constraintsCompiler: ReadinessToConstraintsCompiler,
     private readonly coverageMapService: CoverageMapService,
+    private readonly readinessAutoRepairService: ReadinessAutoRepairService,
     private readonly readinessRepairService: ReadinessRepairService,
     private readonly riskTypeMapperService: RiskTypeMapperService,
     private readonly tripReadinessWeatherForecastService: TripReadinessWeatherForecastService,
@@ -327,7 +337,7 @@ export class ReadinessController {
     private readonly moduleRef: ModuleRef,
   ) {
     // ⚠️ 使用懒加载避免循环依赖死锁
-    // TripConflictsService 在需要时通过 ModuleRef 获取
+    // TripConflictsService / DecisionTriggerGatewayService 在需要时通过 ModuleRef 获取
   }
 
   /**
@@ -344,6 +354,17 @@ export class ReadinessController {
       }
     }
     return this.tripConflictsService || null;
+  }
+
+  private getFeasibilityReportService(): FeasibilityReportService | undefined {
+    try {
+      const { FeasibilityReportService: Svc } = require('../trip-constraint-solver/services/feasibility-report.service') as {
+        FeasibilityReportService: new (...args: never[]) => FeasibilityReportService;
+      };
+      return this.moduleRef.get(Svc, { strict: false });
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -754,6 +775,12 @@ export class ReadinessController {
 
       // 与 GET .../score 对齐：将覆盖地图 high severity 缺口写入对应 findings[].blockers（稳定 id：coverage-gap:*）
       result = await this.coverageMapService.mergeHighSeverityCoverageGapBlockersIntoTripReadiness(
+        tripId,
+        trip.destination ?? '',
+        result,
+      );
+
+      result = await this.coverageMapService.mergePoiAccessFindingsIntoTripReadiness(
         tripId,
         trip.destination ?? '',
         result,
@@ -2170,6 +2197,19 @@ export class ReadinessController {
   async getRepairOptions(@Body() body: { tripId: string; blockerId: string }): Promise<any> {
     try {
       const { tripId, blockerId } = body;
+      const feasibility = this.getFeasibilityReportService();
+      if (feasibility && isPlanFeasibilityBlockerId(blockerId)) {
+        const issueId = resolveRepairTargetIssueId(blockerId);
+        try {
+          const result = await feasibility.getRepairOptions(tripId, issueId);
+          return successResponse(result);
+        } catch (error) {
+          const err = error as Error;
+          if (!(err instanceof NotFoundException)) {
+            throw err;
+          }
+        }
+      }
       const result = await this.coverageMapService.getRepairOptions(tripId, blockerId);
       return successResponse(result);
     } catch (error) {
@@ -2184,11 +2224,80 @@ export class ReadinessController {
   }
 
   @Public()
+  @Post('auto-repair')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '自动修复准备度阻塞项',
+    description:
+      '批量处理阻塞项：先刷新证据（冰岛行程拉取天气/路况），再按修复选项自动执行。单 blockerId 时走 ReadinessRepairService（legacy C 端路径，已弃用）。',
+    deprecated: false,
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tripId'],
+      properties: {
+        tripId: { type: 'string' },
+        blockerIds: { type: 'array', items: { type: 'string' } },
+        maxActions: { type: 'number', example: 5 },
+        blockerId: { type: 'string', description: 'legacy 单阻塞项修复（C 端已弃用）' },
+        executeDecision: { type: 'boolean' },
+        persistDecision: { type: 'boolean' },
+      },
+    },
+  })
+  async autoRepair(
+    @Body()
+    body: {
+      tripId: string;
+      blockerIds?: string[];
+      maxActions?: number;
+      blockerId?: string;
+      executeDecision?: boolean;
+      persistDecision?: boolean;
+    },
+  ): Promise<any> {
+    try {
+      if (body.blockerId && !body.blockerIds?.length) {
+        if (isPlanFeasibilityBlockerId(body.blockerId)) {
+          throw new BadRequestException(
+            '单阻塞项 auto-repair 已弃用：方案类请使用 POST /api/trips/:tripId/feasibility-report/issues/:issueId/apply-repair',
+          );
+        }
+        const result = await this.readinessRepairService.autoRepair({
+          tripId: body.tripId,
+          blockerId: body.blockerId,
+          executeDecision: body.executeDecision,
+          persistDecision: body.persistDecision,
+        });
+        return successResponse(result);
+      }
+      const result = await this.readinessAutoRepairService.autoRepair(body.tripId, {
+        blockerIds: body.blockerIds,
+        maxActions: body.maxActions,
+      });
+      return successResponse(result);
+    } catch (error) {
+      const err = error as Error;
+      if (err instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, err.message);
+      }
+      if (err instanceof BadRequestException) {
+        return errorResponse(ErrorCode.VALIDATION_ERROR, err.message);
+      }
+      this.logger.error(`Failed to auto-repair: ${err.message}`, err.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
+    }
+  }
+
+  @Public()
   @Post('apply-repair')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '应用阻塞项修复',
-    description: '根据 repair-options 返回的 optionId 执行修复（本地标记、刷新分数、或 executeDecision 时调用决策引擎）',
+    description:
+      '【C 端已弃用】方案类修复请改用 POST /api/trips/:tripId/feasibility-report/issues/:issueId/apply-repair。本接口仅保留出发准备域（勾选/标记/刷新）。',
+    deprecated: true,
   })
   @ApiBody({
     schema: {
@@ -2230,11 +2339,74 @@ export class ReadinessController {
       runGuardianNegotiation?: boolean;
       forceDecisionRepair?: boolean;
     },
+    @CurrentUser() user?: CurrentUserPayload,
   ): Promise<any> {
     try {
-      const result = await this.readinessRepairService.applyRepair(body);
-      return successResponse(result);
+      const feasibility = this.getFeasibilityReportService();
+      if (feasibility && isPlanFeasibilityBlockerId(body.blockerId)) {
+        const issueId = resolveRepairTargetIssueId(body.blockerId);
+        const report = await feasibility.getReport(body.tripId);
+        const issue = report.issues.find(
+          (i) => i.id === issueId || i.prerequisiteId === body.blockerId,
+        );
+        if (issue) {
+          const dispatched = await dispatchManualRepairFromModule(this.moduleRef, {
+            tripId: body.tripId,
+            userId: user?.userId,
+            entryPointId: 'user.readiness-apply-repair.proxy-feasibility',
+            issueId: issue.id,
+            metadata: {
+              repairOptionId: body.optionId,
+              intent: 'manual_repair',
+              executeDecision: body.executeDecision,
+            },
+          });
+          const decisionRunId = resolveDecisionRunId(dispatched);
+          const result = await feasibility.applyRepair(
+            body.tripId,
+            issue.id,
+            {
+              optionId: body.optionId,
+              reason: body.reason,
+              executeDecision: body.executeDecision,
+              persistDecision: body.persistDecision,
+              runGuardianNegotiation: body.runGuardianNegotiation,
+              forceDecisionRepair: body.forceDecisionRepair,
+            },
+            user?.userId,
+          );
+          return successResponse({
+            ...result,
+            ...(decisionRunId ? { decisionRunId } : {}),
+            repairAuthority: 'feasibility',
+            proxiedFrom: 'readiness.apply-repair',
+          });
+        }
+      }
+
+      const dispatched = await dispatchManualRepairFromModule(this.moduleRef, {
+        tripId: body.tripId,
+        userId: user?.userId,
+        entryPointId: 'user.readiness-apply-repair',
+        issueId: body.blockerId,
+        metadata: {
+          repairOptionId: body.optionId,
+          intent: 'manual_repair',
+          executeDecision: body.executeDecision,
+        },
+      });
+      const decisionRunId = resolveDecisionRunId(dispatched);
+      const result = await this.readinessRepairService.applyRepair({
+        ...body,
+        repairAuthority: 'readiness_prep',
+      });
+      return successResponse({
+        ...result,
+        ...(decisionRunId ? { decisionRunId } : {}),
+      });
     } catch (error) {
+      const writeChain = mapWriteChainBlockedToErrorResponse(error);
+      if (writeChain) return writeChain;
       const err = error as Error;
       if (err instanceof NotFoundException) {
         return errorResponse(ErrorCode.NOT_FOUND, err.message);
@@ -2243,52 +2415,6 @@ export class ReadinessController {
         return errorResponse(ErrorCode.VALIDATION_ERROR, err.message);
       }
       this.logger.error(`Failed to apply repair: ${err.message}`, err.stack);
-      return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
-    }
-  }
-
-  @Public()
-  @Post('auto-repair')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: '自动修复阻塞项',
-    description:
-      '【C 端已弃用】请改用 POST /api/trips/:tripId/feasibility-report/issues/:issueId/apply-repair。Agent 仍可使用。',
-    deprecated: true,
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['tripId', 'blockerId'],
-      properties: {
-        tripId: { type: 'string' },
-        blockerId: { type: 'string' },
-        executeDecision: { type: 'boolean' },
-        persistDecision: { type: 'boolean' },
-      },
-    },
-  })
-  async autoRepair(
-    @Body()
-    body: {
-      tripId: string;
-      blockerId: string;
-      executeDecision?: boolean;
-      persistDecision?: boolean;
-    },
-  ): Promise<any> {
-    try {
-      const result = await this.readinessRepairService.autoRepair(body);
-      return successResponse(result);
-    } catch (error) {
-      const err = error as Error;
-      if (err instanceof NotFoundException) {
-        return errorResponse(ErrorCode.NOT_FOUND, err.message);
-      }
-      if (err instanceof BadRequestException) {
-        return errorResponse(ErrorCode.VALIDATION_ERROR, err.message);
-      }
-      this.logger.error(`Failed to auto repair: ${err.message}`, err.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, err.message);
     }
   }
@@ -2366,7 +2492,7 @@ export class ReadinessController {
   @ApiOperation({
     summary: '刷新准备度证据',
     description:
-      '【C 端已弃用】请改用 POST /api/trips/:tripId/feasibility-report/validate。Agent 仍可使用。',
+      '为冰岛行程批量拉取区域天气/路况并写入 POI metadata。【C 端已弃用】请改用 POST /api/trips/:tripId/feasibility-report/validate。Agent 仍可使用。',
     deprecated: true,
   })
   @ApiBody({

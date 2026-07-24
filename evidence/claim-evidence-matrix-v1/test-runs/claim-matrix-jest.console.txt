@@ -1,0 +1,82 @@
+PASS src/agent/actions.controller.integration.spec.ts
+PASS src/agent/execution/gate-eval-executor.service.spec.ts (15.596 s)
+PASS src/trips/tep/services/tep-local-repair-apply.service.spec.ts
+FAIL src/agent/agent.controller.ao-p0.contract.spec.ts
+  ● Test suite failed to run
+
+    Cannot find module '../../trips/iceland-self-drive/utils/iceland-memory-shell-trip-id.util' from 'src/agent/utils/route-and-run-trip-id-merge.util.ts'
+
+    Require stack:
+      src/agent/utils/route-and-run-trip-id-merge.util.ts
+      src/agent/services/execution-gateway.route-and-run.orchestration.ts
+      src/agent/services/agent.service.ts
+      src/agent/agent.controller.ts
+      src/agent/agent.controller.ao-p0.contract.spec.ts
+
+      1 | import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+    > 2 | import { isMemoryShellTripId } from '../../trips/iceland-self-drive/utils/iceland-memory-shell-trip-id.util';
+        | ^
+      3 |
+      4 | const UUID_RE =
+      5 |   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      at Resolver._throwModNotFoundError (../../home/devbox/project/node_modules/jest-resolve/build/index.js:863:11)
+      at Object.<anonymous> (src/agent/utils/route-and-run-trip-id-merge.util.ts:2:1)
+      at Object.<anonymous> (src/agent/services/execution-gateway.route-and-run.orchestration.ts:4:1)
+      at Object.<anonymous> (src/agent/services/agent.service.ts:39:1)
+      at Object.<anonymous> (src/agent/agent.controller.ts:5:1)
+      at Object.<anonymous> (src/agent/agent.controller.ao-p0.contract.spec.ts:6:1)
+
+PASS src/agent/contracts/claude-exec-route-and-run.contract.spec.ts
+PASS src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts
+PASS src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts
+PASS src/skills/itinerary/repair-apply.skill.spec.ts
+PASS src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts
+PASS src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts
+PASS src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts
+PASS src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts
+PASS src/agent/delivery/utils/trusted-delivery.project.util.spec.ts
+PASS src/agent/delivery/trusted-delivery-consumption.contract.spec.ts
+PASS src/harness/evals/authority/au-p1-004-idempotency.spec.ts
+PASS src/agent/contracts/auto-corridor-product.contract.spec.ts
+PASS src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts
+PASS src/agent/delivery/types/delivery-verdict.types.spec.ts
+PASS src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts
+PASS src/agent/contracts/writeback-corridor-audit.matrix.spec.ts
+PASS src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts
+
+Summary of all failing tests
+FAIL src/agent/agent.controller.ao-p0.contract.spec.ts
+  ● Test suite failed to run
+
+    Cannot find module '../../trips/iceland-self-drive/utils/iceland-memory-shell-trip-id.util' from 'src/agent/utils/route-and-run-trip-id-merge.util.ts'
+
+    Require stack:
+      src/agent/utils/route-and-run-trip-id-merge.util.ts
+      src/agent/services/execution-gateway.route-and-run.orchestration.ts
+      src/agent/services/agent.service.ts
+      src/agent/agent.controller.ts
+      src/agent/agent.controller.ao-p0.contract.spec.ts
+
+      1 | import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+    > 2 | import { isMemoryShellTripId } from '../../trips/iceland-self-drive/utils/iceland-memory-shell-trip-id.util';
+        | ^
+      3 |
+      4 | const UUID_RE =
+      5 |   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      at Resolver._throwModNotFoundError (../../home/devbox/project/node_modules/jest-resolve/build/index.js:863:11)
+      at Object.<anonymous> (src/agent/utils/route-and-run-trip-id-merge.util.ts:2:1)
+      at Object.<anonymous> (src/agent/services/execution-gateway.route-and-run.orchestration.ts:4:1)
+      at Object.<anonymous> (src/agent/services/agent.service.ts:39:1)
+      at Object.<anonymous> (src/agent/agent.controller.ts:5:1)
+      at Object.<anonymous> (src/agent/agent.controller.ao-p0.contract.spec.ts:6:1)
+
+
+Test Suites: 1 failed, 20 passed, 21 total
+Tests:       113 passed, 113 total
+Snapshots:   0 total
+Time:        38.379 s
+Ran all test suites matching src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts|src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts|src/agent/execution/gate-eval-executor.service.spec.ts|src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts|src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts|src/agent/delivery/types/delivery-verdict.types.spec.ts|src/agent/delivery/utils/trusted-delivery.project.util.spec.ts|src/agent/delivery/trusted-delivery-consumption.contract.spec.ts|src/agent/contracts/auto-corridor-product.contract.spec.ts|src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts|src/agent/contracts/writeback-corridor-audit.matrix.spec.ts|src/agent/contracts/claude-exec-route-and-run.contract.spec.ts|src/agent/agent.controller.ao-p0.contract.spec.ts|src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts|src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts|src/trips/tep/services/tep-local-repair-apply.service.spec.ts|src/skills/itinerary/repair-apply.skill.spec.ts|src/agent/actions.controller.integration.spec.ts|src/harness/evals/authority/au-p1-004-idempotency.spec.ts|src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts|src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts.
+Test results written to: ../../home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

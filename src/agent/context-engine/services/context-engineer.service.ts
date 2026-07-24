@@ -44,6 +44,15 @@ import { DEFAULT_OBJECTIVE_WEIGHTS } from '../../../trips/decision/optimization/
 import {
   DEFAULT_DAILY_UTILITY_WEIGHTS,
 } from '../../../trips/decision/optimization/daily-utility';
+import {
+  buildCausalContextCacheKey,
+  CONTEXT_L1_PROCESS_FALLBACK_TTL_MS,
+  CONTEXT_L2_DYNAMIC_TTL_SECONDS,
+  CONTEXT_L2_STATIC_TTL_SECONDS,
+  isHighRiskContextPhase,
+  resolveCausalContextFields,
+} from '../utils/context-cache-causal.util';
+import { ContextCacheEvictionService } from './context-cache-eviction.service';
 import { buildWishlistContextBlocks } from '../../../trips/wishlist/utils/wish-context-blocks.util';
 import { mapTripWishRow } from '../../../trips/wishlist/utils/trip-wish.mapper.util';
 import { partitionWishItemsForAgentContext } from '../../../trips/wishlist/utils/wish-agent-partition.util';
@@ -51,21 +60,17 @@ import { TripDomainInfluenceService } from '../../../trips/domain-influence/serv
 import { buildDomainInfluenceContextBlocks } from '../../../trips/domain-influence/utils/domain-influence-context-blocks.util';
 import { buildTripIntentContextBlocks } from '../../../agent/memory/utils/trip-intent-context-blocks.util';
 import { TripIntentDigestService } from '../../../agent/memory/services/trip-intent-digest.service';
+import { TravelContextAgentBindingService } from '../../../travel-context/agent/travel-context-agent-binding.service';
+import type { TravelContextAgentGrounding } from '../../../travel-context/agent/travel-context-agent-binding.types';
 
 @Injectable()
 export class ContextEngineerService {
   private readonly logger = new Logger(ContextEngineerService.name);
   
   /**
-   * L1: 内存缓存（最快，5分钟TTL）
-   * 缓存 key 格式：细粒度 key（包含所有影响因素）
+   * 进程级 L1 兜底（跨请求；因果 Key 含 ver/req 隔离；TTL 极短）。
    */
   private readonly memoryCache = new Map<string, { package: ContextPackage; timestamp: number }>();
-
-  /**
-   * L2: Redis 缓存（快速，15分钟TTL）
-   * 通过 redisService 访问
-   */
 
   /**
    * L3: 数据库缓存（持久化，用于跨实例共享）
@@ -77,16 +82,12 @@ export class ContextEngineerService {
    * key: packageId, value: ContextPackage
    */
   private readonly packageStore = new Map<string, ContextPackage>();
-  
-  /**
-   * L1 缓存 TTL（毫秒），默认 5 分钟
-   */
-  private readonly l1CacheTtl = 5 * 60 * 1000;
-  
-  /**
-   * L2 缓存 TTL（毫秒），默认 15 分钟
-   */
-  private readonly l2CacheTtl = 15 * 60 * 1000;
+
+  /** 进程级 L1 TTL（毫秒） */
+  private readonly l1CacheTtl = CONTEXT_L1_PROCESS_FALLBACK_TTL_MS;
+
+  /** 静态块 L2 TTL（毫秒） */
+  private readonly l2CacheTtlStatic = CONTEXT_L2_STATIC_TTL_SECONDS * 1000;
   
   /**
    * 缓存键前缀（用于 Redis）
@@ -101,6 +102,7 @@ export class ContextEngineerService {
 
   // 追踪调用的 skills（用于监控）
   private skillsCalledInBuild: string[] = [];
+  private lastTravelContextGrounding?: TravelContextAgentGrounding;
 
   constructor(
     private readonly memoryService: MemoryService,
@@ -123,17 +125,18 @@ export class ContextEngineerService {
     @Optional() private readonly contextCompressor?: ContextCompressorService,
     @Optional() private readonly contextBudgetManager?: ContextBudgetManagerService,
     @Optional() private readonly contextCache?: ContextCacheService,
+    @Optional() private readonly contextCacheEviction?: ContextCacheEvictionService,
     @Optional() private readonly tripDomainInfluence?: TripDomainInfluenceService,
     @Optional() private readonly tripIntentDigest?: TripIntentDigestService,
+    @Optional() private readonly travelContextBinding?: TravelContextAgentBindingService,
   ) {
-    // ContextEngineerService 可以通过 SkillsRegistryService 获取其他 skills
-    // 如果 RedisService 可用，使用持久化缓存；否则使用内存缓存
+    this.contextCacheEviction?.registerEngineerCaches(this.memoryCache, this.inFlightBuilds);
     if (this.redisService) {
       this.logger.log('Context Package 持久化缓存已启用（Redis）');
     } else {
       this.logger.log('Context Package 使用内存缓存（Redis 不可用）');
     }
-    
+
     if (this.metricsService) {
       this.logger.log('Context Package 监控指标已启用');
     }
@@ -143,8 +146,8 @@ export class ContextEngineerService {
    * 构建 Context Package
    * 
    * 核心方法：根据 tripId、phase、agent、userQuery 编译上下文
-   * 支持三层缓存：L1内存（5分钟） → L2Redis（15分钟） → L3数据库（可选）
-   * 支持 In-Flight Request Deduplication：避免并发请求重复构建
+   * 支持因果缓存：ALS 请求级 L1 → 进程 L1(2s) → L2(Redis，高危 phase 跳过 L2
+   * 支持 In-Flight Request Deduplication（singleflight）
    */
   async build(
     options: ContextPackageOptions,
@@ -156,7 +159,9 @@ export class ContextEngineerService {
     );
 
     // 0. Context Orchestrator: 动态上下文选择 + 60% Token 预算
-    const resolvedOptions = this.resolveOptionsWithDynamicContext(options);
+    const resolvedOptions = this.resolveOptionsWithDynamicContext(
+      this.withCausalDefaultsFromAls(options),
+    );
 
     // 重置 skills 调用追踪
     this.skillsCalledInBuild = [];
@@ -170,113 +175,10 @@ export class ContextEngineerService {
       return inFlightBuild;
     }
 
-    // 1. Phase 5: ContextCache L1/L2 检查
-    if (useCache && this.contextCache) {
-      const cached = await this.contextCache.get(cacheKey);
-      if (cached.hit) {
-        if (this.shouldInvalidateCachedContextForPhaseShift(cached.package, resolvedOptions.phase)) {
-          this.logger.debug(
-            `ContextCache 命中但 phase 不一致（包=${cached.package.phase} 请求=${resolvedOptions.phase}），跳过缓存`,
-          );
-        } else {
-          this.logger.debug(`✅ ${cached.level}缓存命中: ${cacheKey}`);
-          if (this.metricsService) {
-            await this.metricsService.recordMetrics(cached.package, {
-              tripId: resolvedOptions.tripId,
-              phase: resolvedOptions.phase,
-              agent: resolvedOptions.agent,
-              buildTimeMs: Date.now() - buildStartTime,
-              cacheHit: true,
-              cacheLevel: cached.level,
-              skillsCalled: [],
-              userQuery: resolvedOptions.userQuery,
-            });
-          }
-          if (this.prometheusMetrics) {
-            this.prometheusMetrics.recordBuild(
-              resolvedOptions.phase,
-              resolvedOptions.agent,
-              Date.now() - buildStartTime,
-              true,
-              cached.level,
-            );
-          }
-          return cached.package;
-        }
-      }
-    } else if (useCache) {
-      // 降级：无 ContextCache 时使用原有 L1/L2 逻辑
-      const memoryCached = this.memoryCache.get(cacheKey);
-      if (memoryCached && Date.now() - memoryCached.timestamp < this.l1CacheTtl) {
-        if (this.shouldInvalidateCachedContextForPhaseShift(memoryCached.package, resolvedOptions.phase)) {
-          this.logger.debug(
-            `L1 缓存命中但 phase 不一致（包=${memoryCached.package.phase} 请求=${resolvedOptions.phase}），跳过缓存`,
-          );
-        } else {
-          this.logger.debug(`✅ L1缓存命中(降级): ${cacheKey}`);
-          if (this.metricsService) {
-            await this.metricsService.recordMetrics(memoryCached.package, {
-              tripId: resolvedOptions.tripId,
-              phase: resolvedOptions.phase,
-              agent: resolvedOptions.agent,
-              buildTimeMs: Date.now() - buildStartTime,
-              cacheHit: true,
-              cacheLevel: 'L1',
-              skillsCalled: [],
-              userQuery: resolvedOptions.userQuery,
-            });
-          }
-          if (this.prometheusMetrics) {
-            this.prometheusMetrics.recordBuild(
-              options.phase,
-              options.agent,
-              Date.now() - buildStartTime,
-              true,
-              'L1',
-            );
-          }
-          return memoryCached.package;
-        }
-      }
-      if (this.redisService) {
-        try {
-          const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
-          const cached = await this.redisService.get<ContextPackage>(redisKey);
-          if (cached) {
-            if (this.shouldInvalidateCachedContextForPhaseShift(cached, resolvedOptions.phase)) {
-              this.logger.debug(
-                `L2 缓存命中但 phase 不一致（包=${cached.phase} 请求=${resolvedOptions.phase}），跳过缓存`,
-              );
-            } else {
-              this.logger.debug(`✅ L2缓存命中(降级): ${cacheKey}`);
-              this.memoryCache.set(cacheKey, { package: cached, timestamp: Date.now() });
-              if (this.metricsService) {
-                await this.metricsService.recordMetrics(cached, {
-                  tripId: resolvedOptions.tripId,
-                  phase: resolvedOptions.phase,
-                  agent: resolvedOptions.agent,
-                  buildTimeMs: Date.now() - buildStartTime,
-                  cacheHit: true,
-                  cacheLevel: 'L2',
-                  skillsCalled: [],
-                  userQuery: resolvedOptions.userQuery,
-                });
-              }
-              if (this.prometheusMetrics) {
-                this.prometheusMetrics.recordBuild(
-                  resolvedOptions.phase,
-                  resolvedOptions.agent,
-                  Date.now() - buildStartTime,
-                  true,
-                  'L2',
-                );
-              }
-              return cached;
-            }
-          }
-        } catch (error: any) {
-          this.logger.warn(`从 L2 Redis 获取缓存失败: ${error.message}`);
-        }
+    if (useCache) {
+      const cachedHit = await this.getCachedContextPackage(cacheKey, resolvedOptions, buildStartTime);
+      if (cachedHit) {
+        return cachedHit;
       }
     }
 
@@ -293,10 +195,12 @@ export class ContextEngineerService {
       // 3. Phase 5: 写入 ContextCache 或降级 writeToCache
       if (useCache) {
         if (this.contextCache) {
-          await this.contextCache.set(cacheKey, result);
-        } else {
-          await this.writeToCache(cacheKey, result);
+          await this.contextCache.set(cacheKey, result, {
+            phase: enhancedOptions.phase,
+            tripId: enhancedOptions.tripId,
+          });
         }
+        await this.writeToCache(cacheKey, result, enhancedOptions);
       }
       
       return result;
@@ -384,6 +288,10 @@ export class ContextEngineerService {
           buildTimeMs,
           skillsCalled: [...this.skillsCalledInBuild],
           toolAllowlist: toolAllowlist ?? [],
+          cacheKey: _cacheKey,
+          dsoVersion: options.dsoVersion,
+          requestId: options.requestId,
+          travelContextGrounding: this.lastTravelContextGrounding,
         },
       };
 
@@ -395,12 +303,7 @@ export class ContextEngineerService {
       );
 
       // 存储 Context Package（用于后台管理查询）
-      this.packageStore.set(packageId, contextPackage);
-      // 限制存储大小（最多保留 1000 个）
-      if (this.packageStore.size > 1000) {
-        const oldestKey = Array.from(this.packageStore.keys())[0];
-        this.packageStore.delete(oldestKey);
-      }
+      this.storePackageForAdmin(contextPackage);
 
       // 记录监控指标
       if (this.metricsService) {
@@ -463,6 +366,140 @@ export class ContextEngineerService {
     return p !== r;
   }
 
+  private shouldInvalidateCachedContextForVersionShift(
+    pkg: ContextPackage,
+    requestDsoVersion: number | undefined,
+  ): boolean {
+    if (requestDsoVersion === undefined || !Number.isFinite(requestDsoVersion)) {
+      return false;
+    }
+    const metaVer = (pkg?.metadata as { dsoVersion?: number } | undefined)?.dsoVersion;
+    if (metaVer === undefined || !Number.isFinite(metaVer)) {
+      return false;
+    }
+    return Math.floor(metaVer) !== Math.floor(requestDsoVersion);
+  }
+
+  private withCausalDefaultsFromAls(options: ContextPackageOptions): ContextPackageOptions {
+    const ex = this.agentExecutionContextStore?.get();
+    return {
+      ...options,
+      requestId: options.requestId ?? ex?.requestId,
+    };
+  }
+
+  private getRequestL1Map(): Map<string, { package: ContextPackage; timestamp: number }> | null {
+    const ex = this.agentExecutionContextStore?.get();
+    if (!ex) return null;
+    if (!ex.contextPackageL1Cache) {
+      ex.contextPackageL1Cache = new Map();
+    }
+    return ex.contextPackageL1Cache;
+  }
+
+  private readRequestL1(cacheKey: string): ContextPackage | null {
+    const map = this.getRequestL1Map();
+    if (!map) return null;
+    const hit = map.get(cacheKey);
+    if (!hit) return null;
+    return hit.package;
+  }
+
+  private writeRequestL1(cacheKey: string, pkg: ContextPackage): void {
+    const map = this.getRequestL1Map();
+    if (!map) return;
+    map.set(cacheKey, { package: pkg, timestamp: Date.now() });
+  }
+
+  private async getCachedContextPackage(
+    cacheKey: string,
+    options: ContextPackageOptions,
+    buildStartTime: number,
+  ): Promise<ContextPackage | null> {
+    const tryReturn = async (
+      pkg: ContextPackage,
+      level: 'ALS-L1' | 'L1' | 'L2',
+    ): Promise<ContextPackage | null> => {
+      const metricsLevel: 'L1' | 'L2' | 'none' = level === 'L2' ? 'L2' : 'L1';
+      if (this.shouldInvalidateCachedContextForPhaseShift(pkg, options.phase)) {
+        return null;
+      }
+      if (this.shouldInvalidateCachedContextForVersionShift(pkg, options.dsoVersion)) {
+        return null;
+      }
+      this.logger.debug(`✅ ${level}缓存命中: ${cacheKey}`);
+      if (this.metricsService) {
+        await this.metricsService.recordMetrics(pkg, {
+          tripId: options.tripId,
+          phase: options.phase,
+          agent: options.agent,
+          buildTimeMs: Date.now() - buildStartTime,
+          cacheHit: true,
+          cacheLevel: metricsLevel,
+          skillsCalled: [],
+          userQuery: options.userQuery,
+        });
+      }
+      if (this.prometheusMetrics) {
+        this.prometheusMetrics.recordBuild(
+          options.phase,
+          options.agent,
+          Date.now() - buildStartTime,
+          true,
+          metricsLevel,
+        );
+      }
+      this.storePackageForAdmin(pkg);
+      return pkg;
+    };
+
+    const alsPkg = this.readRequestL1(cacheKey);
+    if (alsPkg) {
+      return tryReturn(alsPkg, 'ALS-L1');
+    }
+
+    if (this.contextCache) {
+      const cached = await this.contextCache.get(cacheKey, { phase: options.phase });
+      if (cached.hit && cached.package) {
+        this.writeRequestL1(cacheKey, cached.package);
+        return tryReturn(cached.package, cached.level === 'L2' ? 'L2' : 'L1');
+      }
+    }
+
+    const memoryCached = this.memoryCache.get(cacheKey);
+    if (memoryCached && Date.now() - memoryCached.timestamp < this.l1CacheTtl) {
+      const fromProcess = await tryReturn(memoryCached.package, 'L1');
+      if (fromProcess) {
+        this.writeRequestL1(cacheKey, fromProcess);
+        return fromProcess;
+      }
+    }
+
+    if (isHighRiskContextPhase(options.phase)) {
+      this.logger.debug(`⚠️ 高危阶段 ${options.phase}，跳过 L2 读取`);
+      return null;
+    }
+
+    if (this.redisService) {
+      try {
+        const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
+        const cached = await this.redisService.get<ContextPackage>(redisKey);
+        if (cached) {
+          const fromL2 = await tryReturn(cached, 'L2');
+          if (fromL2) {
+            this.memoryCache.set(cacheKey, { package: cached, timestamp: Date.now() });
+            this.writeRequestL1(cacheKey, fromL2);
+            return fromL2;
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(`从 L2 Redis 获取缓存失败: ${error.message}`);
+      }
+    }
+
+    return null;
+  }
+
   /**
    * 将 tools.select 产出的 toolAllowlist 写入 TripTaskMemory.constraints（Redis），
    * 供 route_and_run Agentic MCP Runtime Cap 经 extractAgenticSkillAllowlistForMcpCap 读取。
@@ -519,7 +556,25 @@ export class ContextEngineerService {
     toolAllowlist: Array<{ name: string; reason: string; priority: number }>;
   }> {
     this.skillsCalledInBuild = [];
+    this.lastTravelContextGrounding = undefined;
     const blocks: ContextBlock[] = [];
+
+    if (this.travelContextBinding && (options.contextId || options.tripId)) {
+      const binding = await this.travelContextBinding.bind({
+        contextId: options.contextId,
+        tripId: options.tripId,
+        userId: options.userId,
+        revision: options.revision,
+        agent: options.agent,
+        task: options.task,
+        includeDomains: options.includeDomains,
+        includePrivate: options.includePrivate,
+      });
+      if (binding) {
+        blocks.push(binding.block);
+        this.lastTravelContextGrounding = binding.grounding;
+      }
+    }
 
     // 1. 获取世界模型摘要（含 ExpectedUtility 块，decision 阶段）
     if (options.tripId) {
@@ -543,6 +598,9 @@ export class ContextEngineerService {
             countryTopics,
             options.phase,
             options.destinationCountryCode,
+            options.travelerNationality,
+            options.tripStartDate,
+            options.userQuery,
           )
         : Promise.resolve([]),
       options.tripId && this.shouldIncludePlanBlocks(options.phase, options.agent)
@@ -678,51 +736,10 @@ export class ContextEngineerService {
     return result;
   }
 
-  /**
-   * 构建缓存 key（Phase 1 优化：细粒度 key，包含所有影响因素）
-   * 
-   * 包含因素：
-   * - tripId
-   * - destinationCountryCode（from-natural-language 流程）
-   * - phase
-   * - agent
-   * - requiredTopics（排序后）
-   * - excludeTopics（排序后）
-   * - tokenBudget
-   * - userQuery hash（前100字符的hash，用于区分不同查询）
-   * - includePrivate（是否包含私有块）
-   * - userId（私密块与领域影响力按用户裁剪）
-   */
+  /** 因果栅栏缓存 Key（ver + req + day + phase + agent + topics…） */
   private buildCacheKey(options: ContextPackageOptions): string {
-    const topics = options.requiredTopics?.sort().join(',') || '';
-    const excludeTopics = options.excludeTopics?.sort().join(',') || '';
-    const includePrivate = options.includePrivate ? 'true' : 'false';
-    const userId = options.userId?.trim() || 'none';
-    const destCode = options.destinationCountryCode || 'none';
-    
-    // 计算 userQuery hash（前100字符）
-    let queryHash = '';
-    if (options.userQuery) {
-      const queryText = options.userQuery.substring(0, 100).trim().toLowerCase();
-      // 简单的 hash 函数（使用字符串的字符码和）
-      queryHash = this.simpleHash(queryText);
-    }
-    
-    return `tripId:${options.tripId || 'none'}:dest:${destCode}:userId:${userId}:phase:${options.phase}:agent:${options.agent}:topics:${topics}:excludeTopics:${excludeTopics}:budget:${options.tokenBudget || 3600}:includePrivate:${includePrivate}:queryHash:${queryHash}`;
-  }
-
-  /**
-   * 简单的 hash 函数（用于 userQuery）
-   * 使用字符码和，快速且足够区分不同查询
-   */
-  private simpleHash(str: string): string {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(36);
+    const alsRequestId = this.agentExecutionContextStore?.get()?.requestId;
+    return buildCausalContextCacheKey(options, alsRequestId);
   }
 
   /**
@@ -807,39 +824,46 @@ export class ContextEngineerService {
   }
 
   /**
-   * 写入三层缓存（Phase 1 优化）
-   * 
-   * L1: 内存缓存（5分钟TTL）
-   * L2: Redis 缓存（15分钟TTL）
-   * L3: 数据库缓存（可选，暂不实现）
+   * 写入缓存：ALS 请求级 L1 → 进程 L1 → L2（高危 phase 跳过 L2）
    */
   private async writeToCache(
     cacheKey: string,
     contextPackage: ContextPackage,
+    options: ContextPackageOptions,
   ): Promise<void> {
-    // L1: 写入内存缓存（同步，立即可用）
+    this.writeRequestL1(cacheKey, contextPackage);
+
     this.memoryCache.set(cacheKey, {
       package: contextPackage,
       timestamp: Date.now(),
     });
-    
-    // 清理过期内存缓存
     this.cleanExpiredMemoryCache();
-    
-    // L2: 写入 Redis 缓存（异步，不阻塞）
+
+    if (isHighRiskContextPhase(options.phase)) {
+      return;
+    }
+
     if (this.redisService) {
       try {
         const redisKey = `${this.cacheKeyPrefix}${cacheKey}`;
-        const ttlSeconds = Math.floor(this.l2CacheTtl / 1000);
+        const causal = resolveCausalContextFields(
+          options,
+          this.agentExecutionContextStore?.get()?.requestId,
+        );
+        const ttlSeconds =
+          causal.tripId !== 'none' && causal.dsoVersion !== 'none'
+            ? CONTEXT_L2_DYNAMIC_TTL_SECONDS
+            : Math.floor(this.l2CacheTtlStatic / 1000);
         await this.redisService.set(redisKey, contextPackage, ttlSeconds);
+        const tripId = options.tripId?.trim();
+        if (tripId) {
+          await this.contextCacheEviction?.registerRedisCacheKey(tripId, cacheKey);
+        }
         this.logger.debug(`✅ Context Package 已存入 L2 Redis: ${cacheKey} (TTL: ${ttlSeconds}s)`);
       } catch (error: any) {
         this.logger.warn(`存入 L2 Redis 失败: ${error.message}`);
       }
     }
-    
-    // L3: 数据库缓存（可选，暂不实现）
-    // TODO: 如果需要跨实例共享，可以写入数据库
   }
 
   /**
@@ -992,6 +1016,9 @@ export class ContextEngineerService {
     topics: string[],
     phase: string,
     overrideCountryCode?: string,
+    travelerNationality?: string,
+    tripStartDate?: string,
+    userQuery?: string,
   ): Promise<ContextBlock[]> {
     const blocks: ContextBlock[] = [];
 
@@ -1042,6 +1069,8 @@ export class ContextEngineerService {
           packId: countryCode,
           topics: topics as any[],
           phase,
+          travelerNationality,
+          tripStartDate,
         });
 
         if (result.blocks) {
@@ -1053,6 +1082,22 @@ export class ContextEngineerService {
         }
       } else {
         this.logger.warn(`找不到 countryPack.getBlocks skill`);
+      }
+
+      if (blocks.length > 1 && userQuery?.trim()) {
+        const rankSkill = this.skillsRegistry.getSkill('countryPack.rankBlocks');
+        if (rankSkill) {
+          this.skillsCalledInBuild.push('countryPack.rankBlocks');
+          const ranked = await rankSkill.execute({
+            query: userQuery,
+            phase,
+            intent: topics.join(','),
+            blocks,
+          });
+          if (ranked.rankedBlocks?.length) {
+            return ranked.rankedBlocks;
+          }
+        }
       }
     } catch (error) {
       this.logger.warn(`构建国家包块失败: ${error}`);
@@ -1307,7 +1352,8 @@ export class ContextEngineerService {
    */
   private buildOperationalNegativeConstraintBlock(): ContextBlock | null {
     const ex = this.agentExecutionContextStore?.get();
-    const md = String(ex?.operationalNegativeConstraintsMarkdown ?? '').trim();
+    if (!ex) return null;
+    const md = String(ex.operationalNegativeConstraintsMarkdown ?? '').trim();
     if (!md) return null;
     const v1 = ex.operationalNegativeConstraints;
     return {
@@ -1425,11 +1471,11 @@ export class ContextEngineerService {
           });
         }
 
-        // 用户画像：合并 Trip metadata + MemoryService UserTravelProfile
+        // 用户画像：合并 Trip metadata + Memory L1（UserTravelProfile）+ Memory L0（设置页 preferences）
         let userProfileData: Record<string, unknown> | undefined = (trip.metadata as any)?.userProfile;
         if (userId) {
+          const memCtx = this.agentMemoryContextStore?.get();
           try {
-            const memCtx = this.agentMemoryContextStore?.get();
             const memoryProfile =
               memCtx !== undefined && memCtx.userId === userId
                 ? memCtx.userProfile
@@ -1446,6 +1492,12 @@ export class ContextEngineerService {
             }
           } catch (e: any) {
             this.logger.debug(`读取 UserTravelProfile 失败: ${e?.message}`);
+          }
+          if (memCtx !== undefined && memCtx.userId === userId && memCtx.userBasics) {
+            userProfileData = {
+              ...(userProfileData ?? {}),
+              userBasics: memCtx.userBasics,
+            } as Record<string, unknown>;
           }
         }
         if (userProfileData && Object.keys(userProfileData).length > 0) {
@@ -2289,6 +2341,15 @@ Context 管理:
     } catch (error) {
       this.logger.error(`Failed to write back: ${error}`, error instanceof Error ? error.stack : undefined);
       // 不抛出错误，避免影响主流程
+    }
+  }
+
+  /** 写入内存 Package 列表，供 admin/packages 查询（含缓存命中） */
+  private storePackageForAdmin(contextPackage: ContextPackage): void {
+    this.packageStore.set(contextPackage.id, contextPackage);
+    if (this.packageStore.size > 1000) {
+      const oldestKey = Array.from(this.packageStore.keys())[0];
+      this.packageStore.delete(oldestKey);
     }
   }
 

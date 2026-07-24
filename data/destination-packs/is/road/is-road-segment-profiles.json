@@ -1,0 +1,48 @@
+{
+  "schemaId": "tripnara.road_segment_profiles@v1",
+  "countryCode": "IS",
+  "version": "1.0.0",
+  "roadRegions": {
+    "F208": ["IS_CENTRAL_HIGHLANDS", "IS_SOUTH"],
+    "F26": ["IS_CENTRAL_HIGHLANDS"],
+    "RING_ROAD": ["IS_SOUTH", "IS_EAST", "IS_NORTH", "IS_WEST"]
+  },
+  "profiles": [
+    {
+      "roadId": "F208",
+      "segmentId": "seg-is-f208",
+      "roadClass": "HIGHLAND_F_ROAD",
+      "surfaceType": "GRAVEL",
+      "terrainType": "HIGHLAND",
+      "requires4wd": true,
+      "hasUnbridgedRiver": true,
+      "riverCrossingCount": 1,
+      "typicalSpeedKph": 40,
+      "winterServiceLevel": "SEASONAL"
+    },
+    {
+      "roadId": "RING_ROAD",
+      "segmentId": "seg-is-ring-road",
+      "roadClass": "PRIMARY",
+      "surfaceType": "PAVED",
+      "terrainType": "COASTAL",
+      "requires4wd": false,
+      "hasUnbridgedRiver": false,
+      "typicalSpeedKph": 90,
+      "winterServiceLevel": "YEAR_ROUND"
+    },
+    {
+      "roadId": "F26",
+      "segmentId": "seg-is-f26",
+      "roadClass": "HIGHLAND_F_ROAD",
+      "surfaceType": "GRAVEL",
+      "terrainType": "HIGHLAND",
+      "requires4wd": true,
+      "minVehicleClass": "LARGE_4X4",
+      "hasUnbridgedRiver": true,
+      "riverCrossingCount": 2,
+      "typicalSpeedKph": 40,
+      "winterServiceLevel": "SEASONAL"
+    }
+  ]
+}

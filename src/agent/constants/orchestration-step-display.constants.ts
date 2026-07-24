@@ -4,6 +4,7 @@
  */
 
 const STEP_DISPLAY_ZH: Record<string, string> = {
+  INTENT_COMPILE: '意图编译',
   INTAKE: '需求接入',
   STATE_UPDATE: '状态同步',
   RESEARCH: '数据调研',
@@ -11,6 +12,7 @@ const STEP_DISPLAY_ZH: Record<string, string> = {
   GATE_EVAL: '门禁评估',
   CONTEXT_BUILD: '上下文构建',
   PLAN_GEN: '方案生成',
+  TRAVEL_COMPILE: 'CTRE 旅行编译',
   OPTIMIZE: '优化提示',
   VERIFY: '可执行性验证',
   COMPLIANCE: '合规检查',

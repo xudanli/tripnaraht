@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.constraints@v1",
+  "tripId": "pilot_iceland_road_close_06_south6_swap_local",
+  "planVersionId": "pv-gold",
+  "constraints": [
+    {
+      "canonicalId": "constraint_0",
+      "kind": "UNKNOWN",
+      "hard": true
+    },
+    {
+      "canonicalId": "constraint_1",
+      "kind": "UNKNOWN",
+      "hard": true
+    }
+  ]
+}

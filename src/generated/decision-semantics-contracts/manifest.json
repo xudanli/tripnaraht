@@ -1,0 +1,38 @@
+{
+  "contractVersion": "1.6.1",
+  "generatedAt": "2026-06-30T05:04:55.433Z",
+  "source": {
+    "typesFile": "src/trips/decision-semantics/types/decision-semantics.types.ts",
+    "sha256": "df626a270268b3165bda2374c196e2a45292f424204727e3633c92951b2a5224"
+  },
+  "entryPoints": {
+    "primary": "src/generated/decision-semantics-contracts/index.ts",
+    "alias": "src/generated/decision-semantics-api.ts"
+  },
+  "requiredTypeExports": [
+    "DecisionProblem",
+    "ConstraintAssertion",
+    "AffectedScope",
+    "DecisionOption",
+    "TradeoffDimension",
+    "DecisionAuthority",
+    "TripMutationSet",
+    "DecisionRecord",
+    "DecisionOutcomeValidation",
+    "DecisionLedgerRefs",
+    "ExperienceOutcome",
+    "RepairCommand",
+    "ExecutionCapability",
+    "DecisionExecutionStatus",
+    "DecisionCenterOverview",
+    "DecisionExecutionStatusResponse"
+  ],
+  "requiredEnumExports": [
+    "ConstraintEnforcement",
+    "ConstraintNature",
+    "TradeoffDimensionKey",
+    "OutcomeValidationVerdict",
+    "DecisionExecutionMode",
+    "ObservedOutcomeSource"
+  ]
+}

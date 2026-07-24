@@ -58,7 +58,7 @@ export class TrailDifficultyAssessor {
 
     // 步骤2：应用季节修正（如果提供）
     if (options?.season) {
-      base.seasonalModifier = this.getSeasonalModifier(base, options.season);
+      base.seasonalModifier = this.getSeasonalModifier(base, options.season) ?? undefined;
       if (base.seasonalModifier) {
         base.level = this.applyModifier(base.level, base.seasonalModifier.modifier);
       }

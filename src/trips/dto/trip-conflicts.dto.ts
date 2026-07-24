@@ -19,6 +19,10 @@ export enum ConflictType {
   TRANSPORT_TOO_LONG = 'TRANSPORT_TOO_LONG',
   /** 交通时间不足：可用时间 < 交通时间 + 缓冲 */
   TRANSPORT_INSUFFICIENT = 'TRANSPORT_INSUFFICIENT',
+  /** 当日累计驾驶时长超过 metadata.constraints.maxDailyDrivingHours */
+  MAX_DAILY_DRIVE_EXCEEDED = 'MAX_DAILY_DRIVE_EXCEEDED',
+  /** 自驾段在日落 + 缓冲后继续驾驶（metadata.constraints.noNightDrive） */
+  NO_NIGHT_DRIVE_VIOLATION = 'NO_NIGHT_DRIVE_VIOLATION',
   /** 行程项重复：同一地点在同一天被安排多次 */
   DUPLICATE_ITEM = 'DUPLICATE_ITEM',
 }
@@ -151,11 +155,31 @@ export class ConflictDto {
   @ApiPropertyOptional({ description: '建议的新时间 ISO 字符串' })
   suggestedTime?: string;
 
+  @ApiPropertyOptional({
+    description: '当日驾驶路段明细（仅 MAX_DAILY_DRIVE_EXCEEDED）',
+    type: 'array',
+    items: { type: 'object' },
+  })
+  dailyDriveLegs?: Array<{
+    fromItemId?: string;
+    toItemId?: string;
+    fromPlaceLabel?: string;
+    toPlaceLabel?: string;
+    travelMinutes: number;
+    departAt?: string;
+  }>;
+
   @ApiPropertyOptional({ description: '直线距离（公里）' })
   distanceKm?: number;
 
   @ApiPropertyOptional({ description: '建议列表', type: [ConflictSuggestionDto] })
   suggestions?: ConflictSuggestionDto[];
+
+  @ApiPropertyOptional({
+    description: '关联的午餐时间窗策略（仅 LUNCH_WINDOW / LUNCH_MISSING 等餐饮类冲突）',
+    enum: ['staggered', 'rigid', 'route_driven', 'balanced'],
+  })
+  lunchStrategy?: 'staggered' | 'rigid' | 'route_driven' | 'balanced';
 }
 
 /**

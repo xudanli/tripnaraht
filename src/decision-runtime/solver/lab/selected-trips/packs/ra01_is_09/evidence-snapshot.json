@@ -1,0 +1,21 @@
+{
+  "schemaId": "tripnara.selected_trip.evidence@v1",
+  "tripId": "ra01_is_09",
+  "evidenceVersionId": "ev_ra01_is_09_20260716",
+  "frozenAt": "2026-07-16T10:27:18.222Z",
+  "sources": [
+    {
+      "provider": "staging_db",
+      "ref": "ra01_is_09"
+    },
+    {
+      "provider": "m4_ra01_seed",
+      "ref": "pilot_is_09"
+    }
+  ],
+  "event": {
+    "kind": "REROUTE",
+    "intendedOperation": "REROUTE",
+    "expectation": "fallback"
+  }
+}

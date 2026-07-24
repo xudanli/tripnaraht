@@ -13,6 +13,13 @@ export const CONSTRAINT_IDS = {
   ENTITY_OPENING_HOURS_OVERLAP: 'entity.opening_hours_overlap',
   ENTITY_MANDATORY_RESERVATION: 'entity.mandatory_reservation',
   ENTITY_SEASONAL_CLOSURE: 'entity.seasonal_closure',
+  /** POI Access & Capacity Engine — 准入/关闭/售罄/车型 */
+  ENTITY_ACCESS_BLOCKED: 'entity.access_blocked',
+  ENTITY_PARKING_RESERVATION_MISSING: 'entity.parking_reservation_missing',
+  ENTITY_INVENTORY_SOLD_OUT: 'entity.inventory_sold_out',
+  ENTITY_VEHICLE_INCOMPATIBLE: 'entity.vehicle_incompatible',
+  ENTITY_ACCESS_STATUS_STALE: 'entity.access_status_stale',
+  ENTITY_PARKING_WAIT_HIGH: 'entity.parking_wait_high',
 
   // environment.* (entityRef: SEGMENT | DAY)
   ENVIRONMENT_WIND_SPEED_LIMIT: 'environment.wind_speed_limit',

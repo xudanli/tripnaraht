@@ -10,8 +10,11 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import axios, { AxiosInstance } from 'axios';
-import * as https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import {
+  createExternalHttpsAgent,
+  EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
+  EXTERNAL_API_REQUEST_TIMEOUT_MS,
+} from './utils/external-http-agent.util';
 
 export interface TranslationParams {
   text: string | string[]; // 单个文本或文本数组
@@ -48,24 +51,11 @@ export class TranslationDirectService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     if (this.apiKey) {
-      // 初始化 HTTP 客户端（支持代理）
-      const proxyUrl =
-        process.env.HTTPS_PROXY ||
-        process.env.https_proxy ||
-        process.env.ALL_PROXY ||
-        process.env.all_proxy;
-      
-      const httpsAgent = proxyUrl
-        ? new HttpsProxyAgent<string>(proxyUrl)
-        : new https.Agent({
-            keepAlive: true,
-            family: 4, // 强制 IPv4
-            rejectUnauthorized: true,
-          });
+      const httpsAgent = createExternalHttpsAgent();
 
       this.axiosInstance = axios.create({
         baseURL: this.baseUrl,
-        timeout: 30000,
+        timeout: EXTERNAL_API_REQUEST_TIMEOUT_MS,
         httpsAgent,
         proxy: false,
         headers: {
@@ -73,7 +63,6 @@ export class TranslationDirectService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      // 测试连接
       try {
         const testResponse = await this.axiosInstance.post('', null, {
           params: {
@@ -81,6 +70,7 @@ export class TranslationDirectService implements OnModuleInit, OnModuleDestroy {
             target: 'zh',
             key: this.apiKey,
           },
+          timeout: EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
         });
         
         if (testResponse.data && testResponse.data.data) {
@@ -91,7 +81,9 @@ export class TranslationDirectService implements OnModuleInit, OnModuleDestroy {
           this.isAvailable = false;
         }
       } catch (error: any) {
-        this.logger.error('Failed to initialize Translation Direct Service:', error.message);
+        this.logger.warn(
+          `Translation Direct Service unavailable (init probe failed): ${error.message}`,
+        );
         this.isAvailable = false;
       }
     } else {

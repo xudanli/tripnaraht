@@ -87,7 +87,7 @@ export class HitlCreateApprovalTaskSkill
 
   metadata = {
     name: 'hitl.createApprovalTask',
-    description: '创建审批任务：输出 task_id + payload，支持多种审批类型，与 Decision Logs 绑定',
+    description: 'hitl.createApprovalTask：创建审批任务：输出 task_id + payload，支持多种审批类型，与 Decision Logs 绑定',
     version: '1.0.0',
     category: 'decision' as const,
   };

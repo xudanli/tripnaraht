@@ -76,3 +76,20 @@ Generated fixtures should carry:
 
 If you bump snapshot semantics in a non-backward-compatible way, bump the fixture version and regenerate.
 
+### Decision closure golden (P0, separate from engine-dso)
+
+Frozen `optimizationHints` for explain / verdict contract tests live in:
+
+- `metadata.decisionClosureGolden` (see `iceland-decision-closure-storm-f208.golden.json`)
+- Gate: `npm run test:decision-closure-p0`
+- Doc: `docs/iceland-decision-closure-v1.md`
+
+Regenerate when `OptimizationHints` / `explain.optimization` projection fields change.
+
+Capture from live CGUS adapter (stub RAG for storm roads):
+
+```bash
+npm run capture:decision-closure:storm
+npm run capture:decision-closure -- --case-id iceland-decision-closure-storm-f208-001
+```
+

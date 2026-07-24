@@ -1,0 +1,165 @@
+import { SYSTEM_ORCHESTRATOR_ACTIONS } from '../../../constants/action-execution.constants';
+import type { Itinerary } from '../../../interfaces/trip-plan.interface';
+import {
+  extractDecisionLogTripContext,
+  extractDestinationDisplayZh,
+  formatPlanGenInputsKernelZh,
+  formatPlanGenOutputsZh,
+} from '../../../utils/decision-log-user-facing.zh.util';
+import type { PlanGenPhaseHost, RunPlanGenPhaseParams } from './plan-gen-phase.host';
+import { ensureHarnessPlanningInputsOnDecisionState } from '../../../utils/plan-gen-harness-input.util';
+import {
+  buildItineraryAdjustAuditMetadata,
+  extractPoiNamesFromItineraryDay,
+  extractPoiDigestFromItinerary,
+  formatPlanGenOutputsAdjustZh,
+  resolveItineraryAdjustRunContext,
+} from '../../../utils/itinerary-adjust-decision-log.util';
+import { emitPhaseExecutionPath } from '../../phase-execution-path.telemetry.util';
+
+/**
+ * PLAN_GEN 执行体：消费 context_build 后的 DSO，经 Kernel.executePlanGen 产出行程草案。
+ */
+export async function runPlanGenPhase(
+  host: PlanGenPhaseHost,
+  params: RunPlanGenPhaseParams,
+): Promise<import('../../../../decision/kernel/decision-state.types').DecisionState | undefined> {
+  const { decisionState, state, request, context, llmProvider } = params;
+  const dsoForHarness = ensureHarnessPlanningInputsOnDecisionState(decisionState, state);
+
+  if (
+    host.isKernelNativeExecution({ request_id: state.request_id, user_id: request.user_id }) &&
+    host.decisionKernel &&
+    dsoForHarness &&
+    state.trip_plan_request
+  ) {
+    emitPhaseExecutionPath(state, {
+      phase: 'PLAN_GEN',
+      path: 'kernel_native',
+      reason: 'native_enabled',
+      step: 'PLAN_GEN',
+    });
+    const stepStartTime = Date.now();
+    let dsoForPlan = dsoForHarness;
+    if (
+      dsoForPlan.systemState?.pendingMigrations?.length &&
+      (dsoForPlan.tripState?.planDraft as { days?: unknown[] } | undefined)?.days?.length
+    ) {
+      dsoForPlan = host.decisionKernel.applyPrePlanMigrationInjections(dsoForPlan);
+      state.decision_log.push({
+        request_id: state.request_id,
+        step: 'CONTEXT_BUILD',
+        actor: 'Orchestrator',
+        inputs_summary: '消费 DSO.systemState.pendingMigrations → 注入既有 planDraft',
+        outputs_summary: `剩余待迁移条目=${dsoForPlan.systemState?.pendingMigrations?.length ?? 0}`,
+        evidence_refs: [],
+        timestamp: new Date().toISOString(),
+        metadata: { duration_ms: 0 },
+      });
+    }
+    const ctx = {
+      requestId: state.request_id,
+      tripPlanRequest: state.trip_plan_request,
+      researchData: state.research_data,
+      gateResult: state.gate_result as any,
+    };
+    const { newState, itinerary } = await host.decisionKernel.executePlanGen(dsoForPlan, ctx);
+    host.syncOrchestratorFromDecisionState(newState, state);
+    state.itinerary = itinerary as Itinerary;
+    if (state.trip_plan_request && state.itinerary?.days?.length) {
+      state.trip_plan_request = host.syncPlanRoutingMetricsToTripPlan(
+        state.trip_plan_request,
+        state.itinerary,
+      );
+    }
+    state.current_step = 'PLAN_GEN';
+    const pgFail = newState.systemState?.planGenTerminalFailure;
+    const adjustCtx = resolveItineraryAdjustRunContext(state);
+    const dayDigest = extractPoiDigestFromItinerary(state.itinerary);
+    const tripCtx = extractDecisionLogTripContext({
+      tripPlanRequest: state.trip_plan_request,
+      userIntentDestination: dsoForPlan.userIntent?.destination,
+      metadata: state.metadata as Record<string, unknown>,
+      itinerary: state.itinerary,
+    });
+    if (adjustCtx.active && adjustCtx.targetDateIso) {
+      tripCtx.selectedPoiNames = extractPoiNamesFromItineraryDay(state.itinerary, adjustCtx.targetDateIso);
+    }
+
+    const outputsSummary =
+      adjustCtx.active && adjustCtx.targetDateIso
+        ? formatPlanGenOutputsAdjustZh({
+            totalDays: itinerary.days.length,
+            targetDateIso: adjustCtx.targetDateIso,
+            targetDayNumber: adjustCtx.targetDayNumber,
+            targetPoiNames: extractPoiNamesFromItineraryDay(state.itinerary, adjustCtx.targetDateIso),
+            weekDigest: dayDigest,
+          })
+        : formatPlanGenOutputsZh(
+            itinerary.days.length,
+            pgFail?.message ?? 'planGenTerminalFailure',
+            tripCtx,
+            dayDigest,
+          );
+
+    state.decision_log.push({
+      request_id: state.request_id,
+      step: 'PLAN_GEN',
+      actor: 'Planner',
+      inputs_summary: formatPlanGenInputsKernelZh(tripCtx),
+      outputs_summary: outputsSummary,
+      evidence_refs: [],
+      timestamp: new Date().toISOString(),
+      metadata: {
+        duration_ms: Date.now() - stepStartTime,
+        plan_gen_day_digest: dayDigest,
+        ...(pgFail
+          ? {
+              system_action: SYSTEM_ORCHESTRATOR_ACTIONS.PLAN_GEN_EMPTY_DRAFT_HALT,
+              planGenTerminalFailure: pgFail,
+            }
+          : {}),
+        ...(adjustCtx.active && adjustCtx.targetDateIso
+          ? buildItineraryAdjustAuditMetadata(state.metadata as Record<string, unknown>, {
+              plan_gen_target_poi_names: extractPoiNamesFromItineraryDay(
+                state.itinerary,
+                adjustCtx.targetDateIso,
+              ),
+            })
+          : {}),
+      },
+    });
+    if (adjustCtx.active && host.runAdaptiveReplanAfterPlanGen) {
+      await host.runAdaptiveReplanAfterPlanGen(state);
+    }
+
+    state.metadata.last_updated_at = new Date().toISOString();
+    await host.generateDecisionStepForStep(state, 'PLAN_GEN', 'Planner');
+    host.onPlanGenDraftCaptured?.(state.request_id, state.itinerary as Itinerary);
+    await host.collectTrajectoryAfterPlanGen({ request, state });
+    return newState;
+  }
+  const legacyReason =
+    (process.env.KERNEL_NATIVE_EXECUTION ?? 'true') === 'true' ||
+    (process.env.KERNEL_NATIVE_EXECUTION ?? 'true') === '1'
+      ? 'gray_miss'
+      : 'flag_off';
+  emitPhaseExecutionPath(state, {
+    phase: 'PLAN_GEN',
+    path: 'legacy_callback',
+    reason: legacyReason,
+    step: 'PLAN_GEN',
+    loggerWarn: (m) => host.logger.warn(m),
+  });
+  const legacyDso = await host.executePhaseViaKernel(dsoForHarness, state, 'PLAN_GEN', () =>
+    host.executePlanGenStep(request, context, state, llmProvider),
+  );
+  const legacyAdjustCtx = resolveItineraryAdjustRunContext(state);
+  if (legacyAdjustCtx.active && host.runAdaptiveReplanAfterPlanGen) {
+    await host.runAdaptiveReplanAfterPlanGen(state);
+  }
+  if (state.itinerary) {
+    host.onPlanGenDraftCaptured?.(state.request_id, state.itinerary as Itinerary);
+  }
+  return legacyDso;
+}

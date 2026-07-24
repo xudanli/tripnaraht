@@ -8,6 +8,15 @@
 
 import { RiskThresholds, EffortLevelMapping, TerrainConstraints } from './terrain-policy.config';
 
+export interface DrivingSegmentThresholds {
+  /** 单段直线距离超过此值 → 超长距离 blocker */
+  maxSegmentDistanceKm: number;
+  /** 单段超过此值 → 长距离提醒 */
+  warnSegmentDistanceKm: number;
+  /** 冬季额外提醒阈值（可选） */
+  winterWarnSegmentDistanceKm?: number;
+}
+
 export interface CountryPack {
   /** 国家代码 */
   countryCode: string;
@@ -19,6 +28,8 @@ export interface CountryPack {
   effortLevelMapping?: Partial<EffortLevelMapping>;
   /** 地形约束（覆盖默认值） */
   terrainConstraints?: Partial<TerrainConstraints>;
+  /** 自驾单段距离阈值（Coverage Map / road_class） */
+  drivingSegmentThresholds?: DrivingSegmentThresholds;
 }
 
 export const COUNTRY_PACKS: Record<string, CountryPack> = {
@@ -101,6 +112,11 @@ export const COUNTRY_PACKS: Record<string, CountryPack> = {
       challengeMax: 85,
       extremeMin: 85,
     },
+    drivingSegmentThresholds: {
+      maxSegmentDistanceKm: 250,
+      warnSegmentDistanceKm: 150,
+      winterWarnSegmentDistanceKm: 120,
+    },
   },
   GLOBAL: {
     countryCode: 'GLOBAL',
@@ -110,6 +126,11 @@ export const COUNTRY_PACKS: Record<string, CountryPack> = {
       moderateMax: 60,
       challengeMax: 85,
       extremeMin: 85,
+    },
+    drivingSegmentThresholds: {
+      maxSegmentDistanceKm: 300,
+      warnSegmentDistanceKm: 200,
+      winterWarnSegmentDistanceKm: 150,
     },
   },
 };

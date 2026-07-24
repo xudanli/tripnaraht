@@ -1,0 +1,17 @@
+{
+  "schemaId": "tripnara.selected_trip.context@v1",
+  "tripId": "ra01_is_04",
+  "planVersionId": "plan_pilot_is_04_v1_tep_REPAIR-SDR202-D1-activity_stop_405",
+  "timezone": "Atlantic/Reykjavik",
+  "dateRange": {
+    "startDate": "2026-01-15",
+    "endDate": "2026-01-19"
+  },
+  "destination": "IS",
+  "deidentified": true,
+  "notes": [
+    "exported from staging DB",
+    "sourceTripId=pilot_is_04",
+    "frozen copy — not live"
+  ]
+}

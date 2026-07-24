@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "6525cb5a-179c-495d-a8bd-a17b2527c6d1",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "global-context-deferred-reject",
+  "strategy": {
+    "strategyId": "global-context-deferred-reject",
+    "philosophy": "全局上下文感知，延迟决策至最后",
+    "approach": "在步骤2检测到DEM缺失时，不立即REJECT，而是标记为“待定”，继续执行所有后续步骤（季节检查、Abu门禁、Dr.Dre节奏、Neptune修复、风暴场景）。在最终输出前，结合全局上下文（如其他约束是否满足、用户意图的优先级）综合判断：若全局约束均满足且DEM缺失可通过回放断言宽容处理，则静默降级为ALLOW；否则执行REJECT。所有决策均记录在轨迹中。",
+    "emphasis": "全局优化、用户意图保护、灵活权衡",
+    "risk": "可能违反规则2的硬性要求（不得静默降级），导致与pack规则冲突；处理逻辑复杂，易出现不一致"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户意图是7月去冰岛高地，属于开放季（7-8月），但DEM证据缺失，根据规则Abu门禁必须REJECT，不能静默降级。当前步骤为步骤2检测到DEM缺失，按照全局延迟策略应标记为待定，但最终综合判断时，由于测试要求明确验证DEM缺失时Abu必须REJECT，且用户意图未提供DEM或海拔证据，因此最终决策为REJECT。轨迹中将记录reject、dem、高地标识。",
+      "action": "REJECT",
+      "result": "[完成] REJECT",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:11:35.982Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则\n\n## 原则\n- 所有决策必须绑定 `countryCode=IS` 的 readiness / 路政约束。\n- 高地（Highlands）与 F-road 仅在开放季且 Abu 允许时进入候选。\n\n## 步骤\n1. **季节与道路**：7–8 月默认开放季；非开放季禁止将 F208 等高地路段作为默认可行。\n2. **Abu 门禁**：DEM / 海拔证据缺失时必须 REJECT，不得静默降级为 ALLOW。\n3. **Dr.Dre 节奏**：`mustAdjust=true` 时须输出 pace 调整动作，不可跳过 PLAN_SCORE。\n4. **Neptune 修复**：空间冲突 `mustRepair=true` 时须记录 repair 轨迹，禁止直接覆盖用户意图。\n5. **风暴场景**：ice cave / 风暴 recovery 须保留 `recovery-wind` 类 audit 片段。\n\n## ⚠️ 执行注意\n- 回放断言中的 `allow` / `reject` 须与轨迹一致。\n- 引用 pack 时正文须包含 `IS` 或 `冰岛` 标识。",
+  "createdAt": "2026-05-26T05:11:35.982Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

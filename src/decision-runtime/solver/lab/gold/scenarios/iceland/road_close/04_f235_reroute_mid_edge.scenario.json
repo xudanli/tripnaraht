@@ -1,0 +1,16 @@
+{
+  "schemaId": "tripnara.planning_gold_scenario@v1",
+  "scenarioId": "iceland.road_close.04_f235_reroute_mid_edge",
+  "status": "active",
+  "countryCode": "IS",
+  "family": "road_close",
+  "title": "F235 mid-day hop closed a3\u2192a4",
+  "seed": 42,
+  "stabilityRuns": 100,
+  "solverProblemRef": "src/decision-runtime/solver/lab/gold/scenarios/iceland/road_close/problems/04_f235_reroute_mid_edge.problem.json",
+  "notes": [
+    "staging_replay evidence pack bound for M4 real_gold_replay gate"
+  ],
+  "provenance": "staging_replay",
+  "evidencePackRef": "src/decision-runtime/solver/lab/gold/evidence/iceland/road_close/04_f235_reroute_mid_edge.evidence.json"
+}

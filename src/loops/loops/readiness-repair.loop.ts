@@ -12,6 +12,8 @@ import type {
   ReadinessRepairIterationView,
   ReadinessRepairLoopResult,
 } from '../types/loop-run.types';
+import type { FeasibilityIssueDto } from '../../trips/trip-constraint-solver/types/trip-constraint-solver.types';
+import type { ReadinessGuardianNegotiationSnapshot } from '../../trips/readiness/types/coverage-map.types';
 import type { LoopIterationDecision } from '../types/loop-definition.types';
 
 export interface RunReadinessRepairInput {
@@ -97,6 +99,7 @@ export class ReadinessRepairLoop {
         successStop.reason,
         input,
         eventCtx,
+        [],
       );
     }
 
@@ -335,6 +338,7 @@ export class ReadinessRepairLoop {
       stopReason,
       input,
       eventCtx,
+      issues,
     );
   }
 
@@ -348,6 +352,7 @@ export class ReadinessRepairLoop {
     stopReason: string | undefined,
     input: RunReadinessRepairInput,
     eventCtx?: ReturnType<LoopEventEmitterService['createContext']>,
+    feasibilityIssues: FeasibilityIssueDto[] = [],
   ): Promise<ReadinessRepairLoopResult> {
     const result = this.buildResult(
       loopRunId,
@@ -370,7 +375,12 @@ export class ReadinessRepairLoop {
       });
     }
 
-    result.ui = buildTripLoopUiView(result);
+    result.ui = buildTripLoopUiView(result, {
+      feasibilityIssues,
+      guardianNegotiation: input.metadata?.guardianNegotiation as
+        | ReadinessGuardianNegotiationSnapshot
+        | undefined,
+    });
     if (this.loopLearningBridge) {
       void this.loopLearningBridge.notifyLoopCompleted({
         tripId: input.tripId,

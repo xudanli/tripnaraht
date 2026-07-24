@@ -1,9 +1,14 @@
 // src/agent/agent.controller.ts
-import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Logger, Optional, Headers, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, Logger, Optional, Headers, Res, Req, BadRequestException } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiOkResponse, ApiExtraModels } from '@nestjs/swagger';
 import { AgentService } from './services/agent.service';
 import { HotspotRegistryService } from '../skills/world/services/hotspot-registry.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from './dto/route-and-run.dto';
+import {
+  RouteAndRunTaskInitResponseDto,
+  RouteAndRunTaskStatusResponseDto,
+} from './dto/route-and-run-task.dto';
 import {
   LedgerHealingMetricsDto,
   LedgerHealingObservabilityDto,
@@ -15,7 +20,16 @@ import { buildTravelOntologyStateFromOrchestrator } from '../decision/kernel/tra
 import { Public } from '../auth/decorators/public.decorator';
 import { ConfirmNegotiationResponseDto, NegotiationResolutionDto } from './dto/confirm-negotiation.dto';
 import { RevisionTimelineResponseDto } from './dto/itinerary-revision-timeline.dto';
+import { TripRobustnessDashboardResponseDto } from './dto/trip-robustness-dashboard.dto';
 import { ItineraryRollbackRequestDto, ItineraryRollbackResponseDto } from './dto/itinerary-rollback.dto';
+import {
+  ApplyBookingCartActionRequestDto,
+  ApplyBookingCartActionResponseDto,
+} from './dto/booking-cart-checkout.dto';
+import {
+  ApplyOpenWorldVerificationRequestDto,
+  ApplyOpenWorldVerificationResponseDto,
+} from './dto/open-world-verification.dto';
 import { LogDecisionRequestDto, LogDecisionResponseDto } from './dto/log-decision.dto';
 import {
   ConflictStrategyOptionsRequestDto,
@@ -23,7 +37,10 @@ import {
 } from './dto/conflict-strategy-options.dto';
 import { ActionExecutionService } from './services/action-execution.service';
 import { PhysicalActionPlanEnricherService } from '../domain/spatial/physical-action-plan-enricher.service';
+import { RouteAndRunTaskStreamService } from './services/route-and-run-task-stream.service';
 import { normalizeRouteAndRunRequestMessage, resolveRouteAndRunUserMessage } from './utils/resolve-route-and-run-message.util';
+import { attachOtelTraceContextToRouteAndRunRequest } from '../harness/tracing/harness-otel-correlation.util';
+import { EXPOSED_AGENT_TRANSPORT_MODES } from '../common/constants/travel-mode-scope.constants';
 
 /**
  * Agent Controller
@@ -40,19 +57,14 @@ import { normalizeRouteAndRunRequestMessage, resolveRouteAndRunUserMessage } fro
 export class AgentController {
   private readonly logger = new Logger(AgentController.name);
   private static readonly CONSTRAINTS_META_VERSION = '2026-05-01';
-  private static readonly TRANSPORT_MODES_META = [
-    { value: 'TRANSIT', label_zh: '公共交通', label_en: 'Transit', aliases: ['公交', '地铁'] },
-    { value: 'RAIL', label_zh: '火车', label_en: 'Rail', aliases: ['铁路'] },
-    { value: 'DRIVE', label_zh: '自驾', label_en: 'Drive', aliases: ['开车'] },
-    { value: 'MOTORCYCLE', label_zh: '摩托', label_en: 'Motorcycle', aliases: ['摩托车'] },
-    { value: 'FERRY', label_zh: '轮渡', label_en: 'Ferry', aliases: ['渡轮'] },
-  ] as const;
+  private static readonly TRANSPORT_MODES_META = EXPOSED_AGENT_TRANSPORT_MODES;
 
   constructor(
     private readonly agentService: AgentService,
     @Optional() private readonly hotspotRegistry?: HotspotRegistryService,
     @Optional() private readonly actionExecution?: ActionExecutionService,
     @Optional() private readonly physicalActionPlanEnricher?: PhysicalActionPlanEnricherService,
+    @Optional() private readonly routeAndRunTaskStream?: RouteAndRunTaskStreamService,
   ) {}
 
   /**
@@ -188,19 +200,6 @@ export class AgentController {
   }
 
   /**
-   * 路由并执行
-   * 
-   * 智能路由到 System 1 或 System 2，并执行相应的处理流程。
-   * 
-   * System 1 路径：
-   * - SYSTEM1_API: 标准 API / CRUD / 简单查询
-   * - SYSTEM1_RAG: 知识库/向量检索
-   * 
-   * System 2 路径：
-   * - SYSTEM2_REASONING: ReAct + 工具 + TravelPlanner/Critic
-   * - SYSTEM2_WEBBROWSE: 无头浏览器兜底（仅授权后）
-   */
-  /**
    * 策略冲突「决策对话」：解释冲突机制 + 2–3 个对齐选项（基于 MultiAgent 协作快照）
    */
   @Public()
@@ -224,24 +223,26 @@ export class AgentController {
   @ApiOperation({
     summary: '智能体统一入口 - 路由并执行',
     description: `
-智能体统一入口，根据用户输入自动路由到 System 1（快速路径）或 System 2（ReAct 循环）。
+智能体统一入口。**行程规划产品脊柱**为 Claude 图状态机（\`CLAUDE_SM\`），不是 ReAct 主循环：
 
-**路由策略**：
-- 硬规则短路：支付/退款/浏览器 → System2 + consent_required
-- 明确 CRUD → System1_API
-- 单纯事实查询 → System1_RAG
-- 规划/多约束/无 API → System2_REASONING
+INTAKE → STATE_UPDATE → RESEARCH → POI_SELECTION → GATE_EVAL → CONTEXT_BUILD
+→ PLAN_GEN → OPTIMIZE → VERIFY ⇄ REPAIR → NARRATE → FEEDBACK → HALLUCINATION → END
 
-**System 2 ReAct 循环**：
-- Plan → Act → Observe → Critic → Repair
-- 受预算控制（max_seconds, max_steps）
-- 自动可行性检查（时间窗、日界、午餐、鲁棒时间）
+**入口分流（仍存在，但不替代主链）**：
+- 硬规则短路：支付/退款/浏览器 → 需 consent
+- 明确 CRUD / 事实查询 → System 1 快路径（API / RAG）
+- 规划/多约束 / 已绑定 trip 改排 → 状态机主链（默认 \`execution_mode=ADVICE_ONLY\`）
 
-**返回结果**：
-- route: 路由决策（route, confidence, reasons, budget）
-- result: 执行结果（status, answer_text, payload）
-- explain: 决策日志（decision_log）
-- observability: 可观测性指标（latency, cost, tool_calls）
+**主链裁决**：
+- Main REPAIR ≤ 3；RETURN_TO_RESEARCH ≤ 1
+- GATE BLOCK 禁止进入 PLAN_GEN；VERIFY 只裁决可交付，不写库
+- 瑕疵草案仅显式 \`allow_flawed_draft_narrate=true\`；\`delivery_verdict=FLAWED_DRAFT\` 禁止 AUTO 写回
+
+**三人格（门控投影）**：Abu / Dr.Dre / Neptune → \`gate_result.guardian_results\` / \`explain.guardian_personas\`
+
+**权威写回**不在本接口默认路径；见 Confirm / Apply / Execute / Commit 各产品走廊。
+
+**返回**：route · result（含 \`trusted_delivery_v1.delivery_verdict\`）· explain · observability
     `.trim(),
   })
   @ApiBody({
@@ -301,6 +302,12 @@ export class AgentController {
     },
   })
   @ApiResponse({
+    status: 202,
+    description:
+      '已委托后台 Durable Task（`options.async_mode=AUTO|FORCE` 且 `async_task.is_async_delegated=true`）；轮询 `GET /agent/task/status/:taskId`',
+    type: RouteAndRunResponseDto,
+  })
+  @ApiResponse({
     status: 400,
     description: '请求参数无效',
   })
@@ -311,7 +318,10 @@ export class AgentController {
   async routeAndRun(
     @Body() request: RouteAndRunRequestDto,
     @Headers('x-client-profile') xClientProfile?: string,
+    @Req() req?: Request,
+    @Res({ passthrough: true }) res?: import('express').Response,
   ): Promise<RouteAndRunResponseDto> {
+    attachOtelTraceContextToRouteAndRunRequest(request, req?.headers);
     const headerProfile = xClientProfile?.trim();
     if (headerProfile) {
       request.meta = { ...(request.meta ?? {}), client_profile: request.meta?.client_profile ?? headerProfile };
@@ -333,12 +343,16 @@ export class AgentController {
       });
     }
     const response = await this.agentService.routeAndRun(request);
+    if (response.async_task?.is_async_delegated === true && res) {
+      res.status(HttpStatus.ACCEPTED);
+    }
     await this.maybeAttachActionExecutionPreview(request, response);
 
     const actionPlan =
       response.result?.payload?.orchestrationResult?.itinerary?.action_plan || [];
 
     // Action 闭环默认输出：在统一出口补齐，避免侵入 AgentService 的多分支返回逻辑。
+    // ITINERARY_ADJUST 走廊自动落库时由 assembler 预填 actionExecution，此处不覆盖。
     if (!response.result?.payload?.actionExecution) {
       const pendingActions = actionPlan.map((action: any) => ({
         action_id: action.action_id,
@@ -389,6 +403,89 @@ export class AgentController {
   }
 
   @Public()
+  @Post('route_and_run/async')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: '智能体统一入口（异步）— 秒回 task_id，后台执行完整编排',
+    description: `
+与同步 \`POST /agent/route_and_run\` 相同请求体，但立即返回 \`task_id\` 与初始进度。
+前端请轮询 \`GET /agent/task/status/:taskId\`（建议 1.5–2s 间隔）；\`status=SUCCESS\` 时 \`data\` 为完整 \`RouteAndRunResponseDto\`。
+
+进度字段：\`current_phase\`（OrchestrationStep）、\`progress_percentage\`、\`message\`。
+    `.trim(),
+  })
+  @ApiBody({ type: RouteAndRunRequestDto })
+  @ApiResponse({ status: 202, type: RouteAndRunTaskInitResponseDto })
+  async routeAndRunAsync(
+    @Body() request: RouteAndRunRequestDto,
+    @Headers('x-client-profile') xClientProfile?: string,
+  ): Promise<RouteAndRunTaskInitResponseDto> {
+    const headerProfile = xClientProfile?.trim();
+    if (headerProfile) {
+      request.meta = { ...(request.meta ?? {}), client_profile: request.meta?.client_profile ?? headerProfile };
+    }
+    return this.agentService.routeAndRunAsync(request);
+  }
+
+  @Public()
+  @Get('task/status/:taskId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '查询 route_and_run 异步任务进度与最终结果',
+    description: '从 Redis/内存读取 `task_progress:{taskId}`；终态 SUCCESS 时 data 含完整编排响应。',
+  })
+  @ApiResponse({ status: 200, type: RouteAndRunTaskStatusResponseDto })
+  @ApiResponse({ status: 404, description: '任务不存在或已过期' })
+  async getRouteAndRunTaskStatus(
+    @Param('taskId') taskId: string,
+  ): Promise<RouteAndRunTaskStatusResponseDto> {
+    return this.agentService.getRouteAndRunTaskStatus(taskId);
+  }
+
+  @Public()
+  @Post('task/resume/:taskId')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'P2：显式触发异步任务 Worker 续跑',
+    description:
+      '当 `task_lease_v1.lease_status=STALE` 且仍有 resume 预算时，用 `durable_trip_run_id` + request_snapshot 重新入队。轮询 status 也会在 STALE 时自动尝试 resume。',
+  })
+  @ApiResponse({ status: 202, description: '已调度续跑' })
+  @ApiResponse({ status: 404, description: '任务不存在' })
+  async resumeRouteAndRunTask(@Param('taskId') taskId: string) {
+    return this.agentService.resumeRouteAndRunTask(taskId);
+  }
+
+  @Public()
+  @Get('task/stream/:taskId')
+  @ApiOperation({
+    summary: 'route_and_run 异步任务进度（SSE）',
+    description: `
+与 \`GET /agent/task/status/:taskId\` 同源数据；按编排阶段推送 \`event: message\`，终态 \`RESULT\`/\`ERROR\` 后发送 \`event: end\`。
+
+前端用法：\`POST /agent/route_and_run/async\` 取得 \`task_id\` 后 \`new EventSource('/api/agent/task/stream/' + taskId)\`。
+
+与轮询可并存；终态 \`RESULT\` 的 \`data\` 字段与 status 接口一致。
+    `.trim(),
+  })
+  @ApiResponse({ status: 200, description: 'text/event-stream' })
+  @ApiResponse({ status: 404, description: '任务不存在或已过期' })
+  async getRouteAndRunTaskStream(
+    @Param('taskId') taskId: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!this.routeAndRunTaskStream) {
+      res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+        success: false,
+        error: { code: 'SSE_UNAVAILABLE', message: 'Task stream service is not configured' },
+      });
+      return;
+    }
+    await this.routeAndRunTaskStream.streamTask(taskId, req, res);
+  }
+
+  @Public()
   @Post('replay_from_trace')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -428,6 +525,50 @@ export class AgentController {
   }
 
   @Public()
+  @Post('booking_cart/apply')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '预订购物车状态流转',
+    description: `
+客户端回传 \`route_and_run\` 产出的 \`ui_display.booking_cart\` 快照，执行：
+- \`update_selection\`：更新选中条目（同 slot 仅一项）
+- \`apply_saving\`：应用 \`savings_opportunities[saving_index]\` 换选
+- \`confirm_ready\`：确认可 checkout（超预算需 \`acknowledge_over_budget\`）
+- \`submit_checkout\`：提交预订意向，返回 deep_links
+
+**注意**：采样报价，TripNara 不代扣款；跳转外部供应商完成支付。
+    `.trim(),
+  })
+  @ApiBody({ type: ApplyBookingCartActionRequestDto })
+  @ApiResponse({ status: 200, type: ApplyBookingCartActionResponseDto })
+  async applyBookingCartAction(
+    @Body() input: ApplyBookingCartActionRequestDto,
+  ): Promise<ApplyBookingCartActionResponseDto> {
+    return this.agentService.applyBookingCartAction(input);
+  }
+
+  @Public()
+  @Post('open_world_verification/apply')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '开放世界 POI 核实任务状态流转',
+    description: `
+客户端回传 \`route_and_run\` 产出的 \`ui_display.open_world_discovery\` 快照，执行：
+- \`mark_verified\`：标记 stub 已核实（可选 \`promoted_place_id\` 绑定真实 POI）
+- \`discard_stub\`：丢弃 provisional 节点
+
+**注意**：无服务端持久化；客户端需用返回的 \`open_world_discovery\` 更新本地快照 / trip metadata。
+    `.trim(),
+  })
+  @ApiBody({ type: ApplyOpenWorldVerificationRequestDto })
+  @ApiResponse({ status: 200, type: ApplyOpenWorldVerificationResponseDto })
+  applyOpenWorldVerificationAction(
+    @Body() input: ApplyOpenWorldVerificationRequestDto,
+  ): ApplyOpenWorldVerificationResponseDto {
+    return this.agentService.applyOpenWorldVerificationAction(input);
+  }
+
+  @Public()
   @Post('log_decision')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -452,6 +593,24 @@ export class AgentController {
   @ApiResponse({ status: 404, description: 'Revision 不存在' })
   async getNegotiationRevision(@Param('revisionId') revisionId: string) {
     return await this.agentService.getNegotiationRevisionSnapshot(revisionId);
+  }
+
+  @Public()
+  @Get('trip/:tripId/robustness_dashboard')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Robustness Dashboard（物理 + 组织双维）',
+    description:
+      '返回 tripnara.trip_robustness_dashboard@v1：rollout 双曲线、bottleneck cards、Alignment Tier-3 因果 tuple 摘要。优先读 Trip.metadata 缓存；?recompute=1 强制重算。',
+  })
+  @ApiResponse({ status: 200, type: TripRobustnessDashboardResponseDto })
+  async getTripRobustnessDashboard(
+    @Param('tripId') tripId: string,
+    @Req() req: Request,
+  ): Promise<TripRobustnessDashboardResponseDto> {
+    const forceRecompute =
+      String((req.query as Record<string, unknown>)?.recompute ?? '') === '1';
+    return await this.agentService.getTripRobustnessDashboard(tripId, { forceRecompute });
   }
 
   @Public()

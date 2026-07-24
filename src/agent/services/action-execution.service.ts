@@ -28,6 +28,10 @@ import { SideEffectParamResolverService } from './side-effect-param-resolver.ser
 import { AgentActionLogService } from './agent-action-log.service';
 import { AGENT_ACTION_LOG_STATUS } from '../constants/agent-action-log.constants';
 import { DecisionContractV1, sha256Signature, type PhysicsFactV1 } from '../contracts/decision-contract.types';
+import {
+  ACTIONS_ROLLBACK_PRODUCT_STATUS,
+  ACTIONS_ROLLBACK_STUB_MESSAGE,
+} from '../contracts/rollback-corridor.product.constants';
 import { DecisionContractCapturerService } from './decision-contract-capturer.service';
 import type { AgentService } from './agent.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -1497,11 +1501,12 @@ export class ActionExecutionService {
 
   async rollback(request: ActionRollbackRequestDto): Promise<ActionExecutionResponseDto> {
     this.logger.debug(
-      `[ActionExecution] rollback request_id=${request.request_id}, trip_id=${request.trip_id}, action_ids=${request.action_ids.length}`,
+      `[ActionExecution] rollback request_id=${request.request_id}, trip_id=${request.trip_id}, action_ids=${request.action_ids.length} product_status=${ACTIONS_ROLLBACK_PRODUCT_STATUS}`,
     );
+    // RB-1: product stub — does not reverse commits or side effects.
     const response: ActionExecutionResponseDto = {
       status: 'OK',
-      message: 'Rollback accepted (stub, no side effects).',
+      message: ACTIONS_ROLLBACK_STUB_MESSAGE,
       accepted_actions: [],
     };
     this.eventTelemetry?.recordEvent({

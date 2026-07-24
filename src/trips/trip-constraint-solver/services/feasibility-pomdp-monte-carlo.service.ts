@@ -272,10 +272,18 @@ export class FeasibilityPomdpMonteCarloService {
   ): { observation: WorldStateObservation; sources: string[] } | null {
     if (!readiness?.score) return null;
 
+    const scheduleFeas = readiness.score.scheduleFeasibility;
+    const transportFeas = readiness.score.transportCertainty;
+    if (scheduleFeas == null && transportFeas == null) {
+      return null;
+    }
+
     const sources: string[] = [];
-    const scheduleRisk = Math.max(0, Math.min(1, 1 - readiness.score.scheduleFeasibility / 100));
-    const transportRisk = Math.max(0, Math.min(1, 1 - readiness.score.transportCertainty / 100));
-    const envRisk = (scheduleRisk + transportRisk) / 2;
+    const scheduleRisk =
+      scheduleFeas != null ? Math.max(0, Math.min(1, 1 - scheduleFeas / 100)) : 0;
+    const transportRisk =
+      transportFeas != null ? Math.max(0, Math.min(1, 1 - transportFeas / 100)) : 0;
+    const envRisk = (scheduleRisk + transportRisk) / (scheduleFeas != null && transportFeas != null ? 2 : 1);
     const windSpeedMs = 5 + envRisk * 20;
 
     if (scheduleRisk > 0.05) sources.push('readiness.score.scheduleFeasibility');

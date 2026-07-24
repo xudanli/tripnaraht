@@ -12,6 +12,10 @@ import type { ContextPackage } from '../../agent/context-engine/types/context-pa
 import type { WorldStateSummary } from './world-state-summary.types';
 import type { HarnessStepName } from '../../harness/contracts/harness-step.types';
 import type { RepairTrace } from '../../agent/services/route-feasibility.types';
+import type { TripAction } from '../../trips/road/trip-action.types';
+import type { RouteTopologyLockRecord } from './route-topology-lock.util';
+import type { PersonaClosureAudit } from '../../trips/decision/shared/persona-closure.types';
+import type { DecisionContextSlice } from '../../planning-policy/types/open-world-poi.types';
 import type { ExperienceFulfillmentState } from '../../trips/experience-fulfillment/types/experience-fulfillment-state.types';
 
 /** 用户意图（从 INTAKE 提取） */
@@ -50,6 +54,9 @@ export interface UserIntent {
   /** 节奏（影响日程 buffer 比例） */
   pace?: 'relaxed' | 'normal' | 'dense';
   styleTags?: string[];
+  /** Intake Cafe / Odyssey 帕累托优选 RouteDirection uuid（按优先级排序） */
+  preferredRouteDirectionUuids?: string[];
+  odysseyTier?: 1 | 2 | 3;
 }
 
 /** 行程状态 */
@@ -76,6 +83,8 @@ export interface TripState {
     alternative_pois: unknown[];
     alternative_routes: unknown[];
   };
+  /** OPTIMIZE 落盘：路由拓扑骨架锁 */
+  routeTopologyLock?: RouteTopologyLockRecord;
 }
 
 /** 航班信息（实施例 2 动态重规划） */
@@ -120,6 +129,11 @@ export interface EnvironmentState {
   crowdLevel?: number;
   /** 季节评分 (0-1)（用于 differentiable-decision） */
   seasonScore?: number;
+  /** 物理现实不完整（world.buildContext 门控） */
+  physicalRealityIncomplete?: boolean;
+  isRouteTopologyLocked?: boolean;
+  route_skeleton_locked?: boolean;
+  routeTopologyLock?: RouteTopologyLockRecord;
   /** 可达性评分 (0-1)（用于 differentiable-decision） */
   accessibilityScore?: number;
   /** 价格水平 (0-1)（用于 differentiable-decision） */
@@ -137,6 +151,7 @@ export interface EnvironmentState {
 
 /** PLAN_GEN 空草案或无法进入生成器时的终止信号（写入 DSO.systemState） */
 export interface PlanGenTerminalFailure {
+  /** 冻结码见 `plan-gen-node-protocol.constants.ts` */
   code: string;
   message: string;
   detail?: string;
@@ -262,6 +277,9 @@ export interface SystemState {
     max_wind_speed_tolerance_mps?: number;
     reason_code?: string;
   };
+
+  /** Persona closure loop 审计（Neptune REPLACE → Abu 重验）；供 REPAIR skip 与 explain 投影 */
+  personaClosureAudit?: PersonaClosureAudit;
 }
 
 /** 跨天迁移协议（Bubble-up）：锚点或关键节点无法在当日时间/日照约束下落位时建议挪至相邻日 */
@@ -304,6 +322,8 @@ export interface ConstraintReport {
    * 当为 `NEED_USER_CONFIRM` 时，仅用 `feasible`/`violations` 无法与 `ADJUST_REQUIRED` 区分，往返映射时必须显式携带。
    */
   gateOutcome?: 'ALLOW' | 'ADJUST_REQUIRED' | 'BLOCK' | 'NEED_USER_CONFIRM';
+  /** Decision OS v2：稀疏区 / 开放世界 / 留白 SSOT（Narrator + Repair 只读） */
+  decisionContext?: DecisionContextSlice;
 }
 
 /**
@@ -492,6 +512,49 @@ export interface OptimizationHints {
   candidateSearchBudget?: CandidateSearchBudget;
   /** Candidate generation / repair 审计（证明元预算如何影响搜索行为） */
   candidateSearchAudit?: CandidateSearchAudit;
+
+  /** 物理不完整时的优化门控（world.buildContext → DSO） */
+  optimizationFlags?: {
+    useMonteCarlo?: boolean;
+    relaxationFactor?: number;
+    freezeRouteSelection?: boolean;
+    physicalRealityIncomplete?: boolean;
+  };
+
+  /** 决策判决书（CGUS / explain 审计） */
+  decisionVerdict?: import('./decision-verdict.util').OptimizationDecisionVerdict;
+  decisionVerdictNarrationZh?: string;
+  worldConstraintMaterialization?: {
+    appliedEvents: number;
+    roadIds: string[];
+    weatherDates: string[];
+    storeVersion: number;
+    unifiedGraphNodeCount?: number;
+    unifiedGraphEdgeCount?: number;
+    globalSubgraphNodeCount?: number;
+    globalSubgraphEdgeCount?: number;
+    globalSubgraphPrunedNodes?: number;
+  };
+  observationRecommendations?: ObservationRecommendation[];
+
+  /** P0 RLHF：观测链触发的两难诱导提示（与 `RlhfDilemmaElicitationSnapshot` 对齐） */
+  dilemmaElicitationHint?: {
+    reason: string;
+    crossSpread?: number;
+    hint?: string;
+  };
+}
+
+/** VOI 编排：观测类 TripAction 建议 */
+export interface ObservationRecommendation {
+  action: Extract<TripAction, { type: 'OBSERVATION_SNS_CRAWL' } | { type: 'OBSERVATION_POI_VERIFY' }>;
+  voiScore: number;
+  voiAudit?: {
+    expectedUtilityAfter: number;
+    utilityBefore: number;
+    costPenalty: number;
+  };
+  rationale?: string;
 }
 
 /** 决策模式（Decision Meta - 系统稳定性关键） */
@@ -582,6 +645,13 @@ export interface HarnessRuntimeState {
    */
   evaluationRunId?: string;
   /**
+   * 入站 W3C / OTel trace id（32 hex），与 Harness trace JSON `meta.otelTraceId`、
+   * `observability.otel_trace_id` 对齐，便于 APM ↔ on-failure JSON 联查。
+   */
+  otelTraceId?: string;
+  /** 入站 W3C parent span id（16 hex） */
+  otelSpanId?: string;
+  /**
    * 若设置 `HARNESS_TRACE_EXPORT_DIR` 且落盘成功：相对 `process.cwd()` 的 POSIX 路径（replay `traceRefs.path` / API observability）。
    */
   traceExportRelativePath?: string;
@@ -609,6 +679,17 @@ export interface HarnessRuntimeState {
       replanningScope: string;
     };
   };
+  /**
+   * Harness 失败事件摘要（`HARNESS_TRACE_MODE=on-failure` 或 VERIFY 影子校验写入 DSO）。
+   * 供 plan-verify-loop 路由 RESEARCH 与 explain 审计。
+   */
+  last_harness_failure_events?: Array<{
+    step: string;
+    code: string;
+    severity?: string;
+    suggestedAction?: string;
+    message?: string;
+  }>;
 }
 
 /** Phase 1.5：区域解析溯源（可观测 / 排障） */
@@ -803,11 +884,11 @@ export interface DecisionState {
    */
   experienceFulfillment?: ExperienceFulfillmentState;
 
-  /**
-   * VERIFY 结构化结果（Phase 3）
-   * - 以结构化 issue 取代纯 string[]，用于：是否可修复、是否阻塞 DONE、Explain / Guardrails
-   */
+  /** VERIFY 结构化结果（Phase 3） */
   verification?: VerificationReport;
+
+  /** RESEARCH / world.buildContext 共识镜像（含 worldModel） */
+  research_data?: Record<string, unknown>;
 }
 
 export type VerificationIssueClass = 'FATAL' | 'CONFLICT' | 'ADVISORY';
@@ -825,6 +906,9 @@ export type VerificationIssueCode =
   | 'WEATHER_RISK'
   | 'CONFIDENCE_DEGRADED'
   | 'SUNSET_BREACH'
+  | 'GRAPH_POI_UNRESOLVED'
+  | 'GRAPH_ROUTE_UNRESOLVED'
+  | 'GRAPH_VERIFY_SSOT_MISMATCH'
   | 'UNKNOWN';
 
 export interface VerificationIssueMetadata {
@@ -832,6 +916,12 @@ export interface VerificationIssueMetadata {
   confidence_impact?: number;
   /** 证据形态（营业时间等） */
   evidenceKind?: 'PERIODS' | 'IS_OPEN_NOW_ONLY' | 'WEEKDAY_TEXT_ONLY' | 'NONE';
+  /** POI Access & Capacity Engine 约束 ID */
+  poi_access_constraint_id?: string;
+  /** Plan B 替代 POI slug */
+  poi_access_alternative_poi_id?: string;
+  /** 被阻断的 POI slug */
+  poi_access_blocked_poi_id?: string;
 }
 
 export interface VerificationIssue {

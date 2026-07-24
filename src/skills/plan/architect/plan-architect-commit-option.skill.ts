@@ -42,7 +42,7 @@ export class PlanArchitectCommitOptionSkill implements Skill<PlanArchitectCommit
 
   metadata = {
     name: 'plan.architect.commitOption',
-    description: '用户选定方案后，写入 PlanState 并产生版本号',
+    description: 'plan.architect.commitOption：用户选定方案后，写入 PlanState 并产生版本号',
     version: '1.0.0',
     category: 'trip' as const,
     toolGroup: 'DOMAIN' as const,

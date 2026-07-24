@@ -211,7 +211,7 @@ export class ContentStrategyQAService {
       (context.metadata?.relatedContent && context.metadata.relatedContent.length > 1);
 
     return {
-      passed: hasMultipleAngles,
+      passed: Boolean(hasMultipleAngles),
       message: hasMultipleAngles
         ? '内容考虑了多个角度'
         : '内容可能只考虑了单一角度',

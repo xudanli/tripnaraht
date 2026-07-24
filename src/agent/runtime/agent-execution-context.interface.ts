@@ -1,6 +1,7 @@
 // src/agent/runtime/agent-execution-context.interface.ts
 import type { ExecutionMemoryBinding } from '../memory/interfaces/execution-memory-binding.interface';
 import type { OperationalNegativeConstraintsV1 } from '../compression/world-state-compression.types';
+import type { ContextPackage } from '../context-engine/types/context-package.types';
 
 /**
  * 黄金链路执行上下文：与 request 解耦，由 ALS 承载（避免 request.__xxx 失控扩张）。
@@ -21,4 +22,8 @@ export interface AgentExecutionContext {
    */
   operationalNegativeConstraints?: OperationalNegativeConstraintsV1 | null;
   operationalNegativeConstraintsMarkdown?: string | null;
+  /**
+   * 请求级 Context Package L1（ALS 内生死；跨并发请求隔离）。
+   */
+  contextPackageL1Cache?: Map<string, { package: ContextPackage; timestamp: number }>;
 }

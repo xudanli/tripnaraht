@@ -1,0 +1,98 @@
+{
+  "evidenceType": "ROAD_IS_EGRESS_INVESTIGATION",
+  "probedAt": "2026-07-10T19:49:13.305Z",
+  "collectorCandidate": "devbox",
+  "collectorEgressIp": "unknown",
+  "apiHost": "api.road.is",
+  "conditionUrl": "https://api.road.is/api/condition",
+  "canaryRoadId": "F208",
+  "environment": "production-canary-devbox",
+  "roadIsLivePass": false,
+  "roadIsHttpPass": false,
+  "adapterShapePass": false,
+  "openMeteoControlPass": true,
+  "failureStage": "DNS",
+  "diagnosis": "DNS resolution failure for api.road.is / www.road.is (EAI_AGAIN). Open-Meteo control PASS — general HTTPS egress OK. Slice 2 remains REPLAY_ONLY until egress PASS from reachable host (Frankfurt collector spike pending).",
+  "recommendedPath": "ROAD_IS_EGRESS_NO-GO — replay-only until egress PASS (consider Frankfurt collector spike)",
+  "authorityPolicy": {
+    "ROAD_IS_LIVE": "create / upgrade / recover road FEASIBILITY_FAILURE",
+    "SEASONAL_FALLBACK": "assist only; cannot alone sign-off Slice 2 Canary",
+    "REAL_SHAPE_REPLAY": "staging/canary drill until LIVE PASS",
+    "ROAD_IS_PROVIDER_MOCK": "dev/test only — forbidden for sign-off"
+  },
+  "statusLabels": {
+    "liveRoadIngestion": "NO-GO",
+    "replayOnlySlice2": true
+  },
+  "slice2Blockers": [
+    "egress_or_parse",
+    "no_road_fingerprint",
+    "no_raw_response_persistence",
+    "no_prod_canary_road_drill"
+  ],
+  "probes": [
+    {
+      "name": "egress-ip",
+      "ok": false,
+      "detail": "unknown"
+    },
+    {
+      "name": "DNS-api.road.is",
+      "ok": false,
+      "stage": "DNS",
+      "detail": "getaddrinfo EAI_AGAIN api.road.is"
+    },
+    {
+      "name": "DNS-www.road.is",
+      "ok": false,
+      "stage": "DNS",
+      "detail": "getaddrinfo EAI_AGAIN www.road.is"
+    },
+    {
+      "name": "PROXY-env",
+      "ok": true,
+      "detail": "none set"
+    },
+    {
+      "name": "tcp-443-api",
+      "ok": false,
+      "stage": "TCP",
+      "detail": "Command failed: timeout 12 bash -c 'echo | nc -w10 api.road.is 443'"
+    },
+    {
+      "name": "curl-www-road-is",
+      "ok": false,
+      "stage": "HTTP",
+      "detail": "Command failed: curl -4 -sS -o \"/dev/null\" -w \"code=%{http_code} connect=%{time_connect} tls=%{time_appconnect} total=%{time_total} bytes=%{size_download}\" --connect-timeout 10 --max-time 30 \"https://www.road.is/\"",
+      "ms": 1819
+    },
+    {
+      "name": "curl-open-meteo-control",
+      "ok": true,
+      "stage": "HTTP",
+      "detail": "code=200 connect=0.176505 tls=0.526918 total=0.701012 bytes=327",
+      "ms": 712
+    },
+    {
+      "name": "curl-api-condition-f208",
+      "ok": false,
+      "stage": "HTTP",
+      "detail": "Command failed: curl -4 -sS -o \"/tmp/road-is-probe-devbox-1783712936823.json\" -w \"code=%{http_code} connect=%{time_connect} tls=%{time_appconnect} total=%{time_total} bytes=%{size_download}\" --connect-timeout 10 --max-time 30 \"https://api.road.is/api/condition?road=F208\"",
+      "ms": 1818
+    },
+    {
+      "name": "parse-road-is-json",
+      "ok": false,
+      "stage": "PARSE",
+      "detail": "empty_body"
+    },
+    {
+      "name": "node-api-condition-f208",
+      "ok": false,
+      "stage": "NODE",
+      "detail": "EAI_AGAIN: getaddrinfo EAI_AGAIN api.road.is",
+      "ms": 1844
+    }
+  ],
+  "sampleBodyPath": "/tmp/road-is-probe-devbox-1783712936823.json"
+}

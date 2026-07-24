@@ -47,6 +47,16 @@ export interface PersonaSupportingLine {
   text: string;
 }
 
+/** CHOOSE 场景下的人工决策点（与 negotiation / optimize 读路径对齐） */
+export interface GuardianHumanDecisionPoint {
+  id: string;
+  question: string;
+  options: string[];
+  recommendation?: string;
+  /** 规划工作台：与 options 同序的 skeleton optionId */
+  optionIds?: string[];
+}
+
 /** 单主角表达 — 前端默认渲染此对象 */
 export interface GuardianPersonaPresentation {
   mode: 'single_lead' | 'decision_committee';
@@ -64,6 +74,10 @@ export interface GuardianPersonaPresentation {
   structuredStatus: PersonaStructuredStatus;
   /** 硬约束已 BLOCK；前端优先读此字段禁用 CHOOSE */
   hardConstraintBlocked?: boolean;
+  /** CHOOSE 时结构化选项（前端应读此字段，勿把 consolidatedDecision.nextSteps 当选项） */
+  humanDecisionPoints?: GuardianHumanDecisionPoint[];
+  /** humanDecisionPoints 扁平化，供 GuardianChooseModal 等 */
+  humanDecisionPointsFlat?: string[];
 }
 
 /** DecisionLog.metadata 扩展字段（审计/回放） */

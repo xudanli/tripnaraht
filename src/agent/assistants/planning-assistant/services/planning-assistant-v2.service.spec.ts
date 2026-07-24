@@ -37,8 +37,9 @@ describe('PlanningAssistantV2Service', () => {
     const mockPlanningAssistantService = {
       createSession: jest.fn(),
       getSessionState: jest.fn(),
-      chat: jest.fn(),
       saveSession: jest.fn(),
+      deleteSession: jest.fn(),
+      chat: jest.fn(),
     };
 
     const mockCoreGateway = {
@@ -164,6 +165,94 @@ describe('PlanningAssistantV2Service', () => {
 
   it('应该被定义', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('RouteAndRun context bridge (buildRouteAndRunRequestForPaGenerate)', () => {
+    const sessionId = 'mock-session-uuid';
+    const baseState = (): PlanningConversationState => ({
+      sessionId,
+      userId: 'user-123',
+      phase: 'PLANNING',
+      preferences: {},
+      messageHistory: [
+        { id: 'm1', role: 'user', content: '我想去新疆', timestamp: '2026-01-01T00:00:00.000Z' },
+        {
+          id: 'm2',
+          role: 'assistant',
+          content: '新疆适合自驾，打算去南疆还是北疆？',
+          timestamp: '2026-01-01T00:01:00.000Z',
+        },
+        { id: 'm3', role: 'user', content: '北疆吧，看风景', timestamp: '2026-01-01T00:02:00.000Z' },
+      ],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:02:00.000Z',
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    });
+
+    const baseDto = (): GeneratePlanRequestDto => ({
+      sessionId,
+      userId: 'user-123',
+      destination: '新疆',
+    });
+
+    it('should populate conversation_context.recent_messages from session messageHistory', async () => {
+      planningAssistantService.getSessionState.mockResolvedValue(baseState());
+
+      const requestBody = await (service as any).buildRouteAndRunRequestForPaGenerate(
+        baseDto(),
+        '看风景',
+        'trip-789',
+        { locale: 'zh-CN', async_mode: 'FORCE' },
+      );
+
+      expect(requestBody.message).toBe('看风景');
+      expect(requestBody.trip_id).toBe('trip-789');
+      expect(requestBody.conversation_context).toBeDefined();
+      expect(requestBody.conversation_context.locale).toBe('zh-CN');
+      expect(requestBody.conversation_context.context_type).toBe('active_trip_summary');
+      expect(requestBody.conversation_context.recent_messages).toEqual([
+        '用户: 我想去新疆',
+        '助手: 新疆适合自驾，打算去南疆还是北疆？',
+        '用户: 北疆吧，看风景',
+      ]);
+      expect(planningAssistantService.getSessionState).toHaveBeenCalledWith(sessionId);
+    });
+
+    it('should exclude trailing user line when it duplicates the current message', async () => {
+      const state = baseState();
+      state.messageHistory.push({
+        id: 'm4',
+        role: 'user',
+        content: '看风景',
+        timestamp: '2026-01-01T00:03:00.000Z',
+      });
+      planningAssistantService.getSessionState.mockResolvedValue(state);
+
+      const requestBody = await (service as any).buildRouteAndRunRequestForPaGenerate(
+        baseDto(),
+        '看风景',
+        'trip-789',
+      );
+
+      expect(requestBody.conversation_context.recent_messages).toEqual([
+        '用户: 我想去新疆',
+        '助手: 新疆适合自驾，打算去南疆还是北疆？',
+        '用户: 北疆吧，看风景',
+      ]);
+      expect(requestBody.conversation_context.recent_messages).not.toContain('用户: 看风景');
+    });
+
+    it('should omit recent_messages when there is no session history', async () => {
+      planningAssistantService.getSessionState.mockResolvedValue(null);
+
+      const requestBody = await (service as any).buildRouteAndRunRequestForPaGenerate(
+        { ...baseDto(), sessionId: undefined },
+        '帮我规划冰岛',
+        undefined,
+      );
+
+      expect(requestBody.conversation_context?.recent_messages).toBeUndefined();
+    });
   });
 
   describe('createSession', () => {

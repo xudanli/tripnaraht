@@ -16,12 +16,20 @@ import {
 import { ExpectedUtilityService, DEFAULT_MONTE_CARLO_CONFIG } from './probabilistic/expected-utility.service';
 import { ProbabilisticWorldModelService } from './probabilistic/probabilistic-world-model.service';
 import { DEFAULT_UNCERTAINTY_CONFIG } from './probabilistic/probabilistic-world-model.interface';
-import { DEFAULT_OBJECTIVE_WEIGHTS } from './objective-function.interface';
+import { DEFAULT_OBJECTIVE_WEIGHTS, type ObjectiveFunctionWeights } from './objective-function.interface';
 import { ObjectiveFunctionService } from './objective-function.service';
 import { InformationGainService } from './exploration/information-gain.service';
 import { ComplexityAnalysisService } from './theory/complexity-analysis.service';
 import type { ComplexityReport } from './theory/complexity-analysis.interface';
 import { UCBVisitTrackerService } from './theory/ucb-visit-tracker.service';
+import {
+  evaluateCandidateExperienceRouting,
+  softmaxWeightsFromEdgeCosts,
+  type CgusEdgeRoutingAudit,
+} from './cgus-experience-routing.util';
+import { ExperienceRoutingPolicyService } from '../policies/experience-routing-policy.service';
+import { resolveExperienceRoutingWeights } from '../policies/experience-routing-policy';
+import type { ExperienceRoutingWeights } from '../policies/experience-routing-policy';
 import type { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
 import { PlanFeaturesService } from './plan-features/plan-features.service';
 import { ExposureMapService } from './plan-features/exposure-map.service';
@@ -33,6 +41,7 @@ import {
   buildConstraintPenaltyCoefficientsFromRetrievalHints,
   type RetrievalCategoryEvidence,
 } from './retrieval-category-constraint-boost';
+import { routeSkeletonSignature } from './cgus-route-skeleton.util';
 
 /** 候选方案（动作 a） */
 export interface CGUSCandidate {
@@ -122,6 +131,16 @@ export interface CGUSSearchResult {
     pruned_candidates: number;
     pruned_segments_by_type: Record<string, number>;
   };
+
+  /** ExperienceRoutingPolicy 接线审计（广义边成本 + 效用惩罚） */
+  experienceRoutingAudit?: {
+    tempo: string;
+    weights: { w1: number; w2: number; beta: number };
+    perCandidate: Record<
+      string,
+      { generalizedCost: number; utilityPenalty: number; frictionScore: number }
+    >;
+  };
 }
 
 @Injectable()
@@ -139,6 +158,7 @@ export class CGUSSearchService {
     @Optional() private readonly planFeatures?: PlanFeaturesService,
     @Optional() private readonly exposureMap?: ExposureMapService,
     @Optional() @Inject(CANDIDATE_SCORER) private readonly candidateScorer?: ICandidateScorer,
+    @Optional() private readonly experienceRoutingPolicy?: ExperienceRoutingPolicyService,
   ) {}
 
   /**
@@ -203,11 +223,41 @@ export class CGUSSearchService {
        * before feasibility projection and scoring, ensuring forbidden modes physically disappear from
        * the search space (not merely filtered post-hoc).
        */
+      /**
+       * 覆盖 MC 阶段使用的目标权重（P1：与 `WeightPersistence`/Kernel 冷启动对齐）。
+       * 缺省仍用 `ObjectiveFunctionService.weights` 或默认常量。
+       */
+      monteCarloObjectiveWeights?: ObjectiveFunctionWeights;
       emergencyConstraints?: {
         forbidden_modes?: string[];
       };
+      /**
+       * 物理不完整 / 草稿期：锚定路由骨架，禁止跨候选替换 segment 集合（仅允许时间/软约束变体）。
+       */
+      freezeRouteSelection?: boolean;
     },
   ): Promise<CGUSSearchResult> {
+    const freezeRoute = options?.freezeRouteSelection === true;
+    if (freezeRoute) {
+      options = { ...options, useMonteCarlo: false };
+    }
+
+    let workingCandidates = candidates;
+    if (freezeRoute && candidates.length > 0) {
+      const anchorSig = routeSkeletonSignature(candidates[0].plan);
+      if (anchorSig) {
+        workingCandidates = candidates.filter(
+          (c) => routeSkeletonSignature(c.plan) === anchorSig,
+        );
+        if (workingCandidates.length === 0) {
+          workingCandidates = [candidates[0]];
+        }
+        this.logger.log(
+          `[CGUS] freezeRouteSelection: anchored skeleton sig=${anchorSig.slice(0, 80)}… candidates=${workingCandidates.length}`,
+        );
+      }
+    }
+
     const forbiddenModes = (options?.emergencyConstraints?.forbidden_modes ?? []).map((x) => String(x).toUpperCase());
     const forbidDrive = forbiddenModes.includes('DRIVE') || forbiddenModes.includes('MOTORCYCLE');
     const forbidTransit = forbiddenModes.includes('TRANSIT');
@@ -248,10 +298,10 @@ export class CGUSSearchService {
 
     const maskedCandidates =
       forbiddenModes.length > 0
-        ? candidates
+        ? workingCandidates
             .map(pruneCandidate)
             .filter((c) => (c.plan?.segments?.length ?? 0) > 0)
-        : candidates;
+        : workingCandidates;
 
     const emergencyMaskAudit =
       forbiddenModes.length > 0
@@ -282,6 +332,9 @@ export class CGUSSearchService {
     }
     const toRank = feasibleCandidates.length > 0 ? feasibleCandidates : maskedCandidates;
 
+    const routingWeights = this.resolveExperienceRoutingWeights(worldContext);
+    const routingAuditByCandidateId: Record<string, CgusEdgeRoutingAudit> = {};
+
     // Step 2：效用先验估计 Û(a)（可选，用于加速排序或加权采样）
     const withPrior = toRank.map((candidate) => {
       const dimensionScores = this.deriveDimensionScores(candidate, worldContext);
@@ -298,12 +351,25 @@ export class CGUSSearchService {
         riskPenalty: this.deriveRiskPenalty(candidate, worldContext),
         preferenceScore: 0,
       };
-      const utility = this.unifiedFormula.computeUnifiedScore(input);
+      let utility = this.unifiedFormula.computeUnifiedScore(input);
+      const routingAudit = this.evaluateCandidateRouting(candidate, worldContext, routingWeights);
+      if (routingAudit) {
+        routingAuditByCandidateId[candidate.id] = routingAudit;
+        const penaltyFactor = Math.min(0.92, routingAudit.utilityPenalty);
+        utility = Math.max(0, utility * (1 - penaltyFactor));
+      }
       return { candidate, utility, utilityPrior };
     });
 
-    // 按 U(a) 降序排序
-    withPrior.sort((a, b) => b.utility - a.utility);
+    // 按 U(a) 降序排序；广义边成本作为体验路由平局破除（低摩擦优先）
+    withPrior.sort((a, b) => {
+      if (b.utility !== a.utility) {
+        return b.utility - a.utility;
+      }
+      const costA = routingAuditByCandidateId[a.candidate.id]?.generalizedCost ?? Number.POSITIVE_INFINITY;
+      const costB = routingAuditByCandidateId[b.candidate.id]?.generalizedCost ?? Number.POSITIVE_INFINITY;
+      return costA - costB;
+    });
 
     let usedMonteCarlo = false;
     let usedRollout = false;
@@ -337,7 +403,8 @@ export class CGUSSearchService {
         );
         // Align Monte Carlo scoring weights with deterministic objective function when available.
         // This reduces drift between deterministic utility ranking and E[U] estimates.
-        const mcWeights = this.objectiveFunction?.weights ?? DEFAULT_OBJECTIVE_WEIGHTS;
+        const mcWeights =
+          options?.monteCarloObjectiveWeights ?? this.objectiveFunction?.weights ?? DEFAULT_OBJECTIVE_WEIGHTS;
         const totalSampleBudget = options?.sampleSize ?? 200;
         const utilityWeightedBeta = options?.utilityWeightedBeta ?? 2;
         const minSamplesPerCandidate = 20;
@@ -392,9 +459,19 @@ export class CGUSSearchService {
             const varianceWeight = Math.sqrt(varEst);
             return Math.exp(utilityWeightedBeta * uNorm) * sigmaProxy(r) * varianceWeight;
           });
-          const sumW = weights.reduce((s, w) => s + w, 0) || 1;
-          sampleAllocations = weights.map((w) => {
-            const extra = remaining > 0 ? Math.round((w / sumW) * remaining) : 0;
+          const edgeCosts = withPrior.map(
+            (r) => routingAuditByCandidateId[r.candidate.id]?.generalizedCost ?? 60,
+          );
+          const routingTempo = worldContext.experienceFlow?.tempo;
+          const routeSoftmax = softmaxWeightsFromEdgeCosts(
+            edgeCosts,
+            routingTempo === 'EMPATHY_RECOVERY' ? 0.75 : 1.15,
+          );
+          const sumW =
+            weights.reduce((s, w, idx) => s + w * (routeSoftmax[idx] ?? 1 / weights.length), 0) || 1;
+          sampleAllocations = weights.map((w, idx) => {
+            const blendedW = w * (routeSoftmax[idx] ?? 1 / weights.length);
+            const extra = remaining > 0 ? Math.round((blendedW / sumW) * remaining) : 0;
             return Math.max(minSamplesPerCandidate, Math.round(baseBudget / withPrior.length) + extra);
           });
 
@@ -450,9 +527,15 @@ export class CGUSSearchService {
             Number.isFinite(scoreNoConstraints) && Number.isFinite(scoreWithConstraints)
               ? Math.max(0, scoreNoConstraints - scoreWithConstraints)
               : 0;
+          const routingPenalty =
+            routingAuditByCandidateId[candidate.id]?.utilityPenalty ?? 0;
           (finalResults[i] as any).rawMonteCarloExpectedUtility = result.expectedUtility;
           (finalResults[i] as any).appliedSoftPenaltyDelta = softPenaltyDelta;
-          finalResults[i].expectedUtility = Math.max(0, Math.min(1, result.expectedUtility - softPenaltyDelta));
+          (finalResults[i] as any).appliedExperienceRoutingPenalty = routingPenalty;
+          finalResults[i].expectedUtility = Math.max(
+            0,
+            Math.min(1, (result.expectedUtility - softPenaltyDelta) * (1 - Math.min(0.92, routingPenalty))),
+          );
           let terrainInflation = 1;
           if (this.planFeatures) {
             const effort01 = this.planFeatures.extract(candidate.plan).effort01;
@@ -630,7 +713,11 @@ export class CGUSSearchService {
           const baseP = r.feasibilityProbability ?? 1;
           const rollU = r.rolloutPrediction?.estimatedUtility;
           const rollP = r.rolloutPrediction?.feasibilityProbability;
-          const blendedU = rollU !== undefined ? 0.75 * baseU + 0.25 * rollU : baseU;
+          const routingPenalty =
+            routingAuditByCandidateId[r.candidate.id]?.utilityPenalty ?? 0;
+          let blendedU = rollU !== undefined ? 0.75 * baseU + 0.25 * rollU : baseU;
+          const penaltyFactor = Math.min(0.92, routingPenalty);
+          blendedU = Math.max(0, blendedU * (1 - penaltyFactor));
           const blendedP = rollP !== undefined ? Math.min(baseP, rollP) : baseP;
           const finalScore = blendedU * blendedP;
           (r as any).finalScore = finalScore;
@@ -651,7 +738,10 @@ export class CGUSSearchService {
     }
 
     // Step 5：最优动作选择 a* = argmax U(a)，可选 Exploration：a* = argmax U'(a)
-    const explorationBeta = options?.explorationBeta ?? 0;
+    let explorationBeta = options?.explorationBeta ?? routingWeights.betaInformationGain;
+    if (worldContext.experienceFlow?.tempo === 'EMPATHY_RECOVERY') {
+      explorationBeta = Math.min(explorationBeta, routingWeights.betaInformationGain);
+    }
     const explorationStrategy = options?.explorationStrategy ?? (explorationBeta > 0 ? 'INFORMATION_GAIN' : 'NONE');
     const explorationC = options?.explorationC ?? 2;
     let usedExploration = false;
@@ -659,8 +749,10 @@ export class CGUSSearchService {
     if (explorationStrategy === 'UCB' && this.ucbVisitTracker) {
       for (const r of finalResults) {
         const baseU = r.expectedUtility ?? r.utility;
+        const routingPenalty = routingAuditByCandidateId[r.candidate.id]?.utilityPenalty ?? 0;
         const ucbBonus = this.ucbVisitTracker.getUCBBonus(r.candidate.id, explorationC);
-        (r as { explorationAdjustedUtility?: number }).explorationAdjustedUtility = baseU + ucbBonus;
+        (r as { explorationAdjustedUtility?: number }).explorationAdjustedUtility =
+          Math.max(0, baseU * (1 - Math.min(0.92, routingPenalty))) + ucbBonus;
       }
       finalResults.sort((a, b) => {
         const ua = (a as { explorationAdjustedUtility?: number }).explorationAdjustedUtility ?? a.expectedUtility ?? a.utility;
@@ -671,12 +763,15 @@ export class CGUSSearchService {
     } else if (explorationStrategy === 'INFORMATION_GAIN' && explorationBeta > 0 && this.informationGain) {
       for (const r of finalResults) {
         const baseU = r.expectedUtility ?? r.utility;
+        const routingPenalty = routingAuditByCandidateId[r.candidate.id]?.utilityPenalty ?? 0;
         const ig = this.informationGain.computeInformationGain({
           candidateId: r.candidate.id,
           worldContext,
           confidenceInterval: r.confidenceInterval,
         });
-        (r as { explorationAdjustedUtility?: number }).explorationAdjustedUtility = baseU + explorationBeta * ig;
+        const igAligned = ig * (routingWeights.betaInformationGain / Math.max(1e-6, explorationBeta));
+        (r as { explorationAdjustedUtility?: number }).explorationAdjustedUtility =
+          Math.max(0, baseU * (1 - Math.min(0.92, routingPenalty))) + explorationBeta * igAligned;
       }
       finalResults.sort((a, b) => {
         const ua = (a as { explorationAdjustedUtility?: number }).explorationAdjustedUtility ?? a.expectedUtility ?? a.utility;
@@ -799,7 +894,67 @@ export class CGUSSearchService {
       complexityReport,
       monteCarloSamplingDetails,
       terrainEpistemics,
+      experienceRoutingAudit: this.buildExperienceRoutingAudit(
+        routingWeights,
+        routingAuditByCandidateId,
+        worldContext,
+      ),
       ...(emergencyMaskAudit ? { emergencyMaskAudit } : {}),
+    };
+  }
+
+  private resolveExperienceRoutingWeights(worldContext: WorldModelContext): ExperienceRoutingWeights {
+    if (this.experienceRoutingPolicy) {
+      const mode =
+        worldContext.experienceFlow?.tempo === 'EMPATHY_RECOVERY'
+          ? 'EMPATHY_RECOVERY'
+          : 'DEFAULT';
+      return this.experienceRoutingPolicy.resolveWeights(worldContext.experienceFlow, mode);
+    }
+    return resolveExperienceRoutingWeights({
+      experienceFlow: worldContext.experienceFlow,
+      mode:
+        worldContext.experienceFlow?.tempo === 'EMPATHY_RECOVERY'
+          ? 'EMPATHY_RECOVERY'
+          : 'DEFAULT',
+    });
+  }
+
+  private evaluateCandidateRouting(
+    candidate: CGUSCandidate,
+    worldContext: WorldModelContext,
+    weights: ExperienceRoutingWeights,
+  ): CgusEdgeRoutingAudit | null {
+    const features = this.planFeatures?.extract(candidate.plan);
+    return evaluateCandidateExperienceRouting(candidate, worldContext, weights, features);
+  }
+
+  private buildExperienceRoutingAudit(
+    weights: ExperienceRoutingWeights,
+    audits: Record<string, CgusEdgeRoutingAudit>,
+    worldContext: WorldModelContext,
+  ): CGUSSearchResult['experienceRoutingAudit'] {
+    const ids = Object.keys(audits);
+    if (ids.length === 0) {
+      return undefined;
+    }
+    const perCandidate: NonNullable<CGUSSearchResult['experienceRoutingAudit']>['perCandidate'] = {};
+    for (const id of ids) {
+      const a = audits[id];
+      perCandidate[id] = {
+        generalizedCost: a.generalizedCost,
+        utilityPenalty: a.utilityPenalty,
+        frictionScore: a.metrics.frictionScore,
+      };
+    }
+    return {
+      tempo: worldContext.experienceFlow?.tempo ?? 'BALANCED',
+      weights: {
+        w1: weights.wPhysicalTime,
+        w2: weights.wFriction,
+        beta: weights.betaInformationGain,
+      },
+      perCandidate,
     };
   }
 

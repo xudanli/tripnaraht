@@ -3,6 +3,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEnum, IsNumber, IsBoolean, ValidateNested, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
+import { EmotionalContextClientDto } from '../../../dto/emotional-context-client.dto';
 
 /**
  * 位置
@@ -36,6 +37,11 @@ export class JourneyContextDto {
   @IsOptional()
   @IsString()
   timezone?: string;
+
+  @ApiPropertyOptional({ description: '连续驾驶秒数（供疲劳/静默门控）' })
+  @IsOptional()
+  @IsNumber()
+  continuousDrivingSeconds?: number;
 }
 
 /**
@@ -344,6 +350,15 @@ export class JourneyStateDto {
 
   @ApiPropertyOptional({ description: '行程是否已完成' })
   isCompleted?: boolean;
+
+  @ApiPropertyOptional({
+    type: EmotionalContextClientDto,
+    description: '行中情绪矩阵（proactivityGate / voiceTone；驱动静默与 TTS）',
+  })
+  @ValidateNested()
+  @Type(() => EmotionalContextClientDto)
+  @IsOptional()
+  emotionalContext?: EmotionalContextClientDto;
 }
 
 /**

@@ -109,7 +109,7 @@ export class ContextRegressionTestsSkill implements Skill<ContextRegressionTests
 
   metadata = {
     name: 'context.regressionTests',
-    description: '上下文编译回归测试：生成快照 hash，比较两次构建的差异，检测回归',
+    description: '运行 context 编译回归测试：生成快照 hash 并 diff 两次构建。在 context 编译逻辑变更后 CI 或本地防回归时调用。',
     version: '1.0.0',
     category: 'rag' as const,
   };

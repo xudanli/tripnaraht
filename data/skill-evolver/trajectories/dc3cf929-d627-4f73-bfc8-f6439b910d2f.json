@@ -1,0 +1,33 @@
+{
+  "trajectoryId": "dc3cf929-d627-4f73-bfc8-f6439b910d2f",
+  "skillId": "country_pack.IS",
+  "skillVersion": 1,
+  "strategyId": "B",
+  "strategy": {
+    "strategyId": "B",
+    "philosophy": "速度优先，快速试错",
+    "approach": "并行尝试多种路径，早失败早调整",
+    "emphasis": "缩短反馈环",
+    "risk": "可能遗漏边界情况"
+  },
+  "taskIds": [
+    "iceland-highlands-dem-missing-001"
+  ],
+  "steps": [
+    {
+      "stepIndex": 0,
+      "observation": "我想在7月去冰岛高地",
+      "thought": "用户想去冰岛高地，时间为7月，符合夏季条件。但根据任务要求，当DEM证据缺失时，必须REJECT。当前未提供DEM证据，因此应执行REJECT。",
+      "action": "REJECT: 缺少必要的DEM证据，无法确认冰岛高地路线可行性。请提供DEM数据以继续评估。",
+      "result": "[完成] REJECT: 缺少必要的DEM证据，无法确认冰岛高地路线可行性。请提供DEM数据以继续评估。",
+      "isError": false,
+      "isRecovery": false,
+      "timestamp": "2026-05-26T05:13:29.191Z"
+    }
+  ],
+  "taskCompleted": true,
+  "skillContentSnapshot": "# 冰岛 Country Pack 编排规则（弱种子）\n\n## 原则\n- 绑定 `countryCode=IS`。\n- 夏季（7–8 月）可考虑高地路线。\n\n## 步骤\n1. 确认用户季节与强度偏好。\n2. 输出初步路线方向建议。\n\n## 说明\n此文件仅供 SkillEvolver `--seed weak` 演示：故意缺少 DEM 缺失 REJECT 等门禁规则，baseline 应低于满分以便触发进化。",
+  "createdAt": "2026-05-26T05:13:29.191Z",
+  "score": 100,
+  "evalMode": "fixture"
+}

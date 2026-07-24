@@ -1,0 +1,14 @@
+{
+  "schemaId": "tripnara.environment.modifiers@v1",
+  "modifiers": [
+    {
+      "modifierId": "IS_DRIVING_ENVIRONMENT",
+      "domain": "driving",
+      "semanticKeys": ["EXCESSIVE_DAILY_LOAD"],
+      "parameters": {
+        "baseSafeHours": 7,
+        "defaultSpeedKmH": 65
+      }
+    }
+  ]
+}

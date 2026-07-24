@@ -15,7 +15,11 @@ function skipMetricsConsole(): boolean {
 /**
  * 入口来源类型
  */
-export type EntryPoint = 'trip_detail_page' | 'trip_list_page' | 'dashboard' | 'planning_workbench';
+export type EntryPoint =
+  | 'trip_detail_page'
+  | 'trip_list_page'
+  | 'dashboard'
+  | 'planning_workbench';
 
 /**
  * 重定向原因类型
@@ -132,6 +136,7 @@ export const AgentMetrics = {
     labels: ['reason'] as const,
     description: 'Booking Task Closure：执行后 completion 未前进（带归因）',
   },
+
 } as const;
 
 /**

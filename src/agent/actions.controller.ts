@@ -40,6 +40,11 @@ import type { DecisionState } from '../decision/kernel/decision-state.types';
 import { projectJepaZStateFromDecisionState } from './services/jepa-z-state.projection';
 import { ActionGraph, SagaCompileResult } from './interfaces/action-graph.interface';
 import { isActionType } from './contracts/action-sideeffect.contract';
+import {
+  ACTIONS_ROLLBACK_PRODUCT_LABEL,
+  ACTIONS_ROLLBACK_PRODUCT_STATUS,
+  ACTIONS_ROLLBACK_STUB_MESSAGE,
+} from './contracts/rollback-corridor.product.constants';
 
 @ApiTags('agent-actions')
 @ApiBearerAuth()
@@ -853,17 +858,21 @@ export class ActionsController {
 
   @Post('rollback')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Rollback committed actions' })
+  @ApiOperation({
+    summary: `Rollback committed actions [${ACTIONS_ROLLBACK_PRODUCT_STATUS}]`,
+    description: ACTIONS_ROLLBACK_PRODUCT_LABEL,
+  })
   @ApiBody({ type: ActionRollbackRequestDto })
   @ApiResponse({
     status: 200,
     type: ActionExecutionResponseDto,
-    description: 'Rollback accepted for action ids.',
+    description: `${ACTIONS_ROLLBACK_PRODUCT_STATUS}: HTTP OK does not reverse commits or side effects.`,
     schema: {
       example: {
         status: 'OK',
-        message: 'Rollback accepted (stub, no side effects).',
+        message: ACTIONS_ROLLBACK_STUB_MESSAGE,
         accepted_actions: [],
+        product_status: ACTIONS_ROLLBACK_PRODUCT_STATUS,
       },
     },
   })

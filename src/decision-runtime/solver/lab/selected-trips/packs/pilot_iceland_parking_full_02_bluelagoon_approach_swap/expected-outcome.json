@@ -1,0 +1,11 @@
+{
+  "schemaId": "tripnara.selected_trip.expected_outcome@v1",
+  "tripId": "pilot_iceland_parking_full_02_bluelagoon_approach_swap",
+  "expectation": "accept",
+  "maxChangedActivities": 4,
+  "mustPreserveBooked": true,
+  "gateway": "PASS",
+  "notes": [
+    "TODO: human review before RA-01B"
+  ]
+}
