@@ -5,7 +5,7 @@ decision: CONDITIONAL_GO
 release_train: V3.1 Agent Interface Engineering Hardening
 not_a_claim: whole_TripNARA_system_ready
 engineering_baseline: bc6e2e6d5a087a6a20c47576ebdba295370ebec1
-evidence_branch_tip_pre_merge: e33e214c4308d60e5a43de84c3595556355555c6
+evidence_branch_tip_pre_merge: c1b7df504  # release pack; Delta complete at e33e214c4
 matrix: CLAIM_EVIDENCE_MATRIX_v2.0
 matrix_status: FROZEN
 matrix_tag: claim-evidence-matrix-v2.0
