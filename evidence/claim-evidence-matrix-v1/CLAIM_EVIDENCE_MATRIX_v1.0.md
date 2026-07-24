@@ -24,7 +24,7 @@
 | suites | 20 passed / 1 failed |
 | tests | 113 passed / 0 failed |
 | result_file | `evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json` |
-| console_file | `evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.console.log` |
+| console_file | `evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.console.txt` |
 | worktree_commit | `a7e9bdca588431143e04e98d7c1c1204299c6e54` |
 
 <details><summary>repro_cmd</summary>
@@ -409,7 +409,7 @@ At freeze commit, src/agent/utils/route-and-run-trip-id-merge.util.ts imports ..
 | test_names | [] |
 | exit_code | `1` |
 | result_file | `evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json` |
-| notes | Cannot find module iceland-memory-shell-trip-id.util — observed in claim-matrix-jest.console.log |
+| notes | Cannot find module iceland-memory-shell-trip-id.util — observed in claim-matrix-jest.console.txt |
 
 ### C019 — `state_machine` — **PASS**
 
