@@ -20,8 +20,12 @@ Use only after Release Readiness Decision is **GO** (or CONDITIONAL with unmet c
 - TravelContext 已成为全局 SSOT  
 - 整个 TripNARA 系统已全面就绪  
 
-## Pins (fill merge fields from MERGE_RECORD.md)
+## Pins
 
-- Implementation baseline: `bc6e2e6d5…`  
-- Evidence tag: `claim-evidence-matrix-v2.0` → `c76fff367…`  
-- Release tag / merge commit: _pending_  
+- Implementation baseline: `bc6e2e6d5a087a6a20c47576ebdba295370ebec1`  
+- Release commit: `b5127ae942f81ea32216c073d7814db5e37b4e8a`  
+- Release tag: `v31-agent-interface-hardening-rc1`  
+- Evidence tag: `claim-evidence-matrix-v2.0` → `c76fff36766e203065bd73e157e19fbf23fb02a7`  
+- Post-merge documentation commit: `0f50ca864` (docs only)  
+- Decision: **GO — V3.1 Agent Interface Hardening Baseline Only**  
+- `github_pr_approval: NOT_PERFORMED` · `direct_merge_exception: ACCEPTED`  

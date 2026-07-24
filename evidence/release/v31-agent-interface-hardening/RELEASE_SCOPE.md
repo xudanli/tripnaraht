@@ -11,7 +11,8 @@
 | Annotated tag | `claim-evidence-matrix-v2.0` → `c76fff36766e203065bd73e157e19fbf23fb02a7` |
 | Matrix | `CLAIM_EVIDENCE_MATRIX_v2.0` **FROZEN** |
 | Delta | `V32_DELTA_ASSESSMENT.md` **COMPLETE** |
-| Final merge commit | _pending GitHub merge_ |
+| Final merge commit / release | `b5127ae942f81ea32216c073d7814db5e37b4e8a` (`v31-agent-interface-hardening-rc1`) |
+| Post-merge docs tip | `0f50ca864` (process docs only; not the runtime release pin) |
 
 ---
 

@@ -23,8 +23,9 @@ evidence_tag_target: c76fff36766e203065bd73e157e19fbf23fb02a7
 ## After merge — next deliverables (only)
 
 1. ~~This **Merge Record** fully filled~~  
-2. **RRR** Gate 1–5 signed → GO / NO_GO / CONDITIONAL_GO_WITH_UNMET_CONDITIONS  
+2. ~~**RRR** Gate 1–5 signed~~ → **GO** (`RELEASE_READINESS_REVIEW.md`)  
 3. ~~Release tag `v31-agent-interface-hardening-rc1` on `final_merge_commit`~~  
+4. Publish rc1 + 7–14d observe  
 
 ## Post-merge checklist
 
@@ -33,6 +34,7 @@ evidence_tag_target: c76fff36766e203065bd73e157e19fbf23fb02a7
 - [x] `required_checks_result: PASS`  
 - [x] `final_merge_commit` written here + `RELEASE_READINESS_DECISION.md`  
 - [x] Release tag `v31-agent-interface-hardening-rc1` on merge commit only  
-- [x] `claim-evidence-matrix-v2.0` **not** moved (`c76fff367…`)  
+- [x] `claim-evidence-matrix-v2.0` **not** moved  
 - [x] No unreviewed force-push of merge history  
-- [ ] RRR final decision signed (next after this record)  
+- [x] RRR final decision signed → **GO**  
+- [x] `direct_merge_exception: ACCEPTED` (`github_pr_approval: NOT_PERFORMED`)  

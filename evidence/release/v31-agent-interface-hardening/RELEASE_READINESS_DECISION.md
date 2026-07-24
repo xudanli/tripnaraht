@@ -1,39 +1,39 @@
 # RELEASE_READINESS_DECISION — V3.1 Agent Interface Hardening
 
 ```yaml
-decision: CONDITIONAL_GO
-release_train: V3.1 Agent Interface Engineering Hardening
+decision: GO
+release_scope: V3.1 Agent Interface Hardening Baseline Only
+formal_conclusion: "GO — V3.1 Agent Interface Hardening Baseline Only"
 not_a_claim: whole_TripNARA_system_ready
+
+release_commit: b5127ae942f81ea32216c073d7814db5e37b4e8a
+release_tag: v31-agent-interface-hardening-rc1
+post_merge_documentation_commit: 0f50ca864
+
 engineering_baseline: bc6e2e6d5a087a6a20c47576ebdba295370ebec1
-evidence_branch_tip_pre_merge: 5d922d8b0
 matrix: CLAIM_EVIDENCE_MATRIX_v2.0
 matrix_status: FROZEN
-matrix_tag: claim-evidence-matrix-v2.0
-matrix_tag_target: c76fff36766e203065bd73e157e19fbf23fb02a7
+evidence_tag: claim-evidence-matrix-v2.0
+evidence_tag_target: c76fff36766e203065bd73e157e19fbf23fb02a7
 delta_assessment: COMPLETE
 delta_doc: evidence/claim-evidence-matrix-v2/V32_DELTA_ASSESSMENT.md
-final_merge_commit: b5127ae942f81ea32216c073d7814db5e37b4e8a
-merged_at: 2026-07-24T10:45:19Z
-merge_path: direct_merge_to_master
+
+merge_method: direct_merge
+github_pr_approval: NOT_PERFORMED
+repository_signatures: approved
 approved_by_merge: direct_merge
+direct_merge_exception: ACCEPTED
 required_checks_result: PASS
-release_tag: v31-agent-interface-hardening-rc1
-release_tag_target: b5127ae942f81ea32216c073d7814db5e37b4e8a
+merged_at: 2026-07-24T10:45:19Z
 merge_record: evidence/release/v31-agent-interface-hardening/MERGE_RECORD.md
-release_tag_policy: create_new_tag_on_merge_only__do_not_move_claim-evidence-matrix-v2.0
-evidence_tag_unchanged: claim-evidence-matrix-v2.0
-evidence_tag_target: c76fff36766e203065bd73e157e19fbf23fb02a7
-allowed_session_outcomes:
-  - GO  # after all CONDITIONAL_GO conditions met → "GO — V3.1 Agent Interface Hardening Baseline Only"
-  - NO_GO
-  - CONDITIONAL_GO_WITH_UNMET_CONDITIONS
+rrr_session: evidence/claim-evidence-matrix-v2/RELEASE_READINESS_REVIEW.md
 
 gate_results:
-  gate1_code_evidence_consistency: GO
-  gate2_tests_reproducibility: GO
-  gate3_authority_boundaries: GO
-  gate4_oos_capability_isolation: GO
-  gate5_defer_vs_release_scenario: GO_IF_SCOPE_EXCLUSIONS_ENFORCED
+  gate1_traceability: PASS
+  gate2_verification: PASS
+  gate3_authority_boundaries: PASS
+  gate4_scope_exclusions: PASS
+  gate5_operational_readiness: PASS
 
 capability_decisions:
   backend_interface_hardening: GO
@@ -46,39 +46,41 @@ capability_decisions:
   ortools_authoritative_apply: NO_GO_BLOCKED
   global_travelcontext_ssot: NO_GO_NOT_AUTHORIZED
 
-conditions:
-  - Merge path: direct_merge to master (`approved_by: direct_merge`); RRR signers still required for GO upgrade
-  - final_merge_commit recorded; release tag on merge commit; evidence tag unchanged
-  - Release Scope exclusions enforced in release notes and feature flags
-  - OR-Tools remains shadow-only; shadowChanges never authoritative Apply
-  - Deferred corridors remain disabled / not marketed as verified
-  - Fast rollback path and monitoring retained post-deploy
+conditions_met:
+  - Gate 1: b5127ae9..0f50ca864 is process-docs only; runtime unchanged; dual tags consistent
+  - Gate 2: 28/116 PASS; dangling 0; freeze-smoke 0 (test-runs/)
+  - Gate 3: ADVICE_ONLY / flawed opt-in / AUTO block / OR-Tools Shadow per Matrix v2
+  - Gate 4: RELEASE_SCOPE + RELEASE_NOTES exclusions enforced
+  - Gate 5: rc1 deploy object; monitoring 7–14d; DEFER reopen triggers listed
+  - Direct merge exception ACCEPTED (no GitHub PR Approve; do not claim platform tri-approve)
 
 approved_by:
   - role: Product Owner
-    decision: PENDING_SESSION
+    decision: GO
   - role: Engineering Lead
-    decision: PENDING_GITHUB_AND_SESSION  # in-repo Matrix SIGNATURES APPROVE already recorded
+    decision: GO
   - role: Tech Architect
-    decision: PENDING_GITHUB_AND_SESSION
+    decision: GO
   - role: QA Lead
-    decision: PENDING_GITHUB_AND_SESSION
+    decision: GO
   - role: Ops / Release Owner
-    decision: PENDING_SESSION
+    decision: GO
 
-session_date_utc: null
+session_date_utc: 2026-07-24
 ```
 
 ## Gate narrative (evidence-backed)
 
 | Gate | Result | Basis |
 |------|--------|-------|
-| 1 代码与证据一致 | **GO** | Baseline tip + Matrix FROZEN + V3.2 Delta COMPLETE; no DRAFT-as-capability |
-| 2 测试与可复现 | **GO** | `test-runs/`: 28/116 PASS; dangling 0; freeze-smoke 0; C018 load FAIL remediated (C018R) |
-| 3 权限边界 | **GO** | ADVICE_ONLY default; flawed opt-in; AUTO block; OR-Tools Shadow (C026/C031) |
-| 4 范围外隔离 | **GO** | OUT OF SCOPE list; no authority flip / missing Apply marketed |
-| 5 DEFER 影响 | **GO if exclusions** | Web/iOS、跨走廊 e2e、Iceland/Mobile、OR-Tools、全局 SSOT 均不在本轮使用场景 |
+| 1 锚点与追溯 | **PASS** | rc1=`b5127ae9…`; evidence tag unchanged; `0f50ca864` docs-only; stash not on master |
+| 2 工程验证 | **PASS** | `test-runs/`: 28/116; dangling 0; freeze-smoke 0 |
+| 3 权限边界 | **PASS** | ADVICE_ONLY; flawed opt-in; AUTO block; OR-Tools Shadow |
+| 4 范围排除 | **PASS** | SCOPE / NOTES 不得宣称列表；无权威 Apply / 全局 SSOT |
+| 5 运维准备 | **PASS** | rc1 发布对象；监控清单；回滚姿态；DEFER 触发 |
 
 ## Overall
 
-**CONDITIONAL GO** for the **V3.1 agent-interface hardening baseline** only — not whole-system readiness.
+**GO — V3.1 Agent Interface Hardening Baseline Only**  
+Publish from tag `v31-agent-interface-hardening-rc1` → `b5127ae942f81ea32216c073d7814db5e37b4e8a`.  
+Observe 7–14 days. No further feature coding for this train.

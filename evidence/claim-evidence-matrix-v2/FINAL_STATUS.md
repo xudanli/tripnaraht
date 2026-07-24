@@ -8,18 +8,19 @@
 | **RESEARCH INPUT (v2)** | **APPROVED — V3.2 Delta Assessment only** |
 | **RESEARCH INPUT (v1)** | unchanged **APPROVED** |
 | **OR-TOOLS** | **Shadow / INTERNAL_REVIEW** — Apply not authorized |
-| **NEXT** | Merge Record **FILLED** → RRR → **GO** upgrade from CONDITIONAL_GO |
+| **NEXT** | **GO signed** → publish rc1 → 7–14d observe |
 
 ## Release citation (V3.1 hardening train)
 
 | Field | Value |
 |-------|--------|
 | Process status | `evidence/release/v31-agent-interface-hardening/PROCESS_STATUS.md` |
-| Release decision | **CONDITIONAL_GO** (not formal GO until RRR) |
+| Release decision | **GO — V3.1 Agent Interface Hardening Baseline Only** |
 | Evidence tag (immutable) | `claim-evidence-matrix-v2.0` → `c76fff367…` |
-| final_merge_commit | `b5127ae942f81ea32216c073d7814db5e37b4e8a` |
+| release_commit | `b5127ae942f81ea32216c073d7814db5e37b4e8a` |
 | Release tag | `v31-agent-interface-hardening-rc1` |
-| Merge path | `direct_merge` (`approved_by: direct_merge`) |
+| post_merge_documentation_commit | `0f50ca864` |
+| Merge path | `direct_merge` · `github_pr_approval: NOT_PERFORMED` · exception **ACCEPTED** |
 
 ## Binding checklist
 
