@@ -39,6 +39,15 @@ describe('plan-verify-loop-repair-guards — flawed draft narrate', () => {
     expect(terminal).toBeNull();
     expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBe(true);
     expect((params.state.metadata as Record<string, unknown>).flawed_draft_opt_in).toBe('explicit');
+    expect((params.state.metadata as Record<string, unknown>).flawed_draft_opt_in_audit).toMatchObject({
+      action: 'flawed_draft_opt_in',
+      opt_in: 'explicit',
+      allow_flawed_draft_narrate: true,
+    });
+    const auditLog = (params.state.metadata as Record<string, unknown>).audit_log as unknown[];
+    expect(Array.isArray(auditLog)).toBe(true);
+    expect(auditLog.some((e: any) => e?.action === 'flawed_draft_opt_in')).toBe(true);
+    expect(host.logger.log).toHaveBeenCalled();
     expect(host.buildClarificationResult).not.toHaveBeenCalled();
   });
 

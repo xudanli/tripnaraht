@@ -1,0 +1,86 @@
+{
+  "schema": "CLAIM_EVIDENCE_MATRIX",
+  "version": "2.0",
+  "status": "DRAFT",
+  "parent_matrix": "CLAIM_EVIDENCE_MATRIX_v1.0",
+  "purpose": "Additive fact confirmation only; no target architecture redesign.",
+  "prohibited": [
+    "microservice_split",
+    "cqrs",
+    "graphql",
+    "global_ssot_refactor",
+    "proposal_unification",
+    "ortools_authority_without_rfc"
+  ],
+  "claims": [
+    {
+      "claim_id": "C005E",
+      "category": "delivery_status",
+      "statement": "DELIVERY_VERDICTS includes VERIFIED_WITH_WARNINGS; resolveDeliveryVerdict returns it when OK-family status and hasSoftWarnings===true and not flawed.",
+      "evidence_doc": "evidence/errata/C005-ERRATA_VERIFIED_WITH_WARNINGS.md",
+      "evidence": { "status": "PASS", "test_file": "src/agent/delivery/types/delivery-verdict.types.spec.ts" }
+    },
+    {
+      "claim_id": "C018R",
+      "category": "freeze_integrity",
+      "statement": "route-and-run-trip-id-merge imports isMemoryShellTripId from src/agent/utils/memory-shell-trip-id.util (no dangling iceland-self-drive dependency for loadability).",
+      "evidence": { "status": "PASS", "test_file": "src/agent/utils/memory-shell-trip-id.util.spec.ts" }
+    },
+    {
+      "claim_id": "C021",
+      "category": "travel_context",
+      "statement": "TravelContext CURRENT_SSOT_STATUS documents target vs not-yet-wired SSOT; not global runtime SSOT at v1 freeze.",
+      "anchors": [{ "path": "src/travel-context/CURRENT_SSOT_STATUS.md" }],
+      "evidence": { "status": "CODE_ONLY" }
+    },
+    {
+      "claim_id": "C022",
+      "category": "writeback",
+      "statement": "WRITEBACK_CORRIDOR_AUDIT_MATRIX marks unified_execute and actions_commit persistence as mixed.",
+      "anchors": [{ "path": "src/agent/contracts/writeback-corridor-audit.matrix.ts" }],
+      "evidence": { "status": "PASS", "test_file": "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts" }
+    },
+    {
+      "claim_id": "C023",
+      "category": "rollback",
+      "statement": "UnifiedDecisionController exposes POST decisions/:decisionId/rollback; ActionsController documents rollback committed actions.",
+      "evidence": { "status": "CODE_ONLY" }
+    },
+    {
+      "claim_id": "C024",
+      "category": "concurrency",
+      "statement": "Cross-corridor concurrency/freshness uses corridor-local guards (TEP stale, mobile ifMatch, Arrange contextVersion); no system-wide unified contextHash.",
+      "evidence": { "status": "PARTIAL" }
+    },
+    {
+      "claim_id": "C025",
+      "category": "client_protocol",
+      "statement": "Web/iOS call graphs are documented via handoffs under src/** and internal-docs/frontend; repository does not contain production client source.",
+      "evidence": { "status": "NEEDS_MORE_EVIDENCE", "notes": "Client source review required for page-level facts." }
+    },
+    {
+      "claim_id": "C026",
+      "category": "shadow_data",
+      "statement": "OR-Tools planning shadow remains shadowAuthority false; Arrange apply selects proposal.changes only.",
+      "evidence": { "status": "PASS", "test_file": "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts" }
+    },
+    {
+      "claim_id": "C027",
+      "category": "openapi",
+      "statement": "execution_mode and allow_flawed_draft_narrate are frozen in RouteAndRunOptionsDto OpenAPI metadata via route-and-run-options.openapi.freeze.",
+      "evidence": { "status": "PASS", "test_file": "src/agent/contracts/route-and-run-options.openapi.freeze.spec.ts" }
+    },
+    {
+      "claim_id": "C028",
+      "category": "idempotency",
+      "statement": "Unified Execute uses Idempotency-Key or buildPlanVersionIdempotencyKey; Actions Commit dedups via RequestDeduplicationService.",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/decision-runtime/gateway/contracts/unified-execute-idempotency.contract.spec.ts",
+          "src/agent/contracts/actions-commit-idempotency.contract.spec.ts"
+        ]
+      }
+    }
+  ]
+}

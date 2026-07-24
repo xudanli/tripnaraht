@@ -25,6 +25,14 @@ export type GateVerifyCorridorAuditRow = {
   notes: string;
 };
 
+/**
+ * MAIN_CHAIN_GATE_BLOCK_SCOPE — documentation SSOT (see also ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md §GATE BLOCK).
+ *
+ * Proven **only** inside `route_and_run` Claude SM: when GATE_EVAL yields BLOCK,
+ * pre_plan terminates with `terminal_blocked` and **must not** enter PLAN_GEN.
+ * Independent Apply corridors (Iceland / Arrange / Unified / Actions / Mobile / TEP)
+ * do **not** inherit this proof; see GATE_VERIFY_CORRIDOR_AUDIT_MATRIX rows (`needs_audit`).
+ */
 export const MAIN_CHAIN_GATE_BLOCK_SCOPE =
   'Only proven inside route_and_run Claude SM: GATE BLOCK → terminal_blocked, no PLAN_GEN.' as const;
 

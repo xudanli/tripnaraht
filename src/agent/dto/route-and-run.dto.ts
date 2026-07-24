@@ -375,7 +375,8 @@ export class AgentOptionsDto {
   @ApiPropertyOptional({
     description:
       'REPAIR/效用预算耗尽时进入 NARRATE 并附带 flawed_draft（安全/法规道路等 allow-matrix 仍禁止）。' +
-      '仅 true=显式允许瑕疵交付（delivery_verdict=FLAWED_DRAFT，禁止 AUTO 写回）；false 或缺省=强制澄清。绑定 trip_id 不再默认放行。',
+      '仅 true=显式允许瑕疵交付（delivery_verdict=FLAWED_DRAFT，禁止 AUTO 写回）；false 或缺省=强制澄清。绑定 trip_id 不再默认放行。' +
+      ' OpenAPI 冻结字段：boolean optional（见 route-and-run-options.openapi.freeze.ts）。',
     example: true,
   })
   @IsOptional()
@@ -439,7 +440,8 @@ export class AgentOptionsDto {
   readonly_mode?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Action 执行模式（建议/半自动/自动）',
+    description:
+      'Action 执行模式（建议/半自动/自动）。OpenAPI 冻结：enum ADVICE_ONLY|SEMI_AUTO|AUTO，默认 ADVICE_ONLY（见 route-and-run-options.openapi.freeze.ts）。',
     example: 'SEMI_AUTO',
     enum: ['ADVICE_ONLY', 'SEMI_AUTO', 'AUTO'],
     default: 'ADVICE_ONLY',

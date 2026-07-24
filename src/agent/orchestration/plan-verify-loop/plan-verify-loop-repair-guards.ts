@@ -62,6 +62,21 @@ function tryAllowFlawedDraftBypass(
     return false;
   }
   const now = new Date().toISOString();
+  const auditEntry = {
+    at: now,
+    action: 'flawed_draft_opt_in',
+    actor: 'plan_verify_loop',
+    type: 'system_decision' as const,
+    request_id: state.request_id,
+    trip_id: request.trip_id ?? null,
+    reason,
+    opt_in: 'explicit' as const,
+    allow_flawed_draft_narrate: true,
+  };
+  const prevAudit = Array.isArray((state.metadata as Record<string, unknown>)?.audit_log)
+    ? ([...(state.metadata as Record<string, unknown>).audit_log as unknown[]])
+    : [];
+  prevAudit.push(auditEntry);
   state.metadata = {
     ...(state.metadata ?? {}),
     started_at: state.metadata?.started_at ?? now,
@@ -69,8 +84,13 @@ function tryAllowFlawedDraftBypass(
     flawed_draft_narrate: true,
     flawed_draft_reason: reason,
     flawed_draft_opt_in: 'explicit',
+    audit_log: prevAudit,
+    flawed_draft_opt_in_audit: auditEntry,
     ...extraMeta,
   };
+  host.logger.log(
+    `[PlanVerifyLoop][audit] flawed_draft_opt_in request_id=${state.request_id} reason=${reason} trip_id=${request.trip_id ?? ''}`,
+  );
   return true;
 }
 

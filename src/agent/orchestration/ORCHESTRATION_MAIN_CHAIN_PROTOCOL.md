@@ -39,6 +39,17 @@ post_plan:
 
 常量：`MAIN_CHAIN_PRE_PLAN_NODES` · `MAIN_CHAIN_PLAN_VERIFY_*` · `MAIN_CHAIN_POST_PLAN_NODES` · `MAIN_CHAIN_OBSERVED_NODE_ORDER`。
 
+### GATE BLOCK 范围（`MAIN_CHAIN_GATE_BLOCK_SCOPE`）
+
+代码常量：`src/agent/contracts/gate-verify-corridor-audit.matrix.ts` → `MAIN_CHAIN_GATE_BLOCK_SCOPE`。
+
+| 事实 | 说明 |
+|------|------|
+| 已证明范围 | **仅** `route_and_run` Claude SM：`GATE_EVAL` → BLOCK → `terminal_blocked`，**禁止进入 PLAN_GEN** |
+| 实现锚点 | `gate-eval.node.ts` `runGateEvalPrePlanSegment` → `prePlanTerminal('terminal_blocked')` |
+| **未**自动覆盖 | Iceland / Arrange / Unified / Actions / Mobile / TEP 等独立写回走廊 |
+| 审计 | `GATE_VERIFY_CORRIDOR_AUDIT_MATRIX`；独立走廊多为 `needs_audit`，禁止宣称「全系统 GATE 无绕过」 |
+
 ---
 
 ## 2. 环预算（指针，数值以治理矩阵为准）

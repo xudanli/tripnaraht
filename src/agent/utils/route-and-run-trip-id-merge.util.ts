@@ -1,5 +1,5 @@
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
-import { isMemoryShellTripId } from '../../trips/iceland-self-drive/utils/iceland-memory-shell-trip-id.util';
+import { isMemoryShellTripId } from './memory-shell-trip-id.util';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

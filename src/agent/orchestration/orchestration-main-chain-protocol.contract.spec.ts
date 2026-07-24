@@ -6,12 +6,18 @@ import {
   MAIN_CHAIN_SHORT_CIRCUITS,
   MAIN_CHAIN_USER_CONFIRM_POINTS,
   MAIN_CHAIN_PLAN_VERIFY_ENTRY,
+  MAIN_CHAIN_PLAN_VERIFY_NODES,
   assertPrePlanOrderAligned,
   buildMainChainHappyPathNextMap,
 } from './orchestration-main-chain-protocol.constants';
 import { MAIN_CHAIN_STATIC_EDGES } from './graph/edges/main-chain.edges';
 import { PLAN_VERIFY_LOOP_EDGES, PLAN_VERIFY_LOOP_ENTRY } from './graph/edges/plan-verify-loop.edges';
 import { PRE_PLAN_NODE_ORDER } from './graph/pre-plan-graph.runner';
+import {
+  DECISION_MAX_REPAIR_COUNT_DEFAULT,
+  DECISION_MAX_VERIFY_RESEARCH_RETRIES_DEFAULT,
+  buildOrchestrationGovernanceLimitsEcho,
+} from './orchestration-governance-matrix.constants';
 
 describe('Orchestration Main Chain Protocol contract', () => {
   it('freezes protocol version envelope', () => {
@@ -72,5 +78,36 @@ describe('Orchestration Main Chain Protocol contract', () => {
     expect(m.get('intake')).toBe('state_update');
     expect(m.get('plan_gen')).toBe('optimize');
     expect(m.get('optimize')).toBe('verify');
+  });
+
+  it('post_plan order is narrate → feedback → hallucination', () => {
+    expect([...MAIN_CHAIN_POST_PLAN_NODES]).toEqual(['narrate', 'feedback', 'hallucination']);
+    const fromTo = new Map(MAIN_CHAIN_STATIC_EDGES.map((e) => [e.from, e.to]));
+    expect(fromTo.get('narrate')).toBe('feedback');
+    expect(fromTo.get('feedback')).toBe('hallucination');
+    expect(fromTo.get('hallucination')).toBe('END');
+    const observed = [...MAIN_CHAIN_OBSERVED_NODE_ORDER];
+    const n = observed.indexOf('narrate');
+    const f = observed.indexOf('feedback');
+    const h = observed.indexOf('hallucination');
+    expect(n).toBeGreaterThan(-1);
+    expect(f).toBeGreaterThan(n);
+    expect(h).toBeGreaterThan(f);
+  });
+
+  it('plan_verify nodes include optimize → verify ⇄ repair', () => {
+    expect([...MAIN_CHAIN_PLAN_VERIFY_NODES]).toEqual(['optimize', 'verify', 'repair']);
+  });
+});
+
+describe('Verify-Repair budget contract (governance defaults)', () => {
+  it('freezes Main REPAIR max at 3 and RETURN_TO_RESEARCH max at 1', () => {
+    expect(DECISION_MAX_REPAIR_COUNT_DEFAULT).toBe(3);
+    expect(DECISION_MAX_VERIFY_RESEARCH_RETRIES_DEFAULT).toBe(1);
+    delete process.env.DECISION_MAX_REPAIR_COUNT;
+    delete process.env.DECISION_MAX_VERIFY_RESEARCH_RETRIES;
+    const echo = buildOrchestrationGovernanceLimitsEcho();
+    expect(echo.limits.maxRepairCount).toBe(3);
+    expect(echo.limits.maxVerifyResearchRetries).toBe(1);
   });
 });

@@ -1,0 +1,31 @@
+# Freeze smoke gate — dangling imports + route_and_run loadability
+name: Freeze Smoke Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+      - 'feat/**'
+      - 'claim/**'
+
+permissions:
+  contents: read
+
+jobs:
+  freeze-smoke:
+    name: freeze-smoke-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Freeze smoke gate
+        run: npm run ci:freeze-smoke-gate
+        env:
+          LLM_USE_MOCK: 'true'
