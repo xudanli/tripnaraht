@@ -49,6 +49,8 @@ Microservice · CQRS · GraphQL · global SSOT · Proposal 大一统 · OR-Tools
 
 - Architecture capability adds: **STOPPED**
 - Engineering tip: `bc6e2e6d5…`
+- Freeze tag: `claim-evidence-matrix-v2.0` → `c76fff367…`
 - Catalog: `evidence/claim-evidence-matrix-v2/`
-- Next after sign: **V3.2 Delta Assessment** → **Release Readiness Review**
+- **V3.2 Delta Assessment:** COMPLETE (`V32_DELTA_ASSESSMENT.md`)
+- **Next:** Release Readiness Review (`RELEASE_READINESS_REVIEW.md`)
 

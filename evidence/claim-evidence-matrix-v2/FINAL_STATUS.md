@@ -8,7 +8,7 @@
 | **RESEARCH INPUT (v2)** | **APPROVED — V3.2 Delta Assessment only** |
 | **RESEARCH INPUT (v1)** | unchanged **APPROVED** |
 | **OR-TOOLS** | **Shadow / INTERNAL_REVIEW** — Apply not authorized |
-| **NEXT** | V3.2 Delta Assessment → Release Readiness Review |
+| **NEXT** | **V3.2 Delta Assessment COMPLETE** → convene **Release Readiness Review** |
 
 ## Binding checklist
 
