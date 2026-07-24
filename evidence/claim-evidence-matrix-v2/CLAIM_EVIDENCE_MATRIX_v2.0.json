@@ -278,20 +278,24 @@
       "category": "bff",
       "statement": "This repository is a NestJS API backend that also exposes BFF-style aggregation endpoints (evidence pack: NestJS BFF/API); it is not a production client monorepo.",
       "ewp": "EWP-07",
-      "evidence_doc": "evidence/work-packages/EWP-07-bff-client-contracts/EVIDENCE.md",
+      "evidence_doc": "evidence/work-packages/EWP-07-bff-client-contracts/BFF-1.md",
       "evidence": {
         "status": "PASS",
-        "test_file": "src/agent/contracts/bff-client-contract.matrix.spec.ts"
+        "test_files": [
+          "src/agent/contracts/bff-client-contract.matrix.spec.ts",
+          "src/agent/contracts/bff-client-contract.index.spec.ts"
+        ]
       }
     },
     {
       "claim_id": "C030b",
       "category": "bff",
-      "statement": "Backend-defined client contract anchors exist (Decision Space / Arrange / Page Insight / Trusted Delivery / TEP / TravelContext HTTP + frontend-*-api-client samples).",
+      "statement": "BFF_CLIENT_CONTRACT_INDEX lists backend-defined client contract anchors and pins fact-pack OpenAPI to freeze commit a7e9bdca588431143e04e98d7c1c1204299c6e54 (BFF-1).",
       "ewp": "EWP-07",
+      "evidence_doc": "evidence/work-packages/EWP-07-bff-client-contracts/CLIENT_CONTRACT_INDEX.md",
       "evidence": {
         "status": "PASS",
-        "test_file": "src/agent/contracts/bff-client-contract.matrix.spec.ts"
+        "test_file": "src/agent/contracts/bff-client-contract.index.spec.ts"
       }
     },
     {

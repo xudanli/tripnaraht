@@ -16,21 +16,26 @@
 
 ## 2. Client contract matrix (backend-defined)
 
+**BFF-1:** machine index `src/agent/contracts/bff-client-contract.index.ts` +  
+`CLIENT_CONTRACT_INDEX.md` (pinned OpenAPI freeze `a7e9bdca5`).
+
 | Client surface | Contract artifact | Transport | Notes |
 |----------------|-------------------|-----------|-------|
 | Web/iOS Decision Space | `DECISION_SPACE_IOS_HANDOFF.md` | HTTP `/api` | contextHash in Swift samples |
-| Web/iOS Arrange | `ARRANGE_ITINERARY_IOS_HANDOFF.md` | HTTP | `contextVersion` |
+| Web/iOS Arrange | `ARRANGE_ITINERARY_IOS_HANDOFF.md` | HTTP | `contextVersion` + CC-1 dual-signal |
 | Page Insight | `page-ai-contracts.ts` + PAGE_INSIGHT_API | HTTP | local `contextHash` |
 | route_and_run delivery | FRONTEND_TRUSTED_DELIVERY / FLAWED | HTTP + optional SSE | delivery_verdict |
 | TEP Self-drive | TEP-SELF-DRIVE-FRONTEND-HANDOFF | HTTP | |
 | Causal / dual-read | SLICE-4-INTERNAL-DUAL-READ-BFF-HANDOFF | HTTP | internal |
 | TravelContext views | travel-context.controller + client types | HTTP `/api/travel-contexts` | revision-based |
 | Reference TS clients | `frontend-*-api-client.ts` | — | samples, not apps |
+| OpenAPI | fact-pack `openapi/openapi.json` | — | freeze commit pin |
 
 ## 3. Tests
 
 ```bash
 LLM_USE_MOCK=true npx jest --runInBand --forceExit \
+  src/agent/contracts/bff-client-contract.index.spec.ts \
   src/agent/contracts/bff-client-contract.matrix.spec.ts
 ```
 
