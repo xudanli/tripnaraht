@@ -30,7 +30,8 @@ See `evidence/work-packages/POST_EWP_DECISION_GATE.md` — classifications READY
 Matrix v2: **DRAFT / AWAITING_SIGN** (`evidence/claim-evidence-matrix-v2/FINAL_STATUS.md`).  
 Do **not** start Context / Writeback / Rollback / Concurrency / BFF mega-refactors until gate roles APPROVE and only **OPEN_SCOPED_TASK** tickets are filed.
 
-**Scoped landed:** WB-1 (`WRITEBACK_CORRIDOR_AUDIT_MATRIX` v1.1.0 `mixedTargets` for Unified/Actions).
+**Scoped landed:** WB-1 (`WRITEBACK_CORRIDOR_AUDIT_MATRIX` v1.1.0 `mixedTargets` for Unified/Actions).  
+**Scoped landed:** RB-1 (Unified rollback HTTP contract + Actions `STUB_NO_SIDE_EFFECTS` label).
 
 ## Forbidden without new facts+RFC
 

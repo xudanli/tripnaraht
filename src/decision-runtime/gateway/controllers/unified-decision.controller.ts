@@ -447,7 +447,11 @@ export class UnifiedDecisionController {
 
   @Post('decisions/:decisionId/rollback')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'RFC-002 Rollback (Canonical Runtime Phase 1)' })
+  @ApiOperation({
+    summary: 'RFC-002 Rollback (Canonical Runtime Phase 1)',
+    description:
+      'POST /api/trips/:tripId/decisions/:decisionId/rollback → gateway → plan-version-apply.executor.rollback (Canonical Runtime only).',
+  })
   async rollback(
     @Param('tripId') tripId: string,
     @Param('decisionId') decisionId: string,

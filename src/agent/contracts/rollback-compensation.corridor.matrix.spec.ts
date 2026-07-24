@@ -1,8 +1,13 @@
 /**
- * EWP-03 — Per-corridor rollback / compensation fact anchors (not target architecture).
+ * EWP-03 / RB-1 — Per-corridor rollback / compensation fact anchors (not target architecture).
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  ACTIONS_ROLLBACK_PRODUCT_STATUS,
+  ACTIONS_ROLLBACK_STUB_MESSAGE,
+  UNIFIED_ROLLBACK_HTTP_ENTRY,
+} from './rollback-corridor.product.constants';
 
 const ROOT = path.resolve(__dirname, '../../..');
 
@@ -10,8 +15,9 @@ function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
-describe('rollback-compensation.corridor.matrix (EWP-03)', () => {
+describe('rollback-compensation.corridor.matrix (EWP-03 / RB-1)', () => {
   it('Unified exposes HTTP rollback and executor implements rollback', () => {
+    expect(UNIFIED_ROLLBACK_HTTP_ENTRY).toContain('/decisions/:decisionId/rollback');
     const ctrl = read(
       'src/decision-runtime/gateway/controllers/unified-decision.controller.ts',
     );
@@ -23,9 +29,11 @@ describe('rollback-compensation.corridor.matrix (EWP-03)', () => {
   });
 
   it('Actions rollback is an explicit stub with no side effects', () => {
+    expect(ACTIONS_ROLLBACK_PRODUCT_STATUS).toBe('STUB_NO_SIDE_EFFECTS');
     const src = read('src/agent/services/action-execution.service.ts');
-    expect(src).toContain("Rollback accepted (stub, no side effects).");
+    expect(src).toContain('ACTIONS_ROLLBACK_STUB_MESSAGE');
     expect(src).toMatch(/async rollback\(/);
+    expect(ACTIONS_ROLLBACK_STUB_MESSAGE).toContain('stub, no side effects');
   });
 
   it('route_and_run itinerary revision rollback is wired on AgentController', () => {

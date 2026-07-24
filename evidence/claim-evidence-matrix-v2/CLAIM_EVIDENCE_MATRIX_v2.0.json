@@ -106,23 +106,29 @@
     {
       "claim_id": "C023",
       "category": "rollback",
-      "statement": "UnifiedDecisionController exposes POST decisions/:decisionId/rollback; plan-version-apply.executor implements rollback/materialization rollback.",
+      "statement": "UnifiedDecisionController exposes POST decisions/:decisionId/rollback; gateway routes Canonical Runtime to plan-version-apply.executor.rollback (RB-1 HTTP contract).",
       "ewp": "EWP-03",
-      "evidence_doc": "evidence/work-packages/EWP-03-rollback-compensation/EVIDENCE.md",
+      "evidence_doc": "evidence/work-packages/EWP-03-rollback-compensation/RB-1.md",
       "evidence": {
         "status": "PASS",
-        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts",
-        "notes": "HTTP controller e2e may still be PARTIAL elsewhere; source+executor anchors PASS."
+        "test_files": [
+          "src/decision-runtime/gateway/contracts/unified-rollback-http.contract.spec.ts",
+          "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+        ]
       }
     },
     {
       "claim_id": "C023b",
       "category": "rollback",
-      "statement": "Actions rollback is an explicit stub returning 'Rollback accepted (stub, no side effects).'",
+      "statement": "Actions rollback is product status STUB_NO_SIDE_EFFECTS; message ACTIONS_ROLLBACK_STUB_MESSAGE; no compensating writes in rollback().",
       "ewp": "EWP-03",
+      "evidence_doc": "evidence/work-packages/EWP-03-rollback-compensation/RB-1.md",
       "evidence": {
         "status": "PASS",
-        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+        "test_files": [
+          "src/agent/contracts/actions-rollback-stub.product.contract.spec.ts",
+          "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+        ]
       }
     },
     {
