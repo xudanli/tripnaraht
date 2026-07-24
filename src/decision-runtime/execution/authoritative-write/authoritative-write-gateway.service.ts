@@ -5,28 +5,27 @@ import {
   type AuthoritativeWriteCommand,
   type AuthoritativeWriteResult,
 } from './authoritative-write.types';
-import type { AuthoritativeWriteHandlerRegistry } from './authoritative-write-handler';
 import { validateAuthoritativeWriteCommand } from './authoritative-write-validate.util';
+import { AuthoritativeWriteHandlerRegistryService } from './corridor-handler.registry';
+import {
+  resolveCorridorWriteMode,
+  UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
+} from './corridor-write-mode.config';
 import { getCorridorWriteTargetProfile } from './write-target.registry';
 
 /**
- * Lightweight AuthoritativeWriteGateway.
- *
- * Stages (shared): Authority → Verification → Freshness shape → Idempotency key →
- * WriteTarget profile → Audit completeness → (optional) Transaction/Audit via handler.
- *
- * Persistence remains in corridor executors. This gateway does not create a write bus.
+ * Gateway: validate + mode-aware dispatch.
+ * AUTHORITATIVE → hard reject until UWC-1c.
+ * SHADOW_VALIDATE → handler.shadowValidate only (no writes).
+ * DISABLED → HANDLER path skipped / REJECTED with DISABLED.
  */
 @Injectable()
 export class AuthoritativeWriteGatewayService {
   constructor(
     @Optional()
-    private readonly handlers: AuthoritativeWriteHandlerRegistry | null = null,
+    private readonly registry: AuthoritativeWriteHandlerRegistryService | null = null,
   ) {}
 
-  /**
-   * Validate-only path for contract tests and Preview-stage clients.
-   */
   validate(command: AuthoritativeWriteCommand): AuthoritativeWriteResult {
     const failure = validateAuthoritativeWriteCommand(command);
     if (failure) {
@@ -43,26 +42,57 @@ export class AuthoritativeWriteGatewayService {
     };
   }
 
-  /**
-   * Apply path: shared validation then corridor handler.
-   * If no handler bound → REJECTED / HANDLER_NOT_BOUND (safe default).
-   */
   async apply(command: AuthoritativeWriteCommand): Promise<AuthoritativeWriteResult> {
     const failure = validateAuthoritativeWriteCommand(command);
     if (failure) {
       return this.reject(command, failure.errorCode, failure.reasonCodes);
     }
 
-    const handler = this.handlers?.[command.corridor];
+    const mode = resolveCorridorWriteMode(command.corridor);
+    if (mode.authoritativeHardBlocked || mode.requested === 'AUTHORITATIVE') {
+      return this.reject(command, AUTHORITATIVE_WRITE_ERROR_CODES.FORBIDDEN_CAPABILITY, [
+        UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
+        `requested=${mode.requested}`,
+        `effective=${mode.effective}`,
+      ]);
+    }
+
+    if (mode.effective === 'DISABLED') {
+      return this.reject(command, AUTHORITATIVE_WRITE_ERROR_CODES.FORBIDDEN_CAPABILITY, [
+        'CORRIDOR_MODE_DISABLED',
+      ]);
+    }
+
+    const handler = this.registry?.get(command.corridor);
     if (!handler) {
       const profile = getCorridorWriteTargetProfile(command.corridor);
       return this.reject(command, AUTHORITATIVE_WRITE_ERROR_CODES.HANDLER_NOT_BOUND, [
-        'bind corridor handler to existing executor',
+        'bind corridor handler',
         `delegate=${profile.delegatePath}#${profile.delegateSymbol}`,
       ]);
     }
 
-    return handler(command);
+    if (mode.effective === 'SHADOW_VALIDATE') {
+      const report = handler.shadowValidate(command);
+      return {
+        schemaId: 'tripnara.authoritative_write_result@v1',
+        contractVersion: AUTHORITATIVE_WRITE_CONTRACT_VERSION,
+        outcome: report.predictedOutcome,
+        corridor: command.corridor,
+        reasonCodes: [...report.reasonCodes, 'SHADOW_VALIDATE_NO_WRITE'],
+        writeTargetsTouched: [],
+        idempotencyKey: command.idempotency.key,
+        corridorResult: {
+          shadow: true,
+          writesPerformed: false,
+          resolvedWriteTargets: report.resolvedWriteTargets,
+          gateChecks: report.gateChecks,
+        },
+      };
+    }
+
+    // AUTHORITATIVE effective only if unlock — still call handler which hard-throws
+    return handler.authoritativeApply(command);
   }
 
   private reject(

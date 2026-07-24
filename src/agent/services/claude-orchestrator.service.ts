@@ -10096,6 +10096,33 @@ ${JSON.stringify(routingDecision, null, 2)}
       },
     });
 
+    try {
+      const {
+        safeProbeItineraryAdjustStandalone,
+      } = require('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service') as typeof import('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service');
+      safeProbeItineraryAdjustStandalone(
+        {
+          tripId,
+          userId,
+          requestId: durableRunId ?? tripId,
+          hasPendingDraft: true,
+          adviceOnly: false,
+          pending: true,
+        },
+        {
+          legacyApplied: Boolean(result.applied),
+          legacyOutcomeHint: result.applied ? 'APPLIED' : 'REJECTED',
+          reasonCodes: result.reason ? [result.reason] : [],
+          raw: {
+            addedCount: result.addedCount,
+            deletedCount: result.deletedCount,
+          },
+        },
+      );
+    } catch {
+      // never break legacy apply
+    }
+
     if (result.applied && durableRunId && this.tripRunManager) {
       await this.tripRunManager.updateTripRun({
         runId: durableRunId,

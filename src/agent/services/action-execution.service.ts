@@ -116,10 +116,49 @@ export class ActionExecutionService {
     @Optional() private readonly physicalValidator?: PhysicalValidatorService,
     @Optional() private readonly selfHealing?: SelfHealingService,
     @Optional() private readonly contingencyOrchestrator?: ContingencyOrchestratorService,
+    @Optional()
+    private readonly uwcShadowProbe?: import('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service').AuthoritativeWriteShadowProbeService,
   ) {
     // v1 bootstrap: register built-in side effects when registry is available.
     this.sideEffectRegistry?.register(FinancialHoldSideEffect);
     this.sideEffectRegistry?.register(createResourceLockSideEffect(this.prisma));
+  }
+
+  /** UWC-1b: shadow-only probe — must not affect legacy commit result. */
+  private probeUwcActionsCommitShadow(
+    request: ActionCommitRequestDto,
+    response: ActionExecutionResponseDto,
+    opts?: { idempotentReplay?: boolean },
+  ): void {
+    const firstSig = String(
+      (request.actions?.[0] as { context_signature?: string } | undefined)
+        ?.context_signature ?? '',
+    );
+    this.uwcShadowProbe?.safeProbe(
+      'ACTIONS_COMMIT',
+      {
+        trip_id: request.trip_id,
+        request_id: request.request_id,
+        idempotency_key: request.idempotency_key ?? request.request_id,
+        context_signature: firstSig,
+      },
+      {
+        legacyApplied: response.status === 'OK' || response.status === 'PARTIAL',
+        legacyOutcomeHint: opts?.idempotentReplay
+          ? 'IDEMPOTENT_REPLAY'
+          : response.status === 'OK'
+            ? 'APPLIED'
+            : response.status === 'PARTIAL'
+              ? 'APPLIED'
+              : 'REJECTED',
+        reasonCodes: (response.rejected_reason_codes as string[] | undefined) ?? [],
+        raw: {
+          status: response.status,
+          accepted: response.accepted_actions?.length ?? 0,
+          blocked: response.blocked_actions?.length ?? 0,
+        },
+      },
+    );
   }
 
   private getAgentService(): AgentService | null {
@@ -552,6 +591,7 @@ export class ActionExecutionService {
           status: response.status,
         },
       });
+      this.probeUwcActionsCommitShadow(request, response, { idempotentReplay: true });
       return response;
     }
 
@@ -1496,6 +1536,7 @@ export class ActionExecutionService {
         rejected_reason_codes: response.rejected_reason_codes || [],
       },
     });
+    this.probeUwcActionsCommitShadow(request, response);
     return response;
   }
 

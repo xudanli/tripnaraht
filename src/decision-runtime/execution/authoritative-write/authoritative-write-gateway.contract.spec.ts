@@ -17,6 +17,13 @@ import {
   AUTHORITATIVE_WRITE_TARGET_PROFILES,
   listAuditRowIdsForV1Batch,
 } from './write-target.registry';
+import { AuthoritativeWriteHandlerRegistryService } from './corridor-handler.registry';
+import {
+  UWC_1B_WIRE_ORDER,
+  UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
+  UWC_1C_OCC_UNLOCKED,
+  resolveCorridorWriteMode,
+} from './corridor-write-mode.config';
 
 function baseCommand(
   overrides: Partial<AuthoritativeWriteCommand> &
@@ -45,7 +52,8 @@ function baseCommand(
 }
 
 describe('AuthoritativeWriteGateway contract v1', () => {
-  const gateway = new AuthoritativeWriteGatewayService();
+  const registry = new AuthoritativeWriteHandlerRegistryService();
+  const gateway = new AuthoritativeWriteGatewayService(registry);
 
   it('first-batch corridors match audit matrix row ids', () => {
     expect(listAuditRowIdsForV1Batch().sort()).toEqual(
@@ -112,41 +120,28 @@ describe('AuthoritativeWriteGateway contract v1', () => {
     );
   });
 
-  it('apply without bound handler → HANDLER_NOT_BOUND (safe default)', async () => {
+  it('apply without registry → HANDLER_NOT_BOUND', async () => {
+    const unbound = new AuthoritativeWriteGatewayService(null);
+    const cmd = baseCommand({
+      corridor: 'UNIFIED_EXECUTE',
+      writeTargets: AUTHORITATIVE_WRITE_TARGET_PROFILES.UNIFIED_EXECUTE.writeTargets,
+      compensationModel: 'post_effective_compensating_plan_version',
+    });
+    const result = await unbound.apply(cmd);
+    expect(result.outcome).toBe('REJECTED');
+    expect(result.errorCode).toBe(AUTHORITATIVE_WRITE_ERROR_CODES.HANDLER_NOT_BOUND);
+  });
+
+  it('SHADOW_VALIDATE apply never marks writeTargetsTouched', async () => {
     const cmd = baseCommand({
       corridor: 'UNIFIED_EXECUTE',
       writeTargets: AUTHORITATIVE_WRITE_TARGET_PROFILES.UNIFIED_EXECUTE.writeTargets,
       compensationModel: 'post_effective_compensating_plan_version',
     });
     const result = await gateway.apply(cmd);
-    expect(result.outcome).toBe('REJECTED');
-    expect(result.errorCode).toBe(AUTHORITATIVE_WRITE_ERROR_CODES.HANDLER_NOT_BOUND);
-    expect(result.reasonCodes.some((r) => r.includes('plan-version-apply'))).toBe(
-      true,
-    );
-  });
-
-  it('bound handler can return APPLIED', async () => {
-    const gw = new AuthoritativeWriteGatewayService({
-      UNIFIED_EXECUTE: async (command) => ({
-        schemaId: 'tripnara.authoritative_write_result@v1',
-        contractVersion: AUTHORITATIVE_WRITE_CONTRACT_VERSION,
-        outcome: 'APPLIED',
-        corridor: command.corridor,
-        reasonCodes: [],
-        writeTargetsTouched: command.writeTargets,
-        idempotencyKey: command.idempotency.key,
-        appliedRefs: { planVersionId: 'pv_1' },
-      }),
-    });
-    const cmd = baseCommand({
-      corridor: 'UNIFIED_EXECUTE',
-      writeTargets: AUTHORITATIVE_WRITE_TARGET_PROFILES.UNIFIED_EXECUTE.writeTargets,
-      compensationModel: 'post_effective_compensating_plan_version',
-    });
-    const result = await gw.apply(cmd);
-    expect(result.outcome).toBe('APPLIED');
-    expect(result.appliedRefs?.planVersionId).toBe('pv_1');
+    expect(result.reasonCodes).toContain('SHADOW_VALIDATE_NO_WRITE');
+    expect(result.writeTargetsTouched).toEqual([]);
+    expect(result.corridorResult?.writesPerformed).toBe(false);
   });
 
   it('documents UWC v1 forbidden capabilities', () => {
@@ -157,6 +152,35 @@ describe('AuthoritativeWriteGateway contract v1', () => {
         'iceland_mobile_writeback_expansion',
         'mixed_write_single_store_unification',
       ]),
+    );
+  });
+
+  it('wire order is ACTIONS → ADJUST → UNIFIED', () => {
+    expect(UWC_1B_WIRE_ORDER).toEqual([
+      'ACTIONS_COMMIT',
+      'ITINERARY_ADJUST',
+      'UNIFIED_EXECUTE',
+    ]);
+    expect(registry.listBound()).toEqual([...UWC_1B_WIRE_ORDER]);
+  });
+
+  it('AUTHORITATIVE env is hard-blocked until UWC-1c', async () => {
+    expect(UWC_1C_OCC_UNLOCKED).toBe(false);
+    const resolved = resolveCorridorWriteMode('ACTIONS_COMMIT', {
+      UWC_CORRIDOR_MODE_ACTIONS_COMMIT: 'AUTHORITATIVE',
+    });
+    expect(resolved.authoritativeHardBlocked).toBe(true);
+    expect(resolved.effective).toBe('DISABLED');
+    expect(resolved.blockReason).toBe(UWC_AUTHORITATIVE_HARD_BLOCK_REASON);
+
+    const handler = registry.get('ACTIONS_COMMIT');
+    const cmd = handler.buildCommand({
+      trip_id: 't1',
+      request_id: 'r1',
+      context_signature: 'sig',
+    });
+    await expect(handler.authoritativeApply(cmd)).rejects.toThrow(
+      UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
     );
   });
 });

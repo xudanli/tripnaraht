@@ -15,15 +15,26 @@ Unify the **minimum safety contract** for authoritative writes — not a global 
 | Types / errors / results | `src/decision-runtime/execution/authoritative-write/authoritative-write.types.ts` |
 | WriteTarget profiles | `write-target.registry.ts` (mirrors audit matrix mixedTargets) |
 | Gateway | `authoritative-write-gateway.service.ts` |
-| Contract tests | `authoritative-write-gateway.contract.spec.ts` |
+| **UWC-1b** modes / handlers / shadow probe | `corridor-write-mode.config.ts`, `handlers/*`, `corridor-handler.registry.ts`, `authoritative-write-shadow-probe.service.ts` |
+| Contract tests | `authoritative-write-gateway.contract.spec.ts`, `uwc-1b-shadow.contract.spec.ts` |
 
 ### Corridors (v1 batch only)
 
-1. **ITINERARY_ADJUST** → delegate `executeItineraryAdjustDraftApply`  
-2. **UNIFIED_EXECUTE** → delegate `Rfc001PlanVersionApplyExecutor.execute`  
-3. **ACTIONS_COMMIT** → delegate `ActionExecutionService.commit`  
+1. **ACTIONS_COMMIT** → handler bound; Legacy `ActionExecutionService.commit` writes; UWC shadow probe only  
+2. **ITINERARY_ADJUST** → handler bound; Legacy `executeItineraryAdjustDraftApply` writes; standalone shadow probe  
+3. **UNIFIED_EXECUTE** → handler bound; Legacy `Rfc001PlanVersionApplyExecutor.execute` writes; shadow after execute  
 
-Handlers are **not auto-bound** yet (`HANDLER_NOT_BOUND` until explicit adapter wiring). Existing HTTP paths remain source of truth.
+### Modes (per corridor, env override)
+
+| Mode | Behavior |
+|------|----------|
+| `DISABLED` | No UWC probe |
+| `SHADOW_VALIDATE` (**default this round**) | Gates + WriteTarget resolve + reconcile audit; **zero writes** |
+| `AUTHORITATIVE` | **Hard-blocked** until `UWC_1C_OCC_UNLOCKED` (coerced to DISABLED) |
+
+Env keys: `UWC_CORRIDOR_MODE_ACTIONS_COMMIT` / `_ITINERARY_ADJUST` / `_UNIFIED_EXECUTE`.
+
+Handlers are bound in registry. Existing HTTP paths remain the sole writers under SHADOW_VALIDATE.
 
 ## Shared stages
 
@@ -46,9 +57,9 @@ Authority → Verification Proof → Freshness shape → Idempotency key → Wri
 
 | ID | Work | Notes |
 |----|------|-------|
-| UWC-1a | ✅ Types + gateway + registry + contract | this package |
-| UWC-1b | Bind handlers for 3 corridors (feature-flagged) | no HTTP rewrite yet |
-| UWC-1c | Require `basePlanVersionId` / `contextVersion` OCC where applicable | forbid silent overwrite of effective plan / context |
+| UWC-1a | ✅ Types + gateway + registry + contract | done |
+| UWC-1b | ✅ Explicit handlers + SHADOW_VALIDATE + AUTHORITATIVE hard-block | this round |
+| UWC-1c | Require `basePlanVersionId` / `contextVersion` OCC where applicable | unlock AUTHORITATIVE after review |
 | UWC-1d | Dual-layer rollback documentation + Unified compensating PlanVersion alignment | Actions stays stub |
 | UWC-1e | Web/iOS protocol: Preview → Confirm → Apply mapping to unified outcomes | BFF contract index update only |
 

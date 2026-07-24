@@ -1,12 +1,21 @@
 import { Module } from '@nestjs/common';
 import { AuthoritativeWriteGatewayService } from './authoritative-write-gateway.service';
+import { AuthoritativeWriteHandlerRegistryService } from './corridor-handler.registry';
+import { AuthoritativeWriteShadowProbeService } from './authoritative-write-shadow-probe.service';
 
 /**
- * UWC v1 Nest module — gateway only.
- * Corridor HTTP controllers stay on existing paths; bind handlers in a later ticket.
+ * UWC v1 Nest module — handlers bound; shadow probe exported for legacy hooks.
  */
 @Module({
-  providers: [AuthoritativeWriteGatewayService],
-  exports: [AuthoritativeWriteGatewayService],
+  providers: [
+    AuthoritativeWriteHandlerRegistryService,
+    AuthoritativeWriteGatewayService,
+    AuthoritativeWriteShadowProbeService,
+  ],
+  exports: [
+    AuthoritativeWriteHandlerRegistryService,
+    AuthoritativeWriteGatewayService,
+    AuthoritativeWriteShadowProbeService,
+  ],
 })
 export class AuthoritativeWriteModule {}

@@ -93,6 +93,8 @@ export class CanonicalDecisionEngineAdapter {
     private readonly ledgerStore: Rfc001DecisionLedgerStoreService,
     private readonly problemStore: Rfc001DecisionProblemStoreService,
     @Optional() private readonly authPolicyGateway?: AuthorizationPolicyGatewayService,
+    @Optional()
+    private readonly uwcShadowProbe?: import('../../execution/authoritative-write/authoritative-write-shadow-probe.service').AuthoritativeWriteShadowProbeService,
   ) {}
 
   async getDecisionCenter(tripId: string) {
@@ -282,8 +284,46 @@ export class CanonicalDecisionEngineAdapter {
 
   async execute(input: ExecuteDecisionGatewayInput): Promise<CanonicalExecuteResponse> {
     const authorizationPolicy = await this.evaluateEffectivePlanCommit(input);
-    const result = await this.executor.execute(input);
-    return { ...result, authorizationPolicy };
+    let result: Awaited<ReturnType<Rfc001PlanVersionApplyExecutor['execute']>>;
+    let legacyApplied = true;
+    let legacyHint: 'APPLIED' | 'REJECTED' | 'IDEMPOTENT_REPLAY' = 'APPLIED';
+    let reasonCodes: string[] = [];
+    try {
+      result = await this.executor.execute(input);
+      if ((result as { idempotentReplay?: boolean }).idempotentReplay) {
+        legacyHint = 'IDEMPOTENT_REPLAY';
+      }
+    } catch (err) {
+      legacyApplied = false;
+      legacyHint = 'REJECTED';
+      reasonCodes = [err instanceof Error ? err.message : String(err)];
+      this.uwcShadowProbe?.safeProbe(
+        'UNIFIED_EXECUTE',
+        {
+          tripId: input.tripId,
+          decisionId: input.decisionId,
+          idempotencyKey: (input as { idempotencyKey?: string }).idempotencyKey,
+        },
+        { legacyApplied, legacyOutcomeHint: legacyHint, reasonCodes },
+      );
+      throw err;
+    }
+    const response = { ...result, authorizationPolicy };
+    this.uwcShadowProbe?.safeProbe(
+      'UNIFIED_EXECUTE',
+      {
+        tripId: input.tripId,
+        decisionId: input.decisionId,
+        idempotencyKey: (input as { idempotencyKey?: string }).idempotencyKey,
+      },
+      {
+        legacyApplied,
+        legacyOutcomeHint: legacyHint,
+        reasonCodes,
+        raw: { decisionId: input.decisionId },
+      },
+    );
+    return response;
   }
 
   async rollback(tripId: string, decisionId: string) {

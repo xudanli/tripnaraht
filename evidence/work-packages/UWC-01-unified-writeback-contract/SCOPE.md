@@ -18,9 +18,13 @@
 - External commercial compensation (hotel / activity / car)  
 - Collapsing mixed writers into one store  
 
-## Acceptance (1a)
+## Acceptance (1a / 1b)
 
 - [x] Types + registry + gateway committed  
 - [x] Contract spec PASS  
-- [ ] Handlers bound behind flag (1b)  
+- [x] Handlers bound (ACTIONS → ADJUST → UNIFIED)  
+- [x] Default mode SHADOW_VALIDATE; zero writes  
+- [x] AUTHORITATIVE hard-blocked until UWC-1c  
+- [x] Per-corridor DISABLED kill switch  
+- [x] Shadow/legacy diffs auditable (`getShadowProbeAuditEntries`)  
 - [ ] OCC fields enforced (1c)  
