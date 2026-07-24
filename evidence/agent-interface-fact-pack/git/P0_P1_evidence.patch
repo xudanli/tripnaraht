@@ -1,0 +1,4420 @@
+From a7e9bdca588431143e04e98d7c1c1204299c6e54 Mon Sep 17 00:00:00 2001
+From: DevBox <devbox@tripnaraht.local>
+Date: Fri, 24 Jul 2026 05:25:28 +0000
+Subject: [PATCH] feat(agent): freeze P0/P1 evidence baseline for interface
+ fact pack
+
+Lock flawed-draft explicit opt-in, delivery_verdict, AUTO block on flawed drafts,
+corridor audit matrices, TravelContext SSOT marker, and co-located route_and_run
+wiring so third-party review can pin a single recitable commit.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ src/agent/agent.controller.ts                 |  58 ++--
+ ...ent-conceptual-vs-actual.constants.spec.ts |  16 ++
+ .../agent-conceptual-vs-actual.constants.ts   |  79 ++++++
+ .../auto-corridor-product.contract.spec.ts    |  42 +++
+ .../auto-corridor-product.contract.ts         | 121 ++++++++
+ .../gate-verify-corridor-audit.matrix.spec.ts |  24 ++
+ .../gate-verify-corridor-audit.matrix.ts      | 112 ++++++++
+ ...proposal-like.conceptual.constants.spec.ts |  20 ++
+ .../proposal-like.conceptual.constants.ts     |  79 ++++++
+ .../writeback-corridor-audit.matrix.spec.ts   |  15 +
+ .../writeback-corridor-audit.matrix.ts        | 104 +++++++
+ .../delivery/AGENT_UNIFIED_INTERFACE_SCOPE.md |   8 +-
+ .../delivery/FRONTEND_TRUSTED_DELIVERY.md     |  17 +-
+ ...sted-delivery-consumption.contract.spec.ts |   1 +
+ .../types/delivery-verdict.types.spec.ts      |  39 +++
+ .../delivery/types/delivery-verdict.types.ts  |  60 ++++
+ .../types/trusted-delivery-v1.type.ts         |   3 +
+ .../trusted-delivery.project.util.spec.ts     |  18 ++
+ .../utils/trusted-delivery.project.util.ts    |  19 ++
+ src/agent/dto/route-and-run.dto.ts            |  10 +-
+ .../done-response-completeness.guard.ts       |   2 +
+ .../ORCHESTRATION_GOVERNANCE_MATRIX.md        |  11 +-
+ .../ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md      |   2 +-
+ .../nodes/intake-itinerary-compound.util.ts   |  18 +-
+ .../nodes/intake-itinerary-day-replan.util.ts |   1 +
+ .../intake-itinerary-lodging-replace.util.ts  | 124 +++++++++
+ .../graph/nodes/intake-node.host.ts           |   7 +
+ .../graph/nodes/intake-phase.executor.ts      |  16 +-
+ .../graph/nodes/intake-phase.host.ts          |  15 +
+ .../orchestration/graph/nodes/intake.node.ts  |  17 +-
+ ...estration-main-chain-protocol.constants.ts |   3 +-
+ .../plan-verify-loop-repair-guards.spec.ts    |  61 +++++
+ .../plan-verify-loop-repair-guards.ts         |  28 +-
+ .../plan-verify-loop.controller.ts            |  56 ++++
+ .../plan-verify-loop.runner.spec.ts           |  45 +++
+ ...oute-and-run-route-class-fork.util.spec.ts |  21 ++
+ .../route-and-run-route-class-fork.util.ts    |  13 +-
+ .../agent-entry-response-factory.service.ts   |  17 +-
+ .../agent.service.entry-points.spec.ts        |   3 +
+ ...vice.planning-redirect.integration.spec.ts |   2 +-
+ .../agent.service.planning-redirect.spec.ts   |   4 +-
+ .../services/claude-orchestrator.service.ts   | 258 +++++++++++++++++-
+ ...ion-gateway.route-and-run.orchestration.ts |  93 +++++++
+ ...lanning-request-classifier.service.spec.ts |  39 +++
+ .../planning-request-classifier.service.ts    |  21 +-
+ ...oute-and-run-response-assembler.service.ts |  30 +-
+ ...-run-response-assembler.ui-display.spec.ts |  65 +++++
+ .../silent-vote-create-fast-path.spec.ts      |  41 +++
+ ...onsultation-dashboard-extract.util.spec.ts |  19 ++
+ .../consultation-dashboard-extract.util.ts    |  48 +++-
+ .../utils/decision-log-user-facing.zh.util.ts |   4 +
+ ...easibility-message-surface.zh.util.spec.ts |  22 ++
+ .../feasibility-message-surface.zh.util.ts    |  35 +++
+ .../utils/itinerary-adjust-auto-apply.util.ts |   7 +
+ ...rary-adjust-flawed-auto-block.util.spec.ts |  16 ++
+ ...itinerary-adjust-flawed-auto-block.util.ts |  12 +
+ src/agent/utils/itinerary-day-replan.util.ts  |   2 +-
+ .../itinerary-lodging-replace.util.spec.ts    |  42 +++
+ .../utils/itinerary-lodging-replace.util.ts   | 254 +++++++++++++++++
+ ...stration-signals.trip-consultation.spec.ts |  32 ++-
+ src/agent/utils/orchestration-signals.util.ts |  47 +++-
+ ...resolve-route-and-run-message.util.spec.ts |  48 ++++
+ .../resolve-route-and-run-message.util.ts     | 104 ++++++-
+ .../route-and-run-trip-id-merge.util.spec.ts  |  24 +-
+ .../utils/route-and-run-trip-id-merge.util.ts |  21 ++
+ ...ultation-suggested-operations.util.spec.ts |  60 +++-
+ ...-consultation-suggested-operations.util.ts | 134 ++++++++-
+ .../clarification-question.schema.spec.ts     |  24 ++
+ .../clarification-question.schema.ts          |  62 ++++-
+ src/travel-context/CURRENT_SSOT_STATUS.md     |  21 ++
+ .../current-ssot-status.constants.spec.ts     |  13 +
+ .../current-ssot-status.constants.ts          |  46 ++++
+ .../domain/travel-context.types.ts            |  13 +
+ .../adapters/trip-context.adapter-mappers.ts  |  26 +-
+ 74 files changed, 2852 insertions(+), 142 deletions(-)
+ create mode 100644 src/agent/contracts/agent-conceptual-vs-actual.constants.spec.ts
+ create mode 100644 src/agent/contracts/agent-conceptual-vs-actual.constants.ts
+ create mode 100644 src/agent/contracts/auto-corridor-product.contract.spec.ts
+ create mode 100644 src/agent/contracts/auto-corridor-product.contract.ts
+ create mode 100644 src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts
+ create mode 100644 src/agent/contracts/gate-verify-corridor-audit.matrix.ts
+ create mode 100644 src/agent/contracts/proposal-like.conceptual.constants.spec.ts
+ create mode 100644 src/agent/contracts/proposal-like.conceptual.constants.ts
+ create mode 100644 src/agent/contracts/writeback-corridor-audit.matrix.spec.ts
+ create mode 100644 src/agent/contracts/writeback-corridor-audit.matrix.ts
+ create mode 100644 src/agent/delivery/types/delivery-verdict.types.spec.ts
+ create mode 100644 src/agent/delivery/types/delivery-verdict.types.ts
+ create mode 100644 src/agent/orchestration/graph/nodes/intake-itinerary-lodging-replace.util.ts
+ create mode 100644 src/agent/services/silent-vote-create-fast-path.spec.ts
+ create mode 100644 src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts
+ create mode 100644 src/agent/utils/itinerary-adjust-flawed-auto-block.util.ts
+ create mode 100644 src/agent/utils/itinerary-lodging-replace.util.spec.ts
+ create mode 100644 src/agent/utils/itinerary-lodging-replace.util.ts
+ create mode 100644 src/travel-context/CURRENT_SSOT_STATUS.md
+ create mode 100644 src/travel-context/current-ssot-status.constants.spec.ts
+ create mode 100644 src/travel-context/current-ssot-status.constants.ts
+
+diff --git a/src/agent/agent.controller.ts b/src/agent/agent.controller.ts
+index 262d23c50..6e7841054 100644
+--- a/src/agent/agent.controller.ts
++++ b/src/agent/agent.controller.ts
+@@ -199,19 +199,6 @@ export class AgentController {
+     };
+   }
+ 
+-  /**
+-   * 路由并执行
+-   * 
+-   * 智能路由到 System 1 或 System 2，并执行相应的处理流程。
+-   * 
+-   * System 1 路径：
+-   * - SYSTEM1_API: 标准 API / CRUD / 简单查询
+-   * - SYSTEM1_RAG: 知识库/向量检索
+-   * 
+-   * System 2 路径：
+-   * - SYSTEM2_REASONING: ReAct + 工具 + TravelPlanner/Critic
+-   * - SYSTEM2_WEBBROWSE: 无头浏览器兜底（仅授权后）
+-   */
+   /**
+    * 策略冲突「决策对话」：解释冲突机制 + 2–3 个对齐选项（基于 MultiAgent 协作快照）
+    */
+@@ -236,31 +223,26 @@ export class AgentController {
+   @ApiOperation({
+     summary: '智能体统一入口 - 路由并执行',
+     description: `
+-智能体统一入口，根据用户输入自动路由到 System 1（快速路径）或 System 2（ReAct 循环）。
+-
+-**路由策略**：
+-- 硬规则短路：支付/退款/浏览器 → System2 + consent_required
+-- 明确 CRUD → System1_API
+-- 单纯事实查询 → System1_RAG
+-- 规划/多约束/无 API → System2_REASONING
+-
+-**System 2 ReAct 循环**：
+-- Plan → Act → Observe → Critic → Repair
+-- 受预算控制（max_seconds, max_steps）
+-- 自动可行性检查（时间窗、日界、午餐、鲁棒时间）
+-
+-**三人格（System 2 编排）**：
+-- **Abu（安全）**：对应 Gatekeeper 硬门与风险聚合；result.payload.orchestrationResult.gate_result.guardian_results.abu 或 explain.guardian_personas.abu
+-- **Dr.Dre（节奏）**：疲劳与日程松紧；guardian_results.drdre / explain.guardian_personas.drdre
+-- **Neptune（空间/替补）**：路段替换与改线建议；guardian_results.neptune / explain.guardian_personas.neptune
+-- 结构化：guardian_results 含 source（如 violation_projection_v1）、is_simulated，以及 evidence_atoms[].violation_code / tag；explain.guardian_personas 与 gate 同源只读
+-- System 1 不跑三人格：可在 options.persona_hint 传 abu_strictness / drdre_tolerance / neptune_creativity，写入行程请求供 System 2 参考
+-
+-**返回结果**：
+-- route: 路由决策（route, confidence, reasons, budget）
+-- result: 执行结果（status, answer_text, payload；编排成功时见 orchestrationResult.gate_result.guardian_results）
+-- explain: 决策日志（decision_log；有门控时含 guardian_personas 与 gate 同源）
+-- observability: 可观测性指标（latency, cost, tool_calls）
++智能体统一入口。**行程规划产品脊柱**为 Claude 图状态机（\`CLAUDE_SM\`），不是 ReAct 主循环：
++
++INTAKE → STATE_UPDATE → RESEARCH → POI_SELECTION → GATE_EVAL → CONTEXT_BUILD
++→ PLAN_GEN → OPTIMIZE → VERIFY ⇄ REPAIR → NARRATE → FEEDBACK → HALLUCINATION → END
++
++**入口分流（仍存在，但不替代主链）**：
++- 硬规则短路：支付/退款/浏览器 → 需 consent
++- 明确 CRUD / 事实查询 → System 1 快路径（API / RAG）
++- 规划/多约束 / 已绑定 trip 改排 → 状态机主链（默认 \`execution_mode=ADVICE_ONLY\`）
++
++**主链裁决**：
++- Main REPAIR ≤ 3；RETURN_TO_RESEARCH ≤ 1
++- GATE BLOCK 禁止进入 PLAN_GEN；VERIFY 只裁决可交付，不写库
++- 瑕疵草案仅显式 \`allow_flawed_draft_narrate=true\`；\`delivery_verdict=FLAWED_DRAFT\` 禁止 AUTO 写回
++
++**三人格（门控投影）**：Abu / Dr.Dre / Neptune → \`gate_result.guardian_results\` / \`explain.guardian_personas\`
++
++**权威写回**不在本接口默认路径；见 Confirm / Apply / Execute / Commit 各产品走廊。
++
++**返回**：route · result（含 \`trusted_delivery_v1.delivery_verdict\`）· explain · observability
+     `.trim(),
+   })
+   @ApiBody({
+diff --git a/src/agent/contracts/agent-conceptual-vs-actual.constants.spec.ts b/src/agent/contracts/agent-conceptual-vs-actual.constants.spec.ts
+new file mode 100644
+index 000000000..47431f1b9
+--- /dev/null
++++ b/src/agent/contracts/agent-conceptual-vs-actual.constants.spec.ts
+@@ -0,0 +1,16 @@
++import {
++  AGENT_CONCEPTUAL_VS_ACTUAL,
++  AGENT_NO_GLOBAL_CONTEXT_HASH,
++} from './agent-conceptual-vs-actual.constants';
++
++describe('agent-conceptual-vs-actual', () => {
++  it('freezes AgentRequest → RouteAndRunRequestDto', () => {
++    const row = AGENT_CONCEPTUAL_VS_ACTUAL.find((r) => r.conceptual === 'AgentRequest');
++    expect(row?.actual).toBe('RouteAndRunRequestDto');
++  });
++
++  it('documents absence of global contextHash', () => {
++    const row = AGENT_CONCEPTUAL_VS_ACTUAL.find((r) => r.conceptual === 'contextHash');
++    expect(row?.actual).toBe(AGENT_NO_GLOBAL_CONTEXT_HASH);
++  });
++});
+diff --git a/src/agent/contracts/agent-conceptual-vs-actual.constants.ts b/src/agent/contracts/agent-conceptual-vs-actual.constants.ts
+new file mode 100644
+index 000000000..eb3a372b3
+--- /dev/null
++++ b/src/agent/contracts/agent-conceptual-vs-actual.constants.ts
+@@ -0,0 +1,79 @@
++/**
++ * P0-3：Conceptual 文档名 ↔ 真实代码类型冻结表。
++ * 对外只使用 Actual；Conceptual 须标注为文档抽象，禁止当作可 import 类型名。
++ */
++
++export const AGENT_CONCEPTUAL_VS_ACTUAL_VERSION = '1.0.0' as const;
++
++export type AgentConceptualVsActualRow = {
++  conceptual: string;
++  actual: string;
++  scope: string;
++  notes: string;
++};
++
++/**
++ * 当前不存在贯穿整个智能体主链的统一 `contextHash`。
++ * 近邻字段：snapshotId / contextVersion / expected_negotiation_hash / effectivePlanVersionId。
++ */
++export const AGENT_NO_GLOBAL_CONTEXT_HASH =
++  'No unified contextHash on route_and_run main chain' as const;
++
++export const AGENT_CONCEPTUAL_VS_ACTUAL: readonly AgentConceptualVsActualRow[] = [
++  {
++    conceptual: 'AgentRequest',
++    actual: 'RouteAndRunRequestDto',
++    scope: 'route_and_run',
++    notes: '对外 Canonical HTTP DTO',
++  },
++  {
++    conceptual: 'AgentResponse',
++    actual: 'RouteAndRunResponseDto',
++    scope: 'route_and_run',
++    notes: '对外 Canonical HTTP DTO',
++  },
++  {
++    conceptual: 'VerificationResult',
++    actual: 'VerificationReport / VerificationIssue',
++    scope: 'DecisionKernel',
++    notes: '主链 VERIFY 裁决报告',
++  },
++  {
++    conceptual: 'RepairProposal',
++    actual: '(none — corridor-specific)',
++    scope: 'repair corridors',
++    notes: '无统一类型；DSO executeRepair / Iceland repair-once 等分散实现',
++  },
++  {
++    conceptual: 'contextHash',
++    actual: AGENT_NO_GLOBAL_CONTEXT_HASH,
++    scope: 'main chain',
++    notes: '使用 snapshotId / contextVersion / negotiationHash 等，勿虚构全局 contextHash',
++  },
++  {
++    conceptual: 'TravelContext',
++    actual: 'TravelContextIdentity (+ bindings)',
++    scope: 'RFC-003 partial',
++    notes: 'Canonical 目标 SSOT，尚未贯通 Claude SM 主链',
++  },
++  {
++    conceptual: 'DecisionProblem',
++    actual: 'Rfc001DecisionProblem (+ TEP/Unified variants)',
++    scope: 'multi-corridor',
++    notes: '多套契约并存',
++  },
++  {
++    conceptual: 'PlanProposal',
++    actual: 'PlanProposal (arrange-itinerary)',
++    scope: 'Arrange',
++    notes: '局部 Canonical；非所有草案的统一父类型',
++  },
++  {
++    conceptual: 'ProposalLike',
++    actual:
++      'Arrange PlanProposal | Iceland Proposal | pending_itinerary_adjust_draft | Unified Preview | PA Plan',
++    scope: 'documentation',
++    notes:
++      '文档概念，不是代码基类；见 proposal-like.conceptual.constants.ts PROPOSAL_LIKE_REGISTRY',
++  },
++] as const;
+diff --git a/src/agent/contracts/auto-corridor-product.contract.spec.ts b/src/agent/contracts/auto-corridor-product.contract.spec.ts
+new file mode 100644
+index 000000000..fc62b0e09
+--- /dev/null
++++ b/src/agent/contracts/auto-corridor-product.contract.spec.ts
+@@ -0,0 +1,42 @@
++import {
++  AUTO_CORRIDOR_PRODUCT_RULES,
++  buildAutoCorridorUiFlagsV1,
++  isAutoCorridorEligible,
++} from './auto-corridor-product.contract';
++
++describe('auto-corridor-product.contract', () => {
++  it('freezes LLM cannot write DB and flawed blocks AUTO', () => {
++    expect(AUTO_CORRIDOR_PRODUCT_RULES.llmCannotWriteDb).toBe(true);
++    expect(AUTO_CORRIDOR_PRODUCT_RULES.flawedDraftBlocksAuto).toBe(true);
++    expect(AUTO_CORRIDOR_PRODUCT_RULES.persistenceTarget).toBe('trip_itinerary_item');
++  });
++
++  it('builds UI flags that hide auto control for flawed draft', () => {
++    const flags = buildAutoCorridorUiFlagsV1({
++      metadata: { flawed_draft_narrate: true, itinerary_adjust_execution_mode: 'AUTO' },
++      executionMode: 'AUTO',
++    });
++    expect(flags.auto_blocked).toBe(true);
++    expect(flags.show_auto_apply_control).toBe(false);
++    expect(flags.auto_block_reason).toBe('flawed_draft_forbidden');
++    expect(flags.requires_preauth).toBe(true);
++    expect(flags.audit_required).toBe(true);
++  });
++
++  it('rejects eligibility without trip or with flawed draft', () => {
++    expect(
++      isAutoCorridorEligible({
++        primaryIntent: 'ITINERARY_ADJUST',
++        boundTripId: null,
++      }).eligible,
++    ).toBe(false);
++    expect(
++      isAutoCorridorEligible({
++        primaryIntent: 'ITINERARY_ADJUST',
++        boundTripId: 'trip_1',
++        metadata: { flawed_draft_narrate: true },
++        requestExecutionMode: 'AUTO',
++      }).reasons,
++    ).toContain('flawed_draft_forbidden');
++  });
++});
+diff --git a/src/agent/contracts/auto-corridor-product.contract.ts b/src/agent/contracts/auto-corridor-product.contract.ts
+new file mode 100644
+index 000000000..eccb6cef5
+--- /dev/null
++++ b/src/agent/contracts/auto-corridor-product.contract.ts
+@@ -0,0 +1,121 @@
++/**
++ * P1-4：ITINERARY_ADJUST AUTO / SEMI_AUTO 产品合同（确定性走廊，非 LLM 自由写库）。
++ *
++ * 冻结：
++ * - LLM / NARRATE 不能直接写库
++ * - AUTO 由授权 + 验证门控后的确定性走廊触发
++ * - FLAWED_DRAFT 禁止 AUTO / SEMI_AUTO
++ */
++
++import type { ItineraryAdjustExecutionMode, ItineraryAdjustSubIntent } from '../utils/itinerary-adjust-auto-apply.util';
++import { shouldBlockAutoApplyForFlawedDraft } from '../utils/itinerary-adjust-flawed-auto-block.util';
++
++export const AUTO_CORRIDOR_PRODUCT_CONTRACT_VERSION = '1.0.0' as const;
++
++export type AutoCorridorSupportedIntent = 'ITINERARY_ADJUST';
++
++export type AutoCorridorUiFlagsV1 = {
++  schemaId: 'tripnara.auto_corridor_ui@v1';
++  version: 1;
++  /** 是否允许展示「自动应用」控件 */
++  show_auto_apply_control: boolean;
++  /** 是否要求用户预授权 execution_mode */
++  requires_preauth: boolean;
++  /** FLAWED_DRAFT 等导致禁止自动写回 */
++  auto_blocked: boolean;
++  auto_block_reason?: string;
++  /** 撤销提示：AUTO 落库后可通过 revision rollback / 再改排撤销 */
++  revoke_hint_zh: string;
++  /** 审计：应写入 decision_log / funnel */
++  audit_required: boolean;
++  persistence_target: 'trip_itinerary_item';
++  execution_mode: ItineraryAdjustExecutionMode;
++  sub_intent?: ItineraryAdjustSubIntent | string;
++};
++
++export const AUTO_CORRIDOR_PRODUCT_RULES = {
++  supportedPrimaryIntent: 'ITINERARY_ADJUST' as AutoCorridorSupportedIntent,
++  /** 请求 options.execution_mode 为产品预授权；缺省 ADVICE_ONLY */
++  requiresExplicitExecutionModeForAuto: true,
++  requiresBoundTrip: true,
++  flawedDraftBlocksAuto: true,
++  /** AUTO：strong_modification + highConfidence；SEMI_AUTO：poi_slot_fill + place_id 齐备 */
++  autoSubIntents: ['strong_modification'] as const,
++  semiAutoSubIntents: ['poi_slot_fill'] as const,
++  persistenceTarget: 'trip_itinerary_item' as const,
++  revokeVia: 'itinerary_revision_rollback_or_re_adjust' as const,
++  llmCannotWriteDb: true,
++} as const;
++
++export function buildAutoCorridorUiFlagsV1(input: {
++  metadata?: Record<string, unknown> | null;
++  executionMode?: ItineraryAdjustExecutionMode;
++  subIntent?: ItineraryAdjustSubIntent | string;
++}): AutoCorridorUiFlagsV1 {
++  const md = input.metadata ?? {};
++  const executionMode =
++    input.executionMode ??
++    (md.itinerary_adjust_execution_mode as ItineraryAdjustExecutionMode | undefined) ??
++    'ADVICE_ONLY';
++  const subIntent =
++    input.subIntent ??
++    (typeof md.itinerary_adjust_sub_intent === 'string' ? md.itinerary_adjust_sub_intent : undefined);
++
++  const flawedBlocked = shouldBlockAutoApplyForFlawedDraft(md);
++  const autoApply = md.itinerary_adjust_auto_apply as { reason?: string; applied?: boolean } | undefined;
++  const auto_blocked =
++    flawedBlocked || autoApply?.reason === 'flawed_draft_forbidden' || executionMode === 'ADVICE_ONLY';
++
++  return {
++    schemaId: 'tripnara.auto_corridor_ui@v1',
++    version: 1,
++    show_auto_apply_control: !flawedBlocked && executionMode !== 'ADVICE_ONLY',
++    requires_preauth: true,
++    auto_blocked: flawedBlocked || autoApply?.reason === 'flawed_draft_forbidden',
++    ...(flawedBlocked || autoApply?.reason === 'flawed_draft_forbidden'
++      ? { auto_block_reason: 'flawed_draft_forbidden' }
++      : {}),
++    revoke_hint_zh:
++      '若自动写入不符合预期，请使用行程修订回滚，或再次发起改排并确认后应用。',
++    audit_required: true,
++    persistence_target: 'trip_itinerary_item',
++    execution_mode: executionMode,
++    ...(subIntent ? { sub_intent: subIntent } : {}),
++  };
++}
++
++/** 窄走廊是否允许尝试 AUTO（不含 tripsService 等运行时可用性） */
++export function isAutoCorridorEligible(input: {
++  primaryIntent?: string;
++  boundTripId?: string | null;
++  metadata?: Record<string, unknown> | null;
++  requestExecutionMode?: 'ADVICE_ONLY' | 'SEMI_AUTO' | 'AUTO';
++}): { eligible: boolean; reasons: string[] } {
++  const reasons: string[] = [];
++  if (input.primaryIntent !== AUTO_CORRIDOR_PRODUCT_RULES.supportedPrimaryIntent) {
++    reasons.push('intent_not_itinerary_adjust');
++  }
++  if (!String(input.boundTripId ?? '').trim()) {
++    reasons.push('trip_not_bound');
++  }
++  if (shouldBlockAutoApplyForFlawedDraft(input.metadata)) {
++    reasons.push('flawed_draft_forbidden');
++  }
++  if (
++    AUTO_CORRIDOR_PRODUCT_RULES.requiresExplicitExecutionModeForAuto &&
++    input.requestExecutionMode !== 'AUTO' &&
++    input.requestExecutionMode !== 'SEMI_AUTO'
++  ) {
++    // 产品预授权：请求未声明 AUTO/SEMI_AUTO 时，走廊仍可能内部解析为 AUTO；
++    // 此处仅标注「请求层未预授权」，由 resolveItineraryAdjustExecutionMode 做最终模式。
++    reasons.push('request_execution_mode_not_auto');
++  }
++  return {
++    eligible: !reasons.some((r) =>
++      r === 'intent_not_itinerary_adjust' ||
++      r === 'trip_not_bound' ||
++      r === 'flawed_draft_forbidden',
++    ),
++    reasons,
++  };
++}
+diff --git a/src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts b/src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts
+new file mode 100644
+index 000000000..2346d2d7e
+--- /dev/null
++++ b/src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts
+@@ -0,0 +1,24 @@
++import {
++  GATE_VERIFY_CORRIDOR_AUDIT_MATRIX,
++  MAIN_CHAIN_GATE_BLOCK_SCOPE,
++} from './gate-verify-corridor-audit.matrix';
++
++describe('gate-verify-corridor-audit.matrix', () => {
++  it('scopes main-chain GATE BLOCK narrowly', () => {
++    expect(MAIN_CHAIN_GATE_BLOCK_SCOPE).toMatch(/route_and_run/);
++    expect(MAIN_CHAIN_GATE_BLOCK_SCOPE).not.toMatch(/entire system/i);
++  });
++
++  it('marks independent apply corridors as canWriteWithoutMainChainGate', () => {
++    const iceland = GATE_VERIFY_CORRIDOR_AUDIT_MATRIX.find((r) => r.corridorId === 'iceland_apply');
++    expect(iceland?.usesMainChainGateEval).toBe(false);
++    expect(iceland?.canWriteWithoutMainChainGate).toBe(true);
++    expect(iceland?.auditStatus).toBe('needs_audit');
++  });
++
++  it('proves main SM corridor cannot write past GATE without main chain', () => {
++    const sm = GATE_VERIFY_CORRIDOR_AUDIT_MATRIX.find((r) => r.corridorId === 'route_and_run_sm');
++    expect(sm?.canWriteWithoutMainChainGate).toBe(false);
++    expect(sm?.auditStatus).toBe('proven');
++  });
++});
+diff --git a/src/agent/contracts/gate-verify-corridor-audit.matrix.ts b/src/agent/contracts/gate-verify-corridor-audit.matrix.ts
+new file mode 100644
+index 000000000..3c5073a24
+--- /dev/null
++++ b/src/agent/contracts/gate-verify-corridor-audit.matrix.ts
+@@ -0,0 +1,112 @@
++/**
++ * P1-3：分走廊 Gate / VERIFY 绕过审计矩阵。
++ *
++ * 收窄结论：route_and_run 主链 GATE BLOCK 不可进入 PLAN_GEN；
++ * 各 Apply 走廊是否复用同一 GATE_EVAL 需分项审计，禁止宣称「全系统无绕过」。
++ */
++
++export const GATE_VERIFY_CORRIDOR_AUDIT_VERSION = '1.0.0' as const;
++
++export type GateReuseKind =
++  | 'main_chain_gate_eval'
++  | 'corridor_own_guard'
++  | 'verification_snapshot'
++  | 'unified_assessment'
++  | 'none_or_unknown';
++
++export type GateVerifyCorridorAuditRow = {
++  corridorId: string;
++  productSurface: string;
++  usesMainChainGateEval: boolean;
++  gateReuse: GateReuseKind;
++  verifyAuthority: string;
++  canWriteWithoutMainChainGate: boolean;
++  auditStatus: 'proven' | 'needs_audit' | 'shadow_only';
++  notes: string;
++};
++
++export const MAIN_CHAIN_GATE_BLOCK_SCOPE =
++  'Only proven inside route_and_run Claude SM: GATE BLOCK → terminal_blocked, no PLAN_GEN.' as const;
++
++export const GATE_VERIFY_CORRIDOR_AUDIT_MATRIX: readonly GateVerifyCorridorAuditRow[] = [
++  {
++    corridorId: 'route_and_run_sm',
++    productSurface: 'Main Agent',
++    usesMainChainGateEval: true,
++    gateReuse: 'main_chain_gate_eval',
++    verifyAuthority: 'Kernel VERIFY (main chain)',
++    canWriteWithoutMainChainGate: false,
++    auditStatus: 'proven',
++    notes: 'GATE BLOCK hard-stops before PLAN_GEN; ADVICE_ONLY by default',
++  },
++  {
++    corridorId: 'iceland_apply',
++    productSurface: 'Iceland',
++    usesMainChainGateEval: false,
++    gateReuse: 'corridor_own_guard',
++    verifyAuthority: 'Iceland proposal verification / preview bridge',
++    canWriteWithoutMainChainGate: true,
++    auditStatus: 'needs_audit',
++    notes: 'Confirm→Apply 独立；须审计 proposal status / freshness',
++  },
++  {
++    corridorId: 'arrange_apply',
++    productSurface: 'Arrange',
++    usesMainChainGateEval: false,
++    gateReuse: 'corridor_own_guard',
++    verifyAuthority: 'PlanProposal.validation + EffectivePlanWriter',
++    canWriteWithoutMainChainGate: true,
++    auditStatus: 'needs_audit',
++    notes: 'Shadow changes forbidden; not main-chain GATE_EVAL node',
++  },
++  {
++    corridorId: 'unified_execute',
++    productSurface: 'Unified Decision',
++    usesMainChainGateEval: false,
++    gateReuse: 'unified_assessment',
++    verifyAuthority: 'Unified Assessment / authorize',
++    canWriteWithoutMainChainGate: true,
++    auditStatus: 'needs_audit',
++    notes: 'Kernel VERIFY 不是唯一裁决权威',
++  },
++  {
++    corridorId: 'actions_commit',
++    productSurface: 'Agent Actions',
++    usesMainChainGateEval: false,
++    gateReuse: 'corridor_own_guard',
++    verifyAuthority: 'Action preview + side-effect rules',
++    canWriteWithoutMainChainGate: true,
++    auditStatus: 'needs_audit',
++    notes: 'Commit path independent of GATE_EVAL node',
++  },
++  {
++    corridorId: 'itinerary_adjust_apply',
++    productSurface: 'Main Agent',
++    usesMainChainGateEval: true,
++    gateReuse: 'main_chain_gate_eval',
++    verifyAuthority: 'Main-chain VERIFY then apply flag / AUTO corridor',
++    canWriteWithoutMainChainGate: false,
++    auditStatus: 'proven',
++    notes: 'Advice segment uses SM; apply short-circuit still requires prior draft/guards',
++  },
++  {
++    corridorId: 'mobile_verified_apply',
++    productSurface: 'Mobile',
++    usesMainChainGateEval: false,
++    gateReuse: 'verification_snapshot',
++    verifyAuthority: 'Mobile Verification Snapshot',
++    canWriteWithoutMainChainGate: true,
++    auditStatus: 'needs_audit',
++    notes: 'BFF 独立；须审计 snapshot freshness',
++  },
++  {
++    corridorId: 'ortools_shadow',
++    productSurface: 'Shadow',
++    usesMainChainGateEval: false,
++    gateReuse: 'none_or_unknown',
++    verifyAuthority: 'lab/compare only',
++    canWriteWithoutMainChainGate: false,
++    auditStatus: 'shadow_only',
++    notes: 'Must never Apply shadowChanges as authoritative plan',
++  },
++] as const;
+diff --git a/src/agent/contracts/proposal-like.conceptual.constants.spec.ts b/src/agent/contracts/proposal-like.conceptual.constants.spec.ts
+new file mode 100644
+index 000000000..4089ccb9f
+--- /dev/null
++++ b/src/agent/contracts/proposal-like.conceptual.constants.spec.ts
+@@ -0,0 +1,20 @@
++import {
++  PROPOSAL_LIKE_IS_NOT_A_BASE_CLASS,
++  PROPOSAL_LIKE_REGISTRY,
++} from './proposal-like.conceptual.constants';
++
++describe('proposal-like conceptual registry', () => {
++  it('forbids treating ProposalLike as a code base class', () => {
++    expect(PROPOSAL_LIKE_IS_NOT_A_BASE_CLASS).toMatch(/documentation concept/i);
++  });
++
++  it('marks OR-Tools shadow as non-authoritative', () => {
++    const shadow = PROPOSAL_LIKE_REGISTRY.find((r) => r.kind === 'ortools_shadow_attachment');
++    expect(shadow?.authoritativeApply).toBe(false);
++  });
++
++  it('keeps Arrange PlanProposal as a local canonical surface', () => {
++    const arrange = PROPOSAL_LIKE_REGISTRY.find((r) => r.kind === 'arrange_plan_proposal');
++    expect(arrange?.actualTypeOrKey).toContain('PlanProposal');
++  });
++});
+diff --git a/src/agent/contracts/proposal-like.conceptual.constants.ts b/src/agent/contracts/proposal-like.conceptual.constants.ts
+new file mode 100644
+index 000000000..9cd3652d8
+--- /dev/null
++++ b/src/agent/contracts/proposal-like.conceptual.constants.ts
+@@ -0,0 +1,79 @@
++/**
++ * P1-2：ProposalLike 是文档概念，不是代码统一基类。
++ * 禁止引入伪父类把各走廊 Proposal 强行合并。
++ */
++
++export const PROPOSAL_LIKE_CONCEPTUAL_VERSION = '1.0.0' as const;
++
++export type ProposalLikeKind =
++  | 'arrange_plan_proposal'
++  | 'iceland_initial_plan_proposal'
++  | 'pending_itinerary_adjust_draft'
++  | 'unified_decision_preview'
++  | 'planning_assistant_plan'
++  | 'ortools_shadow_attachment';
++
++export type ProposalLikeRegistryRow = {
++  kind: ProposalLikeKind;
++  /** Conceptual label for docs / UI */
++  conceptualLabel: string;
++  /** Actual code type or metadata key */
++  actualTypeOrKey: string;
++  productSurface: string;
++  authoritativeApply: boolean;
++  notes: string;
++};
++
++export const PROPOSAL_LIKE_IS_NOT_A_BASE_CLASS =
++  'ProposalLike is a documentation concept only; there is no shared TypeScript base class.' as const;
++
++export const PROPOSAL_LIKE_REGISTRY: readonly ProposalLikeRegistryRow[] = [
++  {
++    kind: 'arrange_plan_proposal',
++    conceptualLabel: 'Arrange PlanProposal',
++    actualTypeOrKey: 'PlanProposal (arrange-itinerary/types)',
++    productSurface: 'Arrange',
++    authoritativeApply: true,
++    notes: '局部 Canonical；Apply 禁 ortoolsShadow.shadowChanges',
++  },
++  {
++    kind: 'iceland_initial_plan_proposal',
++    conceptualLabel: 'Iceland Initial Plan Proposal',
++    actualTypeOrKey: 'IcelandInitialPlanPreviewService proposal',
++    productSurface: 'Iceland',
++    authoritativeApply: true,
++    notes: 'Confirm 不写库；Apply 写 PlanVersion + Trip',
++  },
++  {
++    kind: 'pending_itinerary_adjust_draft',
++    conceptualLabel: 'ITINERARY_ADJUST pending draft',
++    actualTypeOrKey: 'pending_itinerary_adjust_draft metadata',
++    productSurface: 'Main Agent',
++    authoritativeApply: true,
++    notes: '写 Trip/ItineraryItem；非 PlanProposal 父类型',
++  },
++  {
++    kind: 'unified_decision_preview',
++    conceptualLabel: 'Unified Decision Preview / Option',
++    actualTypeOrKey: 'Unified Decision Gateway preview',
++    productSurface: 'Unified Decision',
++    authoritativeApply: true,
++    notes: '独立 Assessment / Execute 走廊',
++  },
++  {
++    kind: 'planning_assistant_plan',
++    conceptualLabel: 'Planning Assistant Plan',
++    actualTypeOrKey: 'PlanningAssistantV2 plan confirm',
++    productSurface: 'Planning Assistant',
++    authoritativeApply: true,
++    notes: '并行产品面，未并入 route_and_run 主链',
++  },
++  {
++    kind: 'ortools_shadow_attachment',
++    conceptualLabel: 'OR-Tools Shadow',
++    actualTypeOrKey: 'ortoolsShadow / shadowChanges',
++    productSurface: 'Shadow',
++    authoritativeApply: false,
++    notes: '仅候选比较；禁止直接 Apply；前端须标非权威',
++  },
++] as const;
+diff --git a/src/agent/contracts/writeback-corridor-audit.matrix.spec.ts b/src/agent/contracts/writeback-corridor-audit.matrix.spec.ts
+new file mode 100644
+index 000000000..e332ad74d
+--- /dev/null
++++ b/src/agent/contracts/writeback-corridor-audit.matrix.spec.ts
+@@ -0,0 +1,15 @@
++import { WRITEBACK_CORRIDOR_AUDIT_MATRIX } from './writeback-corridor-audit.matrix';
++
++describe('writeback-corridor-audit.matrix', () => {
++  it('includes ITINERARY_ADJUST with trip_itinerary_item persistence and narrow AUTO', () => {
++    const row = WRITEBACK_CORRIDOR_AUDIT_MATRIX.find((r) => r.id === 'itinerary_adjust_apply');
++    expect(row?.persistence).toBe('trip_itinerary_item');
++    expect(row?.auto).toBe('narrow_corridor');
++  });
++
++  it('marks Iceland apply as plan_version without AUTO', () => {
++    const row = WRITEBACK_CORRIDOR_AUDIT_MATRIX.find((r) => r.id === 'iceland_apply');
++    expect(row?.persistence).toBe('plan_version');
++    expect(row?.auto).toBe('never');
++  });
++});
+diff --git a/src/agent/contracts/writeback-corridor-audit.matrix.ts b/src/agent/contracts/writeback-corridor-audit.matrix.ts
+new file mode 100644
+index 000000000..72b7883e5
+--- /dev/null
++++ b/src/agent/contracts/writeback-corridor-audit.matrix.ts
+@@ -0,0 +1,104 @@
++/**
++ * P0-4：权威写回走廊审计矩阵（代码 SSOT 脚手架）。
++ * 分走廊实现细节以各 Apply Service 为准；本表供契约测试与审查引用。
++ */
++
++export const WRITEBACK_CORRIDOR_AUDIT_MATRIX_VERSION = '1.0.0' as const;
++
++export type WritebackPersistenceTarget =
++  | 'none'
++  | 'trip_itinerary_item'
++  | 'plan_version'
++  | 'effective_plan'
++  | 'side_effect'
++  | 'mixed';
++
++export type WritebackAutoPolicy = 'never' | 'narrow_corridor' | 'policy_controlled';
++
++export type WritebackCorridorAuditRow = {
++  id: string;
++  entry: string;
++  productSurface: string;
++  preVerify: string;
++  confirm: string;
++  freshnessGuard: string;
++  idempotency: string;
++  persistence: WritebackPersistenceTarget;
++  auto: WritebackAutoPolicy;
++  notes: string;
++};
++
++export const WRITEBACK_CORRIDOR_AUDIT_MATRIX: readonly WritebackCorridorAuditRow[] = [
++  {
++    id: 'iceland_apply',
++    entry: 'POST /iceland-self-drive/trips/:tripId/initial-plan/proposals/:proposalId/apply',
++    productSurface: 'Iceland',
++    preVerify: 'corridor verification / proposal status',
++    confirm: 'required (confirm opens apply)',
++    freshnessGuard: 'proposal status',
++    idempotency: 'Idempotency-Key',
++    persistence: 'plan_version',
++    auto: 'never',
++    notes: 'Also writes Trip/ItineraryItem; not OR-Tools',
++  },
++  {
++    id: 'arrange_apply',
++    entry: 'POST /trips/:tripId/arrange-itinerary/proposals/:proposalId/apply',
++    productSurface: 'Arrange',
++    preVerify: 'proposal validation / write guard; never ortoolsShadow.shadowChanges',
++    confirm: 'explicit apply',
++    freshnessGuard: 'proposal / contextVersion',
++    idempotency: 'corridor-specific',
++    persistence: 'plan_version',
++    auto: 'never',
++    notes: 'ADR-008 S4 shadow forbidden on apply',
++  },
++  {
++    id: 'unified_execute',
++    entry: 'POST /trips/:tripId/decisions/:decisionId/execute',
++    productSurface: 'Unified Decision',
++    preVerify: 'Unified Assessment',
++    confirm: 'authorize then execute',
++    freshnessGuard: 'decision revision',
++    idempotency: 'corridor-specific',
++    persistence: 'mixed',
++    auto: 'policy_controlled',
++    notes: 'Kernel VERIFY is not the sole authority for all corridors',
++  },
++  {
++    id: 'actions_commit',
++    entry: 'POST /agent/actions/commit',
++    productSurface: 'Agent Actions',
++    preVerify: 'preview',
++    confirm: 'commit',
++    freshnessGuard: 'action plan',
++    idempotency: 'idempotency_key',
++    persistence: 'mixed',
++    auto: 'policy_controlled',
++    notes: 'Side-effect rules apply',
++  },
++  {
++    id: 'itinerary_adjust_apply',
++    entry: 'POST /agent/route_and_run (+ apply_itinerary_adjust_draft / AUTO corridor)',
++    productSurface: 'Main Agent',
++    preVerify: 'main-chain Kernel VERIFY (advice segment)',
++    confirm: 'utterance / apply flag',
++    freshnessGuard: 'bound trip + pending draft',
++    idempotency: 'request_id',
++    persistence: 'trip_itinerary_item',
++    auto: 'narrow_corridor',
++    notes: 'P0-1: FLAWED_DRAFT blocks AUTO/SEMI_AUTO',
++  },
++  {
++    id: 'mobile_verified_apply',
++    entry: 'POST /mobile/trips/:tripId/... verified proposal apply',
++    productSurface: 'Mobile',
++    preVerify: 'Verification Snapshot',
++    confirm: 'explicit mobile action',
++    freshnessGuard: 'snapshot freshness',
++    idempotency: 'corridor-specific',
++    persistence: 'mixed',
++    auto: 'never',
++    notes: 'Independent of route_and_run GATE_EVAL node',
++  },
++] as const;
+diff --git a/src/agent/delivery/AGENT_UNIFIED_INTERFACE_SCOPE.md b/src/agent/delivery/AGENT_UNIFIED_INTERFACE_SCOPE.md
+index eb9d9a0ae..4f1bb540d 100644
+--- a/src/agent/delivery/AGENT_UNIFIED_INTERFACE_SCOPE.md
++++ b/src/agent/delivery/AGENT_UNIFIED_INTERFACE_SCOPE.md
+@@ -14,11 +14,11 @@
+ 
+ | 域 | 说明 |
+ |----|------|
+-| **意图与路由** | System 1（API/RAG） vs System 2（ReAct + 工具）；`routePolicy` 选 `CLAUDE_SM / CLAUDE_DYNAMIC / LEGACY` |
+-| **行程规划主链** | INTAKE → RESEARCH → GATE → PLAN → VERIFY ⇄ REPAIR → NARRATE |
++| **意图与路由** | 入口可分流 System 1（API/RAG）与轻量路径；**规划产品脊柱**为 Claude 图状态机 `CLAUDE_SM`（非 ReAct 主循环） |
++| **行程规划主链** | INTAKE → STATE_UPDATE → RESEARCH → POI_SELECTION → GATE_EVAL → CONTEXT_BUILD → PLAN_GEN → OPTIMIZE → VERIFY ⇄ REPAIR → NARRATE → FEEDBACK → HALLUCINATION → END |
+ | **三人格门控** | Abu / Dr.Dre / Neptune → `gate_result` · `explain.guardian_personas` |
+-| **SUCCESS 交付** | `result.payload.ui_display.*`（行程、地图、预订、语音等） |
+-| **未完全收敛** | 默认澄清终端；opt-in `allow_flawed_draft_narrate` → `flawed_draft_v1` Banner |
++| **SUCCESS 交付** | `result.payload.ui_display.*`；先读 `trusted_delivery_v1.delivery_verdict` |
++| **未完全收敛** | 默认澄清；仅显式 `allow_flawed_draft_narrate=true` → `FLAWED_DRAFT`（禁止 AUTO） |
+ | **长耗时** | 同步 / `async_mode` 委托 / 显式 `route_and_run/async` + SSE + Worker Lease |
+ | **行程写操作卫星** | 协商确认、回滚、replay、修订时间轴、鲁棒性 Dashboard |
+ | **预订 checkout** | `booking_cart/apply`（状态机，不回写主链） |
+diff --git a/src/agent/delivery/FRONTEND_TRUSTED_DELIVERY.md b/src/agent/delivery/FRONTEND_TRUSTED_DELIVERY.md
+index ffb4eedcd..d3b72c942 100644
+--- a/src/agent/delivery/FRONTEND_TRUSTED_DELIVERY.md
++++ b/src/agent/delivery/FRONTEND_TRUSTED_DELIVERY.md
+@@ -19,7 +19,17 @@
+ 
+ ---
+ 
+-## 2. 先判 `result.status`，再读 `trusted_delivery_v1`
++## 2. 先判 `delivery_verdict`，再判 `result.status`
++
++P0-1 起，`trusted_delivery_v1.delivery_verdict` 是产品可感知交付态：
++
++| `delivery_verdict` | 含义 | 前端硬约束 |
++|--------------------|------|------------|
++| `VERIFIED` | 验证收敛可展示为已验证方案 | 可进入 Confirm / Apply（仍须用户授权） |
++| `VERIFIED_WITH_WARNINGS` | 有软警告 | Banner 警告；勿静默当完美方案 |
++| `FLAWED_DRAFT` | 显式瑕疵草案 | **不得**显示为已验证；**不得** AUTO Apply；默认要求确认 |
++| `BLOCKED` | 需澄清/确认/门控阻断 | 走澄清或确认流 |
++| `FAILED` | 失败/超时 | 错误态 |
+ 
+ ```ts
+ type ResultStatus =
+@@ -33,8 +43,13 @@ type ResultStatus =
+ 
+ const status = response.result.status;
+ const td = response.result.payload?.trusted_delivery_v1;
++const verdict = td?.delivery_verdict;
+ const ui = response.result.payload?.ui_display;
+ const flawed = response.result.payload?.flawed_draft_v1;
++
++if (verdict === 'FLAWED_DRAFT' || flawed?.is_flawed) {
++  // 展示瑕疵 Banner；禁止当「已验证方案」；禁止静默 Apply
++}
+ ```
+ 
+ | `status` | 前端动作 |
+diff --git a/src/agent/delivery/trusted-delivery-consumption.contract.spec.ts b/src/agent/delivery/trusted-delivery-consumption.contract.spec.ts
+index c2cc0733e..33b03ebc6 100644
+--- a/src/agent/delivery/trusted-delivery-consumption.contract.spec.ts
++++ b/src/agent/delivery/trusted-delivery-consumption.contract.spec.ts
+@@ -32,6 +32,7 @@ describe('trusted_delivery_v1 consumption contract', () => {
+     };
+ 
+     expect(payload.trusted_delivery_v1.schemaId).toBe(TRUSTED_DELIVERY_SCHEMA_ID);
++    expect(payload.trusted_delivery_v1.delivery_verdict).toBe('VERIFIED');
+     expect(payload.trusted_delivery_v1.task_progress.phase).toBe('narrating');
+     expect(payload.trusted_delivery_v1.user_confirm.required).toBe(false);
+     expect(payload.trusted_delivery_v1.ai_operation_log[0].label_zh).toBe('调研中');
+diff --git a/src/agent/delivery/types/delivery-verdict.types.spec.ts b/src/agent/delivery/types/delivery-verdict.types.spec.ts
+new file mode 100644
+index 000000000..8ff032b8b
+--- /dev/null
++++ b/src/agent/delivery/types/delivery-verdict.types.spec.ts
+@@ -0,0 +1,39 @@
++import { resolveDeliveryVerdict } from './delivery-verdict.types';
++
++describe('resolveDeliveryVerdict', () => {
++  it('maps FAILED / TIMEOUT', () => {
++    expect(resolveDeliveryVerdict({ resultStatus: 'FAILED' })).toBe('FAILED');
++    expect(resolveDeliveryVerdict({ resultStatus: 'TIMEOUT' })).toBe('FAILED');
++  });
++
++  it('maps NEED_* and BLOCKED to BLOCKED', () => {
++    expect(resolveDeliveryVerdict({ resultStatus: 'BLOCKED' })).toBe('BLOCKED');
++    expect(resolveDeliveryVerdict({ resultStatus: 'NEED_MORE_INFO' })).toBe('BLOCKED');
++    expect(resolveDeliveryVerdict({ resultStatus: 'NEED_CONFIRMATION' })).toBe('BLOCKED');
++  });
++
++  it('maps flawed draft ahead of OK', () => {
++    expect(
++      resolveDeliveryVerdict({
++        resultStatus: 'OK',
++        flawedDraft: {
++          schemaId: 'tripnara.flawed_draft@v1',
++          version: 1,
++          is_flawed: true,
++          reasons: [],
++          user_action_recommended: true,
++        },
++      }),
++    ).toBe('FLAWED_DRAFT');
++  });
++
++  it('maps OK with soft warnings', () => {
++    expect(
++      resolveDeliveryVerdict({ resultStatus: 'OK', hasSoftWarnings: true }),
++    ).toBe('VERIFIED_WITH_WARNINGS');
++  });
++
++  it('maps clean OK to VERIFIED', () => {
++    expect(resolveDeliveryVerdict({ resultStatus: 'OK' })).toBe('VERIFIED');
++  });
++});
+diff --git a/src/agent/delivery/types/delivery-verdict.types.ts b/src/agent/delivery/types/delivery-verdict.types.ts
+new file mode 100644
+index 000000000..025ac75de
+--- /dev/null
++++ b/src/agent/delivery/types/delivery-verdict.types.ts
+@@ -0,0 +1,60 @@
++/**
++ * 产品可感知交付裁决态（P0-1）。
++ * 前端须先读 delivery_verdict，再决定 Banner / Confirm / Apply 可用性。
++ */
++
++import type { FlawedDraftDescriptorV1 } from './flawed-draft-v1.type';
++
++export const DELIVERY_VERDICTS = [
++  'VERIFIED',
++  'VERIFIED_WITH_WARNINGS',
++  'FLAWED_DRAFT',
++  'BLOCKED',
++  'FAILED',
++] as const;
++
++export type DeliveryVerdict = (typeof DELIVERY_VERDICTS)[number];
++
++export type ResolveDeliveryVerdictInput = {
++  resultStatus?: string | null;
++  flawedDraft?: FlawedDraftDescriptorV1 | null;
++  /** SOFT / 非 flawed 警告：如 gate ADJUST_REQUIRED 已在 flawed 描述符外单独提示 */
++  hasSoftWarnings?: boolean;
++};
++
++/**
++ * VERIFY 通过 ≠ 用户已确认 ≠ 已写库。
++ * FLAWED_DRAFT 不得显示为「已验证方案」，且禁止 AUTO Apply。
++ */
++export function resolveDeliveryVerdict(input: ResolveDeliveryVerdictInput): DeliveryVerdict {
++  const status = String(input.resultStatus ?? '').toUpperCase();
++
++  if (status === 'FAILED' || status === 'TIMEOUT') {
++    return 'FAILED';
++  }
++  if (status === 'BLOCKED') {
++    return 'BLOCKED';
++  }
++  // NEED_* 对用户是阻断继续自动推进，归 BLOCKED（需处理）
++  if (
++    status === 'NEED_MORE_INFO' ||
++    status === 'NEED_CONFIRMATION' ||
++    status === 'NEED_CONSENT' ||
++    status === 'NEED_USER_CONFIRMATION'
++  ) {
++    return 'BLOCKED';
++  }
++
++  if (input.flawedDraft?.is_flawed === true) {
++    return 'FLAWED_DRAFT';
++  }
++
++  if (status === 'OK' || status === 'OK_WITH_BANNER' || status === 'SUCCESS' || status === '') {
++    if (input.hasSoftWarnings === true) {
++      return 'VERIFIED_WITH_WARNINGS';
++    }
++    return 'VERIFIED';
++  }
++
++  return 'FAILED';
++}
+diff --git a/src/agent/delivery/types/trusted-delivery-v1.type.ts b/src/agent/delivery/types/trusted-delivery-v1.type.ts
+index a8c507c43..87af55942 100644
+--- a/src/agent/delivery/types/trusted-delivery-v1.type.ts
++++ b/src/agent/delivery/types/trusted-delivery-v1.type.ts
+@@ -4,6 +4,7 @@
+ 
+ import type { TrustedPublicPhase } from '../trusted-delivery.constants';
+ import { TRUSTED_DELIVERY_SCHEMA_ID } from '../trusted-delivery.constants';
++import type { DeliveryVerdict } from './delivery-verdict.types';
+ 
+ export type TrustedDeliveryTaskProgressV1 = {
+   phase: TrustedPublicPhase;
+@@ -40,6 +41,8 @@ export type TrustedDeliveryAiOperationLogEntryV1 = {
+ export type TrustedDeliveryV1 = {
+   schemaId: typeof TRUSTED_DELIVERY_SCHEMA_ID;
+   version: 1;
++  /** P0-1：产品可感知交付裁决；前端须先读本字段 */
++  delivery_verdict: DeliveryVerdict;
+   task_progress: TrustedDeliveryTaskProgressV1;
+   user_confirm: TrustedDeliveryUserConfirmV1;
+   degraded_explanation: TrustedDeliveryDegradedExplanationV1;
+diff --git a/src/agent/delivery/utils/trusted-delivery.project.util.spec.ts b/src/agent/delivery/utils/trusted-delivery.project.util.spec.ts
+index 2d233d95f..f6dfd46ea 100644
+--- a/src/agent/delivery/utils/trusted-delivery.project.util.spec.ts
++++ b/src/agent/delivery/utils/trusted-delivery.project.util.spec.ts
+@@ -50,6 +50,7 @@ describe('trusted-delivery.project.util', () => {
+ 
+     expect(out.task_progress.phase).toBe('researching');
+     expect(out.task_progress.label_zh).toBe('调研中');
++    expect(out.delivery_verdict).toBe('BLOCKED');
+     expect(out.user_confirm.required).toBe(true);
+     expect(out.degraded_explanation.present).toBe(true);
+     expect(out.degraded_explanation.reasons_zh?.join('')).not.toContain('KERNEL');
+@@ -57,4 +58,21 @@ describe('trusted-delivery.project.util', () => {
+     expect(JSON.stringify(out)).not.toContain('poi_selection');
+     expect(out.ai_operation_log.some((e) => e.label_zh === '调研中')).toBe(true);
+   });
++
++  it('projects FLAWED_DRAFT delivery_verdict on OK + flawed draft', () => {
++    const out = projectTrustedDeliveryV1({
++      currentStep: 'NARRATE',
++      resultStatus: 'OK',
++      flawedDraft: {
++        schemaId: 'tripnara.flawed_draft@v1',
++        version: 1,
++        is_flawed: true,
++        reasons: [{ code: 'REPAIR_BUDGET_EXCEEDED' }],
++        headline_zh: '瑕疵草案',
++        user_action_recommended: true,
++      },
++    });
++    expect(out.delivery_verdict).toBe('FLAWED_DRAFT');
++    expect(out.user_confirm.required).toBe(true);
++  });
+ });
+diff --git a/src/agent/delivery/utils/trusted-delivery.project.util.ts b/src/agent/delivery/utils/trusted-delivery.project.util.ts
+index 7e1012303..c27a387bf 100644
+--- a/src/agent/delivery/utils/trusted-delivery.project.util.ts
++++ b/src/agent/delivery/utils/trusted-delivery.project.util.ts
+@@ -1,5 +1,6 @@
+ import type { AgentRunTraceV1 } from '../../orchestration/agent-run-trace.util';
+ import type { FlawedDraftDescriptorV1 } from '../types/flawed-draft-v1.type';
++import { resolveDeliveryVerdict } from '../types/delivery-verdict.types';
+ import type { TrustedDeliveryV1 } from '../types/trusted-delivery-v1.type';
+ import {
+   PUBLIC_PHASE_LABEL_ZH,
+@@ -35,6 +36,8 @@ export function projectTrustedDeliveryV1(input: {
+   agentRunTrace?: AgentRunTraceV1;
+   flawedDraft?: FlawedDraftDescriptorV1;
+   clarificationCount?: number;
++  /** 非 flawed 的软警告（如 SOFT gate），投影为 VERIFIED_WITH_WARNINGS */
++  hasSoftWarnings?: boolean;
+ }): TrustedDeliveryV1 {
+   const phase = mapInternalStepToPublicPhase(input.currentStep);
+   const status = String(input.resultStatus ?? '').toUpperCase();
+@@ -44,6 +47,7 @@ export function projectTrustedDeliveryV1(input: {
+       status === 'NEED_CONFIRMATION' ||
+       status === 'NEED_MORE_INFO' ||
+       status === 'NEED_CONSENT' ||
++      input.flawedDraft?.is_flawed === true ||
+       (input.clarificationCount ?? 0) > 0,
+     kind:
+       status === 'NEED_CONSENT'
+@@ -99,9 +103,24 @@ export function projectTrustedDeliveryV1(input: {
+       return acc;
+     }, []);
+ 
++  const delivery_verdict = resolveDeliveryVerdict({
++    resultStatus: input.resultStatus,
++    flawedDraft: input.flawedDraft,
++    hasSoftWarnings: input.hasSoftWarnings === true,
++  });
++
++  // FLAWED_DRAFT：强制确认意图，默认不进入静默 Confirm/Apply
++  if (delivery_verdict === 'FLAWED_DRAFT') {
++    user_confirm.required = true;
++    user_confirm.kind = user_confirm.kind ?? 'confirmation';
++    user_confirm.summary_zh =
++      user_confirm.summary_zh ?? '当前为瑕疵草案，请确认风险后再继续';
++  }
++
+   return {
+     schemaId: TRUSTED_DELIVERY_SCHEMA_ID,
+     version: 1,
++    delivery_verdict,
+     task_progress: {
+       phase,
+       label_zh: PUBLIC_PHASE_LABEL_ZH[phase],
+diff --git a/src/agent/dto/route-and-run.dto.ts b/src/agent/dto/route-and-run.dto.ts
+index 347cf4eb8..e0bb0236d 100644
+--- a/src/agent/dto/route-and-run.dto.ts
++++ b/src/agent/dto/route-and-run.dto.ts
+@@ -374,9 +374,9 @@ export class AgentOptionsDto {
+ 
+   @ApiPropertyOptional({
+     description:
+-      'REPAIR/效用预算耗尽时仍进入 NARRATE 并附带 `flawed_draft_v1`（默认 false → 澄清终端）。与 `tripnara.flawed_draft@v1` 契约对齐。',
+-    example: false,
+-    default: false,
++      'REPAIR/效用预算耗尽时进入 NARRATE 并附带 flawed_draft（安全/法规道路等 allow-matrix 仍禁止）。' +
++      '仅 true=显式允许瑕疵交付（delivery_verdict=FLAWED_DRAFT，禁止 AUTO 写回）；false 或缺省=强制澄清。绑定 trip_id 不再默认放行。',
++    example: true,
+   })
+   @IsOptional()
+   @IsBoolean()
+@@ -3321,7 +3321,9 @@ export class RouteAndRunResponseDto {
+        * 轻量咨询且携带 trip_id：结构化「一键操作」（前端渲染按钮）。
+        * - `route_and_run_message`：点击后用 `payload.message` 作为用户话术再次 POST `/api/agent/route_and_run`。
+        *   **须携带行程**：顶层 `trip_id`（或与 `trip_id` 等价的 `tripId`），或将整个 `payload` 置于请求体的 `suggested_operation_payload` / `payload` 字段（全局 whitelist 会丢弃未声明的裸嵌套字段）。
+-       * - `client_navigation`：仅前端路由，使用 `payload.route`（如 timeline）与 `payload.trip_id`。
++       * - `client_navigation`：仅前端路由，使用 `payload.route`（timeline / silent_vote_create 等）
++       *   或 `payload.action`（silent_vote_create / start_vote / team.start_vote）与 `payload.trip_id`。
++       *   「发起投票」打开 SilentVoteCreateDialog，不替用户创建投票。
+        */
+       suggested_operations?: Array<{
+         id: string;
+diff --git a/src/agent/guards/done-response-completeness.guard.ts b/src/agent/guards/done-response-completeness.guard.ts
+index f4ad91daa..d465a6b92 100644
+--- a/src/agent/guards/done-response-completeness.guard.ts
++++ b/src/agent/guards/done-response-completeness.guard.ts
+@@ -38,9 +38,11 @@ export function assertDoneResponseCompleteness(
+     | undefined;
+ 
+   const isItineraryCrudShortCircuit =
++    orch?.state?.metadata?.lodging_replace_intake === true ||
+     orch?.state?.metadata?.itinerary_item_delete_intake === true ||
+     orch?.state?.metadata?.itinerary_item_add_intake === true ||
+     orch?.state?.metadata?.itinerary_item_update_intake === true ||
++    orch?.state?.metadata?.itinerary_day_replan_intake === true ||
+     (response.observability as { itinerary_item_crud?: boolean } | undefined)?.itinerary_item_crud ===
+       true;
+ 
+diff --git a/src/agent/orchestration/ORCHESTRATION_GOVERNANCE_MATRIX.md b/src/agent/orchestration/ORCHESTRATION_GOVERNANCE_MATRIX.md
+index 1971e7b26..6ab1a6e07 100644
+--- a/src/agent/orchestration/ORCHESTRATION_GOVERNANCE_MATRIX.md
++++ b/src/agent/orchestration/ORCHESTRATION_GOVERNANCE_MATRIX.md
+@@ -122,17 +122,18 @@ Harness 映射（边表）：`EVIDENCE_SNAPSHOT_UNBOUND` · `EVIDENCE_VERSION_MI
+ | `allow_partial` + GATE 降级 | 允许缺日期草案进入 PLAN；NARRATE 须标注缺口 |
+ | 编排 SUCCESS + 未收敛 violation | `explain.decision_log` + `gate_result.violations` 保留；前端读 `ui_display` / action 列表 |
+ 
+-**白皮书「max 2 次 REPAIR → 瑕疵 NARRATE」**：已实现 **P1.1** — 默认仍为 max **3** + 澄清；设 `options.allow_flawed_draft_narrate=true` 可继续 NARRATE 并附带 `flawed_draft_v1`（`result.payload` + `explain` 同源）。
++**白皮书「max 2 次 REPAIR → 瑕疵 NARRATE」**：默认仍为 max **3** + 澄清；**仅**显式 `options.allow_flawed_draft_narrate=true` 可继续 NARRATE 并附带 `flawed_draft_v1` / `delivery_verdict=FLAWED_DRAFT`（`result.payload` + `explain` 同源）。绑定 `trip_id` **不**再默认放行。`FLAWED_DRAFT` 禁止 ITINERARY_ADJUST AUTO/SEMI_AUTO 写回。
+ 
+-### 3.4 瑕疵草案契约（P1.1）
++### 3.4 瑕疵草案契约（P0-1）
+ 
+ | 字段 | 路径 |
+ |------|------|
+ | Schema | `tripnara.flawed_draft@v1` |
+-| 装配 | `buildFlawedDraftDescriptorV1()` |
+-| 触发 | `allow_flawed_draft_narrate` · `gate ADJUST_REQUIRED` · `allow_partial` 降级 · 未消解 VERIFY issues |
++| 交付态 | `trusted_delivery_v1.delivery_verdict`（`VERIFIED` / `VERIFIED_WITH_WARNINGS` / `FLAWED_DRAFT` / `BLOCKED` / `FAILED`） |
++| 装配 | `buildFlawedDraftDescriptorV1()` · `resolveDeliveryVerdict()` |
++| 触发 | **显式** `allow_flawed_draft_narrate=true` · `gate ADJUST_REQUIRED` · `allow_partial` 降级 · 未消解 VERIFY issues |
+ 
+-前端：**读 `flawed_draft_v1.headline_zh` 展示 Banner**，不可将 `is_flawed=true` 的行程当作完全 VERIFIED。
++前端：先读 `delivery_verdict`；**读 `flawed_draft_v1.headline_zh` 展示 Banner**；`FLAWED_DRAFT` / `is_flawed=true` 不可当作完全 VERIFIED，且不得静默 Apply。
+ 
+ ### 3.5 CGUS / TripDraft 路径（并行）
+ 
+diff --git a/src/agent/orchestration/ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md b/src/agent/orchestration/ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md
+index 7b81c451a..c85cb7248 100644
+--- a/src/agent/orchestration/ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md
++++ b/src/agent/orchestration/ORCHESTRATION_MAIN_CHAIN_PROTOCOL.md
+@@ -81,7 +81,7 @@ POI 候选流水线（`poi-candidate-pipeline.util.ts`，挂在 `poi_selection`
+ 
+ 见常量 `MAIN_CHAIN_USER_CONFIRM_POINTS`（Abu、REPAIR halt、协商、瑕疵草案 opt-in 等）。
+ 
+-默认：**超 REPAIR 预算 → `NEED_CONFIRMATION`**，非静默瑕疵 SUCCESS。`allow_flawed_draft_narrate` 为显式 opt-in。
++默认：**超 REPAIR 预算 → `NEED_CONFIRMATION`**，非静默瑕疵 SUCCESS。`allow_flawed_draft_narrate` 为**显式 opt-in（仅 `true`）**；绑定 trip 缺省不放行。瑕疵交付时 `delivery_verdict=FLAWED_DRAFT`，禁止 AUTO 写回。
+ 
+ ---
+ 
+diff --git a/src/agent/orchestration/graph/nodes/intake-itinerary-compound.util.ts b/src/agent/orchestration/graph/nodes/intake-itinerary-compound.util.ts
+index baf36efaf..92ab53749 100644
+--- a/src/agent/orchestration/graph/nodes/intake-itinerary-compound.util.ts
++++ b/src/agent/orchestration/graph/nodes/intake-itinerary-compound.util.ts
+@@ -11,9 +11,14 @@ import { detectItineraryAdjustIntent } from '../../../utils/itinerary-adjust-int
+ import { applyItineraryItemAddIfRequested } from './intake-itinerary-add.util';
+ import { applyItineraryItemDeleteIfRequested } from './intake-itinerary-delete.util';
+ import { applyItineraryItemUpdateIfRequested } from './intake-itinerary-update.util';
++import {
++  applyLodgingReplaceIfRequested,
++  type LodgingReplaceIntakeHost,
++} from './intake-itinerary-lodging-replace.util';
+ import type { ItineraryItemAddIntakeHost } from './intake-itinerary-add.util';
+ 
+-export type CompoundCrudIntakeHost = ItineraryItemAddIntakeHost & {
++export type CompoundCrudIntakeHost = ItineraryItemAddIntakeHost &
++  LodgingReplaceIntakeHost & {
+   tryApplyBoundTripItineraryItemDelete?(
+     tripId: string,
+     userId: string | undefined,
+@@ -34,12 +39,23 @@ export async function applyItineraryCrudWithCompoundPlan(
+     userId?: string;
+     state: OrchestratorState;
+     countryCode?: string | null;
++    dateRange?: { start_date?: string; end_date?: string };
+   },
+ ): Promise<boolean> {
+   const intakeMsg = String(params.message ?? '').trim();
+   const tripId = params.tripId?.trim();
+   if (!intakeMsg || !tripId) return false;
+ 
++  // 住宿 A→B：即使被标成 ITINERARY_ADJUST 也优先手术式落库，避免走廊重规划答非所问
++  const lodgingHandled = await applyLodgingReplaceIfRequested(host, {
++    message: intakeMsg,
++    tripId,
++    userId: params.userId,
++    state: params.state,
++    dateRange: params.dateRange,
++  });
++  if (lodgingHandled) return true;
++
+   const routePrimary = (
+     (params.state.metadata as Record<string, unknown>)?.route_and_run_intent as
+       | { primary?: string }
+diff --git a/src/agent/orchestration/graph/nodes/intake-itinerary-day-replan.util.ts b/src/agent/orchestration/graph/nodes/intake-itinerary-day-replan.util.ts
+index 2a72c9bd0..6215894ed 100644
+--- a/src/agent/orchestration/graph/nodes/intake-itinerary-day-replan.util.ts
++++ b/src/agent/orchestration/graph/nodes/intake-itinerary-day-replan.util.ts
+@@ -27,6 +27,7 @@ export type ItineraryDayReplanIntakeHost = {
+ function wasItineraryItemCrudShortCircuited(state: OrchestratorState): boolean {
+   const md = state.metadata as Record<string, unknown>;
+   return (
++    md.lodging_replace_intake === true ||
+     md.itinerary_item_delete_intake === true ||
+     md.itinerary_item_add_intake === true ||
+     md.itinerary_item_update_intake === true
+diff --git a/src/agent/orchestration/graph/nodes/intake-itinerary-lodging-replace.util.ts b/src/agent/orchestration/graph/nodes/intake-itinerary-lodging-replace.util.ts
+new file mode 100644
+index 000000000..4eb9a26c4
+--- /dev/null
++++ b/src/agent/orchestration/graph/nodes/intake-itinerary-lodging-replace.util.ts
+@@ -0,0 +1,124 @@
++/**
++ * INTAKE：住宿从 A→B 替换短路（可在 ITINERARY_ADJUST 下执行，避免进全量走廊重规划）。
++ */
++
++import type { OrchestratorState } from '../../../interfaces/trip-plan.interface';
++import {
++  appendSkillsHitToOutputsSummary,
++  buildCrudSkillsDecisionMetadata,
++} from '../../../utils/itinerary-item-crud-decision-log.util';
++import { detectLodgingReplaceIntent } from '../../../utils/itinerary-lodging-replace.util';
++
++export type LodgingReplaceApplyResult = {
++  applied: boolean;
++  answerText?: string;
++  checkInIso?: string;
++  fromName?: string;
++  toName?: string;
++  reason?: string;
++  skillsHit?: string[];
++};
++
++export type LodgingReplaceIntakeHost = {
++  tryApplyBoundTripLodgingReplace?(
++    tripId: string,
++    userId: string | undefined,
++    message: string,
++    dateRange?: { start_date?: string; end_date?: string },
++  ): Promise<LodgingReplaceApplyResult>;
++};
++
++export async function applyLodgingReplaceIfRequested(
++  host: LodgingReplaceIntakeHost,
++  params: {
++    message?: string | null;
++    tripId?: string | null;
++    userId?: string;
++    state: OrchestratorState;
++    dateRange?: { start_date?: string; end_date?: string };
++  },
++): Promise<boolean> {
++  const intakeMsg = String(params.message ?? '').trim();
++  if (!detectLodgingReplaceIntent(intakeMsg)) return false;
++
++  const tripId = params.tripId?.trim();
++  if (!tripId || !host.tryApplyBoundTripLodgingReplace) return false;
++
++  const result = await host.tryApplyBoundTripLodgingReplace(
++    tripId,
++    params.userId,
++    intakeMsg,
++    params.dateRange,
++  );
++  (params.state.metadata as Record<string, unknown>).lodging_replace_short_circuit = result;
++
++  if (!result.answerText && !result.applied) return false;
++
++  (params.state.metadata as Record<string, unknown>).lodging_replace_intake = true;
++  params.state.clarification_questions = [];
++  params.state.gaps = (params.state.gaps ?? []).filter(
++    (g) => (g as { type?: string }).type !== 'MISSING_DESTINATION',
++  );
++  // 勿沿用旧 NARRATE 按日叙述 / 改排草案元数据，避免前端挂英文占位与「草案待确认」
++  delete (params.state.metadata as Record<string, unknown>).itinerary_adjust_intake;
++  delete (params.state.metadata as Record<string, unknown>).itinerary_adjust_result;
++  delete (params.state.metadata as Record<string, unknown>).pending_itinerary_adjust_draft;
++  const prior = params.state.narration;
++  params.state.narration = {
++    user_friendly_summary: result.answerText ?? '',
++    day_by_day_narrative: [],
++    highlights: prior?.highlights ?? [],
++    tips: prior?.tips ?? [],
++    day_by_day_text_zh: undefined,
++    warnings: prior?.warnings,
++    research_ui_hints: undefined,
++    voice_tone_modifier: prior?.voice_tone_modifier,
++    visual_hint: prior?.visual_hint,
++    audio_prosody: prior?.audio_prosody,
++  };
++  // 处理记录：把先前 ITINERARY_ADJUST 分类行改成用户可读的住宿替换说明
++  for (const entry of params.state.decision_log ?? []) {
++    const out = String(entry.outputs_summary ?? '');
++    const sys = (entry.metadata as Record<string, unknown> | undefined)?.system_action;
++    if (
++      sys === 'ITINERARY_ADJUST_CLASSIFIED' ||
++      /ITINERARY_ADJUST|探索\/商量意图|全周编排仅重算/.test(out)
++    ) {
++      entry.inputs_summary = '识别为修改某一晚住宿的请求';
++      entry.outputs_summary = result.applied
++        ? `已按您的要求替换住宿${result.checkInIso ? `（${result.checkInIso}）` : ''}。`
++        : '未能完成住宿替换，请确认该日行程后重试。';
++      entry.metadata = {
++        ...(entry.metadata ?? {}),
++        system_action: 'LODGING_REPLACE_CLASSIFIED',
++      };
++    }
++  }
++  params.state.decision_log.push({
++    request_id: params.state.request_id,
++    step: result.applied ? 'REPAIR' : 'INTAKE',
++    actor: 'LocalInsight',
++    inputs_summary: `用户住宿替换意图: ${intakeMsg.slice(0, 200)}`,
++    outputs_summary: appendSkillsHitToOutputsSummary(
++      result.answerText ?? '住宿替换',
++      result.skillsHit,
++    ),
++    evidence_refs: [],
++    timestamp: new Date().toISOString(),
++    metadata: buildCrudSkillsDecisionMetadata(result.skillsHit, {
++      system_action: result.applied ? 'LODGING_REPLACE_APPLIED' : 'LODGING_REPLACE_ADVICE',
++      lodging_replace_reason: result.reason,
++      check_in: result.checkInIso,
++      from_name: result.fromName,
++      to_name: result.toName,
++    }),
++  });
++  return true;
++}
++
++export function shouldTerminalAfterLodgingReplace(state: OrchestratorState): boolean {
++  const sc = (state.metadata as Record<string, unknown>)?.lodging_replace_short_circuit as
++    | { applied?: boolean; answerText?: string }
++    | undefined;
++  return sc?.applied === true || Boolean(sc?.answerText);
++}
+diff --git a/src/agent/orchestration/graph/nodes/intake-node.host.ts b/src/agent/orchestration/graph/nodes/intake-node.host.ts
+index 5493d0439..32a9cdf16 100644
+--- a/src/agent/orchestration/graph/nodes/intake-node.host.ts
++++ b/src/agent/orchestration/graph/nodes/intake-node.host.ts
+@@ -57,6 +57,13 @@ export interface IntakeNodeHost {
+     message: string,
+   ): Promise<import('./intake-itinerary-update.util').ItineraryItemUpdateApplyResult>;
+ 
++  tryApplyBoundTripLodgingReplace?(
++    tripId: string,
++    userId: string | undefined,
++    message: string,
++    dateRange?: { start_date?: string; end_date?: string },
++  ): Promise<import('./intake-itinerary-lodging-replace.util').LodgingReplaceApplyResult>;
++
+   tryApplyBoundTripItineraryDayReplan?(
+     tripId: string,
+     userId: string | undefined,
+diff --git a/src/agent/orchestration/graph/nodes/intake-phase.executor.ts b/src/agent/orchestration/graph/nodes/intake-phase.executor.ts
+index 9438ab6c9..7cc18291e 100644
+--- a/src/agent/orchestration/graph/nodes/intake-phase.executor.ts
++++ b/src/agent/orchestration/graph/nodes/intake-phase.executor.ts
+@@ -787,6 +787,15 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
+       }
+ 
+       if (tripIdForIntent) {
++        const tpr = state.trip_plan_request;
++        const dateRange =
++          tpr?.date_range ??
++          (tpr?.start_date
++            ? {
++                start_date: tpr.start_date,
++                end_date: tpr.date_range?.end_date ?? tpr.start_date,
++              }
++            : undefined);
+         await applyItineraryCrudWithCompoundPlan(host, {
+           message: intakeMsg,
+           tripId: tripIdForIntent,
+@@ -794,13 +803,8 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
+           state,
+           countryCode:
+             state.trip_plan_request?.ontology_context?.destination?.country_code,
++          dateRange,
+         });
+-        const tpr = state.trip_plan_request;
+-        const dateRange =
+-          tpr?.date_range ??
+-          (tpr?.start_date
+-            ? { start_date: tpr.start_date, end_date: tpr.start_date }
+-            : undefined);
+         await applyItineraryDayReplanIfRequested(host, {
+           message: intakeMsg,
+           tripId: tripIdForIntent,
+diff --git a/src/agent/orchestration/graph/nodes/intake-phase.host.ts b/src/agent/orchestration/graph/nodes/intake-phase.host.ts
+index 9ab942314..923a622e4 100644
+--- a/src/agent/orchestration/graph/nodes/intake-phase.host.ts
++++ b/src/agent/orchestration/graph/nodes/intake-phase.host.ts
+@@ -122,6 +122,21 @@ export interface IntakePhaseHost {
+     reason?: string;
+   }>;
+ 
++  tryApplyBoundTripLodgingReplace?(
++    tripId: string,
++    userId: string | undefined,
++    message: string,
++    dateRange?: { start_date?: string; end_date?: string },
++  ): Promise<{
++    applied: boolean;
++    answerText?: string;
++    checkInIso?: string;
++    fromName?: string;
++    toName?: string;
++    reason?: string;
++    skillsHit?: string[];
++  }>;
++
+   tryApplyBoundTripItineraryDayReplan?(
+     tripId: string,
+     userId: string | undefined,
+diff --git a/src/agent/orchestration/graph/nodes/intake.node.ts b/src/agent/orchestration/graph/nodes/intake.node.ts
+index ce7cf876d..f276fe70c 100644
+--- a/src/agent/orchestration/graph/nodes/intake.node.ts
++++ b/src/agent/orchestration/graph/nodes/intake.node.ts
+@@ -19,6 +19,9 @@ import {
+ import {
+   shouldTerminalAfterItineraryItemUpdate,
+ } from './intake-itinerary-update.util';
++import {
++  shouldTerminalAfterLodgingReplace,
++} from './intake-itinerary-lodging-replace.util';
+ import {
+   applyItineraryDayReplanIfRequested,
+   shouldTerminalAfterItineraryDayReplan,
+@@ -81,12 +84,6 @@ export async function runIntakePrePlanSegment(
+     host.logger.log('[Claude Orchestrator] Durable resume: 跳过 INTAKE，进入 STATE_UPDATE');
+     state.current_step = 'STATE_UPDATE';
+     state.metadata.last_updated_at = new Date().toISOString();
+-    await applyItineraryCrudWithCompoundPlan(host, {
+-      message: request.message,
+-      tripId: request.trip_id,
+-      userId: request.user_id,
+-      state,
+-    });
+     const md = state.metadata as Record<string, unknown>;
+     const tpr = (md.trip_plan_request ?? state.trip_plan_request) as
+       | { date_range?: { start_date?: string; end_date?: string }; start_date?: string; end_date?: string }
+@@ -94,6 +91,13 @@ export async function runIntakePrePlanSegment(
+     const dateRange =
+       tpr?.date_range ??
+       (tpr?.start_date ? { start_date: tpr.start_date, end_date: tpr.end_date } : undefined);
++    await applyItineraryCrudWithCompoundPlan(host, {
++      message: request.message,
++      tripId: request.trip_id,
++      userId: request.user_id,
++      state,
++      dateRange,
++    });
+     await applyItineraryDayReplanIfRequested(host, {
+       message: request.message,
+       tripId: request.trip_id,
+@@ -107,6 +111,7 @@ export async function runIntakePrePlanSegment(
+     shouldTerminalAfterItineraryItemDelete(state) ||
+     shouldTerminalAfterItineraryItemAdd(state) ||
+     shouldTerminalAfterItineraryItemUpdate(state) ||
++    shouldTerminalAfterLodgingReplace(state) ||
+     shouldTerminalAfterItineraryAdjustDraftApply(state) ||
+     shouldTerminalAfterItineraryDayReplan(state) ||
+     shouldTerminalAfterWorkbenchPlaceholder(state)
+diff --git a/src/agent/orchestration/orchestration-main-chain-protocol.constants.ts b/src/agent/orchestration/orchestration-main-chain-protocol.constants.ts
+index 794fb63a9..09fd12ce1 100644
+--- a/src/agent/orchestration/orchestration-main-chain-protocol.constants.ts
++++ b/src/agent/orchestration/orchestration-main-chain-protocol.constants.ts
+@@ -189,7 +189,8 @@ export const MAIN_CHAIN_USER_CONFIRM_POINTS: readonly MainChainUserConfirmPointS
+   {
+     id: 'flawed_draft_opt_in',
+     resultStatus: 'OK_WITH_BANNER',
+-    summary: '仅 allow_flawed_draft_narrate=true 时才允许瑕疵草案 SUCCESS',
++    summary:
++      '瑕疵草案 SUCCESS：仅显式 allow_flawed_draft_narrate=true；缺省/false → 澄清；仍受 allow-matrix（安全/法规道路等）约束；FLAWED_DRAFT 禁止 AUTO 写回',
+   },
+ ] as const;
+ 
+diff --git a/src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts b/src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts
+index 7a9ec5c89..c2c9be451 100644
+--- a/src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts
++++ b/src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts
+@@ -38,9 +38,60 @@ describe('plan-verify-loop-repair-guards — flawed draft narrate', () => {
+     const terminal = checkRepairCountExceededIfNeeded(host, params);
+     expect(terminal).toBeNull();
+     expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBe(true);
++    expect((params.state.metadata as Record<string, unknown>).flawed_draft_opt_in).toBe('explicit');
+     expect(host.buildClarificationResult).not.toHaveBeenCalled();
+   });
+ 
++  it('bound trip without explicit opt-in clarifies (P0-1)', () => {
++    const host = mockHost();
++    const decisionState = { systemState: { repairCount: 3 } } as PlanVerifyLoopRunParams['decisionState'];
++    const loop: PlanVerifyTransientLoopState = createPlanVerifyTransientState(decisionState);
++    const params = {
++      request: {
++        request_id: 'fd-bound',
++        user_id: 'u',
++        trip_id: 'trip_15c50a69931845ca',
++        message: '优化一下行程',
++      },
++      context: {},
++      state: { request_id: 'fd-bound', metadata: {}, decision_log: [], errors: [] },
++      decisionState,
++      llmProvider: 'deepseek',
++      startTime: Date.now(),
++      loop,
++    } as PlanVerifyLoopRunParams & { loop: PlanVerifyTransientLoopState };
++
++    const terminal = checkRepairCountExceededIfNeeded(host, params);
++    expect(terminal).not.toBeNull();
++    expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBeUndefined();
++    expect(host.buildClarificationResult).toHaveBeenCalled();
++  });
++
++  it('explicit allow_flawed_draft_narrate=false still clarifies', () => {
++    const host = mockHost();
++    const decisionState = { systemState: { repairCount: 3 } } as PlanVerifyLoopRunParams['decisionState'];
++    const loop: PlanVerifyTransientLoopState = createPlanVerifyTransientState(decisionState);
++    const params = {
++      request: {
++        request_id: 'fd-off',
++        user_id: 'u',
++        trip_id: 'trip_15c50a69931845ca',
++        message: '优化一下行程',
++        options: { allow_flawed_draft_narrate: false },
++      },
++      context: {},
++      state: { request_id: 'fd-off', metadata: {}, decision_log: [], errors: [] },
++      decisionState,
++      llmProvider: 'deepseek',
++      startTime: Date.now(),
++      loop,
++    } as PlanVerifyLoopRunParams & { loop: PlanVerifyTransientLoopState };
++
++    const terminal = checkRepairCountExceededIfNeeded(host, params);
++    expect(terminal).not.toBeNull();
++    expect(host.buildClarificationResult).toHaveBeenCalled();
++  });
++
+   it('refuses flawed bypass when HARD SAFETY gate violation present', () => {
+     const host = mockHost();
+     const decisionState = { systemState: { repairCount: 3 } } as PlanVerifyLoopRunParams['decisionState'];
+@@ -76,5 +127,15 @@ describe('plan-verify-loop-repair-guards — flawed draft narrate', () => {
+     expect(terminal).not.toBeNull();
+     expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBeUndefined();
+     expect(host.buildClarificationResult).toHaveBeenCalled();
++    const q = (params.state as { clarification_questions?: Array<Record<string, unknown>> })
++      .clarification_questions?.[0];
++    expect(q?.type).toBe('single_choice');
++    expect(q?.metadata).toMatchObject({ presentation: 'structured_intake_v1' });
++    expect(q?.options).toEqual(
++      expect.arrayContaining([
++        expect.objectContaining({ value: 'reduce_scope', label: expect.stringContaining('缩小范围') }),
++        expect.objectContaining({ value: 'continue_auto_repair' }),
++      ]),
++    );
+   });
+ });
+diff --git a/src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.ts b/src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.ts
+index a4d1cd52a..e04a4cc9e 100644
+--- a/src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.ts
++++ b/src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.ts
+@@ -39,7 +39,9 @@ function tryAllowFlawedDraftBypass(
+   extraMeta: Record<string, unknown>,
+ ): boolean {
+   const { state, request, decisionState } = params;
+-  if (request.options?.allow_flawed_draft_narrate !== true) {
++  // P0-1：仅显式 allow_flawed_draft_narrate=true 才允许瑕疵 NARRATE；绑定 trip 不再默认放行
++  const opt = request.options?.allow_flawed_draft_narrate;
++  if (opt !== true) {
+     return false;
+   }
+   const verifyCodes = [
+@@ -66,6 +68,7 @@ function tryAllowFlawedDraftBypass(
+     last_updated_at: now,
+     flawed_draft_narrate: true,
+     flawed_draft_reason: reason,
++    flawed_draft_opt_in: 'explicit',
+     ...extraMeta,
+   };
+   return true;
+@@ -124,14 +127,16 @@ export async function applyUtilityDecayAfterRepairIfNeeded(
+         {
+           id: 'utility_decay_halt_confirmation',
+           question: `自动修复后期望效用已连续 ${nextDeclines} 次下降（E[U] ${String(prevEu)} → ${String(euAfter)}）。是否缩小范围/放宽约束，或由您确认继续？`,
+-          type: 'NEED_CONFIRMATION',
++          type: 'single_choice',
+           required: true,
+           options: [
+-            { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+-            { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
+-            { id: 'continue_auto_repair', label: '继续自动修复' },
++            { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
++            { value: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
++            { value: 'continue_auto_repair', label: '继续自动修复' },
+           ],
+-        } as any,
++          hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
++          metadata: { presentation: 'structured_intake_v1', repair_halt: 'utility_decay' },
++        },
+       ];
+       host.maybeSnapshot(state, 'CHECKPOINT');
+       return {
+@@ -171,15 +176,16 @@ export function checkRepairCountExceededIfNeeded(
+       {
+         id: 'repair_halt_confirmation',
+         question: `系统已自动修复尝试 ${repairCount} 次，仍未收敛。是否需要缩小范围/放宽约束/或由您确认继续自动修复？`,
+-        type: 'NEED_CONFIRMATION',
++        type: 'single_choice',
+         required: true,
+         options: [
+-          { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+-          { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
+-          { id: 'continue_auto_repair', label: '继续自动修复' },
++          { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
++          { value: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
++          { value: 'continue_auto_repair', label: '继续自动修复' },
+         ],
+         hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
+-      } as any,
++        metadata: { presentation: 'structured_intake_v1', repair_halt: 'budget_exceeded' },
++      },
+     ];
+     host.maybeSnapshot(state, 'CHECKPOINT');
+     return host.buildClarificationResult(state, startTime, decisionState, context);
+diff --git a/src/agent/orchestration/plan-verify-loop/plan-verify-loop.controller.ts b/src/agent/orchestration/plan-verify-loop/plan-verify-loop.controller.ts
+index b57da5548..b7233ebef 100644
+--- a/src/agent/orchestration/plan-verify-loop/plan-verify-loop.controller.ts
++++ b/src/agent/orchestration/plan-verify-loop/plan-verify-loop.controller.ts
+@@ -16,6 +16,7 @@ import {
+ import {
+   consumeGraphStep,
+   createPlanVerifyTransientState,
++  isRepairBudgetExceeded,
+   syncRepairsRemainingFromDso,
+ } from './plan-verify-loop-transient.util';
+ import type { PlanVerifyLoopOutcome, PlanVerifyLoopRunParams } from './plan-verify-loop.types';
+@@ -125,11 +126,61 @@ export function createPlanVerifyLoopHandler(
+           }
+ 
+           if (verdict.kind === 'needs_repair') {
++            // 已放行瑕疵草案，或 REPAIR 预算已耗尽：勿再进 REPAIR（防 maxSteps 死循环）
++            if ((state.metadata as Record<string, unknown> | undefined)?.flawed_draft_narrate === true) {
++              return { kind: 'complete', decisionState };
++            }
++            if (isRepairBudgetExceeded(loopState, decisionState)) {
++              const budgetTerminal = checkRepairCountExceededIfNeeded(host, {
++                request,
++                context,
++                state,
++                decisionState,
++                llmProvider,
++                startTime,
++                loop: loopState,
++              });
++              if (budgetTerminal) {
++                return {
++                  kind: 'terminal',
++                  terminal: 'terminal_clarification',
++                  result: budgetTerminal,
++                  decisionState,
++                };
++              }
++              if ((state.metadata as Record<string, unknown> | undefined)?.flawed_draft_narrate === true) {
++                return { kind: 'complete', decisionState };
++              }
++            }
+             return { kind: 'continue', next: 'repair', decisionState };
+           }
+           return { kind: 'complete', decisionState };
+         }
+         case 'repair': {
++          // 预算已满：跳过再跑一轮 REPAIR，直接走瑕疵交付或澄清
++          if (isRepairBudgetExceeded(loopState, decisionState)) {
++            const preTerminal = checkRepairCountExceededIfNeeded(host, {
++              request,
++              context,
++              state,
++              decisionState,
++              llmProvider,
++              startTime,
++              loop: loopState,
++            });
++            if (preTerminal) {
++              return {
++                kind: 'terminal',
++                terminal: 'terminal_clarification',
++                result: preTerminal,
++                decisionState,
++              };
++            }
++            if ((state.metadata as Record<string, unknown> | undefined)?.flawed_draft_narrate === true) {
++              return { kind: 'complete', decisionState };
++            }
++          }
++
+           const euBefore = decisionState?.optimizationHints?.expectedUtility;
+           decisionState =
+             (await host.runRepairPhase(decisionState, state, request, context, llmProvider)) ??
+@@ -174,6 +225,11 @@ export function createPlanVerifyLoopHandler(
+             };
+           }
+ 
++          // 预算/效用放行瑕疵草案：退出子图进入外层 NARRATE，禁止再 next→verify
++          if ((state.metadata as Record<string, unknown> | undefined)?.flawed_draft_narrate === true) {
++            return { kind: 'complete', decisionState };
++          }
++
+           return { kind: 'continue', next: 'verify', decisionState };
+         }
+         default:
+diff --git a/src/agent/orchestration/plan-verify-loop/plan-verify-loop.runner.spec.ts b/src/agent/orchestration/plan-verify-loop/plan-verify-loop.runner.spec.ts
+index 48e813f8b..bd3c00c4c 100644
+--- a/src/agent/orchestration/plan-verify-loop/plan-verify-loop.runner.spec.ts
++++ b/src/agent/orchestration/plan-verify-loop/plan-verify-loop.runner.spec.ts
+@@ -25,6 +25,7 @@ function baseParams(): PlanVerifyLoopRunParams {
+ 
+ function mockHost(overrides: Partial<PlanVerifyLoopHost> = {}): PlanVerifyLoopHost {
+   return {
++    logger: { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() } as any,
+     touchAsyncTaskProgress: jest.fn(),
+     maybeSnapshot: jest.fn(),
+     runOptimizePhase: jest.fn(async (_s, ds) => ds),
+@@ -120,6 +121,50 @@ describe('runPlanVerifyOptimizeRepairLoop (graph)', () => {
+     expect(runRepairPhase).toHaveBeenCalledTimes(1);
+   });
+ 
++  it('exits to narrate when repair budget exceeded and flawed draft allowed (no repair↔verify spin)', async () => {
++    let verifyCalls = 0;
++    const runVerifyPhase = jest.fn(async (ds, state) => {
++      verifyCalls += 1;
++      state.errors = [
++        {
++          step: 'VERIFY',
++          error_code: 'SOFT_ISSUE',
++          message: 'needs fix',
++          timestamp: new Date().toISOString(),
++        },
++      ];
++      state.gate_result = { gate_result: 'ADJUST_REQUIRED' };
++      return { decisionState: ds, verdict: { kind: 'needs_repair' as const } };
++    });
++    const runRepairPhase = jest.fn(async (ds) => ({
++      ...ds,
++      systemState: { ...(ds as any).systemState, repairCount: 3 },
++    }));
++
++    const params = baseParams();
++    params.request = {
++      ...params.request,
++      trip_id: 'trip_15c50a69931845ca',
++      message: '请将7月22日住宿改为格伦达菲厄泽宾馆',
++      options: { allow_flawed_draft_narrate: true },
++    } as PlanVerifyLoopRunParams['request'];
++    params.decisionState = {
++      systemState: { repairCount: 2 },
++      verification: { hasFatal: false, issues: [] },
++    } as PlanVerifyLoopRunParams['decisionState'];
++
++    const out = await runPlanVerifyOptimizeRepairLoop(
++      mockHost({ runVerifyPhase, runRepairPhase }),
++      params,
++    );
++
++    expect(out.kind).toBe('continue');
++    expect(verifyCalls).toBe(1);
++    expect(runRepairPhase).toHaveBeenCalledTimes(1);
++    expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBe(true);
++    expect((params.state.metadata as Record<string, unknown>).flawed_draft_opt_in).toBe('explicit');
++  });
++
+   it('reroute_pre_plan when VERIFY harness suggests RETURN_TO_RESEARCH (evidence binding)', async () => {
+     const applyReturnToResearchInvalidation = jest.fn(async (_s, ds) => ds);
+     const out = await runPlanVerifyOptimizeRepairLoop(
+diff --git a/src/agent/routing/route-and-run-route-class-fork.util.spec.ts b/src/agent/routing/route-and-run-route-class-fork.util.spec.ts
+index 89da0537c..55568147e 100644
+--- a/src/agent/routing/route-and-run-route-class-fork.util.spec.ts
++++ b/src/agent/routing/route-and-run-route-class-fork.util.spec.ts
+@@ -1,5 +1,6 @@
+ import { ROUTE_AND_RUN_GOLDEN_EVAL_FIXTURES } from './route-and-run-golden-eval-fixtures';
+ import {
++  applyRouteAndRunEntryRoutingInPlace,
+   applyRouteClassForkInPlace,
+   applyRouteClassForkPolicyOverrides,
+   isRouteClassForkEnabled,
+@@ -81,6 +82,26 @@ describe('route-and-run-route-class-fork.util', () => {
+       req.options = { ...req.options, intent_mode: 'TRIP_PLANNING' };
+       expect(applyRouteClassForkInPlace(req)).toBeNull();
+     });
++
++    it('entry routing clamps mistaken TRIP_PLANNING review to DATA_LOOKUP even when fork skips', () => {
++      process.env.ROUTE_CLASS_FORK = '1';
++      const req = {
++        request_id: 'r1',
++        user_id: 'u1',
++        trip_id: 'trip_15c50a69931845ca',
++        message: '分析当前行程的整体可行性，有什么需要改进的吗？',
++        options: {
++          entry_point: 'trip_detail_page' as const,
++          intent_mode: 'TRIP_PLANNING' as const,
++          use_state_machine_orchestration: true,
++        },
++      };
++      expect(applyRouteClassForkInPlace(structuredClone(req))).toBeNull();
++      const forEntry = structuredClone(req);
++      applyRouteAndRunEntryRoutingInPlace(forEntry);
++      expect(forEntry.options?.intent_mode).toBe('DATA_LOOKUP');
++      expect(forEntry.options?.use_state_machine_orchestration).toBe(false);
++    });
+   });
+ 
+   describe('applyRouteClassForkPolicyOverrides', () => {
+diff --git a/src/agent/routing/route-and-run-route-class-fork.util.ts b/src/agent/routing/route-and-run-route-class-fork.util.ts
+index 0137ab969..aaf627c74 100644
+--- a/src/agent/routing/route-and-run-route-class-fork.util.ts
++++ b/src/agent/routing/route-and-run-route-class-fork.util.ts
+@@ -144,20 +144,17 @@ export function applyRouteClassForkInPlace(
+ }
+ 
+ /**
+- * Gateway / AgentService entry: fork when enabled; otherwise legacy bound-trip DATA_LOOKUP override.
++ * Gateway / AgentService entry: fork when enabled; always apply bound-trip review override.
++ * Fork skips when intent_mode is explicit (≠ AUTO); sidebars that mis-send TRIP_PLANNING
++ * for「全面分析/可行性」仍需被钳回 DATA_LOOKUP。
+  */
+ export function applyRouteAndRunEntryRoutingInPlace(
+   request: RouteAndRunRequestDto,
+   env: NodeJS.ProcessEnv = process.env,
+ ): RouteClassForkV1 | null {
+   const fork = applyRouteClassForkInPlace(request, env);
+-  if (fork) {
+-    return fork;
+-  }
+-  if (!isRouteClassForkEnabled(env)) {
+-    applyBoundTripReviewRouteAndRunOverrideInPlace(request);
+-  }
+-  return null;
++  applyBoundTripReviewRouteAndRunOverrideInPlace(request);
++  return fork;
+ }
+ 
+ function clonePolicyDecision(
+diff --git a/src/agent/services/agent-entry-response-factory.service.ts b/src/agent/services/agent-entry-response-factory.service.ts
+index dcf810451..cfab5984c 100644
+--- a/src/agent/services/agent-entry-response-factory.service.ts
++++ b/src/agent/services/agent-entry-response-factory.service.ts
+@@ -29,6 +29,15 @@ export class AgentEntryResponseFactoryService {
+     );
+   }
+ 
++  /** Frontend Plan Studio path (not the planning-workbench API). */
++  private buildPlanStudioRedirectTo(tripId?: string | null): string {
++    const id = typeof tripId === 'string' ? tripId.trim() : '';
++    if (id) {
++      return `/dashboard/plan-studio?tripId=${encodeURIComponent(id)}`;
++    }
++    return '/dashboard/plan-studio';
++  }
++
+   createMissingTripIdErrorResponse(
+     request: RouteAndRunRequestDto,
+     startTime: number,
+@@ -79,7 +88,7 @@ export class AgentEntryResponseFactoryService {
+           evidence: [],
+           robustness: null,
+           redirectInfo: {
+-            redirect_to: '/planning-workbench/execute',
++            redirect_to: this.buildPlanStudioRedirectTo(request.trip_id),
+             redirect_reason: 'MISSING_TRIP_ID',
+             original_request: {
+               message: request.message.substring(0, 200),
+@@ -174,7 +183,7 @@ export class AgentEntryResponseFactoryService {
+           evidence: [],
+           robustness: null,
+           redirectInfo: {
+-            redirect_to: '/planning-workbench/execute',
++            redirect_to: this.buildPlanStudioRedirectTo(request.trip_id),
+             redirect_reason: 'READONLY_MODE_RESTRICTION',
+             original_request: {
+               message: request.message.substring(0, 200),
+@@ -259,7 +268,7 @@ export class AgentEntryResponseFactoryService {
+       },
+       result: {
+         status: 'REDIRECT_REQUIRED',
+-        answer_text: '行程规划功能已迁移到规划工作台，请使用 POST /planning-workbench/execute 接口。',
++        answer_text: '行程规划功能已迁移到规划工作台，请前往 Plan Studio 继续操作。',
+         payload: {
+           timeline: [],
+           dropped_items: [],
+@@ -267,7 +276,7 @@ export class AgentEntryResponseFactoryService {
+           evidence: [],
+           robustness: null,
+           redirectInfo: {
+-            redirect_to: '/planning-workbench/execute',
++            redirect_to: this.buildPlanStudioRedirectTo(request.trip_id),
+             redirect_reason: 'PLANNING_REQUEST_DETECTED',
+             original_request: {
+               message: request.message.substring(0, 200),
+diff --git a/src/agent/services/agent.service.entry-points.spec.ts b/src/agent/services/agent.service.entry-points.spec.ts
+index 706ff7272..3730512af 100644
+--- a/src/agent/services/agent.service.entry-points.spec.ts
++++ b/src/agent/services/agent.service.entry-points.spec.ts
+@@ -261,6 +261,9 @@ describe('AgentService - Entry Points Validation', () => {
+       expect(response.route.reasons).toContain(RouterReason.HIGH_RISK_ACTION);
+       expect(response.route.ui_hint.status).toBe(UIStatus.REDIRECT_REQUIRED);
+       expect(response.result.payload.redirectInfo?.redirect_reason).toBe('READONLY_MODE_RESTRICTION');
++      expect(response.result.payload.redirectInfo?.redirect_to).toBe(
++        '/dashboard/plan-studio?tripId=trip-456',
++      );
+     });
+ 
+     it('应该允许行程详情页的查询请求', async () => {
+diff --git a/src/agent/services/agent.service.planning-redirect.integration.spec.ts b/src/agent/services/agent.service.planning-redirect.integration.spec.ts
+index 6870749b1..afe90092e 100644
+--- a/src/agent/services/agent.service.planning-redirect.integration.spec.ts
++++ b/src/agent/services/agent.service.planning-redirect.integration.spec.ts
+@@ -196,7 +196,7 @@ describe('AgentService - Planning Request Interception (Integration)', () => {
+ 
+       // 验证重定向信息
+       expect(response.result.payload.redirectInfo).toBeDefined();
+-      expect(response.result.payload.redirectInfo?.redirect_to).toBe('/planning-workbench/execute');
++      expect(response.result.payload.redirectInfo?.redirect_to).toBe('/dashboard/plan-studio');
+       expect(response.result.payload.redirectInfo?.redirect_reason).toBe('PLANNING_REQUEST_DETECTED');
+       expect(response.result.payload.redirectInfo?.original_request.message).toBe('规划一个5天冰岛行程');
+       expect(response.result.payload.redirectInfo?.original_request.user_id).toBe('user-123');
+diff --git a/src/agent/services/agent.service.planning-redirect.spec.ts b/src/agent/services/agent.service.planning-redirect.spec.ts
+index cf31c9c08..3515e1c51 100644
+--- a/src/agent/services/agent.service.planning-redirect.spec.ts
++++ b/src/agent/services/agent.service.planning-redirect.spec.ts
+@@ -190,7 +190,7 @@ describe('AgentService - Planning Request Interception', () => {
+         expect(response.route.reasons).toContain(RouterReason.REDIRECT_TO_PLANNING_WORKBENCH);
+         expect(response.route.ui_hint.status).toBe(UIStatus.REDIRECT_REQUIRED);
+         expect(response.result.payload.redirectInfo).toBeDefined();
+-        expect(response.result.payload.redirectInfo?.redirect_to).toBe('/planning-workbench/execute');
++        expect(response.result.payload.redirectInfo?.redirect_to).toBe('/dashboard/plan-studio');
+       });
+ 
+       it('应该拦截：包含"帮我规划"', async () => {
+@@ -505,7 +505,7 @@ describe('AgentService - Planning Request Interception', () => {
+ 
+       // 验证 redirectInfo
+       expect(response.result.payload.redirectInfo).toBeDefined();
+-      expect(response.result.payload.redirectInfo?.redirect_to).toBe('/planning-workbench/execute');
++      expect(response.result.payload.redirectInfo?.redirect_to).toBe('/dashboard/plan-studio');
+       expect(response.result.payload.redirectInfo?.redirect_reason).toBe('PLANNING_REQUEST_DETECTED');
+       expect(response.result.payload.redirectInfo?.original_request.message).toBe('规划一个5天冰岛行程');
+       expect(response.result.payload.redirectInfo?.original_request.user_id).toBe('user-123');
+diff --git a/src/agent/services/claude-orchestrator.service.ts b/src/agent/services/claude-orchestrator.service.ts
+index d310f393a..8acf97923 100644
+--- a/src/agent/services/claude-orchestrator.service.ts
++++ b/src/agent/services/claude-orchestrator.service.ts
+@@ -184,6 +184,12 @@ import {
+   pendingDraftFromRequestSnapshot,
+   readPendingItineraryAdjustDraft,
+ } from '../utils/itinerary-adjust-pending-draft.util';
++import {
++  buildLodgingReplaceAnswerText,
++  detectLodgingReplaceIntent,
++  findLodgingItemsOnDay,
++  parseLodgingReplaceSpec,
++} from '../utils/itinerary-lodging-replace.util';
+ import { TripRunManagerService } from './trip-run-manager.service';
+ import { ItineraryVersionService } from './itinerary-version.service';
+ import {
+@@ -200,6 +206,10 @@ import {
+   mergePoiSlotFillOrchestratorItinerary,
+ } from '../utils/itinerary-adjust-poi-slot-fill.util';
+ import { recordItineraryAdjustFunnel } from '../utils/itinerary-adjust-metrics.util';
++import {
++  FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON,
++  shouldBlockAutoApplyForFlawedDraft,
++} from '../utils/itinerary-adjust-flawed-auto-block.util';
+ import { extractItineraryAdjustTargetDateFromMessage } from '../utils/itinerary-adjust-intent.util';
+ import {
+   buildCorridorAdjustPoiPlanningSlice,
+@@ -322,6 +332,7 @@ import {
+   isTodayWeatherFactQuery,
+   isWeatherRoadConditionFocusedQuery,
+   shouldEnableLiveWeatherMcpForLightweightRoute,
++  shouldForceDataLookupForBoundTripReview,
+   shouldInjectIcelandRentalGuidanceForLightweight,
+   shouldPullSafetravelAdvisoriesForLightweightIceland,
+   isWestfjordsLegTransportPreferenceConsultation,
+@@ -398,7 +409,9 @@ import {
+ import {
+   buildDefaultTripConsultationSuggestedOperations,
+   buildDiningAnchorSuggestedOperations,
++  buildSilentVoteCreateSuggestedOperation,
+   extractSuggestedOperationsFromAnswer,
++  isSilentVoteCreateIntentMessage,
+   mergeSuggestedOperations,
+   type TripConsultationSuggestedOperation,
+ } from '../utils/trip-consultation-suggested-operations.util';
+@@ -1807,6 +1820,10 @@ export class ClaudeOrchestratorService {
+       /^[ \t>]*前端一键操作[ \t:：]*$/gim,
+     ];
+     for (const r of removals) t = t.replace(r, '');
++    // 兜底：未抽净的 CONSULTATION_UI / SUGGESTED_OPS 机读块不得进入用户可见正文
++    t = t.replace(/<<<CONSULTATION_UI_JSON>>>[\s\S]*?(?:<<<END_CONSULTATION_UI_JSON>{2,3}|$)/g, '');
++    t = t.replace(/<<<SUGGESTED_OPS_JSON>>>[\s\S]*?(?:<<<END_SUGGESTED_OPS_JSON>{2,3}|$)/g, '');
++    t = t.replace(/<<<(?:CONSULTATION_UI_JSON|END_CONSULTATION_UI_JSON|SUGGESTED_OPS_JSON|END_SUGGESTED_OPS_JSON)>{2,3}/g, '');
+     return t.replace(/\n{3,}/g, '\n\n').trim();
+   }
+ 
+@@ -4297,8 +4314,8 @@ export class ClaudeOrchestratorService {
+             '【系统块 SUGGESTED_OPS】在向用户展示正文与 CONSULTATION_UI 块之后，必须额外输出一段机器可读 JSON（**禁止**在用户可见正文里写「一键操作」类标题或复述该 JSON）。格式严格如下（各占一行）：',
+             `第一行仅写：${'<<<SUGGESTED_OPS_JSON>>>'}`,
+             '第二行起至结束标记前：单行合法 JSON 数组，元素字段：id（英文短键）、label（按钮文案≤18字）、kind（仅 route_and_run_message 或 client_navigation）、payload（对象）。',
+-            '—— route_and_run_message：payload.message 为完整中文指令，用户点击后作为新一轮对话发给助手（用于「按建议改行程」）；须贴合你在正文「风险与优化」里的具体结论。',
+-            '—— client_navigation：payload.route 只能为 timeline / replay / planning / itinerary / decision_cockpit 之一；并须在 payload 中带 trip_id（值等于当前关联行程）。',
++            '—— route_and_run_message：payload.message 为完整中文指令，用户点击后作为新一轮对话发给助手（用于「按建议改行程」「搜索某地酒店」）；须贴合你在正文里的具体结论。',
++            '—— client_navigation：payload.route 可为 timeline / replay / planning / itinerary / decision_cockpit；**仅当按钮文案是「发起投票/创建投票」时**才可用 silent_vote_create / silent_vote（或 action=silent_vote_create）。搜索酒店/查房绝不可用 silent_vote_*，必须用 route_and_run_message。并须在 payload 中带 trip_id（值等于当前关联行程）。',
+             '数组长度 2～4；至少包含 1 条 route_and_run_message。',
+             `最后一行仅写：${'<<<END_SUGGESTED_OPS_JSON>>>'}`,
+           ]
+@@ -4451,6 +4468,7 @@ export class ClaudeOrchestratorService {
+         [...diningAnchorOps, ...extracted.operations],
+         buildDefaultTripConsultationSuggestedOperations(effectiveTripId, {
+           planning_handoff_message: request.message ?? '',
++          include_silent_vote: isSilentVoteCreateIntentMessage(request.message ?? ''),
+         }),
+       );
+     }
+@@ -5136,6 +5154,30 @@ export class ClaudeOrchestratorService {
+       /** 已绑定行程的 TRIP_PLANNING：动态 Skill DAG 不会在 INTAKE 注入 planState/itinerary，校验必报缺 planState/request/itinerary → 统一走状态机 */
+       const boundTripId = (request.trip_id || context.tripId || '').trim();
+       if (boundTripId && rt === 'TRIP_PLANNING') {
++        // 复盘/可行性/轻量咨询：即使上游误标 TRIP_PLANNING，也不进状态机（避免 CGUS/VERIFY/REPAIR 空转）
++        const msgForConsult = request.message ?? '';
++        const msgLowerConsult = msgForConsult.trim().toLowerCase();
++        if (
++          isBoundTripLightConsultQuery(msgForConsult, msgLowerConsult) ||
++          shouldForceDataLookupForBoundTripReview({ trip_id: boundTripId, message: msgForConsult })
++        ) {
++          this.logger.log(
++            `[Claude Orchestrator] 已绑定 trip 但命中轻量咨询/复盘，TRIP_PLANNING → LIGHTWEIGHT（跳过 CGUS）request_id=${request.request_id}`,
++          );
++          request.options = {
++            ...request.options,
++            intent_mode: 'DATA_LOOKUP',
++            use_state_machine_orchestration: false,
++          };
++          setLlmTraceRoutePath('LIGHTWEIGHT');
++          return await this.orchestrateLightweightKnowledgeQuery(
++            request,
++            context,
++            deadline,
++            llmProvider,
++            startTime,
++          );
++        }
+         this.logger.log(
+           `[Claude Orchestrator] 已绑定 trip_id 且 TRIP_PLANNING → 状态机编排（避免 CLAUDE_DYNAMIC Skills 缺参）request_id=${request.request_id}`,
+         );
+@@ -7708,6 +7750,40 @@ ${JSON.stringify(routingDecision, null, 2)}
+     setLlmTraceRoutePath('STATE_MACHINE');
+     const startTime = Date.now();
+     const boundTripIdEarly = (request.trip_id || context.tripId || '').trim();
++    const earlyMsg = resolveRouteAndRunUserMessage(request);
++    if (boundTripIdEarly && isSilentVoteCreateIntentMessage(earlyMsg)) {
++      this.logger.log(
++        `[Claude Orchestrator] 状态机入口：发起投票 → SilentVote CTA 短路 request_id=${request.request_id}`,
++      );
++      setLlmTraceRoutePath('LIGHTWEIGHT');
++      const voteOp = buildSilentVoteCreateSuggestedOperation(boundTripIdEarly);
++      return {
++        success: true,
++        answerText:
++          '可以发起团队匿名投票。请点击下方「发起投票」打开创建面板（选项与截止时间由你确认后提交）。',
++        result: {
++          routingTaskType: 'DATA_LOOKUP',
++          lightweightKnowledgeQa: true,
++          ui_surface: 'consultation' as const,
++          trip_id: boundTripIdEarly,
++          ...(voteOp ? { suggested_operations: [voteOp] } : {}),
++        },
++        stepsExecuted: [],
++        totalDuration: Date.now() - startTime,
++        decisionLog: [
++          {
++            request_id: request.request_id,
++            step: 'INTAKE' as OrchestrationStep,
++            actor: 'Orchestrator' as SubAgentType,
++            inputs_summary: earlyMsg.slice(0, 200),
++            outputs_summary: 'silent_vote_create CTA (SM entry bypass)',
++            evidence_refs: [],
++            timestamp: new Date().toISOString(),
++            metadata: { system_action: 'SILENT_VOTE_CREATE_CTA' },
++          },
++        ],
++      };
++    }
+     if (boundTripIdEarly && isWorkbenchAssistantPlaceholderMessage(request.message)) {
+       this.logger.log(
+         `[Claude Orchestrator] 状态机入口：工作台占位欢迎语 → 短路 request_id=${request.request_id}`,
+@@ -8584,6 +8660,20 @@ ${JSON.stringify(routingDecision, null, 2)}
+     const md = state.metadata as Record<string, unknown>;
+     if (md.itinerary_day_replan_intake === true) return;
+ 
++    // P0-1：FLAWED_DRAFT 禁止 AUTO / SEMI_AUTO 写回
++    if (shouldBlockAutoApplyForFlawedDraft(md)) {
++      md.itinerary_adjust_auto_apply = {
++        applied: false,
++        reason: FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON,
++        executionMode: 'ADVICE_ONLY',
++      };
++      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
++      this.logger.warn(
++        `[Claude Orchestrator] ITINERARY_ADJUST AUTO blocked: ${FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON} request_id=${state.request_id}`,
++      );
++      return;
++    }
++
+     const intakeMsg =
+       (typeof md.intake_user_message === 'string' ? md.intake_user_message : '') ||
+       state.trip_plan_request?.message ||
+@@ -10254,6 +10344,166 @@ ${JSON.stringify(routingDecision, null, 2)}
+     };
+   }
+ 
++  private async tryApplyBoundTripLodgingReplace(
++    tripId: string,
++    userId: string | undefined,
++    message: string,
++    dateRange?: { start_date?: string; end_date?: string },
++  ): Promise<{
++    applied: boolean;
++    answerText?: string;
++    checkInIso?: string;
++    fromName?: string;
++    toName?: string;
++    reason?: string;
++    skillsHit?: string[];
++  }> {
++    if (!detectLodgingReplaceIntent(message)) {
++      return { applied: false, reason: 'not_lodging_replace_intent' };
++    }
++    const spec = parseLodgingReplaceSpec(message, dateRange);
++    if (!spec?.toName) {
++      return {
++        applied: false,
++        reason: 'parse_failed',
++        answerText: buildLodgingReplaceAnswerText(
++          { toName: '目标住宿' },
++          { applied: false, reason: 'parse_failed' },
++        ),
++      };
++    }
++
++    if (!this.tripsService) {
++      return {
++        applied: false,
++        reason: 'trips_service_unavailable',
++        fromName: spec.fromName,
++        toName: spec.toName,
++        checkInIso: spec.checkInIso,
++        answerText: buildLodgingReplaceAnswerText(spec, {
++          applied: false,
++          reason: 'trips_service_unavailable',
++        }),
++      };
++    }
++
++    let trip: TripLikeForDelete;
++    try {
++      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as TripLikeForDelete;
++    } catch (e: unknown) {
++      this.logger.warn(
++        `[Claude Orchestrator] lodging replace: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
++      );
++      return {
++        applied: false,
++        reason: 'trip_load_failed',
++        fromName: spec.fromName,
++        toName: spec.toName,
++        checkInIso: spec.checkInIso,
++        answerText: buildLodgingReplaceAnswerText(spec, {
++          applied: false,
++          reason: 'trip_load_failed',
++        }),
++      };
++    }
++
++    const found = findLodgingItemsOnDay(trip, spec.checkInIso, spec.fromName);
++    if (!found.tripDayId || !found.dateIso) {
++      return {
++        applied: false,
++        reason: 'day_not_found',
++        fromName: spec.fromName,
++        toName: spec.toName,
++        checkInIso: spec.checkInIso,
++        answerText: buildLodgingReplaceAnswerText(spec, {
++          applied: false,
++          checkInIso: spec.checkInIso,
++          dayNumber: found.dayNumber,
++          reason: 'day_not_found',
++        }),
++      };
++    }
++
++    const replacedFrom =
++      found.matched[0]?.name ??
++      found.allRest[0]?.name ??
++      spec.fromName ??
++      '原住宿';
++
++    if (!this.planningAssistantV2Service) {
++      return {
++        applied: false,
++        reason: 'pa_unavailable',
++        fromName: replacedFrom,
++        toName: spec.toName,
++        checkInIso: found.dateIso,
++        answerText: buildLodgingReplaceAnswerText(spec, {
++          applied: false,
++          checkInIso: found.dateIso,
++          dayNumber: found.dayNumber,
++          replacedFrom,
++          reason: 'pa_unavailable',
++        }),
++      };
++    }
++
++    const checkIn = found.dateIso.slice(0, 10);
++    const checkOutDate = new Date(`${checkIn}T00:00:00.000Z`);
++    checkOutDate.setUTCDate(checkOutDate.getUTCDate() + 1);
++    const checkOut = checkOutDate.toISOString().slice(0, 10);
++
++    try {
++      const out = await this.planningAssistantV2Service.applyAccommodationToItinerary(tripId.trim(), {
++        sessionId: `lodging-replace:${tripId.trim()}:${checkIn}`,
++        accommodationIndex: 0,
++        replaceExisting: true,
++        accommodation: {
++          id: `nl-replace-${Buffer.from(spec.toName).toString('base64url').slice(0, 24)}`,
++          source: 'hotel',
++          name: spec.toName,
++          nameCN: spec.toName,
++          checkIn,
++          checkOut,
++        },
++      });
++      if (out?.success) {
++        return {
++          applied: true,
++          skillsHit: ['planning_assistant.accommodations.apply'],
++          fromName: replacedFrom,
++          toName: spec.toName,
++          checkInIso: checkIn,
++          answerText: buildLodgingReplaceAnswerText(spec, {
++            applied: true,
++            checkInIso: checkIn,
++            dayNumber: found.dayNumber,
++            replacedFrom,
++          }),
++        };
++      }
++    } catch (e: unknown) {
++      this.logger.warn(
++        `[Claude Orchestrator] lodging replace apply failed: ${e instanceof Error ? e.message : String(e)}`,
++      );
++    }
++
++    return {
++      applied: false,
++      reason: 'apply_failed',
++      skillsHit: ['planning_assistant.accommodations.apply'],
++      fromName: replacedFrom,
++      toName: spec.toName,
++      checkInIso: checkIn,
++      answerText: buildLodgingReplaceAnswerText(spec, {
++        applied: false,
++        checkInIso: checkIn,
++        dayNumber: found.dayNumber,
++        replacedFrom,
++        reason: 'apply_failed',
++      }),
++    };
++  }
++
+   private async tryApplyBoundTripItineraryItemUpdate(
+     tripId: string,
+     userId: string | undefined,
+@@ -10416,6 +10666,8 @@ ${JSON.stringify(routingDecision, null, 2)}
+         this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
+       tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
+         this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
++      tryApplyBoundTripLodgingReplace: (tripId, userId, message, dateRange) =>
++        this.tryApplyBoundTripLodgingReplace(tripId, userId, message, dateRange),
+       tryApplyBoundTripItineraryDayReplan: (tripId, userId, message, dateRange) =>
+         this.tryApplyBoundTripItineraryDayReplan(tripId, userId, message, dateRange),
+       tryApplyBoundTripItineraryAdjustDraft: (tripId, userId, req) =>
+@@ -10450,6 +10702,8 @@ ${JSON.stringify(routingDecision, null, 2)}
+         this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
+       tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
+         this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
++      tryApplyBoundTripLodgingReplace: (tripId, userId, message, dateRange) =>
++        this.tryApplyBoundTripLodgingReplace(tripId, userId, message, dateRange),
+       tryApplyBoundTripItineraryDayReplan: (tripId, userId, message, dateRange) =>
+         this.tryApplyBoundTripItineraryDayReplan(tripId, userId, message, dateRange),
+       tryApplyBoundTripItineraryAdjustDraft: (tripId, userId, req) =>
+diff --git a/src/agent/services/execution-gateway.route-and-run.orchestration.ts b/src/agent/services/execution-gateway.route-and-run.orchestration.ts
+index fe1a7a9ff..c9aced9a4 100644
+--- a/src/agent/services/execution-gateway.route-and-run.orchestration.ts
++++ b/src/agent/services/execution-gateway.route-and-run.orchestration.ts
+@@ -65,6 +65,10 @@ import {
+   isTeamStructuredDiscussionQuery,
+   primaryDecisionNodeFromMessage,
+ } from '../utils/team-structured-discussion.util';
++import {
++  buildSilentVoteCreateSuggestedOperation,
++  isSilentVoteCreateIntentMessage,
++} from '../utils/trip-consultation-suggested-operations.util';
+ import type { ProcessFairnessOrchestrationHint } from '../../trips/process-fairness/types/process-fairness-orchestration.types';
+ import { PrismaService } from '../../prisma/prisma.service';
+ import { TripInsightService } from '../../trips/services/trip-insight.service';
+@@ -341,6 +345,11 @@ async function runRouteAndRunTickBody(
+         return teamStructuredDiscussion;
+       }
+ 
++      const silentVoteCreate = tryBuildSilentVoteCreateFastPath(request, startTime);
++      if (silentVoteCreate) {
++        return silentVoteCreate;
++      }
++
+       // === 稳定化层：检查 Deadline ===
+       if (deadline.isExpired()) {
+         throw new Error('TIMEOUT:AGENT_DEADLINE_EXPIRED');
+@@ -523,6 +532,11 @@ async function runRouteAndRunTickBody(
+         return teamDiscussionLatePath;
+       }
+ 
++      const silentVoteLatePath = tryBuildSilentVoteCreateFastPath(request, startTime);
++      if (silentVoteLatePath) {
++        return silentVoteLatePath;
++      }
++
+       const dryRunLedger = request.options?.dry_run === true;
+       await tryRecordGovernanceBranchSelectedWithGrsm($.governanceLedgerStore, {
+         tripId: canonicalTripIdEarly,
+@@ -1402,6 +1416,85 @@ export async function tryBuildTeamStructuredDiscussionFastPath(
+   } as unknown as RouteAndRunResponseDto;
+ }
+ 
++/**
++ * 「发起投票」：不下发 route_and_run 深规划，只返回 SilentVoteCreateDialog 的 client_navigation CTA。
++ */
++export function tryBuildSilentVoteCreateFastPath(
++  request: RouteAndRunRequestDto,
++  startTime: number,
++): RouteAndRunResponseDto | null {
++  const tripId = request.trip_id?.trim();
++  const message = resolveRouteAndRunUserMessage(request);
++  if (!tripId || !isSilentVoteCreateIntentMessage(message)) {
++    return null;
++  }
++  const voteOp = buildSilentVoteCreateSuggestedOperation(tripId);
++  if (!voteOp) {
++    return null;
++  }
++  const latencyMs = Date.now() - startTime;
++  return {
++    request_id: request.request_id,
++    route: {
++      route: 'SYSTEM1_API',
++      confidence: 1,
++      reasons: ['SILENT_VOTE_CREATE_FAST_PATH'],
++      required_capabilities: ['team_vote'],
++      consent_required: false,
++      budget: { max_seconds: 2, max_steps: 0, max_browser_steps: 0 },
++      ui_hint: {
++        mode: 'fast',
++        status: 'done',
++        message: '请点击下方按钮打开投票创建面板',
++      },
++    },
++    result: {
++      status: 'OK',
++      answer_text:
++        '可以发起团队匿名投票。请点击下方「发起投票」打开创建面板（选项与截止时间由你确认后提交）。',
++      payload: {
++        trip_id: tripId,
++        ui_surface: 'consultation',
++        suggested_operations: [voteOp],
++      },
++    },
++    ui_state: {
++      phase: 'DONE',
++      ui_status: 'done',
++      active_skill: null,
++      pending_question: null,
++    },
++    explain: {
++      decision_log: [
++        {
++          request_id: request.request_id,
++          step: 'INTAKE',
++          actor: 'Orchestrator',
++          inputs_summary: message.slice(0, 200),
++          outputs_summary: 'silent_vote_create client_navigation CTA',
++          evidence_refs: [],
++          timestamp: new Date().toISOString(),
++          metadata: {
++            system_action: 'SILENT_VOTE_CREATE_CTA',
++            client_navigation: voteOp.payload,
++          },
++        } as DecisionLogEntry,
++      ],
++    },
++    observability: {
++      latency_ms: latencyMs,
++      router_ms: 0,
++      system_mode: 'SYSTEM1',
++      tool_calls: 0,
++      browser_steps: 0,
++      tokens_est: 0,
++      cost_est_usd: 0,
++      fallback_used: false,
++      orchestration_mode_final: 'SILENT_VOTE_CREATE_FAST_PATH',
++    },
++  } as unknown as RouteAndRunResponseDto;
++}
++
+ async function tryBuildActiveTripAnalysisFastPath(
+   agent: any,
+   request: RouteAndRunRequestDto,
+diff --git a/src/agent/services/planning-request-classifier.service.spec.ts b/src/agent/services/planning-request-classifier.service.spec.ts
+index b1b1f0294..bdd089d17 100644
+--- a/src/agent/services/planning-request-classifier.service.spec.ts
++++ b/src/agent/services/planning-request-classifier.service.spec.ts
+@@ -24,6 +24,35 @@ describe('PlanningRequestClassifierService', () => {
+     ).toBe(true);
+   });
+ 
++  it('does not redirect trip review even when intent_mode is TRIP_PLANNING', () => {
++    expect(
++      service.isPlanningRequest(
++        req({
++          message: '分析当前行程的整体可行性，有什么需要改进的吗？',
++          options: { intent_mode: 'TRIP_PLANNING' },
++        }),
++      ),
++    ).toBe(false);
++    expect(
++      service.isPlanningRequest(
++        req({
++          message: '帮我全面分析当前行程，看看还有什么问题或可以优化的地方',
++          options: { intent_mode: 'TRIP_PLANNING' },
++        }),
++      ),
++    ).toBe(false);
++  });
++
++  it('does not redirect trip review without intent_mode override', () => {
++    expect(
++      service.isPlanningRequest(
++        req({
++          message: '分析当前行程的整体可行性，有什么需要改进的吗？',
++        }),
++      ),
++    ).toBe(false);
++  });
++
+   it('does not redirect explicit lookup or generic QA without trip_id', () => {
+     expect(
+       service.isPlanningRequest(
+@@ -42,4 +71,14 @@ describe('PlanningRequestClassifierService', () => {
+       ),
+     ).toBe(false);
+   });
++
++  it('still redirects real from-scratch planning keywords without trip_id', () => {
++    expect(
++      service.isPlanningRequest(
++        req({
++          message: '规划一个5天冰岛行程',
++        }),
++      ),
++    ).toBe(true);
++  });
+ });
+diff --git a/src/agent/services/planning-request-classifier.service.ts b/src/agent/services/planning-request-classifier.service.ts
+index e3df7f093..c35685e1a 100644
+--- a/src/agent/services/planning-request-classifier.service.ts
++++ b/src/agent/services/planning-request-classifier.service.ts
+@@ -1,13 +1,27 @@
+ import { Injectable } from '@nestjs/common';
+ import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
++import { isAgentTripComprehensiveAnalysisMessage } from '../utils/agent-readiness-phase.util';
+ import { resolveRouteAndRunUserMessage } from '../utils/resolve-route-and-run-message.util';
+ 
++/**
++ * 已有行程复盘/咨询：即使前端误传 intent_mode=TRIP_PLANNING，也不应 REDIRECT 到规划工作台。
++ * （真正分析仍依赖客户端传 trip_id；此处只避免误跳转。）
++ */
++export function isExistingTripReviewOrConsultMessage(message: string): boolean {
++  const msg = message.trim();
++  if (!msg) return false;
++  if (isAgentTripComprehensiveAnalysisMessage(msg)) return true;
++  return /(?:当前行程|行程.*可行性|可行性.*行程|整体可行性|需要改进|行程体检|全面体检|有什么问题|可以优化|哪里需要改|怎么改进)/i.test(
++    msg,
++  );
++}
++
+ @Injectable()
+ export class PlanningRequestClassifierService {
+   /**
+    * 判断是否是“从零规划”请求（需要重定向到规划工作台）。
+    *
+-   * 核心原则：只拦截从零开始的行程规划请求，不拦截已创建行程的查询/修改请求。
++   * 核心原则：只拦截从零开始的行程规划请求，不拦截已有行程的查询/修改/复盘请求。
+    */
+   isPlanningRequest(request: RouteAndRunRequestDto): boolean {
+     const message = resolveRouteAndRunUserMessage(request).toLowerCase().trim();
+@@ -19,6 +33,11 @@ export class PlanningRequestClassifierService {
+       return false;
+     }
+ 
++    // 复盘/可行性/改进：优先于 intent_mode 短路（侧栏常误传 TRIP_PLANNING 且漏传 trip_id）
++    if (isExistingTripReviewOrConsultMessage(message)) {
++      return false;
++    }
++
+     if (intentMode === 'TRIP_PLANNING') {
+       return true;
+     }
+diff --git a/src/agent/services/route-and-run-response-assembler.service.ts b/src/agent/services/route-and-run-response-assembler.service.ts
+index 0516058cb..dd9ee6371 100644
+--- a/src/agent/services/route-and-run-response-assembler.service.ts
++++ b/src/agent/services/route-and-run-response-assembler.service.ts
+@@ -314,6 +314,7 @@ export class RouteAndRunResponseAssemblerService {
+   ): { applied?: boolean } | undefined {
+     const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+     return (
++      (md?.lodging_replace_short_circuit as { applied?: boolean } | undefined) ??
+       (md?.itinerary_day_replan_short_circuit as { applied?: boolean } | undefined) ??
+       (md?.itinerary_item_update_short_circuit as { applied?: boolean } | undefined) ??
+       (md?.itinerary_item_add_short_circuit as { applied?: boolean } | undefined) ??
+@@ -348,10 +349,11 @@ export class RouteAndRunResponseAssemblerService {
+     return consultationUi ? 'consultation' : 'planning';
+   }
+ 
+-  /** INTAKE 删除/新增 POI / 整日重排 短路：不携带完整 planning 日程块，按轻量 CRUD 回复 */
++  /** INTAKE 删除/新增/改时/住宿替换/整日重排 短路：轻量 CRUD 回复，不挂改排草案卡 */
+   private isItineraryItemCrudIntakeShortCircuit(orchestrationResult: OrchestrationResult): boolean {
+     const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+     return (
++      md?.lodging_replace_intake === true ||
+       md?.itinerary_day_replan_intake === true ||
+       md?.itinerary_item_delete_intake === true ||
+       md?.itinerary_item_add_intake === true ||
+@@ -401,7 +403,16 @@ export class RouteAndRunResponseAssemblerService {
+   ): boolean {
+     const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
+     if (isItineraryFullTripReplanMetadata(md)) return false;
++    // 住宿 A→B / 单项 CRUD 已落库：勿再挂「草案待确认 / 应用到行程」
++    if (md?.lodging_replace_intake === true) return false;
+     if (md?.itinerary_day_replan_intake === true) return false;
++    if (
++      md?.itinerary_item_delete_intake === true ||
++      md?.itinerary_item_add_intake === true ||
++      md?.itinerary_item_update_intake === true
++    ) {
++      return false;
++    }
+     if (md?.itinerary_adjust_intake === true) return true;
+     const routeIntent = md?.route_and_run_intent as { primary?: string } | undefined;
+     if (routeIntent?.primary === 'ITINERARY_ADJUST') return true;
+@@ -1301,7 +1312,11 @@ export class RouteAndRunResponseAssemblerService {
+       if (fromChat) return fromChat;
+       const bullets = structured.rationale_bullets_zh?.map((b) => b.trim()).filter(Boolean) ?? [];
+       if (bullets.length > 0) return bullets.join('\n');
+-      return structured.optimization_summary_zh?.trim() ?? '';
++      const summary = structured.optimization_summary_zh?.trim();
++      if (summary) return summary;
++      const narr = state?.narration?.user_friendly_summary?.trim();
++      if (narr) return narr;
++      return '已根据您的要求整理行程调整草案，请查看下方时间轴确认后应用到行程。';
+     }
+ 
+     const autoLead = buildItineraryAdjustAutoApplyLeadMessage({
+@@ -2533,6 +2548,16 @@ export class RouteAndRunResponseAssemblerService {
+           : orchestrationResult.success
+             ? 'OK'
+             : 'FAILED';
++    const gateForSoft =
++      gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result ?? undefined;
++    const hasSoftWarnings =
++      flawedDraftV1?.is_flawed !== true &&
++      (gateForSoft?.gate_result === 'ADJUST_REQUIRED' ||
++        (Array.isArray(gateForSoft?.violations) &&
++          gateForSoft.violations.some(
++            (v: { severity?: string }) => String(v.severity ?? '').toUpperCase() === 'SOFT',
++          )));
++
+     const trustedDeliveryV1 = projectTrustedDeliveryV1({
+       currentStep: String(
+         orchestrationResult.result?.state?.current_step ??
+@@ -2541,6 +2566,7 @@ export class RouteAndRunResponseAssemblerService {
+       resultStatus: preliminaryStatus,
+       agentRunTrace: agentRunTraceForTrusted,
+       flawedDraft: flawedDraftV1,
++      hasSoftWarnings,
+       clarificationCount: Array.isArray(
+         (stateWithVerdict as OrchestratorState | undefined)?.clarification_questions,
+       )
+diff --git a/src/agent/services/route-and-run-response-assembler.ui-display.spec.ts b/src/agent/services/route-and-run-response-assembler.ui-display.spec.ts
+index 91ae01e08..5fc8cfd1a 100644
+--- a/src/agent/services/route-and-run-response-assembler.ui-display.spec.ts
++++ b/src/agent/services/route-and-run-response-assembler.ui-display.spec.ts
+@@ -509,6 +509,71 @@ describe('RouteAndRunResponseAssemblerService — ui_display.evidence_cards_ui',
+     expect(payload?.decision_metadata).toBeUndefined();
+   });
+ 
++  it('lodging replace short-circuit is applied success, not draft-pending adjust card', async () => {
++    const assembler = await createAssembler();
++    const answer =
++      '已将 **2026-07-22** 的住宿从「黄金瀑布酒店」修改为「格伦达菲厄泽宾馆」，并写入当前行程。';
++    const orchestrationResult: OrchestrationResult = {
++      success: true,
++      answerText: answer,
++      stepsExecuted: [{ stepId: 'INTAKE', skillName: 'lodging.replace', success: true, duration: 1 }],
++      totalDuration: 1,
++      totalCost: 0,
++      result: {
++        state: {
++          request_id: 'lodge-1',
++          current_step: 'DONE',
++          verdict: 'ALLOW',
++          plan_version: 1,
++          decision_log: [],
++          evidence_registry: new Map(),
++          errors: [],
++          narration: {
++            user_friendly_summary: answer,
++            day_by_day_narrative: [],
++            highlights: [],
++            tips: [],
++          },
++          metadata: {
++            started_at: new Date().toISOString(),
++            last_updated_at: new Date().toISOString(),
++            lodging_replace_intake: true,
++            lodging_replace_short_circuit: { applied: true, toName: '格伦达菲厄泽宾馆' },
++            route_and_run_intent: { primary: 'ITINERARY_ADJUST' },
++          },
++        } as OrchestratorState,
++        gate_result: {
++          gate_result: 'ALLOW',
++          violations: [],
++          required_adjustments: [],
++          confidence: 1,
++          evidence_refs: [],
++        },
++      },
++    };
++
++    const resp = await assembler.assembleClaudeStateMachineResponse({
++      request: {
++        request_id: 'lodge-1',
++        message:
++          '请将我行程中7月22日的住宿从「黄金瀑布酒店」修改为「格伦达菲厄泽宾馆」。',
++        trip_id: 'trip_15c50a69931845ca',
++      } as RouteAndRunRequestDto,
++      startTime: Date.now(),
++      orchestrationResult,
++      routingTaskType: 'TRIP_PLANNING',
++    });
++
++    const payload = resp.result?.payload as Record<string, unknown>;
++    expect(payload?.itinerary_item_crud).toBe(true);
++    expect(payload?.itinerary_adjust_result).toBeUndefined();
++    expect(resp.route.ui_hint.message).toBe('行程已更新');
++    expect(resp.route.ui_hint.status).toBe('done');
++    expect(String(resp.result?.answer_text ?? '')).toContain('格伦达菲厄泽宾馆');
++    expect(String(resp.result?.answer_text ?? '')).not.toContain('应用到行程');
++    expect(String(resp.result?.answer_text ?? '')).not.toContain('景点密度');
++  });
++
+   it('ITINERARY_ADJUST suppresses decision cockpit and uses day narrative answer', async () => {
+     const assembler = await createAssembler();
+     const hydrator = (assembler as unknown as { poiHydrator: RouteRunItineraryPoiHydratorService }).poiHydrator;
+diff --git a/src/agent/services/silent-vote-create-fast-path.spec.ts b/src/agent/services/silent-vote-create-fast-path.spec.ts
+new file mode 100644
+index 000000000..8ddab83c2
+--- /dev/null
++++ b/src/agent/services/silent-vote-create-fast-path.spec.ts
+@@ -0,0 +1,41 @@
++import { tryBuildSilentVoteCreateFastPath } from './execution-gateway.route-and-run.orchestration';
++import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
++
++describe('tryBuildSilentVoteCreateFastPath', () => {
++  it('returns SilentVoteCreateDialog CTA for 发起投票 with trip_id', () => {
++    const req = {
++      request_id: 'req-vote',
++      user_id: 'u1',
++      trip_id: 'trip_15c50a69931845ca',
++      conversation_context: {
++        recent_messages: ['用户: 发起投票'],
++        context_type: 'active_trip_summary',
++      },
++    } as RouteAndRunRequestDto;
++
++    const res = tryBuildSilentVoteCreateFastPath(req, Date.now());
++    expect(res).not.toBeNull();
++    expect(res!.result.status).toBe('OK');
++    const ops = (res!.result.payload as { suggested_operations?: Array<Record<string, unknown>> })
++      ?.suggested_operations;
++    expect(ops?.[0]).toMatchObject({
++      id: 'start_silent_vote',
++      label: '发起投票',
++      kind: 'client_navigation',
++      payload: {
++        trip_id: 'trip_15c50a69931845ca',
++        route: 'silent_vote_create',
++        action: 'silent_vote_create',
++      },
++    });
++  });
++
++  it('returns null without trip_id', () => {
++    const req = {
++      request_id: 'req-vote',
++      user_id: 'u1',
++      message: '发起投票',
++    } as RouteAndRunRequestDto;
++    expect(tryBuildSilentVoteCreateFastPath(req, Date.now())).toBeNull();
++  });
++});
+diff --git a/src/agent/utils/consultation-dashboard-extract.util.spec.ts b/src/agent/utils/consultation-dashboard-extract.util.spec.ts
+index d546f7c18..f98b19d35 100644
+--- a/src/agent/utils/consultation-dashboard-extract.util.spec.ts
++++ b/src/agent/utils/consultation-dashboard-extract.util.spec.ts
+@@ -26,4 +26,23 @@ describe('consultation-dashboard-extract', () => {
+     expect(cleanText).toBe('x');
+     expect(cleanText).not.toContain('CONSULTATION_UI_JSON');
+   });
++
++  it('accepts malformed end marker with only two closing brackets (model typo)', () => {
++    const raw =
++      '正文建议。\n<<<CONSULTATION_UI_JSON>>> {"version":1,"headline":"第三天住宿"} <<<END_CONSULTATION_UI_JSON>>\n尾注';
++    const { cleanText, dashboard } = extractConsultationDashboardFromAnswer(raw);
++    expect(cleanText).toContain('正文建议');
++    expect(cleanText).toContain('尾注');
++    expect(cleanText).not.toContain('CONSULTATION_UI_JSON');
++    expect(cleanText).not.toContain('"headline"');
++    expect(dashboard?.headline).toBe('第三天住宿');
++  });
++
++  it('drops orphan start marker when end is missing', () => {
++    const raw = '可见。 <<<CONSULTATION_UI_JSON>>> {"headline":"泄漏"}';
++    const { cleanText, dashboard } = extractConsultationDashboardFromAnswer(raw);
++    expect(dashboard).toBeUndefined();
++    expect(cleanText).toBe('可见。');
++    expect(cleanText).not.toContain('泄漏');
++  });
+ });
+diff --git a/src/agent/utils/consultation-dashboard-extract.util.ts b/src/agent/utils/consultation-dashboard-extract.util.ts
+index a8a051bac..f135fc060 100644
+--- a/src/agent/utils/consultation-dashboard-extract.util.ts
++++ b/src/agent/utils/consultation-dashboard-extract.util.ts
+@@ -20,6 +20,8 @@ import type {
+ 
+ const MARK_START = '<<<CONSULTATION_UI_JSON>>>';
+ const MARK_END = '<<<END_CONSULTATION_UI_JSON>>>';
++/** 模型偶发少写一个 `>` */
++const MARK_END_LOOSE = /<<<END_CONSULTATION_UI_JSON>{2,3}/;
+ 
+ const MAX_HEADLINE = 280;
+ const MAX_SHORT = 120;
+@@ -287,25 +289,55 @@ export function sanitizeConsultationDashboard(raw: unknown): ConsultationDashboa
+   };
+ }
+ 
++function findConsultationDashboardEnd(raw: string, afterStart: number): { idx: number; len: number } | null {
++  const strict = raw.indexOf(MARK_END, afterStart);
++  if (strict !== -1) {
++    return { idx: strict, len: MARK_END.length };
++  }
++  const m = raw.slice(afterStart).match(MARK_END_LOOSE);
++  if (!m || m.index == null) return null;
++  return { idx: afterStart + m.index, len: m[0].length };
++}
++
++/** 去掉残留的起止标记与夹在标记间的孤儿 JSON */
++export function stripOrphanConsultationDashboardMarkers(text: string): string {
++  if (!text?.trim()) return text;
++  let t = text;
++  t = t.replace(/<<<CONSULTATION_UI_JSON>>>[\s\S]*?(?:<<<END_CONSULTATION_UI_JSON>{2,3}|$)/g, '');
++  t = t.replace(/<<<CONSULTATION_UI_JSON>>>/g, '');
++  t = t.replace(/<<<END_CONSULTATION_UI_JSON>{2,3}/g, '');
++  return t.replace(/\n{3,}/g, '\n\n').trim();
++}
++
+ export function extractConsultationDashboardFromAnswer(raw: string): {
+   cleanText: string;
+   dashboard: ConsultationDashboardV1 | undefined;
+ } {
+   const idx = raw.indexOf(MARK_START);
+-  const idxEnd = raw.indexOf(MARK_END);
+-  if (idx === -1 || idxEnd === -1 || idxEnd <= idx) {
+-    return { cleanText: raw.trim(), dashboard: undefined };
++  if (idx === -1) {
++    return { cleanText: stripOrphanConsultationDashboardMarkers(raw.trim()), dashboard: undefined };
++  }
++  const end = findConsultationDashboardEnd(raw, idx + MARK_START.length);
++  if (!end || end.idx <= idx) {
++    // 有起始无结束：从起始标记起丢弃，避免机读 JSON 漏进 answer_text
++    const before = raw.slice(0, idx).trim();
++    return {
++      cleanText: stripOrphanConsultationDashboardMarkers(before || ''),
++      dashboard: undefined,
++    };
+   }
+-  const jsonStr = raw.slice(idx + MARK_START.length, idxEnd).trim();
++  const jsonStr = raw.slice(idx + MARK_START.length, end.idx).trim();
+   const before = raw.slice(0, idx).trim();
+-  const after = raw.slice(idxEnd + MARK_END.length).trim();
+-  const cleanText = [before, after].filter(Boolean).join('\n\n').trim();
++  const after = raw.slice(end.idx + end.len).trim();
++  const cleanText = stripOrphanConsultationDashboardMarkers(
++    [before, after].filter(Boolean).join('\n\n').trim(),
++  );
+ 
+   try {
+     const parsed = JSON.parse(jsonStr);
+     const dashboard = sanitizeConsultationDashboard(parsed);
+-    return { cleanText: cleanText || raw.trim(), dashboard };
++    return { cleanText: cleanText || before || after, dashboard };
+   } catch {
+-    return { cleanText: cleanText || raw.trim(), dashboard: undefined };
++    return { cleanText: cleanText || before || after || raw.trim(), dashboard: undefined };
+   }
+ }
+diff --git a/src/agent/utils/decision-log-user-facing.zh.util.ts b/src/agent/utils/decision-log-user-facing.zh.util.ts
+index f07d4c8cc..56f63e73e 100644
+--- a/src/agent/utils/decision-log-user-facing.zh.util.ts
++++ b/src/agent/utils/decision-log-user-facing.zh.util.ts
+@@ -828,6 +828,10 @@ export function formatDecisionLogOutputsDisplayZh(entry: {
+   }
+   s = s.replace(/POI_SLOT_FILL/g, '景点补全');
+   s = s.replace(/ITINERARY_ADJUST/g, '单日改排');
++  s = s.replace(/FULL_TRIP_REPLAN/g, '整段重规划');
++  s = s.replace(/探索\/商量意图/g, '协商调整');
++  s = s.replace(/强修改意图/g, '明确修改');
++  s = s.replace(/ADVICE_ONLY/g, '仅建议');
+   s = s.replace(/CGUS/g, '多方案对比');
+   s = s.replace(/plan-base/g, '基准方案');
+   s = s.replace(/Abu=/g, '安全=');
+diff --git a/src/agent/utils/feasibility-message-surface.zh.util.spec.ts b/src/agent/utils/feasibility-message-surface.zh.util.spec.ts
+index 3cda786aa..ea8ab6ef5 100644
+--- a/src/agent/utils/feasibility-message-surface.zh.util.spec.ts
++++ b/src/agent/utils/feasibility-message-surface.zh.util.spec.ts
+@@ -246,4 +246,26 @@ describe('feasibility-message-surface.zh.util', () => {
+     expect(q.question).not.toContain('【意图编译失败】');
+     expect(q.question).toContain('1332');
+   });
++
++  it('normalizes legacy NEED_CONFIRMATION + {id,label} into single_choice + {value,label}', () => {
++    const [q] = sanitizeClarificationQuestionsForClientDisplay([
++      {
++        id: 'repair_halt_confirmation',
++        question: '系统已自动修复尝试 3 次，仍未收敛。',
++        type: 'NEED_CONFIRMATION' as any,
++        required: true,
++        options: [
++          { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' } as any,
++          { id: 'continue_auto_repair', label: '继续自动修复' } as any,
++        ],
++        hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
++      },
++    ]);
++    expect(q.type).toBe('single_choice');
++    expect(q.metadata?.presentation).toBe('structured_intake_v1');
++    expect(q.options).toEqual([
++      { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
++      { value: 'continue_auto_repair', label: '继续自动修复' },
++    ]);
++  });
+ });
+diff --git a/src/agent/utils/feasibility-message-surface.zh.util.ts b/src/agent/utils/feasibility-message-surface.zh.util.ts
+index f2a97dbea..ac88ffab2 100644
+--- a/src/agent/utils/feasibility-message-surface.zh.util.ts
++++ b/src/agent/utils/feasibility-message-surface.zh.util.ts
+@@ -330,8 +330,43 @@ export function sanitizeClarificationQuestionForClientDisplay(
+   questionZh = dedupeRepeatedClarificationParagraphs(scrubInternalAgentLeakage(questionZh));
+   const hintRaw = question.hint ? String(question.hint).trim() : '';
+   const hint = hintRaw ? humanizeFeasibilityMessageForUserZh(hintRaw) : question.hint;
++
++  // 契约：前端只认 single_choice + { value, label }；兼容历史 NEED_CONFIRMATION / { id, label }
++  const rawType = String((question as { type?: string }).type ?? '');
++  const type: ClarificationQuestion['type'] =
++    rawType === 'NEED_CONFIRMATION' || rawType === 'NEED_MORE_INFO'
++      ? 'single_choice'
++      : (question.type as ClarificationQuestion['type']);
++
++  const options = Array.isArray(question.options)
++    ? question.options.map((opt) => {
++        if (typeof opt === 'string') return opt;
++        if (!opt || typeof opt !== 'object') return opt;
++        const o = opt as { value?: string; label?: string; id?: string };
++        const value = String(o.value ?? o.id ?? '').trim();
++        const label = String(o.label ?? value).trim();
++        if (!value) return opt;
++        return { value, label: label || value };
++      })
++    : question.options;
++
++  const hasChoiceOptions =
++    Array.isArray(options) &&
++    options.length > 0 &&
++    options.some((o) => typeof o === 'string' || (o && typeof o === 'object' && ('value' in o || 'label' in o)));
++
++  const metadata = {
++    ...(question.metadata ?? {}),
++    ...(hasChoiceOptions && type === 'single_choice' && !question.metadata?.presentation
++      ? { presentation: 'structured_intake_v1' }
++      : {}),
++  };
++
+   return attachClarificationMarkdownHtml({
+     ...question,
++    type: hasChoiceOptions && type === 'text' ? 'single_choice' : type,
++    ...(options ? { options } : {}),
++    metadata,
+     question: questionZh,
+     ...(hint ? { hint } : {}),
+   });
+diff --git a/src/agent/utils/itinerary-adjust-auto-apply.util.ts b/src/agent/utils/itinerary-adjust-auto-apply.util.ts
+index 4a3c4d852..ba9f7f804 100644
+--- a/src/agent/utils/itinerary-adjust-auto-apply.util.ts
++++ b/src/agent/utils/itinerary-adjust-auto-apply.util.ts
+@@ -6,6 +6,10 @@ import type { CorridorFallbackLevel } from './itinerary-adjust-corridor-fallback
+ import type { CorridorFilterStats } from './itinerary-adjust-corridor-fallback.util';
+ import { detectPoiSlotFillIntent } from './itinerary-adjust-poi-slot-fill.util';
+ import { stripSystemMessageBlocksForIntakeNl } from './trip-plan-intake-vehicle.util';
++import {
++  buildAutoCorridorUiFlagsV1,
++  type AutoCorridorUiFlagsV1,
++} from '../contracts/auto-corridor-product.contract';
+ 
+ export type ItineraryAdjustSubIntent = 'exploratory' | 'strong_modification' | 'poi_slot_fill';
+ 
+@@ -160,6 +164,8 @@ export function buildItineraryAdjustActionExecutionPayload(metadata: Record<stri
+   status: 'SUCCEEDED' | 'NOT_STARTED' | 'PENDING_CONFIRM';
+   requires_confirmation_count: number;
+   itinerary_adjust_auto_apply?: unknown;
++  /** P1-4：AUTO 走廊产品 UI / 审计提示 */
++  auto_corridor_ui_v1?: AutoCorridorUiFlagsV1;
+ } {
+   const mode =
+     (metadata.itinerary_adjust_execution_mode as ItineraryAdjustExecutionMode | undefined) ??
+@@ -179,5 +185,6 @@ export function buildItineraryAdjustActionExecutionPayload(metadata: Record<stri
+           : 'NOT_STARTED',
+     requires_confirmation_count: applied ? 0 : mode === 'ADVICE_ONLY' ? 0 : 1,
+     itinerary_adjust_auto_apply: autoApply,
++    auto_corridor_ui_v1: buildAutoCorridorUiFlagsV1({ metadata, executionMode: mode }),
+   };
+ }
+diff --git a/src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts b/src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts
+new file mode 100644
+index 000000000..bb2e4c63f
+--- /dev/null
++++ b/src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts
+@@ -0,0 +1,16 @@
++import {
++  FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON,
++  shouldBlockAutoApplyForFlawedDraft,
++} from './itinerary-adjust-flawed-auto-block.util';
++
++describe('shouldBlockAutoApplyForFlawedDraft', () => {
++  it('blocks when flawed_draft_narrate is true', () => {
++    expect(shouldBlockAutoApplyForFlawedDraft({ flawed_draft_narrate: true })).toBe(true);
++    expect(FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON).toBe('flawed_draft_forbidden');
++  });
++
++  it('allows when not flawed', () => {
++    expect(shouldBlockAutoApplyForFlawedDraft({})).toBe(false);
++    expect(shouldBlockAutoApplyForFlawedDraft(undefined)).toBe(false);
++  });
++});
+diff --git a/src/agent/utils/itinerary-adjust-flawed-auto-block.util.ts b/src/agent/utils/itinerary-adjust-flawed-auto-block.util.ts
+new file mode 100644
+index 000000000..2ac9a7115
+--- /dev/null
++++ b/src/agent/utils/itinerary-adjust-flawed-auto-block.util.ts
+@@ -0,0 +1,12 @@
++/**
++ * ITINERARY_ADJUST AUTO / SEMI_AUTO 写回门禁（P0-1）。
++ * FLAWED_DRAFT（metadata.flawed_draft_narrate）禁止自动落库。
++ */
++
++export function shouldBlockAutoApplyForFlawedDraft(
++  metadata: Record<string, unknown> | null | undefined,
++): boolean {
++  return metadata?.flawed_draft_narrate === true;
++}
++
++export const FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON = 'flawed_draft_forbidden' as const;
+diff --git a/src/agent/utils/itinerary-day-replan.util.ts b/src/agent/utils/itinerary-day-replan.util.ts
+index a7a8d9106..5e16834d3 100644
+--- a/src/agent/utils/itinerary-day-replan.util.ts
++++ b/src/agent/utils/itinerary-day-replan.util.ts
+@@ -58,7 +58,7 @@ function dayItems(day: TripDayLikeForDelete): TripItemLikeForDelete[] {
+   return day.ItineraryItem ?? [];
+ }
+ 
+-function formatTripDayDateIso(date: Date | string | null | undefined): string | undefined {
++export function formatTripDayDateIso(date: Date | string | null | undefined): string | undefined {
+   if (!date) return undefined;
+   if (date instanceof Date) return date.toISOString().slice(0, 10);
+   const s = String(date).trim();
+diff --git a/src/agent/utils/itinerary-lodging-replace.util.spec.ts b/src/agent/utils/itinerary-lodging-replace.util.spec.ts
+new file mode 100644
+index 000000000..0b4dacf92
+--- /dev/null
++++ b/src/agent/utils/itinerary-lodging-replace.util.spec.ts
+@@ -0,0 +1,42 @@
++import {
++  buildLodgingReplaceAnswerText,
++  detectLodgingReplaceIntent,
++  parseLodgingReplaceSpec,
++} from './itinerary-lodging-replace.util';
++
++const USER_MSG =
++  '请将我行程中7月22日的住宿从「黄金瀑布酒店」修改为「格伦达菲厄泽宾馆」。同时，将7月23日的出发点更新为格伦达菲厄泽，并按照建议的路线（54号公路→1号公路）重新计算当日驾驶时间。';
++
++describe('itinerary-lodging-replace.util', () => {
++  const dateRange = { start_date: '2026-07-22', end_date: '2026-07-29' };
++
++  it('detects lodging replace intent', () => {
++    expect(detectLodgingReplaceIntent(USER_MSG)).toBe(true);
++    expect(detectLodgingReplaceIntent('冰岛哪里值得游玩')).toBe(false);
++  });
++
++  it('parses from/to, check-in, next-day departure and route', () => {
++    const spec = parseLodgingReplaceSpec(USER_MSG, dateRange);
++    expect(spec).toMatchObject({
++      checkInIso: '2026-07-22',
++      fromName: '黄金瀑布酒店',
++      toName: '格伦达菲厄泽宾馆',
++      nextDayDepartureIso: '2026-07-23',
++      recalculateDrive: true,
++    });
++    expect(spec?.routeHintZh).toContain('54');
++  });
++
++  it('builds confirmation that mentions hotel swap and drive', () => {
++    const spec = parseLodgingReplaceSpec(USER_MSG, dateRange)!;
++    const text = buildLodgingReplaceAnswerText(spec, {
++      applied: true,
++      checkInIso: '2026-07-22',
++      replacedFrom: '黄金瀑布酒店',
++    });
++    expect(text).toContain('格伦达菲厄泽宾馆');
++    expect(text).toContain('黄金瀑布酒店');
++    expect(text).toContain('2026-07-23');
++    expect(text).toMatch(/2\.5|3\.5/);
++  });
++});
+diff --git a/src/agent/utils/itinerary-lodging-replace.util.ts b/src/agent/utils/itinerary-lodging-replace.util.ts
+new file mode 100644
+index 000000000..ffe9cfe7d
+--- /dev/null
++++ b/src/agent/utils/itinerary-lodging-replace.util.ts
+@@ -0,0 +1,254 @@
++/**
++ * 绑定 Trip：「将某日住宿从 A 改为 B」NL 解析与确认文案。
++ * 与 POI 走廊 ITINERARY_ADJUST 分离，避免答非所问、行程未落库。
++ */
++
++import { stripSystemMessageBlocksForIntakeNl } from './trip-plan-intake-vehicle.util';
++import { extractItineraryAdjustTargetDateFromMessage } from './itinerary-adjust-intent.util';
++import {
++  type TripItemLikeForDelete,
++  type TripLikeForDelete,
++} from './itinerary-item-delete.util';
++import { resolveTripDayByDate } from './itinerary-day-replan.util';
++
++export interface LodgingReplaceSpec {
++  checkInIso?: string;
++  fromName?: string;
++  toName: string;
++  /** 用户同时要求更新次日出发点时解析到的日期 */
++  nextDayDepartureIso?: string;
++  /** 用户要求按 54→1 等路线重算驾驶 */
++  recalculateDrive?: boolean;
++  routeHintZh?: string;
++}
++
++const LODGING_WORD_RE = /住宿|酒店|宾馆|旅馆|民宿|过夜|lodging|hotel|guesthouse/i;
++const REPLACE_VERB_RE = /修改为|改为|改成|换成|替换为|更换为|变更为/;
++
++/** 显式「住宿从 A 改为 B」类意图 */
++export function detectLodgingReplaceIntent(message: string): boolean {
++  const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
++  if (!t.trim() || !LODGING_WORD_RE.test(t)) return false;
++  if (!REPLACE_VERB_RE.test(t) && !/(?:把|将).{0,40}(?:住宿|酒店|宾馆|旅馆|民宿)/.test(t)) {
++    return false;
++  }
++  // 需有目标名：引号内或「修改为X」
++  if (
++    /[「『"'][^」』"']{2,}[」』"']/.test(t) ||
++    /(?:修改为|改为|改成|换成|替换为|更换为|变更为)\s*[「『"']?[\u4e00-\u9fffA-Za-z]{2,}/.test(t)
++  ) {
++    return true;
++  }
++  return false;
++}
++
++function unquote(s: string): string {
++  return s
++    .trim()
++    .replace(/^[「『"'《]+/, '')
++    .replace(/[」』"'》]+$/, '')
++    .trim();
++}
++
++function addDaysYmd(ymd: string, days: number): string {
++  const d = new Date(`${ymd.slice(0, 10)}T00:00:00.000Z`);
++  d.setUTCDate(d.getUTCDate() + days);
++  return d.toISOString().slice(0, 10);
++}
++
++function parseAllMonthDayYmds(
++  t: string,
++  dateRange?: { start_date?: string; end_date?: string },
++): string[] {
++  const year = dateRange?.start_date
++    ? parseInt(dateRange.start_date.slice(0, 4), 10)
++    : new Date().getUTCFullYear();
++  const out: string[] = [];
++  for (const m of t.matchAll(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/g)) {
++    const month = parseInt(m[1], 10);
++    const day = parseInt(m[2], 10);
++    if (!Number.isFinite(month) || !Number.isFinite(day)) continue;
++    out.push(
++      `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
++    );
++  }
++  for (const m of t.matchAll(/\d{4}-\d{2}-\d{2}/g)) {
++    out.push(m[0]);
++  }
++  return [...new Set(out)];
++}
++
++export function parseLodgingReplaceSpec(
++  message: string,
++  dateRange?: { start_date?: string; end_date?: string },
++): LodgingReplaceSpec | null {
++  if (!detectLodgingReplaceIntent(message)) return null;
++  const t = stripSystemMessageBlocksForIntakeNl(String(message ?? '')).trim();
++
++  let fromName: string | undefined;
++  let toName: string | undefined;
++
++  const fromToQuoted = t.match(
++    /住宿[^。；;\n]{0,48}从\s*[「『"']([^」』"']{2,40})[」』"']\s*(?:修改为|改为|改成|换成|替换为|更换为)\s*[「『"']([^」』"']{2,40})[」』"']/,
++  );
++  if (fromToQuoted) {
++    fromName = unquote(fromToQuoted[1]);
++    toName = unquote(fromToQuoted[2]);
++  }
++
++  if (!toName) {
++    const toOnly = t.match(
++      /(?:修改为|改为|改成|换成|替换为|更换为|变更为)\s*[「『"']?([^」』"'。；;\n]{2,40})/,
++    );
++    if (toOnly?.[1]) {
++      toName = unquote(toOnly[1].replace(/[，,].*$/, ''));
++    }
++  }
++
++  if (!fromName) {
++    const fromOnly = t.match(
++      /从\s*[「『"']([^」』"']{2,40})[」』"']\s*(?:修改为|改为|改成|换成)/,
++    );
++    if (fromOnly?.[1]) fromName = unquote(fromOnly[1]);
++  }
++
++  if (!toName || toName.length < 2) return null;
++
++  // 住宿锚定日：优先「住宿」子句附近的日期，否则用 extract 首日
++  const lodgingClause =
++    t.match(/[^。；;\n]*(?:住宿|酒店|宾馆|旅馆|民宿)[^。；;\n]{0,80}/)?.[0] ?? t;
++  const lodgingDates = parseAllMonthDayYmds(lodgingClause, dateRange);
++  const checkInIso =
++    lodgingDates[0] ??
++    extractItineraryAdjustTargetDateFromMessage(lodgingClause, dateRange) ??
++    extractItineraryAdjustTargetDateFromMessage(t, dateRange);
++
++  let nextDayDepartureIso: string | undefined;
++  const depClause = t.match(
++    /[^。；;\n]*(?:出发点|出发地|出发|起点)[^。；;\n]{0,60}/,
++  )?.[0];
++  if (depClause) {
++    const depDates = parseAllMonthDayYmds(depClause, dateRange);
++    nextDayDepartureIso = depDates[0];
++  }
++  if (!nextDayDepartureIso && /出发点|出发地|起点/.test(t) && checkInIso) {
++    nextDayDepartureIso = addDaysYmd(checkInIso, 1);
++  }
++
++  const recalculateDrive = /驾驶|车程|路线|公路|重新计算/.test(t);
++  let routeHintZh: string | undefined;
++  const routeMatch = t.match(/(\d+\s*号公路[^。；;\n]{0,24}\d+\s*号公路)/);
++  if (routeMatch) {
++    routeHintZh = routeMatch[1].replace(/\s+/g, '');
++  } else if (/54/.test(t) && /1\s*号/.test(t)) {
++    routeHintZh = '54号公路→1号公路';
++  }
++
++  return {
++    checkInIso,
++    fromName,
++    toName,
++    nextDayDepartureIso,
++    recalculateDrive,
++    routeHintZh,
++  };
++}
++
++function itemDisplayName(item: TripItemLikeForDelete): string {
++  const place = item.Place ?? item.place;
++  const fromPlace = String(place?.nameCN ?? place?.nameEN ?? '').trim();
++  if (fromPlace) return fromPlace;
++  const note = String(item.note ?? '');
++  const noteName = note.match(/住宿[：:]\s*([^\n|;]+)/)?.[1]?.trim();
++  return noteName || '';
++}
++
++function namesFuzzyMatch(a: string, b: string): boolean {
++  const x = a.replace(/\s+/g, '').toLowerCase();
++  const y = b.replace(/\s+/g, '').toLowerCase();
++  if (!x || !y) return false;
++  return x === y || x.includes(y) || y.includes(x);
++}
++
++export function findLodgingItemsOnDay(
++  trip: TripLikeForDelete,
++  checkInIso: string | undefined,
++  fromName?: string,
++): {
++  tripDayId?: string;
++  dayNumber?: number;
++  dateIso?: string;
++  matched: Array<{ id: string; name: string }>;
++  allRest: Array<{ id: string; name: string }>;
++} {
++  const resolved = resolveTripDayByDate(trip, checkInIso);
++  const items = resolved.items ?? [];
++  const restLike = items.filter((it) => {
++    const type = String((it as { type?: string }).type ?? '').toUpperCase();
++    if (type === 'REST' || type === 'ACCOMMODATION' || type === 'LODGING') return true;
++    const name = itemDisplayName(it);
++    return /酒店|宾馆|旅馆|民宿|Hotel|Guesthouse|Hostel/i.test(name);
++  });
++  const allRest = restLike
++    .map((it) => ({ id: it.id, name: itemDisplayName(it) || '住宿' }))
++    .filter((r) => r.id);
++  const matched = fromName
++    ? allRest.filter((r) => namesFuzzyMatch(r.name, fromName))
++    : allRest;
++  return {
++    tripDayId: resolved.tripDayId,
++    dayNumber: resolved.dayNumber,
++    dateIso: resolved.dateIso ?? checkInIso,
++    matched,
++    allRest,
++  };
++}
++
++export function buildLodgingReplaceAnswerText(
++  spec: LodgingReplaceSpec,
++  opts: {
++    applied: boolean;
++    checkInIso?: string;
++    dayNumber?: number;
++    replacedFrom?: string;
++    reason?: string;
++  },
++): string {
++  const dateLabel =
++    opts.checkInIso?.slice(0, 10) ??
++    spec.checkInIso?.slice(0, 10) ??
++    (opts.dayNumber != null ? `第${opts.dayNumber}天` : '目标日');
++  const from = opts.replacedFrom ?? spec.fromName ?? '原住宿';
++  const to = spec.toName;
++
++  if (!opts.applied) {
++    const why =
++      opts.reason === 'day_not_found'
++        ? `行程中找不到 ${dateLabel} 对应日程。`
++        : opts.reason === 'pa_unavailable'
++          ? '住宿写入服务暂不可用。'
++          : opts.reason === 'apply_failed'
++            ? '写入行程失败。'
++            : '未能完成住宿替换。';
++    return `未能将 ${dateLabel} 住宿从「${from}」改为「${to}」。${why}请确认该日已有行程后再试。`;
++  }
++
++  const lines = [
++    `已将 **${dateLabel}** 的住宿从「${from}」修改为「${to}」，并写入当前行程。`,
++  ];
++
++  if (spec.nextDayDepartureIso || spec.recalculateDrive) {
++    const dep = spec.nextDayDepartureIso?.slice(0, 10) ?? '次日';
++    const placeHint = to.replace(/(宾馆|酒店|旅馆|民宿)$/u, '') || to;
++    const route = spec.routeHintZh ?? '54号公路→1号公路';
++    lines.push(
++      `据此，**${dep}** 的出发点已按「${placeHint}」对齐；建议沿 **${route}** 驶向黄金圈方向。`,
++    );
++    lines.push(
++      `参考车程（自驾、含常规停顿，非实时路况）：约 **2.5～3.5 小时** 抵达黄金圈核心区（辛格维利尔 / 间歇泉 / 黄金瀑布一带，视当日首站而定）。请以导航实时 ETA 为准。`,
++    );
++  }
++
++  lines.push('若需同步取消/新订外部预订平台订单，请在预订渠道另行操作。');
++  return lines.join('\n\n');
++}
+diff --git a/src/agent/utils/orchestration-signals.trip-consultation.spec.ts b/src/agent/utils/orchestration-signals.trip-consultation.spec.ts
+index 94a14f743..04b7cd2bb 100644
+--- a/src/agent/utils/orchestration-signals.trip-consultation.spec.ts
++++ b/src/agent/utils/orchestration-signals.trip-consultation.spec.ts
+@@ -3,6 +3,7 @@ import {
+   isBoundTripLightConsultQuery,
+   isBoundTripLodgingDiningPlanQuery,
+   isFactualMacroStatQuery,
++  isHotelInventorySearchQuery,
+   isLocalClockOrTimezoneFactQuery,
+   isTripStatusOverviewQuery,
+   isWeatherRoadConditionFocusedQuery,
+@@ -21,6 +22,21 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
+     ...overrides,
+   });
+ 
++  it('有 trip_id + 搜索维克某日住宿 → DATA_LOOKUP（非瑕疵草案 SM）', () => {
++    const msg = '搜索维克 7 月 26 日住宿';
++    expect(isHotelInventorySearchQuery(msg, msg.toLowerCase())).toBe(true);
++    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
++    const s = signalsFromRequest(
++      base({
++        trip_id: 'trip_15c50a69931845ca',
++        message: msg,
++        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
++        conversation_context: { context_type: 'active_trip_summary' },
++      }),
++    );
++    expect(s.taskType).toBe('DATA_LOOKUP');
++  });
++
+   it('有 trip_id + 西峡湾极地攻略咨询 → DATA_LOOKUP + Plan Studio 轻量咨询', () => {
+     const msg = '帮我查查类似冰岛西峡湾那种冷门秘境的极地探险攻略';
+     expect(isBoundTripLightConsultQuery(msg, msg.toLowerCase())).toBe(true);
+@@ -363,7 +379,7 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
+     expect(s.requiresStructuredOutput).toBe(false);
+   });
+ 
+-  it('options.intent_mode=TRIP_PLANNING 覆盖咨询句 → 仍为 TRIP_PLANNING', () => {
++  it('options.intent_mode=TRIP_PLANNING 落在轻量咨询句 → DATA_LOOKUP（契约：咨询≠深规划状态机）', () => {
+     const s = signalsFromRequest(
+       base({
+         trip_id: 't1',
+@@ -371,8 +387,20 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
+         options: { intent_mode: 'TRIP_PLANNING' },
+       }),
+     );
+-    expect(s.taskType).toBe('TRIP_PLANNING');
++    expect(s.taskType).toBe('DATA_LOOKUP');
+     expect(s.intent_mode_requested).toBe('TRIP_PLANNING');
++    expect(s.intent_mode_resolved).toBe('DATA_LOOKUP');
++  });
++
++  it('options.intent_mode=TRIP_PLANNING + 改排句 → 仍为 TRIP_PLANNING', () => {
++    const s = signalsFromRequest(
++      base({
++        trip_id: 't1',
++        message: '请把第三天行程改轻松一点',
++        options: { intent_mode: 'TRIP_PLANNING' },
++      }),
++    );
++    expect(s.taskType).toBe('TRIP_PLANNING');
+     expect(s.intent_mode_resolved).toBe('TRIP_PLANNING');
+   });
+ 
+diff --git a/src/agent/utils/orchestration-signals.util.ts b/src/agent/utils/orchestration-signals.util.ts
+index 271410065..6a11f8aba 100644
+--- a/src/agent/utils/orchestration-signals.util.ts
++++ b/src/agent/utils/orchestration-signals.util.ts
+@@ -10,6 +10,7 @@ import { detectItineraryAdjustIntent, detectFullTripReplanIntent } from './itine
+ import { normalizeLiveTools } from './live-tools.util';
+ import { isAgentTripComprehensiveAnalysisMessage } from './agent-readiness-phase.util';
+ import { isTeamStructuredDiscussionQuery } from './team-structured-discussion.util';
++import { isSilentVoteCreateIntentMessage } from './trip-consultation-suggested-operations.util';
+ import { resolveRouteAndRunUserMessage } from './resolve-route-and-run-message.util';
+ 
+ /**
+@@ -329,8 +330,7 @@ function applyIntentModeToTaskType(
+ ): TaskType {
+   if (mode === 'AUTO') return inferred;
+   const msg = String(req?.message ?? '').trim();
+-  if (mode === 'TRIP_PLANNING') return 'TRIP_PLANNING';
+-  if (mode === 'DATA_LOOKUP') return 'DATA_LOOKUP';
++  // 已绑定行程的复盘/可行性：优先于前端误传的 TRIP_PLANNING
+   if (
+     shouldForceDataLookupForBoundTripReview({
+       trip_id: req?.trip_id,
+@@ -339,6 +339,8 @@ function applyIntentModeToTaskType(
+   ) {
+     return 'DATA_LOOKUP';
+   }
++  if (mode === 'TRIP_PLANNING') return 'TRIP_PLANNING';
++  if (mode === 'DATA_LOOKUP') return 'DATA_LOOKUP';
+   return 'GENERIC_QA';
+ }
+ 
+@@ -370,6 +372,12 @@ function clampTaskTypeForBoundTripReplanning(
+   if (isTeamStructuredDiscussionQuery(msg)) {
+     return taskType === 'TRIP_PLANNING' ? 'DATA_LOOKUP' : taskType;
+   }
++  if (isSilentVoteCreateIntentMessage(msg)) {
++    return 'DATA_LOOKUP';
++  }
++  if (isHotelInventorySearchQuery(msg, msgLower)) {
++    return taskType === 'TRIP_PLANNING' ? 'DATA_LOOKUP' : taskType;
++  }
+   if (isWestfjordsLegTransportPreferenceConsultation(msg, msgLower)) {
+     return taskType;
+   }
+@@ -568,6 +576,35 @@ export function isTripStatusOverviewQuery(msg: string, msgLower: string): boolea
+   return tripReadinessZh || tripStatusOverviewZh || tripItineraryReviewZh || tripStatusOverviewEn;
+ }
+ 
++/**
++ * 已绑定 trip 的「搜索/查找某地某日住宿」库存检索（非改稿、非多日吃住方案）。
++ * 例：搜索维克 7 月 26 日住宿 → 须走 DATA_LOOKUP + hotel MCP，禁止整段 SM/瑕疵草案。
++ */
++export function isHotelInventorySearchQuery(msg: string, msgLower?: string): boolean {
++  const m = String(msg ?? '').trim();
++  if (!m) return false;
++  if (detectItineraryAdjustIntent(m)) return false;
++  if (detectFullTripReplanIntent(m)) return false;
++  const lower = msgLower ?? m.toLowerCase();
++  const lodging =
++    /住宿|酒店|旅馆|宾馆|民宿|青旅|客栈|空房|房源|入住|过夜/i.test(m) ||
++    /\b(hotels?|hostel|airbnb|lodging|guesthouse|accommodation)\b/i.test(lower);
++  if (!lodging) return false;
++  const searchVerb =
++    /搜索|查找|查一下|帮我查|帮我搜|找一下|搜一下|搜一搜|查一查|看看有没有|有没有空房|可订|订房|预订住宿|search\s+(?:for\s+)?hotels?|find\s+hotels?|look(?:ing)?\s+up\s+hotels?/i.test(
++      m,
++    );
++  if (searchVerb) return true;
++  // 「维克 7月26日住哪里 / 推荐酒店」带日期的短问，按库存检索而非改排
++  if (
++    /住哪|住哪里|住哪儿|推荐.{0,8}酒店|酒店推荐|过夜推荐/.test(m) &&
++    /(\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}-\d{2}-\d{2}|今晚|明天|后天)/.test(m)
++  ) {
++    return true;
++  }
++  return false;
++}
++
+ /**
+  * 已绑定 trip 的「多日住宿 + 餐饮方案/策略」问法（非改稿、非整段重规划）。
+  * 例：详细6天住宿和餐饮方案，黄金圈南岸到冰河湖，包括酒店推荐和每日用餐策略。
+@@ -621,6 +658,8 @@ export function shouldForceDataLookupForBoundTripReview(
+   const msg = String(req.message ?? '').trim();
+   if (!tid || !msg) return false;
+   const msgLower = msg.toLowerCase();
++  /** 库存搜酒店优先：即使前端误传 TRIP_PLANNING 也不进 SM */
++  if (isHotelInventorySearchQuery(msg, msgLower)) return true;
+   if (!isBoundTripLightConsultQuery(msg, msgLower)) return false;
+   if (detectItineraryAdjustIntent(msg)) return false;
+   /** 多日住宿+餐饮方案是咨询输出，勿与整段重规划 intent 混淆 */
+@@ -902,6 +941,10 @@ function isTripScopedConsultationQuery(msg: string, msgLower: string): boolean {
+     return true;
+   }
+ 
++  if (isHotelInventorySearchQuery(msg, msgLower)) {
++    return true;
++  }
++
+   if (hasExplicitTripPlanningIntent(msg, msgLower)) {
+     return false;
+   }
+diff --git a/src/agent/utils/resolve-route-and-run-message.util.spec.ts b/src/agent/utils/resolve-route-and-run-message.util.spec.ts
+index ce84c85c6..976148cf3 100644
+--- a/src/agent/utils/resolve-route-and-run-message.util.spec.ts
++++ b/src/agent/utils/resolve-route-and-run-message.util.spec.ts
+@@ -1,4 +1,7 @@
+ import {
++  bindPriorConsultationAdviceIntoMessage,
++  detectConsultationApplyAdviceIntent,
++  extractLatestAssistantMessageFromRecent,
+   extractLatestUserMessageFromRecent,
+   normalizeRouteAndRunRequestMessage,
+   resolveRouteAndRunUserMessage,
+@@ -15,6 +18,15 @@ describe('resolve-route-and-run-message.util', () => {
+     ).toBe('住宿选公寓还是木屋？帮团队结构化讨论一下');
+   });
+ 
++  it('extracts latest 助手: advice', () => {
++    expect(
++      extractLatestAssistantMessageFromRecent([
++        '助手: 建议维克 overnight，并预留风天缓冲。'.repeat(3),
++        '用户: 请将上文给出的建议落实到当前行程',
++      ]),
++    ).toContain('维克');
++  });
++
+   it('resolve prefers top-level message', () => {
+     const req = {
+       message: '顶层消息',
+@@ -40,4 +52,40 @@ describe('resolve-route-and-run-message.util', () => {
+     normalizeRouteAndRunRequestMessage(req);
+     expect(req.message).toBe('');
+   });
++
++  it('detects apply-advice meta intent', () => {
++    expect(
++      detectConsultationApplyAdviceIntent(
++        '请将上文给出的建议落实到当前行程（在尽量不推翻现有日程的前提下合并调整）。',
++      ),
++    ).toBe(true);
++    expect(detectConsultationApplyAdviceIntent('冰岛哪里值得游玩')).toBe(false);
++  });
++
++  it('binds prior assistant advice into apply message', () => {
++    const advice =
++      '南岸天气多变，建议维克 overnight；Dyrhólaey 风大时注意安全；油费约 2.5–3.0 EUR/升。请尽快订维克住宿。';
++    const req = {
++      message: '请将上文给出的建议落实到当前行程（在尽量不推翻现有日程的前提下合并调整）。',
++      conversation_context: {
++        recent_messages: [`助手: ${advice}`, '用户: 请将上文给出的建议落实到当前行程'],
++      },
++    } as RouteAndRunRequestDto;
++
++    expect(bindPriorConsultationAdviceIntoMessage(req)).toBe(true);
++    expect(req.message).toContain('[SYSTEM_MESSAGE][CONSULTATION_APPLY]');
++    expect(req.message).toContain('维克');
++    expect(req.message).toContain('Dyrhólaey');
++    expect((req.meta as Record<string, unknown>)?.consultation_apply_prior_bound).toBe(true);
++  });
++
++  it('marks missing prior when apply intent has no assistant turn', () => {
++    const req = {
++      message: '请根据上文建议优化当前行程草稿',
++      conversation_context: { recent_messages: ['用户: 随便问问'] },
++    } as RouteAndRunRequestDto;
++    expect(bindPriorConsultationAdviceIntoMessage(req)).toBe(true);
++    expect((req.meta as Record<string, unknown>)?.consultation_apply_missing_prior).toBe(true);
++    expect(req.message).toContain('未能从会话历史中找到');
++  });
+ });
+diff --git a/src/agent/utils/resolve-route-and-run-message.util.ts b/src/agent/utils/resolve-route-and-run-message.util.ts
+index e5a083e20..841680854 100644
+--- a/src/agent/utils/resolve-route-and-run-message.util.ts
++++ b/src/agent/utils/resolve-route-and-run-message.util.ts
+@@ -23,6 +23,99 @@ export function extractLatestUserMessageFromRecent(recent: string[] | undefined)
+   return null;
+ }
+ 
++/** 从 recent_messages 逆序取最近一条助手回复正文（不含「助手:」前缀） */
++export function extractLatestAssistantMessageFromRecent(
++  recent: string[] | undefined,
++): string | null {
++  if (!Array.isArray(recent) || recent.length === 0) {
++    return null;
++  }
++  for (let i = recent.length - 1; i >= 0; i--) {
++    const raw = recent[i]?.trim();
++    if (!raw) continue;
++    if (raw.startsWith('[系统注入') || raw.startsWith('[active_trip_summary')) {
++      continue;
++    }
++    const prefixed =
++      raw.match(/^助手[:：]\s*([\s\S]+)$/i) ?? raw.match(/^assistant[:：]\s*([\s\S]+)$/i);
++    if (prefixed?.[1]?.trim()) {
++      return prefixed[1].trim();
++    }
++  }
++  return null;
++}
++
++/**
++ * 用户点击「将以上建议应用到行程」类按钮时，message 往往只有元指令、不含建议正文。
++ */
++export function detectConsultationApplyAdviceIntent(message: string): boolean {
++  const t = String(message ?? '').trim();
++  if (!t) return false;
++  if (/\[SYSTEM_MESSAGE\]\[CONSULTATION_APPLY\]/.test(t)) return false;
++  const pointsToPrior =
++    /(?:上文|以上|前述|刚才|先前|你(?:给出|提到|分析)|顾问).{0,24}(?:建议|分析|结论|方案)/.test(
++      t,
++    ) || /(?:根据|按照|依照).{0,24}(?:上文|以上|前述|刚才).{0,40}(?:建议|分析)/.test(t);
++  const applyVerb =
++    /(?:落实|应用到|应用到当前|合并调整|优化当前|调整行程|改到行程|写入行程|按建议改)/.test(t) ||
++    /请使用行程规划模式/.test(t);
++  return pointsToPrior && applyVerb;
++}
++
++const MAX_BOUND_ADVICE_CHARS = 3500;
++
++/**
++ * 将上轮助手建议绑定进本轮 message，供 INTAKE/PLAN_GEN 使用（否则「上文」是空指针）。
++ * @returns true 若已改写 message
++ */
++export function bindPriorConsultationAdviceIntoMessage(
++  request: Pick<RouteAndRunRequestDto, 'message' | 'conversation_context' | 'meta'>,
++): boolean {
++  const current = String(request.message ?? '').trim();
++  if (!current || !detectConsultationApplyAdviceIntent(current)) {
++    return false;
++  }
++  if (/\[SYSTEM_MESSAGE\]\[CONSULTATION_APPLY\]/.test(current)) {
++    return false;
++  }
++
++  const advice = extractLatestAssistantMessageFromRecent(
++    request.conversation_context?.recent_messages,
++  );
++  const meta = {
++    ...((request.meta as Record<string, unknown> | undefined) ?? {}),
++  } as Record<string, unknown>;
++
++  if (!advice || advice.length < 40) {
++    meta.consultation_apply_prior_bound = false;
++    meta.consultation_apply_missing_prior = true;
++    (request as RouteAndRunRequestDto).meta = meta as RouteAndRunRequestDto['meta'];
++    request.message = [
++      '[SYSTEM_MESSAGE][CONSULTATION_APPLY]',
++      '未能从会话历史中找到上一条顾问建议正文。请先向用户确认要落实的具体改动（哪一天、哪些景点/住宿/路线），不要空跑重规划。',
++      '',
++      '[USER]',
++      current,
++    ].join('\n');
++    return true;
++  }
++
++  const clipped = advice.length > MAX_BOUND_ADVICE_CHARS ? `${advice.slice(0, MAX_BOUND_ADVICE_CHARS)}…` : advice;
++  meta.consultation_apply_prior_bound = true;
++  meta.consultation_apply_missing_prior = false;
++  meta.consultation_apply_prior_chars = clipped.length;
++  (request as RouteAndRunRequestDto).meta = meta as RouteAndRunRequestDto['meta'];
++  request.message = [
++    '[SYSTEM_MESSAGE][CONSULTATION_APPLY]',
++    '以下为上轮咨询建议正文（须按优先级落实；尽量不推翻未提及的日程）：',
++    clipped,
++    '',
++    '[USER]',
++    current,
++  ].join('\n');
++  return true;
++}
++
+ /** 解析本轮有效用户消息：优先 `message`，否则 recent_messages 末条用户话术 */
+ export function resolveRouteAndRunUserMessage(
+   request: Pick<RouteAndRunRequestDto, 'message' | 'conversation_context'>,
+@@ -34,10 +127,13 @@ export function resolveRouteAndRunUserMessage(
+   return extractLatestUserMessageFromRecent(request.conversation_context?.recent_messages) ?? '';
+ }
+ 
+-/** Plan Studio 等客户端有时只写 recent_messages；补齐顶层 message 供编排与 process_fairness 使用 */
++/**
++ * Plan Studio 等客户端有时只写 recent_messages；补齐顶层 message。
++ * 并对「落实上文建议」类指令绑定上轮助手正文，避免上下文断开。
++ */
+ export function normalizeRouteAndRunRequestMessage(request: RouteAndRunRequestDto): void {
+-  if (request.message?.trim()) {
+-    return;
++  if (!request.message?.trim()) {
++    request.message = resolveRouteAndRunUserMessage(request);
+   }
+-  request.message = resolveRouteAndRunUserMessage(request);
++  bindPriorConsultationAdviceIntoMessage(request);
+ }
+diff --git a/src/agent/utils/route-and-run-trip-id-merge.util.spec.ts b/src/agent/utils/route-and-run-trip-id-merge.util.spec.ts
+index 76dcb9124..4160ba8fa 100644
+--- a/src/agent/utils/route-and-run-trip-id-merge.util.spec.ts
++++ b/src/agent/utils/route-and-run-trip-id-merge.util.spec.ts
+@@ -1,4 +1,8 @@
+-import { mergeTripIdAliasesIntoRouteAndRunRequest } from './route-and-run-trip-id-merge.util';
++import {
++  isAcceptableRouteAndRunTripId,
++  isCanonicalRouteAndRunTripIdForm,
++  mergeTripIdAliasesIntoRouteAndRunRequest,
++} from './route-and-run-trip-id-merge.util';
+ import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
+ 
+ describe('mergeTripIdAliasesIntoRouteAndRunRequest', () => {
+@@ -35,4 +39,22 @@ describe('mergeTripIdAliasesIntoRouteAndRunRequest', () => {
+     mergeTripIdAliasesIntoRouteAndRunRequest(req);
+     expect(req.trip_id).toBe('top');
+   });
++
++  it('accepts UUID and trip_<hex> as canonical forms (not placeholders)', () => {
++    expect(isCanonicalRouteAndRunTripIdForm('15c50a69-9318-45ca-8a4c-5ee66553209f')).toBe(true);
++    expect(isCanonicalRouteAndRunTripIdForm('trip_15c50a69931845ca')).toBe(true);
++    expect(isAcceptableRouteAndRunTripId('trip_15c50a69931845ca')).toBe(true);
++    expect(isAcceptableRouteAndRunTripId('')).toBe(false);
++  });
++
++  it('merges shell trip_id unchanged', () => {
++    const req = {
++      tripId: 'trip_15c50a69931845ca',
++      user_id: 'u',
++      request_id: 'r',
++      message: 'm',
++    } as RouteAndRunRequestDto;
++    mergeTripIdAliasesIntoRouteAndRunRequest(req);
++    expect(req.trip_id).toBe('trip_15c50a69931845ca');
++  });
+ });
+diff --git a/src/agent/utils/route-and-run-trip-id-merge.util.ts b/src/agent/utils/route-and-run-trip-id-merge.util.ts
+index 796350133..75630babc 100644
+--- a/src/agent/utils/route-and-run-trip-id-merge.util.ts
++++ b/src/agent/utils/route-and-run-trip-id-merge.util.ts
+@@ -1,4 +1,25 @@
+ import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
++import { isMemoryShellTripId } from '../../trips/iceland-self-drive/utils/iceland-memory-shell-trip-id.util';
++
++const UUID_RE =
++  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
++
++/**
++ * 前端契约：UUID 与 `trip_<hex>` 均为合法绑定 ID，不得当占位符拒掉。
++ * （空串才视为缺失；其它非空 id 仍可绑定，由下游仓储决定能否加载。）
++ */
++export function isAcceptableRouteAndRunTripId(tripId: string | null | undefined): boolean {
++  const id = typeof tripId === 'string' ? tripId.trim() : '';
++  if (!id) return false;
++  return true;
++}
++
++/** 是否为契约明确列举的 ID 形态（UUID 或 memory shell `trip_<hex>`） */
++export function isCanonicalRouteAndRunTripIdForm(tripId: string | null | undefined): boolean {
++  const id = typeof tripId === 'string' ? tripId.trim() : '';
++  if (!id) return false;
++  return UUID_RE.test(id) || isMemoryShellTripId(id);
++}
+ 
+ /**
+  * 合并 camelCase、一键操作嵌套负载中的 trip_id 到顶层 `trip_id`。
+diff --git a/src/agent/utils/trip-consultation-suggested-operations.util.spec.ts b/src/agent/utils/trip-consultation-suggested-operations.util.spec.ts
+index 545a06acb..bf0021f1f 100644
+--- a/src/agent/utils/trip-consultation-suggested-operations.util.spec.ts
++++ b/src/agent/utils/trip-consultation-suggested-operations.util.spec.ts
+@@ -1,7 +1,9 @@
+ import {
+   buildDefaultTripConsultationSuggestedOperations,
+   buildDiningAnchorSuggestedOperations,
++  buildSilentVoteCreateSuggestedOperation,
+   extractSuggestedOperationsFromAnswer,
++  isSilentVoteCreateIntentMessage,
+   mergeSuggestedOperations,
+ } from './trip-consultation-suggested-operations.util';
+ 
+@@ -15,6 +17,56 @@ describe('trip-consultation-suggested-operations.util', () => {
+     expect(operations[0].payload?.message).toContain('帮我改');
+   });
+ 
++  it('keeps silent_vote_create client_navigation from model JSON', () => {
++    const raw = `<<<SUGGESTED_OPS_JSON>>>
++[{"id":"start_silent_vote","label":"发起投票","kind":"client_navigation","payload":{"route":"silent_vote_create","trip_id":"ignored"}}]
++<<<END_SUGGESTED_OPS_JSON>>>`;
++    const { operations } = extractSuggestedOperationsFromAnswer(raw, 'trip_15c50a69931845ca');
++    expect(operations).toHaveLength(1);
++    expect(operations[0].payload?.route).toBe('silent_vote_create');
++    expect(operations[0].payload?.action).toBe('silent_vote_create');
++    expect(operations[0].payload?.trip_id).toBe('trip_15c50a69931845ca');
++  });
++
++  it('accepts vote action-only payload', () => {
++    const raw = `<<<SUGGESTED_OPS_JSON>>>
++[{"id":"v1","label":"团队投票","kind":"client_navigation","payload":{"action":"team.start_vote"}}]
++<<<END_SUGGESTED_OPS_JSON>>>`;
++    const { operations } = extractSuggestedOperationsFromAnswer(raw, 'uuid-1');
++    expect(operations[0].payload?.route).toBe('silent_vote_create');
++    expect(operations[0].payload?.action).toBe('team.start_vote');
++  });
++
++  it('rewrites hotel-search client_navigation mistagged as silent_vote into route_and_run_message', () => {
++    const raw = `<<<SUGGESTED_OPS_JSON>>>
++[{"id":"search_grund","label":"搜索格伦达菲厄泽酒店","kind":"client_navigation","payload":{"route":"silent_vote_create","trip_id":"x"}}]
++<<<END_SUGGESTED_OPS_JSON>>>`;
++    const { operations } = extractSuggestedOperationsFromAnswer(raw, 'trip_15c50a69931845ca');
++    expect(operations).toHaveLength(1);
++    expect(operations[0].kind).toBe('route_and_run_message');
++    expect(operations[0].payload?.route).toBeUndefined();
++    expect(operations[0].payload?.action).toBeUndefined();
++    expect(String(operations[0].payload?.message)).toContain('搜索格伦达菲厄泽酒店');
++  });
++
++  it('drops non-vote client_navigation that only carries silent_vote route', () => {
++    const raw = `<<<SUGGESTED_OPS_JSON>>>
++[{"id":"open_x","label":"查看详情","kind":"client_navigation","payload":{"route":"silent_vote_create"}}]
++<<<END_SUGGESTED_OPS_JSON>>>`;
++    const { operations } = extractSuggestedOperationsFromAnswer(raw, 't1');
++    expect(operations).toHaveLength(0);
++  });
++
++  it('defaults include silent vote CTA when user asks to start a vote', () => {
++    expect(isSilentVoteCreateIntentMessage('帮我发起一次匿名投票')).toBe(true);
++    const d = buildDefaultTripConsultationSuggestedOperations('trip_abc', {
++      planning_handoff_message: '帮我发起投票',
++    });
++    expect(d[0].id).toBe('start_silent_vote');
++    expect(d[0].payload?.route).toBe('silent_vote_create');
++    expect(buildSilentVoteCreateSuggestedOperation('t')?.label).toBe('发起投票');
++  });
++
+   it('merge keeps parsed first then defaults', () => {
+     const d = buildDefaultTripConsultationSuggestedOperations('t1');
+     const merged = mergeSuggestedOperations([], d);
+@@ -30,9 +82,13 @@ describe('trip-consultation-suggested-operations.util', () => {
+         payload: { route: 'timeline' as const, trip_id: 't1' },
+       },
+     ];
+-    const defaults = buildDefaultTripConsultationSuggestedOperations('t1', { planning_handoff_message: '问' });
++    const defaults = buildDefaultTripConsultationSuggestedOperations('t1', {
++      planning_handoff_message: '问',
++    });
+     const merged = mergeSuggestedOperations(parsed, defaults);
+-    const timelineNavs = merged.filter((o) => o.kind === 'client_navigation' && o.payload?.route === 'timeline');
++    const timelineNavs = merged.filter(
++      (o) => o.kind === 'client_navigation' && o.payload?.route === 'timeline',
++    );
+     expect(timelineNavs).toHaveLength(1);
+     expect(timelineNavs[0].id).toBe('navigate_to_timeline');
+   });
+diff --git a/src/agent/utils/trip-consultation-suggested-operations.util.ts b/src/agent/utils/trip-consultation-suggested-operations.util.ts
+index d8288af7f..ffdfff474 100644
+--- a/src/agent/utils/trip-consultation-suggested-operations.util.ts
++++ b/src/agent/utils/trip-consultation-suggested-operations.util.ts
+@@ -16,6 +16,7 @@ export interface TripConsultationSuggestedOperation {
+   payload?: {
+     message?: string;
+     route?: string;
++    action?: string;
+     trip_id?: string;
+     [key: string]: unknown;
+   };
+@@ -31,8 +32,49 @@ const ALLOWED_NAV_ROUTES = new Set([
+   'itinerary',
+   'decision_cockpit',
+   'structured_negotiation',
++  'silent_vote',
++  'silent_vote_create',
+ ]);
+ 
++const ALLOWED_NAV_ACTIONS = new Set([
++  'silent_vote_create',
++  'start_vote',
++  'team.start_vote',
++]);
++
++/** 用户显式要发起投票 / 匿名投票 / 团队投票 */
++export function isSilentVoteCreateIntentMessage(message: string): boolean {
++  const m = message.trim();
++  if (!m) return false;
++  return /(?:发起|创建|开启)(?:一次|一个)?(?:匿名)?(?:投票|表决)|团队投票|silent\s*vote|start\s+(?:a\s+)?vote/i.test(
++    m,
++  );
++}
++
++/** 前端打开 SilentVoteCreateDialog；不替用户创建投票 */
++export function buildSilentVoteCreateSuggestedOperation(
++  tripId: string,
++): TripConsultationSuggestedOperation | null {
++  const tid = tripId.trim();
++  if (!tid) return null;
++  return {
++    id: 'start_silent_vote',
++    label: '发起投票',
++    kind: 'client_navigation',
++    payload: {
++      trip_id: tid,
++      route: 'silent_vote_create',
++      action: 'silent_vote_create',
++    },
++  };
++}
++
++function looksLikeHotelSearchLabel(label: string): boolean {
++  return /搜索.{0,12}酒店|酒店.{0,8}搜索|查.{0,8}住宿|搜.{0,8}民宿|search\s+hotels?|find\s+hotels?/i.test(
++    label,
++  );
++}
++
+ function sanitizeOperation(
+   raw: unknown,
+   fallbackTripId: string,
+@@ -41,12 +83,27 @@ function sanitizeOperation(
+   const o = raw as Record<string, unknown>;
+   const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim().slice(0, 64) : '';
+   const label = typeof o.label === 'string' && o.label.trim() ? o.label.trim().slice(0, 36) : '';
+-  const kind = o.kind === 'route_and_run_message' || o.kind === 'client_navigation' ? o.kind : null;
++  let kind: TripConsultationSuggestedOperationKind | null =
++    o.kind === 'route_and_run_message' || o.kind === 'client_navigation' ? o.kind : null;
+   if (!id || !label || !kind) return null;
+ 
+   const payloadIn = o.payload && typeof o.payload === 'object' ? (o.payload as Record<string, unknown>) : {};
+   const payload: TripConsultationSuggestedOperation['payload'] = { ...payloadIn };
+ 
++  // 模型易把「搜索酒店」误标成 client_navigation + silent_vote_* → 前端弹投票窗
++  const labelImpliesVote = /发起投票|创建投票|发起匿名投票|团队投票/.test(label);
++  const hotelSearchLabel = looksLikeHotelSearchLabel(label);
++  if (kind === 'client_navigation' && hotelSearchLabel && !labelImpliesVote) {
++    kind = 'route_and_run_message';
++    const existingMsg =
++      typeof payload.message === 'string' && payload.message.trim()
++        ? payload.message.trim()
++        : '';
++    payload.message = (existingMsg || `请帮我${label}`).slice(0, 4000);
++    delete payload.route;
++    delete payload.action;
++  }
++
+   if (kind === 'route_and_run_message') {
+     const msg =
+       typeof payload.message === 'string' && payload.message.trim()
+@@ -55,12 +112,48 @@ function sanitizeOperation(
+     if (!msg) return null;
+     payload.message = msg;
+     payload.trip_id = fallbackTripId;
++    delete payload.route;
++    delete payload.action;
+   }
+ 
+   if (kind === 'client_navigation') {
+     const route = typeof payload.route === 'string' ? payload.route.trim() : '';
+-    if (!route || !ALLOWED_NAV_ROUTES.has(route)) return null;
+-    payload.route = route;
++    const action = typeof payload.action === 'string' ? payload.action.trim() : '';
++    const isVoteRoute = route === 'silent_vote' || route === 'silent_vote_create';
++    const isVoteAction = Boolean(action && ALLOWED_NAV_ACTIONS.has(action));
++    const voteAllowed = labelImpliesVote || id === 'start_silent_vote';
++
++    // 非投票按钮禁止挂 silent_vote_*（否则「搜索酒店」会打开创建投票弹窗）
++    if ((isVoteRoute || isVoteAction) && !voteAllowed) {
++      delete payload.route;
++      delete payload.action;
++    }
++
++    const routeAfter = typeof payload.route === 'string' ? payload.route.trim() : '';
++    const actionAfter = typeof payload.action === 'string' ? payload.action.trim() : '';
++    const routeOk = Boolean(routeAfter && ALLOWED_NAV_ROUTES.has(routeAfter));
++    const actionOk = Boolean(actionAfter && ALLOWED_NAV_ACTIONS.has(actionAfter));
++
++    if (!routeOk && !actionOk && !labelImpliesVote) return null;
++    if (routeOk) {
++      payload.route = routeAfter;
++    } else if (voteAllowed) {
++      payload.route = 'silent_vote_create';
++    }
++    if (actionOk && voteAllowed) {
++      payload.action = actionAfter;
++    } else if (voteAllowed) {
++      payload.action = 'silent_vote_create';
++    } else {
++      delete payload.action;
++    }
++    // 再次保险：非投票不得残留 vote action
++    if (!voteAllowed) {
++      delete payload.action;
++      if (payload.route === 'silent_vote' || payload.route === 'silent_vote_create') {
++        return null;
++      }
++    }
+     payload.trip_id = fallbackTripId;
+   }
+ 
+@@ -131,6 +224,8 @@ export type BuildDefaultTripConsultationSuggestedOperationsOpts = {
+    * `payload.intent_mode=TRIP_PLANNING` 供客户端下一轮 route_and_run 透传。
+    */
+   planning_handoff_message?: string;
++  /** 用户要发起投票时下发 SilentVoteCreateDialog CTA（不替用户创建） */
++  include_silent_vote?: boolean;
+ };
+ 
+ export function buildDefaultTripConsultationSuggestedOperations(
+@@ -150,7 +245,13 @@ export function buildDefaultTripConsultationSuggestedOperations(
+       : '';
+ 
+   const out: TripConsultationSuggestedOperation[] = [];
+-  if (handoffMessage) {
++
++  if (opts?.include_silent_vote || (userAsk && isSilentVoteCreateIntentMessage(userAsk))) {
++    const voteOp = buildSilentVoteCreateSuggestedOperation(tid);
++    if (voteOp) out.push(voteOp);
++  }
++
++  if (handoffMessage && !isSilentVoteCreateIntentMessage(userAsk)) {
+     out.push({
+       id: 'handoff_trip_planning_same_ask',
+       label: '用行程规划改稿',
+@@ -163,8 +264,8 @@ export function buildDefaultTripConsultationSuggestedOperations(
+     });
+   }
+ 
+-  out.push(
+-    {
++  if (!isSilentVoteCreateIntentMessage(userAsk)) {
++    out.push({
+       id: 'apply_analysis_to_plan',
+       label: '按上述建议调整行程',
+       kind: 'route_and_run_message',
+@@ -174,14 +275,15 @@ export function buildDefaultTripConsultationSuggestedOperations(
+         message:
+           '【请使用行程规划模式】请根据上文分析与建议，帮我优化当前行程草稿：按优先级落实你提到的改动（可直接修改日程）。',
+       },
+-    },
+-    {
+-      id: 'open_timeline',
+-      label: '查看行程时间轴',
+-      kind: 'client_navigation',
+-      payload: { trip_id: tid, route: 'timeline' },
+-    },
+-  );
++    });
++  }
++
++  out.push({
++    id: 'open_timeline',
++    label: '查看行程时间轴',
++    kind: 'client_navigation',
++    payload: { trip_id: tid, route: 'timeline' },
++  });
+ 
+   return out;
+ }
+@@ -189,7 +291,9 @@ export function buildDefaultTripConsultationSuggestedOperations(
+ function clientNavigationRouteKey(op: TripConsultationSuggestedOperation): string | null {
+   if (op.kind !== 'client_navigation') return null;
+   const r = typeof op.payload?.route === 'string' ? op.payload.route.trim() : '';
+-  return r.length ? r : null;
++  if (r.length) return r;
++  const a = typeof op.payload?.action === 'string' ? op.payload.action.trim() : '';
++  return a.length ? `action:${a}` : null;
+ }
+ 
+ /** 模型输出优先，不足时用默认补齐（按 id 去重；`client_navigation` 另按 route 去重避免双「时间线」按钮）。 */
+diff --git a/src/agent/validation/clarification-question.schema.spec.ts b/src/agent/validation/clarification-question.schema.spec.ts
+index 02a754187..5708bf09a 100644
+--- a/src/agent/validation/clarification-question.schema.spec.ts
++++ b/src/agent/validation/clarification-question.schema.spec.ts
+@@ -74,4 +74,28 @@ describe('clarification-question.schema', () => {
+     ]);
+     expect(q?.conditionalInputs?.[0]?.inputType).toBe('multi_choice');
+   });
++
++  it('coerces REPAIR halt NEED_CONFIRMATION + {id,label} into single_choice', () => {
++    const [q] = parseClarificationQuestionsForClient([
++      {
++        id: 'repair_halt_confirmation',
++        question: '系统已自动修复尝试 3 次，仍未收敛。',
++        type: 'NEED_CONFIRMATION',
++        required: true,
++        options: [
++          { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
++          { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
++          { id: 'continue_auto_repair', label: '继续自动修复' },
++        ],
++        hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
++      },
++    ]);
++    expect(q?.type).toBe('single_choice');
++    expect(q?.metadata?.presentation).toBe('structured_intake_v1');
++    expect(q?.options).toEqual([
++      { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
++      { value: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
++      { value: 'continue_auto_repair', label: '继续自动修复' },
++    ]);
++  });
+ });
+diff --git a/src/agent/validation/clarification-question.schema.ts b/src/agent/validation/clarification-question.schema.ts
+index ba1a42506..08a44dcf1 100644
+--- a/src/agent/validation/clarification-question.schema.ts
++++ b/src/agent/validation/clarification-question.schema.ts
+@@ -68,11 +68,12 @@ function normalizeConditionalInput(raw: ConditionalInputField): ConditionalInput
+ export function parseClarificationQuestionsForClient(
+   questions: unknown,
+ ): ClarificationQuestion[] {
+-  const parsed = ClarificationQuestionsSchema.safeParse(questions);
++  const coerced = coerceLegacyClarificationQuestions(questions);
++  const parsed = ClarificationQuestionsSchema.safeParse(coerced);
+   if (!parsed.success) {
+-    if (!Array.isArray(questions)) return [];
++    if (!Array.isArray(coerced)) return [];
+     const out: ClarificationQuestion[] = [];
+-    for (const item of questions) {
++    for (const item of coerced) {
+       const one = ClarificationQuestionSchema.safeParse(item);
+       if (one.success) out.push(one.data as ClarificationQuestion);
+     }
+@@ -86,3 +87,58 @@ export function parseClarificationQuestionsForClient(
+     conditionalInputs: q.conditionalInputs?.map(normalizeConditionalInput),
+   })) as ClarificationQuestion[];
+ }
++
++/**
++ * 兼容 REPAIR 等历史形状：`type: NEED_CONFIRMATION`、`options: [{ id, label }]`。
++ * 未归一化时 Zod 会丢弃整张卡，前端退化成空白 text 输入。
++ */
++function coerceLegacyClarificationQuestions(questions: unknown): unknown {
++  if (!Array.isArray(questions)) return questions;
++  return questions.map((item) => {
++    if (!item || typeof item !== 'object') return item;
++    const q = item as Record<string, unknown>;
++    const rawType = String(q.type ?? '');
++    const type =
++      rawType === 'NEED_CONFIRMATION' || rawType === 'NEED_MORE_INFO'
++        ? 'single_choice'
++        : q.type;
++
++    let options = q.options;
++    if (Array.isArray(options)) {
++      options = options.map((opt) => {
++        if (typeof opt === 'string') return opt;
++        if (!opt || typeof opt !== 'object') return opt;
++        const o = opt as Record<string, unknown>;
++        if (typeof o.value === 'string' && o.value.trim()) {
++          return {
++            value: o.value.trim(),
++            label: String(o.label ?? o.value).trim() || o.value.trim(),
++          };
++        }
++        if (typeof o.id === 'string' && o.id.trim()) {
++          return {
++            value: o.id.trim(),
++            label: String(o.label ?? o.id).trim() || o.id.trim(),
++          };
++        }
++        return opt;
++      });
++    }
++
++    const hasChoiceOptions = Array.isArray(options) && options.length > 0;
++    const metadata =
++      q.metadata && typeof q.metadata === 'object'
++        ? { ...(q.metadata as Record<string, unknown>) }
++        : {};
++    if (hasChoiceOptions && type === 'single_choice' && !metadata.presentation) {
++      metadata.presentation = 'structured_intake_v1';
++    }
++
++    return {
++      ...q,
++      type,
++      ...(options !== undefined ? { options } : {}),
++      ...(Object.keys(metadata).length ? { metadata } : {}),
++    };
++  });
++}
+diff --git a/src/travel-context/CURRENT_SSOT_STATUS.md b/src/travel-context/CURRENT_SSOT_STATUS.md
+new file mode 100644
+index 000000000..1a01b4861
+--- /dev/null
++++ b/src/travel-context/CURRENT_SSOT_STATUS.md
+@@ -0,0 +1,21 @@
++# TravelContext SSOT 状态（P0-2）
++
++> 代码常量：[`current-ssot-status.constants.ts`](./current-ssot-status.constants.ts)
++
++## 冻结口径
++
++| | |
++|--|--|
++| **当前运行 SSOT** | `OrchestratorState` + `DecisionState` / DSO 双轨 |
++| **目标上下文 SSOT** | RFC-003 `TravelContext` |
++| **本轮** | 仅标注；**不**贯通 Claude SM 主链 |
++
++## 迁移表
++
++| 数据 | 当前来源 | 目标来源 |
++|------|----------|----------|
++| Trip binding | Orchestrator metadata / `trip_id` | `TravelContextIdentity` |
++| Effective Plan | 多处 `plan_version` / `planVersionId` | `effectivePlanVersionId` |
++| Research snapshot | conversation / DSO | TravelContext evidence |
++| Team constraints | research metadata | TravelContext constraints |
++| Page context | client meta | PageAIContract / TravelContext |
+diff --git a/src/travel-context/current-ssot-status.constants.spec.ts b/src/travel-context/current-ssot-status.constants.spec.ts
+new file mode 100644
+index 000000000..5914c52b2
+--- /dev/null
++++ b/src/travel-context/current-ssot-status.constants.spec.ts
+@@ -0,0 +1,13 @@
++import {
++  CURRENT_RUNTIME_SSOT,
++  TARGET_CONTEXT_SSOT,
++  TRAVEL_CONTEXT_MIGRATION_TABLE,
++} from './current-ssot-status.constants';
++
++describe('travel-context current SSOT status', () => {
++  it('declares dual-track runtime and TravelContext as target', () => {
++    expect(CURRENT_RUNTIME_SSOT).toContain('OrchestratorState');
++    expect(TARGET_CONTEXT_SSOT).toContain('TravelContext');
++    expect(TRAVEL_CONTEXT_MIGRATION_TABLE.length).toBeGreaterThanOrEqual(5);
++  });
++});
+diff --git a/src/travel-context/current-ssot-status.constants.ts b/src/travel-context/current-ssot-status.constants.ts
+new file mode 100644
+index 000000000..d69eb98b7
+--- /dev/null
++++ b/src/travel-context/current-ssot-status.constants.ts
+@@ -0,0 +1,46 @@
++/**
++ * P0-2：TravelContext 尚未成为 Claude SM 主链 SSOT。
++ * 本文件仅冻结「当前 / 目标」口径；贯通迁移不在本轮范围。
++ */
++
++export const TRAVEL_CONTEXT_SSOT_STATUS_VERSION = '1.0.0' as const;
++
++/** 当前运行态：OrchestratorState ∥ DecisionState(DSO) 双轨 */
++export const CURRENT_RUNTIME_SSOT = 'OrchestratorState + DecisionState/DSO' as const;
++
++/** 目标上下文 SSOT：RFC-003 TravelContext */
++export const TARGET_CONTEXT_SSOT = 'TravelContext (RFC-003)' as const;
++
++export type TravelContextMigrationRow = {
++  data: string;
++  currentSource: string;
++  targetSource: string;
++};
++
++export const TRAVEL_CONTEXT_MIGRATION_TABLE: readonly TravelContextMigrationRow[] = [
++  {
++    data: 'Trip binding',
++    currentSource: 'OrchestratorState.metadata / request.trip_id',
++    targetSource: 'TravelContextIdentity.tripId',
++  },
++  {
++    data: 'Effective Plan',
++    currentSource: 'plan_version (number) / planVersionId (string, multi-corridor)',
++    targetSource: 'TravelContextBindings.effectivePlanVersionId',
++  },
++  {
++    data: 'Research snapshot',
++    currentSource: 'conversation_id + DSO / research_data',
++    targetSource: 'TravelContext evidence snapshot',
++  },
++  {
++    data: 'Team constraints',
++    currentSource: 'research metadata / emergency_constraints',
++    targetSource: 'TravelContext constraints',
++  },
++  {
++    data: 'Page context',
++    currentSource: 'client meta / conversation_context',
++    targetSource: 'PageAIContract / TravelContext',
++  },
++] as const;
+diff --git a/src/travel-context/domain/travel-context.types.ts b/src/travel-context/domain/travel-context.types.ts
+index 8ef18fca2..edf0281de 100644
+--- a/src/travel-context/domain/travel-context.types.ts
++++ b/src/travel-context/domain/travel-context.types.ts
+@@ -128,6 +128,11 @@ export interface EffectivePlanContext {
+   selectedRouteId?: string | null;
+ }
+ 
++/**
++ * Snapshot 投影 kind（读模型）。
++ * SYSTEM_INFERRED / EFFECTIVE_DECISION 不得单独触发 HARD BLOCK
++ * （见 travel-ontology fact-epistemic-boundary + ONT-FACT-002）。
++ */
+ export type WorldFactKind =
+   | 'USER_DECLARED'
+   | 'SYSTEM_INFERRED'
+@@ -135,6 +140,11 @@ export type WorldFactKind =
+   | 'OFFICIAL_RULE'
+   | 'EFFECTIVE_DECISION';
+ 
++/**
++ * @deprecated 名称保留兼容；语义上仅为 TravelWorldFact 的 Snapshot 裁剪投影。
++ * 新代码请使用 {@link TravelWorldFactProjection}。
++ * 权威契约：`TravelWorldFact`（src/travel-ontology/contracts）。
++ */
+ export interface WorldFact {
+   factId: string;
+   type: string;
+@@ -149,6 +159,9 @@ export interface WorldFact {
+   replanTrigger?: boolean;
+ }
+ 
++/** RFC / Snapshot 读模型别名 — 禁止作为第二套领域模型演化 */
++export type TravelWorldFactProjection = WorldFact;
++
+ export interface TravelWorldContext {
+   facts: WorldFact[];
+   dataCompletenessScore: number;
+diff --git a/src/travel-context/snapshot/adapters/trip-context.adapter-mappers.ts b/src/travel-context/snapshot/adapters/trip-context.adapter-mappers.ts
+index 9b191ff46..a5612ef90 100644
+--- a/src/travel-context/snapshot/adapters/trip-context.adapter-mappers.ts
++++ b/src/travel-context/snapshot/adapters/trip-context.adapter-mappers.ts
+@@ -70,21 +70,35 @@ export function mapWorldFactsFromTripSnapshot(t: TripContextSnapshotView): World
+   return buildTripContextWorldFacts(t);
+ }
+ 
+-/** 基于 Ontology 约束评估解析计划可执行性（BFF 只读，不绕过 Gateway） */
++/** 基于 ConstraintAssessment / Ontology 摘要解析可执行性（BFF 只读，禁止平行裁决） */
+ export function resolveTripExecutabilityStatus(
+   t: TripContextSnapshotView,
+ ): 'EXECUTABLE' | 'BLOCKED' | 'UNKNOWN' {
++  // ONT-P0-06: prefer frozen assessment outcome
++  if (t.constraintAssessment?.outcome === 'BLOCK') {
++    return 'BLOCKED';
++  }
++  if (t.ontologyConstraints?.assessmentId && t.ontologyConstraints.outcome === 'BLOCK') {
++    return 'BLOCKED';
++  }
+   if (t.ontologyConstraints?.blockerCount && t.ontologyConstraints.blockerCount > 0) {
+     return 'BLOCKED';
+   }
+ 
+-  const ontologyFacts = collectTripOntologyFacts(t);
+-  if (ontologyFacts.length > 0) {
+-    const { results } = evaluateOntologyConstraints(ontologyFacts);
+-    if (results.some((r) => r.severity === 'BLOCK')) {
+-      return 'BLOCKED';
++  // Fallback only when Snapshot 尚未携带 assessment（迁移期）
++  if (!t.constraintAssessment && !t.ontologyConstraints?.assessmentId) {
++    const ontologyFacts = collectTripOntologyFacts(t);
++    if (ontologyFacts.length > 0) {
++      const { results } = evaluateOntologyConstraints(ontologyFacts);
++      if (results.some((r) => r.severity === 'BLOCK')) {
++        return 'BLOCKED';
++      }
+     }
+   }
+ 
++  if (t.constraintAssessment?.outcome === 'ALLOW' || t.ontologyConstraints?.outcome === 'ALLOW') {
++    return t.effectivePlan.hasEffectivePlan ? 'EXECUTABLE' : 'UNKNOWN';
++  }
++
+   return t.effectivePlan.hasEffectivePlan ? 'EXECUTABLE' : 'UNKNOWN';
+ }
+-- 
+2.39.2
+

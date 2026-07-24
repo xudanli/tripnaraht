@@ -1,0 +1,23 @@
+{
+  "schema": "tripnara.fixture.option_comparison@v1",
+  "description": "P2 — ≥3 column matrix with overflow display",
+  "expected": {
+    "min_options": 3,
+    "overflow_when_gt": 3,
+    "visible_column_count": 3
+  },
+  "sample_comparison": {
+    "schema": "tripnara.option_comparison@v1",
+    "options": [
+      { "optionId": "plan_main", "label": "主方案", "summary": "当前编排主方案" },
+      { "optionId": "plan_b_optimized", "label": "方案 b optimized", "summary": "Day3 天气不确定" },
+      { "optionId": "plan_b_rain", "label": "Plan B 分支", "summary": "Day3 改室内" },
+      { "optionId": "plan_conservative", "label": "方案 conservative", "summary": "备选策略：conservative_pace" }
+    ],
+    "display": {
+      "visibleColumnCount": 3,
+      "overflowCount": 1,
+      "overflowOptionIds": ["plan_conservative"]
+    }
+  }
+}

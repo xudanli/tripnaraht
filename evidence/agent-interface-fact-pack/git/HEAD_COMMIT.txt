@@ -1,0 +1,4 @@
+a7e9bdca588431143e04e98d7c1c1204299c6e54
+feat(agent): freeze P0/P1 evidence baseline for interface fact pack
+DevBox <devbox@tripnaraht.local>
+2026-07-24 05:25:28 +0000

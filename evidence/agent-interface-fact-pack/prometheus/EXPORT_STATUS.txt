@@ -1,0 +1,16 @@
+status: unavailable
+attempted_at_utc: 2026-07-24T05:29:00Z
+attempts:
+  - target: http://127.0.0.1:3000/metrics
+    result: connection_refused
+  - target: http://127.0.0.1:9090/api/v1/query?query=up
+    result: connection_refused
+  - staging/pilot live scrape:
+    result: unavailable
+    note: .env.staging present but no Prometheus/Grafana scrape endpoint configured for this workspace session; no production numeric series exported. Do not invent values.
+available_in_repo_only:
+  - src/monitoring/prometheus-metrics.service.ts (metric definitions)
+  - src/monitoring/prometheus-metrics.controller.ts
+  - monitoring/prometheus.yml
+  - monitoring/grafana*.json (dashboard definitions)
+numeric_samples: none
