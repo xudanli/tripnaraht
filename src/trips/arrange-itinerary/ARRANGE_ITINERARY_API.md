@@ -106,7 +106,7 @@ POST /api/trips/:tripId/arrange-itinerary/proposals/:proposalId/discard
 }
 ```
 
-- `contextVersion` 不匹配 → `409 CONTEXT_STALE`
+- `contextVersion` 不匹配 → orchestration **phase** = `CONTEXT_STALE`；HTTP **409** body `code`/`errorCode` = `CONTEXT_VERSION_CONFLICT`（二者不同号，见 CC-1 dual-signal）
 - `validation.status === "BLOCK"` 且 `force !== true` → `400`
 
 ---

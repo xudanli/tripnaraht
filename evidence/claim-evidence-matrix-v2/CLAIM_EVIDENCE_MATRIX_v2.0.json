@@ -186,12 +186,16 @@
     {
       "claim_id": "C024",
       "category": "concurrency",
-      "statement": "Cross-corridor concurrency/freshness uses corridor-local guards (TEP STALE_REPAIR_OPTION, Mobile CONTEXT_VERSION_CONFLICT/ifMatch, Arrange CONTEXT_STALE phase + CONTEXT_VERSION_CONFLICT throw); no system-wide unified contextHash.",
+      "statement": "Cross-corridor concurrency/freshness uses corridor-local guards (TEP STALE_REPAIR_OPTION, Mobile CONTEXT_VERSION_CONFLICT/ifMatch, Arrange phase CONTEXT_STALE + HTTP CONTEXT_VERSION_CONFLICT dual-signal per CC-1); no system-wide unified contextHash.",
       "ewp": "EWP-04",
-      "evidence_doc": "evidence/work-packages/EWP-04-cross-corridor-concurrency/EVIDENCE.md",
+      "evidence_doc": "evidence/work-packages/EWP-04-cross-corridor-concurrency/CC-1.md",
       "evidence": {
         "status": "PASS",
-        "test_file": "src/agent/contracts/cross-corridor-concurrency.contract.spec.ts"
+        "test_files": [
+          "src/agent/contracts/cross-corridor-concurrency.contract.spec.ts",
+          "src/trips/arrange-itinerary/contracts/arrange-apply-stale.dual-signal.spec.ts",
+          "src/agent/contracts/arrange-apply-stale.dual-signal.contract.spec.ts"
+        ]
       }
     },
     {

@@ -209,7 +209,7 @@ Content-Type: application/json
 
 | 条件 | 结果 |
 |------|------|
-| `contextVersion` 不匹配 | **409** `CONTEXT_STALE` → 刷新 state / 重建草案 |
+| `contextVersion` 不匹配 | **409** `CONTEXT_VERSION_CONFLICT`；同时 `orchestration-state.phase` → `CONTEXT_STALE` → 刷新 state / 重建草案 |
 | `validation.status == BLOCK` 且 `force != true` | **400** → 展示 conflicts，勿强写 |
 | 成功 | `status: APPLIED`；可选 `executionSteps`、`scheduleTimeline`、`monitorWebhookUrl` |
 
@@ -407,7 +407,7 @@ struct PlanProposalMutationResponse: Codable {
 
 | HTTP / code | 场景 | iOS 处理 |
 |-------------|------|----------|
-| 409 / `CONTEXT_STALE` | 行程已变，草案过期 | Toast + 拉 `orchestration-state`，丢弃旧草案或重建 |
+| 409 / `CONTEXT_VERSION_CONFLICT` | 行程已变 / 草案过期（`phase` 同时为 `CONTEXT_STALE`） | Toast + 拉 `orchestration-state`，丢弃旧草案或重建 |
 | 400 | BLOCK 未 force；copilot 已有待确认草案；analyze-move 传了 direct | 展示 `message` + conflicts |
 | 403 `FORBIDDEN` | 非成员 | 无权限空态 |
 | 404 | proposal 不属于 trip / 已丢弃 | 回列表刷新 |

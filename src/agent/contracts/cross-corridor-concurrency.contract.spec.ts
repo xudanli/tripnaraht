@@ -28,6 +28,13 @@ describe('cross-corridor-concurrency.contract (EWP-04)', () => {
     );
     expect(src).toContain("setPhase(proposal.tripId, 'CONTEXT_STALE'");
     expect(src).toContain("code: 'CONTEXT_VERSION_CONFLICT'");
+    const constants = read(
+      'src/trips/arrange-itinerary/contracts/arrange-apply-stale.dual-signal.constants.ts',
+    );
+    expect(constants).toContain("ARRANGE_APPLY_STALE_ORCHESTRATION_PHASE = 'CONTEXT_STALE'");
+    expect(constants).toContain(
+      "ARRANGE_APPLY_STALE_HTTP_ERROR_CODE =\n  'CONTEXT_VERSION_CONFLICT'",
+    );
   });
 
   it('Phase2 route_and_run stale concurrency e2e file exists', () => {

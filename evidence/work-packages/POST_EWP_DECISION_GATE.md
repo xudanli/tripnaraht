@@ -38,7 +38,7 @@
 
 1. **WB-1** — ✅ DONE — `mixedTargets` on Unified/Actions + `MIXED_WRITE_UNIFICATION_FORBIDDEN` (see `EWP-02-mixed-write-targets/WB-1.md`).  
 2. **RB-1** — ✅ DONE — Unified rollback HTTP contract + Actions `STUB_NO_SIDE_EFFECTS` product label (see `EWP-03-rollback-compensation/RB-1.md`).  
-3. **CC-1** — Arrange apply stale conflict behavior spec (phase vs error code).  
+3. **CC-1** — ✅ DONE — Arrange apply dual-signal: phase `CONTEXT_STALE` + HTTP `CONTEXT_VERSION_CONFLICT` (see `EWP-04-cross-corridor-concurrency/CC-1.md`).  
 4. **BFF-1** — Client contract index (paths from EWP-07) pinned to OpenAPI freeze commit.  
 5. Hold Context / multi-corridor concurrency / OR-Tools Apply until separate decisions.
 

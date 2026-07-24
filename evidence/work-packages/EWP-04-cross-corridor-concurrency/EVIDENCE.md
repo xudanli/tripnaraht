@@ -10,7 +10,7 @@
 | TEP | `STALE_REPAIR_OPTION` | yes (same option) | `tep-local-repair-apply.service.spec.ts`, `is-cert-writeback.integration.spec.ts` |
 | route_and_run Phase2 | `STALE_PLAN_VERSION` | lock + stale B | `agent.route-and-run.phase2-stale-concurrency.e2e.spec.ts` |
 | Mobile spatial/planning | `CONTEXT_VERSION_CONFLICT` / ifMatch | idempotent replay | `mobile-spatial-route.service.spec.ts`, `mobile-planning.service.spec.ts` |
-| Arrange | Phase `CONTEXT_STALE`; throw `CONTEXT_VERSION_CONFLICT` on contextVersion mismatch | contract freezes both codes | facade `applyProposal` |
+| Arrange | Phase `CONTEXT_STALE`; throw `CONTEXT_VERSION_CONFLICT` on contextVersion mismatch | **CC-1 DONE** — behavior + doc contract | facade `applyProposal`; `contracts/arrange-apply-stale.dual-signal*` |
 | Actions | in-memory dedup | **no** concurrent integration | idempotency contract |
 | Unified Execute | idempotency key | **no** concurrent execute test | idempotency contract |
 
