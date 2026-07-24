@@ -19,8 +19,12 @@
 ```bash
 LLM_USE_MOCK=true npx jest --runInBand --forceExit \
   src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts \
+  src/decision-runtime/gateway/contracts/unified-rollback-http.contract.spec.ts \
+  src/agent/contracts/actions-rollback-stub.product.contract.spec.ts \
   src/agent/services/itinerary-rollback.service.spec.ts
 ```
+
+**RB-1 landed:** see `RB-1.md` (Unified HTTP chain + Actions `STUB_NO_SIDE_EFFECTS`).
 
 ## Limitations
 
