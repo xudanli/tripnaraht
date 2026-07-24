@@ -8,12 +8,10 @@ Reverse-extracted, machine-verifiable **code facts** pinned to freeze commit:
 |------|------|
 | `CLAIM_EVIDENCE_MATRIX_v1.0.json` | Canonical machine catalog |
 | `CLAIM_EVIDENCE_MATRIX_v1.0.md` | Human review surface |
-| `SIGNATURES.md` | EL / TA / QA sign-off + citation rule |
-| `test-runs/` | Jest JSON + console from freeze worktree |
-
-Not architecture documentation. Not recommendations.
-
 | `BASELINE_SCOPE_DECISION.md` | EL/TA/QA retain-freeze decision + C018 classification |
 | `SIGNATURES.md` | Approvals + fact-layer freeze |
+| `test-runs/` | Jest JSON + console from freeze worktree |
 
-**Baseline:** retained `a7e9bdca5`. Fact layer frozen. Cite Claim IDs only.
+**Baseline:** retained `a7e9bdca5`. **Fact layer: FROZEN.** Cite Claim IDs only.
+
+Not architecture documentation. Not recommendations.
