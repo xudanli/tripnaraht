@@ -3,7 +3,7 @@
 **Document:** `CLAIM_EVIDENCE_MATRIX_v1.0.json` + `.md`  
 **Freeze Commit (code facts):** `a7e9bdca588431143e04e98d7c1c1204299c6e54`  
 **Matrix delivery Commit:** `c9757e89b829e605ac257c04e440f1f75041d980`  
-**Tag:** `claim-evidence-matrix-v1.0` → `8f8e28caa…` _(annotated; GPG N/A)_  
+**Tag:** `claim-evidence-matrix-v1.0` → `1fec3ac93…` _(annotated; GPG N/A)_  
 **Branch (pushed):** `claim/evidence-matrix-v1.0`  
 **Baseline scope decision:** `BASELINE_SCOPE_DECISION.md`  
 **Open / complete PR:** https://github.com/xudanli/tripnaraht/compare/feat/orchestration-phase-4b-routing-shell...claim/evidence-matrix-v1.0?expand=1  
