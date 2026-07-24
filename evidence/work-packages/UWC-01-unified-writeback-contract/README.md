@@ -61,7 +61,8 @@ Authority → Verification Proof → Freshness shape → Idempotency key → Wri
 | UWC-1b | ✅ Explicit handlers + SHADOW_VALIDATE + AUTHORITATIVE hard-block | done |
 | UWC-1c | ✅ ExpectedWriteVersion OCC + dual gates + concurrency proofs | code complete; switch auth false |
 | UWC-1d | ✅ Two-layer recovery + profiles + cutover gate | compensation exec gate closed |
-| UWC-1e | Web/iOS protocol: Preview → Confirm → Apply mapping to unified outcomes | after ACTIONS canary review |
+| UWC-CANARY-01 | 🟡 ACTIONS_COMMIT AUTHORITATIVE_CANARY | env-authorized; no global AUTHORITATIVE unlock |
+| UWC-1e | Web/iOS protocol: Preview → Confirm → Apply mapping | after ACTIONS canary review |
 
 ## Hard prohibitions
 

@@ -300,7 +300,7 @@ describe('UWC-1d cutover gate', () => {
     expect(getNextCutoverCandidate()).toBe('ACTIONS_COMMIT');
     expect(UWC_CUTOVER_REVIEW_ORDER[0]).toBe('ACTIONS_COMMIT');
     expect(UWC_CORRIDOR_CUTOVER_STATUS.ACTIONS_COMMIT).toBe(
-      'PENDING_CANARY_REVIEW',
+      'CANARY_IN_PROGRESS',
     );
     expect(UWC_CORRIDOR_CUTOVER_STATUS.ITINERARY_ADJUST).toBe(
       'BLOCKED_UNTIL_PRIOR_CORRIDOR',

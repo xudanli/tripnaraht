@@ -20,3 +20,7 @@ export * from './corridor-recovery.profile';
 export * from './compensation-auth.gate';
 export * from './corridor-cutover.gate';
 export * from './compensation-pipeline.util';
+export * from './actions-commit-canary.config';
+export * from './actions-commit-canary.admit';
+export * from './actions-commit-canary.router';
+export * from './actions-commit-canary.executor';

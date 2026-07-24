@@ -1,6 +1,6 @@
 /**
- * Per-corridor Cutover Gate (post UWC-1d).
- * Review ACTIONS_COMMIT Canary first — never auto-unlock all three.
+ * Cutover helpers after ACTIONS_COMMIT canary (UWC-CANARY-01).
+ * Passing canary only advances ITINERARY_ADJUST to the next independent review.
  */
 
 import type { AuthoritativeWriteCorridorId } from './authoritative-write.types';
@@ -13,20 +13,21 @@ export const UWC_CUTOVER_REVIEW_ORDER: readonly AuthoritativeWriteCorridorId[] =
 
 export type CorridorCutoverStatus =
   | 'PENDING_CANARY_REVIEW'
+  | 'CANARY_IN_PROGRESS'
   | 'BLOCKED_UNTIL_PRIOR_CORRIDOR'
   | 'CANARY_APPROVED'
   | 'CUTOVER_COMPLETE'
   | 'REJECTED';
 
 /**
- * Initial post-1d state: only ACTIONS_COMMIT is eligible for canary review.
- * Others stay blocked until prior corridor advances — no auto-unlock.
+ * UWC-CANARY-01: ACTIONS canary in progress; others blocked.
+ * Do not auto-unlock UNIFIED when ACTIONS opens.
  */
 export const UWC_CORRIDOR_CUTOVER_STATUS: Record<
   AuthoritativeWriteCorridorId,
   CorridorCutoverStatus
 > = {
-  ACTIONS_COMMIT: 'PENDING_CANARY_REVIEW',
+  ACTIONS_COMMIT: 'CANARY_IN_PROGRESS',
   ITINERARY_ADJUST: 'BLOCKED_UNTIL_PRIOR_CORRIDOR',
   UNIFIED_EXECUTE: 'BLOCKED_UNTIL_PRIOR_CORRIDOR',
 };
@@ -36,30 +37,43 @@ export const UWC_CUTOVER_AUTO_UNLOCK_FORBIDDEN =
 
 export function getNextCutoverCandidate(): AuthoritativeWriteCorridorId | null {
   for (const corridor of UWC_CUTOVER_REVIEW_ORDER) {
-    if (UWC_CORRIDOR_CUTOVER_STATUS[corridor] === 'PENDING_CANARY_REVIEW') {
+    const s = UWC_CORRIDOR_CUTOVER_STATUS[corridor];
+    if (s === 'PENDING_CANARY_REVIEW' || s === 'CANARY_IN_PROGRESS') {
       return corridor;
     }
   }
   return null;
 }
 
-export function assertNoAutoUnlockAll(): void {
-  const pendingOrBlocked = UWC_CUTOVER_REVIEW_ORDER.filter(
-    (c) =>
-      UWC_CORRIDOR_CUTOVER_STATUS[c] === 'PENDING_CANARY_REVIEW' ||
-      UWC_CORRIDOR_CUTOVER_STATUS[c] === 'BLOCKED_UNTIL_PRIOR_CORRIDOR',
-  );
-  if (pendingOrBlocked.length === UWC_CUTOVER_REVIEW_ORDER.length) {
-    // expected initial state — ok
-    return;
+/**
+ * Call only after ACTIONS_COMMIT canary review passes.
+ * Advances ITINERARY_ADJUST to PENDING_CANARY_REVIEW — not UNIFIED, not auto AUTHORITATIVE.
+ */
+export function advanceCutoverAfterActionsCanaryPass(): void {
+  if (UWC_CORRIDOR_CUTOVER_STATUS.ACTIONS_COMMIT === 'REJECTED') {
+    throw new Error('ACTIONS_COMMIT canary rejected — cannot advance');
   }
+  UWC_CORRIDOR_CUTOVER_STATUS.ACTIONS_COMMIT = 'CANARY_APPROVED';
+  UWC_CORRIDOR_CUTOVER_STATUS.ITINERARY_ADJUST = 'PENDING_CANARY_REVIEW';
+  // UNIFIED remains blocked until ITINERARY independent canary passes
+  if (UWC_CORRIDOR_CUTOVER_STATUS.UNIFIED_EXECUTE !== 'BLOCKED_UNTIL_PRIOR_CORRIDOR') {
+    UWC_CORRIDOR_CUTOVER_STATUS.UNIFIED_EXECUTE = 'BLOCKED_UNTIL_PRIOR_CORRIDOR';
+  }
+}
+
+export function assertNoAutoUnlockAll(): void {
   const approved = UWC_CUTOVER_REVIEW_ORDER.filter(
     (c) =>
       UWC_CORRIDOR_CUTOVER_STATUS[c] === 'CANARY_APPROVED' ||
       UWC_CORRIDOR_CUTOVER_STATUS[c] === 'CUTOVER_COMPLETE',
   );
-  // Guardrail for tests / future mutators: never mark all three complete in one step
   if (approved.length === UWC_CUTOVER_REVIEW_ORDER.length) {
+    throw new Error(UWC_CUTOVER_AUTO_UNLOCK_FORBIDDEN);
+  }
+  if (
+    UWC_CORRIDOR_CUTOVER_STATUS.UNIFIED_EXECUTE === 'CANARY_APPROVED' &&
+    UWC_CORRIDOR_CUTOVER_STATUS.ITINERARY_ADJUST === 'BLOCKED_UNTIL_PRIOR_CORRIDOR'
+  ) {
     throw new Error(UWC_CUTOVER_AUTO_UNLOCK_FORBIDDEN);
   }
 }

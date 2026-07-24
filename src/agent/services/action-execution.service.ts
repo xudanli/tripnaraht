@@ -185,6 +185,70 @@ export class ActionExecutionService {
     this.completeUwcActionsCommitShadow(token, request, response, opts);
   }
 
+  /** UWC-CANARY-01: resolve action_name for admission (best-effort). */
+  private resolveCommitActionNames(
+    request: ActionCommitRequestDto,
+  ): string[] {
+    return request.actions.map((action) => {
+      const effectiveVerb = this.normalizeVerbForMapping(action.action_type);
+      return (
+        action.action_name ||
+        this.mapActionName(effectiveVerb, action.target_type) ||
+        String(action.action_type)
+      );
+    });
+  }
+
+  private mapUwcCanaryResultToCommitResponse(
+    request: ActionCommitRequestDto,
+    uwc: import('../../decision-runtime/execution/authoritative-write/authoritative-write.types').AuthoritativeWriteResult,
+    routeReasons: string[],
+  ): ActionExecutionResponseDto {
+    if (uwc.outcome === 'APPLIED' || uwc.outcome === 'IDEMPOTENT_REPLAY') {
+      return {
+        status: 'OK',
+        message:
+          uwc.outcome === 'IDEMPOTENT_REPLAY'
+            ? 'Action commit canary idempotent replay (UWC AUTHORITATIVE_CANARY).'
+            : 'Action commit executed via UWC AUTHORITATIVE_CANARY (no dual execution).',
+        accepted_actions: request.actions,
+        rejected_reason_codes: undefined,
+        ...( {
+          uwc_canary: {
+            mode: 'AUTHORITATIVE_CANARY',
+            dual_execution: false,
+            writes_performed: false,
+            reason_codes: [...uwc.reasonCodes, ...routeReasons],
+          },
+        } as any),
+      };
+    }
+    const code =
+      uwc.errorCode ||
+      (uwc.outcome === 'CONFLICT'
+        ? 'FRESHNESS_CONFLICT'
+        : uwc.outcome === 'VERIFICATION_REQUIRED'
+          ? 'ACTION_PREVIEW_SIGNATURE_MISSING'
+          : 'ACTION_EXECUTION_FAILED');
+    return {
+      status: 'PARTIAL',
+      message: `Action commit blocked by UWC AUTHORITATIVE_CANARY (${uwc.outcome}).`,
+      accepted_actions: [],
+      blocked_actions: request.actions.map((a) =>
+        this.withRejectedReason(a, code as any),
+      ),
+      rejected_reason_codes: [code, ...uwc.reasonCodes] as any,
+      ...( {
+        uwc_canary: {
+          mode: 'AUTHORITATIVE_CANARY',
+          dual_execution: false,
+          outcome: uwc.outcome,
+          reason_codes: [...uwc.reasonCodes, ...routeReasons],
+        },
+      } as any),
+    };
+  }
+
   private getAgentService(): AgentService | null {
     try {
       const svc = this.moduleRef?.get?.('AgentService' as any, { strict: false }) as any;
@@ -599,7 +663,6 @@ export class ActionExecutionService {
     this.logger.debug(
       `[ActionExecution] commit request_id=${request.request_id}, trip_id=${request.trip_id}, actions=${request.actions.length}`,
     );
-    const uwcCapture = this.beginUwcActionsCommitShadow(request);
     const dedupKey = this.buildCommitDedupKey(request);
     const cached = this.requestDeduplication?.checkGenericDuplicate<ActionExecutionResponseDto>(dedupKey);
     if (cached) {
@@ -616,11 +679,115 @@ export class ActionExecutionService {
           status: response.status,
         },
       });
-      this.completeUwcActionsCommitShadow(uwcCapture, request, response, {
+      const dedupCapture = this.beginUwcActionsCommitShadow(request);
+      this.completeUwcActionsCommitShadow(dedupCapture, request, response, {
         idempotentReplay: true,
       });
       return response;
     }
+
+    // UWC-CANARY-01: AUTHORITATIVE_CANARY XOR Legacy (no dual execution, no paired Shadow write)
+    let canaryTechnicalFallback = false;
+    try {
+      const {
+        decideActionsCommitCanaryRoute,
+        decideCanaryLegacyFallback,
+      } = require('../../decision-runtime/execution/authoritative-write/actions-commit-canary.router') as typeof import('../../decision-runtime/execution/authoritative-write/actions-commit-canary.router');
+      const {
+        executeActionsCommitAuthoritativeCanary,
+      } = require('../../decision-runtime/execution/authoritative-write/actions-commit-canary.executor') as typeof import('../../decision-runtime/execution/authoritative-write/actions-commit-canary.executor');
+
+      const actionNames = this.resolveCommitActionNames(request);
+      const route = decideActionsCommitCanaryRoute({
+        routingKey: String(request.idempotency_key ?? request.request_id),
+        admission: {
+          actionNames,
+          actionTypes: request.actions.map((a) => String(a.action_type)),
+          sideEffectHandlerIds: [],
+        },
+      });
+
+      if (route.selectedForCanary) {
+        try {
+          const firstSig = String(
+            (request.actions?.[0] as { context_signature?: string } | undefined)
+              ?.context_signature ?? '',
+          );
+          const uwc = executeActionsCommitAuthoritativeCanary({
+            tripId: request.trip_id,
+            requestId: request.request_id,
+            idempotencyKey: String(
+              request.idempotency_key ?? request.request_id,
+            ),
+            contextSignature: firstSig || undefined,
+            expectedResourceVersion: (request as { trip_revision?: number })
+              .trip_revision,
+            observedResourceVersion: (request as { trip_revision?: number })
+              .trip_revision,
+          });
+          if (
+            uwc.outcome === 'CONFLICT' ||
+            uwc.outcome === 'REJECTED' ||
+            uwc.outcome === 'VERIFICATION_REQUIRED'
+          ) {
+            const fb = decideCanaryLegacyFallback({
+              uwcOutcome: uwc.outcome,
+              uwcErrorCode: uwc.errorCode,
+              sideEffectsStarted: false,
+            });
+            if (!fb.allowLegacyFallback) {
+              const response = this.mapUwcCanaryResultToCommitResponse(
+                request,
+                uwc,
+                route.reasonCodes,
+              );
+              this.requestDeduplication?.cacheGenericResponse(dedupKey, response);
+              return response;
+            }
+          }
+          const response = this.mapUwcCanaryResultToCommitResponse(
+            request,
+            uwc,
+            route.reasonCodes,
+          );
+          this.requestDeduplication?.cacheGenericResponse(dedupKey, response);
+          this.eventTelemetry?.recordEvent({
+            type: AgentEventType.SYSTEM2_STEP,
+            request_id: request.request_id,
+            data: {
+              action_api: 'commit',
+              uwc_canary: true,
+              dual_execution: false,
+              status: response.status,
+            },
+          });
+          return response;
+        } catch (err) {
+          const fb = decideCanaryLegacyFallback({
+            technicalExceptionBeforeSideEffects: true,
+            sideEffectsStarted: false,
+          });
+          if (!fb.allowLegacyFallback) {
+            throw err;
+          }
+          canaryTechnicalFallback = true;
+          this.logger.warn(
+            `[ActionExecution] canary technical fallback to legacy: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[ActionExecution] canary route skipped: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    void canaryTechnicalFallback;
+
+    const uwcCapture = this.beginUwcActionsCommitShadow(request);
 
     const highRiskWithoutConfirmation = request.actions.filter(
       (action) => action.risk_level === 'HIGH' && action.requires_confirmation,

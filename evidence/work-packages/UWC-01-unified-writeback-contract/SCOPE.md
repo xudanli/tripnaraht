@@ -33,4 +33,5 @@
 - [x] AUTHORITATIVE still blocked (dual gates; switch auth false)  
 - [x] UWC-1d recovery layers + profiles + COMPENSATION_CONFLICT  
 - [x] Compensation exec gate closed; Cutover: ACTIONS canary first  
-- [ ] ACTIONS_COMMIT Canary review (no auto-unlock of other corridors)  
+- [x] UWC-CANARY-01 ACTIONS AUTHORITATIVE_CANARY (XOR legacy; kill switch)  
+- [ ] ACTIONS_COMMIT Canary ops review → then ITINERARY independent review only  
