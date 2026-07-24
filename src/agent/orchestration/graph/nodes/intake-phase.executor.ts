@@ -787,6 +787,15 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
       }
 
       if (tripIdForIntent) {
+        const tpr = state.trip_plan_request;
+        const dateRange =
+          tpr?.date_range ??
+          (tpr?.start_date
+            ? {
+                start_date: tpr.start_date,
+                end_date: tpr.date_range?.end_date ?? tpr.start_date,
+              }
+            : undefined);
         await applyItineraryCrudWithCompoundPlan(host, {
           message: intakeMsg,
           tripId: tripIdForIntent,
@@ -794,13 +803,8 @@ export async function runIntakePhase(host: IntakePhaseHost, params: RunIntakePha
           state,
           countryCode:
             state.trip_plan_request?.ontology_context?.destination?.country_code,
+          dateRange,
         });
-        const tpr = state.trip_plan_request;
-        const dateRange =
-          tpr?.date_range ??
-          (tpr?.start_date
-            ? { start_date: tpr.start_date, end_date: tpr.start_date }
-            : undefined);
         await applyItineraryDayReplanIfRequested(host, {
           message: intakeMsg,
           tripId: tripIdForIntent,

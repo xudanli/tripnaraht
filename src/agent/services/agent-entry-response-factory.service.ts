@@ -29,6 +29,15 @@ export class AgentEntryResponseFactoryService {
     );
   }
 
+  /** Frontend Plan Studio path (not the planning-workbench API). */
+  private buildPlanStudioRedirectTo(tripId?: string | null): string {
+    const id = typeof tripId === 'string' ? tripId.trim() : '';
+    if (id) {
+      return `/dashboard/plan-studio?tripId=${encodeURIComponent(id)}`;
+    }
+    return '/dashboard/plan-studio';
+  }
+
   createMissingTripIdErrorResponse(
     request: RouteAndRunRequestDto,
     startTime: number,
@@ -79,7 +88,7 @@ export class AgentEntryResponseFactoryService {
           evidence: [],
           robustness: null,
           redirectInfo: {
-            redirect_to: '/planning-workbench/execute',
+            redirect_to: this.buildPlanStudioRedirectTo(request.trip_id),
             redirect_reason: 'MISSING_TRIP_ID',
             original_request: {
               message: request.message.substring(0, 200),
@@ -174,7 +183,7 @@ export class AgentEntryResponseFactoryService {
           evidence: [],
           robustness: null,
           redirectInfo: {
-            redirect_to: '/planning-workbench/execute',
+            redirect_to: this.buildPlanStudioRedirectTo(request.trip_id),
             redirect_reason: 'READONLY_MODE_RESTRICTION',
             original_request: {
               message: request.message.substring(0, 200),
@@ -259,7 +268,7 @@ export class AgentEntryResponseFactoryService {
       },
       result: {
         status: 'REDIRECT_REQUIRED',
-        answer_text: '行程规划功能已迁移到规划工作台，请使用 POST /planning-workbench/execute 接口。',
+        answer_text: '行程规划功能已迁移到规划工作台，请前往 Plan Studio 继续操作。',
         payload: {
           timeline: [],
           dropped_items: [],
@@ -267,7 +276,7 @@ export class AgentEntryResponseFactoryService {
           evidence: [],
           robustness: null,
           redirectInfo: {
-            redirect_to: '/planning-workbench/execute',
+            redirect_to: this.buildPlanStudioRedirectTo(request.trip_id),
             redirect_reason: 'PLANNING_REQUEST_DETECTED',
             original_request: {
               message: request.message.substring(0, 200),

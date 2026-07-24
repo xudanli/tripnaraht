@@ -16,6 +16,7 @@ import {
 import {
   consumeGraphStep,
   createPlanVerifyTransientState,
+  isRepairBudgetExceeded,
   syncRepairsRemainingFromDso,
 } from './plan-verify-loop-transient.util';
 import type { PlanVerifyLoopOutcome, PlanVerifyLoopRunParams } from './plan-verify-loop.types';
@@ -125,11 +126,61 @@ export function createPlanVerifyLoopHandler(
           }
 
           if (verdict.kind === 'needs_repair') {
+            // 已放行瑕疵草案，或 REPAIR 预算已耗尽：勿再进 REPAIR（防 maxSteps 死循环）
+            if ((state.metadata as Record<string, unknown> | undefined)?.flawed_draft_narrate === true) {
+              return { kind: 'complete', decisionState };
+            }
+            if (isRepairBudgetExceeded(loopState, decisionState)) {
+              const budgetTerminal = checkRepairCountExceededIfNeeded(host, {
+                request,
+                context,
+                state,
+                decisionState,
+                llmProvider,
+                startTime,
+                loop: loopState,
+              });
+              if (budgetTerminal) {
+                return {
+                  kind: 'terminal',
+                  terminal: 'terminal_clarification',
+                  result: budgetTerminal,
+                  decisionState,
+                };
+              }
+              if ((state.metadata as Record<string, unknown> | undefined)?.flawed_draft_narrate === true) {
+                return { kind: 'complete', decisionState };
+              }
+            }
             return { kind: 'continue', next: 'repair', decisionState };
           }
           return { kind: 'complete', decisionState };
         }
         case 'repair': {
+          // 预算已满：跳过再跑一轮 REPAIR，直接走瑕疵交付或澄清
+          if (isRepairBudgetExceeded(loopState, decisionState)) {
+            const preTerminal = checkRepairCountExceededIfNeeded(host, {
+              request,
+              context,
+              state,
+              decisionState,
+              llmProvider,
+              startTime,
+              loop: loopState,
+            });
+            if (preTerminal) {
+              return {
+                kind: 'terminal',
+                terminal: 'terminal_clarification',
+                result: preTerminal,
+                decisionState,
+              };
+            }
+            if ((state.metadata as Record<string, unknown> | undefined)?.flawed_draft_narrate === true) {
+              return { kind: 'complete', decisionState };
+            }
+          }
+
           const euBefore = decisionState?.optimizationHints?.expectedUtility;
           decisionState =
             (await host.runRepairPhase(decisionState, state, request, context, llmProvider)) ??
@@ -172,6 +223,11 @@ export function createPlanVerifyLoopHandler(
               result: repairTerminal,
               decisionState,
             };
+          }
+
+          // 预算/效用放行瑕疵草案：退出子图进入外层 NARRATE，禁止再 next→verify
+          if ((state.metadata as Record<string, unknown> | undefined)?.flawed_draft_narrate === true) {
+            return { kind: 'complete', decisionState };
           }
 
           return { kind: 'continue', next: 'verify', decisionState };

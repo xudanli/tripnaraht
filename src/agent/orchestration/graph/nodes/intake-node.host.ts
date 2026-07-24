@@ -57,6 +57,13 @@ export interface IntakeNodeHost {
     message: string,
   ): Promise<import('./intake-itinerary-update.util').ItineraryItemUpdateApplyResult>;
 
+  tryApplyBoundTripLodgingReplace?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+    dateRange?: { start_date?: string; end_date?: string },
+  ): Promise<import('./intake-itinerary-lodging-replace.util').LodgingReplaceApplyResult>;
+
   tryApplyBoundTripItineraryDayReplan?(
     tripId: string,
     userId: string | undefined,

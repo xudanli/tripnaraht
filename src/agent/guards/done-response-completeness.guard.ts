@@ -38,9 +38,11 @@ export function assertDoneResponseCompleteness(
     | undefined;
 
   const isItineraryCrudShortCircuit =
+    orch?.state?.metadata?.lodging_replace_intake === true ||
     orch?.state?.metadata?.itinerary_item_delete_intake === true ||
     orch?.state?.metadata?.itinerary_item_add_intake === true ||
     orch?.state?.metadata?.itinerary_item_update_intake === true ||
+    orch?.state?.metadata?.itinerary_day_replan_intake === true ||
     (response.observability as { itinerary_item_crud?: boolean } | undefined)?.itinerary_item_crud ===
       true;
 

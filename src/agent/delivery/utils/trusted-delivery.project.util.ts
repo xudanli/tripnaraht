@@ -1,5 +1,6 @@
 import type { AgentRunTraceV1 } from '../../orchestration/agent-run-trace.util';
 import type { FlawedDraftDescriptorV1 } from '../types/flawed-draft-v1.type';
+import { resolveDeliveryVerdict } from '../types/delivery-verdict.types';
 import type { TrustedDeliveryV1 } from '../types/trusted-delivery-v1.type';
 import {
   PUBLIC_PHASE_LABEL_ZH,
@@ -35,6 +36,8 @@ export function projectTrustedDeliveryV1(input: {
   agentRunTrace?: AgentRunTraceV1;
   flawedDraft?: FlawedDraftDescriptorV1;
   clarificationCount?: number;
+  /** 非 flawed 的软警告（如 SOFT gate），投影为 VERIFIED_WITH_WARNINGS */
+  hasSoftWarnings?: boolean;
 }): TrustedDeliveryV1 {
   const phase = mapInternalStepToPublicPhase(input.currentStep);
   const status = String(input.resultStatus ?? '').toUpperCase();
@@ -44,6 +47,7 @@ export function projectTrustedDeliveryV1(input: {
       status === 'NEED_CONFIRMATION' ||
       status === 'NEED_MORE_INFO' ||
       status === 'NEED_CONSENT' ||
+      input.flawedDraft?.is_flawed === true ||
       (input.clarificationCount ?? 0) > 0,
     kind:
       status === 'NEED_CONSENT'
@@ -99,9 +103,24 @@ export function projectTrustedDeliveryV1(input: {
       return acc;
     }, []);
 
+  const delivery_verdict = resolveDeliveryVerdict({
+    resultStatus: input.resultStatus,
+    flawedDraft: input.flawedDraft,
+    hasSoftWarnings: input.hasSoftWarnings === true,
+  });
+
+  // FLAWED_DRAFT：强制确认意图，默认不进入静默 Confirm/Apply
+  if (delivery_verdict === 'FLAWED_DRAFT') {
+    user_confirm.required = true;
+    user_confirm.kind = user_confirm.kind ?? 'confirmation';
+    user_confirm.summary_zh =
+      user_confirm.summary_zh ?? '当前为瑕疵草案，请确认风险后再继续';
+  }
+
   return {
     schemaId: TRUSTED_DELIVERY_SCHEMA_ID,
     version: 1,
+    delivery_verdict,
     task_progress: {
       phase,
       label_zh: PUBLIC_PHASE_LABEL_ZH[phase],

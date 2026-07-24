@@ -374,9 +374,9 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
-      'REPAIR/效用预算耗尽时仍进入 NARRATE 并附带 `flawed_draft_v1`（默认 false → 澄清终端）。与 `tripnara.flawed_draft@v1` 契约对齐。',
-    example: false,
-    default: false,
+      'REPAIR/效用预算耗尽时进入 NARRATE 并附带 flawed_draft（安全/法规道路等 allow-matrix 仍禁止）。' +
+      '仅 true=显式允许瑕疵交付（delivery_verdict=FLAWED_DRAFT，禁止 AUTO 写回）；false 或缺省=强制澄清。绑定 trip_id 不再默认放行。',
+    example: true,
   })
   @IsOptional()
   @IsBoolean()
@@ -3321,7 +3321,9 @@ export class RouteAndRunResponseDto {
        * 轻量咨询且携带 trip_id：结构化「一键操作」（前端渲染按钮）。
        * - `route_and_run_message`：点击后用 `payload.message` 作为用户话术再次 POST `/api/agent/route_and_run`。
        *   **须携带行程**：顶层 `trip_id`（或与 `trip_id` 等价的 `tripId`），或将整个 `payload` 置于请求体的 `suggested_operation_payload` / `payload` 字段（全局 whitelist 会丢弃未声明的裸嵌套字段）。
-       * - `client_navigation`：仅前端路由，使用 `payload.route`（如 timeline）与 `payload.trip_id`。
+       * - `client_navigation`：仅前端路由，使用 `payload.route`（timeline / silent_vote_create 等）
+       *   或 `payload.action`（silent_vote_create / start_vote / team.start_vote）与 `payload.trip_id`。
+       *   「发起投票」打开 SilentVoteCreateDialog，不替用户创建投票。
        */
       suggested_operations?: Array<{
         id: string;

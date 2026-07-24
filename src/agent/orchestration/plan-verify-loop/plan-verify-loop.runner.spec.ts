@@ -25,6 +25,7 @@ function baseParams(): PlanVerifyLoopRunParams {
 
 function mockHost(overrides: Partial<PlanVerifyLoopHost> = {}): PlanVerifyLoopHost {
   return {
+    logger: { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() } as any,
     touchAsyncTaskProgress: jest.fn(),
     maybeSnapshot: jest.fn(),
     runOptimizePhase: jest.fn(async (_s, ds) => ds),
@@ -118,6 +119,50 @@ describe('runPlanVerifyOptimizeRepairLoop (graph)', () => {
     expect(out.kind).toBe('continue');
     expect(verifyCalls).toBe(2);
     expect(runRepairPhase).toHaveBeenCalledTimes(1);
+  });
+
+  it('exits to narrate when repair budget exceeded and flawed draft allowed (no repair↔verify spin)', async () => {
+    let verifyCalls = 0;
+    const runVerifyPhase = jest.fn(async (ds, state) => {
+      verifyCalls += 1;
+      state.errors = [
+        {
+          step: 'VERIFY',
+          error_code: 'SOFT_ISSUE',
+          message: 'needs fix',
+          timestamp: new Date().toISOString(),
+        },
+      ];
+      state.gate_result = { gate_result: 'ADJUST_REQUIRED' };
+      return { decisionState: ds, verdict: { kind: 'needs_repair' as const } };
+    });
+    const runRepairPhase = jest.fn(async (ds) => ({
+      ...ds,
+      systemState: { ...(ds as any).systemState, repairCount: 3 },
+    }));
+
+    const params = baseParams();
+    params.request = {
+      ...params.request,
+      trip_id: 'trip_15c50a69931845ca',
+      message: '请将7月22日住宿改为格伦达菲厄泽宾馆',
+      options: { allow_flawed_draft_narrate: true },
+    } as PlanVerifyLoopRunParams['request'];
+    params.decisionState = {
+      systemState: { repairCount: 2 },
+      verification: { hasFatal: false, issues: [] },
+    } as PlanVerifyLoopRunParams['decisionState'];
+
+    const out = await runPlanVerifyOptimizeRepairLoop(
+      mockHost({ runVerifyPhase, runRepairPhase }),
+      params,
+    );
+
+    expect(out.kind).toBe('continue');
+    expect(verifyCalls).toBe(1);
+    expect(runRepairPhase).toHaveBeenCalledTimes(1);
+    expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBe(true);
+    expect((params.state.metadata as Record<string, unknown>).flawed_draft_opt_in).toBe('explicit');
   });
 
   it('reroute_pre_plan when VERIFY harness suggests RETURN_TO_RESEARCH (evidence binding)', async () => {

@@ -50,11 +50,29 @@ describe('trusted-delivery.project.util', () => {
 
     expect(out.task_progress.phase).toBe('researching');
     expect(out.task_progress.label_zh).toBe('调研中');
+    expect(out.delivery_verdict).toBe('BLOCKED');
     expect(out.user_confirm.required).toBe(true);
     expect(out.degraded_explanation.present).toBe(true);
     expect(out.degraded_explanation.reasons_zh?.join('')).not.toContain('KERNEL');
     expect(out.flawed_disclosure.present).toBe(true);
     expect(JSON.stringify(out)).not.toContain('poi_selection');
     expect(out.ai_operation_log.some((e) => e.label_zh === '调研中')).toBe(true);
+  });
+
+  it('projects FLAWED_DRAFT delivery_verdict on OK + flawed draft', () => {
+    const out = projectTrustedDeliveryV1({
+      currentStep: 'NARRATE',
+      resultStatus: 'OK',
+      flawedDraft: {
+        schemaId: 'tripnara.flawed_draft@v1',
+        version: 1,
+        is_flawed: true,
+        reasons: [{ code: 'REPAIR_BUDGET_EXCEEDED' }],
+        headline_zh: '瑕疵草案',
+        user_action_recommended: true,
+      },
+    });
+    expect(out.delivery_verdict).toBe('FLAWED_DRAFT');
+    expect(out.user_confirm.required).toBe(true);
   });
 });

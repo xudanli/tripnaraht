@@ -58,7 +58,7 @@ function dayItems(day: TripDayLikeForDelete): TripItemLikeForDelete[] {
   return day.ItineraryItem ?? [];
 }
 
-function formatTripDayDateIso(date: Date | string | null | undefined): string | undefined {
+export function formatTripDayDateIso(date: Date | string | null | undefined): string | undefined {
   if (!date) return undefined;
   if (date instanceof Date) return date.toISOString().slice(0, 10);
   const s = String(date).trim();

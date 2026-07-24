@@ -6,6 +6,10 @@ import type { CorridorFallbackLevel } from './itinerary-adjust-corridor-fallback
 import type { CorridorFilterStats } from './itinerary-adjust-corridor-fallback.util';
 import { detectPoiSlotFillIntent } from './itinerary-adjust-poi-slot-fill.util';
 import { stripSystemMessageBlocksForIntakeNl } from './trip-plan-intake-vehicle.util';
+import {
+  buildAutoCorridorUiFlagsV1,
+  type AutoCorridorUiFlagsV1,
+} from '../contracts/auto-corridor-product.contract';
 
 export type ItineraryAdjustSubIntent = 'exploratory' | 'strong_modification' | 'poi_slot_fill';
 
@@ -160,6 +164,8 @@ export function buildItineraryAdjustActionExecutionPayload(metadata: Record<stri
   status: 'SUCCEEDED' | 'NOT_STARTED' | 'PENDING_CONFIRM';
   requires_confirmation_count: number;
   itinerary_adjust_auto_apply?: unknown;
+  /** P1-4：AUTO 走廊产品 UI / 审计提示 */
+  auto_corridor_ui_v1?: AutoCorridorUiFlagsV1;
 } {
   const mode =
     (metadata.itinerary_adjust_execution_mode as ItineraryAdjustExecutionMode | undefined) ??
@@ -179,5 +185,6 @@ export function buildItineraryAdjustActionExecutionPayload(metadata: Record<stri
           : 'NOT_STARTED',
     requires_confirmation_count: applied ? 0 : mode === 'ADVICE_ONLY' ? 0 : 1,
     itinerary_adjust_auto_apply: autoApply,
+    auto_corridor_ui_v1: buildAutoCorridorUiFlagsV1({ metadata, executionMode: mode }),
   };
 }

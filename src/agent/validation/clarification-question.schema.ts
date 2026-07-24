@@ -68,11 +68,12 @@ function normalizeConditionalInput(raw: ConditionalInputField): ConditionalInput
 export function parseClarificationQuestionsForClient(
   questions: unknown,
 ): ClarificationQuestion[] {
-  const parsed = ClarificationQuestionsSchema.safeParse(questions);
+  const coerced = coerceLegacyClarificationQuestions(questions);
+  const parsed = ClarificationQuestionsSchema.safeParse(coerced);
   if (!parsed.success) {
-    if (!Array.isArray(questions)) return [];
+    if (!Array.isArray(coerced)) return [];
     const out: ClarificationQuestion[] = [];
-    for (const item of questions) {
+    for (const item of coerced) {
       const one = ClarificationQuestionSchema.safeParse(item);
       if (one.success) out.push(one.data as ClarificationQuestion);
     }
@@ -85,4 +86,59 @@ export function parseClarificationQuestionsForClient(
     ...q,
     conditionalInputs: q.conditionalInputs?.map(normalizeConditionalInput),
   })) as ClarificationQuestion[];
+}
+
+/**
+ * 兼容 REPAIR 等历史形状：`type: NEED_CONFIRMATION`、`options: [{ id, label }]`。
+ * 未归一化时 Zod 会丢弃整张卡，前端退化成空白 text 输入。
+ */
+function coerceLegacyClarificationQuestions(questions: unknown): unknown {
+  if (!Array.isArray(questions)) return questions;
+  return questions.map((item) => {
+    if (!item || typeof item !== 'object') return item;
+    const q = item as Record<string, unknown>;
+    const rawType = String(q.type ?? '');
+    const type =
+      rawType === 'NEED_CONFIRMATION' || rawType === 'NEED_MORE_INFO'
+        ? 'single_choice'
+        : q.type;
+
+    let options = q.options;
+    if (Array.isArray(options)) {
+      options = options.map((opt) => {
+        if (typeof opt === 'string') return opt;
+        if (!opt || typeof opt !== 'object') return opt;
+        const o = opt as Record<string, unknown>;
+        if (typeof o.value === 'string' && o.value.trim()) {
+          return {
+            value: o.value.trim(),
+            label: String(o.label ?? o.value).trim() || o.value.trim(),
+          };
+        }
+        if (typeof o.id === 'string' && o.id.trim()) {
+          return {
+            value: o.id.trim(),
+            label: String(o.label ?? o.id).trim() || o.id.trim(),
+          };
+        }
+        return opt;
+      });
+    }
+
+    const hasChoiceOptions = Array.isArray(options) && options.length > 0;
+    const metadata =
+      q.metadata && typeof q.metadata === 'object'
+        ? { ...(q.metadata as Record<string, unknown>) }
+        : {};
+    if (hasChoiceOptions && type === 'single_choice' && !metadata.presentation) {
+      metadata.presentation = 'structured_intake_v1';
+    }
+
+    return {
+      ...q,
+      type,
+      ...(options !== undefined ? { options } : {}),
+      ...(Object.keys(metadata).length ? { metadata } : {}),
+    };
+  });
 }

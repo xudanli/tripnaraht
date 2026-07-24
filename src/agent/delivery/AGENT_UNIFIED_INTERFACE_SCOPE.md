@@ -14,11 +14,11 @@
 
 | 域 | 说明 |
 |----|------|
-| **意图与路由** | System 1（API/RAG） vs System 2（ReAct + 工具）；`routePolicy` 选 `CLAUDE_SM / CLAUDE_DYNAMIC / LEGACY` |
-| **行程规划主链** | INTAKE → RESEARCH → GATE → PLAN → VERIFY ⇄ REPAIR → NARRATE |
+| **意图与路由** | 入口可分流 System 1（API/RAG）与轻量路径；**规划产品脊柱**为 Claude 图状态机 `CLAUDE_SM`（非 ReAct 主循环） |
+| **行程规划主链** | INTAKE → STATE_UPDATE → RESEARCH → POI_SELECTION → GATE_EVAL → CONTEXT_BUILD → PLAN_GEN → OPTIMIZE → VERIFY ⇄ REPAIR → NARRATE → FEEDBACK → HALLUCINATION → END |
 | **三人格门控** | Abu / Dr.Dre / Neptune → `gate_result` · `explain.guardian_personas` |
-| **SUCCESS 交付** | `result.payload.ui_display.*`（行程、地图、预订、语音等） |
-| **未完全收敛** | 默认澄清终端；opt-in `allow_flawed_draft_narrate` → `flawed_draft_v1` Banner |
+| **SUCCESS 交付** | `result.payload.ui_display.*`；先读 `trusted_delivery_v1.delivery_verdict` |
+| **未完全收敛** | 默认澄清；仅显式 `allow_flawed_draft_narrate=true` → `FLAWED_DRAFT`（禁止 AUTO） |
 | **长耗时** | 同步 / `async_mode` 委托 / 显式 `route_and_run/async` + SSE + Worker Lease |
 | **行程写操作卫星** | 协商确认、回滚、replay、修订时间轴、鲁棒性 Dashboard |
 | **预订 checkout** | `booking_cart/apply`（状态机，不回写主链） |

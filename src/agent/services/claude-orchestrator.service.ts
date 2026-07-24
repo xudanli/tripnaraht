@@ -184,6 +184,12 @@ import {
   pendingDraftFromRequestSnapshot,
   readPendingItineraryAdjustDraft,
 } from '../utils/itinerary-adjust-pending-draft.util';
+import {
+  buildLodgingReplaceAnswerText,
+  detectLodgingReplaceIntent,
+  findLodgingItemsOnDay,
+  parseLodgingReplaceSpec,
+} from '../utils/itinerary-lodging-replace.util';
 import { TripRunManagerService } from './trip-run-manager.service';
 import { ItineraryVersionService } from './itinerary-version.service';
 import {
@@ -200,6 +206,10 @@ import {
   mergePoiSlotFillOrchestratorItinerary,
 } from '../utils/itinerary-adjust-poi-slot-fill.util';
 import { recordItineraryAdjustFunnel } from '../utils/itinerary-adjust-metrics.util';
+import {
+  FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON,
+  shouldBlockAutoApplyForFlawedDraft,
+} from '../utils/itinerary-adjust-flawed-auto-block.util';
 import { extractItineraryAdjustTargetDateFromMessage } from '../utils/itinerary-adjust-intent.util';
 import {
   buildCorridorAdjustPoiPlanningSlice,
@@ -322,6 +332,7 @@ import {
   isTodayWeatherFactQuery,
   isWeatherRoadConditionFocusedQuery,
   shouldEnableLiveWeatherMcpForLightweightRoute,
+  shouldForceDataLookupForBoundTripReview,
   shouldInjectIcelandRentalGuidanceForLightweight,
   shouldPullSafetravelAdvisoriesForLightweightIceland,
   isWestfjordsLegTransportPreferenceConsultation,
@@ -398,7 +409,9 @@ import {
 import {
   buildDefaultTripConsultationSuggestedOperations,
   buildDiningAnchorSuggestedOperations,
+  buildSilentVoteCreateSuggestedOperation,
   extractSuggestedOperationsFromAnswer,
+  isSilentVoteCreateIntentMessage,
   mergeSuggestedOperations,
   type TripConsultationSuggestedOperation,
 } from '../utils/trip-consultation-suggested-operations.util';
@@ -1807,6 +1820,10 @@ export class ClaudeOrchestratorService {
       /^[ \t>]*前端一键操作[ \t:：]*$/gim,
     ];
     for (const r of removals) t = t.replace(r, '');
+    // 兜底：未抽净的 CONSULTATION_UI / SUGGESTED_OPS 机读块不得进入用户可见正文
+    t = t.replace(/<<<CONSULTATION_UI_JSON>>>[\s\S]*?(?:<<<END_CONSULTATION_UI_JSON>{2,3}|$)/g, '');
+    t = t.replace(/<<<SUGGESTED_OPS_JSON>>>[\s\S]*?(?:<<<END_SUGGESTED_OPS_JSON>{2,3}|$)/g, '');
+    t = t.replace(/<<<(?:CONSULTATION_UI_JSON|END_CONSULTATION_UI_JSON|SUGGESTED_OPS_JSON|END_SUGGESTED_OPS_JSON)>{2,3}/g, '');
     return t.replace(/\n{3,}/g, '\n\n').trim();
   }
 
@@ -4297,8 +4314,8 @@ export class ClaudeOrchestratorService {
             '【系统块 SUGGESTED_OPS】在向用户展示正文与 CONSULTATION_UI 块之后，必须额外输出一段机器可读 JSON（**禁止**在用户可见正文里写「一键操作」类标题或复述该 JSON）。格式严格如下（各占一行）：',
             `第一行仅写：${'<<<SUGGESTED_OPS_JSON>>>'}`,
             '第二行起至结束标记前：单行合法 JSON 数组，元素字段：id（英文短键）、label（按钮文案≤18字）、kind（仅 route_and_run_message 或 client_navigation）、payload（对象）。',
-            '—— route_and_run_message：payload.message 为完整中文指令，用户点击后作为新一轮对话发给助手（用于「按建议改行程」）；须贴合你在正文「风险与优化」里的具体结论。',
-            '—— client_navigation：payload.route 只能为 timeline / replay / planning / itinerary / decision_cockpit 之一；并须在 payload 中带 trip_id（值等于当前关联行程）。',
+            '—— route_and_run_message：payload.message 为完整中文指令，用户点击后作为新一轮对话发给助手（用于「按建议改行程」「搜索某地酒店」）；须贴合你在正文里的具体结论。',
+            '—— client_navigation：payload.route 可为 timeline / replay / planning / itinerary / decision_cockpit；**仅当按钮文案是「发起投票/创建投票」时**才可用 silent_vote_create / silent_vote（或 action=silent_vote_create）。搜索酒店/查房绝不可用 silent_vote_*，必须用 route_and_run_message。并须在 payload 中带 trip_id（值等于当前关联行程）。',
             '数组长度 2～4；至少包含 1 条 route_and_run_message。',
             `最后一行仅写：${'<<<END_SUGGESTED_OPS_JSON>>>'}`,
           ]
@@ -4451,6 +4468,7 @@ export class ClaudeOrchestratorService {
         [...diningAnchorOps, ...extracted.operations],
         buildDefaultTripConsultationSuggestedOperations(effectiveTripId, {
           planning_handoff_message: request.message ?? '',
+          include_silent_vote: isSilentVoteCreateIntentMessage(request.message ?? ''),
         }),
       );
     }
@@ -5136,6 +5154,30 @@ export class ClaudeOrchestratorService {
       /** 已绑定行程的 TRIP_PLANNING：动态 Skill DAG 不会在 INTAKE 注入 planState/itinerary，校验必报缺 planState/request/itinerary → 统一走状态机 */
       const boundTripId = (request.trip_id || context.tripId || '').trim();
       if (boundTripId && rt === 'TRIP_PLANNING') {
+        // 复盘/可行性/轻量咨询：即使上游误标 TRIP_PLANNING，也不进状态机（避免 CGUS/VERIFY/REPAIR 空转）
+        const msgForConsult = request.message ?? '';
+        const msgLowerConsult = msgForConsult.trim().toLowerCase();
+        if (
+          isBoundTripLightConsultQuery(msgForConsult, msgLowerConsult) ||
+          shouldForceDataLookupForBoundTripReview({ trip_id: boundTripId, message: msgForConsult })
+        ) {
+          this.logger.log(
+            `[Claude Orchestrator] 已绑定 trip 但命中轻量咨询/复盘，TRIP_PLANNING → LIGHTWEIGHT（跳过 CGUS）request_id=${request.request_id}`,
+          );
+          request.options = {
+            ...request.options,
+            intent_mode: 'DATA_LOOKUP',
+            use_state_machine_orchestration: false,
+          };
+          setLlmTraceRoutePath('LIGHTWEIGHT');
+          return await this.orchestrateLightweightKnowledgeQuery(
+            request,
+            context,
+            deadline,
+            llmProvider,
+            startTime,
+          );
+        }
         this.logger.log(
           `[Claude Orchestrator] 已绑定 trip_id 且 TRIP_PLANNING → 状态机编排（避免 CLAUDE_DYNAMIC Skills 缺参）request_id=${request.request_id}`,
         );
@@ -7708,6 +7750,40 @@ ${JSON.stringify(routingDecision, null, 2)}
     setLlmTraceRoutePath('STATE_MACHINE');
     const startTime = Date.now();
     const boundTripIdEarly = (request.trip_id || context.tripId || '').trim();
+    const earlyMsg = resolveRouteAndRunUserMessage(request);
+    if (boundTripIdEarly && isSilentVoteCreateIntentMessage(earlyMsg)) {
+      this.logger.log(
+        `[Claude Orchestrator] 状态机入口：发起投票 → SilentVote CTA 短路 request_id=${request.request_id}`,
+      );
+      setLlmTraceRoutePath('LIGHTWEIGHT');
+      const voteOp = buildSilentVoteCreateSuggestedOperation(boundTripIdEarly);
+      return {
+        success: true,
+        answerText:
+          '可以发起团队匿名投票。请点击下方「发起投票」打开创建面板（选项与截止时间由你确认后提交）。',
+        result: {
+          routingTaskType: 'DATA_LOOKUP',
+          lightweightKnowledgeQa: true,
+          ui_surface: 'consultation' as const,
+          trip_id: boundTripIdEarly,
+          ...(voteOp ? { suggested_operations: [voteOp] } : {}),
+        },
+        stepsExecuted: [],
+        totalDuration: Date.now() - startTime,
+        decisionLog: [
+          {
+            request_id: request.request_id,
+            step: 'INTAKE' as OrchestrationStep,
+            actor: 'Orchestrator' as SubAgentType,
+            inputs_summary: earlyMsg.slice(0, 200),
+            outputs_summary: 'silent_vote_create CTA (SM entry bypass)',
+            evidence_refs: [],
+            timestamp: new Date().toISOString(),
+            metadata: { system_action: 'SILENT_VOTE_CREATE_CTA' },
+          },
+        ],
+      };
+    }
     if (boundTripIdEarly && isWorkbenchAssistantPlaceholderMessage(request.message)) {
       this.logger.log(
         `[Claude Orchestrator] 状态机入口：工作台占位欢迎语 → 短路 request_id=${request.request_id}`,
@@ -8583,6 +8659,20 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     const md = state.metadata as Record<string, unknown>;
     if (md.itinerary_day_replan_intake === true) return;
+
+    // P0-1：FLAWED_DRAFT 禁止 AUTO / SEMI_AUTO 写回
+    if (shouldBlockAutoApplyForFlawedDraft(md)) {
+      md.itinerary_adjust_auto_apply = {
+        applied: false,
+        reason: FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON,
+        executionMode: 'ADVICE_ONLY',
+      };
+      md.itinerary_adjust_execution_mode = 'ADVICE_ONLY';
+      this.logger.warn(
+        `[Claude Orchestrator] ITINERARY_ADJUST AUTO blocked: ${FLAWED_DRAFT_AUTO_APPLY_BLOCK_REASON} request_id=${state.request_id}`,
+      );
+      return;
+    }
 
     const intakeMsg =
       (typeof md.intake_user_message === 'string' ? md.intake_user_message : '') ||
@@ -10254,6 +10344,166 @@ ${JSON.stringify(routingDecision, null, 2)}
     };
   }
 
+  private async tryApplyBoundTripLodgingReplace(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+    dateRange?: { start_date?: string; end_date?: string },
+  ): Promise<{
+    applied: boolean;
+    answerText?: string;
+    checkInIso?: string;
+    fromName?: string;
+    toName?: string;
+    reason?: string;
+    skillsHit?: string[];
+  }> {
+    if (!detectLodgingReplaceIntent(message)) {
+      return { applied: false, reason: 'not_lodging_replace_intent' };
+    }
+    const spec = parseLodgingReplaceSpec(message, dateRange);
+    if (!spec?.toName) {
+      return {
+        applied: false,
+        reason: 'parse_failed',
+        answerText: buildLodgingReplaceAnswerText(
+          { toName: '目标住宿' },
+          { applied: false, reason: 'parse_failed' },
+        ),
+      };
+    }
+
+    if (!this.tripsService) {
+      return {
+        applied: false,
+        reason: 'trips_service_unavailable',
+        fromName: spec.fromName,
+        toName: spec.toName,
+        checkInIso: spec.checkInIso,
+        answerText: buildLodgingReplaceAnswerText(spec, {
+          applied: false,
+          reason: 'trips_service_unavailable',
+        }),
+      };
+    }
+
+    let trip: TripLikeForDelete;
+    try {
+      trip = (await this.tripsService.findOne(tripId.trim(), userId)) as TripLikeForDelete;
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] lodging replace: trip load failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {
+        applied: false,
+        reason: 'trip_load_failed',
+        fromName: spec.fromName,
+        toName: spec.toName,
+        checkInIso: spec.checkInIso,
+        answerText: buildLodgingReplaceAnswerText(spec, {
+          applied: false,
+          reason: 'trip_load_failed',
+        }),
+      };
+    }
+
+    const found = findLodgingItemsOnDay(trip, spec.checkInIso, spec.fromName);
+    if (!found.tripDayId || !found.dateIso) {
+      return {
+        applied: false,
+        reason: 'day_not_found',
+        fromName: spec.fromName,
+        toName: spec.toName,
+        checkInIso: spec.checkInIso,
+        answerText: buildLodgingReplaceAnswerText(spec, {
+          applied: false,
+          checkInIso: spec.checkInIso,
+          dayNumber: found.dayNumber,
+          reason: 'day_not_found',
+        }),
+      };
+    }
+
+    const replacedFrom =
+      found.matched[0]?.name ??
+      found.allRest[0]?.name ??
+      spec.fromName ??
+      '原住宿';
+
+    if (!this.planningAssistantV2Service) {
+      return {
+        applied: false,
+        reason: 'pa_unavailable',
+        fromName: replacedFrom,
+        toName: spec.toName,
+        checkInIso: found.dateIso,
+        answerText: buildLodgingReplaceAnswerText(spec, {
+          applied: false,
+          checkInIso: found.dateIso,
+          dayNumber: found.dayNumber,
+          replacedFrom,
+          reason: 'pa_unavailable',
+        }),
+      };
+    }
+
+    const checkIn = found.dateIso.slice(0, 10);
+    const checkOutDate = new Date(`${checkIn}T00:00:00.000Z`);
+    checkOutDate.setUTCDate(checkOutDate.getUTCDate() + 1);
+    const checkOut = checkOutDate.toISOString().slice(0, 10);
+
+    try {
+      const out = await this.planningAssistantV2Service.applyAccommodationToItinerary(tripId.trim(), {
+        sessionId: `lodging-replace:${tripId.trim()}:${checkIn}`,
+        accommodationIndex: 0,
+        replaceExisting: true,
+        accommodation: {
+          id: `nl-replace-${Buffer.from(spec.toName).toString('base64url').slice(0, 24)}`,
+          source: 'hotel',
+          name: spec.toName,
+          nameCN: spec.toName,
+          checkIn,
+          checkOut,
+        },
+      });
+      if (out?.success) {
+        return {
+          applied: true,
+          skillsHit: ['planning_assistant.accommodations.apply'],
+          fromName: replacedFrom,
+          toName: spec.toName,
+          checkInIso: checkIn,
+          answerText: buildLodgingReplaceAnswerText(spec, {
+            applied: true,
+            checkInIso: checkIn,
+            dayNumber: found.dayNumber,
+            replacedFrom,
+          }),
+        };
+      }
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[Claude Orchestrator] lodging replace apply failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    return {
+      applied: false,
+      reason: 'apply_failed',
+      skillsHit: ['planning_assistant.accommodations.apply'],
+      fromName: replacedFrom,
+      toName: spec.toName,
+      checkInIso: checkIn,
+      answerText: buildLodgingReplaceAnswerText(spec, {
+        applied: false,
+        checkInIso: checkIn,
+        dayNumber: found.dayNumber,
+        replacedFrom,
+        reason: 'apply_failed',
+      }),
+    };
+  }
+
   private async tryApplyBoundTripItineraryItemUpdate(
     tripId: string,
     userId: string | undefined,
@@ -10416,6 +10666,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
       tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
         this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
+      tryApplyBoundTripLodgingReplace: (tripId, userId, message, dateRange) =>
+        this.tryApplyBoundTripLodgingReplace(tripId, userId, message, dateRange),
       tryApplyBoundTripItineraryDayReplan: (tripId, userId, message, dateRange) =>
         this.tryApplyBoundTripItineraryDayReplan(tripId, userId, message, dateRange),
       tryApplyBoundTripItineraryAdjustDraft: (tripId, userId, req) =>
@@ -10450,6 +10702,8 @@ ${JSON.stringify(routingDecision, null, 2)}
         this.tryApplyBoundTripItineraryItemAdd(tripId, userId, message),
       tryApplyBoundTripItineraryItemUpdate: (tripId, userId, message) =>
         this.tryApplyBoundTripItineraryItemUpdate(tripId, userId, message),
+      tryApplyBoundTripLodgingReplace: (tripId, userId, message, dateRange) =>
+        this.tryApplyBoundTripLodgingReplace(tripId, userId, message, dateRange),
       tryApplyBoundTripItineraryDayReplan: (tripId, userId, message, dateRange) =>
         this.tryApplyBoundTripItineraryDayReplan(tripId, userId, message, dateRange),
       tryApplyBoundTripItineraryAdjustDraft: (tripId, userId, req) =>

@@ -122,17 +122,18 @@ Harness 映射（边表）：`EVIDENCE_SNAPSHOT_UNBOUND` · `EVIDENCE_VERSION_MI
 | `allow_partial` + GATE 降级 | 允许缺日期草案进入 PLAN；NARRATE 须标注缺口 |
 | 编排 SUCCESS + 未收敛 violation | `explain.decision_log` + `gate_result.violations` 保留；前端读 `ui_display` / action 列表 |
 
-**白皮书「max 2 次 REPAIR → 瑕疵 NARRATE」**：已实现 **P1.1** — 默认仍为 max **3** + 澄清；设 `options.allow_flawed_draft_narrate=true` 可继续 NARRATE 并附带 `flawed_draft_v1`（`result.payload` + `explain` 同源）。
+**白皮书「max 2 次 REPAIR → 瑕疵 NARRATE」**：默认仍为 max **3** + 澄清；**仅**显式 `options.allow_flawed_draft_narrate=true` 可继续 NARRATE 并附带 `flawed_draft_v1` / `delivery_verdict=FLAWED_DRAFT`（`result.payload` + `explain` 同源）。绑定 `trip_id` **不**再默认放行。`FLAWED_DRAFT` 禁止 ITINERARY_ADJUST AUTO/SEMI_AUTO 写回。
 
-### 3.4 瑕疵草案契约（P1.1）
+### 3.4 瑕疵草案契约（P0-1）
 
 | 字段 | 路径 |
 |------|------|
 | Schema | `tripnara.flawed_draft@v1` |
-| 装配 | `buildFlawedDraftDescriptorV1()` |
-| 触发 | `allow_flawed_draft_narrate` · `gate ADJUST_REQUIRED` · `allow_partial` 降级 · 未消解 VERIFY issues |
+| 交付态 | `trusted_delivery_v1.delivery_verdict`（`VERIFIED` / `VERIFIED_WITH_WARNINGS` / `FLAWED_DRAFT` / `BLOCKED` / `FAILED`） |
+| 装配 | `buildFlawedDraftDescriptorV1()` · `resolveDeliveryVerdict()` |
+| 触发 | **显式** `allow_flawed_draft_narrate=true` · `gate ADJUST_REQUIRED` · `allow_partial` 降级 · 未消解 VERIFY issues |
 
-前端：**读 `flawed_draft_v1.headline_zh` 展示 Banner**，不可将 `is_flawed=true` 的行程当作完全 VERIFIED。
+前端：先读 `delivery_verdict`；**读 `flawed_draft_v1.headline_zh` 展示 Banner**；`FLAWED_DRAFT` / `is_flawed=true` 不可当作完全 VERIFIED，且不得静默 Apply。
 
 ### 3.5 CGUS / TripDraft 路径（并行）
 

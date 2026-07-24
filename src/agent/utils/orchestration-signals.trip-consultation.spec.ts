@@ -3,6 +3,7 @@ import {
   isBoundTripLightConsultQuery,
   isBoundTripLodgingDiningPlanQuery,
   isFactualMacroStatQuery,
+  isHotelInventorySearchQuery,
   isLocalClockOrTimezoneFactQuery,
   isTripStatusOverviewQuery,
   isWeatherRoadConditionFocusedQuery,
@@ -19,6 +20,21 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     user_id: 'u1',
     message: '',
     ...overrides,
+  });
+
+  it('有 trip_id + 搜索维克某日住宿 → DATA_LOOKUP（非瑕疵草案 SM）', () => {
+    const msg = '搜索维克 7 月 26 日住宿';
+    expect(isHotelInventorySearchQuery(msg, msg.toLowerCase())).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 'trip_15c50a69931845ca',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
   });
 
   it('有 trip_id + 西峡湾极地攻略咨询 → DATA_LOOKUP + Plan Studio 轻量咨询', () => {
@@ -363,7 +379,7 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     expect(s.requiresStructuredOutput).toBe(false);
   });
 
-  it('options.intent_mode=TRIP_PLANNING 覆盖咨询句 → 仍为 TRIP_PLANNING', () => {
+  it('options.intent_mode=TRIP_PLANNING 落在轻量咨询句 → DATA_LOOKUP（契约：咨询≠深规划状态机）', () => {
     const s = signalsFromRequest(
       base({
         trip_id: 't1',
@@ -371,8 +387,20 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
         options: { intent_mode: 'TRIP_PLANNING' },
       }),
     );
-    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.taskType).toBe('DATA_LOOKUP');
     expect(s.intent_mode_requested).toBe('TRIP_PLANNING');
+    expect(s.intent_mode_resolved).toBe('DATA_LOOKUP');
+  });
+
+  it('options.intent_mode=TRIP_PLANNING + 改排句 → 仍为 TRIP_PLANNING', () => {
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: '请把第三天行程改轻松一点',
+        options: { intent_mode: 'TRIP_PLANNING' },
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
     expect(s.intent_mode_resolved).toBe('TRIP_PLANNING');
   });
 

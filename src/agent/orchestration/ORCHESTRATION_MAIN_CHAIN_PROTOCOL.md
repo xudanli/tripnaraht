@@ -81,7 +81,7 @@ POI 候选流水线（`poi-candidate-pipeline.util.ts`，挂在 `poi_selection` 
 
 见常量 `MAIN_CHAIN_USER_CONFIRM_POINTS`（Abu、REPAIR halt、协商、瑕疵草案 opt-in 等）。
 
-默认：**超 REPAIR 预算 → `NEED_CONFIRMATION`**，非静默瑕疵 SUCCESS。`allow_flawed_draft_narrate` 为显式 opt-in。
+默认：**超 REPAIR 预算 → `NEED_CONFIRMATION`**，非静默瑕疵 SUCCESS。`allow_flawed_draft_narrate` 为**显式 opt-in（仅 `true`）**；绑定 trip 缺省不放行。瑕疵交付时 `delivery_verdict=FLAWED_DRAFT`，禁止 AUTO 写回。
 
 ---
 

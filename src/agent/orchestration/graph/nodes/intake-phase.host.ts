@@ -122,6 +122,21 @@ export interface IntakePhaseHost {
     reason?: string;
   }>;
 
+  tryApplyBoundTripLodgingReplace?(
+    tripId: string,
+    userId: string | undefined,
+    message: string,
+    dateRange?: { start_date?: string; end_date?: string },
+  ): Promise<{
+    applied: boolean;
+    answerText?: string;
+    checkInIso?: string;
+    fromName?: string;
+    toName?: string;
+    reason?: string;
+    skillsHit?: string[];
+  }>;
+
   tryApplyBoundTripItineraryDayReplan?(
     tripId: string,
     userId: string | undefined,

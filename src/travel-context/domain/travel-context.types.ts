@@ -128,6 +128,11 @@ export interface EffectivePlanContext {
   selectedRouteId?: string | null;
 }
 
+/**
+ * Snapshot 投影 kind（读模型）。
+ * SYSTEM_INFERRED / EFFECTIVE_DECISION 不得单独触发 HARD BLOCK
+ * （见 travel-ontology fact-epistemic-boundary + ONT-FACT-002）。
+ */
 export type WorldFactKind =
   | 'USER_DECLARED'
   | 'SYSTEM_INFERRED'
@@ -135,6 +140,11 @@ export type WorldFactKind =
   | 'OFFICIAL_RULE'
   | 'EFFECTIVE_DECISION';
 
+/**
+ * @deprecated 名称保留兼容；语义上仅为 TravelWorldFact 的 Snapshot 裁剪投影。
+ * 新代码请使用 {@link TravelWorldFactProjection}。
+ * 权威契约：`TravelWorldFact`（src/travel-ontology/contracts）。
+ */
 export interface WorldFact {
   factId: string;
   type: string;
@@ -148,6 +158,9 @@ export interface WorldFact {
   confidence: number;
   replanTrigger?: boolean;
 }
+
+/** RFC / Snapshot 读模型别名 — 禁止作为第二套领域模型演化 */
+export type TravelWorldFactProjection = WorldFact;
 
 export interface TravelWorldContext {
   facts: WorldFact[];

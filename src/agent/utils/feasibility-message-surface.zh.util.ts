@@ -330,8 +330,43 @@ export function sanitizeClarificationQuestionForClientDisplay(
   questionZh = dedupeRepeatedClarificationParagraphs(scrubInternalAgentLeakage(questionZh));
   const hintRaw = question.hint ? String(question.hint).trim() : '';
   const hint = hintRaw ? humanizeFeasibilityMessageForUserZh(hintRaw) : question.hint;
+
+  // 契约：前端只认 single_choice + { value, label }；兼容历史 NEED_CONFIRMATION / { id, label }
+  const rawType = String((question as { type?: string }).type ?? '');
+  const type: ClarificationQuestion['type'] =
+    rawType === 'NEED_CONFIRMATION' || rawType === 'NEED_MORE_INFO'
+      ? 'single_choice'
+      : (question.type as ClarificationQuestion['type']);
+
+  const options = Array.isArray(question.options)
+    ? question.options.map((opt) => {
+        if (typeof opt === 'string') return opt;
+        if (!opt || typeof opt !== 'object') return opt;
+        const o = opt as { value?: string; label?: string; id?: string };
+        const value = String(o.value ?? o.id ?? '').trim();
+        const label = String(o.label ?? value).trim();
+        if (!value) return opt;
+        return { value, label: label || value };
+      })
+    : question.options;
+
+  const hasChoiceOptions =
+    Array.isArray(options) &&
+    options.length > 0 &&
+    options.some((o) => typeof o === 'string' || (o && typeof o === 'object' && ('value' in o || 'label' in o)));
+
+  const metadata = {
+    ...(question.metadata ?? {}),
+    ...(hasChoiceOptions && type === 'single_choice' && !question.metadata?.presentation
+      ? { presentation: 'structured_intake_v1' }
+      : {}),
+  };
+
   return attachClarificationMarkdownHtml({
     ...question,
+    type: hasChoiceOptions && type === 'text' ? 'single_choice' : type,
+    ...(options ? { options } : {}),
+    metadata,
     question: questionZh,
     ...(hint ? { hint } : {}),
   });

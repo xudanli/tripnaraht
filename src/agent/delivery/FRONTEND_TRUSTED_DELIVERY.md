@@ -19,7 +19,17 @@
 
 ---
 
-## 2. 先判 `result.status`，再读 `trusted_delivery_v1`
+## 2. 先判 `delivery_verdict`，再判 `result.status`
+
+P0-1 起，`trusted_delivery_v1.delivery_verdict` 是产品可感知交付态：
+
+| `delivery_verdict` | 含义 | 前端硬约束 |
+|--------------------|------|------------|
+| `VERIFIED` | 验证收敛可展示为已验证方案 | 可进入 Confirm / Apply（仍须用户授权） |
+| `VERIFIED_WITH_WARNINGS` | 有软警告 | Banner 警告；勿静默当完美方案 |
+| `FLAWED_DRAFT` | 显式瑕疵草案 | **不得**显示为已验证；**不得** AUTO Apply；默认要求确认 |
+| `BLOCKED` | 需澄清/确认/门控阻断 | 走澄清或确认流 |
+| `FAILED` | 失败/超时 | 错误态 |
 
 ```ts
 type ResultStatus =
@@ -33,8 +43,13 @@ type ResultStatus =
 
 const status = response.result.status;
 const td = response.result.payload?.trusted_delivery_v1;
+const verdict = td?.delivery_verdict;
 const ui = response.result.payload?.ui_display;
 const flawed = response.result.payload?.flawed_draft_v1;
+
+if (verdict === 'FLAWED_DRAFT' || flawed?.is_flawed) {
+  // 展示瑕疵 Banner；禁止当「已验证方案」；禁止静默 Apply
+}
 ```
 
 | `status` | 前端动作 |

@@ -1,5 +1,6 @@
 import { ROUTE_AND_RUN_GOLDEN_EVAL_FIXTURES } from './route-and-run-golden-eval-fixtures';
 import {
+  applyRouteAndRunEntryRoutingInPlace,
   applyRouteClassForkInPlace,
   applyRouteClassForkPolicyOverrides,
   isRouteClassForkEnabled,
@@ -80,6 +81,26 @@ describe('route-and-run-route-class-fork.util', () => {
       const req = structuredClone(fx.request);
       req.options = { ...req.options, intent_mode: 'TRIP_PLANNING' };
       expect(applyRouteClassForkInPlace(req)).toBeNull();
+    });
+
+    it('entry routing clamps mistaken TRIP_PLANNING review to DATA_LOOKUP even when fork skips', () => {
+      process.env.ROUTE_CLASS_FORK = '1';
+      const req = {
+        request_id: 'r1',
+        user_id: 'u1',
+        trip_id: 'trip_15c50a69931845ca',
+        message: '分析当前行程的整体可行性，有什么需要改进的吗？',
+        options: {
+          entry_point: 'trip_detail_page' as const,
+          intent_mode: 'TRIP_PLANNING' as const,
+          use_state_machine_orchestration: true,
+        },
+      };
+      expect(applyRouteClassForkInPlace(structuredClone(req))).toBeNull();
+      const forEntry = structuredClone(req);
+      applyRouteAndRunEntryRoutingInPlace(forEntry);
+      expect(forEntry.options?.intent_mode).toBe('DATA_LOOKUP');
+      expect(forEntry.options?.use_state_machine_orchestration).toBe(false);
     });
   });
 

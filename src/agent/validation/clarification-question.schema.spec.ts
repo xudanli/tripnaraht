@@ -74,4 +74,28 @@ describe('clarification-question.schema', () => {
     ]);
     expect(q?.conditionalInputs?.[0]?.inputType).toBe('multi_choice');
   });
+
+  it('coerces REPAIR halt NEED_CONFIRMATION + {id,label} into single_choice', () => {
+    const [q] = parseClarificationQuestionsForClient([
+      {
+        id: 'repair_halt_confirmation',
+        question: '系统已自动修复尝试 3 次，仍未收敛。',
+        type: 'NEED_CONFIRMATION',
+        required: true,
+        options: [
+          { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+          { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
+          { id: 'continue_auto_repair', label: '继续自动修复' },
+        ],
+        hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
+      },
+    ]);
+    expect(q?.type).toBe('single_choice');
+    expect(q?.metadata?.presentation).toBe('structured_intake_v1');
+    expect(q?.options).toEqual([
+      { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+      { value: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
+      { value: 'continue_auto_repair', label: '继续自动修复' },
+    ]);
+  });
 });

@@ -509,6 +509,71 @@ describe('RouteAndRunResponseAssemblerService — ui_display.evidence_cards_ui',
     expect(payload?.decision_metadata).toBeUndefined();
   });
 
+  it('lodging replace short-circuit is applied success, not draft-pending adjust card', async () => {
+    const assembler = await createAssembler();
+    const answer =
+      '已将 **2026-07-22** 的住宿从「黄金瀑布酒店」修改为「格伦达菲厄泽宾馆」，并写入当前行程。';
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: answer,
+      stepsExecuted: [{ stepId: 'INTAKE', skillName: 'lodging.replace', success: true, duration: 1 }],
+      totalDuration: 1,
+      totalCost: 0,
+      result: {
+        state: {
+          request_id: 'lodge-1',
+          current_step: 'DONE',
+          verdict: 'ALLOW',
+          plan_version: 1,
+          decision_log: [],
+          evidence_registry: new Map(),
+          errors: [],
+          narration: {
+            user_friendly_summary: answer,
+            day_by_day_narrative: [],
+            highlights: [],
+            tips: [],
+          },
+          metadata: {
+            started_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+            lodging_replace_intake: true,
+            lodging_replace_short_circuit: { applied: true, toName: '格伦达菲厄泽宾馆' },
+            route_and_run_intent: { primary: 'ITINERARY_ADJUST' },
+          },
+        } as OrchestratorState,
+        gate_result: {
+          gate_result: 'ALLOW',
+          violations: [],
+          required_adjustments: [],
+          confidence: 1,
+          evidence_refs: [],
+        },
+      },
+    };
+
+    const resp = await assembler.assembleClaudeStateMachineResponse({
+      request: {
+        request_id: 'lodge-1',
+        message:
+          '请将我行程中7月22日的住宿从「黄金瀑布酒店」修改为「格伦达菲厄泽宾馆」。',
+        trip_id: 'trip_15c50a69931845ca',
+      } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'TRIP_PLANNING',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.itinerary_item_crud).toBe(true);
+    expect(payload?.itinerary_adjust_result).toBeUndefined();
+    expect(resp.route.ui_hint.message).toBe('行程已更新');
+    expect(resp.route.ui_hint.status).toBe('done');
+    expect(String(resp.result?.answer_text ?? '')).toContain('格伦达菲厄泽宾馆');
+    expect(String(resp.result?.answer_text ?? '')).not.toContain('应用到行程');
+    expect(String(resp.result?.answer_text ?? '')).not.toContain('景点密度');
+  });
+
   it('ITINERARY_ADJUST suppresses decision cockpit and uses day narrative answer', async () => {
     const assembler = await createAssembler();
     const hydrator = (assembler as unknown as { poiHydrator: RouteRunItineraryPoiHydratorService }).poiHydrator;

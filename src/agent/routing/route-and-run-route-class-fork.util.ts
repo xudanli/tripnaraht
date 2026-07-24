@@ -144,20 +144,17 @@ export function applyRouteClassForkInPlace(
 }
 
 /**
- * Gateway / AgentService entry: fork when enabled; otherwise legacy bound-trip DATA_LOOKUP override.
+ * Gateway / AgentService entry: fork when enabled; always apply bound-trip review override.
+ * Fork skips when intent_mode is explicit (≠ AUTO); sidebars that mis-send TRIP_PLANNING
+ * for「全面分析/可行性」仍需被钳回 DATA_LOOKUP。
  */
 export function applyRouteAndRunEntryRoutingInPlace(
   request: RouteAndRunRequestDto,
   env: NodeJS.ProcessEnv = process.env,
 ): RouteClassForkV1 | null {
   const fork = applyRouteClassForkInPlace(request, env);
-  if (fork) {
-    return fork;
-  }
-  if (!isRouteClassForkEnabled(env)) {
-    applyBoundTripReviewRouteAndRunOverrideInPlace(request);
-  }
-  return null;
+  applyBoundTripReviewRouteAndRunOverrideInPlace(request);
+  return fork;
 }
 
 function clonePolicyDecision(

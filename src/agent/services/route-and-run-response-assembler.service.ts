@@ -314,6 +314,7 @@ export class RouteAndRunResponseAssemblerService {
   ): { applied?: boolean } | undefined {
     const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
     return (
+      (md?.lodging_replace_short_circuit as { applied?: boolean } | undefined) ??
       (md?.itinerary_day_replan_short_circuit as { applied?: boolean } | undefined) ??
       (md?.itinerary_item_update_short_circuit as { applied?: boolean } | undefined) ??
       (md?.itinerary_item_add_short_circuit as { applied?: boolean } | undefined) ??
@@ -348,10 +349,11 @@ export class RouteAndRunResponseAssemblerService {
     return consultationUi ? 'consultation' : 'planning';
   }
 
-  /** INTAKE 删除/新增 POI / 整日重排 短路：不携带完整 planning 日程块，按轻量 CRUD 回复 */
+  /** INTAKE 删除/新增/改时/住宿替换/整日重排 短路：轻量 CRUD 回复，不挂改排草案卡 */
   private isItineraryItemCrudIntakeShortCircuit(orchestrationResult: OrchestrationResult): boolean {
     const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
     return (
+      md?.lodging_replace_intake === true ||
       md?.itinerary_day_replan_intake === true ||
       md?.itinerary_item_delete_intake === true ||
       md?.itinerary_item_add_intake === true ||
@@ -401,7 +403,16 @@ export class RouteAndRunResponseAssemblerService {
   ): boolean {
     const md = orchestrationResult.result?.state?.metadata as Record<string, unknown> | undefined;
     if (isItineraryFullTripReplanMetadata(md)) return false;
+    // 住宿 A→B / 单项 CRUD 已落库：勿再挂「草案待确认 / 应用到行程」
+    if (md?.lodging_replace_intake === true) return false;
     if (md?.itinerary_day_replan_intake === true) return false;
+    if (
+      md?.itinerary_item_delete_intake === true ||
+      md?.itinerary_item_add_intake === true ||
+      md?.itinerary_item_update_intake === true
+    ) {
+      return false;
+    }
     if (md?.itinerary_adjust_intake === true) return true;
     const routeIntent = md?.route_and_run_intent as { primary?: string } | undefined;
     if (routeIntent?.primary === 'ITINERARY_ADJUST') return true;
@@ -1301,7 +1312,11 @@ export class RouteAndRunResponseAssemblerService {
       if (fromChat) return fromChat;
       const bullets = structured.rationale_bullets_zh?.map((b) => b.trim()).filter(Boolean) ?? [];
       if (bullets.length > 0) return bullets.join('\n');
-      return structured.optimization_summary_zh?.trim() ?? '';
+      const summary = structured.optimization_summary_zh?.trim();
+      if (summary) return summary;
+      const narr = state?.narration?.user_friendly_summary?.trim();
+      if (narr) return narr;
+      return '已根据您的要求整理行程调整草案，请查看下方时间轴确认后应用到行程。';
     }
 
     const autoLead = buildItineraryAdjustAutoApplyLeadMessage({
@@ -2533,6 +2548,16 @@ export class RouteAndRunResponseAssemblerService {
           : orchestrationResult.success
             ? 'OK'
             : 'FAILED';
+    const gateForSoft =
+      gateForOrchestrationPayload ?? orchestrationResult.result?.gate_result ?? undefined;
+    const hasSoftWarnings =
+      flawedDraftV1?.is_flawed !== true &&
+      (gateForSoft?.gate_result === 'ADJUST_REQUIRED' ||
+        (Array.isArray(gateForSoft?.violations) &&
+          gateForSoft.violations.some(
+            (v: { severity?: string }) => String(v.severity ?? '').toUpperCase() === 'SOFT',
+          )));
+
     const trustedDeliveryV1 = projectTrustedDeliveryV1({
       currentStep: String(
         orchestrationResult.result?.state?.current_step ??
@@ -2541,6 +2566,7 @@ export class RouteAndRunResponseAssemblerService {
       resultStatus: preliminaryStatus,
       agentRunTrace: agentRunTraceForTrusted,
       flawedDraft: flawedDraftV1,
+      hasSoftWarnings,
       clarificationCount: Array.isArray(
         (stateWithVerdict as OrchestratorState | undefined)?.clarification_questions,
       )

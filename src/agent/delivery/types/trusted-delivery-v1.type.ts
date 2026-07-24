@@ -4,6 +4,7 @@
 
 import type { TrustedPublicPhase } from '../trusted-delivery.constants';
 import { TRUSTED_DELIVERY_SCHEMA_ID } from '../trusted-delivery.constants';
+import type { DeliveryVerdict } from './delivery-verdict.types';
 
 export type TrustedDeliveryTaskProgressV1 = {
   phase: TrustedPublicPhase;
@@ -40,6 +41,8 @@ export type TrustedDeliveryAiOperationLogEntryV1 = {
 export type TrustedDeliveryV1 = {
   schemaId: typeof TRUSTED_DELIVERY_SCHEMA_ID;
   version: 1;
+  /** P0-1：产品可感知交付裁决；前端须先读本字段 */
+  delivery_verdict: DeliveryVerdict;
   task_progress: TrustedDeliveryTaskProgressV1;
   user_confirm: TrustedDeliveryUserConfirmV1;
   degraded_explanation: TrustedDeliveryDegradedExplanationV1;

@@ -10,6 +10,7 @@ import { detectItineraryAdjustIntent, detectFullTripReplanIntent } from './itine
 import { normalizeLiveTools } from './live-tools.util';
 import { isAgentTripComprehensiveAnalysisMessage } from './agent-readiness-phase.util';
 import { isTeamStructuredDiscussionQuery } from './team-structured-discussion.util';
+import { isSilentVoteCreateIntentMessage } from './trip-consultation-suggested-operations.util';
 import { resolveRouteAndRunUserMessage } from './resolve-route-and-run-message.util';
 
 /**
@@ -329,8 +330,7 @@ function applyIntentModeToTaskType(
 ): TaskType {
   if (mode === 'AUTO') return inferred;
   const msg = String(req?.message ?? '').trim();
-  if (mode === 'TRIP_PLANNING') return 'TRIP_PLANNING';
-  if (mode === 'DATA_LOOKUP') return 'DATA_LOOKUP';
+  // 已绑定行程的复盘/可行性：优先于前端误传的 TRIP_PLANNING
   if (
     shouldForceDataLookupForBoundTripReview({
       trip_id: req?.trip_id,
@@ -339,6 +339,8 @@ function applyIntentModeToTaskType(
   ) {
     return 'DATA_LOOKUP';
   }
+  if (mode === 'TRIP_PLANNING') return 'TRIP_PLANNING';
+  if (mode === 'DATA_LOOKUP') return 'DATA_LOOKUP';
   return 'GENERIC_QA';
 }
 
@@ -368,6 +370,12 @@ function clampTaskTypeForBoundTripReplanning(
   const tid = tripId?.trim();
   if (!tid) return taskType;
   if (isTeamStructuredDiscussionQuery(msg)) {
+    return taskType === 'TRIP_PLANNING' ? 'DATA_LOOKUP' : taskType;
+  }
+  if (isSilentVoteCreateIntentMessage(msg)) {
+    return 'DATA_LOOKUP';
+  }
+  if (isHotelInventorySearchQuery(msg, msgLower)) {
     return taskType === 'TRIP_PLANNING' ? 'DATA_LOOKUP' : taskType;
   }
   if (isWestfjordsLegTransportPreferenceConsultation(msg, msgLower)) {
@@ -569,6 +577,35 @@ export function isTripStatusOverviewQuery(msg: string, msgLower: string): boolea
 }
 
 /**
+ * 已绑定 trip 的「搜索/查找某地某日住宿」库存检索（非改稿、非多日吃住方案）。
+ * 例：搜索维克 7 月 26 日住宿 → 须走 DATA_LOOKUP + hotel MCP，禁止整段 SM/瑕疵草案。
+ */
+export function isHotelInventorySearchQuery(msg: string, msgLower?: string): boolean {
+  const m = String(msg ?? '').trim();
+  if (!m) return false;
+  if (detectItineraryAdjustIntent(m)) return false;
+  if (detectFullTripReplanIntent(m)) return false;
+  const lower = msgLower ?? m.toLowerCase();
+  const lodging =
+    /住宿|酒店|旅馆|宾馆|民宿|青旅|客栈|空房|房源|入住|过夜/i.test(m) ||
+    /\b(hotels?|hostel|airbnb|lodging|guesthouse|accommodation)\b/i.test(lower);
+  if (!lodging) return false;
+  const searchVerb =
+    /搜索|查找|查一下|帮我查|帮我搜|找一下|搜一下|搜一搜|查一查|看看有没有|有没有空房|可订|订房|预订住宿|search\s+(?:for\s+)?hotels?|find\s+hotels?|look(?:ing)?\s+up\s+hotels?/i.test(
+      m,
+    );
+  if (searchVerb) return true;
+  // 「维克 7月26日住哪里 / 推荐酒店」带日期的短问，按库存检索而非改排
+  if (
+    /住哪|住哪里|住哪儿|推荐.{0,8}酒店|酒店推荐|过夜推荐/.test(m) &&
+    /(\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}-\d{2}-\d{2}|今晚|明天|后天)/.test(m)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * 已绑定 trip 的「多日住宿 + 餐饮方案/策略」问法（非改稿、非整段重规划）。
  * 例：详细6天住宿和餐饮方案，黄金圈南岸到冰河湖，包括酒店推荐和每日用餐策略。
  */
@@ -621,6 +658,8 @@ export function shouldForceDataLookupForBoundTripReview(
   const msg = String(req.message ?? '').trim();
   if (!tid || !msg) return false;
   const msgLower = msg.toLowerCase();
+  /** 库存搜酒店优先：即使前端误传 TRIP_PLANNING 也不进 SM */
+  if (isHotelInventorySearchQuery(msg, msgLower)) return true;
   if (!isBoundTripLightConsultQuery(msg, msgLower)) return false;
   if (detectItineraryAdjustIntent(msg)) return false;
   /** 多日住宿+餐饮方案是咨询输出，勿与整段重规划 intent 混淆 */
@@ -899,6 +938,10 @@ function isTripScopedConsultationQuery(msg: string, msgLower: string): boolean {
   }
 
   if (isBoundTripLodgingDiningPlanQuery(msg, msgLower)) {
+    return true;
+  }
+
+  if (isHotelInventorySearchQuery(msg, msgLower)) {
     return true;
   }
 

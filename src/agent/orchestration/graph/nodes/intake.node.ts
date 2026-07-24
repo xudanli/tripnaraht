@@ -20,6 +20,9 @@ import {
   shouldTerminalAfterItineraryItemUpdate,
 } from './intake-itinerary-update.util';
 import {
+  shouldTerminalAfterLodgingReplace,
+} from './intake-itinerary-lodging-replace.util';
+import {
   applyItineraryDayReplanIfRequested,
   shouldTerminalAfterItineraryDayReplan,
 } from './intake-itinerary-day-replan.util';
@@ -81,12 +84,6 @@ export async function runIntakePrePlanSegment(
     host.logger.log('[Claude Orchestrator] Durable resume: 跳过 INTAKE，进入 STATE_UPDATE');
     state.current_step = 'STATE_UPDATE';
     state.metadata.last_updated_at = new Date().toISOString();
-    await applyItineraryCrudWithCompoundPlan(host, {
-      message: request.message,
-      tripId: request.trip_id,
-      userId: request.user_id,
-      state,
-    });
     const md = state.metadata as Record<string, unknown>;
     const tpr = (md.trip_plan_request ?? state.trip_plan_request) as
       | { date_range?: { start_date?: string; end_date?: string }; start_date?: string; end_date?: string }
@@ -94,6 +91,13 @@ export async function runIntakePrePlanSegment(
     const dateRange =
       tpr?.date_range ??
       (tpr?.start_date ? { start_date: tpr.start_date, end_date: tpr.end_date } : undefined);
+    await applyItineraryCrudWithCompoundPlan(host, {
+      message: request.message,
+      tripId: request.trip_id,
+      userId: request.user_id,
+      state,
+      dateRange,
+    });
     await applyItineraryDayReplanIfRequested(host, {
       message: request.message,
       tripId: request.trip_id,
@@ -107,6 +111,7 @@ export async function runIntakePrePlanSegment(
     shouldTerminalAfterItineraryItemDelete(state) ||
     shouldTerminalAfterItineraryItemAdd(state) ||
     shouldTerminalAfterItineraryItemUpdate(state) ||
+    shouldTerminalAfterLodgingReplace(state) ||
     shouldTerminalAfterItineraryAdjustDraftApply(state) ||
     shouldTerminalAfterItineraryDayReplan(state) ||
     shouldTerminalAfterWorkbenchPlaceholder(state)

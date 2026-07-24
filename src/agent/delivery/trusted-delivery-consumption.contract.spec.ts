@@ -32,6 +32,7 @@ describe('trusted_delivery_v1 consumption contract', () => {
     };
 
     expect(payload.trusted_delivery_v1.schemaId).toBe(TRUSTED_DELIVERY_SCHEMA_ID);
+    expect(payload.trusted_delivery_v1.delivery_verdict).toBe('VERIFIED');
     expect(payload.trusted_delivery_v1.task_progress.phase).toBe('narrating');
     expect(payload.trusted_delivery_v1.user_confirm.required).toBe(false);
     expect(payload.trusted_delivery_v1.ai_operation_log[0].label_zh).toBe('调研中');

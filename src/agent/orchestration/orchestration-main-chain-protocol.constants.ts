@@ -189,7 +189,8 @@ export const MAIN_CHAIN_USER_CONFIRM_POINTS: readonly MainChainUserConfirmPointS
   {
     id: 'flawed_draft_opt_in',
     resultStatus: 'OK_WITH_BANNER',
-    summary: '仅 allow_flawed_draft_narrate=true 时才允许瑕疵草案 SUCCESS',
+    summary:
+      '瑕疵草案 SUCCESS：仅显式 allow_flawed_draft_narrate=true；缺省/false → 澄清；仍受 allow-matrix（安全/法规道路等）约束；FLAWED_DRAFT 禁止 AUTO 写回',
   },
 ] as const;
 

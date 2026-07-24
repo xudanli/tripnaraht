@@ -39,7 +39,9 @@ function tryAllowFlawedDraftBypass(
   extraMeta: Record<string, unknown>,
 ): boolean {
   const { state, request, decisionState } = params;
-  if (request.options?.allow_flawed_draft_narrate !== true) {
+  // P0-1：仅显式 allow_flawed_draft_narrate=true 才允许瑕疵 NARRATE；绑定 trip 不再默认放行
+  const opt = request.options?.allow_flawed_draft_narrate;
+  if (opt !== true) {
     return false;
   }
   const verifyCodes = [
@@ -66,6 +68,7 @@ function tryAllowFlawedDraftBypass(
     last_updated_at: now,
     flawed_draft_narrate: true,
     flawed_draft_reason: reason,
+    flawed_draft_opt_in: 'explicit',
     ...extraMeta,
   };
   return true;
@@ -124,14 +127,16 @@ export async function applyUtilityDecayAfterRepairIfNeeded(
         {
           id: 'utility_decay_halt_confirmation',
           question: `自动修复后期望效用已连续 ${nextDeclines} 次下降（E[U] ${String(prevEu)} → ${String(euAfter)}）。是否缩小范围/放宽约束，或由您确认继续？`,
-          type: 'NEED_CONFIRMATION',
+          type: 'single_choice',
           required: true,
           options: [
-            { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
-            { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
-            { id: 'continue_auto_repair', label: '继续自动修复' },
+            { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+            { value: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
+            { value: 'continue_auto_repair', label: '继续自动修复' },
           ],
-        } as any,
+          hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
+          metadata: { presentation: 'structured_intake_v1', repair_halt: 'utility_decay' },
+        },
       ];
       host.maybeSnapshot(state, 'CHECKPOINT');
       return {
@@ -171,15 +176,16 @@ export function checkRepairCountExceededIfNeeded(
       {
         id: 'repair_halt_confirmation',
         question: `系统已自动修复尝试 ${repairCount} 次，仍未收敛。是否需要缩小范围/放宽约束/或由您确认继续自动修复？`,
-        type: 'NEED_CONFIRMATION',
+        type: 'single_choice',
         required: true,
         options: [
-          { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
-          { id: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
-          { id: 'continue_auto_repair', label: '继续自动修复' },
+          { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+          { value: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
+          { value: 'continue_auto_repair', label: '继续自动修复' },
         ],
         hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
-      } as any,
+        metadata: { presentation: 'structured_intake_v1', repair_halt: 'budget_exceeded' },
+      },
     ];
     host.maybeSnapshot(state, 'CHECKPOINT');
     return host.buildClarificationResult(state, startTime, decisionState, context);

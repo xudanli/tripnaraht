@@ -246,4 +246,26 @@ describe('feasibility-message-surface.zh.util', () => {
     expect(q.question).not.toContain('【意图编译失败】');
     expect(q.question).toContain('1332');
   });
+
+  it('normalizes legacy NEED_CONFIRMATION + {id,label} into single_choice + {value,label}', () => {
+    const [q] = sanitizeClarificationQuestionsForClientDisplay([
+      {
+        id: 'repair_halt_confirmation',
+        question: '系统已自动修复尝试 3 次，仍未收敛。',
+        type: 'NEED_CONFIRMATION' as any,
+        required: true,
+        options: [
+          { id: 'reduce_scope', label: '缩小范围（减少天数/POI）' } as any,
+          { id: 'continue_auto_repair', label: '继续自动修复' } as any,
+        ],
+        hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
+      },
+    ]);
+    expect(q.type).toBe('single_choice');
+    expect(q.metadata?.presentation).toBe('structured_intake_v1');
+    expect(q.options).toEqual([
+      { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
+      { value: 'continue_auto_repair', label: '继续自动修复' },
+    ]);
+  });
 });

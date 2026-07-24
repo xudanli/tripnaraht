@@ -11,9 +11,14 @@ import { detectItineraryAdjustIntent } from '../../../utils/itinerary-adjust-int
 import { applyItineraryItemAddIfRequested } from './intake-itinerary-add.util';
 import { applyItineraryItemDeleteIfRequested } from './intake-itinerary-delete.util';
 import { applyItineraryItemUpdateIfRequested } from './intake-itinerary-update.util';
+import {
+  applyLodgingReplaceIfRequested,
+  type LodgingReplaceIntakeHost,
+} from './intake-itinerary-lodging-replace.util';
 import type { ItineraryItemAddIntakeHost } from './intake-itinerary-add.util';
 
-export type CompoundCrudIntakeHost = ItineraryItemAddIntakeHost & {
+export type CompoundCrudIntakeHost = ItineraryItemAddIntakeHost &
+  LodgingReplaceIntakeHost & {
   tryApplyBoundTripItineraryItemDelete?(
     tripId: string,
     userId: string | undefined,
@@ -34,11 +39,22 @@ export async function applyItineraryCrudWithCompoundPlan(
     userId?: string;
     state: OrchestratorState;
     countryCode?: string | null;
+    dateRange?: { start_date?: string; end_date?: string };
   },
 ): Promise<boolean> {
   const intakeMsg = String(params.message ?? '').trim();
   const tripId = params.tripId?.trim();
   if (!intakeMsg || !tripId) return false;
+
+  // 住宿 A→B：即使被标成 ITINERARY_ADJUST 也优先手术式落库，避免走廊重规划答非所问
+  const lodgingHandled = await applyLodgingReplaceIfRequested(host, {
+    message: intakeMsg,
+    tripId,
+    userId: params.userId,
+    state: params.state,
+    dateRange: params.dateRange,
+  });
+  if (lodgingHandled) return true;
 
   const routePrimary = (
     (params.state.metadata as Record<string, unknown>)?.route_and_run_intent as

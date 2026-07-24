@@ -828,6 +828,10 @@ export function formatDecisionLogOutputsDisplayZh(entry: {
   }
   s = s.replace(/POI_SLOT_FILL/g, '景点补全');
   s = s.replace(/ITINERARY_ADJUST/g, '单日改排');
+  s = s.replace(/FULL_TRIP_REPLAN/g, '整段重规划');
+  s = s.replace(/探索\/商量意图/g, '协商调整');
+  s = s.replace(/强修改意图/g, '明确修改');
+  s = s.replace(/ADVICE_ONLY/g, '仅建议');
   s = s.replace(/CGUS/g, '多方案对比');
   s = s.replace(/plan-base/g, '基准方案');
   s = s.replace(/Abu=/g, '安全=');

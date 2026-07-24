@@ -27,6 +27,7 @@ export type ItineraryDayReplanIntakeHost = {
 function wasItineraryItemCrudShortCircuited(state: OrchestratorState): boolean {
   const md = state.metadata as Record<string, unknown>;
   return (
+    md.lodging_replace_intake === true ||
     md.itinerary_item_delete_intake === true ||
     md.itinerary_item_add_intake === true ||
     md.itinerary_item_update_intake === true

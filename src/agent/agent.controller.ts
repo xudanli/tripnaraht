@@ -200,19 +200,6 @@ export class AgentController {
   }
 
   /**
-   * 路由并执行
-   * 
-   * 智能路由到 System 1 或 System 2，并执行相应的处理流程。
-   * 
-   * System 1 路径：
-   * - SYSTEM1_API: 标准 API / CRUD / 简单查询
-   * - SYSTEM1_RAG: 知识库/向量检索
-   * 
-   * System 2 路径：
-   * - SYSTEM2_REASONING: ReAct + 工具 + TravelPlanner/Critic
-   * - SYSTEM2_WEBBROWSE: 无头浏览器兜底（仅授权后）
-   */
-  /**
    * 策略冲突「决策对话」：解释冲突机制 + 2–3 个对齐选项（基于 MultiAgent 协作快照）
    */
   @Public()
@@ -236,31 +223,26 @@ export class AgentController {
   @ApiOperation({
     summary: '智能体统一入口 - 路由并执行',
     description: `
-智能体统一入口，根据用户输入自动路由到 System 1（快速路径）或 System 2（ReAct 循环）。
+智能体统一入口。**行程规划产品脊柱**为 Claude 图状态机（\`CLAUDE_SM\`），不是 ReAct 主循环：
 
-**路由策略**：
-- 硬规则短路：支付/退款/浏览器 → System2 + consent_required
-- 明确 CRUD → System1_API
-- 单纯事实查询 → System1_RAG
-- 规划/多约束/无 API → System2_REASONING
+INTAKE → STATE_UPDATE → RESEARCH → POI_SELECTION → GATE_EVAL → CONTEXT_BUILD
+→ PLAN_GEN → OPTIMIZE → VERIFY ⇄ REPAIR → NARRATE → FEEDBACK → HALLUCINATION → END
 
-**System 2 ReAct 循环**：
-- Plan → Act → Observe → Critic → Repair
-- 受预算控制（max_seconds, max_steps）
-- 自动可行性检查（时间窗、日界、午餐、鲁棒时间）
+**入口分流（仍存在，但不替代主链）**：
+- 硬规则短路：支付/退款/浏览器 → 需 consent
+- 明确 CRUD / 事实查询 → System 1 快路径（API / RAG）
+- 规划/多约束 / 已绑定 trip 改排 → 状态机主链（默认 \`execution_mode=ADVICE_ONLY\`）
 
-**三人格（System 2 编排）**：
-- **Abu（安全）**：对应 Gatekeeper 硬门与风险聚合；result.payload.orchestrationResult.gate_result.guardian_results.abu 或 explain.guardian_personas.abu
-- **Dr.Dre（节奏）**：疲劳与日程松紧；guardian_results.drdre / explain.guardian_personas.drdre
-- **Neptune（空间/替补）**：路段替换与改线建议；guardian_results.neptune / explain.guardian_personas.neptune
-- 结构化：guardian_results 含 source（如 violation_projection_v1）、is_simulated，以及 evidence_atoms[].violation_code / tag；explain.guardian_personas 与 gate 同源只读
-- System 1 不跑三人格：可在 options.persona_hint 传 abu_strictness / drdre_tolerance / neptune_creativity，写入行程请求供 System 2 参考
+**主链裁决**：
+- Main REPAIR ≤ 3；RETURN_TO_RESEARCH ≤ 1
+- GATE BLOCK 禁止进入 PLAN_GEN；VERIFY 只裁决可交付，不写库
+- 瑕疵草案仅显式 \`allow_flawed_draft_narrate=true\`；\`delivery_verdict=FLAWED_DRAFT\` 禁止 AUTO 写回
 
-**返回结果**：
-- route: 路由决策（route, confidence, reasons, budget）
-- result: 执行结果（status, answer_text, payload；编排成功时见 orchestrationResult.gate_result.guardian_results）
-- explain: 决策日志（decision_log；有门控时含 guardian_personas 与 gate 同源）
-- observability: 可观测性指标（latency, cost, tool_calls）
+**三人格（门控投影）**：Abu / Dr.Dre / Neptune → \`gate_result.guardian_results\` / \`explain.guardian_personas\`
+
+**权威写回**不在本接口默认路径；见 Confirm / Apply / Execute / Commit 各产品走廊。
+
+**返回**：route · result（含 \`trusted_delivery_v1.delivery_verdict\`）· explain · observability
     `.trim(),
   })
   @ApiBody({

@@ -70,20 +70,34 @@ export function mapWorldFactsFromTripSnapshot(t: TripContextSnapshotView): World
   return buildTripContextWorldFacts(t);
 }
 
-/** 基于 Ontology 约束评估解析计划可执行性（BFF 只读，不绕过 Gateway） */
+/** 基于 ConstraintAssessment / Ontology 摘要解析可执行性（BFF 只读，禁止平行裁决） */
 export function resolveTripExecutabilityStatus(
   t: TripContextSnapshotView,
 ): 'EXECUTABLE' | 'BLOCKED' | 'UNKNOWN' {
+  // ONT-P0-06: prefer frozen assessment outcome
+  if (t.constraintAssessment?.outcome === 'BLOCK') {
+    return 'BLOCKED';
+  }
+  if (t.ontologyConstraints?.assessmentId && t.ontologyConstraints.outcome === 'BLOCK') {
+    return 'BLOCKED';
+  }
   if (t.ontologyConstraints?.blockerCount && t.ontologyConstraints.blockerCount > 0) {
     return 'BLOCKED';
   }
 
-  const ontologyFacts = collectTripOntologyFacts(t);
-  if (ontologyFacts.length > 0) {
-    const { results } = evaluateOntologyConstraints(ontologyFacts);
-    if (results.some((r) => r.severity === 'BLOCK')) {
-      return 'BLOCKED';
+  // Fallback only when Snapshot 尚未携带 assessment（迁移期）
+  if (!t.constraintAssessment && !t.ontologyConstraints?.assessmentId) {
+    const ontologyFacts = collectTripOntologyFacts(t);
+    if (ontologyFacts.length > 0) {
+      const { results } = evaluateOntologyConstraints(ontologyFacts);
+      if (results.some((r) => r.severity === 'BLOCK')) {
+        return 'BLOCKED';
+      }
     }
+  }
+
+  if (t.constraintAssessment?.outcome === 'ALLOW' || t.ontologyConstraints?.outcome === 'ALLOW') {
+    return t.effectivePlan.hasEffectivePlan ? 'EXECUTABLE' : 'UNKNOWN';
   }
 
   return t.effectivePlan.hasEffectivePlan ? 'EXECUTABLE' : 'UNKNOWN';

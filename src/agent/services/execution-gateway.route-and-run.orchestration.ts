@@ -65,6 +65,10 @@ import {
   isTeamStructuredDiscussionQuery,
   primaryDecisionNodeFromMessage,
 } from '../utils/team-structured-discussion.util';
+import {
+  buildSilentVoteCreateSuggestedOperation,
+  isSilentVoteCreateIntentMessage,
+} from '../utils/trip-consultation-suggested-operations.util';
 import type { ProcessFairnessOrchestrationHint } from '../../trips/process-fairness/types/process-fairness-orchestration.types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TripInsightService } from '../../trips/services/trip-insight.service';
@@ -341,6 +345,11 @@ async function runRouteAndRunTickBody(
         return teamStructuredDiscussion;
       }
 
+      const silentVoteCreate = tryBuildSilentVoteCreateFastPath(request, startTime);
+      if (silentVoteCreate) {
+        return silentVoteCreate;
+      }
+
       // === 稳定化层：检查 Deadline ===
       if (deadline.isExpired()) {
         throw new Error('TIMEOUT:AGENT_DEADLINE_EXPIRED');
@@ -521,6 +530,11 @@ async function runRouteAndRunTickBody(
       );
       if (teamDiscussionLatePath) {
         return teamDiscussionLatePath;
+      }
+
+      const silentVoteLatePath = tryBuildSilentVoteCreateFastPath(request, startTime);
+      if (silentVoteLatePath) {
+        return silentVoteLatePath;
       }
 
       const dryRunLedger = request.options?.dry_run === true;
@@ -1398,6 +1412,85 @@ export async function tryBuildTeamStructuredDiscussionFastPath(
       cost_est_usd: 0,
       fallback_used: false,
       orchestration_mode_final: 'TEAM_STRUCTURED_DISCUSSION_FAST_PATH',
+    },
+  } as unknown as RouteAndRunResponseDto;
+}
+
+/**
+ * 「发起投票」：不下发 route_and_run 深规划，只返回 SilentVoteCreateDialog 的 client_navigation CTA。
+ */
+export function tryBuildSilentVoteCreateFastPath(
+  request: RouteAndRunRequestDto,
+  startTime: number,
+): RouteAndRunResponseDto | null {
+  const tripId = request.trip_id?.trim();
+  const message = resolveRouteAndRunUserMessage(request);
+  if (!tripId || !isSilentVoteCreateIntentMessage(message)) {
+    return null;
+  }
+  const voteOp = buildSilentVoteCreateSuggestedOperation(tripId);
+  if (!voteOp) {
+    return null;
+  }
+  const latencyMs = Date.now() - startTime;
+  return {
+    request_id: request.request_id,
+    route: {
+      route: 'SYSTEM1_API',
+      confidence: 1,
+      reasons: ['SILENT_VOTE_CREATE_FAST_PATH'],
+      required_capabilities: ['team_vote'],
+      consent_required: false,
+      budget: { max_seconds: 2, max_steps: 0, max_browser_steps: 0 },
+      ui_hint: {
+        mode: 'fast',
+        status: 'done',
+        message: '请点击下方按钮打开投票创建面板',
+      },
+    },
+    result: {
+      status: 'OK',
+      answer_text:
+        '可以发起团队匿名投票。请点击下方「发起投票」打开创建面板（选项与截止时间由你确认后提交）。',
+      payload: {
+        trip_id: tripId,
+        ui_surface: 'consultation',
+        suggested_operations: [voteOp],
+      },
+    },
+    ui_state: {
+      phase: 'DONE',
+      ui_status: 'done',
+      active_skill: null,
+      pending_question: null,
+    },
+    explain: {
+      decision_log: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE',
+          actor: 'Orchestrator',
+          inputs_summary: message.slice(0, 200),
+          outputs_summary: 'silent_vote_create client_navigation CTA',
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'SILENT_VOTE_CREATE_CTA',
+            client_navigation: voteOp.payload,
+          },
+        } as DecisionLogEntry,
+      ],
+    },
+    observability: {
+      latency_ms: latencyMs,
+      router_ms: 0,
+      system_mode: 'SYSTEM1',
+      tool_calls: 0,
+      browser_steps: 0,
+      tokens_est: 0,
+      cost_est_usd: 0,
+      fallback_used: false,
+      orchestration_mode_final: 'SILENT_VOTE_CREATE_FAST_PATH',
     },
   } as unknown as RouteAndRunResponseDto;
 }

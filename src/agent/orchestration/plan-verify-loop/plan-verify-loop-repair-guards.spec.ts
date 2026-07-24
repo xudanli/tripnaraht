@@ -38,7 +38,58 @@ describe('plan-verify-loop-repair-guards — flawed draft narrate', () => {
     const terminal = checkRepairCountExceededIfNeeded(host, params);
     expect(terminal).toBeNull();
     expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBe(true);
+    expect((params.state.metadata as Record<string, unknown>).flawed_draft_opt_in).toBe('explicit');
     expect(host.buildClarificationResult).not.toHaveBeenCalled();
+  });
+
+  it('bound trip without explicit opt-in clarifies (P0-1)', () => {
+    const host = mockHost();
+    const decisionState = { systemState: { repairCount: 3 } } as PlanVerifyLoopRunParams['decisionState'];
+    const loop: PlanVerifyTransientLoopState = createPlanVerifyTransientState(decisionState);
+    const params = {
+      request: {
+        request_id: 'fd-bound',
+        user_id: 'u',
+        trip_id: 'trip_15c50a69931845ca',
+        message: '优化一下行程',
+      },
+      context: {},
+      state: { request_id: 'fd-bound', metadata: {}, decision_log: [], errors: [] },
+      decisionState,
+      llmProvider: 'deepseek',
+      startTime: Date.now(),
+      loop,
+    } as PlanVerifyLoopRunParams & { loop: PlanVerifyTransientLoopState };
+
+    const terminal = checkRepairCountExceededIfNeeded(host, params);
+    expect(terminal).not.toBeNull();
+    expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBeUndefined();
+    expect(host.buildClarificationResult).toHaveBeenCalled();
+  });
+
+  it('explicit allow_flawed_draft_narrate=false still clarifies', () => {
+    const host = mockHost();
+    const decisionState = { systemState: { repairCount: 3 } } as PlanVerifyLoopRunParams['decisionState'];
+    const loop: PlanVerifyTransientLoopState = createPlanVerifyTransientState(decisionState);
+    const params = {
+      request: {
+        request_id: 'fd-off',
+        user_id: 'u',
+        trip_id: 'trip_15c50a69931845ca',
+        message: '优化一下行程',
+        options: { allow_flawed_draft_narrate: false },
+      },
+      context: {},
+      state: { request_id: 'fd-off', metadata: {}, decision_log: [], errors: [] },
+      decisionState,
+      llmProvider: 'deepseek',
+      startTime: Date.now(),
+      loop,
+    } as PlanVerifyLoopRunParams & { loop: PlanVerifyTransientLoopState };
+
+    const terminal = checkRepairCountExceededIfNeeded(host, params);
+    expect(terminal).not.toBeNull();
+    expect(host.buildClarificationResult).toHaveBeenCalled();
   });
 
   it('refuses flawed bypass when HARD SAFETY gate violation present', () => {
@@ -76,5 +127,15 @@ describe('plan-verify-loop-repair-guards — flawed draft narrate', () => {
     expect(terminal).not.toBeNull();
     expect((params.state.metadata as Record<string, unknown>).flawed_draft_narrate).toBeUndefined();
     expect(host.buildClarificationResult).toHaveBeenCalled();
+    const q = (params.state as { clarification_questions?: Array<Record<string, unknown>> })
+      .clarification_questions?.[0];
+    expect(q?.type).toBe('single_choice');
+    expect(q?.metadata).toMatchObject({ presentation: 'structured_intake_v1' });
+    expect(q?.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: 'reduce_scope', label: expect.stringContaining('缩小范围') }),
+        expect.objectContaining({ value: 'continue_auto_repair' }),
+      ]),
+    );
   });
 });
