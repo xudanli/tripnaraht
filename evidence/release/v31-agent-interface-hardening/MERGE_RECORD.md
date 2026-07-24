@@ -11,7 +11,7 @@ pr_url: PENDING
 pr_number: PENDING
 pr_base: master
 pr_head: feat/v31-engineering-hardening
-branch_tip_at_pr_open: 5d922d8b0  # update if tip moved before merge
+branch_tip_at_pr_open: cc871a6c7  # process-lock tip; was 5d922d8b0 at prior pack
 final_merge_commit: PENDING
 merged_at: PENDING  # ISO-8601 UTC
 approved_by:

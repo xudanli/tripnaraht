@@ -14,6 +14,7 @@
 | Release Readiness Review | **READY_TO_CONVENE** |
 | Release Decision | **CONDITIONAL_GO** |
 | Further Coding | **NOT REQUIRED** |
+| Branch tip (process docs only) | `cc871a6c7` (PR may open from this tip; evidence freeze tag unchanged) |
 
 ## Execution order (no further content expansion)
 
