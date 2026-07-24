@@ -7,6 +7,8 @@
 
 `WRITEBACK_CORRIDOR_AUDIT_MATRIX` marks `unified_execute` and `actions_commit` as `persistence: 'mixed'`. This package **splits** that label into concrete writers.
 
+**WB-1 (landed):** the same lists are code SSOT as `UNIFIED_EXECUTE_MIXED_TARGETS` / `ACTIONS_COMMIT_MIXED_TARGETS` on the matrix rows (`mixedTargets`). See `WB-1.md`.
+
 ### Unified Execute (`POST /trips/:tripId/decisions/:decisionId/execute`)
 
 | Target | Path | Symbol |

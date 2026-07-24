@@ -70,25 +70,37 @@
     {
       "claim_id": "C022b",
       "category": "writeback",
-      "statement": "Unified Execute mixed targets include PlanVersion setEffective/recordExecution, ledger upsert, problem upsert, itineraryMaterializer.applyPlanOperations (flag-gated), and trip revision markers.",
+      "statement": "Unified Execute mixed targets include PlanVersion setEffective/recordExecution, ledger upsert, problem upsert, itineraryMaterializer.applyPlanOperations (flag-gated), and trip revision markers; listed as UNIFIED_EXECUTE_MIXED_TARGETS (WB-1).",
       "ewp": "EWP-02",
-      "evidence_doc": "evidence/work-packages/EWP-02-mixed-write-targets/EVIDENCE.md",
-      "anchors": [{ "path": "src/trips/guardian-decision-core/execution/plan-version-apply.executor.ts" }],
+      "evidence_doc": "evidence/work-packages/EWP-02-mixed-write-targets/WB-1.md",
+      "anchors": [
+        { "path": "src/trips/guardian-decision-core/execution/plan-version-apply.executor.ts" },
+        { "path": "src/agent/contracts/writeback-corridor-audit.matrix.ts" }
+      ],
       "evidence": {
         "status": "PASS",
-        "test_file": "src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts"
+        "test_files": [
+          "src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts",
+          "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts"
+        ]
       }
     },
     {
       "claim_id": "C022c",
       "category": "writeback",
-      "statement": "Actions Commit mixed targets include actionRegistry handlers, agentActionLog, sideEffectRegistry, and RequestDeduplicationService (in-memory).",
+      "statement": "Actions Commit mixed targets include actionRegistry handlers, agentActionLog, sideEffectRegistry, and RequestDeduplicationService (in-memory); listed as ACTIONS_COMMIT_MIXED_TARGETS (WB-1).",
       "ewp": "EWP-02",
-      "evidence_doc": "evidence/work-packages/EWP-02-mixed-write-targets/EVIDENCE.md",
-      "anchors": [{ "path": "src/agent/services/action-execution.service.ts" }],
+      "evidence_doc": "evidence/work-packages/EWP-02-mixed-write-targets/WB-1.md",
+      "anchors": [
+        { "path": "src/agent/services/action-execution.service.ts" },
+        { "path": "src/agent/contracts/writeback-corridor-audit.matrix.ts" }
+      ],
       "evidence": {
         "status": "PASS",
-        "test_file": "src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts"
+        "test_files": [
+          "src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts",
+          "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts"
+        ]
       }
     },
     {
