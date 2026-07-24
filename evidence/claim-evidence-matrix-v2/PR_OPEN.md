@@ -1,11 +1,11 @@
 # Matrix v2 / V3.1 Hardening — PR open checklist
 
-**Head tip (pre-merge):** `5d922d8b0` on `feat/v31-engineering-hardening`  
+**Head tip (pre-merge):** `a56b4f9c3` on `feat/v31-engineering-hardening`  
 **Base:** `master`  
 **Compare:** https://github.com/xudanli/tripnaraht/compare/master...feat/v31-engineering-hardening?expand=1  
 
 **Formal status:** see `evidence/release/v31-agent-interface-hardening/PROCESS_STATUS.md`  
-（Engineering COMPLETE · Matrix FROZEN · Delta COMPLETE · PR Approval **PENDING** · Decision **CONDITIONAL_GO** · Coding **NOT REQUIRED**）
+（Engineering COMPLETE · Matrix FROZEN · Delta COMPLETE · PR **AWAITING_CREATE** · Decision **CONDITIONAL_GO** · Coding **NOT REQUIRED**）
 
 ## Title
 
@@ -25,10 +25,10 @@
 ## Engineering baseline
 
 - Implementation baseline: bc6e2e6d5a087a6a20c47576ebdba295370ebec1
-- Evidence branch tip: 5d922d8b0
-- Annotated evidence tag: claim-evidence-matrix-v2.0
+- Evidence branch tip: a56b4f9c3
+- Annotated evidence tag: claim-evidence-matrix-v2.0 （禁止改写）
 - Tag target: c76fff36766e203065bd73e157e19fbf23fb02a7
-- Release tag: create after merge only (do not move evidence tag)
+- Release tag after merge only: `v31-agent-interface-hardening-rc1` on final_merge_commit
 
 ## Verification
 

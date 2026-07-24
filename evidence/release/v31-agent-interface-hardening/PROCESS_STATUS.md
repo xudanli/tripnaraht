@@ -10,11 +10,14 @@
 | Evidence Work Packages (EWP-01…07) | **COMPLETE** |
 | Matrix v2 | **FROZEN** (`claim-evidence-matrix-v2.0` → `c76fff367…`) |
 | V3.2 Delta Assessment | **COMPLETE** |
-| GitHub PR Approval | **PENDING** |
-| Release Readiness Review | **READY_TO_CONVENE** |
+| GitHub PR | **AWAITING_CREATE** (manual Compare + `PR_OPEN.md`) |
+| GitHub PR Approval | **PENDING** (EL / TA / QA platform Approve) |
+| Release Readiness Review | **READY_TO_CONVENE** (after merge backfill) |
 | Release Decision | **CONDITIONAL_GO** |
 | Further Coding | **NOT REQUIRED** |
-| Branch tip (process docs only) | `cc871a6c7` (PR may open from this tip; evidence freeze tag unchanged) |
+| Branch tip (process docs only) | `a56b4f9c3` |
+| Evidence freeze tag | `claim-evidence-matrix-v2.0` → `c76fff367…` (**do not move**) |
+| Release tag (post-merge) | `v31-agent-interface-hardening-rc1` on `final_merge_commit` only |
 
 ## Execution order (no further content expansion)
 
@@ -26,5 +29,12 @@
 6. Sign Release Readiness Decision → **GO** / **NO_GO** / **CONDITIONAL_GO_WITH_UNMET_CONDITIONS**  
 7. Publish (if GO)  
 8. 7–14 day observation ([`POST_RELEASE_MONITORING.md`](./POST_RELEASE_MONITORING.md))  
+
+## Hard prohibitions (while CONDITIONAL_GO process runs)
+
+- Do not expand Matrix / re-open research / add architecture refactors  
+- Do not reopen DEFER or enable OR-Tools authoritative Apply  
+- Do not move or rewrite `claim-evidence-matrix-v2.0`  
+- Do not claim Web/iOS, Iceland/Mobile, full Rollback, cross-corridor concurrency, OR-Tools Authority, or global SSOT as verified  
 
 Research / R&D: **do not** expand scope unless observation triggers DEFER reopen or an excluded capability is intentionally opened.
