@@ -8,7 +8,16 @@
 | **RESEARCH INPUT (v2)** | **APPROVED — V3.2 Delta Assessment only** |
 | **RESEARCH INPUT (v1)** | unchanged **APPROVED** |
 | **OR-TOOLS** | **Shadow / INTERNAL_REVIEW** — Apply not authorized |
-| **NEXT** | **V3.2 Delta Assessment COMPLETE** → convene **Release Readiness Review** |
+| **NEXT** | GitHub PR Approve **PENDING** → merge backfill → RRR → **GO** upgrade from CONDITIONAL_GO |
+
+## Release citation (V3.1 hardening train)
+
+| Field | Value |
+|-------|--------|
+| Process status | `evidence/release/v31-agent-interface-hardening/PROCESS_STATUS.md` |
+| Release decision | **CONDITIONAL_GO** (not formal GO until RRR) |
+| Evidence tag (immutable) | `claim-evidence-matrix-v2.0` → `c76fff367…` |
+| Release tag / merge | `MERGE_RECORD.md` after merge |
 
 ## Binding checklist
 
@@ -21,10 +30,10 @@
 | BFF-1 dual pin + delta index | 完成 |
 | Full regression artifacts | `test-runs/` |
 | Annotated tag | `claim-evidence-matrix-v2.0` |
-| Same-PR EL/TA/QA sign | `SIGNATURES.md` + GitHub PR |
+| Same-PR EL/TA/QA sign | 仓内 DONE；**GitHub Approve PENDING** |
 
 ## Research rule
 
 **Until SIGNATURES APPROVE:** research **must not** use Matrix v2.  
-**After APPROVE:** cite v2 Claim IDs **only** for **V3.2 Delta Assessment**.  
-**After V3.2:** convene **Release Readiness Review** before any release-impacting redesign.
+**After APPROVE:** cite v2 Claim IDs **only** for **V3.2 Delta Assessment** (done) → **Release Readiness Review**.  
+Do not cite OUT/DEFER/BLOCKED items as verified capabilities.

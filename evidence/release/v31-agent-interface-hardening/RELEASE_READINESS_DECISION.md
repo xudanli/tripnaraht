@@ -5,7 +5,7 @@ decision: CONDITIONAL_GO
 release_train: V3.1 Agent Interface Engineering Hardening
 not_a_claim: whole_TripNARA_system_ready
 engineering_baseline: bc6e2e6d5a087a6a20c47576ebdba295370ebec1
-evidence_branch_tip_pre_merge: c1b7df504  # release pack; Delta complete at e33e214c4
+evidence_branch_tip_pre_merge: 5d922d8b0
 matrix: CLAIM_EVIDENCE_MATRIX_v2.0
 matrix_status: FROZEN
 matrix_tag: claim-evidence-matrix-v2.0
@@ -13,6 +13,12 @@ matrix_tag_target: c76fff36766e203065bd73e157e19fbf23fb02a7
 delta_assessment: COMPLETE
 delta_doc: evidence/claim-evidence-matrix-v2/V32_DELTA_ASSESSMENT.md
 final_merge_commit: PENDING_GITHUB_MERGE
+merge_record: evidence/release/v31-agent-interface-hardening/MERGE_RECORD.md
+release_tag_policy: create_new_tag_on_merge_only__do_not_move_claim-evidence-matrix-v2.0
+allowed_session_outcomes:
+  - GO  # after all CONDITIONAL_GO conditions met → "GO — V3.1 Agent Interface Hardening Baseline Only"
+  - NO_GO
+  - CONDITIONAL_GO_WITH_UNMET_CONDITIONS
 
 gate_results:
   gate1_code_evidence_consistency: GO

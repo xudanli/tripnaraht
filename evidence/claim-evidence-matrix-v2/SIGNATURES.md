@@ -27,7 +27,22 @@
 > After APPROVE, research may run **V3.2 Delta Assessment only**; then **Release Readiness Review**.  
 > OR-Tools remains Shadow; global SSOT / Proposal unification / microservice-CQRS-GraphQL remain prohibited.
 
-GitHub PR UI Approve clicks should mirror this table.
+GitHub PR UI Approve clicks should mirror this table.  
+**Platform Approve is mandatory** for the governance chain; in-repo rows alone are insufficient for release.
+
+### GitHub PR / merge (fill after platform Approve + merge)
+
+| Field | Value |
+|-------|--------|
+| pr_url | _PENDING_ |
+| pr_number | _PENDING_ |
+| final_merge_commit | _PENDING_ |
+| merged_at | _PENDING_ |
+| release_tag | _PENDING_ (e.g. `v31-agent-interface-hardening-rc1`) |
+| evidence_tag (immutable) | `claim-evidence-matrix-v2.0` → `c76fff367…` |
+
+See `evidence/release/v31-agent-interface-hardening/MERGE_RECORD.md`.
+
 
 ---
 

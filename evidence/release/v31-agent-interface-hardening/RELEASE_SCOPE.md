@@ -7,7 +7,7 @@
 | Pin | Value |
 |-----|--------|
 | Implementation baseline | `bc6e2e6d5a087a6a20c47576ebdba295370ebec1` |
-| Evidence branch tip (pre-merge) | `c1b7df504` (includes release pack; was `e33e214c4` at Delta complete) |
+| Evidence branch tip (pre-merge) | `5d922d8b0` |
 | Annotated tag | `claim-evidence-matrix-v2.0` → `c76fff36766e203065bd73e157e19fbf23fb02a7` |
 | Matrix | `CLAIM_EVIDENCE_MATRIX_v2.0` **FROZEN** |
 | Delta | `V32_DELTA_ASSESSMENT.md` **COMPLETE** |
