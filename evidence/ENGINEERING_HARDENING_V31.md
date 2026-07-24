@@ -18,10 +18,17 @@
 ## P2
 
 - Draft `evidence/claim-evidence-matrix-v2/` (facts only; DRAFT until signed)
+- Seven Evidence Work Packages: `evidence/work-packages/` (EWP-01…07) with paths, tests, limitations, Claim IDs
 
 ## P3
 
-- `evidence/rfc/RFC-ORTools-Authoritative-Promotion.md` — Shadow remains default; promotion blocked without Verification/Freshness/Idempotency/Rollback/Canary/Kill Switch
+- `evidence/rfc/RFC-ORTools-Authoritative-Promotion.md` — **INTERNAL_REVIEW**; Shadow remains default; authoritative Apply **not** authorized; promotion blocked without Verification/Freshness/Idempotency/Rollback/Canary/Kill Switch
+
+## Post-EWP decision gate
+
+See `evidence/work-packages/POST_EWP_DECISION_GATE.md` — classifications READY_FOR_INTERNAL_REVIEW.  
+Matrix v2: **DRAFT / AWAITING_SIGN** (`evidence/claim-evidence-matrix-v2/FINAL_STATUS.md`).  
+Do **not** start Context / Writeback / Rollback / Concurrency / BFF mega-refactors until gate roles APPROVE and only **OPEN_SCOPED_TASK** tickets are filed.
 
 ## Forbidden without new facts+RFC
 

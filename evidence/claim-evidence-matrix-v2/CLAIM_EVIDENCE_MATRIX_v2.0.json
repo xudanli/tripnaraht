@@ -3,7 +3,8 @@
   "version": "2.0",
   "status": "DRAFT",
   "parent_matrix": "CLAIM_EVIDENCE_MATRIX_v1.0",
-  "purpose": "Additive fact confirmation only; no target architecture redesign.",
+  "purpose": "Additive fact confirmation from Evidence Work Packages; no target architecture redesign.",
+  "ewp_root": "evidence/work-packages/",
   "prohibited": [
     "microservice_split",
     "cqrs",
@@ -29,40 +30,208 @@
     {
       "claim_id": "C021",
       "category": "travel_context",
-      "statement": "TravelContext CURRENT_SSOT_STATUS documents target vs not-yet-wired SSOT; not global runtime SSOT at v1 freeze.",
-      "anchors": [{ "path": "src/travel-context/CURRENT_SSOT_STATUS.md" }],
-      "evidence": { "status": "CODE_ONLY" }
+      "statement": "TravelContext CURRENT_SSOT_STATUS / constants document target SSOT vs CURRENT_RUNTIME_SSOT = OrchestratorState + DecisionState/DSO; TravelContext is not wired as main-chain SSOT.",
+      "ewp": "EWP-01",
+      "evidence_doc": "evidence/work-packages/EWP-01-travel-context/EVIDENCE.md",
+      "anchors": [
+        { "path": "src/travel-context/CURRENT_SSOT_STATUS.md" },
+        { "path": "src/travel-context/current-ssot-status.constants.ts" }
+      ],
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/contracts/travel-context-projection.contract.spec.ts",
+          "src/travel-context/current-ssot-status.constants.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C021b",
+      "category": "travel_context",
+      "statement": "No unified contextHash on route_and_run main chain (AGENT_NO_GLOBAL_CONTEXT_HASH); TravelContext uses revision/snapshotId; Page Insight and Arrange use corridor-local hashes/versions.",
+      "ewp": "EWP-01",
+      "evidence_doc": "evidence/work-packages/EWP-01-travel-context/EVIDENCE.md",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/agent/contracts/travel-context-projection.contract.spec.ts",
+          "src/agent/contracts/agent-conceptual-vs-actual.constants.spec.ts"
+        ]
+      }
     },
     {
       "claim_id": "C022",
       "category": "writeback",
       "statement": "WRITEBACK_CORRIDOR_AUDIT_MATRIX marks unified_execute and actions_commit persistence as mixed.",
+      "ewp": "EWP-02",
       "anchors": [{ "path": "src/agent/contracts/writeback-corridor-audit.matrix.ts" }],
       "evidence": { "status": "PASS", "test_file": "src/agent/contracts/writeback-corridor-audit.matrix.spec.ts" }
     },
     {
+      "claim_id": "C022b",
+      "category": "writeback",
+      "statement": "Unified Execute mixed targets include PlanVersion setEffective/recordExecution, ledger upsert, problem upsert, itineraryMaterializer.applyPlanOperations (flag-gated), and trip revision markers.",
+      "ewp": "EWP-02",
+      "evidence_doc": "evidence/work-packages/EWP-02-mixed-write-targets/EVIDENCE.md",
+      "anchors": [{ "path": "src/trips/guardian-decision-core/execution/plan-version-apply.executor.ts" }],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C022c",
+      "category": "writeback",
+      "statement": "Actions Commit mixed targets include actionRegistry handlers, agentActionLog, sideEffectRegistry, and RequestDeduplicationService (in-memory).",
+      "ewp": "EWP-02",
+      "evidence_doc": "evidence/work-packages/EWP-02-mixed-write-targets/EVIDENCE.md",
+      "anchors": [{ "path": "src/agent/services/action-execution.service.ts" }],
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts"
+      }
+    },
+    {
       "claim_id": "C023",
       "category": "rollback",
-      "statement": "UnifiedDecisionController exposes POST decisions/:decisionId/rollback; ActionsController documents rollback committed actions.",
-      "evidence": { "status": "CODE_ONLY" }
+      "statement": "UnifiedDecisionController exposes POST decisions/:decisionId/rollback; plan-version-apply.executor implements rollback/materialization rollback.",
+      "ewp": "EWP-03",
+      "evidence_doc": "evidence/work-packages/EWP-03-rollback-compensation/EVIDENCE.md",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts",
+        "notes": "HTTP controller e2e may still be PARTIAL elsewhere; source+executor anchors PASS."
+      }
+    },
+    {
+      "claim_id": "C023b",
+      "category": "rollback",
+      "statement": "Actions rollback is an explicit stub returning 'Rollback accepted (stub, no side effects).'",
+      "ewp": "EWP-03",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C023c",
+      "category": "rollback",
+      "statement": "AgentController exposes itinerary revision rollback via POST /agent/rollback and /agent/rollback_to_revision.",
+      "ewp": "EWP-03",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C023d",
+      "category": "rollback",
+      "statement": "TEP local repair apply performs failure-path itineraryMaterializer.rollbackMaterialization and PlanVersion REJECTED.",
+      "ewp": "EWP-03",
+      "evidence": {
+        "status": "PARTIAL",
+        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts",
+        "notes": "Error-path compensation only; not a general committed-apply rollback API."
+      }
+    },
+    {
+      "claim_id": "C023e",
+      "category": "rollback",
+      "statement": "Arrange discardProposal is pre-apply discard, not committed-apply rollback.",
+      "ewp": "EWP-03",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C023f",
+      "category": "rollback",
+      "statement": "Iceland Apply committed rollback path is not evidenced in this pack.",
+      "ewp": "EWP-03",
+      "evidence": { "status": "NEEDS_MORE_EVIDENCE" }
+    },
+    {
+      "claim_id": "C023g",
+      "category": "rollback",
+      "statement": "Mobile verified proposal apply rollback path is not evidenced in this pack.",
+      "ewp": "EWP-03",
+      "evidence": { "status": "NEEDS_MORE_EVIDENCE" }
+    },
+    {
+      "claim_id": "C023h",
+      "category": "rollback",
+      "statement": "OR-Tools Shadow has no authoritative apply; rollback gate for authority promotion is n/a while Shadow.",
+      "ewp": "EWP-03",
+      "evidence": { "status": "CODE_ONLY", "notes": "See C026 / RFC." }
     },
     {
       "claim_id": "C024",
       "category": "concurrency",
-      "statement": "Cross-corridor concurrency/freshness uses corridor-local guards (TEP stale, mobile ifMatch, Arrange contextVersion); no system-wide unified contextHash.",
-      "evidence": { "status": "PARTIAL" }
+      "statement": "Cross-corridor concurrency/freshness uses corridor-local guards (TEP STALE_REPAIR_OPTION, Mobile CONTEXT_VERSION_CONFLICT/ifMatch, Arrange CONTEXT_STALE phase + CONTEXT_VERSION_CONFLICT throw); no system-wide unified contextHash.",
+      "ewp": "EWP-04",
+      "evidence_doc": "evidence/work-packages/EWP-04-cross-corridor-concurrency/EVIDENCE.md",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/cross-corridor-concurrency.contract.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C024b",
+      "category": "concurrency",
+      "statement": "No single e2e suite concurrently writes Arrange+TEP+Mobile+Actions+Unified on one tripId; multi-corridor concurrent write remains unevidenced.",
+      "ewp": "EWP-04",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/cross-corridor-concurrency.contract.spec.ts",
+        "notes": "Negative existence check for invented cross-corridor e2e path."
+      }
     },
     {
       "claim_id": "C025",
       "category": "client_protocol",
       "statement": "Web/iOS call graphs are documented via handoffs under src/** and internal-docs/frontend; repository does not contain production client source.",
-      "evidence": { "status": "NEEDS_MORE_EVIDENCE", "notes": "Client source review required for page-level facts." }
+      "ewp": "EWP-06",
+      "evidence_doc": "evidence/work-packages/EWP-06-client-protocol/EVIDENCE.md",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/client-protocol-handoff.inventory.contract.spec.ts",
+        "notes": "PASS for backend inventory existence; shipping client compliance remains NEEDS_MORE_EVIDENCE (C025b)."
+      }
+    },
+    {
+      "claim_id": "C025b",
+      "category": "client_protocol",
+      "statement": "Compliance of production Web/iOS clients with handoffs cannot be proven from this repository alone.",
+      "ewp": "EWP-06",
+      "evidence": { "status": "NEEDS_MORE_EVIDENCE" }
     },
     {
       "claim_id": "C026",
       "category": "shadow_data",
-      "statement": "OR-Tools planning shadow remains shadowAuthority false; Arrange apply selects proposal.changes only.",
-      "evidence": { "status": "PASS", "test_file": "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts" }
+      "statement": "OR-Tools planning shadow remains shadowAuthority false and authoritativePromotion false; Arrange apply selects proposal.changes only.",
+      "ewp": "EWP-05",
+      "evidence_doc": "evidence/work-packages/EWP-05-ortools-shadow-metrics/EVIDENCE.md",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts",
+          "src/decision-runtime/solver/lab/ortools-planning-lab-compare.sample.spec.ts"
+        ]
+      }
+    },
+    {
+      "claim_id": "C026b",
+      "category": "shadow_data",
+      "statement": "OR-Tools Shadow metrics surfaces exist: OrToolsShadowMetricsCollector, ortools-shadow-ops HTTP, planning-lab compare report schema tripnara.ortools_planning_lab_compare@v1; sample artifact emitable.",
+      "ewp": "EWP-05",
+      "evidence": {
+        "status": "PASS",
+        "test_files": [
+          "src/decision-runtime/solver/lab/ortools-planning-lab-compare.sample.spec.ts",
+          "src/decision-runtime/solver/observability/ortools-shadow-metrics.collector.spec.ts"
+        ]
+      }
     },
     {
       "claim_id": "C027",
@@ -81,6 +250,34 @@
           "src/agent/contracts/actions-commit-idempotency.contract.spec.ts"
         ]
       }
+    },
+    {
+      "claim_id": "C030",
+      "category": "bff",
+      "statement": "This repository is a NestJS API backend that also exposes BFF-style aggregation endpoints (evidence pack: NestJS BFF/API); it is not a production client monorepo.",
+      "ewp": "EWP-07",
+      "evidence_doc": "evidence/work-packages/EWP-07-bff-client-contracts/EVIDENCE.md",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/bff-client-contract.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C030b",
+      "category": "bff",
+      "statement": "Backend-defined client contract anchors exist (Decision Space / Arrange / Page Insight / Trusted Delivery / TEP / TravelContext HTTP + frontend-*-api-client samples).",
+      "ewp": "EWP-07",
+      "evidence": {
+        "status": "PASS",
+        "test_file": "src/agent/contracts/bff-client-contract.matrix.spec.ts"
+      }
+    },
+    {
+      "claim_id": "C031",
+      "category": "ortools_rfc",
+      "statement": "RFC-ORTools-Authoritative-Promotion is INTERNAL_REVIEW; Shadow retained; authoritative Apply not authorized.",
+      "anchors": [{ "path": "evidence/rfc/RFC-ORTools-Authoritative-Promotion.md" }],
+      "evidence": { "status": "CODE_ONLY", "notes": "Process/RFC status marker; not a runtime test." }
     }
   ]
 }

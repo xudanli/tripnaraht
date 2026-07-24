@@ -61,6 +61,8 @@ It **must not** treat C010b/C015-absent implementations as freeze-tree capabilit
 
 **Status markers**
 
+| Marker | Value |
+|--------|--------|
 | ENGINEERING FACT LAYER | FROZEN |
 | BASELINE | AFFIRMED |
 | MATRIX REGENERATION | NOT REQUIRED |

@@ -1,0 +1,19 @@
+PASS src/decision-runtime/solver/lab/ortools-planning-lab-compare.sample.spec.ts
+PASS src/agent/contracts/cross-corridor-concurrency.contract.spec.ts
+PASS src/agent/contracts/client-protocol-handoff.inventory.contract.spec.ts
+PASS src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts
+PASS src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts
+PASS src/decision-runtime/solver/observability/ortools-shadow-metrics.collector.spec.ts
+PASS src/agent/contracts/bff-client-contract.matrix.spec.ts
+PASS src/agent/contracts/travel-context-projection.contract.spec.ts
+PASS src/travel-context/current-ssot-status.constants.spec.ts
+PASS src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts
+PASS src/agent/contracts/writeback-corridor-audit.matrix.spec.ts
+
+Test Suites: 11 passed, 11 total
+Tests:       34 passed, 34 total
+Snapshots:   0 total
+Time:        1.747 s
+Ran all test suites matching src/agent/contracts/travel-context-projection.contract.spec.ts|src/agent/contracts/mixed-write-target.decomposition.contract.spec.ts|src/agent/contracts/rollback-compensation.corridor.matrix.spec.ts|src/agent/contracts/cross-corridor-concurrency.contract.spec.ts|src/decision-runtime/solver/lab/ortools-planning-lab-compare.sample.spec.ts|src/agent/contracts/client-protocol-handoff.inventory.contract.spec.ts|src/agent/contracts/bff-client-contract.matrix.spec.ts|src/agent/contracts/writeback-corridor-audit.matrix.spec.ts|src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts|src/decision-runtime/solver/observability/ortools-shadow-metrics.collector.spec.ts|src/travel-context/current-ssot-status.constants.spec.ts.
+Test results written to: evidence/work-packages/_shared/ewp-batch.jest.json
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

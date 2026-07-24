@@ -2,10 +2,11 @@
 
 | Field | Value |
 |-------|--------|
-| Status | **DRAFT — NOT APPROVED** |
+| Status | **INTERNAL_REVIEW — NOT APPROVED** |
 | ADR lineage | ADR-008 (Shadow) |
 | Current authority | **Shadow only** (`shadowAuthority: false`) |
 | Promotion | **Forbidden** until this RFC is approved and canary+kill-switch proven |
+| Apply authority | **Not authorized** — lab/compare/metrics only (see EWP-05) |
 
 ## 1. Purpose
 

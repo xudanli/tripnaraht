@@ -1,0 +1,37 @@
+{
+  "schemaId": "tripnara.ortools_planning_lab_compare@v1",
+  "tripId": "trip-ewp05-sample",
+  "dayIndex": 1,
+  "authoritativePromotion": false,
+  "shadowAuthority": false,
+  "baseOrder": [
+    "a1",
+    "a2",
+    "a3"
+  ],
+  "legacyOrder": [
+    "a3",
+    "a2",
+    "a1"
+  ],
+  "shadowOrder": [
+    "a1",
+    "a3",
+    "a2"
+  ],
+  "legacyBaseDisorder": 1,
+  "shadowBaseDisorder": 0.3333,
+  "legacyShadowOrderAgreement": 0.3333,
+  "baseTravelMin": 65,
+  "legacyTravelMin": 70,
+  "shadowTravelMin": 44,
+  "travelDeltaLegacyMinusShadow": 26,
+  "legacyChangeCount": 3,
+  "shadowChangeCount": 0,
+  "itemsCompared": 3,
+  "notes": [
+    "observational compare only — does not promote OR-Tools authority",
+    "shadow path 26min shorter than legacy (matrix estimate)"
+  ],
+  "generatedAt": "2026-07-24T09:49:59.621Z"
+}
