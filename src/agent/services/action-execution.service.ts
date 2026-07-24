@@ -124,41 +124,65 @@ export class ActionExecutionService {
     this.sideEffectRegistry?.register(createResourceLockSideEffect(this.prisma));
   }
 
-  /** UWC-1b: shadow-only probe — must not affect legacy commit result. */
+  /** UWC-1c: beginCapture before write; completeCapture after — zero UWC writes. */
+  private beginUwcActionsCommitShadow(
+    request: ActionCommitRequestDto,
+  ): import('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service').ShadowCaptureToken | null {
+    const firstSig = String(
+      (request.actions?.[0] as { context_signature?: string } | undefined)
+        ?.context_signature ?? '',
+    );
+    return (
+      this.uwcShadowProbe?.beginCapture('ACTIONS_COMMIT', {
+        trip_id: request.trip_id,
+        request_id: request.request_id,
+        idempotency_key: request.idempotency_key ?? request.request_id,
+        context_signature: firstSig,
+        expectedResourceVersion:
+          (request as { expected_resource_version?: string | number })
+            .expected_resource_version ??
+          (request as { trip_revision?: number }).trip_revision,
+        observedResourceVersion:
+          (request as { observed_resource_version?: string | number })
+            .observed_resource_version ??
+          (request as { trip_revision?: number }).trip_revision,
+      }) ?? null
+    );
+  }
+
+  private completeUwcActionsCommitShadow(
+    token: import('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service').ShadowCaptureToken | null,
+    request: ActionCommitRequestDto,
+    response: ActionExecutionResponseDto,
+    opts?: { idempotentReplay?: boolean },
+  ): void {
+    this.uwcShadowProbe?.completeCapture(token, {
+      legacyApplied: response.status === 'OK' || response.status === 'PARTIAL',
+      legacyOutcomeHint: opts?.idempotentReplay
+        ? 'IDEMPOTENT_REPLAY'
+        : response.status === 'OK'
+          ? 'APPLIED'
+          : response.status === 'PARTIAL'
+            ? 'APPLIED'
+            : 'REJECTED',
+      reasonCodes: (response.rejected_reason_codes as string[] | undefined) ?? [],
+      raw: {
+        status: response.status,
+        accepted: response.accepted_actions?.length ?? 0,
+        blocked: response.blocked_actions?.length ?? 0,
+        request_id: request.request_id,
+      },
+    });
+  }
+
+  /** @deprecated use begin+complete */
   private probeUwcActionsCommitShadow(
     request: ActionCommitRequestDto,
     response: ActionExecutionResponseDto,
     opts?: { idempotentReplay?: boolean },
   ): void {
-    const firstSig = String(
-      (request.actions?.[0] as { context_signature?: string } | undefined)
-        ?.context_signature ?? '',
-    );
-    this.uwcShadowProbe?.safeProbe(
-      'ACTIONS_COMMIT',
-      {
-        trip_id: request.trip_id,
-        request_id: request.request_id,
-        idempotency_key: request.idempotency_key ?? request.request_id,
-        context_signature: firstSig,
-      },
-      {
-        legacyApplied: response.status === 'OK' || response.status === 'PARTIAL',
-        legacyOutcomeHint: opts?.idempotentReplay
-          ? 'IDEMPOTENT_REPLAY'
-          : response.status === 'OK'
-            ? 'APPLIED'
-            : response.status === 'PARTIAL'
-              ? 'APPLIED'
-              : 'REJECTED',
-        reasonCodes: (response.rejected_reason_codes as string[] | undefined) ?? [],
-        raw: {
-          status: response.status,
-          accepted: response.accepted_actions?.length ?? 0,
-          blocked: response.blocked_actions?.length ?? 0,
-        },
-      },
-    );
+    const token = this.beginUwcActionsCommitShadow(request);
+    this.completeUwcActionsCommitShadow(token, request, response, opts);
   }
 
   private getAgentService(): AgentService | null {
@@ -575,6 +599,7 @@ export class ActionExecutionService {
     this.logger.debug(
       `[ActionExecution] commit request_id=${request.request_id}, trip_id=${request.trip_id}, actions=${request.actions.length}`,
     );
+    const uwcCapture = this.beginUwcActionsCommitShadow(request);
     const dedupKey = this.buildCommitDedupKey(request);
     const cached = this.requestDeduplication?.checkGenericDuplicate<ActionExecutionResponseDto>(dedupKey);
     if (cached) {
@@ -591,7 +616,9 @@ export class ActionExecutionService {
           status: response.status,
         },
       });
-      this.probeUwcActionsCommitShadow(request, response, { idempotentReplay: true });
+      this.completeUwcActionsCommitShadow(uwcCapture, request, response, {
+        idempotentReplay: true,
+      });
       return response;
     }
 
@@ -602,7 +629,7 @@ export class ActionExecutionService {
       const acceptedActions = request.actions.filter(
         (action) => !(action.risk_level === 'HIGH' && action.requires_confirmation),
       );
-      return {
+      const response: ActionExecutionResponseDto = {
         status: 'PARTIAL',
         message: 'High-risk actions require confirmation_token. Commit not executed for those actions.',
         accepted_actions: acceptedActions,
@@ -611,6 +638,8 @@ export class ActionExecutionService {
         ),
         rejected_reason_codes: [ACTION_REJECT_REASON_CODES.HIGH_RISK_REQUIRES_CONFIRMATION_TOKEN],
       };
+      this.completeUwcActionsCommitShadow(uwcCapture, request, response);
+      return response;
     }
 
     const acceptedActions: ActionCommitRequestDto['actions'] = [];
@@ -1536,7 +1565,7 @@ export class ActionExecutionService {
         rejected_reason_codes: response.rejected_reason_codes || [],
       },
     });
-    this.probeUwcActionsCommitShadow(request, response);
+    this.completeUwcActionsCommitShadow(uwcCapture, request, response);
     return response;
   }
 

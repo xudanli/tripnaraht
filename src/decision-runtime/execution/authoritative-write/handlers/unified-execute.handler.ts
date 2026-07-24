@@ -4,11 +4,32 @@ import {
   type AuthoritativeWriteResult,
 } from '../authoritative-write.types';
 import type { CorridorShadowHandler } from '../corridor-handler.types';
+import type { ExpectedWriteVersion, ObservedWriteVersion } from '../expected-write-version';
 import {
   hardBlockAuthoritativeApply,
   runShadowGatePipeline,
 } from '../shadow-validate.util';
 import { getCorridorWriteTargetProfile } from '../write-target.registry';
+
+function buildExpected(input: Record<string, unknown>): ExpectedWriteVersion {
+  const expectedPlanVersionId = String(
+    input.expectedPlanVersionId ??
+      input.basePlanVersionId ??
+      input.legacyExpectedVersion ??
+      '',
+  );
+  return { kind: 'PLAN_VERSION', expectedPlanVersionId };
+}
+
+function buildObserved(input: Record<string, unknown>): ObservedWriteVersion {
+  const observed =
+    input.observedPlanVersionId ?? input.observedEffectivePlanVersionId ?? null;
+  return {
+    kind: 'PLAN_VERSION',
+    observedPlanVersionId:
+      observed === undefined || observed === null ? null : String(observed),
+  };
+}
 
 export class UnifiedExecuteCorridorHandler implements CorridorShadowHandler {
   readonly corridor = 'UNIFIED_EXECUTE' as const;
@@ -45,6 +66,8 @@ export class UnifiedExecuteCorridorHandler implements CorridorShadowHandler {
         tripRevision:
           typeof input.tripRevision === 'number' ? input.tripRevision : undefined,
       },
+      expectedWriteVersion: buildExpected(input),
+      observedWriteVersion: buildObserved(input),
       idempotency: { key: idem, durability: 'durable' },
       audit: {
         tripId,

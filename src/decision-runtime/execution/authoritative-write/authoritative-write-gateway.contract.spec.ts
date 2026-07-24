@@ -29,6 +29,15 @@ function baseCommand(
   overrides: Partial<AuthoritativeWriteCommand> &
     Pick<AuthoritativeWriteCommand, 'corridor' | 'writeTargets' | 'compensationModel'>,
 ): AuthoritativeWriteCommand {
+  const corridor = overrides.corridor;
+  const expectedWriteVersion =
+    overrides.expectedWriteVersion ??
+    (corridor === 'UNIFIED_EXECUTE'
+      ? { kind: 'PLAN_VERSION' as const, expectedPlanVersionId: 'pv_expected' }
+      : {
+          kind: 'RESOURCE_VERSION_SET' as const,
+          resources: [{ resourceId: 'trip_1', expectedVersion: 1 }],
+        });
   return {
     schemaId: 'tripnara.authoritative_write_command@v1',
     contractVersion: AUTHORITATIVE_WRITE_CONTRACT_VERSION,
@@ -40,6 +49,23 @@ function baseCommand(
     },
     verification: { kind: 'authorize_record' },
     freshness: {},
+    expectedWriteVersion,
+    observedWriteVersion:
+      overrides.observedWriteVersion ??
+      (expectedWriteVersion.kind === 'PLAN_VERSION'
+        ? {
+            kind: 'PLAN_VERSION',
+            observedPlanVersionId: expectedWriteVersion.expectedPlanVersionId,
+          }
+        : expectedWriteVersion.kind === 'RESOURCE_VERSION_SET'
+          ? {
+              kind: 'RESOURCE_VERSION_SET',
+              resources: expectedWriteVersion.resources.map((r) => ({
+                resourceId: r.resourceId,
+                observedVersion: r.expectedVersion,
+              })),
+            }
+          : { kind: 'NO_VERSION_REQUIRED' }),
     idempotency: { key: 'idem-1', durability: 'durable' },
     audit: {
       tripId: 'trip_1',
@@ -164,7 +190,14 @@ describe('AuthoritativeWriteGateway contract v1', () => {
     expect(registry.listBound()).toEqual([...UWC_1B_WIRE_ORDER]);
   });
 
-  it('AUTHORITATIVE env is hard-blocked until UWC-1c', async () => {
+  it('AUTHORITATIVE env is hard-blocked by dual gates after UWC-1c code complete', async () => {
+    const {
+      UWC_1C_OCC_CODE_COMPLETE,
+      UWC_1C_OCC_SWITCH_AUTHORIZED,
+      UWC_1C_OCC_UNLOCKED,
+    } = require('./corridor-write-mode.config') as typeof import('./corridor-write-mode.config');
+    expect(UWC_1C_OCC_CODE_COMPLETE).toBe(true);
+    expect(UWC_1C_OCC_SWITCH_AUTHORIZED).toBe(false);
     expect(UWC_1C_OCC_UNLOCKED).toBe(false);
     const resolved = resolveCorridorWriteMode('ACTIONS_COMMIT', {
       UWC_CORRIDOR_MODE_ACTIONS_COMMIT: 'AUTHORITATIVE',
@@ -178,9 +211,11 @@ describe('AuthoritativeWriteGateway contract v1', () => {
       trip_id: 't1',
       request_id: 'r1',
       context_signature: 'sig',
+      expectedResourceVersion: 1,
+      observedResourceVersion: 1,
     });
     await expect(handler.authoritativeApply(cmd)).rejects.toThrow(
-      UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
+      /AUTHORITATIVE_HARD_BLOCKED/,
     );
   });
 });

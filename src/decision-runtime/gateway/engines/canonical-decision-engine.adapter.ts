@@ -284,6 +284,27 @@ export class CanonicalDecisionEngineAdapter {
 
   async execute(input: ExecuteDecisionGatewayInput): Promise<CanonicalExecuteResponse> {
     const authorizationPolicy = await this.evaluateEffectivePlanCommit(input);
+    const extended = input as {
+      idempotencyKey?: string;
+      basePlanVersionId?: string;
+      expectedPlanVersionId?: string;
+      observedPlanVersionId?: string;
+      observedEffectivePlanVersionId?: string;
+    };
+    const uwcCapture =
+      this.uwcShadowProbe?.beginCapture('UNIFIED_EXECUTE', {
+        tripId: input.tripId,
+        decisionId: input.decisionId,
+        idempotencyKey: extended.idempotencyKey,
+        basePlanVersionId: extended.basePlanVersionId,
+        expectedPlanVersionId:
+          extended.expectedPlanVersionId ?? extended.basePlanVersionId,
+        observedPlanVersionId:
+          extended.observedPlanVersionId ??
+          extended.observedEffectivePlanVersionId ??
+          extended.basePlanVersionId,
+      }) ?? null;
+
     let result: Awaited<ReturnType<Rfc001PlanVersionApplyExecutor['execute']>>;
     let legacyApplied = true;
     let legacyHint: 'APPLIED' | 'REJECTED' | 'IDEMPOTENT_REPLAY' = 'APPLIED';
@@ -297,32 +318,20 @@ export class CanonicalDecisionEngineAdapter {
       legacyApplied = false;
       legacyHint = 'REJECTED';
       reasonCodes = [err instanceof Error ? err.message : String(err)];
-      this.uwcShadowProbe?.safeProbe(
-        'UNIFIED_EXECUTE',
-        {
-          tripId: input.tripId,
-          decisionId: input.decisionId,
-          idempotencyKey: (input as { idempotencyKey?: string }).idempotencyKey,
-        },
-        { legacyApplied, legacyOutcomeHint: legacyHint, reasonCodes },
-      );
-      throw err;
-    }
-    const response = { ...result, authorizationPolicy };
-    this.uwcShadowProbe?.safeProbe(
-      'UNIFIED_EXECUTE',
-      {
-        tripId: input.tripId,
-        decisionId: input.decisionId,
-        idempotencyKey: (input as { idempotencyKey?: string }).idempotencyKey,
-      },
-      {
+      this.uwcShadowProbe?.completeCapture(uwcCapture, {
         legacyApplied,
         legacyOutcomeHint: legacyHint,
         reasonCodes,
-        raw: { decisionId: input.decisionId },
-      },
-    );
+      });
+      throw err;
+    }
+    const response = { ...result, authorizationPolicy };
+    this.uwcShadowProbe?.completeCapture(uwcCapture, {
+      legacyApplied,
+      legacyOutcomeHint: legacyHint,
+      reasonCodes,
+      raw: { decisionId: input.decisionId },
+    });
     return response;
   }
 

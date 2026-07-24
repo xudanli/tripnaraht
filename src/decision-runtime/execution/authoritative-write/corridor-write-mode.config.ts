@@ -1,8 +1,11 @@
 /**
- * Per-corridor UWC write modes (UWC-1b).
+ * Per-corridor UWC write modes (UWC-1b/1c).
  *
- * AUTHORITATIVE is hard-blocked until UWC-1c OCC unlock.
- * This round defaults first-batch corridors to SHADOW_VALIDATE.
+ * AUTHORITATIVE unlock requires TWO independent gates:
+ * - UWC_1C_OCC_CODE_COMPLETE (engineering: OCC contract landed)
+ * - UWC_1C_OCC_SWITCH_AUTHORIZED (release/ops: explicit switch authorization)
+ *
+ * UWC-1c completes the code gate only; AUTHORITATIVE remains blocked until switch auth.
  */
 
 import {
@@ -18,14 +21,30 @@ export const CORRIDOR_WRITE_MODES = [
 
 export type CorridorWriteMode = (typeof CORRIDOR_WRITE_MODES)[number];
 
+/** Gate A — set true when UWC-1c OCC contract + tests land. */
+export const UWC_1C_OCC_CODE_COMPLETE = true as const;
+
 /**
- * Flip only after UWC-1c basePlanVersionId/contextVersion OCC lands + review.
- * Until then AUTHORITATIVE must never become effective.
+ * Gate B — independent switch authorization (RRR / Release Owner).
+ * Remains false after UWC-1c; do not flip in this ticket.
  */
-export const UWC_1C_OCC_UNLOCKED = false as const;
+export const UWC_1C_OCC_SWITCH_AUTHORIZED = false as const;
+
+/**
+ * Effective unlock for AUTHORITATIVE. Requires BOTH gates.
+ * Still false after UWC-1c (switch not authorized).
+ */
+export const UWC_1C_OCC_UNLOCKED = (UWC_1C_OCC_CODE_COMPLETE &&
+  UWC_1C_OCC_SWITCH_AUTHORIZED) as boolean;
 
 export const UWC_AUTHORITATIVE_HARD_BLOCK_REASON =
-  'AUTHORITATIVE_HARD_BLOCKED_PENDING_UWC_1C_OCC' as const;
+  'AUTHORITATIVE_HARD_BLOCKED_PENDING_DUAL_GATES' as const;
+
+export const UWC_AUTHORITATIVE_DUAL_GATE_STATUS = {
+  codeComplete: UWC_1C_OCC_CODE_COMPLETE,
+  switchAuthorized: UWC_1C_OCC_SWITCH_AUTHORIZED,
+  unlocked: UWC_1C_OCC_UNLOCKED,
+} as const;
 
 /** Registration / enable order for first batch. */
 export const UWC_1B_WIRE_ORDER: readonly AuthoritativeWriteCorridorId[] = [
@@ -40,7 +59,7 @@ const ENV_KEYS: Record<AuthoritativeWriteCorridorId, string> = {
   UNIFIED_EXECUTE: 'UWC_CORRIDOR_MODE_UNIFIED_EXECUTE',
 };
 
-/** Defaults for UWC-1b rollout: shadow only. */
+/** Defaults: shadow only. */
 export const UWC_1B_DEFAULT_MODES: Record<
   AuthoritativeWriteCorridorId,
   CorridorWriteMode
@@ -65,11 +84,12 @@ export type ResolvedCorridorWriteMode = {
   effective: Exclude<CorridorWriteMode, 'AUTHORITATIVE'> | 'AUTHORITATIVE';
   authoritativeHardBlocked: boolean;
   blockReason?: typeof UWC_AUTHORITATIVE_HARD_BLOCK_REASON;
+  dualGates: typeof UWC_AUTHORITATIVE_DUAL_GATE_STATUS;
 };
 
 /**
  * Resolve effective mode. AUTHORITATIVE requests are coerced to DISABLED
- * while UWC_1C_OCC_UNLOCKED is false (hard block — not SHADOW, so no silent auth).
+ * while dual gates are not both true.
  */
 export function resolveCorridorWriteMode(
   corridor: AuthoritativeWriteCorridorId,
@@ -85,6 +105,7 @@ export function resolveCorridorWriteMode(
       effective: 'DISABLED',
       authoritativeHardBlocked: true,
       blockReason: UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
+      dualGates: UWC_AUTHORITATIVE_DUAL_GATE_STATUS,
     };
   }
 
@@ -93,6 +114,7 @@ export function resolveCorridorWriteMode(
     requested,
     effective: requested,
     authoritativeHardBlocked: false,
+    dualGates: UWC_AUTHORITATIVE_DUAL_GATE_STATUS,
   };
 }
 
@@ -116,7 +138,7 @@ export function assertAuthoritativeNotEnabled(
   const resolved = resolveCorridorWriteMode(corridor, env);
   if (resolved.requested === 'AUTHORITATIVE' && !UWC_1C_OCC_UNLOCKED) {
     throw new Error(
-      `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${corridor}`,
+      `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${corridor} codeComplete=${UWC_1C_OCC_CODE_COMPLETE} switchAuthorized=${UWC_1C_OCC_SWITCH_AUTHORIZED}`,
     );
   }
   if (resolved.effective === 'AUTHORITATIVE' && !UWC_1C_OCC_UNLOCKED) {

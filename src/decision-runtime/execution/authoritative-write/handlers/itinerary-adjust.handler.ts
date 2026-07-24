@@ -4,11 +4,38 @@ import {
   type AuthoritativeWriteResult,
 } from '../authoritative-write.types';
 import type { CorridorShadowHandler } from '../corridor-handler.types';
+import type { ExpectedWriteVersion, ObservedWriteVersion } from '../expected-write-version';
 import {
   hardBlockAuthoritativeApply,
   runShadowGatePipeline,
 } from '../shadow-validate.util';
 import { getCorridorWriteTargetProfile } from '../write-target.registry';
+
+function buildExpected(input: Record<string, unknown>): ExpectedWriteVersion {
+  const resourceId = String(input.tripId ?? input.trip_id ?? 'trip');
+  const expectedVersion =
+    input.expectedTripRevision ?? input.tripRevision ?? input.legacyExpectedVersion ?? 0;
+  return {
+    kind: 'RESOURCE_VERSION_SET',
+    resources: [{ resourceId, expectedVersion: expectedVersion as string | number }],
+  };
+}
+
+function buildObserved(input: Record<string, unknown>): ObservedWriteVersion {
+  const resourceId = String(input.tripId ?? input.trip_id ?? 'trip');
+  const observed =
+    input.observedTripRevision ?? input.observedResourceVersion ?? null;
+  return {
+    kind: 'RESOURCE_VERSION_SET',
+    resources: [
+      {
+        resourceId,
+        observedVersion:
+          observed === undefined ? null : (observed as string | number | null),
+      },
+    ],
+  };
+}
 
 export class ItineraryAdjustCorridorHandler implements CorridorShadowHandler {
   readonly corridor = 'ITINERARY_ADJUST' as const;
@@ -34,13 +61,13 @@ export class ItineraryAdjustCorridorHandler implements CorridorShadowHandler {
         reasonCodes: adviceOnly ? ['ADVICE_ONLY'] : [],
         source: 'itinerary_adjust_legacy_shadow',
       },
-      verification: hasDraft
-        ? { kind: 'pending_draft' }
-        : { kind: 'pending_draft' },
+      verification: hasDraft ? { kind: 'pending_draft' } : { kind: 'pending_draft' },
       freshness: {
         tripRevision:
           typeof input.tripRevision === 'number' ? input.tripRevision : undefined,
       },
+      expectedWriteVersion: buildExpected(input),
+      observedWriteVersion: buildObserved(input),
       idempotency: { key: requestId, durability: 'request_scoped' },
       audit: {
         tripId,

@@ -104,7 +104,7 @@ export function hardBlockAuthoritativeApply(
   command: AuthoritativeWriteCommand,
 ): never {
   throw new Error(
-    `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${command.corridor} authoritativeApply forbidden until UWC-1c OCC`,
+    `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${command.corridor} authoritativeApply forbidden until dual gates (code+switch)`,
   );
 }
 

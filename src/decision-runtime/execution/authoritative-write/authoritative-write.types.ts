@@ -81,12 +81,14 @@ export type VerificationProof = {
 };
 
 /**
- * Optimistic concurrency / freshness.
- * Phase 1a: fields optional per corridor; Phase 1b requires basePlanVersionId
- * and/or contextVersion where applicable (forbid silent overwrite).
+ * Optimistic concurrency / freshness hints (corridor-local).
+ * UWC-1c OCC SSOT is `expectedWriteVersion` (discriminated), NOT these optional strings
+ * and NOT global TravelContext version.
  */
 export type FreshnessProof = {
+  /** @deprecated for OCC — use expectedWriteVersion.kind=PLAN_VERSION */
   basePlanVersionId?: string;
+  /** @deprecated for OCC — use expectedWriteVersion.kind=RESOURCE_VERSION_SET */
   contextVersion?: string | number;
   tripRevision?: number;
   expectedEffectivePlanVersionId?: string;
@@ -129,6 +131,13 @@ export type AuthoritativeWriteCommand = {
   authority: WriteAuthorityProof;
   verification: VerificationProof;
   freshness: FreshnessProof;
+  /**
+   * UWC-1c OCC contract — discriminated expected write object version.
+   * Required for shadow capture / future authoritative path.
+   */
+  expectedWriteVersion: import('./expected-write-version').ExpectedWriteVersion;
+  /** Observed at capture time (shadow pre-write); must match expected.kind */
+  observedWriteVersion?: import('./expected-write-version').ObservedWriteVersion;
   idempotency: IdempotencyProof;
   audit: AuthoritativeWriteAuditContext;
   compensationModel: WriteCompensationModel;
@@ -163,6 +172,8 @@ export const AUTHORITATIVE_WRITE_ERROR_CODES = {
   AUDIT_CONTEXT_INCOMPLETE: 'AUDIT_CONTEXT_INCOMPLETE',
   COMPENSATION_UNSUPPORTED: 'COMPENSATION_UNSUPPORTED',
   FORBIDDEN_CAPABILITY: 'FORBIDDEN_CAPABILITY',
+  ALREADY_APPLIED: 'ALREADY_APPLIED',
+  OCC_KIND_MISMATCH: 'OCC_KIND_MISMATCH',
 } as const;
 
 export type AuthoritativeWriteErrorCode =

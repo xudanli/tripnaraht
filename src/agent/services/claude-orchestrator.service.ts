@@ -10078,6 +10078,31 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     const preTrip = await this.tripsService!.findOne(tripId.trim(), userId);
 
+    let uwcCapture: import('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service').ShadowCaptureToken | null =
+      null;
+    try {
+      const {
+        safeBeginItineraryAdjustCapture,
+      } = require('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service') as typeof import('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service');
+      const tripRev =
+        typeof (preTrip as { revision?: number })?.revision === 'number'
+          ? (preTrip as { revision: number }).revision
+          : 0;
+      uwcCapture = safeBeginItineraryAdjustCapture({
+        tripId,
+        userId,
+        requestId: durableRunId ?? tripId,
+        hasPendingDraft: true,
+        adviceOnly: false,
+        pending: true,
+        expectedTripRevision: tripRev,
+        observedTripRevision: tripRev,
+        tripRevision: tripRev,
+      });
+    } catch {
+      uwcCapture = null;
+    }
+
     const result = await executeItineraryAdjustDraftApply({
       tripId,
       userId,
@@ -10098,27 +10123,17 @@ ${JSON.stringify(routingDecision, null, 2)}
 
     try {
       const {
-        safeProbeItineraryAdjustStandalone,
+        safeCompleteItineraryAdjustCapture,
       } = require('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service') as typeof import('../../decision-runtime/execution/authoritative-write/authoritative-write-shadow-probe.service');
-      safeProbeItineraryAdjustStandalone(
-        {
-          tripId,
-          userId,
-          requestId: durableRunId ?? tripId,
-          hasPendingDraft: true,
-          adviceOnly: false,
-          pending: true,
+      safeCompleteItineraryAdjustCapture(uwcCapture, {
+        legacyApplied: Boolean(result.applied),
+        legacyOutcomeHint: result.applied ? 'APPLIED' : 'REJECTED',
+        reasonCodes: result.reason ? [result.reason] : [],
+        raw: {
+          addedCount: result.addedCount,
+          deletedCount: result.deletedCount,
         },
-        {
-          legacyApplied: Boolean(result.applied),
-          legacyOutcomeHint: result.applied ? 'APPLIED' : 'REJECTED',
-          reasonCodes: result.reason ? [result.reason] : [],
-          raw: {
-            addedCount: result.addedCount,
-            deletedCount: result.deletedCount,
-          },
-        },
-      );
+      });
     } catch {
       // never break legacy apply
     }

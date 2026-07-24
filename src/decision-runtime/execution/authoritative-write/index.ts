@@ -10,6 +10,8 @@ export * from './corridor-handler.registry';
 export * from './shadow-validate.util';
 export * from './shadow-reconcile.util';
 export * from './authoritative-write-shadow-probe.service';
+export * from './expected-write-version';
+export * from './occ-atomic-write.simulator';
 export * from './handlers/actions-commit.handler';
 export * from './handlers/itinerary-adjust.handler';
 export * from './handlers/unified-execute.handler';

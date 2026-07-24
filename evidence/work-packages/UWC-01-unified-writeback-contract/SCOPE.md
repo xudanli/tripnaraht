@@ -27,4 +27,8 @@
 - [x] AUTHORITATIVE hard-blocked until UWC-1c  
 - [x] Per-corridor DISABLED kill switch  
 - [x] Shadow/legacy diffs auditable (`getShadowProbeAuditEntries`)  
-- [ ] OCC fields enforced (1c)  
+- [x] OCC ExpectedWriteVersion + per-corridor strategies (1c)  
+- [x] Idempotency before freshness → ALREADY_APPLIED  
+- [x] Cross-corridor concurrency proofs (≤1 success)  
+- [x] AUTHORITATIVE still blocked (dual gates; switch auth false)  
+- [ ] UWC-1d rollback / compensation  
