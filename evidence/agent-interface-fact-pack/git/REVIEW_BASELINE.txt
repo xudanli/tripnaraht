@@ -1,1 +1,4 @@
-a7e9bdca588431143e04e98d7c1c1204299c6e54
+code_baseline=a7e9bdca588431143e04e98d7c1c1204299c6e54
+evidence_pack_commit=9aac792e5f01fa7d9236c3e0936f89262f5f02ed
+branch=feat/orchestration-phase-4b-routing-shell
+frozen=true

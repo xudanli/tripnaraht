@@ -1,7 +1,8 @@
 # 智能体系统接口 — 事实材料证据包（冻结版）
 
 **状态：FROZEN（事实材料冻结）**  
-**审查基线 Commit：** `a7e9bdca588431143e04e98d7c1c1204299c6e54`  
+**代码审查基线（P0/P1）：** `a7e9bdca588431143e04e98d7c1c1204299c6e54`  
+**本证据包入库 Commit：** `9aac792e5f01fa7d9236c3e0936f89262f5f02ed`  
 **分支：** `feat/orchestration-phase-4b-routing-shell`  
 **打包时间（UTC）：** 2026-07-24T05:29:31Z  
 
@@ -37,10 +38,10 @@
 
 ## 审查基线
 
-- **Commit：** `a7e9bdca588431143e04e98d7c1c1204299c6e54`  
-- **Subject：** `feat(agent): freeze P0/P1 evidence baseline for interface fact pack`  
-- **完整 patch：** `git/P0_P1_evidence.patch`  
-- **提交后工作区残余：** 见 `git/WORKTREE_STATUS_AFTER_COMMIT.txt`（主要为 coverage 删除与无关 runtime env；**未**纳入本证据 Commit）
+- **代码 Commit：** `a7e9bdca588431143e04e98d7c1c1204299c6e54` — `feat(agent): freeze P0/P1 evidence baseline for interface fact pack`  
+- **证据包 Commit：** `9aac792e5f01fa7d9236c3e0936f89262f5f02ed` — `chore(evidence): freeze agent interface fact pack for third-party review`  
+- **完整 patch（相对代码基线）：** `git/P0_P1_evidence.patch`  
+- **代码提交后工作区残余：** 见 `git/WORKTREE_STATUS_AFTER_COMMIT.txt`（主要为 coverage 删除与无关 runtime env；**未**纳入 P0/P1 代码 Commit）
 
 ---
 
@@ -75,4 +76,4 @@
 
 - 不再扩写架构目标/方案论证  
 - 不在无证据时改写 `needs_audit`  
-- 第三方评估应钉住 Commit `a7e9bdca588431143e04e98d7c1c1204299c6e54` 与本包文件清单  
+- 第三方评估应钉住代码基线 `a7e9bdca588431143e04e98d7c1c1204299c6e54`、证据包 `9aac792e5f01fa7d9236c3e0936f89262f5f02ed`，以及本包文件清单  
