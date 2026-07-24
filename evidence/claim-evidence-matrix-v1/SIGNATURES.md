@@ -39,7 +39,7 @@ Full record: [`BASELINE_SCOPE_DECISION.md`](./BASELINE_SCOPE_DECISION.md).
 > Claims cite only paths/blobs/tests present in that commit or explicitly marked NEEDS_MORE_EVIDENCE/ABSENT.  
 > We approve this matrix as the sole admissible Claim ID catalog for research citation.  
 > We affirm retention of `a7e9bdca5` as evaluation baseline; Iceland Confirm/Apply and Mobile Verified Apply **implementations** are out of scope for this round.  
-> C018 is classified as **`BASELINE_INCOMPLETE**.
+> C018 is classified as **`BASELINE_INCOMPLETE`**.
 
 GitHub UI “Approve” clicks on the Matrix PR (when authenticated) should mirror this table. In-repo sign-off above is the R&D fact-layer freeze record.
 
