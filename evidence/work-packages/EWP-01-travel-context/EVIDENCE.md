@@ -48,5 +48,7 @@ Results: see `evidence/work-packages/EWP-01-travel-context/jest-results.json` af
 ## 5. Allowed research language
 
 - “TravelContext exists as RFC-003 module; runtime SSOT remains OS∥DSO.”
-- “No unified contextHash on main chain; local hashes exist per corridor.”
+- “No unified contextHash on main chain; local hashes exist per corridor (see CTX-1 inventory).”
 - Not: “Web/iOS already projects TravelContext end-to-end” without client source.
+
+**CTX-1 landed:** `CTX-1.md` / `corridor-local-freshness.inventory.ts`.

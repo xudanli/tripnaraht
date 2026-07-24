@@ -40,7 +40,8 @@
 2. **RB-1** — ✅ DONE — Unified rollback HTTP contract + Actions `STUB_NO_SIDE_EFFECTS` product label (see `EWP-03-rollback-compensation/RB-1.md`).  
 3. **CC-1** — ✅ DONE — Arrange apply dual-signal: phase `CONTEXT_STALE` + HTTP `CONTEXT_VERSION_CONFLICT` (see `EWP-04-cross-corridor-concurrency/CC-1.md`).  
 4. **BFF-1** — ✅ DONE — Client contract index pinned to OpenAPI freeze `a7e9bdca5` (see `EWP-07-bff-client-contracts/BFF-1.md`).  
-5. Hold Context / multi-corridor concurrency / OR-Tools Apply until separate decisions.
+5. **CTX-1** — ✅ DONE — Corridor-local freshness inventory; global TravelContext SSOT wire forbidden (see `EWP-01-travel-context/CTX-1.md`).  
+6. Hold multi-corridor concurrent write e2e / OR-Tools Apply / shipping-client compliance until separate decisions.
 
 ---
 

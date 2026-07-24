@@ -8,6 +8,7 @@ import {
   TARGET_CONTEXT_SSOT,
 } from '../../travel-context/current-ssot-status.constants';
 import { AGENT_NO_GLOBAL_CONTEXT_HASH } from './agent-conceptual-vs-actual.constants';
+import { CORRIDOR_LOCAL_FRESHNESS_INVENTORY } from './corridor-local-freshness.inventory';
 
 const ROOT = path.resolve(__dirname, '../../..');
 
@@ -19,6 +20,15 @@ describe('travel-context-projection.contract (EWP-01)', () => {
 
   it('no global contextHash on main chain', () => {
     expect(AGENT_NO_GLOBAL_CONTEXT_HASH).toMatch(/No unified contextHash/);
+  });
+
+  it('CTX-1 inventory includes TravelContext revision fields and main-chain no-global row', () => {
+    const tc = CORRIDOR_LOCAL_FRESHNESS_INVENTORY.find((r) => r.id === 'travel_context');
+    expect(tc?.fields.join(' ')).toMatch(/revision/);
+    expect(tc?.fields.join(' ')).toMatch(/snapshotId/);
+    expect(
+      CORRIDOR_LOCAL_FRESHNESS_INVENTORY.some((r) => r.id === 'route_and_run_main_chain'),
+    ).toBe(true);
   });
 
   it('TravelContext snapshot types use revision / snapshotId, not contextHash', () => {

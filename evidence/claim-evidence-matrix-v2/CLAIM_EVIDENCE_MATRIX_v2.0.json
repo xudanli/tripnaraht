@@ -48,12 +48,13 @@
     {
       "claim_id": "C021b",
       "category": "travel_context",
-      "statement": "No unified contextHash on route_and_run main chain (AGENT_NO_GLOBAL_CONTEXT_HASH); TravelContext uses revision/snapshotId; Page Insight and Arrange use corridor-local hashes/versions.",
+      "statement": "No unified contextHash on route_and_run main chain (AGENT_NO_GLOBAL_CONTEXT_HASH); corridor-local freshness fields are inventoried in CORRIDOR_LOCAL_FRESHNESS_INVENTORY (CTX-1); TravelContext uses revision/snapshotId; Page Insight and Arrange use corridor-local hashes/versions.",
       "ewp": "EWP-01",
-      "evidence_doc": "evidence/work-packages/EWP-01-travel-context/EVIDENCE.md",
+      "evidence_doc": "evidence/work-packages/EWP-01-travel-context/CTX-1.md",
       "evidence": {
         "status": "PASS",
         "test_files": [
+          "src/agent/contracts/corridor-local-freshness.inventory.spec.ts",
           "src/agent/contracts/travel-context-projection.contract.spec.ts",
           "src/agent/contracts/agent-conceptual-vs-actual.constants.spec.ts"
         ]

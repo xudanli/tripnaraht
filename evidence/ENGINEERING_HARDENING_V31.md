@@ -33,12 +33,13 @@ Do **not** start Context / Writeback / Rollback / Concurrency / BFF mega-refacto
 **Scoped landed:** WB-1 (`WRITEBACK_CORRIDOR_AUDIT_MATRIX` v1.1.0 `mixedTargets` for Unified/Actions).  
 **Scoped landed:** RB-1 (Unified rollback HTTP contract + Actions `STUB_NO_SIDE_EFFECTS` label).  
 **Scoped landed:** CC-1 (Arrange apply dual-signal: phase `CONTEXT_STALE` ≠ HTTP `CONTEXT_VERSION_CONFLICT`).  
-**Scoped landed:** BFF-1 (`BFF_CLIENT_CONTRACT_INDEX` pinned to OpenAPI freeze `a7e9bdca5`).
+**Scoped landed:** BFF-1 (`BFF_CLIENT_CONTRACT_INDEX` pinned to OpenAPI freeze `a7e9bdca5`).  
+**Scoped landed:** CTX-1 (`CORRIDOR_LOCAL_FRESHNESS_INVENTORY` + `GLOBAL_TRAVEL_CONTEXT_SSOT_WIRE_FORBIDDEN`).
 
 ## Post-scoped-tickets status
 
-Recommended OPEN_SCOPED_TASK order **WB-1 → RB-1 → CC-1 → BFF-1** is complete.  
-Remaining gate items: EL/TA/QA sign Matrix v2; Context / multi-corridor concurrency / OR-Tools Apply stay DEFER/BLOCKED.
+Recommended OPEN_SCOPED_TASK order **WB-1 → RB-1 → CC-1 → BFF-1** is complete; **CTX-1** inventory follow-on landed.  
+Remaining gate items: EL/TA/QA sign Matrix v2; multi-corridor concurrent e2e / OR-Tools Apply / client source review stay DEFER/BLOCKED.
 
 ## Forbidden without new facts+RFC
 
