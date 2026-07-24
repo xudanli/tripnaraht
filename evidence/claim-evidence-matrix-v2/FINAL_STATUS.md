@@ -17,7 +17,7 @@
 | EWP Jest batch (11/34) | PASS — `evidence/work-packages/_shared/RESULTS.md` |
 | Matrix v2 claims linked to EWPs | 完成 (DRAFT) |
 | EL/TA/QA sign Matrix v2 | **未完成** |
-| Open scoped tickets from decision gate | **未完成**（等内部签核） |
+| Open scoped tickets from decision gate | **WB-1 / RB-1 / CC-1 / BFF-1 DONE**; remaining = sign-off only |
 | Architecture mega-refactor | **禁止**（本轨） |
 
 ## Research rule (current)
