@@ -2,7 +2,7 @@
 
 **Document:** `CLAIM_EVIDENCE_MATRIX_v1.0.json` + `.md`  
 **Freeze Commit (code facts):** `a7e9bdca588431143e04e98d7c1c1204299c6e54`  
-**Matrix delivery Commit:** _(filled by git after commit)_  
+**Matrix delivery Commit:** `c9757e89b829e605ac257c04e440f1f75041d980`  
 **Tag:** `claim-evidence-matrix-v1.0` _(annotated)_  
 
 ## Roles (same PR review)
