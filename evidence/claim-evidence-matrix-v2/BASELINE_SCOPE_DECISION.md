@@ -3,7 +3,8 @@
 | Field | Value |
 |-------|--------|
 | **V3.1 feature tip** | `bc6e2e6d5a087a6a20c47576ebdba295370ebec1` |
-| **Matrix v2 freeze delivery** | `3743dc53723b913c451340bc98bc13e17720b468` |
+| **Matrix v2 freeze delivery** | `bb2c8e5481fb627e0e5cdf46211d8d3961d0e27b` |
+| **Annotated tag** | `claim-evidence-matrix-v2.0` |
 | **Parent OpenAPI / v1 research freeze** | `a7e9bdca588431143e04e98d7c1c1204299c6e54` |
 | **v1 Matrix** | Remains FROZEN; still valid for historical citation |
 | **Architecture capability adds** | **STOPPED** for this freeze window |
