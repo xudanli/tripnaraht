@@ -4,6 +4,17 @@
 **Generated (UTC):** 2026-07-24T07:39:02Z  
 **Schema:** `CLAIM_EVIDENCE_MATRIX` `1.0`  
 
+## Baseline scope decision
+
+See `BASELINE_SCOPE_DECISION.md` and `SIGNATURES.md`.
+
+- **Retain** freeze `a7e9bdca588431143e04e98d7c1c1204299c6e54` (do not regenerate Matrix this cycle).
+- Iceland Confirm/Apply & Mobile Verified Apply **implementations**: **out of scope** (C010b / C015).
+- Matrix Claim IDs **supersede** prior conflicting “已接入” narratives.
+- **C018 classification:** 基线不完整 (dangling-import code manifestation).
+- EL / TA / QA: **APPROVE** Matrix + **AFFIRM** baseline retention.
+- R&D fact layer: **FROZEN**.
+
 ## 使用边界
 
 - 本文件只含**机器可复核代码事实**。

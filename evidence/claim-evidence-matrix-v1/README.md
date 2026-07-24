@@ -12,3 +12,8 @@ Reverse-extracted, machine-verifiable **code facts** pinned to freeze commit:
 | `test-runs/` | Jest JSON + console from freeze worktree |
 
 Not architecture documentation. Not recommendations.
+
+| `BASELINE_SCOPE_DECISION.md` | EL/TA/QA retain-freeze decision + C018 classification |
+| `SIGNATURES.md` | Approvals + fact-layer freeze |
+
+**Baseline:** retained `a7e9bdca5`. Fact layer frozen. Cite Claim IDs only.
