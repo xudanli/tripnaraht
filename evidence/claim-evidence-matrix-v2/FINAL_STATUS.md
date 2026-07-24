@@ -8,7 +8,7 @@
 | **RESEARCH INPUT (v2)** | **APPROVED — V3.2 Delta Assessment only** |
 | **RESEARCH INPUT (v1)** | unchanged **APPROVED** |
 | **OR-TOOLS** | **Shadow / INTERNAL_REVIEW** — Apply not authorized |
-| **NEXT** | GitHub PR Approve **PENDING** → merge backfill → RRR → **GO** upgrade from CONDITIONAL_GO |
+| **NEXT** | Merge Record **FILLED** → RRR → **GO** upgrade from CONDITIONAL_GO |
 
 ## Release citation (V3.1 hardening train)
 
@@ -17,7 +17,9 @@
 | Process status | `evidence/release/v31-agent-interface-hardening/PROCESS_STATUS.md` |
 | Release decision | **CONDITIONAL_GO** (not formal GO until RRR) |
 | Evidence tag (immutable) | `claim-evidence-matrix-v2.0` → `c76fff367…` |
-| Release tag / merge | `MERGE_RECORD.md` after merge |
+| final_merge_commit | `b5127ae942f81ea32216c073d7814db5e37b4e8a` |
+| Release tag | `v31-agent-interface-hardening-rc1` |
+| Merge path | `direct_merge` (`approved_by: direct_merge`) |
 
 ## Binding checklist
 

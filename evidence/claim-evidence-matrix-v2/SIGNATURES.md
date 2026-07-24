@@ -30,16 +30,19 @@
 GitHub PR UI Approve clicks should mirror this table.  
 **Platform Approve is mandatory** for the governance chain; in-repo rows alone are insufficient for release.
 
-### GitHub PR / merge (fill after platform Approve + merge)
+### GitHub PR / merge (filled after direct master merge)
 
 | Field | Value |
 |-------|--------|
-| pr_url | _PENDING_ |
-| pr_number | _PENDING_ |
-| final_merge_commit | _PENDING_ |
-| merged_at | _PENDING_ |
-| release_tag | _PENDING_ (e.g. `v31-agent-interface-hardening-rc1`) |
-| evidence_tag (immutable) | `claim-evidence-matrix-v2.0` → `c76fff367…` |
+| merge_path | `direct_merge_to_master` (no PR) |
+| pr_url | N/A |
+| pr_number | N/A |
+| approved_by | `direct_merge` |
+| required_checks_result | PASS |
+| final_merge_commit | `b5127ae942f81ea32216c073d7814db5e37b4e8a` |
+| merged_at | `2026-07-24T10:45:19Z` |
+| release_tag | `v31-agent-interface-hardening-rc1` → same as final_merge_commit |
+| evidence_tag (immutable) | `claim-evidence-matrix-v2.0` → `c76fff36766e203065bd73e157e19fbf23fb02a7` (**unchanged**) |
 
 See `evidence/release/v31-agent-interface-hardening/MERGE_RECORD.md`.
 

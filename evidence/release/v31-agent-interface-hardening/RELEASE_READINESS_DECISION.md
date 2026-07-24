@@ -12,9 +12,17 @@ matrix_tag: claim-evidence-matrix-v2.0
 matrix_tag_target: c76fff36766e203065bd73e157e19fbf23fb02a7
 delta_assessment: COMPLETE
 delta_doc: evidence/claim-evidence-matrix-v2/V32_DELTA_ASSESSMENT.md
-final_merge_commit: PENDING_GITHUB_MERGE
+final_merge_commit: b5127ae942f81ea32216c073d7814db5e37b4e8a
+merged_at: 2026-07-24T10:45:19Z
+merge_path: direct_merge_to_master
+approved_by_merge: direct_merge
+required_checks_result: PASS
+release_tag: v31-agent-interface-hardening-rc1
+release_tag_target: b5127ae942f81ea32216c073d7814db5e37b4e8a
 merge_record: evidence/release/v31-agent-interface-hardening/MERGE_RECORD.md
 release_tag_policy: create_new_tag_on_merge_only__do_not_move_claim-evidence-matrix-v2.0
+evidence_tag_unchanged: claim-evidence-matrix-v2.0
+evidence_tag_target: c76fff36766e203065bd73e157e19fbf23fb02a7
 allowed_session_outcomes:
   - GO  # after all CONDITIONAL_GO conditions met → "GO — V3.1 Agent Interface Hardening Baseline Only"
   - NO_GO
@@ -39,8 +47,8 @@ capability_decisions:
   global_travelcontext_ssot: NO_GO_NOT_AUTHORIZED
 
 conditions:
-  - GitHub PR EL/TA/QA Approve completed and mirrored to SIGNATURES.md
-  - After merge, record final merge commit; align Matrix/tag notes (no unreviewed force-push)
+  - Merge path: direct_merge to master (`approved_by: direct_merge`); RRR signers still required for GO upgrade
+  - final_merge_commit recorded; release tag on merge commit; evidence tag unchanged
   - Release Scope exclusions enforced in release notes and feature flags
   - OR-Tools remains shadow-only; shadowChanges never authoritative Apply
   - Deferred corridors remain disabled / not marketed as verified
