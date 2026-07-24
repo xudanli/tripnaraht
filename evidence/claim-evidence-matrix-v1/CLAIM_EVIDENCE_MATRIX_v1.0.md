@@ -11,9 +11,9 @@ See `BASELINE_SCOPE_DECISION.md` and `SIGNATURES.md`.
 - **Retain** freeze `a7e9bdca588431143e04e98d7c1c1204299c6e54` (do not regenerate Matrix this cycle).
 - Iceland Confirm/Apply & Mobile Verified Apply **implementations**: **out of scope** (C010b / C015).
 - Matrix Claim IDs **supersede** prior conflicting “已接入” narratives.
-- **C018 classification:** 基线不完整 (dangling-import code manifestation).
+- **C018 classification:** `BASELINE_INCOMPLETE` (dangling-import manifestation).
 - EL / TA / QA: **APPROVE** Matrix + **AFFIRM** baseline retention.
-- R&D fact layer: **FROZEN**.
+- ENGINEERING FACT LAYER: **FROZEN** · BASELINE: **AFFIRMED** · MATRIX REGENERATION: **NOT REQUIRED** · RESEARCH INPUT: **APPROVED**.
 
 ## 使用边界
 

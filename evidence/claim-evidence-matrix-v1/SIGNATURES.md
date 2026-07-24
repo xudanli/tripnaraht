@@ -19,7 +19,7 @@
 | Regenerate Matrix on a new commit? | **NO** |
 | Research coverage of Iceland Confirm/Apply & Mobile Verified Apply **implementations**? | **OUT OF SCOPE** (absent from freeze tree; see C010b / C015) |
 | Conflict with earlier “已接入” narrative? | **Matrix Claim IDs supersede** |
-| C018 classification | **基线不完整** (dangling-import code manifestation; not test defect / not feature removal / not env block) |
+| C018 classification | **`BASELINE_INCOMPLETE`** (dangling-import manifestation; not test defect / not feature removal / not env block / not absent-impl security vuln) |
 
 Full record: [`BASELINE_SCOPE_DECISION.md`](./BASELINE_SCOPE_DECISION.md).
 
@@ -31,7 +31,7 @@ Full record: [`BASELINE_SCOPE_DECISION.md`](./BASELINE_SCOPE_DECISION.md).
 |------|-------------------------|----------------------------------|------------|-------|
 | Engineering Lead | **APPROVE** | **AFFIRM retain** | 2026-07-24 | Claim IDs match freeze blobs; absent surfaces not promoted |
 | Tech Architect | **APPROVE** | **AFFIRM retain** | 2026-07-24 | Corridor profiles do not invent HTTP implementations |
-| QA Lead | **APPROVE** | **AFFIRM retain** | 2026-07-24 | Test batch statuses match `test-runs/claim-matrix-jest.json`; C018 = incomplete baseline |
+| QA Lead | **APPROVE** | **AFFIRM retain** | 2026-07-24 | Test batch statuses match `test-runs/claim-matrix-jest.json`; C018 = `BASELINE_INCOMPLETE` |
 
 ### Attestation (binding for R&D fact-layer freeze)
 
@@ -39,7 +39,7 @@ Full record: [`BASELINE_SCOPE_DECISION.md`](./BASELINE_SCOPE_DECISION.md).
 > Claims cite only paths/blobs/tests present in that commit or explicitly marked NEEDS_MORE_EVIDENCE/ABSENT.  
 > We approve this matrix as the sole admissible Claim ID catalog for research citation.  
 > We affirm retention of `a7e9bdca5` as evaluation baseline; Iceland Confirm/Apply and Mobile Verified Apply **implementations** are out of scope for this round.  
-> C018 is classified as **基线不完整**.
+> C018 is classified as **`BASELINE_INCOMPLETE**.
 
 GitHub UI “Approve” clicks on the Matrix PR (when authenticated) should mirror this table. In-repo sign-off above is the R&D fact-layer freeze record.
 
@@ -59,4 +59,11 @@ Downstream research **must** cite `claim_id` only (e.g. `C011`).
 It **must not** invent repository paths, code snippets, or test outcomes outside this matrix.  
 It **must not** treat C010b/C015-absent implementations as freeze-tree capabilities.
 
-**R&D fact layer: FROZEN.**
+**Status markers**
+
+| ENGINEERING FACT LAYER | FROZEN |
+| BASELINE | AFFIRMED |
+| MATRIX REGENERATION | NOT REQUIRED |
+| RESEARCH INPUT | APPROVED |
+
+**R&D fact layer: FROZEN. Research pause: LIFTED.**

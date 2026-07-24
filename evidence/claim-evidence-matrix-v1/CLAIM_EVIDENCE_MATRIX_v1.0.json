@@ -656,18 +656,31 @@
         "repro_cmd": "git worktree add --detach /tmp/claim-matrix-a7e9bdca5 a7e9bdca588431143e04e98d7c1c1204299c6e54 && cd /tmp/claim-matrix-a7e9bdca5 && ln -sfn /home/devbox/project/node_modules node_modules && LLM_USE_MOCK=true npx jest --runInBand --forceExit --ci --json --outputFile=/home/devbox/project/evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json src/agent/orchestration/orchestration-main-chain-protocol.contract.spec.ts src/agent/orchestration/graph/nodes/gate-eval.node.spec.ts src/agent/execution/gate-eval-executor.service.spec.ts src/agent/orchestration/plan-verify-loop/plan-verify-loop-repair-guards.spec.ts src/agent/utils/itinerary-adjust-flawed-auto-block.util.spec.ts src/agent/delivery/types/delivery-verdict.types.spec.ts src/agent/delivery/utils/trusted-delivery.project.util.spec.ts src/agent/delivery/trusted-delivery-consumption.contract.spec.ts src/agent/contracts/auto-corridor-product.contract.spec.ts src/agent/contracts/gate-verify-corridor-audit.matrix.spec.ts src/agent/contracts/writeback-corridor-audit.matrix.spec.ts src/agent/contracts/claude-exec-route-and-run.contract.spec.ts src/agent/agent.controller.ao-p0.contract.spec.ts src/decision-runtime/solver/lab/ortools-planning-shadow-apply.guard.spec.ts src/trips/tep/utils/tep-repair-stale-guard.util.spec.ts src/trips/tep/services/tep-local-repair-apply.service.spec.ts src/skills/itinerary/repair-apply.skill.spec.ts src/agent/actions.controller.integration.spec.ts src/harness/evals/authority/au-p1-004-idempotency.spec.ts src/decision/kernel/decision-kernel.verify-repair-loop.spec.ts src/agent/utils/itinerary-adjust-auto-apply.util.spec.ts",
         "exit_code": 1,
         "result_file": "evidence/claim-evidence-matrix-v1/test-runs/claim-matrix-jest.json",
-        "notes": "Cannot find module iceland-memory-shell-trip-id.util — observed in claim-matrix-jest.console.txt | CLASSIFICATION: 基线不完整 (dangling import); not test/env/removal."
+        "notes": "Cannot find module iceland-memory-shell-trip-id.util — observed in claim-matrix-jest.console.txt | CLASSIFICATION: 基线不完整 (dangling import); not test/env/removal. | CLASSIFICATION: BASELINE_INCOMPLETE."
       },
       "classification": {
-        "primary": "incomplete_baseline",
+        "primary": "BASELINE_INCOMPLETE",
         "primary_zh": "基线不完整",
+        "alias": [
+          "incomplete_baseline"
+        ],
         "secondary": "dangling_import_code_defect",
         "not": [
           "test_defect",
           "feature_removal",
-          "environment_block"
+          "environment_block",
+          "security_vuln_of_absent_impl"
         ],
-        "decided_in": "BASELINE_SCOPE_DECISION.md"
+        "decided_in": "BASELINE_SCOPE_DECISION.md",
+        "research_may_evaluate": [
+          "baseline_integrity_governance",
+          "branch_wip_governance",
+          "dangling_dependency_reproducibility",
+          "claim_vs_commit_governance"
+        ],
+        "research_must_not_evaluate": [
+          "security_or_architecture_quality_of_absent_iceland_apply_impl"
+        ]
       }
     },
     {
@@ -1167,13 +1180,17 @@
     ],
     "narrative_conflict_rule": "CLAIM_EVIDENCE_MATRIX_v1.0 Claim IDs supersede prior human descriptions",
     "c018_classification": {
-      "primary": "incomplete_baseline",
+      "primary": "BASELINE_INCOMPLETE",
       "primary_zh": "基线不完整",
       "secondary": "dangling_import_code_defect",
       "not": [
         "test_defect",
         "feature_removal",
-        "environment_block"
+        "environment_block",
+        "security_vuln_of_absent_impl"
+      ],
+      "alias": [
+        "incomplete_baseline"
       ]
     },
     "approvals": {
@@ -1181,6 +1198,23 @@
       "tech_architect": "APPROVE+AFFIRM",
       "qa_lead": "APPROVE+AFFIRM"
     },
-    "fact_layer": "FROZEN"
+    "fact_layer": "FROZEN",
+    "research_input": "APPROVED",
+    "matrix_regeneration": "NOT_REQUIRED",
+    "baseline": "AFFIRMED"
+  },
+  "engineering_status": {
+    "ENGINEERING_FACT_LAYER": "FROZEN",
+    "BASELINE": "AFFIRMED",
+    "BASELINE_COMMIT": "a7e9bdca588431143e04e98d7c1c1204299c6e54",
+    "MATRIX_REGENERATION": "NOT_REQUIRED",
+    "RESEARCH_INPUT": "APPROVED",
+    "research_pause": "LIFTED",
+    "documents": [
+      "FINAL_STATUS.md",
+      "RESEARCH_KICKOFF_NOTICE.md",
+      "BASELINE_SCOPE_DECISION.md",
+      "SIGNATURES.md"
+    ]
   }
 }

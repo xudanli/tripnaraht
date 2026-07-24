@@ -54,7 +54,7 @@ Research may cite **Claim IDs only**. It must not regenerate paths, snippets, or
 | Claim | **C018** |
 | Statement (summary) | Freeze tree imports `iceland-memory-shell-trip-id.util` from absent `src/trips/iceland-self-drive/**` |
 | Observed effect | `agent.controller.ao-p0.contract.spec.ts` suite **fails to load** (module not found) |
-| **Primary classification** | **基线不完整 (incomplete baseline)** |
+| **Primary classification** | **`BASELINE_INCOMPLETE`（基线不完整）** |
 | Secondary manifestation | **代码缺陷 (dangling import / non-self-contained commit tree)** |
 | Explicitly **not** | 测试缺陷（测试正确暴露缺失模块）；功能移除（util 从未进入该 Commit）；环境阻断（非 runner/env 问题） |
 
@@ -89,8 +89,22 @@ Upon recording this decision in `SIGNATURES.md` and merging/approving the Matrix
 |------|----------------|----------|----------|
 | Engineering Lead | R&D baseline applicability review (Matrix v1.0) | **AFFIRM retain `a7e9bdca5`** | 2026-07-24 |
 | Tech Architect | R&D baseline applicability review (Matrix v1.0) | **AFFIRM retain `a7e9bdca5`; out-of-scope absent surfaces** | 2026-07-24 |
-| QA Lead | R&D baseline applicability review (Matrix v1.0) | **AFFIRM; C018=incomplete baseline; Matrix overrides narrative** | 2026-07-24 |
+| QA Lead | R&D baseline applicability review (Matrix v1.0) | **AFFIRM; C018=`BASELINE_INCOMPLETE`; Matrix overrides narrative** | 2026-07-24 |
 
 Attestation:
 
-> We jointly confirm that `a7e9bdca588431143e04e98d7c1c1204299c6e54` is the correct baseline for evaluating the current **committed** complete system as represented by CLAIM_EVIDENCE_MATRIX v1.0. Capabilities absent from that tree (Iceland Confirm/Apply implementation; Mobile Verified Apply implementation) are **out of scope** for this research round. Matrix Claim IDs override prior conflicting human descriptions. C018 is classified as **基线不完整** (with dangling-import code manifestation). Matrix regeneration is not required for this cycle.
+> We jointly confirm that `a7e9bdca588431143e04e98d7c1c1204299c6e54` is the correct baseline for evaluating the current **committed** complete system as represented by CLAIM_EVIDENCE_MATRIX v1.0. Capabilities absent from that tree (Iceland Confirm/Apply implementation; Mobile Verified Apply implementation) are **out of scope** for this research round. Matrix Claim IDs override prior conflicting human descriptions. C018 is classified as **`BASELINE_INCOMPLETE`** (with dangling-import code manifestation). Matrix regeneration is not required for this cycle.
+
+---
+
+## 8. Final status markers
+
+| Marker | Value |
+|--------|--------|
+| ENGINEERING FACT LAYER | FROZEN |
+| BASELINE | AFFIRMED |
+| MATRIX REGENERATION | NOT REQUIRED |
+| RESEARCH INPUT | APPROVED |
+| C018 | BASELINE_INCOMPLETE |
+
+See also: `FINAL_STATUS.md`, `RESEARCH_KICKOFF_NOTICE.md`.
