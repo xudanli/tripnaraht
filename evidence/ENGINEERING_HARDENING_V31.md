@@ -52,5 +52,6 @@ Microservice · CQRS · GraphQL · global SSOT · Proposal 大一统 · OR-Tools
 - Freeze tag: `claim-evidence-matrix-v2.0` → `c76fff367…`
 - Catalog: `evidence/claim-evidence-matrix-v2/`
 - **V3.2 Delta Assessment:** COMPLETE (`V32_DELTA_ASSESSMENT.md`)
-- **Next:** Release Readiness Review (`RELEASE_READINESS_REVIEW.md`)
+- **Release pack:** `evidence/release/v31-agent-interface-hardening/` — draft **CONDITIONAL GO**
+- **Next:** GitHub PR Approve → merge commit record → Release Readiness Review session
 

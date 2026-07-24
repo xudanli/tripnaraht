@@ -1,33 +1,66 @@
-# Matrix v2 freeze PR
+# Matrix v2 / V3.1 Hardening — PR open checklist
 
-**Head:** `feat/v31-engineering-hardening` @ `c76fff367`  
-**Tag:** `claim-evidence-matrix-v2.0` → `c76fff36766e203065bd73e157e19fbf23fb02a7`  
-**Engineering tip:** `bc6e2e6d5a087a6a20c47576ebdba295370ebec1`  
-**Compare (open PR):** https://github.com/xudanli/tripnaraht/compare/master...feat/v31-engineering-hardening?expand=1  
-
-> `gh` CLI unauthenticated in this environment — open the compare URL and create the PR in UI, or set `GH_TOKEN`.
+**Head:** `feat/v31-engineering-hardening` @ `e33e214c4`  
+**Base:** `master`  
+**Compare:** https://github.com/xudanli/tripnaraht/compare/master...feat/v31-engineering-hardening?expand=1  
 
 ## Title
-`CLAIM_EVIDENCE_MATRIX v2.0 freeze — baseline bc6e2e6d5 + EL/TA/QA sign`
 
-## Body
+`V3.1 Agent Interface Hardening + Claim Evidence Matrix v2 Freeze`
+
+## Body (paste)
 
 ```markdown
-## Summary
-- Stop architecture capability adds; freeze Matrix v2 on engineering tip `bc6e2e6d5`
-- Freeze delivery: annotated tag `claim-evidence-matrix-v2.0` (`c76fff367…`)
-- BFF-1 dual-pin: historical OpenAPI `a7e9bdca5` + ENGINEERING_BASELINE + delta index
-- Bind EWP-01…07 and WB-1/RB-1/CC-1/BFF-1/CTX-1; add C001/C018/C018R/C005E/Post-plan/audit/idempotency/CI Guard
-- DEFER/BLOCKED registry with Owner / Release Impact / Reopen Trigger
-- Full regression PASS: 28 suites / 116 tests + ci dangling/freeze-smoke
-- In-repo EL/TA/QA APPROVE in SIGNATURES.md (mirror with GitHub UI Approve)
+## Scope
 
-## Required approvals (same PR — mirror SIGNATURES.md)
-- [ ] Engineering Lead
-- [ ] Tech Architect
-- [ ] QA Lead
+- V3.1 engineering hardening
+- EWP-01–07 evidence packages
+- WB-1 / RB-1 / CC-1 / BFF-1 / CTX-1
+- CLAIM_EVIDENCE_MATRIX_v2.0 frozen
+- V3.2 Delta Assessment complete
 
-## Research rule
-- Before APPROVE: **do not** cite Matrix v2
-- After APPROVE: **V3.2 Delta Assessment only** → then Release Readiness Review
+## Engineering baseline
+
+- Implementation baseline: bc6e2e6d5a087a6a20c47576ebdba295370ebec1
+- Evidence branch tip: e33e214c4308d60e5a43de84c3595556355555c6
+- Annotated tag: claim-evidence-matrix-v2.0
+- Tag target: c76fff36766e203065bd73e157e19fbf23fb02a7
+
+## Verification
+
+- 28 suites PASS
+- 116 tests PASS
+- dangling-import check: exit 0
+- freeze-smoke gate: exit 0
+- Artifacts: evidence/claim-evidence-matrix-v2/test-runs/
+
+## Explicit exclusions
+
+- No OR-Tools authoritative Apply
+- No global TravelContext SSOT
+- No Proposal unification
+- No microservices / CQRS / GraphQL redesign
+- No production Web/iOS compliance claim
+- No Iceland/Mobile Apply rollback claim
+
+## Release readiness pack
+
+- evidence/release/v31-agent-interface-hardening/ (SCOPE, DECISION=CONDITIONAL_GO, LIMITATIONS, MONITORING)
+
+## Required reviewers
+
+- Engineering Lead
+- Tech Architect
+- QA Lead
+
+## Post-approve checks
+
+- [ ] EL / TA / QA clicked Approve (mirror SIGNATURES.md)
+- [ ] Required Checks green
+- [ ] tag object matches Matrix record
+- [ ] After merge: record final merge commit; no unreviewed force-push
 ```
+
+## Note
+
+`gh` may be unauthenticated — use Compare URL above. In-repo Matrix SIGNATURES already APPROVE; GitHub UI completes the governance chain.
