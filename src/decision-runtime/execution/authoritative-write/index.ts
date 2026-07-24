@@ -15,3 +15,8 @@ export * from './occ-atomic-write.simulator';
 export * from './handlers/actions-commit.handler';
 export * from './handlers/itinerary-adjust.handler';
 export * from './handlers/unified-execute.handler';
+export * from './recovery-contract.types';
+export * from './corridor-recovery.profile';
+export * from './compensation-auth.gate';
+export * from './corridor-cutover.gate';
+export * from './compensation-pipeline.util';

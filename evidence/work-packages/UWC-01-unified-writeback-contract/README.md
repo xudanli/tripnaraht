@@ -60,8 +60,8 @@ Authority → Verification Proof → Freshness shape → Idempotency key → Wri
 | UWC-1a | ✅ Types + gateway + registry + contract | done |
 | UWC-1b | ✅ Explicit handlers + SHADOW_VALIDATE + AUTHORITATIVE hard-block | done |
 | UWC-1c | ✅ ExpectedWriteVersion OCC + dual gates + concurrency proofs | code complete; switch auth false |
-| UWC-1d | Dual-layer rollback documentation + Unified compensating PlanVersion alignment | Actions stays stub |
-| UWC-1e | Web/iOS protocol: Preview → Confirm → Apply mapping to unified outcomes | BFF contract index update only |
+| UWC-1d | ✅ Two-layer recovery + profiles + cutover gate | compensation exec gate closed |
+| UWC-1e | Web/iOS protocol: Preview → Confirm → Apply mapping to unified outcomes | after ACTIONS canary review |
 
 ## Hard prohibitions
 

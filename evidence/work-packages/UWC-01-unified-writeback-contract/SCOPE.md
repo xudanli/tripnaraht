@@ -31,4 +31,6 @@
 - [x] Idempotency before freshness → ALREADY_APPLIED  
 - [x] Cross-corridor concurrency proofs (≤1 success)  
 - [x] AUTHORITATIVE still blocked (dual gates; switch auth false)  
-- [ ] UWC-1d rollback / compensation  
+- [x] UWC-1d recovery layers + profiles + COMPENSATION_CONFLICT  
+- [x] Compensation exec gate closed; Cutover: ACTIONS canary first  
+- [ ] ACTIONS_COMMIT Canary review (no auto-unlock of other corridors)  
