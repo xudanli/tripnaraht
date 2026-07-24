@@ -1,6 +1,6 @@
 # Matrix PR — create & approve checklist
 
-**Head:** `claim/evidence-matrix-v1.0` (`1fec3ac93…`)  
+**Head:** `claim/evidence-matrix-v1.0` (`ce35789dc…`)  
 **Base:** `feat/orchestration-phase-4b-routing-shell`  
 **Create PR:** https://github.com/xudanli/tripnaraht/compare/feat/orchestration-phase-4b-routing-shell...claim/evidence-matrix-v1.0?expand=1  
 
