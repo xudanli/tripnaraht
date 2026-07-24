@@ -536,5 +536,6 @@
       }
     }
   ],
-  "matrix_v2_freeze_delivery_commit": "a50acf7fe3fed65b0330001cdb86026fdc625a63"
+  "matrix_v2_freeze_delivery_commit": "38f49085649fef45fc21baa09beaa7295ef1f4a9",
+  "annotated_tag": "claim-evidence-matrix-v2.0"
 }
