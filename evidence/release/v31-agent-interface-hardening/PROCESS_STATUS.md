@@ -15,7 +15,7 @@
 | Release Readiness Review | **READY_TO_CONVENE** (after merge backfill) |
 | Release Decision | **CONDITIONAL_GO** |
 | Further Coding | **NOT REQUIRED** |
-| Branch tip (process docs only) | `a56b4f9c3` |
+| Branch tip (process docs only) | `e3b0ce95c` |
 | Evidence freeze tag | `claim-evidence-matrix-v2.0` → `c76fff367…` (**do not move**) |
 | Release tag (post-merge) | `v31-agent-interface-hardening-rc1` on `final_merge_commit` only |
 

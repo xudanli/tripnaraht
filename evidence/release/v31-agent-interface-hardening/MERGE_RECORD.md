@@ -11,7 +11,7 @@ pr_url: PENDING
 pr_number: PENDING
 pr_base: master
 pr_head: feat/v31-engineering-hardening
-branch_tip_at_pr_open: a56b4f9c3
+branch_tip_at_pr_open: e3b0ce95c
 final_merge_commit: PENDING
 merged_at: PENDING  # ISO-8601 UTC
 approved_by:
