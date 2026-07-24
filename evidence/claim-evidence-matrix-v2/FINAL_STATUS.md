@@ -1,27 +1,30 @@
-# FINAL_STATUS — Matrix v2 / EWP track
+# FINAL_STATUS — Matrix v2 freeze
 
 | Marker | Value |
 |--------|--------|
-| **EWP PACKS (01–07)** | **EVIDENCE_COMPLETE** |
-| **POST-EWP DECISION GATE** | **READY_FOR_INTERNAL_REVIEW** |
-| **CLAIM_EVIDENCE_MATRIX v2.0** | **DRAFT — AWAITING_SIGN** |
-| **RESEARCH INPUT (v2)** | **NOT APPROVED** (v1 remains the sole approved research catalog) |
-| **OR-TOOLS RFC** | **INTERNAL_REVIEW — Shadow only; Apply not authorized** |
-| **v1 FACT LAYER** | **unchanged FROZEN** (`evidence/claim-evidence-matrix-v1/`) |
+| **ARCHITECTURE CAPABILITY ADDS** | **STOPPED** |
+| **V3.1 FEATURE TIP** | `bc6e2e6d5a087a6a20c47576ebdba295370ebec1` |
+| **CLAIM_EVIDENCE_MATRIX v2.0** | **FROZEN** (EL/TA/QA APPROVE in SIGNATURES) |
+| **RESEARCH INPUT (v2)** | **APPROVED — V3.2 Delta Assessment only** |
+| **RESEARCH INPUT (v1)** | unchanged **APPROVED** |
+| **OR-TOOLS** | **Shadow / INTERNAL_REVIEW** — Apply not authorized |
+| **NEXT** | V3.2 Delta Assessment → Release Readiness Review |
 
-## Gate checklist
+## Binding checklist
 
 | Item | Status |
 |------|--------|
-| Seven EWP evidence packs | 完成 |
-| EWP Jest batch (11/34) | PASS — `evidence/work-packages/_shared/RESULTS.md` |
-| Matrix v2 claims linked to EWPs | 完成 (DRAFT) |
-| EL/TA/QA sign Matrix v2 | **未完成** |
-| Open scoped tickets from decision gate | **WB-1 / RB-1 / CC-1 / BFF-1 DONE**; remaining = sign-off only |
-| Architecture mega-refactor | **禁止**（本轨） |
+| EWP-01…07 bound in `ticket_bindings` | 完成 |
+| WB-1 / RB-1 / CC-1 / BFF-1 / CTX-1 bound | 完成 |
+| C001 / C018 / C018R / C005 / C005E / C032 / C033 / C028 / C034 / C027 | 完成 |
+| DEFER/BLOCKED Owner + Impact + Trigger | `DEFER_BLOCKED_REGISTRY.md` |
+| BFF-1 dual pin + delta index | 完成 |
+| Full regression artifacts | `test-runs/` |
+| Annotated tag | `claim-evidence-matrix-v2.0` |
+| Same-PR EL/TA/QA sign | `SIGNATURES.md` + GitHub PR |
 
-## Research rule (current)
+## Research rule
 
-- Cite **v1 Claim IDs** for institute architecture research.  
-- Treat v2 / EWP as **engineering confirmation drafts** until `SIGNATURES.md` APPROVE.  
-- Do **not** treat DEFER/BLOCKED tracks as approved redesign mandates.
+**Until SIGNATURES APPROVE:** research **must not** use Matrix v2.  
+**After APPROVE:** cite v2 Claim IDs **only** for **V3.2 Delta Assessment**.  
+**After V3.2:** convene **Release Readiness Review** before any release-impacting redesign.

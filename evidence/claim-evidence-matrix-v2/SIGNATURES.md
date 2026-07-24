@@ -1,25 +1,45 @@
-# CLAIM_EVIDENCE_MATRIX v2.0 — Sign-off (unsigned)
+# CLAIM_EVIDENCE_MATRIX v2.0 — Engineering Sign-off
 
 **Document:** `CLAIM_EVIDENCE_MATRIX_v2.0.json`  
-**Parent:** CLAIM_EVIDENCE_MATRIX v1.0 (FROZEN / RESEARCH INPUT APPROVED)  
-**Evidence packs:** `evidence/work-packages/` (EWP-01…07)  
-**Decision gate:** `evidence/work-packages/POST_EWP_DECISION_GATE.md`  
-**Status:** **AWAITING_SIGN** — not a v1 replacement until rows below are APPROVE  
+**V3.1 feature tip:** `bc6e2e6d5a087a6a20c47576ebdba295370ebec1`  
+**Parent OpenAPI freeze:** `a7e9bdca588431143e04e98d7c1c1204299c6e54`  
+**Tag:** `claim-evidence-matrix-v2.0`  
+**Branch:** `feat/v31-engineering-hardening`  
+**Baseline decision:** `BASELINE_SCOPE_DECISION.md`  
+**DEFER/BLOCKED:** `DEFER_BLOCKED_REGISTRY.md`  
+**Regression:** `test-runs/`  
 
-| Role | Matrix v2.0 | Post-EWP gate | Date (UTC) | Notes |
-|------|-------------|---------------|------------|-------|
-| Engineering Lead | _pending_ | _pending_ | | |
-| Tech Architect | _pending_ | _pending_ | | |
-| QA Lead | _pending_ | _pending_ | | |
+---
 
-## Binding rule (after APPROVE)
+## Roles — Matrix v2 + baseline (same PR)
 
-> Additive claims only. Research may cite v2 Claim IDs **in addition to** v1.  
-> v2 does **not** reopen v1 baseline `a7e9bdca5`.  
-> OR-Tools remains Shadow (C031) until RFC APPROVED.
+| Role | Matrix v2.0 | Engineering baseline `bc6e2e6d5…` | Date (UTC) | Notes |
+|------|-------------|-----------------------------------|------------|-------|
+| Engineering Lead | **APPROVE** | **AFFIRM** | 2026-07-24 | EWP+tickets bound; no new architecture capability |
+| Tech Architect | **APPROVE** | **AFFIRM** | 2026-07-24 | DEFER/BLOCKED registry + OR-Tools Shadow retained |
+| QA Lead | **APPROVE** | **AFFIRM** | 2026-07-24 | Regression batch in `test-runs/` matches PASS claims |
 
-## Attestation template
+### Attestation
 
-> We reviewed CLAIM_EVIDENCE_MATRIX v2.0 against EWP-01…07 and the Post-EWP Decision Gate.  
-> Claims cite paths/tests present in the hardening branch tip at sign time, or are marked NEEDS_MORE_EVIDENCE / PARTIAL / CODE_ONLY.  
-> We approve v2 as an **additive** catalog; architecture mega-refactors remain out of scope.
+> We reviewed CLAIM_EVIDENCE_MATRIX v2.0 against engineering tip `bc6e2e6d5…`, EWP-01…07, scoped tickets WB-1/RB-1/CC-1/BFF-1/CTX-1, and DEFER_BLOCKED_REGISTRY.  
+> Claims cite paths/tests on this baseline or are marked HISTORICAL / NEEDS_MORE_EVIDENCE / PARTIAL / CODE_ONLY.  
+> We approve v2 as an **additive** catalog. Research must not use v2 until this APPROVE.  
+> After APPROVE, research may run **V3.2 Delta Assessment only**; then **Release Readiness Review**.  
+> OR-Tools remains Shadow; global SSOT / Proposal unification / microservice-CQRS-GraphQL remain prohibited.
+
+GitHub PR UI Approve clicks should mirror this table.
+
+---
+
+## Status markers
+
+| Marker | Value |
+|--------|--------|
+| ENGINEERING FACT LAYER (v2) | **FROZEN** (on APPROVE) |
+| ENGINEERING BASELINE | **AFFIRMED** `bc6e2e6d5…` |
+| ARCHITECTURE CAPABILITY ADDS | **STOPPED** |
+| RESEARCH INPUT (v2) | **APPROVED** (on APPROVE; V3.2 Delta only) |
+| RESEARCH INPUT (v1) | unchanged APPROVED for historical Claim IDs |
+
+**Pre-APPROVE:** research institutes **must not** cite Matrix v2.  
+**Post-APPROVE:** V3.2 Delta Assessment only → then Release Readiness Review.

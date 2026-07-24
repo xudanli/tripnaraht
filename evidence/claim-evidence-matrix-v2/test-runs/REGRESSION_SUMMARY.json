@@ -1,0 +1,25 @@
+{
+  "started_from": [
+    "started_utc=2026-07-24T10:15:51Z",
+    "cwd=/home/devbox/project",
+    "git_head=bc6e2e6d5a087a6a20c47576ebdba295370ebec1",
+    "git_branch=feat/v31-engineering-hardening",
+    "node=v20.18.0",
+    "npm=10.8.2",
+    "os=Linux tripnaraht 5.15.0-124-generic #134-Ubuntu SMP Fri Sep 27 20:20:17 UTC 2024 x86_64 GNU/Linux",
+    "LLM_USE_MOCK=true",
+    "CI=true"
+  ],
+  "ci_dangling_exit": 0,
+  "ci_freeze_smoke_exit": 0,
+  "jest_exit": 0,
+  "jest": {
+    "success": true,
+    "numPassedTestSuites": 28,
+    "numFailedTestSuites": 0,
+    "numPassedTests": 116,
+    "numFailedTests": 0,
+    "numTotalTests": 116
+  },
+  "overall_pass": true
+}

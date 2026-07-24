@@ -44,3 +44,11 @@ Remaining gate items: EL/TA/QA sign Matrix v2; multi-corridor concurrent e2e / O
 ## Forbidden without new facts+RFC
 
 Microservice · CQRS · GraphQL · global SSOT · Proposal 大一统 · OR-Tools authority flip
+
+## Matrix v2 freeze (current)
+
+- Architecture capability adds: **STOPPED**
+- Engineering tip: `bc6e2e6d5…`
+- Catalog: `evidence/claim-evidence-matrix-v2/`
+- Next after sign: **V3.2 Delta Assessment** → **Release Readiness Review**
+

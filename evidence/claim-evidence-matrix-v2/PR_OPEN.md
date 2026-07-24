@@ -1,28 +1,29 @@
-# Matrix v2 / EWP — PR notes
+# Matrix v2 freeze PR
 
-**Head branch:** `feat/v31-engineering-hardening`  
-**Contents:** V3.1 hardening + EWP-01…07 + Matrix v2 DRAFT + Post-EWP Decision Gate + OR-Tools RFC INTERNAL_REVIEW  
+**Head:** `feat/v31-engineering-hardening`  
+**Tag:** `claim-evidence-matrix-v2.0`  
+**Baseline tip:** `bc6e2e6d5…`  
 
 ## Title
-`evidence: EWP-01…07 + Matrix v2 DRAFT + Post-EWP decision gate`
+`CLAIM_EVIDENCE_MATRIX v2.0 freeze — baseline bc6e2e6d5 + EL/TA/QA sign`
 
-## Body (paste)
+## Body
 
 ```markdown
 ## Summary
-- Seven Evidence Work Packages with real paths, contract tests, limitations, Claim IDs
-- CLAIM_EVIDENCE_MATRIX v2.0 DRAFT (additive; v1 remains FROZEN / research-approved)
-- Post-EWP Decision Gate: OPEN_SCOPED_TASK / DEFER / BLOCKED — no mega-refactor
-- OR-Tools RFC: INTERNAL_REVIEW, Shadow only, Apply not authorized
+- Stop architecture capability adds; freeze Matrix v2 on engineering tip `bc6e2e6d5`
+- BFF-1 dual-pin: historical OpenAPI `a7e9bdca5` + ENGINEERING_BASELINE + delta index
+- Bind EWP-01…07 and WB-1/RB-1/CC-1/BFF-1/CTX-1; add C001/C018/C018R/C005E/Post-plan/audit/idempotency/CI Guard
+- DEFER/BLOCKED registry with Owner / Release Impact / Reopen Trigger
+- Full regression artifacts under `evidence/claim-evidence-matrix-v2/test-runs/`
+- Annotated tag `claim-evidence-matrix-v2.0`
 
-## Test plan
-- [x] `LLM_USE_MOCK=true npx jest --runInBand --forceExit` EWP batch (see `evidence/work-packages/_shared/RESULTS.md`) — 11 suites / 34 PASS
-- [ ] EL / TA / QA sign `evidence/claim-evidence-matrix-v2/SIGNATURES.md`
-- [ ] File only OPEN_SCOPED_TASK tickets after gate sign-off
+## Required approvals (same PR — mirror SIGNATURES.md)
+- [ ] Engineering Lead
+- [ ] Tech Architect
+- [ ] QA Lead
 
-## Non-goals
-- Global SSOT / Proposal unification / OR-Tools authority / microservice-CQRS-GraphQL
+## Research rule
+- Before APPROVE: **do not** cite Matrix v2
+- After APPROVE: **V3.2 Delta Assessment only** → then Release Readiness Review
 ```
-
-## Note
-Until Matrix v2 SIGNATURES APPROVE, research must continue citing **v1** Claim IDs only.

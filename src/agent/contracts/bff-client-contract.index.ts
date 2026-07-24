@@ -2,21 +2,34 @@
  * BFF-1 — Backend-defined client contract index (facts only).
  * Not a production client monorepo; paths are handoffs / contracts / sample clients.
  *
- * OpenAPI snapshot pin: evidence pack generated at FACT_PACK_OPENAPI_FREEZE_COMMIT
- * (see evidence/agent-interface-fact-pack/openapi/OPENAPI_GENERATION.txt).
+ * Dual pin (BFF-1 fix for Matrix v2 freeze):
+ * 1) FACT_PACK_OPENAPI_FREEZE_COMMIT — historical OpenAPI snapshot (v1 research baseline)
+ * 2) ENGINEERING_BASELINE_COMMIT — V3.1 feature tip / new engineering baseline (bc6e2e6d5…)
+ * Contract deltas since (1) are indexed in OPENAPI_CONTRACT_DELTA_INDEX_REL.
  */
 
-export const BFF_CLIENT_CONTRACT_INDEX_VERSION = '1.0.0' as const;
+export const BFF_CLIENT_CONTRACT_INDEX_VERSION = '1.1.0' as const;
 
-/** Research baseline / fact-pack OpenAPI generation commit (v1 freeze). */
+/** Historical fact-pack OpenAPI generation commit (v1 freeze). Not the sole BFF-1 pin. */
 export const FACT_PACK_OPENAPI_FREEZE_COMMIT =
   'a7e9bdca588431143e04e98d7c1c1204299c6e54' as const;
+
+/**
+ * New engineering baseline tip (V3.1 + EWP + scoped tickets).
+ * Matrix v2 freeze delivery commit may be a descendant; see BASELINE_SCOPE_DECISION.md.
+ */
+export const ENGINEERING_BASELINE_COMMIT =
+  'bc6e2e6d5a087a6a20c47576ebdba295370ebec1' as const;
 
 export const FACT_PACK_OPENAPI_GENERATION_REL =
   'evidence/agent-interface-fact-pack/openapi/OPENAPI_GENERATION.txt' as const;
 
 export const FACT_PACK_OPENAPI_JSON_REL =
   'evidence/agent-interface-fact-pack/openapi/openapi.json' as const;
+
+/** Diff index: client-contract-relevant paths changed a7e9bdca5 → ENGINEERING_BASELINE. */
+export const OPENAPI_CONTRACT_DELTA_INDEX_REL =
+  'evidence/work-packages/EWP-07-bff-client-contracts/OPENAPI_CONTRACT_DELTA_INDEX.txt' as const;
 
 /** Critical route_and_run options OpenAPI field freeze (code SSOT, V3.1). */
 export const ROUTE_AND_RUN_OPTIONS_OPENAPI_FREEZE_REL =
@@ -146,11 +159,19 @@ export const BFF_CLIENT_CONTRACT_INDEX: readonly BffClientContractRow[] = [
   },
   {
     id: 'fact_pack_openapi',
-    surface: 'Fact-pack OpenAPI snapshot',
+    surface: 'Fact-pack OpenAPI snapshot (historical)',
     kind: 'openapi_snapshot',
     path: FACT_PACK_OPENAPI_JSON_REL,
     transport: 'openapi',
-    notes: `Pinned to FACT_PACK_OPENAPI_FREEZE_COMMIT=${FACT_PACK_OPENAPI_FREEZE_COMMIT}`,
+    notes: `Historical pin FACT_PACK_OPENAPI_FREEZE_COMMIT=${FACT_PACK_OPENAPI_FREEZE_COMMIT}; pair with ENGINEERING_BASELINE_COMMIT + delta index`,
+  },
+  {
+    id: 'openapi_contract_delta_index',
+    surface: 'OpenAPI/contract delta vs v1 freeze',
+    kind: 'openapi_snapshot',
+    path: OPENAPI_CONTRACT_DELTA_INDEX_REL,
+    transport: 'docs',
+    notes: `a7e9bdca5..${ENGINEERING_BASELINE_COMMIT.slice(0, 9)} client-contract-relevant path status`,
   },
   {
     id: 'route_and_run_options_freeze',
@@ -158,7 +179,7 @@ export const BFF_CLIENT_CONTRACT_INDEX: readonly BffClientContractRow[] = [
     kind: 'openapi_field_freeze',
     path: ROUTE_AND_RUN_OPTIONS_OPENAPI_FREEZE_REL,
     transport: 'openapi',
-    notes: 'execution_mode / allow_flawed_draft_narrate (C027)',
+    notes: `execution_mode / allow_flawed_draft_narrate (C027); lives on ENGINEERING_BASELINE=${ENGINEERING_BASELINE_COMMIT.slice(0, 9)}`,
   },
 ] as const;
 

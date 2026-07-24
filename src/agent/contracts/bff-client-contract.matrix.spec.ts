@@ -49,7 +49,7 @@ describe('bff-client-contract.matrix (EWP-07 / BFF-1)', () => {
     expect(ctrl).toMatch(/@Controller|travel-contexts/);
   });
 
-  it('OpenAPI pin matches v1 fact-pack freeze commit', () => {
+  it('OpenAPI pin matches v1 fact-pack freeze commit and engineering baseline is distinct', () => {
     expect(FACT_PACK_OPENAPI_FREEZE_COMMIT.startsWith('a7e9bdca5')).toBe(true);
   });
 });

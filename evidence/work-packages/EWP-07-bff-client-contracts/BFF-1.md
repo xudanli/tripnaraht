@@ -1,19 +1,15 @@
-# BFF-1 — Client contract index
+# BFF-1 — Client contract index (updated for Matrix v2 freeze)
 
-**Status:** DONE  
-**Parent gate:** `POST_EWP_DECISION_GATE.md`  
+**Status:** DONE (v1.1 dual-pin)  
 **Claims:** C030, C030b  
 
-## Deliverable
+## Fix vs earlier draft
 
-Versioned index `BFF_CLIENT_CONTRACT_INDEX` + human `CLIENT_CONTRACT_INDEX.md`, pinned to fact-pack OpenAPI freeze commit `a7e9bdca588431143e04e98d7c1c1204299c6e54`.
+Earlier BFF-1 only pinned fact-pack OpenAPI at `a7e9bdca5`.  
+**Corrected:** also pins `ENGINEERING_BASELINE_COMMIT=bc6e2e6d5…` and ships `OPENAPI_CONTRACT_DELTA_INDEX.txt`.
 
-## Non-goals
+## Artifacts
 
-- No GraphQL / microservice BFF split  
-- No claiming client compliance from this repo  
-- No regenerating full OpenAPI as a new research baseline (v1 freeze retained)
-
-## Tests
-
-See `CLIENT_CONTRACT_INDEX.md` — index + matrix specs **PASS**.
+- `src/agent/contracts/bff-client-contract.index.ts` v1.1.0  
+- `OPENAPI_CONTRACT_DELTA_INDEX.txt`  
+- `CLIENT_CONTRACT_INDEX.md`
