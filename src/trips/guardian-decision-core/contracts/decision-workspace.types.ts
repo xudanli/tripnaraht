@@ -37,6 +37,11 @@ export interface DecisionWorkspace {
    * Neptune remains the authority repairCandidates set.
    */
   ortoolsShadow?: OrtToolsEvaluateShadowAttachment;
+  /**
+   * Authority Consistency — DecisionScope bound to worldStateSnapshotId.
+   * Optional; Gateway / Verification consume when present.
+   */
+  decisionScope?: import('../../../decision-runtime/contracts/decision-scope.types').DecisionScope;
   /** T1 — frozen traversability verdict for causal lineage / impact chain */
   roadTraversability?: RoadTraversabilityWorkspaceSnapshot;
   createdAt: string;

@@ -11,6 +11,7 @@ import {
 } from '../contracts/decision-record.types';
 import type { Rfc001ConstraintAssertion } from '../contracts/guardian-outputs.types';
 import type { PlanVersion } from '../contracts/plan-version.types';
+import { assertCandidateWithinDecisionScope } from '../../../decision-runtime/contracts/decision-scope.types';
 
 export const ARCHITECTURE_IRON_RULE =
   'Only Decision Core may form DecisionRecord; only authorized DecisionRecord may change Effective Plan.';
@@ -139,6 +140,16 @@ export function assertWorkspaceReadyForFinalize(
       `Workspace snapshot ${workspace.worldStateSnapshotId} stale vs current ${currentWorldStateSnapshotId}`,
     );
   }
+  // Authority Consistency: DecisionScope must bind the same snapshotId when present.
+  if (
+    workspace.decisionScope &&
+    workspace.decisionScope.snapshotId !== currentWorldStateSnapshotId
+  ) {
+    throw new WritePermissionViolationError(
+      'WORKSPACE_STALE_FINALIZE',
+      `DecisionScope snapshot ${workspace.decisionScope.snapshotId} stale vs current ${currentWorldStateSnapshotId}`,
+    );
+  }
 }
 
 export function candidateHasNonOverridableBlock(
@@ -151,4 +162,31 @@ export function candidateHasNonOverridableBlock(
       a.verdict === 'BLOCK' &&
       !a.overridable,
   );
+}
+
+/**
+ * When workspace.decisionScope is set, repair candidate operations must stay in scope.
+ * Base/original candidate (no proposedOperations) is not scope-checked here.
+ */
+export function candidateViolatesDecisionScope(
+  workspace: DecisionWorkspace,
+  candidateId: string,
+): { violates: false } | { violates: true; reasons: string[] } {
+  const scope = workspace.decisionScope;
+  if (!scope) return { violates: false };
+  const repair = workspace.repairCandidates.find((c) => c.candidateId === candidateId);
+  if (!repair) return { violates: false };
+
+  const reasons: string[] = [];
+  for (const op of repair.proposedOperations ?? []) {
+    const gate = assertCandidateWithinDecisionScope(scope, {
+      actionType: op.kind,
+      targetObjectIds: (op.targetRefs ?? []).map((r) => r.id),
+    });
+    if (!gate.ok) {
+      reasons.push(`${op.kind}:${gate.reason}`);
+    }
+  }
+  if (reasons.length === 0) return { violates: false };
+  return { violates: true, reasons };
 }

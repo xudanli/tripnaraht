@@ -134,6 +134,24 @@ describe('WeatherActivityProhibitedRunnerService (Slice 2 L2)', () => {
     expect(result.humanDecisionRequired).toBe(false);
     expect(result.problem?.semanticCapability).toBe('WEATHER_ACTIVITY_PROHIBITED');
     expect(result.workspace?.status).toBe('FINALIZED');
+    expect(result.workspace?.decisionScope?.snapshotId).toBe(
+      result.workspace?.worldStateSnapshotId,
+    );
+
+    const stored = mock.stores.get(tripId);
+    const meta = stored?.metadata as Record<string, unknown>;
+    const stamped = meta?.authorityDecisionScopeSignals as {
+      constraintScenarioId?: string;
+      decisionScope?: { snapshotId?: string };
+      affectedPlanItemIds?: string[];
+    };
+    expect(stamped?.constraintScenarioId).toBe('weather-outdoor-storm');
+    expect(stamped?.decisionScope?.snapshotId).toBe(
+      result.workspace?.worldStateSnapshotId,
+    );
+    expect(stamped?.affectedPlanItemIds).toEqual(
+      expect.arrayContaining([itemOutdoor]),
+    );
 
     const ref = await ledgerStore.getDecisionRef(tripId);
     expect(ref?.decisionId).toBe(result.record!.decisionId);

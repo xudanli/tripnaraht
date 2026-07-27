@@ -28,6 +28,7 @@ import { OntologyConstraintProvider } from './providers/ontology-constraint.prov
 import { evaluateWorldStateCompleteness } from './world-state/completeness-evaluator.util';
 import { buildCompletenessAssertions } from './world-state/reality-completeness.provider';
 import { recordConstraintGatewayIngressFromReport } from './constraint-gateway-ingress-audit.util';
+import { evaluateDecisionScopeBoundRun } from '../verification/evaluate-decision-scope.util';
 
 @Injectable()
 export class ConstraintEvaluationGatewayService {
@@ -122,6 +123,26 @@ export class ConstraintEvaluationGatewayService {
     );
 
     assertionBatches.push(userAssertions);
+
+    if (input.decisionScope) {
+      const scopeEval = evaluateDecisionScopeBoundRun({
+        tripId: input.tripId,
+        scope: input.decisionScope,
+        consumers: [
+          { name: 'decision', snapshotId: input.decisionScope.snapshotId },
+          {
+            name: 'solver',
+            snapshotId: input.worldStateSnapshotId ?? input.decisionScope.snapshotId,
+          },
+          { name: 'verification', snapshotId: input.decisionScope.snapshotId },
+          ...(input.worldStateSnapshotId
+            ? [{ name: 'gateway', snapshotId: input.worldStateSnapshotId }]
+            : []),
+        ],
+        candidate: input.scopeMutationCandidate,
+      });
+      assertionBatches.push(scopeEval.assertions);
+    }
 
     const skipLegacy =
       input.skipLegacyChecker === true ||

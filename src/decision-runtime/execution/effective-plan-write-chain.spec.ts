@@ -29,9 +29,18 @@ describe('EffectivePlanWriteGuardService write chain', () => {
   });
 
   it('CAS-072: write chain off allows direct mutation assert', () => {
-    delete process.env.EFFECTIVE_PLAN_WRITE_CHAIN;
+    process.env.EFFECTIVE_PLAN_WRITE_CHAIN = '0';
     const guard = new EffectivePlanWriteGuardService();
     expect(() => guard.assertAuthorizedPlanMutation('test')).not.toThrow();
     expect(isEffectivePlanWriteChainEnabled()).toBe(false);
+  });
+
+  it('CAS-072b P0-1 W0: unset CHAIN defaults to enabled', () => {
+    delete process.env.EFFECTIVE_PLAN_WRITE_CHAIN;
+    expect(isEffectivePlanWriteChainEnabled()).toBe(true);
+    const guard = new EffectivePlanWriteGuardService();
+    expect(() => guard.assertAuthorizedPlanMutation('test')).toThrow(
+      EffectivePlanWriteBypassError,
+    );
   });
 });

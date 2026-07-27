@@ -54,6 +54,40 @@ describe('trip-decision-repair-bridge.util', () => {
     expect(state.signals.ecoLedgerTripId).toBe('trip-1');
   });
 
+  it('applies authority DecisionScope signals from trip metadata', () => {
+    const state = buildTripWorldStateFromPrismaTrip({
+      ...trip,
+      metadata: {
+        authorityDecisionScopeSignals: {
+          schemaId: 'tripnara.authority_decision_scope_signals@v1',
+          constraintScenarioId: 'weather-outdoor-storm',
+          weatherProhibitsOutdoor: 'ACTIVITY_PROHIBITED',
+          worldStateSnapshotId: 'wss_meta_1',
+          decisionScope: {
+            schema: 'tripnara.decision_scope@v1',
+            snapshotId: 'wss_meta_1',
+            tripId: 'trip-1',
+            trigger: 'WEATHER_ACTIVITY_PROHIBITED',
+            affectedObjects: [],
+            affectedDays: [1],
+            decisionWindow: { from: 'a', to: 'b' },
+            mutableObjects: [{ kind: 'PLAN_ITEM', id: 'item-1' }],
+            lockedObjects: [],
+            allowedActions: ['REPLACE_ITEM'],
+            forbiddenActions: [],
+            hardConstraints: [],
+            softObjectives: [],
+          },
+          affectedPlanItemIds: ['item-1'],
+          stampedAt: '2026-07-17T10:00:00.000Z',
+        },
+      },
+    });
+    expect((state.signals as any).worldStateSnapshotId).toBe('wss_meta_1');
+    expect((state.signals as any).weatherProhibitsOutdoor).toBe('ACTIVITY_PROHIBITED');
+    expect((state.signals as any).decisionScope?.snapshotId).toBe('wss_meta_1');
+  });
+
   it('maps readiness actions to decision triggers', () => {
     expect(mapReadinessActionToDecisionTrigger('fetch_weather')).toBe('weather_update');
     expect(mapReadinessActionToDecisionTrigger('remove_pois')).toBe('manual_repair');

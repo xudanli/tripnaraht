@@ -2212,6 +2212,8 @@ export class AgentService {
       );
     }
 
+    // Authority Consistency P2: soft-blocks silent Effective Plan write
+    // (stamps LEGACY_SILENT_WRITE_BLOCKED; canCommit=false).
     return applyLegacyMutationCommitGuard(request, response);
   }
 
@@ -2624,6 +2626,8 @@ export class AgentService {
       },
       routingTaskType: signals.taskType,
     });
+    // Authority Consistency P2: Fast Path mutation tools require Decision ID
+    // at dispatch (evaluateAgenticToolMutationGate); response soft-blocks commit.
     return applyAgenticRouteAndRunMutationGuard({
       request,
       response: assembled,

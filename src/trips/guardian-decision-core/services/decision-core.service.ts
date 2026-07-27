@@ -11,6 +11,7 @@ import { RFC001_REASON_CODES } from '../reason-codes/reason-code.registry';
 import {
   assertWorkspaceReadyForFinalize,
   candidateHasNonOverridableBlock,
+  candidateViolatesDecisionScope,
 } from '../policy/write-permission.guard';
 
 export interface FinalizeInput {
@@ -78,6 +79,16 @@ export class DecisionCoreService {
           candidateId,
           reasonCodes: ['INCOMPLETE_ASSESSMENT'],
           rejectedBy: 'INCOMPLETE_ASSESSMENT',
+        });
+        continue;
+      }
+
+      const scopeGate = candidateViolatesDecisionScope(workspace, candidateId);
+      if (scopeGate.violates) {
+        rejectedCandidates.push({
+          candidateId,
+          reasonCodes: ['DECISION_SCOPE_VIOLATION', ...scopeGate.reasons],
+          rejectedBy: 'POLICY',
         });
         continue;
       }

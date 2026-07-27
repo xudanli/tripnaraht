@@ -3,6 +3,10 @@ import type { TripPlan, PlanDay, PlanSlot } from '../../decision/plan-model';
 import type { ActivityType, ISODate, ISOTime, TripWorldState } from '../../decision/world-model';
 import type { DecisionTrigger } from '../../decision/decision-log';
 import { applyPrismaTripIdToWorldState } from '../../execution-closure-persistence/apply-prisma-trip-id-to-world-state';
+import {
+  applyAuthorityDecisionScopeSignalsToWorldSignals,
+  readAuthorityDecisionScopeSignalsFromMetadata,
+} from '../../guardian-decision-core/orchestration/authority-decision-scope-signals.util';
 
 export interface PrismaTripPlace {
   id: number;
@@ -34,6 +38,8 @@ export interface PrismaTripWithDays {
   startDate: Date;
   endDate: Date;
   TripDay: PrismaTripDay[];
+  /** Optional — when present, authority DecisionScope signals are applied to world state. */
+  metadata?: unknown;
 }
 
 function formatISOTime(value: Date | null | undefined): ISOTime | undefined {
@@ -106,6 +112,15 @@ export function buildTripWorldStateFromPrismaTrip(trip: PrismaTripWithDays): Tri
     ) + 1,
   );
 
+  const baseSignals: Record<string, unknown> = {
+    lastUpdatedAt: new Date().toISOString(),
+  };
+  const authorityBinding = readAuthorityDecisionScopeSignalsFromMetadata(trip.metadata);
+  const signals = applyAuthorityDecisionScopeSignalsToWorldSignals(
+    baseSignals,
+    authorityBinding,
+  );
+
   const state = {
     context: {
       tripId: trip.id,
@@ -119,9 +134,7 @@ export function buildTripWorldStateFromPrismaTrip(trip: PrismaTripWithDays): Tri
       },
     },
     candidatesByDate: {},
-    signals: {
-      lastUpdatedAt: new Date().toISOString(),
-    },
+    signals,
   } as TripWorldState;
 
   applyPrismaTripIdToWorldState(state, trip.id);

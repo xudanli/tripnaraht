@@ -40,6 +40,31 @@ describe('agentic-tool-side-effect + mutation gate', () => {
     expect(gate.reasonCodes).toContain('MUTATION_DENIED_DECISION_AUTHORITY_MISSING');
   });
 
+  it('blocks TRIP_MUTATION when envelope lacks Decision ID (Authority Consistency)', () => {
+    const gate = evaluateAgenticToolMutationGate({
+      mcpToolName: 'trip.itinerary.update',
+      tripId: 'trip_1',
+      mutationAuthorityEnvelope: {
+        tripId: 'trip_1',
+        decisionId: '',
+        expectedTripVersion: 3,
+        constraintEvaluation: {
+          evaluationId: 'eval_1',
+          verdict: 'PASS',
+          hardConstraintViolations: [],
+        },
+        evidenceSnapshot: {
+          snapshotId: 'snap_1',
+          capturedAt: new Date().toISOString(),
+        },
+        writeAuthority: { verdict: 'ALLOW', reasonCodes: [] },
+        executionSource: { routeClass: 'FAST_PATH', orchestrationMode: 'Agentic' },
+      },
+    });
+    expect(gate.allowed).toBe(false);
+    expect(gate.reasonCodes).toContain('MUTATION_DENIED_DECISION_AUTHORITY_MISSING');
+  });
+
   it('allows READ_EXTERNAL tools without envelope', () => {
     const gate = evaluateAgenticToolMutationGate({
       mcpToolName: 'weather.getForecast',

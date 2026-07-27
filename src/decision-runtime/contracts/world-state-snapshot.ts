@@ -2,6 +2,8 @@
  * Canonical world-state snapshot — one snapshotId per Decision Run.
  * Production and decision-lab share this contract.
  * @see ADR-007-Decision-Runtime-v2.md
+ *
+ * Product alias: {@link TravelWorldStateSnapshot} (Authority Consistency).
  */
 
 import type { SourceVersion } from './evidence-reference';
@@ -9,6 +11,7 @@ import type {
   CompletenessLevel,
   WorldStateCompleteness,
 } from '../constraints/contracts/world-state-completeness';
+import type { TravelWorldFact } from '../../travel-ontology/contracts/travel-world-fact.types';
 
 export type DataCompleteness = CompletenessLevel;
 
@@ -75,11 +78,29 @@ export interface TravelTimeMatrix {
   }>;
 }
 
+/** Rule-based inferred state (not raw facts) — strong-wind vertical slice fields. */
+export interface TravelWorldInferredState {
+  estimatedArrival?: string;
+  missProbability?: number;
+  scheduleSlackMinutes?: number;
+  interventionDeadline?: string;
+  vehicleRoadFit?: 'FIT' | 'MISMATCH' | 'UNKNOWN';
+  riskTrend?: 'IMPROVING' | 'STABLE' | 'DETERIORATING';
+  evidence?: string[];
+  confidence?: number;
+}
+
+export interface VehicleSnapshotState {
+  vehicleClass?: string;
+  drivetrain?: string;
+  highRoof?: boolean;
+}
+
 /**
  * Canonical snapshot bound for the full Decision Run.
  * Invariants:
  * - One snapshotId per run; no mid-run mutation
- * - All strategies consume the same snapshot
+ * - Decision / Solver / Verification consume the same snapshotId
  * - completeness MISSING ≠ "no problems"
  */
 export interface CanonicalWorldStateSnapshot {
@@ -101,4 +122,20 @@ export interface CanonicalWorldStateSnapshot {
 
   /** RFC-001 assertion ids when bridged from guardian store */
   assertionIds?: string[];
+
+  /** Optional TravelWorldFact binding (Authority Consistency). */
+  worldFacts?: TravelWorldFact[];
+  /** Optional vehicle binding. */
+  vehicle?: VehicleSnapshotState;
+  /** Facts vs inferred: inferred never replaces authoritative facts. */
+  inferred?: TravelWorldInferredState;
 }
+
+/**
+ * Product name for the unified Decision-Run world snapshot.
+ * Same object as {@link CanonicalWorldStateSnapshot} — do not fork a third type.
+ */
+export type TravelWorldStateSnapshot = CanonicalWorldStateSnapshot;
+
+export const TRAVEL_WORLD_STATE_SNAPSHOT_SCHEMA =
+  'tripnara.canonical_world_state_snapshot@v1' as const;

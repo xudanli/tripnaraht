@@ -5,6 +5,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import type { PrismaService } from '../../../prisma/prisma.service';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { resolveLunchStrategyFromTrip } from '../../../planning-policy/utils/lunch-strategy.util';
 import {
   projectDayPlanObjects,
@@ -315,6 +316,7 @@ export async function applyPlanObjectRepair(
   optionId: string,
   payload: Record<string, unknown>,
 ): Promise<PlanObjectRepairApplyResult> {
+  assertDirectEffectivePlanWriteBlocked('plan-object-repair.apply');
   switch (optionId) {
     case 'shift_meal_later':
       return applyShiftMealLater(prisma, tripId, payload);

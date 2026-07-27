@@ -6,7 +6,15 @@ import {
   resolveLegacyMutationWriteGuardMode,
 } from './canonical-mutation-commit-guard.config';
 import { validateMutationAuthority } from './canonical-mutation-commit-guard.util';
-import type { LegacyMutationGuardPayloadV1, ProposedChangeSetV1 } from './mutation-authority-envelope-v1.types';
+import {
+  LEGACY_SILENT_WRITE_BLOCKED_CODE,
+  shouldBlockLegacySilentWrite,
+} from './legacy-runtime-write-guard.util';
+import type {
+  LegacyMutationGuardPayloadV1,
+  MutationDenialReasonCode,
+  ProposedChangeSetV1,
+} from './mutation-authority-envelope-v1.types';
 
 function hasTimelineMutation(response: RouteAndRunResponseDto): boolean {
   const payload = response.result?.payload as Record<string, unknown> | undefined;
@@ -136,10 +144,20 @@ export function applyLegacyMutationCommitGuard(
   const envelope = buildLegacyEnvelopeAttempt(request, opts?.constraintEvaluation);
   const validation = validateMutationAuthority(envelope);
 
+  // Authority Consistency P2: Legacy fallback path must never silent-write
+  // (DECISION_RUNTIME_MODE=LEGACY or 熔断落到 LEGACY). Soft-block response;
+  // do not throw — preserve route_and_run NEED_CONFIRMATION-style payload.
+  const reasonCodes: MutationDenialReasonCode[] = [...validation.reasonCodes];
+  if (shouldBlockLegacySilentWrite({ forceLegacyPath: true })) {
+    if (!reasonCodes.includes(LEGACY_SILENT_WRITE_BLOCKED_CODE)) {
+      reasonCodes.push(LEGACY_SILENT_WRITE_BLOCKED_CODE);
+    }
+  }
+
   const guardPayload: LegacyMutationGuardPayloadV1 = {
     schemaId: 'tripnara.legacy_mutation_guard@v1',
     canCommit: false,
-    reasonCodes: validation.reasonCodes,
+    reasonCodes,
     proposedChangeSet,
     userMessage:
       '已生成调整建议，但当前无法完成安全与可执行性校验，因此未修改正式行程。',
@@ -158,7 +176,7 @@ export function applyLegacyMutationCommitGuard(
       ? validation.auditTrace.bypassDetected
       : false,
     reasonCodes: [
-      ...validation.reasonCodes,
+      ...reasonCodes,
       `legacy_guard_mode=${resolveLegacyMutationWriteGuardMode()}`,
     ],
   };

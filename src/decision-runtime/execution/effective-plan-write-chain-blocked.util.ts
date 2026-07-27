@@ -11,6 +11,9 @@ export const EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED_CODE = 'EFFECTIVE_PLAN_WRITE_CH
 export const EFFECTIVE_PLAN_WRITE_CHAIN_AUTHORIZED_PATHS = [
   'POST /trips/:tripId/decision-problems/:problemId/resolutions',
   'POST /trips/:tripId/decision-problems/:problemId/apply',
+  'POST /api/uwc/v1/write/apply',
+  'POST /api/rfc001/decisions/:id/execute',
+  'POST /api/internal/rfc001/iceland/trips/:tripId/decisions/:id/execute',
 ] as const;
 
 export interface EffectivePlanWriteChainBlockedPayload {
